@@ -405,6 +405,62 @@ def clear_history():
     return jsonify({'status': 'ok'})
 
 # -------------------------------
+# Удаление сеанса
+# -------------------------------
+@app.route('/api/sessions/<session_id>/delete', methods=['POST'])
+def api_delete_session(session_id):
+    if 'email' not in session:
+        return jsonify({'error': 'Не авторизован'}), 401
+    
+    user_id = session['email']
+    
+    # Проверяем, что сеанс принадлежит пользователю
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute('SELECT user_id FROM chat_sessions WHERE id = ?', (session_id,))
+        row = c.fetchone()
+        
+        if not row:
+            return jsonify({'error': 'Сеанс не найден'}), 404
+        
+        if row[0] != user_id:
+            return jsonify({'error': 'Нет прав на удаление этого сеанса'}), 403
+        
+        # Удаляем сообщения сеанса
+        c.execute('DELETE FROM messages WHERE session_id = ?', (session_id,))
+        
+        # Удаляем сам сеанс
+        c.execute('DELETE FROM chat_sessions WHERE id = ?', (session_id,))
+        
+        # Если это был последний сеанс пользователя, удаляем запись о последнем сеансе
+        c.execute('SELECT COUNT(*) FROM chat_sessions WHERE user_id = ?', (user_id,))
+        count = c.fetchone()[0]
+        
+        if count == 0:
+            c.execute('DELETE FROM user_sessions WHERE user_id = ?', (user_id,))
+        else:
+            # Если удалили текущий сеанс, обновим last_session_id
+            c.execute('SELECT last_session_id FROM user_sessions WHERE user_id = ?', (user_id,))
+            row = c.fetchone()
+            if row and row[0] == session_id:
+                # Получаем первый доступный сеанс
+                c.execute('SELECT id FROM chat_sessions WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1', (user_id,))
+                new_last = c.fetchone()
+                if new_last:
+                    c.execute('UPDATE user_sessions SET last_session_id = ? WHERE user_id = ?', (new_last[0], user_id))
+                else:
+                    c.execute('DELETE FROM user_sessions WHERE user_id = ?', (user_id,))
+        
+        conn.commit()
+    
+    # Если удалили текущий сеанс, очищаем его из сессии
+    if session.get('current_session') == session_id:
+        session.pop('current_session', None)
+    
+    return jsonify({'status': 'ok'})
+
+
+# -------------------------------
 # Статика и прочее
 # -------------------------------
 @app.route('/favicon.ico')

@@ -502,3 +502,39 @@ footer p {
         padding: 1.5rem;
     }
 }
+
+/* Стили для элемента сеанса с кнопкой удаления */
+.session-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.session-info {
+    flex: 1;
+    overflow: hidden;
+}
+
+.delete-session-button {
+    background: none;
+    border: none;
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    color: #999;
+    transition: all 0.2s;
+    margin-left: 8px;
+    opacity: 0.6;
+}
+
+.delete-session-button:hover {
+    background-color: #ffebee;
+    color: #e74c3c;
+    opacity: 1;
+}
+
+.session-item:hover .delete-session-button {
+    opacity: 1;
+}

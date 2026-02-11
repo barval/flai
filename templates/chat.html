@@ -12,8 +12,13 @@
         <div class="sessions-list" id="sessions-list">
             {% for s in sessions %}
             <div class="session-item {% if s.id == current_session %}active{% endif %}" data-session-id="{{ s.id }}">
-                <div class="session-title">{{ s.title }}</div>
-                <div class="session-date">{{ s.updated_at[:16].replace('T', ' ') }}</div>
+                <div class="session-content">
+                    <div class="session-info">
+                        <div class="session-title">{{ s.title }}</div>
+                        <div class="session-date">{{ s.updated_at[:16].replace('T', ' ') }}</div>
+                    </div>
+                    <button class="delete-session-button" title="Удалить сеанс">🗑️</button>
+                </div>
             </div>
             {% endfor %}
         </div>
@@ -52,12 +57,25 @@
     </div>
 </div>
 
+<!-- Модальное окно подтверждения удаления сеанса -->
+<div id="delete-session-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <h3>Удалить сеанс</h3>
+        <p id="delete-session-message"></p>
+        <div class="modal-buttons">
+            <button id="confirm-delete-session" class="modal-button confirm">Удалить</button>
+            <button id="cancel-delete-session" class="modal-button cancel">Отмена</button>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
     // Глобальные переменные
     let currentSessionId = "{{ current_session }}";
     let isSending = false;
     let attachedFile = null;
+    let sessionToDelete = null;
 
     // -------------------------------
     // Вспомогательные функции
@@ -73,9 +91,14 @@
         // Загружаем сообщения текущего сеанса
         loadMessages(currentSessionId);
         
-        // Клик по сеансу
+        // Клик по сеансу (но не по кнопке удаления)
         document.querySelectorAll('.session-item').forEach(el => {
             el.addEventListener('click', function(e) {
+                // Если клик по кнопке удаления или её дочерним элементам - не переключаем сеанс
+                if (e.target.closest('.delete-session-button')) {
+                    return;
+                }
+                
                 const sessionId = this.dataset.sessionId;
                 if (sessionId === currentSessionId) return;
                 
@@ -85,6 +108,19 @@
                 
                 // Переключение
                 switchSession(sessionId);
+            });
+        });
+        
+        // Кнопки удаления сеансов
+        document.querySelectorAll('.delete-session-button').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const sessionItem = this.closest('.session-item');
+                const sessionId = sessionItem.dataset.sessionId;
+                const sessionTitle = sessionItem.querySelector('.session-title').textContent;
+                const sessionDate = sessionItem.querySelector('.session-date').textContent;
+                
+                showDeleteSessionModal(sessionId, sessionTitle, sessionDate);
             });
         });
         
@@ -125,6 +161,25 @@
         
         // Сохранение чата
         document.getElementById('save-chat-button').addEventListener('click', saveChatAsHTML);
+        
+        // Модальное окно удаления сеанса
+        document.getElementById('confirm-delete-session').addEventListener('click', function() {
+            if (sessionToDelete) {
+                deleteSession(sessionToDelete);
+            }
+            hideDeleteSessionModal();
+        });
+        
+        document.getElementById('cancel-delete-session').addEventListener('click', function() {
+            hideDeleteSessionModal();
+        });
+        
+        // Закрытие модального окна по клику на overlay
+        document.getElementById('delete-session-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                hideDeleteSessionModal();
+            }
+        });
     });
 
     // -------------------------------
@@ -231,8 +286,13 @@
                 const formattedDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
                 
                 newSessionDiv.innerHTML = `
-                    <div class="session-title">${data.title}</div>
-                    <div class="session-date">${formattedDate}</div>
+                    <div class="session-content">
+                        <div class="session-info">
+                            <div class="session-title">${data.title}</div>
+                            <div class="session-date">${formattedDate}</div>
+                        </div>
+                        <button class="delete-session-button" title="Удалить сеанс">🗑️</button>
+                    </div>
                 `;
                 
                 // Убираем active у всех сеансов
@@ -243,8 +303,12 @@
                 // Добавляем новый сеанс в начало списка
                 sessionsList.insertBefore(newSessionDiv, sessionsList.firstChild);
                 
-                // Добавляем обработчик клика
+                // Добавляем обработчик клика на сеанс
                 newSessionDiv.addEventListener('click', function(e) {
+                    if (e.target.closest('.delete-session-button')) {
+                        return;
+                    }
+                    
                     const sessionId = this.dataset.sessionId;
                     if (sessionId === currentSessionId) return;
                     
@@ -252,6 +316,18 @@
                     this.classList.add('active');
                     
                     switchSession(sessionId);
+                });
+                
+                // Добавляем обработчик на кнопку удаления
+                const deleteBtn = newSessionDiv.querySelector('.delete-session-button');
+                deleteBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const sessionItem = this.closest('.session-item');
+                    const sessionId = sessionItem.dataset.sessionId;
+                    const sessionTitle = sessionItem.querySelector('.session-title').textContent;
+                    const sessionDate = sessionItem.querySelector('.session-date').textContent;
+                    
+                    showDeleteSessionModal(sessionId, sessionTitle, sessionDate);
                 });
                 
                 // Переключаемся на новый сеанс
@@ -362,6 +438,59 @@
                 // Обновляем заголовок сеанса на "Новый сеанс"
                 updateSessionTitle(currentSessionId, 'Новый сеанс');
             });
+    }
+
+    // -------------------------------
+    // Удаление сеанса
+    // -------------------------------
+    function deleteSession(sessionId) {
+        fetch(`/api/sessions/${sessionId}/delete`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    // Удаляем элемент из DOM
+                    const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
+                    if (sessionItem) {
+                        sessionItem.remove();
+                    }
+                    
+                    // Обновляем счетчик сеансов
+                    const sessionsCount = document.querySelectorAll('.session-item').length;
+                    document.getElementById('sessions-count').textContent = sessionsCount;
+                    
+                    // Если удалили текущий сеанс, переключаемся на другой
+                    if (sessionId === currentSessionId) {
+                        const remainingSessions = document.querySelectorAll('.session-item');
+                        if (remainingSessions.length > 0) {
+                            // Переключаемся на первый доступный сеанс
+                            const firstSession = remainingSessions[0];
+                            const firstSessionId = firstSession.dataset.sessionId;
+                            switchSession(firstSessionId);
+                        } else {
+                            // Если сеансов не осталось, создаем новый
+                            createNewSession();
+                        }
+                    }
+                }
+            })
+            .catch(err => {
+                alert('Ошибка при удалении сеанса: ' + err.message);
+            });
+    }
+
+    // -------------------------------
+    // Модальное окно для удаления сеанса
+    // -------------------------------
+    function showDeleteSessionModal(sessionId, sessionTitle, sessionDate) {
+        sessionToDelete = sessionId;
+        const messageEl = document.getElementById('delete-session-message');
+        messageEl.textContent = `Удалить сеанс "${sessionTitle}" от ${sessionDate}?`;
+        document.getElementById('delete-session-modal').style.display = 'flex';
+    }
+
+    function hideDeleteSessionModal() {
+        document.getElementById('delete-session-modal').style.display = 'none';
+        sessionToDelete = null;
     }
 
     // -------------------------------

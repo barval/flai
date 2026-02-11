@@ -60,6 +60,13 @@
     let attachedFile = null;
 
     // -------------------------------
+    // Вспомогательные функции
+    // -------------------------------
+    function pad(n) { 
+        return n.toString().padStart(2, '0'); 
+    }
+
+    // -------------------------------
     // Инициализация
     // -------------------------------
     document.addEventListener('DOMContentLoaded', function() {
@@ -124,7 +131,7 @@
     // Загрузка сообщений сеанса
     // -------------------------------
     function loadMessages(sessionId) {
-        fetch(`/api/sessions/${sessionId}/messages`)
+        return fetch(`/api/sessions/${sessionId}/messages`)
             .then(res => res.json())
             .then(messages => {
                 const container = document.getElementById('chat-messages');
@@ -193,6 +200,15 @@
             .then(() => {
                 currentSessionId = sessionId;
                 loadMessages(sessionId);
+                
+                // Обновляем активный класс в списке сеансов
+                document.querySelectorAll('.session-item').forEach(el => {
+                    if (el.dataset.sessionId === sessionId) {
+                        el.classList.add('active');
+                    } else {
+                        el.classList.remove('active');
+                    }
+                });
             });
     }
 
@@ -203,9 +219,78 @@
         fetch('/api/sessions/new', { method: 'POST' })
             .then(res => res.json())
             .then(data => {
-                // Перезагружаем страницу, чтобы обновить список сеансов
-                window.location.reload();
+                // Вместо перезагрузки страницы - динамически добавляем новый сеанс
+                const sessionsList = document.getElementById('sessions-list');
+                
+                // Создаем элемент нового сеанса
+                const newSessionDiv = document.createElement('div');
+                newSessionDiv.className = 'session-item active';
+                newSessionDiv.dataset.sessionId = data.id;
+                
+                const now = new Date();
+                const formattedDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+                
+                newSessionDiv.innerHTML = `
+                    <div class="session-title">${data.title}</div>
+                    <div class="session-date">${formattedDate}</div>
+                `;
+                
+                // Убираем active у всех сеансов
+                document.querySelectorAll('.session-item').forEach(el => {
+                    el.classList.remove('active');
+                });
+                
+                // Добавляем новый сеанс в начало списка
+                sessionsList.insertBefore(newSessionDiv, sessionsList.firstChild);
+                
+                // Добавляем обработчик клика
+                newSessionDiv.addEventListener('click', function(e) {
+                    const sessionId = this.dataset.sessionId;
+                    if (sessionId === currentSessionId) return;
+                    
+                    document.querySelectorAll('.session-item').forEach(i => i.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    switchSession(sessionId);
+                });
+                
+                // Переключаемся на новый сеанс
+                currentSessionId = data.id;
+                
+                // Очищаем сообщения
+                document.getElementById('chat-messages').innerHTML = '';
+                updateMessageCount();
+                
+                // Обновляем счетчик сеансов
+                const sessionsCount = document.querySelectorAll('.session-item').length;
+                document.getElementById('sessions-count').textContent = sessionsCount;
             });
+    }
+
+    // -------------------------------
+    // Обновление заголовка сеанса
+    // -------------------------------
+    function updateSessionTitle(sessionId, newTitle) {
+        // Обновляем заголовок в списке сеансов
+        const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
+        if (sessionItem) {
+            const titleElement = sessionItem.querySelector('.session-title');
+            if (titleElement) {
+                titleElement.textContent = newTitle;
+            }
+            
+            // Также обновляем время
+            const now = new Date();
+            const formattedDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+            const dateElement = sessionItem.querySelector('.session-date');
+            if (dateElement) {
+                dateElement.textContent = formattedDate;
+            }
+            
+            // Перемещаем обновленный сеанс вверх списка
+            const sessionsList = document.getElementById('sessions-list');
+            sessionsList.insertBefore(sessionItem, sessionsList.firstChild);
+        }
     }
 
     // -------------------------------
@@ -235,13 +320,26 @@
             });
             const data = await response.json();
             
-            // Сообщение пользователя добавится после перезагрузки сообщений сеанса,
-            // но для плавности можно добавить локально (упрощённо перезагружаем)
+            // Сохраняем количество сообщений ДО отправки
+            const messageCount = document.querySelectorAll('.user-message').length;
+            
             input.value = '';
             attachedFile = null;
             document.getElementById('file-preview-container').style.display = 'none';
             
-            loadMessages(currentSessionId);
+            // Загружаем сообщения
+            await loadMessages(currentSessionId);
+            
+            // Если это было первое сообщение в сеансе (было 0 сообщений)
+            if (messageCount === 0 && text) {
+                // Формируем заголовок из первого сообщения
+                let newTitle = text.length > 30 ? text.substring(0, 30) + '...' : text;
+                updateSessionTitle(currentSessionId, newTitle);
+                
+                // Также обновляем счетчик сеансов в заголовке
+                const sessionsCount = document.querySelectorAll('.session-item').length;
+                document.getElementById('sessions-count').textContent = sessionsCount;
+            }
         } catch (err) {
             alert('Ошибка: ' + err.message);
         } finally {
@@ -260,6 +358,9 @@
             .then(() => {
                 document.getElementById('chat-messages').innerHTML = '';
                 updateMessageCount();
+                
+                // Обновляем заголовок сеанса на "Новый сеанс"
+                updateSessionTitle(currentSessionId, 'Новый сеанс');
             });
     }
 
@@ -311,7 +412,5 @@
         div.textContent = text;
         return div.innerHTML;
     }
-
-    function pad(n) { return n.toString().padStart(2, '0'); }
 </script>
 {% endblock %}

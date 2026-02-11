@@ -3,7 +3,7 @@ services:
     build: .
     restart: always
     ports:
-      - "127.0.0.1:5000:5000"
+      - "5000:5000"
     volumes:
       - ./data:/app/data  # Изменено: монтируем отдельную папку для данных
     environment:

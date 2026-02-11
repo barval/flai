@@ -1,312 +1,342 @@
-/* Общие стили */
-* { 
-    margin: 0; 
-    padding: 0; 
-    box-sizing: border-box; 
-    font-family: 'Segoe UI', 'Arial', sans-serif; 
-}
-body { 
-    display: flex; 
-    flex-direction: column; 
-    min-height: 100vh; 
-    background-color: #f0f2f5;
-}
-main { 
-    flex: 1; 
+/* Основные стили */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-/* Шапка и подвал */
-header {
-    background-color: #1a2634;
-    color: white;
-    padding: 0.8rem 2rem;
-    height: 60px;
+/* Структура страницы */
+body {
     display: flex;
-    align-items: center;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    flex-direction: column;
+    min-height: 100vh;
+    margin: 0;
+    padding: 0;
 }
-header h1 { 
-    font-size: 1.5rem; 
-    margin-right: auto; 
-    font-weight: 500;
-    letter-spacing: 0.5px;
+
+main {
+    flex: 1;
 }
-footer {
-    background-color: #1a2634;
+
+/* Шапка и подвал - ТОЧНО КАК В ОБРАЗЦЕ */
+header {
+    background-color: #2c3e50;
     color: white;
-    padding: 0.8rem;
+    padding: 0.5rem 1rem;
+    text-align: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    height: 50px;
+    display: flex;
+    align-items: center; 
+}
+
+header h1 {
+    font-size: 1.3rem;
+    margin: 0;
+    margin-right: auto;
+}
+
+footer {
+    background-color: #2c3e50;
+    color: white;
+    padding: 0.5rem 1rem;
     text-align: center;
     height: 50px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.9rem;
+    margin-top: auto;
 }
 
-.logout-container { 
-    display: flex; 
-    align-items: center; 
-    gap: 15px; 
-    margin-left: auto; 
+footer p {
+    margin: 0;
+    padding: 0;
 }
-.logout-button { 
-    color: white; 
-    background-color: #dc3545; 
-    padding: 0.4rem 1rem; 
-    border-radius: 4px; 
-    text-decoration: none; 
+
+/* Выход из системы - КАК В ОБРАЗЦЕ */
+.logout-container {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-left: auto;
+}
+
+.logout-container span {
     font-size: 0.9rem;
-    transition: background-color 0.2s;
+    color: #ecf0f1;
 }
+
+.logout-button {
+    color: white;
+    background-color: #e74c3c;
+    padding: 0.3rem 0.8rem;
+    border-radius: 4px;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: background-color 0.3s;
+}
+
 .logout-button:hover {
-    background-color: #c82333;
+    background-color: #c0392b;
 }
 
-/* ========== СТРАНИЦА ЛОГИНА - ТОЧНО КАК В ОБРАЗЦЕ ========== */
-.login-wrapper { 
-    display: flex; 
-    justify-content: center; 
-    align-items: center; 
-    min-height: calc(100vh - 110px);
-    padding: 20px; 
-    background-color: #f0f2f5;
+/* ========== СТРАНИЦА АВТОРИЗАЦИИ - ТОЧНО КАК В ОБРАЗЦЕ ========== */
+.login-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: calc(100vh - 100px);
+    padding: 20px;
 }
 
-.login-container { 
-    max-width: 360px; 
-    width: 100%; 
-    padding: 2.2rem 2rem 2.5rem; 
-    border: none; 
-    border-radius: 8px; 
-    background: white; 
+.login-container {
+    max-width: 400px;
+    width: 90%;
+    margin: 2rem auto;
+    padding: 2rem;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background-color: white;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
 }
 
 .login-container h2 {
-    color: #1a2634;
-    margin-bottom: 1.8rem;
     text-align: center;
-    font-size: 1.6rem;
-    font-weight: 600;
-}
-
-.error { 
-    color: #721c24; 
-    padding: 0.75rem 1rem; 
-    margin-bottom: 1.5rem; 
-    background-color: #f8d7da; 
-    border-radius: 4px; 
-    border-left: 4px solid #dc3545;
-    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+    color: #2c3e50;
+    font-size: 1.5rem;
 }
 
 .form-group {
-    margin-bottom: 1.2rem;
+    margin-bottom: 1rem;
 }
 
 .form-group label {
     display: block;
-    margin-bottom: 0.3rem;
-    color: #1a2634;
-    font-weight: 600;
-    font-size: 0.95rem;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #2c3e50;
 }
 
 .form-group input {
     width: 100%;
-    padding: 0.7rem 0.8rem;
-    border: 1px solid #ced4da;
-    border-radius: 4px;
-    font-size: 0.95rem;
-    transition: border-color 0.15s, box-shadow 0.15s;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 1rem;
 }
 
 .form-group input:focus {
     outline: none;
-    border-color: #80bdff;
-    box-shadow: 0 0 0 0.2rem rgba(0,123,255,0.25);
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52,152,219,0.2);
 }
 
 .login-container button[type="submit"] {
+    display: block;
     width: 100%;
-    padding: 0.7rem;
-    background-color: #007bff;
+    padding: 0.75rem;
+    background-color: #3498db;
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: 5px;
     font-size: 1rem;
-    font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.2s;
-    margin-top: 1.2rem;
+    transition: background-color 0.3s;
+    margin-top: 1rem;
 }
 
 .login-container button[type="submit"]:hover {
-    background-color: #0069d9;
+    background-color: #2980b9;
 }
 
-/* Контейнер чата */
-.chat-container { 
-    display: flex; 
-    height: calc(100vh - 110px); 
-    width: 100%; 
+.error {
+    color: #e74c3c;
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+    background-color: #fde8e8;
+    border-radius: 5px;
+    text-align: center;
+}
+
+/* ========== КОНТЕЙНЕР ЧАТА ========== */
+.chat-container {
+    display: flex;
+    height: calc(100vh - 100px);
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
     background-color: white;
 }
 
-/* Левая колонка – сеансы */
+/* Левая колонка - ШИРИНА 25% КАК В ОБРАЗЦЕ */
 .sessions-sidebar {
-    width: 260px;
-    background-color: #f8f9fa;
-    border-right: 1px solid #dee2e6;
+    width: 25%;
+    background-color: #f1f3f6;
+    border-right: 1px solid #e0e0e0;
     display: flex;
     flex-direction: column;
     height: 100%;
     overflow-y: auto;
 }
+
 .sessions-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem 1.2rem;
-    border-bottom: 1px solid #dee2e6;
-    background-color: #f8f9fa;
+    padding: 1rem;
+    border-bottom: 1px solid #ddd;
+    background-color: #f1f3f6;
     position: sticky;
     top: 0;
     z-index: 10;
 }
-.sessions-header h2 { 
-    margin: 0; 
-    font-size: 1.1rem; 
-    color: #1a2634; 
-    font-weight: 600;
+
+.sessions-header h2 {
+    color: #2c3e50;
+    margin: 0;
+    font-size: 1.2rem;
 }
+
 .new-session-button {
     background: none;
     border: none;
-    font-size: 1.3rem;
+    font-size: 1.5rem;
     cursor: pointer;
-    padding: 0 6px;
+    padding: 0 8px;
     border-radius: 4px;
-    color: #6c757d;
-}
-.new-session-button:hover { 
-    background-color: #e9ecef; 
-    color: #1a2634;
+    color: #2c3e50;
 }
 
-.sessions-list { 
-    padding: 1rem; 
-    flex-grow: 1; 
-    overflow-y: auto; 
+.new-session-button:hover {
+    background-color: #e0e0e0;
 }
+
+.sessions-list {
+    padding: 1rem;
+    flex-grow: 1;
+    overflow-y: auto;
+}
+
 .session-item {
-    padding: 0.8rem 1rem;
+    padding: 0.8rem;
     margin-bottom: 0.5rem;
-    border: 1px solid #dee2e6;
+    border: 1px solid #ddd;
     border-radius: 6px;
     background-color: white;
     cursor: pointer;
-    transition: all 0.15s;
-}
-.session-item:hover { 
-    background-color: #e9ecef; 
-    border-color: #adb5bd; 
-}
-.session-item.active { 
-    border-color: #007bff; 
-    background-color: #e7f1ff; 
-}
-.session-title { 
-    font-weight: 600; 
-    margin-bottom: 4px; 
-    word-break: break-word; 
-    color: #1a2634;
-    font-size: 0.95rem;
-}
-.session-date { 
-    font-size: 0.75rem; 
-    color: #6c757d; 
+    transition: all 0.2s;
 }
 
-/* Правая часть */
+.session-item:hover {
+    background-color: #e6f2ff;
+    border-color: #3498db;
+}
+
+.session-item.active {
+    border-color: #3498db;
+    background-color: #e6f2ff;
+    box-shadow: 0 0 0 2px rgba(52,152,219,0.2);
+}
+
+.session-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+    word-break: break-word;
+    color: #2c3e50;
+}
+
+.session-date {
+    font-size: 0.8rem;
+    color: #666;
+}
+
+/* Правая часть - ШИРИНА 75% КАК В ОБРАЗЦЕ */
 .chat-main {
-    flex: 1;
+    width: 75%;
     display: flex;
     flex-direction: column;
-    padding: 1.5rem;
+    padding: 1rem;
     height: 100%;
-    background-color: white;
 }
+
 .chat-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 0 0.8rem 0;
-    border-bottom: 1px solid #e9ecef;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #eee;
     margin-bottom: 1rem;
 }
+
 .chat-header h2 {
+    color: #2c3e50;
+    margin: 0;
     font-size: 1.2rem;
-    color: #1a2634;
-    font-weight: 600;
 }
-.context-info-container { 
-    display: flex; 
-    align-items: center; 
-    gap: 8px; 
+
+.context-info-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
-.context-info { 
-    font-size: 0.85rem; 
-    color: #6c757d; 
-    background: #f8f9fa; 
-    padding: 0.3rem 0.8rem; 
-    border-radius: 20px; 
-    border: 1px solid #dee2e6;
+
+.context-info {
+    font-size: 0.9rem;
+    color: #666;
+    background-color: #f5f5f5;
+    padding: 0.3rem 0.6rem;
+    border-radius: 12px;
 }
-.save-chat-button, .clear-context-button {
+
+.save-chat-button,
+.clear-context-button {
     background: none;
-    border: 1px solid #dee2e6;
+    border: 1px solid #ddd;
     border-radius: 4px;
     padding: 0.3rem 0.6rem;
     cursor: pointer;
-    font-size: 0.9rem;
-    color: #6c757d;
-    transition: all 0.15s;
+    font-size: 1rem;
+    transition: background-color 0.3s;
 }
-.save-chat-button:hover, .clear-context-button:hover { 
-    background-color: #e9ecef; 
-    color: #1a2634;
-    border-color: #adb5bd;
+
+.save-chat-button:hover,
+.clear-context-button:hover {
+    background-color: #f0f0f0;
 }
 
 .chat-messages {
     flex: 1;
     overflow-y: auto;
     padding: 1rem;
-    border: 1px solid #e9ecef;
-    border-radius: 6px;
-    background-color: #fafbfc;
+    border: 1px solid #eee;
+    border-radius: 8px;
     margin-bottom: 1rem;
+    background-color: white;
 }
-.user-message, .bot-message {
+
+.user-message {
+    background-color: #e6f2ff;
     padding: 0.8rem 1rem;
     margin-bottom: 0.8rem;
-    border-radius: 6px;
+    border-radius: 8px;
     word-wrap: break-word;
-    line-height: 1.5;
 }
-.user-message { 
-    background-color: #e7f1ff; 
+
+.bot-message {
+    background-color: #f0f0f0;
+    padding: 0.8rem 1rem;
+    margin-bottom: 0.8rem;
+    border-radius: 8px;
+    word-wrap: break-word;
 }
-.bot-message { 
-    background-color: #f8f9fa; 
-    border: 1px solid #e9ecef;
-}
-.info-message { 
-    color: #1a2634; 
-    background-color: #fff3cd; 
-    border-left: 3px solid #ffc107; 
-    padding: 0.8rem 1rem; 
+
+.info-message {
+    color: #2c3e50;
+    background-color: #e8f4fc;
+    border-left: 3px solid #3498db;
+    padding: 0.8rem;
     border-radius: 4px;
 }
 
@@ -315,114 +345,160 @@ footer {
     gap: 0.5rem;
     margin-top: 0.5rem;
 }
-.message-input input[type="text"] { 
-    flex: 1; 
-    padding: 0.7rem 1rem; 
-    border: 1px solid #ced4da; 
-    border-radius: 4px; 
-    font-size: 0.95rem;
-}
-.message-input input[type="text"]:focus {
-    outline: none;
-    border-color: #80bdff;
-    box-shadow: 0 0 0 0.2rem rgba(0,123,255,0.25);
-}
-.message-input button {
-    padding: 0.7rem 1rem;
-    border: 1px solid #ced4da;
-    border-radius: 4px;
-    cursor: pointer;
-    background-color: #f8f9fa;
-    color: #1a2634;
-    font-size: 0.95rem;
-    transition: all 0.15s;
-}
-.message-input button:hover {
-    background-color: #e9ecef;
-}
-#send-button { 
-    background-color: #007bff; 
-    color: white; 
-    border: none;
-    min-width: 100px; 
-}
-#send-button:hover { 
-    background-color: #0069d9; 
+
+.message-input input[type="text"] {
+    flex: 1;
+    padding: 0.8rem;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 1rem;
 }
 
+.message-input input[type="text"]:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52,152,219,0.2);
+}
+
+.message-input button {
+    padding: 0.8rem;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    background-color: #f1f1f1;
+    transition: background-color 0.3s;
+}
+
+#send-button {
+    background-color: #3498db;
+    color: white;
+    min-width: 100px;
+}
+
+#send-button:hover {
+    background-color: #2980b9;
+}
+
+#attach-file-button {
+    background-color: #f1f1f1;
+    color: #333;
+}
+
+#attach-file-button:hover {
+    background-color: #e0e0e0;
+}
+
+/* Превью файлов */
 #file-preview-container {
     display: none;
     margin: 10px 0;
 }
+
 #file-preview-container div {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: #f8f9fa;
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
-    border: 1px solid #dee2e6;
+    background: #f5f5f5;
+    padding: 8px;
+    border-radius: 8px;
 }
+
 #file-preview-name {
     font-size: 0.9rem;
-    color: #1a2634;
+    color: #2c3e50;
 }
+
 #remove-file-button {
-    background-color: #dc3545;
+    background-color: #e74c3c;
     color: white;
     border: none;
     border-radius: 4px;
-    width: 24px;
-    height: 24px;
+    width: 25px;
+    height: 25px;
     cursor: pointer;
-    font-size: 0.8rem;
+    font-size: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
 }
+
 #remove-file-button:hover {
-    background-color: #c82333;
+    background-color: #c0392b;
 }
 
-.attached-image { 
-    max-width: 100%; 
-    max-height: 300px; 
-    margin-top: 10px; 
-    border-radius: 4px; 
+/* Вложения */
+.attached-image {
+    max-width: 100%;
+    max-height: 300px;
+    margin-top: 10px;
+    border-radius: 4px;
 }
-.attached-file { 
-    margin-top: 10px; 
-    padding: 8px 12px; 
-    background: #f8f9fa; 
-    border-radius: 4px; 
+
+.attached-file {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-radius: 4px;
     border: 1px solid #dee2e6;
     display: inline-flex;
     align-items: center;
     gap: 8px;
 }
+
 .attached-file a {
-    color: #007bff;
+    color: #3498db;
     text-decoration: none;
 }
+
 .attached-file a:hover {
     text-decoration: underline;
 }
 
+/* Скроллбар */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
 /* Адаптивность */
 @media (max-width: 768px) {
-    .chat-container { 
-        flex-direction: column; 
-        height: auto; 
+    .chat-container {
+        flex-direction: column;
+        height: auto;
     }
-    .sessions-sidebar { 
-        width: 100%; 
-        height: 250px; 
+    
+    .sessions-sidebar {
+        width: 100%;
+        height: 250px;
     }
+    
     .chat-main {
         width: 100%;
     }
+    
+    .message-input {
+        flex-wrap: wrap;
+    }
+    
+    .message-input input[type="text"] {
+        width: 100%;
+    }
+    
     .login-container {
-        max-width: 90%;
-        padding: 1.8rem;
+        width: 95%;
+        padding: 1.5rem;
     }
 }

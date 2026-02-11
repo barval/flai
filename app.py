@@ -1,179 +1,155 @@
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_from_directory
 import os
-import requests
+import sqlite3
 import json
 import base64
-import time
-import sqlite3
-import re
 from datetime import datetime, timezone
 from dotenv import load_dotenv
-from jinja2 import Environment
+import mimetypes
+import uuid
 
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY')
+app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key')
 app.config['JSON_AS_ASCII'] = False
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
-# Константы
-DEFAULT_MAX_TOKENS = 2048
-MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
-API_BASE_URL = "https://openrouter.ai/api/v1"
-MODEL_ID_REGEX = r'^[\w\-.:/]+$'  # Разрешаем буквы, цифры, -, ., :, /
-
+# -------------------------------
+# Инициализация БД
+# -------------------------------
 def init_db():
     with sqlite3.connect('chat.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS chat_histories (
-                user_id TEXT,
-                model_id TEXT,
-                role TEXT,
-                content TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (user_id, model_id, timestamp)
-            )
-        ''')
-        cursor.execute('''
+        c = conn.cursor()
+        # Сессии (профили пользователей)
+        c.execute('''
             CREATE TABLE IF NOT EXISTS user_sessions (
                 user_id TEXT PRIMARY KEY,
-                last_model_id TEXT
+                last_session_id TEXT
+            )
+        ''')
+        # Сеансы чатов
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT,
+                title TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        # Сообщения
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT,
+                role TEXT,
+                content TEXT,
+                file_data TEXT,
+                file_type TEXT,
+                file_name TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         conn.commit()
 
-def init_models_db():
-    with sqlite3.connect('models.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='models'")
-        if not cursor.fetchone():
-            cursor.execute('''
-                CREATE TABLE models (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    description TEXT,
-                    images INTEGER,
-                    context INTEGER,
-                    max_tokens INTEGER
-                )
-            ''')
-            conn.commit()
-
 init_db()
-init_models_db()
 
+# -------------------------------
+# Вспомогательные функции
+# -------------------------------
 def load_users():
     users = {}
     if os.path.exists('users.list'):
         with open('users.list', 'r', encoding='utf-8') as f:
             for line in f:
                 if line.strip():
-                    email, password, api_key = line.strip().split(',')
-                    users[email] = {'password': password, 'api_key': api_key}
+                    email, password = line.strip().split(',')[:2]
+                    users[email] = {'password': password}
     return users
 
 USERS = load_users()
 
-def check_api_availability():
-    try:
-        response = requests.get(f"{API_BASE_URL}/models", timeout=5)
-        return response.status_code == 200
-    except requests.exceptions.RequestException:
-        return False
-
-def validate_model_id(model_id):
-    """Более мягкая валидация ID моделей"""
-    if not model_id or not isinstance(model_id, str):
-        return False
-    return bool(re.match(MODEL_ID_REGEX, model_id))
-
-def get_chat_history(user_id, model_id):
+def get_user_sessions(user_id):
     with sqlite3.connect('chat.db') as conn:
         conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT role, content, timestamp FROM chat_histories 
-            WHERE user_id = ? AND model_id = ?
-            ORDER BY timestamp
-        ''', (user_id, model_id))
-        rows = cursor.fetchall()
-        messages = []
-        for row in rows:
-            try:
-                content = row['content']
-                if row['role'] == "assistant":
-                    try:
-                        content_data = json.loads(content) if isinstance(content, str) else content
-                    except json.JSONDecodeError:
-                        content_data = content
-                else:
-                    if isinstance(content, str):
-                        try:
-                            content_data = json.loads(content)
-                            if not isinstance(content_data, list):
-                                content_data = [{"type": "text", "text": content}]
-                        except json.JSONDecodeError:
-                            content_data = [{"type": "text", "text": content}]
-                    else:
-                        content_data = content
-
-                messages.append({
-                    "role": row['role'],
-                    "content": content_data,
-                    "timestamp": row['timestamp']
-                })
-            except Exception as e:
-                app.logger.error(f"Error processing message: {str(e)}")
-                messages.append({
-                    "role": row['role'],
-                    "content": content,
-                    "timestamp": row['timestamp']
-                })
-        return messages
-
-def save_message(user_id, model_id, role, content):
-    with sqlite3.connect('chat.db') as conn:
-        cursor = conn.cursor()
-        if role == "assistant":
-            content_str = json.dumps(content) if not isinstance(content, str) else content
-        else:
-            if isinstance(content, list):
-                content_str = json.dumps(content)
-            else:
-                content_str = content if isinstance(content, str) else json.dumps(content)
-        
-        utc_now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
-        cursor.execute('''
-            INSERT INTO chat_histories (user_id, model_id, role, content, timestamp)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (user_id, model_id, role, content_str, utc_now))
-        
-        cursor.execute('''
-            INSERT OR REPLACE INTO user_sessions (user_id, last_model_id)
-            VALUES (?, ?)
-        ''', (user_id, model_id))
-        conn.commit()
-
-def clear_chat_history(user_id, model_id):
-    with sqlite3.connect('chat.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            DELETE FROM chat_histories 
-            WHERE user_id = ? AND model_id = ?
-        ''', (user_id, model_id))
-        conn.commit()
-
-def get_last_model(user_id):
-    with sqlite3.connect('chat.db') as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT last_model_id FROM user_sessions 
+        c = conn.cursor()
+        c.execute('''
+            SELECT id, title, created_at, updated_at
+            FROM chat_sessions
             WHERE user_id = ?
+            ORDER BY updated_at DESC
         ''', (user_id,))
-        row = cursor.fetchone()
+        return [dict(row) for row in c.fetchall()]
+
+def get_session_messages(session_id):
+    with sqlite3.connect('chat.db') as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute('''
+            SELECT role, content, file_data, file_type, file_name, timestamp
+            FROM messages
+            WHERE session_id = ?
+            ORDER BY timestamp ASC
+        ''', (session_id,))
+        return [dict(row) for row in c.fetchall()]
+
+def create_session(user_id, title="Новый сеанс"):
+    session_id = str(uuid.uuid4())
+    with sqlite3.connect('chat.db') as conn:
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO chat_sessions (id, user_id, title)
+            VALUES (?, ?, ?)
+        ''', (session_id, user_id, title))
+        conn.commit()
+    return session_id
+
+def update_session_title(session_id, first_message):
+    """Обновить заголовок сеанса на основе первого сообщения (до 30 символов)"""
+    title = first_message[:30] + ('...' if len(first_message) > 30 else '')
+    with sqlite3.connect('chat.db') as conn:
+        c = conn.cursor()
+        c.execute('''
+            UPDATE chat_sessions
+            SET title = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (title, session_id))
+        conn.commit()
+
+def save_message(session_id, role, content, file_data=None, file_type=None, file_name=None):
+    with sqlite3.connect('chat.db') as conn:
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO messages (session_id, role, content, file_data, file_type, file_name)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (session_id, role, content, file_data, file_type, file_name))
+        c.execute('''
+            UPDATE chat_sessions
+            SET updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (session_id,))
+        conn.commit()
+
+def get_last_session(user_id):
+    with sqlite3.connect('chat.db') as conn:
+        c = conn.cursor()
+        c.execute('SELECT last_session_id FROM user_sessions WHERE user_id = ?', (user_id,))
+        row = c.fetchone()
         return row[0] if row else None
 
+def set_last_session(user_id, session_id):
+    with sqlite3.connect('chat.db') as conn:
+        c = conn.cursor()
+        c.execute('''
+            INSERT OR REPLACE INTO user_sessions (user_id, last_session_id)
+            VALUES (?, ?)
+        ''', (user_id, session_id))
+        conn.commit()
+
+# -------------------------------
+# Маршруты аутентификации
+# -------------------------------
 @app.route('/')
 def index():
     if 'email' not in session:
@@ -187,11 +163,10 @@ def login():
         password = request.form.get('password')
         
         if not email or not password:
-            return render_template('login.html', error='Все поля обязательны для заполнения')
+            return render_template('login.html', error='Все поля обязательны')
         
         if email in USERS and USERS[email]['password'] == password:
             session['email'] = email
-            session['api_key'] = USERS[email]['api_key']
             return redirect(url_for('chat'))
         else:
             return render_template('login.html', error='Неверный email или пароль')
@@ -200,359 +175,220 @@ def login():
 
 @app.route('/logout')
 def logout():
-    if 'email' in session:
-        email = session['email']
-        if 'current_model' in session:
-            with sqlite3.connect('chat.db') as conn:
-                cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT OR REPLACE INTO user_sessions (user_id, last_model_id)
-                    VALUES (?, ?)
-                ''', (email, session['current_model']))
-                conn.commit()
-    
-    session.pop('email', None)
-    session.pop('api_key', None)
-    session.pop('current_model', None)
+    if 'email' in session and 'current_session' in session:
+        set_last_session(session['email'], session['current_session'])
+    session.clear()
     return redirect(url_for('login'))
 
+# -------------------------------
+# Основной чат
+# -------------------------------
 @app.route('/chat')
 def chat():
     if 'email' not in session:
         return redirect(url_for('login'))
     
-    email = session['email']
-    last_model = get_last_model(email)
+    user_id = session['email']
+    sessions = get_user_sessions(user_id)
     
-    if last_model:
-        session['current_model'] = last_model
+    # Восстанавливаем последний сеанс
+    if not session.get('current_session'):
+        last_id = get_last_session(user_id)
+        if last_id and any(s['id'] == last_id for s in sessions):
+            session['current_session'] = last_id
+        elif sessions:
+            session['current_session'] = sessions[0]['id']
+        else:
+            # Создаём первый сеанс
+            new_id = create_session(user_id)
+            session['current_session'] = new_id
+            sessions = get_user_sessions(user_id)  # обновляем список
     
-    models = {}
-    try:
-        with sqlite3.connect('models.db') as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM models ORDER BY name')
-            for row in cursor.fetchall():
-                models[row['id']] = dict(row)
-    except sqlite3.OperationalError:
-        return render_template('chat.html', require_update=True, models={})
-    
-    if not models:
-        return render_template('chat.html', require_update=True, models={})
-    
-    return render_template('chat.html', require_update=False, models=models)
+    return render_template('chat.html', sessions=sessions, current_session=session.get('current_session'))
 
-@app.route('/get_models', methods=['GET'])
-def get_models():
+# -------------------------------
+# API для работы с сеансами
+# -------------------------------
+@app.route('/api/sessions', methods=['GET'])
+def api_get_sessions():
     if 'email' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
-    
-    try:
-        models = {}
-        with sqlite3.connect('models.db') as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM models ORDER BY name')
-            for row in cursor.fetchall():
-                models[row['id']] = dict(row)
-        
-        if not models:
-            return jsonify({'error': 'Модели не загружены', 'require_update': True}), 404
-            
-        return jsonify(models)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    user_id = session['email']
+    sessions = get_user_sessions(user_id)
+    return jsonify(sessions)
 
-@app.route('/update_models', methods=['POST'])
-def update_models():
+@app.route('/api/sessions/<session_id>/messages', methods=['GET'])
+def api_get_messages(session_id):
     if 'email' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
+    messages = get_session_messages(session_id)
+    return jsonify(messages)
+
+@app.route('/api/sessions/<session_id>/switch', methods=['POST'])
+def api_switch_session(session_id):
+    if 'email' not in session:
+        return jsonify({'error': 'Не авторизован'}), 401
+    session['current_session'] = session_id
+    set_last_session(session['email'], session_id)
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/sessions/new', methods=['POST'])
+def api_new_session():
+    if 'email' not in session:
+        return jsonify({'error': 'Не авторизован'}), 401
+    user_id = session['email']
+    session_id = create_session(user_id)
+    session['current_session'] = session_id
+    set_last_session(user_id, session_id)
+    return jsonify({'id': session_id, 'title': 'Новый сеанс'})
+
+# -------------------------------
+# Эмуляция локального ИИ
+# -------------------------------
+@app.route('/v1/chat/completions', methods=['POST'])
+def local_completion():
+    """
+    Заглушка для локальной модели.
+    В реальном проекте здесь будет вызов llama.cpp, Ollama, transformers и т.д.
+    """
+    data = request.get_json()
+    messages = data.get('messages', [])
     
-    try:
-        if not check_api_availability():
-            return jsonify({'error': 'API OpenRouter недоступно'}), 503
-
-        init_models_db()
-
-        headers = {
-            "Authorization": f"Bearer {session['api_key']}",
-            "HTTP-Referer": os.getenv('DOMAIN_URL', 'http://localhost:5000'),
-            "X-Title": "AI Local"
-        }
-        
-        response = requests.get(
-            f"{API_BASE_URL}/models",
-            headers=headers,
-            timeout=30
-        )
-        
-        if response.status_code != 200:
-            return jsonify({
-                'error': f"Ошибка API OpenRouter (код {response.status_code})",
-                'details': response.text
-            }), response.status_code
-        
-        data = response.json()
-        free_models = []
-        
-        for model in data.get('data', []):
-            if "(free)" in model.get('name', '').lower():
-                supports_images = "image" in model.get('architecture', {}).get('input_modalities', [])
-                top_provider = model.get('top_provider', {})
-                
-                max_tokens = top_provider.get('max_completion_tokens')
-                if max_tokens is None:
-                    max_tokens = DEFAULT_MAX_TOKENS
-                
-                free_models.append((
-                    model['id'],
-                    model['name'],
-                    model.get('description', ''),
-                    1 if supports_images else 0,
-                    top_provider.get('context_length', 0),
-                    max_tokens
-                ))
-        
-        with sqlite3.connect('models.db') as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='models'")
-            if cursor.fetchone():
-                cursor.execute('DELETE FROM models')
+    # Простейшая заглушка – берём последнее сообщение пользователя
+    last_user_msg = ''
+    for msg in reversed(messages):
+        if msg['role'] == 'user':
+            if isinstance(msg.get('content'), list):
+                for part in msg['content']:
+                    if part.get('type') == 'text':
+                        last_user_msg = part['text']
+                        break
             else:
-                cursor.execute('''
-                    CREATE TABLE models (
-                        id TEXT PRIMARY KEY,
-                        name TEXT,
-                        description TEXT,
-                        images INTEGER,
-                        context INTEGER,
-                        max_tokens INTEGER
-                    )
-                ''')
-            
-            cursor.executemany('''
-                INSERT INTO models (id, name, description, images, context, max_tokens)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', free_models)
-            conn.commit()
-        
-        models = {}
-        with sqlite3.connect('models.db') as conn:
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM models ORDER BY name')
-            for row in cursor.fetchall():
-                models[row['id']] = dict(row)
-        
-        return jsonify({
-            'status': 'success', 
-            'count': len(free_models),
-            'models': models
-        })
+                last_user_msg = msg.get('content', '')
+            break
     
-    except Exception as e:
-        app.logger.error(f"Update models error: {str(e)}", exc_info=True)
-        return jsonify({
-            'error': str(e),
-            'details': 'Попробуйте обновить страницу и повторить попытку'
-        }), 500
+    response_text = f"Вы сказали: «{last_user_msg}»\n\n(это заглушка локальной модели. Подключите реальный эндпоинт LLM.)"
+    
+    return jsonify({
+        'choices': [{
+            'message': {
+                'role': 'assistant',
+                'content': response_text
+            }
+        }]
+    })
 
+# -------------------------------
+# Отправка сообщения
+# -------------------------------
 @app.route('/send_message', methods=['POST'])
 def send_message():
     if 'email' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
-
-    start_time = time.time()
-    user_id = session['email']
     
+    user_id = session['email']
+    session_id = session.get('current_session')
+    if not session_id:
+        session_id = create_session(user_id)
+        session['current_session'] = session_id
+    
+    message_text = ""
+    file_data = None
+    file_type = None
+    file_name = None
+    
+    # Проверяем, multipart или JSON
+    if 'multipart/form-data' in request.content_type:
+        message_text = request.form.get('message', '')
+        if 'file' in request.files:
+            file = request.files['file']
+            if file.filename:
+                file_data = base64.b64encode(file.read()).decode('utf-8')
+                file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
+                file_name = file.filename
+    else:
+        data = request.get_json()
+        message_text = data.get('message', '')
+        # Пока не поддерживаем base64‑файлы через JSON (можно добавить)
+    
+    # Сохраняем сообщение пользователя
+    user_content = []
+    if message_text:
+        user_content.append({"type": "text", "text": message_text})
+    if file_data:
+        user_content.append({"type": "file", "file_data": file_data, "file_type": file_type, "file_name": file_name})
+    
+    save_message(session_id, 'user', json.dumps(user_content) if user_content else message_text,
+                 file_data, file_type, file_name)
+    
+    # Проверяем, нужно ли обновить заголовок (если это первое сообщение в сеансе)
+    with sqlite3.connect('chat.db') as conn:
+        c = conn.cursor()
+        c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (session_id,))
+        msg_count = c.fetchone()[0]
+        if msg_count == 1 and message_text:
+            update_session_title(session_id, message_text)
+    
+    # Формируем историю для модели
+    history = get_session_messages(session_id)
+    openrouter_messages = []
+    for msg in history:
+        role = msg['role']
+        content = json.loads(msg['content']) if msg['content'].startswith('[') else msg['content']
+        openrouter_messages.append({"role": role, "content": content})
+    
+    # Запрос к локальному эндпоинту
     try:
-        # Проверяем доступность API
-        if not check_api_availability():
-            return jsonify({'error': 'API OpenRouter недоступно'}), 503
-
-        # Определяем тип контента и получаем данные
-        if 'multipart/form-data' in request.content_type:
-            model_id = request.form.get('model')
-            message = request.form.get('message')
-            file = request.files.get('file')
-            
-            # Проверяем размер изображения
-            if file and file.content_length > MAX_IMAGE_SIZE:
-                return jsonify({'error': 'Размер изображения превышает 5MB'}), 400
-                
-            encoded_image = base64.b64encode(file.read()).decode('utf-8') if file and file.filename else None
-        else:
-            data = request.get_json()
-            model_id = data.get('model')
-            message = data.get('message')
-            encoded_image = data.get('image')
-
-        # Мягкая проверка model_id
-        if not model_id or not isinstance(model_id, str):
-            return jsonify({'error': 'Не указан ID модели'}), 400
-
-        # Проверяем поддержку изображений
-        with sqlite3.connect('models.db') as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT images FROM models WHERE id = ?', (model_id,))
-            result = cursor.fetchone()
-            if not result:
-                return jsonify({'error': 'Модель не найдена'}), 404
-            model_supports_images = result[0] == 1
-
-        if encoded_image and not model_supports_images:
-            return jsonify({'error': 'Выбранная модель не поддерживает изображения'}), 400
-
-        session['current_model'] = model_id
-        
-        # Формируем сообщение
-        messages = get_chat_history(user_id, model_id)
-        new_message = {"role": "user", "content": []}
-        
-        if encoded_image:
-            new_message["content"].append({
-                "type": "image_url",
-                "image_url": f"data:image/jpeg;base64,{encoded_image}"
-            })
-        if message:
-            new_message["content"].append({
-                "type": "text",
-                "text": message
-            })
-        
-        save_message(user_id, model_id, "user", new_message["content"])
-
-        # Получаем max_tokens для модели
-        with sqlite3.connect('models.db') as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT max_tokens FROM models WHERE id = ?', (model_id,))
-            max_tokens = cursor.fetchone()[0] or DEFAULT_MAX_TOKENS
-
-        # Формируем запрос к API
-        headers = {
-            "Authorization": f"Bearer {session['api_key']}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": os.getenv('DOMAIN_URL', 'http://localhost:5000'),
-            "X-Title": "AI Local"
-        }
-
-        payload = {
-            "model": model_id,
-            "messages": messages + [new_message],
-            "temperature": 0.7,
-            "max_tokens": max_tokens
-        }
-
-        # Отправляем запрос
-        response = requests.post(
-            f"{API_BASE_URL}/chat/completions",
-            headers=headers,
-            json=payload,
+        resp = requests.post(
+            'http://localhost:5000/v1/chat/completions',
+            json={'messages': openrouter_messages},
             timeout=60
         )
-
-        # Проверяем Content-Type ответа
-        if 'application/json' not in response.headers.get('Content-Type', ''):
-            error_html = response.text[:500]
-            app.logger.error(f"Non-JSON response: {error_html}")
-            return jsonify({
-                'error': 'Некорректный ответ от сервера',
-                'details': 'Сервер вернул не-JSON ответ'
-            }), 500
-
-        response_data = response.json()
-
-        if response.status_code != 200:
-            error_msg = response_data.get('error', {}).get('message', 'Неизвестная ошибка API')
-            app.logger.error(f"API Error: {error_msg}")
-            return jsonify({
-                'error': f"Ошибка API (код {response.status_code})",
-                'details': error_msg
-            }), response.status_code
-
-        if not response_data.get('choices'):
-            return jsonify({
-                'error': 'Некорректный ответ от API',
-                'details': 'Ответ не содержит данных'
-            }), 500
-
-        # Обработка успешного ответа
-        bot_response = response_data['choices'][0]['message']['content']
-        response_time = round(time.time() - start_time, 1)
-        
-        save_message(user_id, model_id, "assistant", bot_response)
-
-        return jsonify({
-            'response': bot_response,
-            'model': model_id,
-            'response_time': response_time
-        })
-
-    except requests.exceptions.Timeout:
-        return jsonify({'error': 'Таймаут запроса', 'details': 'Модель не ответила в течение 60 секунд'}), 504
-    except json.JSONDecodeError as e:
-        app.logger.error(f"JSON decode error: {str(e)}")
-        return jsonify({
-            'error': 'Ошибка обработки ответа',
-            'details': 'Сервер вернул невалидный JSON'
-        }), 500
+        resp.raise_for_status()
+        bot_reply = resp.json()['choices'][0]['message']['content']
     except Exception as e:
-        app.logger.error(f"Unexpected error: {str(e)}", exc_info=True)
-        return jsonify({
-            'error': 'Внутренняя ошибка',
-            'details': str(e)
-        }), 500
+        bot_reply = f"⚠️ Ошибка при обращении к локальной модели: {str(e)}"
+    
+    # Сохраняем ответ
+    save_message(session_id, 'assistant', bot_reply)
+    
+    return jsonify({
+        'response': bot_reply,
+        'session_id': session_id
+    })
 
-@app.route('/get_chat_history', methods=['POST'])
-def get_chat_history_route():
-    if 'email' not in session:
-        return jsonify({'error': 'Не авторизован'}), 401
-
-    try:
-        data = request.get_json()
-        model_id = data.get('model')
-        user_id = session['email']
-        
-        if not model_id:
-            return jsonify({'error': 'Не указана модель'}), 400
-            
-        # Убираем строгую валидацию для этого запроса
-        messages = get_chat_history(user_id, model_id)
-        return jsonify(messages)
-    except Exception as e:
-        app.logger.error(f"Get chat history error: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Ошибка при загрузке истории', 'details': str(e)}), 500
-
+# -------------------------------
+# Очистка истории сеанса
+# -------------------------------
 @app.route('/clear_history', methods=['POST'])
 def clear_history():
     if 'email' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
+    
+    session_id = session.get('current_session')
+    if not session_id:
+        return jsonify({'error': 'Нет активного сеанса'}), 400
+    
+    with sqlite3.connect('chat.db') as conn:
+        c = conn.cursor()
+        c.execute('DELETE FROM messages WHERE session_id = ?', (session_id,))
+        c.execute('UPDATE chat_sessions SET title = ? WHERE id = ?', ('Новый сеанс', session_id))
+        conn.commit()
+    
+    return jsonify({'status': 'ok'})
 
-    try:
-        data = request.get_json()
-        model_id = data.get('model')
-        user_id = session['email']
-        
-        if not model_id or not validate_model_id(model_id):
-            return jsonify({'error': 'Не указана или некорректна модель'}), 400
-            
-        clear_chat_history(user_id, model_id)
-        
-        return jsonify({'status': 'success', 'model': model_id})
-    except Exception as e:
-        app.logger.error(f"Clear history error: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Ошибка при очистке истории', 'details': str(e)}), 500
-
+# -------------------------------
+# Статика и прочее
+# -------------------------------
 @app.route('/favicon.ico')
 def favicon():
     return send_from_directory(os.path.join(app.root_path, 'static'),
-                             'favicon.ico', mimetype='image/vnd.microsoft.icon')
+                               'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 @app.context_processor
-def inject_footer_content():
+def inject_footer():
     return {
-        'footer_content': 'ИИ МультиЧат v7.6 (с) 2025 Барсуков Валерий & DeepSeek V3'
+        'footer_content': 'ИИ Локальный v1.0 (с) 2026 Барсуков Валерий & DeepSeek V3'
     }
 
 if __name__ == '__main__':

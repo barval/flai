@@ -1,955 +1,317 @@
 {% extends "base.html" %}
 
 {% block content %}
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-
 <div class="chat-container">
-    <div class="models-sidebar">
-        <div class="models-header">
-            <h2>Модели (<span id="models-count">{% if not require_update %}{{ models|length }}{% else %}0{% endif %}</span>)</h2>
-            <button id="update-models-button" class="update-models-button">Обновить</button>
+    <!-- Левая колонка – сеансы -->
+    <div class="sessions-sidebar">
+        <div class="sessions-header">
+            <h2>Сеансы (<span id="sessions-count">{{ sessions|length }}</span>)</h2>
+            <button id="new-session-button" class="new-session-button">➕</button>
         </div>
         
-        <div class="model-filter-container">
-            <div class="model-filter-row">
-                <span class="model-filter-label">Фильтр:</span>
-                <input type="text" id="model-name-filter" class="model-filter-input" placeholder="Поиск по названию...">
+        <div class="sessions-list" id="sessions-list">
+            {% for s in sessions %}
+            <div class="session-item {% if s.id == current_session %}active{% endif %}" data-session-id="{{ s.id }}">
+                <div class="session-title">{{ s.title }}</div>
+                <div class="session-date">{{ s.updated_at[:16].replace('T', ' ') }}</div>
             </div>
-            <div class="model-filter-row">
-                <input type="checkbox" id="filter-images" class="model-filter-checkbox">
-                <label for="filter-images" class="model-filter-checkbox-label">с поддержкой изображений</label>
-            </div>
-        </div>
-        
-        <div class="models-list">
-            {% if not require_update %}
-                {% for model_id, model in models.items() %}
-                <div class="model-item" data-model-id="{{ model_id }}" data-supports-images="{{ model.images }}" data-model-name="{{ model.name|lower }}">
-                    <h3>{{ model.name }}{% if model.images %} 🖼️️{% endif %}</h3>
-                    <p>{{ model.description }}</p>
-                    <div class="model-stats">
-                        <p>Контекст: {{ model.context }} токенов | Лимит: {{ model.max_tokens }} токенов</p>
-                    </div>
-                </div>
-                {% endfor %}
-            {% endif %}
+            {% endfor %}
         </div>
     </div>
     
+    <!-- Правая часть – чат -->
     <div class="chat-main">
         <div class="chat-header">
-            <h2>Чат - <span id="current-model-name">модель не выбрана</span></h2>
+            <h2>Чат</h2>
             <div class="context-info-container">
-                <div id="context-info" class="context-info">Запросов: 0</div>
-                <button id="save-chat-button" class="save-chat-button">Сохранить</button>
-                <button id="clear-context-button" class="clear-context-button" disabled>Очистить</button>
+                <div id="context-info" class="context-info">Сообщений: 0</div>
+                <button id="save-chat-button" class="save-chat-button" title="Сохранить как HTML">💾</button>
+                <button id="clear-context-button" class="clear-context-button">🗑️</button>
             </div>
         </div>
+        
         <div class="chat-messages" id="chat-messages">
-            {% if require_update %}
-            <div class="update-models-prompt">
-                <h3>Обновить список моделей?</h3>
-                <p>Для начала работы необходимо загрузить список доступных моделей</p>
-                <div class="update-buttons">
-                    <button id="confirm-update" class="update-button confirm">Да, обновить</button>
-                    <button id="cancel-update" class="update-button cancel">Позже</button>
-                </div>
-            </div>
-            {% endif %}
+            <!-- История загрузится через JS -->
         </div>
         
-        <div id="image-preview-container" style="display: none;">
+        <!-- Превью файлов -->
+        <div id="file-preview-container" style="display: none;">
             <div>
-                <img id="preview-image">
-                <button id="remove-image-button">×</button>
+                <span id="file-preview-name"></span>
+                <button id="remove-file-button">✕</button>
             </div>
         </div>
         
+        <!-- Поле ввода -->
         <div class="message-input">
-            <input type="text" id="message-input" placeholder="Введите ваше сообщение..." autocomplete="off" {% if require_update %}disabled{% endif %}>
-            <input type="file" id="image-input" accept="image/*" style="display: none;">
-            <button id="attach-image-button" {% if require_update %}disabled{% endif %}>Изображение</button>
-            <button id="send-button" {% if require_update %}disabled{% endif %}>Отправить</button>
+            <input type="text" id="message-input" placeholder="Введите сообщение..." autocomplete="off">
+            <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt" style="display: none;">
+            <button id="attach-file-button">📎</button>
+            <button id="send-button">Отправить</button>
         </div>
     </div>
 </div>
 
-<style>
-.update-models-prompt {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 90%;
-    max-width: 500px;
-    background: white;
-    padding: 2rem;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    z-index: 100;
-    text-align: center;
-}
-
-.chat-messages {
-    position: relative;
-    min-height: 200px;
-}
-
-.update-buttons {
-    display: flex;
-    justify-content: center;
-    gap: 1rem;
-    margin-top: 1.5rem;
-}
-
-.update-button {
-    padding: 0.75rem 1.5rem;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 1rem;
-    transition: all 0.3s;
-}
-
-.update-button.confirm {
-    background-color: #3498db;
-    color: white;
-}
-
-.update-button.confirm:hover {
-    background-color: #2980b9;
-}
-
-.update-button.cancel {
-    background-color: #e0e0e0;
-    color: #333;
-}
-
-.update-button.cancel:hover {
-    background-color: #d0d0d0;
-}
-
-.model-item {
-    cursor: pointer;
-    transition: all 0.2s ease;
-    padding: 1rem;
-    margin-bottom: 1rem;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    background-color: white;
-}
-
-.model-item:hover {
-    background-color: #f5f7fa;
-    transform: translateY(-2px);
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-}
-
-.model-item.selected {
-    border-color: #3498db;
-    background-color: #e6f2ff;
-    box-shadow: 0 0 0 2px rgba(52,152,219,0.2);
-}
-
-.model-item h3 {
-    color: #2c3e50;
-    margin-bottom: 0.5rem;
-    font-size: 1.1rem;
-}
-
-.model-item p {
-    color: #555;
-    font-size: 0.9rem;
-    margin-bottom: 0.8rem;
-}
-
-.model-stats {
-    margin-top: 0.8rem;
-    font-size: 0.9rem;
-    color: #666;
-    border-top: 1px solid #eee;
-    padding-top: 0.5rem;
-}
-
-.model-stats p {
-    margin-bottom: 0.2rem;
-}
-</style>
-
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
-let currentModel = null;
-let isProcessing = false;
-let abortController = null;
-let imageFile = null;
-let requestStartTime = 0;
-const chatHistoryCache = {};
+    // Глобальные переменные
+    let currentSessionId = "{{ current_session }}";
+    let isSending = false;
+    let attachedFile = null;
 
-// Настройка marked.js
-marked.setOptions({
-    breaks: true,
-    sanitize: true,
-    highlight: null
-});
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function formatTimestamp(timestamp) {
-    if (!timestamp) return '';
-    try {
-        const date = new Date(timestamp + 'Z');
-        if (isNaN(date.getTime())) {
-            return timestamp;
-        }
-        return date.toLocaleString();
-    } catch (e) {
-        console.error('Ошибка форматирования времени:', e);
-        return timestamp;
-    }
-}
-
-function addMessage(role, content, isInfo = false, timestamp = null) {
-    const chatMessages = document.getElementById('chat-messages');
-    const messageDiv = document.createElement('div');
-    
-    const timestampStr = timestamp ? formatTimestamp(timestamp) : formatTimestamp(new Date().toISOString().replace('T', ' ').replace(/\.\d+Z$/, ''));
-    
-    if (isInfo) {
-        messageDiv.className = 'info-message';
-        messageDiv.innerHTML = `<small>${timestampStr}</small><br>${escapeHtml(content).replace(/\n/g, '<br>')}`;
-    } else if (typeof content === 'object' && content.image_url) {
-        messageDiv.className = `${role}-message`;
-        const textContent = content.text ? marked.parse(content.text) : '';
-        messageDiv.innerHTML = `
-            <small>${timestampStr}</small><br>
-            <div class="message-content">${textContent}</div>
-            <img src="${content.image_url}" style="max-width: 100%; max-height: 300px; margin-top: 10px; border-radius: 4px;">
-        `;
-    } else {
-        messageDiv.className = `${role}-message`;
-        const messageContent = role === 'bot' ? marked.parse(content) : escapeHtml(content).replace(/\n/g, '<br>');
-        messageDiv.innerHTML = `<small>${timestampStr}</small><div class="message-content">${messageContent}</div>`;
-    }
-    
-    chatMessages.appendChild(messageDiv);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-    updateContextInfo();
-}
-
-function updateContextInfo() {
-    const contextElement = document.getElementById('context-info');
-    const clearButton = document.getElementById('clear-context-button');
-    const messageCount = document.querySelectorAll('.user-message').length;
-    
-    contextElement.textContent = `Запросов: ${messageCount}`;
-    clearButton.disabled = !currentModel || messageCount === 0;
-}
-
-function setLoading(visible) {
-    const loadingElement = document.getElementById('loading-indicator');
-    if (visible) {
-        if (!loadingElement) {
-            const loadingDiv = document.createElement('div');
-            loadingDiv.id = 'loading-indicator';
-            loadingDiv.className = 'loading-message';
-            loadingDiv.textContent = 'Модель генерирует ответ...';
-            document.getElementById('chat-messages').appendChild(loadingDiv);
-        }
-    } else if (loadingElement) {
-        loadingElement.remove();
-    }
-}
-
-async function loadChatHistory(modelId) {
-    try {
-        const response = await fetch('/get_chat_history', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: modelId
-            }),
-            credentials: 'include'
-        });
-
-        if (!response.ok) {
-            throw new Error('Ошибка загрузки истории');
-        }
-
-        const history = await response.json();
-        chatHistoryCache[modelId] = history;
-        return history;
-    } catch (error) {
-        console.error('Ошибка при загрузке истории:', error);
-        return chatHistoryCache[modelId] || [];
-    }
-}
-
-function displayMessage(role, content, timestamp) {
-    if (role === 'assistant') {
-        let messageContent = content;
-        if (typeof content === 'string') {
-            try {
-                const parsed = JSON.parse(content);
-                if (typeof parsed === 'object' && parsed !== null) {
-                    messageContent = JSON.stringify(parsed, null, 2);
-                }
-            } catch {
-                // Оставляем как есть, если не JSON
-            }
-        }
-        addMessage('bot', messageContent, false, timestamp);
-    } else if (role === 'user') {
-        let messageText = '';
-        let imageUrl = null;
-
-        if (typeof content === 'string') {
-            try {
-                const parsed = JSON.parse(content);
-                if (Array.isArray(parsed)) {
-                    const textPart = parsed.find(item => item.type === 'text');
-                    const imagePart = parsed.find(item => item.type === 'image_url');
-                    messageText = textPart ? textPart.text : '';
-                    imageUrl = imagePart ? imagePart.image_url : null;
-                } else {
-                    messageText = content;
-                }
-            } catch {
-                messageText = content;
-            }
-        } else if (Array.isArray(content)) {
-            const textPart = content.find(item => item.type === 'text');
-            const imagePart = content.find(item => item.type === 'image_url');
-            messageText = textPart ? textPart.text : '';
-            imageUrl = imagePart ? imagePart.image_url : null;
-        }
-
-        if (imageUrl) {
-            addMessage('user', {
-                text: messageText,
-                image_url: imageUrl
-            }, false, timestamp);
-        } else {
-            addMessage('user', messageText, false, timestamp);
-        }
-    }
-}
-
-function displayChatHistory(history, modelName) {
-    const chatMessages = document.getElementById('chat-messages');
-    chatMessages.innerHTML = '';
-    
-    if (history.length === 0) {
-        addMessage('info', `История переписки с моделью "${modelName}" пуста`, true);
-    } else {
-        history.forEach(msg => {
-            displayMessage(msg.role, msg.content, msg.timestamp);
-        });
-    }
-    updateContextInfo();
-}
-
-function filterModels() {
-    const filterChecked = document.getElementById('filter-images').checked;
-    const searchText = document.getElementById('model-name-filter').value.toLowerCase();
-    const modelItems = document.querySelectorAll('.model-item');
-    
-    let visibleCount = 0;
-    modelItems.forEach(item => {
-        const supportsImages = item.dataset.supportsImages === '1';
-        const modelName = item.dataset.modelName || '';
-        const matchesSearch = modelName.includes(searchText);
-        const matchesImageFilter = !filterChecked || supportsImages;
+    // -------------------------------
+    // Инициализация
+    // -------------------------------
+    document.addEventListener('DOMContentLoaded', function() {
+        // Загружаем сообщения текущего сеанса
+        loadMessages(currentSessionId);
         
-        if (matchesSearch && matchesImageFilter) {
-            item.style.display = 'block';
-            visibleCount++;
-        } else {
-            item.style.display = 'none';
-        }
+        // Клик по сеансу
+        document.querySelectorAll('.session-item').forEach(el => {
+            el.addEventListener('click', function(e) {
+                const sessionId = this.dataset.sessionId;
+                if (sessionId === currentSessionId) return;
+                
+                // Подсветка
+                document.querySelectorAll('.session-item').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Переключение
+                switchSession(sessionId);
+            });
+        });
+        
+        // Новая беседа
+        document.getElementById('new-session-button').addEventListener('click', createNewSession);
+        
+        // Отправка
+        document.getElementById('send-button').addEventListener('click', sendMessage);
+        document.getElementById('message-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        
+        // Прикрепление файлов
+        document.getElementById('attach-file-button').addEventListener('click', function() {
+            document.getElementById('file-input').click();
+        });
+        
+        document.getElementById('file-input').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                attachedFile = e.target.files[0];
+                const preview = document.getElementById('file-preview-container');
+                document.getElementById('file-preview-name').textContent = attachedFile.name;
+                preview.style.display = 'block';
+            }
+        });
+        
+        document.getElementById('remove-file-button').addEventListener('click', function() {
+            attachedFile = null;
+            document.getElementById('file-input').value = '';
+            document.getElementById('file-preview-container').style.display = 'none';
+        });
+        
+        // Очистка контекста
+        document.getElementById('clear-context-button').addEventListener('click', clearHistory);
+        
+        // Сохранение чата
+        document.getElementById('save-chat-button').addEventListener('click', saveChatAsHTML);
     });
-    
-    document.getElementById('models-count').textContent = visibleCount;
-}
 
-async function saveChatToHTML() {
-    if (!currentModel) {
-        addMessage('error', 'Пожалуйста, выберите модель перед сохранением чата');
-        return;
-    }
-
-    try {
-        const modelName = document.getElementById('current-model-name').textContent;
-        const messagesDiv = document.getElementById('chat-messages');
-        
-        // Выносим footer в переменную (как в base.html)
-        const footerContent = '{{ footer_content }}';
-        
-        // Создаем клон сообщений для сохранения
-        const messagesClone = messagesDiv.cloneNode(true);
-        
-        // Обрабатываем изображения в сообщениях
-        const images = messagesClone.querySelectorAll('img');
-        images.forEach(img => {
-            if (img.src.startsWith('data:')) {
-                // Изображения уже в base64, ничего не делаем
-            }
-        });
-
-        // Получаем текущую дату и время для имени файла
-        const now = new Date();
-        const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
-
-        // Создаем HTML структуру
-        const htmlContent = `
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <title>Чат с ${modelName}</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        
-        body {
-            background-color: #f5f5f5;
-            padding: 0;
-            margin: 0;
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-        }
-        
-        .saved-header {
-            background-color: #2c3e50;
-            color: white;
-            padding: 0.5rem 1rem;
-            text-align: center;
-            height: 50px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        
-        .saved-header h1 {
-            font-size: 1.3rem;
-            margin: 0;
-        }
-        
-        .chat-container {
-            flex: 1;
-            width: 100%;
-            margin: 0;
-            padding: 0;
-            background-color: white;
-        }
-        
-        .chat-header {
-            text-align: center;
-            padding: 15px 20px;
-            border-bottom: 1px solid #eee;
-        }
-        
-        .chat-header h2 {
-            color: #2c3e50;
-            margin: 0;
-            font-size: 1.2rem;
-        }
-        
-        .chat-header p {
-            margin-top: 5px;
-            color: #666;
-            font-size: 0.9rem;
-        }
-        
-        .chat-messages {
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-            width: 100%;
-        }
-        
-        .user-message, .bot-message {
-            padding: 12px 15px;
-            border-radius: 8px;
-            width: 100%;
-            max-width: 100%;
-            word-wrap: break-word;
-        }
-        
-        .user-message {
-            background-color: #e6f2ff;
-        }
-        
-        .bot-message {
-            background-color: #f0f0f0;
-        }
-        
-        .message-content {
-            margin-top: 5px;
-        }
-        
-        small {
-            color: #666;
-            font-size: 0.8em;
-            display: block;
-            margin-bottom: 5px;
-        }
-        
-        img {
-            max-width: 100%;
-            max-height: 300px;
-            margin-top: 10px;
-            border-radius: 4px;
-            display: block;
-        }
-        
-        .info-message {
-            background-color: #e8f4fc;
-            color: #2c3e50;
-            padding: 10px 15px;
-            border-radius: 8px;
-            border-left: 3px solid #3498db;
-            margin: 10px 0;
-        }
-        
-        .saved-footer {
-            background-color: #2c3e50;
-            color: white;
-            padding: 0.5rem 1rem;
-            text-align: center;
-            height: 50px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-top: auto;
-        }
-        
-        .saved-footer p {
-            margin: 0;
-            padding: 0;
-        }
-    </style>
-</head>
-<body>
-    <div class="saved-header">
-        <h1>ИИ МультиЧат</h1>
-    </div>
-    
-    <div class="chat-container">
-        <div class="chat-header">
-            <h2>Чат с моделью: ${modelName}</h2>
-            <p>Сохранено: ${new Date().toLocaleString()}</p>
-        </div>
-        <div class="chat-messages">
-            ${messagesClone.innerHTML}
-        </div>
-    </div>
-    
-    <div class="saved-footer">
-        <p>${footerContent}</p>
-    </div>
-</body>
-</html>
-        `;
-
-        // Создаем Blob и ссылку для скачивания
-        const blob = new Blob([htmlContent], {type: 'text/html'});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `aimultichat_${timestamp}.html`;
-        
-        // Инициируем скачивание
-        document.body.appendChild(a);
-        a.click();
-        
-        // Очищаем
-        setTimeout(() => {
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }, 100);
-        
-        addMessage('info', `Чат сохранён в файл: ${a.download}`, true);
-    } catch (error) {
-        console.error('Save chat error:', error);
-        addMessage('error', `Ошибка при сохранении чата: ${error.message || 'Неизвестная ошибка'}`);
-    }
-}
-
-async function sendMessage() {
-    if (!currentModel) {
-        addMessage('error', 'Пожалуйста, выберите модель перед отправкой сообщения');
-        return false;
-    }
-
-    const input = document.getElementById('message-input');
-    const message = input.value.trim();
-    
-    if (!message && !imageFile) {
-        addMessage('error', 'Пожалуйста, введите сообщение или прикрепите изображение');
-        return false;
-    }
-
-    const modelSupportsImages = document.querySelector(`.model-item[data-model-id="${currentModel}"]`)?.dataset.supportsImages === '1';
-
-    if (imageFile && !modelSupportsImages) {
-        addMessage('error', 'Выбранная модель не поддерживает изображения');
-        return false;
-    }
-
-    isProcessing = true;
-    input.disabled = true;
-    document.getElementById('send-button').disabled = true;
-    document.getElementById('clear-context-button').disabled = true;
-    document.getElementById('attach-image-button').disabled = true;
-
-    if (imageFile) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            addMessage('user', {
-                text: message,
-                image_url: e.target.result
-            });
-            sendMessageToServer(message, e.target.result);
-        };
-        reader.readAsDataURL(imageFile);
-    } else {
-        addMessage('user', message);
-        sendMessageToServer(message, null);
-    }
-    
-    setLoading(true);
-    return true;
-}
-
-async function sendMessageToServer(message, imageData) {
-    requestStartTime = Date.now();
-
-    try {
-        abortController = new AbortController();
-        const timeoutId = setTimeout(() => abortController.abort(), 60000);
-
-        let response;
-        if (imageData) {
-            const formData = new FormData();
-            formData.append('model', currentModel);
-            formData.append('message', message || ' ');
-            
-            const blob = await fetch(imageData).then(r => r.blob());
-            formData.append('file', blob);
-
-            response = await fetch('/send_message', {
-                method: 'POST',
-                body: formData,
-                signal: abortController.signal,
-                credentials: 'include'
-            });
-        } else {
-            response = await fetch('/send_message', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    model: currentModel,
-                    message: message
-                }),
-                signal: abortController.signal,
-                credentials: 'include'
-            });
-        }
-
-        clearTimeout(timeoutId);
-        
-        const data = await response.json();
-        
-        if (!response.ok) {
-            let errorDetails = data.details || data.error || `Ошибка ${response.status}`;
-            if (data.api_response) {
-                errorDetails += ` (Ответ API: ${JSON.stringify(data.api_response)})`;
-            }
-            throw new Error(errorDetails);
-        }
-
-        const responseTime = data.response_time || Math.round((Date.now() - requestStartTime) / 1000);
-        addMessage('info', `Ответ за ${responseTime} сек.`, true);
-        addMessage('bot', data.response);
-        
-        if (data.model) {
-            currentModel = data.model;
-            updateCurrentModelName();
-        }
-        
-        const updatedHistory = await loadChatHistory(currentModel);
-        chatHistoryCache[currentModel] = updatedHistory;
-        
-        document.getElementById('message-input').value = '';
-    } catch (error) {
-        let errorMessage = error.message;
-        if (error.name === 'AbortError') {
-            errorMessage = 'Превышено время ожидания ответа (60 секунд)';
-        }
-        addMessage('error', `Ошибка: ${errorMessage}`);
-        console.error('Ошибка запроса:', error);
-    } finally {
-        imageFile = null;
-        document.getElementById('image-input').value = '';
-        document.getElementById('image-preview-container').style.display = 'none';
-        
-        abortController = null;
-        isProcessing = false;
-        setLoading(false);
-        
-        const input = document.getElementById('message-input');
-        input.disabled = false;
-        document.getElementById('send-button').disabled = false;
-        document.getElementById('clear-context-button').disabled = !currentModel;
-        document.getElementById('attach-image-button').disabled = false;
-        input.focus();
-    }
-}
-
-function updateCurrentModelName() {
-    const modelNameElement = document.getElementById('current-model-name');
-    if (currentModel) {
-        const modelItem = document.querySelector(`.model-item[data-model-id="${currentModel}"]`);
-        if (modelItem) {
-            modelNameElement.textContent = modelItem.querySelector('h3').textContent;
-        } else {
-            modelNameElement.textContent = 'модель не выбрана';
-        }
-    } else {
-        modelNameElement.textContent = 'модель не выбрана';
-    }
-    updateContextInfo();
-}
-
-async function clearContext() {
-    if (!currentModel) {
-        addMessage('error', 'Пожалуйста, выберите модель перед очисткой контекста');
-        return;
-    }
-
-    try {
-        const response = await fetch('/clear_history', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: currentModel
-            }),
-            credentials: 'include'
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || errorData.details || `Ошибка ${response.status}`);
-        }
-
-        chatHistoryCache[currentModel] = [];
-        document.getElementById('chat-messages').innerHTML = '';
-        updateContextInfo();
-        
-        addMessage('info', `Контекст диалога очищен для модели: ${document.querySelector('.model-item.selected h3').textContent}`);
-    } catch (error) {
-        addMessage('error', `Ошибка: ${error.message}`);
-    }
-}
-
-async function updateModels() {
-    try {
-        document.getElementById('update-models-button').disabled = true;
-        document.getElementById('update-models-button').textContent = 'Обновление...';
-        
-        const response = await fetch('/update_models', {
-            method: 'POST',
-            credentials: 'include'
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || errorData.details || 'Ошибка сервера');
-        }
-
-        const data = await response.json();
-        if (data.status !== 'success') {
-            throw new Error(data.error || 'Не удалось обновить модели');
-        }
-
-        if (data.models) {
-            const modelsList = document.querySelector('.models-list');
-            modelsList.innerHTML = '';
-            
-            for (const [modelId, model] of Object.entries(data.models)) {
-                const modelItem = document.createElement('div');
-                modelItem.className = 'model-item';
-                modelItem.dataset.modelId = modelId;
-                modelItem.dataset.supportsImages = model.images;
-                modelItem.dataset.modelName = model.name.toLowerCase();
+    // -------------------------------
+    // Загрузка сообщений сеанса
+    // -------------------------------
+    function loadMessages(sessionId) {
+        fetch(`/api/sessions/${sessionId}/messages`)
+            .then(res => res.json())
+            .then(messages => {
+                const container = document.getElementById('chat-messages');
+                container.innerHTML = '';
                 
-                modelItem.innerHTML = `
-                    <h3>${escapeHtml(model.name)}${model.images ? ' 🖼️️' : ''}</h3>
-                    <p>${escapeHtml(model.description)}</p>
-                    <div class="model-stats">
-                        <p>Контекст: ${model.context} токенов | Лимит: ${model.max_tokens} токенов</p>
-                    </div>
-                `;
-                
-                modelItem.addEventListener('click', function() {
-                    selectModel(this);
+                messages.forEach(msg => {
+                    displayMessage(msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.timestamp);
                 });
                 
-                modelsList.appendChild(modelItem);
-            }
-            
-            document.getElementById('models-count').textContent = Object.keys(data.models).length;
-        }
-
-        addMessage('info', `Список моделей успешно обновлен (${data.count} моделей)`, true);
-    } catch (error) {
-        addMessage('error', `Ошибка обновления моделей: ${error.message}`);
-        console.error('Update models error:', error);
-    } finally {
-        document.getElementById('update-models-button').disabled = false;
-        document.getElementById('update-models-button').textContent = 'Обновить';
+                updateMessageCount();
+                container.scrollTop = container.scrollHeight;
+            });
     }
-}
 
-function selectModel(element) {
-    if (isProcessing) {
-        if (!confirm('Прервать текущий запрос и переключить модель?')) {
+    // -------------------------------
+    // Отображение одного сообщения
+    // -------------------------------
+    function displayMessage(role, content, fileData, fileType, fileName, timestamp) {
+        const container = document.getElementById('chat-messages');
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `${role}-message`;
+        
+        let html = `<small>${formatTimestamp(timestamp)}</small>`;
+        
+        // Текст
+        if (typeof content === 'string' && content.startsWith('[')) {
+            try {
+                const parts = JSON.parse(content);
+                parts.forEach(part => {
+                    if (part.type === 'text') {
+                        html += `<div class="message-content">${marked.parse(escapeHtml(part.text))}</div>`;
+                    }
+                });
+            } catch (e) {
+                html += `<div class="message-content">${escapeHtml(content).replace(/\n/g, '<br>')}</div>`;
+            }
+        } else {
+            html += `<div class="message-content">${escapeHtml(content).replace(/\n/g, '<br>')}</div>`;
+        }
+        
+        // Файл (если есть)
+        if (fileData) {
+            if (fileType && fileType.startsWith('image/')) {
+                html += `<img src="data:${fileType};base64,${fileData}" class="attached-image" alt="attached image">`;
+            } else if (fileType && fileType.startsWith('audio/')) {
+                html += `<audio controls src="data:${fileType};base64,${fileData}"></audio>`;
+            } else {
+                // Документ – показываем иконку и имя
+                html += `<div class="attached-file">
+                            <span class="file-icon">📄</span>
+                            <a href="data:${fileType};base64,${fileData}" download="${fileName}">${fileName}</a>
+                         </div>`;
+            }
+        }
+        
+        msgDiv.innerHTML = html;
+        container.appendChild(msgDiv);
+    }
+
+    // -------------------------------
+    // Переключение сеанса
+    // -------------------------------
+    function switchSession(sessionId) {
+        fetch(`/api/sessions/${sessionId}/switch`, { method: 'POST' })
+            .then(res => res.json())
+            .then(() => {
+                currentSessionId = sessionId;
+                loadMessages(sessionId);
+            });
+    }
+
+    // -------------------------------
+    // Создание нового сеанса
+    // -------------------------------
+    function createNewSession() {
+        fetch('/api/sessions/new', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                // Перезагружаем страницу, чтобы обновить список сеансов
+                window.location.reload();
+            });
+    }
+
+    // -------------------------------
+    // Отправка сообщения
+    // -------------------------------
+    async function sendMessage() {
+        const input = document.getElementById('message-input');
+        const text = input.value.trim();
+        if (!text && !attachedFile) {
+            alert('Введите сообщение или прикрепите файл');
             return;
         }
         
-        if (abortController) {
-            abortController.abort();
+        if (isSending) return;
+        isSending = true;
+        
+        const formData = new FormData();
+        formData.append('message', text);
+        if (attachedFile) {
+            formData.append('file', attachedFile);
         }
-        isProcessing = false;
-        document.getElementById('send-button').disabled = false;
-        document.getElementById('clear-context-button').disabled = false;
-        document.getElementById('message-input').disabled = false;
-        document.getElementById('attach-image-button').disabled = false;
-        setLoading(false);
-    }
-    
-    document.querySelectorAll('.model-item').forEach(i => {
-        i.classList.remove('selected');
-    });
-    
-    element.classList.add('selected');
-    currentModel = element.dataset.modelId;
-    updateCurrentModelName();
-    
-    loadChatHistory(currentModel).then(history => {
-        displayChatHistory(history, element.querySelector('h3').textContent);
-    });
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    {% if require_update %}
-    document.getElementById('confirm-update').addEventListener('click', async function() {
-        this.disabled = true;
-        document.getElementById('cancel-update').disabled = true;
         
         try {
-            const response = await fetch('/update_models', {
+            const response = await fetch('/send_message', {
                 method: 'POST',
-                credentials: 'include'
+                body: formData
             });
+            const data = await response.json();
             
-            if (response.ok) {
-                location.reload();
-            } else {
-                const error = await response.json();
-                alert(`Ошибка обновления: ${error.error || 'Неизвестная ошибка'}`);
-                location.reload();
-            }
-        } catch (error) {
-            alert(`Ошибка сети: ${error.message}`);
-            location.reload();
-        }
-    });
-    
-    document.getElementById('cancel-update').addEventListener('click', function() {
-        alert('Для работы с чатом необходимо обновить список моделей');
-    });
-    {% else %}
-    document.querySelectorAll('.model-item').forEach(item => {
-        item.addEventListener('click', function() {
-            selectModel(this);
-        });
-    });
-    
-    const lastModel = "{{ session.get('current_model', '') }}";
-    if (lastModel) {
-        const modelItem = document.querySelector(`.model-item[data-model-id="${lastModel}"]`);
-        if (modelItem) {
-            selectModel(modelItem);
+            // Сообщение пользователя добавится после перезагрузки сообщений сеанса,
+            // но для плавности можно добавить локально (упрощённо перезагружаем)
+            input.value = '';
+            attachedFile = null;
+            document.getElementById('file-preview-container').style.display = 'none';
+            
+            loadMessages(currentSessionId);
+        } catch (err) {
+            alert('Ошибка: ' + err.message);
+        } finally {
+            isSending = false;
         }
     }
-    
-    document.getElementById('filter-images').addEventListener('change', function() {
-        filterModels();
-    });
-    
-    document.getElementById('model-name-filter').addEventListener('input', function() {
-        filterModels();
-    });
-    
-    document.getElementById('message-input').disabled = false;
-    document.getElementById('attach-image-button').disabled = false;
-    {% endif %}
 
-    document.getElementById('attach-image-button').addEventListener('click', function() {
-        document.getElementById('image-input').click();
-    });
+    // -------------------------------
+    // Очистка истории сеанса
+    // -------------------------------
+    function clearHistory() {
+        if (!confirm('Очистить всю переписку в этом сеансе?')) return;
+        
+        fetch('/clear_history', { method: 'POST' })
+            .then(res => res.json())
+            .then(() => {
+                document.getElementById('chat-messages').innerHTML = '';
+                updateMessageCount();
+            });
+    }
 
-    document.getElementById('image-input').addEventListener('change', function(e) {
-        if (e.target.files.length > 0) {
-            imageFile = e.target.files[0];
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                document.getElementById('preview-image').src = event.target.result;
-                document.getElementById('image-preview-container').style.display = 'block';
-            };
-            reader.readAsDataURL(imageFile);
-        }
-    });
+    // -------------------------------
+    // Сохранение чата в HTML
+    // -------------------------------
+    function saveChatAsHTML() {
+        const messages = document.getElementById('chat-messages').innerHTML;
+        const title = document.querySelector('.session-item.active .session-title')?.textContent || 'Чат';
+        const now = new Date();
+        const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+        
+        const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>${escapeHtml(title)}</title>
+<style>body { font-family: sans-serif; } .user-message { background: #e6f2ff; } .bot-message { background: #f0f0f0; }</style>
+</head>
+<body>
+<h1>${escapeHtml(title)}</h1>
+<p>Сохранено: ${now.toLocaleString()}</p>
+<div class="messages">${messages}</div>
+</body>
+</html>`;
+        
+        const blob = new Blob([html], {type: 'text/html'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `chat_${timestamp}.html`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
 
-    document.getElementById('remove-image-button').addEventListener('click', function() {
-        imageFile = null;
-        document.getElementById('image-input').value = '';
-        document.getElementById('image-preview-container').style.display = 'none';
-    });
+    // -------------------------------
+    // Вспомогательные функции
+    // -------------------------------
+    function updateMessageCount() {
+        const count = document.querySelectorAll('.user-message').length;
+        document.getElementById('context-info').textContent = `Сообщений: ${count}`;
+    }
 
-    document.getElementById('message-input').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
+    function formatTimestamp(ts) {
+        if (!ts) return '';
+        return ts.replace('T', ' ').slice(0, 16);
+    }
 
-    document.getElementById('send-button').addEventListener('click', function() {
-        sendMessage();
-    });
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
 
-    document.getElementById('clear-context-button').addEventListener('click', clearContext);
-    
-    document.getElementById('update-models-button').addEventListener('click', updateModels);
-    
-    document.getElementById('save-chat-button').addEventListener('click', saveChatToHTML);
-});
+    function pad(n) { return n.toString().padStart(2, '0'); }
 </script>
 {% endblock %}

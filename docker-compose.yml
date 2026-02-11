@@ -6,9 +6,10 @@ services:
       - "127.0.0.1:5000:5000"
     volumes:
       - .:/app
+      - chat_db:/app/chat.db
     environment:
       FLASK_ENV: development
-      LC_ALL: C.UTF-8
-      LANG: C.UTF-8
-      PYTHONIOENCODING: utf-8
-      DOMAIN_URL: https://ailocal.prits.ru
+      SECRET_KEY: dev-secret-change-me
+
+volumes:
+  chat_db:

@@ -1,5 +1,3 @@
 flask
-requests
 python-dotenv
-gunicorn
-gevent
+requests

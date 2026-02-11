@@ -471,7 +471,7 @@ def favicon():
 @app.context_processor
 def inject_footer():
     return {
-        'footer_content': 'ИИ Локальный v1.0 (с) 2026 Барсуков Валерий & DeepSeek V3'
+        'footer_content': 'ИИ Локальный v1.0 (с) 2026 Барсуков Валерий'
     }
 
 if __name__ == '__main__':

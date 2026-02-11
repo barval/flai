@@ -57,14 +57,14 @@
     </div>
 </div>
 
-<!-- Модальное окно подтверждения удаления сеанса -->
-<div id="delete-session-modal" class="modal-overlay" style="display: none;">
+<!-- Модальное окно для обновления моделей (оставляем как есть) -->
+<div id="update-models-modal" class="modal-overlay" style="display: none;">
     <div class="modal-content">
-        <h3>Удалить сеанс</h3>
-        <p id="delete-session-message"></p>
+        <h3>Обновить список моделей?</h3>
+        <p>Хотите получить актуальный список доступных бесплатных моделей с OpenRouter?</p>
         <div class="modal-buttons">
-            <button id="confirm-delete-session" class="modal-button confirm">Удалить</button>
-            <button id="cancel-delete-session" class="modal-button cancel">Отмена</button>
+            <button id="confirm-update" class="modal-button confirm">Да</button>
+            <button id="cancel-update" class="modal-button cancel">Нет</button>
         </div>
     </div>
 </div>
@@ -75,7 +75,6 @@
     let currentSessionId = "{{ current_session }}";
     let isSending = false;
     let attachedFile = null;
-    let sessionToDelete = null;
 
     // -------------------------------
     // Вспомогательные функции
@@ -111,7 +110,7 @@
             });
         });
         
-        // Кнопки удаления сеансов
+        // Кнопки удаления сеансов - ИСПОЛЬЗУЕМ CONFIRM КАК ДЛЯ ОЧИСТКИ
         document.querySelectorAll('.delete-session-button').forEach(btn => {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
@@ -120,7 +119,10 @@
                 const sessionTitle = sessionItem.querySelector('.session-title').textContent;
                 const sessionDate = sessionItem.querySelector('.session-date').textContent;
                 
-                showDeleteSessionModal(sessionId, sessionTitle, sessionDate);
+                // Используем стандартный confirm как для очистки сеанса
+                if (confirm(`Удалить сеанс "${sessionTitle}" от ${sessionDate}?`)) {
+                    deleteSession(sessionId);
+                }
             });
         });
         
@@ -156,30 +158,15 @@
             document.getElementById('file-preview-container').style.display = 'none';
         });
         
-        // Очистка контекста
-        document.getElementById('clear-context-button').addEventListener('click', clearHistory);
+        // Очистка контекста - ИСПОЛЬЗУЕМ CONFIRM
+        document.getElementById('clear-context-button').addEventListener('click', function() {
+            if (confirm('Очистить всю переписку в этом сеансе?')) {
+                clearHistory();
+            }
+        });
         
         // Сохранение чата
         document.getElementById('save-chat-button').addEventListener('click', saveChatAsHTML);
-        
-        // Модальное окно удаления сеанса
-        document.getElementById('confirm-delete-session').addEventListener('click', function() {
-            if (sessionToDelete) {
-                deleteSession(sessionToDelete);
-            }
-            hideDeleteSessionModal();
-        });
-        
-        document.getElementById('cancel-delete-session').addEventListener('click', function() {
-            hideDeleteSessionModal();
-        });
-        
-        // Закрытие модального окна по клику на overlay
-        document.getElementById('delete-session-modal').addEventListener('click', function(e) {
-            if (e.target === this) {
-                hideDeleteSessionModal();
-            }
-        });
     });
 
     // -------------------------------
@@ -318,7 +305,7 @@
                     switchSession(sessionId);
                 });
                 
-                // Добавляем обработчик на кнопку удаления
+                // Добавляем обработчик на кнопку удаления - ИСПОЛЬЗУЕМ CONFIRM
                 const deleteBtn = newSessionDiv.querySelector('.delete-session-button');
                 deleteBtn.addEventListener('click', function(e) {
                     e.stopPropagation();
@@ -327,7 +314,9 @@
                     const sessionTitle = sessionItem.querySelector('.session-title').textContent;
                     const sessionDate = sessionItem.querySelector('.session-date').textContent;
                     
-                    showDeleteSessionModal(sessionId, sessionTitle, sessionDate);
+                    if (confirm(`Удалить сеанс "${sessionTitle}" от ${sessionDate}?`)) {
+                        deleteSession(sessionId);
+                    }
                 });
                 
                 // Переключаемся на новый сеанс
@@ -427,8 +416,6 @@
     // Очистка истории сеанса
     // -------------------------------
     function clearHistory() {
-        if (!confirm('Очистить всю переписку в этом сеансе?')) return;
-        
         fetch('/clear_history', { method: 'POST' })
             .then(res => res.json())
             .then(() => {
@@ -476,21 +463,6 @@
             .catch(err => {
                 alert('Ошибка при удалении сеанса: ' + err.message);
             });
-    }
-
-    // -------------------------------
-    // Модальное окно для удаления сеанса
-    // -------------------------------
-    function showDeleteSessionModal(sessionId, sessionTitle, sessionDate) {
-        sessionToDelete = sessionId;
-        const messageEl = document.getElementById('delete-session-message');
-        messageEl.textContent = `Удалить сеанс "${sessionTitle}" от ${sessionDate}?`;
-        document.getElementById('delete-session-modal').style.display = 'flex';
-    }
-
-    function hideDeleteSessionModal() {
-        document.getElementById('delete-session-modal').style.display = 'none';
-        sessionToDelete = null;
     }
 
     // -------------------------------

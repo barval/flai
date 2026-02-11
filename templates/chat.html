@@ -397,8 +397,8 @@
             
             // Если это было первое сообщение в сеансе (было 0 сообщений)
             if (messageCount === 0 && text) {
-                // Формируем заголовок из первого сообщения
-                let newTitle = text.length > 30 ? text.substring(0, 30) + '...' : text;
+                // Формируем заголовок из первого сообщения - 40 символов с многоточием
+                let newTitle = text.length > 40 ? text.substring(0, 40) + '...' : text;
                 updateSessionTitle(currentSessionId, newTitle);
                 
                 // Также обновляем счетчик сеансов в заголовке

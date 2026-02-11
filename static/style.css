@@ -219,6 +219,7 @@ footer p {
     overflow-y: auto;
 }
 
+/* ========== ИСПРАВЛЕННЫЕ СТИЛИ ДЛЯ СЕАНСОВ ========== */
 .session-item {
     padding: 0.8rem;
     margin-bottom: 0.5rem;
@@ -227,6 +228,8 @@ footer p {
     background-color: white;
     cursor: pointer;
     transition: all 0.2s;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .session-item:hover {
@@ -240,16 +243,67 @@ footer p {
     box-shadow: 0 0 0 2px rgba(52,152,219,0.2);
 }
 
+.session-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    min-width: 0; /* Важно для корректной работы text-overflow */
+    gap: 8px;
+}
+
+.session-info {
+    flex: 1;
+    min-width: 0; /* Позволяет блоку сжиматься */
+    overflow: hidden;
+    padding-right: 4px;
+}
+
 .session-title {
     font-weight: 600;
     margin-bottom: 4px;
-    word-break: break-word;
     color: #2c3e50;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 100%;
 }
 
 .session-date {
     font-size: 0.8rem;
     color: #666;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.delete-session-button {
+    background: none;
+    border: none;
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    color: #999;
+    transition: all 0.2s;
+    margin-left: 4px;
+    opacity: 0.6;
+    flex-shrink: 0; /* Запрещаем сжиматься */
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.delete-session-button:hover {
+    background-color: #ffebee;
+    color: #e74c3c;
+    opacity: 1;
+}
+
+.session-item:hover .delete-session-button {
+    opacity: 1;
 }
 
 /* Правая часть - ШИРИНА 75% КАК В ОБРАЗЦЕ */
@@ -501,40 +555,14 @@ footer p {
         width: 95%;
         padding: 1.5rem;
     }
-}
-
-/* Стили для элемента сеанса с кнопкой удаления */
-.session-content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    width: 100%;
-}
-
-.session-info {
-    flex: 1;
-    overflow: hidden;
-}
-
-.delete-session-button {
-    background: none;
-    border: none;
-    font-size: 1.1rem;
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 4px;
-    color: #999;
-    transition: all 0.2s;
-    margin-left: 8px;
-    opacity: 0.6;
-}
-
-.delete-session-button:hover {
-    background-color: #ffebee;
-    color: #e74c3c;
-    opacity: 1;
-}
-
-.session-item:hover .delete-session-button {
-    opacity: 1;
+    
+    /* На мобильных устройствах разрешаем перенос строк */
+    .session-title {
+        white-space: normal;
+        word-wrap: break-word;
+    }
+    
+    .session-date {
+        white-space: normal;
+    }
 }

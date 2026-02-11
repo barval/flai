@@ -131,8 +131,8 @@ def create_session(user_id, title="Новый сеанс"):
     return session_id
 
 def update_session_title(session_id, first_message):
-    """Обновить заголовок сеанса на основе первого сообщения (до 30 символов)"""
-    title = first_message[:30] + ('...' if len(first_message) > 30 else '')
+    """Обновить заголовок сеанса на основе первого сообщения (до 40 символов)"""
+    title = first_message[:40] + ('...' if len(first_message) > 40 else '')
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('''

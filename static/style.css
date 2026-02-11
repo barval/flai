@@ -1,7 +1,18 @@
 /* Общие стили */
-* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
-body { display: flex; flex-direction: column; min-height: 100vh; }
-main { flex: 1; }
+* { 
+    margin: 0; 
+    padding: 0; 
+    box-sizing: border-box; 
+    font-family: 'Segoe UI', sans-serif; 
+}
+body { 
+    display: flex; 
+    flex-direction: column; 
+    min-height: 100vh; 
+}
+main { 
+    flex: 1; 
+}
 
 /* Шапка и подвал */
 header {
@@ -13,7 +24,10 @@ header {
     align-items: center;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
 }
-header h1 { font-size: 1.3rem; margin-right: auto; }
+header h1 { 
+    font-size: 1.3rem; 
+    margin-right: auto; 
+}
 footer {
     background-color: #2c3e50;
     color: white;
@@ -25,16 +39,109 @@ footer {
     justify-content: center;
 }
 
-.logout-container { display: flex; align-items: center; gap: 15px; margin-left: auto; }
-.logout-button { color: white; background-color: #e74c3c; padding: 0.3rem 0.8rem; border-radius: 4px; text-decoration: none; }
+.logout-container { 
+    display: flex; 
+    align-items: center; 
+    gap: 15px; 
+    margin-left: auto; 
+}
+.logout-button { 
+    color: white; 
+    background-color: #e74c3c; 
+    padding: 0.3rem 0.8rem; 
+    border-radius: 4px; 
+    text-decoration: none; 
+}
 
-/* Страница логина */
-.login-wrapper { display: flex; justify-content: center; align-items: center; flex: 1; padding: 20px; }
-.login-container { max-width: 400px; width: 100%; padding: 2rem; border: 1px solid #ddd; border-radius: 8px; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-.error { color: #e74c3c; padding: 0.75rem; margin-bottom: 1rem; background-color: #fde8e8; border-radius: 5px; }
+/* ========== ИСПРАВЛЕННАЯ СТРАНИЦА ЛОГИНА ========== */
+.login-wrapper { 
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    min-height: calc(100vh - 100px);
+    padding: 20px; 
+    background-color: #f5f7fa;
+}
 
-/* Контейнер чата */
-.chat-container { display: flex; height: calc(100vh - 100px); width: 100%; }
+.login-container { 
+    max-width: 400px; 
+    width: 100%; 
+    padding: 2.5rem; 
+    border: 1px solid #e0e0e0; 
+    border-radius: 10px; 
+    background: white; 
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+}
+
+.login-container h2 {
+    color: #2c3e50;
+    margin-bottom: 1.5rem;
+    text-align: center;
+    font-size: 1.8rem;
+    font-weight: 500;
+}
+
+.error { 
+    color: #e74c3c; 
+    padding: 0.75rem; 
+    margin-bottom: 1.5rem; 
+    background-color: #fde8e8; 
+    border-radius: 6px; 
+    border-left: 4px solid #e74c3c;
+    font-size: 0.95rem;
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #4a5568;
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 0.8rem 1rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 1rem;
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.login-container button[type="submit"] {
+    width: 100%;
+    padding: 0.8rem;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 1.1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    margin-top: 0.5rem;
+}
+
+.login-container button[type="submit"]:hover {
+    background-color: #2980b9;
+}
+
+/* Контейнер чата (без изменений) */
+.chat-container { 
+    display: flex; 
+    height: calc(100vh - 100px); 
+    width: 100%; 
+}
 
 /* Левая колонка – сеансы */
 .sessions-sidebar {
@@ -57,7 +164,11 @@ footer {
     top: 0;
     z-index: 10;
 }
-.sessions-header h2 { margin: 0; font-size: 1.2rem; color: #2c3e50; }
+.sessions-header h2 { 
+    margin: 0; 
+    font-size: 1.2rem; 
+    color: #2c3e50; 
+}
 .new-session-button {
     background: none;
     border: none;
@@ -66,9 +177,15 @@ footer {
     padding: 0 8px;
     border-radius: 4px;
 }
-.new-session-button:hover { background-color: #e0e0e0; }
+.new-session-button:hover { 
+    background-color: #e0e0e0; 
+}
 
-.sessions-list { padding: 1rem; flex-grow: 1; overflow-y: auto; }
+.sessions-list { 
+    padding: 1rem; 
+    flex-grow: 1; 
+    overflow-y: auto; 
+}
 .session-item {
     padding: 0.8rem;
     margin-bottom: 0.5rem;
@@ -78,10 +195,24 @@ footer {
     cursor: pointer;
     transition: all 0.2s;
 }
-.session-item:hover { background-color: #e6f2ff; border-color: #3498db; }
-.session-item.active { border-color: #3498db; background-color: #e6f2ff; box-shadow: 0 0 0 2px rgba(52,152,219,0.2); }
-.session-title { font-weight: 600; margin-bottom: 4px; word-break: break-word; }
-.session-date { font-size: 0.8rem; color: #666; }
+.session-item:hover { 
+    background-color: #e6f2ff; 
+    border-color: #3498db; 
+}
+.session-item.active { 
+    border-color: #3498db; 
+    background-color: #e6f2ff; 
+    box-shadow: 0 0 0 2px rgba(52,152,219,0.2); 
+}
+.session-title { 
+    font-weight: 600; 
+    margin-bottom: 4px; 
+    word-break: break-word; 
+}
+.session-date { 
+    font-size: 0.8rem; 
+    color: #666; 
+}
 
 /* Правая часть */
 .chat-main {
@@ -99,8 +230,18 @@ footer {
     border-bottom: 1px solid #eee;
     margin-bottom: 1rem;
 }
-.context-info-container { display: flex; align-items: center; gap: 10px; }
-.context-info { font-size: 0.9rem; color: #666; background: #f5f5f5; padding: 0.3rem 0.6rem; border-radius: 12px; }
+.context-info-container { 
+    display: flex; 
+    align-items: center; 
+    gap: 10px; 
+}
+.context-info { 
+    font-size: 0.9rem; 
+    color: #666; 
+    background: #f5f5f5; 
+    padding: 0.3rem 0.6rem; 
+    border-radius: 12px; 
+}
 .save-chat-button, .clear-context-button {
     background: none;
     border: 1px solid #ddd;
@@ -109,7 +250,9 @@ footer {
     cursor: pointer;
     font-size: 1rem;
 }
-.save-chat-button:hover, .clear-context-button:hover { background-color: #f0f0f0; }
+.save-chat-button:hover, .clear-context-button:hover { 
+    background-color: #f0f0f0; 
+}
 
 .chat-messages {
     flex: 1;
@@ -126,16 +269,30 @@ footer {
     border-radius: 8px;
     word-wrap: break-word;
 }
-.user-message { background-color: #e6f2ff; }
-.bot-message { background-color: #f0f0f0; }
-.info-message { color: #2c3e50; background-color: #e8f4fc; border-left: 3px solid #3498db; padding: 0.8rem; }
+.user-message { 
+    background-color: #e6f2ff; 
+}
+.bot-message { 
+    background-color: #f0f0f0; 
+}
+.info-message { 
+    color: #2c3e50; 
+    background-color: #e8f4fc; 
+    border-left: 3px solid #3498db; 
+    padding: 0.8rem; 
+}
 
 .message-input {
     display: flex;
     gap: 0.5rem;
     margin-top: 0.5rem;
 }
-.message-input input[type="text"] { flex: 1; padding: 0.8rem; border: 1px solid #ddd; border-radius: 8px; }
+.message-input input[type="text"] { 
+    flex: 1; 
+    padding: 0.8rem; 
+    border: 1px solid #ddd; 
+    border-radius: 8px; 
+}
 .message-input button {
     padding: 0.8rem;
     border: none;
@@ -143,8 +300,14 @@ footer {
     cursor: pointer;
     background-color: #f1f1f1;
 }
-#send-button { background-color: #3498db; color: white; min-width: 100px; }
-#send-button:hover { background-color: #2980b9; }
+#send-button { 
+    background-color: #3498db; 
+    color: white; 
+    min-width: 100px; 
+}
+#send-button:hover { 
+    background-color: #2980b9; 
+}
 
 #file-preview-container {
     display: none;
@@ -168,12 +331,33 @@ footer {
     margin-left: 10px;
 }
 
-.attached-image { max-width: 100%; max-height: 300px; margin-top: 10px; border-radius: 4px; }
-.attached-file { margin-top: 10px; padding: 8px; background: #f9f9f9; border-radius: 4px; }
+.attached-image { 
+    max-width: 100%; 
+    max-height: 300px; 
+    margin-top: 10px; 
+    border-radius: 4px; 
+}
+.attached-file { 
+    margin-top: 10px; 
+    padding: 8px; 
+    background: #f9f9f9; 
+    border-radius: 4px; 
+}
 
 /* Адаптивность */
 @media (max-width: 768px) {
-    .chat-container { flex-direction: column; height: auto; }
-    .sessions-sidebar, .chat-main { width: 100%; }
-    .sessions-sidebar { height: 250px; }
+    .chat-container { 
+        flex-direction: column; 
+        height: auto; 
+    }
+    .sessions-sidebar, .chat-main { 
+        width: 100%; 
+    }
+    .sessions-sidebar { 
+        height: 250px; 
+    }
+    
+    .login-container {
+        padding: 1.5rem;
+    }
 }

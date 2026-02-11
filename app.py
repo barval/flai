@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 import mimetypes
 import uuid
+import requests  # добавлен импорт
 
 load_dotenv()
 
@@ -16,43 +17,60 @@ app.config['JSON_AS_ASCII'] = False
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
 # -------------------------------
+# Настройка путей к БД
+# -------------------------------
+# Создаем папку для данных, если её нет
+DATA_DIR = 'data'
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR, exist_ok=True)
+
+CHAT_DB_PATH = os.path.join(DATA_DIR, 'chat.db')
+
+# -------------------------------
 # Инициализация БД
 # -------------------------------
 def init_db():
-    with sqlite3.connect('chat.db') as conn:
-        c = conn.cursor()
-        # Сессии (профили пользователей)
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS user_sessions (
-                user_id TEXT PRIMARY KEY,
-                last_session_id TEXT
-            )
-        ''')
-        # Сеансы чатов
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS chat_sessions (
-                id TEXT PRIMARY KEY,
-                user_id TEXT,
-                title TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        # Сообщения
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT,
-                role TEXT,
-                content TEXT,
-                file_data TEXT,
-                file_type TEXT,
-                file_name TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        conn.commit()
+    """Инициализация базы данных"""
+    try:
+        with sqlite3.connect(CHAT_DB_PATH) as conn:
+            c = conn.cursor()
+            # Сессии (профили пользователей)
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS user_sessions (
+                    user_id TEXT PRIMARY KEY,
+                    last_session_id TEXT
+                )
+            ''')
+            # Сеансы чатов
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS chat_sessions (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT,
+                    title TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            # Сообщения
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT,
+                    role TEXT,
+                    content TEXT,
+                    file_data TEXT,
+                    file_type TEXT,
+                    file_name TEXT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.commit()
+            app.logger.info(f"Database initialized successfully at {CHAT_DB_PATH}")
+    except Exception as e:
+        app.logger.error(f"Failed to initialize database: {str(e)}")
+        raise
 
+# Инициализируем БД при старте
 init_db()
 
 # -------------------------------
@@ -60,18 +78,25 @@ init_db()
 # -------------------------------
 def load_users():
     users = {}
-    if os.path.exists('users.list'):
-        with open('users.list', 'r', encoding='utf-8') as f:
+    users_file = 'users.list'
+    if os.path.exists(users_file):
+        with open(users_file, 'r', encoding='utf-8') as f:
             for line in f:
                 if line.strip():
-                    email, password = line.strip().split(',')[:2]
+                    parts = line.strip().split(',')
+                    email = parts[0]
+                    password = parts[1]
                     users[email] = {'password': password}
+    else:
+        # Создаем тестового пользователя, если файла нет
+        app.logger.warning("users.list not found, creating default user")
+        users['admin@local.com'] = {'password': 'admin123'}
     return users
 
 USERS = load_users()
 
 def get_user_sessions(user_id):
-    with sqlite3.connect('chat.db') as conn:
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
         c.execute('''
@@ -83,7 +108,7 @@ def get_user_sessions(user_id):
         return [dict(row) for row in c.fetchall()]
 
 def get_session_messages(session_id):
-    with sqlite3.connect('chat.db') as conn:
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
         c.execute('''
@@ -96,7 +121,7 @@ def get_session_messages(session_id):
 
 def create_session(user_id, title="Новый сеанс"):
     session_id = str(uuid.uuid4())
-    with sqlite3.connect('chat.db') as conn:
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('''
             INSERT INTO chat_sessions (id, user_id, title)
@@ -108,7 +133,7 @@ def create_session(user_id, title="Новый сеанс"):
 def update_session_title(session_id, first_message):
     """Обновить заголовок сеанса на основе первого сообщения (до 30 символов)"""
     title = first_message[:30] + ('...' if len(first_message) > 30 else '')
-    with sqlite3.connect('chat.db') as conn:
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('''
             UPDATE chat_sessions
@@ -118,7 +143,7 @@ def update_session_title(session_id, first_message):
         conn.commit()
 
 def save_message(session_id, role, content, file_data=None, file_type=None, file_name=None):
-    with sqlite3.connect('chat.db') as conn:
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('''
             INSERT INTO messages (session_id, role, content, file_data, file_type, file_name)
@@ -132,14 +157,14 @@ def save_message(session_id, role, content, file_data=None, file_type=None, file
         conn.commit()
 
 def get_last_session(user_id):
-    with sqlite3.connect('chat.db') as conn:
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('SELECT last_session_id FROM user_sessions WHERE user_id = ?', (user_id,))
         row = c.fetchone()
         return row[0] if row else None
 
 def set_last_session(user_id, session_id):
-    with sqlite3.connect('chat.db') as conn:
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('''
             INSERT OR REPLACE INTO user_sessions (user_id, last_session_id)
@@ -322,7 +347,7 @@ def send_message():
                  file_data, file_type, file_name)
     
     # Проверяем, нужно ли обновить заголовок (если это первое сообщение в сеансе)
-    with sqlite3.connect('chat.db') as conn:
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (session_id,))
         msg_count = c.fetchone()[0]
@@ -339,6 +364,7 @@ def send_message():
     
     # Запрос к локальному эндпоинту
     try:
+        # Используем requests для вызова своего же API
         resp = requests.post(
             'http://localhost:5000/v1/chat/completions',
             json={'messages': openrouter_messages},
@@ -347,6 +373,7 @@ def send_message():
         resp.raise_for_status()
         bot_reply = resp.json()['choices'][0]['message']['content']
     except Exception as e:
+        app.logger.error(f"Error calling local model: {str(e)}")
         bot_reply = f"⚠️ Ошибка при обращении к локальной модели: {str(e)}"
     
     # Сохраняем ответ
@@ -369,7 +396,7 @@ def clear_history():
     if not session_id:
         return jsonify({'error': 'Нет активного сеанса'}), 400
     
-    with sqlite3.connect('chat.db') as conn:
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('DELETE FROM messages WHERE session_id = ?', (session_id,))
         c.execute('UPDATE chat_sessions SET title = ? WHERE id = ?', ('Новый сеанс', session_id))

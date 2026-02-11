@@ -1,5 +1,8 @@
 .env
 users.list
-chat.db
-models.db
 __pycache__/
+__pycache__
+*.pyc
+*.db
+data/
+.DS_Store

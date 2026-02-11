@@ -5,11 +5,9 @@ services:
     ports:
       - "127.0.0.1:5000:5000"
     volumes:
-      - .:/app
-      - chat_db:/app/chat.db
+      - ./data:/app/data  # Изменено: монтируем отдельную папку для данных
     environment:
       FLASK_ENV: development
       SECRET_KEY: dev-secret-change-me
+    user: "1000:1000"  # Добавляем пользователя с правами на запись
 
-volumes:
-  chat_db:

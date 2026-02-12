@@ -719,29 +719,39 @@ footer p {
     border-color: #b8d4f0;
 }
 
-/* ========== СТИЛИ ДЛЯ ВРЕМЕННЫХ МЕТОК - ОДИНАКОВЫЕ ДЛЯ ПОЛЬЗОВАТЕЛЯ И БОТА ========== */
+/* ========== СТИЛИ ДЛЯ ВРЕМЕННЫХ МЕТОК - АБСОЛЮТНО ОДИНАКОВЫЕ ДЛЯ ВСЕХ ========== */
+
+/* ПЕРЕОПРЕДЕЛЯЕМ ВСЕ СТИЛИ ДЛЯ ТЕГА SMALL В СООБЩЕНИЯХ */
 .user-message small,
-.bot-message small {
-    display: block;
-    margin-bottom: 6px;
-    color: #7f8c8d;  /* Одинаковый серый цвет для всех временных меток */
-    font-size: 0.75rem;
-    font-family: monospace;
-    letter-spacing: 0.5px;
+.bot-message small,
+.assistant-message small,
+.user-message small span,
+.bot-message small span,
+.assistant-message small span,
+.user-message small .model-response-info,
+.bot-message small .model-response-info,
+.assistant-message small .model-response-info,
+.message small,
+div[class*="message"] small {
+    display: block !important;
+    margin-bottom: 6px !important;
+    color: #7f8c8d !important;  /* ЕДИНЫЙ СЕРЫЙ ЦВЕТ ДЛЯ ВСЕХ */
+    font-size: 0.75rem !important;
+    font-family: monospace !important;
+    letter-spacing: 0.5px !important;
+    font-weight: normal !important;
+    background: none !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    border: none !important;
+    text-decoration: none !important;
+    line-height: 1.4 !important;
 }
 
-/* Информация о модели и времени ответа - ТОТ ЖЕ СТИЛЬ, ЧТО И У ВРЕМЕННОЙ МЕТКИ */
-.bot-message small .model-response-info {
-    color: #7f8c8d;  /* Тот же серый цвет, что и у временной метки */
-    font-family: monospace;
-    font-size: 0.75rem;
-    letter-spacing: 0.5px;
-    font-weight: normal;
-    background: none;  /* Убираем зеленый фон */
-    padding: 0;        /* Убираем отступы */
-    border-radius: 0;  /* Убираем скругление */
-    display: inline;   /* Делаем строчным элементом */
-    margin-left: 4px;
+/* Убираем все возможные наследования цвета от родительских элементов */
+.bot-message small,
+.assistant-message small {
+    color: #7f8c8d !important;
 }
 
 /* Скроллбар */
@@ -821,11 +831,17 @@ footer p {
         max-width: 120px;
     }
     
-    /* Уменьшаем шрифт временных меток на мобильных - ОДИНАКОВО ДЛЯ ВСЕХ */
+    /* Единый размер шрифта для всех временных меток на мобильных */
     .user-message small,
     .bot-message small,
-    .bot-message small .model-response-info {
-        font-size: 0.7rem;
+    .assistant-message small,
+    .user-message small span,
+    .bot-message small span,
+    .assistant-message small span,
+    .user-message small .model-response-info,
+    .bot-message small .model-response-info,
+    .assistant-message small .model-response-info {
+        font-size: 0.7rem !important;
     }
     
     /* Адаптивные стили для Markdown на мобильных */

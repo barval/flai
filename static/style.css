@@ -719,31 +719,29 @@ footer p {
     border-color: #b8d4f0;
 }
 
-/* Стиль для временных меток в чате - ПОЛНАЯ ДАТА */
+/* ========== СТИЛИ ДЛЯ ВРЕМЕННЫХ МЕТОК - ОДИНАКОВЫЕ ДЛЯ ПОЛЬЗОВАТЕЛЯ И БОТА ========== */
 .user-message small,
 .bot-message small {
     display: block;
     margin-bottom: 6px;
-    color: #7f8c8d;
+    color: #7f8c8d;  /* Одинаковый серый цвет для всех временных меток */
     font-size: 0.75rem;
     font-family: monospace;
     letter-spacing: 0.5px;
 }
 
-.bot-message small {
-    color: #2980b9;
-}
-
-/* Выделение времени ответа и названия модели */
-.bot-message small .response-time {
-    font-weight: 600;
-    color: #27ae60;
-    margin-left: 4px;
-    background-color: #e8f5e9;
-    padding: 2px 8px;
-    border-radius: 12px;
-    display: inline-block;
+/* Информация о модели и времени ответа - ТОТ ЖЕ СТИЛЬ, ЧТО И У ВРЕМЕННОЙ МЕТКИ */
+.bot-message small .model-response-info {
+    color: #7f8c8d;  /* Тот же серый цвет, что и у временной метки */
+    font-family: monospace;
     font-size: 0.75rem;
+    letter-spacing: 0.5px;
+    font-weight: normal;
+    background: none;  /* Убираем зеленый фон */
+    padding: 0;        /* Убираем отступы */
+    border-radius: 0;  /* Убираем скругление */
+    display: inline;   /* Делаем строчным элементом */
+    margin-left: 4px;
 }
 
 /* Скроллбар */
@@ -765,7 +763,7 @@ footer p {
     background: #a8a8a8;
 }
 
-/* Адаптивность */
+/* ========== АДАПТИВНОСТЬ ========== */
 @media (max-width: 768px) {
     .chat-container {
         flex-direction: column;
@@ -823,9 +821,10 @@ footer p {
         max-width: 120px;
     }
     
-    /* Уменьшаем шрифт временных меток на мобильных */
+    /* Уменьшаем шрифт временных меток на мобильных - ОДИНАКОВО ДЛЯ ВСЕХ */
     .user-message small,
-    .bot-message small {
+    .bot-message small,
+    .bot-message small .model-response-info {
         font-size: 0.7rem;
     }
     

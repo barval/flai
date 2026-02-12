@@ -180,7 +180,7 @@
                 fetch(`/api/sessions/${sessionId}/model-info`)
                     .then(res => res.json())
                     .then(data => {
-                        defaultModelName = data.model_name || 'qwen3-vl:8b-instruct';
+                        defaultModelName = data.model_name || 'qwen3-vl:8b-instruct-q4_K_M';
                     })
                     .catch(err => console.error('Error loading model info:', err));
                 
@@ -207,8 +207,8 @@
                         const diffSeconds = (assistantTime - userTime) / 1000;
                         const responseTime = Math.round(diffSeconds * 10) / 10;
                         
-                        // Получаем название модели из сообщения или используем значение по умолчанию
-                        const modelName = msg.model_name || defaultModelName || 'qwen3-vl:8b-instruct';
+                        // Получаем ПОЛНОЕ название модели из сообщения
+                        const modelName = msg.model_name || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
                         
                         displayMessage(
                             msg.role, 
@@ -218,7 +218,7 @@
                             msg.file_name, 
                             msg.timestamp,
                             responseTime,
-                            modelName
+                            modelName  // Передаем полное название модели
                         );
                         lastUserMessage = null;
                     } else {
@@ -230,7 +230,7 @@
                             msg.file_name, 
                             msg.timestamp,
                             null,
-                            msg.model_name || defaultModelName
+                            msg.model_name || defaultModelName  // Полное название модели
                         );
                     }
                 });
@@ -256,17 +256,11 @@
         
         let timeDisplay = formatFullDateTime(timestamp);
         
-        // Добавляем время ответа и название модели для сообщений ассистента
+        // Добавляем время ответа и ПОЛНОЕ название модели для сообщений ассистента
         if (role === 'assistant' && responseTime) {
-            // Получаем короткое название модели (первая часть до : или пробела)
-            let shortModelName = 'модель';
-            if (modelName) {
-                shortModelName = modelName.split(':')[0].split(' ')[0];
-                if (shortModelName.length > 10) {
-                    shortModelName = shortModelName.substring(0, 10) + '…';
-                }
-            }
-            timeDisplay += ` <span class="response-time">(ответ ${shortModelName} за ${responseTime} сек)</span>`;
+            // Используем полное название модели без обрезки
+            let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
+            timeDisplay += ` <span class="model-response-info">(ответ: ${fullModelName} за ${responseTime} сек)</span>`;
         }
         
         let html = `<small>${timeDisplay}</small>`;

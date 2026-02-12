@@ -15,7 +15,7 @@
                 <div class="session-content">
                     <div class="session-info">
                         <div class="session-title">{{ s.title }}</div>
-                        <div class="session-date">{{ s.updated_at[:16].replace('T', ' ') }}</div>
+                        <div class="session-date">{{ s.updated_at[:19].replace('T', ' ') }}</div>
                     </div>
                     <button class="delete-session-button" title="Удалить сеанс">🗑️</button>
                 </div>
@@ -213,7 +213,7 @@
     }
 
     // -------------------------------
-    // Отображение одного сообщения (исправленная версия)
+    // Отображение одного сообщения
     // -------------------------------
     function displayMessage(role, content, fileData, fileType, fileName, timestamp) {
         const container = document.getElementById('chat-messages');
@@ -298,7 +298,7 @@
                 newSessionDiv.dataset.sessionId = data.id;
                 
                 const now = new Date();
-                const formattedDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+                const formattedDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
                 
                 newSessionDiv.innerHTML = `
                     <div class="session-content">
@@ -369,7 +369,7 @@
             }
             
             const now = new Date();
-            const formattedDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+            const formattedDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
             const dateElement = sessionItem.querySelector('.session-date');
             if (dateElement) {
                 dateElement.textContent = formattedDate;
@@ -381,7 +381,7 @@
     }
 
     // -------------------------------
-    // Отправка сообщения
+    // Отправка сообщения (ИСПРАВЛЕННАЯ ВЕРСИЯ)
     // -------------------------------
     async function sendMessage() {
         const input = document.getElementById('message-input');
@@ -395,7 +395,6 @@
         isSending = true;
         
         // --- НЕМЕДЛЕННОЕ ОТОБРАЖЕНИЕ СООБЩЕНИЯ ПОЛЬЗОВАТЕЛЯ ---
-        // Создаем и отображаем сообщение пользователя сразу
         const now = new Date();
         const timestamp = now.toISOString();
         
@@ -411,7 +410,6 @@
             let fileName = null;
             
             if (attachedFile) {
-                // Создаем preview для немедленного отображения
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     fileData = e.target.result.split(',')[1];
@@ -436,9 +434,20 @@
         
         // Очищаем поле ввода и превью
         input.value = '';
-        const tempAttachedFile = attachedFile; // Сохраняем для FormData
+        const tempAttachedFile = attachedFile;
         attachedFile = null;
         document.getElementById('file-preview-container').style.display = 'none';
+        
+        // === НЕМЕДЛЕННОЕ ОБНОВЛЕНИЕ ЗАГОЛОВКА СЕАНСА ===
+        // Проверяем, нужно ли обновить заголовок сеанса (первое сообщение в сеансе)
+        const messageCount = document.querySelectorAll('.user-message').length;
+        if (messageCount === 1 && text) {
+            let newTitle = text.length > 40 ? text.substring(0, 40) + '...' : text;
+            updateSessionTitle(currentSessionId, newTitle);
+            
+            const sessionsCount = document.querySelectorAll('.session-item').length;
+            document.getElementById('sessions-count').textContent = sessionsCount;
+        }
         
         // Подготавливаем FormData для отправки на сервер
         const formData = new FormData();
@@ -463,23 +472,11 @@
                 }
             }
             
-            // Загружаем ответ от бота (и обновляем историю, чтобы получить актуальное состояние)
-            // Но сохраняем уже отображенные сообщения пользователя
+            // Загружаем ответ от бота
             await loadMessages(currentSessionId);
             
-            // Проверяем, нужно ли обновить заголовок сеанса
-            const messageCount = document.querySelectorAll('.user-message').length;
-            if (messageCount === 1 && text) {
-                let newTitle = text.length > 40 ? text.substring(0, 40) + '...' : text;
-                updateSessionTitle(currentSessionId, newTitle);
-                
-                const sessionsCount = document.querySelectorAll('.session-item').length;
-                document.getElementById('sessions-count').textContent = sessionsCount;
-            }
         } catch (err) {
             alert('Ошибка: ' + err.message);
-            // В случае ошибки все равно показываем сообщение пользователя,
-            // но можно добавить индикатор ошибки
             const lastMessage = document.querySelector('.user-message:last-child');
             if (lastMessage) {
                 lastMessage.style.borderLeft = '3px solid #e74c3c';
@@ -582,14 +579,15 @@
     // Вспомогательные функции
     // -------------------------------
     function updateMessageCount() {
-        // Считаем только user-messages для индикатора, но можно считать все
         const count = document.querySelectorAll('.user-message').length;
         document.getElementById('context-info').textContent = `Сообщений: ${count}`;
     }
 
+    // ИСПРАВЛЕННАЯ ФУНКЦИЯ: отображение секунд
     function formatTimestamp(ts) {
         if (!ts) return '';
-        return ts.replace('T', ' ').slice(0, 16);
+        // Формат: YYYY-MM-DD HH:MM:SS
+        return ts.replace('T', ' ').slice(0, 19);
     }
 
     function escapeHtml(text) {

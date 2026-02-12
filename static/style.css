@@ -719,23 +719,16 @@ footer p {
     border-color: #b8d4f0;
 }
 
-/* ========== СТИЛИ ДЛЯ ВРЕМЕННЫХ МЕТОК - АБСОЛЮТНО ОДИНАКОВЫЕ ДЛЯ ВСЕХ ========== */
+/* ========== СТИЛИ ДЛЯ ВРЕМЕННЫХ МЕТОК - ВСЕ В ОДНУ СТРОКУ, ЕДИНЫЙ ЦВЕТ ========== */
 
-/* ПЕРЕОПРЕДЕЛЯЕМ ВСЕ СТИЛИ ДЛЯ ТЕГА SMALL В СООБЩЕНИЯХ */
+/* БАЗОВЫЙ СТИЛЬ - ВСЕ ТЕГИ SMALL В СООБЩЕНИЯХ */
 .user-message small,
 .bot-message small,
-.assistant-message small,
-.user-message small span,
-.bot-message small span,
-.assistant-message small span,
-.user-message small .model-response-info,
-.bot-message small .model-response-info,
-.assistant-message small .model-response-info,
-.message small,
-div[class*="message"] small {
-    display: block !important;
+.assistant-message small {
+    display: inline !important;  /* ИЗМЕНЕНО: inline вместо block - все в одну строку */
     margin-bottom: 6px !important;
-    color: #7f8c8d !important;  /* ЕДИНЫЙ СЕРЫЙ ЦВЕТ ДЛЯ ВСЕХ */
+    margin-right: 4px !important;
+    color: #7f8c8d !important;
     font-size: 0.75rem !important;
     font-family: monospace !important;
     letter-spacing: 0.5px !important;
@@ -748,10 +741,33 @@ div[class*="message"] small {
     line-height: 1.4 !important;
 }
 
-/* Убираем все возможные наследования цвета от родительских элементов */
+/* СПЕЦИАЛЬНО ДЛЯ СООБЩЕНИЙ БОТА - ТОЖЕ INLINE */
 .bot-message small,
 .assistant-message small {
+    display: inline !important;
+}
+
+/* ИНФОРМАЦИЯ О МОДЕЛИ - ТОЖЕ В СТРОКУ */
+.bot-message small .model-response-info,
+.assistant-message small .model-response-info {
+    display: inline !important;
     color: #7f8c8d !important;
+    font-family: monospace !important;
+    font-size: 0.75rem !important;
+    letter-spacing: 0.5px !important;
+    font-weight: normal !important;
+    background: none !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    margin-left: 4px !important;
+    white-space: nowrap !important;  /* ЗАПРЕЩАЕМ ПЕРЕНОС */
+}
+
+/* КОНТЕЙНЕР СООБЩЕНИЯ - ОБЕСПЕЧИВАЕМ ПРАВИЛЬНОЕ ОТОБРАЖЕНИЕ */
+.user-message,
+.bot-message,
+.assistant-message {
+    line-height: 1.5;
 }
 
 /* Скроллбар */
@@ -831,17 +847,15 @@ div[class*="message"] small {
         max-width: 120px;
     }
     
-    /* Единый размер шрифта для всех временных меток на мобильных */
+    /* НА МОБИЛЬНЫХ - ТОЖЕ ВСЕ В ОДНУ СТРОКУ */
     .user-message small,
     .bot-message small,
     .assistant-message small,
-    .user-message small span,
-    .bot-message small span,
-    .assistant-message small span,
-    .user-message small .model-response-info,
     .bot-message small .model-response-info,
     .assistant-message small .model-response-info {
+        display: inline !important;
         font-size: 0.7rem !important;
+        white-space: nowrap !important;
     }
     
     /* Адаптивные стили для Markdown на мобильных */

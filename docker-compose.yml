@@ -5,9 +5,11 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - ./data:/app/data  # Изменено: монтируем отдельную папку для данных
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
     environment:
-      FLASK_ENV: development
-      SECRET_KEY: dev-secret-change-me
-    user: "1000:1000"  # Добавляем пользователя с правами на запись
-
+      FLASK_ENV: production
+      OLLAMA_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    user: "1000:1000"

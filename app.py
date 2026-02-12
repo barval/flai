@@ -3,11 +3,12 @@ import os
 import sqlite3
 import json
 import base64
-from datetime import datetime, timezone
+from datetime import datetime
 from dotenv import load_dotenv
 import mimetypes
 import uuid
-import requests  # добавлен импорт
+import requests
+from pathlib import Path
 
 load_dotenv()
 
@@ -17,14 +18,211 @@ app.config['JSON_AS_ASCII'] = False
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
 # -------------------------------
+# Настройки Ollama
+# -------------------------------
+OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434')
+OLLAMA_CHAT_MODEL = os.getenv('LLM_CHAT_MODEL', 'qwen3-vl:8b-instruct-q4_K_M')
+OLLAMA_MULTIMODAL_MODEL = os.getenv('LLM_MULTIMODAL_MODEL', 'qwen3-vl:8b-instruct-q4_K_M')
+OLLAMA_REASONING_MODEL = os.getenv('LLM_REASONING_MODEL', 'gpt-oss-20b')
+
+# Контекстные окна для разных моделей
+MODEL_CONTEXT_WINDOWS = {
+    OLLAMA_CHAT_MODEL: int(os.getenv('LLM_CHAT_MODEL_CONTEXT_WINDOW', 32768)),
+    OLLAMA_MULTIMODAL_MODEL: int(os.getenv('LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW', 32768)),
+    OLLAMA_REASONING_MODEL: int(os.getenv('LLM_REASONING_MODEL_CONTEXT_WINDOW', 65536)),
+}
+
+# -------------------------------
 # Настройка путей к БД
 # -------------------------------
-# Создаем папку для данных, если её нет
 DATA_DIR = 'data'
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR, exist_ok=True)
 
 CHAT_DB_PATH = os.path.join(DATA_DIR, 'chat.db')
+
+# -------------------------------
+# Функции для работы с Ollama
+# -------------------------------
+def check_ollama_connection():
+    """Проверка подключения к Ollama"""
+    try:
+        response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
+        if response.status_code == 200:
+            models = response.json().get('models', [])
+            app.logger.info(f"Ollama connected. Available models: {[m['name'] for m in models]}")
+            return True, models
+        else:
+            return False, []
+    except Exception as e:
+        app.logger.error(f"Ollama connection failed: {str(e)}")
+        return False, []
+
+def get_available_models():
+    """Получить список доступных моделей из Ollama"""
+    try:
+        response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
+        if response.status_code == 200:
+            return response.json().get('models', [])
+    except Exception as e:
+        app.logger.error(f"Failed to get models: {str(e)}")
+    return []
+
+def prepare_ollama_messages(messages):
+    """Подготовка сообщений для Ollama API"""
+    ollama_messages = []
+    
+    for msg in messages:
+        role = msg['role']
+        content = msg['content']
+        
+        if isinstance(content, str):
+            if content.startswith('['):
+                try:
+                    parts = json.loads(content)
+                    text_parts = []
+                    for part in parts:
+                        if part.get('type') == 'text':
+                            text_parts.append(part['text'])
+                        elif part.get('type') == 'file':
+                            file_type = part.get('file_type', '')
+                            file_data = part.get('file_data', '')
+                            
+                            if file_type.startswith('image/'):
+                                ollama_messages.append({
+                                    'role': role,
+                                    'content': text_parts[-1] if text_parts else '',
+                                    'images': [file_data]
+                                })
+                            elif file_type.startswith('audio/'):
+                                text_parts.append(f"[Аудиофайл: {part.get('file_name', 'audio')}]")
+                            else:
+                                text_parts.append(f"[Документ: {part.get('file_name', 'file')}]")
+                    
+                    if text_parts and not any(m.get('role') == role and m.get('images') for m in ollama_messages):
+                        ollama_messages.append({
+                            'role': role,
+                            'content': '\n'.join(text_parts)
+                        })
+                except:
+                    ollama_messages.append({'role': role, 'content': content})
+            else:
+                ollama_messages.append({'role': role, 'content': content})
+        else:
+            ollama_messages.append({'role': role, 'content': content})
+    
+    return ollama_messages
+
+def call_ollama_chat(messages, model=None, stream=False):
+    """Вызов Ollama API для чата"""
+    if model is None:
+        model = OLLAMA_CHAT_MODEL
+    
+    try:
+        ollama_messages = prepare_ollama_messages(messages)
+        
+        payload = {
+            'model': model,
+            'messages': ollama_messages,
+            'stream': stream,
+            'options': {
+                'num_ctx': MODEL_CONTEXT_WINDOWS.get(model, 32768),
+                'temperature': 0.7,
+                'top_p': 0.9,
+            }
+        }
+        
+        response = requests.post(
+            f"{OLLAMA_URL}/api/chat",
+            json=payload,
+            timeout=120
+        )
+        
+        if response.status_code == 200:
+            return response.json()['message']['content']
+        else:
+            error_msg = f"Ollama error: {response.status_code} - {response.text}"
+            app.logger.error(error_msg)
+            return f"⚠️ Ошибка Ollama: {response.status_code}"
+            
+    except requests.exceptions.ConnectionError:
+        return "⚠️ Не удалось подключиться к Ollama. Проверьте, запущен ли сервис."
+    except Exception as e:
+        app.logger.error(f"Error calling Ollama: {str(e)}")
+        return f"⚠️ Ошибка при обращении к Ollama: {str(e)}"
+
+# -------------------------------
+# Функция для автоматического выбора модели
+# -------------------------------
+def select_model_for_request(messages, has_images=False, has_audio=False, has_documents=False):
+    """
+    Автоматический подбор модели в зависимости от типа запроса
+    """
+    # Проверяем наличие изображений
+    if has_images:
+        app.logger.info(f"Выбрана мультимодальная модель: {OLLAMA_MULTIMODAL_MODEL}")
+        return OLLAMA_MULTIMODAL_MODEL
+    
+    # Анализируем текст запроса
+    last_user_message = ""
+    for msg in reversed(messages):
+        if msg['role'] == 'user':
+            content = msg['content']
+            if isinstance(content, str):
+                if content.startswith('['):
+                    try:
+                        parts = json.loads(content)
+                        for part in parts:
+                            if part.get('type') == 'text':
+                                last_user_message = part['text']
+                                break
+                    except:
+                        last_user_message = content
+                else:
+                    last_user_message = content
+            break
+    
+    # Ключевые слова для разных типов задач
+    reasoning_keywords = [
+        'почему', 'зачем', 'объясни', 'рассуждай', 'думай', 'анализируй',
+        'сравни', 'спрогнозируй', 'выведи', 'логика', 'reasoning', 'analyze',
+        'explain why', 'what if', 'продумай', 'рассуждение', 'умозаключение',
+        'выведи формулу', 'докажи', 'доказательство', 'теорема'
+    ]
+    
+    # Проверяем на сложные рассуждения
+    last_user_message_lower = last_user_message.lower()
+    if any(keyword in last_user_message_lower for keyword in reasoning_keywords):
+        app.logger.info(f"Выбрана модель для рассуждений: {OLLAMA_REASONING_MODEL}")
+        return OLLAMA_REASONING_MODEL
+    
+    # По умолчанию используем обычную чат-модель
+    app.logger.info(f"Выбрана стандартная чат-модель: {OLLAMA_CHAT_MODEL}")
+    return OLLAMA_CHAT_MODEL
+
+# -------------------------------
+# Анализ сообщений для определения типа контента
+# -------------------------------
+def analyze_messages_for_content(messages):
+    """
+    Анализирует сообщения на наличие изображений, аудио, документов
+    """
+    has_images = False
+    has_audio = False
+    has_documents = False
+    
+    for msg in messages:
+        if msg.get('file_type'):
+            if msg['file_type'].startswith('image/'):
+                has_images = True
+            elif msg['file_type'].startswith('audio/'):
+                has_audio = True
+            elif msg['file_type'] in ['application/pdf', 'text/plain', 
+                                     'application/msword', 
+                                     'application/vnd.openxmlformats-officedocument.wordprocessingml.document']:
+                has_documents = True
+    
+    return has_images, has_audio, has_documents
 
 # -------------------------------
 # Инициализация БД
@@ -47,6 +245,7 @@ def init_db():
                     id TEXT PRIMARY KEY,
                     user_id TEXT,
                     title TEXT,
+                    model_name TEXT DEFAULT 'auto',
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
@@ -73,6 +272,11 @@ def init_db():
 # Инициализируем БД при старте
 init_db()
 
+# Проверяем подключение к Ollama при старте
+ollama_available, ollama_models = check_ollama_connection()
+if not ollama_available:
+    app.logger.warning("Ollama is not available. Please check if Ollama is running.")
+
 # -------------------------------
 # Вспомогательные функции
 # -------------------------------
@@ -88,7 +292,6 @@ def load_users():
                     password = parts[1]
                     users[email] = {'password': password}
     else:
-        # Создаем тестового пользователя, если файла нет
         app.logger.warning("users.list not found, creating default user")
         users['admin@local.com'] = {'password': 'admin123'}
     return users
@@ -100,7 +303,7 @@ def get_user_sessions(user_id):
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
         c.execute('''
-            SELECT id, title, created_at, updated_at
+            SELECT id, title, model_name, created_at, updated_at
             FROM chat_sessions
             WHERE user_id = ?
             ORDER BY updated_at DESC
@@ -120,18 +323,19 @@ def get_session_messages(session_id):
         return [dict(row) for row in c.fetchall()]
 
 def create_session(user_id, title="Новый сеанс"):
+    """Создание нового сеанса без привязки к конкретной модели"""
     session_id = str(uuid.uuid4())
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('''
-            INSERT INTO chat_sessions (id, user_id, title)
-            VALUES (?, ?, ?)
-        ''', (session_id, user_id, title))
+            INSERT INTO chat_sessions (id, user_id, title, model_name)
+            VALUES (?, ?, ?, ?)
+        ''', (session_id, user_id, title, 'auto'))
         conn.commit()
     return session_id
 
 def update_session_title(session_id, first_message):
-    """Обновить заголовок сеанса на основе первого сообщения (до 40 символов)"""
+    """Обновить заголовок сеанса на основе первого сообщения"""
     title = first_message[:40] + ('...' if len(first_message) > 40 else '')
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
@@ -216,7 +420,6 @@ def chat():
     user_id = session['email']
     sessions = get_user_sessions(user_id)
     
-    # Восстанавливаем последний сеанс
     if not session.get('current_session'):
         last_id = get_last_session(user_id)
         if last_id and any(s['id'] == last_id for s in sessions):
@@ -224,12 +427,13 @@ def chat():
         elif sessions:
             session['current_session'] = sessions[0]['id']
         else:
-            # Создаём первый сеанс
             new_id = create_session(user_id)
             session['current_session'] = new_id
-            sessions = get_user_sessions(user_id)  # обновляем список
+            sessions = get_user_sessions(user_id)
     
-    return render_template('chat.html', sessions=sessions, current_session=session.get('current_session'))
+    return render_template('chat.html', 
+                         sessions=sessions, 
+                         current_session=session.get('current_session'))
 
 # -------------------------------
 # API для работы с сеансами
@@ -257,10 +461,27 @@ def api_switch_session(session_id):
     set_last_session(session['email'], session_id)
     return jsonify({'status': 'ok'})
 
+@app.route('/api/sessions/<session_id>/model-info', methods=['GET'])
+def api_get_session_model(session_id):
+    """Получить информацию о модели, используемой в сеансе"""
+    if 'email' not in session:
+        return jsonify({'error': 'Не авторизован'}), 401
+    
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute('SELECT model_name FROM chat_sessions WHERE id = ?', (session_id,))
+        row = c.fetchone()
+        
+        if row:
+            return jsonify({'model_name': row[0]})
+        else:
+            return jsonify({'model_name': 'auto'})
+
 @app.route('/api/sessions/new', methods=['POST'])
 def api_new_session():
     if 'email' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
+    
     user_id = session['email']
     session_id = create_session(user_id)
     session['current_session'] = session_id
@@ -268,39 +489,18 @@ def api_new_session():
     return jsonify({'id': session_id, 'title': 'Новый сеанс'})
 
 # -------------------------------
-# Эмуляция локального ИИ
+# API для Ollama
 # -------------------------------
-@app.route('/v1/chat/completions', methods=['POST'])
-def local_completion():
-    """
-    Заглушка для локальной модели.
-    В реальном проекте здесь будет вызов llama.cpp, Ollama, transformers и т.д.
-    """
-    data = request.get_json()
-    messages = data.get('messages', [])
+@app.route('/api/ollama/status', methods=['GET'])
+def api_ollama_status():
+    """Проверка статуса Ollama"""
+    if 'email' not in session:
+        return jsonify({'error': 'Не авторизован'}), 401
     
-    # Простейшая заглушка – берём последнее сообщение пользователя
-    last_user_msg = ''
-    for msg in reversed(messages):
-        if msg['role'] == 'user':
-            if isinstance(msg.get('content'), list):
-                for part in msg['content']:
-                    if part.get('type') == 'text':
-                        last_user_msg = part['text']
-                        break
-            else:
-                last_user_msg = msg.get('content', '')
-            break
-    
-    response_text = f"Вы сказали: «{last_user_msg}»\n\n(это заглушка локальной модели. Подключите реальный эндпоинт LLM.)"
-    
+    available, models = check_ollama_connection()
     return jsonify({
-        'choices': [{
-            'message': {
-                'role': 'assistant',
-                'content': response_text
-            }
-        }]
+        'available': available,
+        'models': [m['name'] for m in models] if available else []
     })
 
 # -------------------------------
@@ -313,6 +513,7 @@ def send_message():
     
     user_id = session['email']
     session_id = session.get('current_session')
+    
     if not session_id:
         session_id = create_session(user_id)
         session['current_session'] = session_id
@@ -322,7 +523,6 @@ def send_message():
     file_type = None
     file_name = None
     
-    # Проверяем, multipart или JSON
     if 'multipart/form-data' in request.content_type:
         message_text = request.form.get('message', '')
         if 'file' in request.files:
@@ -334,19 +534,23 @@ def send_message():
     else:
         data = request.get_json()
         message_text = data.get('message', '')
-        # Пока не поддерживаем base64‑файлы через JSON (можно добавить)
     
     # Сохраняем сообщение пользователя
     user_content = []
     if message_text:
         user_content.append({"type": "text", "text": message_text})
     if file_data:
-        user_content.append({"type": "file", "file_data": file_data, "file_type": file_type, "file_name": file_name})
+        user_content.append({
+            "type": "file", 
+            "file_data": file_data, 
+            "file_type": file_type, 
+            "file_name": file_name
+        })
     
     save_message(session_id, 'user', json.dumps(user_content) if user_content else message_text,
                  file_data, file_type, file_name)
     
-    # Проверяем, нужно ли обновить заголовок (если это первое сообщение в сеансе)
+    # Обновляем заголовок для первого сообщения
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (session_id,))
@@ -354,34 +558,25 @@ def send_message():
         if msg_count == 1 and message_text:
             update_session_title(session_id, message_text)
     
-    # Формируем историю для модели
+    # Получаем историю и анализируем контент
     history = get_session_messages(session_id)
-    openrouter_messages = []
-    for msg in history:
-        role = msg['role']
-        content = json.loads(msg['content']) if msg['content'].startswith('[') else msg['content']
-        openrouter_messages.append({"role": role, "content": content})
+    has_images, has_audio, has_documents = analyze_messages_for_content(history)
     
-    # Запрос к локальному эндпоинту
-    try:
-        # Используем requests для вызова своего же API
-        resp = requests.post(
-            'http://localhost:5000/v1/chat/completions',
-            json={'messages': openrouter_messages},
-            timeout=60
-        )
-        resp.raise_for_status()
-        bot_reply = resp.json()['choices'][0]['message']['content']
-    except Exception as e:
-        app.logger.error(f"Error calling local model: {str(e)}")
-        bot_reply = f"⚠️ Ошибка при обращении к локальной модели: {str(e)}"
+    # АВТОМАТИЧЕСКИЙ ПОДБОР МОДЕЛИ
+    selected_model = select_model_for_request(history, has_images, has_audio, has_documents)
+    
+    app.logger.info(f"Session {session_id}: выбрана модель {selected_model}")
+    
+    # Запрос к Ollama
+    bot_reply = call_ollama_chat(history, model=selected_model)
     
     # Сохраняем ответ
     save_message(session_id, 'assistant', bot_reply)
     
     return jsonify({
         'response': bot_reply,
-        'session_id': session_id
+        'session_id': session_id,
+        'model_used': selected_model
     })
 
 # -------------------------------
@@ -414,7 +609,6 @@ def api_delete_session(session_id):
     
     user_id = session['email']
     
-    # Проверяем, что сеанс принадлежит пользователю
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('SELECT user_id FROM chat_sessions WHERE id = ?', (session_id,))
@@ -426,24 +620,18 @@ def api_delete_session(session_id):
         if row[0] != user_id:
             return jsonify({'error': 'Нет прав на удаление этого сеанса'}), 403
         
-        # Удаляем сообщения сеанса
         c.execute('DELETE FROM messages WHERE session_id = ?', (session_id,))
-        
-        # Удаляем сам сеанс
         c.execute('DELETE FROM chat_sessions WHERE id = ?', (session_id,))
         
-        # Если это был последний сеанс пользователя, удаляем запись о последнем сеансе
         c.execute('SELECT COUNT(*) FROM chat_sessions WHERE user_id = ?', (user_id,))
         count = c.fetchone()[0]
         
         if count == 0:
             c.execute('DELETE FROM user_sessions WHERE user_id = ?', (user_id,))
         else:
-            # Если удалили текущий сеанс, обновим last_session_id
             c.execute('SELECT last_session_id FROM user_sessions WHERE user_id = ?', (user_id,))
             row = c.fetchone()
             if row and row[0] == session_id:
-                # Получаем первый доступный сеанс
                 c.execute('SELECT id FROM chat_sessions WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1', (user_id,))
                 new_last = c.fetchone()
                 if new_last:
@@ -453,12 +641,10 @@ def api_delete_session(session_id):
         
         conn.commit()
     
-    # Если удалили текущий сеанс, очищаем его из сессии
     if session.get('current_session') == session_id:
         session.pop('current_session', None)
     
     return jsonify({'status': 'ok'})
-
 
 # -------------------------------
 # Статика и прочее

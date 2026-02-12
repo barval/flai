@@ -30,6 +30,9 @@
             <h2>Чат</h2>
             <div class="context-info-container">
                 <div id="context-info" class="context-info">Сообщений: 0</div>
+                <div id="model-info" class="model-info" title="Автоматически выбранная модель">
+                    🤖 <span id="current-model-name">qwen3-vl:8b-instruct</span>
+                </div>
                 <button id="save-chat-button" class="save-chat-button" title="Сохранить как HTML">💾</button>
                 <button id="clear-context-button" class="clear-context-button">🗑️</button>
             </div>
@@ -90,10 +93,12 @@
         // Загружаем сообщения текущего сеанса
         loadMessages(currentSessionId);
         
+        // Загружаем информацию о модели текущего сеанса
+        loadSessionModelInfo(currentSessionId);
+        
         // Клик по сеансу (но не по кнопке удаления)
         document.querySelectorAll('.session-item').forEach(el => {
             el.addEventListener('click', function(e) {
-                // Если клик по кнопке удаления или её дочерним элементам - не переключаем сеанс
                 if (e.target.closest('.delete-session-button')) {
                     return;
                 }
@@ -101,16 +106,14 @@
                 const sessionId = this.dataset.sessionId;
                 if (sessionId === currentSessionId) return;
                 
-                // Подсветка
                 document.querySelectorAll('.session-item').forEach(i => i.classList.remove('active'));
                 this.classList.add('active');
                 
-                // Переключение
                 switchSession(sessionId);
             });
         });
         
-        // Кнопки удаления сеансов - ИСПОЛЬЗУЕМ CONFIRM КАК ДЛЯ ОЧИСТКИ
+        // Кнопки удаления сеансов
         document.querySelectorAll('.delete-session-button').forEach(btn => {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
@@ -119,7 +122,6 @@
                 const sessionTitle = sessionItem.querySelector('.session-title').textContent;
                 const sessionDate = sessionItem.querySelector('.session-date').textContent;
                 
-                // Используем стандартный confirm как для очистки сеанса
                 if (confirm(`Удалить сеанс "${sessionTitle}" от ${sessionDate}?`)) {
                     deleteSession(sessionId);
                 }
@@ -158,7 +160,7 @@
             document.getElementById('file-preview-container').style.display = 'none';
         });
         
-        // Очистка контекста - ИСПОЛЬЗУЕМ CONFIRM
+        // Очистка контекста
         document.getElementById('clear-context-button').addEventListener('click', function() {
             if (confirm('Очистить всю переписку в этом сеансе?')) {
                 clearHistory();
@@ -168,6 +170,28 @@
         // Сохранение чата
         document.getElementById('save-chat-button').addEventListener('click', saveChatAsHTML);
     });
+
+    // -------------------------------
+    // Загрузка информации о модели сеанса
+    // -------------------------------
+    function loadSessionModelInfo(sessionId) {
+        fetch(`/api/sessions/${sessionId}/model-info`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.model_name) {
+                    const modelNameEl = document.getElementById('current-model-name');
+                    if (modelNameEl) {
+                        if (data.model_name === 'auto') {
+                            modelNameEl.textContent = 'авто';
+                            modelNameEl.title = 'Модель выбирается автоматически';
+                        } else {
+                            modelNameEl.textContent = data.model_name;
+                        }
+                    }
+                }
+            })
+            .catch(err => console.error('Error loading model info:', err));
+    }
 
     // -------------------------------
     // Загрузка сообщений сеанса
@@ -221,7 +245,6 @@
             } else if (fileType && fileType.startsWith('audio/')) {
                 html += `<audio controls src="data:${fileType};base64,${fileData}"></audio>`;
             } else {
-                // Документ – показываем иконку и имя
                 html += `<div class="attached-file">
                             <span class="file-icon">📄</span>
                             <a href="data:${fileType};base64,${fileData}" download="${fileName}">${fileName}</a>
@@ -242,8 +265,8 @@
             .then(() => {
                 currentSessionId = sessionId;
                 loadMessages(sessionId);
+                loadSessionModelInfo(sessionId);
                 
-                // Обновляем активный класс в списке сеансов
                 document.querySelectorAll('.session-item').forEach(el => {
                     if (el.dataset.sessionId === sessionId) {
                         el.classList.add('active');
@@ -261,10 +284,8 @@
         fetch('/api/sessions/new', { method: 'POST' })
             .then(res => res.json())
             .then(data => {
-                // Вместо перезагрузки страницы - динамически добавляем новый сеанс
                 const sessionsList = document.getElementById('sessions-list');
                 
-                // Создаем элемент нового сеанса
                 const newSessionDiv = document.createElement('div');
                 newSessionDiv.className = 'session-item active';
                 newSessionDiv.dataset.sessionId = data.id;
@@ -282,15 +303,12 @@
                     </div>
                 `;
                 
-                // Убираем active у всех сеансов
                 document.querySelectorAll('.session-item').forEach(el => {
                     el.classList.remove('active');
                 });
                 
-                // Добавляем новый сеанс в начало списка
                 sessionsList.insertBefore(newSessionDiv, sessionsList.firstChild);
                 
-                // Добавляем обработчик клика на сеанс
                 newSessionDiv.addEventListener('click', function(e) {
                     if (e.target.closest('.delete-session-button')) {
                         return;
@@ -305,7 +323,6 @@
                     switchSession(sessionId);
                 });
                 
-                // Добавляем обработчик на кнопку удаления - ИСПОЛЬЗУЕМ CONFIRM
                 const deleteBtn = newSessionDiv.querySelector('.delete-session-button');
                 deleteBtn.addEventListener('click', function(e) {
                     e.stopPropagation();
@@ -319,14 +336,15 @@
                     }
                 });
                 
-                // Переключаемся на новый сеанс
                 currentSessionId = data.id;
                 
-                // Очищаем сообщения
                 document.getElementById('chat-messages').innerHTML = '';
                 updateMessageCount();
                 
-                // Обновляем счетчик сеансов
+                // Обновляем информацию о модели для нового сеанса
+                document.getElementById('current-model-name').textContent = 'авто';
+                document.getElementById('current-model-name').title = 'Модель выбирается автоматически';
+                
                 const sessionsCount = document.querySelectorAll('.session-item').length;
                 document.getElementById('sessions-count').textContent = sessionsCount;
             });
@@ -336,7 +354,6 @@
     // Обновление заголовка сеанса
     // -------------------------------
     function updateSessionTitle(sessionId, newTitle) {
-        // Обновляем заголовок в списке сеансов
         const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
         if (sessionItem) {
             const titleElement = sessionItem.querySelector('.session-title');
@@ -344,7 +361,6 @@
                 titleElement.textContent = newTitle;
             }
             
-            // Также обновляем время
             const now = new Date();
             const formattedDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
             const dateElement = sessionItem.querySelector('.session-date');
@@ -352,7 +368,6 @@
                 dateElement.textContent = formattedDate;
             }
             
-            // Перемещаем обновленный сеанс вверх списка
             const sessionsList = document.getElementById('sessions-list');
             sessionsList.insertBefore(sessionItem, sessionsList.firstChild);
         }
@@ -385,23 +400,27 @@
             });
             const data = await response.json();
             
-            // Сохраняем количество сообщений ДО отправки
+            // Отображаем информацию об использованной модели
+            if (data.model_used) {
+                const modelNameEl = document.getElementById('current-model-name');
+                if (modelNameEl) {
+                    modelNameEl.textContent = data.model_used;
+                    modelNameEl.title = 'Модель выбрана автоматически';
+                }
+            }
+            
             const messageCount = document.querySelectorAll('.user-message').length;
             
             input.value = '';
             attachedFile = null;
             document.getElementById('file-preview-container').style.display = 'none';
             
-            // Загружаем сообщения
             await loadMessages(currentSessionId);
             
-            // Если это было первое сообщение в сеансе (было 0 сообщений)
             if (messageCount === 0 && text) {
-                // Формируем заголовок из первого сообщения - 40 символов с многоточием
                 let newTitle = text.length > 40 ? text.substring(0, 40) + '...' : text;
                 updateSessionTitle(currentSessionId, newTitle);
                 
-                // Также обновляем счетчик сеансов в заголовке
                 const sessionsCount = document.querySelectorAll('.session-item').length;
                 document.getElementById('sessions-count').textContent = sessionsCount;
             }
@@ -422,8 +441,11 @@
                 document.getElementById('chat-messages').innerHTML = '';
                 updateMessageCount();
                 
-                // Обновляем заголовок сеанса на "Новый сеанс"
                 updateSessionTitle(currentSessionId, 'Новый сеанс');
+                
+                // Сбрасываем отображение модели
+                document.getElementById('current-model-name').textContent = 'авто';
+                document.getElementById('current-model-name').title = 'Модель выбирается автоматически';
             });
     }
 
@@ -435,26 +457,21 @@
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'ok') {
-                    // Удаляем элемент из DOM
                     const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
                     if (sessionItem) {
                         sessionItem.remove();
                     }
                     
-                    // Обновляем счетчик сеансов
                     const sessionsCount = document.querySelectorAll('.session-item').length;
                     document.getElementById('sessions-count').textContent = sessionsCount;
                     
-                    // Если удалили текущий сеанс, переключаемся на другой
                     if (sessionId === currentSessionId) {
                         const remainingSessions = document.querySelectorAll('.session-item');
                         if (remainingSessions.length > 0) {
-                            // Переключаемся на первый доступный сеанс
                             const firstSession = remainingSessions[0];
                             const firstSessionId = firstSession.dataset.sessionId;
                             switchSession(firstSessionId);
                         } else {
-                            // Если сеансов не осталось, создаем новый
                             createNewSession();
                         }
                     }
@@ -471,16 +488,24 @@
     function saveChatAsHTML() {
         const messages = document.getElementById('chat-messages').innerHTML;
         const title = document.querySelector('.session-item.active .session-title')?.textContent || 'Чат';
+        const modelName = document.getElementById('current-model-name').textContent;
         const now = new Date();
         const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
         
         const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><title>${escapeHtml(title)}</title>
-<style>body { font-family: sans-serif; } .user-message { background: #e6f2ff; } .bot-message { background: #f0f0f0; }</style>
+<style>
+    body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+    .user-message { background: #e6f2ff; padding: 10px; margin: 10px 0; border-radius: 8px; }
+    .bot-message { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 8px; }
+    .model-info { color: #666; font-size: 0.9em; margin-bottom: 20px; }
+    .attached-image { max-width: 100%; max-height: 300px; margin-top: 10px; }
+</style>
 </head>
 <body>
 <h1>${escapeHtml(title)}</h1>
+<div class="model-info">🤖 Модель: ${escapeHtml(modelName)}</div>
 <p>Сохранено: ${now.toLocaleString()}</p>
 <div class="messages">${messages}</div>
 </body>

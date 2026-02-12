@@ -248,13 +248,13 @@ footer p {
     justify-content: space-between;
     align-items: center;
     width: 100%;
-    min-width: 0; /* Важно для корректной работы text-overflow */
+    min-width: 0;
     gap: 8px;
 }
 
 .session-info {
     flex: 1;
-    min-width: 0; /* Позволяет блоку сжиматься */
+    min-width: 0;
     overflow: hidden;
     padding-right: 4px;
 }
@@ -288,7 +288,7 @@ footer p {
     transition: all 0.2s;
     margin-left: 4px;
     opacity: 0.6;
-    flex-shrink: 0; /* Запрещаем сжиматься */
+    flex-shrink: 0;
     width: 32px;
     height: 32px;
     display: flex;
@@ -358,6 +358,46 @@ footer p {
 .save-chat-button:hover,
 .clear-context-button:hover {
     background-color: #f0f0f0;
+}
+
+/* Информация о модели */
+.model-info {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.9rem;
+    color: #2c3e50;
+    background-color: #f8f9fa;
+    padding: 0.3rem 0.6rem;
+    border-radius: 20px;
+    border: 1px solid #e0e0e0;
+}
+
+#current-model-name {
+    font-weight: 500;
+    color: #2980b9;
+    max-width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Индикатор статуса Ollama */
+.ollama-status {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-left: 8px;
+}
+
+.ollama-status.online {
+    background-color: #2ecc71;
+    box-shadow: 0 0 5px #2ecc71;
+}
+
+.ollama-status.offline {
+    background-color: #e74c3c;
 }
 
 .chat-messages {
@@ -564,5 +604,24 @@ footer p {
     
     .session-date {
         white-space: normal;
+    }
+    
+    .chat-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .context-info-container {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .model-info {
+        max-width: 200px;
+    }
+    
+    #current-model-name {
+        max-width: 120px;
     }
 }

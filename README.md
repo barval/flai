@@ -22,10 +22,23 @@
      **.env** - системные параметры  
      **users.list** - список данных пользователей (e-mail, пароль)
 
-## Использование
-Необходимо заполнить параметры и запустить docker-compose файл:
+## Запуск с Ollama
+1. Убедитесь, что Ollama запущена и доступна:
+```bash
+curl http://localhost:11434/api/tags
 ```
+2. Скачайте необходимые модели:  
+```bash
+ollama pull qwen3-vl:8b-instruct-q4_K_M
+ollama pull gpt-oss-20b
+```
+3. Скопируйте .env.example в .env и отредактируйте при необходимости:
+```bash
+cp .env.example .env
+```
+4. Запустите приложение:
+```bash
 docker-compose up --build    
 ```
-После запуска сервиса можно зайти по адресу http://localhost:5000/
+5. Откройте http://localhost:5000 и войдите с учетными данными из users.list  
   

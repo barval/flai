@@ -69,6 +69,7 @@
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
     // Глобальные переменные
     let currentSessionId = "{{ current_session }}";
@@ -84,203 +85,13 @@
     }
 
     // -------------------------------
-    // Функция для безопасной очистки HTML с предварительным декодированием
+    // ПРОСТАЯ И НАДЕЖНАЯ функция для декодирования HTML-сущностей
     // -------------------------------
-    function sanitizeHtml(text) {
+    function decodeHtmlEntities(text) {
         if (!text) return '';
-        
-        // Декодируем HTML-сущности (превращаем &lt; обратно в <)
         const textarea = document.createElement('textarea');
         textarea.innerHTML = text;
-        let decodedText = textarea.value;
-        
-        // Если текст не содержит HTML-теги после декодирования, возвращаем как есть
-        if (!/<\/?[a-z][\s\S]*>/i.test(decodedText)) {
-            return decodedText;
-        }
-        
-        // Разрешаем только безопасные теги
-        const allowedTags = [
-            'a', 'b', 'strong', 'i', 'em', 'u', 's', 'strike', 'del',
-            'p', 'br', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-            'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'div', 'span',
-            'table', 'thead', 'tbody', 'tr', 'th', 'td',
-            'img', 'video', 'audio', 'source',
-            'font', 'center', 'marquee'
-        ];
-        
-        // Разрешенные атрибуты
-        const allowedAttributes = [
-            'href', 'src', 'alt', 'title', 'width', 'height', 'style',
-            'class', 'id', 'target', 'rel', 'controls', 'autoplay', 'loop',
-            'color', 'size', 'face', 'bgcolor', 'border', 'align',
-            'cellpadding', 'cellspacing'
-        ];
-        
-        try {
-            // Создаем временный DOM элемент
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = decodedText;
-            
-            // Функция для очистки узла
-            function cleanNode(node) {
-                if (node.nodeType === 1) { // Element node
-                    const tagName = node.tagName.toLowerCase();
-                    
-                    // Удаляем опасные теги
-                    if (tagName === 'script' || tagName === 'style' || tagName === 'link' || 
-                        tagName === 'meta' || tagName === 'head' || tagName === 'title' ||
-                        tagName === 'base' || tagName === 'object' || tagName === 'embed' ||
-                        tagName === 'applet' || tagName === 'frame' || tagName === 'frameset' ||
-                        tagName === 'noframes' || tagName === 'noscript' || tagName === 'iframe') {
-                        return null;
-                    }
-                    
-                    // Проверяем разрешенный тег
-                    if (!allowedTags.includes(tagName)) {
-                        // Если тег не разрешен, заменяем на span с классом
-                        const span = document.createElement('span');
-                        span.className = 'unknown-html-tag';
-                        span.setAttribute('data-original-tag', tagName);
-                        while (node.firstChild) {
-                            span.appendChild(node.firstChild);
-                        }
-                        return span;
-                    }
-                    
-                    // Очищаем атрибуты
-                    const attributes = Array.from(node.attributes);
-                    attributes.forEach(attr => {
-                        const attrName = attr.name.toLowerCase();
-                        const attrValue = attr.value;
-                        
-                        // Удаляем обработчики событий и опасные атрибуты
-                        if (attrName.startsWith('on') ||
-                            attrName === 'javascript' ||
-                            attrName.includes('script') ||
-                            attrName === 'data' ||
-                            attrName === 'srcset' ||
-                            attrName === 'srcdoc') {
-                            node.removeAttribute(attr.name);
-                            return;
-                        }
-                        
-                        // Проверяем разрешенные атрибуты
-                        if (!allowedAttributes.includes(attrName)) {
-                            node.removeAttribute(attr.name);
-                            return;
-                        }
-                        
-                        // Проверяем URL в href и src
-                        if (attrName === 'href' || attrName === 'src') {
-                            const url = attrValue.toLowerCase();
-                            // Проверяем на javascript: 
-                            if (url.startsWith('javascript:') || url.startsWith('vbscript:')) {
-                                node.removeAttribute(attr.name);
-                                return;
-                            }
-                            
-                            // Для src разрешаем только http/https и data:image,audio,video
-                            if (attrName === 'src') {
-                                if (!url.startsWith('http://') && 
-                                    !url.startsWith('https://') && 
-                                    !url.startsWith('//') &&
-                                    !url.startsWith('data:image/') &&
-                                    !url.startsWith('data:audio/') &&
-                                    !url.startsWith('data:video/')) {
-                                    node.removeAttribute(attr.name);
-                                    return;
-                                }
-                            }
-                            
-                            // Для href разрешаем http/https, mailto, tel
-                            if (attrName === 'href') {
-                                if (!url.startsWith('http://') && 
-                                    !url.startsWith('https://') && 
-                                    !url.startsWith('mailto:') &&
-                                    !url.startsWith('tel:') &&
-                                    !url.startsWith('#') &&
-                                    !url.startsWith('/')) {
-                                    node.removeAttribute(attr.name);
-                                    return;
-                                }
-                            }
-                        }
-                        
-                        // Очищаем стили от опасных свойств
-                        if (attrName === 'style') {
-                            try {
-                                const safeStyles = [];
-                                const styles = attrValue.split(';');
-                                styles.forEach(style => {
-                                    const [prop, val] = style.split(':').map(s => s.trim());
-                                    if (prop && val) {
-                                        const propLower = prop.toLowerCase();
-                                        const valLower = val.toLowerCase();
-                                        // Разрешаем только безопасные CSS свойства
-                                        if (!propLower.includes('expression') &&
-                                            !propLower.includes('script') &&
-                                            !propLower.includes('javascript') &&
-                                            !valLower.includes('expression') &&
-                                            !valLower.includes('script') &&
-                                            !valLower.includes('javascript') &&
-                                            !propLower.includes('behavior')) {
-                                            safeStyles.push(`${prop}: ${val}`);
-                                        }
-                                    }
-                                });
-                                if (safeStyles.length > 0) {
-                                    node.setAttribute('style', safeStyles.join('; '));
-                                } else {
-                                    node.removeAttribute('style');
-                                }
-                            } catch (e) {
-                                node.removeAttribute('style');
-                            }
-                        }
-                    });
-                    
-                    // Рекурсивно обрабатываем дочерние узлы
-                    const children = Array.from(node.childNodes);
-                    children.forEach(child => {
-                        const cleaned = cleanNode(child);
-                        if (cleaned !== child) {
-                            if (cleaned) {
-                                node.replaceChild(cleaned, child);
-                            } else {
-                                node.removeChild(child);
-                            }
-                        }
-                    });
-                    
-                    return node;
-                } else if (node.nodeType === 3) { // Text node
-                    return node;
-                } else if (node.nodeType === 8) { // Comment node
-                    return null;
-                }
-                return node;
-            }
-            
-            // Очищаем все дочерние узлы
-            const children = Array.from(tempDiv.childNodes);
-            children.forEach(child => {
-                const cleaned = cleanNode(child);
-                if (cleaned !== child) {
-                    if (cleaned) {
-                        tempDiv.replaceChild(cleaned, child);
-                    } else {
-                        tempDiv.removeChild(child);
-                    }
-                }
-            });
-            
-            return tempDiv.innerHTML;
-        } catch (e) {
-            console.error('Error sanitizing HTML:', e);
-            // В случае ошибки возвращаем экранированный текст
-            return escapeHtml(decodedText);
-        }
+        return textarea.value;
     }
 
     // -------------------------------
@@ -440,7 +251,7 @@
     }
 
     // -------------------------------
-    // Отображение одного сообщения (С ПОЛНОЙ ДАТОЙ, МОДЕЛЬЮ, MARKDOWN И HTML)
+    // Отображение одного сообщения (С ПОЛНОЙ ДАТОЙ, МОДЕЛЬЮ И MARKDOWN)
     // -------------------------------
     function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName) {
         const container = document.getElementById('chat-messages');
@@ -464,7 +275,7 @@
         
         let html = `<small>${timeDisplay}</small>`;
         
-        // Обработка текста с Markdown и HTML
+        // Обработка текста с Markdown
         if (typeof content === 'string') {
             if (content.startsWith('[')) {
                 try {
@@ -476,23 +287,19 @@
                         }
                     });
                     if (textContent) {
-                        // Для сообщений пользователя - экранируем HTML
+                        // Для всех сообщений - просто экранируем HTML и рендерим Markdown
                         const escapedText = escapeHtml(textContent.trim());
                         html += `<div class="message-content">${marked.parse(escapedText)}</div>`;
                     }
                 } catch (e) {
-                    // Если не JSON
+                    // Если не JSON - обрабатываем как обычный текст
                     if (role === 'assistant') {
-                        // Для ассистента - декодируем HTML-сущности, очищаем и рендерим Markdown
-                        const sanitizedContent = sanitizeHtml(content);
-                        html += `<div class="message-content">${marked.parse(sanitizedContent, {
-                            headerIds: false,
-                            mangle: false,
-                            smartLists: true,
-                            smartypants: true
-                        })}</div>`;
+                        // ДЛЯ АССИСТЕНТА: декодируем HTML-сущности, НО НЕ рендерим как HTML
+                        // Просто показываем декодированный текст как обычный текст с Markdown
+                        const decodedText = decodeHtmlEntities(content);
+                        const escapedText = escapeHtml(decodedText);
+                        html += `<div class="message-content">${marked.parse(escapedText)}</div>`;
                     } else {
-                        // Для пользователя - экранируем
                         const escapedText = escapeHtml(content);
                         html += `<div class="message-content">${marked.parse(escapedText)}</div>`;
                     }
@@ -500,16 +307,12 @@
             } else {
                 // Для всех остальных сообщений
                 if (role === 'assistant') {
-                    // Для ассистента - декодируем HTML-сущности, очищаем и рендерим Markdown
-                    const sanitizedContent = sanitizeHtml(content);
-                    html += `<div class="message-content">${marked.parse(sanitizedContent, {
-                        headerIds: false,
-                        mangle: false,
-                        smartLists: true,
-                        smartypants: true
-                    })}</div>`;
+                    // ДЛЯ АССИСТЕНТА: декодируем HTML-сущности, НО НЕ рендерим как HTML
+                    // Просто показываем декодированный текст как обычный текст с Markdown
+                    const decodedText = decodeHtmlEntities(content);
+                    const escapedText = escapeHtml(decodedText);
+                    html += `<div class="message-content">${marked.parse(escapedText)}</div>`;
                 } else {
-                    // Для пользователя - экранируем
                     const escapedText = escapeHtml(content);
                     html += `<div class="message-content">${marked.parse(escapedText)}</div>`;
                 }
@@ -855,7 +658,6 @@
     body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
     .user-message { background: #e6f2ff; padding: 10px; margin: 10px 0; border-radius: 8px; }
     .bot-message { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 8px; }
-    .assistant-message { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 8px; }
     .attached-image { max-width: 100%; max-height: 300px; margin-top: 10px; }
     .response-time { color: #27ae60; font-weight: 600; background-color: #e8f5e9; padding: 2px 8px; border-radius: 12px; display: inline-block; font-size: 0.75rem; }
     .message-time { color: #7f8c8d; font-size: 0.75rem; display: block; margin-bottom: 6px; }
@@ -864,12 +666,6 @@
     .message-content code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; }
     .message-content strong { font-weight: bold; }
     .message-content em { font-style: italic; }
-    .message-content marquee { padding: 8px; background: #f0f7ff; border-radius: 4px; }
-    .message-content font { display: inline; }
-    .message-content center { display: block; text-align: center; }
-    .unknown-html-tag { display: inline; color: #7f8c8d; font-style: italic; }
-    .unknown-html-tag:before { content: "<" attr(data-original-tag) ">"; }
-    .unknown-html-tag:after { content: "</" attr(data-original-tag) ">"; }
 </style>
 </head>
 <body>

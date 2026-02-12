@@ -9,6 +9,7 @@ import mimetypes
 import uuid
 import requests
 from pathlib import Path
+import time
 
 load_dotenv()
 
@@ -521,7 +522,7 @@ def api_ollama_status():
     })
 
 # -------------------------------
-# Отправка сообщения
+# Отправка сообщения (С ВРЕМЕНЕМ ОТВЕТА)
 # -------------------------------
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -567,6 +568,17 @@ def send_message():
     save_message(session_id, 'user', json.dumps(user_content) if user_content else message_text,
                  file_data, file_type, file_name)
     
+    # Получаем время отправки сообщения пользователя
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute('''
+            SELECT timestamp FROM messages 
+            WHERE session_id = ? AND role = 'user' 
+            ORDER BY timestamp DESC LIMIT 1
+        ''', (session_id,))
+        row = c.fetchone()
+        user_timestamp = row[0] if row else None
+    
     # Обновляем заголовок для первого сообщения
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
@@ -584,16 +596,36 @@ def send_message():
     
     app.logger.info(f"Session {session_id}: выбрана модель {selected_model}")
     
+    # ЗАМЕР ВРЕМЕНИ ВЫПОЛНЕНИЯ
+    start_time = time.time()
+    
     # Запрос к Ollama
     bot_reply = call_ollama_chat(history, model=selected_model)
+    
+    end_time = time.time()
+    response_time = round(end_time - start_time, 1)  # Округляем до 1 знака
     
     # Сохраняем ответ
     save_message(session_id, 'assistant', bot_reply)
     
+    # Получаем timestamp сохраненного ответа
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute('''
+            SELECT timestamp FROM messages 
+            WHERE session_id = ? AND role = 'assistant' 
+            ORDER BY timestamp DESC LIMIT 1
+        ''', (session_id,))
+        row = c.fetchone()
+        assistant_timestamp = row[0] if row else None
+    
     return jsonify({
         'response': bot_reply,
         'session_id': session_id,
-        'model_used': selected_model
+        'model_used': selected_model,
+        'response_time': response_time,
+        'user_timestamp': user_timestamp,
+        'assistant_timestamp': assistant_timestamp
     })
 
 # -------------------------------

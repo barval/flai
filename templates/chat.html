@@ -657,6 +657,7 @@
 
     // -------------------------------
     // ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ ФУНКЦИЯ СОХРАНЕНИЯ ЧАТА
+    // АБСОЛЮТНОЕ СООТВЕТСТВИЕ ОРИГИНАЛЬНОМУ САЙТУ
     // -------------------------------
     function saveChatAsHTML() {
         const title = document.querySelector('.session-item.active .session-title')?.textContent || 'Чат';
@@ -704,7 +705,7 @@
             });
         });
         
-        // Формируем HTML страницы
+        // Формируем HTML страницы с ПОЛНЫМ КОПИРОВАНИЕМ СТИЛЕЙ САЙТА
         const html = `<!DOCTYPE html>
     <html lang="ru">
     <head>
@@ -712,25 +713,69 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>${escapeHtml(title)} - Сохраненный чат</title>
         <style>
+            /* ========== ПОЛНАЯ КОПИЯ СТИЛЕЙ ИЗ STATIC/STYLE.CSS ========== */
+            
+            /* Основные стили */
             * {
                 margin: 0;
                 padding: 0;
                 box-sizing: border-box;
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             }
-            
+
             body {
-                width: 100%;
-                margin: 0;
-                padding: 20px 0;
-                background-color: #f5f5f5;
                 display: flex;
                 flex-direction: column;
-                align-items: center;
+                min-height: 100vh;
+                margin: 0;
+                padding: 20px;
+                background-color: #f5f5f5;
             }
-            
+
+            main {
+                flex: 1;
+            }
+
+            /* Шапка и подвал - ТОЧНО КАК НА САЙТЕ */
+            header {
+                background-color: #2c3e50;
+                color: white;
+                padding: 0.5rem 1rem;
+                text-align: center;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                height: 50px;
+                display: flex;
+                align-items: center;
+                border-radius: 8px 8px 0 0;
+            }
+
+            header h1 {
+                font-size: 1.3rem;
+                margin: 0;
+                margin-right: auto;
+            }
+
+            footer {
+                background-color: #2c3e50;
+                color: white;
+                padding: 0.5rem 1rem;
+                text-align: center;
+                height: 50px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                margin-top: 20px;
+                border-radius: 0 0 8px 8px;
+            }
+
+            footer p {
+                margin: 0;
+                padding: 0;
+            }
+
+            /* Контейнер чата */
             .chat-wrapper {
-                width: 75%;
+                width: 100%;
                 max-width: 1200px;
                 margin: 0 auto;
                 background-color: white;
@@ -738,39 +783,39 @@
                 box-shadow: 0 2px 10px rgba(0,0,0,0.1);
                 padding: 25px;
             }
-            
+
             .chat-header {
                 margin-bottom: 25px;
                 padding-bottom: 15px;
                 border-bottom: 2px solid #3498db;
             }
-            
+
             .chat-header h1 {
                 color: #2c3e50;
                 font-size: 1.8em;
                 margin-bottom: 10px;
             }
-            
+
             .chat-header p {
                 color: #7f8c8d;
                 font-size: 0.9em;
                 margin: 5px 0;
             }
-            
+
             .chat-messages {
                 display: flex;
                 flex-direction: column;
                 gap: 20px;
             }
-            
-            /* СТИЛИ СООБЩЕНИЙ - ПОЛНОСТЬЮ КАК НА САЙТЕ */
+
+            /* СТИЛИ СООБЩЕНИЙ - ТОЧНО КАК НА САЙТЕ */
             .user-message {
                 background-color: #e6f2ff;
                 padding: 15px 20px;
                 border-radius: 12px;
                 word-wrap: break-word;
             }
-            
+
             .assistant-message,
             .bot-message {
                 background-color: #f8f9fa;
@@ -778,136 +823,198 @@
                 border-radius: 12px;
                 word-wrap: break-word;
             }
-            
-            /* СТИЛИ ДЛЯ ВРЕМЕНИ */
+
+            /* СТИЛИ ДЛЯ ВРЕМЕНИ - ТОЧНО КАК НА САЙТЕ (ВСЕ В ОДНУ СТРОКУ) */
             .message-time {
-                display: block;
-                color: #7f8c8d;
-                font-size: 0.75rem;
-                font-family: monospace;
-                margin-bottom: 10px;
-                padding-bottom: 8px;
-                border-bottom: 1px dashed #e0e0e0;
+                display: inline !important;
+                color: #7f8c8d !important;
+                font-size: 0.75rem !important;
+                font-family: monospace !important;
+                letter-spacing: 0.5px !important;
+                font-weight: normal !important;
+                background: none !important;
+                padding: 0 !important;
+                margin-right: 4px !important;
+                margin-bottom: 6px !important;
+                border: none !important;
+                text-decoration: none !important;
+                line-height: 1.4 !important;
             }
-            
-            /* СТИЛИ ДЛЯ ТАБЛИЦ - ТОЧНО КАК НА САЙТЕ */
-            .message-content table {
-                border-collapse: collapse;
-                width: 100%;
-                margin: 15px 0;
-                background: white;
-                border: 1px solid #e0e0e0;
-                border-radius: 8px;
-                overflow: hidden;
+
+            /* Информация о модели - ТОЖЕ В СТРОКУ */
+            .model-response-info {
+                display: inline !important;
+                color: #7f8c8d !important;
+                font-family: monospace !important;
+                font-size: 0.75rem !important;
+                letter-spacing: 0.5px !important;
+                font-weight: normal !important;
+                background: none !important;
+                padding: 0 !important;
+                border-radius: 0 !important;
+                margin-left: 4px !important;
+                white-space: nowrap !important;
             }
-            
-            .message-content th {
-                background-color: #3498db !important;
-                color: white !important;
-                font-weight: 600 !important;
-                padding: 12px 15px !important;
-                border: 1px solid #2980b9 !important;
-                text-align: center !important;  /* ВЫРАВНИВАНИЕ ПО ЦЕНТРУ */
-            }
-            
-            .message-content td {
-                padding: 10px 15px !important;
-                border: 1px solid #e0e0e0 !important;
-                text-align: left !important;
-            }
-            
-            .message-content tr:nth-child(even) {
-                background-color: #f8f9fa !important;
-            }
-            
-            .message-content tr:hover {
-                background-color: #e8f4fc !important;
-            }
-            
-            /* СТИЛИ ДЛЯ MARKDOWN */
+
+            /* ========== СТИЛИ ДЛЯ MARKDOWN - ТОЧНО КАК НА САЙТЕ ========== */
             .message-content {
                 line-height: 1.6;
+                word-wrap: break-word;
                 color: #2c3e50;
             }
-            
+
             .message-content h1,
             .message-content h2,
             .message-content h3,
             .message-content h4,
             .message-content h5,
             .message-content h6 {
-                margin-top: 1.2em;
-                margin-bottom: 0.6em;
+                margin-top: 1.5em;
+                margin-bottom: 0.5em;
                 font-weight: 600;
                 color: #2c3e50;
             }
-            
-            .message-content h1 { font-size: 1.8em; }
-            .message-content h2 { font-size: 1.5em; }
+
+            .message-content h1 { 
+                font-size: 1.8em; 
+                border-bottom: 1px solid #eaecef; 
+                padding-bottom: 0.3em; 
+            }
+
+            .message-content h2 { 
+                font-size: 1.5em; 
+                border-bottom: 1px solid #eaecef; 
+                padding-bottom: 0.3em; 
+            }
+
             .message-content h3 { font-size: 1.25em; }
             .message-content h4 { font-size: 1.1em; }
-            
+            .message-content h5 { font-size: 1em; }
+            .message-content h6 { font-size: 0.9em; color: #6a737d; }
+
             .message-content p {
                 margin-bottom: 1em;
             }
-            
+
             .message-content strong {
                 font-weight: 700;
                 color: #2c3e50;
             }
-            
+
             .message-content em {
                 font-style: italic;
+                color: #2c3e50;
             }
-            
-            .message-content code {
-                background-color: #f1f1f1;
-                padding: 2px 6px;
-                border-radius: 4px;
-                font-family: monospace;
-                font-size: 0.9em;
-                color: #e74c3c;
-            }
-            
-            .message-content pre {
-                background-color: #2c3e50;
-                color: #ecf0f1;
-                padding: 15px;
-                border-radius: 8px;
-                overflow-x: auto;
-                margin: 1em 0;
-            }
-            
-            .message-content pre code {
-                background-color: transparent;
-                color: #ecf0f1;
-                padding: 0;
-            }
-            
+
             .message-content blockquote {
-                border-left: 4px solid #3498db;
-                padding: 10px 20px;
-                margin: 1em 0;
+                border-left: 4px solid #dfe2e5;
+                padding: 0.5em 1em;
+                color: #6a737d;
                 background-color: #f8f9fa;
-                color: #5d6d7e;
+                margin: 1em 0;
+                border-radius: 0 4px 4px 0;
             }
-            
+
             .message-content ul,
             .message-content ol {
                 margin-left: 1.5em;
                 margin-bottom: 1em;
             }
-            
+
+            .message-content li {
+                margin-bottom: 0.25em;
+            }
+
+            .message-content li > ul,
+            .message-content li > ol {
+                margin-top: 0.25em;
+                margin-bottom: 0.25em;
+            }
+
+            .message-content code {
+                padding: 0.2em 0.4em;
+                margin: 0;
+                font-size: 85%;
+                background-color: rgba(27,31,35,0.05);
+                border-radius: 3px;
+                font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+                color: #e74c3c;
+            }
+
+            .message-content pre {
+                background-color: #f6f8fa;
+                border-radius: 6px;
+                padding: 1em;
+                overflow: auto;
+                line-height: 1.45;
+                margin-bottom: 1em;
+                border: 1px solid #e1e4e8;
+            }
+
+            .message-content pre code {
+                background-color: transparent;
+                padding: 0;
+                margin: 0;
+                font-size: 100%;
+                word-break: normal;
+                white-space: pre;
+                border: 0;
+                color: #2c3e50;
+            }
+
+            .message-content hr {
+                height: 0.25em;
+                padding: 0;
+                margin: 24px 0;
+                background-color: #e1e4e8;
+                border: 0;
+            }
+
+            /* ========== СТИЛИ ДЛЯ ТАБЛИЦ - ТОЧНО КАК НА САЙТЕ ========== */
+            .message-content table {
+                border-collapse: collapse;
+                width: 100%;
+                margin-bottom: 1em;
+            }
+
+            .message-content table th,
+            .message-content table td {
+                padding: 6px 13px;
+                border: 1px solid #dfe2e5;
+            }
+
+            .message-content table th {
+                font-weight: 600;
+                background-color: #3498db !important;  /* СИНИЙ ФОН, НЕ КРАСНЫЙ */
+                color: white !important;               /* БЕЛЫЙ ТЕКСТ */
+                text-align: center !important;
+            }
+
+            .message-content table tr {
+                background-color: #fff;
+                border-top: 1px solid #c6cbd1;
+            }
+
+            .message-content table tr:nth-child(2n) {
+                background-color: #f6f8fa;
+            }
+
             .message-content a {
-                color: #3498db;
+                color: #0366d6;
                 text-decoration: none;
-                border-bottom: 1px dashed #3498db;
             }
-            
+
             .message-content a:hover {
-                border-bottom: 1px solid #3498db;
+                text-decoration: underline;
             }
-            
+
+            .message-content img {
+                max-width: 100%;
+                box-sizing: content-box;
+                border-radius: 4px;
+            }
+
+            /* Стили для вложений */
             .attached-image {
                 max-width: 100%;
                 max-height: 400px;
@@ -915,7 +1022,7 @@
                 margin-top: 15px;
                 box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             }
-            
+
             .attached-file {
                 display: inline-flex;
                 align-items: center;
@@ -926,30 +1033,49 @@
                 border: 1px solid #e0e0e0;
                 margin-top: 10px;
             }
-            
+
             .attached-file a {
                 color: #3498db;
                 text-decoration: none;
                 font-weight: 500;
             }
-            
+
+            .attached-file a:hover {
+                text-decoration: underline;
+            }
+
             audio {
                 width: 100%;
                 margin-top: 15px;
             }
-            
-            .chat-footer {
-                margin-top: 30px;
-                padding-top: 20px;
-                text-align: center;
-                color: #7f8c8d;
-                border-top: 1px solid #e0e0e0;
-                font-size: 0.85em;
+
+            /* Скроллбар */
+            ::-webkit-scrollbar {
+                width: 8px;
             }
-            
+
+            ::-webkit-scrollbar-track {
+                background: #f1f1f1;
+                border-radius: 4px;
+            }
+
+            ::-webkit-scrollbar-thumb {
+                background: #c1c1c1;
+                border-radius: 4px;
+            }
+
+            ::-webkit-scrollbar-thumb:hover {
+                background: #a8a8a8;
+            }
+
+            /* Адаптивность */
             @media (max-width: 768px) {
+                body {
+                    padding: 10px;
+                }
+                
                 .chat-wrapper {
-                    width: 90%;
+                    width: 100%;
                     padding: 15px;
                 }
                 
@@ -961,45 +1087,55 @@
                 .message-content th {
                     white-space: nowrap;
                 }
+                
+                .message-time,
+                .model-response-info {
+                    white-space: nowrap !important;
+                }
             }
         </style>
     </head>
     <body>
-        <div class="chat-wrapper">
-            <div class="chat-header">
-                <h1>${escapeHtml(title)}</h1>
-                <p>📅 Сохранено: ${now.toLocaleString('ru-RU', { 
-                    day: '2-digit', 
-                    month: '2-digit', 
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit'
-                })}</p>
-                <p>💬 Всего сообщений: ${messages.length}</p>
-            </div>
-            
-            <div class="chat-messages">
-                ${messages.map(msg => {
-                    const roleClass = msg.role === 'user' ? 'user-message' : 'assistant-message';
-                    const roleName = msg.role === 'user' ? 'Вы' : 'ИИ Ассистент';
-                    
-                    return `
-                    <div class="${roleClass}">
-                        <div class="message-time">${msg.timeText}</div>
-                        <div class="message-content">
-                            ${msg.content}
+        <header>
+            <h1>ИИ Локальный</h1>
+        </header>
+        
+        <main>
+            <div class="chat-wrapper">
+                <div class="chat-header">
+                    <h1>${escapeHtml(title)}</h1>
+                    <p>📅 Сохранено: ${now.toLocaleString('ru-RU', { 
+                        day: '2-digit', 
+                        month: '2-digit', 
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                    })}</p>
+                    <p>💬 Всего сообщений: ${messages.length}</p>
+                </div>
+                
+                <div class="chat-messages">
+                    ${messages.map(msg => {
+                        const roleClass = msg.role === 'user' ? 'user-message' : 'assistant-message';
+                        
+                        return `
+                        <div class="${roleClass}">
+                            <div class="message-time">${msg.timeText}</div>
+                            <div class="message-content">
+                                ${msg.content}
+                            </div>
+                            ${msg.fileHtml}
                         </div>
-                        ${msg.fileHtml}
-                    </div>
-                    `;
-                }).join('')}
+                        `;
+                    }).join('')}
+                </div>
             </div>
-            
-            <div class="chat-footer">
-                <p>Сгенерировано с помощью ИИ Локальный • ${new Date().getFullYear()}</p>
-            </div>
-        </div>
+        </main>
+        
+        <footer>
+            <p>ИИ Локальный v1.0 (с) 2026 Барсуков Валерий</p>
+        </footer>
     </body>
     </html>`;
         

@@ -847,6 +847,65 @@ footer p {
         max-width: 120px;
     }
     
+    /* Безопасное отображение HTML-вставок */
+    .message-content iframe {
+        max-width: 100%;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background-color: #f9f9f9;
+        margin: 10px 0;
+    }
+
+    .message-content marquee {
+        padding: 8px;
+        background-color: #f0f7ff;
+        border-radius: 4px;
+        border: 1px solid #b8d4f0;
+        color: #2c3e50;
+    }
+
+    .message-content font {
+        display: inline;
+    }
+
+    .message-content video,
+    .message-content audio {
+        max-width: 100%;
+        margin: 10px 0;
+        border-radius: 4px;
+    }
+
+    .message-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 10px 0;
+    }
+
+    .message-content td,
+    .message-content th {
+        border: 1px solid #ddd;
+        padding: 8px;
+    }
+
+    .message-content th {
+        background-color: #f2f2f2;
+        font-weight: bold;
+    }
+
+    .message-content img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 4px;
+    }
+
+    /* Дополнительная защита от XSS */
+    .message-content script,
+    .message-content style,
+    .message-content link,
+    .message-content meta {
+        display: none !important;
+    }
+
     /* НА МОБИЛЬНЫХ - ТОЖЕ ВСЕ В ОДНУ СТРОКУ */
     .user-message small,
     .bot-message small,

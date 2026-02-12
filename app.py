@@ -225,13 +225,14 @@ def analyze_messages_for_content(messages):
     return has_images, has_audio, has_documents
 
 # -------------------------------
-# Инициализация БД
+# Инициализация и миграция БД
 # -------------------------------
 def init_db():
-    """Инициализация базы данных"""
+    """Инициализация базы данных и миграция схемы"""
     try:
         with sqlite3.connect(CHAT_DB_PATH) as conn:
             c = conn.cursor()
+            
             # Сессии (профили пользователей)
             c.execute('''
                 CREATE TABLE IF NOT EXISTS user_sessions (
@@ -239,17 +240,18 @@ def init_db():
                     last_session_id TEXT
                 )
             ''')
-            # Сеансы чатов
+            
+            # Сеансы чатов - создаем таблицу без model_name
             c.execute('''
                 CREATE TABLE IF NOT EXISTS chat_sessions (
                     id TEXT PRIMARY KEY,
                     user_id TEXT,
                     title TEXT,
-                    model_name TEXT DEFAULT 'auto',
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+            
             # Сообщения
             c.execute('''
                 CREATE TABLE IF NOT EXISTS messages (
@@ -263,6 +265,17 @@ def init_db():
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+            
+            # Проверяем наличие колонки model_name в chat_sessions
+            c.execute("PRAGMA table_info(chat_sessions)")
+            columns = [column[1] for column in c.fetchall()]
+            
+            if 'model_name' not in columns:
+                app.logger.info("Добавляем колонку model_name в таблицу chat_sessions")
+                c.execute('ALTER TABLE chat_sessions ADD COLUMN model_name TEXT DEFAULT "auto"')
+                conn.commit()
+                app.logger.info("Колонка model_name успешно добавлена")
+            
             conn.commit()
             app.logger.info(f"Database initialized successfully at {CHAT_DB_PATH}")
     except Exception as e:
@@ -469,12 +482,16 @@ def api_get_session_model(session_id):
     
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
-        c.execute('SELECT model_name FROM chat_sessions WHERE id = ?', (session_id,))
-        row = c.fetchone()
-        
-        if row:
-            return jsonify({'model_name': row[0]})
-        else:
+        try:
+            c.execute('SELECT model_name FROM chat_sessions WHERE id = ?', (session_id,))
+            row = c.fetchone()
+            
+            if row:
+                return jsonify({'model_name': row[0]})
+            else:
+                return jsonify({'model_name': 'auto'})
+        except sqlite3.OperationalError:
+            # Если колонка все еще не существует, возвращаем 'auto'
             return jsonify({'model_name': 'auto'})
 
 @app.route('/api/sessions/new', methods=['POST'])

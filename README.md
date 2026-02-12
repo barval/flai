@@ -1,4 +1,4 @@
-# BarvalAIMultiChatSite
+# BarvalAILocalSite
 
 ИИ Локальный - сайт для работы с локальным ИИ    
 

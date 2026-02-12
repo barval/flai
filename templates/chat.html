@@ -85,7 +85,7 @@
     }
 
     // -------------------------------
-    // ПРОСТАЯ И НАДЕЖНАЯ функция для декодирования HTML-сущностей
+    // Декодирование HTML-сущностей
     // -------------------------------
     function decodeHtmlEntities(text) {
         if (!text) return '';
@@ -177,7 +177,7 @@
     });
 
     // -------------------------------
-    // Загрузка сообщений сеанса (С ПОЛНОЙ ДАТОЙ, МОДЕЛЬЮ И MARKDOWN)
+    // Загрузка сообщений сеанса
     // -------------------------------
     function loadMessages(sessionId) {
         return fetch(`/api/sessions/${sessionId}/messages`)
@@ -228,7 +228,7 @@
                             msg.file_name, 
                             msg.timestamp,
                             responseTime,
-                            modelName  // Передаем полное название модели
+                            modelName
                         );
                         lastUserMessage = null;
                     } else {
@@ -240,7 +240,7 @@
                             msg.file_name, 
                             msg.timestamp,
                             null,
-                            msg.model_name || defaultModelName  // Полное название модели
+                            msg.model_name || defaultModelName
                         );
                     }
                 });
@@ -251,7 +251,7 @@
     }
 
     // -------------------------------
-    // Отображение одного сообщения (С ПОЛНОЙ ДАТОЙ, МОДЕЛЬЮ И MARKDOWN)
+    // Отображение одного сообщения
     // -------------------------------
     function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName) {
         const container = document.getElementById('chat-messages');
@@ -268,14 +268,13 @@
         
         // Добавляем время ответа и ПОЛНОЕ название модели для сообщений ассистента
         if (role === 'assistant' && responseTime) {
-            // Используем полное название модели без обрезки
             let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
             timeDisplay += ` <span class="model-response-info">(ответ: ${fullModelName} за ${responseTime} сек)</span>`;
         }
         
         let html = `<small>${timeDisplay}</small>`;
         
-        // Обработка текста с Markdown
+        // Обработка текста
         if (typeof content === 'string') {
             if (content.startsWith('[')) {
                 try {
@@ -287,18 +286,18 @@
                         }
                     });
                     if (textContent) {
-                        // Для всех сообщений - просто экранируем HTML и рендерим Markdown
+                        // Для пользователя - экранируем HTML
                         const escapedText = escapeHtml(textContent.trim());
                         html += `<div class="message-content">${marked.parse(escapedText)}</div>`;
                     }
                 } catch (e) {
-                    // Если не JSON - обрабатываем как обычный текст
+                    // Если не JSON
                     if (role === 'assistant') {
-                        // ДЛЯ АССИСТЕНТА: декодируем HTML-сущности, НО НЕ рендерим как HTML
-                        // Просто показываем декодированный текст как обычный текст с Markdown
+                        // ДЛЯ АССИСТЕНТА: Просто декодируем HTML-сущности и НЕ экранируем
+                        // Это позволит отображать HTML-код как текст с правильными символами
                         const decodedText = decodeHtmlEntities(content);
-                        const escapedText = escapeHtml(decodedText);
-                        html += `<div class="message-content">${marked.parse(escapedText)}</div>`;
+                        // НЕ используем escapeHtml! Передаем как есть в marked
+                        html += `<div class="message-content">${marked.parse(decodedText)}</div>`;
                     } else {
                         const escapedText = escapeHtml(content);
                         html += `<div class="message-content">${marked.parse(escapedText)}</div>`;
@@ -307,11 +306,9 @@
             } else {
                 // Для всех остальных сообщений
                 if (role === 'assistant') {
-                    // ДЛЯ АССИСТЕНТА: декодируем HTML-сущности, НО НЕ рендерим как HTML
-                    // Просто показываем декодированный текст как обычный текст с Markdown
+                    // ДЛЯ АССИСТЕНТА: Просто декодируем HTML-сущности и НЕ экранируем
                     const decodedText = decodeHtmlEntities(content);
-                    const escapedText = escapeHtml(decodedText);
-                    html += `<div class="message-content">${marked.parse(escapedText)}</div>`;
+                    html += `<div class="message-content">${marked.parse(decodedText)}</div>`;
                 } else {
                     const escapedText = escapeHtml(content);
                     html += `<div class="message-content">${marked.parse(escapedText)}</div>`;
@@ -422,7 +419,6 @@
                 document.getElementById('chat-messages').innerHTML = '';
                 updateMessageCount();
                 
-                // Обновляем модель по умолчанию для нового сеанса
                 defaultModelName = 'qwen3-vl:8b-instruct';
                 
                 const sessionsCount = document.querySelectorAll('.session-item').length;
@@ -454,7 +450,7 @@
     }
 
     // -------------------------------
-    // Отправка сообщения (С ПОЛНОЙ ДАТОЙ, МОДЕЛЬЮ И MARKDOWN)
+    // Отправка сообщения
     // -------------------------------
     async function sendMessage() {
         const input = document.getElementById('message-input');
@@ -467,11 +463,9 @@
         if (isSending) return;
         isSending = true;
         
-        // --- НЕМЕДЛЕННОЕ ОТОБРАЖЕНИЕ СООБЩЕНИЯ ПОЛЬЗОВАТЕЛЯ ---
         const now = new Date();
         const timestamp = now.toISOString();
         
-        // Формируем контент для отображения и для сохранения
         const userContent = [];
         if (text) {
             userContent.push({"type": "text", "text": text});
@@ -482,8 +476,6 @@
         let fileName = null;
         let fileReaderPromise = null;
         
-        // --- НЕМЕДЛЕННОЕ ОБНОВЛЕНИЕ ЗАГОЛОВКА СЕАНСА ---
-        // Проверяем, нужно ли обновить заголовок сеанса (первое сообщение в сеансе)
         const messageCount = document.querySelectorAll('.user-message').length;
         if (messageCount === 0 && text) {
             let newTitle = text.length > 40 ? text.substring(0, 40) + '...' : text;
@@ -493,18 +485,15 @@
             document.getElementById('sessions-count').textContent = sessionsCount;
         }
         
-        // Функция для отображения сообщения после получения fileData (если есть файл)
         function displayUserMessageWithFile(fileDataParam, fileTypeParam, fileNameParam) {
             displayMessage('user', JSON.stringify(userContent), fileDataParam, fileTypeParam, fileNameParam, timestamp);
             updateMessageCount();
         }
         
-        // Обрабатываем файл, если он есть
         if (attachedFile) {
             fileType = attachedFile.type;
             fileName = attachedFile.name;
             
-            // Создаём промис для чтения файла
             fileReaderPromise = new Promise((resolve) => {
                 const reader = new FileReader();
                 reader.onload = function(e) {
@@ -515,13 +504,11 @@
                 reader.readAsDataURL(attachedFile);
             });
             
-            // Ждём чтения файла и сразу отображаем сообщение
             const fileInfo = await fileReaderPromise;
             fileData = fileInfo.fileData;
             fileType = fileInfo.fileType;
             fileName = fileInfo.fileName;
             
-            // Добавляем файл в userContent для отправки на сервер
             userContent.push({
                 "type": "file", 
                 "file_data": fileData, 
@@ -529,24 +516,19 @@
                 "file_name": fileName
             });
             
-            // Отображаем сообщение с файлом
             displayUserMessageWithFile(fileData, fileType, fileName);
         } else {
-            // Только текст - отображаем сразу
             displayUserMessageWithFile(null, null, null);
         }
         
-        // Сохраняем данные для отправки на сервер
         const tempAttachedFile = attachedFile;
         const tempText = text;
         
-        // Очищаем поле ввода и превью
         input.value = '';
         attachedFile = null;
         document.getElementById('file-preview-container').style.display = 'none';
         document.getElementById('file-input').value = '';
         
-        // Подготавливаем FormData для отправки на сервер
         const formData = new FormData();
         formData.append('message', tempText);
         if (tempAttachedFile) {
@@ -560,7 +542,6 @@
             });
             const data = await response.json();
             
-            // Получаем ответ и сразу отображаем с информацией о модели
             if (data.response) {
                 const assistantTimestamp = data.assistant_timestamp || new Date().toISOString();
                 const modelName = data.model_used || defaultModelName || 'qwen3-vl:8b-instruct';
@@ -578,7 +559,6 @@
                 updateMessageCount();
             }
             
-            // Дополнительно загружаем все сообщения для обновления списка и синхронизации
             await loadMessages(currentSessionId);
             
         } catch (err) {
@@ -601,10 +581,7 @@
             .then(() => {
                 document.getElementById('chat-messages').innerHTML = '';
                 updateMessageCount();
-                
                 updateSessionTitle(currentSessionId, 'Новый сеанс');
-                
-                // Сбрасываем модель по умолчанию
                 defaultModelName = 'qwen3-vl:8b-instruct';
             });
     }
@@ -658,6 +635,7 @@
     body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
     .user-message { background: #e6f2ff; padding: 10px; margin: 10px 0; border-radius: 8px; }
     .bot-message { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 8px; }
+    .assistant-message { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 8px; }
     .attached-image { max-width: 100%; max-height: 300px; margin-top: 10px; }
     .response-time { color: #27ae60; font-weight: 600; background-color: #e8f5e9; padding: 2px 8px; border-radius: 12px; display: inline-block; font-size: 0.75rem; }
     .message-time { color: #7f8c8d; font-size: 0.75rem; display: block; margin-bottom: 6px; }
@@ -692,16 +670,13 @@
         document.getElementById('context-info').textContent = `Сообщений: ${count}`;
     }
 
-    // ФОРМАТИРОВАНИЕ ДАТЫ И ВРЕМЕНИ (ПОЛНЫЙ ФОРМАТ)
     function formatFullDateTime(ts) {
         if (!ts) return '';
         try {
             const date = new Date(ts);
             if (isNaN(date.getTime())) {
-                // Если не удалось распарсить, пробуем старый формат
                 return ts.replace('T', ' ').slice(0, 19);
             }
-            // Формат: ГГГГ-ММ-ДД ЧЧ:ММ:СС
             const year = date.getFullYear();
             const month = (date.getMonth() + 1).toString().padStart(2, '0');
             const day = date.getDate().toString().padStart(2, '0');

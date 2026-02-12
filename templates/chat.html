@@ -213,7 +213,7 @@
     }
 
     // -------------------------------
-    // Отображение одного сообщения
+    // Отображение одного сообщения (исправленная версия)
     // -------------------------------
     function displayMessage(role, content, fileData, fileType, fileName, timestamp) {
         const container = document.getElementById('chat-messages');
@@ -222,20 +222,26 @@
         
         let html = `<small>${formatTimestamp(timestamp)}</small>`;
         
-        // Текст
-        if (typeof content === 'string' && content.startsWith('[')) {
-            try {
-                const parts = JSON.parse(content);
-                parts.forEach(part => {
-                    if (part.type === 'text') {
-                        html += `<div class="message-content">${marked.parse(escapeHtml(part.text))}</div>`;
+        // Обработка текста
+        if (typeof content === 'string') {
+            if (content.startsWith('[')) {
+                try {
+                    const parts = JSON.parse(content);
+                    let textContent = '';
+                    parts.forEach(part => {
+                        if (part.type === 'text') {
+                            textContent += part.text + '\n';
+                        }
+                    });
+                    if (textContent) {
+                        html += `<div class="message-content">${marked.parse(escapeHtml(textContent.trim()))}</div>`;
                     }
-                });
-            } catch (e) {
+                } catch (e) {
+                    html += `<div class="message-content">${escapeHtml(content).replace(/\n/g, '<br>')}</div>`;
+                }
+            } else {
                 html += `<div class="message-content">${escapeHtml(content).replace(/\n/g, '<br>')}</div>`;
             }
-        } else {
-            html += `<div class="message-content">${escapeHtml(content).replace(/\n/g, '<br>')}</div>`;
         }
         
         // Файл (если есть)
@@ -248,12 +254,13 @@
                 html += `<div class="attached-file">
                             <span class="file-icon">📄</span>
                             <a href="data:${fileType};base64,${fileData}" download="${fileName}">${fileName}</a>
-                         </div>`;
+                        </div>`;
             }
         }
         
         msgDiv.innerHTML = html;
         container.appendChild(msgDiv);
+        container.scrollTop = container.scrollHeight;
     }
 
     // -------------------------------
@@ -387,10 +394,57 @@
         if (isSending) return;
         isSending = true;
         
+        // --- НЕМЕДЛЕННОЕ ОТОБРАЖЕНИЕ СООБЩЕНИЯ ПОЛЬЗОВАТЕЛЯ ---
+        // Создаем и отображаем сообщение пользователя сразу
+        const now = new Date();
+        const timestamp = now.toISOString();
+        
+        // Отображаем сообщение пользователя
+        if (text || attachedFile) {
+            const userContent = [];
+            if (text) {
+                userContent.push({"type": "text", "text": text});
+            }
+            
+            let fileData = null;
+            let fileType = null;
+            let fileName = null;
+            
+            if (attachedFile) {
+                // Создаем preview для немедленного отображения
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    fileData = e.target.result.split(',')[1];
+                    fileType = attachedFile.type;
+                    fileName = attachedFile.name;
+                    
+                    displayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, timestamp);
+                    updateMessageCount();
+                };
+                
+                if (attachedFile.type.startsWith('image/') || attachedFile.type.startsWith('audio/')) {
+                    reader.readAsDataURL(attachedFile);
+                } else {
+                    reader.readAsDataURL(attachedFile);
+                }
+            } else {
+                // Только текст
+                displayMessage('user', JSON.stringify(userContent), null, null, null, timestamp);
+                updateMessageCount();
+            }
+        }
+        
+        // Очищаем поле ввода и превью
+        input.value = '';
+        const tempAttachedFile = attachedFile; // Сохраняем для FormData
+        attachedFile = null;
+        document.getElementById('file-preview-container').style.display = 'none';
+        
+        // Подготавливаем FormData для отправки на сервер
         const formData = new FormData();
         formData.append('message', text);
-        if (attachedFile) {
-            formData.append('file', attachedFile);
+        if (tempAttachedFile) {
+            formData.append('file', tempAttachedFile);
         }
         
         try {
@@ -409,15 +463,13 @@
                 }
             }
             
-            const messageCount = document.querySelectorAll('.user-message').length;
-            
-            input.value = '';
-            attachedFile = null;
-            document.getElementById('file-preview-container').style.display = 'none';
-            
+            // Загружаем ответ от бота (и обновляем историю, чтобы получить актуальное состояние)
+            // Но сохраняем уже отображенные сообщения пользователя
             await loadMessages(currentSessionId);
             
-            if (messageCount === 0 && text) {
+            // Проверяем, нужно ли обновить заголовок сеанса
+            const messageCount = document.querySelectorAll('.user-message').length;
+            if (messageCount === 1 && text) {
                 let newTitle = text.length > 40 ? text.substring(0, 40) + '...' : text;
                 updateSessionTitle(currentSessionId, newTitle);
                 
@@ -426,6 +478,12 @@
             }
         } catch (err) {
             alert('Ошибка: ' + err.message);
+            // В случае ошибки все равно показываем сообщение пользователя,
+            // но можно добавить индикатор ошибки
+            const lastMessage = document.querySelector('.user-message:last-child');
+            if (lastMessage) {
+                lastMessage.style.borderLeft = '3px solid #e74c3c';
+            }
         } finally {
             isSending = false;
         }
@@ -524,6 +582,7 @@
     // Вспомогательные функции
     // -------------------------------
     function updateMessageCount() {
+        // Считаем только user-messages для индикатора, но можно считать все
         const count = document.querySelectorAll('.user-message').length;
         document.getElementById('context-info').textContent = `Сообщений: ${count}`;
     }

@@ -194,7 +194,7 @@
     }
 
     // -------------------------------
-    // Загрузка сообщений сеанса (С ПОЛНОЙ ДАТОЙ)
+    // Загрузка сообщений сеанса (С ПОЛНОЙ ДАТОЙ И MARKDOWN)
     // -------------------------------
     function loadMessages(sessionId) {
         return fetch(`/api/sessions/${sessionId}/messages`)
@@ -222,11 +222,11 @@
                         const userTime = new Date(lastUserMessage.timestamp);
                         const assistantTime = new Date(msg.timestamp);
                         const diffSeconds = (assistantTime - userTime) / 1000;
-                        const responseTime = Math.round(diffSeconds * 10) / 10; // Округляем до 1 знака
+                        const responseTime = Math.round(diffSeconds * 10) / 10;
                         
                         displayMessage(
                             msg.role, 
-                            msg.content, 
+                            msg.content,
                             msg.file_data, 
                             msg.file_type, 
                             msg.file_name, 
@@ -252,7 +252,7 @@
     }
 
     // -------------------------------
-    // Отображение одного сообщения (С ПОЛНОЙ ДАТОЙ)
+    // Отображение одного сообщения (С ПОЛНОЙ ДАТОЙ И MARKDOWN)
     // -------------------------------
     function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime) {
         const container = document.getElementById('chat-messages');
@@ -269,7 +269,7 @@
         
         let html = `<small>${timeDisplay}</small>`;
         
-        // Обработка текста
+        // Обработка текста с Markdown
         if (typeof content === 'string') {
             if (content.startsWith('[')) {
                 try {
@@ -281,13 +281,16 @@
                         }
                     });
                     if (textContent) {
+                        // Обрабатываем Markdown для текста пользователя
                         html += `<div class="message-content">${marked.parse(escapeHtml(textContent.trim()))}</div>`;
                     }
                 } catch (e) {
-                    html += `<div class="message-content">${escapeHtml(content).replace(/\n/g, '<br>')}</div>`;
+                    // Если не JSON - обрабатываем как обычный текст с Markdown
+                    html += `<div class="message-content">${marked.parse(escapeHtml(content))}</div>`;
                 }
             } else {
-                html += `<div class="message-content">${escapeHtml(content).replace(/\n/g, '<br>')}</div>`;
+                // Для всех остальных сообщений (включая ответы ассистента) - обрабатываем Markdown
+                html += `<div class="message-content">${marked.parse(escapeHtml(content))}</div>`;
             }
         }
         
@@ -428,7 +431,7 @@
     }
 
     // -------------------------------
-    // Отправка сообщения (С ПОЛНОЙ ДАТОЙ)
+    // Отправка сообщения (С ПОЛНОЙ ДАТОЙ И MARKDOWN)
     // -------------------------------
     async function sendMessage() {
         const input = document.getElementById('message-input');
@@ -605,6 +608,11 @@
     .attached-image { max-width: 100%; max-height: 300px; margin-top: 10px; }
     .response-time { color: #27ae60; font-weight: 600; }
     .message-time { color: #7f8c8d; font-size: 0.75rem; display: block; margin-bottom: 6px; }
+    .message-content { line-height: 1.6; }
+    .message-content pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto; }
+    .message-content code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; }
+    .message-content strong { font-weight: bold; }
+    .message-content em { font-style: italic; }
 </style>
 </head>
 <body>

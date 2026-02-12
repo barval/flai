@@ -734,11 +734,16 @@ footer p {
     color: #2980b9;
 }
 
-/* Выделение времени ответа */
+/* Выделение времени ответа и названия модели */
 .bot-message small .response-time {
     font-weight: 600;
     color: #27ae60;
     margin-left: 4px;
+    background-color: #e8f5e9;
+    padding: 2px 8px;
+    border-radius: 12px;
+    display: inline-block;
+    font-size: 0.75rem;
 }
 
 /* Скроллбар */

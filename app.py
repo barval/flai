@@ -242,7 +242,7 @@ def init_db():
                 )
             ''')
             
-            # Сеансы чатов - создаем таблицу без model_name
+            # Сеансы чатов
             c.execute('''
                 CREATE TABLE IF NOT EXISTS chat_sessions (
                     id TEXT PRIMARY KEY,
@@ -276,6 +276,16 @@ def init_db():
                 c.execute('ALTER TABLE chat_sessions ADD COLUMN model_name TEXT DEFAULT "auto"')
                 conn.commit()
                 app.logger.info("Колонка model_name успешно добавлена")
+            
+            # Проверяем наличие колонки model_name в messages
+            c.execute("PRAGMA table_info(messages)")
+            columns = [column[1] for column in c.fetchall()]
+            
+            if 'model_name' not in columns:
+                app.logger.info("Добавляем колонку model_name в таблицу messages")
+                c.execute('ALTER TABLE messages ADD COLUMN model_name TEXT')
+                conn.commit()
+                app.logger.info("Колонка model_name успешно добавлена в таблицу messages")
             
             conn.commit()
             app.logger.info(f"Database initialized successfully at {CHAT_DB_PATH}")
@@ -328,12 +338,26 @@ def get_session_messages(session_id):
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
-        c.execute('''
-            SELECT role, content, file_data, file_type, file_name, timestamp
-            FROM messages
-            WHERE session_id = ?
-            ORDER BY timestamp ASC
-        ''', (session_id,))
+        
+        # Проверяем наличие колонки model_name
+        c.execute("PRAGMA table_info(messages)")
+        columns = [column[1] for column in c.fetchall()]
+        
+        if 'model_name' in columns:
+            c.execute('''
+                SELECT role, content, file_data, file_type, file_name, timestamp, model_name
+                FROM messages
+                WHERE session_id = ?
+                ORDER BY timestamp ASC
+            ''', (session_id,))
+        else:
+            c.execute('''
+                SELECT role, content, file_data, file_type, file_name, timestamp, NULL as model_name
+                FROM messages
+                WHERE session_id = ?
+                ORDER BY timestamp ASC
+            ''', (session_id,))
+        
         return [dict(row) for row in c.fetchall()]
 
 def create_session(user_id, title="Новый сеанс"):
@@ -360,13 +384,26 @@ def update_session_title(session_id, first_message):
         ''', (title, session_id))
         conn.commit()
 
-def save_message(session_id, role, content, file_data=None, file_type=None, file_name=None):
+def save_message(session_id, role, content, file_data=None, file_type=None, file_name=None, model_name=None):
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
-        c.execute('''
-            INSERT INTO messages (session_id, role, content, file_data, file_type, file_name)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (session_id, role, content, file_data, file_type, file_name))
+        
+        # Проверяем наличие колонки model_name в messages
+        c.execute("PRAGMA table_info(messages)")
+        columns = [column[1] for column in c.fetchall()]
+        
+        # Вставляем сообщение с учетом наличия колонки model_name
+        if 'model_name' in columns and role == 'assistant' and model_name:
+            c.execute('''
+                INSERT INTO messages (session_id, role, content, file_data, file_type, file_name, model_name)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (session_id, role, content, file_data, file_type, file_name, model_name))
+        else:
+            c.execute('''
+                INSERT INTO messages (session_id, role, content, file_data, file_type, file_name)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (session_id, role, content, file_data, file_type, file_name))
+        
         c.execute('''
             UPDATE chat_sessions
             SET updated_at = CURRENT_TIMESTAMP
@@ -522,7 +559,7 @@ def api_ollama_status():
     })
 
 # -------------------------------
-# Отправка сообщения (С ВРЕМЕНЕМ ОТВЕТА)
+# Отправка сообщения (С ВРЕМЕНЕМ ОТВЕТА И МОДЕЛЬЮ)
 # -------------------------------
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -587,7 +624,7 @@ def send_message():
         row = c.fetchone()
         user_timestamp = row[0] if row else None
     
-    # Обновляем заголовок для первого сообщения (ТЕПЕРЬ СРАЗУ ПОСЛЕ СОХРАНЕНИЯ)
+    # Обновляем заголовок для первого сообщения
     if is_first_message and message_text:
         update_session_title(session_id, message_text)
     
@@ -607,10 +644,10 @@ def send_message():
     bot_reply = call_ollama_chat(history, model=selected_model)
     
     end_time = time.time()
-    response_time = round(end_time - start_time, 1)  # Округляем до 1 знака
+    response_time = round(end_time - start_time, 1)
     
-    # Сохраняем ответ
-    save_message(session_id, 'assistant', bot_reply)
+    # Сохраняем ответ с указанием использованной модели
+    save_message(session_id, 'assistant', bot_reply, model_name=selected_model)
     
     # Получаем timestamp сохраненного ответа
     with sqlite3.connect(CHAT_DB_PATH) as conn:

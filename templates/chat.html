@@ -30,9 +30,6 @@
             <h2>Чат</h2>
             <div class="context-info-container">
                 <div id="context-info" class="context-info">Сообщений: 0</div>
-                <div id="model-info" class="model-info" title="Автоматически выбранная модель">
-                    🤖 <span id="current-model-name">qwen3-vl:8b-instruct</span>
-                </div>
                 <button id="save-chat-button" class="save-chat-button" title="Сохранить как HTML">💾</button>
                 <button id="clear-context-button" class="clear-context-button">🗑️</button>
             </div>
@@ -78,6 +75,7 @@
     let currentSessionId = "{{ current_session }}";
     let isSending = false;
     let attachedFile = null;
+    let defaultModelName = 'qwen3-vl:8b-instruct';
 
     // -------------------------------
     // Вспомогательные функции
@@ -92,9 +90,6 @@
     document.addEventListener('DOMContentLoaded', function() {
         // Загружаем сообщения текущего сеанса
         loadMessages(currentSessionId);
-        
-        // Загружаем информацию о модели текущего сеанса
-        loadSessionModelInfo(currentSessionId);
         
         // Клик по сеансу (но не по кнопке удаления)
         document.querySelectorAll('.session-item').forEach(el => {
@@ -172,29 +167,7 @@
     });
 
     // -------------------------------
-    // Загрузка информации о модели сеанса
-    // -------------------------------
-    function loadSessionModelInfo(sessionId) {
-        fetch(`/api/sessions/${sessionId}/model-info`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.model_name) {
-                    const modelNameEl = document.getElementById('current-model-name');
-                    if (modelNameEl) {
-                        if (data.model_name === 'auto') {
-                            modelNameEl.textContent = 'авто';
-                            modelNameEl.title = 'Модель выбирается автоматически';
-                        } else {
-                            modelNameEl.textContent = data.model_name;
-                        }
-                    }
-                }
-            })
-            .catch(err => console.error('Error loading model info:', err));
-    }
-
-    // -------------------------------
-    // Загрузка сообщений сеанса (С ПОЛНОЙ ДАТОЙ И MARKDOWN)
+    // Загрузка сообщений сеанса (С ПОЛНОЙ ДАТОЙ, МОДЕЛЬЮ И MARKDOWN)
     // -------------------------------
     function loadMessages(sessionId) {
         return fetch(`/api/sessions/${sessionId}/messages`)
@@ -203,10 +176,18 @@
                 const container = document.getElementById('chat-messages');
                 container.innerHTML = '';
                 
+                // Получаем информацию о сессии для модели по умолчанию
+                fetch(`/api/sessions/${sessionId}/model-info`)
+                    .then(res => res.json())
+                    .then(data => {
+                        defaultModelName = data.model_name || 'qwen3-vl:8b-instruct';
+                    })
+                    .catch(err => console.error('Error loading model info:', err));
+                
                 // Группируем сообщения для вычисления времени ответа
                 let lastUserMessage = null;
                 
-                messages.forEach((msg, index) => {
+                messages.forEach((msg) => {
                     if (msg.role === 'user') {
                         lastUserMessage = msg;
                         displayMessage(
@@ -215,7 +196,9 @@
                             msg.file_data, 
                             msg.file_type, 
                             msg.file_name, 
-                            msg.timestamp
+                            msg.timestamp,
+                            null,
+                            null
                         );
                     } else if (msg.role === 'assistant' && lastUserMessage) {
                         // Вычисляем разницу во времени
@@ -224,6 +207,9 @@
                         const diffSeconds = (assistantTime - userTime) / 1000;
                         const responseTime = Math.round(diffSeconds * 10) / 10;
                         
+                        // Получаем название модели из сообщения или используем значение по умолчанию
+                        const modelName = msg.model_name || defaultModelName || 'qwen3-vl:8b-instruct';
+                        
                         displayMessage(
                             msg.role, 
                             msg.content,
@@ -231,7 +217,8 @@
                             msg.file_type, 
                             msg.file_name, 
                             msg.timestamp,
-                            responseTime
+                            responseTime,
+                            modelName
                         );
                         lastUserMessage = null;
                     } else {
@@ -241,7 +228,9 @@
                             msg.file_data, 
                             msg.file_type, 
                             msg.file_name, 
-                            msg.timestamp
+                            msg.timestamp,
+                            null,
+                            msg.model_name || defaultModelName
                         );
                     }
                 });
@@ -252,19 +241,32 @@
     }
 
     // -------------------------------
-    // Отображение одного сообщения (С ПОЛНОЙ ДАТОЙ И MARKDOWN)
+    // Отображение одного сообщения (С ПОЛНОЙ ДАТОЙ, МОДЕЛЬЮ И MARKDOWN)
     // -------------------------------
-    function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime) {
+    function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName) {
         const container = document.getElementById('chat-messages');
         const msgDiv = document.createElement('div');
         msgDiv.className = `${role}-message`;
         msgDiv.setAttribute('data-timestamp', timestamp);
         
+        // Для сообщений ассистента сохраняем название модели
+        if (role === 'assistant' && modelName) {
+            msgDiv.dataset.modelName = modelName;
+        }
+        
         let timeDisplay = formatFullDateTime(timestamp);
         
-        // Добавляем время ответа для сообщений ассистента
+        // Добавляем время ответа и название модели для сообщений ассистента
         if (role === 'assistant' && responseTime) {
-            timeDisplay += ` <span class="response-time">(ответ за ${responseTime} сек)</span>`;
+            // Получаем короткое название модели (первая часть до : или пробела)
+            let shortModelName = 'модель';
+            if (modelName) {
+                shortModelName = modelName.split(':')[0].split(' ')[0];
+                if (shortModelName.length > 10) {
+                    shortModelName = shortModelName.substring(0, 10) + '…';
+                }
+            }
+            timeDisplay += ` <span class="response-time">(ответ ${shortModelName} за ${responseTime} сек)</span>`;
         }
         
         let html = `<small>${timeDisplay}</small>`;
@@ -322,7 +324,6 @@
             .then(() => {
                 currentSessionId = sessionId;
                 loadMessages(sessionId);
-                loadSessionModelInfo(sessionId);
                 
                 document.querySelectorAll('.session-item').forEach(el => {
                     if (el.dataset.sessionId === sessionId) {
@@ -398,9 +399,8 @@
                 document.getElementById('chat-messages').innerHTML = '';
                 updateMessageCount();
                 
-                // Обновляем информацию о модели для нового сеанса
-                document.getElementById('current-model-name').textContent = 'авто';
-                document.getElementById('current-model-name').title = 'Модель выбирается автоматически';
+                // Обновляем модель по умолчанию для нового сеанса
+                defaultModelName = 'qwen3-vl:8b-instruct';
                 
                 const sessionsCount = document.querySelectorAll('.session-item').length;
                 document.getElementById('sessions-count').textContent = sessionsCount;
@@ -431,7 +431,7 @@
     }
 
     // -------------------------------
-    // Отправка сообщения (С ПОЛНОЙ ДАТОЙ И MARKDOWN) - ИСПРАВЛЕННАЯ ВЕРСИЯ
+    // Отправка сообщения (С ПОЛНОЙ ДАТОЙ, МОДЕЛЬЮ И MARKDOWN)
     // -------------------------------
     async function sendMessage() {
         const input = document.getElementById('message-input');
@@ -457,7 +457,6 @@
         let fileData = null;
         let fileType = null;
         let fileName = null;
-        let isImage = false;
         let fileReaderPromise = null;
         
         // --- НЕМЕДЛЕННОЕ ОБНОВЛЕНИЕ ЗАГОЛОВКА СЕАНСА ---
@@ -479,7 +478,6 @@
         
         // Обрабатываем файл, если он есть
         if (attachedFile) {
-            isImage = attachedFile.type.startsWith('image/');
             fileType = attachedFile.type;
             fileName = attachedFile.name;
             
@@ -491,11 +489,7 @@
                     resolve({fileData, fileType, fileName});
                 };
                 
-                if (attachedFile.type.startsWith('image/') || attachedFile.type.startsWith('audio/')) {
-                    reader.readAsDataURL(attachedFile);
-                } else {
-                    reader.readAsDataURL(attachedFile);
-                }
+                reader.readAsDataURL(attachedFile);
             });
             
             // Ждём чтения файла и сразу отображаем сообщение
@@ -543,16 +537,25 @@
             });
             const data = await response.json();
             
-            // Отображаем информацию об использованной модели
-            if (data.model_used) {
-                const modelNameEl = document.getElementById('current-model-name');
-                if (modelNameEl) {
-                    modelNameEl.textContent = data.model_used;
-                    modelNameEl.title = 'Модель выбрана автоматически';
-                }
+            // Получаем ответ и сразу отображаем с информацией о модели
+            if (data.response) {
+                const assistantTimestamp = data.assistant_timestamp || new Date().toISOString();
+                const modelName = data.model_used || defaultModelName || 'qwen3-vl:8b-instruct';
+                
+                displayMessage(
+                    'assistant',
+                    data.response,
+                    null,
+                    null,
+                    null,
+                    assistantTimestamp,
+                    data.response_time || 0,
+                    modelName
+                );
+                updateMessageCount();
             }
             
-            // Загружаем ответ от бота с корректным временем ответа
+            // Дополнительно загружаем все сообщения для обновления списка и синхронизации
             await loadMessages(currentSessionId);
             
         } catch (err) {
@@ -578,9 +581,8 @@
                 
                 updateSessionTitle(currentSessionId, 'Новый сеанс');
                 
-                // Сбрасываем отображение модели
-                document.getElementById('current-model-name').textContent = 'авто';
-                document.getElementById('current-model-name').title = 'Модель выбирается автоматически';
+                // Сбрасываем модель по умолчанию
+                defaultModelName = 'qwen3-vl:8b-instruct';
             });
     }
 
@@ -623,7 +625,6 @@
     function saveChatAsHTML() {
         const messages = document.getElementById('chat-messages').innerHTML;
         const title = document.querySelector('.session-item.active .session-title')?.textContent || 'Чат';
-        const modelName = document.getElementById('current-model-name').textContent;
         const now = new Date();
         const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
         
@@ -634,9 +635,8 @@
     body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
     .user-message { background: #e6f2ff; padding: 10px; margin: 10px 0; border-radius: 8px; }
     .bot-message { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 8px; }
-    .model-info { color: #666; font-size: 0.9em; margin-bottom: 20px; }
     .attached-image { max-width: 100%; max-height: 300px; margin-top: 10px; }
-    .response-time { color: #27ae60; font-weight: 600; }
+    .response-time { color: #27ae60; font-weight: 600; background-color: #e8f5e9; padding: 2px 8px; border-radius: 12px; display: inline-block; font-size: 0.75rem; }
     .message-time { color: #7f8c8d; font-size: 0.75rem; display: block; margin-bottom: 6px; }
     .message-content { line-height: 1.6; }
     .message-content pre { background: #f4f4f4; padding: 10px; border-radius: 5px; overflow-x: auto; }
@@ -647,7 +647,6 @@
 </head>
 <body>
 <h1>${escapeHtml(title)}</h1>
-<div class="model-info">🤖 Модель: ${escapeHtml(modelName)}</div>
 <p>Сохранено: ${now.toLocaleString()}</p>
 <div class="messages">${messages}</div>
 </body>

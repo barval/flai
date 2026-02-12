@@ -431,7 +431,7 @@
     }
 
     // -------------------------------
-    // Отправка сообщения (С ПОЛНОЙ ДАТОЙ И MARKDOWN)
+    // Отправка сообщения (С ПОЛНОЙ ДАТОЙ И MARKDOWN) - ИСПРАВЛЕННАЯ ВЕРСИЯ
     // -------------------------------
     async function sendMessage() {
         const input = document.getElementById('message-input');
@@ -448,50 +448,22 @@
         const now = new Date();
         const timestamp = now.toISOString();
         
-        // Отображаем сообщение пользователя
-        if (text || attachedFile) {
-            const userContent = [];
-            if (text) {
-                userContent.push({"type": "text", "text": text});
-            }
-            
-            let fileData = null;
-            let fileType = null;
-            let fileName = null;
-            
-            if (attachedFile) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    fileData = e.target.result.split(',')[1];
-                    fileType = attachedFile.type;
-                    fileName = attachedFile.name;
-                    
-                    displayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, timestamp);
-                    updateMessageCount();
-                };
-                
-                if (attachedFile.type.startsWith('image/') || attachedFile.type.startsWith('audio/')) {
-                    reader.readAsDataURL(attachedFile);
-                } else {
-                    reader.readAsDataURL(attachedFile);
-                }
-            } else {
-                // Только текст
-                displayMessage('user', JSON.stringify(userContent), null, null, null, timestamp);
-                updateMessageCount();
-            }
+        // Формируем контент для отображения и для сохранения
+        const userContent = [];
+        if (text) {
+            userContent.push({"type": "text", "text": text});
         }
         
-        // Очищаем поле ввода и превью
-        input.value = '';
-        const tempAttachedFile = attachedFile;
-        attachedFile = null;
-        document.getElementById('file-preview-container').style.display = 'none';
+        let fileData = null;
+        let fileType = null;
+        let fileName = null;
+        let isImage = false;
+        let fileReaderPromise = null;
         
-        // === НЕМЕДЛЕННОЕ ОБНОВЛЕНИЕ ЗАГОЛОВКА СЕАНСА ===
+        // --- НЕМЕДЛЕННОЕ ОБНОВЛЕНИЕ ЗАГОЛОВКА СЕАНСА ---
         // Проверяем, нужно ли обновить заголовок сеанса (первое сообщение в сеансе)
         const messageCount = document.querySelectorAll('.user-message').length;
-        if (messageCount === 1 && text) {
+        if (messageCount === 0 && text) {
             let newTitle = text.length > 40 ? text.substring(0, 40) + '...' : text;
             updateSessionTitle(currentSessionId, newTitle);
             
@@ -499,9 +471,67 @@
             document.getElementById('sessions-count').textContent = sessionsCount;
         }
         
+        // Функция для отображения сообщения после получения fileData (если есть файл)
+        function displayUserMessageWithFile(fileDataParam, fileTypeParam, fileNameParam) {
+            displayMessage('user', JSON.stringify(userContent), fileDataParam, fileTypeParam, fileNameParam, timestamp);
+            updateMessageCount();
+        }
+        
+        // Обрабатываем файл, если он есть
+        if (attachedFile) {
+            isImage = attachedFile.type.startsWith('image/');
+            fileType = attachedFile.type;
+            fileName = attachedFile.name;
+            
+            // Создаём промис для чтения файла
+            fileReaderPromise = new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    fileData = e.target.result.split(',')[1];
+                    resolve({fileData, fileType, fileName});
+                };
+                
+                if (attachedFile.type.startsWith('image/') || attachedFile.type.startsWith('audio/')) {
+                    reader.readAsDataURL(attachedFile);
+                } else {
+                    reader.readAsDataURL(attachedFile);
+                }
+            });
+            
+            // Ждём чтения файла и сразу отображаем сообщение
+            const fileInfo = await fileReaderPromise;
+            fileData = fileInfo.fileData;
+            fileType = fileInfo.fileType;
+            fileName = fileInfo.fileName;
+            
+            // Добавляем файл в userContent для отправки на сервер
+            userContent.push({
+                "type": "file", 
+                "file_data": fileData, 
+                "file_type": fileType, 
+                "file_name": fileName
+            });
+            
+            // Отображаем сообщение с файлом
+            displayUserMessageWithFile(fileData, fileType, fileName);
+        } else {
+            // Только текст - отображаем сразу
+            displayUserMessageWithFile(null, null, null);
+        }
+        
+        // Сохраняем данные для отправки на сервер
+        const tempAttachedFile = attachedFile;
+        const tempText = text;
+        
+        // Очищаем поле ввода и превью
+        input.value = '';
+        attachedFile = null;
+        document.getElementById('file-preview-container').style.display = 'none';
+        document.getElementById('file-input').value = '';
+        
         // Подготавливаем FormData для отправки на сервер
         const formData = new FormData();
-        formData.append('message', text);
+        formData.append('message', tempText);
         if (tempAttachedFile) {
             formData.append('file', tempAttachedFile);
         }

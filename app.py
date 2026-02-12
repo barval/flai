@@ -565,6 +565,14 @@ def send_message():
             "file_name": file_name
         })
     
+    # Проверяем, является ли это первым сообщением в сеансе
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (session_id,))
+        msg_count = c.fetchone()[0]
+        is_first_message = (msg_count == 0)
+    
+    # Сохраняем сообщение пользователя
     save_message(session_id, 'user', json.dumps(user_content) if user_content else message_text,
                  file_data, file_type, file_name)
     
@@ -579,13 +587,9 @@ def send_message():
         row = c.fetchone()
         user_timestamp = row[0] if row else None
     
-    # Обновляем заголовок для первого сообщения
-    with sqlite3.connect(CHAT_DB_PATH) as conn:
-        c = conn.cursor()
-        c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (session_id,))
-        msg_count = c.fetchone()[0]
-        if msg_count == 1 and message_text:
-            update_session_title(session_id, message_text)
+    # Обновляем заголовок для первого сообщения (ТЕПЕРЬ СРАЗУ ПОСЛЕ СОХРАНЕНИЯ)
+    if is_first_message and message_text:
+        update_session_title(session_id, message_text)
     
     # Получаем историю и анализируем контент
     history = get_session_messages(session_id)

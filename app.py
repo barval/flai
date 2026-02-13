@@ -291,7 +291,97 @@ def call_ollama_chat(messages, model=None, stream=False):
 # -------------------------------
 # Ключевые слова для разных типов задач
 # -------------------------------
-# 1. ЛОГИКА (рассуждения, анализ, объяснения)
+
+# 1. ЛИТЕРАТУРА (рассказы, сочинения, пересказы, тексты)
+LITERATURE_KEYWORDS = [
+    # Русские - общие
+    'рассказ', 'рассказы', 'напиши рассказ', 'сочини рассказ',
+    'сочинение', 'напиши сочинение', 'эссе', 'напиши эссе',
+    'пересказ', 'перескажи', 'краткое содержание', 'изложение',
+    'текст', 'напиши текст', 'создай текст', 'составь текст',
+    'описание', 'опиши', 'кратко опиши',
+    'повествование', 'повествуй', 'оповести',
+    'история', 'напиши историю', 'придумай историю',
+    'сказка', 'напиши сказку', 'сочини сказку',
+    'стих', 'стихи', 'напиши стих', 'сочини стих', 'поэма',
+    'басня', 'напиши басню', 'притча', 'напиши притчу',
+    'легенда', 'миф', 'былина', 'сказание',
+    'очерк', 'напиши очерк', 'заметка', 'статья',
+    'письмо', 'напиши письмо', 'послание',
+    'дневник', 'запись в дневнике', 'воспоминания', 'мемуары',
+    'биография', 'автобиография', 'жизнеописание',
+    'рецензия', 'напиши рецензию', 'отзыв', 'напиши отзыв',
+    'аннотация', 'напиши аннотацию', 'краткое описание',
+    
+    # Русские - школьная программа
+    'сочинение по литературе', 'анализ стихотворения',
+    'образ главного героя', 'характеристика персонажа',
+    'тема произведения', 'идея произведения', 'основная мысль',
+    'сюжет', 'композиция', 'кульминация', 'развязка',
+    'литературный герой', 'литературный персонаж',
+    'литературное направление', 'романтизм', 'реализм', 'классицизм',
+    'эпитет', 'метафора', 'сравнение', 'олицетворение', 'гипербола',
+    'рифма', 'ритм', 'размер стиха', 'строфа',
+    
+    # Русские - жанры
+    'роман', 'повесть', 'новелла', 'пьеса', 'драма', 'комедия', 'трагедия',
+    'фэнтези', 'фантастика', 'детектив', 'приключения', 'любовный роман',
+    'триллер', 'мистика', 'ужасы', 'хоррор', 'постапокалипсис',
+    'антиутопия', 'утопия', 'альтернативная история',
+    
+    # Русские - действия
+    'придумай', 'выдумай', 'сочини', 'напиши', 'создай', 'составь',
+    'перескажи', 'изложи', 'опиши', 'расскажи', 'поведай',
+    'проанализируй текст', 'разбери текст', 'прокомментируй',
+    
+    # Русские - фразы
+    'напиши небольшой рассказ', 'напиши короткий рассказ',
+    'напиши интересную историю', 'придумай увлекательную историю',
+    'сочини стихотворение', 'сочини стих на тему',
+    'сделай пересказ', 'сделай краткий пересказ',
+    'напиши сочинение на тему', 'помоги написать сочинение',
+    'как написать рассказ', 'как написать сочинение',
+    'что написать в сочинении', 'о чем написать в рассказе',
+    
+    # Английские термины
+    'story', 'stories', 'write a story', 'tell a story',
+    'essay', 'write an essay', 'composition',
+    'retelling', 'retell', 'summary', 'summarize',
+    'text', 'write text', 'create text',
+    'description', 'describe', 'briefly describe',
+    'narrative', 'narrate', 'narration',
+    'history', 'write history', 'create history',
+    'fairy tale', 'write a fairy tale', 'fable',
+    'poem', 'poetry', 'write a poem', 'verse',
+    'parable', 'legend', 'myth', 'epic',
+    'sketch', 'article', 'letter', 'write a letter',
+    'diary', 'memoir', 'biography', 'autobiography',
+    'review', 'write a review', 'feedback', 'annotation',
+    
+    # Английские - литературные термины
+    'plot', 'character', 'protagonist', 'antagonist', 'hero',
+    'theme', 'idea', 'message', 'symbolism', 'metaphor',
+    'simile', 'personification', 'hyperbole', 'irony',
+    'rhyme', 'rhythm', 'meter', 'stanza', 'verse',
+    'genre', 'novel', 'novella', 'short story', 'play',
+    'drama', 'comedy', 'tragedy', 'fantasy', 'science fiction',
+    'mystery', 'detective', 'adventure', 'romance', 'thriller',
+    'horror', 'dystopia', 'utopia', 'alternative history',
+    
+    # Английские - действия
+    'create', 'invent', 'compose', 'write', 'make up',
+    'retell', 'summarize', 'describe', 'tell', 'narrate',
+    'analyze text', 'analyze the text', 'comment on',
+    
+    # Английские - фразы
+    'write a short story', 'write an interesting story',
+    'create a fascinating story', 'compose a poem',
+    'give a summary', 'provide a summary',
+    'help me write', 'how to write a story',
+    'what to write about', 'ideas for a story'
+]
+
+# 2. ЛОГИКА (рассуждения, анализ, объяснения)
 LOGIC_KEYWORDS = [
     # Русские
     'почему', 'зачем', 'объясни', 'объяснение', 'рассуждай', 'рассуждение',
@@ -335,7 +425,7 @@ LOGIC_KEYWORDS = [
     'interpret', 'interpretation', 'implication', 'consequence'
 ]
 
-# 2. МАТЕМАТИКА (расчеты, формулы, числа)
+# 3. МАТЕМАТИКА (расчеты, формулы, числа)
 MATH_KEYWORDS = [
     # Общая математика
     'математика', 'математический', 'математически',
@@ -409,7 +499,7 @@ MATH_KEYWORDS = [
     'calendar', 'leap year', 'century', 'decade', 'millennium'
 ]
 
-# 3. ПРОГРАММИРОВАНИЕ (код, разработка)
+# 4. ПРОГРАММИРОВАНИЕ (код, разработка)
 PROGRAMMING_KEYWORDS = [
     # Общее программирование
     'программирование', 'программировать', 'программный',
@@ -534,6 +624,11 @@ def select_model_for_request(messages, has_images=False, has_audio=False, has_do
     if any(keyword in last_user_message_lower for keyword in LOGIC_KEYWORDS):
         app.logger.info(f"Выбрана модель для рассуждений: {OLLAMA_REASONING_MODEL} (logic)")
         return OLLAMA_REASONING_MODEL, 'logic'
+    
+    # Приоритет 4: Литература и тексты
+    if any(keyword in last_user_message_lower for keyword in LITERATURE_KEYWORDS):
+        app.logger.info(f"Выбрана модель для литературы: {OLLAMA_REASONING_MODEL} (literature)")
+        return OLLAMA_REASONING_MODEL, 'literature'
     
     # По умолчанию используем обычную чат-модель
     app.logger.info(f"Выбрана стандартная чат-модель: {OLLAMA_CHAT_MODEL}")

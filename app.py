@@ -21,7 +21,7 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 # -------------------------------
 # Подпись в футере - единая для всего проекта
 # -------------------------------
-FOOTER_TEXT = os.getenv('FOOTER_TEXT', 'ИИ Локальный v1.1 (с) 2026 Барсуков Валерий')
+FOOTER_TEXT = os.getenv('FOOTER_TEXT', 'ИИ Локальный v1.2 (с) 2026 Барсуков Валерий')
 
 # -------------------------------
 # Настройки Ollama
@@ -563,7 +563,7 @@ def api_footer_text():
     return FOOTER_TEXT
 
 # -------------------------------
-# Отправка сообщения (С ВРЕМЕНЕМ ОТВЕТА И МОДЕЛЬЮ)
+# ОТПРАВКА СООБЩЕНИЯ (НОВАЯ ЛОГИКА)
 # -------------------------------
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -594,7 +594,72 @@ def send_message():
         data = request.get_json()
         message_text = data.get('message', '')
     
-    # Сохраняем сообщение пользователя
+    # ПОЛУЧАЕМ ТЕКУЩЕЕ ВРЕМЯ
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Проверяем, является ли это первым сообщением в сеансе
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (session_id,))
+        msg_count = c.fetchone()[0]
+        is_first_message = (msg_count == 0)
+    
+    # АНАЛИЗ ТИПА ФАЙЛА И ФОРМИРОВАНИЕ СООБЩЕНИЯ
+    final_message_text = ""
+    selected_model = None
+    has_image = False
+    
+    # Проверяем, есть ли файл и является ли он изображением
+    if file_data:
+        if file_type and file_type.startswith('image/'):
+            has_image = True
+            # СЛУЧАЙ 1: Есть и текст, и изображение
+            if message_text.strip():
+                final_message_text = f"Текущее время: {current_time}. Подпись под изображением: {message_text}"
+            # СЛУЧАЙ 2: Только изображение, без текста
+            else:
+                final_message_text = f"Текущее время: {current_time}. Списком перечисли все предметы на изображении. Опиши само изображение и всё, что можно про него рассказать. Не задавай вопросов. Не пиши о том, чего нет на изображении."
+            selected_model = OLLAMA_MULTIMODAL_MODEL
+        else:
+            # СЛУЧАЙ 4: Неподдерживаемый тип файла
+            bot_reply = "⚠️ Файлы данного типа пока не поддерживаются."
+            
+            # Сохраняем сообщение пользователя (для истории)
+            user_content = []
+            if message_text:
+                user_content.append({"type": "text", "text": message_text})
+            user_content.append({
+                "type": "file", 
+                "file_data": file_data, 
+                "file_type": file_type, 
+                "file_name": file_name
+            })
+            save_message(session_id, 'user', json.dumps(user_content) if user_content else message_text,
+                        file_data, file_type, file_name)
+            
+            # Сохраняем ответ-уведомление
+            save_message(session_id, 'assistant', bot_reply, model_name='system')
+            
+            # Обновляем заголовок для первого сообщения
+            if is_first_message and message_text:
+                update_session_title(session_id, message_text)
+            
+            return jsonify({
+                'response': bot_reply,
+                'session_id': session_id,
+                'model_used': 'system',
+                'response_time': 0,
+                'assistant_timestamp': datetime.now().isoformat()
+            })
+    else:
+        # СЛУЧАЙ 3: Только текст, без файлов
+        final_message_text = f"Текущее время: {current_time}. Дай краткий, точный ответ на русском языке. Не добавляй рассуждений."
+        if message_text.strip():
+            # Добавляем оригинальный текст пользователя после системного промпта
+            final_message_text = final_message_text + "\n\nВопрос пользователя: " + message_text
+        selected_model = OLLAMA_CHAT_MODEL
+    
+    # Сохраняем исходное сообщение пользователя (для отображения в интерфейсе)
     user_content = []
     if message_text:
         user_content.append({"type": "text", "text": message_text})
@@ -606,14 +671,6 @@ def send_message():
             "file_name": file_name
         })
     
-    # Проверяем, является ли это первым сообщением в сеансе
-    with sqlite3.connect(CHAT_DB_PATH) as conn:
-        c = conn.cursor()
-        c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (session_id,))
-        msg_count = c.fetchone()[0]
-        is_first_message = (msg_count == 0)
-    
-    # Сохраняем сообщение пользователя
     save_message(session_id, 'user', json.dumps(user_content) if user_content else message_text,
                  file_data, file_type, file_name)
     
@@ -632,20 +689,29 @@ def send_message():
     if is_first_message and message_text:
         update_session_title(session_id, message_text)
     
-    # Получаем историю и анализируем контент
+    # Получаем историю (нужна для контекста)
     history = get_session_messages(session_id)
-    has_images, has_audio, has_documents = analyze_messages_for_content(history)
-    
-    # АВТОМАТИЧЕСКИЙ ПОДБОР МОДЕЛИ
-    selected_model = select_model_for_request(history, has_images, has_audio, has_documents)
     
     app.logger.info(f"Session {session_id}: выбрана модель {selected_model}")
+    app.logger.info(f"Prompt: {final_message_text}")
     
     # ЗАМЕР ВРЕМЕНИ ВЫПОЛНЕНИЯ
     start_time = time.time()
     
-    # Запрос к Ollama
-    bot_reply = call_ollama_chat(history, model=selected_model)
+    # Запрос к Ollama с сформированным промптом
+    if has_image:
+        # Для изображений нужно сохранить структуру с файлом
+        # Но промпт заменяем на сформированный
+        # Создаем временную историю для запроса
+        temp_messages = history.copy()
+        if temp_messages and temp_messages[-1]['role'] == 'user':
+            # Заменяем последнее сообщение на наш промпт
+            temp_messages[-1]['content'] = json.dumps([{"type": "text", "text": final_message_text}])
+        bot_reply = call_ollama_chat(temp_messages, model=selected_model)
+    else:
+        # Для текста просто передаем промпт
+        temp_messages = [{'role': 'user', 'content': final_message_text}]
+        bot_reply = call_ollama_chat(temp_messages, model=selected_model)
     
     end_time = time.time()
     response_time = round(end_time - start_time, 1)

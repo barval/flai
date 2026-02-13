@@ -657,9 +657,21 @@
 
     // -------------------------------
     // ИСПРАВЛЕННАЯ ФУНКЦИЯ СОХРАНЕНИЯ ЧАТА
+    // ПОДПИСЬ БЕРЁТСЯ ИЗ .env ЧЕРЕЗ API
     // ЦВЕТ КОДА В ТАБЛИЦАХ ТЕПЕРЬ ТЕМНО-СИНИЙ, КАК НА САЙТЕ
     // -------------------------------
-    function saveChatAsHTML() {
+    async function saveChatAsHTML() {
+        // Получаем подпись из .env через API
+        let footerText = "ИИ Локальный v1.1 (с) 2026 Барсуков Валерий"; // Значение по умолчанию
+        try {
+            const response = await fetch('/api/footer-text');
+            if (response.ok) {
+                footerText = await response.text();
+            }
+        } catch (error) {
+            console.error('Ошибка получения подписи:', error);
+        }
+        
         const title = document.querySelector('.session-item.active .session-title')?.textContent || 'Чат';
         const now = new Date();
         const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
@@ -702,7 +714,7 @@
             });
         });
         
-        // Формируем HTML страницы с ТОЧНОЙ КОПИЕЙ CSS С САЙТА
+        // Формируем HTML страницы с ТОЧНОЙ КОПИЕЙ CSS С САЙТА и подписью из .env
         const html = `<!DOCTYPE html>
     <html lang="ru">
     <head>
@@ -1136,7 +1148,7 @@
         </main>
         
         <footer>
-            <p>ИИ Локальный v1.1 (с) 2026 Барсуков Валерий</p>
+            <p>${escapeHtml(footerText)}</p>
         </footer>
     </body>
     </html>`;

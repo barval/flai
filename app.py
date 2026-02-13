@@ -8,8 +8,11 @@ from dotenv import load_dotenv
 import mimetypes
 import uuid
 import requests
-#from pathlib import Path
 import time
+from PIL import Image
+from io import BytesIO
+import pytz
+from tzlocal import get_localzone
 
 load_dotenv()
 
@@ -39,6 +42,30 @@ MODEL_CONTEXT_WINDOWS = {
 }
 
 # -------------------------------
+# Поддерживаемые форматы изображений
+# -------------------------------
+SUPPORTED_IMAGE_EXTENSIONS = {
+    '.jpg', '.jpeg', '.jpe',  # JPEG
+    '.png',                     # PNG
+    '.bmp',                     # BMP
+    '.webp',                    # WebP
+    '.tif', '.tiff'             # TIFF
+}
+
+SUPPORTED_IMAGE_MIMETYPES = {
+    'image/jpeg', 'image/jpg', 'image/jpe',
+    'image/png',
+    'image/bmp', 'image/x-ms-bmp',
+    'image/webp',
+    'image/tiff', 'image/tif'
+}
+
+# Ограничения для изображений
+MAX_IMAGE_SIZE_MB = 5
+MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024
+MAX_IMAGE_DIMENSION = 3840  # 3840×2160
+
+# -------------------------------
 # Настройка путей к БД
 # -------------------------------
 DATA_DIR = 'data'
@@ -46,6 +73,82 @@ if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR, exist_ok=True)
 
 CHAT_DB_PATH = os.path.join(DATA_DIR, 'chat.db')
+
+# -------------------------------
+# Функция для получения локального времени с днем недели
+# -------------------------------
+def get_local_datetime_string():
+    """Возвращает текущее локальное время с днем недели в формате: ДД.ММ.ГГГГ ДеньНедели ЧЧ:ММ:СС"""
+    try:
+        # Получаем локальный часовой пояс системы
+        local_tz = get_localzone()
+        local_time = datetime.now(local_tz)
+        
+        # Дни недели на русском
+        weekdays_ru = {
+            0: 'понедельник',
+            1: 'вторник', 
+            2: 'среда',
+            3: 'четверг',
+            4: 'пятница',
+            5: 'суббота',
+            6: 'воскресенье'
+        }
+        
+        # Форматируем дату и время
+        formatted_date = local_time.strftime('%d.%m.%Y')
+        formatted_time = local_time.strftime('%H:%M:%S')
+        weekday_ru = weekdays_ru[local_time.weekday()]
+        
+        return f"{formatted_date} {weekday_ru} {formatted_time}"
+    except Exception as e:
+        app.logger.error(f"Ошибка получения локального времени: {str(e)}")
+        # Fallback на UTC с днем недели на английском
+        utc_time = datetime.utcnow()
+        weekdays_en = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        return f"{utc_time.strftime('%d.%m.%Y')} {weekdays_en[utc_time.weekday()]} {utc_time.strftime('%H:%M:%S')} UTC"
+
+# -------------------------------
+# Функция для проверки изображения
+# -------------------------------
+def validate_image_file(file_data, file_type, file_name, file_size):
+    """
+    Проверяет, является ли файл поддерживаемым изображением и соответствует ли ограничениям
+    Возвращает (is_valid, error_message)
+    """
+    # Проверка размера файла
+    if file_size > MAX_IMAGE_SIZE_BYTES:
+        return False, f"Максимальный размер файла с изображением {MAX_IMAGE_SIZE_MB}Мб"
+    
+    # Проверка MIME-типа
+    if file_type not in SUPPORTED_IMAGE_MIMETYPES:
+        # Проверяем по расширению, если MIME-тип неопределенный
+        ext = os.path.splitext(file_name)[1].lower()
+        if ext not in SUPPORTED_IMAGE_EXTENSIONS:
+            return False, "Файлы данного типа пока не поддерживаются."
+    
+    # Проверка размеров изображения
+    try:
+        # Декодируем base64 в байты
+        image_bytes = base64.b64decode(file_data)
+        
+        # Открываем изображение через PIL
+        img = Image.open(BytesIO(image_bytes))
+        width, height = img.size
+        
+        # Проверяем максимальное разрешение
+        if width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION:
+            return False, f"Максимальное разрешение файла с изображением - не более {MAX_IMAGE_DIMENSION}×{MAX_IMAGE_DIMENSION}"
+        
+        # Проверяем соотношение сторон (для 3840×2160 максимальная ширина/высота)
+        if width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION:
+            return False, f"Максимальное разрешение файла с изображением - не более {MAX_IMAGE_DIMENSION}×{MAX_IMAGE_DIMENSION}"
+        
+        return True, None
+        
+    except Exception as e:
+        app.logger.error(f"Ошибка при проверке изображения: {str(e)}")
+        return False, "Не удалось обработать файл изображения"
 
 # -------------------------------
 # Функции для работы с Ollama
@@ -581,12 +684,17 @@ def send_message():
     file_data = None
     file_type = None
     file_name = None
+    file_size = 0
     
     if 'multipart/form-data' in request.content_type:
         message_text = request.form.get('message', '')
         if 'file' in request.files:
             file = request.files['file']
             if file.filename:
+                file.seek(0, os.SEEK_END)
+                file_size = file.tell()
+                file.seek(0)
+                
                 file_data = base64.b64encode(file.read()).decode('utf-8')
                 file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
                 file_name = file.filename
@@ -594,8 +702,8 @@ def send_message():
         data = request.get_json()
         message_text = data.get('message', '')
     
-    # ПОЛУЧАЕМ ТЕКУЩЕЕ ВРЕМЯ
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # ПОЛУЧАЕМ ТЕКУЩЕЕ ЛОКАЛЬНОЕ ВРЕМЯ С ДНЕМ НЕДЕЛИ
+    current_time_str = get_local_datetime_string()
     
     # Проверяем, является ли это первым сообщением в сеансе
     with sqlite3.connect(CHAT_DB_PATH) as conn:
@@ -608,21 +716,25 @@ def send_message():
     final_message_text = ""
     selected_model = None
     has_image = False
+    image_validation_error = None
     
     # Проверяем, есть ли файл и является ли он изображением
     if file_data:
-        if file_type and file_type.startswith('image/'):
+        # Проверяем, поддерживается ли файл как изображение
+        is_valid_image, validation_error = validate_image_file(file_data, file_type, file_name, file_size)
+        
+        if is_valid_image:
             has_image = True
             # СЛУЧАЙ 1: Есть и текст, и изображение
             if message_text.strip():
-                final_message_text = f"Текущее время: {current_time}. Подпись под изображением: {message_text}"
+                final_message_text = f"Текущее время: {current_time_str}. Подпись под изображением: {message_text}"
             # СЛУЧАЙ 2: Только изображение, без текста
             else:
-                final_message_text = f"Текущее время: {current_time}. Списком перечисли все предметы на изображении. Опиши само изображение и всё, что можно про него рассказать. Не задавай вопросов. Не пиши о том, чего нет на изображении."
+                final_message_text = f"Текущее время: {current_time_str}. Ответ - на русском языке. Списком перечисли все предметы на изображении. Опиши само изображение и всё, что можно про него рассказать. Не задавай вопросов. Не пиши о том, чего нет на изображении."
             selected_model = OLLAMA_MULTIMODAL_MODEL
         else:
-            # СЛУЧАЙ 4: Неподдерживаемый тип файла
-            bot_reply = "⚠️ Файлы данного типа пока не поддерживаются."
+            # СЛУЧАЙ 4: Неподдерживаемый тип файла или превышены ограничения
+            bot_reply = f"⚠️ {validation_error}"
             
             # Сохраняем сообщение пользователя (для истории)
             user_content = []
@@ -653,7 +765,7 @@ def send_message():
             })
     else:
         # СЛУЧАЙ 3: Только текст, без файлов
-        final_message_text = f"Текущее время: {current_time}. Дай краткий, точный ответ на русском языке. Не добавляй рассуждений."
+        final_message_text = f"Текущее время: {current_time_str}. Дай краткий, точный ответ на русском языке. Не добавляй рассуждений."
         if message_text.strip():
             # Добавляем оригинальный текст пользователя после системного промпта
             final_message_text = final_message_text + "\n\nВопрос пользователя: " + message_text
@@ -663,7 +775,7 @@ def send_message():
     user_content = []
     if message_text:
         user_content.append({"type": "text", "text": message_text})
-    if file_data:
+    if file_data and has_image:  # Сохраняем файл только если он прошел валидацию
         user_content.append({
             "type": "file", 
             "file_data": file_data, 
@@ -672,7 +784,9 @@ def send_message():
         })
     
     save_message(session_id, 'user', json.dumps(user_content) if user_content else message_text,
-                 file_data, file_type, file_name)
+                 file_data if has_image else None, 
+                 file_type if has_image else None, 
+                 file_name if has_image else None)
     
     # Получаем время отправки сообщения пользователя
     with sqlite3.connect(CHAT_DB_PATH) as conn:

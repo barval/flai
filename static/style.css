@@ -428,15 +428,41 @@ footer p {
     word-wrap: break-word;
 }
 
-/*
-.info-message {
-    color: #2c3e50;
-    background-color: #e8f4fc;
-    border-left: 3px solid #3498db;
-    padding: 0.8rem;
-    border-radius: 4px;
+/* Информация о файле в сообщениях */
+.file-info {
+    display: inline !important;
+    color: #2c3e50 !important;
+    font-size: 0.75rem !important;
+    font-family: monospace !important;
+    background-color: #f0f0f0 !important;
+    padding: 2px 6px !important;
+    border-radius: 12px !important;
+    margin-left: 4px !important;
+    white-space: nowrap !important;
+    border: 1px solid #ddd !important;
 }
-*/
+
+/* Стили для превью файла с размером */
+#file-preview-container div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f5f5f5;
+    padding: 8px;
+    border-radius: 8px;
+}
+
+#file-preview-name {
+    font-size: 0.9rem;
+    color: #2c3e50;
+    font-weight: 500;
+}
+
+#file-preview-size {
+    font-size: 0.8rem;
+    color: #666;
+    margin-left: 5px;
+}
 
 .message-input {
     display: flex;

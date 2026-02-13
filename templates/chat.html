@@ -524,6 +524,19 @@
         if (isSending) return;
         isSending = true;
         
+        const now = new Date();
+        const timestamp = now.toISOString();
+        
+        const userContent = [];
+        if (text) {
+            userContent.push({"type": "text", "text": text});
+        }
+        
+        let fileData = null;
+        let fileType = null;
+        let fileName = null;
+        let fileSize = null;
+        
         const messageCount = document.querySelectorAll('.user-message').length;
         if (messageCount === 0 && text) {
             let newTitle = text.length > 40 ? text.substring(0, 40) + '...' : text;
@@ -537,15 +550,61 @@
         const tempAttachedFile = attachedFile;
         const tempText = text;
         
-        // ОЧИЩАЕМ ПОЛЯ СРАЗУ (до отправки)
-        input.value = '';
-        attachedFile = null;
-        document.getElementById('file-preview-container').style.display = 'none';
-        document.getElementById('file-input').value = '';
+        // ПОКАЗЫВАЕМ СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ СРАЗУ (локально)
+        if (tempAttachedFile) {
+            // Читаем файл для локального отображения
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                fileData = e.target.result.split(',')[1];
+                fileType = tempAttachedFile.type;
+                fileName = tempAttachedFile.name;
+                fileSize = tempAttachedFile.size;
+                
+                userContent.push({
+                    "type": "file", 
+                    "file_data": fileData, 
+                    "file_type": fileType, 
+                    "file_name": fileName
+                });
+                
+                // Отображаем сообщение пользователя
+                displayMessage(
+                    'user', 
+                    JSON.stringify(userContent), 
+                    fileData, 
+                    fileType, 
+                    fileName, 
+                    timestamp
+                );
+                updateMessageCount();
+                
+                // Очищаем поля
+                input.value = '';
+                attachedFile = null;
+                document.getElementById('file-preview-container').style.display = 'none';
+                document.getElementById('file-input').value = '';
+            };
+            reader.readAsDataURL(tempAttachedFile);
+        } else {
+            // Только текст, без файла
+            displayMessage(
+                'user', 
+                JSON.stringify(userContent), 
+                null, 
+                null, 
+                null, 
+                timestamp
+            );
+            updateMessageCount();
+            
+            // Очищаем поля
+            input.value = '';
+            attachedFile = null;
+            document.getElementById('file-preview-container').style.display = 'none';
+            document.getElementById('file-input').value = '';
+        }
         
-        // НЕ ОТОБРАЖАЕМ СООБЩЕНИЕ ЛОКАЛЬНО - доверяем загрузке с сервера
-        // Просто отправляем на сервер
-        
+        // Отправляем на сервер
         const formData = new FormData();
         formData.append('message', tempText);
         if (tempAttachedFile) {
@@ -564,12 +623,32 @@
             
             const data = await response.json();
             
-            // ПЕРЕЗАГРУЖАЕМ ВСЕ СООБЩЕНИЯ С СЕРВЕРА
-            await loadMessages(currentSessionId);
+            // Отображаем ответ ассистента
+            if (data.response) {
+                const assistantTimestamp = data.assistant_timestamp || new Date().toISOString();
+                const modelName = data.model_used || defaultModelName || 'qwen3-vl:8b-instruct';
+                
+                displayMessage(
+                    'assistant',
+                    data.response,
+                    null,
+                    null,
+                    null,
+                    assistantTimestamp,
+                    data.response_time || 0,
+                    modelName
+                );
+                updateMessageCount();
+            }
             
         } catch (err) {
             alert('Ошибка: ' + err.message);
             console.error('Send message error:', err);
+            // Помечаем последнее сообщение как ошибочное
+            const lastMessage = document.querySelector('.user-message:last-child');
+            if (lastMessage) {
+                lastMessage.style.borderLeft = '3px solid #e74c3c';
+            }
         } finally {
             isSending = false;
         }

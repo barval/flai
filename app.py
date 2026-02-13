@@ -135,6 +135,26 @@ def get_current_time_in_timezone():
         weekdays_en = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         return f"{utc_time.strftime('%d.%m.%Y')} {weekdays_en[utc_time.weekday()]} {utc_time.strftime('%H:%M:%S')} UTC"
 
+def get_current_time_in_timezone_for_db():
+    """
+    Возвращает текущее время в часовом поясе, указанном в .env
+    в формате, подходящем для SQLite (YYYY-MM-DD HH:MM:SS)
+    """
+    try:
+        # Получаем текущее время в UTC
+        utc_now = datetime.now(pytz.UTC)
+        
+        # Конвертируем в нужный часовой пояс
+        local_time = utc_now.astimezone(TIMEZONE)
+        
+        # Возвращаем в формате SQLite (без временной зоны)
+        return local_time.strftime('%Y-%m-%d %H:%M:%S')
+    
+    except Exception as e:
+        app.logger.error(f"Ошибка получения времени в часовом поясе {TIMEZONE_STR}: {str(e)}")
+        # Fallback на локальное время сервера
+        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
 # -------------------------------
 # Функция для получения информации о текущем часовом поясе
 # -------------------------------
@@ -640,6 +660,7 @@ def init_db():
                     id TEXT PRIMARY KEY,
                     user_id TEXT,
                     title TEXT,
+                    model_name TEXT DEFAULT "auto",
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
@@ -655,29 +676,10 @@ def init_db():
                     file_data TEXT,
                     file_type TEXT,
                     file_name TEXT,
+                    model_name TEXT,
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
-            
-            # Проверяем наличие колонки model_name в chat_sessions
-            c.execute("PRAGMA table_info(chat_sessions)")
-            columns = [column[1] for column in c.fetchall()]
-            
-            if 'model_name' not in columns:
-                app.logger.info("Добавляем колонку model_name в таблицу chat_sessions")
-                c.execute('ALTER TABLE chat_sessions ADD COLUMN model_name TEXT DEFAULT "auto"')
-                conn.commit()
-                app.logger.info("Колонка model_name успешно добавлена")
-            
-            # Проверяем наличие колонки model_name в messages
-            c.execute("PRAGMA table_info(messages)")
-            columns = [column[1] for column in c.fetchall()]
-            
-            if 'model_name' not in columns:
-                app.logger.info("Добавляем колонку model_name в таблицу messages")
-                c.execute('ALTER TABLE messages ADD COLUMN model_name TEXT')
-                conn.commit()
-                app.logger.info("Колонка model_name успешно добавлена в таблицу messages")
             
             conn.commit()
             app.logger.info(f"Database initialized successfully at {CHAT_DB_PATH}")
@@ -731,76 +733,75 @@ def get_session_messages(session_id):
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
         
-        # Проверяем наличие колонки model_name
-        c.execute("PRAGMA table_info(messages)")
-        columns = [column[1] for column in c.fetchall()]
+        c.execute('''
+            SELECT role, content, file_data, file_type, file_name, timestamp, model_name
+            FROM messages
+            WHERE session_id = ?
+            ORDER BY timestamp ASC
+        ''', (session_id,))
         
-        if 'model_name' in columns:
-            c.execute('''
-                SELECT role, content, file_data, file_type, file_name, timestamp, model_name
-                FROM messages
-                WHERE session_id = ?
-                ORDER BY timestamp ASC
-            ''', (session_id,))
-        else:
-            c.execute('''
-                SELECT role, content, file_data, file_type, file_name, timestamp, NULL as model_name
-                FROM messages
-                WHERE session_id = ?
-                ORDER BY timestamp ASC
-            ''', (session_id,))
+        messages = []
+        for row in c.fetchall():
+            msg_dict = dict(row)
+            # Преобразуем timestamp в ISO формат с часовым поясом для JS
+            if msg_dict.get('timestamp'):
+                try:
+                    # Парсим timestamp из БД (формат: YYYY-MM-DD HH:MM:SS)
+                    dt = datetime.strptime(msg_dict['timestamp'], '%Y-%m-%d %H:%M:%S')
+                    # Добавляем информацию о часовом поясе
+                    dt = TIMEZONE.localize(dt)
+                    # Конвертируем в ISO формат для JS
+                    msg_dict['timestamp'] = dt.isoformat()
+                except Exception as e:
+                    app.logger.error(f"Ошибка преобразования timestamp: {str(e)}")
+            messages.append(msg_dict)
         
-        return [dict(row) for row in c.fetchall()]
+        return messages
 
 def create_session(user_id, title="Новый сеанс"):
     """Создание нового сеанса без привязки к конкретной модели"""
     session_id = str(uuid.uuid4())
+    current_time = get_current_time_in_timezone_for_db()
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('''
-            INSERT INTO chat_sessions (id, user_id, title, model_name)
-            VALUES (?, ?, ?, ?)
-        ''', (session_id, user_id, title, 'auto'))
+            INSERT INTO chat_sessions (id, user_id, title, model_name, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (session_id, user_id, title, 'auto', current_time, current_time))
         conn.commit()
     return session_id
 
 def update_session_title(session_id, first_message):
     """Обновить заголовок сеанса на основе первого сообщения"""
     title = first_message[:40] + ('...' if len(first_message) > 40 else '')
+    current_time = get_current_time_in_timezone_for_db()
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('''
             UPDATE chat_sessions
-            SET title = ?, updated_at = CURRENT_TIMESTAMP
+            SET title = ?, updated_at = ?
             WHERE id = ?
-        ''', (title, session_id))
+        ''', (title, current_time, session_id))
         conn.commit()
 
 def save_message(session_id, role, content, file_data=None, file_type=None, file_name=None, model_name=None):
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         
-        # Проверяем наличие колонки model_name в messages
-        c.execute("PRAGMA table_info(messages)")
-        columns = [column[1] for column in c.fetchall()]
+        # Получаем текущее время в нужном часовом поясе
+        current_time = get_current_time_in_timezone_for_db()
         
-        # Вставляем сообщение с учетом наличия колонки model_name
-        if 'model_name' in columns and role == 'assistant' and model_name:
-            c.execute('''
-                INSERT INTO messages (session_id, role, content, file_data, file_type, file_name, model_name)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (session_id, role, content, file_data, file_type, file_name, model_name))
-        else:
-            c.execute('''
-                INSERT INTO messages (session_id, role, content, file_data, file_type, file_name)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (session_id, role, content, file_data, file_type, file_name))
+        # Вставляем сообщение
+        c.execute('''
+            INSERT INTO messages (session_id, role, content, file_data, file_type, file_name, model_name, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (session_id, role, content, file_data, file_type, file_name, model_name, current_time))
         
         c.execute('''
             UPDATE chat_sessions
-            SET updated_at = CURRENT_TIMESTAMP
+            SET updated_at = ?
             WHERE id = ?
-        ''', (session_id,))
+        ''', (current_time, session_id))
         conn.commit()
 
 def get_last_session(user_id):
@@ -1071,7 +1072,7 @@ def send_message():
             
             # Сохраняем сообщение пользователя (для истории)
             save_message(session_id, 'user', json.dumps(user_content, ensure_ascii=False) if user_content else message_text,
-                        file_data, file_type, file_name)
+                        file_data, file_type, file_name, None)
             
             # Сохраняем ответ-уведомление
             save_message(session_id, 'assistant', bot_reply, model_name='system')
@@ -1085,7 +1086,7 @@ def send_message():
                 'session_id': session_id,
                 'model_used': 'system',
                 'response_time': 0,
-                'assistant_timestamp': datetime.now().isoformat()
+                'assistant_timestamp': get_current_time_in_timezone_for_db()
             })
     else:
         # СЛУЧАЙ 3: Только текст, без файлов
@@ -1103,7 +1104,8 @@ def send_message():
     save_message(session_id, 'user', json.dumps(user_content, ensure_ascii=False) if user_content else message_text,
                  file_data if has_image else None, 
                  file_type if has_image else None, 
-                 file_name if has_image else None)
+                 file_name if has_image else None,
+                 None)
     
     # Получаем время отправки сообщения пользователя
     with sqlite3.connect(CHAT_DB_PATH) as conn:
@@ -1115,6 +1117,13 @@ def send_message():
         ''', (session_id,))
         row = c.fetchone()
         user_timestamp = row[0] if row else None
+        if user_timestamp:
+            try:
+                dt = datetime.strptime(user_timestamp, '%Y-%m-%d %H:%M:%S')
+                dt = TIMEZONE.localize(dt)
+                user_timestamp = dt.isoformat()
+            except:
+                pass
     
     # Обновляем заголовок для первого сообщения
     if is_first_message and message_text:
@@ -1170,10 +1179,10 @@ def send_message():
     end_time = time.time()
     response_time = round(end_time - start_time, 1)
     
-    # Сохраняем ответ с указанием использованной модели
+    # Сохраняем ответ с указанием использованной модели и правильным временем
     save_message(session_id, 'assistant', bot_reply, model_name=selected_model)
     
-    # Получаем timestamp сохраненного ответа
+    # Получаем timestamp сохраненного ответа (уже в правильном часовом поясе)
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('''
@@ -1183,6 +1192,15 @@ def send_message():
         ''', (session_id,))
         row = c.fetchone()
         assistant_timestamp = row[0] if row else None
+        
+        # Преобразуем в ISO формат для JS
+        if assistant_timestamp:
+            try:
+                dt = datetime.strptime(assistant_timestamp, '%Y-%m-%d %H:%M:%S')
+                dt = TIMEZONE.localize(dt)
+                assistant_timestamp = dt.isoformat()
+            except:
+                pass
     
     return jsonify({
         'response': bot_reply,
@@ -1209,7 +1227,8 @@ def clear_history():
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('DELETE FROM messages WHERE session_id = ?', (session_id,))
-        c.execute('UPDATE chat_sessions SET title = ? WHERE id = ?', ('Новый сеанс', session_id))
+        current_time = get_current_time_in_timezone_for_db()
+        c.execute('UPDATE chat_sessions SET title = ?, updated_at = ? WHERE id = ?', ('Новый сеанс', current_time, session_id))
         conn.commit()
     
     return jsonify({'status': 'ok'})

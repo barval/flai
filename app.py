@@ -12,7 +12,7 @@ import time
 from PIL import Image
 from io import BytesIO
 import pytz
-from tzlocal import get_localzone
+from pytz.exceptions import UnknownTimeZoneError
 
 load_dotenv()
 
@@ -25,6 +25,20 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 # Подпись в футере - единая для всего проекта
 # -------------------------------
 FOOTER_TEXT = os.getenv('FOOTER_TEXT', 'ИИ Локальный v1.2 (с) 2026 Барсуков Валерий')
+
+# -------------------------------
+# Настройки часового пояса из .env
+# -------------------------------
+TIMEZONE_STR = os.getenv('TIMEZONE', 'Europe/Moscow')  # По умолчанию Москва
+
+# Проверяем валидность часового пояса
+try:
+    TIMEZONE = pytz.timezone(TIMEZONE_STR)
+    app.logger.info(f"Используется часовой пояс: {TIMEZONE_STR}")
+except UnknownTimeZoneError:
+    app.logger.warning(f"Неизвестный часовой пояс '{TIMEZONE_STR}'. Используется UTC.")
+    TIMEZONE = pytz.UTC
+    TIMEZONE_STR = 'UTC'
 
 # -------------------------------
 # Настройки Ollama
@@ -75,14 +89,19 @@ if not os.path.exists(DATA_DIR):
 CHAT_DB_PATH = os.path.join(DATA_DIR, 'chat.db')
 
 # -------------------------------
-# Функция для получения локального времени с днем недели
+# Функция для получения текущего времени в заданном часовом поясе
 # -------------------------------
-def get_local_datetime_string():
-    """Возвращает текущее локальное время с днем недели в формате: ДД.ММ.ГГГГ ДеньНедели ЧЧ:ММ:СС"""
+def get_current_time_in_timezone():
+    """
+    Возвращает текущее время в часовом поясе, указанном в .env
+    Формат: ДД.ММ.ГГГГ день_недели ЧЧ:ММ:СС
+    """
     try:
-        # Получаем локальный часовой пояс системы
-        local_tz = get_localzone()
-        local_time = datetime.now(local_tz)
+        # Получаем текущее время в UTC
+        utc_now = datetime.now(pytz.UTC)
+        
+        # Конвертируем в нужный часовой пояс
+        local_time = utc_now.astimezone(TIMEZONE)
         
         # Дни недели на русском
         weekdays_ru = {
@@ -100,13 +119,32 @@ def get_local_datetime_string():
         formatted_time = local_time.strftime('%H:%M:%S')
         weekday_ru = weekdays_ru[local_time.weekday()]
         
-        return f"{formatted_date} {weekday_ru} {formatted_time}"
+        # Добавляем часовой пояс для информации
+        tz_abbr = local_time.strftime('%z')
+        if tz_abbr:
+            tz_abbr = f" ({tz_abbr})"
+        else:
+            tz_abbr = ""
+        
+        return f"{formatted_date} {weekday_ru} {formatted_time}{tz_abbr}"
+    
     except Exception as e:
-        app.logger.error(f"Ошибка получения локального времени: {str(e)}")
+        app.logger.error(f"Ошибка получения времени в часовом поясе {TIMEZONE_STR}: {str(e)}")
         # Fallback на UTC с днем недели на английском
-        utc_time = datetime.utcnow()
+        utc_time = datetime.now(pytz.UTC)
         weekdays_en = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         return f"{utc_time.strftime('%d.%m.%Y')} {weekdays_en[utc_time.weekday()]} {utc_time.strftime('%H:%M:%S')} UTC"
+
+# -------------------------------
+# Функция для получения информации о текущем часовом поясе
+# -------------------------------
+def get_timezone_info():
+    """Возвращает информацию о текущем часовом поясе для отладки"""
+    return {
+        'timezone': TIMEZONE_STR,
+        'utc_offset': datetime.now(TIMEZONE).strftime('%z'),
+        'current_time': get_current_time_in_timezone()
+    }
 
 # -------------------------------
 # Функция для проверки изображения
@@ -251,16 +289,206 @@ def call_ollama_chat(messages, model=None, stream=False):
         return f"⚠️ Ошибка при обращении к Ollama: {str(e)}"
 
 # -------------------------------
-# Функция для автоматического выбора модели
+# Ключевые слова для разных типов задач
 # -------------------------------
+# 1. ЛОГИКА (рассуждения, анализ, объяснения)
+LOGIC_KEYWORDS = [
+    # Русские
+    'почему', 'зачем', 'объясни', 'объяснение', 'рассуждай', 'рассуждение',
+    'думай', 'подумай', 'анализируй', 'анализ', 'проанализируй',
+    'сравни', 'сравнение', 'спрогнозируй', 'прогноз', 'предскажи',
+    'выведи', 'вывод', 'логика', 'логический', 'логически',
+    'продумай', 'обдумай', 'умозаключение', 'умозаключи',
+    'аргументируй', 'аргумент', 'доказательство', 'докажи',
+    'обоснуй', 'обоснование', 'гипотеза', 'предположение',
+    'противопоставь', 'противопоставление', 'выяви', 'выявление',
+    'закономерность', 'закономерности', 'взаимосвязь', 'взаимосвязи',
+    'причина', 'следствие', 'причинно-следственный', 'вытекает',
+    'следовательно', 'отсюда следует', 'из этого следует',
+    'если...то', 'при условии', 'в таком случае',
+    'противоречие', 'противоречит', 'парадокс',
+    'синтез', 'синтезируй', 'обобщи', 'обобщение',
+    'концепция', 'концептуально', 'теоретически',
+    'метод', 'методология', 'методологически',
+    'критерий', 'критерии', 'параметр', 'параметры',
+    'классифицируй', 'классификация', 'систематизируй',
+    'интерпретируй', 'интерпретация', 'трактовка',
+    
+    # Русские фразы
+    'как ты думаешь', 'каково твое мнение', 'что ты думаешь о',
+    'какой вывод', 'к какому выводу', 'что из этого следует',
+    'как это объяснить', 'чем это можно объяснить',
+    'в чем разница', 'чем отличаются', 'что общего',
+    'какой вариант лучше', 'что предпочтительнее',
+    'как ты рассуждал', 'объясни ход мыслей',
+    'почему ты так решил', 'на чем основано',
+    
+    # Английские
+    'why', 'explain', 'reasoning', 'reason', 'think', 'thought',
+    'analyze', 'analysis', 'compare', 'comparison', 'predict',
+    'forecast', 'conclude', 'conclusion', 'logic', 'logical',
+    'deduce', 'deduction', 'infer', 'inference', 'argument',
+    'justify', 'justification', 'hypothesis', 'assumption',
+    'synthesize', 'synthesis', 'generalize', 'generalization',
+    'concept', 'conceptual', 'theoretical', 'methodology',
+    'criteria', 'parameter', 'classify', 'classification',
+    'interpret', 'interpretation', 'implication', 'consequence'
+]
+
+# 2. МАТЕМАТИКА (расчеты, формулы, числа)
+MATH_KEYWORDS = [
+    # Общая математика
+    'математика', 'математический', 'математически',
+    'вычисли', 'вычисление', 'расчет', 'рассчитать',
+    'посчитай', 'подсчет', 'подсчитай', 'сосчитай',
+    'формула', 'формулы', 'уравнение', 'уравнения',
+    'функция', 'функции', 'график', 'графики',
+    'интеграл', 'производная', 'дифференциал',
+    'сумма', 'разность', 'произведение', 'частное',
+    'корень', 'степень', 'логарифм', 'логарифмический',
+    'экспонента', 'экспоненциальный', 'показатель',
+    'синус', 'косинус', 'тангенс', 'тригонометрия',
+    'теорема', 'аксиома', 'лемма', 'доказательство',
+    'задача', 'решение', 'решить', 'решается',
+    'пример', 'примеры', 'упражнение', 'упражнения',
+    
+    # Числа и операции
+    'число', 'числа', 'цифра', 'цифры', 'количество',
+    'процент', 'проценты', 'дробь', 'дроби',
+    'деление', 'умножение', 'сложение', 'вычитание',
+    'плюс', 'минус', 'умножить', 'разделить',
+    'квадрат', 'куб', 'квадратный', 'кубический',
+    'модуль', 'факториал', 'бином', 'комбинаторика',
+    'вероятность', 'вероятностный', 'статистика',
+    'среднее', 'медиана', 'мода', 'дисперсия',
+    'стандартное отклонение', 'корреляция',
+    
+    # Геометрия
+    'геометрия', 'геометрический', 'фигура', 'фигуры',
+    'треугольник', 'квадрат', 'прямоугольник', 'круг',
+    'окружность', 'эллипс', 'многоугольник', 'ромб',
+    'параллелепипед', 'куб', 'шар', 'сфера', 'цилиндр',
+    'конус', 'пирамида', 'призма', 'многогранник',
+    'угол', 'сторона', 'диагональ', 'радиус', 'диаметр',
+    'площадь', 'объем', 'периметр', 'длина', 'ширина',
+    'высота', 'глубина', 'расстояние', 'координаты',
+    
+    # Время и даты (кроме простых вопросов о текущем времени)
+    'сколько времени займет', 'через сколько времени',
+    'сколько дней прошло', 'сколько месяцев прошло',
+    'сколько лет прошло', 'разница во времени', 'разница в датах',
+    'какой будет день через', 'какая будет дата через',
+    'расчет времени', 'расчет даты', 'временной промежуток',
+    'интервал времени', 'продолжительность', 'длительность',
+    'срок', 'период', 'цикл', 'хронология', 'последовательность',
+    'расписание', 'график работы', 'календарь', 'календарный',
+    'високосный', 'високосный год', 'сезон', 'квартал',
+    'десятилетие', 'век', 'тысячелетие', 'эра', 'эпоха',
+    
+    # Английские термины
+    'math', 'mathematics', 'mathematical', 'calculate', 'calculation',
+    'compute', 'computation', 'count', 'formula', 'equation',
+    'function', 'graph', 'integral', 'derivative', 'sum', 'difference',
+    'product', 'quotient', 'root', 'power', 'exponent', 'logarithm',
+    'sine', 'cosine', 'tangent', 'trigonometry', 'theorem',
+    'problem', 'solution', 'solve', 'example', 'exercise',
+    'number', 'digit', 'percentage', 'fraction', 'decimal',
+    'add', 'subtract', 'multiply', 'divide', 'plus', 'minus',
+    'square', 'cube', 'quadratic', 'linear', 'algebra',
+    'probability', 'statistics', 'average', 'mean', 'median',
+    'mode', 'variance', 'deviation', 'correlation',
+    'geometry', 'geometric', 'triangle', 'rectangle', 'circle',
+    'sphere', 'cylinder', 'cone', 'pyramid', 'angle', 'side',
+    'radius', 'diameter', 'area', 'volume', 'perimeter',
+    'length', 'width', 'height', 'depth', 'distance', 'coordinates',
+    
+    # Расчеты времени на английском
+    'time calculation', 'date calculation', 'how many days',
+    'how many hours', 'time difference', 'date difference',
+    'duration', 'interval', 'period', 'timeline', 'schedule',
+    'calendar', 'leap year', 'century', 'decade', 'millennium'
+]
+
+# 3. ПРОГРАММИРОВАНИЕ (код, разработка)
+PROGRAMMING_KEYWORDS = [
+    # Общее программирование
+    'программирование', 'программировать', 'программный',
+    'код', 'напиши код', 'написать код', 'кодить',
+    'разработка', 'разработать', 'разработчик',
+    'алгоритм', 'алгоритмический', 'алгоритмы',
+    'скрипт', 'скрипты', 'напиши скрипт', 'bash скрипт',
+    'программа', 'напиши программу', 'создай программу',
+    'приложение', 'разработать приложение', 'создать приложение',
+    'сайт', 'создать сайт', 'разработать сайт', 'веб-сайт',
+    'функция', 'функции', 'метод', 'методы', 'класс', 'классы',
+    'библиотека', 'библиотеки', 'фреймворк', 'фреймворки',
+    'API', 'интерфейс', 'бэкенд', 'фронтенд', 'фулстек',
+    'отладка', 'дебаг', 'отладить', 'исправить ошибку',
+    'оптимизация', 'оптимизировать', 'рефакторинг', 'рефакторить',
+    
+    # Языки программирования
+    'python', 'питон', 'пайтон', 'java', 'джава',
+    'javascript', 'js', 'typescript', 'ts', 'php',
+    'c++', 'си плюс плюс', 'c#', 'си шарп', 'c', 'си',
+    'ruby', 'руби', 'go', 'golang', 'rust', 'раст',
+    'swift', 'kotlin', 'scala', 'perl', 'html', 'css',
+    'sql', 'mysql', 'postgresql', 'sqlite', 'mongodb',
+    
+    # Конкретные задачи
+    'напиши функцию', 'напиши класс', 'напиши метод',
+    'создай функцию', 'создай класс', 'создай метод',
+    'реализуй алгоритм', 'реализовать алгоритм',
+    'сортировка', 'поиск', 'рекурсия', 'итерация',
+    'парсинг', 'парсить', 'обработка данных',
+    'работа с файлами', 'чтение файла', 'запись в файл',
+    'база данных', 'бд', 'запрос к бд', 'sql запрос',
+    'регулярные выражения', 'regex', 'регексп',
+    'асинхронность', 'асинхронный', 'async', 'await',
+    'многопоточность', 'многопроцессорность', 'thread',
+    'сеть', 'сетевые запросы', 'http', 'https', 'websocket',
+    'криптография', 'шифрование', 'хеширование', 'jwt',
+    
+    # Веб-разработка
+    'верстка', 'сверстать', 'адаптивная верстка',
+    'html страница', 'html разметка', 'css стили',
+    'flexbox', 'grid', 'анимация', 'анимации',
+    'react', 'vue', 'angular', 'jquery', 'bootstrap',
+    'django', 'flask', 'fastapi', 'spring', 'laravel',
+    'node.js', 'nodejs', 'express', 'nestjs',
+    'rest api', 'restful', 'graphql', 'grpc',
+    
+    # Английские термины
+    'programming', 'program', 'code', 'write code', 'coding',
+    'development', 'developer', 'algorithm', 'script',
+    'application', 'app', 'website', 'web development',
+    'function', 'method', 'class', 'library', 'framework',
+    'backend', 'frontend', 'fullstack', 'debug', 'debugging',
+    'optimize', 'optimization', 'refactor', 'refactoring',
+    'python', 'javascript', 'typescript', 'java', 'c++',
+    'php', 'ruby', 'go', 'rust', 'html', 'css', 'sql',
+    'implement', 'implementation', 'sort', 'search',
+    'recursion', 'iteration', 'parse', 'parsing',
+    'database', 'query', 'regex', 'asynchronous',
+    'multithreading', 'network', 'http', 'encryption',
+    'frontend', 'backend', 'full stack', 'api',
+    
+    # Фразы
+    'как написать', 'как создать', 'как реализовать',
+    'помоги с кодом', 'помощь с программированием',
+    'исправь код', 'найди ошибку в коде', 'что не так с кодом',
+    'как сделать', 'как реализовать', 'как запрограммировать',
+    'how to code', 'how to program', 'help with code',
+    'fix this code', 'debug this code', 'code review'
+]
+
 def select_model_for_request(messages, has_images=False, has_audio=False, has_documents=False):
     """
     Автоматический подбор модели в зависимости от типа запроса
     """
-    # Проверяем наличие изображений
+    # Проверяем наличие изображений (высший приоритет)
     if has_images:
         app.logger.info(f"Выбрана мультимодальная модель: {OLLAMA_MULTIMODAL_MODEL}")
-        return OLLAMA_MULTIMODAL_MODEL
+        return OLLAMA_MULTIMODAL_MODEL, 'multimodal'
     
     # Анализируем текст запроса
     last_user_message = ""
@@ -281,23 +509,35 @@ def select_model_for_request(messages, has_images=False, has_audio=False, has_do
                     last_user_message = content
             break
     
-    # Ключевые слова для разных типов задач
-    reasoning_keywords = [
-        'почему', 'зачем', 'объясни', 'рассуждай', 'думай', 'анализируй',
-        'сравни', 'спрогнозируй', 'выведи', 'логика', 'reasoning', 'analyze',
-        'explain why', 'what if', 'продумай', 'рассуждение', 'умозаключение',
-        'выведи формулу', 'докажи', 'доказательство', 'теорема'
+    last_user_message_lower = last_user_message.lower()
+    
+    # Исключения: простые вопросы о времени НЕ считаются математикой
+    simple_time_questions = [
+        'который час', 'сколько времени', 'какой сегодня день',
+        'какое сегодня число', 'какой день недели', 'what time is it',
+        'what day is it', "what's the time", "what's the date"
     ]
     
-    # Проверяем на сложные рассуждения
-    last_user_message_lower = last_user_message.lower()
-    if any(keyword in last_user_message_lower for keyword in reasoning_keywords):
-        app.logger.info(f"Выбрана модель для рассуждений: {OLLAMA_REASONING_MODEL}")
-        return OLLAMA_REASONING_MODEL
+    is_simple_time_question = any(q in last_user_message_lower for q in simple_time_questions)
+    
+    # Приоритет 1: Программирование (самый высокий приоритет среди текстовых)
+    if any(keyword in last_user_message_lower for keyword in PROGRAMMING_KEYWORDS):
+        app.logger.info(f"Выбрана модель для программирования: {OLLAMA_REASONING_MODEL} (code)")
+        return OLLAMA_REASONING_MODEL, 'code'
+    
+    # Приоритет 2: Математика (кроме простых вопросов о времени)
+    if any(keyword in last_user_message_lower for keyword in MATH_KEYWORDS) and not is_simple_time_question:
+        app.logger.info(f"Выбрана модель для математики: {OLLAMA_REASONING_MODEL} (math)")
+        return OLLAMA_REASONING_MODEL, 'math'
+    
+    # Приоритет 3: Логика и рассуждения
+    if any(keyword in last_user_message_lower for keyword in LOGIC_KEYWORDS):
+        app.logger.info(f"Выбрана модель для рассуждений: {OLLAMA_REASONING_MODEL} (logic)")
+        return OLLAMA_REASONING_MODEL, 'logic'
     
     # По умолчанию используем обычную чат-модель
     app.logger.info(f"Выбрана стандартная чат-модель: {OLLAMA_CHAT_MODEL}")
-    return OLLAMA_CHAT_MODEL
+    return OLLAMA_CHAT_MODEL, 'chat'
 
 # -------------------------------
 # Анализ сообщений для определения типа контента
@@ -666,6 +906,17 @@ def api_footer_text():
     return FOOTER_TEXT
 
 # -------------------------------
+# Отладочный эндпоинт для проверки часового пояса
+# -------------------------------
+@app.route('/api/timezone-info', methods=['GET'])
+def api_timezone_info():
+    """Возвращает информацию о текущем часовом поясе (только для разработки)"""
+    if 'email' not in session and app.debug == False:
+        return jsonify({'error': 'Доступ запрещен'}), 403
+    
+    return jsonify(get_timezone_info())
+
+# -------------------------------
 # ОТПРАВКА СООБЩЕНИЯ (НОВАЯ ЛОГИКА)
 # -------------------------------
 @app.route('/send_message', methods=['POST'])
@@ -702,8 +953,11 @@ def send_message():
         data = request.get_json()
         message_text = data.get('message', '')
     
-    # ПОЛУЧАЕМ ТЕКУЩЕЕ ЛОКАЛЬНОЕ ВРЕМЯ С ДНЕМ НЕДЕЛИ
-    current_time_str = get_local_datetime_string()
+    # ПОЛУЧАЕМ ТЕКУЩЕЕ ВРЕМЯ В УКАЗАННОМ ЧАСОВОМ ПОЯСЕ
+    current_time_str = get_current_time_in_timezone()
+    
+    # Логируем используемый часовой пояс для отладки
+    app.logger.info(f"Используется часовой пояс: {TIMEZONE_STR}, время: {current_time_str}")
     
     # Проверяем, является ли это первым сообщением в сеансе
     with sqlite3.connect(CHAT_DB_PATH) as conn:
@@ -806,7 +1060,13 @@ def send_message():
     # Получаем историю (нужна для контекста)
     history = get_session_messages(session_id)
     
-    app.logger.info(f"Session {session_id}: выбрана модель {selected_model}")
+    # Определяем тип контента для выбора модели
+    has_images, has_audio, has_documents = analyze_messages_for_content(history)
+    
+    # Выбор модели с учетом категории
+    selected_model, model_category = select_model_for_request(history, has_images, has_audio, has_documents)
+    
+    app.logger.info(f"Session {session_id}: выбрана модель {selected_model} (категория: {model_category})")
     app.logger.info(f"Prompt: {final_message_text}")
     
     # ЗАМЕР ВРЕМЕНИ ВЫПОЛНЕНИЯ
@@ -848,6 +1108,7 @@ def send_message():
         'response': bot_reply,
         'session_id': session_id,
         'model_used': selected_model,
+        'model_category': model_category,
         'response_time': response_time,
         'user_timestamp': user_timestamp,
         'assistant_timestamp': assistant_timestamp

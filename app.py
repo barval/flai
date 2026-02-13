@@ -1012,7 +1012,7 @@ def api_timezone_info():
     return jsonify(get_timezone_info())
 
 # -------------------------------
-# ОТПРАВКА СООБЩЕНИЯ (НОВАЯ ЛОГИКА)
+# ОТПРАВКА СООБЩЕНИЯ (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 # -------------------------------
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -1067,34 +1067,48 @@ def send_message():
     has_image = False
     image_validation_error = None
     
-    # Проверяем, есть ли файл и является ли он изображением
+    # Сохраняем исходное сообщение пользователя (для отображения в интерфейсе)
+    user_content = []
+    if message_text:
+        user_content.append({"type": "text", "text": message_text})
+    
+    # Проверяем, есть ли файл
     if file_data:
         # Проверяем, поддерживается ли файл как изображение
         is_valid_image, validation_error = validate_image_file(file_data, file_type, file_name, file_size)
         
         if is_valid_image:
             has_image = True
-            # СЛУЧАЙ 1: Есть и текст, и изображение
-            if message_text.strip():
-                final_message_text = f"Текущее время: {current_time_str}. Подпись под изображением: {message_text}"
-            # СЛУЧАЙ 2: Только изображение, без текста
-            else:
-                final_message_text = f"Текущее время: {current_time_str}. Ответ - на русском языке. Списком перечисли все предметы на изображении. Опиши само изображение и всё, что можно про него рассказать. Не задавай вопросов. Не пиши о том, чего нет на изображении."
-            selected_model = OLLAMA_MULTIMODAL_MODEL
-        else:
-            # СЛУЧАЙ 4: Неподдерживаемый тип файла или превышены ограничения
-            bot_reply = f"⚠️ {validation_error}"
-            
-            # Сохраняем сообщение пользователя (для истории)
-            user_content = []
-            if message_text:
-                user_content.append({"type": "text", "text": message_text})
+            # Добавляем информацию о файле в user_content
             user_content.append({
                 "type": "file", 
                 "file_data": file_data, 
                 "file_type": file_type, 
                 "file_name": file_name
             })
+            
+            # ФОРМИРУЕМ ПРОМПТ ДЛЯ МОДЕЛИ
+            if message_text.strip():
+                # СЛУЧАЙ 1: Есть и текст, и изображение
+                final_message_text = f"Текущее время: {current_time_str}. Подпись под изображением: {message_text}"
+            else:
+                # СЛУЧАЙ 2: Только изображение, без текста
+                final_message_text = f"Текущее время: {current_time_str}. Ответ - на русском языке. Списком перечисли все предметы на изображении. Опиши само изображение и всё, что можно про него рассказать. Не задавай вопросов. Не пиши о том, чего нет на изображении."
+            
+            selected_model = OLLAMA_MULTIMODAL_MODEL
+        else:
+            # СЛУЧАЙ 4: Неподдерживаемый тип файла или превышены ограничения
+            bot_reply = f"⚠️ {validation_error}"
+            
+            # Добавляем информацию о файле в user_content для истории
+            user_content.append({
+                "type": "file", 
+                "file_data": file_data, 
+                "file_type": file_type, 
+                "file_name": file_name
+            })
+            
+            # Сохраняем сообщение пользователя (для истории)
             save_message(session_id, 'user', json.dumps(user_content) if user_content else message_text,
                         file_data, file_type, file_name)
             
@@ -1114,24 +1128,16 @@ def send_message():
             })
     else:
         # СЛУЧАЙ 3: Только текст, без файлов
-        final_message_text = f"Текущее время: {current_time_str}. Дай краткий, точный ответ на русском языке. Не добавляй рассуждений."
         if message_text.strip():
-            # Добавляем оригинальный текст пользователя после системного промпта
-            final_message_text = final_message_text + "\n\nВопрос пользователя: " + message_text
+            user_content.append({"type": "text", "text": message_text})
+            final_message_text = f"Текущее время: {current_time_str}. Дай краткий, точный ответ на русском языке. Не добавляй рассуждений.\n\nВопрос пользователя: {message_text}"
+        else:
+            # Пустое сообщение
+            return jsonify({'error': 'Пустое сообщение'}), 400
+        
         selected_model = OLLAMA_CHAT_MODEL
     
-    # Сохраняем исходное сообщение пользователя (для отображения в интерфейсе)
-    user_content = []
-    if message_text:
-        user_content.append({"type": "text", "text": message_text})
-    if file_data and has_image:  # Сохраняем файл только если он прошел валидацию
-        user_content.append({
-            "type": "file", 
-            "file_data": file_data, 
-            "file_type": file_type, 
-            "file_name": file_name
-        })
-    
+    # Сохраняем сообщение пользователя (для отображения в интерфейсе)
     save_message(session_id, 'user', json.dumps(user_content) if user_content else message_text,
                  file_data if has_image else None, 
                  file_type if has_image else None, 
@@ -1158,29 +1164,67 @@ def send_message():
     # Определяем тип контента для выбора модели
     has_images, has_audio, has_documents = analyze_messages_for_content(history)
     
-    # Выбор модели с учетом категории
-    selected_model, model_category = select_model_for_request(history, has_images, has_audio, has_documents)
+    # Выбор модели с учетом категории (только для текстовых запросов)
+    if not has_image:
+        selected_model, model_category = select_model_for_request(history, has_images, has_audio, has_documents)
+    else:
+        model_category = 'multimodal'
     
     app.logger.info(f"Session {session_id}: выбрана модель {selected_model} (категория: {model_category})")
-    app.logger.info(f"Prompt: {final_message_text}")
     
     # ЗАМЕР ВРЕМЕНИ ВЫПОЛНЕНИЯ
     start_time = time.time()
     
-    # Запрос к Ollama с сформированным промптом
+    # ПОДГОТОВКА ЗАПРОСА К OLLAMA
     if has_image:
-        # Для изображений нужно сохранить структуру с файлом
-        # Но промпт заменяем на сформированный
-        # Создаем временную историю для запроса
-        temp_messages = history.copy()
-        if temp_messages and temp_messages[-1]['role'] == 'user':
-            # Заменяем последнее сообщение на наш промпт
-            temp_messages[-1]['content'] = json.dumps([{"type": "text", "text": final_message_text}])
-        bot_reply = call_ollama_chat(temp_messages, model=selected_model)
+        # Для изображений нужно создать специальную структуру сообщения
+        # Находим последнее сообщение пользователя с изображением
+        last_user_msg = None
+        for msg in reversed(history):
+            if msg['role'] == 'user' and msg.get('file_data'):
+                last_user_msg = msg
+                break
+        
+        if last_user_msg:
+            # Создаем сообщение для Ollama с изображением
+            ollama_messages = []
+            
+            # Добавляем предыдущие сообщения (если нужно)
+            for msg in history[:-1]:  # Все кроме последнего
+                if msg['role'] == 'user':
+                    content = msg['content']
+                    if isinstance(content, str):
+                        if content.startswith('['):
+                            try:
+                                parts = json.loads(content)
+                                text_parts = [p['text'] for p in parts if p.get('type') == 'text']
+                                if text_parts:
+                                    ollama_messages.append({
+                                        'role': 'user',
+                                        'content': '\n'.join(text_parts)
+                                    })
+                            except:
+                                ollama_messages.append({'role': 'user', 'content': content})
+                        else:
+                            ollama_messages.append({'role': 'user', 'content': content})
+                elif msg['role'] == 'assistant':
+                    ollama_messages.append({'role': 'assistant', 'content': msg['content']})
+            
+            # Добавляем текущее сообщение с изображением и промптом
+            ollama_messages.append({
+                'role': 'user',
+                'content': final_message_text,
+                'images': [last_user_msg['file_data']]  # Изображение в base64
+            })
+            
+            # Отправляем запрос
+            bot_reply = call_ollama_chat(ollama_messages, model=selected_model)
+        else:
+            bot_reply = "⚠️ Ошибка: не удалось найти изображение для обработки"
     else:
-        # Для текста просто передаем промпт
-        temp_messages = [{'role': 'user', 'content': final_message_text}]
-        bot_reply = call_ollama_chat(temp_messages, model=selected_model)
+        # Для текстовых запросов
+        ollama_messages = [{'role': 'user', 'content': final_message_text}]
+        bot_reply = call_ollama_chat(ollama_messages, model=selected_model)
     
     end_time = time.time()
     response_time = round(end_time - start_time, 1)

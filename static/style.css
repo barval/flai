@@ -428,6 +428,7 @@ footer p {
     word-wrap: break-word;
 }
 
+/*
 .info-message {
     color: #2c3e50;
     background-color: #e8f4fc;
@@ -435,6 +436,7 @@ footer p {
     padding: 0.8rem;
     border-radius: 4px;
 }
+*/
 
 .message-input {
     display: flex;

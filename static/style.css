@@ -360,7 +360,7 @@ footer p {
     background-color: #f0f0f0;
 }
 
-/* Информация о модели */
+/*
 .model-info {
     display: flex;
     align-items: center;
@@ -381,8 +381,9 @@ footer p {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+*/
 
-/* Индикатор статуса Ollama */
+/*
 .ollama-status {
     display: inline-block;
     width: 10px;
@@ -399,6 +400,7 @@ footer p {
 .ollama-status.offline {
     background-color: #e74c3c;
 }
+*/
 
 .chat-messages {
     flex: 1;

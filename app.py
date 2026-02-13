@@ -64,16 +64,6 @@ def check_ollama_connection():
         app.logger.error(f"Ollama connection failed: {str(e)}")
         return False, []
 
-def get_available_models():
-    """Получить список доступных моделей из Ollama"""
-    try:
-        response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
-        if response.status_code == 200:
-            return response.json().get('models', [])
-    except Exception as e:
-        app.logger.error(f"Failed to get models: {str(e)}")
-    return []
-
 def prepare_ollama_messages(messages):
     """Подготовка сообщений для Ollama API"""
     ollama_messages = []

@@ -178,10 +178,6 @@ def validate_image_file(file_data, file_type, file_name, file_size):
         if width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION:
             return False, f"Максимальное разрешение файла с изображением - не более {MAX_IMAGE_DIMENSION}×{MAX_IMAGE_DIMENSION}"
         
-        # Проверяем соотношение сторон (для 3840×2160 максимальная ширина/высота)
-        if width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION:
-            return False, f"Максимальное разрешение файла с изображением - не более {MAX_IMAGE_DIMENSION}×{MAX_IMAGE_DIMENSION}"
-        
         return True, None
         
     except Exception as e:
@@ -205,62 +201,15 @@ def check_ollama_connection():
         app.logger.error(f"Ollama connection failed: {str(e)}")
         return False, []
 
-def prepare_ollama_messages(messages):
-    """Подготовка сообщений для Ollama API"""
-    ollama_messages = []
-    
-    for msg in messages:
-        role = msg['role']
-        content = msg['content']
-        
-        if isinstance(content, str):
-            if content.startswith('['):
-                try:
-                    parts = json.loads(content)
-                    text_parts = []
-                    for part in parts:
-                        if part.get('type') == 'text':
-                            text_parts.append(part['text'])
-                        elif part.get('type') == 'file':
-                            file_type = part.get('file_type', '')
-                            file_data = part.get('file_data', '')
-                            
-                            if file_type.startswith('image/'):
-                                ollama_messages.append({
-                                    'role': role,
-                                    'content': text_parts[-1] if text_parts else '',
-                                    'images': [file_data]
-                                })
-                            elif file_type.startswith('audio/'):
-                                text_parts.append(f"[Аудиофайл: {part.get('file_name', 'audio')}]")
-                            else:
-                                text_parts.append(f"[Документ: {part.get('file_name', 'file')}]")
-                    
-                    if text_parts and not any(m.get('role') == role and m.get('images') for m in ollama_messages):
-                        ollama_messages.append({
-                            'role': role,
-                            'content': '\n'.join(text_parts)
-                        })
-                except:
-                    ollama_messages.append({'role': role, 'content': content})
-            else:
-                ollama_messages.append({'role': role, 'content': content})
-        else:
-            ollama_messages.append({'role': role, 'content': content})
-    
-    return ollama_messages
-
 def call_ollama_chat(messages, model=None, stream=False):
     """Вызов Ollama API для чата"""
     if model is None:
         model = OLLAMA_CHAT_MODEL
     
     try:
-        ollama_messages = prepare_ollama_messages(messages)
-        
         payload = {
             'model': model,
-            'messages': ollama_messages,
+            'messages': messages,
             'stream': stream,
             'options': {
                 'num_ctx': MODEL_CONTEXT_WINDOWS.get(model, 32768),
@@ -269,6 +218,10 @@ def call_ollama_chat(messages, model=None, stream=False):
             }
         }
         
+        app.logger.info(f"Отправка запроса к Ollama. Модель: {model}")
+        if any('images' in msg for msg in messages):
+            app.logger.info("Запрос содержит изображение(я)")
+        
         response = requests.post(
             f"{OLLAMA_URL}/api/chat",
             json=payload,
@@ -276,14 +229,20 @@ def call_ollama_chat(messages, model=None, stream=False):
         )
         
         if response.status_code == 200:
-            return response.json()['message']['content']
+            result = response.json()
+            app.logger.info("Успешный ответ от Ollama")
+            return result['message']['content']
         else:
             error_msg = f"Ollama error: {response.status_code} - {response.text}"
             app.logger.error(error_msg)
             return f"⚠️ Ошибка Ollama: {response.status_code}"
             
     except requests.exceptions.ConnectionError:
+        app.logger.error("Ошибка подключения к Ollama")
         return "⚠️ Не удалось подключиться к Ollama. Проверьте, запущен ли сервис."
+    except requests.exceptions.Timeout:
+        app.logger.error("Таймаут при обращении к Ollama")
+        return "⚠️ Превышено время ожидания ответа от Ollama. Попробуйте ещё раз."
     except Exception as e:
         app.logger.error(f"Error calling Ollama: {str(e)}")
         return f"⚠️ Ошибка при обращении к Ollama: {str(e)}"
@@ -1064,6 +1023,7 @@ def send_message():
     # АНАЛИЗ ТИПА ФАЙЛА И ФОРМИРОВАНИЕ СООБЩЕНИЯ
     final_message_text = ""
     selected_model = None
+    model_category = 'chat'
     has_image = False
     image_validation_error = None
     
@@ -1096,6 +1056,7 @@ def send_message():
                 final_message_text = f"Текущее время: {current_time_str}. Ответ - на русском языке. Списком перечисли все предметы на изображении. Опиши само изображение и всё, что можно про него рассказать. Не задавай вопросов. Не пиши о том, чего нет на изображении."
             
             selected_model = OLLAMA_MULTIMODAL_MODEL
+            model_category = 'multimodal'
         else:
             # СЛУЧАЙ 4: Неподдерживаемый тип файла или превышены ограничения
             bot_reply = f"⚠️ {validation_error}"
@@ -1109,7 +1070,7 @@ def send_message():
             })
             
             # Сохраняем сообщение пользователя (для истории)
-            save_message(session_id, 'user', json.dumps(user_content) if user_content else message_text,
+            save_message(session_id, 'user', json.dumps(user_content, ensure_ascii=False) if user_content else message_text,
                         file_data, file_type, file_name)
             
             # Сохраняем ответ-уведомление
@@ -1136,9 +1097,10 @@ def send_message():
             return jsonify({'error': 'Пустое сообщение'}), 400
         
         selected_model = OLLAMA_CHAT_MODEL
+        model_category = 'chat'
     
     # Сохраняем сообщение пользователя (для отображения в интерфейсе)
-    save_message(session_id, 'user', json.dumps(user_content) if user_content else message_text,
+    save_message(session_id, 'user', json.dumps(user_content, ensure_ascii=False) if user_content else message_text,
                  file_data if has_image else None, 
                  file_type if has_image else None, 
                  file_name if has_image else None)
@@ -1161,14 +1123,10 @@ def send_message():
     # Получаем историю (нужна для контекста)
     history = get_session_messages(session_id)
     
-    # Определяем тип контента для выбора модели
-    has_images, has_audio, has_documents = analyze_messages_for_content(history)
-    
-    # Выбор модели с учетом категории (только для текстовых запросов)
+    # Определяем тип контента для выбора модели (только для текстовых запросов)
     if not has_image:
+        has_images, has_audio, has_documents = analyze_messages_for_content(history)
         selected_model, model_category = select_model_for_request(history, has_images, has_audio, has_documents)
-    else:
-        model_category = 'multimodal'
     
     app.logger.info(f"Session {session_id}: выбрана модель {selected_model} (категория: {model_category})")
     
@@ -1189,33 +1147,15 @@ def send_message():
             # Создаем сообщение для Ollama с изображением
             ollama_messages = []
             
-            # Добавляем предыдущие сообщения (если нужно)
-            for msg in history[:-1]:  # Все кроме последнего
-                if msg['role'] == 'user':
-                    content = msg['content']
-                    if isinstance(content, str):
-                        if content.startswith('['):
-                            try:
-                                parts = json.loads(content)
-                                text_parts = [p['text'] for p in parts if p.get('type') == 'text']
-                                if text_parts:
-                                    ollama_messages.append({
-                                        'role': 'user',
-                                        'content': '\n'.join(text_parts)
-                                    })
-                            except:
-                                ollama_messages.append({'role': 'user', 'content': content})
-                        else:
-                            ollama_messages.append({'role': 'user', 'content': content})
-                elif msg['role'] == 'assistant':
-                    ollama_messages.append({'role': 'assistant', 'content': msg['content']})
-            
-            # Добавляем текущее сообщение с изображением и промптом
+            # Добавляем только текущее сообщение с изображением (без истории)
+            # Это предотвращает путаницу и повторную отправку изображений
             ollama_messages.append({
                 'role': 'user',
                 'content': final_message_text,
                 'images': [last_user_msg['file_data']]  # Изображение в base64
             })
+            
+            app.logger.info(f"Отправка запроса с изображением к модели {selected_model}")
             
             # Отправляем запрос
             bot_reply = call_ollama_chat(ollama_messages, model=selected_model)
@@ -1224,6 +1164,7 @@ def send_message():
     else:
         # Для текстовых запросов
         ollama_messages = [{'role': 'user', 'content': final_message_text}]
+        app.logger.info(f"Отправка текстового запроса к модели {selected_model}")
         bot_reply = call_ollama_chat(ollama_messages, model=selected_model)
     
     end_time = time.time()

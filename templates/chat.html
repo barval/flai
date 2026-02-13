@@ -129,10 +129,11 @@
     }
 
     // -------------------------------
-    // Обновление счетчика сообщений
+    // Обновление счетчика сообщений - ИСПРАВЛЕНО
     // -------------------------------
     function updateMessageCount() {
-        const count = document.querySelectorAll('.user-message').length;
+        // Считаем ВСЕ сообщения (и пользователя, и ассистента/бота)
+        const count = document.querySelectorAll('.user-message, .assistant-message, .bot-message').length;
         document.getElementById('context-info').textContent = `Сообщений: ${count}`;
     }
 
@@ -301,12 +302,22 @@
     }
 
     // -------------------------------
-    // Отображение одного сообщения
+    // Отображение одного сообщения - ИСПРАВЛЕНО
     // -------------------------------
     function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName) {
         const container = document.getElementById('chat-messages');
         const msgDiv = document.createElement('div');
-        msgDiv.className = `${role}-message`;
+        
+        // Устанавливаем правильный класс в зависимости от роли
+        if (role === 'user') {
+            msgDiv.className = 'user-message';
+        } else {
+            // Для ассистента используем класс assistant-message
+            msgDiv.className = 'assistant-message';
+            // Добавляем также bot-message для обратной совместимости со старыми стилями
+            msgDiv.classList.add('bot-message');
+        }
+        
         msgDiv.setAttribute('data-timestamp', timestamp);
         
         // Для сообщений ассистента сохраняем название модели
@@ -394,6 +405,9 @@
         msgDiv.innerHTML = html;
         container.appendChild(msgDiv);
         container.scrollTop = container.scrollHeight;
+        
+        // После добавления сообщения обновляем счетчик
+        updateMessageCount();
     }
 
     // -------------------------------
@@ -511,7 +525,7 @@
     }
 
     // -------------------------------
-    // Отправка сообщения (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+    // Отправка сообщения
     // -------------------------------
     async function sendMessage() {
         const input = document.getElementById('message-input');
@@ -576,7 +590,6 @@
                     fileName, 
                     timestamp
                 );
-                updateMessageCount();
                 
                 // Очищаем поля
                 input.value = '';
@@ -595,7 +608,6 @@
                 null, 
                 timestamp
             );
-            updateMessageCount();
             
             // Очищаем поля
             input.value = '';
@@ -638,7 +650,6 @@
                     data.response_time || 0,
                     modelName
                 );
-                updateMessageCount();
             }
             
         } catch (err) {

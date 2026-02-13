@@ -657,7 +657,7 @@
 
     // -------------------------------
     // ИСПРАВЛЕННАЯ ФУНКЦИЯ СОХРАНЕНИЯ ЧАТА
-    // ПОЛНОЕ КОПИРОВАНИЕ CSS С САЙТА
+    // ЦВЕТ КОДА В ТАБЛИЦАХ ТЕПЕРЬ ТЕМНО-СИНИЙ, КАК НА САЙТЕ
     // -------------------------------
     function saveChatAsHTML() {
         const title = document.querySelector('.session-item.active .session-title')?.textContent || 'Чат';
@@ -938,6 +938,7 @@
                 margin-bottom: 0.25em;
             }
 
+            /* ========== ИСПРАВЛЕНО: ЦВЕТ КОДА ТЕПЕРЬ ТЕМНО-СИНИЙ, КАК НА САЙТЕ ========== */
             .message-content code {
                 padding: 0.2em 0.4em;
                 margin: 0;
@@ -945,7 +946,7 @@
                 background-color: rgba(27,31,35,0.05);
                 border-radius: 3px;
                 font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
-                color: #e74c3c;  /* КРАСНЫЙ - КАК НА САЙТЕ */
+                color: #2c3e50;  /* ИСПРАВЛЕНО: ТЕМНО-СИНИЙ, А НЕ КРАСНЫЙ */
             }
 
             .message-content pre {
@@ -992,8 +993,8 @@
 
             .message-content table th {
                 font-weight: 600;
-                background-color: #f6f8fa !important;  /* СВЕТЛО-СЕРЫЙ - ТОЧНО КАК НА САЙТЕ */
-                color: #2c3e50 !important;             /* ТЁМНО-СИНИЙ ТЕКСТ - КАК НА САЙТЕ */
+                background-color: #f6f8fa !important;
+                color: #2c3e50 !important;
                 text-align: center !important;
             }
 

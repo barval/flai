@@ -24,7 +24,7 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 # -------------------------------
 # Подпись в футере - единая для всего проекта
 # -------------------------------
-FOOTER_TEXT = os.getenv('FOOTER_TEXT', 'ИИ Локальный v1.3 (с) 2026 Барсуков Валерий')
+FOOTER_TEXT = os.getenv('FOOTER_TEXT', 'ИИ Локальный v1.4 (с) 2026 Барсуков Валерий')
 
 # -------------------------------
 # Настройки часового пояса из .env
@@ -44,15 +44,15 @@ except UnknownTimeZoneError:
 # Настройки Ollama
 # -------------------------------
 OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434')
-OLLAMA_CHAT_MODEL = os.getenv('LLM_CHAT_MODEL', 'qwen3-vl:8b-instruct-q4_K_M')
-OLLAMA_MULTIMODAL_MODEL = os.getenv('LLM_MULTIMODAL_MODEL', 'qwen3-vl:8b-instruct-q4_K_M')
-OLLAMA_REASONING_MODEL = os.getenv('LLM_REASONING_MODEL', 'gpt-oss-20b')
+LLM_CHAT_MODEL = os.getenv('LLM_CHAT_MODEL', 'qwen3-vl:8b-instruct-q4_K_M')
+LLM_MULTIMODAL_MODEL = os.getenv('LLM_MULTIMODAL_MODEL', 'qwen3-vl:8b-instruct-q4_K_M')
+LLM_REASONING_MODEL = os.getenv('LLM_REASONING_MODEL', 'gpt-oss-20b')
 
 # Контекстные окна для разных моделей
 MODEL_CONTEXT_WINDOWS = {
-    OLLAMA_CHAT_MODEL: int(os.getenv('LLM_CHAT_MODEL_CONTEXT_WINDOW', 32768)),
-    OLLAMA_MULTIMODAL_MODEL: int(os.getenv('LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW', 32768)),
-    OLLAMA_REASONING_MODEL: int(os.getenv('LLM_REASONING_MODEL_CONTEXT_WINDOW', 65536)),
+    LLM_CHAT_MODEL: int(os.getenv('LLM_CHAT_MODEL_CONTEXT_WINDOW', 32768)),
+    LLM_MULTIMODAL_MODEL: int(os.getenv('LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW', 32768)),
+    LLM_REASONING_MODEL: int(os.getenv('LLM_REASONING_MODEL_CONTEXT_WINDOW', 65536)),
 }
 
 # -------------------------------
@@ -156,17 +156,6 @@ def get_current_time_in_timezone_for_db():
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 # -------------------------------
-# Функция для получения информации о текущем часовом поясе
-# -------------------------------
-def get_timezone_info():
-    """Возвращает информацию о текущем часовом поясе для отладки"""
-    return {
-        'timezone': TIMEZONE_STR,
-        'utc_offset': datetime.now(TIMEZONE).strftime('%z'),
-        'current_time': get_current_time_in_timezone()
-    }
-
-# -------------------------------
 # Функция для проверки изображения
 # -------------------------------
 def validate_image_file(file_data, file_type, file_name, file_size):
@@ -224,7 +213,7 @@ def check_ollama_connection():
 def call_ollama_chat(messages, model=None, stream=False):
     """Вызов Ollama API для чата"""
     if model is None:
-        model = OLLAMA_CHAT_MODEL
+        model = LLM_CHAT_MODEL
     
     try:
         payload = {
@@ -268,374 +257,130 @@ def call_ollama_chat(messages, model=None, stream=False):
         return f"⚠️ Ошибка при обращении к Ollama: {str(e)}"
 
 # -------------------------------
-# Ключевые слова для разных типов задач
+# Функция для создания промпта-маршрутизатора
 # -------------------------------
-
-# 1. ЛИТЕРАТУРА (рассказы, сочинения, пересказы, тексты)
-LITERATURE_KEYWORDS = [
-    # Русские - общие
-    'рассказ', 'рассказы', 'напиши рассказ', 'сочини рассказ',
-    'сочинение', 'напиши сочинение', 'эссе', 'напиши эссе',
-    'пересказ', 'перескажи', 'краткое содержание', 'изложение',
-    'текст', 'напиши текст', 'создай текст', 'составь текст',
-    'описание', 'опиши', 'кратко опиши',
-    'повествование', 'повествуй', 'оповести',
-    'история', 'напиши историю', 'придумай историю',
-    'сказка', 'напиши сказку', 'сочини сказку',
-    'стих', 'стихи', 'напиши стих', 'сочини стих', 'поэма',
-    'басня', 'напиши басню', 'притча', 'напиши притчу',
-    'легенда', 'миф', 'былина', 'сказание',
-    'очерк', 'напиши очерк', 'заметка', 'статья',
-    'письмо', 'напиши письмо', 'послание',
-    'дневник', 'запись в дневнике', 'воспоминания', 'мемуары',
-    'биография', 'автобиография', 'жизнеописание',
-    'рецензия', 'напиши рецензию', 'отзыв', 'напиши отзыв',
-    'аннотация', 'напиши аннотацию', 'краткое описание',
-    
-    # Русские - школьная программа
-    'сочинение по литературе', 'анализ стихотворения',
-    'образ главного героя', 'характеристика персонажа',
-    'тема произведения', 'идея произведения', 'основная мысль',
-    'сюжет', 'композиция', 'кульминация', 'развязка',
-    'литературный герой', 'литературный персонаж',
-    'литературное направление', 'романтизм', 'реализм', 'классицизм',
-    'эпитет', 'метафора', 'сравнение', 'олицетворение', 'гипербола',
-    'рифма', 'ритм', 'размер стиха', 'строфа',
-    
-    # Русские - жанры
-    'роман', 'повесть', 'новелла', 'пьеса', 'драма', 'комедия', 'трагедия',
-    'фэнтези', 'фантастика', 'детектив', 'приключения', 'любовный роман',
-    'триллер', 'мистика', 'ужасы', 'хоррор', 'постапокалипсис',
-    'антиутопия', 'утопия', 'альтернативная история',
-    
-    # Русские - действия
-    'придумай', 'выдумай', 'сочини', 'напиши', 'создай', 'составь',
-    'перескажи', 'изложи', 'опиши', 'расскажи', 'поведай',
-    'проанализируй текст', 'разбери текст', 'прокомментируй',
-    
-    # Русские - фразы
-    'напиши небольшой рассказ', 'напиши короткий рассказ',
-    'напиши интересную историю', 'придумай увлекательную историю',
-    'сочини стихотворение', 'сочини стих на тему',
-    'сделай пересказ', 'сделай краткий пересказ',
-    'напиши сочинение на тему', 'помоги написать сочинение',
-    'как написать рассказ', 'как написать сочинение',
-    'что написать в сочинении', 'о чем написать в рассказе',
-    
-    # Английские термины
-    'story', 'stories', 'write a story', 'tell a story',
-    'essay', 'write an essay', 'composition',
-    'retelling', 'retell', 'summary', 'summarize',
-    'text', 'write text', 'create text',
-    'description', 'describe', 'briefly describe',
-    'narrative', 'narrate', 'narration',
-    'history', 'write history', 'create history',
-    'fairy tale', 'write a fairy tale', 'fable',
-    'poem', 'poetry', 'write a poem', 'verse',
-    'parable', 'legend', 'myth', 'epic',
-    'sketch', 'article', 'letter', 'write a letter',
-    'diary', 'memoir', 'biography', 'autobiography',
-    'review', 'write a review', 'feedback', 'annotation',
-    
-    # Английские - литературные термины
-    'plot', 'character', 'protagonist', 'antagonist', 'hero',
-    'theme', 'idea', 'message', 'symbolism', 'metaphor',
-    'simile', 'personification', 'hyperbole', 'irony',
-    'rhyme', 'rhythm', 'meter', 'stanza', 'verse',
-    'genre', 'novel', 'novella', 'short story', 'play',
-    'drama', 'comedy', 'tragedy', 'fantasy', 'science fiction',
-    'mystery', 'detective', 'adventure', 'romance', 'thriller',
-    'horror', 'dystopia', 'utopia', 'alternative history',
-    
-    # Английские - действия
-    'create', 'invent', 'compose', 'write', 'make up',
-    'retell', 'summarize', 'describe', 'tell', 'narrate',
-    'analyze text', 'analyze the text', 'comment on',
-    
-    # Английские - фразы
-    'write a short story', 'write an interesting story',
-    'create a fascinating story', 'compose a poem',
-    'give a summary', 'provide a summary',
-    'help me write', 'how to write a story',
-    'what to write about', 'ideas for a story'
-]
-
-# 2. ЛОГИКА (рассуждения, анализ, объяснения)
-LOGIC_KEYWORDS = [
-    # Русские
-    'почему', 'зачем', 'объясни', 'объяснение', 'рассуждай', 'рассуждение',
-    'думай', 'подумай', 'анализируй', 'анализ', 'проанализируй',
-    'сравни', 'сравнение', 'спрогнозируй', 'прогноз', 'предскажи',
-    'выведи', 'вывод', 'логика', 'логический', 'логически',
-    'продумай', 'обдумай', 'умозаключение', 'умозаключи',
-    'аргументируй', 'аргумент', 'доказательство', 'докажи',
-    'обоснуй', 'обоснование', 'гипотеза', 'предположение',
-    'противопоставь', 'противопоставление', 'выяви', 'выявление',
-    'закономерность', 'закономерности', 'взаимосвязь', 'взаимосвязи',
-    'причина', 'следствие', 'причинно-следственный', 'вытекает',
-    'следовательно', 'отсюда следует', 'из этого следует',
-    'если...то', 'при условии', 'в таком случае',
-    'противоречие', 'противоречит', 'парадокс',
-    'синтез', 'синтезируй', 'обобщи', 'обобщение',
-    'концепция', 'концептуально', 'теоретически',
-    'метод', 'методология', 'методологически',
-    'критерий', 'критерии', 'параметр', 'параметры',
-    'классифицируй', 'классификация', 'систематизируй',
-    'интерпретируй', 'интерпретация', 'трактовка',
-    
-    # Русские фразы
-    'как ты думаешь', 'каково твое мнение', 'что ты думаешь о',
-    'какой вывод', 'к какому выводу', 'что из этого следует',
-    'как это объяснить', 'чем это можно объяснить',
-    'в чем разница', 'чем отличаются', 'что общего',
-    'какой вариант лучше', 'что предпочтительнее',
-    'как ты рассуждал', 'объясни ход мыслей',
-    'почему ты так решил', 'на чем основано',
-    
-    # Английские
-    'why', 'explain', 'reasoning', 'reason', 'think', 'thought',
-    'analyze', 'analysis', 'compare', 'comparison', 'predict',
-    'forecast', 'conclude', 'conclusion', 'logic', 'logical',
-    'deduce', 'deduction', 'infer', 'inference', 'argument',
-    'justify', 'justification', 'hypothesis', 'assumption',
-    'synthesize', 'synthesis', 'generalize', 'generalization',
-    'concept', 'conceptual', 'theoretical', 'methodology',
-    'criteria', 'parameter', 'classify', 'classification',
-    'interpret', 'interpretation', 'implication', 'consequence'
-]
-
-# 3. МАТЕМАТИКА (расчеты, формулы, числа)
-MATH_KEYWORDS = [
-    # Общая математика
-    'математика', 'математический', 'математически',
-    'вычисли', 'вычисление', 'расчет', 'рассчитать',
-    'посчитай', 'подсчет', 'подсчитай', 'сосчитай',
-    'формула', 'формулы', 'уравнение', 'уравнения',
-    'функция', 'функции', 'график', 'графики',
-    'интеграл', 'производная', 'дифференциал',
-    'сумма', 'разность', 'произведение', 'частное',
-    'корень', 'степень', 'логарифм', 'логарифмический',
-    'экспонента', 'экспоненциальный', 'показатель',
-    'синус', 'косинус', 'тангенс', 'тригонометрия',
-    'теорема', 'аксиома', 'лемма', 'доказательство',
-    'задача', 'решение', 'решить', 'решается',
-    'пример', 'примеры', 'упражнение', 'упражнения',
-    
-    # Числа и операции
-    'число', 'числа', 'цифра', 'цифры', 'количество',
-    'процент', 'проценты', 'дробь', 'дроби',
-    'деление', 'умножение', 'сложение', 'вычитание',
-    'плюс', 'минус', 'умножить', 'разделить',
-    'квадрат', 'куб', 'квадратный', 'кубический',
-    'модуль', 'факториал', 'бином', 'комбинаторика',
-    'вероятность', 'вероятностный', 'статистика',
-    'среднее', 'медиана', 'мода', 'дисперсия',
-    'стандартное отклонение', 'корреляция',
-    
-    # Геометрия
-    'геометрия', 'геометрический', 'фигура', 'фигуры',
-    'треугольник', 'квадрат', 'прямоугольник', 'круг',
-    'окружность', 'эллипс', 'многоугольник', 'ромб',
-    'параллелепипед', 'куб', 'шар', 'сфера', 'цилиндр',
-    'конус', 'пирамида', 'призма', 'многогранник',
-    'угол', 'сторона', 'диагональ', 'радиус', 'диаметр',
-    'площадь', 'объем', 'периметр', 'длина', 'ширина',
-    'высота', 'глубина', 'расстояние', 'координаты',
-    
-    # Время и даты (кроме простых вопросов о текущем времени)
-    'сколько времени займет', 'через сколько времени',
-    'сколько дней прошло', 'сколько месяцев прошло',
-    'сколько лет прошло', 'разница во времени', 'разница в датах',
-    'какой будет день через', 'какая будет дата через',
-    'расчет времени', 'расчет даты', 'временной промежуток',
-    'интервал времени', 'продолжительность', 'длительность',
-    'срок', 'период', 'цикл', 'хронология', 'последовательность',
-    'расписание', 'график работы', 'календарь', 'календарный',
-    'високосный', 'високосный год', 'сезон', 'квартал',
-    'десятилетие', 'век', 'тысячелетие', 'эра', 'эпоха',
-    
-    # Английские термины
-    'math', 'mathematics', 'mathematical', 'calculate', 'calculation',
-    'compute', 'computation', 'count', 'formula', 'equation',
-    'function', 'graph', 'integral', 'derivative', 'sum', 'difference',
-    'product', 'quotient', 'root', 'power', 'exponent', 'logarithm',
-    'sine', 'cosine', 'tangent', 'trigonometry', 'theorem',
-    'problem', 'solution', 'solve', 'example', 'exercise',
-    'number', 'digit', 'percentage', 'fraction', 'decimal',
-    'add', 'subtract', 'multiply', 'divide', 'plus', 'minus',
-    'square', 'cube', 'quadratic', 'linear', 'algebra',
-    'probability', 'statistics', 'average', 'mean', 'median',
-    'mode', 'variance', 'deviation', 'correlation',
-    'geometry', 'geometric', 'triangle', 'rectangle', 'circle',
-    'sphere', 'cylinder', 'cone', 'pyramid', 'angle', 'side',
-    'radius', 'diameter', 'area', 'volume', 'perimeter',
-    'length', 'width', 'height', 'depth', 'distance', 'coordinates',
-    
-    # Расчеты времени на английском
-    'time calculation', 'date calculation', 'how many days',
-    'how many hours', 'time difference', 'date difference',
-    'duration', 'interval', 'period', 'timeline', 'schedule',
-    'calendar', 'leap year', 'century', 'decade', 'millennium'
-]
-
-# 4. ПРОГРАММИРОВАНИЕ (код, разработка)
-PROGRAMMING_KEYWORDS = [
-    # Общее программирование
-    'программирование', 'программировать', 'программный',
-    'код', 'напиши код', 'написать код', 'кодить',
-    'разработка', 'разработать', 'разработчик',
-    'алгоритм', 'алгоритмический', 'алгоритмы',
-    'скрипт', 'скрипты', 'напиши скрипт', 'bash скрипт',
-    'программа', 'напиши программу', 'создай программу',
-    'приложение', 'разработать приложение', 'создать приложение',
-    'сайт', 'создать сайт', 'разработать сайт', 'веб-сайт',
-    'функция', 'функции', 'метод', 'методы', 'класс', 'классы',
-    'библиотека', 'библиотеки', 'фреймворк', 'фреймворки',
-    'API', 'интерфейс', 'бэкенд', 'фронтенд', 'фулстек',
-    'отладка', 'дебаг', 'отладить', 'исправить ошибку',
-    'оптимизация', 'оптимизировать', 'рефакторинг', 'рефакторить',
-    
-    # Языки программирования
-    'python', 'питон', 'пайтон', 'java', 'джава',
-    'javascript', 'js', 'typescript', 'ts', 'php',
-    'c++', 'си плюс плюс', 'c#', 'си шарп', 'c', 'си',
-    'ruby', 'руби', 'go', 'golang', 'rust', 'раст',
-    'swift', 'kotlin', 'scala', 'perl', 'html', 'css',
-    'sql', 'mysql', 'postgresql', 'sqlite', 'mongodb',
-    
-    # Конкретные задачи
-    'напиши функцию', 'напиши класс', 'напиши метод',
-    'создай функцию', 'создай класс', 'создай метод',
-    'реализуй алгоритм', 'реализовать алгоритм',
-    'сортировка', 'поиск', 'рекурсия', 'итерация',
-    'парсинг', 'парсить', 'обработка данных',
-    'работа с файлами', 'чтение файла', 'запись в файл',
-    'база данных', 'бд', 'запрос к бд', 'sql запрос',
-    'регулярные выражения', 'regex', 'регексп',
-    'асинхронность', 'асинхронный', 'async', 'await',
-    'многопоточность', 'многопроцессорность', 'thread',
-    'сеть', 'сетевые запросы', 'http', 'https', 'websocket',
-    'криптография', 'шифрование', 'хеширование', 'jwt',
-    
-    # Веб-разработка
-    'верстка', 'сверстать', 'адаптивная верстка',
-    'html страница', 'html разметка', 'css стили',
-    'flexbox', 'grid', 'анимация', 'анимации',
-    'react', 'vue', 'angular', 'jquery', 'bootstrap',
-    'django', 'flask', 'fastapi', 'spring', 'laravel',
-    'node.js', 'nodejs', 'express', 'nestjs',
-    'rest api', 'restful', 'graphql', 'grpc',
-    
-    # Английские термины
-    'programming', 'program', 'code', 'write code', 'coding',
-    'development', 'developer', 'algorithm', 'script',
-    'application', 'app', 'website', 'web development',
-    'function', 'method', 'class', 'library', 'framework',
-    'backend', 'frontend', 'fullstack', 'debug', 'debugging',
-    'optimize', 'optimization', 'refactor', 'refactoring',
-    'python', 'javascript', 'typescript', 'java', 'c++',
-    'php', 'ruby', 'go', 'rust', 'html', 'css', 'sql',
-    'implement', 'implementation', 'sort', 'search',
-    'recursion', 'iteration', 'parse', 'parsing',
-    'database', 'query', 'regex', 'asynchronous',
-    'multithreading', 'network', 'http', 'encryption',
-    'frontend', 'backend', 'full stack', 'api',
-    
-    # Фразы
-    'как написать', 'как создать', 'как реализовать',
-    'помоги с кодом', 'помощь с программированием',
-    'исправь код', 'найди ошибку в коде', 'что не так с кодом',
-    'как сделать', 'как реализовать', 'как запрограммировать',
-    'how to code', 'how to program', 'help with code',
-    'fix this code', 'debug this code', 'code review'
-]
-
-def select_model_for_request(messages, has_images=False, has_audio=False, has_documents=False):
+def create_router_prompt(user_query, current_time_str):
     """
-    Автоматический подбор модели в зависимости от типа запроса
+    Создает промпт для модели-маршрутизатора
     """
-    # Проверяем наличие изображений (высший приоритет)
-    if has_images:
-        app.logger.info(f"Выбрана мультимодальная модель: {OLLAMA_MULTIMODAL_MODEL}")
-        return OLLAMA_MULTIMODAL_MODEL, 'multimodal'
+    prompt = f"""# РОЛЬ
+Ты — маршрутизатор запросов и ассистент. Ты должен принять только одно из описанных решений на основе запроса.
+
+# КРИТЕРИИ ОЦЕНКИ ЗАПРОСА
+
+## 1. ПРОСТОЙ ЗАПРОС (Ответь сразу)
+Запрос считается простым, если для ответа на него достаточно информации предоставленной во входных данных (например, текущее время).
+- **Примеры:** "Который час?", "Какой сегодня день недели?".
+- **Действие:** Дай краткий, точный ответ сразу на русском языке. Не добавляй рассуждений. 
+- **Исключения:** Если требуется любые математические расчёты (сколько будет 5*25?) или расчёт временных интервалов (например, "Сколько дней до конца месяца?") - это СЛОЖНЫЙ ЗАПРОС.
+
+## 2. ЗАПРОС НА СОЗДАНИЕ ИЗОБРАЖЕНИЯ (Просто выведи его)
+Запрос на создание изображения, если в запросе присутствуют фразы связанные с просьбой создать изображение.
+- **Примеры:** "Нарисуй лес", "Создай эскиз кошки", "Сделай фотографию девушки в шапке", "Подготовь рисунок слона"
+- **Действие:** Выведи текст запроса на создание изображения без каких-либо изменений. Больше ничего не пиши.
+
+## 3. ЗАПРОС НА ПРОСМОТР КОМНАТ (Замени и выведи)
+Запрос на просмотр комнат, если в запросе присутствуют фразы связанные с просьбой показать одну из комнат (тамбур, прихожую, коридор, спальню, кабинет, детскую, гостиную, кухню, балкон).
+- **Примеры:** 
+  - Исходный: "Покажи кабинет" -> Замена и вывод: "/cam kab"
+  - "Что в гостиной" -> Замена и вывод: "/cam gos"
+  - "Есть ли кто-то в тамбуре" -> Замена и вывод: "/cam tam"
+- **Действие:** В зависимости от того, какую комнату запрашивают показать - нужно выполнить замену запроса и вывести его. Больше ничего не пиши. 
+- **Критерии для замены текста запроса:**
+  - Запрос показать тамбур -> замена запроса на -> "/cam tam"
+  - Запрос показать прихожую -> замена запроса на -> "/cam pri"
+  - Запрос показать коридор -> замена запроса на -> "/cam kor"
+  - Запрос показать спальню -> замена запроса на -> "/cam spa"
+  - Запрос показать кабинет -> замена запроса на -> "/cam kab"
+  - Запрос показать детскую -> замена запроса на -> "/cam det"
+  - Запрос показать гостиную -> замена запроса на -> "/cam gos"
+  - Запрос показать кухню -> замена запроса на -> "/cam kuh"
+  - Запрос показать балкон -> замена запроса на -> "/cam bal"
+  - Запрос показать что-то не указанное в списке -> замена запроса на -> "/cam "
+
+## 4. СЛОЖНЫЙ ЗАПРОС (Просто выведи его)
+Запрос сложный, если не подошёл не под одну перечисленную выше категорию.
+- **Действие:** Выведи текст сложного запроса без каких-либо изменений. Не отвечай на сложный запрос сам.
+
+# ВХОДНЫЕ ДАННЫЕ
+- **Текущее время:** {current_time_str}
+- **Запрос пользователя:** {user_query}
+
+# ФОРМАТ ВЫВОДА
+Выбери только один вариант из перечисленных ниже. Не пиши ничего, кроме указанного.
+
+## Вариант 1 (Простой запрос):
+Краткий ответ на простой запрос.
+...
+
+## Вариант 2 (Запрос на создание изображения):
+/2: {user_query}
+...
+
+## Вариант 3 (Запрос на просмотр комнат):
+/3: Заменённый запрос
+...
+
+## Вариант 4 (Сложный запрос):
+/4: {user_query}"""
     
-    # Анализируем текст запроса
-    last_user_message = ""
-    for msg in reversed(messages):
-        if msg['role'] == 'user':
-            content = msg['content']
-            if isinstance(content, str):
-                if content.startswith('['):
-                    try:
-                        parts = json.loads(content)
-                        for part in parts:
-                            if part.get('type') == 'text':
-                                last_user_message = part['text']
-                                break
-                    except:
-                        last_user_message = content
-                else:
-                    last_user_message = content
-            break
-    
-    last_user_message_lower = last_user_message.lower()
-    
-    # Исключения: простые вопросы о времени НЕ считаются математикой
-    simple_time_questions = [
-        'который час', 'сколько времени', 'какой сегодня день',
-        'какое сегодня число', 'какой день недели', 'what time is it',
-        'what day is it', "what's the time", "what's the date"
-    ]
-    
-    is_simple_time_question = any(q in last_user_message_lower for q in simple_time_questions)
-    
-    # Приоритет 1: Программирование (самый высокий приоритет среди текстовых)
-    if any(keyword in last_user_message_lower for keyword in PROGRAMMING_KEYWORDS):
-        app.logger.info(f"Выбрана модель для программирования: {OLLAMA_REASONING_MODEL} (code)")
-        return OLLAMA_REASONING_MODEL, 'code'
-    
-    # Приоритет 2: Математика (кроме простых вопросов о времени)
-    if any(keyword in last_user_message_lower for keyword in MATH_KEYWORDS) and not is_simple_time_question:
-        app.logger.info(f"Выбрана модель для математики: {OLLAMA_REASONING_MODEL} (math)")
-        return OLLAMA_REASONING_MODEL, 'math'
-    
-    # Приоритет 3: Логика и рассуждения
-    if any(keyword in last_user_message_lower for keyword in LOGIC_KEYWORDS):
-        app.logger.info(f"Выбрана модель для рассуждений: {OLLAMA_REASONING_MODEL} (logic)")
-        return OLLAMA_REASONING_MODEL, 'logic'
-    
-    # Приоритет 4: Литература и тексты
-    if any(keyword in last_user_message_lower for keyword in LITERATURE_KEYWORDS):
-        app.logger.info(f"Выбрана модель для литературы: {OLLAMA_REASONING_MODEL} (literature)")
-        return OLLAMA_REASONING_MODEL, 'literature'
-    
-    # По умолчанию используем обычную чат-модель
-    app.logger.info(f"Выбрана стандартная чат-модель: {OLLAMA_CHAT_MODEL}")
-    return OLLAMA_CHAT_MODEL, 'chat'
+    return prompt
 
 # -------------------------------
-# Анализ сообщений для определения типа контента
+# Функция для обработки ответа маршрутизатора
 # -------------------------------
-def analyze_messages_for_content(messages):
+def process_router_response(router_response, user_query):
     """
-    Анализирует сообщения на наличие изображений, аудио, документов
+    Анализирует ответ от модели-маршрутизатора и возвращает:
+    - action: тип действия ('simple', 'image', 'camera', 'complex')
+    - processed_text: обработанный текст для дальнейшего использования
     """
-    has_images = False
-    has_audio = False
-    has_documents = False
+    router_response = router_response.strip()
     
-    for msg in messages:
-        if msg.get('file_type'):
-            if msg['file_type'].startswith('image/'):
-                has_images = True
-            elif msg['file_type'].startswith('audio/'):
-                has_audio = True
-            elif msg['file_type'] in ['application/pdf', 'text/plain', 
-                                     'application/msword', 
-                                     'application/vnd.openxmlformats-officedocument.wordprocessingml.document']:
-                has_documents = True
+    # Проверяем на наличие меток в начале ответа
+    if router_response.startswith('/2') or router_response.startswith('/2:'):
+        # Запрос на создание изображения
+        if router_response.startswith('/2:'):
+            processed = router_response[3:].strip()
+        else:
+            processed = router_response[2:].strip()
+        
+        # Если после удаления метки текст пустой, используем исходный запрос
+        if not processed:
+            processed = user_query
+            
+        return 'image', f"[ЗАПРОС ИЗОБРАЖЕНИЯ] {processed}"
     
-    return has_images, has_audio, has_documents
+    elif router_response.startswith('/3') or router_response.startswith('/3:'):
+        # Запрос на просмотр комнат - модель уже сделала замену
+        if router_response.startswith('/3:'):
+            processed = router_response[3:].strip()
+        else:
+            processed = router_response[2:].strip()
+        
+        # Модель уже должна была вернуть что-то вроде "/cam spa" или "/cam tam"
+        # Если вдруг вернулось пустое, используем общий префикс
+        if not processed:
+            processed = "/cam "
+            
+        return 'camera', f"[ЗАПРОС КАМЕРЫ] {processed}"
+    
+    elif router_response.startswith('/4') or router_response.startswith('/4:'):
+        # Сложный запрос - нужно передать в reasoning модель
+        if router_response.startswith('/4:'):
+            processed = router_response[3:].strip()
+        else:
+            processed = router_response[2:].strip()
+        
+        # Если после удаления метки текст пустой, используем исходный запрос
+        if not processed:
+            processed = user_query
+            
+        return 'complex', processed
+    
+    else:
+        # Если нет меток, считаем это простым ответом
+        return 'simple', router_response
 
 # -------------------------------
 # Инициализация и миграция БД
@@ -972,7 +717,7 @@ def api_timezone_info():
     return jsonify(get_timezone_info())
 
 # -------------------------------
-# ОТПРАВКА СООБЩЕНИЯ (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+# ОТПРАВКА СООБЩЕНИЯ (НОВАЯ ВЕРСИЯ С МАРШРУТИЗАЦИЕЙ)
 # -------------------------------
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -1010,6 +755,7 @@ def send_message():
     
     # ПОЛУЧАЕМ ТЕКУЩЕЕ ВРЕМЯ В УКАЗАННОМ ЧАСОВОМ ПОЯСЕ
     current_time_str = get_current_time_in_timezone()
+    current_time_for_db = get_current_time_in_timezone_for_db()
     
     # Логируем используемый часовой пояс для отладки
     app.logger.info(f"Используется часовой пояс: {TIMEZONE_STR}, время: {current_time_str}")
@@ -1020,13 +766,6 @@ def send_message():
         c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (session_id,))
         msg_count = c.fetchone()[0]
         is_first_message = (msg_count == 0)
-    
-    # АНАЛИЗ ТИПА ФАЙЛА И ФОРМИРОВАНИЕ СООБЩЕНИЯ
-    final_message_text = ""
-    selected_model = None
-    model_category = 'chat'
-    has_image = False
-    image_validation_error = None
     
     # Сохраняем исходное сообщение пользователя (для отображения в интерфейсе)
     user_content = []
@@ -1039,7 +778,6 @@ def send_message():
         is_valid_image, validation_error = validate_image_file(file_data, file_type, file_name, file_size)
         
         if is_valid_image:
-            has_image = True
             # Добавляем информацию о файле в user_content
             user_content.append({
                 "type": "file", 
@@ -1048,18 +786,50 @@ def send_message():
                 "file_name": file_name
             })
             
-            # ФОРМИРУЕМ ПРОМПТ ДЛЯ МОДЕЛИ
+            # Сохраняем сообщение пользователя с изображением
+            save_message(session_id, 'user', json.dumps(user_content, ensure_ascii=False) if user_content else message_text,
+                        file_data, file_type, file_name, None)
+            
+            # Обновляем заголовок для первого сообщения
+            if is_first_message and message_text:
+                update_session_title(session_id, message_text)
+            
+            # ФОРМИРУЕМ ПРОМПТ ДЛЯ МОДЕЛИ С ИЗОБРАЖЕНИЕМ
             if message_text.strip():
-                # СЛУЧАЙ 1: Есть и текст, и изображение
+                # Есть и текст, и изображение
                 final_message_text = f"Текущее время: {current_time_str}. Подпись под изображением: {message_text}"
             else:
-                # СЛУЧАЙ 2: Только изображение, без текста
+                # Только изображение, без текста
                 final_message_text = f"Текущее время: {current_time_str}. Ответ - на русском языке. Списком перечисли все предметы на изображении. Опиши само изображение и всё, что можно про него рассказать. Не задавай вопросов. Не пиши о том, чего нет на изображении."
             
-            selected_model = OLLAMA_MULTIMODAL_MODEL
-            model_category = 'multimodal'
+            # Отправляем запрос с изображением напрямую в мультимодальную модель
+            ollama_messages = [{
+                'role': 'user',
+                'content': final_message_text,
+                'images': [file_data]  # Изображение в base64
+            }]
+            
+            app.logger.info(f"Отправка запроса с изображением к модели {LLM_MULTIMODAL_MODEL}")
+            
+            # ЗАМЕР ВРЕМЕНИ ВЫПОЛНЕНИЯ
+            start_time = time.time()
+            bot_reply = call_ollama_chat(ollama_messages, model=LLM_MULTIMODAL_MODEL)
+            end_time = time.time()
+            response_time = round(end_time - start_time, 1)
+            
+            # Сохраняем ответ
+            save_message(session_id, 'assistant', bot_reply, model_name=LLM_MULTIMODAL_MODEL)
+            
+            return jsonify({
+                'response': bot_reply,
+                'session_id': session_id,
+                'model_used': LLM_MULTIMODAL_MODEL,
+                'model_category': 'multimodal',
+                'response_time': response_time,
+                'assistant_timestamp': current_time_for_db
+            })
         else:
-            # СЛУЧАЙ 4: Неподдерживаемый тип файла или превышены ограничения
+            # Неподдерживаемый тип файла или превышены ограничения
             bot_reply = f"⚠️ {validation_error}"
             
             # Добавляем информацию о файле в user_content для истории
@@ -1074,143 +844,97 @@ def send_message():
             save_message(session_id, 'user', json.dumps(user_content, ensure_ascii=False) if user_content else message_text,
                         file_data, file_type, file_name, None)
             
-            # Сохраняем ответ-уведомление
-            save_message(session_id, 'assistant', bot_reply, model_name='system')
-            
             # Обновляем заголовок для первого сообщения
             if is_first_message and message_text:
                 update_session_title(session_id, message_text)
+            
+            # Сохраняем ответ-уведомление
+            save_message(session_id, 'assistant', bot_reply, model_name='system')
             
             return jsonify({
                 'response': bot_reply,
                 'session_id': session_id,
                 'model_used': 'system',
                 'response_time': 0,
-                'assistant_timestamp': get_current_time_in_timezone_for_db()
+                'assistant_timestamp': current_time_for_db
             })
     else:
-        # СЛУЧАЙ 3: Только текст, без файлов
-        if message_text.strip():
-            user_content.append({"type": "text", "text": message_text})
-            final_message_text = f"Текущее время: {current_time_str}. Дай краткий, точный ответ на русском языке. Не добавляй рассуждений.\n\nВопрос пользователя: {message_text}"
-        else:
-            # Пустое сообщение
+        # ТОЛЬКО ТЕКСТ, БЕЗ ФАЙЛОВ
+        if not message_text.strip():
             return jsonify({'error': 'Пустое сообщение'}), 400
         
-        selected_model = OLLAMA_CHAT_MODEL
-        model_category = 'chat'
-    
-    # Сохраняем сообщение пользователя (для отображения в интерфейсе)
-    save_message(session_id, 'user', json.dumps(user_content, ensure_ascii=False) if user_content else message_text,
-                 file_data if has_image else None, 
-                 file_type if has_image else None, 
-                 file_name if has_image else None,
-                 None)
-    
-    # Получаем время отправки сообщения пользователя
-    with sqlite3.connect(CHAT_DB_PATH) as conn:
-        c = conn.cursor()
-        c.execute('''
-            SELECT timestamp FROM messages 
-            WHERE session_id = ? AND role = 'user' 
-            ORDER BY timestamp DESC LIMIT 1
-        ''', (session_id,))
-        row = c.fetchone()
-        user_timestamp = row[0] if row else None
-        if user_timestamp:
-            try:
-                dt = datetime.strptime(user_timestamp, '%Y-%m-%d %H:%M:%S')
-                dt = TIMEZONE.localize(dt)
-                user_timestamp = dt.isoformat()
-            except:
-                pass
-    
-    # Обновляем заголовок для первого сообщения
-    if is_first_message and message_text:
-        update_session_title(session_id, message_text)
-    
-    # Получаем историю (нужна для контекста)
-    history = get_session_messages(session_id)
-    
-    # Определяем тип контента для выбора модели (только для текстовых запросов)
-    if not has_image:
-        has_images, has_audio, has_documents = analyze_messages_for_content(history)
-        selected_model, model_category = select_model_for_request(history, has_images, has_audio, has_documents)
-    
-    app.logger.info(f"Session {session_id}: выбрана модель {selected_model} (категория: {model_category})")
-    
-    # ЗАМЕР ВРЕМЕНИ ВЫПОЛНЕНИЯ
-    start_time = time.time()
-    
-    # ПОДГОТОВКА ЗАПРОСА К OLLAMA
-    if has_image:
-        # Для изображений нужно создать специальную структуру сообщения
-        # Находим последнее сообщение пользователя с изображением
-        last_user_msg = None
-        for msg in reversed(history):
-            if msg['role'] == 'user' and msg.get('file_data'):
-                last_user_msg = msg
-                break
+        # Сохраняем сообщение пользователя (только текст)
+        save_message(session_id, 'user', json.dumps(user_content, ensure_ascii=False) if user_content else message_text,
+                    None, None, None, None)
         
-        if last_user_msg:
-            # Создаем сообщение для Ollama с изображением
-            ollama_messages = []
+        # Обновляем заголовок для первого сообщения
+        if is_first_message and message_text:
+            update_session_title(session_id, message_text)
+        
+        # ШАГ 1: Отправляем запрос в модель-маршрутизатор (LLM_CHAT_MODEL)
+        router_prompt = create_router_prompt(message_text, current_time_str)
+        router_messages = [{'role': 'user', 'content': router_prompt}]
+        
+        app.logger.info(f"Отправка запроса в модель-маршрутизатор: {LLM_CHAT_MODEL}")
+        
+        start_time = time.time()
+        router_response = call_ollama_chat(router_messages, model=LLM_CHAT_MODEL)
+        
+        # ШАГ 2: Анализируем ответ маршрутизатора
+        action, processed_text = process_router_response(router_response, message_text)
+        
+        app.logger.info(f"Результат маршрутизации: action={action}, processed_text={processed_text[:100]}...")
+        
+        # ШАГ 3: Обрабатываем в зависимости от типа действия
+        final_response = ""
+        model_used = LLM_CHAT_MODEL
+        model_category = action
+        
+        if action == 'simple':
+            # Простой ответ - используем ответ маршрутизатора напрямую
+            final_response = processed_text
+            model_used = LLM_CHAT_MODEL
             
-            # Добавляем только текущее сообщение с изображением (без истории)
-            # Это предотвращает путаницу и повторную отправку изображений
-            ollama_messages.append({
-                'role': 'user',
-                'content': final_message_text,
-                'images': [last_user_msg['file_data']]  # Изображение в base64
-            })
+        elif action == 'image':
+            # Запрос на создание изображения - добавляем префикс
+            final_response = processed_text
+            model_used = LLM_CHAT_MODEL
             
-            app.logger.info(f"Отправка запроса с изображением к модели {selected_model}")
+        elif action == 'camera':
+            # Запрос на просмотр комнат - добавляем префикс
+            final_response = processed_text
+            model_used = LLM_CHAT_MODEL
             
-            # Отправляем запрос
-            bot_reply = call_ollama_chat(ollama_messages, model=selected_model)
+        elif action == 'complex':
+            # Сложный запрос - отправляем в reasoning модель
+            complex_messages = [{'role': 'user', 'content': processed_text}]
+            
+            app.logger.info(f"Отправка сложного запроса в модель {LLM_REASONING_MODEL}")
+            
+            # Отправляем в reasoning модель
+            complex_response = call_ollama_chat(complex_messages, model=LLM_REASONING_MODEL)
+            final_response = complex_response
+            model_used = LLM_REASONING_MODEL
+            
         else:
-            bot_reply = "⚠️ Ошибка: не удалось найти изображение для обработки"
-    else:
-        # Для текстовых запросов
-        ollama_messages = [{'role': 'user', 'content': final_message_text}]
-        app.logger.info(f"Отправка текстового запроса к модели {selected_model}")
-        bot_reply = call_ollama_chat(ollama_messages, model=selected_model)
-    
-    end_time = time.time()
-    response_time = round(end_time - start_time, 1)
-    
-    # Сохраняем ответ с указанием использованной модели и правильным временем
-    save_message(session_id, 'assistant', bot_reply, model_name=selected_model)
-    
-    # Получаем timestamp сохраненного ответа (уже в правильном часовом поясе)
-    with sqlite3.connect(CHAT_DB_PATH) as conn:
-        c = conn.cursor()
-        c.execute('''
-            SELECT timestamp FROM messages 
-            WHERE session_id = ? AND role = 'assistant' 
-            ORDER BY timestamp DESC LIMIT 1
-        ''', (session_id,))
-        row = c.fetchone()
-        assistant_timestamp = row[0] if row else None
+            # Неизвестный тип - используем ответ маршрутизатора как есть
+            final_response = router_response
+            model_used = LLM_CHAT_MODEL
         
-        # Преобразуем в ISO формат для JS
-        if assistant_timestamp:
-            try:
-                dt = datetime.strptime(assistant_timestamp, '%Y-%m-%d %H:%M:%S')
-                dt = TIMEZONE.localize(dt)
-                assistant_timestamp = dt.isoformat()
-            except:
-                pass
-    
-    return jsonify({
-        'response': bot_reply,
-        'session_id': session_id,
-        'model_used': selected_model,
-        'model_category': model_category,
-        'response_time': response_time,
-        'user_timestamp': user_timestamp,
-        'assistant_timestamp': assistant_timestamp
-    })
+        end_time = time.time()
+        response_time = round(end_time - start_time, 1)
+        
+        # Сохраняем ответ
+        save_message(session_id, 'assistant', final_response, model_name=model_used)
+        
+        return jsonify({
+            'response': final_response,
+            'session_id': session_id,
+            'model_used': model_used,
+            'model_category': model_category,
+            'response_time': response_time,
+            'assistant_timestamp': current_time_for_db
+        })
 
 # -------------------------------
 # Очистка истории сеанса

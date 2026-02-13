@@ -319,7 +319,6 @@
         // ДЛЯ СООБЩЕНИЙ ПОЛЬЗОВАТЕЛЯ: добавляем информацию о файле, если он есть
         if (role === 'user' && fileName) {
             // Вычисляем размер файла (примерно, так как точный размер не сохраняется в БД)
-            // В реальном проекте можно сохранять размер файла в отдельное поле
             let fileSize = '';
             if (fileData) {
                 // Примерный расчет размера из base64 (каждые 4 символа = 3 байта)
@@ -512,7 +511,7 @@
     }
 
     // -------------------------------
-    // Отправка сообщения
+    // Отправка сообщения (ИСПРАВЛЕННАЯ ВЕРСИЯ)
     // -------------------------------
     async function sendMessage() {
         const input = document.getElementById('message-input');
@@ -525,20 +524,6 @@
         if (isSending) return;
         isSending = true;
         
-        const now = new Date();
-        const timestamp = now.toISOString();
-        
-        const userContent = [];
-        if (text) {
-            userContent.push({"type": "text", "text": text});
-        }
-        
-        let fileData = null;
-        let fileType = null;
-        let fileName = null;
-        let fileSize = null;
-        let fileReaderPromise = null;
-        
         const messageCount = document.querySelectorAll('.user-message').length;
         if (messageCount === 0 && text) {
             let newTitle = text.length > 40 ? text.substring(0, 40) + '...' : text;
@@ -548,51 +533,18 @@
             document.getElementById('sessions-count').textContent = sessionsCount;
         }
         
-        function displayUserMessageWithFile(fileDataParam, fileTypeParam, fileNameParam, fileSizeParam) {
-            displayMessage('user', JSON.stringify(userContent), fileDataParam, fileTypeParam, fileNameParam, timestamp);
-            updateMessageCount();
-        }
-        
-        if (attachedFile) {
-            fileType = attachedFile.type;
-            fileName = attachedFile.name;
-            fileSize = attachedFile.size;
-            
-            fileReaderPromise = new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    fileData = e.target.result.split(',')[1];
-                    resolve({fileData, fileType, fileName, fileSize});
-                };
-                
-                reader.readAsDataURL(attachedFile);
-            });
-            
-            const fileInfo = await fileReaderPromise;
-            fileData = fileInfo.fileData;
-            fileType = fileInfo.fileType;
-            fileName = fileInfo.fileName;
-            fileSize = fileInfo.fileSize;
-            
-            userContent.push({
-                "type": "file", 
-                "file_data": fileData, 
-                "file_type": fileType, 
-                "file_name": fileName
-            });
-            
-            displayUserMessageWithFile(fileData, fileType, fileName, fileSize);
-        } else {
-            displayUserMessageWithFile(null, null, null, null);
-        }
-        
+        // СОХРАНЯЕМ КОПИИ ДЛЯ ОТПРАВКИ
         const tempAttachedFile = attachedFile;
         const tempText = text;
         
+        // ОЧИЩАЕМ ПОЛЯ СРАЗУ (до отправки)
         input.value = '';
         attachedFile = null;
         document.getElementById('file-preview-container').style.display = 'none';
         document.getElementById('file-input').value = '';
+        
+        // НЕ ОТОБРАЖАЕМ СООБЩЕНИЕ ЛОКАЛЬНО - доверяем загрузке с сервера
+        // Просто отправляем на сервер
         
         const formData = new FormData();
         formData.append('message', tempText);
@@ -605,33 +557,19 @@
                 method: 'POST',
                 body: formData
             });
-            const data = await response.json();
             
-            if (data.response) {
-                const assistantTimestamp = data.assistant_timestamp || new Date().toISOString();
-                const modelName = data.model_used || defaultModelName || 'qwen3-vl:8b-instruct';
-                
-                displayMessage(
-                    'assistant',
-                    data.response,
-                    null,
-                    null,
-                    null,
-                    assistantTimestamp,
-                    data.response_time || 0,
-                    modelName
-                );
-                updateMessageCount();
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
             
+            const data = await response.json();
+            
+            // ПЕРЕЗАГРУЖАЕМ ВСЕ СООБЩЕНИЯ С СЕРВЕРА
             await loadMessages(currentSessionId);
             
         } catch (err) {
             alert('Ошибка: ' + err.message);
-            const lastMessage = document.querySelector('.user-message:last-child');
-            if (lastMessage) {
-                lastMessage.style.borderLeft = '3px solid #e74c3c';
-            }
+            console.error('Send message error:', err);
         } finally {
             isSending = false;
         }

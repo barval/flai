@@ -19,6 +19,11 @@ app.config['JSON_AS_ASCII'] = False
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
 # -------------------------------
+# Подпись в футере - единая для всего проекта
+# -------------------------------
+FOOTER_TEXT = os.getenv('FOOTER_TEXT', 'ИИ Локальный v1.1 (с) 2026 Барсуков Валерий')
+
+# -------------------------------
 # Настройки Ollama
 # -------------------------------
 OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434')
@@ -484,7 +489,8 @@ def chat():
     
     return render_template('chat.html', 
                          sessions=sessions, 
-                         current_session=session.get('current_session'))
+                         current_session=session.get('current_session'),
+                         footer_text=FOOTER_TEXT)
 
 # -------------------------------
 # API для работы с сеансами
@@ -557,6 +563,14 @@ def api_ollama_status():
         'available': available,
         'models': [m['name'] for m in models] if available else []
     })
+
+# -------------------------------
+# API для получения подписи футера
+# -------------------------------
+@app.route('/api/footer-text', methods=['GET'])
+def api_footer_text():
+    """Возвращает текст подписи для футера"""
+    return FOOTER_TEXT
 
 # -------------------------------
 # Отправка сообщения (С ВРЕМЕНЕМ ОТВЕТА И МОДЕЛЬЮ)
@@ -746,8 +760,9 @@ def favicon():
 
 @app.context_processor
 def inject_footer():
+    """Контекст-процессор для передачи подписи в шаблоны"""
     return {
-        'footer_content': 'ИИ Локальный v1.1 (с) 2026 Барсуков Валерий'
+        'footer_content': FOOTER_TEXT
     }
 
 if __name__ == '__main__':

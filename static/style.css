@@ -360,48 +360,6 @@ footer p {
     background-color: #f0f0f0;
 }
 
-/*
-.model-info {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 0.9rem;
-    color: #2c3e50;
-    background-color: #f8f9fa;
-    padding: 0.3rem 0.6rem;
-    border-radius: 20px;
-    border: 1px solid #e0e0e0;
-}
-
-#current-model-name {
-    font-weight: 500;
-    color: #2980b9;
-    max-width: 200px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-*/
-
-/*
-.ollama-status {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    margin-left: 8px;
-}
-
-.ollama-status.online {
-    background-color: #2ecc71;
-    box-shadow: 0 0 5px #2ecc71;
-}
-
-.ollama-status.offline {
-    background-color: #e74c3c;
-}
-*/
-
 .chat-messages {
     flex: 1;
     overflow-y: auto;
@@ -418,6 +376,8 @@ footer p {
     margin-bottom: 0.8rem;
     border-radius: 8px;
     word-wrap: break-word;
+    display: flex;
+    flex-direction: column;
 }
 
 .bot-message {
@@ -426,6 +386,18 @@ footer p {
     margin-bottom: 0.8rem;
     border-radius: 8px;
     word-wrap: break-word;
+    display: flex;
+    flex-direction: column;
+}
+
+.assistant-message {
+    background-color: #f0f0f0;
+    padding: 0.8rem 1rem;
+    margin-bottom: 0.8rem;
+    border-radius: 8px;
+    word-wrap: break-word;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Информация о файле в сообщениях */
@@ -556,6 +528,7 @@ footer p {
     max-height: 300px;
     margin-top: 10px;
     border-radius: 4px;
+    align-self: flex-start;
 }
 
 .attached-file {
@@ -567,6 +540,7 @@ footer p {
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    align-self: flex-start;
 }
 
 .attached-file a {
@@ -576,6 +550,49 @@ footer p {
 
 .attached-file a:hover {
     text-decoration: underline;
+}
+
+audio {
+    width: 100%;
+    margin-top: 10px;
+    align-self: flex-start;
+}
+
+/* ========== СТИЛИ ДЛЯ ВРЕМЕННЫХ МЕТОК - ИСПРАВЛЕННАЯ ВЕРСИЯ ========== */
+
+/* БАЗОВЫЙ СТИЛЬ - ТОЛЬКО ДЛЯ ТЕКСТОВЫХ СООБЩЕНИЙ */
+.user-message small,
+.bot-message small,
+.assistant-message small {
+    display: block !important;
+    margin-bottom: 6px !important;
+    color: #7f8c8d !important;
+    font-size: 0.75rem !important;
+    font-family: monospace !important;
+    letter-spacing: 0.5px !important;
+    font-weight: normal !important;
+    background: none !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    border: none !important;
+    text-decoration: none !important;
+    line-height: 1.4 !important;
+}
+
+/* ИНФОРМАЦИЯ О МОДЕЛИ - В ОТДЕЛЬНОЙ СТРОКЕ */
+.bot-message small .model-response-info,
+.assistant-message small .model-response-info {
+    display: inline !important;
+    color: #7f8c8d !important;
+    font-family: monospace !important;
+    font-size: 0.75rem !important;
+    letter-spacing: 0.5px !important;
+    font-weight: normal !important;
+    background: none !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    margin-left: 4px !important;
+    white-space: nowrap !important;
 }
 
 /* ========== СТИЛИ ДЛЯ MARKDOWN ========== */
@@ -749,57 +766,6 @@ footer p {
     border-color: #b8d4f0;
 }
 
-/* ========== СТИЛИ ДЛЯ ВРЕМЕННЫХ МЕТОК - ВСЕ В ОДНУ СТРОКУ, ЕДИНЫЙ ЦВЕТ ========== */
-
-/* БАЗОВЫЙ СТИЛЬ - ВСЕ ТЕГИ SMALL В СООБЩЕНИЯХ */
-.user-message small,
-.bot-message small,
-.assistant-message small {
-    display: inline !important;  /* ИЗМЕНЕНО: inline вместо block - все в одну строку */
-    margin-bottom: 6px !important;
-    margin-right: 4px !important;
-    color: #7f8c8d !important;
-    font-size: 0.75rem !important;
-    font-family: monospace !important;
-    letter-spacing: 0.5px !important;
-    font-weight: normal !important;
-    background: none !important;
-    padding: 0 !important;
-    border-radius: 0 !important;
-    border: none !important;
-    text-decoration: none !important;
-    line-height: 1.4 !important;
-}
-
-/* СПЕЦИАЛЬНО ДЛЯ СООБЩЕНИЙ БОТА - ТОЖЕ INLINE */
-.bot-message small,
-.assistant-message small {
-    display: inline !important;
-}
-
-/* ИНФОРМАЦИЯ О МОДЕЛИ - ТОЖЕ В СТРОКУ */
-.bot-message small .model-response-info,
-.assistant-message small .model-response-info {
-    display: inline !important;
-    color: #7f8c8d !important;
-    font-family: monospace !important;
-    font-size: 0.75rem !important;
-    letter-spacing: 0.5px !important;
-    font-weight: normal !important;
-    background: none !important;
-    padding: 0 !important;
-    border-radius: 0 !important;
-    margin-left: 4px !important;
-    white-space: nowrap !important;  /* ЗАПРЕЩАЕМ ПЕРЕНОС */
-}
-
-/* КОНТЕЙНЕР СООБЩЕНИЯ - ОБЕСПЕЧИВАЕМ ПРАВИЛЬНОЕ ОТОБРАЖЕНИЕ */
-.user-message,
-.bot-message,
-.assistant-message {
-    line-height: 1.5;
-}
-
 /* Скроллбар */
 ::-webkit-scrollbar {
     width: 8px;
@@ -869,12 +835,30 @@ footer p {
         justify-content: space-between;
     }
     
-    .model-info {
-        max-width: 200px;
+    /* СТИЛИ ДЛЯ МОБИЛЬНЫХ УСТРОЙСТВ */
+    .user-message small,
+    .bot-message small,
+    .assistant-message small {
+        display: block !important;
+        font-size: 0.7rem !important;
+        white-space: normal !important;
     }
     
-    #current-model-name {
-        max-width: 120px;
+    .bot-message small .model-response-info,
+    .assistant-message small .model-response-info {
+        display: inline !important;
+        white-space: nowrap !important;
+    }
+    
+    /* Адаптивные стили для Markdown на мобильных */
+    .message-content pre {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+    
+    .message-content table {
+        display: block;
+        overflow-x: auto;
     }
     
     /* Безопасное отображение HTML-вставок */
@@ -905,12 +889,6 @@ footer p {
         border-radius: 4px;
     }
 
-    .message-content table {
-        border-collapse: collapse;
-        width: 100%;
-        margin: 10px 0;
-    }
-
     .message-content td,
     .message-content th {
         border: 1px solid #ddd;
@@ -934,27 +912,5 @@ footer p {
     .message-content link,
     .message-content meta {
         display: none !important;
-    }
-
-    /* НА МОБИЛЬНЫХ - ТОЖЕ ВСЕ В ОДНУ СТРОКУ */
-    .user-message small,
-    .bot-message small,
-    .assistant-message small,
-    .bot-message small .model-response-info,
-    .assistant-message small .model-response-info {
-        display: inline !important;
-        font-size: 0.7rem !important;
-        white-space: nowrap !important;
-    }
-    
-    /* Адаптивные стили для Markdown на мобильных */
-    .message-content pre {
-        white-space: pre-wrap;
-        word-wrap: break-word;
-    }
-    
-    .message-content table {
-        display: block;
-        overflow-x: auto;
     }
 }

@@ -760,26 +760,26 @@ def api_timezone_info():
 # -------------------------------
 def process_marker_response(response_text, current_time_str):
     """
-    Анализирует ответ на наличие маркеров {2}, {3}, {4}
+    Анализирует ответ на наличие маркеров [-IMAGE-], [-CAMERA-], [-REASONING-]
     Возвращает (action_type, processed_text)
     action_type: 'image', 'camera', 'reasoning', 'none'
     """
     response_text = response_text.strip()
     
     # Проверяем наличие маркеров в начале строки
-    if response_text.startswith('{2}'):
+    if response_text.startswith('[-IMAGE-]'):
         # Запрос на создание изображения
-        processed = response_text[3:].strip()
+        processed = response_text[9:].strip()  # длина [-IMAGE-] = 9 символов
         return 'image', processed
     
-    elif response_text.startswith('{3}'):
+    elif response_text.startswith('[-CAMERA-]'):
         # Запрос на просмотр комнат
-        processed = response_text[3:].strip()
+        processed = response_text[10:].strip()  # длина [-CAMERA-] = 10 символов
         return 'camera', processed
     
-    elif response_text.startswith('{4}'):
+    elif response_text.startswith('[-REASONING-]'):
         # Сложный запрос для reasoning модели
-        processed = response_text[3:].strip()
+        processed = response_text[13:].strip()  # длина [-REASONING-] = 13 символов
         return 'reasoning', processed
     
     else:

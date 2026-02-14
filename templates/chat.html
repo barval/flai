@@ -327,17 +327,23 @@
         let timeDisplay = formatFullDateTime(timestamp);
         
         // ДЛЯ СООБЩЕНИЙ ПОЛЬЗОВАТЕЛЯ: добавляем информацию о файле, если он есть
-        if (role === 'user' && fileName) {
-            // Вычисляем размер файла (примерно, так как точный размер не сохраняется в БД)
-            let fileSize = '';
-            if (fileData) {
-                // Примерный расчет размера из base64 (каждые 4 символа = 3 байта)
-                const base64Length = fileData.length;
-                const fileSizeBytes = Math.round((base64Length * 3) / 4);
-                fileSize = formatFileSize(fileSizeBytes);
-            }
+        if (role === 'user' && fileName && fileData) {
+            // Вычисляем размер файла из base64
+            const base64Length = fileData.length;
+            const fileSizeBytes = Math.round((base64Length * 3) / 4);
+            const fileSize = formatFileSize(fileSizeBytes);
             
-            timeDisplay += ` <span class="file-info">[📎 ${fileName}${fileSize ? ', ' + fileSize : ''}]</span>`;
+            timeDisplay += ` <span class="file-info">[📎 ${fileName}, ${fileSize}]</span>`;
+        }
+        
+        // ДЛЯ СООБЩЕНИЙ АССИСТЕНТА: добавляем информацию о сгенерированном файле
+        if (role === 'assistant' && fileName && fileData) {
+            // Вычисляем размер файла из base64
+            const base64Length = fileData.length;
+            const fileSizeBytes = Math.round((base64Length * 3) / 4);
+            const fileSize = formatFileSize(fileSizeBytes);
+            
+            timeDisplay += ` <span class="file-info">[📎 ${fileName}, ${fileSize}]</span>`;
         }
         
         // Добавляем время ответа и ПОЛНОЕ название модели для сообщений ассистента
@@ -677,13 +683,15 @@
                         // Проверяем, есть ли сгенерированное изображение в ответе
                         if (data.generated_image) {
                             console.log('Получено сгенерированное изображение, размер:', data.generated_image.length);
+                            console.log('Имя файла:', data.file_name, 'Размер:', data.file_size);
+                            
                             // Отображаем сообщение с изображением
                             displayMessage(
                                 'assistant',
                                 data.response,
                                 data.generated_image,  // file_data
-                                'image/png',            // file_type
-                                'generated_image.png',  // file_name
+                                data.file_type || 'image/jpeg',  // file_type
+                                data.file_name || 'generated_image.jpg',  // file_name
                                 assistantTimestamp,
                                 data.response_time || 0,
                                 modelName
@@ -757,13 +765,15 @@
                     // Проверяем, есть ли сгенерированное изображение в ответе
                     if (data.generated_image) {
                         console.log('Получено сгенерированное изображение, размер:', data.generated_image.length);
+                        console.log('Имя файла:', data.file_name, 'Размер:', data.file_size);
+                        
                         // Отображаем сообщение с изображением
                         displayMessage(
                             'assistant',
                             data.response,
                             data.generated_image,  // file_data
-                            'image/png',            // file_type
-                            'generated_image.png',  // file_name
+                            data.file_type || 'image/jpeg',  // file_type
+                            data.file_name || 'generated_image.jpg',  // file_name
                             assistantTimestamp,
                             data.response_time || 0,
                             modelName

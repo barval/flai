@@ -1142,29 +1142,43 @@ The response must be ONLY the JSON object, no other text."""
                     if image_result['success']:
                         app.logger.info(f"Изображение успешно сгенерировано, размер данных: {len(image_result['image_data'])}")
                         
+                        # Вычисляем размер файла в байтах из base64
+                        # Каждые 4 символа base64 = 3 байта
+                        file_size_bytes = int((len(image_result['image_data']) * 3) / 4)
+                        
+                        # Генерируем имя файла в формате ГГГГ-ММ-ДД_ЧЧ-ММ-СС.jpg
+                        current_time_for_filename = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+                        generated_filename = f"{current_time_for_filename}.jpg"
+                        
+                        # Формируем текст сообщения (без галочки)
+                        message_text = f"Изображение сгенерировано по запросу: {processed_text}"
+                        
                         # СОХРАНЯЕМ ИЗОБРАЖЕНИЕ В ЧАТ
                         save_message(
                             session_id, 
                             'assistant', 
-                            f"Сгенерированное изображение по запросу: {processed_text}",
+                            message_text,
                             image_result['image_data'],  # Передаём base64 данные изображения
-                            'image/png',                 # MIME-тип
-                            f'generated_image_{int(time.time())}.png',  # Имя файла
+                            'image/jpeg',                 # MIME-тип для JPG
+                            generated_filename,            # Имя файла в нужном формате
                             model_used
                         )
                         
                         # ВОЗВРАЩАЕМ ИЗОБРАЖЕНИЕ В ОТВЕТЕ
                         return jsonify({
-                            'response': f"✅ Изображение сгенерировано по запросу: {processed_text}",
+                            'response': message_text,
                             'session_id': session_id,
                             'model_used': model_used,
                             'model_category': model_category,
                             'response_time': round(time.time() - start_time, 1),
                             'assistant_timestamp': current_time_for_db,
-                            'generated_image': image_result['image_data']  # Отправляем изображение на клиент
+                            'generated_image': image_result['image_data'],
+                            'file_name': generated_filename,
+                            'file_size': file_size_bytes,
+                            'file_type': 'image/jpeg'
                         })
                     else:
-                        final_response = f"⚠️ {image_result['error']}"
+                        final_response = f"Ошибка: {image_result['error']}"
                 else:
                     app.logger.warning(f"Не удалось найти JSON в ответе")
                     # Пробуем создать простой промпт вручную
@@ -1190,32 +1204,45 @@ The response must be ONLY the JSON object, no other text."""
                     if image_result['success']:
                         app.logger.info(f"Изображение успешно сгенерировано (авто-промпт), размер данных: {len(image_result['image_data'])}")
                         
+                        # Вычисляем размер файла в байтах из base64
+                        file_size_bytes = int((len(image_result['image_data']) * 3) / 4)
+                        
+                        # Генерируем имя файла в формате ГГГГ-ММ-ДД_ЧЧ-ММ-СС.jpg
+                        current_time_for_filename = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+                        generated_filename = f"{current_time_for_filename}.jpg"
+                        
+                        # Формируем текст сообщения (без галочки)
+                        message_text = f"Изображение сгенерировано по запросу: {processed_text}"
+                        
                         # СОХРАНЯЕМ ИЗОБРАЖЕНИЕ В ЧАТ
                         save_message(
                             session_id, 
                             'assistant', 
-                            f"Сгенерированное изображение по запросу: {processed_text}",
+                            message_text,
                             image_result['image_data'],
-                            'image/png',
-                            f'generated_image_{int(time.time())}.png',
+                            'image/jpeg',
+                            generated_filename,
                             model_used
                         )
                         
                         # ВОЗВРАЩАЕМ ИЗОБРАЖЕНИЕ В ОТВЕТЕ
                         return jsonify({
-                            'response': f"✅ Изображение сгенерировано по запросу: {processed_text}",
+                            'response': message_text,
                             'session_id': session_id,
                             'model_used': model_used,
                             'model_category': model_category,
                             'response_time': round(time.time() - start_time, 1),
                             'assistant_timestamp': current_time_for_db,
-                            'generated_image': image_result['image_data']
+                            'generated_image': image_result['image_data'],
+                            'file_name': generated_filename,
+                            'file_size': file_size_bytes,
+                            'file_type': 'image/jpeg'
                         })
                     else:
-                        final_response = f"⚠️ {image_result['error']}"
+                        final_response = f"Ошибка: {image_result['error']}"
             except Exception as e:
                 app.logger.error(f"Ошибка при обработке ответа для генерации изображения: {str(e)}")
-                final_response = f"⚠️ Ошибка при генерации изображения: {str(e)}"
+                final_response = f"Ошибка при генерации изображения: {str(e)}"
             
         elif action_type == 'camera':
             app.logger.info("Обработка запроса к камере")
@@ -1244,7 +1271,7 @@ The response must be ONLY the JSON object, no other text."""
                     'camera_image': camera_result['image_data']
                 })
             else:
-                final_response = f"⚠️ {camera_result['error']}"
+                final_response = f"Ошибка: {camera_result['error']}"
             
         elif action_type == 'reasoning':
             app.logger.info("Обработка сложного запроса через reasoning модель")

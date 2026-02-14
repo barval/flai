@@ -114,6 +114,26 @@ if not os.path.exists(DATA_DIR):
 CHAT_DB_PATH = os.path.join(DATA_DIR, 'chat.db')
 
 # -------------------------------
+# Функция для преобразования кода комнаты в читаемое название
+# -------------------------------
+def get_room_name_from_code(room_code):
+    """
+    Преобразует код комнаты в читаемое название
+    """
+    room_names = {
+        'tam': 'тамбур',
+        'pri': 'прихожая',
+        'kor': 'коридор',
+        'spa': 'спальня',
+        'kab': 'кабинет',
+        'det': 'детская',
+        'gos': 'гостиная',
+        'kuh': 'кухня',
+        'bal': 'балкон'
+    }
+    return room_names.get(room_code, room_code)  # Если код не найден, возвращаем как есть
+
+# -------------------------------
 # Функция для получения текущего времени в заданном часовом поясе
 # -------------------------------
 def get_current_time_in_timezone():
@@ -1246,29 +1266,44 @@ The response must be ONLY the JSON object, no other text."""
             
         elif action_type == 'camera':
             app.logger.info("Обработка запроса к камере")
+            
+            # Получаем читаемое название комнаты
+            room_name = get_room_name_from_code(processed_text)
+            app.logger.info(f"Код комнаты: {processed_text}, читаемое название: {room_name}")
+            
             # Запрос на просмотр комнат
             camera_result = call_camera_api(processed_text)
             
             if camera_result['success']:
+                # Генерируем имя файла
+                filename = f'camera_{processed_text}_{int(time.time())}.jpg'
+                
+                # Вычисляем размер файла для отображения
+                file_size_bytes = int((len(camera_result['image_data']) * 3) / 4)
+                
                 # Сохраняем сообщение с изображением от камеры
                 save_message(
                     session_id, 
                     'assistant', 
-                    f"Изображение с камеры: {processed_text}",
+                    f"Изображение с камеры: {room_name}",
                     camera_result['image_data'],
                     camera_result.get('image_type', 'image/jpeg'),
-                    f'camera_{processed_text}_{int(time.time())}.jpg',
+                    filename,
                     model_used
                 )
                 
+                # ВОЗВРАЩАЕМ ИЗОБРАЖЕНИЕ В ОТВЕТЕ
                 return jsonify({
-                    'response': f"📸 Изображение с камеры {processed_text}",
+                    'response': f"Изображение с камеры: {room_name}",
                     'session_id': session_id,
                     'model_used': model_used,
                     'model_category': model_category,
                     'response_time': round(time.time() - start_time, 1),
                     'assistant_timestamp': current_time_for_db,
-                    'camera_image': camera_result['image_data']
+                    'generated_image': camera_result['image_data'],
+                    'file_name': filename,
+                    'file_size': file_size_bytes,
+                    'file_type': camera_result.get('image_type', 'image/jpeg')
                 })
             else:
                 final_response = f"Ошибка: {camera_result['error']}"

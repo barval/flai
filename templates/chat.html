@@ -588,7 +588,7 @@
     }
 
     // -------------------------------
-    // Отправка сообщения (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+    // Отправка сообщения
     // -------------------------------
     async function sendMessage() {
         const input = document.getElementById('message-input');
@@ -675,7 +675,7 @@
                 
                 // Очищаем поля
                 input.value = '';
-                attachedFile = null;
+                    attachedFile = null;
                 document.getElementById('file-preview-container').style.display = 'none';
                 document.getElementById('file-input').value = '';
             }
@@ -740,7 +740,7 @@
                         
                         // Проверяем, есть ли сгенерированное изображение в ответе
                         if (data.generated_image) {
-                            console.log('Получено сгенерированное изображение, размер:', data.generated_image.length);
+                            console.log('Получено изображение, размер:', data.generated_image.length);
                             console.log('Имя файла:', data.file_name, 'Размер:', data.file_size);
                             
                             // Отображаем сообщение с изображением
@@ -822,7 +822,7 @@
                     
                     // Проверяем, есть ли сгенерированное изображение в ответе
                     if (data.generated_image) {
-                        console.log('Получено сгенерированное изображение, размер:', data.generated_image.length);
+                        console.log('Получено изображение, размер:', data.generated_image.length);
                         console.log('Имя файла:', data.file_name, 'Размер:', data.file_size);
                         
                         // Отображаем сообщение с изображением
@@ -913,7 +913,7 @@
     }
 
     // -------------------------------
-    // Сохранение чата как HTML (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+    // Сохранение чата как HTML
     // -------------------------------
     async function saveChatAsHTML() {
         // Получаем подпись из .env через API
@@ -978,7 +978,7 @@
             });
         });
         
-        // Формируем HTML страницы с исправленными стилями для футера
+        // Формируем HTML страницы
         const html = `<!DOCTYPE html>
     <html lang="ru">
     <head>

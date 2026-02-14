@@ -56,8 +56,19 @@ MODEL_CONTEXT_WINDOWS = {
 }
 
 # -------------------------------
-# Поддерживаемые форматы изображений
+# Настройки Automatic1111
 # -------------------------------
+AUTOMATIC1111_URL = os.getenv('AUTOMATIC1111_URL', 'http://host.docker.internal:7860')
+
+# -------------------------------
+# Настройки для изображений
+# -------------------------------
+MAX_IMAGE_WIDTH = int(os.getenv('MAX_IMAGE_WIDTH', 3840))
+MAX_IMAGE_HEIGHT = int(os.getenv('MAX_IMAGE_HEIGHT', 2160))
+MAX_IMAGE_SIZE_MB = int(os.getenv('MAX_IMAGE_SIZE_MB', 5))
+MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024
+
+# Поддерживаемые форматы изображений
 SUPPORTED_IMAGE_EXTENSIONS = {
     '.jpg', '.jpeg', '.jpe',  # JPEG
     '.png',                     # PNG
@@ -74,15 +85,12 @@ SUPPORTED_IMAGE_MIMETYPES = {
     'image/tiff', 'image/tif'
 }
 
-# Ограничения для изображений
-MAX_IMAGE_SIZE_MB = 5
-MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024
-MAX_IMAGE_DIMENSION = 3840  # 3840×2160
-
 # -------------------------------
-# Настройка путей к БД
+# Настройка путей к БД и шаблонам
 # -------------------------------
 DATA_DIR = 'data'
+PROMPTS_DIR = 'prompts'
+
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -94,7 +102,7 @@ CHAT_DB_PATH = os.path.join(DATA_DIR, 'chat.db')
 def get_current_time_in_timezone():
     """
     Возвращает текущее время в часовом поясе, указанном в .env
-    Формат: ДД.ММ.ГГГГ день_недели ЧЧ:ММ:СС
+    Формат: ДД.ММ.ГГГГ день_недели ЧЧ:ММ:СС (часовой_пояс)
     """
     try:
         # Получаем текущее время в UTC
@@ -122,18 +130,19 @@ def get_current_time_in_timezone():
         # Добавляем часовой пояс для информации
         tz_abbr = local_time.strftime('%z')
         if tz_abbr:
-            tz_abbr = f" ({tz_abbr})"
+            # Преобразуем +0300 в (+300)
+            tz_abbr = f"(+{int(tz_abbr[1:3])})" if tz_abbr.startswith('+') else f"({tz_abbr})"
         else:
             tz_abbr = ""
         
-        return f"{formatted_date} {weekday_ru} {formatted_time}{tz_abbr}"
+        return f"{formatted_date} {formatted_time} {weekday_ru} {tz_abbr}"
     
     except Exception as e:
         app.logger.error(f"Ошибка получения времени в часовом поясе {TIMEZONE_STR}: {str(e)}")
         # Fallback на UTC с днем недели на английском
         utc_time = datetime.now(pytz.UTC)
         weekdays_en = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-        return f"{utc_time.strftime('%d.%m.%Y')} {weekdays_en[utc_time.weekday()]} {utc_time.strftime('%H:%M:%S')} UTC"
+        return f"{utc_time.strftime('%d.%m.%Y')} {utc_time.strftime('%H:%M:%S')} {weekdays_en[utc_time.weekday()]} (UTC)"
 
 def get_current_time_in_timezone_for_db():
     """
@@ -156,6 +165,158 @@ def get_current_time_in_timezone_for_db():
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 # -------------------------------
+# Функция для загрузки шаблона промпта
+# -------------------------------
+def load_prompt_template(template_name):
+    """
+    Загружает шаблон промпта из файла
+    """
+    template_path = os.path.join(PROMPTS_DIR, template_name)
+    try:
+        with open(template_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        app.logger.error(f"Шаблон не найден: {template_path}")
+        return None
+    except Exception as e:
+        app.logger.error(f"Ошибка загрузки шаблона {template_name}: {str(e)}")
+        return None
+
+# -------------------------------
+# Функция для форматирования промпта с переменными
+# -------------------------------
+def format_prompt(template_name, variables):
+    """
+    Загружает шаблон и подставляет переменные
+    """
+    template = load_prompt_template(template_name)
+    if not template:
+        return None
+    
+    try:
+        return template.format(**variables)
+    except KeyError as e:
+        app.logger.error(f"Отсутствует переменная в шаблоне {template_name}: {e}")
+        return None
+    except Exception as e:
+        app.logger.error(f"Ошибка форматирования шаблона {template_name}: {str(e)}")
+        return None
+
+# -------------------------------
+# Функция для вызова Automatic1111
+# -------------------------------
+def call_automatic1111(prompt_data):
+    """
+    Отправляет запрос в Automatic1111 и возвращает сгенерированное изображение
+    """
+    try:
+        # Формируем payload для API Automatic1111
+        payload = {
+            "prompt": prompt_data.get("prompt", ""),
+            "negative_prompt": prompt_data.get("negative_prompt", ""),
+            "steps": int(prompt_data.get("steps", 40)),
+            "width": int(prompt_data.get("width", 512)),
+            "height": int(prompt_data.get("height", 512)),
+            "cfg_scale": float(prompt_data.get("cfg_scale", 7)),
+            "sampler_name": prompt_data.get("sampler_name", "DPM++ 2M Karras"),
+            "batch_size": int(prompt_data.get("batch_size", 1)),
+            "enable_hr": prompt_data.get("enable_hr") == "true",
+            "hr_scale": float(prompt_data.get("hr_scale", 2)),
+            "hr_upscaler": prompt_data.get("hr_upscaler", "Latent (nearest)"),
+            "denoising_strength": float(prompt_data.get("denoising_strength", 0.7)),
+            "hr_second_pass_steps": int(prompt_data.get("hr_second_pass_steps", 25))
+        }
+        
+        app.logger.info(f"Отправка запроса в Automatic1111: {AUTOMATIC1111_URL}/sdapi/v1/txt2img")
+        
+        response = requests.post(
+            f"{AUTOMATIC1111_URL}/sdapi/v1/txt2img",
+            json=payload,
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('images') and len(result['images']) > 0:
+                return {
+                    'success': True,
+                    'image_data': result['images'][0]  # Base64 изображение
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': 'Automatic1111 не вернул изображение'
+                }
+        else:
+            app.logger.error(f"Automatic1111 error: {response.status_code} - {response.text}")
+            return {
+                'success': False,
+                'error': f"Ошибка Automatic1111: {response.status_code}"
+            }
+            
+    except requests.exceptions.ConnectionError:
+        app.logger.error("Ошибка подключения к Automatic1111")
+        return {
+            'success': False,
+            'error': "Не удалось подключиться к Automatic1111. Проверьте, запущен ли сервис."
+        }
+    except requests.exceptions.Timeout:
+        app.logger.error("Таймаут при обращении к Automatic1111")
+        return {
+            'success': False,
+            'error': "Превышено время ожидания ответа от Automatic1111"
+        }
+    except Exception as e:
+        app.logger.error(f"Error calling Automatic1111: {str(e)}")
+        return {
+            'success': False,
+            'error': f"Ошибка при обращении к Automatic1111: {str(e)}"
+        }
+
+# -------------------------------
+# Функция для вызова API видеонаблюдения
+# -------------------------------
+def call_camera_api(cam_query):
+    """
+    Запрашивает изображение с камеры
+    """
+    try:
+        camera_url = f"http://host.docker.internal:5005/snapshot/{cam_query}"
+        app.logger.info(f"Запрос к камере: {camera_url}")
+        
+        response = requests.get(camera_url, timeout=10)
+        
+        if response.status_code == 200:
+            # Получаем изображение и конвертируем в base64
+            image_data = base64.b64encode(response.content).decode('utf-8')
+            content_type = response.headers.get('content-type', 'image/jpeg')
+            
+            return {
+                'success': True,
+                'image_data': image_data,
+                'image_type': content_type
+            }
+        else:
+            app.logger.error(f"Camera API error: {response.status_code} - {response.text}")
+            return {
+                'success': False,
+                'error': f"Ошибка камеры: {response.status_code}"
+            }
+            
+    except requests.exceptions.ConnectionError:
+        app.logger.error("Ошибка подключения к API камер")
+        return {
+            'success': False,
+            'error': "Не удалось подключиться к сервису видеонаблюдения"
+        }
+    except Exception as e:
+        app.logger.error(f"Error calling camera API: {str(e)}")
+        return {
+            'success': False,
+            'error': f"Ошибка при обращении к камере: {str(e)}"
+        }
+
+# -------------------------------
 # Функция для проверки изображения
 # -------------------------------
 def validate_image_file(file_data, file_type, file_name, file_size):
@@ -165,7 +326,7 @@ def validate_image_file(file_data, file_type, file_name, file_size):
     """
     # Проверка размера файла
     if file_size > MAX_IMAGE_SIZE_BYTES:
-        return False, f"Максимальный размер файла с изображением {MAX_IMAGE_SIZE_MB}Мб"
+        return False, f"Максимальный размер файла с изображением {MAX_IMAGE_SIZE_MB} Мб"
     
     # Проверка MIME-типа
     if file_type not in SUPPORTED_IMAGE_MIMETYPES:
@@ -184,8 +345,8 @@ def validate_image_file(file_data, file_type, file_name, file_size):
         width, height = img.size
         
         # Проверяем максимальное разрешение
-        if width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION:
-            return False, f"Максимальное разрешение файла с изображением - не более {MAX_IMAGE_DIMENSION}×{MAX_IMAGE_DIMENSION}"
+        if width > MAX_IMAGE_WIDTH or height > MAX_IMAGE_HEIGHT:
+            return False, f"Максимальное разрешение файла с изображением - не более {MAX_IMAGE_WIDTH}×{MAX_IMAGE_HEIGHT}"
         
         return True, None
         
@@ -255,132 +416,6 @@ def call_ollama_chat(messages, model=None, stream=False):
     except Exception as e:
         app.logger.error(f"Error calling Ollama: {str(e)}")
         return f"⚠️ Ошибка при обращении к Ollama: {str(e)}"
-
-# -------------------------------
-# Функция для создания промпта-маршрутизатора
-# -------------------------------
-def create_router_prompt(user_query, current_time_str):
-    """
-    Создает промпт для модели-маршрутизатора
-    """
-    prompt = f"""# РОЛЬ
-Ты — маршрутизатор запросов и ассистент. Ты должен принять только одно из описанных решений на основе запроса.
-
-# КРИТЕРИИ ОЦЕНКИ ЗАПРОСА
-
-## 1. ПРОСТОЙ ЗАПРОС (Ответь сразу)
-Запрос считается простым, если для ответа на него достаточно информации предоставленной во входных данных (например, текущее время).
-- **Примеры:** "Который час?", "Какой сегодня день недели?".
-- **Действие:** Дай краткий, точный ответ сразу на русском языке. Не добавляй рассуждений. 
-- **Исключения:** Если требуется любые математические расчёты (сколько будет 5*25?) или расчёт временных интервалов (например, "Сколько дней до конца месяца?") - это СЛОЖНЫЙ ЗАПРОС.
-
-## 2. ЗАПРОС НА СОЗДАНИЕ ИЗОБРАЖЕНИЯ (Просто выведи его)
-Запрос на создание изображения, если в запросе присутствуют фразы связанные с просьбой создать изображение.
-- **Примеры:** "Нарисуй лес", "Создай эскиз кошки", "Сделай фотографию девушки в шапке", "Подготовь рисунок слона"
-- **Действие:** Выведи текст запроса на создание изображения без каких-либо изменений. Больше ничего не пиши.
-
-## 3. ЗАПРОС НА ПРОСМОТР КОМНАТ (Замени и выведи)
-Запрос на просмотр комнат, если в запросе присутствуют фразы связанные с просьбой показать одну из комнат (тамбур, прихожую, коридор, спальню, кабинет, детскую, гостиную, кухню, балкон).
-- **Примеры:** 
-  - Исходный: "Покажи кабинет" -> Замена и вывод: "/cam kab"
-  - "Что в гостиной" -> Замена и вывод: "/cam gos"
-  - "Есть ли кто-то в тамбуре" -> Замена и вывод: "/cam tam"
-- **Действие:** В зависимости от того, какую комнату запрашивают показать - нужно выполнить замену запроса и вывести его. Больше ничего не пиши. 
-- **Критерии для замены текста запроса:**
-  - Запрос показать тамбур -> замена запроса на -> "/cam tam"
-  - Запрос показать прихожую -> замена запроса на -> "/cam pri"
-  - Запрос показать коридор -> замена запроса на -> "/cam kor"
-  - Запрос показать спальню -> замена запроса на -> "/cam spa"
-  - Запрос показать кабинет -> замена запроса на -> "/cam kab"
-  - Запрос показать детскую -> замена запроса на -> "/cam det"
-  - Запрос показать гостиную -> замена запроса на -> "/cam gos"
-  - Запрос показать кухню -> замена запроса на -> "/cam kuh"
-  - Запрос показать балкон -> замена запроса на -> "/cam bal"
-  - Запрос показать что-то не указанное в списке -> замена запроса на -> "/cam "
-
-## 4. СЛОЖНЫЙ ЗАПРОС (Просто выведи его)
-Запрос сложный, если не подошёл не под одну перечисленную выше категорию.
-- **Действие:** Выведи текст сложного запроса без каких-либо изменений. Не отвечай на сложный запрос сам.
-
-# ВХОДНЫЕ ДАННЫЕ
-- **Текущее время:** {current_time_str}
-- **Запрос пользователя:** {user_query}
-
-# ФОРМАТ ВЫВОДА
-Выбери только один вариант из перечисленных ниже. Не пиши ничего, кроме указанного.
-
-## Вариант 1 (Простой запрос):
-Краткий ответ на простой запрос.
-...
-
-## Вариант 2 (Запрос на создание изображения):
-/2: {user_query}
-...
-
-## Вариант 3 (Запрос на просмотр комнат):
-/3: Заменённый запрос
-...
-
-## Вариант 4 (Сложный запрос):
-/4: {user_query}"""
-    
-    return prompt
-
-# -------------------------------
-# Функция для обработки ответа маршрутизатора
-# -------------------------------
-def process_router_response(router_response, user_query):
-    """
-    Анализирует ответ от модели-маршрутизатора и возвращает:
-    - action: тип действия ('simple', 'image', 'camera', 'complex')
-    - processed_text: обработанный текст для дальнейшего использования
-    """
-    router_response = router_response.strip()
-    
-    # Проверяем на наличие меток в начале ответа
-    if router_response.startswith('/2') or router_response.startswith('/2:'):
-        # Запрос на создание изображения
-        if router_response.startswith('/2:'):
-            processed = router_response[3:].strip()
-        else:
-            processed = router_response[2:].strip()
-        
-        # Если после удаления метки текст пустой, используем исходный запрос
-        if not processed:
-            processed = user_query
-            
-        return 'image', f"[ЗАПРОС ИЗОБРАЖЕНИЯ] {processed}"
-    
-    elif router_response.startswith('/3') or router_response.startswith('/3:'):
-        # Запрос на просмотр комнат - модель уже сделала замену
-        if router_response.startswith('/3:'):
-            processed = router_response[3:].strip()
-        else:
-            processed = router_response[2:].strip()
-        
-        # Модель уже должна была вернуть что-то вроде "/cam spa" или "/cam tam"
-        # Если вдруг вернулось пустое, используем общий префикс
-        if not processed:
-            processed = "/cam "
-            
-        return 'camera', f"[ЗАПРОС КАМЕРЫ] {processed}"
-    
-    elif router_response.startswith('/4') or router_response.startswith('/4:'):
-        # Сложный запрос - нужно передать в reasoning модель
-        if router_response.startswith('/4:'):
-            processed = router_response[3:].strip()
-        else:
-            processed = router_response[2:].strip()
-        
-        # Если после удаления метки текст пустой, используем исходный запрос
-        if not processed:
-            processed = user_query
-            
-        return 'complex', processed
-    
-    else:
-        # Если нет меток, считаем это простым ответом
-        return 'simple', router_response
 
 # -------------------------------
 # Инициализация и миграция БД
@@ -714,10 +749,45 @@ def api_timezone_info():
     if 'email' not in session and app.debug == False:
         return jsonify({'error': 'Доступ запрещен'}), 403
     
-    return jsonify(get_timezone_info())
+    return jsonify({
+        'timezone': TIMEZONE_STR,
+        'current_time': get_current_time_in_timezone(),
+        'current_time_for_db': get_current_time_in_timezone_for_db()
+    })
 
 # -------------------------------
-# ОТПРАВКА СООБЩЕНИЯ (НОВАЯ ВЕРСИЯ С МАРШРУТИЗАЦИЕЙ)
+# Функция для обработки ответа с маркерами
+# -------------------------------
+def process_marker_response(response_text, current_time_str):
+    """
+    Анализирует ответ на наличие маркеров {2}, {3}, {4}
+    Возвращает (action_type, processed_text)
+    action_type: 'image', 'camera', 'reasoning', 'none'
+    """
+    response_text = response_text.strip()
+    
+    # Проверяем наличие маркеров в начале строки
+    if response_text.startswith('{2}'):
+        # Запрос на создание изображения
+        processed = response_text[3:].strip()
+        return 'image', processed
+    
+    elif response_text.startswith('{3}'):
+        # Запрос на просмотр комнат
+        processed = response_text[3:].strip()
+        return 'camera', processed
+    
+    elif response_text.startswith('{4}'):
+        # Сложный запрос для reasoning модели
+        processed = response_text[3:].strip()
+        return 'reasoning', processed
+    
+    else:
+        # Обычный текстовый ответ
+        return 'none', response_text
+
+# -------------------------------
+# ОТПРАВКА СООБЩЕНИЯ (НОВАЯ ВЕРСИЯ С ШАБЛОНАМИ)
 # -------------------------------
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -794,18 +864,32 @@ def send_message():
             if is_first_message and message_text:
                 update_session_title(session_id, message_text)
             
-            # ФОРМИРУЕМ ПРОМПТ ДЛЯ МОДЕЛИ С ИЗОБРАЖЕНИЕМ
+            # ВЫБОР ШАБЛОНА В ЗАВИСИМОСТИ ОТ НАЛИЧИЯ ТЕКСТА
             if message_text.strip():
-                # Есть и текст, и изображение
-                final_message_text = f"Текущее время: {current_time_str}. Подпись под изображением: {message_text}"
+                # Есть и текст, и изображение - используем image_text.template
+                prompt = format_prompt('image_text.template', {
+                    'current_time_str': current_time_str,
+                    'user_query': message_text
+                })
+                app.logger.info("Используется шаблон image_text.template")
             else:
-                # Только изображение, без текста
-                final_message_text = f"Текущее время: {current_time_str}. Ответ - на русском языке. Списком перечисли все предметы на изображении. Опиши само изображение и всё, что можно про него рассказать. Не задавай вопросов. Не пиши о том, чего нет на изображении."
+                # Только изображение, без текста - используем image.template
+                prompt = format_prompt('image.template', {
+                    'current_time_str': current_time_str
+                })
+                app.logger.info("Используется шаблон image.template")
+            
+            if not prompt:
+                # Если шаблон не загрузился, используем запасной вариант
+                if message_text.strip():
+                    prompt = f"Текущее время: {current_time_str}. Подпись под изображением: {message_text}"
+                else:
+                    prompt = f"Текущее время: {current_time_str}. Списком перечисли все предметы на изображении. Опиши само изображение и всё, что можно про него рассказать."
             
             # Отправляем запрос с изображением напрямую в мультимодальную модель
             ollama_messages = [{
                 'role': 'user',
-                'content': final_message_text,
+                'content': prompt,
                 'images': [file_data]  # Изображение в base64
             }]
             
@@ -871,61 +955,151 @@ def send_message():
         if is_first_message and message_text:
             update_session_title(session_id, message_text)
         
-        # ШАГ 1: Отправляем запрос в модель-маршрутизатор (LLM_CHAT_MODEL)
-        router_prompt = create_router_prompt(message_text, current_time_str)
-        router_messages = [{'role': 'user', 'content': router_prompt}]
+        # ШАГ 1: Формируем промпт из base_text.template
+        prompt = format_prompt('base_text.template', {
+            'current_time_str': current_time_str,
+            'user_query': message_text
+        })
+        
+        if not prompt:
+            # Запасной вариант, если шаблон не загрузился
+            prompt = f"Текущее время: {current_time_str}. Запрос пользователя: {message_text}"
+        
+        # Отправляем запрос в модель-маршрутизатор
+        router_messages = [{'role': 'user', 'content': prompt}]
         
         app.logger.info(f"Отправка запроса в модель-маршрутизатор: {LLM_CHAT_MODEL}")
         
         start_time = time.time()
         router_response = call_ollama_chat(router_messages, model=LLM_CHAT_MODEL)
         
-        # ШАГ 2: Анализируем ответ маршрутизатора
-        action, processed_text = process_router_response(router_response, message_text)
+        # ШАГ 2: Анализируем ответ на наличие маркеров
+        action_type, processed_text = process_marker_response(router_response, current_time_str)
         
-        app.logger.info(f"Результат маршрутизации: action={action}, processed_text={processed_text[:100]}...")
+        app.logger.info(f"Результат обработки маркеров: action_type={action_type}, processed_text={processed_text[:100]}...")
         
         # ШАГ 3: Обрабатываем в зависимости от типа действия
         final_response = ""
         model_used = LLM_CHAT_MODEL
-        model_category = action
+        model_category = action_type
         
-        if action == 'simple':
-            # Простой ответ - используем ответ маршрутизатора напрямую
-            final_response = processed_text
-            model_used = LLM_CHAT_MODEL
+        if action_type == 'image':
+            # Запрос на создание изображения
+            # Формируем промпт из create_image.template
+            create_prompt = format_prompt('create_image.template', {
+                'current_time_str': current_time_str,
+                'image_query': processed_text
+            })
             
-        elif action == 'image':
-            # Запрос на создание изображения - добавляем префикс
-            final_response = processed_text
-            model_used = LLM_CHAT_MODEL
+            if not create_prompt:
+                create_prompt = f"Создай изображение по запросу: {processed_text}"
             
-        elif action == 'camera':
-            # Запрос на просмотр комнат - добавляем префикс
-            final_response = processed_text
-            model_used = LLM_CHAT_MODEL
+            # Отправляем запрос в модель для генерации параметров изображения
+            image_params_response = call_ollama_chat(
+                [{'role': 'user', 'content': create_prompt}], 
+                model=LLM_MULTIMODAL_MODEL
+            )
             
-        elif action == 'complex':
-            # Сложный запрос - отправляем в reasoning модель
-            complex_messages = [{'role': 'user', 'content': processed_text}]
+            # Пытаемся распарсить JSON из ответа
+            try:
+                # Ищем JSON в ответе
+                import re
+                json_match = re.search(r'\{.*\}', image_params_response, re.DOTALL)
+                if json_match:
+                    prompt_data = json.loads(json_match.group())
+                    
+                    # Отправляем запрос в Automatic1111
+                    image_result = call_automatic1111(prompt_data)
+                    
+                    if image_result['success']:
+                        # Отправляем сгенерированное изображение в чат
+                        # Сохраняем сообщение с изображением
+                        save_message(
+                            session_id, 
+                            'assistant', 
+                            f"Сгенерированное изображение по запросу: {processed_text}",
+                            image_result['image_data'],
+                            'image/png',
+                            f'generated_image_{int(time.time())}.png',
+                            model_used
+                        )
+                        
+                        return jsonify({
+                            'response': f"✅ Изображение сгенерировано по запросу: {processed_text}",
+                            'session_id': session_id,
+                            'model_used': model_used,
+                            'model_category': model_category,
+                            'response_time': round(time.time() - start_time, 1),
+                            'assistant_timestamp': current_time_for_db,
+                            'generated_image': image_result['image_data']
+                        })
+                    else:
+                        final_response = f"⚠️ {image_result['error']}"
+                else:
+                    final_response = "⚠️ Не удалось получить параметры для генерации изображения"
+            except Exception as e:
+                app.logger.error(f"Ошибка при обработке ответа для генерации изображения: {str(e)}")
+                final_response = f"⚠️ Ошибка при генерации изображения: {str(e)}"
             
-            app.logger.info(f"Отправка сложного запроса в модель {LLM_REASONING_MODEL}")
+        elif action_type == 'camera':
+            # Запрос на просмотр комнат
+            camera_result = call_camera_api(processed_text)
             
-            # Отправляем в reasoning модель
-            complex_response = call_ollama_chat(complex_messages, model=LLM_REASONING_MODEL)
-            final_response = complex_response
+            if camera_result['success']:
+                # Сохраняем сообщение с изображением от камеры
+                save_message(
+                    session_id, 
+                    'assistant', 
+                    f"Изображение с камеры: {processed_text}",
+                    camera_result['image_data'],
+                    camera_result.get('image_type', 'image/jpeg'),
+                    f'camera_{processed_text}_{int(time.time())}.jpg',
+                    model_used
+                )
+                
+                return jsonify({
+                    'response': f"📸 Изображение с камеры {processed_text}",
+                    'session_id': session_id,
+                    'model_used': model_used,
+                    'model_category': model_category,
+                    'response_time': round(time.time() - start_time, 1),
+                    'assistant_timestamp': current_time_for_db,
+                    'camera_image': camera_result['image_data']
+                })
+            else:
+                final_response = f"⚠️ {camera_result['error']}"
+            
+        elif action_type == 'reasoning':
+            # Сложный запрос для reasoning модели
+            # Формируем промпт из reasoning.template
+            reasoning_prompt = format_prompt('reasoning.template', {
+                'current_time_str': current_time_str,
+                'reasoning_query': processed_text
+            })
+            
+            if not reasoning_prompt:
+                reasoning_prompt = processed_text
+            
+            # Отправляем запрос в reasoning модель
+            reasoning_response = call_ollama_chat(
+                [{'role': 'user', 'content': reasoning_prompt}], 
+                model=LLM_REASONING_MODEL
+            )
+            
+            final_response = reasoning_response
             model_used = LLM_REASONING_MODEL
             
-        else:
-            # Неизвестный тип - используем ответ маршрутизатора как есть
-            final_response = router_response
+        else:  # action_type == 'none'
+            # Обычный текстовый ответ
+            final_response = processed_text
             model_used = LLM_CHAT_MODEL
         
         end_time = time.time()
         response_time = round(end_time - start_time, 1)
         
         # Сохраняем ответ
-        save_message(session_id, 'assistant', final_response, model_name=model_used)
+        if final_response:
+            save_message(session_id, 'assistant', final_response, model_name=model_used)
         
         return jsonify({
             'response': final_response,

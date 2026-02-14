@@ -48,6 +48,13 @@
             </div>
         </div>
         
+        <!-- Модальное окно для просмотра изображений в полном размере -->
+        <div id="image-modal" class="image-modal" onclick="closeImageModal()">
+            <span class="image-modal-close">&times;</span>
+            <img class="image-modal-content" id="modal-image">
+            <div id="modal-caption"></div>
+        </div>
+        
         <!-- Поле ввода -->
         <div class="message-input">
             <input type="text" id="message-input" placeholder="Введите сообщение..." autocomplete="off">
@@ -126,6 +133,24 @@
         } catch (e) {
             return ts.replace('T', ' ').slice(0, 19);
         }
+    }
+
+    // -------------------------------
+    // Функции для работы с модальным окном изображений
+    // -------------------------------
+    function openImageModal(imgSrc, imgAlt) {
+        const modal = document.getElementById('image-modal');
+        const modalImg = document.getElementById('modal-image');
+        const captionText = document.getElementById('modal-caption');
+        
+        modal.style.display = "block";
+        modalImg.src = imgSrc;
+        captionText.innerHTML = imgAlt;
+    }
+
+    function closeImageModal() {
+        const modal = document.getElementById('image-modal');
+        modal.style.display = "none";
     }
 
     // -------------------------------
@@ -224,6 +249,13 @@
         
         // Сохранение чата
         document.getElementById('save-chat-button').addEventListener('click', saveChatAsHTML);
+        
+        // Закрытие модального окна по ESC
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeImageModal();
+            }
+        });
     });
 
     // -------------------------------
@@ -396,7 +428,22 @@
         // Файл (если есть)
         if (fileData) {
             if (fileType && fileType.startsWith('image/')) {
-                html += `<img src="data:${fileType};base64,${fileData}" class="attached-image" alt="attached image">`;
+                html += `
+                    <div class="image-container">
+                        <img src="data:${fileType};base64,${fileData}" 
+                             class="attached-image" 
+                             alt="${fileName || 'attached image'}"
+                             title="Нажмите для увеличения"
+                             onclick="openImageModal(this.src, '${fileName || 'Изображение'}')">
+                        <a href="data:${fileType};base64,${fileData}" 
+                           download="${fileName || 'image.jpg'}" 
+                           class="image-download-link" 
+                           title="Скачать изображение"
+                           onclick="event.stopPropagation()">
+                            ⬇️
+                        </a>
+                    </div>
+                `;
             } else if (fileType && fileType.startsWith('audio/')) {
                 html += `<audio controls src="data:${fileType};base64,${fileData}"></audio>`;
             } else {

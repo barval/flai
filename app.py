@@ -13,6 +13,8 @@ from PIL import Image
 from io import BytesIO
 import pytz
 from pytz.exceptions import UnknownTimeZoneError
+import logging
+import re
 
 load_dotenv()
 
@@ -20,6 +22,9 @@ app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key')
 app.config['JSON_AS_ASCII'] = False
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
+
+# Настройка более подробного логирования
+logging.basicConfig(level=logging.DEBUG)
 
 # -------------------------------
 # Подпись в футере - единая для всего проекта
@@ -44,15 +49,27 @@ except UnknownTimeZoneError:
 # Настройки Ollama
 # -------------------------------
 OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434')
-LLM_CHAT_MODEL = os.getenv('LLM_CHAT_MODEL', 'qwen3-vl:8b-instruct-q4_K_M')
+LLM_CHAT_MODEL = os.getenv('LLM_CHAT_MODEL', 'qwen3:4b-instruct-2507-q4_K_M')
 LLM_MULTIMODAL_MODEL = os.getenv('LLM_MULTIMODAL_MODEL', 'qwen3-vl:8b-instruct-q4_K_M')
-LLM_REASONING_MODEL = os.getenv('LLM_REASONING_MODEL', 'gpt-oss-20b')
+LLM_REASONING_MODEL = os.getenv('LLM_REASONING_MODEL', 'qwen3:14b-q4_K_M')
+
+# -------------------------------
+# Настройки температуры для разных моделей
+# -------------------------------
+LLM_CHAT_TEMPERATURE = float(os.getenv('LLM_CHAT_TEMPERATURE', 0.1))
+LLM_CHAT_TOP_P = float(os.getenv('LLM_CHAT_TOP_P', 0.1))
+
+LLM_MULTIMODAL_TEMPERATURE = float(os.getenv('LLM_MULTIMODAL_TEMPERATURE', 0.7))
+LLM_MULTIMODAL_TOP_P = float(os.getenv('LLM_MULTIMODAL_TOP_P', 0.9))
+
+LLM_REASONING_TEMPERATURE = float(os.getenv('LLM_REASONING_TEMPERATURE', 0.7))
+LLM_REASONING_TOP_P = float(os.getenv('LLM_REASONING_TOP_P', 0.9))
 
 # Контекстные окна для разных моделей
 MODEL_CONTEXT_WINDOWS = {
     LLM_CHAT_MODEL: int(os.getenv('LLM_CHAT_MODEL_CONTEXT_WINDOW', 32768)),
     LLM_MULTIMODAL_MODEL: int(os.getenv('LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW', 32768)),
-    LLM_REASONING_MODEL: int(os.getenv('LLM_REASONING_MODEL_CONTEXT_WINDOW', 65536)),
+    LLM_REASONING_MODEL: int(os.getenv('LLM_REASONING_MODEL_CONTEXT_WINDOW', 40960)),
 }
 
 # -------------------------------
@@ -228,6 +245,7 @@ def call_automatic1111(prompt_data):
         }
         
         app.logger.info(f"Отправка запроса в Automatic1111: {AUTOMATIC1111_URL}/sdapi/v1/txt2img")
+        app.logger.debug(f"Payload: {json.dumps(payload, ensure_ascii=False)[:200]}...")
         
         response = requests.post(
             f"{AUTOMATIC1111_URL}/sdapi/v1/txt2img",
@@ -238,11 +256,15 @@ def call_automatic1111(prompt_data):
         if response.status_code == 200:
             result = response.json()
             if result.get('images') and len(result['images']) > 0:
+                # Automatic1111 возвращает изображения в формате base64 без префикса
+                image_data = result['images'][0]
+                app.logger.info(f"Получено изображение от Automatic1111, размер base64: {len(image_data)}")
                 return {
                     'success': True,
-                    'image_data': result['images'][0]  # Base64 изображение
+                    'image_data': image_data  # Это уже готовая base64 строка
                 }
             else:
+                app.logger.error("Automatic1111 не вернул изображение")
                 return {
                     'success': False,
                     'error': 'Automatic1111 не вернул изображение'
@@ -371,10 +393,25 @@ def check_ollama_connection():
         app.logger.error(f"Ollama connection failed: {str(e)}")
         return False, []
 
-def call_ollama_chat(messages, model=None, stream=False):
+def call_ollama_chat(messages, model=None, stream=False, temperature=None, top_p=None):
     """Вызов Ollama API для чата"""
     if model is None:
         model = LLM_CHAT_MODEL
+    
+    # Выбираем параметры в зависимости от модели
+    if temperature is None:
+        if model == LLM_CHAT_MODEL:
+            temperature = LLM_CHAT_TEMPERATURE
+            top_p = LLM_CHAT_TOP_P if top_p is None else top_p
+        elif model == LLM_MULTIMODAL_MODEL:
+            temperature = LLM_MULTIMODAL_TEMPERATURE
+            top_p = LLM_MULTIMODAL_TOP_P if top_p is None else top_p
+        elif model == LLM_REASONING_MODEL:
+            temperature = LLM_REASONING_TEMPERATURE
+            top_p = LLM_REASONING_TOP_P if top_p is None else top_p
+        else:
+            temperature = 0.7
+            top_p = 0.9
     
     try:
         payload = {
@@ -383,14 +420,13 @@ def call_ollama_chat(messages, model=None, stream=False):
             'stream': stream,
             'options': {
                 'num_ctx': MODEL_CONTEXT_WINDOWS.get(model, 32768),
-                'temperature': 0.7,
-                'top_p': 0.9,
+                'temperature': temperature,
+                'top_p': top_p,
+                'stop': ['<|im_end|>', '<|endoftext|>', '\n\n\n'],  # Стоп-токены
             }
         }
         
-        app.logger.info(f"Отправка запроса к Ollama. Модель: {model}")
-        if any('images' in msg for msg in messages):
-            app.logger.info("Запрос содержит изображение(я)")
+        app.logger.info(f"Отправка запроса к Ollama. Модель: {model}, temp={temperature}, top_p={top_p}")
         
         response = requests.post(
             f"{OLLAMA_URL}/api/chat",
@@ -400,8 +436,18 @@ def call_ollama_chat(messages, model=None, stream=False):
         
         if response.status_code == 200:
             result = response.json()
-            app.logger.info("Успешный ответ от Ollama")
-            return result['message']['content']
+            content = result['message']['content']
+            
+            # Очищаем ответ от стоп-токенов
+            for stop_token in ['<|endoftext|>', '<|im_end|>']:
+                if stop_token in content:
+                    content = content[:content.index(stop_token)]
+            
+            # Берём только первую строку для модели-маршрутизатора
+            if model == LLM_CHAT_MODEL and temperature < 0.3:
+                content = content.split('\n')[0].strip()
+            
+            return content.strip()
         else:
             error_msg = f"Ollama error: {response.status_code} - {response.text}"
             app.logger.error(error_msg)
@@ -761,33 +807,38 @@ def api_timezone_info():
 def process_marker_response(response_text, current_time_str):
     """
     Анализирует ответ на наличие маркеров [-IMAGE-], [-CAMERA-], [-REASONING-]
-    Возвращает (action_type, processed_text)
-    action_type: 'image', 'camera', 'reasoning', 'none'
     """
     response_text = response_text.strip()
+    app.logger.debug(f"process_marker_response получил текст длиной {len(response_text)} символов")
     
-    # Проверяем наличие маркеров в начале строки
-    if response_text.startswith('[-IMAGE-]'):
-        # Запрос на создание изображения
-        processed = response_text[9:].strip()  # длина [-IMAGE-] = 9 символов
-        return 'image', processed
+    # Словарь маркеров
+    markers = {
+        '[-IMAGE-]': 'image',
+        '[-CAMERA-]': 'camera',
+        '[-REASONING-]': 'reasoning'
+    }
     
-    elif response_text.startswith('[-CAMERA-]'):
-        # Запрос на просмотр комнат
-        processed = response_text[10:].strip()  # длина [-CAMERA-] = 10 символов
-        return 'camera', processed
+    # Ищем маркеры
+    for marker, action in markers.items():
+        if marker in response_text:
+            app.logger.info(f"Найден маркер {marker} в тексте")
+            
+            # Находим текст после маркера
+            parts = response_text.split(marker, 1)
+            if len(parts) > 1:
+                processed = parts[1].strip()
+                # Если после маркера ничего нет, возвращаем пустую строку
+                if not processed:
+                    processed = ""
+                app.logger.info(f"Обработанный текст после маркера: '{processed[:100]}'")
+                return action, processed
     
-    elif response_text.startswith('[-REASONING-]'):
-        # Сложный запрос для reasoning модели
-        processed = response_text[13:].strip()  # длина [-REASONING-] = 13 символов
-        return 'reasoning', processed
-    
-    else:
-        # Обычный текстовый ответ
-        return 'none', response_text
+    # Если маркеров нет, возвращаем весь текст
+    app.logger.info("Маркеры не обнаружены, возвращаем весь текст")
+    return 'none', response_text
 
 # -------------------------------
-# ОТПРАВКА СООБЩЕНИЯ (НОВАЯ ВЕРСИЯ С ШАБЛОНАМИ)
+# ОТПРАВКА СООБЩЕНИЯ
 # -------------------------------
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -809,6 +860,8 @@ def send_message():
     
     if 'multipart/form-data' in request.content_type:
         message_text = request.form.get('message', '')
+        app.logger.info(f"Получено multipart сообщение: '{message_text}'")
+        
         if 'file' in request.files:
             file = request.files['file']
             if file.filename:
@@ -819,9 +872,11 @@ def send_message():
                 file_data = base64.b64encode(file.read()).decode('utf-8')
                 file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
                 file_name = file.filename
+                app.logger.info(f"Получен файл: {file_name}, тип: {file_type}, размер: {file_size}")
     else:
         data = request.get_json()
         message_text = data.get('message', '')
+        app.logger.info(f"Получено JSON сообщение: '{message_text}'")
     
     # ПОЛУЧАЕМ ТЕКУЩЕЕ ВРЕМЯ В УКАЗАННОМ ЧАСОВОМ ПОЯСЕ
     current_time_str = get_current_time_in_timezone()
@@ -897,7 +952,12 @@ def send_message():
             
             # ЗАМЕР ВРЕМЕНИ ВЫПОЛНЕНИЯ
             start_time = time.time()
-            bot_reply = call_ollama_chat(ollama_messages, model=LLM_MULTIMODAL_MODEL)
+            bot_reply = call_ollama_chat(
+                ollama_messages, 
+                model=LLM_MULTIMODAL_MODEL,
+                temperature=LLM_MULTIMODAL_TEMPERATURE,
+                top_p=LLM_MULTIMODAL_TOP_P
+            )
             end_time = time.time()
             response_time = round(end_time - start_time, 1)
             
@@ -962,21 +1022,46 @@ def send_message():
         })
         
         if not prompt:
-            # Запасной вариант, если шаблон не загрузился
-            prompt = f"Текущее время: {current_time_str}. Запрос пользователя: {message_text}"
+            # Упрощённый промпт, если шаблон не загрузился
+            prompt = f"""Классифицируй запрос и ответь одной строкой.
+
+Правила:
+1. Если просят время/дату - ответь только числом или днём (например: "10:11" или "Суббота")
+2. Если просят нарисовать/создать изображение - ответь: [-IMAGE-] текст запроса
+3. Если просят показать комнату - ответь: [-CAMERA-] код комнаты (коды: тамбур=tam, прихожая=pri, коридор=kor, спальня=spa, кабинет=kab, детская=det, гостиная=gos, кухня=kuh, балкон=bal)
+4. Для всего остального - ответь: [-REASONING-] текст запроса
+
+Запрос: {message_text}
+Время: {current_time_str}
+
+Ответ (только одна строка, без пояснений):"""
         
-        # Отправляем запрос в модель-маршрутизатор
-        router_messages = [{'role': 'user', 'content': prompt}]
+        app.logger.info(f"Сформирован промпт для маршрутизатора: {prompt}")
+        
+        # Отправляем запрос в модель-маршрутизатор с системным промптом
+        router_messages = [
+            {
+                'role': 'system',
+                'content': 'Ты - маршрутизатор запросов. Отвечай ТОЛЬКО одной строкой на русском языке. Никаких пояснений.'
+            },
+            {'role': 'user', 'content': prompt}
+        ]
         
         app.logger.info(f"Отправка запроса в модель-маршрутизатор: {LLM_CHAT_MODEL}")
         
         start_time = time.time()
-        router_response = call_ollama_chat(router_messages, model=LLM_CHAT_MODEL)
+        router_response = call_ollama_chat(
+            router_messages, 
+            model=LLM_CHAT_MODEL,
+            temperature=LLM_CHAT_TEMPERATURE,
+            top_p=LLM_CHAT_TOP_P
+        )
+        app.logger.info(f"Ответ от модели-маршрутизатора: '{router_response}'")
         
         # ШАГ 2: Анализируем ответ на наличие маркеров
         action_type, processed_text = process_marker_response(router_response, current_time_str)
         
-        app.logger.info(f"Результат обработки маркеров: action_type={action_type}, processed_text={processed_text[:100]}...")
+        app.logger.info(f"Результат обработки маркеров: action_type={action_type}, processed_text='{processed_text[:100]}'...")
         
         # ШАГ 3: Обрабатываем в зависимости от типа действия
         final_response = ""
@@ -984,36 +1069,128 @@ def send_message():
         model_category = action_type
         
         if action_type == 'image':
-            # Запрос на создание изображения
+            app.logger.info("Обработка запроса на создание изображения")
+            
             # Формируем промпт из create_image.template
             create_prompt = format_prompt('create_image.template', {
-                'current_time_str': current_time_str,
                 'image_query': processed_text
             })
             
             if not create_prompt:
-                create_prompt = f"Создай изображение по запросу: {processed_text}"
+                # Упрощённый промпт, если шаблон не загрузился
+                create_prompt = f"""Analyze this request and return a JSON with parameters for image generation.
+Request: {processed_text}
+
+Return ONLY a valid JSON object with these fields:
+- prompt: detailed description for image generation
+- negative_prompt: what to avoid
+- steps: 40
+- width: 512
+- height: 512
+- cfg_scale: 7
+- sampler_name: "DPM++ 2M Karras"
+- batch_size: 1
+- enable_hr: true
+- hr_scale: 2
+- hr_upscaler: "Latent (nearest)"
+- denoising_strength: 0.7
+- hr_second_pass_steps: 25
+
+The response must be ONLY the JSON object, no other text."""
+            
+            app.logger.info(f"Отправка запроса в мультимодальную модель для генерации параметров")
+            
+            # Добавляем системный промпт для мультимодальной модели
+            image_messages = [
+                {
+                    'role': 'system',
+                    'content': 'You are an image generation parameter generator. Always respond with valid JSON only, no explanations.'
+                },
+                {'role': 'user', 'content': create_prompt}
+            ]
             
             # Отправляем запрос в модель для генерации параметров изображения
             image_params_response = call_ollama_chat(
-                [{'role': 'user', 'content': create_prompt}], 
-                model=LLM_MULTIMODAL_MODEL
+                image_messages, 
+                model=LLM_MULTIMODAL_MODEL,
+                temperature=LLM_MULTIMODAL_TEMPERATURE,
+                top_p=LLM_MULTIMODAL_TOP_P
             )
+            
+            app.logger.info(f"Ответ от мультимодальной модели: {image_params_response[:200]}...")
             
             # Пытаемся распарсить JSON из ответа
             try:
-                # Ищем JSON в ответе
-                import re
-                json_match = re.search(r'\{.*\}', image_params_response, re.DOTALL)
+                # Ищем JSON в ответе (между { и })
+                json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', image_params_response, re.DOTALL)
                 if json_match:
-                    prompt_data = json.loads(json_match.group())
+                    json_str = json_match.group()
+                    app.logger.info(f"Найден JSON: {json_str[:200]}...")
+                    prompt_data = json.loads(json_str)
+                    
+                    # Проверяем наличие обязательных полей
+                    if 'prompt' not in prompt_data:
+                        prompt_data['prompt'] = f"masterpiece, best quality, {processed_text}"
+                    if 'negative_prompt' not in prompt_data:
+                        prompt_data['negative_prompt'] = "worst quality, low quality"
+                    
+                    app.logger.info(f"Отправка запроса в Automatic1111")
                     
                     # Отправляем запрос в Automatic1111
                     image_result = call_automatic1111(prompt_data)
                     
                     if image_result['success']:
-                        # Отправляем сгенерированное изображение в чат
-                        # Сохраняем сообщение с изображением
+                        app.logger.info(f"Изображение успешно сгенерировано, размер данных: {len(image_result['image_data'])}")
+                        
+                        # СОХРАНЯЕМ ИЗОБРАЖЕНИЕ В ЧАТ
+                        save_message(
+                            session_id, 
+                            'assistant', 
+                            f"Сгенерированное изображение по запросу: {processed_text}",
+                            image_result['image_data'],  # Передаём base64 данные изображения
+                            'image/png',                 # MIME-тип
+                            f'generated_image_{int(time.time())}.png',  # Имя файла
+                            model_used
+                        )
+                        
+                        # ВОЗВРАЩАЕМ ИЗОБРАЖЕНИЕ В ОТВЕТЕ
+                        return jsonify({
+                            'response': f"✅ Изображение сгенерировано по запросу: {processed_text}",
+                            'session_id': session_id,
+                            'model_used': model_used,
+                            'model_category': model_category,
+                            'response_time': round(time.time() - start_time, 1),
+                            'assistant_timestamp': current_time_for_db,
+                            'generated_image': image_result['image_data']  # Отправляем изображение на клиент
+                        })
+                    else:
+                        final_response = f"⚠️ {image_result['error']}"
+                else:
+                    app.logger.warning(f"Не удалось найти JSON в ответе")
+                    # Пробуем создать простой промпт вручную
+                    simple_prompt = {
+                        "prompt": f"masterpiece, best quality, ultra-detailed, {processed_text}",
+                        "negative_prompt": "worst quality, low quality, bad anatomy",
+                        "steps": "40",
+                        "width": "512",
+                        "height": "512",
+                        "cfg_scale": "7",
+                        "sampler_name": "DPM++ 2M Karras",
+                        "batch_size": "1",
+                        "enable_hr": "true",
+                        "hr_scale": "2",
+                        "hr_upscaler": "Latent (nearest)",
+                        "denoising_strength": "0.7",
+                        "hr_second_pass_steps": "25"
+                    }
+                    
+                    app.logger.info("Используем автоматически сгенерированный промпт")
+                    image_result = call_automatic1111(simple_prompt)
+                    
+                    if image_result['success']:
+                        app.logger.info(f"Изображение успешно сгенерировано (авто-промпт), размер данных: {len(image_result['image_data'])}")
+                        
+                        # СОХРАНЯЕМ ИЗОБРАЖЕНИЕ В ЧАТ
                         save_message(
                             session_id, 
                             'assistant', 
@@ -1024,6 +1201,7 @@ def send_message():
                             model_used
                         )
                         
+                        # ВОЗВРАЩАЕМ ИЗОБРАЖЕНИЕ В ОТВЕТЕ
                         return jsonify({
                             'response': f"✅ Изображение сгенерировано по запросу: {processed_text}",
                             'session_id': session_id,
@@ -1035,13 +1213,12 @@ def send_message():
                         })
                     else:
                         final_response = f"⚠️ {image_result['error']}"
-                else:
-                    final_response = "⚠️ Не удалось получить параметры для генерации изображения"
             except Exception as e:
                 app.logger.error(f"Ошибка при обработке ответа для генерации изображения: {str(e)}")
                 final_response = f"⚠️ Ошибка при генерации изображения: {str(e)}"
             
         elif action_type == 'camera':
+            app.logger.info("Обработка запроса к камере")
             # Запрос на просмотр комнат
             camera_result = call_camera_api(processed_text)
             
@@ -1070,6 +1247,7 @@ def send_message():
                 final_response = f"⚠️ {camera_result['error']}"
             
         elif action_type == 'reasoning':
+            app.logger.info("Обработка сложного запроса через reasoning модель")
             # Сложный запрос для reasoning модели
             # Формируем промпт из reasoning.template
             reasoning_prompt = format_prompt('reasoning.template', {
@@ -1080,16 +1258,21 @@ def send_message():
             if not reasoning_prompt:
                 reasoning_prompt = processed_text
             
+            app.logger.info(f"Отправка запроса в reasoning модель")
+            
             # Отправляем запрос в reasoning модель
             reasoning_response = call_ollama_chat(
                 [{'role': 'user', 'content': reasoning_prompt}], 
-                model=LLM_REASONING_MODEL
+                model=LLM_REASONING_MODEL,
+                temperature=LLM_REASONING_TEMPERATURE,
+                top_p=LLM_REASONING_TOP_P
             )
             
             final_response = reasoning_response
             model_used = LLM_REASONING_MODEL
             
         else:  # action_type == 'none'
+            app.logger.info("Обычный текстовый ответ")
             # Обычный текстовый ответ
             final_response = processed_text
             model_used = LLM_CHAT_MODEL
@@ -1099,6 +1282,7 @@ def send_message():
         
         # Сохраняем ответ
         if final_response:
+            app.logger.info(f"Сохранение ответа: {final_response[:100]}...")
             save_message(session_id, 'assistant', final_response, model_name=model_used)
         
         return jsonify({

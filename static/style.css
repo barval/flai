@@ -19,7 +19,7 @@ main {
     flex: 1;
 }
 
-/* Шапка и подвал - ТОЧНО КАК В ОБРАЗЦЕ */
+/* Шапка и подвал */
 header {
     background-color: #2c3e50;
     color: white;
@@ -42,19 +42,32 @@ footer {
     color: white;
     padding: 0.5rem 1rem;
     text-align: center;
-    height: 50px;
+    min-height: 70px;
     display: flex;
     align-items: center;
     justify-content: center;
     margin-top: auto;
 }
 
-footer p {
-    margin: 0;
-    padding: 0;
+.footer-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
 }
 
-/* Выход из системы - КАК В ОБРАЗЦЕ */
+.footer-line1 {
+    font-size: 1rem;
+    font-weight: 500;
+}
+
+.footer-line2 {
+    font-size: 0.85rem;
+    opacity: 0.9;
+}
+
+/* Выход из системы */
 .logout-container {
     display: flex;
     align-items: center;
@@ -81,7 +94,7 @@ footer p {
     background-color: #c0392b;
 }
 
-/* ========== СТРАНИЦА АВТОРИЗАЦИИ - ТОЧНО КАК В ОБРАЗЦЕ ========== */
+/* ========== СТРАНИЦА АВТОРИЗАЦИИ ========== */
 .login-wrapper {
     display: flex;
     justify-content: center;
@@ -170,7 +183,7 @@ footer p {
     background-color: white;
 }
 
-/* Левая колонка - ШИРИНА 25% КАК В ОБРАЗЦЕ */
+/* Левая колонка */
 .sessions-sidebar {
     width: 25%;
     background-color: #f1f3f6;
@@ -219,7 +232,6 @@ footer p {
     overflow-y: auto;
 }
 
-/* ========== ИСПРАВЛЕННЫЕ СТИЛИ ДЛЯ СЕАНСОВ ========== */
 .session-item {
     padding: 0.8rem;
     margin-bottom: 0.5rem;
@@ -306,7 +318,7 @@ footer p {
     opacity: 1;
 }
 
-/* Правая часть - ШИРИНА 75% КАК В ОБРАЗЦЕ */
+/* Правая часть */
 .chat-main {
     width: 75%;
     display: flex;
@@ -558,9 +570,7 @@ audio {
     align-self: flex-start;
 }
 
-/* ========== СТИЛИ ДЛЯ ВРЕМЕННЫХ МЕТОК - ИСПРАВЛЕННАЯ ВЕРСИЯ ========== */
-
-/* БАЗОВЫЙ СТИЛЬ - ТОЛЬКО ДЛЯ ТЕКСТОВЫХ СООБЩЕНИЙ */
+/* Стили для временных меток */
 .user-message small,
 .bot-message small,
 .assistant-message small {
@@ -579,7 +589,7 @@ audio {
     line-height: 1.4 !important;
 }
 
-/* ИНФОРМАЦИЯ О МОДЕЛИ - В ОТДЕЛЬНОЙ СТРОКЕ */
+/* Информация о модели */
 .bot-message small .model-response-info,
 .assistant-message small .model-response-info {
     display: inline !important;
@@ -814,6 +824,19 @@ audio {
         padding: 1.5rem;
     }
     
+    footer {
+        min-height: 60px;
+        padding: 8px 1rem;
+    }
+    
+    .footer-line1 {
+        font-size: 0.9rem;
+    }
+    
+    .footer-line2 {
+        font-size: 0.75rem;
+    }
+    
     /* На мобильных устройствах разрешаем перенос строк */
     .session-title {
         white-space: normal;
@@ -835,7 +858,6 @@ audio {
         justify-content: space-between;
     }
     
-    /* СТИЛИ ДЛЯ МОБИЛЬНЫХ УСТРОЙСТВ */
     .user-message small,
     .bot-message small,
     .assistant-message small {

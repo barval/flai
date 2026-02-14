@@ -27,7 +27,16 @@
     </main>
     
     <footer>
-        <p>{{ footer_content }}</p>
+        <div class="footer-content">
+            {% set footer_parts = footer_content.split('(с)', 1) %}
+            {% if footer_parts|length > 1 %}
+                <div class="footer-line1">{{ footer_parts[0].strip() }}</div>
+                <div class="footer-line2">(с){{ footer_parts[1].strip() }}</div>
+            {% else %}
+                {# Если нет "(с)" в строке, показываем как есть #}
+                <div class="footer-line1">{{ footer_content }}</div>
+            {% endif %}
+        </div>
     </footer>
 </body>
 </html>

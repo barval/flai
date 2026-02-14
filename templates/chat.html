@@ -855,7 +855,7 @@
     }
 
     // -------------------------------
-    // Сохранение чата как HTML
+    // Сохранение чата как HTML (ОБНОВЛЕННАЯ ВЕРСИЯ)
     // -------------------------------
     async function saveChatAsHTML() {
         // Получаем подпись из .env через API
@@ -872,6 +872,16 @@
         const title = document.querySelector('.session-item.active .session-title')?.textContent || 'Чат';
         const now = new Date();
         const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+        
+        // Разбиваем подпись на две части для футера
+        let footerLine1 = footerText;
+        let footerLine2 = '';
+        
+        if (footerText.includes('(с)')) {
+            const parts = footerText.split('(с)', 1);
+            footerLine1 = parts[0].trim();
+            footerLine2 = '(с)' + footerText.split('(с)')[1].trim();
+        }
         
         // Собираем все сообщения
         const messages = [];
@@ -970,7 +980,7 @@
                 color: white;
                 padding: 0.5rem 1rem;
                 text-align: center;
-                height: 50px;
+                min-height: 70px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -980,11 +990,22 @@
                 border-radius: 0 0 8px 8px;
             }
             
-            footer p {
-                margin: 0;
-                padding: 0;
-                color: white;
-                font-size: 0.9rem;
+            .footer-content {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
+            }
+            
+            .footer-line1 {
+                font-size: 1rem;
+                font-weight: 500;
+            }
+            
+            .footer-line2 {
+                font-size: 0.85rem;
+                opacity: 0.9;
             }
             
             .chat-wrapper {
@@ -1287,6 +1308,19 @@
                     width: 90%;
                 }
                 
+                footer {
+                    min-height: 60px;
+                    padding: 8px 1rem;
+                }
+                
+                .footer-line1 {
+                    font-size: 0.9rem;
+                }
+                
+                .footer-line2 {
+                    font-size: 0.75rem;
+                }
+                
                 .chat-wrapper {
                     padding: 15px;
                 }
@@ -1341,7 +1375,10 @@
         </main>
         
         <footer>
-            <p>${escapeHtml(footerText)}</p>
+            <div class="footer-content">
+                <div class="footer-line1">${escapeHtml(footerLine1)}</div>
+                ${footerLine2 ? `<div class="footer-line2">${escapeHtml(footerLine2)}</div>` : ''}
+            </div>
         </footer>
     </body>
     </html>`;

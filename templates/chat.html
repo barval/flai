@@ -524,7 +524,7 @@
     }
 
     // -------------------------------
-    // Отправка сообщения
+    // Отправка сообщения (ИСПРАВЛЕННАЯ ВЕРСИЯ)
     // -------------------------------
     async function sendMessage() {
         const input = document.getElementById('message-input');
@@ -563,11 +563,65 @@
         const tempAttachedFile = attachedFile;
         const tempText = text;
         
-        // ПОКАЗЫВАЕМ СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ СРАЗУ (локально)
+        // Функция для отображения сообщения пользователя
+        const displayUserMessage = () => {
+            if (tempAttachedFile) {
+                // Читаем файл для локального отображения
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    fileData = e.target.result.split(',')[1];
+                    fileType = tempAttachedFile.type;
+                    fileName = tempAttachedFile.name;
+                    fileSize = tempAttachedFile.size;
+                    
+                    userContent.push({
+                        "type": "file", 
+                        "file_data": fileData, 
+                        "file_type": fileType, 
+                        "file_name": fileName
+                    });
+                    
+                    // Отображаем сообщение пользователя
+                    displayMessage(
+                        'user', 
+                        JSON.stringify(userContent), 
+                        fileData, 
+                        fileType, 
+                        fileName, 
+                        timestamp
+                    );
+                    
+                    // Очищаем поля после отображения
+                    input.value = '';
+                    attachedFile = null;
+                    document.getElementById('file-preview-container').style.display = 'none';
+                    document.getElementById('file-input').value = '';
+                };
+                reader.readAsDataURL(tempAttachedFile);
+            } else {
+                // Только текст, без файла
+                displayMessage(
+                    'user', 
+                    JSON.stringify(userContent), 
+                    null, 
+                    null, 
+                    null, 
+                    timestamp
+                );
+                
+                // Очищаем поля
+                input.value = '';
+                attachedFile = null;
+                document.getElementById('file-preview-container').style.display = 'none';
+                document.getElementById('file-input').value = '';
+            }
+        };
+        
+        // Сначала отображаем сообщение пользователя
         if (tempAttachedFile) {
-            // Читаем файл для локального отображения
+            // Для файлов нужно дождаться чтения
             const reader = new FileReader();
-            reader.onload = function(e) {
+            reader.onload = async function(e) {
                 fileData = e.target.result.split(',')[1];
                 fileType = tempAttachedFile.type;
                 fileName = tempAttachedFile.name;
@@ -595,6 +649,71 @@
                 attachedFile = null;
                 document.getElementById('file-preview-container').style.display = 'none';
                 document.getElementById('file-input').value = '';
+                
+                // Отправляем на сервер
+                const formData = new FormData();
+                formData.append('message', tempText);
+                if (tempAttachedFile) {
+                    formData.append('file', tempAttachedFile);
+                }
+                
+                try {
+                    const response = await fetch('/send_message', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    // Отображаем ответ ассистента
+                    if (data.response) {
+                        const assistantTimestamp = data.assistant_timestamp || new Date().toISOString();
+                        const modelName = data.model_used || defaultModelName || 'qwen3-vl:8b-instruct';
+                        
+                        // Проверяем, есть ли сгенерированное изображение в ответе
+                        if (data.generated_image) {
+                            console.log('Получено сгенерированное изображение, размер:', data.generated_image.length);
+                            // Отображаем сообщение с изображением
+                            displayMessage(
+                                'assistant',
+                                data.response,
+                                data.generated_image,  // file_data
+                                'image/png',            // file_type
+                                'generated_image.png',  // file_name
+                                assistantTimestamp,
+                                data.response_time || 0,
+                                modelName
+                            );
+                        } else {
+                            // Обычное текстовое сообщение
+                            displayMessage(
+                                'assistant',
+                                data.response,
+                                null,
+                                null,
+                                null,
+                                assistantTimestamp,
+                                data.response_time || 0,
+                                modelName
+                            );
+                        }
+                    }
+                    
+                } catch (err) {
+                    alert('Ошибка: ' + err.message);
+                    console.error('Send message error:', err);
+                    // Помечаем последнее сообщение как ошибочное
+                    const lastMessage = document.querySelector('.user-message:last-child');
+                    if (lastMessage) {
+                        lastMessage.style.borderLeft = '3px solid #e74c3c';
+                    }
+                } finally {
+                    isSending = false;
+                }
             };
             reader.readAsDataURL(tempAttachedFile);
         } else {
@@ -613,71 +732,68 @@
             attachedFile = null;
             document.getElementById('file-preview-container').style.display = 'none';
             document.getElementById('file-input').value = '';
-        }
-        
-        // Отправляем на сервер
-        const formData = new FormData();
-        formData.append('message', tempText);
-        if (tempAttachedFile) {
-            formData.append('file', tempAttachedFile);
-        }
-        
-        try {
-            const response = await fetch('/send_message', {
-                method: 'POST',
-                body: formData
-            });
             
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
+            // Отправляем на сервер
+            const formData = new FormData();
+            formData.append('message', tempText);
             
-            const data = await response.json();
-            
-            // Отображаем ответ ассистента
-            if (data.response) {
-                const assistantTimestamp = data.assistant_timestamp || new Date().toISOString();
-                const modelName = data.model_used || defaultModelName || 'qwen3-vl:8b-instruct';
+            try {
+                const response = await fetch('/send_message', {
+                    method: 'POST',
+                    body: formData
+                });
                 
-                // Проверяем, есть ли сгенерированное изображение в ответе
-                if (data.generated_image) {
-                    console.log('Получено сгенерированное изображение, размер:', data.generated_image.length);
-                    // Отображаем сообщение с изображением
-                    displayMessage(
-                        'assistant',
-                        data.response,
-                        data.generated_image,  // file_data
-                        'image/png',            // file_type
-                        'generated_image.png',  // file_name
-                        assistantTimestamp,
-                        data.response_time || 0,
-                        modelName
-                    );
-                } else {
-                    // Обычное текстовое сообщение
-                    displayMessage(
-                        'assistant',
-                        data.response,
-                        null,
-                        null,
-                        null,
-                        assistantTimestamp,
-                        data.response_time || 0,
-                        modelName
-                    );
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
+                
+                const data = await response.json();
+                
+                // Отображаем ответ ассистента
+                if (data.response) {
+                    const assistantTimestamp = data.assistant_timestamp || new Date().toISOString();
+                    const modelName = data.model_used || defaultModelName || 'qwen3-vl:8b-instruct';
+                    
+                    // Проверяем, есть ли сгенерированное изображение в ответе
+                    if (data.generated_image) {
+                        console.log('Получено сгенерированное изображение, размер:', data.generated_image.length);
+                        // Отображаем сообщение с изображением
+                        displayMessage(
+                            'assistant',
+                            data.response,
+                            data.generated_image,  // file_data
+                            'image/png',            // file_type
+                            'generated_image.png',  // file_name
+                            assistantTimestamp,
+                            data.response_time || 0,
+                            modelName
+                        );
+                    } else {
+                        // Обычное текстовое сообщение
+                        displayMessage(
+                            'assistant',
+                            data.response,
+                            null,
+                            null,
+                            null,
+                            assistantTimestamp,
+                            data.response_time || 0,
+                            modelName
+                        );
+                    }
+                }
+                
+            } catch (err) {
+                alert('Ошибка: ' + err.message);
+                console.error('Send message error:', err);
+                // Помечаем последнее сообщение как ошибочное
+                const lastMessage = document.querySelector('.user-message:last-child');
+                if (lastMessage) {
+                    lastMessage.style.borderLeft = '3px solid #e74c3c';
+                }
+            } finally {
+                isSending = false;
             }
-            
-        } catch (err) {
-            alert('Ошибка: ' + err.message);
-            console.error('Send message error:', err);
-            // Помечаем последнее сообщение как ошибочное
-            const lastMessage = document.querySelector('.user-message:last-child');
-            if (lastMessage) {
-                lastMessage.style.borderLeft = '3px solid #e74c3c';
-            }
-        } finally {
-            isSending = false;
         }
     }
 

@@ -19,7 +19,7 @@ main {
     flex: 1;
 }
 
-/* Шапка и подвал */
+/* Шапка и подвал - ИСПРАВЛЕННАЯ ВЕРСИЯ */
 header {
     background-color: #2c3e50;
     color: white;
@@ -42,7 +42,7 @@ footer {
     color: white;
     padding: 0.5rem 1rem;
     text-align: center;
-    min-height: 70px;
+    height: 50px; /* Возвращаем исходную высоту */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -54,17 +54,17 @@ footer {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    line-height: 1.2; /* Уменьшаем межстрочный интервал */
 }
 
-.footer-line1 {
-    font-size: 1rem;
-    font-weight: 500;
+.footer-line1,
+.footer-line2 {
+    font-size: 0.9rem; /* Одинаковый размер для обеих строк */
+    color: white;
 }
 
 .footer-line2 {
-    font-size: 0.85rem;
-    opacity: 0.9;
+    opacity: 0.9; /* Оставляем только небольшую прозрачность для второй строки */
 }
 
 /* Выход из системы */
@@ -825,16 +825,13 @@ audio {
     }
     
     footer {
-        min-height: 60px;
-        padding: 8px 1rem;
+        height: 50px; /* Сохраняем высоту 50px на мобильных */
+        padding: 0.5rem 1rem;
     }
     
-    .footer-line1 {
-        font-size: 0.9rem;
-    }
-    
+    .footer-line1,
     .footer-line2 {
-        font-size: 0.75rem;
+        font-size: 0.8rem; /* Немного уменьшаем на мобильных, но одинаково */
     }
     
     /* На мобильных устройствах разрешаем перенос строк */

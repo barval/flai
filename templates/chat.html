@@ -366,6 +366,15 @@
             const fileSize = formatFileSize(fileSizeBytes);
             
             timeDisplay += ` <span class="file-info">[📎 ${fileName}, ${fileSize}]</span>`;
+            
+            // Добавляем кнопку скачивания для изображений в сообщениях пользователя
+            if (fileType && fileType.startsWith('image/')) {
+                timeDisplay += ` <a href="data:${fileType};base64,${fileData}" 
+                                    download="${fileName || 'image.jpg'}" 
+                                    class="download-link-inline" 
+                                    title="Скачать изображение"
+                                    onclick="event.stopPropagation()">⬇️</a>`;
+            }
         }
         
         // ДЛЯ СООБЩЕНИЙ АССИСТЕНТА: добавляем информацию о сгенерированном файле
@@ -376,6 +385,15 @@
             const fileSize = formatFileSize(fileSizeBytes);
             
             timeDisplay += ` <span class="file-info">[📎 ${fileName}, ${fileSize}]</span>`;
+            
+            // Добавляем кнопку скачивания для изображений в сообщениях ассистента
+            if (fileType && fileType.startsWith('image/')) {
+                timeDisplay += ` <a href="data:${fileType};base64,${fileData}" 
+                                    download="${fileName || 'generated_image.jpg'}" 
+                                    class="download-link-inline" 
+                                    title="Скачать изображение"
+                                    onclick="event.stopPropagation()">⬇️</a>`;
+            }
         }
         
         // Добавляем время ответа и ПОЛНОЕ название модели для сообщений ассистента
@@ -435,13 +453,6 @@
                              alt="${fileName || 'attached image'}"
                              title="Нажмите для увеличения"
                              onclick="openImageModal(this.src, '${fileName || 'Изображение'}')">
-                        <a href="data:${fileType};base64,${fileData}" 
-                           download="${fileName || 'image.jpg'}" 
-                           class="image-download-link" 
-                           title="Скачать изображение"
-                           onclick="event.stopPropagation()">
-                            ⬇️
-                        </a>
                     </div>
                 `;
             } else if (fileType && fileType.startsWith('audio/')) {

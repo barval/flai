@@ -424,6 +424,7 @@ footer {
     margin-left: 4px !important;
     white-space: nowrap !important;
     border: 1px solid #ddd !important;
+    vertical-align: middle;
 }
 
 /* Стили для контейнера изображения */
@@ -446,95 +447,6 @@ footer {
 
 .attached-image:hover {
     opacity: 0.95;
-}
-
-.image-download-link {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background: rgba(0, 0, 0, 0.7);
-    color: white;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    text-decoration: none;
-    font-size: 20px;
-    opacity: 0;
-    transition: all 0.3s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-    z-index: 5;
-}
-
-.image-download-link:hover {
-    background: rgba(52, 152, 219, 0.9);
-    transform: scale(1.1);
-    color: white;
-}
-
-.image-container:hover .image-download-link {
-    opacity: 1;
-}
-
-/* Модальное окно для изображений */
-.image-modal {
-    display: none;
-    position: fixed;
-    z-index: 1000;
-    padding-top: 50px;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    overflow: auto;
-    background-color: rgba(0, 0, 0, 0.95);
-    animation: fadeIn 0.3s;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-.image-modal-content {
-    margin: auto;
-    display: block;
-    max-width: 90%;
-    max-height: 85vh;
-    object-fit: contain;
-    border-radius: 8px;
-    box-shadow: 0 0 30px rgba(0,0,0,0.5);
-}
-
-.image-modal-close {
-    position: absolute;
-    top: 15px;
-    right: 35px;
-    color: #f1f1f1;
-    font-size: 40px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: color 0.3s;
-    z-index: 1001;
-}
-
-.image-modal-close:hover,
-.image-modal-close:focus {
-    color: #e74c3c;
-    text-decoration: none;
-}
-
-#modal-caption {
-    margin: 20px auto;
-    display: block;
-    width: 80%;
-    max-width: 700px;
-    text-align: center;
-    color: #ccc;
-    padding: 10px 0;
-    font-size: 1rem;
 }
 
 /* Стили для превью файла с размером */
@@ -714,6 +626,98 @@ audio {
     border-radius: 0 !important;
     margin-left: 4px !important;
     white-space: nowrap !important;
+}
+
+/* ========== СТИЛИ ДЛЯ МОДАЛЬНОГО ОКНА ИЗОБРАЖЕНИЙ ========== */
+.image-modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    padding-top: 50px;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0, 0, 0, 0.95);
+    animation: fadeIn 0.3s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.image-modal-content {
+    margin: auto;
+    display: block;
+    max-width: 90%;
+    max-height: 85vh;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 0 30px rgba(0,0,0,0.5);
+}
+
+.image-modal-close {
+    position: absolute;
+    top: 15px;
+    right: 35px;
+    color: #f1f1f1;
+    font-size: 40px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: color 0.3s;
+    z-index: 1001;
+}
+
+.image-modal-close:hover,
+.image-modal-close:focus {
+    color: #e74c3c;
+    text-decoration: none;
+}
+
+#modal-caption {
+    margin: 20px auto;
+    display: block;
+    width: 80%;
+    max-width: 700px;
+    text-align: center;
+    color: #ccc;
+    padding: 10px 0;
+    font-size: 1rem;
+}
+
+/* ========== СТИЛИ ДЛЯ КНОПКИ СКАЧИВАНИЯ В СТРОКЕ ========== */
+.download-link-inline {
+    display: inline-block;
+    margin-left: 6px;
+    color: #3498db;
+    text-decoration: none;
+    font-size: 1rem;
+    transition: all 0.2s;
+    opacity: 0.7;
+    vertical-align: middle;
+}
+
+.download-link-inline:hover {
+    opacity: 1;
+    transform: scale(1.2);
+    color: #2980b9;
+}
+
+/* Стили для ссылок внутри small */
+.user-message small a,
+.bot-message small a,
+.assistant-message small a {
+    color: #3498db;
+    text-decoration: none;
+    border-bottom: 1px dotted #3498db;
+}
+
+.user-message small a:hover,
+.bot-message small a:hover,
+.assistant-message small a:hover {
+    border-bottom: 1px solid #3498db;
 }
 
 /* ========== СТИЛИ ДЛЯ MARKDOWN ========== */
@@ -966,18 +970,50 @@ audio {
         justify-content: space-between;
     }
     
+    /* УЛУЧШЕННЫЕ СТИЛИ ДЛЯ ВРЕМЕННЫХ МЕТОК НА МОБИЛЬНЫХ */
     .user-message small,
     .bot-message small,
     .assistant-message small {
         display: block !important;
         font-size: 0.7rem !important;
         white-space: normal !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        word-break: break-word !important;
+        line-height: 1.4 !important;
+        width: 100% !important;
+        max-width: 100% !important;
     }
     
+    /* Стили для элементов внутри small на мобильных */
+    .user-message small .file-info,
+    .bot-message small .file-info,
+    .assistant-message small .file-info,
+    .user-message small .model-response-info,
+    .bot-message small .model-response-info,
+    .assistant-message small .model-response-info {
+        display: inline-block !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        margin: 2px 2px !important;
+        font-size: 0.65rem !important;
+        max-width: 100% !important;
+    }
+    
+    /* Кнопка скачивания на мобильных */
+    .download-link-inline {
+        display: inline-block !important;
+        margin: 2px 2px !important;
+        font-size: 0.9rem !important;
+        vertical-align: middle !important;
+    }
+    
+    /* Информация о модели на мобильных */
     .bot-message small .model-response-info,
     .assistant-message small .model-response-info {
         display: inline !important;
-        white-space: nowrap !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
     }
     
     /* Адаптивные стили для Markdown на мобильных */
@@ -1003,10 +1039,14 @@ audio {
         font-size: 30px;
     }
     
-    .image-download-link {
-        width: 35px;
-        height: 35px;
-        font-size: 18px;
+    /* Стили для контейнера изображения на мобильных */
+    .image-container {
+        max-width: 100%;
+        margin-top: 5px;
+    }
+    
+    .attached-image {
+        max-height: 300px;
     }
     
     /* Безопасное отображение HTML-вставок */
@@ -1060,5 +1100,29 @@ audio {
     .message-content link,
     .message-content meta {
         display: none !important;
+    }
+}
+
+/* Дополнительные стили для очень маленьких экранов */
+@media (max-width: 480px) {
+    .user-message small,
+    .bot-message small,
+    .assistant-message small {
+        font-size: 0.65rem !important;
+    }
+    
+    .user-message small .file-info,
+    .bot-message small .file-info,
+    .assistant-message small .file-info {
+        font-size: 0.6rem !important;
+        padding: 1px 3px !important;
+    }
+    
+    .download-link-inline {
+        font-size: 0.8rem !important;
+    }
+    
+    .attached-image {
+        max-height: 250px;
     }
 }

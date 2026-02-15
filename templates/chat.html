@@ -645,8 +645,8 @@
             } else if (attachedFile) {
                 // Если есть файл, но нет текста, используем имя файла
                 newTitle = attachedFile.name.length > 40 ? 
-                          attachedFile.name.substring(0, 40) + '...' : 
-                          attachedFile.name;
+                        attachedFile.name.substring(0, 40) + '...' : 
+                        attachedFile.name;
             } else {
                 newTitle = 'Новый сеанс';
             }
@@ -767,73 +767,78 @@
                     
                     const data = await response.json();
                     
-                    // ИСПРАВЛЕНИЕ: Проверяем, всё ещё ли активен тот же сеанс
-                    if (currentSessionId === requestSessionId) {
-                        // Отображаем ответ ассистента
-                        if (data.response) {
-                            const assistantTimestamp = data.assistant_timestamp || new Date().toISOString();
-                            const modelName = data.model_used || defaultModelName || 'qwen3-vl:8b-instruct';
-                            
-                            // Проверяем, есть ли сгенерированное изображение в ответе
-                            if (data.generated_image) {
-                                console.log('Получено изображение, размер:', data.generated_image.length);
-                                console.log('Имя файла:', data.file_name, 'Размер:', data.file_size);
+                    // ИСПРАВЛЕНИЕ: Проверяем, что мы всё ещё в том же сеансе
+                    // И что этот сеанс всё ещё активен (не был удалён)
+                    const sessionStillExists = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`) !== null;
+                    
+                    if (sessionStillExists) {
+                        if (currentSessionId === requestSessionId) {
+                            // Мы всё ещё в том же сеансе - показываем ответ
+                            if (data.response) {
+                                const assistantTimestamp = data.assistant_timestamp || new Date().toISOString();
+                                const modelName = data.model_used || defaultModelName || 'qwen3-vl:8b-instruct';
                                 
-                                // Отображаем сообщение с изображением
-                                displayMessage(
-                                    'assistant',
-                                    data.response,
-                                    data.generated_image,  // file_data
-                                    data.file_type || 'image/jpeg',  // file_type
-                                    data.file_name || 'generated_image.jpg',  // file_name
-                                    assistantTimestamp,
-                                    data.response_time || 0,
-                                    modelName
-                                );
-                            } else {
-                                // Обычное текстовое сообщение
-                                displayMessage(
-                                    'assistant',
-                                    data.response,
-                                    null,
-                                    null,
-                                    null,
-                                    assistantTimestamp,
-                                    data.response_time || 0,
-                                    modelName
-                                );
+                                if (data.generated_image) {
+                                    console.log('Получено изображение, размер:', data.generated_image.length);
+                                    console.log('Имя файла:', data.file_name, 'Размер:', data.file_size);
+                                    
+                                    displayMessage(
+                                        'assistant',
+                                        data.response,
+                                        data.generated_image,
+                                        data.file_type || 'image/jpeg',
+                                        data.file_name || 'generated_image.jpg',
+                                        assistantTimestamp,
+                                        data.response_time || 0,
+                                        modelName
+                                    );
+                                } else {
+                                    displayMessage(
+                                        'assistant',
+                                        data.response,
+                                        null,
+                                        null,
+                                        null,
+                                        assistantTimestamp,
+                                        data.response_time || 0,
+                                        modelName
+                                    );
+                                }
                             }
+                        } else {
+                            // Мы переключились на другой сеанс - показываем индикатор
+                            console.log(`Ответ для сеанса ${requestSessionId} получен, но текущий сеанс - ${currentSessionId}`);
+                            
+                            const sessionElement = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`);
+                            if (sessionElement) {
+                                if (!sessionElement.querySelector('.new-message-indicator')) {
+                                    const indicator = document.createElement('span');
+                                    indicator.className = 'new-message-indicator';
+                                    indicator.textContent = '●';
+                                    sessionElement.querySelector('.session-title').appendChild(indicator);
+                                }
+                            }
+                            
+                            // Загружаем сообщения для того сеанса, чтобы они были актуальны при переключении
+                            // НО НЕ ОТОБРАЖАЕМ ИХ СЕЙЧАС
+                            loadMessages(requestSessionId);
                         }
                     } else {
-                        // ИСПРАВЛЕНИЕ: Если сеанс изменился, показываем уведомление
-                        console.log(`Ответ для сеанса ${requestSessionId} получен, но текущий сеанс - ${currentSessionId}`);
-                        
-                        // Добавляем визуальное уведомление о том, что в другом сеансе есть новый ответ
-                        const sessionElement = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`);
-                        if (sessionElement) {
-                            // Добавляем индикатор нового сообщения
-                            if (!sessionElement.querySelector('.new-message-indicator')) {
-                                const indicator = document.createElement('span');
-                                indicator.className = 'new-message-indicator';
-                                indicator.textContent = '●';
-                                indicator.style.color = '#3498db';
-                                indicator.style.marginLeft = '5px';
-                                indicator.style.fontSize = '1.2rem';
-                                sessionElement.querySelector('.session-title').appendChild(indicator);
-                            }
-                        }
-                        
-                        // Загружаем сообщения для того сеанса, чтобы они были актуальны при переключении
-                        loadMessages(requestSessionId);
+                        // Сеанс был удалён - игнорируем ответ
+                        console.log(`Сеанс ${requestSessionId} был удалён, ответ проигнорирован`);
                     }
                     
                 } catch (err) {
-                    alert('Ошибка: ' + err.message);
-                    console.error('Send message error:', err);
-                    // Помечаем последнее сообщение как ошибочное
-                    const lastMessage = document.querySelector('.user-message:last-child');
-                    if (lastMessage) {
-                        lastMessage.style.borderLeft = '3px solid #e74c3c';
+                    // Показываем ошибку только если мы всё ещё в том же сеансе
+                    if (currentSessionId === requestSessionId) {
+                        alert('Ошибка: ' + err.message);
+                        console.error('Send message error:', err);
+                        const lastMessage = document.querySelector('.user-message:last-child');
+                        if (lastMessage) {
+                            lastMessage.style.borderLeft = '3px solid #e74c3c';
+                        }
+                    } else {
+                        console.log(`Ошибка в сеансе ${requestSessionId}, но текущий сеанс - ${currentSessionId}:`, err);
                     }
                 } finally {
                     isSending = false;
@@ -873,77 +878,84 @@
                 
                 const data = await response.json();
                 
-                // ИСПРАВЛЕНИЕ: Проверяем, всё ещё ли активен тот же сеанс
-                if (currentSessionId === requestSessionId) {
-                    // Отображаем ответ ассистента
-                    if (data.response) {
-                        const assistantTimestamp = data.assistant_timestamp || new Date().toISOString();
-                        const modelName = data.model_used || defaultModelName || 'qwen3-vl:8b-instruct';
-                        
-                        // Проверяем, есть ли сгенерированное изображение в ответе
-                        if (data.generated_image) {
-                            console.log('Получено изображение, размер:', data.generated_image.length);
-                            console.log('Имя файла:', data.file_name, 'Размер:', data.file_size);
+                // ИСПРАВЛЕНИЕ: Проверяем, что мы всё ещё в том же сеансе
+                // И что этот сеанс всё ещё активен (не был удалён)
+                const sessionStillExists = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`) !== null;
+                
+                if (sessionStillExists) {
+                    if (currentSessionId === requestSessionId) {
+                        // Мы всё ещё в том же сеансе - показываем ответ
+                        if (data.response) {
+                            const assistantTimestamp = data.assistant_timestamp || new Date().toISOString();
+                            const modelName = data.model_used || defaultModelName || 'qwen3-vl:8b-instruct';
                             
-                            // Отображаем сообщение с изображением
-                            displayMessage(
-                                'assistant',
-                                data.response,
-                                data.generated_image,  // file_data
-                                data.file_type || 'image/jpeg',  // file_type
-                                data.file_name || 'generated_image.jpg',  // file_name
-                                assistantTimestamp,
-                                data.response_time || 0,
-                                modelName
-                            );
-                        } else {
-                            // Обычное текстовое сообщение
-                            displayMessage(
-                                'assistant',
-                                data.response,
-                                null,
-                                null,
-                                null,
-                                assistantTimestamp,
-                                data.response_time || 0,
-                                modelName
-                            );
+                            if (data.generated_image) {
+                                console.log('Получено изображение, размер:', data.generated_image.length);
+                                console.log('Имя файла:', data.file_name, 'Размер:', data.file_size);
+                                
+                                displayMessage(
+                                    'assistant',
+                                    data.response,
+                                    data.generated_image,
+                                    data.file_type || 'image/jpeg',
+                                    data.file_name || 'generated_image.jpg',
+                                    assistantTimestamp,
+                                    data.response_time || 0,
+                                    modelName
+                                );
+                            } else {
+                                displayMessage(
+                                    'assistant',
+                                    data.response,
+                                    null,
+                                    null,
+                                    null,
+                                    assistantTimestamp,
+                                    data.response_time || 0,
+                                    modelName
+                                );
+                            }
                         }
+                    } else {
+                        // Мы переключились на другой сеанс - показываем индикатор
+                        console.log(`Ответ для сеанса ${requestSessionId} получен, но текущий сеанс - ${currentSessionId}`);
+                        
+                        const sessionElement = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`);
+                        if (sessionElement) {
+                            if (!sessionElement.querySelector('.new-message-indicator')) {
+                                const indicator = document.createElement('span');
+                                indicator.className = 'new-message-indicator';
+                                indicator.textContent = '●';
+                                sessionElement.querySelector('.session-title').appendChild(indicator);
+                            }
+                        }
+                        
+                        // Загружаем сообщения для того сеанса, чтобы они были актуальны при переключении
+                        // НО НЕ ОТОБРАЖАЕМ ИХ СЕЙЧАС
+                        loadMessages(requestSessionId);
                     }
                 } else {
-                    // ИСПРАВЛЕНИЕ: Если сеанс изменился, показываем уведомление
-                    console.log(`Ответ для сеанса ${requestSessionId} получен, но текущий сеанс - ${currentSessionId}`);
-                    
-                    const sessionElement = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`);
-                    if (sessionElement) {
-                        if (!sessionElement.querySelector('.new-message-indicator')) {
-                            const indicator = document.createElement('span');
-                            indicator.className = 'new-message-indicator';
-                            indicator.textContent = '●';
-                            indicator.style.color = '#3498db';
-                            indicator.style.marginLeft = '5px';
-                            indicator.style.fontSize = '1.2rem';
-                            sessionElement.querySelector('.session-title').appendChild(indicator);
-                        }
-                    }
-                    
-                    loadMessages(requestSessionId);
+                    // Сеанс был удалён - игнорируем ответ
+                    console.log(`Сеанс ${requestSessionId} был удалён, ответ проигнорирован`);
                 }
                 
             } catch (err) {
-                alert('Ошибка: ' + err.message);
-                console.error('Send message error:', err);
-                // Помечаем последнее сообщение как ошибочное
-                const lastMessage = document.querySelector('.user-message:last-child');
-                if (lastMessage) {
-                    lastMessage.style.borderLeft = '3px solid #e74c3c';
+                // Показываем ошибку только если мы всё ещё в том же сеансе
+                if (currentSessionId === requestSessionId) {
+                    alert('Ошибка: ' + err.message);
+                    console.error('Send message error:', err);
+                    const lastMessage = document.querySelector('.user-message:last-child');
+                    if (lastMessage) {
+                        lastMessage.style.borderLeft = '3px solid #e74c3c';
+                    }
+                } else {
+                    console.log(`Ошибка в сеансе ${requestSessionId}, но текущий сеанс - ${currentSessionId}:`, err);
                 }
             } finally {
                 isSending = false;
             }
         }
     }
-
     // -------------------------------
     // Очистка истории сеанса
     // -------------------------------

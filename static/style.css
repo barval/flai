@@ -1126,3 +1126,23 @@ audio {
         max-height: 250px;
     }
 }
+
+/* Индикатор нового сообщения в неактивном сеансе */
+.new-message-indicator {
+    display: inline-block;
+    animation: pulse 1.5s infinite;
+    color: #3498db;
+    margin-left: 5px;
+    font-size: 1.2rem;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.5; }
+    50% { opacity: 1; }
+    100% { opacity: 0.5; }
+}
+
+/* Убираем индикатор при активации сеанса */
+.session-item.active .new-message-indicator {
+    display: none;
+}

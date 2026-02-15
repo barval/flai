@@ -880,13 +880,14 @@
     }
 
     // -------------------------------
-    // Удаление сеанса
+    // Удаление сеанса - ИСПРАВЛЕННАЯ ВЕРСИЯ
     // -------------------------------
     function deleteSession(sessionId) {
         fetch(`/api/sessions/${sessionId}/delete`, { method: 'POST' })
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'ok') {
+                    // Сначала удаляем элемент из DOM
                     const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
                     if (sessionItem) {
                         sessionItem.remove();
@@ -895,14 +896,20 @@
                     const sessionsCount = document.querySelectorAll('.session-item').length;
                     document.getElementById('sessions-count').textContent = sessionsCount;
                     
+                    // Если это был текущий сеанс
                     if (sessionId === currentSessionId) {
                         const remainingSessions = document.querySelectorAll('.session-item');
                         if (remainingSessions.length > 0) {
+                            // Если есть другие сеансы, переключаемся на первый
                             const firstSession = remainingSessions[0];
                             const firstSessionId = firstSession.dataset.sessionId;
                             switchSession(firstSessionId);
                         } else {
-                            createNewSession();
+                            // Если сеансов не осталось, создаем новый
+                            // Важно: создаем новый сеанс ПОСЛЕ того, как старый удален
+                            setTimeout(() => {
+                                createNewSession();
+                            }, 50); // Небольшая задержка для гарантии
                         }
                     }
                 }

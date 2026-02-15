@@ -599,7 +599,7 @@ def call_ollama_chat(messages, model=None, stream=False, temperature=None, top_p
         return f"⚠️ Ошибка при обращении к Ollama: {str(e)}"
 
 # -------------------------------
-# Функция загрузки пользователей (ПЕРЕМЕЩЕНА ВЫШЕ)
+# Функция загрузки пользователей
 # -------------------------------
 def load_users():
     users = {}
@@ -631,7 +631,7 @@ def load_users():
     return users
 
 # -------------------------------
-# Загружаем пользователей (ТЕПЕРЬ ПОСЛЕ ОПРЕДЕЛЕНИЯ ФУНКЦИИ)
+# Загружаем пользователей
 # -------------------------------
 USERS = load_users()
 
@@ -758,9 +758,17 @@ def create_session(user_id, title="Новый сеанс"):
         conn.commit()
     return session_id
 
-def update_session_title(session_id, first_message):
-    """Обновить заголовок сеанса на основе первого сообщения"""
-    title = first_message[:40] + ('...' if len(first_message) > 40 else '')
+def update_session_title(session_id, first_message, file_name=None):
+    """Обновить заголовок сеанса на основе первого сообщения или имени файла"""
+    if first_message and first_message.strip():
+        # Если есть текст, используем его
+        title = first_message[:40] + ('...' if len(first_message) > 40 else '')
+    elif file_name:
+        # Если есть имя файла, но нет текста, используем полное имя файла с расширением
+        title = file_name[:40] + ('...' if len(file_name) > 40 else '')
+    else:
+        title = "Новый сеанс"
+    
     current_time = get_current_time_in_timezone_for_db()
     if not current_time:
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -774,6 +782,9 @@ def update_session_title(session_id, first_message):
             WHERE id = ?
         ''', (title, current_time, session_id))
         conn.commit()
+    
+    app.logger.info(f"Обновлён заголовок сеанса {session_id}: '{title}'")
+    return title
 
 def save_message(session_id, role, content, file_data=None, file_type=None, file_name=None, model_name=None):
     with sqlite3.connect(CHAT_DB_PATH) as conn:
@@ -1125,8 +1136,8 @@ def send_message():
                         file_data, file_type, file_name, None)
             
             # Обновляем заголовок для первого сообщения
-            if is_first_message and message_text:
-                update_session_title(session_id, message_text)
+            if is_first_message:
+                update_session_title(session_id, message_text, file_name)
             
             # ВЫБОР ШАБЛОНА В ЗАВИСИМОСТИ ОТ НАЛИЧИЯ ТЕКСТА
             if message_text.strip():
@@ -1196,8 +1207,8 @@ def send_message():
                         file_data, file_type, file_name, None)
             
             # Обновляем заголовок для первого сообщения
-            if is_first_message and message_text:
-                update_session_title(session_id, message_text)
+            if is_first_message:
+                update_session_title(session_id, message_text, file_name)
             
             # Сохраняем ответ-уведомление
             save_message(session_id, 'assistant', bot_reply, model_name='system')
@@ -1219,8 +1230,8 @@ def send_message():
                     None, None, None, None)
         
         # Обновляем заголовок для первого сообщения
-        if is_first_message and message_text:
-            update_session_title(session_id, message_text)
+        if is_first_message:
+            update_session_title(session_id, message_text, None)
         
         # ШАГ 1: Формируем промпт из base_text.template
         prompt = format_prompt('base_text.template', {
@@ -1333,7 +1344,7 @@ def send_message():
                                 current_time_for_filename = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
                                 generated_filename = f"{current_time_for_filename}.jpg"
                                 
-                                # Формируем текст сообщения (без галочки)
+                                # Формируем текст сообщения
                                 message_text = f"Изображение сгенерировано по запросу: {processed_text}"
                                 
                                 # СОХРАНЯЕМ ИЗОБРАЖЕНИЕ В ЧАТ

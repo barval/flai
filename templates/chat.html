@@ -71,7 +71,9 @@
     let currentSessionId = "{{ current_session }}";
     let isSending = false;
     let attachedFile = null;
+    let pendingRequests = {}; // Хранилище для отслеживания запросов по сеансам
     let defaultModelName = 'qwen3-vl:8b-instruct';
+    let sessionsData = {}; // Хранилище данных о сеансах
 
     // -------------------------------
     // Вспомогательные функции
@@ -162,12 +164,73 @@
     }
 
     // -------------------------------
-    // Инициализация
+    // Загрузка списка сеансов с сервера
     // -------------------------------
-    document.addEventListener('DOMContentLoaded', function() {
-        // Загружаем сообщения текущего сеанса
-        loadMessages(currentSessionId);
+    function loadSessionsFromServer() {
+        return fetch('/api/sessions')
+            .then(res => res.json())
+            .then(sessions => {
+                // Сохраняем данные о сеансах
+                sessions.forEach(s => {
+                    sessionsData[s.id] = {
+                        title: s.title,
+                        updated_at: s.updated_at
+                    };
+                });
+                
+                // Обновляем отображение сеансов
+                updateSessionsList(sessions);
+                return sessions;
+            })
+            .catch(err => console.error('Ошибка загрузки сеансов:', err));
+    }
+
+    // -------------------------------
+    // Обновление списка сеансов в DOM
+    // -------------------------------
+    function updateSessionsList(sessions) {
+        const sessionsList = document.getElementById('sessions-list');
+        const currentActiveId = currentSessionId;
         
+        // Сохраняем текущие заголовки из хранилища
+        sessions.forEach(s => {
+            if (sessionsData[s.id]) {
+                s.title = sessionsData[s.id].title;
+            }
+        });
+        
+        // Сортируем по дате обновления (новые сверху)
+        sessions.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+        
+        let html = '';
+        sessions.forEach(s => {
+            const isActive = s.id === currentActiveId ? 'active' : '';
+            const dateStr = s.updated_at ? s.updated_at.replace('T', ' ').substring(0, 19) : '';
+            
+            html += `
+                <div class="session-item ${isActive}" data-session-id="${s.id}">
+                    <div class="session-content">
+                        <div class="session-info">
+                            <div class="session-title">${escapeHtml(s.title)}</div>
+                            <div class="session-date">${dateStr}</div>
+                        </div>
+                        <button class="delete-session-button" title="Удалить сеанс">🗑️</button>
+                    </div>
+                </div>
+            `;
+        });
+        
+        sessionsList.innerHTML = html;
+        document.getElementById('sessions-count').textContent = sessions.length;
+        
+        // Перепривязываем обработчики событий
+        attachSessionEventHandlers();
+    }
+
+    // -------------------------------
+    // Привязка обработчиков событий к элементам сеансов
+    // -------------------------------
+    function attachSessionEventHandlers() {
         // Клик по сеансу (но не по кнопке удаления)
         document.querySelectorAll('.session-item').forEach(el => {
             el.addEventListener('click', function(e) {
@@ -204,6 +267,17 @@
                     deleteSession(sessionId);
                 }
             });
+        });
+    }
+
+    // -------------------------------
+    // Инициализация
+    // -------------------------------
+    document.addEventListener('DOMContentLoaded', function() {
+        // Загружаем список сеансов с сервера
+        loadSessionsFromServer().then(() => {
+            // Загружаем сообщения текущего сеанса
+            loadMessages(currentSessionId);
         });
         
         // Новая беседа
@@ -480,7 +554,7 @@
     }
 
     // -------------------------------
-    // Переключение сеанса - ИСПРАВЛЕННАЯ ВЕРСИЯ
+    // Переключение сеанса
     // -------------------------------
     function switchSession(sessionId) {
         fetch(`/api/sessions/${sessionId}/switch`, { method: 'POST' })
@@ -511,73 +585,19 @@
         fetch('/api/sessions/new', { method: 'POST' })
             .then(res => res.json())
             .then(data => {
-                const sessionsList = document.getElementById('sessions-list');
+                // Добавляем в хранилище данных
+                sessionsData[data.id] = {
+                    title: data.title,
+                    updated_at: new Date().toISOString()
+                };
                 
-                const newSessionDiv = document.createElement('div');
-                newSessionDiv.className = 'session-item active';
-                newSessionDiv.dataset.sessionId = data.id;
-                
-                const now = new Date();
-                const formattedDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-                
-                newSessionDiv.innerHTML = `
-                    <div class="session-content">
-                        <div class="session-info">
-                            <div class="session-title">${data.title}</div>
-                            <div class="session-date">${formattedDate}</div>
-                        </div>
-                        <button class="delete-session-button" title="Удалить сеанс">🗑️</button>
-                    </div>
-                `;
-                
-                document.querySelectorAll('.session-item').forEach(el => {
-                    el.classList.remove('active');
+                // Перезагружаем список сеансов с сервера
+                loadSessionsFromServer().then(() => {
+                    currentSessionId = data.id;
+                    document.getElementById('chat-messages').innerHTML = '';
+                    updateMessageCount();
+                    defaultModelName = 'qwen3-vl:8b-instruct';
                 });
-                
-                sessionsList.insertBefore(newSessionDiv, sessionsList.firstChild);
-                
-                newSessionDiv.addEventListener('click', function(e) {
-                    if (e.target.closest('.delete-session-button')) {
-                        return;
-                    }
-                    
-                    const sessionId = this.dataset.sessionId;
-                    if (sessionId === currentSessionId) return;
-                    
-                    document.querySelectorAll('.session-item').forEach(i => i.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    // Убираем индикатор нового сообщения при активации
-                    const indicator = this.querySelector('.new-message-indicator');
-                    if (indicator) {
-                        indicator.remove();
-                    }
-                    
-                    switchSession(sessionId);
-                });
-                
-                const deleteBtn = newSessionDiv.querySelector('.delete-session-button');
-                deleteBtn.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                    const sessionItem = this.closest('.session-item');
-                    const sessionId = sessionItem.dataset.sessionId;
-                    const sessionTitle = sessionItem.querySelector('.session-title').textContent;
-                    const sessionDate = sessionItem.querySelector('.session-date').textContent;
-                    
-                    if (confirm(`Удалить сеанс "${sessionTitle}" от ${sessionDate}?`)) {
-                        deleteSession(sessionId);
-                    }
-                });
-                
-                currentSessionId = data.id;
-                
-                document.getElementById('chat-messages').innerHTML = '';
-                updateMessageCount();
-                
-                defaultModelName = 'qwen3-vl:8b-instruct';
-                
-                const sessionsCount = document.querySelectorAll('.session-item').length;
-                document.getElementById('sessions-count').textContent = sessionsCount;
             });
     }
 
@@ -585,6 +605,13 @@
     // Обновление заголовка сеанса
     // -------------------------------
     function updateSessionTitle(sessionId, newTitle) {
+        // Обновляем в хранилище данных
+        if (sessionsData[sessionId]) {
+            sessionsData[sessionId].title = newTitle;
+            sessionsData[sessionId].updated_at = new Date().toISOString();
+        }
+        
+        // Обновляем в DOM
         const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
         if (sessionItem) {
             const titleElement = sessionItem.querySelector('.session-title');
@@ -599,6 +626,7 @@
                 dateElement.textContent = formattedDate;
             }
             
+            // Перемещаем сеанс вверх списка
             const sessionsList = document.getElementById('sessions-list');
             sessionsList.insertBefore(sessionItem, sessionsList.firstChild);
         }
@@ -621,6 +649,16 @@
         // ЗАПОМИНАЕМ ID ТЕКУЩЕГО СЕАНСА ДЛЯ ЭТОГО ЗАПРОСА
         const requestSessionId = currentSessionId;
         
+        // Генерируем уникальный ID запроса
+        const requestId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        
+        // Сохраняем запрос в хранилище
+        pendingRequests[requestId] = {
+            sessionId: requestSessionId,
+            timestamp: Date.now(),
+            processed: false
+        };
+        
         const now = new Date();
         const timestamp = now.toISOString();
         
@@ -636,83 +674,35 @@
         
         const messageCount = document.querySelectorAll('.user-message').length;
         
-        // ИСПРАВЛЕНИЕ: Определяем название для нового сеанса
-        if (messageCount === 0) {
-            let newTitle;
-            if (text) {
-                // Если есть текст, используем его
-                newTitle = text.length > 40 ? text.substring(0, 40) + '...' : text;
-            } else if (attachedFile) {
-                // Если есть файл, но нет текста, используем имя файла
-                newTitle = attachedFile.name.length > 40 ? 
-                        attachedFile.name.substring(0, 40) + '...' : 
-                        attachedFile.name;
-            } else {
-                newTitle = 'Новый сеанс';
-            }
-            
-            updateSessionTitle(requestSessionId, newTitle);
-            
-            const sessionsCount = document.querySelectorAll('.session-item').length;
-            document.getElementById('sessions-count').textContent = sessionsCount;
-        }
-        
         // СОХРАНЯЕМ КОПИИ ДЛЯ ОТПРАВКИ
         const tempAttachedFile = attachedFile;
         const tempText = text;
         
         // Функция для отображения сообщения пользователя
-        const displayUserMessage = () => {
-            if (tempAttachedFile) {
-                // Читаем файл для локального отображения
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    fileData = e.target.result.split(',')[1];
-                    fileType = tempAttachedFile.type;
-                    fileName = tempAttachedFile.name;
-                    fileSize = tempAttachedFile.size;
-                    
-                    userContent.push({
-                        "type": "file", 
-                        "file_data": fileData, 
-                        "file_type": fileType, 
-                        "file_name": fileName
-                    });
-                    
-                    // Отображаем сообщение пользователя
-                    displayMessage(
-                        'user', 
-                        JSON.stringify(userContent), 
-                        fileData, 
-                        fileType, 
-                        fileName, 
-                        timestamp
-                    );
-                    
-                    // Очищаем поля после отображения
-                    input.value = '';
-                    attachedFile = null;
-                    document.getElementById('file-preview-container').style.display = 'none';
-                    document.getElementById('file-input').value = '';
-                };
-                reader.readAsDataURL(tempAttachedFile);
-            } else {
-                // Только текст, без файла
-                displayMessage(
-                    'user', 
-                    JSON.stringify(userContent), 
-                    null, 
-                    null, 
-                    null, 
-                    timestamp
-                );
-                
-                // Очищаем поля
-                input.value = '';
-                attachedFile = null;
-                document.getElementById('file-preview-container').style.display = 'none';
-                document.getElementById('file-input').value = '';
+        const displayUserMessage = (fileData, fileType, fileName) => {
+            if (fileData) {
+                userContent.push({
+                    "type": "file", 
+                    "file_data": fileData, 
+                    "file_type": fileType, 
+                    "file_name": fileName
+                });
             }
+            
+            displayMessage(
+                'user', 
+                JSON.stringify(userContent), 
+                fileData, 
+                fileType, 
+                fileName, 
+                timestamp
+            );
+            
+            // Очищаем поля после отображения
+            input.value = '';
+            attachedFile = null;
+            document.getElementById('file-preview-container').style.display = 'none';
+            document.getElementById('file-input').value = '';
         };
         
         // Сначала отображаем сообщение пользователя
@@ -725,28 +715,8 @@
                 fileName = tempAttachedFile.name;
                 fileSize = tempAttachedFile.size;
                 
-                userContent.push({
-                    "type": "file", 
-                    "file_data": fileData, 
-                    "file_type": fileType, 
-                    "file_name": fileName
-                });
-                
                 // Отображаем сообщение пользователя
-                displayMessage(
-                    'user', 
-                    JSON.stringify(userContent), 
-                    fileData, 
-                    fileType, 
-                    fileName, 
-                    timestamp
-                );
-                
-                // Очищаем поля
-                input.value = '';
-                attachedFile = null;
-                document.getElementById('file-preview-container').style.display = 'none';
-                document.getElementById('file-input').value = '';
+                displayUserMessage(fileData, fileType, fileName);
                 
                 // Отправляем на сервер
                 const formData = new FormData();
@@ -767,11 +737,28 @@
                     
                     const data = await response.json();
                     
-                    // ИСПРАВЛЕНИЕ: Проверяем, что мы всё ещё в том же сеансе
-                    // И что этот сеанс всё ещё активен (не был удалён)
+                    // Находим запрос по ID сеанса (для обратной совместимости)
+                    let foundRequest = null;
+                    for (let [id, req] of Object.entries(pendingRequests)) {
+                        if (req.sessionId === requestSessionId && !req.processed) {
+                            foundRequest = {id, ...req};
+                            break;
+                        }
+                    }
+                    
+                    if (foundRequest) {
+                        pendingRequests[foundRequest.id].processed = true;
+                    }
+                    
+                    // Проверяем существование сеанса
                     const sessionStillExists = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`) !== null;
                     
                     if (sessionStillExists) {
+                        // Обновляем данные сеанса в хранилище
+                        if (data.session_title) {
+                            updateSessionTitle(requestSessionId, data.session_title);
+                        }
+                        
                         if (currentSessionId === requestSessionId) {
                             // Мы всё ещё в том же сеансе - показываем ответ
                             if (data.response) {
@@ -810,25 +797,33 @@
                             console.log(`Ответ для сеанса ${requestSessionId} получен, но текущий сеанс - ${currentSessionId}`);
                             
                             const sessionElement = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`);
-                            if (sessionElement) {
-                                if (!sessionElement.querySelector('.new-message-indicator')) {
-                                    const indicator = document.createElement('span');
-                                    indicator.className = 'new-message-indicator';
-                                    indicator.textContent = '●';
-                                    sessionElement.querySelector('.session-title').appendChild(indicator);
-                                }
+                            if (sessionElement && !sessionElement.querySelector('.new-message-indicator')) {
+                                const indicator = document.createElement('span');
+                                indicator.className = 'new-message-indicator';
+                                indicator.textContent = '●';
+                                sessionElement.querySelector('.session-title').appendChild(indicator);
                             }
                             
-                            // Загружаем сообщения для того сеанса, чтобы они были актуальны при переключении
-                            // НО НЕ ОТОБРАЖАЕМ ИХ СЕЙЧАС
-                            loadMessages(requestSessionId);
+                            // Обновляем дату сеанса
+                            const dateElement = sessionElement?.querySelector('.session-date');
+                            if (dateElement) {
+                                const now = new Date();
+                                dateElement.textContent = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+                            }
                         }
                     } else {
-                        // Сеанс был удалён - игнорируем ответ
                         console.log(`Сеанс ${requestSessionId} был удалён, ответ проигнорирован`);
                     }
                     
                 } catch (err) {
+                    // Помечаем запрос как обработанный (с ошибкой)
+                    for (let [id, req] of Object.entries(pendingRequests)) {
+                        if (req.sessionId === requestSessionId && !req.processed) {
+                            pendingRequests[id].processed = true;
+                            break;
+                        }
+                    }
+                    
                     // Показываем ошибку только если мы всё ещё в том же сеансе
                     if (currentSessionId === requestSessionId) {
                         alert('Ошибка: ' + err.message);
@@ -847,20 +842,7 @@
             reader.readAsDataURL(tempAttachedFile);
         } else {
             // Только текст, без файла
-            displayMessage(
-                'user', 
-                JSON.stringify(userContent), 
-                null, 
-                null, 
-                null, 
-                timestamp
-            );
-            
-            // Очищаем поля
-            input.value = '';
-            attachedFile = null;
-            document.getElementById('file-preview-container').style.display = 'none';
-            document.getElementById('file-input').value = '';
+            displayUserMessage(null, null, null);
             
             // Отправляем на сервер
             const formData = new FormData();
@@ -878,11 +860,28 @@
                 
                 const data = await response.json();
                 
-                // ИСПРАВЛЕНИЕ: Проверяем, что мы всё ещё в том же сеансе
-                // И что этот сеанс всё ещё активен (не был удалён)
+                // Находим запрос по ID сеанса (для обратной совместимости)
+                let foundRequest = null;
+                for (let [id, req] of Object.entries(pendingRequests)) {
+                    if (req.sessionId === requestSessionId && !req.processed) {
+                        foundRequest = {id, ...req};
+                        break;
+                    }
+                }
+                
+                if (foundRequest) {
+                    pendingRequests[foundRequest.id].processed = true;
+                }
+                
+                // Проверяем существование сеанса
                 const sessionStillExists = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`) !== null;
                 
                 if (sessionStillExists) {
+                    // Обновляем данные сеанса в хранилище
+                    if (data.session_title) {
+                        updateSessionTitle(requestSessionId, data.session_title);
+                    }
+                    
                     if (currentSessionId === requestSessionId) {
                         // Мы всё ещё в том же сеансе - показываем ответ
                         if (data.response) {
@@ -921,25 +920,33 @@
                         console.log(`Ответ для сеанса ${requestSessionId} получен, но текущий сеанс - ${currentSessionId}`);
                         
                         const sessionElement = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`);
-                        if (sessionElement) {
-                            if (!sessionElement.querySelector('.new-message-indicator')) {
-                                const indicator = document.createElement('span');
-                                indicator.className = 'new-message-indicator';
-                                indicator.textContent = '●';
-                                sessionElement.querySelector('.session-title').appendChild(indicator);
-                            }
+                        if (sessionElement && !sessionElement.querySelector('.new-message-indicator')) {
+                            const indicator = document.createElement('span');
+                            indicator.className = 'new-message-indicator';
+                            indicator.textContent = '●';
+                            sessionElement.querySelector('.session-title').appendChild(indicator);
                         }
                         
-                        // Загружаем сообщения для того сеанса, чтобы они были актуальны при переключении
-                        // НО НЕ ОТОБРАЖАЕМ ИХ СЕЙЧАС
-                        loadMessages(requestSessionId);
+                        // Обновляем дату сеанса
+                        const dateElement = sessionElement?.querySelector('.session-date');
+                        if (dateElement) {
+                            const now = new Date();
+                            dateElement.textContent = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+                        }
                     }
                 } else {
-                    // Сеанс был удалён - игнорируем ответ
                     console.log(`Сеанс ${requestSessionId} был удалён, ответ проигнорирован`);
                 }
                 
             } catch (err) {
+                // Помечаем запрос как обработанный (с ошибкой)
+                for (let [id, req] of Object.entries(pendingRequests)) {
+                    if (req.sessionId === requestSessionId && !req.processed) {
+                        pendingRequests[id].processed = true;
+                        break;
+                    }
+                }
+                
                 // Показываем ошибку только если мы всё ещё в том же сеансе
                 if (currentSessionId === requestSessionId) {
                     alert('Ошибка: ' + err.message);
@@ -956,6 +963,7 @@
             }
         }
     }
+
     // -------------------------------
     // Очистка истории сеанса
     // -------------------------------
@@ -971,14 +979,24 @@
     }
 
     // -------------------------------
-    // Удаление сеанса - ИСПРАВЛЕННАЯ ВЕРСИЯ
+    // Удаление сеанса
     // -------------------------------
     function deleteSession(sessionId) {
+        // Помечаем все незавершенные запросы для этого сеанса как обработанные
+        for (let [id, req] of Object.entries(pendingRequests)) {
+            if (req.sessionId === sessionId && !req.processed) {
+                pendingRequests[id].processed = true;
+            }
+        }
+        
         fetch(`/api/sessions/${sessionId}/delete`, { method: 'POST' })
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'ok') {
-                    // Сначала удаляем элемент из DOM
+                    // Удаляем из хранилища данных
+                    delete sessionsData[sessionId];
+                    
+                    // Удаляем элемент из DOM
                     const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
                     if (sessionItem) {
                         sessionItem.remove();
@@ -997,10 +1015,9 @@
                             switchSession(firstSessionId);
                         } else {
                             // Если сеансов не осталось, создаем новый
-                            // Важно: создаем новый сеанс ПОСЛЕ того, как старый удален
                             setTimeout(() => {
                                 createNewSession();
-                            }, 50); // Небольшая задержка для гарантии
+                            }, 50);
                         }
                     }
                 }
@@ -1010,7 +1027,7 @@
             });
     }
 
-        // -------------------------------
+    // -------------------------------
     // Сохранение чата как HTML
     // -------------------------------
     async function saveChatAsHTML() {

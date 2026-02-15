@@ -74,6 +74,7 @@
     let pendingRequests = {}; // Хранилище для отслеживания запросов по сеансам
     let defaultModelName = 'qwen3-vl:8b-instruct';
     let sessionsData = {}; // Хранилище данных о сеансах
+    let syncInterval = null; // Интервал для синхронизации
 
     // -------------------------------
     // Вспомогательные функции
@@ -170,16 +171,32 @@
         return fetch('/api/sessions')
             .then(res => res.json())
             .then(sessions => {
-                // Сохраняем данные о сеансах
+                let updated = false;
+                
+                // Обновляем данные в хранилище
                 sessions.forEach(s => {
-                    sessionsData[s.id] = {
-                        title: s.title,
-                        updated_at: s.updated_at
-                    };
+                    if (!sessionsData[s.id] || sessionsData[s.id].title !== s.title || sessionsData[s.id].updated_at !== s.updated_at) {
+                        sessionsData[s.id] = {
+                            title: s.title,
+                            updated_at: s.updated_at
+                        };
+                        updated = true;
+                    }
                 });
                 
-                // Обновляем отображение сеансов
-                updateSessionsList(sessions);
+                // Удаляем из хранилища сеансы, которых больше нет
+                Object.keys(sessionsData).forEach(id => {
+                    if (!sessions.find(s => s.id === id)) {
+                        delete sessionsData[id];
+                        updated = true;
+                    }
+                });
+                
+                // Если были изменения, обновляем отображение
+                if (updated) {
+                    updateSessionsList(sessions);
+                }
+                
                 return sessions;
             })
             .catch(err => console.error('Ошибка загрузки сеансов:', err));
@@ -192,10 +209,11 @@
         const sessionsList = document.getElementById('sessions-list');
         const currentActiveId = currentSessionId;
         
-        // Сохраняем текущие заголовки из хранилища
+        // Используем данные из хранилища
         sessions.forEach(s => {
             if (sessionsData[s.id]) {
                 s.title = sessionsData[s.id].title;
+                s.updated_at = sessionsData[s.id].updated_at;
             }
         });
         
@@ -271,6 +289,19 @@
     }
 
     // -------------------------------
+    // Запуск периодической синхронизации
+    // -------------------------------
+    function startSyncInterval() {
+        if (syncInterval) {
+            clearInterval(syncInterval);
+        }
+        // Синхронизируем каждые 3 секунды
+        syncInterval = setInterval(() => {
+            loadSessionsFromServer();
+        }, 3000);
+    }
+
+    // -------------------------------
     // Инициализация
     // -------------------------------
     document.addEventListener('DOMContentLoaded', function() {
@@ -278,6 +309,8 @@
         loadSessionsFromServer().then(() => {
             // Загружаем сообщения текущего сеанса
             loadMessages(currentSessionId);
+            // Запускаем периодическую синхронизацию
+            startSyncInterval();
         });
         
         // Новая беседа
@@ -630,6 +663,11 @@
             const sessionsList = document.getElementById('sessions-list');
             sessionsList.insertBefore(sessionItem, sessionsList.firstChild);
         }
+        
+        // Немедленно запускаем синхронизацию
+        setTimeout(() => {
+            loadSessionsFromServer();
+        }, 100);
     }
 
     // -------------------------------
@@ -837,6 +875,10 @@
                     }
                 } finally {
                     isSending = false;
+                    // Запускаем синхронизацию после отправки
+                    setTimeout(() => {
+                        loadSessionsFromServer();
+                    }, 500);
                 }
             };
             reader.readAsDataURL(tempAttachedFile);
@@ -960,6 +1002,10 @@
                 }
             } finally {
                 isSending = false;
+                // Запускаем синхронизацию после отправки
+                setTimeout(() => {
+                    loadSessionsFromServer();
+                }, 500);
             }
         }
     }
@@ -975,6 +1021,10 @@
                 updateMessageCount();
                 updateSessionTitle(currentSessionId, 'Новый сеанс');
                 defaultModelName = 'qwen3-vl:8b-instruct';
+                // Запускаем синхронизацию после очистки
+                setTimeout(() => {
+                    loadSessionsFromServer();
+                }, 500);
             });
     }
 
@@ -1020,6 +1070,11 @@
                             }, 50);
                         }
                     }
+                    
+                    // Запускаем синхронизацию после удаления
+                    setTimeout(() => {
+                        loadSessionsFromServer();
+                    }, 500);
                 }
             })
             .catch(err => {

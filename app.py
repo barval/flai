@@ -599,6 +599,43 @@ def call_ollama_chat(messages, model=None, stream=False, temperature=None, top_p
         return f"⚠️ Ошибка при обращении к Ollama: {str(e)}"
 
 # -------------------------------
+# Функция загрузки пользователей (ПЕРЕМЕЩЕНА ВЫШЕ)
+# -------------------------------
+def load_users():
+    users = {}
+    users_file = 'users.list'
+    if os.path.exists(users_file):
+        with open(users_file, 'r', encoding='utf-8') as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                # Пропускаем пустые строки и комментарии
+                if not line or line.startswith('#'):
+                    continue
+                    
+                parts = line.split(',')
+                if len(parts) >= 2:
+                    email = parts[0].strip()
+                    password = parts[1].strip()
+                    if email and password:  # Проверяем, что оба поля не пустые
+                        users[email] = {'password': password}
+                    else:
+                        app.logger.error(f"Пустые поля в строке {line_num} файла users.list: {line}")
+                else:
+                    app.logger.error(f"Некорректная строка {line_num} в users.list: {line}")
+        
+        if not users:
+            app.logger.error("В файле users.list нет валидных записей пользователей")
+    else:
+        app.logger.error("users.list not found. Authentication will not work.")
+    
+    return users
+
+# -------------------------------
+# Загружаем пользователей (ТЕПЕРЬ ПОСЛЕ ОПРЕДЕЛЕНИЯ ФУНКЦИИ)
+# -------------------------------
+USERS = load_users()
+
+# -------------------------------
 # Инициализация и миграция БД
 # -------------------------------
 def init_db():
@@ -659,40 +696,9 @@ if OLLAMA_URL:
 else:
     app.logger.warning("Ollama URL not configured. Chat functionality will not work.")
 
-    # -------------------------------
-    # Вспомогательные функции
-    # -------------------------------
-    def load_users():
-        users = {}
-        users_file = 'users.list'
-        if os.path.exists(users_file):
-            with open(users_file, 'r', encoding='utf-8') as f:
-                for line_num, line in enumerate(f, 1):
-                    line = line.strip()
-                    # Пропускаем пустые строки и комментарии
-                    if not line or line.startswith('#'):
-                        continue
-                        
-                    parts = line.split(',')
-                    if len(parts) >= 2:
-                        email = parts[0].strip()
-                        password = parts[1].strip()
-                        if email and password:  # Проверяем, что оба поля не пустые
-                            users[email] = {'password': password}
-                        else:
-                            app.logger.error(f"Пустые поля в строке {line_num} файла users.list: {line}")
-                    else:
-                        app.logger.error(f"Некорректная строка {line_num} в users.list: {line}")
-            
-            if not users:
-                app.logger.error("В файле users.list нет валидных записей пользователей")
-        else:
-            app.logger.error("users.list not found. Authentication will not work.")
-        
-        return users
-
-USERS = load_users()
-
+# -------------------------------
+# Вспомогательные функции для работы с БД
+# -------------------------------
 def get_user_sessions(user_id):
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row

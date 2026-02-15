@@ -1010,22 +1010,33 @@
             });
     }
 
-    // -------------------------------
+        // -------------------------------
     // Сохранение чата как HTML
     // -------------------------------
     async function saveChatAsHTML() {
         // Получаем подпись из .env через API
-        let footerText = "ИИ Локальный v2.3 (с) 2026 Барсуков Валерий"; // Значение по умолчанию
+        let footerText = "";
         try {
             const response = await fetch('/api/footer-text');
             if (response.ok) {
                 footerText = await response.text();
+            } else {
+                console.error('Не удалось получить подпись футера:', response.status);
+                footerText = "Подпись не настроена";
             }
         } catch (error) {
             console.error('Ошибка получения подписи:', error);
+            footerText = "Ошибка загрузки подписи";
         }
         
-        const title = document.querySelector('.session-item.active .session-title')?.textContent || 'Чат';
+        // Проверяем, есть ли активный сеанс
+        const activeSession = document.querySelector('.session-item.active');
+        if (!activeSession) {
+            alert('Нет активного сеанса для сохранения');
+            return;
+        }
+        
+        const title = activeSession.querySelector('.session-title')?.textContent || 'Чат';
         const now = new Date();
         const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
         
@@ -1046,7 +1057,7 @@
             const timestamp = msgEl.dataset.timestamp;
             
             const timeElement = msgEl.querySelector('small');
-            let timeText = timeElement ? timeElement.textContent : formatFullDateTime(timestamp);
+            let timeText = timeElement ? timeElement.textContent : (timestamp ? formatFullDateTime(timestamp) : '');
             
             const contentEl = msgEl.querySelector('.message-content');
             const fileEl = msgEl.querySelector('.attached-image, .attached-file, audio');
@@ -1075,6 +1086,12 @@
                 fileHtml
             });
         });
+        
+        // Проверяем, есть ли сообщения для сохранения
+        if (messages.length === 0) {
+            alert('Нет сообщений для сохранения');
+            return;
+        }
         
         // Формируем HTML страницы
         const html = `<!DOCTYPE html>

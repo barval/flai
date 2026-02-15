@@ -19,7 +19,14 @@ import re
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key')
+
+# Проверяем наличие SECRET_KEY в .env
+secret_key = os.getenv('SECRET_KEY')
+if not secret_key:
+    app.logger.error("SECRET_KEY не найден в .env файле. Приложение не может быть запущено.")
+    raise ValueError("SECRET_KEY must be set in .env file")
+app.secret_key = secret_key
+
 app.config['JSON_AS_ASCII'] = False
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
@@ -27,63 +34,131 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 logging.basicConfig(level=logging.DEBUG)
 
 # -------------------------------
-# Подпись в футере - единая для всего проекта
+# Подпись в футере - проверяем наличие в .env
 # -------------------------------
-FOOTER_TEXT = os.getenv('FOOTER_TEXT', 'ИИ Локальный v2.3 (с) 2026 Барсуков Валерий')
+FOOTER_TEXT = os.getenv('FOOTER_TEXT')
+if not FOOTER_TEXT:
+    app.logger.error("FOOTER_TEXT не найден в .env файле")
+    FOOTER_TEXT = ""  # Пустая строка, но ошибка залогирована
 
 # -------------------------------
 # Настройки часового пояса из .env
 # -------------------------------
-TIMEZONE_STR = os.getenv('TIMEZONE', 'Europe/Moscow')  # По умолчанию Москва
-
-# Проверяем валидность часового пояса
-try:
-    TIMEZONE = pytz.timezone(TIMEZONE_STR)
-    app.logger.info(f"Используется часовой пояс: {TIMEZONE_STR}")
-except UnknownTimeZoneError:
-    app.logger.warning(f"Неизвестный часовой пояс '{TIMEZONE_STR}'. Используется UTC.")
-    TIMEZONE = pytz.UTC
-    TIMEZONE_STR = 'UTC'
+TIMEZONE_STR = os.getenv('TIMEZONE')
+if not TIMEZONE_STR:
+    app.logger.error("TIMEZONE не найден в .env файле")
+    TIMEZONE_STR = None
+    TIMEZONE = None
+else:
+    # Проверяем валидность часового пояса
+    try:
+        TIMEZONE = pytz.timezone(TIMEZONE_STR)
+        app.logger.info(f"Используется часовой пояс: {TIMEZONE_STR}")
+    except UnknownTimeZoneError:
+        app.logger.error(f"Неизвестный часовой пояс '{TIMEZONE_STR}' в .env файле")
+        TIMEZONE = None
+        TIMEZONE_STR = None
 
 # -------------------------------
 # Настройки Ollama
 # -------------------------------
-OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434')
-LLM_CHAT_MODEL = os.getenv('LLM_CHAT_MODEL', 'qwen3:4b-instruct-2507-q4_K_M')
-LLM_MULTIMODAL_MODEL = os.getenv('LLM_MULTIMODAL_MODEL', 'qwen3-vl:8b-instruct-q4_K_M')
-LLM_REASONING_MODEL = os.getenv('LLM_REASONING_MODEL', 'qwen3:14b-q4_K_M')
+OLLAMA_URL = os.getenv('OLLAMA_URL')
+if not OLLAMA_URL:
+    app.logger.error("OLLAMA_URL не найден в .env файле")
+
+LLM_CHAT_MODEL = os.getenv('LLM_CHAT_MODEL')
+if not LLM_CHAT_MODEL:
+    app.logger.error("LLM_CHAT_MODEL не найден в .env файле")
+
+LLM_MULTIMODAL_MODEL = os.getenv('LLM_MULTIMODAL_MODEL')
+if not LLM_MULTIMODAL_MODEL:
+    app.logger.error("LLM_MULTIMODAL_MODEL не найден в .env файле")
+
+LLM_REASONING_MODEL = os.getenv('LLM_REASONING_MODEL')
+if not LLM_REASONING_MODEL:
+    app.logger.error("LLM_REASONING_MODEL не найден в .env файле")
 
 # -------------------------------
 # Настройки температуры для разных моделей
 # -------------------------------
-LLM_CHAT_TEMPERATURE = float(os.getenv('LLM_CHAT_TEMPERATURE', 0.1))
-LLM_CHAT_TOP_P = float(os.getenv('LLM_CHAT_TOP_P', 0.1))
+LLM_CHAT_TEMPERATURE_STR = os.getenv('LLM_CHAT_TEMPERATURE')
+LLM_CHAT_TEMPERATURE = float(LLM_CHAT_TEMPERATURE_STR) if LLM_CHAT_TEMPERATURE_STR else None
+if not LLM_CHAT_TEMPERATURE_STR:
+    app.logger.error("LLM_CHAT_TEMPERATURE не найден в .env файле")
 
-LLM_MULTIMODAL_TEMPERATURE = float(os.getenv('LLM_MULTIMODAL_TEMPERATURE', 0.7))
-LLM_MULTIMODAL_TOP_P = float(os.getenv('LLM_MULTIMODAL_TOP_P', 0.9))
+LLM_CHAT_TOP_P_STR = os.getenv('LLM_CHAT_TOP_P')
+LLM_CHAT_TOP_P = float(LLM_CHAT_TOP_P_STR) if LLM_CHAT_TOP_P_STR else None
+if not LLM_CHAT_TOP_P_STR:
+    app.logger.error("LLM_CHAT_TOP_P не найден в .env файле")
 
-LLM_REASONING_TEMPERATURE = float(os.getenv('LLM_REASONING_TEMPERATURE', 0.7))
-LLM_REASONING_TOP_P = float(os.getenv('LLM_REASONING_TOP_P', 0.9))
+LLM_MULTIMODAL_TEMPERATURE_STR = os.getenv('LLM_MULTIMODAL_TEMPERATURE')
+LLM_MULTIMODAL_TEMPERATURE = float(LLM_MULTIMODAL_TEMPERATURE_STR) if LLM_MULTIMODAL_TEMPERATURE_STR else None
+if not LLM_MULTIMODAL_TEMPERATURE_STR:
+    app.logger.error("LLM_MULTIMODAL_TEMPERATURE не найден в .env файле")
+
+LLM_MULTIMODAL_TOP_P_STR = os.getenv('LLM_MULTIMODAL_TOP_P')
+LLM_MULTIMODAL_TOP_P = float(LLM_MULTIMODAL_TOP_P_STR) if LLM_MULTIMODAL_TOP_P_STR else None
+if not LLM_MULTIMODAL_TOP_P_STR:
+    app.logger.error("LLM_MULTIMODAL_TOP_P не найден в .env файле")
+
+LLM_REASONING_TEMPERATURE_STR = os.getenv('LLM_REASONING_TEMPERATURE')
+LLM_REASONING_TEMPERATURE = float(LLM_REASONING_TEMPERATURE_STR) if LLM_REASONING_TEMPERATURE_STR else None
+if not LLM_REASONING_TEMPERATURE_STR:
+    app.logger.error("LLM_REASONING_TEMPERATURE не найден в .env файле")
+
+LLM_REASONING_TOP_P_STR = os.getenv('LLM_REASONING_TOP_P')
+LLM_REASONING_TOP_P = float(LLM_REASONING_TOP_P_STR) if LLM_REASONING_TOP_P_STR else None
+if not LLM_REASONING_TOP_P_STR:
+    app.logger.error("LLM_REASONING_TOP_P не найден в .env файле")
 
 # Контекстные окна для разных моделей
-MODEL_CONTEXT_WINDOWS = {
-    LLM_CHAT_MODEL: int(os.getenv('LLM_CHAT_MODEL_CONTEXT_WINDOW', 32768)),
-    LLM_MULTIMODAL_MODEL: int(os.getenv('LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW', 32768)),
-    LLM_REASONING_MODEL: int(os.getenv('LLM_REASONING_MODEL_CONTEXT_WINDOW', 40960)),
-}
+MODEL_CONTEXT_WINDOWS = {}
+
+chat_context = os.getenv('LLM_CHAT_MODEL_CONTEXT_WINDOW')
+if chat_context and LLM_CHAT_MODEL:
+    MODEL_CONTEXT_WINDOWS[LLM_CHAT_MODEL] = int(chat_context)
+elif LLM_CHAT_MODEL:
+    app.logger.error(f"LLM_CHAT_MODEL_CONTEXT_WINDOW не найден в .env файле для модели {LLM_CHAT_MODEL}")
+
+multimodal_context = os.getenv('LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW')
+if multimodal_context and LLM_MULTIMODAL_MODEL:
+    MODEL_CONTEXT_WINDOWS[LLM_MULTIMODAL_MODEL] = int(multimodal_context)
+elif LLM_MULTIMODAL_MODEL:
+    app.logger.error(f"LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW не найден в .env файле для модели {LLM_MULTIMODAL_MODEL}")
+
+reasoning_context = os.getenv('LLM_REASONING_MODEL_CONTEXT_WINDOW')
+if reasoning_context and LLM_REASONING_MODEL:
+    MODEL_CONTEXT_WINDOWS[LLM_REASONING_MODEL] = int(reasoning_context)
+elif LLM_REASONING_MODEL:
+    app.logger.error(f"LLM_REASONING_MODEL_CONTEXT_WINDOW не найден в .env файле для модели {LLM_REASONING_MODEL}")
 
 # -------------------------------
 # Настройки Automatic1111
 # -------------------------------
-AUTOMATIC1111_URL = os.getenv('AUTOMATIC1111_URL', 'http://host.docker.internal:7860')
+AUTOMATIC1111_URL = os.getenv('AUTOMATIC1111_URL')
+if not AUTOMATIC1111_URL:
+    app.logger.error("AUTOMATIC1111_URL не найден в .env файле")
 
 # -------------------------------
 # Настройки для изображений
 # -------------------------------
-MAX_IMAGE_WIDTH = int(os.getenv('MAX_IMAGE_WIDTH', 3840))
-MAX_IMAGE_HEIGHT = int(os.getenv('MAX_IMAGE_HEIGHT', 2160))
-MAX_IMAGE_SIZE_MB = int(os.getenv('MAX_IMAGE_SIZE_MB', 5))
-MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024
+MAX_IMAGE_WIDTH_STR = os.getenv('MAX_IMAGE_WIDTH')
+MAX_IMAGE_WIDTH = int(MAX_IMAGE_WIDTH_STR) if MAX_IMAGE_WIDTH_STR else None
+if not MAX_IMAGE_WIDTH_STR:
+    app.logger.error("MAX_IMAGE_WIDTH не найден в .env файле")
+
+MAX_IMAGE_HEIGHT_STR = os.getenv('MAX_IMAGE_HEIGHT')
+MAX_IMAGE_HEIGHT = int(MAX_IMAGE_HEIGHT_STR) if MAX_IMAGE_HEIGHT_STR else None
+if not MAX_IMAGE_HEIGHT_STR:
+    app.logger.error("MAX_IMAGE_HEIGHT не найден в .env файле")
+
+MAX_IMAGE_SIZE_MB_STR = os.getenv('MAX_IMAGE_SIZE_MB')
+MAX_IMAGE_SIZE_MB = int(MAX_IMAGE_SIZE_MB_STR) if MAX_IMAGE_SIZE_MB_STR else None
+if MAX_IMAGE_SIZE_MB:
+    MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024
+else:
+    MAX_IMAGE_SIZE_BYTES = None
+    app.logger.error("MAX_IMAGE_SIZE_MB не найден в .env файле")
 
 # Поддерживаемые форматы изображений
 SUPPORTED_IMAGE_EXTENSIONS = {
@@ -141,6 +216,10 @@ def get_current_time_in_timezone():
     Возвращает текущее время в часовом поясе, указанном в .env
     Формат: ДД.ММ.ГГГГ день_недели ЧЧ:ММ:СС (часовой_пояс)
     """
+    if not TIMEZONE:
+        app.logger.error("Часовой пояс не настроен в .env файле")
+        return None
+    
     try:
         # Получаем текущее время в UTC
         utc_now = datetime.now(pytz.UTC)
@@ -176,16 +255,17 @@ def get_current_time_in_timezone():
     
     except Exception as e:
         app.logger.error(f"Ошибка получения времени в часовом поясе {TIMEZONE_STR}: {str(e)}")
-        # Fallback на UTC с днем недели на английском
-        utc_time = datetime.now(pytz.UTC)
-        weekdays_en = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-        return f"{utc_time.strftime('%d.%m.%Y')} {utc_time.strftime('%H:%M:%S')} {weekdays_en[utc_time.weekday()]} (UTC)"
+        return None
 
 def get_current_time_in_timezone_for_db():
     """
     Возвращает текущее время в часовом поясе, указанном в .env
     в формате, подходящем для SQLite (YYYY-MM-DD HH:MM:SS)
     """
+    if not TIMEZONE:
+        app.logger.error("Часовой пояс не настроен в .env файле")
+        return None
+    
     try:
         # Получаем текущее время в UTC
         utc_now = datetime.now(pytz.UTC)
@@ -198,8 +278,7 @@ def get_current_time_in_timezone_for_db():
     
     except Exception as e:
         app.logger.error(f"Ошибка получения времени в часовом поясе {TIMEZONE_STR}: {str(e)}")
-        # Fallback на локальное время сервера
-        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        return None
 
 # -------------------------------
 # Функция для загрузки шаблона промпта
@@ -246,6 +325,13 @@ def call_automatic1111(prompt_data):
     """
     Отправляет запрос в Automatic1111 и возвращает сгенерированное изображение
     """
+    if not AUTOMATIC1111_URL:
+        app.logger.error("AUTOMATIC1111_URL не настроен в .env файле")
+        return {
+            'success': False,
+            'error': "Сервис генерации изображений не настроен. Проверьте AUTOMATIC1111_URL в .env файле."
+        }
+    
     try:
         # Формируем payload для API Automatic1111
         payload = {
@@ -366,6 +452,15 @@ def validate_image_file(file_data, file_type, file_name, file_size):
     Проверяет, является ли файл поддерживаемым изображением и соответствует ли ограничениям
     Возвращает (is_valid, error_message)
     """
+    # Проверка наличия всех необходимых настроек
+    if not MAX_IMAGE_SIZE_BYTES:
+        app.logger.error("MAX_IMAGE_SIZE_MB не настроен в .env файле")
+        return False, "Ошибка конфигурации сервера: не задан максимальный размер изображения"
+    
+    if not MAX_IMAGE_WIDTH or not MAX_IMAGE_HEIGHT:
+        app.logger.error("MAX_IMAGE_WIDTH или MAX_IMAGE_HEIGHT не настроены в .env файле")
+        return False, "Ошибка конфигурации сервера: не заданы ограничения размера изображения"
+    
     # Проверка размера файла
     if file_size > MAX_IMAGE_SIZE_BYTES:
         return False, f"Максимальный размер файла с изображением {MAX_IMAGE_SIZE_MB} Мб"
@@ -401,6 +496,10 @@ def validate_image_file(file_data, file_type, file_name, file_size):
 # -------------------------------
 def check_ollama_connection():
     """Проверка подключения к Ollama"""
+    if not OLLAMA_URL:
+        app.logger.error("OLLAMA_URL не настроен в .env файле")
+        return False, []
+    
     try:
         response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
         if response.status_code == 200:
@@ -415,23 +514,39 @@ def check_ollama_connection():
 
 def call_ollama_chat(messages, model=None, stream=False, temperature=None, top_p=None):
     """Вызов Ollama API для чата"""
+    if not OLLAMA_URL:
+        app.logger.error("OLLAMA_URL не настроен в .env файле")
+        return "⚠️ Ошибка конфигурации: не указан URL сервиса Ollama"
+    
     if model is None:
-        model = LLM_CHAT_MODEL
+        app.logger.error("Модель не указана при вызове Ollama")
+        return "⚠️ Ошибка конфигурации: не указана модель для обработки запроса"
     
     # Выбираем параметры в зависимости от модели
     if temperature is None:
         if model == LLM_CHAT_MODEL:
             temperature = LLM_CHAT_TEMPERATURE
-            top_p = LLM_CHAT_TOP_P if top_p is None else top_p
         elif model == LLM_MULTIMODAL_MODEL:
             temperature = LLM_MULTIMODAL_TEMPERATURE
-            top_p = LLM_MULTIMODAL_TOP_P if top_p is None else top_p
         elif model == LLM_REASONING_MODEL:
             temperature = LLM_REASONING_TEMPERATURE
-            top_p = LLM_REASONING_TOP_P if top_p is None else top_p
-        else:
-            temperature = 0.7
-            top_p = 0.9
+    
+    if top_p is None:
+        if model == LLM_CHAT_MODEL:
+            top_p = LLM_CHAT_TOP_P
+        elif model == LLM_MULTIMODAL_MODEL:
+            top_p = LLM_MULTIMODAL_TOP_P
+        elif model == LLM_REASONING_MODEL:
+            top_p = LLM_REASONING_TOP_P
+    
+    # Проверяем наличие всех необходимых параметров
+    if temperature is None:
+        app.logger.error(f"Температура не настроена для модели {model} в .env файле")
+        temperature = 0.7  # Техническое значение по умолчанию, но ошибка залогирована
+    
+    if top_p is None:
+        app.logger.error(f"top_p не настроен для модели {model} в .env файле")
+        top_p = 0.9  # Техническое значение по умолчанию, но ошибка залогирована
     
     try:
         payload = {
@@ -439,7 +554,7 @@ def call_ollama_chat(messages, model=None, stream=False, temperature=None, top_p
             'messages': messages,
             'stream': stream,
             'options': {
-                'num_ctx': MODEL_CONTEXT_WINDOWS.get(model, 32768),
+                'num_ctx': MODEL_CONTEXT_WINDOWS.get(model, 32768),  # 32768 как техническое значение по умолчанию
                 'temperature': temperature,
                 'top_p': top_p,
                 'stop': ['<|im_end|>', '<|endoftext|>', '\n\n\n'],  # Стоп-токены
@@ -464,7 +579,7 @@ def call_ollama_chat(messages, model=None, stream=False, temperature=None, top_p
                     content = content[:content.index(stop_token)]
             
             # Берём только первую строку для модели-маршрутизатора
-            if model == LLM_CHAT_MODEL and temperature < 0.3:
+            if model == LLM_CHAT_MODEL and temperature and temperature < 0.3:
                 content = content.split('\n')[0].strip()
             
             return content.strip()
@@ -537,9 +652,12 @@ def init_db():
 init_db()
 
 # Проверяем подключение к Ollama при старте
-ollama_available, ollama_models = check_ollama_connection()
-if not ollama_available:
-    app.logger.warning("Ollama is not available. Please check if Ollama is running.")
+if OLLAMA_URL:
+    ollama_available, ollama_models = check_ollama_connection()
+    if not ollama_available:
+        app.logger.warning("Ollama is not available. Please check if Ollama is running.")
+else:
+    app.logger.warning("Ollama URL not configured. Chat functionality will not work.")
 
 # -------------------------------
 # Вспомогательные функции
@@ -552,12 +670,14 @@ def load_users():
             for line in f:
                 if line.strip():
                     parts = line.strip().split(',')
-                    email = parts[0]
-                    password = parts[1]
-                    users[email] = {'password': password}
+                    if len(parts) >= 2:
+                        email = parts[0]
+                        password = parts[1]
+                        users[email] = {'password': password}
+                    else:
+                        app.logger.error(f"Некорректная строка в users.list: {line.strip()}")
     else:
-        app.logger.warning("users.list not found, creating default user")
-        users['admin@local.com'] = {'password': 'admin123'}
+        app.logger.error("users.list not found. Authentication will not work.")
     return users
 
 USERS = load_users()
@@ -590,7 +710,7 @@ def get_session_messages(session_id):
         for row in c.fetchall():
             msg_dict = dict(row)
             # Преобразуем timestamp в ISO формат с часовым поясом для JS
-            if msg_dict.get('timestamp'):
+            if msg_dict.get('timestamp') and TIMEZONE:
                 try:
                     # Парсим timestamp из БД (формат: YYYY-MM-DD HH:MM:SS)
                     dt = datetime.strptime(msg_dict['timestamp'], '%Y-%m-%d %H:%M:%S')
@@ -608,6 +728,10 @@ def create_session(user_id, title="Новый сеанс"):
     """Создание нового сеанса без привязки к конкретной модели"""
     session_id = str(uuid.uuid4())
     current_time = get_current_time_in_timezone_for_db()
+    if not current_time:
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        app.logger.error("Используется локальное время сервера из-за ошибки конфигурации часового пояса")
+    
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('''
@@ -621,6 +745,10 @@ def update_session_title(session_id, first_message):
     """Обновить заголовок сеанса на основе первого сообщения"""
     title = first_message[:40] + ('...' if len(first_message) > 40 else '')
     current_time = get_current_time_in_timezone_for_db()
+    if not current_time:
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        app.logger.error("Используется локальное время сервера из-за ошибки конфигурации часового пояса")
+    
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('''
@@ -636,6 +764,9 @@ def save_message(session_id, role, content, file_data=None, file_type=None, file
         
         # Получаем текущее время в нужном часовом поясе
         current_time = get_current_time_in_timezone_for_db()
+        if not current_time:
+            current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            app.logger.error("Используется локальное время сервера из-за ошибки конфигурации часового пояса")
         
         # Вставляем сообщение
         c.execute('''
@@ -684,6 +815,10 @@ def login():
         if not email or not password:
             return render_template('login.html', error='Все поля обязательны')
         
+        if not USERS:
+            app.logger.error("Файл users.list не найден или пуст")
+            return render_template('login.html', error='Ошибка конфигурации сервера: нет зарегистрированных пользователей')
+        
         if email in USERS and USERS[email]['password'] == password:
             session['email'] = email
             return redirect(url_for('chat'))
@@ -724,7 +859,7 @@ def chat():
     return render_template('chat.html', 
                          sessions=sessions, 
                          current_session=session.get('current_session'),
-                         footer_text=FOOTER_TEXT)
+                         footer_text=FOOTER_TEXT if FOOTER_TEXT else "")
 
 # -------------------------------
 # API для работы с сеансами
@@ -767,10 +902,10 @@ def api_get_session_model(session_id):
             if row:
                 return jsonify({'model_name': row[0]})
             else:
-                return jsonify({'model_name': 'auto'})
-        except sqlite3.OperationalError:
-            # Если колонка все еще не существует, возвращаем 'auto'
-            return jsonify({'model_name': 'auto'})
+                return jsonify({'error': 'Сеанс не найден'}), 404
+        except sqlite3.OperationalError as e:
+            app.logger.error(f"Ошибка при получении информации о модели: {str(e)}")
+            return jsonify({'error': 'Ошибка базы данных'}), 500
 
 @app.route('/api/sessions/new', methods=['POST'])
 def api_new_session():
@@ -792,6 +927,12 @@ def api_ollama_status():
     if 'email' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
     
+    if not OLLAMA_URL:
+        return jsonify({
+            'available': False,
+            'error': 'OLLAMA_URL не настроен в .env файле'
+        })
+    
     available, models = check_ollama_connection()
     return jsonify({
         'available': available,
@@ -804,6 +945,9 @@ def api_ollama_status():
 @app.route('/api/footer-text', methods=['GET'])
 def api_footer_text():
     """Возвращает текст подписи для футера"""
+    if not FOOTER_TEXT:
+        app.logger.error("Запрос подписи футера, но FOOTER_TEXT не настроен в .env")
+        return "Подпись не настроена", 404
     return FOOTER_TEXT
 
 # -------------------------------
@@ -815,10 +959,14 @@ def api_timezone_info():
     if 'email' not in session and app.debug == False:
         return jsonify({'error': 'Доступ запрещен'}), 403
     
+    current_time = get_current_time_in_timezone()
+    current_time_for_db = get_current_time_in_timezone_for_db()
+    
     return jsonify({
-        'timezone': TIMEZONE_STR,
-        'current_time': get_current_time_in_timezone(),
-        'current_time_for_db': get_current_time_in_timezone_for_db()
+        'timezone': TIMEZONE_STR if TIMEZONE_STR else "не настроен",
+        'current_time': current_time if current_time else "ошибка получения",
+        'current_time_for_db': current_time_for_db if current_time_for_db else "ошибка получения",
+        'timezone_configured': TIMEZONE is not None
     })
 
 # -------------------------------
@@ -865,6 +1013,23 @@ def send_message():
     if 'email' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
     
+    # Проверяем наличие необходимых конфигураций
+    if not OLLAMA_URL:
+        app.logger.error("OLLAMA_URL не настроен в .env файле")
+        return jsonify({'error': 'Сервис чата не настроен. Проверьте OLLAMA_URL в .env файле.'}), 500
+    
+    if not LLM_CHAT_MODEL:
+        app.logger.error("LLM_CHAT_MODEL не настроен в .env файле")
+        return jsonify({'error': 'Модель чата не настроена. Проверьте LLM_CHAT_MODEL в .env файле.'}), 500
+    
+    if not LLM_MULTIMODAL_MODEL:
+        app.logger.error("LLM_MULTIMODAL_MODEL не настроен в .env файле")
+        return jsonify({'error': 'Мультимодальная модель не настроена. Проверьте LLM_MULTIMODAL_MODEL в .env файле.'}), 500
+    
+    if not LLM_REASONING_MODEL:
+        app.logger.error("LLM_REASONING_MODEL не настроен в .env файле")
+        return jsonify({'error': 'Модель для сложных запросов не настроена. Проверьте LLM_REASONING_MODEL в .env файле.'}), 500
+    
     user_id = session['email']
     session_id = session.get('current_session')
     
@@ -902,8 +1067,15 @@ def send_message():
     current_time_str = get_current_time_in_timezone()
     current_time_for_db = get_current_time_in_timezone_for_db()
     
+    if not current_time_str or not current_time_for_db:
+        app.logger.error("Часовой пояс не настроен в .env файле")
+        # Используем локальное время как запасной вариант, но ошибка залогирована
+        now = datetime.now()
+        current_time_str = now.strftime('%d.%m.%Y %H:%M:%S')
+        current_time_for_db = now.strftime('%Y-%m-%d %H:%M:%S')
+    
     # Логируем используемый часовой пояс для отладки
-    app.logger.info(f"Используется часовой пояс: {TIMEZONE_STR}, время: {current_time_str}")
+    app.logger.info(f"Используется часовой пояс: {TIMEZONE_STR if TIMEZONE_STR else 'локальное время'}, время: {current_time_str}")
     
     # Проверяем, является ли это первым сообщением в сеансе
     with sqlite3.connect(CHAT_DB_PATH) as conn:
@@ -955,11 +1127,9 @@ def send_message():
                 app.logger.info("Используется шаблон image.template")
             
             if not prompt:
-                # Если шаблон не загрузился, используем запасной вариант
-                if message_text.strip():
-                    prompt = f"Текущее время: {current_time_str}. Подпись под изображением: {message_text}"
-                else:
-                    prompt = f"Текущее время: {current_time_str}. Списком перечисли все предметы на изображении. Опиши само изображение и всё, что можно про него рассказать."
+                # Если шаблон не загрузился, возвращаем ошибку
+                app.logger.error("Не удалось загрузить шаблон промпта для изображения")
+                return jsonify({'error': 'Ошибка загрузки шаблона промпта'}), 500
             
             # Отправляем запрос с изображением напрямую в мультимодальную модель
             ollama_messages = [{
@@ -1042,19 +1212,9 @@ def send_message():
         })
         
         if not prompt:
-            # Упрощённый промпт, если шаблон не загрузился
-            prompt = f"""Классифицируй запрос и ответь одной строкой.
-
-Правила:
-1. Если просят время/дату - ответь только числом или днём (например: "10:11" или "Суббота")
-2. Если просят нарисовать/создать изображение - ответь: [-IMAGE-] текст запроса
-3. Если просят показать комнату - ответь: [-CAMERA-] код комнаты (коды: тамбур=tam, прихожая=pri, коридор=kor, спальня=spa, кабинет=kab, детская=det, гостиная=gos, кухня=kuh, балкон=bal)
-4. Для всего остального - ответь: [-REASONING-] текст запроса
-
-Запрос: {message_text}
-Время: {current_time_str}
-
-Ответ (только одна строка, без пояснений):"""
+            # Если шаблон не загрузился, возвращаем ошибку
+            app.logger.error("Не удалось загрузить шаблон base_text.template")
+            return jsonify({'error': 'Ошибка загрузки шаблона промпта'}), 500
         
         app.logger.info(f"Сформирован промпт для маршрутизатора: {prompt}")
         
@@ -1091,178 +1251,106 @@ def send_message():
         if action_type == 'image':
             app.logger.info("Обработка запроса на создание изображения")
             
-            # Формируем промпт из create_image.template
-            create_prompt = format_prompt('create_image.template', {
-                'image_query': processed_text
-            })
-            
-            if not create_prompt:
-                # Упрощённый промпт, если шаблон не загрузился
-                create_prompt = f"""Analyze this request and return a JSON with parameters for image generation.
-Request: {processed_text}
-
-Return ONLY a valid JSON object with these fields:
-- prompt: detailed description for image generation
-- negative_prompt: what to avoid
-- steps: 40
-- width: 512
-- height: 512
-- cfg_scale: 7
-- sampler_name: "DPM++ 2M Karras"
-- batch_size: 1
-- enable_hr: true
-- hr_scale: 2
-- hr_upscaler: "Latent (nearest)"
-- denoising_strength: 0.7
-- hr_second_pass_steps: 25
-
-The response must be ONLY the JSON object, no other text."""
-            
-            app.logger.info(f"Отправка запроса в мультимодальную модель для генерации параметров")
-            
-            # Добавляем системный промпт для мультимодальной модели
-            image_messages = [
-                {
-                    'role': 'system',
-                    'content': 'You are an image generation parameter generator. Always respond with valid JSON only, no explanations.'
-                },
-                {'role': 'user', 'content': create_prompt}
-            ]
-            
-            # Отправляем запрос в модель для генерации параметров изображения
-            image_params_response = call_ollama_chat(
-                image_messages, 
-                model=LLM_MULTIMODAL_MODEL,
-                temperature=LLM_MULTIMODAL_TEMPERATURE,
-                top_p=LLM_MULTIMODAL_TOP_P
-            )
-            
-            app.logger.info(f"Ответ от мультимодальной модели: {image_params_response[:200]}...")
-            
-            # Пытаемся распарсить JSON из ответа
-            try:
-                # Ищем JSON в ответе (между { и })
-                json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', image_params_response, re.DOTALL)
-                if json_match:
-                    json_str = json_match.group()
-                    app.logger.info(f"Найден JSON: {json_str[:200]}...")
-                    prompt_data = json.loads(json_str)
-                    
-                    # Проверяем наличие обязательных полей
-                    if 'prompt' not in prompt_data:
-                        prompt_data['prompt'] = f"masterpiece, best quality, {processed_text}"
-                    if 'negative_prompt' not in prompt_data:
-                        prompt_data['negative_prompt'] = "worst quality, low quality"
-                    
-                    app.logger.info(f"Отправка запроса в Automatic1111")
-                    
-                    # Отправляем запрос в Automatic1111
-                    image_result = call_automatic1111(prompt_data)
-                    
-                    if image_result['success']:
-                        app.logger.info(f"Изображение успешно сгенерировано, размер данных: {len(image_result['image_data'])}")
-                        
-                        # Вычисляем размер файла в байтах из base64
-                        # Каждые 4 символа base64 = 3 байта
-                        file_size_bytes = int((len(image_result['image_data']) * 3) / 4)
-                        
-                        # Генерируем имя файла в формате ГГГГ-ММ-ДД_ЧЧ-ММ-СС.jpg
-                        current_time_for_filename = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-                        generated_filename = f"{current_time_for_filename}.jpg"
-                        
-                        # Формируем текст сообщения (без галочки)
-                        message_text = f"Изображение сгенерировано по запросу: {processed_text}"
-                        
-                        # СОХРАНЯЕМ ИЗОБРАЖЕНИЕ В ЧАТ
-                        save_message(
-                            session_id, 
-                            'assistant', 
-                            message_text,
-                            image_result['image_data'],  # Передаём base64 данные изображения
-                            'image/jpeg',                 # MIME-тип для JPG
-                            generated_filename,            # Имя файла в нужном формате
-                            model_used
-                        )
-                        
-                        # ВОЗВРАЩАЕМ ИЗОБРАЖЕНИЕ В ОТВЕТЕ
-                        return jsonify({
-                            'response': message_text,
-                            'session_id': session_id,
-                            'model_used': model_used,
-                            'model_category': model_category,
-                            'response_time': round(time.time() - start_time, 1),
-                            'assistant_timestamp': current_time_for_db,
-                            'generated_image': image_result['image_data'],
-                            'file_name': generated_filename,
-                            'file_size': file_size_bytes,
-                            'file_type': 'image/jpeg'
-                        })
-                    else:
-                        final_response = f"Ошибка: {image_result['error']}"
+            # Проверяем наличие Automatic1111
+            if not AUTOMATIC1111_URL:
+                app.logger.error("AUTOMATIC1111_URL не настроен в .env файле")
+                final_response = "⚠️ Сервис генерации изображений не настроен. Проверьте AUTOMATIC1111_URL в .env файле."
+            else:
+                # Формируем промпт из create_image.template
+                create_prompt = format_prompt('create_image.template', {
+                    'image_query': processed_text
+                })
+                
+                if not create_prompt:
+                    app.logger.error("Не удалось загрузить шаблон create_image.template")
+                    final_response = "⚠️ Ошибка загрузки шаблона для генерации изображения"
                 else:
-                    app.logger.warning(f"Не удалось найти JSON в ответе")
-                    # Пробуем создать простой промпт вручную
-                    simple_prompt = {
-                        "prompt": f"masterpiece, best quality, ultra-detailed, {processed_text}",
-                        "negative_prompt": "worst quality, low quality, bad anatomy",
-                        "steps": "40",
-                        "width": "512",
-                        "height": "512",
-                        "cfg_scale": "7",
-                        "sampler_name": "DPM++ 2M Karras",
-                        "batch_size": "1",
-                        "enable_hr": "true",
-                        "hr_scale": "2",
-                        "hr_upscaler": "Latent (nearest)",
-                        "denoising_strength": "0.7",
-                        "hr_second_pass_steps": "25"
-                    }
+                    app.logger.info(f"Отправка запроса в мультимодальную модель для генерации параметров")
                     
-                    app.logger.info("Используем автоматически сгенерированный промпт")
-                    image_result = call_automatic1111(simple_prompt)
+                    # Добавляем системный промпт для мультимодальной модели
+                    image_messages = [
+                        {
+                            'role': 'system',
+                            'content': 'You are an image generation parameter generator. Always respond with valid JSON only, no explanations.'
+                        },
+                        {'role': 'user', 'content': create_prompt}
+                    ]
                     
-                    if image_result['success']:
-                        app.logger.info(f"Изображение успешно сгенерировано (авто-промпт), размер данных: {len(image_result['image_data'])}")
-                        
-                        # Вычисляем размер файла в байтах из base64
-                        file_size_bytes = int((len(image_result['image_data']) * 3) / 4)
-                        
-                        # Генерируем имя файла в формате ГГГГ-ММ-ДД_ЧЧ-ММ-СС.jpg
-                        current_time_for_filename = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-                        generated_filename = f"{current_time_for_filename}.jpg"
-                        
-                        # Формируем текст сообщения (без галочки)
-                        message_text = f"Изображение сгенерировано по запросу: {processed_text}"
-                        
-                        # СОХРАНЯЕМ ИЗОБРАЖЕНИЕ В ЧАТ
-                        save_message(
-                            session_id, 
-                            'assistant', 
-                            message_text,
-                            image_result['image_data'],
-                            'image/jpeg',
-                            generated_filename,
-                            model_used
-                        )
-                        
-                        # ВОЗВРАЩАЕМ ИЗОБРАЖЕНИЕ В ОТВЕТЕ
-                        return jsonify({
-                            'response': message_text,
-                            'session_id': session_id,
-                            'model_used': model_used,
-                            'model_category': model_category,
-                            'response_time': round(time.time() - start_time, 1),
-                            'assistant_timestamp': current_time_for_db,
-                            'generated_image': image_result['image_data'],
-                            'file_name': generated_filename,
-                            'file_size': file_size_bytes,
-                            'file_type': 'image/jpeg'
-                        })
-                    else:
-                        final_response = f"Ошибка: {image_result['error']}"
-            except Exception as e:
-                app.logger.error(f"Ошибка при обработке ответа для генерации изображения: {str(e)}")
-                final_response = f"Ошибка при генерации изображения: {str(e)}"
+                    # Отправляем запрос в модель для генерации параметров изображения
+                    image_params_response = call_ollama_chat(
+                        image_messages, 
+                        model=LLM_MULTIMODAL_MODEL,
+                        temperature=LLM_MULTIMODAL_TEMPERATURE,
+                        top_p=LLM_MULTIMODAL_TOP_P
+                    )
+                    
+                    app.logger.info(f"Ответ от мультимодальной модели: {image_params_response[:200]}...")
+                    
+                    # Пытаемся распарсить JSON из ответа
+                    try:
+                        # Ищем JSON в ответе (между { и })
+                        json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', image_params_response, re.DOTALL)
+                        if json_match:
+                            json_str = json_match.group()
+                            app.logger.info(f"Найден JSON: {json_str[:200]}...")
+                            prompt_data = json.loads(json_str)
+                            
+                            # Проверяем наличие обязательных полей
+                            if 'prompt' not in prompt_data:
+                                prompt_data['prompt'] = processed_text
+                            if 'negative_prompt' not in prompt_data:
+                                prompt_data['negative_prompt'] = ""
+                            
+                            app.logger.info(f"Отправка запроса в Automatic1111")
+                            
+                            # Отправляем запрос в Automatic1111
+                            image_result = call_automatic1111(prompt_data)
+                            
+                            if image_result['success']:
+                                app.logger.info(f"Изображение успешно сгенерировано, размер данных: {len(image_result['image_data'])}")
+                                
+                                # Вычисляем размер файла в байтах из base64
+                                file_size_bytes = int((len(image_result['image_data']) * 3) / 4)
+                                
+                                # Генерируем имя файла в формате ГГГГ-ММ-ДД_ЧЧ-ММ-СС.jpg
+                                current_time_for_filename = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+                                generated_filename = f"{current_time_for_filename}.jpg"
+                                
+                                # Формируем текст сообщения (без галочки)
+                                message_text = f"Изображение сгенерировано по запросу: {processed_text}"
+                                
+                                # СОХРАНЯЕМ ИЗОБРАЖЕНИЕ В ЧАТ
+                                save_message(
+                                    session_id, 
+                                    'assistant', 
+                                    message_text,
+                                    image_result['image_data'],  # Передаём base64 данные изображения
+                                    'image/jpeg',                 # MIME-тип для JPG
+                                    generated_filename,            # Имя файла в нужном формате
+                                    model_used
+                                )
+                                
+                                # ВОЗВРАЩАЕМ ИЗОБРАЖЕНИЕ В ОТВЕТЕ
+                                return jsonify({
+                                    'response': message_text,
+                                    'session_id': session_id,
+                                    'model_used': model_used,
+                                    'model_category': model_category,
+                                    'response_time': round(time.time() - start_time, 1),
+                                    'assistant_timestamp': current_time_for_db,
+                                    'generated_image': image_result['image_data'],
+                                    'file_name': generated_filename,
+                                    'file_size': file_size_bytes,
+                                    'file_type': 'image/jpeg'
+                                })
+                            else:
+                                final_response = f"Ошибка: {image_result['error']}"
+                        else:
+                            app.logger.error(f"Не удалось найти JSON в ответе модели")
+                            final_response = "⚠️ Не удалось сгенерировать параметры для создания изображения"
+                    except Exception as e:
+                        app.logger.error(f"Ошибка при обработке ответа для генерации изображения: {str(e)}")
+                        final_response = f"⚠️ Ошибка при генерации изображения: {str(e)}"
             
         elif action_type == 'camera':
             app.logger.info("Обработка запроса к камере")
@@ -1318,20 +1406,21 @@ The response must be ONLY the JSON object, no other text."""
             })
             
             if not reasoning_prompt:
-                reasoning_prompt = processed_text
-            
-            app.logger.info(f"Отправка запроса в reasoning модель")
-            
-            # Отправляем запрос в reasoning модель
-            reasoning_response = call_ollama_chat(
-                [{'role': 'user', 'content': reasoning_prompt}], 
-                model=LLM_REASONING_MODEL,
-                temperature=LLM_REASONING_TEMPERATURE,
-                top_p=LLM_REASONING_TOP_P
-            )
-            
-            final_response = reasoning_response
-            model_used = LLM_REASONING_MODEL
+                app.logger.error("Не удалось загрузить шаблон reasoning.template")
+                final_response = "⚠️ Ошибка загрузки шаблона для сложного запроса"
+            else:
+                app.logger.info(f"Отправка запроса в reasoning модель")
+                
+                # Отправляем запрос в reasoning модель
+                reasoning_response = call_ollama_chat(
+                    [{'role': 'user', 'content': reasoning_prompt}], 
+                    model=LLM_REASONING_MODEL,
+                    temperature=LLM_REASONING_TEMPERATURE,
+                    top_p=LLM_REASONING_TOP_P
+                )
+                
+                final_response = reasoning_response
+                model_used = LLM_REASONING_MODEL
             
         else:  # action_type == 'none'
             app.logger.info("Обычный текстовый ответ")
@@ -1372,6 +1461,9 @@ def clear_history():
         c = conn.cursor()
         c.execute('DELETE FROM messages WHERE session_id = ?', (session_id,))
         current_time = get_current_time_in_timezone_for_db()
+        if not current_time:
+            current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            app.logger.error("Используется локальное время сервера из-за ошибки конфигурации часового пояса")
         c.execute('UPDATE chat_sessions SET title = ?, updated_at = ? WHERE id = ?', ('Новый сеанс', current_time, session_id))
         conn.commit()
     
@@ -1436,7 +1528,7 @@ def favicon():
 def inject_footer():
     """Контекст-процессор для передачи подписи в шаблоны"""
     return {
-        'footer_content': FOOTER_TEXT
+        'footer_content': FOOTER_TEXT if FOOTER_TEXT else ""
     }
 
 if __name__ == '__main__':

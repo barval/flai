@@ -75,6 +75,7 @@
     let defaultModelName = 'qwen3-vl:8b-instruct';
     let sessionsData = {}; // Хранилище данных о сеансах
     let syncInterval = null; // Интервал для синхронизации
+    let newMessageIndicators = {}; // Хранилище индикаторов новых сообщений {sessionId: true}
 
     // -------------------------------
     // Вспомогательные функции
@@ -165,6 +166,45 @@
     }
 
     // -------------------------------
+    // Управление индикаторами новых сообщений
+    // -------------------------------
+    function setNewMessageIndicator(sessionId, show) {
+        if (show) {
+            newMessageIndicators[sessionId] = true;
+        } else {
+            delete newMessageIndicators[sessionId];
+        }
+        updateIndicatorsInDOM();
+    }
+
+    function updateIndicatorsInDOM() {
+        document.querySelectorAll('.session-item').forEach(el => {
+            const sessionId = el.dataset.sessionId;
+            const titleElement = el.querySelector('.session-title');
+            let indicator = el.querySelector('.new-message-indicator');
+            
+            if (newMessageIndicators[sessionId] && sessionId !== currentSessionId) {
+                if (!indicator) {
+                    indicator = document.createElement('span');
+                    indicator.className = 'new-message-indicator';
+                    indicator.textContent = '●';
+                    titleElement.appendChild(indicator);
+                }
+            } else {
+                if (indicator) {
+                    indicator.remove();
+                }
+            }
+        });
+    }
+
+    function clearIndicatorForSession(sessionId) {
+        if (sessionId === currentSessionId) {
+            setNewMessageIndicator(sessionId, false);
+        }
+    }
+
+    // -------------------------------
     // Загрузка списка сеансов с сервера
     // -------------------------------
     function loadSessionsFromServer() {
@@ -172,14 +212,23 @@
             .then(res => res.json())
             .then(sessions => {
                 let updated = false;
+                let titlesChanged = false;
                 
                 // Обновляем данные в хранилище
                 sessions.forEach(s => {
-                    if (!sessionsData[s.id] || sessionsData[s.id].title !== s.title || sessionsData[s.id].updated_at !== s.updated_at) {
+                    if (!sessionsData[s.id]) {
                         sessionsData[s.id] = {
                             title: s.title,
                             updated_at: s.updated_at
                         };
+                        updated = true;
+                    } else if (sessionsData[s.id].title !== s.title) {
+                        sessionsData[s.id].title = s.title;
+                        sessionsData[s.id].updated_at = s.updated_at;
+                        updated = true;
+                        titlesChanged = true;
+                    } else if (sessionsData[s.id].updated_at !== s.updated_at) {
+                        sessionsData[s.id].updated_at = s.updated_at;
                         updated = true;
                     }
                 });
@@ -188,13 +237,14 @@
                 Object.keys(sessionsData).forEach(id => {
                     if (!sessions.find(s => s.id === id)) {
                         delete sessionsData[id];
+                        delete newMessageIndicators[id];
                         updated = true;
                     }
                 });
                 
                 // Если были изменения, обновляем отображение
                 if (updated) {
-                    updateSessionsList(sessions);
+                    updateSessionsList(sessions, titlesChanged);
                 }
                 
                 return sessions;
@@ -205,7 +255,7 @@
     // -------------------------------
     // Обновление списка сеансов в DOM
     // -------------------------------
-    function updateSessionsList(sessions) {
+    function updateSessionsList(sessions, preserveIndicators = true) {
         const sessionsList = document.getElementById('sessions-list');
         const currentActiveId = currentSessionId;
         
@@ -224,12 +274,13 @@
         sessions.forEach(s => {
             const isActive = s.id === currentActiveId ? 'active' : '';
             const dateStr = s.updated_at ? s.updated_at.replace('T', ' ').substring(0, 19) : '';
+            const hasIndicator = newMessageIndicators[s.id] && s.id !== currentActiveId;
             
             html += `
                 <div class="session-item ${isActive}" data-session-id="${s.id}">
                     <div class="session-content">
                         <div class="session-info">
-                            <div class="session-title">${escapeHtml(s.title)}</div>
+                            <div class="session-title">${escapeHtml(s.title)}${hasIndicator ? '<span class="new-message-indicator">●</span>' : ''}</div>
                             <div class="session-date">${dateStr}</div>
                         </div>
                         <button class="delete-session-button" title="Удалить сеанс">🗑️</button>
@@ -259,14 +310,11 @@
                 const sessionId = this.dataset.sessionId;
                 if (sessionId === currentSessionId) return;
                 
+                // Очищаем индикатор для этого сеанса перед переключением
+                setNewMessageIndicator(sessionId, false);
+                
                 document.querySelectorAll('.session-item').forEach(i => i.classList.remove('active'));
                 this.classList.add('active');
-                
-                // Убираем индикатор нового сообщения при активации
-                const indicator = this.querySelector('.new-message-indicator');
-                if (indicator) {
-                    indicator.remove();
-                }
                 
                 switchSession(sessionId);
             });
@@ -442,6 +490,9 @@
                 
                 updateMessageCount();
                 container.scrollTop = container.scrollHeight;
+                
+                // Очищаем индикатор для этого сеанса
+                setNewMessageIndicator(sessionId, false);
             });
     }
 
@@ -599,15 +650,13 @@
                 document.querySelectorAll('.session-item').forEach(el => {
                     if (el.dataset.sessionId === sessionId) {
                         el.classList.add('active');
-                        // Убираем индикатор нового сообщения при активации
-                        const indicator = el.querySelector('.new-message-indicator');
-                        if (indicator) {
-                            indicator.remove();
-                        }
                     } else {
                         el.classList.remove('active');
                     }
                 });
+                
+                // Обновляем индикаторы после переключения
+                updateIndicatorsInDOM();
             });
     }
 
@@ -630,6 +679,9 @@
                     document.getElementById('chat-messages').innerHTML = '';
                     updateMessageCount();
                     defaultModelName = 'qwen3-vl:8b-instruct';
+                    
+                    // Очищаем индикатор для нового сеанса
+                    setNewMessageIndicator(data.id, false);
                 });
             });
     }
@@ -644,12 +696,21 @@
             sessionsData[sessionId].updated_at = new Date().toISOString();
         }
         
-        // Обновляем в DOM
+        // Обновляем в DOM, сохраняя индикатор
         const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
         if (sessionItem) {
             const titleElement = sessionItem.querySelector('.session-title');
             if (titleElement) {
-                titleElement.textContent = newTitle;
+                // Сохраняем текст без HTML
+                titleElement.innerHTML = escapeHtml(newTitle);
+                
+                // Если есть индикатор, добавляем его обратно
+                if (newMessageIndicators[sessionId] && sessionId !== currentSessionId) {
+                    const indicator = document.createElement('span');
+                    indicator.className = 'new-message-indicator';
+                    indicator.textContent = '●';
+                    titleElement.appendChild(indicator);
+                }
             }
             
             const now = new Date();
@@ -663,11 +724,6 @@
             const sessionsList = document.getElementById('sessions-list');
             sessionsList.insertBefore(sessionItem, sessionsList.firstChild);
         }
-        
-        // Немедленно запускаем синхронизацию
-        setTimeout(() => {
-            loadSessionsFromServer();
-        }, 100);
     }
 
     // -------------------------------
@@ -834,15 +890,11 @@
                             // Мы переключились на другой сеанс - показываем индикатор
                             console.log(`Ответ для сеанса ${requestSessionId} получен, но текущий сеанс - ${currentSessionId}`);
                             
-                            const sessionElement = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`);
-                            if (sessionElement && !sessionElement.querySelector('.new-message-indicator')) {
-                                const indicator = document.createElement('span');
-                                indicator.className = 'new-message-indicator';
-                                indicator.textContent = '●';
-                                sessionElement.querySelector('.session-title').appendChild(indicator);
-                            }
+                            // Устанавливаем индикатор, но НЕ очищаем его
+                            setNewMessageIndicator(requestSessionId, true);
                             
                             // Обновляем дату сеанса
+                            const sessionElement = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`);
                             const dateElement = sessionElement?.querySelector('.session-date');
                             if (dateElement) {
                                 const now = new Date();
@@ -875,10 +927,6 @@
                     }
                 } finally {
                     isSending = false;
-                    // Запускаем синхронизацию после отправки
-                    setTimeout(() => {
-                        loadSessionsFromServer();
-                    }, 500);
                 }
             };
             reader.readAsDataURL(tempAttachedFile);
@@ -961,15 +1009,11 @@
                         // Мы переключились на другой сеанс - показываем индикатор
                         console.log(`Ответ для сеанса ${requestSessionId} получен, но текущий сеанс - ${currentSessionId}`);
                         
-                        const sessionElement = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`);
-                        if (sessionElement && !sessionElement.querySelector('.new-message-indicator')) {
-                            const indicator = document.createElement('span');
-                            indicator.className = 'new-message-indicator';
-                            indicator.textContent = '●';
-                            sessionElement.querySelector('.session-title').appendChild(indicator);
-                        }
+                        // Устанавливаем индикатор, но НЕ очищаем его
+                        setNewMessageIndicator(requestSessionId, true);
                         
                         // Обновляем дату сеанса
+                        const sessionElement = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`);
                         const dateElement = sessionElement?.querySelector('.session-date');
                         if (dateElement) {
                             const now = new Date();
@@ -1002,10 +1046,6 @@
                 }
             } finally {
                 isSending = false;
-                // Запускаем синхронизацию после отправки
-                setTimeout(() => {
-                    loadSessionsFromServer();
-                }, 500);
             }
         }
     }
@@ -1021,10 +1061,6 @@
                 updateMessageCount();
                 updateSessionTitle(currentSessionId, 'Новый сеанс');
                 defaultModelName = 'qwen3-vl:8b-instruct';
-                // Запускаем синхронизацию после очистки
-                setTimeout(() => {
-                    loadSessionsFromServer();
-                }, 500);
             });
     }
 
@@ -1038,6 +1074,9 @@
                 pendingRequests[id].processed = true;
             }
         }
+        
+        // Удаляем индикатор
+        delete newMessageIndicators[sessionId];
         
         fetch(`/api/sessions/${sessionId}/delete`, { method: 'POST' })
             .then(res => res.json())
@@ -1070,11 +1109,6 @@
                             }, 50);
                         }
                     }
-                    
-                    // Запускаем синхронизацию после удаления
-                    setTimeout(() => {
-                        loadSessionsFromServer();
-                    }, 500);
                 }
             })
             .catch(err => {

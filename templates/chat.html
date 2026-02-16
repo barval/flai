@@ -1616,7 +1616,7 @@
     }
 
     // -------------------------------
-    // Сохранение чата как HTML - ИСПРАВЛЕННАЯ ВЕРСИЯ (без кнопок копирования)
+    // Сохранение чата как HTML - ИСПРАВЛЕННАЯ ВЕРСИЯ СО ВСТРОЕННЫМИ СТИЛЯМИ
     // -------------------------------
     async function saveChatAsHTML() {
         // Получаем подпись из .env через API
@@ -1705,14 +1705,372 @@
             return;
         }
         
-        // Формируем HTML страницы с импортом стилей
+        // ВСТРОЕННЫЕ СТИЛИ (полная копия из style.css, но без кнопок копирования)
+        const styles = `
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            }
+
+            body {
+                display: flex;
+                flex-direction: column;
+                min-height: 100vh;
+                margin: 0;
+                padding: 0;
+                background-color: #f5f5f5;
+            }
+
+            main {
+                flex: 1;
+                width: 75%;
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px 0;
+            }
+
+            header {
+                background-color: #2c3e50;
+                color: white;
+                padding: 0.5rem 1rem;
+                text-align: center;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+                height: 50px;
+                display: flex;
+                align-items: center;
+                width: 75%;
+                max-width: 1200px;
+                margin: 20px auto 0 auto;
+                border-radius: 8px 8px 0 0;
+            }
+
+            header h1 {
+                font-size: 1.3rem;
+                margin: 0;
+                margin-right: auto;
+                color: white;
+            }
+
+            footer {
+                background-color: #2c3e50;
+                color: white;
+                padding: 0.5rem 1rem;
+                text-align: center;
+                height: 50px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 75%;
+                max-width: 1200px;
+                margin: 0 auto 20px auto;
+                border-radius: 0 0 8px 8px;
+            }
+
+            .footer-content {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                line-height: 1.2;
+            }
+
+            .footer-line1,
+            .footer-line2 {
+                font-size: 0.9rem;
+                color: white;
+            }
+
+            .footer-line2 {
+                opacity: 0.9;
+            }
+
+            .chat-wrapper {
+                width: 100%;
+                background-color: white;
+                border-radius: 12px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                padding: 25px;
+            }
+
+            .chat-header {
+                margin-bottom: 25px;
+                padding-bottom: 15px;
+                border-bottom: 2px solid #3498db;
+            }
+
+            .chat-header h1 {
+                color: #2c3e50;
+                font-size: 1.8em;
+                margin-bottom: 10px;
+            }
+
+            .chat-header p {
+                color: #7f8c8d;
+                font-size: 0.9em;
+                margin: 5px 0;
+            }
+
+            .chat-messages {
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .user-message {
+                background-color: #e6f2ff;
+                padding: 15px 20px;
+                border-radius: 12px;
+                word-wrap: break-word;
+            }
+
+            .assistant-message,
+            .bot-message {
+                background-color: #f8f9fa;
+                padding: 15px 20px;
+                border-radius: 12px;
+                word-wrap: break-word;
+            }
+
+            .message-time {
+                display: block !important;
+                color: #7f8c8d !important;
+                font-size: 0.75rem !important;
+                font-family: monospace !important;
+                margin-bottom: 8px !important;
+            }
+
+            .file-info {
+                display: inline !important;
+                color: #2c3e50 !important;
+                font-size: 0.75rem !important;
+                font-family: monospace !important;
+                background-color: #f0f0f0 !important;
+                padding: 2px 6px !important;
+                border-radius: 12px !important;
+                margin-left: 4px !important;
+                white-space: nowrap !important;
+            }
+
+            .model-response-info {
+                display: inline !important;
+                color: #7f8c8d !important;
+                font-family: monospace !important;
+                font-size: 0.75rem !important;
+                margin-left: 4px !important;
+                white-space: nowrap !important;
+            }
+
+            .message-content {
+                line-height: 1.6;
+                word-wrap: break-word;
+            }
+
+            .message-content h1,
+            .message-content h2,
+            .message-content h3,
+            .message-content h4,
+            .message-content h5,
+            .message-content h6 {
+                margin-top: 1.5em;
+                margin-bottom: 0.5em;
+                font-weight: 600;
+                color: #2c3e50;
+            }
+
+            .message-content h1 { 
+                font-size: 1.8em; 
+                border-bottom: 1px solid #eaecef; 
+                padding-bottom: 0.3em; 
+            }
+
+            .message-content h2 { 
+                font-size: 1.5em; 
+                border-bottom: 1px solid #eaecef; 
+                padding-bottom: 0.3em; 
+            }
+
+            .message-content h3 { font-size: 1.25em; }
+            .message-content h4 { font-size: 1.1em; }
+            .message-content h5 { font-size: 1em; }
+            .message-content h6 { font-size: 0.9em; color: #6a737d; }
+
+            .message-content p {
+                margin-bottom: 1em;
+            }
+
+            .message-content strong {
+                font-weight: 700;
+                color: #2c3e50;
+            }
+
+            .message-content em {
+                font-style: italic;
+                color: #2c3e50;
+            }
+
+            .message-content blockquote {
+                border-left: 4px solid #dfe2e5;
+                padding: 0.5em 1em;
+                color: #6a737d;
+                background-color: #f8f9fa;
+                margin: 1em 0;
+                border-radius: 0 4px 4px 0;
+            }
+
+            .message-content ul,
+            .message-content ol {
+                margin-left: 1.5em;
+                margin-bottom: 1em;
+            }
+
+            .message-content li {
+                margin-bottom: 0.25em;
+            }
+
+            .message-content li > ul,
+            .message-content li > ol {
+                margin-top: 0.25em;
+                margin-bottom: 0.25em;
+            }
+
+            .message-content code {
+                padding: 0.2em 0.4em;
+                margin: 0;
+                font-size: 85%;
+                background-color: rgba(27,31,35,0.05);
+                border-radius: 3px;
+                font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+                color: #24292e;
+            }
+
+            .message-content pre {
+                background-color: #f6f8fa;
+                color: #24292e;
+                border-radius: 6px;
+                padding: 1em;
+                overflow: auto;
+                line-height: 1.45;
+                margin-bottom: 1em;
+                border: 1px solid #e1e4e8;
+            }
+
+            .message-content pre code {
+                background-color: transparent;
+                color: inherit;
+                padding: 0;
+                margin: 0;
+                font-size: 100%;
+                white-space: pre;
+                border: 0;
+            }
+
+            .message-content p code,
+            .message-content li code {
+                background-color: #f0f0f0;
+                color: #2c3e50;
+                padding: 0.2em 0.4em;
+                border-radius: 3px;
+                border: 1px solid #ddd;
+            }
+
+            .message-content table {
+                border-collapse: collapse;
+                width: 100%;
+                margin-bottom: 1em;
+            }
+
+            .message-content table th,
+            .message-content table td {
+                padding: 6px 13px;
+                border: 1px solid #dfe2e5;
+            }
+
+            .message-content table th {
+                font-weight: 600;
+                background-color: #f6f8fa;
+            }
+
+            .attached-image {
+                max-width: 100%;
+                max-height: 400px;
+                border-radius: 8px;
+                margin-top: 15px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+
+            .attached-file {
+                display: inline-flex;
+                align-items: center;
+                gap: 10px;
+                background: #f8f9fa;
+                padding: 10px 15px;
+                border-radius: 6px;
+                border: 1px solid #e0e0e0;
+                margin-top: 10px;
+            }
+
+            .attached-file a {
+                color: #3498db;
+                text-decoration: none;
+            }
+
+            audio {
+                width: 100%;
+                margin-top: 15px;
+            }
+
+            /* Скрываем все элементы управления в сохранённом чате */
+            .save-chat-button,
+            .clear-context-button,
+            .new-session-button,
+            .delete-session-button,
+            #attach-file-button,
+            #send-button,
+            #file-preview-container,
+            .image-modal,
+            .download-link-inline,
+            .sessions-sidebar,
+            .message-input,
+            .context-info-container button,
+            .copy-code-button {
+                display: none !important;
+            }
+
+            @media (max-width: 768px) {
+                main, header, footer {
+                    width: 90%;
+                }
+                
+                .chat-wrapper {
+                    padding: 15px;
+                }
+                
+                .message-content table {
+                    display: block;
+                    overflow-x: auto;
+                }
+            }
+
+            @media print {
+                header, footer {
+                    background-color: #2c3e50 !important;
+                    color: white !important;
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
+                }
+            }
+        `;
+        
+        // Формируем HTML страницы со встроенными стилями
         const html = `<!DOCTYPE html>
     <html lang="ru">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>${escapeHtml(title)} - Сохраненный чат</title>
-        <link rel="stylesheet" href="/static/export.css">
+        <style>${styles}</style>
     </head>
     <body>
         <header>

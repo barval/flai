@@ -161,11 +161,10 @@ AUTOMATIC1111_URL = os.getenv('AUTOMATIC1111_URL')
 if not AUTOMATIC1111_URL:
     app.logger.error("AUTOMATIC1111_URL не найден в .env файле")
 
-# +++ НОВАЯ ПЕРЕМЕННАЯ ДЛЯ МОДЕЛИ Automatic1111 +++
+# Переменная для модели Automatic1111
 AUTOMATIC1111_MODEL = os.getenv('AUTOMATIC1111_MODEL')
 if not AUTOMATIC1111_MODEL:
     app.logger.error("AUTOMATIC1111_MODEL не найден в .env файле. Будет использоваться модель по умолчанию.")
-# ------------------------------------------------
 
 # -------------------------------
 # Настройки для изображений
@@ -384,13 +383,12 @@ def call_automatic1111(prompt_data, model_name=None):
             "hr_second_pass_steps": int(prompt_data.get("hr_second_pass_steps", 25))
         }
         
-        # +++ ДОБАВЛЯЕМ МОДЕЛЬ В PAYLOAD, ЕСЛИ ОНА ПЕРЕДАНА +++
+        # Добавляем модель в payload, если она передана
         if model_name:
             payload["override_settings"] = {
                 "sd_model_checkpoint": model_name
             }
             app.logger.info(f"Используется модель Automatic1111: {model_name}")
-        # ------------------------------------------------
         
         app.logger.info(f"Отправка запроса в Automatic1111: {AUTOMATIC1111_URL}/sdapi/v1/txt2img")
         app.logger.debug(f"Payload: {json.dumps(payload, ensure_ascii=False)[:200]}...")
@@ -1420,9 +1418,8 @@ def send_message():
                             
                             app.logger.info(f"Отправка запроса в Automatic1111")
                             
-                            # +++ ИСПРАВЛЕННЫЙ ВЫЗОВ: ПЕРЕДАЕМ МОДЕЛЬ +++
+                            # Отправляем запрос в Automatic1111 с указанием модели
                             image_result = call_automatic1111(prompt_data, AUTOMATIC1111_MODEL)
-                            # ------------------------------------------------
                             
                             if image_result['success']:
                                 app.logger.info(f"Изображение успешно сгенерировано, размер данных: {len(image_result['image_data'])}")
@@ -1434,8 +1431,8 @@ def send_message():
                                 current_time_for_filename = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
                                 generated_filename = f"{current_time_for_filename}.jpg"
                                 
-                                # Формируем текст сообщения
-                                message_text = f"Изображение сгенерировано по запросу: {processed_text}"
+                                # Формируем текст сообщения с указанием модели Automatic1111
+                                message_text = f"Изображение сгенерировано моделью {AUTOMATIC1111_MODEL} по запросу: {processed_text}"
                                 
                                 # СОХРАНЯЕМ ИЗОБРАЖЕНИЕ В ЧАТ
                                 save_message(
@@ -1445,14 +1442,14 @@ def send_message():
                                     image_result['image_data'],  # Передаём base64 данные изображения
                                     'image/jpeg',                 # MIME-тип для JPG
                                     generated_filename,            # Имя файла в нужном формате
-                                    model_used
+                                    LLM_MULTIMODAL_MODEL          # Указываем мультимодальную модель, которая генерировала параметры
                                 )
                                 
                                 # ВОЗВРАЩАЕМ ИЗОБРАЖЕНИЕ В ОТВЕТЕ
                                 return jsonify({
                                     'response': message_text,
                                     'session_id': session_id,
-                                    'model_used': model_used,
+                                    'model_used': LLM_MULTIMODAL_MODEL,  # Указываем мультимодальную модель, которая генерировала параметры
                                     'model_category': model_category,
                                     'response_time': round(time.time() - start_time, 1),
                                     'assistant_timestamp': current_time_for_db,

@@ -1143,7 +1143,7 @@
     }
 
     // -------------------------------
-    // Сохранение чата как HTML - ОПТИМИЗИРОВАННАЯ ВЕРСИЯ
+    // Сохранение чата как HTML - ИСПРАВЛЕННАЯ ВЕРСИЯ
     // -------------------------------
     async function saveChatAsHTML() {
         // Получаем подпись из .env через API
@@ -1188,17 +1188,31 @@
             const role = msgEl.classList.contains('user-message') ? 'user' : 'assistant';
             const timestamp = msgEl.dataset.timestamp;
             
+            // Получаем временную метку
             const timeElement = msgEl.querySelector('small');
-            let timeText = timeElement ? timeElement.textContent : (timestamp ? formatFullDateTime(timestamp) : '');
-            
-            const contentEl = msgEl.querySelector('.message-content');
-            const fileEl = msgEl.querySelector('.attached-image, .attached-file, audio');
-            
-            let content = '';
-            if (contentEl) {
-                content = contentEl.innerHTML;
+            let timeText = '';
+            if (timeElement) {
+                timeText = timeElement.innerHTML; // БЕРЁМ innerHTML, чтобы сохранить все span-ы
+            } else if (timestamp) {
+                timeText = formatFullDateTime(timestamp);
             }
             
+            // Получаем содержимое сообщения
+            const contentEl = msgEl.querySelector('.message-content');
+            let content = '';
+            if (contentEl) {
+                // БЕРЁМ innerHTML, так как Markdown уже применён
+                content = contentEl.innerHTML;
+            } else {
+                // Если нет .message-content, пробуем получить текст напрямую
+                const textContent = msgEl.childNodes[msgEl.childNodes.length - 1];
+                if (textContent && textContent.nodeType === Node.TEXT_NODE) {
+                    content = escapeHtml(textContent.textContent);
+                }
+            }
+            
+            // Получаем вложения
+            const fileEl = msgEl.querySelector('.attached-image, .attached-file, audio');
             let fileHtml = '';
             if (fileEl) {
                 if (fileEl.tagName === 'IMG') {
@@ -1260,7 +1274,7 @@
                         
                         return `
                         <div class="${roleClass}">
-                            <div class="message-time">${msg.timeText}</div>
+                            <small>${msg.timeText}</small>
                             <div class="message-content">
                                 ${msg.content}
                             </div>

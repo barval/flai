@@ -1,0 +1,15 @@
+project/
+├── app.py (основной файл, инициализация)
+├── modules/
+│   ├── __init__.py
+│   ├── base.py (базовый модуль)
+│   ├── multimodal.py (мультимодальный модуль)
+│   ├── image.py (генерация изображений)
+│   ├── cam.py (видеонаблюдение)
+│   ├── rag.py (заглушка)
+│   └── audio.py (заглушка)
+├── templates/
+├── static/
+├── prompts/
+├── .env
+└── requirements.txt

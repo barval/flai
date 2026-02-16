@@ -740,6 +740,9 @@
             return;
         }
         
+        if (isSending) return;
+        isSending = true;
+        
         // НЕМЕДЛЕННОЕ ОБНОВЛЕНИЕ ЗАГОЛОВКА ДЛЯ ПЕРВОГО СООБЩЕНИЯ
         const messageCount = document.querySelectorAll('.user-message').length;
         if (messageCount === 0) {
@@ -759,9 +762,6 @@
                 }).catch(err => console.error('Ошибка обновления заголовка:', err));
             }
         }
-
-        if (isSending) return;
-        isSending = true;
         
         // ЗАПОМИНАЕМ ID ТЕКУЩЕГО СЕАНСА ДЛЯ ЭТОГО ЗАПРОСА
         const requestSessionId = currentSessionId;
@@ -788,8 +788,6 @@
         let fileType = null;
         let fileName = null;
         let fileSize = null;
-        
-        const messageCount = document.querySelectorAll('.user-message').length;
         
         // СОХРАНЯЕМ КОПИИ ДЛЯ ОТПРАВКИ
         const tempAttachedFile = attachedFile;

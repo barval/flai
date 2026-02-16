@@ -76,9 +76,24 @@ footer {
 .download-link-inline,
 .sessions-sidebar,
 .message-input,
-.context-info-container button,
+.context-info-container button {
+    display: none !important;
+}
+
+/* Скрываем кнопки копирования, но оставляем блоки кода видимыми */
 .copy-code-button {
     display: none !important;
+}
+
+/* Убираем обёртки, чтобы не создавали лишних отступов */
+.code-block-wrapper {
+    margin: 1em 0;
+    position: static !important;
+}
+
+/* Возвращаем pre в нормальное состояние без абсолютного позиционирования */
+.code-block-wrapper pre {
+    margin: 0 !important;
 }
 
 /* Адаптация для мобильных */

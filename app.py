@@ -329,12 +329,18 @@ def format_prompt(template_name, variables):
     """
     template = load_prompt_template(template_name)
     if not template:
+        app.logger.error(f"Шаблон {template_name} не загружен (вернул None)")
         return None
     
     try:
-        return template.format(**variables)
+        app.logger.info(f"Форматирование шаблона {template_name} с переменными: {list(variables.keys())}")
+        result = template.format(**variables)
+        app.logger.info(f"Шаблон {template_name} успешно отформатирован")
+        return result
     except KeyError as e:
         app.logger.error(f"Отсутствует переменная в шаблоне {template_name}: {e}")
+        app.logger.error(f"Доступные переменные: {list(variables.keys())}")
+        app.logger.error(f"Первые 200 символов шаблона: {template[:200]}")
         return None
     except Exception as e:
         app.logger.error(f"Ошибка форматирования шаблона {template_name}: {str(e)}")
@@ -1333,6 +1339,26 @@ def send_message():
                 app.logger.error("AUTOMATIC1111_URL не настроен в .env файле")
                 final_response = "⚠️ Сервис генерации изображений не настроен. Проверьте AUTOMATIC1111_URL в .env файле."
             else:
+                # ОТЛАДОЧНЫЙ КОД
+                app.logger.info(f"Пытаемся загрузить шаблон create_image.template")
+                app.logger.info(f"Проверяем путь: {os.path.join(PROMPTS_DIR, 'create_image.template')}")
+                
+                # Проверим содержимое файла напрямую
+                template_path = os.path.join(PROMPTS_DIR, 'create_image.template')
+                try:
+                    with open(template_path, 'r', encoding='utf-8') as f:
+                        template_content = f.read()
+                        app.logger.info(f"Содержимое шаблона (первые 200 символов): {template_content[:200]}")
+                        app.logger.info(f"Поиск переменных в шаблоне...")
+                        if '{image_query}' in template_content:
+                            app.logger.info("Переменная {image_query} найдена в шаблоне")
+                        else:
+                            app.logger.error("Переменная {image_query} НЕ найдена в шаблоне")
+                        if '{prompt}' in template_content:
+                            app.logger.error("Переменная {prompt} найдена в шаблоне - это проблема!")
+                except Exception as e:
+                    app.logger.error(f"Не удалось прочитать файл шаблона: {str(e)}")
+                
                 # Формируем промпт из create_image.template
                 create_prompt = format_prompt('create_image.template', {
                     'image_query': processed_text
@@ -1521,7 +1547,7 @@ def send_message():
             'response_time': response_time,
             'assistant_timestamp': current_time_for_db
         })
-        
+
 # -------------------------------
 # Очистка истории сеанса
 # -------------------------------

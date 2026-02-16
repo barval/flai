@@ -661,7 +661,7 @@
     }
 
     // -------------------------------
-    // Создание нового сеанса
+    // Создание нового сеанса - ПРОСТОЙ ВАРИАНТ
     // -------------------------------
     function createNewSession() {
         fetch('/api/sessions/new', { method: 'POST' })
@@ -673,14 +673,19 @@
                     updated_at: new Date().toISOString()
                 };
                 
+                // НЕМЕДЛЕННО убираем выделение со всех сеансов
+                document.querySelectorAll('.session-item').forEach(el => {
+                    el.classList.remove('active');
+                });
+                
+                // НЕМЕДЛЕННО устанавливаем новый currentSessionId
+                currentSessionId = data.id;
+                
                 // Перезагружаем список сеансов с сервера
                 loadSessionsFromServer().then(() => {
-                    currentSessionId = data.id;
                     document.getElementById('chat-messages').innerHTML = '';
                     updateMessageCount();
                     defaultModelName = 'qwen3-vl:8b-instruct';
-                    
-                    // Очищаем индикатор для нового сеанса
                     setNewMessageIndicator(data.id, false);
                 });
             });

@@ -957,8 +957,9 @@
         }
     }
 
+
     // -------------------------------
-    // Отправка сообщения (обновленная версия)
+    // Отправка сообщения (исправленная версия)
     // -------------------------------
     async function sendMessage() {
         const input = document.getElementById('message-input');
@@ -1054,6 +1055,7 @@
                 });
                 
                 const data = await response.json();
+                console.log('Ответ от сервера:', data); // Для отладки
                 
                 if (data.status === 'queued') {
                     // Запрос в очереди - показываем информацию
@@ -1086,6 +1088,18 @@
                     
                     // Запускаем периодическую проверку результата
                     startResultPolling(data.request_id);
+                } else if (data.response) {
+                    // Прямой ответ (для обратной совместимости)
+                    displayMessage(
+                        'assistant',
+                        data.response,
+                        data.generated_image,
+                        data.file_type,
+                        data.file_name,
+                        data.assistant_timestamp,
+                        data.response_time,
+                        data.model_used
+                    );
                 }
                 
             } catch (err) {
@@ -1105,8 +1119,9 @@
 
         // Функция для опроса результата
         function startResultPolling(requestId) {
+            console.log('Start polling for request:', requestId);
             let pollCount = 0;
-            const maxPolls = 60; // Максимум 60 попыток (3 минуты при 3-секундном интервале)
+            const maxPolls = 120; // Увеличим до 120 попыток (6 минут при 3-секундном интервале)
             
             const pollInterval = setInterval(async () => {
                 pollCount++;
@@ -1114,36 +1129,77 @@
                 try {
                     const response = await fetch(`/api/queue/result/${requestId}`);
                     const data = await response.json();
+                    console.log('Poll result:', data);
                     
                     if (data.status === 'completed') {
                         clearInterval(pollInterval);
+                        console.log('Request completed, result:', data.result);
+                        
                         // Показываем результат
-                        if (data.result && data.result.response) {
-                            displayMessage(
-                                'assistant',
-                                data.result.response,
-                                data.result.generated_image,
-                                data.result.file_type,
-                                data.result.file_name,
-                                data.result.assistant_timestamp,
-                                null,
-                                data.result.model_used
-                            );
+                        if (data.result) {
+                            if (data.result.response) {
+                                displayMessage(
+                                    'assistant',
+                                    data.result.response,
+                                    data.result.generated_image,
+                                    data.result.file_type,
+                                    data.result.file_name,
+                                    data.result.assistant_timestamp || new Date().toISOString(),
+                                    null,
+                                    data.result.model_used
+                                );
+                            } else if (data.result.error) {
+                                displayMessage(
+                                    'assistant',
+                                    `⚠️ ${data.result.error}`,
+                                    null, null, null,
+                                    new Date().toISOString(),
+                                    null,
+                                    'system'
+                                );
+                            }
                         }
                         refreshRequestsStatus();
+                        
                     } else if (data.status === 'error') {
                         clearInterval(pollInterval);
-                        alert('Ошибка обработки запроса: ' + data.error);
+                        console.error('Request error:', data.error);
+                        alert('Ошибка обработки запроса: ' + (data.error || 'Неизвестная ошибка'));
+                        
+                        displayMessage(
+                            'assistant',
+                            `⚠️ Ошибка: ${data.error || 'Неизвестная ошибка'}`,
+                            null, null, null,
+                            new Date().toISOString(),
+                            null,
+                            'system'
+                        );
                         refreshRequestsStatus();
+                        
+                    } else if (data.status === 'pending') {
+                        console.log('Request still pending...');
                     }
                     
                     if (pollCount >= maxPolls) {
                         clearInterval(pollInterval);
                         console.log('Polling stopped after max attempts');
+                        
+                        // Показываем сообщение о таймауте
+                        displayMessage(
+                            'assistant',
+                            '⚠️ Превышено время ожидания ответа. Проверьте статус запроса в панели "Мои запросы".',
+                            null, null, null,
+                            new Date().toISOString(),
+                            null,
+                            'system'
+                        );
                     }
                     
                 } catch (error) {
                     console.error('Error polling result:', error);
+                    if (pollCount >= maxPolls) {
+                        clearInterval(pollInterval);
+                    }
                 }
             }, 3000); // Проверяем каждые 3 секунды
         }

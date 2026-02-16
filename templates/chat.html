@@ -32,7 +32,39 @@
                 <div id="context-info" class="context-info">Сообщений: 0</div>
                 <button id="save-chat-button" class="save-chat-button" title="Сохранить как HTML">💾</button>
                 <button id="clear-context-button" class="clear-context-button">🗑️</button>
+                <button id="show-status-button" class="status-toggle-button" onclick="toggleRequestsPanel()">📊 Статус</button>
             </div>
+        </div>
+        
+        <!-- Панель состояния запросов -->
+        <div class="requests-status-panel" id="requests-status-panel" style="display: none;">
+            <div class="status-header">
+                <h3>Мои запросы</h3>
+                <button class="refresh-status" onclick="refreshRequestsStatus()">↻</button>
+            </div>
+            
+            <!-- Текущий обрабатываемый запрос -->
+            <div id="processing-request" class="processing-request" style="display: none;">
+                <div class="request-badge processing">
+                    <span class="spinner-small"></span>
+                    <span id="processing-text"></span>
+                </div>
+            </div>
+            
+            <!-- Очередь запросов -->
+            <div id="queued-requests" class="queued-requests" style="display: none;">
+                <h4>В очереди:</h4>
+                <div id="queued-list"></div>
+            </div>
+            
+            <!-- Недавно выполненные -->
+            <div id="recent-completed" class="recent-completed" style="display: none;">
+                <h4>Недавние ответы:</h4>
+                <div id="completed-list"></div>
+            </div>
+            
+            <!-- Системная нагрузка -->
+            <div class="system-load" id="system-load"></div>
         </div>
         
         <div class="chat-messages" id="chat-messages">
@@ -71,11 +103,12 @@
     let currentSessionId = "{{ current_session }}";
     let isSending = false;
     let attachedFile = null;
-    let pendingRequests = {}; // Хранилище для отслеживания запросов по сеансам
+    let pendingRequests = {};
     let defaultModelName = 'qwen3-vl:8b-instruct';
-    let sessionsData = {}; // Хранилище данных о сеансах
-    let syncInterval = null; // Интервал для синхронизации
-    let newMessageIndicators = {}; // Хранилище индикаторов новых сообщений {sessionId: true}
+    let sessionsData = {};
+    let syncInterval = null;
+    let newMessageIndicators = {};
+    let statusRefreshInterval = null;
 
     // -------------------------------
     // Вспомогательные функции
@@ -198,6 +231,29 @@
         });
     }
 
+    function updateSessionWithRequestStatus(sessionId, status) {
+        const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
+        if (!sessionItem) return;
+        
+        // Удаляем старые индикаторы
+        const oldIndicator = sessionItem.querySelector('.request-status-indicator');
+        if (oldIndicator) oldIndicator.remove();
+        
+        if (status === 'processing') {
+            const indicator = document.createElement('span');
+            indicator.className = 'request-status-indicator processing';
+            indicator.innerHTML = '⚡';
+            indicator.title = 'Запрос обрабатывается';
+            sessionItem.querySelector('.session-title').appendChild(indicator);
+        } else if (status === 'queued') {
+            const indicator = document.createElement('span');
+            indicator.className = 'request-status-indicator queued';
+            indicator.innerHTML = '⏳';
+            indicator.title = 'Запрос в очереди';
+            sessionItem.querySelector('.session-title').appendChild(indicator);
+        }
+    }
+
     function clearIndicatorForSession(sessionId) {
         if (sessionId === currentSessionId) {
             setNewMessageIndicator(sessionId, false);
@@ -294,6 +350,9 @@
         
         // Перепривязываем обработчики событий
         attachSessionEventHandlers();
+        
+        // После обновления списка, обновляем статусы запросов
+        refreshRequestsStatus();
     }
 
     // -------------------------------
@@ -661,7 +720,7 @@
     }
 
     // -------------------------------
-    // Создание нового сеанса - ПРОСТОЙ ВАРИАНТ
+    // Создание нового сеанса
     // -------------------------------
     function createNewSession() {
         fetch('/api/sessions/new', { method: 'POST' })
@@ -694,7 +753,6 @@
     // -------------------------------
     // Обновление заголовка сеанса
     // -------------------------------
-    // УЛУЧШЕННАЯ ФУНКЦИЯ updateSessionTitle
     function updateSessionTitle(sessionId, newTitle) {
         // Обновляем в хранилище данных
         if (sessionsData[sessionId]) {
@@ -735,7 +793,172 @@
     }
 
     // -------------------------------
-    // Отправка сообщения - ИСПРАВЛЕННАЯ ВЕРСИЯ
+    // Функции для панели состояния запросов
+    // -------------------------------
+    function initRequestsStatusPanel() {
+        // Показываем панель
+        document.getElementById('requests-status-panel').style.display = 'block';
+        
+        // Запускаем периодическое обновление (каждые 3 секунды)
+        if (statusRefreshInterval) {
+            clearInterval(statusRefreshInterval);
+        }
+        statusRefreshInterval = setInterval(refreshRequestsStatus, 3000);
+        
+        // Первое обновление
+        refreshRequestsStatus();
+    }
+
+    function toggleRequestsPanel() {
+        const panel = document.getElementById('requests-status-panel');
+        if (panel.style.display === 'none') {
+            initRequestsStatusPanel();
+        } else {
+            panel.style.display = 'none';
+            if (statusRefreshInterval) {
+                clearInterval(statusRefreshInterval);
+                statusRefreshInterval = null;
+            }
+        }
+    }
+
+    async function refreshRequestsStatus() {
+        try {
+            const response = await fetch('/api/queue/status');
+            const status = await response.json();
+            
+            updateProcessingRequest(status.processing);
+            updateQueuedRequests(status.queued);
+            updateRecentCompleted(status.recent_completed);
+            updateSystemLoad(status.system);
+            
+            // Обновляем индикаторы в сеансах
+            if (status.processing) {
+                updateSessionWithRequestStatus(status.processing.session_id, 'processing');
+            }
+            
+            status.queued.forEach(req => {
+                updateSessionWithRequestStatus(req.session_id, 'queued');
+            });
+            
+        } catch (error) {
+            console.error('Ошибка обновления статуса:', error);
+        }
+    }
+
+    function updateProcessingRequest(processing) {
+        const container = document.getElementById('processing-request');
+        const textEl = document.getElementById('processing-text');
+        
+        if (processing) {
+            container.style.display = 'block';
+            textEl.innerHTML = `${processing.type_icon} ${processing.session_title}: обрабатывается...`;
+        } else {
+            container.style.display = 'none';
+        }
+    }
+
+    function updateQueuedRequests(queued) {
+        const container = document.getElementById('queued-requests');
+        const listEl = document.getElementById('queued-list');
+        
+        if (queued.length > 0) {
+            container.style.display = 'block';
+            
+            let html = '';
+            queued.forEach(req => {
+                const pos = req.position_info;
+                const waitMinutes = Math.floor(pos.estimated_seconds / 60);
+                const waitSeconds = Math.round(pos.estimated_seconds % 60);
+                const waitText = waitMinutes > 0 
+                    ? `${waitMinutes} мин ${waitSeconds} сек`
+                    : `${waitSeconds} сек`;
+                
+                html += `
+                    <div class="queue-item" data-request-id="${req.id}">
+                        <span class="queue-position">#${pos.position}</span>
+                        <span class="request-icon">${req.type_icon}</span>
+                        <span class="request-title" title="${req.session_title}">
+                            ${req.session_title.substring(0, 20)}...
+                        </span>
+                        <span class="wait-time">⏱️ ~${waitText}</span>
+                        <span class="cancel-request" onclick="cancelRequest('${req.id}')">✕</span>
+                    </div>
+                `;
+            });
+            
+            listEl.innerHTML = html;
+        } else {
+            container.style.display = 'none';
+        }
+    }
+
+    function updateRecentCompleted(completed) {
+        const container = document.getElementById('recent-completed');
+        const listEl = document.getElementById('completed-list');
+        
+        if (completed.length > 0) {
+            container.style.display = 'block';
+            
+            let html = '';
+            completed.forEach(req => {
+                html += `
+                    <div class="recent-item">
+                        <span>✅</span>
+                        <span class="request-title" title="${req.session_title}">
+                            ${req.session_title.substring(0, 15)}...
+                        </span>
+                        <span class="completed-time">${req.completed_at}</span>
+                        <span class="duration">(${req.duration}с)</span>
+                    </div>
+                `;
+            });
+            
+            listEl.innerHTML = html;
+        } else {
+            container.style.display = 'none';
+        }
+    }
+
+    function updateSystemLoad(system) {
+        const container = document.getElementById('system-load');
+        if (!system) return;
+        
+        const loadPercent = Math.min(100, (system.total_queued / 10) * 100);
+        const loadClass = system.current_load === 'high' ? 'high' : '';
+        
+        container.innerHTML = `
+            <div class="system-load-indicator">
+                <span>📊 Нагрузка:</span>
+                <div class="load-bar">
+                    <div class="load-fill ${loadClass}" style="width: ${loadPercent}%"></div>
+                </div>
+                <span>${system.total_queued} в очереди</span>
+            </div>
+        `;
+    }
+
+    async function cancelRequest(requestId) {
+        if (!confirm('Отменить этот запрос?')) return;
+        
+        try {
+            const response = await fetch(`/api/queue/cancel/${requestId}`, {
+                method: 'POST'
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                refreshRequestsStatus();
+            } else {
+                alert('Не удалось отменить запрос (возможно, он уже обрабатывается)');
+            }
+        } catch (error) {
+            console.error('Ошибка отмены:', error);
+        }
+    }
+
+    // -------------------------------
+    // Отправка сообщения (обновленная версия)
     // -------------------------------
     async function sendMessage() {
         const input = document.getElementById('message-input');
@@ -747,6 +970,11 @@
         
         if (isSending) return;
         isSending = true;
+        
+        // Блокируем кнопку
+        const sendButton = document.getElementById('send-button');
+        sendButton.disabled = true;
+        sendButton.innerHTML = '⏳ Отправка...';
         
         // НЕМЕДЛЕННОЕ ОБНОВЛЕНИЕ ЗАГОЛОВКА ДЛЯ ПЕРВОГО СООБЩЕНИЯ
         const messageCount = document.querySelectorAll('.user-message').length;
@@ -767,19 +995,6 @@
                 }).catch(err => console.error('Ошибка обновления заголовка:', err));
             }
         }
-        
-        // ЗАПОМИНАЕМ ID ТЕКУЩЕГО СЕАНСА ДЛЯ ЭТОГО ЗАПРОСА
-        const requestSessionId = currentSessionId;
-        
-        // Генерируем уникальный ID запроса
-        const requestId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-        
-        // Сохраняем запрос в хранилище
-        pendingRequests[requestId] = {
-            sessionId: requestSessionId,
-            timestamp: Date.now(),
-            processed: false
-        };
         
         const now = new Date();
         const timestamp = now.toISOString();
@@ -825,6 +1040,58 @@
             document.getElementById('file-input').value = '';
         };
         
+        // Функция для отправки на сервер
+        const sendToServer = async (fileDataForSend, fileTypeForSend, fileNameForSend) => {
+            const formData = new FormData();
+            formData.append('message', tempText);
+            if (tempAttachedFile) {
+                formData.append('file', tempAttachedFile);
+            }
+            
+            try {
+                const response = await fetch('/send_message', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'queued') {
+                    // Запрос в очереди - показываем информацию
+                    const waitMinutes = Math.floor(data.estimated_wait / 60);
+                    const waitSeconds = Math.round(data.estimated_wait % 60);
+                    const waitText = waitMinutes > 0 
+                        ? `${waitMinutes} мин ${waitSeconds} сек`
+                        : `${waitSeconds} сек`;
+                    
+                    // Показываем уведомление
+                    alert(`✅ Запрос поставлен в очередь (позиция ${data.position}, ожидание ~${waitText})`);
+                    
+                    // Обновляем панель статусов
+                    refreshRequestsStatus();
+                    
+                    // Показываем панель, если скрыта
+                    const panel = document.getElementById('requests-status-panel');
+                    if (panel.style.display === 'none') {
+                        initRequestsStatusPanel();
+                    }
+                }
+                
+            } catch (err) {
+                alert('Ошибка: ' + err.message);
+                console.error('Send message error:', err);
+                const lastMessage = document.querySelector('.user-message:last-child');
+                if (lastMessage) {
+                    lastMessage.style.borderLeft = '3px solid #e74c3c';
+                }
+            } finally {
+                // Разблокируем кнопку
+                sendButton.disabled = false;
+                sendButton.innerHTML = 'Отправить';
+                isSending = false;
+            }
+        };
+        
         // Сначала отображаем сообщение пользователя
         if (tempAttachedFile) {
             // Для файлов нужно дождаться чтения
@@ -839,121 +1106,7 @@
                 displayUserMessage(fileData, fileType, fileName);
                 
                 // Отправляем на сервер
-                const formData = new FormData();
-                formData.append('message', tempText);
-                if (tempAttachedFile) {
-                    formData.append('file', tempAttachedFile);
-                }
-                
-                try {
-                    const response = await fetch('/send_message', {
-                        method: 'POST',
-                        body: formData
-                    });
-                    
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    
-                    // Находим запрос по ID сеанса (для обратной совместимости)
-                    let foundRequest = null;
-                    for (let [id, req] of Object.entries(pendingRequests)) {
-                        if (req.sessionId === requestSessionId && !req.processed) {
-                            foundRequest = {id, ...req};
-                            break;
-                        }
-                    }
-                    
-                    if (foundRequest) {
-                        pendingRequests[foundRequest.id].processed = true;
-                    }
-                    
-                    // Проверяем существование сеанса
-                    const sessionStillExists = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`) !== null;
-                    
-                    if (sessionStillExists) {
-                        // Обновляем данные сеанса в хранилище
-                        if (data.session_title) {
-                            updateSessionTitle(requestSessionId, data.session_title);
-                        }
-                        
-                        if (currentSessionId === requestSessionId) {
-                            // Мы всё ещё в том же сеансе - показываем ответ
-                            if (data.response) {
-                                const assistantTimestamp = data.assistant_timestamp || new Date().toISOString();
-                                const modelName = data.model_used || defaultModelName || 'qwen3-vl:8b-instruct';
-                                
-                                if (data.generated_image) {
-                                    console.log('Получено изображение, размер:', data.generated_image.length);
-                                    console.log('Имя файла:', data.file_name, 'Размер:', data.file_size);
-                                    
-                                    displayMessage(
-                                        'assistant',
-                                        data.response,
-                                        data.generated_image,
-                                        data.file_type || 'image/jpeg',
-                                        data.file_name || 'generated_image.jpg',
-                                        assistantTimestamp,
-                                        data.response_time || 0,
-                                        modelName
-                                    );
-                                } else {
-                                    displayMessage(
-                                        'assistant',
-                                        data.response,
-                                        null,
-                                        null,
-                                        null,
-                                        assistantTimestamp,
-                                        data.response_time || 0,
-                                        modelName
-                                    );
-                                }
-                            }
-                        } else {
-                            // Мы переключились на другой сеанс - показываем индикатор
-                            console.log(`Ответ для сеанса ${requestSessionId} получен, но текущий сеанс - ${currentSessionId}`);
-                            
-                            // Устанавливаем индикатор, но НЕ очищаем его
-                            setNewMessageIndicator(requestSessionId, true);
-                            
-                            // Обновляем дату сеанса
-                            const sessionElement = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`);
-                            const dateElement = sessionElement?.querySelector('.session-date');
-                            if (dateElement) {
-                                const now = new Date();
-                                dateElement.textContent = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-                            }
-                        }
-                    } else {
-                        console.log(`Сеанс ${requestSessionId} был удалён, ответ проигнорирован`);
-                    }
-                    
-                } catch (err) {
-                    // Помечаем запрос как обработанный (с ошибкой)
-                    for (let [id, req] of Object.entries(pendingRequests)) {
-                        if (req.sessionId === requestSessionId && !req.processed) {
-                            pendingRequests[id].processed = true;
-                            break;
-                        }
-                    }
-                    
-                    // Показываем ошибку только если мы всё ещё в том же сеансе
-                    if (currentSessionId === requestSessionId) {
-                        alert('Ошибка: ' + err.message);
-                        console.error('Send message error:', err);
-                        const lastMessage = document.querySelector('.user-message:last-child');
-                        if (lastMessage) {
-                            lastMessage.style.borderLeft = '3px solid #e74c3c';
-                        }
-                    } else {
-                        console.log(`Ошибка в сеансе ${requestSessionId}, но текущий сеанс - ${currentSessionId}:`, err);
-                    }
-                } finally {
-                    isSending = false;
-                }
+                await sendToServer();
             };
             reader.readAsDataURL(tempAttachedFile);
         } else {
@@ -961,118 +1114,7 @@
             displayUserMessage(null, null, null);
             
             // Отправляем на сервер
-            const formData = new FormData();
-            formData.append('message', tempText);
-            
-            try {
-                const response = await fetch('/send_message', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                
-                // Находим запрос по ID сеанса (для обратной совместимости)
-                let foundRequest = null;
-                for (let [id, req] of Object.entries(pendingRequests)) {
-                    if (req.sessionId === requestSessionId && !req.processed) {
-                        foundRequest = {id, ...req};
-                        break;
-                    }
-                }
-                
-                if (foundRequest) {
-                    pendingRequests[foundRequest.id].processed = true;
-                }
-                
-                // Проверяем существование сеанса
-                const sessionStillExists = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`) !== null;
-                
-                if (sessionStillExists) {
-                    // Обновляем данные сеанса в хранилище
-                    if (data.session_title) {
-                        updateSessionTitle(requestSessionId, data.session_title);
-                    }
-                    
-                    if (currentSessionId === requestSessionId) {
-                        // Мы всё ещё в том же сеансе - показываем ответ
-                        if (data.response) {
-                            const assistantTimestamp = data.assistant_timestamp || new Date().toISOString();
-                            const modelName = data.model_used || defaultModelName || 'qwen3-vl:8b-instruct';
-                            
-                            if (data.generated_image) {
-                                console.log('Получено изображение, размер:', data.generated_image.length);
-                                console.log('Имя файла:', data.file_name, 'Размер:', data.file_size);
-                                
-                                displayMessage(
-                                    'assistant',
-                                    data.response,
-                                    data.generated_image,
-                                    data.file_type || 'image/jpeg',
-                                    data.file_name || 'generated_image.jpg',
-                                    assistantTimestamp,
-                                    data.response_time || 0,
-                                    modelName
-                                );
-                            } else {
-                                displayMessage(
-                                    'assistant',
-                                    data.response,
-                                    null,
-                                    null,
-                                    null,
-                                    assistantTimestamp,
-                                    data.response_time || 0,
-                                    modelName
-                                );
-                            }
-                        }
-                    } else {
-                        // Мы переключились на другой сеанс - показываем индикатор
-                        console.log(`Ответ для сеанса ${requestSessionId} получен, но текущий сеанс - ${currentSessionId}`);
-                        
-                        // Устанавливаем индикатор, но НЕ очищаем его
-                        setNewMessageIndicator(requestSessionId, true);
-                        
-                        // Обновляем дату сеанса
-                        const sessionElement = document.querySelector(`.session-item[data-session-id="${requestSessionId}"]`);
-                        const dateElement = sessionElement?.querySelector('.session-date');
-                        if (dateElement) {
-                            const now = new Date();
-                            dateElement.textContent = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-                        }
-                    }
-                } else {
-                    console.log(`Сеанс ${requestSessionId} был удалён, ответ проигнорирован`);
-                }
-                
-            } catch (err) {
-                // Помечаем запрос как обработанный (с ошибкой)
-                for (let [id, req] of Object.entries(pendingRequests)) {
-                    if (req.sessionId === requestSessionId && !req.processed) {
-                        pendingRequests[id].processed = true;
-                        break;
-                    }
-                }
-                
-                // Показываем ошибку только если мы всё ещё в том же сеансе
-                if (currentSessionId === requestSessionId) {
-                    alert('Ошибка: ' + err.message);
-                    console.error('Send message error:', err);
-                    const lastMessage = document.querySelector('.user-message:last-child');
-                    if (lastMessage) {
-                        lastMessage.style.borderLeft = '3px solid #e74c3c';
-                    }
-                } else {
-                    console.log(`Ошибка в сеансе ${requestSessionId}, но текущий сеанс - ${currentSessionId}:`, err);
-                }
-            } finally {
-                isSending = false;
-            }
+            await sendToServer();
         }
     }
 
@@ -1143,7 +1185,7 @@
     }
 
     // -------------------------------
-    // Сохранение чата как HTML - ИСПРАВЛЕННАЯ ВЕРСИЯ СО ВСТРОЕННЫМИ СТИЛЯМИ
+    // Сохранение чата как HTML
     // -------------------------------
     async function saveChatAsHTML() {
         // Получаем подпись из .env через API
@@ -1533,494 +1575,6 @@
                 margin-top: 15px;
             }
 
-            @media (max-width: 768px) {
-                main, header, footer {
-                    width: 90%;
-                }
-                
-                .chat-wrapper {
-                    padding: 15px;
-                }
-                
-                .message-content table {
-                    display: block;
-                    overflow-x: auto;
-                }
-            }
-        `;
-        
-        // Формируем HTML страницы со встроенными стилями
-        const html = `<!DOCTYPE html>
-    <html lang="ru">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>${escapeHtml(title)} - Сохраненный чат</title>
-        <style>${styles}</style>
-    </head>
-    <body>
-        <header>
-            <h1>ИИ Локальный</h1>
-        </header>
-        
-        <main>
-            <div class="chat-wrapper">
-                <div class="chat-header">
-                    <h1>${escapeHtml(title)}</h1>
-                    <p>📅 Сохранено: ${now.toLocaleString('ru-RU', { 
-                        day: '2-digit', 
-                        month: '2-digit', 
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit'
-                    })}</p>
-                    <p>💬 Всего сообщений: ${messages.length}</p>
-                </div>
-                
-                <div class="chat-messages">
-                    ${messages.map(msg => {
-                        const roleClass = msg.role === 'user' ? 'user-message' : 'assistant-message';
-                        
-                        return `
-                        <div class="${roleClass}">
-                            <small class="message-time">${msg.timeHtml}</small>
-                            <div class="message-content">
-                                ${msg.contentHtml}
-                            </div>
-                            ${msg.fileHtml}
-                        </div>
-                        `;
-                    }).join('')}
-                </div>
-            </div>
-        </main>
-        
-        <footer>
-            <div class="footer-content">
-                <div class="footer-line1">${escapeHtml(footerLine1)}</div>
-                ${footerLine2 ? `<div class="footer-line2">${escapeHtml(footerLine2)}</div>` : ''}
-            </div>
-        </footer>
-    </body>
-    </html>`;
-        
-        // Создаем и скачиваем файл
-        const blob = new Blob([html], {type: 'text/html;charset=utf-8'});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `chat_${timestamp}.html`;
-        a.click();
-        URL.revokeObjectURL(url);
-    }
-
-    // -------------------------------
-    // Сохранение чата как HTML - ИСПРАВЛЕННАЯ ВЕРСИЯ СО ВСТРОЕННЫМИ СТИЛЯМИ
-    // -------------------------------
-    async function saveChatAsHTML() {
-        // Получаем подпись из .env через API
-        let footerText = "";
-        try {
-            const response = await fetch('/api/footer-text');
-            if (response.ok) {
-                footerText = await response.text();
-            } else {
-                console.error('Не удалось получить подпись футера:', response.status);
-                footerText = "Подпись не настроена";
-            }
-        } catch (error) {
-            console.error('Ошибка получения подписи:', error);
-            footerText = "Ошибка загрузки подписи";
-        }
-        
-        // Проверяем, есть ли активный сеанс
-        const activeSession = document.querySelector('.session-item.active');
-        if (!activeSession) {
-            alert('Нет активного сеанса для сохранения');
-            return;
-        }
-        
-        const title = activeSession.querySelector('.session-title')?.textContent || 'Чат';
-        const now = new Date();
-        const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-        
-        // Разбиваем подпись на две части для футера
-        let footerLine1 = footerText;
-        let footerLine2 = '';
-        
-        if (footerText.includes('(с)')) {
-            const parts = footerText.split('(с)', 1);
-            footerLine1 = parts[0].trim();
-            footerLine2 = '(с)' + footerText.split('(с)')[1].trim();
-        }
-        
-        // Собираем все сообщения
-        const messages = [];
-        document.querySelectorAll('.user-message, .assistant-message, .bot-message').forEach(msgEl => {
-            const role = msgEl.classList.contains('user-message') ? 'user' : 'assistant';
-            const timestamp = msgEl.dataset.timestamp;
-            
-            // Получаем временную метку
-            const timeElement = msgEl.querySelector('small');
-            let timeHtml = '';
-            if (timeElement) {
-                timeHtml = timeElement.innerHTML;
-            } else if (timestamp) {
-                timeHtml = formatFullDateTime(timestamp);
-            }
-            
-            // Получаем содержимое сообщения
-            const contentEl = msgEl.querySelector('.message-content');
-            let contentHtml = '';
-            if (contentEl) {
-                contentHtml = contentEl.innerHTML;
-            }
-            
-            // Получаем вложения
-            const fileEl = msgEl.querySelector('.attached-image, .attached-file, audio');
-            let fileHtml = '';
-            if (fileEl) {
-                if (fileEl.tagName === 'IMG') {
-                    fileHtml = fileEl.outerHTML;
-                } else if (fileEl.tagName === 'AUDIO') {
-                    fileHtml = fileEl.outerHTML;
-                } else if (fileEl.classList.contains('attached-file')) {
-                    fileHtml = fileEl.outerHTML;
-                }
-            }
-            
-            messages.push({
-                role,
-                timestamp,
-                timeHtml,
-                contentHtml,
-                fileHtml
-            });
-        });
-        
-        // Проверяем, есть ли сообщения для сохранения
-        if (messages.length === 0) {
-            alert('Нет сообщений для сохранения');
-            return;
-        }
-        
-        // ВСТРОЕННЫЕ СТИЛИ (полная копия из style.css, но без кнопок копирования)
-        const styles = `
-            * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            }
-
-            body {
-                display: flex;
-                flex-direction: column;
-                min-height: 100vh;
-                margin: 0;
-                padding: 0;
-                background-color: #f5f5f5;
-            }
-
-            main {
-                flex: 1;
-                width: 75%;
-                max-width: 1200px;
-                margin: 0 auto;
-                padding: 20px 0;
-            }
-
-            header {
-                background-color: #2c3e50;
-                color: white;
-                padding: 0.5rem 1rem;
-                text-align: center;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-                height: 50px;
-                display: flex;
-                align-items: center;
-                width: 75%;
-                max-width: 1200px;
-                margin: 20px auto 0 auto;
-                border-radius: 8px 8px 0 0;
-            }
-
-            header h1 {
-                font-size: 1.3rem;
-                margin: 0;
-                margin-right: auto;
-                color: white;
-            }
-
-            footer {
-                background-color: #2c3e50;
-                color: white;
-                padding: 0.5rem 1rem;
-                text-align: center;
-                height: 50px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                width: 75%;
-                max-width: 1200px;
-                margin: 0 auto 20px auto;
-                border-radius: 0 0 8px 8px;
-            }
-
-            .footer-content {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                line-height: 1.2;
-            }
-
-            .footer-line1,
-            .footer-line2 {
-                font-size: 0.9rem;
-                color: white;
-            }
-
-            .footer-line2 {
-                opacity: 0.9;
-            }
-
-            .chat-wrapper {
-                width: 100%;
-                background-color: white;
-                border-radius: 12px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                padding: 25px;
-            }
-
-            .chat-header {
-                margin-bottom: 25px;
-                padding-bottom: 15px;
-                border-bottom: 2px solid #3498db;
-            }
-
-            .chat-header h1 {
-                color: #2c3e50;
-                font-size: 1.8em;
-                margin-bottom: 10px;
-            }
-
-            .chat-header p {
-                color: #7f8c8d;
-                font-size: 0.9em;
-                margin: 5px 0;
-            }
-
-            .chat-messages {
-                display: flex;
-                flex-direction: column;
-                gap: 20px;
-            }
-
-            .user-message {
-                background-color: #e6f2ff;
-                padding: 15px 20px;
-                border-radius: 12px;
-                word-wrap: break-word;
-            }
-
-            .assistant-message,
-            .bot-message {
-                background-color: #f8f9fa;
-                padding: 15px 20px;
-                border-radius: 12px;
-                word-wrap: break-word;
-            }
-
-            .message-time {
-                display: block !important;
-                color: #7f8c8d !important;
-                font-size: 0.75rem !important;
-                font-family: monospace !important;
-                margin-bottom: 8px !important;
-            }
-
-            .file-info {
-                display: inline !important;
-                color: #2c3e50 !important;
-                font-size: 0.75rem !important;
-                font-family: monospace !important;
-                background-color: #f0f0f0 !important;
-                padding: 2px 6px !important;
-                border-radius: 12px !important;
-                margin-left: 4px !important;
-                white-space: nowrap !important;
-            }
-
-            .model-response-info {
-                display: inline !important;
-                color: #7f8c8d !important;
-                font-family: monospace !important;
-                font-size: 0.75rem !important;
-                margin-left: 4px !important;
-                white-space: nowrap !important;
-            }
-
-            .message-content {
-                line-height: 1.6;
-                word-wrap: break-word;
-            }
-
-            .message-content h1,
-            .message-content h2,
-            .message-content h3,
-            .message-content h4,
-            .message-content h5,
-            .message-content h6 {
-                margin-top: 1.5em;
-                margin-bottom: 0.5em;
-                font-weight: 600;
-                color: #2c3e50;
-            }
-
-            .message-content h1 { 
-                font-size: 1.8em; 
-                border-bottom: 1px solid #eaecef; 
-                padding-bottom: 0.3em; 
-            }
-
-            .message-content h2 { 
-                font-size: 1.5em; 
-                border-bottom: 1px solid #eaecef; 
-                padding-bottom: 0.3em; 
-            }
-
-            .message-content h3 { font-size: 1.25em; }
-            .message-content h4 { font-size: 1.1em; }
-            .message-content h5 { font-size: 1em; }
-            .message-content h6 { font-size: 0.9em; color: #6a737d; }
-
-            .message-content p {
-                margin-bottom: 1em;
-            }
-
-            .message-content strong {
-                font-weight: 700;
-                color: #2c3e50;
-            }
-
-            .message-content em {
-                font-style: italic;
-                color: #2c3e50;
-            }
-
-            .message-content blockquote {
-                border-left: 4px solid #dfe2e5;
-                padding: 0.5em 1em;
-                color: #6a737d;
-                background-color: #f8f9fa;
-                margin: 1em 0;
-                border-radius: 0 4px 4px 0;
-            }
-
-            .message-content ul,
-            .message-content ol {
-                margin-left: 1.5em;
-                margin-bottom: 1em;
-            }
-
-            .message-content li {
-                margin-bottom: 0.25em;
-            }
-
-            .message-content li > ul,
-            .message-content li > ol {
-                margin-top: 0.25em;
-                margin-bottom: 0.25em;
-            }
-
-            .message-content code {
-                padding: 0.2em 0.4em;
-                margin: 0;
-                font-size: 85%;
-                background-color: rgba(27,31,35,0.05);
-                border-radius: 3px;
-                font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
-                color: #24292e;
-            }
-
-            .message-content pre {
-                background-color: #f6f8fa;
-                color: #24292e;
-                border-radius: 6px;
-                padding: 1em;
-                overflow: auto;
-                line-height: 1.45;
-                margin-bottom: 1em;
-                border: 1px solid #e1e4e8;
-            }
-
-            .message-content pre code {
-                background-color: transparent;
-                color: inherit;
-                padding: 0;
-                margin: 0;
-                font-size: 100%;
-                white-space: pre;
-                border: 0;
-            }
-
-            .message-content p code,
-            .message-content li code {
-                background-color: #f0f0f0;
-                color: #2c3e50;
-                padding: 0.2em 0.4em;
-                border-radius: 3px;
-                border: 1px solid #ddd;
-            }
-
-            .message-content table {
-                border-collapse: collapse;
-                width: 100%;
-                margin-bottom: 1em;
-            }
-
-            .message-content table th,
-            .message-content table td {
-                padding: 6px 13px;
-                border: 1px solid #dfe2e5;
-            }
-
-            .message-content table th {
-                font-weight: 600;
-                background-color: #f6f8fa;
-            }
-
-            .attached-image {
-                max-width: 100%;
-                max-height: 400px;
-                border-radius: 8px;
-                margin-top: 15px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            }
-
-            .attached-file {
-                display: inline-flex;
-                align-items: center;
-                gap: 10px;
-                background: #f8f9fa;
-                padding: 10px 15px;
-                border-radius: 6px;
-                border: 1px solid #e0e0e0;
-                margin-top: 10px;
-            }
-
-            .attached-file a {
-                color: #3498db;
-                text-decoration: none;
-            }
-
-            audio {
-                width: 100%;
-                margin-top: 15px;
-            }
-
             /* Скрываем все элементы управления в сохранённом чате */
             .save-chat-button,
             .clear-context-button,
@@ -2129,22 +1683,13 @@
         URL.revokeObjectURL(url);
     }
 
-	// -------------------------------
-    // ФУНКЦИИ ДЛЯ КОПИРОВАНИЯ КОДА
-    // -------------------------------
-
-    /**
-     * Копирует текст в буфер обмена
-     * @param {string} text - Текст для копирования
-     * @returns {Promise<boolean>} - Успешно ли скопировано
-     */
+    // Функции для копирования кода (оставляем без изменений)
     async function copyToClipboard(text) {
         try {
             await navigator.clipboard.writeText(text);
             return true;
         } catch (err) {
             console.error('Ошибка копирования через clipboard API:', err);
-            
             try {
                 const textarea = document.createElement('textarea');
                 textarea.value = text;
@@ -2162,31 +1707,21 @@
         }
     }
 
-    /**
-     * Обработчик клика по кнопке копирования
-     * @param {HTMLElement} button - Кнопка копирования
-     * @param {HTMLElement} codeElement - Элемент с кодом
-     */
     async function handleCopyClick(button, codeElement) {
         const code = codeElement.textContent || codeElement.innerText;
-        
-        // Сохраняем исходное состояние
         const originalHTML = button.innerHTML;
         const originalClass = button.className;
         
-        // Показываем процесс копирования
         button.innerHTML = '⏳';
         button.disabled = true;
         
         const success = await copyToClipboard(code);
         
         if (success) {
-            // Успешное копирование
             button.innerHTML = '✓';
             button.className = originalClass + ' copied';
             button.title = 'Скопировано!';
             
-            // Возвращаем исходный вид через 2 секунды
             setTimeout(() => {
                 button.innerHTML = '📋';
                 button.className = originalClass.replace(' copied', '');
@@ -2194,7 +1729,6 @@
                 button.disabled = false;
             }, 2000);
         } else {
-            // Ошибка копирования
             button.innerHTML = '✗';
             button.title = 'Ошибка копирования';
             
@@ -2206,58 +1740,42 @@
         }
     }
 
-    /**
-     * Добавляет кнопки копирования ко всем блокам кода в сообщении
-     * @param {HTMLElement} messageElement - Элемент сообщения
-     */
     function addCopyButtonsToMessage(messageElement) {
         if (!messageElement) return;
         
-        // Находим все блоки кода (pre code)
         const codeBlocks = messageElement.querySelectorAll('pre code');
         
         codeBlocks.forEach((codeBlock) => {
-            // Проверяем, не добавлена ли уже кнопка
             const parent = codeBlock.parentNode;
             if (parent.classList.contains('code-block-wrapper')) return;
             
-            // Создаём обёртку
             const wrapper = document.createElement('div');
             wrapper.className = 'code-block-wrapper';
             
-            // Создаём кнопку
             const copyButton = document.createElement('button');
             copyButton.className = 'copy-code-button';
             copyButton.innerHTML = '📋';
             copyButton.title = 'Копировать код';
             copyButton.setAttribute('aria-label', 'Копировать код');
             
-            // Добавляем обработчик
             copyButton.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 handleCopyClick(copyButton, codeBlock);
             });
             
-            // Заменяем pre на обёртку с pre и кнопкой
             parent.parentNode.insertBefore(wrapper, parent);
             wrapper.appendChild(parent);
             wrapper.appendChild(copyButton);
         });
     }
 
-    /**
-     * Добавляет кнопки ко всем существующим блокам кода на странице
-     */
     function addCopyButtonsToAllCodeBlocks() {
         document.querySelectorAll('.user-message, .assistant-message, .bot-message').forEach(message => {
             addCopyButtonsToMessage(message);
         });
     }
 
-    /**
-     * Настраивает MutationObserver для отслеживания новых сообщений
-     */
     function setupCopyButtonsObserver() {
         const chatMessages = document.getElementById('chat-messages');
         if (!chatMessages) return;

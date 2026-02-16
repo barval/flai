@@ -14,6 +14,9 @@ import pytz
 from pytz.exceptions import UnknownTimeZoneError
 import logging
 from logging import Formatter
+import heapq
+from collections import defaultdict
+import threading
 
 # Импорт модулей
 from modules import BaseModule, MultimodalModule, ImageModule, CamModule, RagModule, AudioModule
@@ -201,7 +204,7 @@ def get_current_time_in_timezone_for_db():
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 # -------------------------------
-# Функции для работы с БД (остаются без изменений)
+# Функции для работы с БД
 # -------------------------------
 def init_db():
     """Инициализация базы данных"""
@@ -250,7 +253,7 @@ def init_db():
 init_db()
 
 # -------------------------------
-# Функции для работы с пользователями
+# Функции для работы с пользователями (обновленные с классами обслуживания)
 # -------------------------------
 def load_users():
     users = {}
@@ -266,10 +269,15 @@ def load_users():
                 if len(parts) >= 2:
                     email = parts[0].strip()
                     password = parts[1].strip()
-                    if email and password:
-                        users[email] = {'password': password}
+                    service_class = int(parts[2].strip()) if len(parts) >= 3 else 2  # По умолчанию низший
+                    
+                    if email and password and service_class in [0, 1, 2]:
+                        users[email] = {
+                            'password': password,
+                            'service_class': service_class
+                        }
                     else:
-                        app.logger.error(f"Пустые поля в строке {line_num}")
+                        app.logger.error(f"Некорректные данные в строке {line_num}")
                 else:
                     app.logger.error(f"Некорректная строка {line_num}")
         
@@ -281,6 +289,346 @@ def load_users():
     return users
 
 USERS = load_users()
+
+# -------------------------------
+# Класс PriorityRequestQueue (менеджер очереди с приоритетами)
+# -------------------------------
+class PriorityRequestQueue:
+    def __init__(self):
+        # Используем heapq для эффективной priority queue
+        # Элемент: (priority_class, timestamp, request_id)
+        self.queues = {
+            0: [],  # высший приоритет
+            1: [],  # средний
+            2: []   # низший
+        }
+        self.current_request = None  # Текущий выполняемый запрос
+        self.lock = threading.Lock()
+        self.processing = False
+        self.request_history = []  # История для оценки времени
+        
+        # Маппинг request_id -> информация о запросе для быстрого доступа
+        self.requests_map = {}
+        
+        # Статистика по пользователям
+        self.user_stats = defaultdict(lambda: {
+            'total_requests': 0,
+            'completed_requests': 0,
+            'total_wait_time': 0,
+            'last_request_time': None
+        })
+        
+    def _get_session_title(self, session_id):
+        """Получить заголовок сеанса по ID"""
+        try:
+            with sqlite3.connect(CHAT_DB_PATH) as conn:
+                c = conn.cursor()
+                c.execute('SELECT title FROM chat_sessions WHERE id = ?', (session_id,))
+                row = c.fetchone()
+                return row[0] if row else "Неизвестный сеанс"
+        except:
+            return "Неизвестный сеанс"
+    
+    def add_request(self, user_id, session_id, request_data, user_class):
+        """
+        Добавление запроса в очередь
+        Возвращает request_id и информацию о позиции
+        """
+        request_id = str(uuid.uuid4())
+        timestamp = time.time()
+        
+        # Получаем статистику пользователя для оценки
+        stats = self.user_stats[user_id]
+        stats['total_requests'] += 1
+        stats['last_request_time'] = datetime.now()
+        
+        request_info = {
+            'id': request_id,
+            'user_id': user_id,
+            'session_id': session_id,
+            'data': request_data,
+            'timestamp': timestamp,
+            'user_class': user_class,
+            'status': 'queued',  # queued, processing, completed, cancelled
+            'position_info': None,  # Будет заполнено позже
+            'estimated_wait': None,
+            'start_time': None,
+            'end_time': None,
+            'session_title': self._get_session_title(session_id)
+        }
+        
+        with self.lock:
+            # Добавляем в соответствующую очередь
+            # heapq использует кортеж (приоритет, timestamp, request_id) для сортировки
+            # Чем меньше приоритет, тем выше класс (0 - высший)
+            heapq.heappush(self.queues[user_class], 
+                          (user_class, timestamp, request_id))
+            
+            self.requests_map[request_id] = request_info
+            
+            # Рассчитываем позицию и ожидание
+            position_info = self._calculate_position(request_id)
+            request_info['position_info'] = position_info
+            
+            # Запускаем обработчик, если не запущен
+            if not self.processing:
+                threading.Thread(target=self._process_queue, daemon=True).start()
+        
+        return request_id, position_info
+    
+    def _calculate_position(self, request_id):
+        """Рассчитывает позицию запроса в очереди"""
+        request = self.requests_map.get(request_id)
+        if not request:
+            return None
+            
+        user_class = request['user_class']
+        
+        with self.lock:
+            # Считаем сколько запросов впереди в том же классе
+            same_class_before = 0
+            for item in self.queues[user_class]:
+                cls, ts, rid = item
+                if rid == request_id:
+                    break
+                if ts < request['timestamp']:
+                    same_class_before += 1
+            
+            # Считаем запросы в более высоких классах
+            higher_class_total = 0
+            for cls in range(user_class):  # 0, 1 (если user_class=2)
+                higher_class_total += len(self.queues[cls])
+            
+            total_before = higher_class_total + same_class_before
+            
+            # Оценка времени ожидания
+            estimated_wait = self._estimate_wait_time(total_before, user_class)
+            
+            return {
+                'total_before': total_before,
+                'same_class_before': same_class_before,
+                'higher_class_before': higher_class_total,
+                'estimated_seconds': estimated_wait,
+                'position': total_before + 1  # 1-based позиция
+            }
+    
+    def _estimate_wait_time(self, position, user_class):
+        """Оценка времени ожидания на основе истории и класса"""
+        if position == 0:
+            return 0
+            
+        if not self.request_history:
+            # Дефолтные значения, если нет истории
+            base_times = {'text': 2, 'image': 25, 'camera': 3, 'reasoning': 8}
+            return position * 5  # грубая оценка
+        
+        # Анализируем историю по классам (последние 50 запросов)
+        recent_history = self.request_history[-50:]
+        
+        # Группируем по классам
+        class_durations = {0: [], 1: [], 2: []}
+        for h in recent_history:
+            cls = h['request']['user_class']
+            class_durations[cls].append(h['duration'])
+        
+        # Средняя длительность для каждого класса
+        avg_durations = {}
+        for cls, durations in class_durations.items():
+            if durations:
+                avg_durations[cls] = sum(durations) / len(durations)
+            else:
+                avg_durations[cls] = 5  # запасное значение
+        
+        # Оцениваем: сначала все запросы высших классов, потом наши
+        wait_time = 0
+        remaining = position
+        
+        with self.lock:
+            for cls in range(3):
+                if cls < user_class:
+                    # Все запросы высших классов
+                    wait_time += len(self.queues[cls]) * avg_durations.get(cls, 5)
+                elif cls == user_class:
+                    # Наши запросы до текущего
+                    wait_time += (remaining - 1) * avg_durations.get(cls, 5)
+                    break
+        
+        return round(wait_time, 1)
+    
+    def _process_queue(self):
+        """Основной обработчик очереди"""
+        with self.lock:
+            self.processing = True
+        
+        while True:
+            next_request = None
+            next_class = None
+            
+            with self.lock:
+                # Ищем запрос в классах по приоритету
+                for cls in [0, 1, 2]:
+                    if self.queues[cls]:
+                        # Берем самый старый (heap гарантирует порядок)
+                        cls_val, ts, rid = self.queues[cls][0]
+                        next_request = self.requests_map.get(rid)
+                        if next_request and next_request['status'] == 'queued':
+                            next_class = cls
+                            # Удаляем из очереди
+                            heapq.heappop(self.queues[cls])
+                            break
+                        else:
+                            # Запрос отменён или уже обработан - просто удаляем
+                            heapq.heappop(self.queues[cls])
+                            continue
+            
+            if not next_request:
+                # Очередь пуста
+                with self.lock:
+                    self.processing = False
+                break
+            
+            # Обновляем статус
+            next_request['status'] = 'processing'
+            next_request['start_time'] = time.time()
+            self.current_request = next_request
+            
+            # Вычисляем время ожидания в очереди
+            wait_time = next_request['start_time'] - next_request['timestamp']
+            
+            # Обрабатываем запрос (без лока, чтобы можно было добавлять новые)
+            try:
+                # Вызываем реальную обработку
+                result = self._process_request_impl(next_request)
+                
+                # Отправляем результат
+                self._send_result(next_request, result)
+                
+            except Exception as e:
+                app.logger.error(f"Ошибка обработки запроса {next_request['id']}: {str(e)}")
+                # Отправляем ошибку
+                self._send_error(next_request, str(e))
+            
+            # Обновляем статистику
+            end_time = time.time()
+            next_request['status'] = 'completed'
+            next_request['end_time'] = end_time
+            duration = end_time - next_request['start_time']
+            
+            # Сохраняем в историю
+            self.request_history.append({
+                'request': next_request,
+                'wait_time': wait_time,
+                'duration': duration,
+                'completed': end_time
+            })
+            
+            # Обновляем статистику пользователя
+            stats = self.user_stats[next_request['user_id']]
+            stats['completed_requests'] += 1
+            stats['total_wait_time'] += wait_time
+            
+            self.current_request = None
+    
+    def _process_request_impl(self, request):
+        """Реальная обработка запроса (вызывается из очереди)"""
+        # Здесь будет логика обработки, аналогичная send_message
+        # Но для простоты пока заглушка
+        return {'status': 'processed', 'data': request['data']}
+    
+    def _send_result(self, request, result):
+        """Отправка результата пользователю"""
+        # В реальности здесь будет отправка через WebSocket или long-polling
+        # Пока сохраняем в БД и обновляем статус
+        app.logger.info(f"Запрос {request['id']} для пользователя {request['user_id']} выполнен")
+    
+    def _send_error(self, request, error):
+        """Отправка ошибки пользователю"""
+        app.logger.error(f"Ошибка запроса {request['id']}: {error}")
+    
+    def get_user_requests_status(self, user_id):
+        """Получить статус всех запросов пользователя"""
+        result = {
+            'processing': None,
+            'queued': [],
+            'recent_completed': []
+        }
+        
+        # Текущий обрабатываемый запрос
+        if self.current_request and self.current_request['user_id'] == user_id:
+            result['processing'] = self._format_request_info(self.current_request)
+        
+        # Запросы в очереди
+        with self.lock:
+            for cls in [0, 1, 2]:
+                for item in self.queues[cls]:
+                    cls_val, ts, rid = item
+                    req = self.requests_map.get(rid)
+                    if req and req['user_id'] == user_id and req['status'] == 'queued':
+                        # Обновляем позицию перед отправкой
+                        req['position_info'] = self._calculate_position(rid)
+                        result['queued'].append(self._format_request_info(req))
+        
+        # Недавно завершённые (из истории)
+        for h in reversed(self.request_history[-10:]):
+            if h['request']['user_id'] == user_id:
+                result['recent_completed'].append({
+                    'session_title': h['request']['session_title'],
+                    'completed_at': datetime.fromtimestamp(h['completed']).strftime('%H:%M:%S'),
+                    'duration': round(h['duration'], 1)
+                })
+        
+        # Сортируем очередь по ожидаемому времени
+        result['queued'].sort(key=lambda x: x['position_info']['position'])
+        
+        return result
+    
+    def _format_request_info(self, request):
+        """Форматирование информации о запросе для UI"""
+        request_type = request['data'].get('type', 'unknown')
+        type_icons = {
+            'text': '💬',
+            'image': '🎨',
+            'camera': '📷',
+            'reasoning': '🧠'
+        }
+        
+        return {
+            'id': request['id'],
+            'session_id': request['session_id'],
+            'session_title': request['session_title'],
+            'type': request_type,
+            'type_icon': type_icons.get(request_type, '📄'),
+            'status': request['status'],
+            'position_info': request['position_info'],
+            'wait_time': round(time.time() - request['timestamp'], 1) if request['status'] == 'queued' else None,
+            'preview': request['data'].get('preview', '')
+        }
+    
+    def cancel_request(self, user_id, request_id):
+        """Отмена запроса (только для своего пользователя)"""
+        with self.lock:
+            request = self.requests_map.get(request_id)
+            if not request or request['user_id'] != user_id:
+                return False
+            
+            if request['status'] == 'queued':
+                request['status'] = 'cancelled'
+                return True
+            elif request['status'] == 'processing':
+                # Не можем отменить выполняющийся запрос
+                return False
+            
+        return False
+    
+    def get_average_response_time(self):
+        """Получить среднее время ответа"""
+        if not self.request_history:
+            return 0
+        recent = self.request_history[-50:]
+        return round(sum(h['duration'] for h in recent) / len(recent), 1)
+
+# Глобальный экземпляр очереди
+request_queue = PriorityRequestQueue()
 
 # -------------------------------
 # Функции для работы с БД (вспомогательные)
@@ -414,6 +762,7 @@ def login():
         
         if email in USERS and USERS[email]['password'] == password:
             session['email'] = email
+            session['service_class'] = USERS[email]['service_class']
             return redirect(url_for('chat'))
         else:
             return render_template('login.html', error='Неверный email или пароль')
@@ -455,7 +804,7 @@ def chat():
                          footer_text=app.config.get('FOOTER_TEXT', ""))
 
 # -------------------------------
-# API для работы с сеансами (остаются без изменений)
+# API для работы с сеансами
 # -------------------------------
 @app.route('/api/sessions', methods=['GET'])
 def api_get_sessions():
@@ -560,6 +909,37 @@ def api_delete_session(session_id):
     return jsonify({'status': 'ok'})
 
 # -------------------------------
+# API для очереди запросов
+# -------------------------------
+@app.route('/api/queue/status', methods=['GET'])
+def api_queue_status():
+    """Получить статус всех запросов текущего пользователя"""
+    if 'email' not in session:
+        return jsonify({'error': 'Не авторизован'}), 401
+    
+    user_id = session['email']
+    status = request_queue.get_user_requests_status(user_id)
+    
+    # Добавляем общую информацию о системе
+    total_queued = sum(len(q) for q in request_queue.queues.values())
+    status['system'] = {
+        'total_queued': total_queued,
+        'current_load': 'high' if total_queued > 10 else 'normal',
+        'avg_response_time': request_queue.get_average_response_time()
+    }
+    
+    return jsonify(status)
+
+@app.route('/api/queue/cancel/<request_id>', methods=['POST'])
+def api_cancel_request(request_id):
+    """Отмена запроса"""
+    if 'email' not in session:
+        return jsonify({'error': 'Не авторизован'}), 401
+    
+    success = request_queue.cancel_request(session['email'], request_id)
+    return jsonify({'success': success})
+
+# -------------------------------
 # API для получения подписи футера
 # -------------------------------
 @app.route('/api/footer-text', methods=['GET'])
@@ -589,7 +969,7 @@ def clear_history():
     return jsonify({'status': 'ok'})
 
 # -------------------------------
-# ОТПРАВКА СООБЩЕНИЯ (обновленная версия с модулями)
+# ОТПРАВКА СООБЩЕНИЯ (обновленная версия с очередью)
 # -------------------------------
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -601,11 +981,20 @@ def send_message():
         return jsonify({'error': 'Базовый сервис чата недоступен'}), 500
     
     user_id = session['email']
+    user_class = USERS.get(user_id, {}).get('service_class', 2)
     session_id = session.get('current_session')
     
     if not session_id:
         session_id = create_session(user_id)
         session['current_session'] = session_id
+    
+    # Проверяем, есть ли уже запрос в этом сеансе
+    existing_requests = request_queue.get_user_requests_status(user_id)
+    if existing_requests['processing'] and existing_requests['processing'].get('session_id') == session_id:
+        return jsonify({
+            'error': 'В этом сеансе уже есть активный запрос',
+            'status': 'waiting'
+        }), 429
     
     # Получаем данные из запроса
     message_text = ""
@@ -646,7 +1035,6 @@ def send_message():
     if message_text:
         user_content.append({"type": "text", "text": message_text})
     
-    # ОБРАБОТКА ФАЙЛА
     if file_data:
         user_content.append({
             "type": "file", 
@@ -654,181 +1042,44 @@ def send_message():
             "file_type": file_type, 
             "file_name": file_name
         })
-        
-        save_message(session_id, 'user', json.dumps(user_content, ensure_ascii=False), 
-                    file_data, file_type, file_name, None)
-        
-        if is_first_message:
-            update_session_title(session_id, message_text, file_name)
-        
-        # Проверяем, является ли файл изображением
-        if 'multimodal' in modules and modules['multimodal'].available:
-            is_valid, error = modules['multimodal'].validate_image(file_data, file_type, file_name, file_size)
-            
-            if is_valid:
-                # Обрабатываем изображение через мультимодальную модель
-                start_time = time.time()
-                bot_reply, error = modules['multimodal'].process_image_with_text(
-                    file_data, message_text, current_time_str
-                )
-                
-                if error:
-                    bot_reply = f"⚠️ {error}"
-                
-                end_time = time.time()
-                response_time = round(end_time - start_time, 1)
-                
-                save_message(session_id, 'assistant', bot_reply, model_name=app.config['LLM_MULTIMODAL_MODEL'])
-                
-                return jsonify({
-                    'response': bot_reply,
-                    'session_id': session_id,
-                    'model_used': app.config['LLM_MULTIMODAL_MODEL'],
-                    'model_category': 'multimodal',
-                    'response_time': response_time,
-                    'assistant_timestamp': current_time_for_db
-                })
-            else:
-                # Неподдерживаемый файл
-                bot_reply = f"⚠️ {error}"
-                save_message(session_id, 'assistant', bot_reply, model_name='system')
-                
-                return jsonify({
-                    'response': bot_reply,
-                    'session_id': session_id,
-                    'model_used': 'system',
-                    'response_time': 0,
-                    'assistant_timestamp': current_time_for_db
-                })
-        else:
-            # Мультимодальный модуль недоступен
-            bot_reply = "⚠️ Мультимодальная модель недоступна. Файлы не поддерживаются."
-            save_message(session_id, 'assistant', bot_reply, model_name='system')
-            
-            return jsonify({
-                'response': bot_reply,
-                'session_id': session_id,
-                'model_used': 'system',
-                'response_time': 0,
-                'assistant_timestamp': current_time_for_db
-            })
-    
-    # ОБРАБОТКА ТЕКСТОВОГО СООБЩЕНИЯ
-    if not message_text.strip():
-        return jsonify({'error': 'Пустое сообщение'}), 400
     
     save_message(session_id, 'user', json.dumps(user_content, ensure_ascii=False), 
-                None, None, None, None)
+                file_data, file_type, file_name, None)
     
     if is_first_message:
-        update_session_title(session_id, message_text, None)
+        update_session_title(session_id, message_text, file_name)
     
-    # Обрабатываем через базовый модуль
-    start_time = time.time()
-    router_result = modules['base'].process_message(message_text, current_time_str)
+    # Определяем тип запроса для статистики
+    request_type = 'text'
+    if file_data and file_type and file_type.startswith('image/'):
+        request_type = 'image'
+    elif 'camera' in request_type:
+        request_type = 'camera'
+    elif 'reasoning' in request_type:
+        request_type = 'reasoning'
     
-    if 'error' in router_result:
-        return jsonify({'error': router_result['error']}), 500
+    # Создаём данные для очереди
+    request_data = {
+        'type': request_type,
+        'text': message_text,
+        'file_data': file_data,
+        'file_type': file_type,
+        'file_name': file_name,
+        'preview': (message_text[:50] + '...') if message_text else (file_name or 'Запрос')
+    }
     
-    action_type = router_result['action']
-    query = router_result['query']
+    # Добавляем в очередь
+    request_id, position_info = request_queue.add_request(
+        user_id, session_id, request_data, user_class
+    )
     
-    final_response = ""
-    model_used = app.config['LLM_CHAT_MODEL']
-    model_category = action_type
-    
-    # Обработка в зависимости от типа действия
-    if action_type == 'image':
-        # Запрос на создание изображения
-        if 'image' in modules and modules['image'].available and 'multimodal' in modules:
-            app.logger.info("Обработка запроса на создание изображения")
-            
-            image_result = modules['image'].generate_image(query, start_time)
-            
-            if image_result['success']:
-                message_text = f"Изображение сгенерировано моделью {app.config['AUTOMATIC1111_MODEL']} по запросу: {query}"
-                
-                save_message(
-                    session_id, 'assistant', message_text,
-                    image_result['image_data'], image_result['file_type'],
-                    image_result['file_name'], app.config['LLM_MULTIMODAL_MODEL']
-                )
-                
-                return jsonify({
-                    'response': message_text,
-                    'session_id': session_id,
-                    'model_used': app.config['LLM_MULTIMODAL_MODEL'],
-                    'model_category': model_category,
-                    'response_time': round(time.time() - start_time, 1),
-                    'assistant_timestamp': current_time_for_db,
-                    'generated_image': image_result['image_data'],
-                    'file_name': image_result['file_name'],
-                    'file_size': image_result['file_size'],
-                    'file_type': image_result['file_type']
-                })
-            else:
-                final_response = f"⚠️ {image_result['error']}"
-        else:
-            final_response = "⚠️ Модуль генерации изображений недоступен"
-    
-    elif action_type == 'camera':
-        # Запрос к камере
-        if 'cam' in modules and modules['cam'].available:
-            app.logger.info("Обработка запроса к камере")
-            
-            camera_result = modules['cam'].get_snapshot(query)
-            
-            if camera_result['success']:
-                save_message(
-                    session_id, 'assistant',
-                    f"Изображение с камеры: {camera_result['room_name']}",
-                    camera_result['image_data'], camera_result['image_type'],
-                    camera_result['file_name'], model_used
-                )
-                
-                return jsonify({
-                    'response': f"Изображение с камеры: {camera_result['room_name']}",
-                    'session_id': session_id,
-                    'model_used': model_used,
-                    'model_category': model_category,
-                    'response_time': round(time.time() - start_time, 1),
-                    'assistant_timestamp': current_time_for_db,
-                    'generated_image': camera_result['image_data'],
-                    'file_name': camera_result['file_name'],
-                    'file_size': camera_result['file_size'],
-                    'file_type': camera_result['image_type']
-                })
-            else:
-                final_response = f"⚠️ {camera_result['error']}"
-        else:
-            final_response = "⚠️ Модуль видеонаблюдения недоступен"
-    
-    elif action_type == 'reasoning':
-        # Сложный запрос
-        if router_result.get('needs_reasoning'):
-            app.logger.info("Обработка сложного запроса через reasoning модель")
-            final_response = modules['base'].process_reasoning(query, current_time_str)
-            model_used = app.config['LLM_REASONING_MODEL']
-        else:
-            final_response = query
-    
-    else:  # action_type == 'none'
-        final_response = query
-    
-    end_time = time.time()
-    response_time = round(end_time - start_time, 1)
-    
-    # Сохраняем ответ
-    if final_response:
-        save_message(session_id, 'assistant', final_response, model_name=model_used)
-    
+    # Возвращаем информацию о позиции в очереди
     return jsonify({
-        'response': final_response,
-        'session_id': session_id,
-        'model_used': model_used,
-        'model_category': model_category,
-        'response_time': response_time,
-        'assistant_timestamp': current_time_for_db
+        'status': 'queued',
+        'request_id': request_id,
+        'position': position_info['position'],
+        'estimated_wait': position_info['estimated_seconds'],
+        'message': f'Запрос поставлен в очередь (позиция {position_info["position"]}, ожидание ~{position_info["estimated_seconds"]}с)'
     })
 
 # -------------------------------

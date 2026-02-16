@@ -30,7 +30,7 @@
 
 Выведи результат строго в следующем JSON формате, без дополнительных пояснений:
 
-{
+{{{{
   "prompt": "здесь должен быть полный промпт",
   "negative_prompt": "здесь должен быть negative_prompt",
   "steps": "40",
@@ -44,7 +44,7 @@
   "hr_upscaler": "Latent (nearest)",
   "denoising_strength": "0.7",
   "hr_second_pass_steps": "25"
-}
+}}}}
 
 # ВХОДНЫЕ ДАННЫЕ
 - **Запрос:** "{image_query}".

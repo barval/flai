@@ -1615,5 +1615,210 @@
         URL.revokeObjectURL(url);
     }
 
+    // -------------------------------
+    // ФУНКЦИИ ДЛЯ КОПИРОВАНИЯ КОДА
+    // -------------------------------
+
+    /**
+     * Копирует текст в буфер обмена
+     * @param {string} text - Текст для копирования
+     * @returns {Promise<boolean>} - Успешно ли скопировано
+     */
+    async function copyToClipboard(text) {
+        try {
+            // Современный API
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch (err) {
+            console.error('Ошибка копирования через clipboard API:', err);
+            
+            // Fallback для старых браузеров
+            try {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                const success = document.execCommand('copy');
+                document.body.removeChild(textarea);
+                return success;
+            } catch (fallbackErr) {
+                console.error('Ошибка копирования через execCommand:', fallbackErr);
+                return false;
+            }
+        }
+    }
+
+    /**
+     * Обработчик клика по кнопке копирования
+     * @param {HTMLElement} button - Кнопка копирования
+     * @param {HTMLElement} codeElement - Элемент с кодом
+     */
+    async function handleCopyClick(button, codeElement) {
+        const code = codeElement.textContent || codeElement.innerText;
+        
+        // Показываем процесс копирования
+        const originalHTML = button.innerHTML;
+        button.innerHTML = '⏳';
+        button.disabled = true;
+        
+        const success = await copyToClipboard(code);
+        
+        if (success) {
+            // Успешное копирование
+            button.innerHTML = '✓';
+            button.classList.add('copied');
+            button.title = 'Скопировано!';
+            
+            // Возвращаем исходный вид через 2 секунды
+            setTimeout(() => {
+                button.innerHTML = '📋';
+                button.classList.remove('copied');
+                button.title = 'Копировать код';
+                button.disabled = false;
+            }, 2000);
+        } else {
+            // Ошибка копирования
+            button.innerHTML = '✗';
+            button.title = 'Ошибка копирования';
+            
+            setTimeout(() => {
+                button.innerHTML = '📋';
+                button.title = 'Копировать код';
+                button.disabled = false;
+            }, 2000);
+        }
+    }
+
+    /**
+     * Добавляет кнопки копирования ко всем блокам кода в сообщении
+     * @param {HTMLElement} messageElement - Элемент сообщения
+     */
+    function addCopyButtonsToMessage(messageElement) {
+        if (!messageElement) return;
+        
+        // Находим все блоки кода (pre code)
+        const codeBlocks = messageElement.querySelectorAll('pre code');
+        
+        codeBlocks.forEach((codeBlock, index) => {
+            // Проверяем, не добавлена ли уже кнопка
+            const parent = codeBlock.parentNode;
+            if (parent.classList.contains('code-block-wrapper')) return;
+            
+            // Создаём обёртку
+            const wrapper = document.createElement('div');
+            wrapper.className = 'code-block-wrapper';
+            
+            // Создаём кнопку
+            const copyButton = document.createElement('button');
+            copyButton.className = 'copy-code-button';
+            copyButton.innerHTML = '📋';
+            copyButton.title = 'Копировать код';
+            copyButton.setAttribute('aria-label', 'Копировать код');
+            
+            // Добавляем обработчик
+            copyButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleCopyClick(copyButton, codeBlock);
+            });
+            
+            // Заменяем pre на обёртку с pre и кнопкой
+            parent.parentNode.insertBefore(wrapper, parent);
+            wrapper.appendChild(parent);
+            wrapper.appendChild(copyButton);
+        });
+        
+        // Также обрабатываем инлайн-код (опционально, можно не добавлять кнопки)
+        // const inlineCode = messageElement.querySelectorAll('code:not(pre code)');
+        // inlineCode.forEach(...)
+    }
+
+    /**
+     * Добавляет кнопки ко всем существующим блокам кода на странице
+     */
+    function addCopyButtonsToAllCodeBlocks() {
+        document.querySelectorAll('.user-message, .assistant-message, .bot-message').forEach(message => {
+            addCopyButtonsToMessage(message);
+        });
+    }
+
+    /**
+     * Настраивает MutationObserver для отслеживания новых сообщений
+     */
+    function setupCopyButtonsObserver() {
+        const chatMessages = document.getElementById('chat-messages');
+        if (!chatMessages) return;
+        
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                // Проверяем добавленные узлы
+                mutation.addedNodes.forEach((node) => {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        // Если это сообщение
+                        if (node.classList && 
+                            (node.classList.contains('user-message') || 
+                            node.classList.contains('assistant-message') || 
+                            node.classList.contains('bot-message'))) {
+                            addCopyButtonsToMessage(node);
+                        }
+                        
+                        // Если внутри есть сообщения
+                        const messages = node.querySelectorAll?.('.user-message, .assistant-message, .bot-message');
+                        if (messages) {
+                            messages.forEach(addCopyButtonsToMessage);
+                        }
+                    }
+                });
+            });
+        });
+        
+        // Наблюдаем за изменениями в чате
+        observer.observe(chatMessages, {
+            childList: true,
+            subtree: true
+        });
+    }
+
+    // Добавляем вызов функций при загрузке сообщений
+    const originalLoadMessages = loadMessages;
+    loadMessages = function(sessionId) {
+        return originalLoadMessages(sessionId).then(() => {
+            // Добавляем кнопки к уже загруженным сообщениям
+            setTimeout(addCopyButtonsToAllCodeBlocks, 100);
+        });
+    };
+
+    // Инициализация при загрузке страницы
+    document.addEventListener('DOMContentLoaded', function() {
+        // Существующий код инициализации...
+        
+        // Добавляем наблюдатель для новых сообщений
+        setTimeout(setupCopyButtonsObserver, 500);
+        
+        // Добавляем кнопки к существующим блокам кода (если они есть)
+        setTimeout(addCopyButtonsToAllCodeBlocks, 1000);
+    });
+
+    // Переопределяем displayMessage для добавления кнопок после отображения
+    const originalDisplayMessage = displayMessage;
+    displayMessage = function(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName) {
+        // Вызываем оригинальную функцию
+        const result = originalDisplayMessage.call(this, role, content, fileData, fileType, fileName, timestamp, responseTime, modelName);
+        
+        // Находим последнее добавленное сообщение и добавляем кнопки
+        const messages = document.getElementById('chat-messages');
+        if (messages) {
+            const lastMessage = messages.lastElementChild;
+            if (lastMessage) {
+                // Небольшая задержка, чтобы Markdown успел обработаться
+                setTimeout(() => addCopyButtonsToMessage(lastMessage), 50);
+            }
+        }
+        
+        return result;
+    };    
+
 </script>
 {% endblock %}

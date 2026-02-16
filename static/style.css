@@ -1165,3 +1165,98 @@ audio {
         font-size: 0.8rem;
     }
 }
+
+/* ========== СТИЛИ ДЛЯ КНОПКИ КОПИРОВАНИЯ КОДА ========== */
+
+/* Контейнер для блока кода с относительным позиционированием */
+.code-block-wrapper {
+    position: relative;
+    margin: 1em 0;
+}
+
+/* Кнопка копирования */
+.copy-code-button {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background-color: rgba(52, 73, 94, 0.8);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.6;
+    transition: all 0.2s ease;
+    z-index: 10;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    backdrop-filter: blur(2px);
+}
+
+.copy-code-button:hover {
+    opacity: 1;
+    background-color: #3498db;
+    transform: scale(1.05);
+}
+
+/* Состояние "скопировано" */
+.copy-code-button.copied {
+    background-color: #27ae60;
+    opacity: 1;
+}
+
+.copy-code-button.copied::after {
+    content: '✓';
+    font-size: 18px;
+    line-height: 1;
+}
+
+/* Для тёмных блоков кода делаем кнопку светлее */
+.message-content pre {
+    background-color: #282c34;  /* Тёмный фон для блоков кода */
+    color: #abb2bf;
+    border-radius: 6px;
+    padding: 1em;
+    overflow: auto;
+    line-height: 1.45;
+    margin-bottom: 1em;
+    border: 1px solid #3e4451;
+}
+
+.message-content code {
+    background-color: #282c34;
+    color: #abb2bf;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+}
+
+/* Для инлайн-кода оставляем светлый фон */
+.message-content p code,
+.message-content li code {
+    background-color: #f0f0f0;
+    color: #2c3e50;
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    border: 1px solid #ddd;
+}
+
+/* Адаптация для мобильных устройств */
+@media (max-width: 768px) {
+    .copy-code-button {
+        width: 28px;
+        height: 28px;
+        font-size: 14px;
+        top: 4px;
+        right: 4px;
+    }
+}
+
+/* Для печати скрываем кнопки */
+@media print {
+    .copy-code-button {
+        display: none !important;
+    }
+}

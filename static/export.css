@@ -257,3 +257,26 @@ audio {
         padding: 0 !important;
     }
 }
+
+/* Скрываем кнопки копирования при экспорте */
+.copy-code-button {
+    display: none !important;
+}
+
+/* Сохраняем стили для блоков кода */
+.message-content pre {
+    background-color: #282c34 !important;
+    color: #abb2bf !important;
+    border-radius: 6px !important;
+    padding: 1em !important;
+    overflow: auto !important;
+    line-height: 1.45 !important;
+    margin-bottom: 1em !important;
+    border: 1px solid #3e4451 !important;
+}
+
+.message-content code {
+    background-color: #282c34 !important;
+    color: #abb2bf !important;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace !important;
+}

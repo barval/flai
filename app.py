@@ -555,7 +555,18 @@ class PriorityRequestQueue:
         Реальная обработка запроса
         Здесь вызываются соответствующие модули в зависимости от типа запроса
         """
-        
+
+        # ВРЕМЕННО: возвращаем тестовый ответ для проверки
+        app.logger.info("ВОЗВРАЩАЕМ ТЕСТОВЫЙ ОТВЕТ")
+        save_message(session_id, 'assistant', f"Тестовый ответ на: {request_data.get('text', '')}", model_name='test')
+        return {
+            'response': f"Тестовый ответ на: {request_data.get('text', '')}",
+            'session_id': session_id,
+            'model_used': 'test',
+            'model_category': 'test',
+            'assistant_timestamp': current_time_for_db
+        }
+
         app.logger.info(f"Обработка запроса: {request['id']}, тип: {request['data'].get('type')}")
         app.logger.info(f"Доступность модулей: base={modules['base'].available}, multimodal={'multimodal' in modules}")
 

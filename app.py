@@ -1521,7 +1521,7 @@ def send_message():
             'response_time': response_time,
             'assistant_timestamp': current_time_for_db
         })
-
+        
 # -------------------------------
 # Очистка истории сеанса
 # -------------------------------

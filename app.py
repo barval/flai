@@ -555,6 +555,10 @@ class PriorityRequestQueue:
         Реальная обработка запроса
         Здесь вызываются соответствующие модули в зависимости от типа запроса
         """
+        
+        app.logger.info(f"Обработка запроса: {request['id']}, тип: {request['data'].get('type')}")
+        app.logger.info(f"Доступность модулей: base={modules['base'].available}, multimodal={'multimodal' in modules}")
+
         user_id = request['user_id']
         session_id = request['session_id']
         request_data = request['data']

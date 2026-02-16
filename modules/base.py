@@ -15,6 +15,9 @@ class BaseModule:
         
         if app:
             self.init_app(app)
+        elif ollama_url:
+            # Если передан только URL, пробуем проверить доступность
+            self.check_availability()
     
     def init_app(self, app):
         """Инициализация модуля с приложением Flask"""
@@ -49,6 +52,7 @@ class BaseModule:
             return False
         
         try:
+            self.logger.info(f"Проверка подключения к Ollama по адресу: {self.ollama_url}")
             response = requests.get(f"{self.ollama_url}/api/tags", timeout=5)
             if response.status_code == 200:
                 models = response.json().get('models', [])
@@ -58,6 +62,8 @@ class BaseModule:
                 chat_model = self.models_config['chat']['model']
                 reasoning_model = self.models_config['reasoning']['model']
                 
+                self.logger.info(f"Доступные модели в Ollama: {available_models}")
+                
                 if chat_model not in available_models:
                     self.logger.warning(f"Модель чата {chat_model} не найдена в Ollama")
                 
@@ -66,6 +72,10 @@ class BaseModule:
                 
                 self.available = True
                 return True
+            else:
+                self.logger.error(f"Ollama вернула статус {response.status_code}")
+        except requests.exceptions.ConnectionError:
+            self.logger.error(f"Ошибка подключения к Ollama по адресу {self.ollama_url}")
         except Exception as e:
             self.logger.error(f"Ошибка подключения к Ollama: {str(e)}")
         
@@ -75,7 +85,11 @@ class BaseModule:
     def call_ollama(self, messages, model_type='chat', stream=False):
         """Вызов Ollama API"""
         if not self.available:
-            return "⚠️ Сервис Ollama недоступен"
+            self.logger.error("Попытка вызова Ollama при недоступном модуле")
+            # Пробуем перепроверить доступность
+            self.check_availability()
+            if not self.available:
+                return "⚠️ Сервис Ollama недоступен"
         
         model_config = self.models_config.get(model_type, self.models_config['chat'])
         model = model_config['model']
@@ -140,6 +154,7 @@ class BaseModule:
         })
         
         if not prompt:
+            self.logger.error("Ошибка загрузки шаблона промпта")
             return {'error': 'Ошибка загрузки шаблона промпта'}
         
         router_messages = [
@@ -150,7 +165,9 @@ class BaseModule:
             {'role': 'user', 'content': prompt}
         ]
         
+        self.logger.info(f"Отправка запроса к маршрутизатору: {message_text}")
         router_response = self.call_ollama(router_messages, model_type='chat')
+        self.logger.info(f"Ответ маршрутизатора: {router_response}")
         
         return self._parse_router_response(router_response, message_text, current_time_str)
     
@@ -200,7 +217,11 @@ class BaseModule:
         if not reasoning_prompt:
             return "⚠️ Ошибка загрузки шаблона для сложного запроса"
         
-        return self.call_ollama(
+        self.logger.info(f"Отправка запроса к reasoning модели: {query}")
+        response = self.call_ollama(
             [{'role': 'user', 'content': reasoning_prompt}],
             model_type='reasoning'
         )
+        self.logger.info(f"Ответ reasoning модели: {response[:100]}...")
+        
+        return response

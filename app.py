@@ -161,6 +161,12 @@ AUTOMATIC1111_URL = os.getenv('AUTOMATIC1111_URL')
 if not AUTOMATIC1111_URL:
     app.logger.error("AUTOMATIC1111_URL не найден в .env файле")
 
+# +++ НОВАЯ ПЕРЕМЕННАЯ ДЛЯ МОДЕЛИ Automatic1111 +++
+AUTOMATIC1111_MODEL = os.getenv('AUTOMATIC1111_MODEL')
+if not AUTOMATIC1111_MODEL:
+    app.logger.error("AUTOMATIC1111_MODEL не найден в .env файле. Будет использоваться модель по умолчанию.")
+# ------------------------------------------------
+
 # -------------------------------
 # Настройки для изображений
 # -------------------------------
@@ -349,7 +355,7 @@ def format_prompt(template_name, variables):
 # -------------------------------
 # Функция для вызова Automatic1111
 # -------------------------------
-def call_automatic1111(prompt_data):
+def call_automatic1111(prompt_data, model_name=None):
     """
     Отправляет запрос в Automatic1111 и возвращает сгенерированное изображение
     """
@@ -377,6 +383,14 @@ def call_automatic1111(prompt_data):
             "denoising_strength": float(prompt_data.get("denoising_strength", 0.7)),
             "hr_second_pass_steps": int(prompt_data.get("hr_second_pass_steps", 25))
         }
+        
+        # +++ ДОБАВЛЯЕМ МОДЕЛЬ В PAYLOAD, ЕСЛИ ОНА ПЕРЕДАНА +++
+        if model_name:
+            payload["override_settings"] = {
+                "sd_model_checkpoint": model_name
+            }
+            app.logger.info(f"Используется модель Automatic1111: {model_name}")
+        # ------------------------------------------------
         
         app.logger.info(f"Отправка запроса в Automatic1111: {AUTOMATIC1111_URL}/sdapi/v1/txt2img")
         app.logger.debug(f"Payload: {json.dumps(payload, ensure_ascii=False)[:200]}...")
@@ -1406,8 +1420,9 @@ def send_message():
                             
                             app.logger.info(f"Отправка запроса в Automatic1111")
                             
-                            # Отправляем запрос в Automatic1111
-                            image_result = call_automatic1111(prompt_data)
+                            # +++ ИСПРАВЛЕННЫЙ ВЫЗОВ: ПЕРЕДАЕМ МОДЕЛЬ +++
+                            image_result = call_automatic1111(prompt_data, AUTOMATIC1111_MODEL)
+                            # ------------------------------------------------
                             
                             if image_result['success']:
                                 app.logger.info(f"Изображение успешно сгенерировано, размер данных: {len(image_result['image_data'])}")

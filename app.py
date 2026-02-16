@@ -583,10 +583,12 @@ class PriorityRequestQueue:
             
             final_response = ""
             model_used = app.config['LLM_CHAT_MODEL']
+            model_category = 'chat'  # По умолчанию
             
             # Обработка в зависимости от типа действия
             if action_type == 'image':
                 # Запрос на создание изображения
+                model_category = 'image'
                 if 'image' in modules and modules['image'].available and 'multimodal' in modules:
                     app.logger.info("Обработка запроса на создание изображения")
                     
@@ -619,6 +621,7 @@ class PriorityRequestQueue:
             
             elif action_type == 'camera':
                 # Запрос к камере
+                model_category = 'camera'
                 if 'cam' in modules and modules['cam'].available:
                     app.logger.info("Обработка запроса к камере")
                     
@@ -650,6 +653,7 @@ class PriorityRequestQueue:
             
             elif action_type == 'reasoning':
                 # Сложный запрос
+                model_category = 'reasoning'
                 if router_result.get('needs_reasoning'):
                     app.logger.info("Обработка сложного запроса через reasoning модель")
                     final_response = modules['base'].process_reasoning(query, current_time_str)
@@ -668,7 +672,7 @@ class PriorityRequestQueue:
                 'response': final_response,
                 'session_id': session_id,
                 'model_used': model_used,
-                'model_category': action_type,
+                'model_category': model_category,
                 'assistant_timestamp': current_time_for_db
             }
         
@@ -1161,7 +1165,7 @@ def clear_history():
     return jsonify({'status': 'ok'})
 
 # -------------------------------
-# ОТПРАВКА СООБЩЕНИЯ (обновленная версия с очередью)
+# ОТПРАВКА СООБЩЕНИЯ (исправленная версия)
 # -------------------------------
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -1186,23 +1190,26 @@ def send_message():
     file_type = None
     file_name = None
     
-    if 'multipart/form-data' in request.content_type:
+    # Проверяем тип контента
+    if request.content_type and 'multipart/form-data' in request.content_type:
+        # Это multipart/form-data (с файлом)
         message_text = request.form.get('message', '')
         
         if 'file' in request.files:
             file = request.files['file']
-            if file.filename:
-                file.seek(0, os.SEEK_END)
-                file_size = file.tell()
-                file.seek(0)
-                
+            if file and file.filename:
                 file_data = base64.b64encode(file.read()).decode('utf-8')
                 file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
                 file_name = file.filename
     else:
-        data = request.get_json()
-        if data:
-            message_text = data.get('message', '')
+        # Это application/json (без файла)
+        try:
+            data = request.get_json()
+            if data:
+                message_text = data.get('message', '')
+        except:
+            # Если не JSON и не multipart, пробуем как обычную форму
+            message_text = request.form.get('message', '')
     
     # Получаем текущее время
     current_time_for_db = get_current_time_in_timezone_for_db()

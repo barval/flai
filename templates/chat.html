@@ -1042,17 +1042,31 @@
         
         // Функция для отправки на сервер
         const sendToServer = async () => {
-            const formData = new FormData();
-            formData.append('message', tempText);
-            if (tempAttachedFile) {
-                formData.append('file', tempAttachedFile);
-            }
-            
             try {
-                const response = await fetch('/send_message', {
-                    method: 'POST',
-                    body: formData
-                });
+                let response;
+                
+                if (tempAttachedFile) {
+                    // Если есть файл - используем FormData
+                    const formData = new FormData();
+                    formData.append('message', tempText);
+                    formData.append('file', tempAttachedFile);
+                    
+                    response = await fetch('/send_message', {
+                        method: 'POST',
+                        body: formData
+                    });
+                } else {
+                    // Если только текст - используем JSON
+                    response = await fetch('/send_message', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            message: tempText
+                        })
+                    });
+                }
                 
                 const data = await response.json();
                 console.log('Ответ от сервера:', data); // Для отладки
@@ -1228,7 +1242,6 @@
             await sendToServer();
         }
     }
-
     // -------------------------------
     // Очистка истории сеанса
     // -------------------------------

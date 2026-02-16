@@ -15,6 +15,7 @@ import pytz
 from pytz.exceptions import UnknownTimeZoneError
 import logging
 import re
+from logging import Formatter
 
 load_dotenv()
 
@@ -30,8 +31,29 @@ app.secret_key = secret_key
 app.config['JSON_AS_ASCII'] = False
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
-# Настройка более подробного логирования
-logging.basicConfig(level=logging.DEBUG)
+# Настройка более подробного логирования с временными метками
+formatter = Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
+                     datefmt='%Y-%m-%d %H:%M:%S')
+
+# Настраиваем корневой логгер
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.DEBUG)
+
+# Добавляем обработчик для консоли с форматтером
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+root_logger.addHandler(console_handler)
+
+# Настраиваем логгер приложения
+app.logger.handlers = []
+app.logger.addHandler(console_handler)
+app.logger.setLevel(logging.DEBUG)
+
+# Если используем Gunicorn, используем его логгер
+if 'gunicorn' in os.environ.get('SERVER_SOFTWARE', ''):
+    gunicorn_logger = logging.getLogger('gunicorn.error')
+    app.logger.handlers = gunicorn_logger.handlers
+    app.logger.setLevel(gunicorn_logger.level)
 
 # -------------------------------
 # Подпись в футере - проверяем наличие в .env
@@ -945,6 +967,33 @@ def api_new_session():
     session['current_session'] = session_id
     set_last_session(user_id, session_id)
     return jsonify({'id': session_id, 'title': 'Новый сеанс'})
+
+# -------------------------------
+# НОВЫЙ ЭНДПОИНТ: Немедленное обновление заголовка сеанса
+# -------------------------------
+@app.route('/api/sessions/<session_id>/update-title', methods=['POST'])
+def api_update_session_title(session_id):
+    """Немедленное обновление заголовка сеанса"""
+    if 'email' not in session:
+        return jsonify({'error': 'Не авторизован'}), 401
+    
+    data = request.get_json()
+    new_title = data.get('title', 'Новый сеанс')
+    
+    current_time = get_current_time_in_timezone_for_db()
+    if not current_time:
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute('''
+            UPDATE chat_sessions
+            SET title = ?, updated_at = ?
+            WHERE id = ? AND user_id = ?
+        ''', (new_title, current_time, session_id, session['email']))
+        conn.commit()
+    
+    return jsonify({'status': 'ok', 'title': new_title})
 
 # -------------------------------
 # API для Ollama

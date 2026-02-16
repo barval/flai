@@ -689,6 +689,7 @@
     // -------------------------------
     // Обновление заголовка сеанса
     // -------------------------------
+    // УЛУЧШЕННАЯ ФУНКЦИЯ updateSessionTitle
     function updateSessionTitle(sessionId, newTitle) {
         // Обновляем в хранилище данных
         if (sessionsData[sessionId]) {
@@ -696,32 +697,34 @@
             sessionsData[sessionId].updated_at = new Date().toISOString();
         }
         
-        // Обновляем в DOM, сохраняя индикатор
+        // Находим элемент сеанса
         const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
-        if (sessionItem) {
-            const titleElement = sessionItem.querySelector('.session-title');
-            if (titleElement) {
-                // Сохраняем текст без HTML
-                titleElement.innerHTML = escapeHtml(newTitle);
-                
-                // Если есть индикатор, добавляем его обратно
-                if (newMessageIndicators[sessionId] && sessionId !== currentSessionId) {
-                    const indicator = document.createElement('span');
-                    indicator.className = 'new-message-indicator';
-                    indicator.textContent = '●';
-                    titleElement.appendChild(indicator);
-                }
-            }
+        if (!sessionItem) return;
+        
+        const titleElement = sessionItem.querySelector('.session-title');
+        if (titleElement) {
+            titleElement.innerHTML = escapeHtml(newTitle);
             
-            const now = new Date();
-            const formattedDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-            const dateElement = sessionItem.querySelector('.session-date');
-            if (dateElement) {
-                dateElement.textContent = formattedDate;
+            // Сохраняем индикатор, если есть
+            if (newMessageIndicators[sessionId] && sessionId !== currentSessionId) {
+                const indicator = document.createElement('span');
+                indicator.className = 'new-message-indicator';
+                indicator.textContent = '●';
+                titleElement.appendChild(indicator);
             }
-            
-            // Перемещаем сеанс вверх списка
-            const sessionsList = document.getElementById('sessions-list');
+        }
+        
+        // Обновляем дату
+        const now = new Date();
+        const formattedDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+        const dateElement = sessionItem.querySelector('.session-date');
+        if (dateElement) {
+            dateElement.textContent = formattedDate;
+        }
+        
+        // НЕМЕДЛЕННО перемещаем сеанс вверх списка
+        const sessionsList = document.getElementById('sessions-list');
+        if (sessionsList.firstChild !== sessionItem) {
             sessionsList.insertBefore(sessionItem, sessionsList.firstChild);
         }
     }
@@ -737,6 +740,26 @@
             return;
         }
         
+        // НЕМЕДЛЕННОЕ ОБНОВЛЕНИЕ ЗАГОЛОВКА ДЛЯ ПЕРВОГО СООБЩЕНИЯ
+        const messageCount = document.querySelectorAll('.user-message').length;
+        if (messageCount === 0) {
+            let newTitle = text ? text.slice(0, 40) + (text.length > 40 ? '...' : '') : '';
+            if (!newTitle && attachedFile) {
+                newTitle = attachedFile.name.slice(0, 40) + (attachedFile.name.length > 40 ? '...' : '');
+            }
+            if (newTitle) {
+                // Немедленно обновляем UI
+                updateSessionTitle(currentSessionId, newTitle);
+                
+                // Отправляем на сервер для синхронизации
+                fetch(`/api/sessions/${currentSessionId}/update-title`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({title: newTitle})
+                }).catch(err => console.error('Ошибка обновления заголовка:', err));
+            }
+        }
+
         if (isSending) return;
         isSending = true;
         

@@ -10,6 +10,16 @@ services:
     environment:
       FLASK_ENV: production
       OLLAMA_URL: http://host.docker.internal:11434
+      # Добавляем переменные для форсирования временных меток в логах Python
+      PYTHONUNBUFFERED: 1
+      # Динамически подставляем часовой пояс из .env файла
+      TZ: ${TIMEZONE}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     user: "1000:1000"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"

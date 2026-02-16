@@ -318,6 +318,9 @@ class PriorityRequestQueue:
             'last_request_time': None
         })
         
+        # Словарь для хранения результатов (для long-polling)
+        self.results = {}
+        
     def _get_session_title(self, session_id):
         """Получить заголовок сеанса по ID"""
         try:
@@ -387,12 +390,24 @@ class PriorityRequestQueue:
         with self.lock:
             # Считаем сколько запросов впереди в том же классе
             same_class_before = 0
+            found = False
             for item in self.queues[user_class]:
                 cls, ts, rid = item
                 if rid == request_id:
+                    found = True
                     break
                 if ts < request['timestamp']:
                     same_class_before += 1
+            
+            if not found:
+                # Запрос уже не в очереди (возможно, обрабатывается)
+                return {
+                    'total_before': 0,
+                    'same_class_before': 0,
+                    'higher_class_before': 0,
+                    'estimated_seconds': 0,
+                    'position': 0
+                }
             
             # Считаем запросы в более высоких классах
             higher_class_total = 0
@@ -419,7 +434,6 @@ class PriorityRequestQueue:
             
         if not self.request_history:
             # Дефолтные значения, если нет истории
-            base_times = {'text': 2, 'image': 25, 'camera': 3, 'reasoning': 8}
             return position * 5  # грубая оценка
         
         # Анализируем историю по классам (последние 50 запросов)
@@ -500,13 +514,20 @@ class PriorityRequestQueue:
                 # Вызываем реальную обработку
                 result = self._process_request_impl(next_request)
                 
-                # Отправляем результат
-                self._send_result(next_request, result)
+                # Сохраняем результат
+                self.results[next_request['id']] = {
+                    'status': 'completed',
+                    'result': result,
+                    'timestamp': time.time()
+                }
                 
             except Exception as e:
                 app.logger.error(f"Ошибка обработки запроса {next_request['id']}: {str(e)}")
-                # Отправляем ошибку
-                self._send_error(next_request, str(e))
+                self.results[next_request['id']] = {
+                    'status': 'error',
+                    'error': str(e),
+                    'timestamp': time.time()
+                }
             
             # Обновляем статистику
             end_time = time.time()
@@ -530,20 +551,175 @@ class PriorityRequestQueue:
             self.current_request = None
     
     def _process_request_impl(self, request):
-        """Реальная обработка запроса (вызывается из очереди)"""
-        # Здесь будет логика обработки, аналогичная send_message
-        # Но для простоты пока заглушка
-        return {'status': 'processed', 'data': request['data']}
-    
-    def _send_result(self, request, result):
-        """Отправка результата пользователю"""
-        # В реальности здесь будет отправка через WebSocket или long-polling
-        # Пока сохраняем в БД и обновляем статус
-        app.logger.info(f"Запрос {request['id']} для пользователя {request['user_id']} выполнен")
-    
-    def _send_error(self, request, error):
-        """Отправка ошибки пользователю"""
-        app.logger.error(f"Ошибка запроса {request['id']}: {error}")
+        """
+        Реальная обработка запроса
+        Здесь вызываются соответствующие модули в зависимости от типа запроса
+        """
+        user_id = request['user_id']
+        session_id = request['session_id']
+        request_data = request['data']
+        
+        # Получаем текущее время
+        current_time_str = get_current_time_in_timezone()
+        current_time_for_db = get_current_time_in_timezone_for_db()
+        
+        # Определяем тип запроса и обрабатываем
+        request_type = request_data.get('type', 'text')
+        message_text = request_data.get('text', '')
+        file_data = request_data.get('file_data')
+        file_type = request_data.get('file_type')
+        file_name = request_data.get('file_name')
+        
+        # Для текстовых запросов используем базовый модуль
+        if request_type == 'text':
+            # Обрабатываем через базовый модуль
+            router_result = modules['base'].process_message(message_text, current_time_str)
+            
+            if 'error' in router_result:
+                return {'error': router_result['error']}
+            
+            action_type = router_result['action']
+            query = router_result['query']
+            
+            final_response = ""
+            model_used = app.config['LLM_CHAT_MODEL']
+            
+            # Обработка в зависимости от типа действия
+            if action_type == 'image':
+                # Запрос на создание изображения
+                if 'image' in modules and modules['image'].available and 'multimodal' in modules:
+                    app.logger.info("Обработка запроса на создание изображения")
+                    
+                    image_result = modules['image'].generate_image(query)
+                    
+                    if image_result['success']:
+                        message_text = f"Изображение сгенерировано моделью {app.config['AUTOMATIC1111_MODEL']} по запросу: {query}"
+                        
+                        save_message(
+                            session_id, 'assistant', message_text,
+                            image_result['image_data'], image_result['file_type'],
+                            image_result['file_name'], app.config['LLM_MULTIMODAL_MODEL']
+                        )
+                        
+                        return {
+                            'response': message_text,
+                            'session_id': session_id,
+                            'model_used': app.config['LLM_MULTIMODAL_MODEL'],
+                            'model_category': action_type,
+                            'assistant_timestamp': current_time_for_db,
+                            'generated_image': image_result['image_data'],
+                            'file_name': image_result['file_name'],
+                            'file_size': image_result['file_size'],
+                            'file_type': image_result['file_type']
+                        }
+                    else:
+                        final_response = f"⚠️ {image_result['error']}"
+                else:
+                    final_response = "⚠️ Модуль генерации изображений недоступен"
+            
+            elif action_type == 'camera':
+                # Запрос к камере
+                if 'cam' in modules and modules['cam'].available:
+                    app.logger.info("Обработка запроса к камере")
+                    
+                    camera_result = modules['cam'].get_snapshot(query)
+                    
+                    if camera_result['success']:
+                        save_message(
+                            session_id, 'assistant',
+                            f"Изображение с камеры: {camera_result['room_name']}",
+                            camera_result['image_data'], camera_result['image_type'],
+                            camera_result['file_name'], model_used
+                        )
+                        
+                        return {
+                            'response': f"Изображение с камеры: {camera_result['room_name']}",
+                            'session_id': session_id,
+                            'model_used': model_used,
+                            'model_category': action_type,
+                            'assistant_timestamp': current_time_for_db,
+                            'generated_image': camera_result['image_data'],
+                            'file_name': camera_result['file_name'],
+                            'file_size': camera_result['file_size'],
+                            'file_type': camera_result['image_type']
+                        }
+                    else:
+                        final_response = f"⚠️ {camera_result['error']}"
+                else:
+                    final_response = "⚠️ Модуль видеонаблюдения недоступен"
+            
+            elif action_type == 'reasoning':
+                # Сложный запрос
+                if router_result.get('needs_reasoning'):
+                    app.logger.info("Обработка сложного запроса через reasoning модель")
+                    final_response = modules['base'].process_reasoning(query, current_time_str)
+                    model_used = app.config['LLM_REASONING_MODEL']
+                else:
+                    final_response = query
+            
+            else:  # action_type == 'none'
+                final_response = query
+            
+            # Сохраняем ответ
+            if final_response:
+                save_message(session_id, 'assistant', final_response, model_name=model_used)
+            
+            return {
+                'response': final_response,
+                'session_id': session_id,
+                'model_used': model_used,
+                'model_category': action_type,
+                'assistant_timestamp': current_time_for_db
+            }
+        
+        # Для запросов с изображениями
+        elif request_type == 'image' and file_data:
+            if 'multimodal' in modules and modules['multimodal'].available:
+                # Проверяем валидность изображения
+                # Приблизительный размер файла
+                file_size = int((len(file_data) * 3) / 4) if file_data else 0
+                is_valid, error = modules['multimodal'].validate_image(file_data, file_type, file_name, file_size)
+                
+                if is_valid:
+                    # Обрабатываем изображение через мультимодальную модель
+                    bot_reply, error = modules['multimodal'].process_image_with_text(
+                        file_data, message_text, current_time_str
+                    )
+                    
+                    if error:
+                        bot_reply = f"⚠️ {error}"
+                    
+                    save_message(session_id, 'assistant', bot_reply, model_name=app.config['LLM_MULTIMODAL_MODEL'])
+                    
+                    return {
+                        'response': bot_reply,
+                        'session_id': session_id,
+                        'model_used': app.config['LLM_MULTIMODAL_MODEL'],
+                        'model_category': 'multimodal',
+                        'assistant_timestamp': current_time_for_db
+                    }
+                else:
+                    bot_reply = f"⚠️ {error}"
+                    save_message(session_id, 'assistant', bot_reply, model_name='system')
+                    
+                    return {
+                        'response': bot_reply,
+                        'session_id': session_id,
+                        'model_used': 'system',
+                        'assistant_timestamp': current_time_for_db
+                    }
+            else:
+                bot_reply = "⚠️ Мультимодальная модель недоступна. Файлы не поддерживаются."
+                save_message(session_id, 'assistant', bot_reply, model_name='system')
+                
+                return {
+                    'response': bot_reply,
+                    'session_id': session_id,
+                    'model_used': 'system',
+                    'assistant_timestamp': current_time_for_db
+                }
+        
+        return {'error': 'Неизвестный тип запроса'}
     
     def get_user_requests_status(self, user_id):
         """Получить статус всех запросов пользователя"""
@@ -626,6 +802,10 @@ class PriorityRequestQueue:
             return 0
         recent = self.request_history[-50:]
         return round(sum(h['duration'] for h in recent) / len(recent), 1)
+    
+    def check_result(self, request_id):
+        """Проверить, готов ли результат для request_id"""
+        return self.results.get(request_id)
 
 # Глобальный экземпляр очереди
 request_queue = PriorityRequestQueue()
@@ -939,6 +1119,18 @@ def api_cancel_request(request_id):
     success = request_queue.cancel_request(session['email'], request_id)
     return jsonify({'success': success})
 
+@app.route('/api/queue/result/<request_id>', methods=['GET'])
+def api_check_result(request_id):
+    """Проверить результат запроса"""
+    if 'email' not in session:
+        return jsonify({'error': 'Не авторизован'}), 401
+    
+    result = request_queue.check_result(request_id)
+    if result:
+        return jsonify(result)
+    else:
+        return jsonify({'status': 'pending'})
+
 # -------------------------------
 # API для получения подписи футера
 # -------------------------------
@@ -988,20 +1180,11 @@ def send_message():
         session_id = create_session(user_id)
         session['current_session'] = session_id
     
-    # Проверяем, есть ли уже запрос в этом сеансе
-    existing_requests = request_queue.get_user_requests_status(user_id)
-    if existing_requests['processing'] and existing_requests['processing'].get('session_id') == session_id:
-        return jsonify({
-            'error': 'В этом сеансе уже есть активный запрос',
-            'status': 'waiting'
-        }), 429
-    
     # Получаем данные из запроса
     message_text = ""
     file_data = None
     file_type = None
     file_name = None
-    file_size = 0
     
     if 'multipart/form-data' in request.content_type:
         message_text = request.form.get('message', '')
@@ -1018,10 +1201,10 @@ def send_message():
                 file_name = file.filename
     else:
         data = request.get_json()
-        message_text = data.get('message', '')
+        if data:
+            message_text = data.get('message', '')
     
     # Получаем текущее время
-    current_time_str = get_current_time_in_timezone()
     current_time_for_db = get_current_time_in_timezone_for_db()
     
     # Проверяем, первое ли это сообщение
@@ -1053,10 +1236,6 @@ def send_message():
     request_type = 'text'
     if file_data and file_type and file_type.startswith('image/'):
         request_type = 'image'
-    elif 'camera' in request_type:
-        request_type = 'camera'
-    elif 'reasoning' in request_type:
-        request_type = 'reasoning'
     
     # Создаём данные для очереди
     request_data = {

@@ -1007,7 +1007,6 @@
         let fileData = null;
         let fileType = null;
         let fileName = null;
-        let fileSize = null;
         
         // СОХРАНЯЕМ КОПИИ ДЛЯ ОТПРАВКИ
         const tempAttachedFile = attachedFile;
@@ -1041,7 +1040,7 @@
         };
         
         // Функция для отправки на сервер
-        const sendToServer = async (fileDataForSend, fileTypeForSend, fileNameForSend) => {
+        const sendToServer = async () => {
             const formData = new FormData();
             formData.append('message', tempText);
             if (tempAttachedFile) {
@@ -1065,7 +1064,16 @@
                         : `${waitSeconds} сек`;
                     
                     // Показываем уведомление
-                    alert(`✅ Запрос поставлен в очередь (позиция ${data.position}, ожидание ~${waitText})`);
+                    const notification = document.createElement('div');
+                    notification.className = 'queue-notification';
+                    notification.innerHTML = `
+                        <div class="notification-content">
+                            <span>⏳ Запрос в очереди (позиция ${data.position})</span>
+                            <span class="wait-time">~${waitText}</span>
+                        </div>
+                    `;
+                    document.querySelector('.chat-header').appendChild(notification);
+                    setTimeout(() => notification.remove(), 5000);
                     
                     // Обновляем панель статусов
                     refreshRequestsStatus();
@@ -1075,6 +1083,9 @@
                     if (panel.style.display === 'none') {
                         initRequestsStatusPanel();
                     }
+                    
+                    // Запускаем периодическую проверку результата
+                    startResultPolling(data.request_id);
                 }
                 
             } catch (err) {
@@ -1091,6 +1102,51 @@
                 isSending = false;
             }
         };
+
+        // Функция для опроса результата
+        function startResultPolling(requestId) {
+            let pollCount = 0;
+            const maxPolls = 60; // Максимум 60 попыток (3 минуты при 3-секундном интервале)
+            
+            const pollInterval = setInterval(async () => {
+                pollCount++;
+                
+                try {
+                    const response = await fetch(`/api/queue/result/${requestId}`);
+                    const data = await response.json();
+                    
+                    if (data.status === 'completed') {
+                        clearInterval(pollInterval);
+                        // Показываем результат
+                        if (data.result && data.result.response) {
+                            displayMessage(
+                                'assistant',
+                                data.result.response,
+                                data.result.generated_image,
+                                data.result.file_type,
+                                data.result.file_name,
+                                data.result.assistant_timestamp,
+                                null,
+                                data.result.model_used
+                            );
+                        }
+                        refreshRequestsStatus();
+                    } else if (data.status === 'error') {
+                        clearInterval(pollInterval);
+                        alert('Ошибка обработки запроса: ' + data.error);
+                        refreshRequestsStatus();
+                    }
+                    
+                    if (pollCount >= maxPolls) {
+                        clearInterval(pollInterval);
+                        console.log('Polling stopped after max attempts');
+                    }
+                    
+                } catch (error) {
+                    console.error('Error polling result:', error);
+                }
+            }, 3000); // Проверяем каждые 3 секунды
+        }
         
         // Сначала отображаем сообщение пользователя
         if (tempAttachedFile) {
@@ -1100,7 +1156,6 @@
                 fileData = e.target.result.split(',')[1];
                 fileType = tempAttachedFile.type;
                 fileName = tempAttachedFile.name;
-                fileSize = tempAttachedFile.size;
                 
                 // Отображаем сообщение пользователя
                 displayUserMessage(fileData, fileType, fileName);
@@ -1274,7 +1329,7 @@
             return;
         }
         
-        // ВСТРОЕННЫЕ СТИЛИ (полная копия из style.css)
+        // ВСТРОЕННЫЕ СТИЛИ (полная копия из style.css, но без кнопок копирования)
         const styles = `
             * {
                 margin: 0;
@@ -1506,14 +1561,17 @@
 
             .message-content code {
                 padding: 0.2em 0.4em;
+                margin: 0;
                 font-size: 85%;
                 background-color: rgba(27,31,35,0.05);
                 border-radius: 3px;
                 font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+                color: #24292e;
             }
 
             .message-content pre {
                 background-color: #f6f8fa;
+                color: #24292e;
                 border-radius: 6px;
                 padding: 1em;
                 overflow: auto;
@@ -1524,9 +1582,21 @@
 
             .message-content pre code {
                 background-color: transparent;
+                color: inherit;
                 padding: 0;
+                margin: 0;
                 font-size: 100%;
                 white-space: pre;
+                border: 0;
+            }
+
+            .message-content p code,
+            .message-content li code {
+                background-color: #f0f0f0;
+                color: #2c3e50;
+                padding: 0.2em 0.4em;
+                border-radius: 3px;
+                border: 1px solid #ddd;
             }
 
             .message-content table {
@@ -1683,7 +1753,7 @@
         URL.revokeObjectURL(url);
     }
 
-    // Функции для копирования кода (оставляем без изменений)
+    // Функции для копирования кода
     async function copyToClipboard(text) {
         try {
             await navigator.clipboard.writeText(text);

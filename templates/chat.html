@@ -1626,13 +1626,11 @@
      */
     async function copyToClipboard(text) {
         try {
-            // Современный API
             await navigator.clipboard.writeText(text);
             return true;
         } catch (err) {
             console.error('Ошибка копирования через clipboard API:', err);
             
-            // Fallback для старых браузеров
             try {
                 const textarea = document.createElement('textarea');
                 textarea.value = text;
@@ -1658,8 +1656,11 @@
     async function handleCopyClick(button, codeElement) {
         const code = codeElement.textContent || codeElement.innerText;
         
-        // Показываем процесс копирования
+        // Сохраняем исходное состояние
         const originalHTML = button.innerHTML;
+        const originalClass = button.className;
+        
+        // Показываем процесс копирования
         button.innerHTML = '⏳';
         button.disabled = true;
         
@@ -1668,13 +1669,13 @@
         if (success) {
             // Успешное копирование
             button.innerHTML = '✓';
-            button.classList.add('copied');
+            button.className = originalClass + ' copied';
             button.title = 'Скопировано!';
             
             // Возвращаем исходный вид через 2 секунды
             setTimeout(() => {
                 button.innerHTML = '📋';
-                button.classList.remove('copied');
+                button.className = originalClass.replace(' copied', '');
                 button.title = 'Копировать код';
                 button.disabled = false;
             }, 2000);
@@ -1701,7 +1702,7 @@
         // Находим все блоки кода (pre code)
         const codeBlocks = messageElement.querySelectorAll('pre code');
         
-        codeBlocks.forEach((codeBlock, index) => {
+        codeBlocks.forEach((codeBlock) => {
             // Проверяем, не добавлена ли уже кнопка
             const parent = codeBlock.parentNode;
             if (parent.classList.contains('code-block-wrapper')) return;
@@ -1729,10 +1730,6 @@
             wrapper.appendChild(parent);
             wrapper.appendChild(copyButton);
         });
-        
-        // Также обрабатываем инлайн-код (опционально, можно не добавлять кнопки)
-        // const inlineCode = messageElement.querySelectorAll('code:not(pre code)');
-        // inlineCode.forEach(...)
     }
 
     /**
@@ -1753,10 +1750,8 @@
         
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
-                // Проверяем добавленные узлы
                 mutation.addedNodes.forEach((node) => {
                     if (node.nodeType === Node.ELEMENT_NODE) {
-                        // Если это сообщение
                         if (node.classList && 
                             (node.classList.contains('user-message') || 
                             node.classList.contains('assistant-message') || 
@@ -1764,7 +1759,6 @@
                             addCopyButtonsToMessage(node);
                         }
                         
-                        // Если внутри есть сообщения
                         const messages = node.querySelectorAll?.('.user-message, .assistant-message, .bot-message');
                         if (messages) {
                             messages.forEach(addCopyButtonsToMessage);
@@ -1774,51 +1768,48 @@
             });
         });
         
-        // Наблюдаем за изменениями в чате
         observer.observe(chatMessages, {
             childList: true,
             subtree: true
         });
     }
 
-    // Добавляем вызов функций при загрузке сообщений
-    const originalLoadMessages = loadMessages;
-    loadMessages = function(sessionId) {
+    // Сохраняем оригинальную функцию loadMessages
+    const originalLoadMessages = window.loadMessages || function(){};
+
+    // Переопределяем loadMessages
+    window.loadMessages = function(sessionId) {
         return originalLoadMessages(sessionId).then(() => {
-            // Добавляем кнопки к уже загруженным сообщениям
             setTimeout(addCopyButtonsToAllCodeBlocks, 100);
         });
     };
 
-    // Инициализация при загрузке страницы
-    document.addEventListener('DOMContentLoaded', function() {
-        // Существующий код инициализации...
-        
-        // Добавляем наблюдатель для новых сообщений
-        setTimeout(setupCopyButtonsObserver, 500);
-        
-        // Добавляем кнопки к существующим блокам кода (если они есть)
-        setTimeout(addCopyButtonsToAllCodeBlocks, 1000);
-    });
+    // Сохраняем оригинальную функцию displayMessage
+    const originalDisplayMessage = window.displayMessage || function(){};
 
-    // Переопределяем displayMessage для добавления кнопок после отображения
-    const originalDisplayMessage = displayMessage;
-    displayMessage = function(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName) {
-        // Вызываем оригинальную функцию
+    // Переопределяем displayMessage
+    window.displayMessage = function(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName) {
         const result = originalDisplayMessage.call(this, role, content, fileData, fileType, fileName, timestamp, responseTime, modelName);
         
-        // Находим последнее добавленное сообщение и добавляем кнопки
         const messages = document.getElementById('chat-messages');
         if (messages) {
             const lastMessage = messages.lastElementChild;
             if (lastMessage) {
-                // Небольшая задержка, чтобы Markdown успел обработаться
                 setTimeout(() => addCopyButtonsToMessage(lastMessage), 50);
             }
         }
         
         return result;
-    };    
+    };
+
+    // Инициализация при загрузке страницы
+    document.addEventListener('DOMContentLoaded', function() {
+        // Добавляем наблюдатель для новых сообщений
+        setTimeout(setupCopyButtonsObserver, 500);
+        
+        // Добавляем кнопки к существующим блокам кода
+        setTimeout(addCopyButtonsToAllCodeBlocks, 1000);
+    });
 
 </script>
 {% endblock %}

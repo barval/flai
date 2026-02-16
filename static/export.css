@@ -1,12 +1,33 @@
 /* static/export.css */
 /* Этот файл используется только для экспорта HTML */
 
-/* Импортируем ВСЕ основные стили из style.css */
+/* Импортируем основные стили */
 @import url('style.css');
 
-/* Дополнительные стили только для экспорта */
+/* Специфичные стили для экспорта */
 body {
     background-color: #f5f5f5;
+}
+
+main {
+    width: 75%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px 0;
+}
+
+header {
+    width: 75%;
+    max-width: 1200px;
+    margin: 20px auto 0 auto;
+    border-radius: 8px 8px 0 0;
+}
+
+footer {
+    width: 75%;
+    max-width: 1200px;
+    margin: 0 auto 20px auto;
+    border-radius: 0 0 8px 8px;
 }
 
 .chat-wrapper {
@@ -15,8 +36,6 @@ body {
     border-radius: 12px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     padding: 25px;
-    margin: 20px auto;
-    max-width: 1200px;
 }
 
 .chat-header {
@@ -37,22 +56,6 @@ body {
     margin: 5px 0;
 }
 
-/* Переопределяем стили сообщений для экспорта */
-.user-message {
-    background-color: #e6f2ff !important;
-    padding: 15px 20px !important;
-    margin-bottom: 15px !important;
-    border-radius: 12px !important;
-}
-
-.assistant-message,
-.bot-message {
-    background-color: #f8f9fa !important;
-    padding: 15px 20px !important;
-    margin-bottom: 15px !important;
-    border-radius: 12px !important;
-}
-
 .message-time {
     display: block !important;
     color: #7f8c8d !important;
@@ -61,145 +64,7 @@ body {
     margin-bottom: 8px !important;
 }
 
-.message-content {
-    line-height: 1.6 !important;
-}
-
-/* Стили для markdown в сохранённом чате */
-.message-content h1,
-.message-content h2,
-.message-content h3,
-.message-content h4,
-.message-content h5,
-.message-content h6 {
-    margin-top: 1.5em !important;
-    margin-bottom: 0.5em !important;
-    font-weight: 600 !important;
-    color: #2c3e50 !important;
-}
-
-.message-content h1 { 
-    font-size: 1.8em !important; 
-    border-bottom: 1px solid #eaecef !important; 
-    padding-bottom: 0.3em !important; 
-}
-
-.message-content h2 { 
-    font-size: 1.5em !important; 
-    border-bottom: 1px solid #eaecef !important; 
-    padding-bottom: 0.3em !important; 
-}
-
-.message-content h3 { font-size: 1.25em !important; }
-.message-content h4 { font-size: 1.1em !important; }
-.message-content h5 { font-size: 1em !important; }
-.message-content h6 { font-size: 0.9em !important; color: #6a737d !important; }
-
-.message-content p {
-    margin-bottom: 1em !important;
-}
-
-.message-content strong {
-    font-weight: 700 !important;
-    color: #2c3e50 !important;
-}
-
-.message-content em {
-    font-style: italic !important;
-}
-
-.message-content blockquote {
-    border-left: 4px solid #dfe2e5 !important;
-    padding: 0.5em 1em !important;
-    color: #6a737d !important;
-    background-color: #f8f9fa !important;
-    margin: 1em 0 !important;
-    border-radius: 0 4px 4px 0 !important;
-}
-
-.message-content ul,
-.message-content ol {
-    margin-left: 1.5em !important;
-    margin-bottom: 1em !important;
-}
-
-.message-content li {
-    margin-bottom: 0.25em !important;
-}
-
-.message-content code {
-    padding: 0.2em 0.4em !important;
-    font-size: 85% !important;
-    background-color: rgba(27,31,35,0.05) !important;
-    border-radius: 3px !important;
-    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace !important;
-}
-
-.message-content pre {
-    background-color: #f6f8fa !important;
-    border-radius: 6px !important;
-    padding: 1em !important;
-    overflow: auto !important;
-    line-height: 1.45 !important;
-    margin-bottom: 1em !important;
-    border: 1px solid #e1e4e8 !important;
-}
-
-.message-content pre code {
-    background-color: transparent !important;
-    padding: 0 !important;
-    font-size: 100% !important;
-    white-space: pre !important;
-}
-
-.message-content table {
-    border-collapse: collapse !important;
-    width: 100% !important;
-    margin-bottom: 1em !important;
-}
-
-.message-content table th,
-.message-content table td {
-    padding: 6px 13px !important;
-    border: 1px solid #dfe2e5 !important;
-}
-
-.message-content table th {
-    font-weight: 600 !important;
-    background-color: #f6f8fa !important;
-}
-
-/* Стили для вложений */
-.attached-image {
-    max-width: 100% !important;
-    max-height: 500px !important;
-    border-radius: 8px !important;
-    margin-top: 15px !important;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
-}
-
-.attached-file {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 10px !important;
-    background: #f8f9fa !important;
-    padding: 10px 15px !important;
-    border-radius: 6px !important;
-    border: 1px solid #e0e0e0 !important;
-    margin-top: 10px !important;
-}
-
-.attached-file a {
-    color: #3498db !important;
-    text-decoration: none !important;
-}
-
-audio {
-    width: 100% !important;
-    margin-top: 15px !important;
-}
-
-/* Скрываем элементы управления при экспорте */
+/* Скрываем все элементы управления */
 .save-chat-button,
 .clear-context-button,
 .new-session-button,
@@ -211,30 +76,19 @@ audio {
 .download-link-inline,
 .sessions-sidebar,
 .message-input,
-.context-info-container button {
+.context-info-container button,
+.copy-code-button {
     display: none !important;
 }
 
-/* Адаптация для мобильных устройств */
+/* Адаптация для мобильных */
 @media (max-width: 768px) {
+    main, header, footer {
+        width: 90%;
+    }
+    
     .chat-wrapper {
-        padding: 15px !important;
-        margin: 10px !important;
-    }
-    
-    .user-message,
-    .assistant-message,
-    .bot-message {
-        padding: 12px !important;
-    }
-    
-    .message-content table {
-        display: block !important;
-        overflow-x: auto !important;
-    }
-    
-    .attached-image {
-        max-height: 300px !important;
+        padding: 15px;
     }
 }
 
@@ -251,32 +105,4 @@ audio {
         border: none !important;
         box-shadow: none !important;
     }
-    
-    .chat-wrapper {
-        box-shadow: none !important;
-        padding: 0 !important;
-    }
-}
-
-/* Скрываем кнопки копирования при экспорте */
-.copy-code-button {
-    display: none !important;
-}
-
-/* Сохраняем стили для блоков кода */
-.message-content pre {
-    background-color: #282c34 !important;
-    color: #abb2bf !important;
-    border-radius: 6px !important;
-    padding: 1em !important;
-    overflow: auto !important;
-    line-height: 1.45 !important;
-    margin-bottom: 1em !important;
-    border: 1px solid #3e4451 !important;
-}
-
-.message-content code {
-    background-color: #282c34 !important;
-    color: #abb2bf !important;
-    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace !important;
 }

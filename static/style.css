@@ -19,7 +19,7 @@ main {
     flex: 1;
 }
 
-/* Шапка и подвал - ИСПРАВЛЕННАЯ ВЕРСИЯ */
+/* Шапка и подвал */
 header {
     background-color: #2c3e50;
     color: white;
@@ -35,6 +35,7 @@ header h1 {
     font-size: 1.3rem;
     margin: 0;
     margin-right: auto;
+    color: white;
 }
 
 footer {
@@ -392,16 +393,7 @@ footer {
     flex-direction: column;
 }
 
-.bot-message {
-    background-color: #f0f0f0;
-    padding: 0.8rem 1rem;
-    margin-bottom: 0.8rem;
-    border-radius: 8px;
-    word-wrap: break-word;
-    display: flex;
-    flex-direction: column;
-}
-
+.bot-message,
 .assistant-message {
     background-color: #f0f0f0;
     padding: 0.8rem 1rem;
@@ -534,11 +526,6 @@ footer {
     border-radius: 8px;
 }
 
-#file-preview-name {
-    font-size: 0.9rem;
-    color: #2c3e50;
-}
-
 #remove-file-button {
     background-color: #e74c3c;
     color: white;
@@ -558,14 +545,6 @@ footer {
 }
 
 /* Вложения */
-.attached-image {
-    max-width: 100%;
-    max-height: 500px;
-    margin-top: 10px;
-    border-radius: 4px;
-    align-self: flex-start;
-}
-
 .attached-file {
     margin-top: 10px;
     padding: 8px 12px;
@@ -608,7 +587,6 @@ audio {
     padding: 0 !important;
     border-radius: 0 !important;
     border: none !important;
-    text-decoration: none !important;
     line-height: 1.4 !important;
 }
 
@@ -714,12 +692,6 @@ audio {
     border-bottom: 1px dotted #3498db;
 }
 
-.user-message small a:hover,
-.bot-message small a:hover,
-.assistant-message small a:hover {
-    border-bottom: 1px solid #3498db;
-}
-
 /* ========== СТИЛИ ДЛЯ MARKDOWN ========== */
 .message-content {
     line-height: 1.6;
@@ -804,21 +776,22 @@ audio {
 }
 
 .message-content pre {
-    background-color: #f6f8fa;
+    background-color: #282c34;
+    color: #abb2bf;
     border-radius: 6px;
     padding: 1em;
     overflow: auto;
     line-height: 1.45;
     margin-bottom: 1em;
-    border: 1px solid #e1e4e8;
+    border: 1px solid #3e4451;
 }
 
 .message-content pre code {
     background-color: transparent;
+    color: inherit;
     padding: 0;
     margin: 0;
     font-size: 100%;
-    word-break: normal;
     white-space: pre;
     border: 0;
 }
@@ -872,25 +845,6 @@ audio {
     border-radius: 4px;
 }
 
-/* Улучшенные стили для сообщений бота */
-.bot-message .message-content {
-    color: #24292e;
-}
-
-.bot-message .message-content strong {
-    color: #2980b9;
-}
-
-.bot-message .message-content code {
-    background-color: #e8f4fc;
-    color: #2c3e50;
-}
-
-.bot-message .message-content pre {
-    background-color: #f0f7ff;
-    border-color: #b8d4f0;
-}
-
 /* Скроллбар */
 ::-webkit-scrollbar {
     width: 8px;
@@ -910,7 +864,7 @@ audio {
     background: #a8a8a8;
 }
 
-/* Индикатор нового сообщения в неактивном сеансе */
+/* Индикатор нового сообщения */
 .new-message-indicator {
     display: inline-block;
     animation: pulse 1.5s infinite;
@@ -925,256 +879,16 @@ audio {
     100% { opacity: 0.5; }
 }
 
-/* Убираем индикатор при активации сеанса */
 .session-item.active .new-message-indicator {
     display: none;
 }
 
-/* ========== МОБИЛЬНАЯ ВЕРСИЯ - ИЗОБРАЖЕНИЯ НА ВСЮ ШИРИНУ ========== */
-@media (max-width: 768px) {
-    /* Общие контейнеры на всю ширину */
-    .chat-container {
-        flex-direction: column;
-        height: auto;
-    }
-    
-    .sessions-sidebar {
-        width: 100%;
-        height: 250px;
-    }
-    
-    .chat-main {
-        width: 100%;
-        padding: 10px;
-        box-sizing: border-box;
-    }
-    
-    .chat-messages {
-        padding: 10px;
-        box-sizing: border-box;
-    }
-    
-    .user-message,
-    .assistant-message,
-    .bot-message {
-        padding: 12px;
-        width: 100%;
-        box-sizing: border-box;
-        margin-bottom: 12px;
-    }
-    
-    /* ИСПРАВЛЕНИЕ ДЛЯ ИЗОБРАЖЕНИЙ - НА ВСЮ ШИРИНУ */
-    .image-container {
-        width: 100% !important;
-        display: block !important;
-        margin: 10px 0 !important;
-        padding: 0 !important;
-        text-align: center;
-    }
-    
-    .attached-image {
-        width: 100% !important;
-        max-width: 100% !important;
-        height: auto !important;
-        max-height: none !important;
-        display: block !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        border-radius: 8px;
-        object-fit: contain;
-        background-color: #f5f5f5;
-    }
-    
-    /* Превью перед отправкой */
-    #file-preview-container {
-        width: 100%;
-    }
-    
-    #file-preview-container div {
-        width: 100%;
-        box-sizing: border-box;
-        padding: 10px;
-    }
-    
-    /* Аудио плеер на всю ширину */
-    audio {
-        width: 100%;
-        margin-top: 10px;
-    }
-    
-    /* Прикрепленные файлы (не изображения) */
-    .attached-file {
-        width: 100%;
-        box-sizing: border-box;
-        margin-top: 10px;
-    }
-    
-    /* Поле ввода */
-    .message-input {
-        flex-wrap: wrap;
-        gap: 8px;
-    }
-    
-    .message-input input[type="text"] {
-        width: 100%;
-        flex: none;
-    }
-    
-    .message-input button {
-        flex: 1;
-    }
-    
-    #send-button {
-        min-width: auto;
-    }
-    
-    /* Шапка чата */
-    .chat-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 10px;
-    }
-    
-    .context-info-container {
-        width: 100%;
-        justify-content: space-between;
-    }
-    
-    /* Временные метки */
-    .user-message small,
-    .bot-message small,
-    .assistant-message small {
-        display: block !important;
-        font-size: 0.7rem !important;
-        white-space: normal !important;
-        word-wrap: break-word !important;
-        overflow-wrap: break-word !important;
-        word-break: break-word !important;
-        line-height: 1.4 !important;
-        width: 100% !important;
-        max-width: 100% !important;
-    }
-    
-    .user-message small .file-info,
-    .bot-message small .file-info,
-    .assistant-message small .file-info,
-    .user-message small .model-response-info,
-    .bot-message small .model-response-info,
-    .assistant-message small .model-response-info {
-        display: inline-block !important;
-        white-space: normal !important;
-        word-wrap: break-word !important;
-        margin: 2px 2px !important;
-        font-size: 0.65rem !important;
-        max-width: 100% !important;
-    }
-    
-    .download-link-inline {
-        display: inline-block !important;
-        margin: 2px 2px !important;
-        font-size: 0.9rem !important;
-        vertical-align: middle !important;
-    }
-    
-    /* Markdown */
-    .message-content pre {
-        white-space: pre-wrap;
-        word-wrap: break-word;
-    }
-    
-    .message-content table {
-        display: block;
-        overflow-x: auto;
-    }
-    
-    .message-content iframe {
-        max-width: 100%;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        background-color: #f9f9f9;
-        margin: 10px 0;
-    }
-    
-    .message-content video,
-    .message-content audio {
-        max-width: 100%;
-        margin: 10px 0;
-        border-radius: 4px;
-    }
-    
-    /* Модальное окно */
-    .image-modal-content {
-        max-width: 95%;
-        max-height: 80vh;
-    }
-    
-    .image-modal-close {
-        top: 10px;
-        right: 20px;
-        font-size: 30px;
-    }
-    
-    /* Заголовки сеансов */
-    .session-title {
-        white-space: normal;
-        word-wrap: break-word;
-    }
-    
-    .session-date {
-        white-space: normal;
-    }
-}
-
-/* Дополнительные стили для очень маленьких экранов */
-@media (max-width: 480px) {
-    .user-message,
-    .assistant-message,
-    .bot-message {
-        padding: 10px;
-    }
-    
-    .user-message small,
-    .bot-message small,
-    .assistant-message small {
-        font-size: 0.65rem !important;
-    }
-    
-    .user-message small .file-info,
-    .bot-message small .file-info,
-    .assistant-message small .file-info {
-        font-size: 0.6rem !important;
-        padding: 1px 3px !important;
-    }
-    
-    .download-link-inline {
-        font-size: 0.8rem !important;
-    }
-    
-    .attached-image {
-        border-radius: 6px;
-    }
-    
-    /* Подвал */
-    footer {
-        height: 50px;
-        padding: 0.5rem 1rem;
-    }
-    
-    .footer-line1,
-    .footer-line2 {
-        font-size: 0.8rem;
-    }
-}
-
 /* ========== СТИЛИ ДЛЯ КНОПКИ КОПИРОВАНИЯ КОДА ========== */
-
-/* Контейнер для блока кода с относительным позиционированием */
 .code-block-wrapper {
     position: relative;
     margin: 1em 0;
 }
 
-/* Кнопка копирования */
 .copy-code-button {
     position: absolute;
     top: 8px;
@@ -1203,34 +917,9 @@ audio {
     transform: scale(1.05);
 }
 
-/* Состояние "скопировано" */
 .copy-code-button.copied {
     background-color: #27ae60;
     opacity: 1;
-}
-
-.copy-code-button.copied::after {
-    content: '✓';
-    font-size: 18px;
-    line-height: 1;
-}
-
-/* Для тёмных блоков кода делаем кнопку светлее */
-.message-content pre {
-    background-color: #282c34;  /* Тёмный фон для блоков кода */
-    color: #abb2bf;
-    border-radius: 6px;
-    padding: 1em;
-    overflow: auto;
-    line-height: 1.45;
-    margin-bottom: 1em;
-    border: 1px solid #3e4451;
-}
-
-.message-content code {
-    background-color: #282c34;
-    color: #abb2bf;
-    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
 }
 
 /* Для инлайн-кода оставляем светлый фон */
@@ -1243,8 +932,41 @@ audio {
     border: 1px solid #ddd;
 }
 
-/* Адаптация для мобильных устройств */
+/* ========== МОБИЛЬНАЯ ВЕРСИЯ ========== */
 @media (max-width: 768px) {
+    .chat-container {
+        flex-direction: column;
+        height: auto;
+    }
+    
+    .sessions-sidebar {
+        width: 100%;
+        height: 250px;
+    }
+    
+    .chat-main {
+        width: 100%;
+        padding: 10px;
+    }
+    
+    .image-container {
+        width: 100% !important;
+    }
+    
+    .attached-image {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+    }
+    
+    .message-input {
+        flex-wrap: wrap;
+    }
+    
+    .message-input input[type="text"] {
+        width: 100%;
+    }
+    
     .copy-code-button {
         width: 28px;
         height: 28px;
@@ -1254,7 +976,6 @@ audio {
     }
 }
 
-/* Для печати скрываем кнопки */
 @media print {
     .copy-code-button {
         display: none !important;

@@ -910,223 +910,6 @@ audio {
     background: #a8a8a8;
 }
 
-/* ========== АДАПТИВНОСТЬ ========== */
-@media (max-width: 768px) {
-    .chat-container {
-        flex-direction: column;
-        height: auto;
-    }
-    
-    .sessions-sidebar {
-        width: 100%;
-        height: 250px;
-    }
-    
-    .chat-main {
-        width: 100%;
-    }
-    
-    .message-input {
-        flex-wrap: wrap;
-    }
-    
-    .message-input input[type="text"] {
-        width: 100%;
-    }
-    
-    .login-container {
-        width: 95%;
-        padding: 1.5rem;
-    }
-    
-    footer {
-        height: 50px;
-        padding: 0.5rem 1rem;
-    }
-    
-    .footer-line1,
-    .footer-line2 {
-        font-size: 0.8rem;
-    }
-    
-    /* На мобильных устройствах разрешаем перенос строк */
-    .session-title {
-        white-space: normal;
-        word-wrap: break-word;
-    }
-    
-    .session-date {
-        white-space: normal;
-    }
-    
-    .chat-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 10px;
-    }
-    
-    .context-info-container {
-        width: 100%;
-        justify-content: space-between;
-    }
-    
-    /* УЛУЧШЕННЫЕ СТИЛИ ДЛЯ ВРЕМЕННЫХ МЕТОК НА МОБИЛЬНЫХ */
-    .user-message small,
-    .bot-message small,
-    .assistant-message small {
-        display: block !important;
-        font-size: 0.7rem !important;
-        white-space: normal !important;
-        word-wrap: break-word !important;
-        overflow-wrap: break-word !important;
-        word-break: break-word !important;
-        line-height: 1.4 !important;
-        width: 100% !important;
-        max-width: 100% !important;
-    }
-    
-    /* Стили для элементов внутри small на мобильных */
-    .user-message small .file-info,
-    .bot-message small .file-info,
-    .assistant-message small .file-info,
-    .user-message small .model-response-info,
-    .bot-message small .model-response-info,
-    .assistant-message small .model-response-info {
-        display: inline-block !important;
-        white-space: normal !important;
-        word-wrap: break-word !important;
-        margin: 2px 2px !important;
-        font-size: 0.65rem !important;
-        max-width: 100% !important;
-    }
-    
-    /* Кнопка скачивания на мобильных */
-    .download-link-inline {
-        display: inline-block !important;
-        margin: 2px 2px !important;
-        font-size: 0.9rem !important;
-        vertical-align: middle !important;
-    }
-    
-    /* Информация о модели на мобильных */
-    .bot-message small .model-response-info,
-    .assistant-message small .model-response-info {
-        display: inline !important;
-        white-space: normal !important;
-        word-wrap: break-word !important;
-    }
-    
-    /* Адаптивные стили для Markdown на мобильных */
-    .message-content pre {
-        white-space: pre-wrap;
-        word-wrap: break-word;
-    }
-    
-    .message-content table {
-        display: block;
-        overflow-x: auto;
-    }
-    
-    /* Адаптивные стили для изображений */
-    .image-modal-content {
-        max-width: 95%;
-        max-height: 80vh;
-    }
-    
-    .image-modal-close {
-        top: 10px;
-        right: 20px;
-        font-size: 30px;
-    }
-    
-    /* Стили для контейнера изображения на мобильных */
-    .image-container {
-        max-width: 100%;
-        margin-top: 5px;
-    }
-    
-    .attached-image {
-        max-height: 320px;
-    }
-    
-    /* Безопасное отображение HTML-вставок */
-    .message-content iframe {
-        max-width: 100%;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        background-color: #f9f9f9;
-        margin: 10px 0;
-    }
-
-    .message-content marquee {
-        padding: 8px;
-        background-color: #f0f7ff;
-        border-radius: 4px;
-        border: 1px solid #b8d4f0;
-        color: #2c3e50;
-    }
-
-    .message-content font {
-        display: inline;
-    }
-
-    .message-content video,
-    .message-content audio {
-        max-width: 100%;
-        margin: 10px 0;
-        border-radius: 4px;
-    }
-
-    .message-content td,
-    .message-content th {
-        border: 1px solid #ddd;
-        padding: 8px;
-    }
-
-    .message-content th {
-        background-color: #f2f2f2;
-        font-weight: bold;
-    }
-
-    .message-content img {
-        max-width: 100%;
-        height: auto;
-        border-radius: 4px;
-    }
-
-    /* Дополнительная защита от XSS */
-    .message-content script,
-    .message-content style,
-    .message-content link,
-    .message-content meta {
-        display: none !important;
-    }
-}
-
-/* Дополнительные стили для очень маленьких экранов */
-@media (max-width: 480px) {
-    .user-message small,
-    .bot-message small,
-    .assistant-message small {
-        font-size: 0.65rem !important;
-    }
-    
-    .user-message small .file-info,
-    .bot-message small .file-info,
-    .assistant-message small .file-info {
-        font-size: 0.6rem !important;
-        padding: 1px 3px !important;
-    }
-    
-    .download-link-inline {
-        font-size: 0.8rem !important;
-    }
-    
-    .attached-image {
-        max-height: 250px;
-    }
-}
-
 /* Индикатор нового сообщения в неактивном сеансе */
 .new-message-indicator {
     display: inline-block;
@@ -1145,4 +928,240 @@ audio {
 /* Убираем индикатор при активации сеанса */
 .session-item.active .new-message-indicator {
     display: none;
+}
+
+/* ========== МОБИЛЬНАЯ ВЕРСИЯ - ИЗОБРАЖЕНИЯ НА ВСЮ ШИРИНУ ========== */
+@media (max-width: 768px) {
+    /* Общие контейнеры на всю ширину */
+    .chat-container {
+        flex-direction: column;
+        height: auto;
+    }
+    
+    .sessions-sidebar {
+        width: 100%;
+        height: 250px;
+    }
+    
+    .chat-main {
+        width: 100%;
+        padding: 10px;
+        box-sizing: border-box;
+    }
+    
+    .chat-messages {
+        padding: 10px;
+        box-sizing: border-box;
+    }
+    
+    .user-message,
+    .assistant-message,
+    .bot-message {
+        padding: 12px;
+        width: 100%;
+        box-sizing: border-box;
+        margin-bottom: 12px;
+    }
+    
+    /* ИСПРАВЛЕНИЕ ДЛЯ ИЗОБРАЖЕНИЙ - НА ВСЮ ШИРИНУ */
+    .image-container {
+        width: 100% !important;
+        display: block !important;
+        margin: 10px 0 !important;
+        padding: 0 !important;
+        text-align: center;
+    }
+    
+    .attached-image {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+        max-height: none !important;
+        display: block !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border-radius: 8px;
+        object-fit: contain;
+        background-color: #f5f5f5;
+    }
+    
+    /* Превью перед отправкой */
+    #file-preview-container {
+        width: 100%;
+    }
+    
+    #file-preview-container div {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px;
+    }
+    
+    /* Аудио плеер на всю ширину */
+    audio {
+        width: 100%;
+        margin-top: 10px;
+    }
+    
+    /* Прикрепленные файлы (не изображения) */
+    .attached-file {
+        width: 100%;
+        box-sizing: border-box;
+        margin-top: 10px;
+    }
+    
+    /* Поле ввода */
+    .message-input {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .message-input input[type="text"] {
+        width: 100%;
+        flex: none;
+    }
+    
+    .message-input button {
+        flex: 1;
+    }
+    
+    #send-button {
+        min-width: auto;
+    }
+    
+    /* Шапка чата */
+    .chat-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .context-info-container {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    /* Временные метки */
+    .user-message small,
+    .bot-message small,
+    .assistant-message small {
+        display: block !important;
+        font-size: 0.7rem !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        overflow-wrap: break-word !important;
+        word-break: break-word !important;
+        line-height: 1.4 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    
+    .user-message small .file-info,
+    .bot-message small .file-info,
+    .assistant-message small .file-info,
+    .user-message small .model-response-info,
+    .bot-message small .model-response-info,
+    .assistant-message small .model-response-info {
+        display: inline-block !important;
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        margin: 2px 2px !important;
+        font-size: 0.65rem !important;
+        max-width: 100% !important;
+    }
+    
+    .download-link-inline {
+        display: inline-block !important;
+        margin: 2px 2px !important;
+        font-size: 0.9rem !important;
+        vertical-align: middle !important;
+    }
+    
+    /* Markdown */
+    .message-content pre {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+    
+    .message-content table {
+        display: block;
+        overflow-x: auto;
+    }
+    
+    .message-content iframe {
+        max-width: 100%;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background-color: #f9f9f9;
+        margin: 10px 0;
+    }
+    
+    .message-content video,
+    .message-content audio {
+        max-width: 100%;
+        margin: 10px 0;
+        border-radius: 4px;
+    }
+    
+    /* Модальное окно */
+    .image-modal-content {
+        max-width: 95%;
+        max-height: 80vh;
+    }
+    
+    .image-modal-close {
+        top: 10px;
+        right: 20px;
+        font-size: 30px;
+    }
+    
+    /* Заголовки сеансов */
+    .session-title {
+        white-space: normal;
+        word-wrap: break-word;
+    }
+    
+    .session-date {
+        white-space: normal;
+    }
+}
+
+/* Дополнительные стили для очень маленьких экранов */
+@media (max-width: 480px) {
+    .user-message,
+    .assistant-message,
+    .bot-message {
+        padding: 10px;
+    }
+    
+    .user-message small,
+    .bot-message small,
+    .assistant-message small {
+        font-size: 0.65rem !important;
+    }
+    
+    .user-message small .file-info,
+    .bot-message small .file-info,
+    .assistant-message small .file-info {
+        font-size: 0.6rem !important;
+        padding: 1px 3px !important;
+    }
+    
+    .download-link-inline {
+        font-size: 0.8rem !important;
+    }
+    
+    .attached-image {
+        border-radius: 6px;
+    }
+    
+    /* Подвал */
+    footer {
+        height: 50px;
+        padding: 0.5rem 1rem;
+    }
+    
+    .footer-line1,
+    .footer-line2 {
+        font-size: 0.8rem;
+    }
 }

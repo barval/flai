@@ -370,7 +370,7 @@ class PriorityRequestQueue:
             
             # Добавляем в соответствующую очередь
             heapq.heappush(self.queues[user_class], 
-                          (user_class, timestamp, request_id))
+                        (user_class, timestamp, request_id))
             
             app.logger.info(f"PriorityRequestQueue.add_request: запрос добавлен в очередь {user_class}")
             
@@ -382,12 +382,10 @@ class PriorityRequestQueue:
             
             app.logger.info(f"PriorityRequestQueue.add_request: позиция рассчитана: {position_info}")
             
-            # Запускаем обработчик, если не запущен
-            if not self.processing:
-                app.logger.info("PriorityRequestQueue.add_request: запускаем обработчик очереди")
-                threading.Thread(target=self._process_queue, daemon=True).start()
-            else:
-                app.logger.info("PriorityRequestQueue.add_request: обработчик уже запущен")
+            # ВСЕГДА запускаем обработчик в отдельном потоке
+            app.logger.info("PriorityRequestQueue.add_request: запускаем обработчик очереди")
+            thread = threading.Thread(target=self._process_queue, daemon=True)
+            thread.start()
         
         return request_id, position_info
     

@@ -17,6 +17,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     user: "1000:1000"
+    command: gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 4 wsgi:app
     logging:
       driver: "json-file"
       options:

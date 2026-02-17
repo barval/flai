@@ -1376,8 +1376,7 @@ def favicon():
 def inject_footer():
     return {'footer_content': app.config.get('FOOTER_TEXT', "")}
 
-# Проверка доступности модулей при старте
-@app.before_first_request
+# Проверка доступности модулей при инициализации (вместо before_first_request)
 def check_modules_on_startup():
     app.logger.info("=" * 50)
     app.logger.info("ПРОВЕРКА МОДУЛЕЙ ПРИ ЗАПУСКЕ")
@@ -1399,6 +1398,9 @@ def check_modules_on_startup():
         app.logger.info(f"ImageModule available: {modules['image'].available}")
     
     app.logger.info("=" * 50)
+
+# Вызываем функцию сразу после инициализации модулей
+check_modules_on_startup()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

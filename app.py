@@ -329,7 +329,8 @@ class PriorityRequestQueue:
                 c.execute('SELECT title FROM chat_sessions WHERE id = ?', (session_id,))
                 row = c.fetchone()
                 return row[0] if row else "Неизвестный сеанс"
-        except:
+        except Exception as e:
+            app.logger.error(f"Ошибка получения заголовка сессии: {str(e)}")
             return "Неизвестный сеанс"
     
     def add_request(self, user_id, session_id, request_data, user_class):
@@ -337,6 +338,8 @@ class PriorityRequestQueue:
         Добавление запроса в очередь
         Возвращает request_id и информацию о позиции
         """
+        app.logger.info(f"PriorityRequestQueue.add_request: user_id={user_id}, session_id={session_id}")
+        
         request_id = str(uuid.uuid4())
         timestamp = time.time()
         
@@ -360,12 +363,16 @@ class PriorityRequestQueue:
             'session_title': self._get_session_title(session_id)
         }
         
+        app.logger.info(f"PriorityRequestQueue.add_request: request_info создан, id={request_id}")
+        
         with self.lock:
+            app.logger.info(f"PriorityRequestQueue.add_request: захвачен lock")
+            
             # Добавляем в соответствующую очередь
-            # heapq использует кортеж (приоритет, timestamp, request_id) для сортировки
-            # Чем меньше приоритет, тем выше класс (0 - высший)
             heapq.heappush(self.queues[user_class], 
                           (user_class, timestamp, request_id))
+            
+            app.logger.info(f"PriorityRequestQueue.add_request: запрос добавлен в очередь {user_class}")
             
             self.requests_map[request_id] = request_info
             
@@ -373,9 +380,14 @@ class PriorityRequestQueue:
             position_info = self._calculate_position(request_id)
             request_info['position_info'] = position_info
             
+            app.logger.info(f"PriorityRequestQueue.add_request: позиция рассчитана: {position_info}")
+            
             # Запускаем обработчик, если не запущен
             if not self.processing:
+                app.logger.info("PriorityRequestQueue.add_request: запускаем обработчик очереди")
                 threading.Thread(target=self._process_queue, daemon=True).start()
+            else:
+                app.logger.info("PriorityRequestQueue.add_request: обработчик уже запущен")
         
         return request_id, position_info
     
@@ -471,32 +483,41 @@ class PriorityRequestQueue:
     
     def _process_queue(self):
         """Основной обработчик очереди"""
+        app.logger.info("PriorityRequestQueue._process_queue: ЗАПУСК ОБРАБОТЧИКА")
+        
         with self.lock:
             self.processing = True
+            app.logger.info("PriorityRequestQueue._process_queue: processing установлен в True")
         
         while True:
+            app.logger.info("PriorityRequestQueue._process_queue: начало итерации цикла")
             next_request = None
             next_class = None
             
             with self.lock:
                 # Ищем запрос в классах по приоритету
                 for cls in [0, 1, 2]:
+                    app.logger.info(f"PriorityRequestQueue._process_queue: проверка класса {cls}, размер очереди={len(self.queues[cls])}")
                     if self.queues[cls]:
                         # Берем самый старый (heap гарантирует порядок)
                         cls_val, ts, rid = self.queues[cls][0]
+                        app.logger.info(f"PriorityRequestQueue._process_queue: найден запрос {rid} в классе {cls}")
+                        
                         next_request = self.requests_map.get(rid)
                         if next_request and next_request['status'] == 'queued':
                             next_class = cls
                             # Удаляем из очереди
                             heapq.heappop(self.queues[cls])
+                            app.logger.info(f"PriorityRequestQueue._process_queue: запрос {rid} удален из очереди")
                             break
                         else:
                             # Запрос отменён или уже обработан - просто удаляем
+                            app.logger.info(f"PriorityRequestQueue._process_queue: запрос {rid} имеет статус {next_request['status'] if next_request else 'None'}, удаляем")
                             heapq.heappop(self.queues[cls])
                             continue
             
             if not next_request:
-                # Очередь пуста
+                app.logger.info("PriorityRequestQueue._process_queue: очередь пуста, завершаем работу")
                 with self.lock:
                     self.processing = False
                 break
@@ -506,13 +527,18 @@ class PriorityRequestQueue:
             next_request['start_time'] = time.time()
             self.current_request = next_request
             
+            app.logger.info(f"PriorityRequestQueue._process_queue: НАЧАЛО ОБРАБОТКИ запроса {next_request['id']}")
+            
             # Вычисляем время ожидания в очереди
             wait_time = next_request['start_time'] - next_request['timestamp']
+            app.logger.info(f"PriorityRequestQueue._process_queue: время ожидания в очереди: {wait_time:.2f}с")
             
             # Обрабатываем запрос (без лока, чтобы можно было добавлять новые)
             try:
                 # Вызываем реальную обработку
+                app.logger.info(f"PriorityRequestQueue._process_queue: вызов _process_request_impl для {next_request['id']}")
                 result = self._process_request_impl(next_request)
+                app.logger.info(f"PriorityRequestQueue._process_queue: _process_request_impl завершен, результат: {result}")
                 
                 # Сохраняем результат
                 self.results[next_request['id']] = {
@@ -520,9 +546,12 @@ class PriorityRequestQueue:
                     'result': result,
                     'timestamp': time.time()
                 }
+                app.logger.info(f"PriorityRequestQueue._process_queue: результат сохранен для {next_request['id']}")
                 
             except Exception as e:
-                app.logger.error(f"Ошибка обработки запроса {next_request['id']}: {str(e)}")
+                app.logger.error(f"PriorityRequestQueue._process_queue: ОШИБКА обработки запроса {next_request['id']}: {str(e)}")
+                import traceback
+                traceback.print_exc()
                 self.results[next_request['id']] = {
                     'status': 'error',
                     'error': str(e),
@@ -534,6 +563,8 @@ class PriorityRequestQueue:
             next_request['status'] = 'completed'
             next_request['end_time'] = end_time
             duration = end_time - next_request['start_time']
+            
+            app.logger.info(f"PriorityRequestQueue._process_queue: ЗАВЕРШЕНИЕ обработки запроса {next_request['id']}, длительность: {duration:.2f}с")
             
             # Сохраняем в историю
             self.request_history.append({
@@ -549,27 +580,16 @@ class PriorityRequestQueue:
             stats['total_wait_time'] += wait_time
             
             self.current_request = None
+            app.logger.info("PriorityRequestQueue._process_queue: конец итерации цикла")
     
     def _process_request_impl(self, request):
         """
         Реальная обработка запроса
         Здесь вызываются соответствующие модули в зависимости от типа запроса
         """
-
-        # ВРЕМЕННО: возвращаем тестовый ответ для проверки
-        app.logger.info("ВОЗВРАЩАЕМ ТЕСТОВЫЙ ОТВЕТ")
-        save_message(session_id, 'assistant', f"Тестовый ответ на: {request_data.get('text', '')}", model_name='test')
-        return {
-            'response': f"Тестовый ответ на: {request_data.get('text', '')}",
-            'session_id': session_id,
-            'model_used': 'test',
-            'model_category': 'test',
-            'assistant_timestamp': current_time_for_db
-        }
-
-        app.logger.info(f"Обработка запроса: {request['id']}, тип: {request['data'].get('type')}")
-        app.logger.info(f"Доступность модулей: base={modules['base'].available}, multimodal={'multimodal' in modules}")
-
+        app.logger.info(f"_process_request_impl: НАЧАЛО обработки запроса {request['id']}")
+        app.logger.info(f"_process_request_impl: доступность модулей: base={modules['base'].available}, multimodal={'multimodal' in modules}")
+        
         user_id = request['user_id']
         session_id = request['session_id']
         request_data = request['data']
@@ -578,6 +598,9 @@ class PriorityRequestQueue:
         current_time_str = get_current_time_in_timezone()
         current_time_for_db = get_current_time_in_timezone_for_db()
         
+        app.logger.info(f"_process_request_impl: current_time={current_time_str}")
+        app.logger.info(f"_process_request_impl: request_data={request_data}")
+        
         # Определяем тип запроса и обрабатываем
         request_type = request_data.get('type', 'text')
         message_text = request_data.get('text', '')
@@ -585,12 +608,18 @@ class PriorityRequestQueue:
         file_type = request_data.get('file_type')
         file_name = request_data.get('file_name')
         
+        app.logger.info(f"_process_request_impl: тип запроса={request_type}, текст='{message_text}'")
+        
         # Для текстовых запросов используем базовый модуль
         if request_type == 'text':
+            app.logger.info("_process_request_impl: обработка текстового запроса")
+            
             # Обрабатываем через базовый модуль
             router_result = modules['base'].process_message(message_text, current_time_str)
+            app.logger.info(f"_process_request_impl: router_result={router_result}")
             
             if 'error' in router_result:
+                app.logger.error(f"_process_request_impl: ошибка в router_result: {router_result['error']}")
                 return {'error': router_result['error']}
             
             action_type = router_result['action']
@@ -604,10 +633,13 @@ class PriorityRequestQueue:
             if action_type == 'image':
                 # Запрос на создание изображения
                 model_category = 'image'
+                app.logger.info("_process_request_impl: запрос на создание изображения")
+                
                 if 'image' in modules and modules['image'].available and 'multimodal' in modules:
                     app.logger.info("Обработка запроса на создание изображения")
                     
                     image_result = modules['image'].generate_image(query)
+                    app.logger.info(f"_process_request_impl: image_result={image_result}")
                     
                     if image_result['success']:
                         message_text = f"Изображение сгенерировано моделью {app.config['AUTOMATIC1111_MODEL']} по запросу: {query}"
@@ -637,10 +669,13 @@ class PriorityRequestQueue:
             elif action_type == 'camera':
                 # Запрос к камере
                 model_category = 'camera'
+                app.logger.info("_process_request_impl: запрос к камере")
+                
                 if 'cam' in modules and modules['cam'].available:
                     app.logger.info("Обработка запроса к камере")
                     
                     camera_result = modules['cam'].get_snapshot(query)
+                    app.logger.info(f"_process_request_impl: camera_result={camera_result}")
                     
                     if camera_result['success']:
                         save_message(
@@ -669,6 +704,8 @@ class PriorityRequestQueue:
             elif action_type == 'reasoning':
                 # Сложный запрос
                 model_category = 'reasoning'
+                app.logger.info("_process_request_impl: сложный запрос")
+                
                 if router_result.get('needs_reasoning'):
                     app.logger.info("Обработка сложного запроса через reasoning модель")
                     final_response = modules['base'].process_reasoning(query, current_time_str)
@@ -677,10 +714,12 @@ class PriorityRequestQueue:
                     final_response = query
             
             else:  # action_type == 'none'
+                app.logger.info("_process_request_impl: простой запрос")
                 final_response = query
             
             # Сохраняем ответ
             if final_response:
+                app.logger.info(f"_process_request_impl: сохраняем ответ: {final_response[:100]}...")
                 save_message(session_id, 'assistant', final_response, model_name=model_used)
             
             return {
@@ -693,6 +732,8 @@ class PriorityRequestQueue:
         
         # Для запросов с изображениями
         elif request_type == 'image' and file_data:
+            app.logger.info("_process_request_impl: обработка запроса с изображением")
+            
             if 'multimodal' in modules and modules['multimodal'].available:
                 # Проверяем валидность изображения
                 # Приблизительный размер файла
@@ -738,6 +779,7 @@ class PriorityRequestQueue:
                     'assistant_timestamp': current_time_for_db
                 }
         
+        app.logger.error(f"_process_request_impl: неизвестный тип запроса {request_type}")
         return {'error': 'Неизвестный тип запроса'}
     
     def get_user_requests_status(self, user_id):
@@ -1180,24 +1222,39 @@ def clear_history():
     return jsonify({'status': 'ok'})
 
 # -------------------------------
-# ОТПРАВКА СООБЩЕНИЯ (исправленная версия)
+# ОТПРАВКА СООБЩЕНИЯ (с максимальным логированием)
 # -------------------------------
 @app.route('/send_message', methods=['POST'])
 def send_message():
+    app.logger.info("=" * 50)
+    app.logger.info("send_message: НАЧАЛО ОБРАБОТКИ ЗАПРОСА")
+    app.logger.info(f"Request method: {request.method}")
+    app.logger.info(f"Request content_type: {request.content_type}")
+    app.logger.info(f"Request headers: {dict(request.headers)}")
+    
     if 'email' not in session:
+        app.logger.error("send_message: Пользователь не авторизован")
         return jsonify({'error': 'Не авторизован'}), 401
+    
+    app.logger.info(f"send_message: Авторизован пользователь {session['email']}")
     
     # Проверяем базовый модуль
     if not modules['base'].available:
+        app.logger.error("send_message: Базовый сервис чата недоступен")
+        app.logger.info(f"modules['base'].available = {modules['base'].available}")
         return jsonify({'error': 'Базовый сервис чата недоступен'}), 500
     
     user_id = session['email']
     user_class = USERS.get(user_id, {}).get('service_class', 2)
     session_id = session.get('current_session')
     
+    app.logger.info(f"send_message: user_id={user_id}, user_class={user_class}, session_id={session_id}")
+    
     if not session_id:
+        app.logger.info("send_message: Нет текущей сессии, создаем новую")
         session_id = create_session(user_id)
         session['current_session'] = session_id
+        app.logger.info(f"send_message: Создана новая сессия {session_id}")
     
     # Получаем данные из запроса
     message_text = ""
@@ -1207,33 +1264,48 @@ def send_message():
     
     # Проверяем тип контента
     if request.content_type and 'multipart/form-data' in request.content_type:
-        # Это multipart/form-data (с файлом)
+        app.logger.info("send_message: Обнаружен multipart/form-data запрос")
         message_text = request.form.get('message', '')
+        app.logger.info(f"send_message: message_text из form = '{message_text}'")
         
         if 'file' in request.files:
             file = request.files['file']
             if file and file.filename:
+                app.logger.info(f"send_message: Найден файл {file.filename}")
                 file_data = base64.b64encode(file.read()).decode('utf-8')
                 file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
                 file_name = file.filename
+                app.logger.info(f"send_message: Файл загружен, тип={file_type}, размер={len(file_data)}")
     else:
-        # Это application/json (без файла)
+        app.logger.info("send_message: Предполагаем JSON запрос")
         try:
             data = request.get_json()
             if data:
                 message_text = data.get('message', '')
-        except:
-            # Если не JSON и не multipart, пробуем как обычную форму
+                app.logger.info(f"send_message: message_text из JSON = '{message_text}'")
+            else:
+                app.logger.warning("send_message: data is None")
+        except Exception as e:
+            app.logger.error(f"send_message: Ошибка парсинга JSON: {str(e)}")
+            # Если не JSON, пробуем как обычную форму
             message_text = request.form.get('message', '')
+            app.logger.info(f"send_message: message_text из form = '{message_text}'")
+    
+    if not message_text and not file_data:
+        app.logger.warning("send_message: Пустое сообщение и нет файла")
+        return jsonify({'error': 'Пустое сообщение'}), 400
     
     # Получаем текущее время
     current_time_for_db = get_current_time_in_timezone_for_db()
+    app.logger.info(f"send_message: current_time = {current_time_for_db}")
     
     # Проверяем, первое ли это сообщение
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (session_id,))
-        is_first_message = c.fetchone()[0] == 0
+        count = c.fetchone()[0]
+        is_first_message = count == 0
+        app.logger.info(f"send_message: is_first_message = {is_first_message}, всего сообщений = {count}")
     
     # Сохраняем сообщение пользователя
     user_content = []
@@ -1248,11 +1320,15 @@ def send_message():
             "file_name": file_name
         })
     
-    save_message(session_id, 'user', json.dumps(user_content, ensure_ascii=False), 
+    user_content_json = json.dumps(user_content, ensure_ascii=False)
+    app.logger.info(f"send_message: Сохраняем сообщение пользователя: {user_content_json[:100]}...")
+    
+    save_message(session_id, 'user', user_content_json, 
                 file_data, file_type, file_name, None)
     
     if is_first_message:
-        update_session_title(session_id, message_text, file_name)
+        new_title = update_session_title(session_id, message_text, file_name)
+        app.logger.info(f"send_message: Обновлен заголовок сессии: {new_title}")
     
     # Определяем тип запроса для статистики
     request_type = 'text'
@@ -1269,10 +1345,15 @@ def send_message():
         'preview': (message_text[:50] + '...') if message_text else (file_name or 'Запрос')
     }
     
+    app.logger.info(f"send_message: Добавляем запрос в очередь: {request_data}")
+    
     # Добавляем в очередь
     request_id, position_info = request_queue.add_request(
         user_id, session_id, request_data, user_class
     )
+    
+    app.logger.info(f"send_message: Запрос добавлен в очередь: id={request_id}, позиция={position_info['position']}")
+    app.logger.info("=" * 50)
     
     # Возвращаем информацию о позиции в очереди
     return jsonify({
@@ -1294,6 +1375,30 @@ def favicon():
 @app.context_processor
 def inject_footer():
     return {'footer_content': app.config.get('FOOTER_TEXT', "")}
+
+# Проверка доступности модулей при старте
+@app.before_first_request
+def check_modules_on_startup():
+    app.logger.info("=" * 50)
+    app.logger.info("ПРОВЕРКА МОДУЛЕЙ ПРИ ЗАПУСКЕ")
+    
+    # Принудительно проверяем базовый модуль
+    if 'base' in modules:
+        app.logger.info(f"BaseModule: checking availability...")
+        modules['base'].check_availability()
+        app.logger.info(f"BaseModule available: {modules['base'].available}")
+    
+    if 'multimodal' in modules:
+        app.logger.info(f"MultimodalModule: checking availability...")
+        modules['multimodal'].check_availability()
+        app.logger.info(f"MultimodalModule available: {modules['multimodal'].available}")
+    
+    if 'image' in modules:
+        app.logger.info(f"ImageModule: checking availability...")
+        modules['image'].check_availability()
+        app.logger.info(f"ImageModule available: {modules['image'].available}")
+    
+    app.logger.info("=" * 50)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

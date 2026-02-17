@@ -1310,8 +1310,8 @@
                                         data.result.file_type,
                                         data.result.file_name,
                                         data.result.assistant_timestamp || new Date().toISOString(), 
-                                        responseTime,
-                                        modelUsed
+                                        responseTime,  // Передаём responseTime
+                                        modelUsed      // Передаём modelUsed
                                     );
                                 } else {
                                     console.log(`Ответ для сеанса ${resultSessionId}, не текущего`);
@@ -1325,7 +1325,7 @@
                                         `⚠️ ${data.result.error}`,
                                         null, null, null,
                                         data.result.assistant_timestamp || new Date().toISOString(),
-                                        data.result.response_time,
+                                        data.result.response_time,  // Передаём responseTime
                                         'system'
                                     );
                                 } else {
@@ -1352,7 +1352,7 @@
                                 `⚠️ Ошибка: ${data.error || 'Неизвестная ошибка'}`,
                                 null, null, null,
                                 data.result?.assistant_timestamp || new Date().toISOString(),
-                                data.result?.response_time,
+                                data.result?.response_time,  // Передаём responseTime
                                 'system'
                             );
                         } else if (resultSessionId) {

@@ -567,6 +567,12 @@ class RedisRequestQueue:
                                 'gen_time': gen_time,
                                 'mm_model': image_result['mm_model'],
                                 'gen_model': image_result['gen_model'],
+                                'response_time': {  # ОБЯЗАТЕЛЬНО добавляем объект response_time
+                                    'mm_time': mm_time,
+                                    'gen_time': gen_time,
+                                    'mm_model': image_result['mm_model'],
+                                    'gen_model': image_result['gen_model']
+                                },
                                 'is_error': False
                             }
                         else:

@@ -519,18 +519,38 @@
                             msg.file_type, 
                             msg.file_name, 
                             msg.timestamp,
-                            null,
-                            null
+                            null,  // responseTime
+                            null,  // modelName (будет определено позже)
+                            null,  // mmTime
+                            null,  // genTime
+                            null,  // mmModel
+                            null   // genModel
                         );
-                    } else if (msg.role === 'assistant' && lastUserMessage) {
-                        // Вычисляем разницу во времени
-                        const userTime = new Date(lastUserMessage.timestamp);
-                        const assistantTime = new Date(msg.timestamp);
-                        const diffSeconds = (assistantTime - userTime) / 1000;
-                        const responseTime = Math.round(diffSeconds * 10) / 10;
+                    } else if (msg.role === 'assistant') {
+                        // Вычисляем разницу во времени, если есть предыдущее сообщение пользователя
+                        let responseTime = null;
+                        if (lastUserMessage) {
+                            const userTime = new Date(lastUserMessage.timestamp);
+                            const assistantTime = new Date(msg.timestamp);
+                            const diffSeconds = (assistantTime - userTime) / 1000;
+                            responseTime = Math.round(diffSeconds * 10) / 10;
+                        }
                         
-                        // Получаем ПОЛНОЕ название модели из сообщения
-                        const modelName = msg.model_name || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
+                        // Проверяем, есть ли раздельное время в сообщении из БД
+                        let mmTime = msg.mm_time;
+                        let genTime = msg.gen_time;
+                        let mmModel = msg.mm_model;
+                        let genModel = msg.gen_model;
+                        
+                        // Если есть раздельное время, создаем объект responseTime
+                        if (mmTime && genTime) {
+                            responseTime = {
+                                mm_time: parseFloat(mmTime),
+                                gen_time: parseFloat(genTime),
+                                mm_model: mmModel || 'неизвестно',
+                                gen_model: genModel || 'неизвестно'
+                            };
+                        }
                         
                         displayMessage(
                             msg.role, 
@@ -540,20 +560,14 @@
                             msg.file_name, 
                             msg.timestamp,
                             responseTime,
-                            modelName
+                            msg.model_name || defaultModelName,
+                            mmTime,
+                            genTime,
+                            mmModel,
+                            genModel
                         );
-                        lastUserMessage = null;
-                    } else {
-                        displayMessage(
-                            msg.role, 
-                            msg.content, 
-                            msg.file_data, 
-                            msg.file_type, 
-                            msg.file_name, 
-                            msg.timestamp,
-                            null,
-                            msg.model_name || defaultModelName
-                        );
+                        
+                        lastUserMessage = null; // Сбрасываем после пары
                     }
                 });
                 
@@ -597,16 +611,24 @@
             }
             // Сохраняем время работы мультимодальной модели и генерации
             if (responseTime && typeof responseTime === 'object') {
-                msgDiv.dataset.mmTime = responseTime.mm_time;
-                msgDiv.dataset.genTime = responseTime.gen_time;
-                msgDiv.dataset.mmModel = responseTime.mm_model;
-                msgDiv.dataset.genModel = responseTime.gen_model;
+                if (responseTime.mm_time) {
+                    msgDiv.dataset.mmTime = responseTime.mm_time;
+                }
+                if (responseTime.gen_time) {
+                    msgDiv.dataset.genTime = responseTime.gen_time;
+                }
+                if (responseTime.mm_model) {
+                    msgDiv.dataset.mmModel = responseTime.mm_model;
+                }
+                if (responseTime.gen_model) {
+                    msgDiv.dataset.genModel = responseTime.gen_model;
+                }
             } else if (mmTime && genTime) {
                 // Если переданы отдельные параметры
                 msgDiv.dataset.mmTime = mmTime;
                 msgDiv.dataset.genTime = genTime;
-                msgDiv.dataset.mmModel = mmModel;
-                msgDiv.dataset.genModel = genModel;
+                msgDiv.dataset.mmModel = mmModel || 'неизвестно';
+                msgDiv.dataset.genModel = genModel || 'неизвестно';
             }
         }
         
@@ -653,15 +675,25 @@
         // Добавляем время ответа и информацию о модели для сообщений ассистента
         if (role === 'assistant') {
             // Проверяем, есть ли в данных раздельное время
-            if (responseTime && typeof responseTime === 'object' && responseTime.mm_time && responseTime.gen_time) {
+            if (responseTime && typeof responseTime === 'object' && (responseTime.mm_time || responseTime.gen_time)) {
                 // Данные уже в правильном формате (из свежего ответа)
-                const mmTime = parseFloat(responseTime.mm_time).toFixed(1);
-                const genTime = parseFloat(responseTime.gen_time).toFixed(1);
-                const mmModel = responseTime.mm_model || 'неизвестно';
-                const genModel = responseTime.gen_model || 'неизвестно';
-                
-                timeDisplay += `<br><span class="model-response-info">(Обработано: ${mmModel} за ${mmTime} сек)</span>`;
-                timeDisplay += `<br><span class="model-response-info">(Сгенерировано: ${genModel} за ${genTime} сек)</span>`;
+                if (responseTime.mm_time && responseTime.gen_time) {
+                    const mmTime = parseFloat(responseTime.mm_time).toFixed(1);
+                    const genTime = parseFloat(responseTime.gen_time).toFixed(1);
+                    const mmModel = responseTime.mm_model || 'неизвестно';
+                    const genModel = responseTime.gen_model || 'неизвестно';
+                    
+                    timeDisplay += `<br><span class="model-response-info">(Обработано: ${mmModel} за ${mmTime} сек)</span>`;
+                    timeDisplay += `<br><span class="model-response-info">(Сгенерировано: ${genModel} за ${genTime} сек)</span>`;
+                } else if (responseTime.mm_time) {
+                    const mmTime = parseFloat(responseTime.mm_time).toFixed(1);
+                    const mmModel = responseTime.mm_model || 'неизвестно';
+                    timeDisplay += `<br><span class="model-response-info">(Обработано: ${mmModel} за ${mmTime} сек)</span>`;
+                } else if (responseTime.gen_time) {
+                    const genTime = parseFloat(responseTime.gen_time).toFixed(1);
+                    const genModel = responseTime.gen_model || 'неизвестно';
+                    timeDisplay += `<br><span class="model-response-info">(Сгенерировано: ${genModel} за ${genTime} сек)</span>`;
+                }
             } 
             // Проверяем, есть ли раздельные поля в dataset сообщения (из БД)
             else if (msgDiv.dataset.mmTime && msgDiv.dataset.genTime) {
@@ -671,6 +703,16 @@
                 const genModel = msgDiv.dataset.genModel || 'неизвестно';
                 
                 timeDisplay += `<br><span class="model-response-info">(Обработано: ${mmModel} за ${mmTime} сек)</span>`;
+                timeDisplay += `<br><span class="model-response-info">(Сгенерировано: ${genModel} за ${genTime} сек)</span>`;
+            }
+            else if (msgDiv.dataset.mmTime) {
+                const mmTime = parseFloat(msgDiv.dataset.mmTime).toFixed(1);
+                const mmModel = msgDiv.dataset.mmModel || 'неизвестно';
+                timeDisplay += `<br><span class="model-response-info">(Обработано: ${mmModel} за ${mmTime} сек)</span>`;
+            }
+            else if (msgDiv.dataset.genTime) {
+                const genTime = parseFloat(msgDiv.dataset.genTime).toFixed(1);
+                const genModel = msgDiv.dataset.genModel || 'неизвестно';
                 timeDisplay += `<br><span class="model-response-info">(Сгенерировано: ${genModel} за ${genTime} сек)</span>`;
             }
             else if (responseTime && typeof responseTime === 'number') {

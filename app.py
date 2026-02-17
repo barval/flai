@@ -805,15 +805,19 @@ def get_session_messages(session_id):
                 try:
                     msg_dict['response_time'] = json.loads(msg_dict['response_time'])
                 except:
-                    pass  # Оставляем как есть
+                    # Если не JSON, оставляем как есть (число или строка)
+                    pass
             
-            if msg_dict.get('timestamp') and app.config.get('TIMEZONE'):
+            # Преобразуем timestamp в ISO формат для JS
+            if msg_dict.get('timestamp'):
                 try:
                     dt = datetime.strptime(msg_dict['timestamp'], '%Y-%m-%d %H:%M:%S')
-                    dt = app.config['TIMEZONE'].localize(dt)
+                    if app.config.get('TIMEZONE'):
+                        dt = app.config['TIMEZONE'].localize(dt)
                     msg_dict['timestamp'] = dt.isoformat()
                 except Exception as e:
                     app.logger.error(f"Ошибка преобразования timestamp: {str(e)}")
+            
             messages.append(msg_dict)
         
         return messages

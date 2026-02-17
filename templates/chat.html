@@ -590,9 +590,18 @@
         
         msgDiv.setAttribute('data-timestamp', timestamp);
         
-        // Для сообщений ассистента сохраняем название модели
-        if (role === 'assistant' && modelName) {
-            msgDiv.dataset.modelName = modelName;
+        // Для сообщений ассистента сохраняем дополнительную информацию
+        if (role === 'assistant') {
+            if (modelName) {
+                msgDiv.dataset.modelName = modelName;
+            }
+            // Сохраняем время работы мультимодальной модели и генерации
+            if (responseTime && typeof responseTime === 'object') {
+                msgDiv.dataset.mmTime = responseTime.mm_time;
+                msgDiv.dataset.genTime = responseTime.gen_time;
+                msgDiv.dataset.mmModel = responseTime.mm_model;
+                msgDiv.dataset.genModel = responseTime.gen_model;
+            }
         }
         
         let timeDisplay = formatFullDateTime(timestamp);
@@ -635,13 +644,24 @@
             }
         }
         
-        // Добавляем время ответа и ПОЛНОЕ название модели для сообщений ассистента
+        // Добавляем время ответа и информацию о модели для сообщений ассистента
         if (role === 'assistant') {
-            if (responseTime) {
+            // Проверяем, есть ли раздельное время для генерации изображения
+            if (responseTime && typeof responseTime === 'object' && responseTime.mm_time && responseTime.gen_time) {
+                // Для сообщений с генерацией изображения показываем два времени
+                const mmTime = parseFloat(responseTime.mm_time).toFixed(1);
+                const genTime = parseFloat(responseTime.gen_time).toFixed(1);
+                const mmModel = responseTime.mm_model || 'неизвестно';
+                const genModel = responseTime.gen_model || 'неизвестно';
+                
+                timeDisplay += `<br><span class="model-response-info">(Обработано: ${mmModel} за ${mmTime} сек)</span>`;
+                timeDisplay += `<br><span class="model-response-info">(Сгенерировано: ${genModel} за ${genTime} сек)</span>`;
+            } else if (responseTime && typeof responseTime === 'number') {
+                // Обычное сообщение с одним временем
                 let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
                 timeDisplay += ` <span class="model-response-info">(ответ: ${fullModelName} за ${responseTime} сек)</span>`;
             } else {
-                // Даже если нет responseTime, показываем модель
+                // Сообщение без времени (только модель)
                 let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
                 timeDisplay += ` <span class="model-response-info">(модель: ${fullModelName})</span>`;
             }
@@ -1191,6 +1211,21 @@
                             if (data.result.response) {
                                 // Если это ответ для текущего сеанса - показываем сразу
                                 if (resultSessionId === currentSessionId) {
+                                    // Проверяем, есть ли раздельное время
+                                    let responseTime = data.result.response_time;
+                                    let modelUsed = data.result.model_used;
+                                    
+                                    // Если это генерация изображения, передаем объект с временами
+                                    if (data.result.mm_time && data.result.gen_time) {
+                                        responseTime = {
+                                            mm_time: data.result.mm_time,
+                                            gen_time: data.result.gen_time,
+                                            mm_model: data.result.mm_model,
+                                            gen_model: data.result.gen_model
+                                        };
+                                        modelUsed = data.result.mm_model; // Основная модель для отображения
+                                    }
+                                    
                                     displayMessage(
                                         'assistant',
                                         data.result.response,
@@ -1198,8 +1233,8 @@
                                         data.result.file_type,
                                         data.result.file_name,
                                         data.result.assistant_timestamp || new Date().toISOString(), 
-                                        data.result.response_time,  // Время ответа
-                                        data.result.model_used       // Название модели
+                                        responseTime,
+                                        modelUsed
                                     );
                                 } else {
                                     // Если для другого сеанса - добавляем индикатор
@@ -1434,16 +1469,31 @@
                 contentHtml = contentEl.innerHTML;
             }
             
-            // Получаем вложения
+            // Получаем вложения и информацию о файле (ОБНОВЛЕННАЯ ЧАСТЬ)
             const fileEl = msgEl.querySelector('.attached-image, .attached-file, audio');
+            const fileInfoEl = msgEl.querySelector('.file-info');
+            const downloadLink = msgEl.querySelector('.download-link-inline');
+            
             let fileHtml = '';
+            
+            // Добавляем информацию о файле, если она есть
+            if (fileInfoEl) {
+                fileHtml += `<div class="file-info">${fileInfoEl.outerHTML}</div>`;
+            }
+            
+            // Добавляем кнопку скачивания, если она есть
+            if (downloadLink) {
+                fileHtml += `<div class="download-link">${downloadLink.outerHTML}</div>`;
+            }
+            
+            // Добавляем само изображение/файл
             if (fileEl) {
                 if (fileEl.tagName === 'IMG') {
-                    fileHtml = fileEl.outerHTML;
+                    fileHtml += `<div class="image-container">${fileEl.outerHTML}</div>`;
                 } else if (fileEl.tagName === 'AUDIO') {
-                    fileHtml = fileEl.outerHTML;
+                    fileHtml += `<div class="audio-container">${fileEl.outerHTML}</div>`;
                 } else if (fileEl.classList.contains('attached-file')) {
-                    fileHtml = fileEl.outerHTML;
+                    fileHtml += `<div class="file-container">${fileEl.outerHTML}</div>`;
                 }
             }
             
@@ -1462,7 +1512,7 @@
             return;
         }
         
-        // ВСТРОЕННЫЕ СТИЛИ (полная копия из style.css, но без кнопок копирования)
+        // ВСТРОЕННЫЕ СТИЛИ (полная копия из style.css, но с добавленными стилями для файлов)
         const styles = `
             * {
                 margin: 0;
@@ -1598,25 +1648,78 @@
                 margin-bottom: 8px !important;
             }
 
+            /* Стили для информации о файле */
             .file-info {
-                display: inline !important;
+                display: inline-block !important;
                 color: #2c3e50 !important;
                 font-size: 0.75rem !important;
                 font-family: monospace !important;
                 background-color: #f0f0f0 !important;
                 padding: 2px 6px !important;
                 border-radius: 12px !important;
-                margin-left: 4px !important;
-                white-space: nowrap !important;
+                margin: 4px 0 !important;
+                border: 1px solid #ddd !important;
+            }
+
+            .download-link {
+                display: inline-block !important;
+                margin: 4px 0 !important;
+            }
+
+            .download-link a {
+                color: #3498db !important;
+                text-decoration: none !important;
+                font-size: 1rem !important;
+                padding: 2px 8px !important;
+                border: 1px solid #3498db !important;
+                border-radius: 4px !important;
+                background-color: #f8f9fa !important;
+            }
+
+            .download-link a:hover {
+                background-color: #e6f2ff !important;
             }
 
             .model-response-info {
-                display: inline !important;
+                display: block !important;
                 color: #7f8c8d !important;
-                font-family: monospace !important;
                 font-size: 0.75rem !important;
-                margin-left: 4px !important;
-                white-space: nowrap !important;
+                font-family: monospace !important;
+                margin: 2px 0 !important;
+                line-height: 1.4 !important;
+            }
+
+            .image-container {
+                margin: 10px 0 !important;
+            }
+
+            .attached-image {
+                max-width: 100%;
+                max-height: 400px;
+                border-radius: 8px;
+                margin-top: 15px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+
+            .attached-file {
+                display: inline-flex;
+                align-items: center;
+                gap: 10px;
+                background: #f8f9fa;
+                padding: 10px 15px;
+                border-radius: 6px;
+                border: 1px solid #e0e0e0;
+                margin-top: 10px;
+            }
+
+            .attached-file a {
+                color: #3498db;
+                text-decoration: none;
+            }
+
+            audio {
+                width: 100%;
+                margin-top: 15px;
             }
 
             .message-content {
@@ -1749,35 +1852,6 @@
                 background-color: #f6f8fa;
             }
 
-            .attached-image {
-                max-width: 100%;
-                max-height: 400px;
-                border-radius: 8px;
-                margin-top: 15px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            }
-
-            .attached-file {
-                display: inline-flex;
-                align-items: center;
-                gap: 10px;
-                background: #f8f9fa;
-                padding: 10px 15px;
-                border-radius: 6px;
-                border: 1px solid #e0e0e0;
-                margin-top: 10px;
-            }
-
-            .attached-file a {
-                color: #3498db;
-                text-decoration: none;
-            }
-
-            audio {
-                width: 100%;
-                margin-top: 15px;
-            }
-
             /* Скрываем все элементы управления в сохранённом чате */
             .save-chat-button,
             .clear-context-button,
@@ -1787,7 +1861,6 @@
             #send-button,
             #file-preview-container,
             .image-modal,
-            .download-link-inline,
             .sessions-sidebar,
             .message-input,
             .context-info-container button,

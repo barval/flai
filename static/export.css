@@ -64,6 +64,58 @@ footer {
     margin-bottom: 8px !important;
 }
 
+/* Стили для информации о файле в сохранённом чате */
+.file-info {
+    display: inline-block !important;
+    color: #2c3e50 !important;
+    font-size: 0.75rem !important;
+    font-family: monospace !important;
+    background-color: #f0f0f0 !important;
+    padding: 2px 6px !important;
+    border-radius: 12px !important;
+    margin: 4px 0 !important;
+    border: 1px solid #ddd !important;
+}
+
+.download-link {
+    display: inline-block !important;
+    margin: 4px 0 !important;
+}
+
+.download-link a {
+    color: #3498db !important;
+    text-decoration: none !important;
+    font-size: 1rem !important;
+    padding: 2px 8px !important;
+    border: 1px solid #3498db !important;
+    border-radius: 4px !important;
+    background-color: #f8f9fa !important;
+}
+
+.download-link a:hover {
+    background-color: #e6f2ff !important;
+}
+
+.image-container {
+    margin: 10px 0 !important;
+}
+
+.attached-image {
+    max-width: 100% !important;
+    max-height: 512px !important;
+    border-radius: 8px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+}
+
+.model-response-info {
+    display: block !important;
+    color: #7f8c8d !important;
+    font-size: 0.75rem !important;
+    font-family: monospace !important;
+    margin: 2px 0 !important;
+    line-height: 1.4 !important;
+}
+
 /* Скрываем все элементы управления */
 .save-chat-button,
 .clear-context-button,
@@ -73,7 +125,7 @@ footer {
 #send-button,
 #file-preview-container,
 .image-modal,
-.download-link-inline,
+/* .download-link-inline,  /* Раскомментировать, если нужно скрыть кнопки скачивания в экспорте */
 .sessions-sidebar,
 .message-input,
 .context-info-container button {

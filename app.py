@@ -477,32 +477,61 @@ class RedisRequestQueue:
             if action_type == 'image':
                 model_category = 'image'
                 if 'image' in modules and modules['image'].available:
-                    image_result = modules['image'].generate_image(query)
+                    # Замеряем время работы мультимодальной модели
+                    mm_start_time = time.time()
                     
-                    if image_result['success']:
-                        message_text = f"Изображение сгенерировано по запросу: {query}"
-                        
-                        save_message(
-                            session_id, 'assistant', message_text,
-                            image_result['image_data'], image_result['file_type'],
-                            image_result['file_name'], app.config['LLM_MULTIMODAL_MODEL']
-                        )
-                        
-                        return {
-                            'response': message_text,
-                            'session_id': session_id,
-                            'model_used': app.config['LLM_MULTIMODAL_MODEL'],
-                            'model_category': action_type,
-                            'assistant_timestamp': current_time_for_db,
-                            'generated_image': image_result['image_data'],
-                            'file_name': image_result['file_name'],
-                            'file_size': image_result['file_size'],
-                            'file_type': image_result['file_type']
-                        }
+                    # Генерируем параметры через мультимодальную модель
+                    prompt_data, error = modules['multimodal'].generate_image_params(query)
+                    
+                    mm_time = round(time.time() - mm_start_time, 1)
+                    
+                    if error:
+                        final_response = f"⚠️ {error}"
+                        model_used = 'system'
                     else:
-                        final_response = f"⚠️ {image_result['error']}"
+                        # Замеряем время генерации изображения
+                        gen_start_time = time.time()
+                        
+                        image_result = modules['image']._call_automatic1111(prompt_data)
+                        
+                        gen_time = round(time.time() - gen_start_time, 1)
+                        
+                        if image_result['success']:
+                            # Сохраняем оба времени в результат
+                            image_result['mm_time'] = mm_time
+                            image_result['gen_time'] = gen_time
+                            image_result['mm_model'] = app.config['LLM_MULTIMODAL_MODEL']
+                            image_result['gen_model'] = app.config['AUTOMATIC1111_MODEL']
+                            
+                            message_text = f"Изображение сгенерировано по запросу: {query}"
+                            
+                            save_message(
+                                session_id, 'assistant', message_text,
+                                image_result['image_data'], image_result['file_type'],
+                                image_result['file_name'], app.config['AUTOMATIC1111_MODEL']
+                            )
+                            
+                            return {
+                                'response': message_text,
+                                'session_id': session_id,
+                                'model_used': app.config['AUTOMATIC1111_MODEL'],
+                                'model_category': action_type,
+                                'assistant_timestamp': current_time_for_db,
+                                'generated_image': image_result['image_data'],
+                                'file_name': image_result['file_name'],
+                                'file_size': image_result['file_size'],
+                                'file_type': image_result['file_type'],
+                                'mm_time': mm_time,
+                                'gen_time': gen_time,
+                                'mm_model': image_result['mm_model'],
+                                'gen_model': image_result['gen_model']
+                            }
+                        else:
+                            final_response = f"⚠️ {image_result['error']}"
+                            model_used = 'system'
                 else:
                     final_response = "⚠️ Модуль генерации изображений недоступен"
+                    model_used = 'system'
             
             elif action_type == 'camera':
                 model_category = 'camera'

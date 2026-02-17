@@ -1260,3 +1260,23 @@ audio {
         display: none !important;
     }
 }
+
+/* Стили для многострочной информации о модели */
+.model-response-info {
+    display: block !important;
+    color: #7f8c8d !important;
+    font-family: monospace !important;
+    font-size: 0.75rem !important;
+    margin-top: 2px !important;
+    line-height: 1.4 !important;
+}
+
+/* Для первой строки можно оставить inline, а остальные будут block */
+.model-response-info:first-of-type {
+    display: inline !important;
+}
+
+.model-response-info:not(:first-of-type) {
+    display: block !important;
+    margin-left: 0 !important;
+}

@@ -126,7 +126,11 @@ class ImageModule:
                         'image_data': image_data,
                         'file_name': filename,
                         'file_size': file_size_bytes,
-                        'file_type': 'image/jpeg'
+                        'file_type': 'image/jpeg',
+                        'mm_time': None,  # Будет заполнено в app.py
+                        'gen_time': None,  # Будет заполнено в app.py
+                        'mm_model': None,  # Будет заполнено в app.py
+                        'gen_model': self.model_name or "Stable Diffusion"
                     }
                 else:
                     return {

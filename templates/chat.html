@@ -1286,12 +1286,14 @@
                                 let modelUsed = data.result.model_used;
                                 const isError = data.result.is_error || false;
                                 
-                                console.log('Processing completed result:', {  // Отладка
+                                console.log('Processing completed result:', {
                                     responseTime,
                                     modelUsed,
-                                    type: typeof responseTime
+                                    type: typeof responseTime,
+                                    value: responseTime
                                 });
                                 
+                                // Проверяем наличие раздельного времени
                                 if (data.result.mm_time && data.result.gen_time) {
                                     responseTime = {
                                         mm_time: data.result.mm_time,
@@ -1300,7 +1302,17 @@
                                         gen_model: data.result.gen_model
                                     };
                                     modelUsed = data.result.mm_model;
+                                } 
+                                // Если responseTime - строка, пробуем распарсить как JSON
+                                else if (typeof responseTime === 'string' && responseTime.startsWith('{')) {
+                                    try {
+                                        responseTime = JSON.parse(responseTime);
+                                    } catch (e) {
+                                        console.log('Failed to parse responseTime JSON:', e);
+                                    }
                                 }
+                                
+                                console.log('Final responseTime before display:', responseTime);
                                 
                                 if (resultSessionId === currentSessionId) {
                                     displayMessage(
@@ -1310,8 +1322,8 @@
                                         data.result.file_type,
                                         data.result.file_name,
                                         data.result.assistant_timestamp || new Date().toISOString(), 
-                                        responseTime,  // Передаём responseTime
-                                        modelUsed      // Передаём modelUsed
+                                        responseTime,
+                                        modelUsed
                                     );
                                 } else {
                                     console.log(`Ответ для сеанса ${resultSessionId}, не текущего`);
@@ -1325,7 +1337,7 @@
                                         `⚠️ ${data.result.error}`,
                                         null, null, null,
                                         data.result.assistant_timestamp || new Date().toISOString(),
-                                        data.result.response_time,  // Передаём responseTime
+                                        data.result.response_time,
                                         'system'
                                     );
                                 } else {
@@ -1352,7 +1364,7 @@
                                 `⚠️ Ошибка: ${data.error || 'Неизвестная ошибка'}`,
                                 null, null, null,
                                 data.result?.assistant_timestamp || new Date().toISOString(),
-                                data.result?.response_time,  // Передаём responseTime
+                                data.result?.response_time,
                                 'system'
                             );
                         } else if (resultSessionId) {

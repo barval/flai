@@ -494,7 +494,8 @@ class RedisRequestQueue:
                 return {
                     'error': router_result['error'],
                     'session_id': session_id,
-                    'assistant_timestamp': completion_time_for_db
+                    'assistant_timestamp': completion_time_for_db,
+                    'is_error': True
                 }
             
             action_type = router_result['action']
@@ -503,6 +504,8 @@ class RedisRequestQueue:
             final_response = ""
             model_used = app.config['LLM_CHAT_MODEL']
             model_category = 'chat'
+            is_error = False
+            processing_start_time = time.time()  # Начало обработки (без учета очереди)
             
             if action_type == 'image':
                 model_category = 'image'
@@ -518,6 +521,8 @@ class RedisRequestQueue:
                     if error:
                         final_response = f"⚠️ {error}"
                         model_used = 'system'
+                        process_time = round(time.time() - processing_start_time, 1)
+                        is_error = True
                     else:
                         # Замеряем время генерации изображения
                         gen_start_time = time.time()
@@ -561,14 +566,19 @@ class RedisRequestQueue:
                                 'mm_time': mm_time,
                                 'gen_time': gen_time,
                                 'mm_model': image_result['mm_model'],
-                                'gen_model': image_result['gen_model']
+                                'gen_model': image_result['gen_model'],
+                                'is_error': False
                             }
                         else:
                             final_response = f"⚠️ {image_result['error']}"
                             model_used = 'system'
+                            process_time = round(time.time() - processing_start_time, 1)
+                            is_error = True
                 else:
                     final_response = "⚠️ Модуль генерации изображений недоступен"
                     model_used = 'system'
+                    process_time = round(time.time() - processing_start_time, 1)
+                    is_error = True
             
             elif action_type == 'camera':
                 model_category = 'camera'
@@ -595,12 +605,19 @@ class RedisRequestQueue:
                             'generated_image': camera_result['image_data'],
                             'file_name': camera_result['file_name'],
                             'file_size': camera_result['file_size'],
-                            'file_type': camera_result['image_type']
+                            'file_type': camera_result['image_type'],
+                            'is_error': False
                         }
                     else:
                         final_response = f"⚠️ {camera_result['error']}"
+                        model_used = 'system'
+                        process_time = round(time.time() - processing_start_time, 1)
+                        is_error = True
                 else:
                     final_response = "⚠️ Модуль видеонаблюдения недоступен"
+                    model_used = 'system'
+                    process_time = round(time.time() - processing_start_time, 1)
+                    is_error = True
             
             elif action_type == 'reasoning':
                 model_category = 'reasoning'
@@ -608,34 +625,33 @@ class RedisRequestQueue:
                     # Замеряем время работы reasoning модели
                     reasoning_start_time = time.time()
                     final_response = modules['base'].process_reasoning(query, current_time_str)
-                    reasoning_time = round(time.time() - reasoning_start_time, 1)
+                    process_time = round(time.time() - reasoning_start_time, 1)
                     model_used = app.config['LLM_REASONING_MODEL']
                 else:
-                    reasoning_time = 0
+                    process_time = 0
                     final_response = query
+                is_error = False
             
             else:  # action_type == 'none'
                 # Для простых ответов время = время обработки запроса
-                reasoning_time = round(time.time() - task['timestamp'], 1)
+                process_time = round(time.time() - processing_start_time, 1)
                 final_response = query
+                is_error = False
             
             if final_response:
                 # Время ЗАВЕРШЕНИЯ обработки
                 completion_time_for_db = get_current_time_in_timezone_for_db()
                 
-                # Вычисляем общее время обработки
-                total_time = round(time.time() - task['timestamp'], 1)
-                
                 # Для обычных текстовых ответов передаём время
-                if action_type in ['none', 'reasoning'] and reasoning_time > 0:
+                if action_type in ['none', 'reasoning'] and process_time > 0:
                     save_message(session_id, 'assistant', final_response, 
                                model_name=model_used,
-                               response_time=str(reasoning_time))
+                               response_time=str(process_time))
                 elif action_type == 'none':
                     # Для простых ответов (например, время) тоже передаём время
                     save_message(session_id, 'assistant', final_response, 
                                model_name=model_used,
-                               response_time=str(total_time))
+                               response_time=str(process_time))
                 else:
                     # Для остальных случаев (ошибки и т.д.)
                     save_message(session_id, 'assistant', final_response, 
@@ -647,11 +663,15 @@ class RedisRequestQueue:
                 'model_used': model_used,
                 'model_category': model_category,
                 'assistant_timestamp': completion_time_for_db,
-                'response_time': reasoning_time if action_type in ['reasoning', 'none'] else total_time
+                'response_time': process_time,
+                'is_error': is_error
             }
         
         # Для запросов с изображениями
         elif request_type == 'image' and file_data:
+            processing_start_time = time.time()
+            is_error = False
+            
             if 'multimodal' in modules and modules['multimodal'].available:
                 file_size = int((len(file_data) * 3) / 4) if file_data else 0
                 is_valid, error = modules['multimodal'].validate_image(file_data, file_type, file_name, file_size)
@@ -666,6 +686,7 @@ class RedisRequestQueue:
                     
                     if error:
                         bot_reply = f"⚠️ {error}"
+                        is_error = True
                     
                     # Время ЗАВЕРШЕНИЯ обработки
                     completion_time_for_db = get_current_time_in_timezone_for_db()
@@ -679,39 +700,39 @@ class RedisRequestQueue:
                         'model_used': app.config['LLM_MULTIMODAL_MODEL'],
                         'model_category': 'multimodal',
                         'assistant_timestamp': completion_time_for_db,
-                        'response_time': process_time
+                        'response_time': process_time,
+                        'is_error': is_error
                     }
                 else:
                     bot_reply = f"⚠️ {error}"
-                    # Время ЗАВЕРШЕНИЯ обработки
-                    completion_time_for_db = get_current_time_in_timezone_for_db()
-                    save_message(session_id, 'assistant', bot_reply, model_name='system')
-                    
-                    return {
-                        'response': bot_reply,
-                        'session_id': session_id,
-                        'model_used': 'system',
-                        'assistant_timestamp': completion_time_for_db
-                    }
+                    process_time = round(time.time() - processing_start_time, 1)
+                    is_error = True
             else:
                 bot_reply = "⚠️ Мультимодальная модель недоступна"
-                # Время ЗАВЕРШЕНИЯ обработки
-                completion_time_for_db = get_current_time_in_timezone_for_db()
-                save_message(session_id, 'assistant', bot_reply, model_name='system')
-                
-                return {
-                    'response': bot_reply,
-                    'session_id': session_id,
-                    'model_used': 'system',
-                    'assistant_timestamp': completion_time_for_db
-                }
+                process_time = round(time.time() - processing_start_time, 1)
+                is_error = True
+            
+            # Время ЗАВЕРШЕНИЯ обработки для ошибки
+            completion_time_for_db = get_current_time_in_timezone_for_db()
+            save_message(session_id, 'assistant', bot_reply, model_name='system',
+                        response_time=str(process_time))
+            
+            return {
+                'response': bot_reply,
+                'session_id': session_id,
+                'model_used': 'system',
+                'assistant_timestamp': completion_time_for_db,
+                'response_time': process_time,
+                'is_error': is_error
+            }
         
         # Время ЗАВЕРШЕНИЯ обработки для ошибки
         completion_time_for_db = get_current_time_in_timezone_for_db()
         return {
             'error': 'Неизвестный тип запроса',
             'session_id': session_id,
-            'assistant_timestamp': completion_time_for_db
+            'assistant_timestamp': completion_time_for_db,
+            'is_error': True
         }
     
     def get_user_requests_status(self, user_id):

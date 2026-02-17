@@ -1363,3 +1363,41 @@ audio {
     display: block !important;
     margin-left: 0 !important;
 }
+
+/* Индикатор нового сообщения (синий) */
+.new-message-indicator {
+    display: inline-block;
+    animation: pulse 1.5s infinite;
+    color: #3498db;
+    margin-left: 5px;
+    font-size: 1.2rem;
+}
+
+/* Индикатор ошибки (красный) */
+.error-message-indicator {
+    display: inline-block;
+    color: #e74c3c;
+    margin-left: 5px;
+    font-size: 1.2rem;
+    font-weight: bold;
+    animation: error-pulse 1.5s infinite;
+}
+
+/* Анимация пульсации для синего */
+@keyframes pulse {
+    0% { opacity: 0.5; }
+    50% { opacity: 1; }
+    100% { opacity: 0.5; }
+}
+
+/* Анимация пульсации для красного */
+@keyframes error-pulse {
+    0% { opacity: 0.5; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.1); }
+    100% { opacity: 0.5; transform: scale(1); }
+}
+
+.session-item.active .new-message-indicator,
+.session-item.active .error-message-indicator {
+    display: none;
+}

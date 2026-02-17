@@ -203,9 +203,10 @@
     // -------------------------------
     // Управление индикаторами новых сообщений
     // -------------------------------
-    function setNewMessageIndicator(sessionId, show) {
+    function setNewMessageIndicator(sessionId, show, isError = false) {
         if (show) {
-            newMessageIndicators[sessionId] = true;
+            // Сохраняем не только факт наличия, но и тип
+            newMessageIndicators[sessionId] = { hasNew: true, isError: isError };
         } else {
             delete newMessageIndicators[sessionId];
         }
@@ -217,17 +218,27 @@
             const sessionId = el.dataset.sessionId;
             const titleElement = el.querySelector('.session-title');
             let indicator = el.querySelector('.new-message-indicator');
-            
-            if (newMessageIndicators[sessionId] && sessionId !== currentSessionId) {
-                if (!indicator) {
+            let errorIndicator = el.querySelector('.error-message-indicator');
+
+            // Удаляем старые индикаторы
+            if (indicator) indicator.remove();
+            if (errorIndicator) errorIndicator.remove();
+
+            const indicatorData = newMessageIndicators[sessionId];
+            if (indicatorData && indicatorData.hasNew && sessionId !== currentSessionId) {
+                if (indicatorData.isError) {
+                    // Создаем красный индикатор для ошибки
+                    errorIndicator = document.createElement('span');
+                    errorIndicator.className = 'error-message-indicator';
+                    errorIndicator.textContent = '●';
+                    errorIndicator.title = 'Произошла ошибка';
+                    titleElement.appendChild(errorIndicator);
+                } else {
+                    // Создаем обычный синий индикатор для нового сообщения
                     indicator = document.createElement('span');
                     indicator.className = 'new-message-indicator';
                     indicator.textContent = '●';
                     titleElement.appendChild(indicator);
-                }
-            } else {
-                if (indicator) {
-                    indicator.remove();
                 }
             }
         });
@@ -339,13 +350,15 @@
         sessions.forEach(s => {
             const isActive = s.id === currentActiveId ? 'active' : '';
             const dateStr = s.updated_at ? s.updated_at.replace('T', ' ').substring(0, 19) : '';
-            const hasIndicator = newMessageIndicators[s.id] && s.id !== currentActiveId;
+            const indicatorData = newMessageIndicators[s.id];
+            const hasIndicator = indicatorData && indicatorData.hasNew && s.id !== currentActiveId;
+            const isError = indicatorData && indicatorData.isError;
             
             html += `
                 <div class="session-item ${isActive}" data-session-id="${s.id}">
                     <div class="session-content">
                         <div class="session-info">
-                            <div class="session-title">${escapeHtml(s.title)}${hasIndicator ? '<span class="new-message-indicator">●</span>' : ''}</div>
+                            <div class="session-title">${escapeHtml(s.title)}${hasIndicator ? (isError ? '<span class="error-message-indicator">●</span>' : '<span class="new-message-indicator">●</span>') : ''}</div>
                             <div class="session-date">${dateStr}</div>
                         </div>
                         <button class="delete-session-button" title="Удалить сеанс">🗑️</button>
@@ -889,11 +902,19 @@
             titleElement.innerHTML = escapeHtml(newTitle);
             
             // Сохраняем индикатор, если есть
-            if (newMessageIndicators[sessionId] && sessionId !== currentSessionId) {
-                const indicator = document.createElement('span');
-                indicator.className = 'new-message-indicator';
-                indicator.textContent = '●';
-                titleElement.appendChild(indicator);
+            const indicatorData = newMessageIndicators[sessionId];
+            if (indicatorData && indicatorData.hasNew && sessionId !== currentSessionId) {
+                if (indicatorData.isError) {
+                    const errorIndicator = document.createElement('span');
+                    errorIndicator.className = 'error-message-indicator';
+                    errorIndicator.textContent = '●';
+                    titleElement.appendChild(errorIndicator);
+                } else {
+                    const indicator = document.createElement('span');
+                    indicator.className = 'new-message-indicator';
+                    indicator.textContent = '●';
+                    titleElement.appendChild(indicator);
+                }
             }
         }
         
@@ -1310,6 +1331,8 @@
                                     // Проверяем, есть ли раздельное время
                                     let responseTime = data.result.response_time;
                                     let modelUsed = data.result.model_used;
+                                    // Получаем флаг ошибки
+                                    const isError = data.result.is_error || false;
                                     
                                     // Если это генерация изображения, передаем объект с временами
                                     if (data.result.mm_time && data.result.gen_time) {
@@ -1335,7 +1358,7 @@
                                 } else {
                                     // Если для другого сеанса - добавляем индикатор
                                     console.log(`Ответ для сеанса ${resultSessionId}, не текущего`);
-                                    setNewMessageIndicator(resultSessionId, true);
+                                    setNewMessageIndicator(resultSessionId, true, data.result.is_error || false);
                                     
                                     // Обновляем список сеансов, чтобы показать индикатор
                                     loadSessionsFromServer();
@@ -1351,7 +1374,7 @@
                                         'system'
                                     );
                                 } else {
-                                    setNewMessageIndicator(resultSessionId, true);
+                                    setNewMessageIndicator(resultSessionId, true, true);
                                     loadSessionsFromServer();
                                 }
                             }
@@ -1379,7 +1402,7 @@
                                 'system'
                             );
                         } else if (resultSessionId) {
-                            setNewMessageIndicator(resultSessionId, true);
+                            setNewMessageIndicator(resultSessionId, true, true);
                             loadSessionsFromServer();
                         }
                         

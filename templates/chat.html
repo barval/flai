@@ -1540,32 +1540,25 @@
                 contentHtml = contentEl.innerHTML;
             }
             
-            // Получаем вложения и информацию о файле (ОБНОВЛЕННАЯ ЧАСТЬ)
-            const fileEl = msgEl.querySelector('.attached-image, .attached-file, audio');
-            const fileInfoEl = msgEl.querySelector('.file-info');
-            const downloadLink = msgEl.querySelector('.download-link-inline');
-            
+            // Получаем вложения (изображения, аудио, файлы) - ТОЛЬКО ОДИН РАЗ
             let fileHtml = '';
             
-            // Добавляем информацию о файле, если она есть
-            if (fileInfoEl) {
-                fileHtml += `<div class="file-info">${fileInfoEl.outerHTML}</div>`;
+            // Ищем изображение
+            const imageEl = msgEl.querySelector('.attached-image');
+            if (imageEl) {
+                fileHtml += `<div class="image-container">${imageEl.outerHTML}</div>`;
             }
             
-            // Добавляем кнопку скачивания, если она есть
-            if (downloadLink) {
-                fileHtml += `<div class="download-link">${downloadLink.outerHTML}</div>`;
+            // Ищем аудио
+            const audioEl = msgEl.querySelector('audio');
+            if (audioEl && !imageEl) { // Если нет изображения, но есть аудио
+                fileHtml += `<div class="audio-container">${audioEl.outerHTML}</div>`;
             }
             
-            // Добавляем само изображение/файл
-            if (fileEl) {
-                if (fileEl.tagName === 'IMG') {
-                    fileHtml += `<div class="image-container">${fileEl.outerHTML}</div>`;
-                } else if (fileEl.tagName === 'AUDIO') {
-                    fileHtml += `<div class="audio-container">${fileEl.outerHTML}</div>`;
-                } else if (fileEl.classList.contains('attached-file')) {
-                    fileHtml += `<div class="file-container">${fileEl.outerHTML}</div>`;
-                }
+            // Ищем файл (не изображение и не аудио)
+            const fileEl = msgEl.querySelector('.attached-file');
+            if (fileEl && !imageEl && !audioEl) {
+                fileHtml += `<div class="file-container">${fileEl.outerHTML}</div>`;
             }
             
             messages.push({
@@ -1732,23 +1725,15 @@
                 border: 1px solid #ddd !important;
             }
 
-            .download-link {
-                display: inline-block !important;
-                margin: 4px 0 !important;
-            }
-
-            .download-link a {
-                color: #3498db !important;
-                text-decoration: none !important;
-                font-size: 1rem !important;
-                padding: 2px 8px !important;
-                border: 1px solid #3498db !important;
-                border-radius: 4px !important;
-                background-color: #f8f9fa !important;
-            }
-
-            .download-link a:hover {
-                background-color: #e6f2ff !important;
+            .download-link-inline {
+                display: inline-block;
+                margin-left: 6px;
+                color: #3498db;
+                text-decoration: none;
+                font-size: 1rem;
+                transition: all 0.2s;
+                opacity: 0.7;
+                vertical-align: middle;
             }
 
             .model-response-info {
@@ -1766,7 +1751,7 @@
 
             .attached-image {
                 max-width: 100%;
-                max-height: 400px;
+                max-height: 512px;
                 border-radius: 8px;
                 margin-top: 15px;
                 box-shadow: 0 2px 8px rgba(0,0,0,0.1);

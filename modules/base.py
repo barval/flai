@@ -4,6 +4,13 @@ import requests
 from datetime import datetime
 import os
 
+# Условный импорт для избежания циклических зависимостей
+try:
+    from app import format_prompt
+except ImportError:
+    # Будет импортировано позже
+    pass
+
 class BaseModule:
     """Базовый модуль для работы с чатом и рассуждающей моделью"""
     
@@ -16,7 +23,6 @@ class BaseModule:
         if app:
             self.init_app(app)
         elif ollama_url:
-            # Если передан только URL, пробуем проверить доступность
             self.check_availability()
     
     def init_app(self, app):
@@ -37,7 +43,6 @@ class BaseModule:
             }
         }
         
-        # Проверяем доступность
         self.check_availability()
         
         if self.available:
@@ -58,7 +63,6 @@ class BaseModule:
                 models = response.json().get('models', [])
                 available_models = [m['name'] for m in models]
                 
-                # Проверяем наличие необходимых моделей
                 chat_model = self.models_config['chat']['model']
                 reasoning_model = self.models_config['reasoning']['model']
                 
@@ -85,8 +89,6 @@ class BaseModule:
     def call_ollama(self, messages, model_type='chat', stream=False):
         """Вызов Ollama API"""
         if not self.available:
-            self.logger.error("Попытка вызова Ollama при недоступном модуле")
-            # Пробуем перепроверить доступность
             self.check_availability()
             if not self.available:
                 return "⚠️ Сервис Ollama недоступен"
@@ -122,12 +124,10 @@ class BaseModule:
                 result = response.json()
                 content = result['message']['content']
                 
-                # Очищаем ответ от стоп-токенов
                 for stop_token in ['<|endoftext|>', '<|im_end|>']:
                     if stop_token in content:
                         content = content[:content.index(stop_token)]
                 
-                # Для модели-маршрутизатора берём только первую строку
                 if model_type == 'chat' and model_config['temperature'] < 0.3:
                     content = content.split('\n')[0].strip()
                 
@@ -146,6 +146,7 @@ class BaseModule:
     
     def process_message(self, message_text, current_time_str):
         """Обработка текстового сообщения через модель-маршрутизатор"""
+        # Импортируем здесь, чтобы избежать циклических зависимостей
         from app import format_prompt
         
         prompt = format_prompt('base_text.template', {

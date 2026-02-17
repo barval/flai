@@ -14,9 +14,10 @@ import pytz
 from pytz.exceptions import UnknownTimeZoneError
 import logging
 from logging import Formatter
-import heapq
-from collections import defaultdict
 import threading
+import redis
+import pickle
+from collections import defaultdict
 
 # Импорт модулей
 from modules import BaseModule, MultimodalModule, ImageModule, CamModule, RagModule, AudioModule
@@ -40,6 +41,7 @@ app.config.update({
     'FOOTER_TEXT': os.getenv('FOOTER_TEXT'),
     'TIMEZONE_STR': os.getenv('TIMEZONE'),
     'OLLAMA_URL': os.getenv('OLLAMA_URL'),
+    'REDIS_URL': os.getenv('REDIS_URL', 'redis://localhost:6379/0'),
     'LLM_CHAT_MODEL': os.getenv('LLM_CHAT_MODEL'),
     'LLM_CHAT_MODEL_CONTEXT_WINDOW': int(os.getenv('LLM_CHAT_MODEL_CONTEXT_WINDOW', 32768)),
     'LLM_CHAT_TEMPERATURE': float(os.getenv('LLM_CHAT_TEMPERATURE', 0.1)),
@@ -291,36 +293,117 @@ def load_users():
 USERS = load_users()
 
 # -------------------------------
-# Класс PriorityRequestQueue (менеджер очереди с приоритетами)
+# Класс RedisRequestQueue (менеджер очереди на Redis)
 # -------------------------------
-class PriorityRequestQueue:
-    def __init__(self):
-        # Используем heapq для эффективной priority queue
-        # Элемент: (priority_class, timestamp, request_id)
-        self.queues = {
-            0: [],  # высший приоритет
-            1: [],  # средний
-            2: []   # низший
+class RedisRequestQueue:
+    def __init__(self, redis_url):
+        self.redis = redis.from_url(redis_url, decode_responses=False)
+        self.queue_key = 'request_queue'
+        self.processing_key = 'processing_requests'
+        self.results_key = 'request_results'
+        self.user_requests_key = 'user_requests'
+        
+        # Запускаем обработчик в отдельном потоке
+        self.start_worker()
+    
+    def start_worker(self):
+        """Запускает воркер для обработки очереди в отдельном потоке"""
+        thread = threading.Thread(target=self._worker_loop, daemon=True)
+        thread.start()
+        app.logger.info("RedisRequestQueue: воркер запущен")
+    
+    def _worker_loop(self):
+        """Основной цикл обработки очереди"""
+        app.logger.info("RedisRequestQueue: запуск цикла обработки")
+        
+        while True:
+            try:
+                # Блокирующее получение задачи из очереди (ждем 5 секунд)
+                result = self.redis.blpop(self.queue_key, timeout=5)
+                
+                if not result:
+                    # Нет задач, продолжаем ждать
+                    continue
+                
+                # Получаем данные задачи
+                queue_key, task_data = result
+                task = pickle.loads(task_data)
+                
+                app.logger.info(f"RedisRequestQueue: получена задача {task['id']} из очереди")
+                
+                # Помечаем задачу как обрабатываемую
+                self.redis.hset(self.processing_key, task['id'], task_data)
+                
+                try:
+                    # Обрабатываем запрос
+                    result_data = self._process_request(task)
+                    
+                    # Сохраняем результат
+                    self.redis.hset(self.results_key, task['id'], pickle.dumps({
+                        'status': 'completed',
+                        'result': result_data,
+                        'timestamp': time.time()
+                    }))
+                    
+                    app.logger.info(f"RedisRequestQueue: задача {task['id']} выполнена успешно")
+                    
+                except Exception as e:
+                    app.logger.error(f"RedisRequestQueue: ошибка обработки задачи {task['id']}: {str(e)}")
+                    self.redis.hset(self.results_key, task['id'], pickle.dumps({
+                        'status': 'error',
+                        'error': str(e),
+                        'timestamp': time.time()
+                    }))
+                
+                finally:
+                    # Удаляем из обрабатываемых
+                    self.redis.hdel(self.processing_key, task['id'])
+                    
+            except Exception as e:
+                app.logger.error(f"RedisRequestQueue: ошибка в worker loop: {str(e)}")
+                time.sleep(1)
+    
+    def add_request(self, user_id, session_id, request_data, user_class):
+        """
+        Добавление запроса в очередь Redis
+        Возвращает request_id и информацию о позиции
+        """
+        request_id = str(uuid.uuid4())
+        timestamp = time.time()
+        
+        task = {
+            'id': request_id,
+            'user_id': user_id,
+            'session_id': session_id,
+            'data': request_data,
+            'timestamp': timestamp,
+            'user_class': user_class,
+            'session_title': self._get_session_title(session_id)
         }
-        self.current_request = None  # Текущий выполняемый запрос
-        self.lock = threading.Lock()
-        self.processing = False
-        self.request_history = []  # История для оценки времени
         
-        # Маппинг request_id -> информация о запросе для быстрого доступа
-        self.requests_map = {}
+        app.logger.info(f"RedisRequestQueue.add_request: добавление задачи {request_id}")
         
-        # Статистика по пользователям
-        self.user_stats = defaultdict(lambda: {
-            'total_requests': 0,
-            'completed_requests': 0,
-            'total_wait_time': 0,
-            'last_request_time': None
-        })
+        # Сохраняем задачу в очередь Redis
+        self.redis.rpush(self.queue_key, pickle.dumps(task))
         
-        # Словарь для хранения результатов (для long-polling)
-        self.results = {}
+        # Сохраняем связь пользователь -> запросы
+        self.redis.sadd(f"{self.user_requests_key}:{user_id}", request_id)
         
+        # Получаем позицию в очереди
+        queue_length = self.redis.llen(self.queue_key)
+        
+        # Оцениваем время ожидания
+        estimated_wait = self._estimate_wait_time(queue_length, user_class)
+        
+        position_info = {
+            'position': queue_length,
+            'estimated_seconds': estimated_wait
+        }
+        
+        app.logger.info(f"RedisRequestQueue.add_request: задача добавлена, позиция={queue_length}")
+        
+        return request_id, position_info
+    
     def _get_session_title(self, session_id):
         """Получить заголовок сеанса по ID"""
         try:
@@ -333,291 +416,43 @@ class PriorityRequestQueue:
             app.logger.error(f"Ошибка получения заголовка сессии: {str(e)}")
             return "Неизвестный сеанс"
     
-    def add_request(self, user_id, session_id, request_data, user_class):
-        """
-        Добавление запроса в очередь
-        Возвращает request_id и информацию о позиции
-        """
-        app.logger.info(f"PriorityRequestQueue.add_request: user_id={user_id}, session_id={session_id}")
-        
-        request_id = str(uuid.uuid4())
-        timestamp = time.time()
-        
-        # Получаем статистику пользователя для оценки
-        stats = self.user_stats[user_id]
-        stats['total_requests'] += 1
-        stats['last_request_time'] = datetime.now()
-        
-        request_info = {
-            'id': request_id,
-            'user_id': user_id,
-            'session_id': session_id,
-            'data': request_data,
-            'timestamp': timestamp,
-            'user_class': user_class,
-            'status': 'queued',  # queued, processing, completed, cancelled
-            'position_info': None,  # Будет заполнено позже
-            'estimated_wait': None,
-            'start_time': None,
-            'end_time': None,
-            'session_title': self._get_session_title(session_id)
-        }
-        
-        app.logger.info(f"PriorityRequestQueue.add_request: request_info создан, id={request_id}")
-        
-        with self.lock:
-            app.logger.info(f"PriorityRequestQueue.add_request: захвачен lock")
-            
-            # Добавляем в соответствующую очередь
-            heapq.heappush(self.queues[user_class], 
-                        (user_class, timestamp, request_id))
-            
-            app.logger.info(f"PriorityRequestQueue.add_request: запрос добавлен в очередь {user_class}")
-            
-            self.requests_map[request_id] = request_info
-            
-            # Рассчитываем позицию и ожидание
-            position_info = self._calculate_position(request_id)
-            request_info['position_info'] = position_info
-            
-            app.logger.info(f"PriorityRequestQueue.add_request: позиция рассчитана: {position_info}")
-            
-            # ВСЕГДА запускаем обработчик в отдельном потоке
-            app.logger.info("PriorityRequestQueue.add_request: запускаем обработчик очереди")
-            thread = threading.Thread(target=self._process_queue, daemon=True)
-            thread.start()
-        
-        return request_id, position_info
-    
-    def _calculate_position(self, request_id):
-        """Рассчитывает позицию запроса в очереди"""
-        request = self.requests_map.get(request_id)
-        if not request:
-            return None
-            
-        user_class = request['user_class']
-        
-        with self.lock:
-            # Считаем сколько запросов впереди в том же классе
-            same_class_before = 0
-            found = False
-            for item in self.queues[user_class]:
-                cls, ts, rid = item
-                if rid == request_id:
-                    found = True
-                    break
-                if ts < request['timestamp']:
-                    same_class_before += 1
-            
-            if not found:
-                # Запрос уже не в очереди (возможно, обрабатывается)
-                return {
-                    'total_before': 0,
-                    'same_class_before': 0,
-                    'higher_class_before': 0,
-                    'estimated_seconds': 0,
-                    'position': 0
-                }
-            
-            # Считаем запросы в более высоких классах
-            higher_class_total = 0
-            for cls in range(user_class):  # 0, 1 (если user_class=2)
-                higher_class_total += len(self.queues[cls])
-            
-            total_before = higher_class_total + same_class_before
-            
-            # Оценка времени ожидания
-            estimated_wait = self._estimate_wait_time(total_before, user_class)
-            
-            return {
-                'total_before': total_before,
-                'same_class_before': same_class_before,
-                'higher_class_before': higher_class_total,
-                'estimated_seconds': estimated_wait,
-                'position': total_before + 1  # 1-based позиция
-            }
-    
     def _estimate_wait_time(self, position, user_class):
-        """Оценка времени ожидания на основе истории и класса"""
-        if position == 0:
-            return 0
-            
-        if not self.request_history:
-            # Дефолтные значения, если нет истории
-            return position * 5  # грубая оценка
-        
-        # Анализируем историю по классам (последние 50 запросов)
-        recent_history = self.request_history[-50:]
-        
-        # Группируем по классам
-        class_durations = {0: [], 1: [], 2: []}
-        for h in recent_history:
-            cls = h['request']['user_class']
-            class_durations[cls].append(h['duration'])
-        
-        # Средняя длительность для каждого класса
-        avg_durations = {}
-        for cls, durations in class_durations.items():
-            if durations:
-                avg_durations[cls] = sum(durations) / len(durations)
-            else:
-                avg_durations[cls] = 5  # запасное значение
-        
-        # Оцениваем: сначала все запросы высших классов, потом наши
-        wait_time = 0
-        remaining = position
-        
-        with self.lock:
-            for cls in range(3):
-                if cls < user_class:
-                    # Все запросы высших классов
-                    wait_time += len(self.queues[cls]) * avg_durations.get(cls, 5)
-                elif cls == user_class:
-                    # Наши запросы до текущего
-                    wait_time += (remaining - 1) * avg_durations.get(cls, 5)
-                    break
-        
-        return round(wait_time, 1)
+        """Оценка времени ожидания"""
+        # Базовая оценка: 5 секунд на запрос
+        return position * 5
     
-    def _process_queue(self):
-        """Основной обработчик очереди"""
-        app.logger.info("PriorityRequestQueue._process_queue: ЗАПУСК ОБРАБОТЧИКА")
-        
-        with self.lock:
-            self.processing = True
-            app.logger.info("PriorityRequestQueue._process_queue: processing установлен в True")
-        
-        while True:
-            app.logger.info("PriorityRequestQueue._process_queue: начало итерации цикла")
-            next_request = None
-            next_class = None
-            
-            with self.lock:
-                # Ищем запрос в классах по приоритету
-                for cls in [0, 1, 2]:
-                    app.logger.info(f"PriorityRequestQueue._process_queue: проверка класса {cls}, размер очереди={len(self.queues[cls])}")
-                    if self.queues[cls]:
-                        # Берем самый старый (heap гарантирует порядок)
-                        cls_val, ts, rid = self.queues[cls][0]
-                        app.logger.info(f"PriorityRequestQueue._process_queue: найден запрос {rid} в классе {cls}")
-                        
-                        next_request = self.requests_map.get(rid)
-                        if next_request and next_request['status'] == 'queued':
-                            next_class = cls
-                            # Удаляем из очереди
-                            heapq.heappop(self.queues[cls])
-                            app.logger.info(f"PriorityRequestQueue._process_queue: запрос {rid} удален из очереди")
-                            break
-                        else:
-                            # Запрос отменён или уже обработан - просто удаляем
-                            app.logger.info(f"PriorityRequestQueue._process_queue: запрос {rid} имеет статус {next_request['status'] if next_request else 'None'}, удаляем")
-                            heapq.heappop(self.queues[cls])
-                            continue
-            
-            if not next_request:
-                app.logger.info("PriorityRequestQueue._process_queue: очередь пуста, завершаем работу")
-                with self.lock:
-                    self.processing = False
-                break
-            
-            # Обновляем статус
-            next_request['status'] = 'processing'
-            next_request['start_time'] = time.time()
-            self.current_request = next_request
-            
-            app.logger.info(f"PriorityRequestQueue._process_queue: НАЧАЛО ОБРАБОТКИ запроса {next_request['id']}")
-            
-            # Вычисляем время ожидания в очереди
-            wait_time = next_request['start_time'] - next_request['timestamp']
-            app.logger.info(f"PriorityRequestQueue._process_queue: время ожидания в очереди: {wait_time:.2f}с")
-            
-            # Обрабатываем запрос (без лока, чтобы можно было добавлять новые)
-            try:
-                # Вызываем реальную обработку
-                app.logger.info(f"PriorityRequestQueue._process_queue: вызов _process_request_impl для {next_request['id']}")
-                result = self._process_request_impl(next_request)
-                app.logger.info(f"PriorityRequestQueue._process_queue: _process_request_impl завершен, результат: {result}")
-                
-                # Сохраняем результат
-                self.results[next_request['id']] = {
-                    'status': 'completed',
-                    'result': result,
-                    'timestamp': time.time()
-                }
-                app.logger.info(f"PriorityRequestQueue._process_queue: результат сохранен для {next_request['id']}")
-                
-            except Exception as e:
-                app.logger.error(f"PriorityRequestQueue._process_queue: ОШИБКА обработки запроса {next_request['id']}: {str(e)}")
-                import traceback
-                traceback.print_exc()
-                self.results[next_request['id']] = {
-                    'status': 'error',
-                    'error': str(e),
-                    'timestamp': time.time()
-                }
-            
-            # Обновляем статистику
-            end_time = time.time()
-            next_request['status'] = 'completed'
-            next_request['end_time'] = end_time
-            duration = end_time - next_request['start_time']
-            
-            app.logger.info(f"PriorityRequestQueue._process_queue: ЗАВЕРШЕНИЕ обработки запроса {next_request['id']}, длительность: {duration:.2f}с")
-            
-            # Сохраняем в историю
-            self.request_history.append({
-                'request': next_request,
-                'wait_time': wait_time,
-                'duration': duration,
-                'completed': end_time
-            })
-            
-            # Обновляем статистику пользователя
-            stats = self.user_stats[next_request['user_id']]
-            stats['completed_requests'] += 1
-            stats['total_wait_time'] += wait_time
-            
-            self.current_request = None
-            app.logger.info("PriorityRequestQueue._process_queue: конец итерации цикла")
-    
-    def _process_request_impl(self, request):
+    def _process_request(self, task):
         """
-        Реальная обработка запроса
-        Здесь вызываются соответствующие модули в зависимости от типа запроса
+        Обработка запроса
+        Здесь вызываются соответствующие модули
         """
-        app.logger.info(f"_process_request_impl: НАЧАЛО обработки запроса {request['id']}")
-        app.logger.info(f"_process_request_impl: доступность модулей: base={modules['base'].available}, multimodal={'multimodal' in modules}")
+        app.logger.info(f"RedisRequestQueue._process_request: обработка задачи {task['id']}")
         
-        user_id = request['user_id']
-        session_id = request['session_id']
-        request_data = request['data']
+        user_id = task['user_id']
+        session_id = task['session_id']
+        request_data = task['data']
         
         # Получаем текущее время
         current_time_str = get_current_time_in_timezone()
         current_time_for_db = get_current_time_in_timezone_for_db()
         
-        app.logger.info(f"_process_request_impl: current_time={current_time_str}")
-        app.logger.info(f"_process_request_impl: request_data={request_data}")
-        
-        # Определяем тип запроса и обрабатываем
+        # Определяем тип запроса
         request_type = request_data.get('type', 'text')
         message_text = request_data.get('text', '')
         file_data = request_data.get('file_data')
         file_type = request_data.get('file_type')
         file_name = request_data.get('file_name')
         
-        app.logger.info(f"_process_request_impl: тип запроса={request_type}, текст='{message_text}'")
+        app.logger.info(f"RedisRequestQueue._process_request: тип={request_type}, текст='{message_text}'")
         
-        # Для текстовых запросов используем базовый модуль
+        # Для текстовых запросов
         if request_type == 'text':
-            app.logger.info("_process_request_impl: обработка текстового запроса")
+            app.logger.info("RedisRequestQueue._process_request: обработка текстового запроса")
             
-            # Обрабатываем через базовый модуль
             router_result = modules['base'].process_message(message_text, current_time_str)
-            app.logger.info(f"_process_request_impl: router_result={router_result}")
+            app.logger.info(f"RedisRequestQueue._process_request: router_result={router_result}")
             
             if 'error' in router_result:
-                app.logger.error(f"_process_request_impl: ошибка в router_result: {router_result['error']}")
                 return {'error': router_result['error']}
             
             action_type = router_result['action']
@@ -625,22 +460,15 @@ class PriorityRequestQueue:
             
             final_response = ""
             model_used = app.config['LLM_CHAT_MODEL']
-            model_category = 'chat'  # По умолчанию
+            model_category = 'chat'
             
-            # Обработка в зависимости от типа действия
             if action_type == 'image':
-                # Запрос на создание изображения
                 model_category = 'image'
-                app.logger.info("_process_request_impl: запрос на создание изображения")
-                
-                if 'image' in modules and modules['image'].available and 'multimodal' in modules:
-                    app.logger.info("Обработка запроса на создание изображения")
-                    
+                if 'image' in modules and modules['image'].available:
                     image_result = modules['image'].generate_image(query)
-                    app.logger.info(f"_process_request_impl: image_result={image_result}")
                     
                     if image_result['success']:
-                        message_text = f"Изображение сгенерировано моделью {app.config['AUTOMATIC1111_MODEL']} по запросу: {query}"
+                        message_text = f"Изображение сгенерировано по запросу: {query}"
                         
                         save_message(
                             session_id, 'assistant', message_text,
@@ -665,15 +493,9 @@ class PriorityRequestQueue:
                     final_response = "⚠️ Модуль генерации изображений недоступен"
             
             elif action_type == 'camera':
-                # Запрос к камере
                 model_category = 'camera'
-                app.logger.info("_process_request_impl: запрос к камере")
-                
                 if 'cam' in modules and modules['cam'].available:
-                    app.logger.info("Обработка запроса к камере")
-                    
                     camera_result = modules['cam'].get_snapshot(query)
-                    app.logger.info(f"_process_request_impl: camera_result={camera_result}")
                     
                     if camera_result['success']:
                         save_message(
@@ -700,24 +522,17 @@ class PriorityRequestQueue:
                     final_response = "⚠️ Модуль видеонаблюдения недоступен"
             
             elif action_type == 'reasoning':
-                # Сложный запрос
                 model_category = 'reasoning'
-                app.logger.info("_process_request_impl: сложный запрос")
-                
                 if router_result.get('needs_reasoning'):
-                    app.logger.info("Обработка сложного запроса через reasoning модель")
                     final_response = modules['base'].process_reasoning(query, current_time_str)
                     model_used = app.config['LLM_REASONING_MODEL']
                 else:
                     final_response = query
             
             else:  # action_type == 'none'
-                app.logger.info("_process_request_impl: простой запрос")
                 final_response = query
             
-            # Сохраняем ответ
             if final_response:
-                app.logger.info(f"_process_request_impl: сохраняем ответ: {final_response[:100]}...")
                 save_message(session_id, 'assistant', final_response, model_name=model_used)
             
             return {
@@ -730,16 +545,11 @@ class PriorityRequestQueue:
         
         # Для запросов с изображениями
         elif request_type == 'image' and file_data:
-            app.logger.info("_process_request_impl: обработка запроса с изображением")
-            
             if 'multimodal' in modules and modules['multimodal'].available:
-                # Проверяем валидность изображения
-                # Приблизительный размер файла
                 file_size = int((len(file_data) * 3) / 4) if file_data else 0
                 is_valid, error = modules['multimodal'].validate_image(file_data, file_type, file_name, file_size)
                 
                 if is_valid:
-                    # Обрабатываем изображение через мультимодальную модель
                     bot_reply, error = modules['multimodal'].process_image_with_text(
                         file_data, message_text, current_time_str
                     )
@@ -767,7 +577,7 @@ class PriorityRequestQueue:
                         'assistant_timestamp': current_time_for_db
                     }
             else:
-                bot_reply = "⚠️ Мультимодальная модель недоступна. Файлы не поддерживаются."
+                bot_reply = "⚠️ Мультимодальная модель недоступна"
                 save_message(session_id, 'assistant', bot_reply, model_name='system')
                 
                 return {
@@ -777,7 +587,6 @@ class PriorityRequestQueue:
                     'assistant_timestamp': current_time_for_db
                 }
         
-        app.logger.error(f"_process_request_impl: неизвестный тип запроса {request_type}")
         return {'error': 'Неизвестный тип запроса'}
     
     def get_user_requests_status(self, user_id):
@@ -788,38 +597,37 @@ class PriorityRequestQueue:
             'recent_completed': []
         }
         
-        # Текущий обрабатываемый запрос
-        if self.current_request and self.current_request['user_id'] == user_id:
-            result['processing'] = self._format_request_info(self.current_request)
+        # Получаем все запросы пользователя
+        user_requests = self.redis.smembers(f"{self.user_requests_key}:{user_id}")
         
-        # Запросы в очереди
-        with self.lock:
-            for cls in [0, 1, 2]:
-                for item in self.queues[cls]:
-                    cls_val, ts, rid = item
-                    req = self.requests_map.get(rid)
-                    if req and req['user_id'] == user_id and req['status'] == 'queued':
-                        # Обновляем позицию перед отправкой
-                        req['position_info'] = self._calculate_position(rid)
-                        result['queued'].append(self._format_request_info(req))
+        # Проверяем обрабатываемые запросы
+        processing_tasks = self.redis.hgetall(self.processing_key)
+        for req_id, task_data in processing_tasks.items():
+            req_id = req_id.decode() if isinstance(req_id, bytes) else req_id
+            if req_id.encode() in user_requests:
+                task = pickle.loads(task_data)
+                result['processing'] = self._format_request_info(task)
         
-        # Недавно завершённые (из истории)
-        for h in reversed(self.request_history[-10:]):
-            if h['request']['user_id'] == user_id:
-                result['recent_completed'].append({
-                    'session_title': h['request']['session_title'],
-                    'completed_at': datetime.fromtimestamp(h['completed']).strftime('%H:%M:%S'),
-                    'duration': round(h['duration'], 1)
-                })
+        # Получаем всю очередь
+        queue_length = self.redis.llen(self.queue_key)
+        queue_tasks = self.redis.lrange(self.queue_key, 0, queue_length)
         
-        # Сортируем очередь по ожидаемому времени
-        result['queued'].sort(key=lambda x: x['position_info']['position'])
+        position = 1
+        for task_data in queue_tasks:
+            task = pickle.loads(task_data)
+            if task['user_id'] == user_id:
+                task['position_info'] = {'position': position}
+                result['queued'].append(self._format_request_info(task))
+            position += 1
+        
+        # Получаем недавние результаты
+        # В реальном проекте здесь можно хранить историю в Redis
         
         return result
     
-    def _format_request_info(self, request):
+    def _format_request_info(self, task):
         """Форматирование информации о запросе для UI"""
-        request_type = request['data'].get('type', 'unknown')
+        request_type = task['data'].get('type', 'unknown')
         type_icons = {
             'text': '💬',
             'image': '🎨',
@@ -828,46 +636,31 @@ class PriorityRequestQueue:
         }
         
         return {
-            'id': request['id'],
-            'session_id': request['session_id'],
-            'session_title': request['session_title'],
+            'id': task['id'],
+            'session_id': task['session_id'],
+            'session_title': task['session_title'],
             'type': request_type,
             'type_icon': type_icons.get(request_type, '📄'),
-            'status': request['status'],
-            'position_info': request['position_info'],
-            'wait_time': round(time.time() - request['timestamp'], 1) if request['status'] == 'queued' else None,
-            'preview': request['data'].get('preview', '')
+            'status': 'queued',
+            'position_info': task.get('position_info', {'position': '?'}),
+            'preview': task['data'].get('preview', '')
         }
     
     def cancel_request(self, user_id, request_id):
-        """Отмена запроса (только для своего пользователя)"""
-        with self.lock:
-            request = self.requests_map.get(request_id)
-            if not request or request['user_id'] != user_id:
-                return False
-            
-            if request['status'] == 'queued':
-                request['status'] = 'cancelled'
-                return True
-            elif request['status'] == 'processing':
-                # Не можем отменить выполняющийся запрос
-                return False
-            
+        """Отмена запроса"""
+        # Для простоты возвращаем False
+        # В реальном проекте нужно реализовать удаление из очереди
         return False
     
-    def get_average_response_time(self):
-        """Получить среднее время ответа"""
-        if not self.request_history:
-            return 0
-        recent = self.request_history[-50:]
-        return round(sum(h['duration'] for h in recent) / len(recent), 1)
-    
     def check_result(self, request_id):
-        """Проверить, готов ли результат для request_id"""
-        return self.results.get(request_id)
+        """Проверить результат запроса"""
+        result_data = self.redis.hget(self.results_key, request_id)
+        if result_data:
+            return pickle.loads(result_data)
+        return None
 
-# Глобальный экземпляр очереди
-request_queue = PriorityRequestQueue()
+# Глобальный экземпляр очереди на Redis
+request_queue = RedisRequestQueue(app.config['REDIS_URL'])
 
 # -------------------------------
 # Функции для работы с БД (вспомогательные)
@@ -1148,7 +941,7 @@ def api_delete_session(session_id):
     return jsonify({'status': 'ok'})
 
 # -------------------------------
-# API для очереди запросов
+# API для очереди запросов (Redis)
 # -------------------------------
 @app.route('/api/queue/status', methods=['GET'])
 def api_queue_status():
@@ -1160,11 +953,11 @@ def api_queue_status():
     status = request_queue.get_user_requests_status(user_id)
     
     # Добавляем общую информацию о системе
-    total_queued = sum(len(q) for q in request_queue.queues.values())
+    queue_length = request_queue.redis.llen(request_queue.queue_key)
     status['system'] = {
-        'total_queued': total_queued,
-        'current_load': 'high' if total_queued > 10 else 'normal',
-        'avg_response_time': request_queue.get_average_response_time()
+        'total_queued': queue_length,
+        'current_load': 'high' if queue_length > 10 else 'normal',
+        'avg_response_time': 5  # Заглушка
     }
     
     return jsonify(status)
@@ -1220,39 +1013,23 @@ def clear_history():
     return jsonify({'status': 'ok'})
 
 # -------------------------------
-# ОТПРАВКА СООБЩЕНИЯ (с максимальным логированием)
+# ОТПРАВКА СООБЩЕНИЯ
 # -------------------------------
 @app.route('/send_message', methods=['POST'])
 def send_message():
     app.logger.info("=" * 50)
     app.logger.info("send_message: НАЧАЛО ОБРАБОТКИ ЗАПРОСА")
-    app.logger.info(f"Request method: {request.method}")
-    app.logger.info(f"Request content_type: {request.content_type}")
-    app.logger.info(f"Request headers: {dict(request.headers)}")
     
     if 'email' not in session:
-        app.logger.error("send_message: Пользователь не авторизован")
         return jsonify({'error': 'Не авторизован'}), 401
-    
-    app.logger.info(f"send_message: Авторизован пользователь {session['email']}")
-    
-    # Проверяем базовый модуль
-    if not modules['base'].available:
-        app.logger.error("send_message: Базовый сервис чата недоступен")
-        app.logger.info(f"modules['base'].available = {modules['base'].available}")
-        return jsonify({'error': 'Базовый сервис чата недоступен'}), 500
     
     user_id = session['email']
     user_class = USERS.get(user_id, {}).get('service_class', 2)
     session_id = session.get('current_session')
     
-    app.logger.info(f"send_message: user_id={user_id}, user_class={user_class}, session_id={session_id}")
-    
     if not session_id:
-        app.logger.info("send_message: Нет текущей сессии, создаем новую")
         session_id = create_session(user_id)
         session['current_session'] = session_id
-        app.logger.info(f"send_message: Создана новая сессия {session_id}")
     
     # Получаем данные из запроса
     message_text = ""
@@ -1260,50 +1037,25 @@ def send_message():
     file_type = None
     file_name = None
     
-    # Проверяем тип контента
     if request.content_type and 'multipart/form-data' in request.content_type:
-        app.logger.info("send_message: Обнаружен multipart/form-data запрос")
         message_text = request.form.get('message', '')
-        app.logger.info(f"send_message: message_text из form = '{message_text}'")
         
         if 'file' in request.files:
             file = request.files['file']
             if file and file.filename:
-                app.logger.info(f"send_message: Найден файл {file.filename}")
                 file_data = base64.b64encode(file.read()).decode('utf-8')
                 file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
                 file_name = file.filename
-                app.logger.info(f"send_message: Файл загружен, тип={file_type}, размер={len(file_data)}")
     else:
-        app.logger.info("send_message: Предполагаем JSON запрос")
         try:
             data = request.get_json()
             if data:
                 message_text = data.get('message', '')
-                app.logger.info(f"send_message: message_text из JSON = '{message_text}'")
-            else:
-                app.logger.warning("send_message: data is None")
-        except Exception as e:
-            app.logger.error(f"send_message: Ошибка парсинга JSON: {str(e)}")
-            # Если не JSON, пробуем как обычную форму
+        except:
             message_text = request.form.get('message', '')
-            app.logger.info(f"send_message: message_text из form = '{message_text}'")
     
     if not message_text and not file_data:
-        app.logger.warning("send_message: Пустое сообщение и нет файла")
         return jsonify({'error': 'Пустое сообщение'}), 400
-    
-    # Получаем текущее время
-    current_time_for_db = get_current_time_in_timezone_for_db()
-    app.logger.info(f"send_message: current_time = {current_time_for_db}")
-    
-    # Проверяем, первое ли это сообщение
-    with sqlite3.connect(CHAT_DB_PATH) as conn:
-        c = conn.cursor()
-        c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (session_id,))
-        count = c.fetchone()[0]
-        is_first_message = count == 0
-        app.logger.info(f"send_message: is_first_message = {is_first_message}, всего сообщений = {count}")
     
     # Сохраняем сообщение пользователя
     user_content = []
@@ -1319,16 +1071,18 @@ def send_message():
         })
     
     user_content_json = json.dumps(user_content, ensure_ascii=False)
-    app.logger.info(f"send_message: Сохраняем сообщение пользователя: {user_content_json[:100]}...")
+    save_message(session_id, 'user', user_content_json, file_data, file_type, file_name, None)
     
-    save_message(session_id, 'user', user_content_json, 
-                file_data, file_type, file_name, None)
+    # Проверяем, первое ли это сообщение
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (session_id,))
+        is_first_message = c.fetchone()[0] == 1  # Только что сохранили
     
     if is_first_message:
-        new_title = update_session_title(session_id, message_text, file_name)
-        app.logger.info(f"send_message: Обновлен заголовок сессии: {new_title}")
+        update_session_title(session_id, message_text, file_name)
     
-    # Определяем тип запроса для статистики
+    # Определяем тип запроса
     request_type = 'text'
     if file_data and file_type and file_type.startswith('image/'):
         request_type = 'image'
@@ -1343,23 +1097,17 @@ def send_message():
         'preview': (message_text[:50] + '...') if message_text else (file_name or 'Запрос')
     }
     
-    app.logger.info(f"send_message: Добавляем запрос в очередь: {request_data}")
-    
-    # Добавляем в очередь
+    # Добавляем в очередь Redis
     request_id, position_info = request_queue.add_request(
         user_id, session_id, request_data, user_class
     )
     
-    app.logger.info(f"send_message: Запрос добавлен в очередь: id={request_id}, позиция={position_info['position']}")
-    app.logger.info("=" * 50)
-    
-    # Возвращаем информацию о позиции в очереди
     return jsonify({
         'status': 'queued',
         'request_id': request_id,
         'position': position_info['position'],
         'estimated_wait': position_info['estimated_seconds'],
-        'message': f'Запрос поставлен в очередь (позиция {position_info["position"]}, ожидание ~{position_info["estimated_seconds"]}с)'
+        'message': f'Запрос поставлен в очередь (позиция {position_info["position"]})'
     })
 
 # -------------------------------
@@ -1373,32 +1121,6 @@ def favicon():
 @app.context_processor
 def inject_footer():
     return {'footer_content': app.config.get('FOOTER_TEXT', "")}
-
-# Проверка доступности модулей при инициализации (вместо before_first_request)
-def check_modules_on_startup():
-    app.logger.info("=" * 50)
-    app.logger.info("ПРОВЕРКА МОДУЛЕЙ ПРИ ЗАПУСКЕ")
-    
-    # Принудительно проверяем базовый модуль
-    if 'base' in modules:
-        app.logger.info(f"BaseModule: checking availability...")
-        modules['base'].check_availability()
-        app.logger.info(f"BaseModule available: {modules['base'].available}")
-    
-    if 'multimodal' in modules:
-        app.logger.info(f"MultimodalModule: checking availability...")
-        modules['multimodal'].check_availability()
-        app.logger.info(f"MultimodalModule available: {modules['multimodal'].available}")
-    
-    if 'image' in modules:
-        app.logger.info(f"ImageModule: checking availability...")
-        modules['image'].check_availability()
-        app.logger.info(f"ImageModule available: {modules['image'].available}")
-    
-    app.logger.info("=" * 50)
-
-# Вызываем функцию сразу после инициализации модулей
-check_modules_on_startup()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

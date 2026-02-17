@@ -536,6 +536,18 @@
                             responseTime = Math.round(diffSeconds * 10) / 10;
                         }
                         
+                        // Проверяем, есть ли сохранённое время ответа в БД
+                        if (msg.response_time) {
+                            // Если response_time - объект (для генерации изображений)
+                            if (typeof msg.response_time === 'object') {
+                                responseTime = msg.response_time;
+                            } 
+                            // Если response_time - число или строка с числом
+                            else if (!isNaN(parseFloat(msg.response_time))) {
+                                responseTime = parseFloat(msg.response_time);
+                            }
+                        }
+                        
                         // Проверяем, есть ли раздельное время в сообщении из БД
                         let mmTime = msg.mm_time;
                         let genTime = msg.gen_time;

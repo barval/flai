@@ -605,28 +605,49 @@ class RedisRequestQueue:
             elif action_type == 'reasoning':
                 model_category = 'reasoning'
                 if router_result.get('needs_reasoning'):
+                    # Замеряем время работы reasoning модели
+                    reasoning_start_time = time.time()
                     final_response = modules['base'].process_reasoning(query, current_time_str)
+                    reasoning_time = round(time.time() - reasoning_start_time, 1)
                     model_used = app.config['LLM_REASONING_MODEL']
                 else:
+                    reasoning_time = 0
                     final_response = query
             
             else:  # action_type == 'none'
+                # Для простых ответов время = время обработки запроса
+                reasoning_time = round(time.time() - task['timestamp'], 1)
                 final_response = query
             
             if final_response:
                 # Время ЗАВЕРШЕНИЯ обработки
                 completion_time_for_db = get_current_time_in_timezone_for_db()
-                response_time_val = round(time.time() - task['timestamp'], 1) if 'response_time' not in locals() else None
-                save_message(session_id, 'assistant', final_response, 
-                           model_name=model_used,
-                           response_time=str(response_time_val) if response_time_val else None)
+                
+                # Вычисляем общее время обработки
+                total_time = round(time.time() - task['timestamp'], 1)
+                
+                # Для обычных текстовых ответов передаём время
+                if action_type in ['none', 'reasoning'] and reasoning_time > 0:
+                    save_message(session_id, 'assistant', final_response, 
+                               model_name=model_used,
+                               response_time=str(reasoning_time))
+                elif action_type == 'none':
+                    # Для простых ответов (например, время) тоже передаём время
+                    save_message(session_id, 'assistant', final_response, 
+                               model_name=model_used,
+                               response_time=str(total_time))
+                else:
+                    # Для остальных случаев (ошибки и т.д.)
+                    save_message(session_id, 'assistant', final_response, 
+                               model_name=model_used)
             
             return {
                 'response': final_response,
                 'session_id': session_id,
                 'model_used': model_used,
                 'model_category': model_category,
-                'assistant_timestamp': completion_time_for_db
+                'assistant_timestamp': completion_time_for_db,
+                'response_time': reasoning_time if action_type in ['reasoning', 'none'] else total_time
             }
         
         # Для запросов с изображениями
@@ -636,9 +657,12 @@ class RedisRequestQueue:
                 is_valid, error = modules['multimodal'].validate_image(file_data, file_type, file_name, file_size)
                 
                 if is_valid:
+                    # Замеряем время обработки
+                    process_start_time = time.time()
                     bot_reply, error = modules['multimodal'].process_image_with_text(
                         file_data, message_text, current_time_str
                     )
+                    process_time = round(time.time() - process_start_time, 1)
                     
                     if error:
                         bot_reply = f"⚠️ {error}"
@@ -646,14 +670,16 @@ class RedisRequestQueue:
                     # Время ЗАВЕРШЕНИЯ обработки
                     completion_time_for_db = get_current_time_in_timezone_for_db()
                     save_message(session_id, 'assistant', bot_reply, 
-                               model_name=app.config['LLM_MULTIMODAL_MODEL'])
+                               model_name=app.config['LLM_MULTIMODAL_MODEL'],
+                               response_time=str(process_time))
                     
                     return {
                         'response': bot_reply,
                         'session_id': session_id,
                         'model_used': app.config['LLM_MULTIMODAL_MODEL'],
                         'model_category': 'multimodal',
-                        'assistant_timestamp': completion_time_for_db
+                        'assistant_timestamp': completion_time_for_db,
+                        'response_time': process_time
                     }
                 else:
                     bot_reply = f"⚠️ {error}"
@@ -754,7 +780,6 @@ class RedisRequestQueue:
     
     def cancel_request(self, user_id, request_id):
         """Отмена запроса"""
-        # Для простоты возвращаем False
         return False
     
     def check_result(self, request_id):

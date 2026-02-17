@@ -1302,7 +1302,7 @@
             }
         };
 
-        // Функция для опроса результата - ИСПРАВЛЕННАЯ
+        // функция startResultPolling 
         function startResultPolling(requestId) {
             console.log('Start polling for request:', requestId);
             let pollCount = 0;
@@ -1326,25 +1326,24 @@
                             const resultSessionId = data.result.session_id;
                             
                             if (data.result.response) {
+                                // Подготавливаем время ответа
+                                let responseTime = data.result.response_time;
+                                let modelUsed = data.result.model_used;
+                                const isError = data.result.is_error || false;
+                                
+                                // Если это генерация изображения, передаем объект с временами
+                                if (data.result.mm_time && data.result.gen_time) {
+                                    responseTime = {
+                                        mm_time: data.result.mm_time,
+                                        gen_time: data.result.gen_time,
+                                        mm_model: data.result.mm_model,
+                                        gen_model: data.result.gen_model
+                                    };
+                                    modelUsed = data.result.mm_model;
+                                }
+                                
                                 // Если это ответ для текущего сеанса - показываем сразу
                                 if (resultSessionId === currentSessionId) {
-                                    // Проверяем, есть ли раздельное время
-                                    let responseTime = data.result.response_time;
-                                    let modelUsed = data.result.model_used;
-                                    // Получаем флаг ошибки
-                                    const isError = data.result.is_error || false;
-                                    
-                                    // Если это генерация изображения, передаем объект с временами
-                                    if (data.result.mm_time && data.result.gen_time) {
-                                        responseTime = {
-                                            mm_time: data.result.mm_time,
-                                            gen_time: data.result.gen_time,
-                                            mm_model: data.result.mm_model,
-                                            gen_model: data.result.gen_model
-                                        };
-                                        modelUsed = data.result.mm_model; // Основная модель для отображения
-                                    }
-                                    
                                     displayMessage(
                                         'assistant',
                                         data.result.response,
@@ -1352,13 +1351,13 @@
                                         data.result.file_type,
                                         data.result.file_name,
                                         data.result.assistant_timestamp || new Date().toISOString(), 
-                                        responseTime,
+                                        responseTime,  // Теперь всегда передается
                                         modelUsed
                                     );
                                 } else {
                                     // Если для другого сеанса - добавляем индикатор
                                     console.log(`Ответ для сеанса ${resultSessionId}, не текущего`);
-                                    setNewMessageIndicator(resultSessionId, true, data.result.is_error || false);
+                                    setNewMessageIndicator(resultSessionId, true, isError);
                                     
                                     // Обновляем список сеансов, чтобы показать индикатор
                                     loadSessionsFromServer();
@@ -1369,8 +1368,8 @@
                                         'assistant',
                                         `⚠️ ${data.result.error}`,
                                         null, null, null,
-                                        new Date().toISOString(),
-                                        null,
+                                        data.result.assistant_timestamp || new Date().toISOString(),
+                                        data.result.response_time, // Передаем время даже для ошибки
                                         'system'
                                     );
                                 } else {
@@ -1397,8 +1396,8 @@
                                 'assistant',
                                 `⚠️ Ошибка: ${data.error || 'Неизвестная ошибка'}`,
                                 null, null, null,
-                                new Date().toISOString(),
-                                null,
+                                data.result?.assistant_timestamp || new Date().toISOString(),
+                                data.result?.response_time, // Передаем время если есть
                                 'system'
                             );
                         } else if (resultSessionId) {

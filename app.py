@@ -642,20 +642,12 @@ class RedisRequestQueue:
                 # Время ЗАВЕРШЕНИЯ обработки
                 completion_time_for_db = get_current_time_in_timezone_for_db()
                 
-                # Для обычных текстовых ответов передаём время
-                if action_type in ['none', 'reasoning'] and process_time > 0:
-                    save_message(session_id, 'assistant', final_response, 
-                               model_name=model_used,
-                               response_time=str(process_time))
-                elif action_type == 'none':
-                    # Для простых ответов (например, время) тоже передаём время
-                    save_message(session_id, 'assistant', final_response, 
-                               model_name=model_used,
-                               response_time=str(process_time))
-                else:
-                    # Для остальных случаев (ошибки и т.д.)
-                    save_message(session_id, 'assistant', final_response, 
-                               model_name=model_used)
+                # ВСЕГДА передаем response_time, даже если process_time = 0
+                save_message(
+                    session_id, 'assistant', final_response, 
+                    model_name=model_used,
+                    response_time=str(process_time)  # Теперь всегда передается
+                )
             
             return {
                 'response': final_response,
@@ -671,6 +663,7 @@ class RedisRequestQueue:
         elif request_type == 'image' and file_data:
             processing_start_time = time.time()
             is_error = False
+            process_time = 0  # Инициализируем
             
             if 'multimodal' in modules and modules['multimodal'].available:
                 file_size = int((len(file_data) * 3) / 4) if file_data else 0

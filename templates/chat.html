@@ -43,7 +43,7 @@
                 <button class="refresh-status" onclick="refreshRequestsStatus()">↻</button>
             </div>
             
-            <!-- Системная нагрузка (ПЕРЕНЕСЕНА ВВЕРХ) -->
+            <!-- Системная нагрузка - всегда вверху -->
             <div class="system-load-container">
                 <div class="system-load" id="system-load"></div>
             </div>
@@ -1051,17 +1051,38 @@
         const container = document.getElementById('system-load');
         if (!container) return;
         
+        if (!system) {
+            container.innerHTML = '';
+            return;
+        }
+        
         const loadPercent = Math.min(100, (system.total_queued / 10) * 100);
         const loadClass = system.current_load === 'high' ? 'high' : '';
         
+        // Определяем цвет и текст статуса
+        let statusText = 'Низкая';
+        let statusColor = '#28a745';
+        if (system.total_queued > 10) {
+            statusText = 'Высокая';
+            statusColor = '#dc3545';
+        } else if (system.total_queued > 5) {
+            statusText = 'Средняя';
+            statusColor = '#ffc107';
+        }
+        
         container.innerHTML = `
             <div class="system-load-indicator">
-                <span>📊 Нагрузка системы:</span>
+                <div class="load-header">
+                    <span>📊 Нагрузка системы</span>
+                    <span class="load-status" style="color: ${statusColor};">${statusText}</span>
+                </div>
                 <div class="load-bar-container">
                     <div class="load-bar">
                         <div class="load-fill ${loadClass}" style="width: ${loadPercent}%"></div>
                     </div>
-                    <span class="load-value">${system.total_queued} в очереди</span>
+                    <div class="load-value">
+                        <strong>${system.total_queued}</strong> в очереди
+                    </div>
                 </div>
             </div>
         `;

@@ -329,7 +329,7 @@ class RedisRequestQueue:
                 queue_key, task_data = result
                 task = pickle.loads(task_data)
                 
-                app.logger.info(f"RedisRequestQueue: получена задача {task['id']} из очереди")
+                app.logger.info(f"RedisRequestQueue: получена задача {task['id']} из очереди для сеанса {task['session_id']}")
                 
                 # Помечаем задачу как обрабатываемую
                 self.redis.hset(self.processing_key, task['id'], task_data)
@@ -338,6 +338,10 @@ class RedisRequestQueue:
                     # Обрабатываем запрос
                     result_data = self._process_request(task)
                     
+                    # Убеждаемся, что в результате есть session_id
+                    if 'session_id' not in result_data:
+                        result_data['session_id'] = task['session_id']
+                    
                     # Сохраняем результат
                     self.redis.hset(self.results_key, task['id'], pickle.dumps({
                         'status': 'completed',
@@ -345,13 +349,14 @@ class RedisRequestQueue:
                         'timestamp': time.time()
                     }))
                     
-                    app.logger.info(f"RedisRequestQueue: задача {task['id']} выполнена успешно")
+                    app.logger.info(f"RedisRequestQueue: задача {task['id']} выполнена успешно для сеанса {task['session_id']}")
                     
                 except Exception as e:
                     app.logger.error(f"RedisRequestQueue: ошибка обработки задачи {task['id']}: {str(e)}")
                     self.redis.hset(self.results_key, task['id'], pickle.dumps({
                         'status': 'error',
                         'error': str(e),
+                        'result': {'session_id': task['session_id']},
                         'timestamp': time.time()
                     }))
                 
@@ -381,7 +386,7 @@ class RedisRequestQueue:
             'session_title': self._get_session_title(session_id)
         }
         
-        app.logger.info(f"RedisRequestQueue.add_request: добавление задачи {request_id}")
+        app.logger.info(f"RedisRequestQueue.add_request: добавление задачи {request_id} для сеанса {session_id}")
         
         # Сохраняем задачу в очередь Redis
         self.redis.rpush(self.queue_key, pickle.dumps(task))
@@ -392,8 +397,8 @@ class RedisRequestQueue:
         # Получаем позицию в очереди
         queue_length = self.redis.llen(self.queue_key)
         
-        # Оцениваем время ожидания
-        estimated_wait = self._estimate_wait_time(queue_length, user_class)
+        # Оцениваем время ожидания (всегда число)
+        estimated_wait = max(1, queue_length * 5)  # Минимум 1 секунда
         
         position_info = {
             'position': queue_length,
@@ -426,7 +431,7 @@ class RedisRequestQueue:
         Обработка запроса
         Здесь вызываются соответствующие модули
         """
-        app.logger.info(f"RedisRequestQueue._process_request: обработка задачи {task['id']}")
+        app.logger.info(f"RedisRequestQueue._process_request: обработка задачи {task['id']} для сеанса {task['session_id']}")
         
         user_id = task['user_id']
         session_id = task['session_id']
@@ -453,7 +458,10 @@ class RedisRequestQueue:
             app.logger.info(f"RedisRequestQueue._process_request: router_result={router_result}")
             
             if 'error' in router_result:
-                return {'error': router_result['error']}
+                return {
+                    'error': router_result['error'],
+                    'session_id': session_id
+                }
             
             action_type = router_result['action']
             query = router_result['query']
@@ -587,7 +595,10 @@ class RedisRequestQueue:
                     'assistant_timestamp': current_time_for_db
                 }
         
-        return {'error': 'Неизвестный тип запроса'}
+        return {
+            'error': 'Неизвестный тип запроса',
+            'session_id': session_id
+        }
     
     def get_user_requests_status(self, user_id):
         """Получить статус всех запросов пользователя"""
@@ -599,29 +610,38 @@ class RedisRequestQueue:
         
         # Получаем все запросы пользователя
         user_requests = self.redis.smembers(f"{self.user_requests_key}:{user_id}")
+        user_requests = {r.decode() if isinstance(r, bytes) else r for r in user_requests}
         
         # Проверяем обрабатываемые запросы
         processing_tasks = self.redis.hgetall(self.processing_key)
         for req_id, task_data in processing_tasks.items():
             req_id = req_id.decode() if isinstance(req_id, bytes) else req_id
-            if req_id.encode() in user_requests:
+            if req_id in user_requests:
                 task = pickle.loads(task_data)
-                result['processing'] = self._format_request_info(task)
+                # Добавляем информацию о статусе
+                task_for_display = task.copy()
+                task_for_display['status'] = 'processing'
+                result['processing'] = self._format_request_info(task_for_display)
         
         # Получаем всю очередь
         queue_length = self.redis.llen(self.queue_key)
-        queue_tasks = self.redis.lrange(self.queue_key, 0, queue_length)
+        queue_tasks = self.redis.lrange(self.queue_key, 0, queue_length - 1) if queue_length > 0 else []
         
         position = 1
         for task_data in queue_tasks:
             task = pickle.loads(task_data)
             if task['user_id'] == user_id:
-                task['position_info'] = {'position': position}
-                result['queued'].append(self._format_request_info(task))
+                # Добавляем информацию о позиции
+                task_for_display = task.copy()
+                task_for_display['status'] = 'queued'
+                task_for_display['position_info'] = {
+                    'position': position,
+                    'estimated_seconds': max(1, position * 5)
+                }
+                result['queued'].append(self._format_request_info(task_for_display))
             position += 1
         
-        # Получаем недавние результаты
-        # В реальном проекте здесь можно хранить историю в Redis
+        # Получаем недавние результаты из истории (можно добавить позже)
         
         return result
     
@@ -638,11 +658,11 @@ class RedisRequestQueue:
         return {
             'id': task['id'],
             'session_id': task['session_id'],
-            'session_title': task['session_title'],
+            'session_title': task.get('session_title', 'Неизвестный сеанс'),
             'type': request_type,
             'type_icon': type_icons.get(request_type, '📄'),
-            'status': 'queued',
-            'position_info': task.get('position_info', {'position': '?'}),
+            'status': task.get('status', 'queued'),
+            'position_info': task.get('position_info', {'position': '?', 'estimated_seconds': 5}),
             'preview': task['data'].get('preview', '')
         }
     

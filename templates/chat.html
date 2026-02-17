@@ -308,6 +308,13 @@
             .catch(err => console.error('Ошибка загрузки сеансов:', err));
     }
 
+    // Принудительное обновление списка сеансов
+    function forceRefreshSessions() {
+        loadSessionsFromServer().then(() => {
+            console.log('Список сеансов обновлен');
+        });
+    }
+
     // -------------------------------
     // Обновление списка сеансов в DOM
     // -------------------------------
@@ -476,6 +483,9 @@
                 closeImageModal();
             }
         });
+
+        // Периодическое обновление списка сеансов (каждые 5 секунд)
+        setInterval(forceRefreshSessions, 5000);
     });
 
     // -------------------------------
@@ -822,6 +832,7 @@
         }
     }
 
+    // Исправленная функция refreshRequestsStatus
     async function refreshRequestsStatus() {
         try {
             const response = await fetch('/api/queue/status');
@@ -858,6 +869,7 @@
         }
     }
 
+    // Исправленная функция updateQueuedRequests
     function updateQueuedRequests(queued) {
         const container = document.getElementById('queued-requests');
         const listEl = document.getElementById('queued-list');
@@ -868,20 +880,25 @@
             let html = '';
             queued.forEach(req => {
                 const pos = req.position_info;
-                const waitMinutes = Math.floor(pos.estimated_seconds / 60);
-                const waitSeconds = Math.round(pos.estimated_seconds % 60);
-                const waitText = waitMinutes > 0 
-                    ? `${waitMinutes} мин ${waitSeconds} сек`
-                    : `${waitSeconds} сек`;
+                
+                // Безопасное вычисление времени ожидания
+                let waitText = '~5 сек';
+                if (pos && pos.estimated_seconds !== undefined && !isNaN(pos.estimated_seconds)) {
+                    const waitMinutes = Math.floor(pos.estimated_seconds / 60);
+                    const waitSeconds = Math.round(pos.estimated_seconds % 60);
+                    waitText = waitMinutes > 0 
+                        ? `${waitMinutes} мин ${waitSeconds} сек`
+                        : `${waitSeconds} сек`;
+                }
                 
                 html += `
                     <div class="queue-item" data-request-id="${req.id}">
-                        <span class="queue-position">#${pos.position}</span>
+                        <span class="queue-position">#${pos?.position || '?'}</span>
                         <span class="request-icon">${req.type_icon}</span>
                         <span class="request-title" title="${req.session_title}">
-                            ${req.session_title.substring(0, 20)}...
+                            ${(req.session_title || 'Неизвестный сеанс').substring(0, 20)}...
                         </span>
-                        <span class="wait-time">⏱️ ~${waitText}</span>
+                        <span class="wait-time">⏱️ ${waitText}</span>
                         <span class="cancel-request" onclick="cancelRequest('${req.id}')">✕</span>
                     </div>
                 `;
@@ -1131,11 +1148,11 @@
             }
         };
 
-        // Функция для опроса результата
+        // Функция для опроса результата - ИСПРАВЛЕННАЯ
         function startResultPolling(requestId) {
             console.log('Start polling for request:', requestId);
             let pollCount = 0;
-            const maxPolls = 120; // Увеличим до 120 попыток (6 минут при 3-секундном интервале)
+            const maxPolls = 120;
             
             const pollInterval = setInterval(async () => {
                 pollCount++;
@@ -1151,43 +1168,73 @@
                         
                         // Показываем результат
                         if (data.result) {
+                            // Определяем, для какого сеанса этот ответ
+                            const resultSessionId = data.result.session_id;
+                            
                             if (data.result.response) {
-                                displayMessage(
-                                    'assistant',
-                                    data.result.response,
-                                    data.result.generated_image,
-                                    data.result.file_type,
-                                    data.result.file_name,
-                                    data.result.assistant_timestamp || new Date().toISOString(),
-                                    null,
-                                    data.result.model_used
-                                );
+                                // Если это ответ для текущего сеанса - показываем сразу
+                                if (resultSessionId === currentSessionId) {
+                                    displayMessage(
+                                        'assistant',
+                                        data.result.response,
+                                        data.result.generated_image,
+                                        data.result.file_type,
+                                        data.result.file_name,
+                                        data.result.assistant_timestamp || new Date().toISOString(),
+                                        null,
+                                        data.result.model_used
+                                    );
+                                } else {
+                                    // Если для другого сеанса - добавляем индикатор
+                                    console.log(`Ответ для сеанса ${resultSessionId}, не текущего`);
+                                    setNewMessageIndicator(resultSessionId, true);
+                                    
+                                    // Обновляем список сеансов, чтобы показать индикатор
+                                    loadSessionsFromServer();
+                                }
                             } else if (data.result.error) {
-                                displayMessage(
-                                    'assistant',
-                                    `⚠️ ${data.result.error}`,
-                                    null, null, null,
-                                    new Date().toISOString(),
-                                    null,
-                                    'system'
-                                );
+                                if (resultSessionId === currentSessionId) {
+                                    displayMessage(
+                                        'assistant',
+                                        `⚠️ ${data.result.error}`,
+                                        null, null, null,
+                                        new Date().toISOString(),
+                                        null,
+                                        'system'
+                                    );
+                                } else {
+                                    setNewMessageIndicator(resultSessionId, true);
+                                    loadSessionsFromServer();
+                                }
                             }
                         }
                         refreshRequestsStatus();
                         
+                        // Принудительно обновляем список сеансов, чтобы обновить даты
+                        setTimeout(() => {
+                            loadSessionsFromServer();
+                        }, 500);
+                        
                     } else if (data.status === 'error') {
                         clearInterval(pollInterval);
                         console.error('Request error:', data.error);
-                        alert('Ошибка обработки запроса: ' + (data.error || 'Неизвестная ошибка'));
                         
-                        displayMessage(
-                            'assistant',
-                            `⚠️ Ошибка: ${data.error || 'Неизвестная ошибка'}`,
-                            null, null, null,
-                            new Date().toISOString(),
-                            null,
-                            'system'
-                        );
+                        const resultSessionId = data.result?.session_id;
+                        
+                        if (resultSessionId === currentSessionId) {
+                            displayMessage(
+                                'assistant',
+                                `⚠️ Ошибка: ${data.error || 'Неизвестная ошибка'}`,
+                                null, null, null,
+                                new Date().toISOString(),
+                                null,
+                                'system'
+                            );
+                        } else if (resultSessionId) {
+                            setNewMessageIndicator(resultSessionId, true);
+                            loadSessionsFromServer();
+                        }
+                        
                         refreshRequestsStatus();
                         
                     } else if (data.status === 'pending') {
@@ -1215,7 +1262,7 @@
                         clearInterval(pollInterval);
                     }
                 }
-            }, 3000); // Проверяем каждые 3 секунды
+            }, 3000);
         }
         
         // Сначала отображаем сообщение пользователя

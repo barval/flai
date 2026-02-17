@@ -252,10 +252,47 @@ def init_db():
         app.logger.error(f"Failed to initialize database: {str(e)}")
         raise
 
+def migrate_db_add_response_fields():
+    """Добавление полей для хранения раздельного времени ответа"""
+    try:
+        with sqlite3.connect(CHAT_DB_PATH) as conn:
+            c = conn.cursor()
+            
+            # Проверяем существование колонок и добавляем их, если нужно
+            c.execute("PRAGMA table_info(messages)")
+            columns = [col[1] for col in c.fetchall()]
+            
+            if 'response_time' not in columns:
+                c.execute('ALTER TABLE messages ADD COLUMN response_time TEXT')
+                app.logger.info("Добавлена колонка response_time")
+            
+            if 'mm_time' not in columns:
+                c.execute('ALTER TABLE messages ADD COLUMN mm_time TEXT')
+                app.logger.info("Добавлена колонка mm_time")
+            
+            if 'gen_time' not in columns:
+                c.execute('ALTER TABLE messages ADD COLUMN gen_time TEXT')
+                app.logger.info("Добавлена колонка gen_time")
+            
+            if 'mm_model' not in columns:
+                c.execute('ALTER TABLE messages ADD COLUMN mm_model TEXT')
+                app.logger.info("Добавлена колонка mm_model")
+            
+            if 'gen_model' not in columns:
+                c.execute('ALTER TABLE messages ADD COLUMN gen_model TEXT')
+                app.logger.info("Добавлена колонка gen_model")
+            
+            conn.commit()
+            app.logger.info("Миграция БД для полей ответа выполнена")
+    except Exception as e:
+        app.logger.error(f"Ошибка миграции БД: {str(e)}")
+
+# Инициализация и миграция
 init_db()
+migrate_db_add_response_fields()
 
 # -------------------------------
-# Функции для работы с пользователями (обновленные с классами обслуживания)
+# Функции для работы с пользователями
 # -------------------------------
 def load_users():
     users = {}
@@ -338,12 +375,9 @@ class RedisRequestQueue:
                     # Обрабатываем запрос
                     result_data = self._process_request(task)
                     
-                    # Убеждаемся, что в результате есть session_id и timestamp
+                    # Убеждаемся, что в результате есть session_id
                     if 'session_id' not in result_data:
                         result_data['session_id'] = task['session_id']
-                    
-                    # Добавляем время ответа
-                    result_data['response_time'] = round(time.time() - task['timestamp'], 1)
                     
                     # Сохраняем результат
                     self.redis.hset(self.results_key, task['id'], pickle.dumps({
@@ -423,11 +457,6 @@ class RedisRequestQueue:
         except Exception as e:
             app.logger.error(f"Ошибка получения заголовка сессии: {str(e)}")
             return "Неизвестный сеанс"
-    
-    def _estimate_wait_time(self, position, user_class):
-        """Оценка времени ожидания"""
-        # Базовая оценка: 5 секунд на запрос
-        return position * 5
     
     def _process_request(self, task):
         """
@@ -512,7 +541,11 @@ class RedisRequestQueue:
                             save_message(
                                 session_id, 'assistant', message_text,
                                 image_result['image_data'], image_result['file_type'],
-                                image_result['file_name'], app.config['AUTOMATIC1111_MODEL']
+                                image_result['file_name'], app.config['AUTOMATIC1111_MODEL'],
+                                response_time={'mm_time': mm_time, 'gen_time': gen_time},
+                                mm_time=str(mm_time), gen_time=str(gen_time),
+                                mm_model=app.config['LLM_MULTIMODAL_MODEL'],
+                                gen_model=app.config['AUTOMATIC1111_MODEL']
                             )
                             
                             return {
@@ -583,7 +616,10 @@ class RedisRequestQueue:
             if final_response:
                 # Время ЗАВЕРШЕНИЯ обработки
                 completion_time_for_db = get_current_time_in_timezone_for_db()
-                save_message(session_id, 'assistant', final_response, model_name=model_used)
+                response_time_val = round(time.time() - task['timestamp'], 1) if 'response_time' not in locals() else None
+                save_message(session_id, 'assistant', final_response, 
+                           model_name=model_used,
+                           response_time=str(response_time_val) if response_time_val else None)
             
             return {
                 'response': final_response,
@@ -609,7 +645,8 @@ class RedisRequestQueue:
                     
                     # Время ЗАВЕРШЕНИЯ обработки
                     completion_time_for_db = get_current_time_in_timezone_for_db()
-                    save_message(session_id, 'assistant', bot_reply, model_name=app.config['LLM_MULTIMODAL_MODEL'])
+                    save_message(session_id, 'assistant', bot_reply, 
+                               model_name=app.config['LLM_MULTIMODAL_MODEL'])
                     
                     return {
                         'response': bot_reply,
@@ -692,8 +729,6 @@ class RedisRequestQueue:
                 result['queued'].append(self._format_request_info(task_for_display))
             position += 1
         
-        # Получаем недавние результаты из истории (можно добавить позже)
-        
         return result
     
     def _format_request_info(self, task):
@@ -720,7 +755,6 @@ class RedisRequestQueue:
     def cancel_request(self, user_id, request_id):
         """Отмена запроса"""
         # Для простоты возвращаем False
-        # В реальном проекте нужно реализовать удаление из очереди
         return False
     
     def check_result(self, request_id):
@@ -754,7 +788,9 @@ def get_session_messages(session_id):
         c = conn.cursor()
         
         c.execute('''
-            SELECT role, content, file_data, file_type, file_name, timestamp, model_name
+            SELECT role, content, file_data, file_type, file_name, 
+                   timestamp, model_name, response_time, mm_time, gen_time,
+                   mm_model, gen_model
             FROM messages
             WHERE session_id = ?
             ORDER BY timestamp ASC
@@ -763,6 +799,14 @@ def get_session_messages(session_id):
         messages = []
         for row in c.fetchall():
             msg_dict = dict(row)
+            
+            # Парсим response_time, если это JSON
+            if msg_dict.get('response_time'):
+                try:
+                    msg_dict['response_time'] = json.loads(msg_dict['response_time'])
+                except:
+                    pass  # Оставляем как есть
+            
             if msg_dict.get('timestamp') and app.config.get('TIMEZONE'):
                 try:
                     dt = datetime.strptime(msg_dict['timestamp'], '%Y-%m-%d %H:%M:%S')
@@ -808,16 +852,31 @@ def update_session_title(session_id, first_message, file_name=None):
     
     return title
 
-def save_message(session_id, role, content, file_data=None, file_type=None, file_name=None, model_name=None):
+def save_message(session_id, role, content, file_data=None, file_type=None, file_name=None, 
+                 model_name=None, response_time=None, mm_time=None, gen_time=None, 
+                 mm_model=None, gen_model=None):
+    """Сохранение сообщения с дополнительными полями для времени ответа"""
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         
         current_time = get_current_time_in_timezone_for_db()
         
+        # Преобразуем сложные объекты в JSON для хранения
+        if response_time and isinstance(response_time, dict):
+            response_time = json.dumps(response_time, ensure_ascii=False)
+        
         c.execute('''
-            INSERT INTO messages (session_id, role, content, file_data, file_type, file_name, model_name, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (session_id, role, content, file_data, file_type, file_name, model_name, current_time))
+            INSERT INTO messages (
+                session_id, role, content, file_data, file_type, file_name, 
+                model_name, timestamp, response_time, mm_time, gen_time, 
+                mm_model, gen_model
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            session_id, role, content, file_data, file_type, file_name, 
+            model_name, current_time, response_time, mm_time, gen_time,
+            mm_model, gen_model
+        ))
         
         c.execute('''
             UPDATE chat_sessions

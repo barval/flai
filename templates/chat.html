@@ -568,7 +568,7 @@
     // -------------------------------
     // Отображение одного сообщения (ИСПРАВЛЕННАЯ)
     // -------------------------------
-    function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName) {
+    function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
         const container = document.getElementById('chat-messages');
         const msgDiv = document.createElement('div');
         
@@ -590,7 +590,7 @@
         
         msgDiv.setAttribute('data-timestamp', timestamp);
         
-        // Для сообщений ассистента сохраняем дополнительную информацию
+        // Для сообщений ассистента сохраняем дополнительную информацию в dataset
         if (role === 'assistant') {
             if (modelName) {
                 msgDiv.dataset.modelName = modelName;
@@ -601,6 +601,12 @@
                 msgDiv.dataset.genTime = responseTime.gen_time;
                 msgDiv.dataset.mmModel = responseTime.mm_model;
                 msgDiv.dataset.genModel = responseTime.gen_model;
+            } else if (mmTime && genTime) {
+                // Если переданы отдельные параметры
+                msgDiv.dataset.mmTime = mmTime;
+                msgDiv.dataset.genTime = genTime;
+                msgDiv.dataset.mmModel = mmModel;
+                msgDiv.dataset.genModel = genModel;
             }
         }
         
@@ -646,9 +652,9 @@
         
         // Добавляем время ответа и информацию о модели для сообщений ассистента
         if (role === 'assistant') {
-            // Проверяем, есть ли раздельное время для генерации изображения
+            // Проверяем, есть ли в данных раздельное время
             if (responseTime && typeof responseTime === 'object' && responseTime.mm_time && responseTime.gen_time) {
-                // Для сообщений с генерацией изображения показываем два времени
+                // Данные уже в правильном формате (из свежего ответа)
                 const mmTime = parseFloat(responseTime.mm_time).toFixed(1);
                 const genTime = parseFloat(responseTime.gen_time).toFixed(1);
                 const mmModel = responseTime.mm_model || 'неизвестно';
@@ -656,7 +662,18 @@
                 
                 timeDisplay += `<br><span class="model-response-info">(Обработано: ${mmModel} за ${mmTime} сек)</span>`;
                 timeDisplay += `<br><span class="model-response-info">(Сгенерировано: ${genModel} за ${genTime} сек)</span>`;
-            } else if (responseTime && typeof responseTime === 'number') {
+            } 
+            // Проверяем, есть ли раздельные поля в dataset сообщения (из БД)
+            else if (msgDiv.dataset.mmTime && msgDiv.dataset.genTime) {
+                const mmTime = parseFloat(msgDiv.dataset.mmTime).toFixed(1);
+                const genTime = parseFloat(msgDiv.dataset.genTime).toFixed(1);
+                const mmModel = msgDiv.dataset.mmModel || 'неизвестно';
+                const genModel = msgDiv.dataset.genModel || 'неизвестно';
+                
+                timeDisplay += `<br><span class="model-response-info">(Обработано: ${mmModel} за ${mmTime} сек)</span>`;
+                timeDisplay += `<br><span class="model-response-info">(Сгенерировано: ${genModel} за ${genTime} сек)</span>`;
+            }
+            else if (responseTime && typeof responseTime === 'number') {
                 // Обычное сообщение с одним временем
                 let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
                 timeDisplay += ` <span class="model-response-info">(ответ: ${fullModelName} за ${responseTime} сек)</span>`;

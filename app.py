@@ -440,9 +440,8 @@ class RedisRequestQueue:
         session_id = task['session_id']
         request_data = task['data']
         
-        # Получаем текущее время
+        # Получаем текущее время для логирования (не для ответа!)
         current_time_str = get_current_time_in_timezone()
-        current_time_for_db = get_current_time_in_timezone_for_db()
         
         # Определяем тип запроса
         request_type = request_data.get('type', 'text')
@@ -461,10 +460,12 @@ class RedisRequestQueue:
             app.logger.info(f"RedisRequestQueue._process_request: router_result={router_result}")
             
             if 'error' in router_result:
+                # Время ЗАВЕРШЕНИЯ обработки
+                completion_time_for_db = get_current_time_in_timezone_for_db()
                 return {
                     'error': router_result['error'],
                     'session_id': session_id,
-                    'assistant_timestamp': current_time_for_db
+                    'assistant_timestamp': completion_time_for_db
                 }
             
             action_type = router_result['action']
@@ -497,6 +498,9 @@ class RedisRequestQueue:
                         gen_time = round(time.time() - gen_start_time, 1)
                         
                         if image_result['success']:
+                            # Время ЗАВЕРШЕНИЯ генерации
+                            completion_time_for_db = get_current_time_in_timezone_for_db()
+                            
                             # Сохраняем оба времени в результат
                             image_result['mm_time'] = mm_time
                             image_result['gen_time'] = gen_time
@@ -516,7 +520,7 @@ class RedisRequestQueue:
                                 'session_id': session_id,
                                 'model_used': app.config['AUTOMATIC1111_MODEL'],
                                 'model_category': action_type,
-                                'assistant_timestamp': current_time_for_db,
+                                'assistant_timestamp': completion_time_for_db,
                                 'generated_image': image_result['image_data'],
                                 'file_name': image_result['file_name'],
                                 'file_size': image_result['file_size'],
@@ -539,6 +543,9 @@ class RedisRequestQueue:
                     camera_result = modules['cam'].get_snapshot(query)
                     
                     if camera_result['success']:
+                        # Время ЗАВЕРШЕНИЯ получения снимка
+                        completion_time_for_db = get_current_time_in_timezone_for_db()
+                        
                         save_message(
                             session_id, 'assistant',
                             f"Изображение с камеры: {camera_result['room_name']}",
@@ -551,7 +558,7 @@ class RedisRequestQueue:
                             'session_id': session_id,
                             'model_used': model_used,
                             'model_category': action_type,
-                            'assistant_timestamp': current_time_for_db,
+                            'assistant_timestamp': completion_time_for_db,
                             'generated_image': camera_result['image_data'],
                             'file_name': camera_result['file_name'],
                             'file_size': camera_result['file_size'],
@@ -574,6 +581,8 @@ class RedisRequestQueue:
                 final_response = query
             
             if final_response:
+                # Время ЗАВЕРШЕНИЯ обработки
+                completion_time_for_db = get_current_time_in_timezone_for_db()
                 save_message(session_id, 'assistant', final_response, model_name=model_used)
             
             return {
@@ -581,7 +590,7 @@ class RedisRequestQueue:
                 'session_id': session_id,
                 'model_used': model_used,
                 'model_category': model_category,
-                'assistant_timestamp': current_time_for_db
+                'assistant_timestamp': completion_time_for_db
             }
         
         # Для запросов с изображениями
@@ -598,6 +607,8 @@ class RedisRequestQueue:
                     if error:
                         bot_reply = f"⚠️ {error}"
                     
+                    # Время ЗАВЕРШЕНИЯ обработки
+                    completion_time_for_db = get_current_time_in_timezone_for_db()
                     save_message(session_id, 'assistant', bot_reply, model_name=app.config['LLM_MULTIMODAL_MODEL'])
                     
                     return {
@@ -605,33 +616,39 @@ class RedisRequestQueue:
                         'session_id': session_id,
                         'model_used': app.config['LLM_MULTIMODAL_MODEL'],
                         'model_category': 'multimodal',
-                        'assistant_timestamp': current_time_for_db
+                        'assistant_timestamp': completion_time_for_db
                     }
                 else:
                     bot_reply = f"⚠️ {error}"
+                    # Время ЗАВЕРШЕНИЯ обработки
+                    completion_time_for_db = get_current_time_in_timezone_for_db()
                     save_message(session_id, 'assistant', bot_reply, model_name='system')
                     
                     return {
                         'response': bot_reply,
                         'session_id': session_id,
                         'model_used': 'system',
-                        'assistant_timestamp': current_time_for_db
+                        'assistant_timestamp': completion_time_for_db
                     }
             else:
                 bot_reply = "⚠️ Мультимодальная модель недоступна"
+                # Время ЗАВЕРШЕНИЯ обработки
+                completion_time_for_db = get_current_time_in_timezone_for_db()
                 save_message(session_id, 'assistant', bot_reply, model_name='system')
                 
                 return {
                     'response': bot_reply,
                     'session_id': session_id,
                     'model_used': 'system',
-                    'assistant_timestamp': current_time_for_db
+                    'assistant_timestamp': completion_time_for_db
                 }
         
+        # Время ЗАВЕРШЕНИЯ обработки для ошибки
+        completion_time_for_db = get_current_time_in_timezone_for_db()
         return {
             'error': 'Неизвестный тип запроса',
             'session_id': session_id,
-            'assistant_timestamp': current_time_for_db
+            'assistant_timestamp': completion_time_for_db
         }
     
     def get_user_requests_status(self, user_id):

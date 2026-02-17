@@ -43,6 +43,11 @@
                 <button class="refresh-status" onclick="refreshRequestsStatus()">↻</button>
             </div>
             
+            <!-- Системная нагрузка (ПЕРЕНЕСЕНА ВВЕРХ) -->
+            <div class="system-load-container">
+                <div class="system-load" id="system-load"></div>
+            </div>
+
             <!-- Текущий обрабатываемый запрос -->
             <div id="processing-request" class="processing-request" style="display: none;">
                 <div class="request-badge processing">
@@ -62,9 +67,6 @@
                 <h4>Недавние ответы:</h4>
                 <div id="completed-list"></div>
             </div>
-            
-            <!-- Системная нагрузка -->
-            <div class="system-load" id="system-load"></div>
         </div>
         
         <div class="chat-messages" id="chat-messages">
@@ -946,10 +948,10 @@
             const response = await fetch('/api/queue/status');
             const status = await response.json();
             
+            updateSystemLoad(status.system); // Теперь вызывается первой
             updateProcessingRequest(status.processing);
             updateQueuedRequests(status.queued);
             updateRecentCompleted(status.recent_completed);
-            updateSystemLoad(status.system);
             
             // Обновляем индикаторы в сеансах
             if (status.processing) {
@@ -1047,18 +1049,20 @@
 
     function updateSystemLoad(system) {
         const container = document.getElementById('system-load');
-        if (!system) return;
+        if (!container) return;
         
         const loadPercent = Math.min(100, (system.total_queued / 10) * 100);
         const loadClass = system.current_load === 'high' ? 'high' : '';
         
         container.innerHTML = `
             <div class="system-load-indicator">
-                <span>📊 Нагрузка:</span>
-                <div class="load-bar">
-                    <div class="load-fill ${loadClass}" style="width: ${loadPercent}%"></div>
+                <span>📊 Нагрузка системы:</span>
+                <div class="load-bar-container">
+                    <div class="load-bar">
+                        <div class="load-fill ${loadClass}" style="width: ${loadPercent}%"></div>
+                    </div>
+                    <span class="load-value">${system.total_queued} в очереди</span>
                 </div>
-                <span>${system.total_queued} в очереди</span>
             </div>
         `;
     }

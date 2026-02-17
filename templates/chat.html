@@ -610,6 +610,14 @@
     // Отображение одного сообщения (ИСПРАВЛЕННАЯ)
     // -------------------------------
     function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
+        console.log('displayMessage called with:', {  // Добавляем отладку
+            role,
+            responseTime,
+            modelName,
+            type: typeof responseTime,
+            value: responseTime
+        });
+        
         const container = document.getElementById('chat-messages');
         const msgDiv = document.createElement('div');
         
@@ -617,41 +625,27 @@
         if (role === 'user') {
             msgDiv.className = 'user-message';
         } else {
-            // Для ассистента используем класс assistant-message
             msgDiv.className = 'assistant-message';
-            // Добавляем также bot-message для обратной совместимости со старыми стилями
             msgDiv.classList.add('bot-message');
         }
         
-        // Убеждаемся, что timestamp существует
         if (!timestamp) {
             timestamp = new Date().toISOString();
-            console.warn('displayMessage: timestamp отсутствует, создан новый', timestamp);
         }
         
         msgDiv.setAttribute('data-timestamp', timestamp);
         
-        // Для сообщений ассистента сохраняем дополнительную информацию в dataset
+        // Для сообщений ассистента сохраняем дополнительную информацию
         if (role === 'assistant') {
             if (modelName) {
                 msgDiv.dataset.modelName = modelName;
             }
-            // Сохраняем время работы мультимодальной модели и генерации
             if (responseTime && typeof responseTime === 'object') {
-                if (responseTime.mm_time) {
-                    msgDiv.dataset.mmTime = responseTime.mm_time;
-                }
-                if (responseTime.gen_time) {
-                    msgDiv.dataset.genTime = responseTime.gen_time;
-                }
-                if (responseTime.mm_model) {
-                    msgDiv.dataset.mmModel = responseTime.mm_model;
-                }
-                if (responseTime.gen_model) {
-                    msgDiv.dataset.genModel = responseTime.gen_model;
-                }
+                if (responseTime.mm_time) msgDiv.dataset.mmTime = responseTime.mm_time;
+                if (responseTime.gen_time) msgDiv.dataset.genTime = responseTime.gen_time;
+                if (responseTime.mm_model) msgDiv.dataset.mmModel = responseTime.mm_model;
+                if (responseTime.gen_model) msgDiv.dataset.genModel = responseTime.gen_model;
             } else if (mmTime && genTime) {
-                // Если переданы отдельные параметры
                 msgDiv.dataset.mmTime = mmTime;
                 msgDiv.dataset.genTime = genTime;
                 msgDiv.dataset.mmModel = mmModel || 'неизвестно';
@@ -661,16 +655,13 @@
         
         let timeDisplay = formatFullDateTime(timestamp);
         
-        // ДЛЯ СООБЩЕНИЙ ПОЛЬЗОВАТЕЛЯ: добавляем информацию о файле, если он есть
+        // Информация о файле для пользователя
         if (role === 'user' && fileName && fileData) {
-            // Вычисляем размер файла из base64
             const base64Length = fileData.length;
             const fileSizeBytes = Math.round((base64Length * 3) / 4);
             const fileSize = formatFileSize(fileSizeBytes);
-            
             timeDisplay += ` <span class="file-info">[📎 ${fileName}, ${fileSize}]</span>`;
             
-            // Добавляем кнопку скачивания для изображений в сообщениях пользователя
             if (fileType && fileType.startsWith('image/')) {
                 timeDisplay += ` <a href="data:${fileType};base64,${fileData}" 
                                     download="${fileName || 'image.jpg'}" 
@@ -680,16 +671,13 @@
             }
         }
         
-        // ДЛЯ СООБЩЕНИЙ АССИСТЕНТА: добавляем информацию о сгенерированном файле
+        // Информация о файле для ассистента
         if (role === 'assistant' && fileName && fileData) {
-            // Вычисляем размер файла из base64
             const base64Length = fileData.length;
             const fileSizeBytes = Math.round((base64Length * 3) / 4);
             const fileSize = formatFileSize(fileSizeBytes);
-            
             timeDisplay += ` <span class="file-info">[📎 ${fileName}, ${fileSize}]</span>`;
             
-            // Добавляем кнопку скачивания для изображений в сообщениях ассистента
             if (fileType && fileType.startsWith('image/')) {
                 timeDisplay += ` <a href="data:${fileType};base64,${fileData}" 
                                     download="${fileName || 'generated_image.jpg'}" 
@@ -701,53 +689,52 @@
         
         // Добавляем время ответа и информацию о модели для сообщений ассистента
         if (role === 'assistant') {
-            // Проверяем, есть ли в данных раздельное время
-            if (responseTime && typeof responseTime === 'object' && (responseTime.mm_time || responseTime.gen_time)) {
-                // Данные уже в правильном формате (из свежего ответа)
-                if (responseTime.mm_time && responseTime.gen_time) {
-                    const mmTime = parseFloat(responseTime.mm_time).toFixed(1);
-                    const genTime = parseFloat(responseTime.gen_time).toFixed(1);
-                    const mmModel = responseTime.mm_model || 'неизвестно';
-                    const genModel = responseTime.gen_model || 'неизвестно';
+            console.log('Processing assistant message, responseTime:', responseTime); // Отладка
+            
+            // Проверяем наличие responseTime
+            if (responseTime !== undefined && responseTime !== null) {
+                if (typeof responseTime === 'object') {
+                    // Объект с раздельным временем
+                    if (responseTime.mm_time && responseTime.gen_time) {
+                        const mmTime = parseFloat(responseTime.mm_time).toFixed(1);
+                        const genTime = parseFloat(responseTime.gen_time).toFixed(1);
+                        const mmModel = responseTime.mm_model || 'неизвестно';
+                        const genModel = responseTime.gen_model || 'неизвестно';
+                        
+                        timeDisplay += `<br><span class="model-response-info">(Обработано: ${mmModel} за ${mmTime} сек)</span>`;
+                        timeDisplay += `<br><span class="model-response-info">(Сгенерировано: ${genModel} за ${genTime} сек)</span>`;
+                    } else if (responseTime.mm_time) {
+                        const mmTime = parseFloat(responseTime.mm_time).toFixed(1);
+                        const mmModel = responseTime.mm_model || 'неизвестно';
+                        timeDisplay += `<br><span class="model-response-info">(Обработано: ${mmModel} за ${mmTime} сек)</span>`;
+                    } else if (responseTime.gen_time) {
+                        const genTime = parseFloat(responseTime.gen_time).toFixed(1);
+                        const genModel = responseTime.gen_model || 'неизвестно';
+                        timeDisplay += `<br><span class="model-response-info">(Сгенерировано: ${genModel} за ${genTime} сек)</span>`;
+                    }
+                } 
+                else if (typeof responseTime === 'number' || !isNaN(parseFloat(responseTime))) {
+                    // Числовое значение - обычное время ответа
+                    const timeValue = typeof responseTime === 'number' ? responseTime : parseFloat(responseTime);
+                    console.log('Displaying numeric response time:', timeValue); // Отладка
                     
-                    timeDisplay += `<br><span class="model-response-info">(Обработано: ${mmModel} за ${mmTime} сек)</span>`;
-                    timeDisplay += `<br><span class="model-response-info">(Сгенерировано: ${genModel} за ${genTime} сек)</span>`;
-                } else if (responseTime.mm_time) {
-                    const mmTime = parseFloat(responseTime.mm_time).toFixed(1);
-                    const mmModel = responseTime.mm_model || 'неизвестно';
-                    timeDisplay += `<br><span class="model-response-info">(Обработано: ${mmModel} за ${mmTime} сек)</span>`;
-                } else if (responseTime.gen_time) {
-                    const genTime = parseFloat(responseTime.gen_time).toFixed(1);
-                    const genModel = responseTime.gen_model || 'неизвестно';
-                    timeDisplay += `<br><span class="model-response-info">(Сгенерировано: ${genModel} за ${genTime} сек)</span>`;
+                    if (timeValue > 0) {
+                        let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
+                        timeDisplay += ` <span class="model-response-info">(ответ: ${fullModelName} за ${timeValue.toFixed(1)} сек)</span>`;
+                    } else {
+                        let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
+                        timeDisplay += ` <span class="model-response-info">(модель: ${fullModelName})</span>`;
+                    }
                 }
-            } 
-            // Проверяем, есть ли раздельные поля в dataset сообщения (из БД)
-            else if (msgDiv.dataset.mmTime && msgDiv.dataset.genTime) {
-                const mmTime = parseFloat(msgDiv.dataset.mmTime).toFixed(1);
-                const genTime = parseFloat(msgDiv.dataset.genTime).toFixed(1);
-                const mmModel = msgDiv.dataset.mmModel || 'неизвестно';
-                const genModel = msgDiv.dataset.genModel || 'неизвестно';
-                
-                timeDisplay += `<br><span class="model-response-info">(Обработано: ${mmModel} за ${mmTime} сек)</span>`;
-                timeDisplay += `<br><span class="model-response-info">(Сгенерировано: ${genModel} за ${genTime} сек)</span>`;
-            }
-            else if (msgDiv.dataset.mmTime) {
-                const mmTime = parseFloat(msgDiv.dataset.mmTime).toFixed(1);
-                const mmModel = msgDiv.dataset.mmModel || 'неизвестно';
-                timeDisplay += `<br><span class="model-response-info">(Обработано: ${mmModel} за ${mmTime} сек)</span>`;
-            }
-            else if (msgDiv.dataset.genTime) {
-                const genTime = parseFloat(msgDiv.dataset.genTime).toFixed(1);
-                const genModel = msgDiv.dataset.genModel || 'неизвестно';
-                timeDisplay += `<br><span class="model-response-info">(Сгенерировано: ${genModel} за ${genTime} сек)</span>`;
-            }
-            else if (responseTime && typeof responseTime === 'number') {
-                // Обычное сообщение с одним временем
-                let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
-                timeDisplay += ` <span class="model-response-info">(ответ: ${fullModelName} за ${responseTime} сек)</span>`;
+                else {
+                    // responseTime есть, но непонятного типа
+                    console.warn('Unknown responseTime type:', typeof responseTime, responseTime);
+                    let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
+                    timeDisplay += ` <span class="model-response-info">(модель: ${fullModelName})</span>`;
+                }
             } else {
-                // Сообщение без времени (только модель)
+                // Нет responseTime - показываем только модель
+                console.log('No responseTime, showing only model'); // Отладка
                 let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
                 timeDisplay += ` <span class="model-response-info">(модель: ${fullModelName})</span>`;
             }
@@ -767,14 +754,11 @@
                         }
                     });
                     if (textContent) {
-                        // Для пользователя - экранируем HTML
                         const escapedText = escapeHtml(textContent.trim());
                         html += `<div class="message-content">${marked.parse(escapedText)}</div>`;
                     }
                 } catch (e) {
-                    // Если не JSON
                     if (role === 'assistant') {
-                        // ДЛЯ АССИСТЕНТА: Просто декодируем HTML-сущности и НЕ экранируем
                         const decodedText = decodeHtmlEntities(content);
                         html += `<div class="message-content">${marked.parse(decodedText)}</div>`;
                     } else {
@@ -783,7 +767,6 @@
                     }
                 }
             } else {
-                // Для всех остальных сообщений
                 if (role === 'assistant') {
                     const decodedText = decodeHtmlEntities(content);
                     html += `<div class="message-content">${marked.parse(decodedText)}</div>`;
@@ -820,10 +803,8 @@
         container.appendChild(msgDiv);
         container.scrollTop = container.scrollHeight;
         
-        // После добавления сообщения обновляем счетчик
         updateMessageCount();
         
-        // Добавляем кнопки копирования для кода
         setTimeout(() => {
             addCopyButtonsToMessage(msgDiv);
         }, 50);
@@ -963,18 +944,16 @@
         }
     }
 
-    // Исправленная функция refreshRequestsStatus
     async function refreshRequestsStatus() {
         try {
             const response = await fetch('/api/queue/status');
             const status = await response.json();
             
-            updateSystemLoad(status.system); // Теперь вызывается первой
+            updateSystemLoad(status.system);
             updateProcessingRequest(status.processing);
             updateQueuedRequests(status.queued);
             updateRecentCompleted(status.recent_completed);
             
-            // Обновляем индикаторы в сеансах
             if (status.processing) {
                 updateSessionWithRequestStatus(status.processing.session_id, 'processing');
             }
@@ -1000,7 +979,6 @@
         }
     }
 
-    // Исправленная функция updateQueuedRequests
     function updateQueuedRequests(queued) {
         const container = document.getElementById('queued-requests');
         const listEl = document.getElementById('queued-list');
@@ -1012,7 +990,6 @@
             queued.forEach(req => {
                 const pos = req.position_info;
                 
-                // Безопасное вычисление времени ожидания
                 let waitText = '~5 сек';
                 if (pos && pos.estimated_seconds !== undefined && !isNaN(pos.estimated_seconds)) {
                     const waitMinutes = Math.floor(pos.estimated_seconds / 60);
@@ -1080,7 +1057,6 @@
         const loadPercent = Math.min(100, (system.total_queued / 10) * 100);
         const loadClass = system.current_load === 'high' ? 'high' : '';
         
-        // Определяем цвет и текст статуса
         let statusText = 'Низкая';
         let statusColor = '#28a745';
         if (system.total_queued > 10) {
@@ -1128,9 +1104,8 @@
         }
     }
 
-
     // -------------------------------
-    // Отправка сообщения (исправленная версия)
+    // Отправка сообщения
     // -------------------------------
     async function sendMessage() {
         const input = document.getElementById('message-input');
@@ -1143,12 +1118,10 @@
         if (isSending) return;
         isSending = true;
         
-        // Блокируем кнопку
         const sendButton = document.getElementById('send-button');
         sendButton.disabled = true;
         sendButton.innerHTML = '⏳ Отправка...';
         
-        // НЕМЕДЛЕННОЕ ОБНОВЛЕНИЕ ЗАГОЛОВКА ДЛЯ ПЕРВОГО СООБЩЕНИЯ
         const messageCount = document.querySelectorAll('.user-message').length;
         if (messageCount === 0) {
             let newTitle = text ? text.slice(0, 40) + (text.length > 40 ? '...' : '') : '';
@@ -1156,10 +1129,8 @@
                 newTitle = attachedFile.name.slice(0, 40) + (attachedFile.name.length > 40 ? '...' : '');
             }
             if (newTitle) {
-                // Немедленно обновляем UI
                 updateSessionTitle(currentSessionId, newTitle);
                 
-                // Отправляем на сервер для синхронизации
                 fetch(`/api/sessions/${currentSessionId}/update-title`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -1180,11 +1151,9 @@
         let fileType = null;
         let fileName = null;
         
-        // СОХРАНЯЕМ КОПИИ ДЛЯ ОТПРАВКИ
         const tempAttachedFile = attachedFile;
         const tempText = text;
         
-        // Функция для отображения сообщения пользователя
         const displayUserMessage = (fileData, fileType, fileName) => {
             if (fileData) {
                 userContent.push({
@@ -1204,20 +1173,17 @@
                 timestamp
             );
             
-            // Очищаем поля после отображения
             input.value = '';
             attachedFile = null;
             document.getElementById('file-preview-container').style.display = 'none';
             document.getElementById('file-input').value = '';
         };
         
-        // Функция для отправки на сервер
         const sendToServer = async () => {
             try {
                 let response;
                 
                 if (tempAttachedFile) {
-                    // Если есть файл - используем FormData
                     const formData = new FormData();
                     formData.append('message', tempText);
                     formData.append('file', tempAttachedFile);
@@ -1227,7 +1193,6 @@
                         body: formData
                     });
                 } else {
-                    // Если только текст - используем JSON
                     response = await fetch('/send_message', {
                         method: 'POST',
                         headers: {
@@ -1240,17 +1205,15 @@
                 }
                 
                 const data = await response.json();
-                console.log('Ответ от сервера:', data); // Для отладки
+                console.log('Ответ от сервера:', data);
                 
                 if (data.status === 'queued') {
-                    // Запрос в очереди - показываем информацию
                     const waitMinutes = Math.floor(data.estimated_wait / 60);
                     const waitSeconds = Math.round(data.estimated_wait % 60);
                     const waitText = waitMinutes > 0 
                         ? `${waitMinutes} мин ${waitSeconds} сек`
                         : `${waitSeconds} сек`;
                     
-                    // Показываем уведомление
                     const notification = document.createElement('div');
                     notification.className = 'queue-notification';
                     notification.innerHTML = `
@@ -1262,19 +1225,15 @@
                     document.querySelector('.chat-header').appendChild(notification);
                     setTimeout(() => notification.remove(), 5000);
                     
-                    // Обновляем панель статусов
                     refreshRequestsStatus();
                     
-                    // Показываем панель, если скрыта
                     const panel = document.getElementById('requests-status-panel');
                     if (panel.style.display === 'none') {
                         initRequestsStatusPanel();
                     }
                     
-                    // Запускаем периодическую проверку результата
                     startResultPolling(data.request_id);
                 } else if (data.response) {
-                    // Прямой ответ (для обратной совместимости)
                     displayMessage(
                         'assistant',
                         data.response,
@@ -1295,14 +1254,13 @@
                     lastMessage.style.borderLeft = '3px solid #e74c3c';
                 }
             } finally {
-                // Разблокируем кнопку
                 sendButton.disabled = false;
                 sendButton.innerHTML = 'Отправить';
                 isSending = false;
             }
         };
 
-        // функция startResultPolling 
+        // Функция для опроса результата
         function startResultPolling(requestId) {
             console.log('Start polling for request:', requestId);
             let pollCount = 0;
@@ -1320,18 +1278,20 @@
                         clearInterval(pollInterval);
                         console.log('Request completed, result:', data.result);
                         
-                        // Показываем результат
                         if (data.result) {
-                            // Определяем, для какого сеанса этот ответ
                             const resultSessionId = data.result.session_id;
                             
                             if (data.result.response) {
-                                // Подготавливаем время ответа
                                 let responseTime = data.result.response_time;
                                 let modelUsed = data.result.model_used;
                                 const isError = data.result.is_error || false;
                                 
-                                // Если это генерация изображения, передаем объект с временами
+                                console.log('Processing completed result:', {  // Отладка
+                                    responseTime,
+                                    modelUsed,
+                                    type: typeof responseTime
+                                });
+                                
                                 if (data.result.mm_time && data.result.gen_time) {
                                     responseTime = {
                                         mm_time: data.result.mm_time,
@@ -1342,7 +1302,6 @@
                                     modelUsed = data.result.mm_model;
                                 }
                                 
-                                // Если это ответ для текущего сеанса - показываем сразу
                                 if (resultSessionId === currentSessionId) {
                                     displayMessage(
                                         'assistant',
@@ -1351,15 +1310,12 @@
                                         data.result.file_type,
                                         data.result.file_name,
                                         data.result.assistant_timestamp || new Date().toISOString(), 
-                                        responseTime,  // Теперь всегда передается
+                                        responseTime,
                                         modelUsed
                                     );
                                 } else {
-                                    // Если для другого сеанса - добавляем индикатор
                                     console.log(`Ответ для сеанса ${resultSessionId}, не текущего`);
                                     setNewMessageIndicator(resultSessionId, true, isError);
-                                    
-                                    // Обновляем список сеансов, чтобы показать индикатор
                                     loadSessionsFromServer();
                                 }
                             } else if (data.result.error) {
@@ -1369,7 +1325,7 @@
                                         `⚠️ ${data.result.error}`,
                                         null, null, null,
                                         data.result.assistant_timestamp || new Date().toISOString(),
-                                        data.result.response_time, // Передаем время даже для ошибки
+                                        data.result.response_time,
                                         'system'
                                     );
                                 } else {
@@ -1380,7 +1336,6 @@
                         }
                         refreshRequestsStatus();
                         
-                        // Принудительно обновляем список сеансов, чтобы обновить даты
                         setTimeout(() => {
                             loadSessionsFromServer();
                         }, 500);
@@ -1397,7 +1352,7 @@
                                 `⚠️ Ошибка: ${data.error || 'Неизвестная ошибка'}`,
                                 null, null, null,
                                 data.result?.assistant_timestamp || new Date().toISOString(),
-                                data.result?.response_time, // Передаем время если есть
+                                data.result?.response_time,
                                 'system'
                             );
                         } else if (resultSessionId) {
@@ -1415,7 +1370,6 @@
                         clearInterval(pollInterval);
                         console.log('Polling stopped after max attempts');
                         
-                        // Показываем сообщение о таймауте
                         displayMessage(
                             'assistant',
                             '⚠️ Превышено время ожидания ответа. Проверьте статус запроса в панели "Мои запросы".',
@@ -1435,30 +1389,25 @@
             }, 3000);
         }
         
-        // Сначала отображаем сообщение пользователя
         if (tempAttachedFile) {
-            // Для файлов нужно дождаться чтения
             const reader = new FileReader();
             reader.onload = async function(e) {
                 fileData = e.target.result.split(',')[1];
                 fileType = tempAttachedFile.type;
                 fileName = tempAttachedFile.name;
                 
-                // Отображаем сообщение пользователя
                 displayUserMessage(fileData, fileType, fileName);
                 
-                // Отправляем на сервер
                 await sendToServer();
             };
             reader.readAsDataURL(tempAttachedFile);
         } else {
-            // Только текст, без файла
             displayUserMessage(null, null, null);
             
-            // Отправляем на сервер
             await sendToServer();
         }
     }
+    
     // -------------------------------
     // Очистка истории сеанса
     // -------------------------------
@@ -1477,24 +1426,20 @@
     // Удаление сеанса
     // -------------------------------
     function deleteSession(sessionId) {
-        // Помечаем все незавершенные запросы для этого сеанса как обработанные
         for (let [id, req] of Object.entries(pendingRequests)) {
             if (req.sessionId === sessionId && !req.processed) {
                 pendingRequests[id].processed = true;
             }
         }
         
-        // Удаляем индикатор
         delete newMessageIndicators[sessionId];
         
         fetch(`/api/sessions/${sessionId}/delete`, { method: 'POST' })
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'ok') {
-                    // Удаляем из хранилища данных
                     delete sessionsData[sessionId];
                     
-                    // Удаляем элемент из DOM
                     const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
                     if (sessionItem) {
                         sessionItem.remove();
@@ -1503,16 +1448,13 @@
                     const sessionsCount = document.querySelectorAll('.session-item').length;
                     document.getElementById('sessions-count').textContent = sessionsCount;
                     
-                    // Если это был текущий сеанс
                     if (sessionId === currentSessionId) {
                         const remainingSessions = document.querySelectorAll('.session-item');
                         if (remainingSessions.length > 0) {
-                            // Если есть другие сеансы, переключаемся на первый
                             const firstSession = remainingSessions[0];
                             const firstSessionId = firstSession.dataset.sessionId;
                             switchSession(firstSessionId);
                         } else {
-                            // Если сеансов не осталось, создаем новый
                             setTimeout(() => {
                                 createNewSession();
                             }, 50);
@@ -1529,7 +1471,6 @@
     // Сохранение чата как HTML
     // -------------------------------
     async function saveChatAsHTML() {
-        // Получаем подпись из .env через API
         let footerText = "";
         try {
             const response = await fetch('/api/footer-text');
@@ -1544,7 +1485,6 @@
             footerText = "Ошибка загрузки подписи";
         }
         
-        // Проверяем, есть ли активный сеанс
         const activeSession = document.querySelector('.session-item.active');
         if (!activeSession) {
             alert('Нет активного сеанса для сохранения');
@@ -1555,7 +1495,6 @@
         const now = new Date();
         const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
         
-        // Разбиваем подпись на две части для футера
         let footerLine1 = footerText;
         let footerLine2 = '';
         
@@ -1565,13 +1504,11 @@
             footerLine2 = '(с)' + footerText.split('(с)')[1].trim();
         }
         
-        // Собираем все сообщения
         const messages = [];
         document.querySelectorAll('.user-message, .assistant-message, .bot-message').forEach(msgEl => {
             const role = msgEl.classList.contains('user-message') ? 'user' : 'assistant';
             const timestamp = msgEl.dataset.timestamp;
             
-            // Получаем временную метку
             const timeElement = msgEl.querySelector('small');
             let timeHtml = '';
             if (timeElement) {
@@ -1580,29 +1517,24 @@
                 timeHtml = formatFullDateTime(timestamp);
             }
             
-            // Получаем содержимое сообщения
             const contentEl = msgEl.querySelector('.message-content');
             let contentHtml = '';
             if (contentEl) {
                 contentHtml = contentEl.innerHTML;
             }
             
-            // Получаем вложения (изображения, аудио, файлы) - ТОЛЬКО ОДИН РАЗ
             let fileHtml = '';
             
-            // Ищем изображение
             const imageEl = msgEl.querySelector('.attached-image');
             if (imageEl) {
                 fileHtml += `<div class="image-container">${imageEl.outerHTML}</div>`;
             }
             
-            // Ищем аудио
             const audioEl = msgEl.querySelector('audio');
-            if (audioEl && !imageEl) { // Если нет изображения, но есть аудио
+            if (audioEl && !imageEl) {
                 fileHtml += `<div class="audio-container">${audioEl.outerHTML}</div>`;
             }
             
-            // Ищем файл (не изображение и не аудио)
             const fileEl = msgEl.querySelector('.attached-file');
             if (fileEl && !imageEl && !audioEl) {
                 fileHtml += `<div class="file-container">${fileEl.outerHTML}</div>`;
@@ -1617,13 +1549,11 @@
             });
         });
         
-        // Проверяем, есть ли сообщения для сохранения
         if (messages.length === 0) {
             alert('Нет сообщений для сохранения');
             return;
         }
         
-        // ВСТРОЕННЫЕ СТИЛИ (полная копия из style.css, но с добавленными стилями для файлов)
         const styles = `
             * {
                 margin: 0;
@@ -1759,7 +1689,6 @@
                 margin-bottom: 8px !important;
             }
 
-            /* Стили для информации о файле */
             .file-info {
                 display: inline-block !important;
                 color: #2c3e50 !important;
@@ -1955,7 +1884,6 @@
                 background-color: #f6f8fa;
             }
 
-            /* Скрываем все элементы управления в сохранённом чате */
             .save-chat-button,
             .clear-context-button,
             .new-session-button,
@@ -1996,7 +1924,6 @@
             }
         `;
         
-        // Формируем HTML страницы со встроенными стилями
         const html = `<!DOCTYPE html>
     <html lang="ru">
     <head>
@@ -2052,7 +1979,6 @@
     </body>
     </html>`;
         
-        // Создаем и скачиваем файл
         const blob = new Blob([html], {type: 'text/html;charset=utf-8'});
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -2185,20 +2111,16 @@
         });
     }
 
-    // Сохраняем оригинальную функцию loadMessages
     const originalLoadMessages = window.loadMessages || function(){};
 
-    // Переопределяем loadMessages
     window.loadMessages = function(sessionId) {
         return originalLoadMessages(sessionId).then(() => {
             setTimeout(addCopyButtonsToAllCodeBlocks, 100);
         });
     };
 
-    // Сохраняем оригинальную функцию displayMessage
     const originalDisplayMessage = window.displayMessage || function(){};
 
-    // Переопределяем displayMessage
     window.displayMessage = function(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName) {
         const result = originalDisplayMessage.call(this, role, content, fileData, fileType, fileName, timestamp, responseTime, modelName);
         
@@ -2213,12 +2135,8 @@
         return result;
     };
 
-    // Инициализация при загрузке страницы
     document.addEventListener('DOMContentLoaded', function() {
-        // Добавляем наблюдатель для новых сообщений
         setTimeout(setupCopyButtonsObserver, 500);
-        
-        // Добавляем кнопки к существующим блокам кода
         setTimeout(addCopyButtonsToAllCodeBlocks, 1000);
     });
 

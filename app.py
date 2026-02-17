@@ -646,7 +646,7 @@ class RedisRequestQueue:
                 save_message(
                     session_id, 'assistant', final_response, 
                     model_name=model_used,
-                    response_time=str(process_time)  # Теперь всегда передается
+                    response_time=str(process_time)
                 )
             
             return {
@@ -655,7 +655,7 @@ class RedisRequestQueue:
                 'model_used': model_used,
                 'model_category': model_category,
                 'assistant_timestamp': completion_time_for_db,
-                'response_time': process_time,
+                'response_time': process_time,  # Всегда передаем
                 'is_error': is_error
             }
         
@@ -681,11 +681,12 @@ class RedisRequestQueue:
                         bot_reply = f"⚠️ {error}"
                         is_error = True
                     
-                    # Время ЗАВЕРШЕНИЯ обработки
                     completion_time_for_db = get_current_time_in_timezone_for_db()
-                    save_message(session_id, 'assistant', bot_reply, 
-                               model_name=app.config['LLM_MULTIMODAL_MODEL'],
-                               response_time=str(process_time))
+                    save_message(
+                        session_id, 'assistant', bot_reply, 
+                        model_name=app.config['LLM_MULTIMODAL_MODEL'],
+                        response_time=str(process_time)  # Всегда передаем
+                    )
                     
                     return {
                         'response': bot_reply,
@@ -705,17 +706,20 @@ class RedisRequestQueue:
                 process_time = round(time.time() - processing_start_time, 1)
                 is_error = True
             
-            # Время ЗАВЕРШЕНИЯ обработки для ошибки
+            # Обработка ошибок
             completion_time_for_db = get_current_time_in_timezone_for_db()
-            save_message(session_id, 'assistant', bot_reply, model_name='system',
-                        response_time=str(process_time))
+            save_message(
+                session_id, 'assistant', bot_reply, 
+                model_name='system',
+                response_time=str(process_time)  # Всегда передаем
+            )
             
             return {
                 'response': bot_reply,
                 'session_id': session_id,
                 'model_used': 'system',
                 'assistant_timestamp': completion_time_for_db,
-                'response_time': process_time,
+                'response_time': process_time,  # Всегда передаем
                 'is_error': is_error
             }
         

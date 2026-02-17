@@ -566,7 +566,7 @@
     }
 
     // -------------------------------
-    // Отображение одного сообщения
+    // Отображение одного сообщения (ИСПРАВЛЕННАЯ)
     // -------------------------------
     function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName) {
         const container = document.getElementById('chat-messages');
@@ -580,6 +580,12 @@
             msgDiv.className = 'assistant-message';
             // Добавляем также bot-message для обратной совместимости со старыми стилями
             msgDiv.classList.add('bot-message');
+        }
+        
+        // Убеждаемся, что timestamp существует
+        if (!timestamp) {
+            timestamp = new Date().toISOString();
+            console.warn('displayMessage: timestamp отсутствует, создан новый', timestamp);
         }
         
         msgDiv.setAttribute('data-timestamp', timestamp);
@@ -630,9 +636,15 @@
         }
         
         // Добавляем время ответа и ПОЛНОЕ название модели для сообщений ассистента
-        if (role === 'assistant' && responseTime) {
-            let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
-            timeDisplay += ` <span class="model-response-info">(ответ: ${fullModelName} за ${responseTime} сек)</span>`;
+        if (role === 'assistant') {
+            if (responseTime) {
+                let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
+                timeDisplay += ` <span class="model-response-info">(ответ: ${fullModelName} за ${responseTime} сек)</span>`;
+            } else {
+                // Даже если нет responseTime, показываем модель
+                let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
+                timeDisplay += ` <span class="model-response-info">(модель: ${fullModelName})</span>`;
+            }
         }
         
         let html = `<small>${timeDisplay}</small>`;
@@ -682,10 +694,10 @@
                 html += `
                     <div class="image-container">
                         <img src="data:${fileType};base64,${fileData}" 
-                             class="attached-image" 
-                             alt="${fileName || 'attached image'}"
-                             title="Нажмите для увеличения"
-                             onclick="openImageModal(this.src, '${fileName || 'Изображение'}')">
+                            class="attached-image" 
+                            alt="${fileName || 'attached image'}"
+                            title="Нажмите для увеличения"
+                            onclick="openImageModal(this.src, '${fileName || 'Изображение'}')">
                     </div>
                 `;
             } else if (fileType && fileType.startsWith('audio/')) {
@@ -704,6 +716,11 @@
         
         // После добавления сообщения обновляем счетчик
         updateMessageCount();
+        
+        // Добавляем кнопки копирования для кода
+        setTimeout(() => {
+            addCopyButtonsToMessage(msgDiv);
+        }, 50);
     }
 
     // -------------------------------
@@ -1180,9 +1197,9 @@
                                         data.result.generated_image,
                                         data.result.file_type,
                                         data.result.file_name,
-                                        data.result.assistant_timestamp || new Date().toISOString(),
-                                        null,
-                                        data.result.model_used
+                                        data.result.assistant_timestamp || new Date().toISOString(), 
+                                        data.result.response_time,  // Время ответа
+                                        data.result.model_used       // Название модели
                                     );
                                 } else {
                                     // Если для другого сеанса - добавляем индикатор

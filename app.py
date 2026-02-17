@@ -338,9 +338,12 @@ class RedisRequestQueue:
                     # Обрабатываем запрос
                     result_data = self._process_request(task)
                     
-                    # Убеждаемся, что в результате есть session_id
+                    # Убеждаемся, что в результате есть session_id и timestamp
                     if 'session_id' not in result_data:
                         result_data['session_id'] = task['session_id']
+                    
+                    # Добавляем время ответа
+                    result_data['response_time'] = round(time.time() - task['timestamp'], 1)
                     
                     # Сохраняем результат
                     self.redis.hset(self.results_key, task['id'], pickle.dumps({
@@ -460,7 +463,8 @@ class RedisRequestQueue:
             if 'error' in router_result:
                 return {
                     'error': router_result['error'],
-                    'session_id': session_id
+                    'session_id': session_id,
+                    'assistant_timestamp': current_time_for_db
                 }
             
             action_type = router_result['action']
@@ -597,7 +601,8 @@ class RedisRequestQueue:
         
         return {
             'error': 'Неизвестный тип запроса',
-            'session_id': session_id
+            'session_id': session_id,
+            'assistant_timestamp': current_time_for_db
         }
     
     def get_user_requests_status(self, user_id):

@@ -1458,6 +1458,31 @@
             }
         };
 
+        // Функция для проверки существования сообщения
+        function messageExists(content, timestamp) {
+            const messages = document.querySelectorAll('.assistant-message, .bot-message');
+            const lastMessages = Array.from(messages).slice(-3); // Проверяем последние 3 сообщения
+            
+            for (let msg of lastMessages) {
+                const msgTimestamp = msg.getAttribute('data-timestamp');
+                const msgContent = msg.querySelector('.message-content')?.textContent || '';
+                
+                // Если время совпадает (с точностью до секунды) и контент похож
+                if (msgTimestamp && timestamp) {
+                    const msgDate = new Date(msgTimestamp);
+                    const newDate = new Date(timestamp);
+                    
+                    // Сравниваем с точностью до секунды
+                    if (Math.abs(msgDate - newDate) < 1000) {
+                        if (msgContent.includes(content.substring(0, 20))) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
         // Функция для опроса результата
         function startResultPolling(requestId) {
             console.log('Start polling for request:', requestId);
@@ -1481,7 +1506,7 @@
                         
                         // Проверяем, не было ли сообщение уже добавлено
                         if (messageAdded) {
-                            console.log('Message already added, skipping');
+                            console.log('Message already added by flag, skipping');
                             return;
                         }
                         
@@ -1492,6 +1517,7 @@
                                 let responseTime = data.result.response_time;
                                 let modelUsed = data.result.model_used;
                                 const isError = data.result.is_error || false;
+                                const timestamp = data.result.assistant_timestamp || new Date().toISOString();
                                 
                                 console.log('Processing completed result:', {
                                     responseTime,
@@ -1522,6 +1548,13 @@
                                 console.log('Final responseTime before display:', responseTime);
                                 
                                 if (resultSessionId === currentSessionId) {
+                                    // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: ищем сообщение с таким же содержимым
+                                    if (messageExists(data.result.response, timestamp)) {
+                                        console.log('Message already exists in DOM, skipping');
+                                        messageAdded = true;
+                                        return;
+                                    }
+                                    
                                     // Устанавливаем флаг перед добавлением
                                     messageAdded = true;
                                     
@@ -1531,7 +1564,7 @@
                                         data.result.generated_image,
                                         data.result.file_type,
                                         data.result.file_name,
-                                        data.result.assistant_timestamp || new Date().toISOString(), 
+                                        timestamp, 
                                         responseTime,
                                         modelUsed
                                     );
@@ -1542,6 +1575,15 @@
                                 }
                             } else if (data.result.error) {
                                 if (resultSessionId === currentSessionId) {
+                                    const timestamp = data.result.assistant_timestamp || new Date().toISOString();
+                                    
+                                    // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА для ошибок
+                                    if (messageExists(`⚠️ ${data.result.error}`, timestamp)) {
+                                        console.log('Error message already exists in DOM, skipping');
+                                        messageAdded = true;
+                                        return;
+                                    }
+                                    
                                     // Устанавливаем флаг перед добавлением
                                     messageAdded = true;
                                     
@@ -1549,7 +1591,7 @@
                                         'assistant',
                                         `⚠️ ${data.result.error}`,
                                         null, null, null,
-                                        data.result.assistant_timestamp || new Date().toISOString(),
+                                        timestamp,
                                         data.result.response_time,
                                         'system'
                                     );
@@ -1571,11 +1613,21 @@
                         
                         // Проверяем, не было ли сообщение уже добавлено
                         if (messageAdded) {
-                            console.log('Message already added, skipping error display');
+                            console.log('Message already added by flag, skipping error display');
                             return;
                         }
                         
                         const resultSessionId = data.result?.session_id;
+                        const timestamp = data.result?.assistant_timestamp || new Date().toISOString();
+                        
+                        // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА для ошибок
+                        if (resultSessionId === currentSessionId) {
+                            if (messageExists(`⚠️ Ошибка: ${data.error || 'Неизвестная ошибка'}`, timestamp)) {
+                                console.log('Error message already exists in DOM, skipping');
+                                messageAdded = true;
+                                return;
+                            }
+                        }
                         
                         if (resultSessionId === currentSessionId) {
                             // Устанавливаем флаг перед добавлением
@@ -1585,7 +1637,7 @@
                                 'assistant',
                                 `⚠️ Ошибка: ${data.error || 'Неизвестная ошибка'}`,
                                 null, null, null,
-                                data.result?.assistant_timestamp || new Date().toISOString(),
+                                timestamp,
                                 data.result?.response_time,
                                 'system'
                             );
@@ -1606,7 +1658,16 @@
                         
                         // Проверяем, не было ли сообщение уже добавлено
                         if (messageAdded) {
-                            console.log('Message already added, skipping timeout message');
+                            console.log('Message already added by flag, skipping timeout message');
+                            return;
+                        }
+                        
+                        const timestamp = new Date().toISOString();
+                        
+                        // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА для timeout сообщения
+                        if (messageExists('⚠️ Превышено время ожидания ответа', timestamp)) {
+                            console.log('Timeout message already exists in DOM, skipping');
+                            messageAdded = true;
                             return;
                         }
                         
@@ -1617,7 +1678,7 @@
                             'assistant',
                             '⚠️ Превышено время ожидания ответа. Проверьте статус запроса в панели "Мои запросы".',
                             null, null, null,
-                            new Date().toISOString(),
+                            timestamp,
                             null,
                             'system'
                         );

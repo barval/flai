@@ -311,9 +311,16 @@
         }
     }
 
-    // -------------------------------
-    // Глобальный polling для проверки обновлений
-    // -------------------------------
+    // ===================== ИСПРАВЛЕНИЕ 3: Функция очистки кэша сообщений =====================
+    function clearMessagesCache(sessionId) {
+        if (sessionId) {
+            delete messagesCache[sessionId];
+        } else {
+            messagesCache = {};
+        }
+    }
+
+    // ===================== ИСПРАВЛЕНИЕ 2: Улучшенный global polling =====================
     function startGlobalUpdatesPolling() {
         if (globalUpdatesInterval) {
             clearInterval(globalUpdatesInterval);
@@ -330,9 +337,14 @@
                     // Обновляем список сеансов
                     await loadSessionsFromServer();
                     
-                    // Если обновление в текущем сеансе - загружаем сообщения
+                    // ЕСЛИ ОБНОВЛЕНИЕ В ТЕКУЩЕМ СЕАНСЕ - ПРИНУДИТЕЛЬНО ПЕРЕЗАГРУЖАЕМ СООБЩЕНИЯ
                     if (updates.current_session_updated) {
-                        console.log('Обновление в текущем сеансе, загружаем сообщения');
+                        console.log('Обновление в текущем сеансе, принудительная перезагрузка');
+                        
+                        // Очищаем кэш для текущего сеанса
+                        clearMessagesCache(currentSessionId);
+                        
+                        // Загружаем сообщения заново
                         await loadMessages(currentSessionId);
                     }
                     
@@ -577,11 +589,12 @@
         refreshRequestsStatus();
     }
 
-    // -------------------------------
-    // Функция для проверки существования сообщения
-    // -------------------------------
+    // ===================== ИСПРАВЛЕНИЕ 4: Улучшенная проверка существования сообщения =====================
     function messageExists(content, timestamp, modelName) {
         const messages = document.querySelectorAll('.assistant-message, .bot-message');
+        
+        // Увеличиваем "окно" для сравнения времени до 3 секунд
+        const TIME_WINDOW_MS = 3000;
         
         // Проверяем все сообщения
         for (let msg of messages) {
@@ -594,11 +607,12 @@
                 const msgDate = new Date(msgTimestamp);
                 const newDate = new Date(timestamp);
                 
-                // Сравниваем с точностью до 1.5 секунды
-                if (Math.abs(msgDate - newDate) < 1500) {
-                    // Проверяем, что контент похож (первые 30 символов)
-                    if (msgContent.substring(0, 30) === content.substring(0, 30)) {
-                        console.log('Duplicate message found:', msgContent.substring(0, 30));
+                // Сравниваем с увеличенным окном
+                if (Math.abs(msgDate - newDate) < TIME_WINDOW_MS) {
+                    // Увеличиваем количество сравниваемых символов для надежности
+                    const compareLength = Math.min(100, content.length, msgContent.length);
+                    if (msgContent.substring(0, compareLength) === content.substring(0, compareLength)) {
+                        console.log('Duplicate message detected and blocked');
                         return true;
                     }
                 }
@@ -843,20 +857,11 @@
         return loadPromise;
     }
 
-    // Функция для очистки кэша (можно вызывать при необходимости)
-    function clearMessagesCache(sessionId) {
-        if (sessionId) {
-            delete messagesCache[sessionId];
-        } else {
-            messagesCache = {};
-        }
-    }
-
     // -------------------------------
-    // Отображение одного сообщения (УЛУЧШЕННАЯ ВЕРСИЯ)
+    // Отображение одного сообщения
     // -------------------------------
     function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
-        console.log('displayMessage called with:', {  // Добавляем отладку
+        console.log('displayMessage called with:', {
             role,
             responseTime,
             modelName,
@@ -935,7 +940,7 @@
         
         // Добавляем время ответа и информацию о модели для сообщений ассистента
         if (role === 'assistant') {
-            console.log('Processing assistant message, responseTime:', responseTime); // Отладка
+            console.log('Processing assistant message, responseTime:', responseTime);
             
             // Создаём массив для хранения частей информации о модели
             const modelInfoParts = [];
@@ -965,7 +970,7 @@
                 else if (typeof responseTime === 'number' || !isNaN(parseFloat(responseTime))) {
                     // Числовое значение - обычное время ответа
                     const timeValue = typeof responseTime === 'number' ? responseTime : parseFloat(responseTime);
-                    console.log('Displaying numeric response time:', timeValue); // Отладка
+                    console.log('Displaying numeric response time:', timeValue);
                     
                     let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
                     
@@ -976,14 +981,12 @@
                     }
                 }
                 else {
-                    // responseTime есть, но непонятного типа
                     console.warn('Unknown responseTime type:', typeof responseTime, responseTime);
                     let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
                     modelInfoParts.push(`<span class="model-response-info">Модель: ${fullModelName}</span>`);
                 }
             } else {
-                // Нет responseTime - показываем только модель
-                console.log('No responseTime, showing only model'); // Отладка
+                console.log('No responseTime, showing only model');
                 let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
                 modelInfoParts.push(`<span class="model-response-info">Модель: ${fullModelName}</span>`);
             }
@@ -1353,19 +1356,22 @@
         }
     }
 
-    // -------------------------------
-    // Функция для опроса результата (исправленная)
-    // -------------------------------
+    // ===================== ИСПРАВЛЕНИЕ 1: Улучшенный startResultPolling =====================
     function startResultPolling(requestId) {
         console.log('Start polling for request:', requestId);
-        let pollCount = 0;
-        const maxPolls = 120;
         
-        // Проверяем, не обрабатывали ли мы уже этот requestId
+        // Более строгая проверка дублирования - добавляем в Set сразу
         if (processedRequests.has(requestId)) {
             console.log('Request already processed, skipping polling');
             return;
         }
+        
+        // Добавляем в Set сразу, чтобы предотвратить повторный запуск
+        processedRequests.add(requestId);
+        
+        let pollCount = 0;
+        const maxPolls = 120;
+        let lastResult = null;
         
         const pollInterval = setInterval(async () => {
             pollCount++;
@@ -1373,14 +1379,19 @@
             try {
                 const response = await fetch(`/api/queue/result/${requestId}`);
                 const data = await response.json();
+                
+                // Если результат не изменился - пропускаем
+                if (JSON.stringify(data) === JSON.stringify(lastResult)) {
+                    console.log('Result unchanged, skipping...');
+                    return;
+                }
+                lastResult = data;
+                
                 console.log('Poll result:', data);
                 
                 if (data.status === 'completed') {
                     clearInterval(pollInterval);
                     console.log('Request completed, result:', data.result);
-                    
-                    // Добавляем requestId в обработанные
-                    processedRequests.add(requestId);
                     
                     if (data.result) {
                         const resultSessionId = data.result.session_id;
@@ -1465,9 +1476,6 @@
                     clearInterval(pollInterval);
                     console.error('Request error:', data.error);
                     
-                    // Добавляем requestId в обработанные
-                    processedRequests.add(requestId);
-                    
                     const resultSessionId = data.result?.session_id;
                     const timestamp = data.result?.assistant_timestamp || new Date().toISOString();
                     
@@ -1496,9 +1504,6 @@
                     clearInterval(pollInterval);
                     console.log('Polling stopped after max attempts');
                     
-                    // Добавляем requestId в обработанные
-                    processedRequests.add(requestId);
-                    
                     const timestamp = new Date().toISOString();
                     
                     // Используем безопасную функцию добавления
@@ -1516,8 +1521,6 @@
                 console.error('Error polling result:', error);
                 if (pollCount >= maxPolls) {
                     clearInterval(pollInterval);
-                    // В случае ошибки тоже добавляем в обработанные
-                    processedRequests.add(requestId);
                 }
             }
         }, 3000);

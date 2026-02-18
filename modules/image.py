@@ -23,6 +23,9 @@ class ImageModule:
         self.consecutive_errors = 0
         self.max_consecutive_errors = 3
         
+        # Настройки очистки памяти
+        self.cleanup_delay = 2  # секунд после генерации
+        
         if app:
             self.init_app(app)
     
@@ -52,7 +55,7 @@ class ImageModule:
             response = requests.get(f"{self.automatic1111_url}/sdapi/v1/progress", timeout=5)
             if response.status_code == 200:
                 self.available = True
-                self.consecutive_errors = 0  # Сброс счетчика ошибок
+                self.consecutive_errors = 0
                 return True
         except Exception as e:
             self.logger.error(f"Ошибка подключения к Automatic1111: {str(e)}")
@@ -72,10 +75,7 @@ class ImageModule:
             
             if response.status_code == 200:
                 self.logger.info("Модель успешно выгружена из памяти")
-                time.sleep(1)  # Небольшая пауза для освобождения памяти
-                
-                # После очистки сбрасываем счетчик ошибок
-                self.consecutive_errors = 0
+                time.sleep(3)  # Увеличено с 1 до 3 секунд
                 return True
             else:
                 self.logger.warning(f"Ошибка при выгрузке модели: {response.status_code}")
@@ -127,39 +127,53 @@ class ImageModule:
                 'error': error
             }
         
-        # Отправляем запрос в Automatic1111 (с возможностью повтора при ошибке)
+        # Отправляем запрос в Automatic1111 (с повтором при ошибке)
         return self._call_automatic1111_with_retry(prompt_data)
     
     def _call_automatic1111_with_retry(self, prompt_data):
         """
         Вызов Automatic1111 с повтором при ошибке
-        Если первый запрос завершился ошибкой, делаем очистку памяти и пробуем снова
+        Для Automatic1111 делаем очистку памяти и повтор
         """
         # Первая попытка
         result = self._call_automatic1111(prompt_data)
         
-        # Если успех или это не ошибка 500 (или сервис недоступен) - возвращаем результат
-        if result['success'] or result.get('status_code') != 500:
+        # Если успех - возвращаем
+        if result['success']:
+            self.consecutive_errors = 0
             return result
         
         # Если ошибка 500 - пробуем очистить память и повторить
-        self.logger.warning(f"Ошибка 500 при генерации, пробуем очистить память и повторить")
-        
-        # Очищаем память
-        if self.free_memory():
-            self.logger.info("Память очищена, повторяем запрос")
-            # Повторяем запрос
-            second_result = self._call_automatic1111(prompt_data)
+        if result.get('status_code') == 500:
+            self.consecutive_errors += 1
+            self.logger.warning(f"Ошибка 500 при генерации (попытка {self.consecutive_errors}), очищаем память и пробуем снова")
             
-            if second_result['success']:
-                self.logger.info("Повторный запрос успешен после очистки памяти")
-                return second_result
+            # Если слишком много ошибок подряд - не пытаемся
+            if self.consecutive_errors > self.max_consecutive_errors:
+                self.logger.error(f"Слишком много последовательных ошибок Automatic1111 ({self.consecutive_errors})")
+                return result
+            
+            # Очищаем память
+            if self.free_memory():
+                self.logger.info("Память очищена, повторяем запрос через 3 секунды")
+                time.sleep(3)
+                
+                # Повторяем запрос
+                second_result = self._call_automatic1111(prompt_data)
+                
+                if second_result['success']:
+                    self.logger.info("Повторный запрос успешен после очистки памяти")
+                    self.consecutive_errors = 0
+                    return second_result
+                else:
+                    self.logger.error(f"Повторный запрос также завершился ошибкой: {second_result.get('error')}")
+                    return second_result
             else:
-                self.logger.error(f"Повторный запрос также завершился ошибкой: {second_result.get('error')}")
-                return second_result
-        else:
-            self.logger.error("Не удалось очистить память")
-            return result
+                self.logger.error("Не удалось очистить память")
+                return result
+        
+        # Для других ошибок (не 500) - просто возвращаем результат
+        return result
     
     def _call_automatic1111(self, prompt_data):
         """Вызов Automatic1111 API"""
@@ -182,8 +196,8 @@ class ImageModule:
                 "height": int(prompt_data.get("height", 512)),
                 "cfg_scale": float(prompt_data.get("cfg_scale", 7)),
                 "sampler_name": prompt_data.get("sampler_name", "DPM++ 2M Karras"),
-                "batch_size": 1,  # Всегда 1 для экономии памяти
-                "enable_hr": False,  # Отключаем Hi-Res для стабильности
+                "batch_size": 1,
+                "enable_hr": False,
             }
             
             # Добавляем модель, если указана
@@ -205,14 +219,11 @@ class ImageModule:
                 if result.get('images') and len(result['images']) > 0:
                     image_data = result['images'][0]
                     
-                    # Вычисляем размер файла
                     file_size_bytes = int((len(image_data) * 3) / 4)
-                    
-                    # Генерируем имя файла
                     filename = f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.jpg"
                     
-                    # Сбрасываем счетчик ошибок при успехе
-                    self.consecutive_errors = 0
+                    # Запускаем очистку памяти в фоне
+                    threading.Thread(target=self._delayed_cleanup, daemon=True).start()
                     
                     return {
                         'success': True,
@@ -226,14 +237,12 @@ class ImageModule:
                         'gen_model': self.model_name or "Stable Diffusion"
                     }
                 else:
-                    self.consecutive_errors += 1
                     return {
                         'success': False,
                         'error': "Automatic1111 не вернул изображение",
                         'status_code': 500
                     }
             else:
-                self.consecutive_errors += 1
                 error_text = f"Ошибка Automatic1111: {response.status_code}"
                 try:
                     error_data = response.json()
@@ -250,18 +259,21 @@ class ImageModule:
                 }
                 
         except requests.exceptions.ConnectionError:
-            self.consecutive_errors += 1
-            self.available = False  # Помечаем как недоступный
+            self.available = False
             return {
                 'success': False,
                 'error': "Не удалось подключиться к Automatic1111",
                 'status_code': 503
             }
         except Exception as e:
-            self.consecutive_errors += 1
             self.logger.error(f"Ошибка вызова Automatic1111: {str(e)}")
             return {
                 'success': False,
                 'error': f"Ошибка: {str(e)}",
                 'status_code': 500
             }
+    
+    def _delayed_cleanup(self):
+        """Очистка памяти с задержкой"""
+        time.sleep(self.cleanup_delay)
+        self.free_memory()

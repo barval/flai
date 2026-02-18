@@ -3,6 +3,7 @@ import logging
 import requests
 from datetime import datetime
 import os
+from .ollama_base import OllamaBaseModule
 
 # Условный импорт для избежания циклических зависимостей
 try:
@@ -11,10 +12,11 @@ except ImportError:
     # Будет импортировано позже
     pass
 
-class BaseModule:
+class BaseModule(OllamaBaseModule):
     """Базовый модуль для работы с чатом и рассуждающей моделью"""
     
     def __init__(self, app=None, ollama_url=None, models_config=None):
+        super().__init__()
         self.logger = logging.getLogger(__name__)
         self.ollama_url = ollama_url
         self.models_config = models_config or {}
@@ -87,7 +89,11 @@ class BaseModule:
         return False
     
     def call_ollama(self, messages, model_type='chat', stream=False):
-        """Вызов Ollama API"""
+        """Вызов Ollama API с поддержкой повтора при ошибках"""
+        return self.call_with_retry(self._call_ollama_impl, messages, model_type, stream)
+    
+    def _call_ollama_impl(self, messages, model_type='chat', stream=False):
+        """Внутренняя реализация вызова Ollama API"""
         if not self.available:
             self.check_availability()
             if not self.available:
@@ -111,6 +117,13 @@ class BaseModule:
                     'stop': ['<|im_end|>', '<|endoftext|>', '\n\n\n'],
                 }
             }
+            
+            # Оптимизация памяти: выгружаем модель сразу после использования
+            # Если это не частая интерактивная беседа
+            if model_type != 'chat' or self.consecutive_errors > 2:
+                payload['keep_alive'] = '0'  # Выгрузить сразу
+            else:
+                payload['keep_alive'] = '30s'  # Держать 30 секунд для чата
             
             self.logger.info(f"Отправка запроса к Ollama. Модель: {model}")
             
@@ -146,7 +159,6 @@ class BaseModule:
     
     def process_message(self, message_text, current_time_str):
         """Обработка текстового сообщения через модель-маршрутизатор"""
-        # Импортируем здесь, чтобы избежать циклических зависимостей
         from app import format_prompt
         
         prompt = format_prompt('base_text.template', {

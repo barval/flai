@@ -6,11 +6,14 @@ import base64
 from PIL import Image
 from io import BytesIO
 import os
+import re
+from .ollama_base import OllamaBaseModule
 
-class MultimodalModule:
+class MultimodalModule(OllamaBaseModule):
     """Модуль для работы с мультимодальной моделью (изображения)"""
     
     def __init__(self, app=None, ollama_url=None, models_config=None):
+        super().__init__()
         self.logger = logging.getLogger(__name__)
         self.ollama_url = ollama_url
         self.models_config = models_config or {}
@@ -82,17 +85,14 @@ class MultimodalModule:
     
     def validate_image(self, file_data, file_type, file_name, file_size):
         """Проверка изображения на соответствие требованиям"""
-        # Проверка размера
         if file_size > self.image_settings['max_size_bytes']:
             return False, f"Максимальный размер файла {self.image_settings['max_size_mb']} Мб"
         
-        # Проверка MIME-типа
         if file_type not in self.image_settings['supported_mimetypes']:
             ext = os.path.splitext(file_name)[1].lower()
             if ext not in self.image_settings['supported_extensions']:
                 return False, "Неподдерживаемый тип файла"
         
-        # Проверка размеров изображения
         try:
             image_bytes = base64.b64decode(file_data)
             img = Image.open(BytesIO(image_bytes))
@@ -129,8 +129,53 @@ class MultimodalModule:
             'images': [image_data]
         }]
         
-        response = self._call_multimodal(messages)
+        response = self.call_with_retry(self._call_multimodal_impl, messages)
         return response, None
+    
+    def _call_multimodal_impl(self, messages):
+        """Внутренняя реализация вызова мультимодальной модели"""
+        if not self.available:
+            return "⚠️ Мультимодальная модель недоступна"
+        
+        model_config = self.models_config['multimodal']
+        model = model_config['model']
+        
+        try:
+            payload = {
+                'model': model,
+                'messages': messages,
+                'stream': False,
+                'options': {
+                    'num_ctx': model_config['context'],
+                    'temperature': model_config['temperature'],
+                    'top_p': model_config['top_p'],
+                }
+            }
+            
+            # Оптимизация памяти
+            if self.consecutive_errors > 2:
+                payload['keep_alive'] = '0'
+            else:
+                payload['keep_alive'] = '30s'
+            
+            self.logger.info(f"Отправка запроса к мультимодальной модели: {model}")
+            
+            response = requests.post(
+                f"{self.ollama_url}/api/chat",
+                json=payload,
+                timeout=120
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                return result['message']['content'].strip()
+            else:
+                self.logger.error(f"Ошибка мультимодальной модели: {response.status_code}")
+                return f"⚠️ Ошибка: {response.status_code}"
+                
+        except Exception as e:
+            self.logger.error(f"Ошибка вызова мультимодальной модели: {str(e)}")
+            return f"⚠️ Ошибка: {str(e)}"
     
     def generate_image_params(self, user_query):
         """Генерация параметров для создания изображения"""
@@ -151,17 +196,14 @@ class MultimodalModule:
             {'role': 'user', 'content': create_prompt}
         ]
         
-        response = self._call_multimodal(messages)
+        response = self.call_with_retry(self._call_multimodal_impl, messages)
         
-        # Пытаемся распарсить JSON
         try:
-            import re
             json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response, re.DOTALL)
             if json_match:
                 json_str = json_match.group()
                 prompt_data = json.loads(json_str)
                 
-                # Проверяем наличие обязательных полей
                 if 'prompt' not in prompt_data:
                     prompt_data['prompt'] = user_query
                 if 'negative_prompt' not in prompt_data:
@@ -173,42 +215,3 @@ class MultimodalModule:
         except Exception as e:
             self.logger.error(f"Ошибка парсинга JSON: {str(e)}")
             return None, f"Ошибка парсинга JSON: {str(e)}"
-    
-    def _call_multimodal(self, messages):
-        """Вызов мультимодальной модели"""
-        if not self.available:
-            return "⚠️ Мультимодальная модель недоступна"
-        
-        model_config = self.models_config['multimodal']
-        model = model_config['model']
-        
-        try:
-            payload = {
-                'model': model,
-                'messages': messages,
-                'stream': False,
-                'options': {
-                    'num_ctx': model_config['context'],
-                    'temperature': model_config['temperature'],
-                    'top_p': model_config['top_p'],
-                }
-            }
-            
-            self.logger.info(f"Отправка запроса к мультимодальной модели: {model}")
-            
-            response = requests.post(
-                f"{self.ollama_url}/api/chat",
-                json=payload,
-                timeout=120
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return result['message']['content'].strip()
-            else:
-                self.logger.error(f"Ошибка мультимодальной модели: {response.status_code}")
-                return f"⚠️ Ошибка: {response.status_code}"
-                
-        except Exception as e:
-            self.logger.error(f"Ошибка вызова мультимодальной модели: {str(e)}")
-            return f"⚠️ Ошибка: {str(e)}"

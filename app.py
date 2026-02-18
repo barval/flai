@@ -625,6 +625,24 @@ class RedisRequestQueue:
                         model_used = 'system'
                         is_error = True
                         process_time = mm_time
+                        
+                        # Сохраняем сообщение об ошибке
+                        completion_time_for_db = get_current_time_in_timezone_for_db()
+                        save_message(
+                            session_id, 'assistant', final_response, 
+                            model_name=model_used,
+                            response_time=str(process_time)
+                        )
+                        
+                        return {
+                            'response': final_response,
+                            'session_id': session_id,
+                            'model_used': model_used,
+                            'model_category': model_category,
+                            'assistant_timestamp': completion_time_for_db,
+                            'response_time': process_time,
+                            'is_error': is_error
+                        }
                     else:
                         # Замеряем время генерации изображения в Automatic1111
                         gen_start_time = time.time()
@@ -682,11 +700,47 @@ class RedisRequestQueue:
                             model_used = 'system'
                             is_error = True
                             process_time = mm_time + gen_time if 'gen_time' in locals() else mm_time
+                            
+                            # Сохраняем сообщение об ошибке
+                            completion_time_for_db = get_current_time_in_timezone_for_db()
+                            save_message(
+                                session_id, 'assistant', final_response, 
+                                model_name=model_used,
+                                response_time=str(process_time)
+                            )
+                            
+                            return {
+                                'response': final_response,
+                                'session_id': session_id,
+                                'model_used': model_used,
+                                'model_category': model_category,
+                                'assistant_timestamp': completion_time_for_db,
+                                'response_time': process_time,
+                                'is_error': is_error
+                            }
                 else:
                     final_response = "⚠️ Модуль генерации изображений недоступен"
                     model_used = 'system'
                     is_error = True
                     process_time = 0
+                    
+                    # Сохраняем сообщение об ошибке
+                    completion_time_for_db = get_current_time_in_timezone_for_db()
+                    save_message(
+                        session_id, 'assistant', final_response, 
+                        model_name=model_used,
+                        response_time=str(process_time)
+                    )
+                    
+                    return {
+                        'response': final_response,
+                        'session_id': session_id,
+                        'model_used': model_used,
+                        'model_category': model_category,
+                        'assistant_timestamp': completion_time_for_db,
+                        'response_time': process_time,
+                        'is_error': is_error
+                    }
             
             elif action_type == 'camera':
                 model_category = 'camera'

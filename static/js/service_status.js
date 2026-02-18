@@ -20,8 +20,37 @@ class ServiceStatusMonitor {
             this.updateAutomatic1111Status(data.automatic1111);
             this.updateCameraStatus(data.camera_api);
             
+            // Обновляем глобальный индикатор
+            this.updateGlobalIndicator(data);
+            
         } catch (error) {
             console.error('Error updating service status:', error);
+        }
+    }
+    
+    updateGlobalIndicator(statuses) {
+        const indicator = document.getElementById('services-global-indicator');
+        if (!indicator) return;
+        
+        // Проверяем все сервисы
+        const allHealthy = Object.values(statuses).every(s => s.health === 'healthy');
+        
+        if (allHealthy) {
+            indicator.innerHTML = '🟢';
+            indicator.title = 'Все сервисы работают';
+        } else {
+            indicator.innerHTML = '🔴';
+            
+            // Собираем список проблемных сервисов для подсказки
+            const problematic = [];
+            for (const [name, status] of Object.entries(statuses)) {
+                if (status.health !== 'healthy') {
+                    let displayName = name === 'automatic1111' ? 'Automatic1111' : 
+                                     name === 'camera_api' ? 'Камеры' : 'Ollama';
+                    problematic.push(`${displayName}: ${status.health}`);
+                }
+            }
+            indicator.title = `Проблемы: ${problematic.join(', ')}`;
         }
     }
     
@@ -29,17 +58,14 @@ class ServiceStatusMonitor {
         const card = document.getElementById('ollama-status');
         if (!card) return;
         
-        // Обновляем класс карточки
         card.className = `service-card ${status.health}`;
         
-        // Локация
         const locationEl = document.getElementById('ollama-location');
         if (locationEl) {
             locationEl.textContent = this.getLocationText(status.location);
             locationEl.className = `service-location ${status.location}`;
         }
         
-        // Индикатор здоровья
         const healthEl = document.getElementById('ollama-health');
         if (healthEl) {
             healthEl.innerHTML = `<span class="health-icon ${status.health}"></span>${this.getHealthText(status.health)}`;

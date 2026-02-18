@@ -1,43 +1,48 @@
 <!-- templates/components/service_status.html -->
 
 <div class="services-status-panel">
-    <div class="status-header">
-        <h3>🔌 Состояние сервисов</h3>
-        <button class="refresh-status-small" onclick="window.serviceMonitor.updateStatus()" title="Обновить">↻</button>
+    <div class="status-header" onclick="toggleServicesPanel()">
+        <div class="header-left">
+            <h3>🔌 Состояние сервисов</h3>
+            <span class="services-global-indicator" id="services-global-indicator" title="Все сервисы работают">🟢</span>
+        </div>
+        <div class="header-right">
+            <button class="refresh-status-small" onclick="event.stopPropagation(); window.serviceMonitor.updateStatus()" title="Обновить">↻</button>
+            <span class="collapse-icon" id="services-collapse-icon">▼</span>
+        </div>
     </div>
     
-    <!-- Ollama статус -->
-    <div class="service-card" id="ollama-status">
-        <div class="service-header">
-            <span class="service-name">🦙 Ollama</span>
-            <span class="service-location" id="ollama-location"></span>
-            <span class="service-health-indicator" id="ollama-health"></span>
+    <div class="services-content" id="services-content" style="display: none;">
+        <!-- Ollama статус -->
+        <div class="service-card" id="ollama-status">
+            <div class="service-header">
+                <span class="service-name">🦙 Ollama</span>
+                <span class="service-location" id="ollama-location"></span>
+                <span class="service-health-indicator" id="ollama-health"></span>
+            </div>
         </div>
-        <!-- Вся дополнительная информация удалена -->
-    </div>
-    
-    <!-- Automatic1111 статус -->
-    <div class="service-card" id="automatic1111-status">
-        <div class="service-header">
-            <span class="service-name">🎨 Automatic1111</span>
-            <span class="service-location" id="automatic1111-location"></span>
-            <span class="service-health-indicator" id="automatic1111-health"></span>
+        
+        <!-- Automatic1111 статус -->
+        <div class="service-card" id="automatic1111-status">
+            <div class="service-header">
+                <span class="service-name">🎨 Automatic1111</span>
+                <span class="service-location" id="automatic1111-location"></span>
+                <span class="service-health-indicator" id="automatic1111-health"></span>
+            </div>
         </div>
-        <!-- Вся дополнительная информация удалена -->
-    </div>
-    
-    <!-- Camera API статус -->
-    <div class="service-card" id="camera-status">
-        <div class="service-header">
-            <span class="service-name">📷 Камеры</span>
-            <span class="service-location" id="camera-location"></span>
-            <span class="service-health-indicator" id="camera-health"></span>
+        
+        <!-- Camera API статус -->
+        <div class="service-card" id="camera-status">
+            <div class="service-header">
+                <span class="service-name">📷 Камеры</span>
+                <span class="service-location" id="camera-location"></span>
+                <span class="service-health-indicator" id="camera-health"></span>
+            </div>
         </div>
-        <!-- Вся дополнительная информация удалена -->
     </div>
 </div>
 
-<!-- Добавляем CSS для индикаторов -->
+<!-- Добавляем CSS для индикаторов и сворачиваемой панели -->
 <style>
 .services-status-panel {
     background: #f8f9fa;
@@ -52,13 +57,41 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.services-status-panel .status-header:hover {
+    opacity: 0.8;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 
 .services-status-panel h3 {
     margin: 0;
     color: #2c3e50;
     font-size: 1rem;
+}
+
+.services-global-indicator {
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.collapse-icon {
+    font-size: 0.8rem;
+    color: #666;
+    transition: transform 0.3s ease;
 }
 
 .refresh-status-small {
@@ -73,6 +106,11 @@
 
 .refresh-status-small:hover {
     background-color: #e0e0e0;
+}
+
+.services-content {
+    margin-top: 10px;
+    transition: all 0.3s ease;
 }
 
 .service-card {
@@ -106,7 +144,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 0;  /* Убрано нижнее поле */
+    margin-bottom: 0;
 }
 
 .service-name {
@@ -175,6 +213,35 @@
 .health-icon.down {
     background: #dc3545;
 }
-
-/* Удалены все стили для .service-mode, .memory-indicator, .detail-row и т.д. */
 </style>
+
+<script>
+function toggleServicesPanel() {
+    const content = document.getElementById('services-content');
+    const icon = document.getElementById('services-collapse-icon');
+    const isCollapsed = content.style.display === 'none';
+    
+    content.style.display = isCollapsed ? 'block' : 'none';
+    icon.textContent = isCollapsed ? '▼' : '▶';
+    
+    // Сохраняем состояние в localStorage
+    localStorage.setItem('servicesPanelCollapsed', !isCollapsed);
+}
+
+// Инициализация состояния панели при загрузке
+document.addEventListener('DOMContentLoaded', function() {
+    const content = document.getElementById('services-content');
+    const icon = document.getElementById('services-collapse-icon');
+    
+    // По умолчанию свёрнуто, если нет сохранённого состояния
+    const shouldCollapse = localStorage.getItem('servicesPanelCollapsed') === 'true';
+    
+    if (shouldCollapse) {
+        content.style.display = 'block';
+        icon.textContent = '▼';
+    } else {
+        content.style.display = 'none';
+        icon.textContent = '▶';
+    }
+});
+</script>

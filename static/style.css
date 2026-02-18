@@ -1401,3 +1401,78 @@ audio {
 .session-item.active .error-message-indicator {
     display: none;
 }
+
+/* ========== ДОПОЛНИТЕЛЬНЫЕ СТИЛИ ДЛЯ ПАНЕЛЕЙ ========== */
+
+/* Стили для уведомления с кнопкой */
+.queue-notification {
+    position: fixed;
+    top: 60px;
+    right: 20px;
+    background-color: #3498db;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 1000;
+    animation: slideIn 0.3s ease;
+    max-width: 350px;
+}
+
+.notification-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.notification-content .wait-time {
+    background-color: rgba(255,255,255,0.2);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    align-self: flex-start;
+}
+
+.show-requests-button {
+    background: rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 4px;
+    color: white;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+    font-weight: 500;
+    margin-top: 4px;
+}
+
+.show-requests-button:hover {
+    background: rgba(255,255,255,0.3);
+    border-color: rgba(255,255,255,0.5);
+}
+
+/* Стили для глобального индикатора в панели сервисов */
+.services-global-indicator {
+    display: inline-block;
+    animation: none !important; /* Отключаем пульсацию */
+    font-size: 1rem;
+    line-height: 1;
+}
+
+/* Адаптация для мобильных */
+@media (max-width: 768px) {
+    .queue-notification {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        max-width: none;
+    }
+    
+    .services-status-panel .status-header {
+        flex-wrap: wrap;
+    }
+    
+    .header-left {
+        flex: 1;
+    }
+}

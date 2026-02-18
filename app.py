@@ -580,6 +580,20 @@ class RedisRequestQueue:
         
         app.logger.info(f"RedisRequestQueue._process_request: тип={request_type}, текст='{message_text}'")
         
+        # ВАЖНО: Если это результат обработки изображения, не обрабатываем как текст
+        # Проверяем, не является ли это ответом на запрос с изображением
+        if request_type == 'image_result':
+            app.logger.info("Это результат обработки изображения, пропускаем")
+            return {
+                'response': message_text,
+                'session_id': session_id,
+                'model_used': 'system',
+                'model_category': 'image_result',
+                'assistant_timestamp': get_current_time_in_timezone_for_db(),
+                'response_time': 0,
+                'is_error': False
+            }
+        
         # Для текстовых запросов
         if request_type == 'text':
             app.logger.info("RedisRequestQueue._process_request: обработка текстового запроса")
@@ -745,11 +759,11 @@ class RedisRequestQueue:
                     }
             
             elif action_type == 'camera':
-                # ... (код для камер остается без изменений)
+                # ... (код для камер)
                 pass
             
             elif action_type == 'reasoning':
-                # ... (код для reasoning остается без изменений)
+                # ... (код для reasoning)
                 pass
             
             else:  # action_type == 'none'
@@ -812,12 +826,12 @@ class RedisRequestQueue:
                 response_time=str(process_time)
             )
             
-            # ВОЗВРАЩАЕМ РЕЗУЛЬТАТ ТОЛЬКО ОДИН РАЗ
+            # ВАЖНО: Возвращаем результат с флагом, что это результат обработки изображения
             return {
                 'response': bot_reply,
                 'session_id': session_id,
                 'model_used': app.config['LLM_MULTIMODAL_MODEL'] if 'multimodal' in modules else 'system',
-                'model_category': 'multimodal',
+                'model_category': 'image_result',  # <-- ИЗМЕНЕНО: теперь это специальный флаг
                 'assistant_timestamp': completion_time_for_db,
                 'response_time': process_time,
                 'is_error': is_error

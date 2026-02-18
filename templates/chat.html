@@ -22,6 +22,9 @@
             </div>
             {% endfor %}
         </div>
+        
+        <!-- Добавляем панель статуса сервисов -->
+        {% include "components/service_status.html" %}
     </div>
     
     <!-- Правая часть – чат -->
@@ -69,6 +72,9 @@
             </div>
         </div>
         
+        <!-- Добавляем контейнер для предупреждений о статусе сервисов -->
+        <div id="service-warnings" class="service-warnings"></div>
+        
         <div class="chat-messages" id="chat-messages">
             <!-- История загрузится через JS -->
         </div>
@@ -100,6 +106,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/service_status.js') }}"></script>
 <script>
     // Глобальные переменные
     let currentSessionId = "{{ current_session }}";
@@ -190,6 +197,31 @@
     function closeImageModal() {
         const modal = document.getElementById('image-modal');
         modal.style.display = "none";
+    }
+
+    // -------------------------------
+    // Функция для показа предупреждений о статусе сервисов
+    // -------------------------------
+    function showServiceWarning(message, type = 'warning') {
+        const warningsDiv = document.getElementById('service-warnings');
+        if (!warningsDiv) return;
+        
+        const warning = document.createElement('div');
+        warning.className = `service-warning ${type}`;
+        warning.innerHTML = `
+            <span class="warning-icon">⚠️</span>
+            <span class="warning-text">${message}</span>
+            <button class="close-warning" onclick="this.parentElement.remove()">✕</button>
+        `;
+        
+        warningsDiv.appendChild(warning);
+        
+        // Автоматически скрываем через 10 секунд
+        setTimeout(() => {
+            if (warning.parentElement) {
+                warning.remove();
+            }
+        }, 10000);
     }
 
     // -------------------------------
@@ -501,6 +533,9 @@
 
         // Периодическое обновление списка сеансов (каждые 5 секунд)
         setInterval(forceRefreshSessions, 5000);
+        
+        // Инициализируем монитор статусов сервисов
+        window.serviceMonitor = new ServiceStatusMonitor();
     });
 
     // -------------------------------
@@ -607,7 +642,7 @@
     }
 
     // -------------------------------
-    // Отображение одного сообщения (ИСПРАВЛЕННАЯ)
+    // Отображение одного сообщения
     // -------------------------------
     function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
         console.log('displayMessage called with:', {  // Добавляем отладку
@@ -967,6 +1002,61 @@
         }
     }
 
+    function updateSystemLoad(system) {
+        const container = document.getElementById('system-load');
+        if (!container) return;
+        
+        if (!system) {
+            container.innerHTML = '';
+            return;
+        }
+        
+        const loadPercent = Math.min(100, (system.total_queued / 10) * 100);
+        const loadClass = system.current_load === 'high' ? 'high' : '';
+        
+        let statusText = 'Низкая';
+        let statusColor = '#28a745';
+        if (system.total_queued > 10) {
+            statusText = 'Высокая';
+            statusColor = '#dc3545';
+        } else if (system.total_queued > 5) {
+            statusText = 'Средняя';
+            statusColor = '#ffc107';
+        }
+        
+        // Добавляем информацию о доступности сервисов
+        let servicesHtml = '';
+        if (system.services) {
+            servicesHtml = '<div class="services-mini-status">';
+            if (system.services.ollama) {
+                const ollamaHealth = system.services.ollama.health;
+                servicesHtml += `<span class="service-dot ${ollamaHealth}" title="Ollama: ${ollamaHealth}"></span>`;
+            }
+            if (system.services.automatic1111) {
+                const autoHealth = system.services.automatic1111.health;
+                servicesHtml += `<span class="service-dot ${autoHealth}" title="Automatic1111: ${autoHealth}"></span>`;
+            }
+            servicesHtml += '</div>';
+        }
+        
+        container.innerHTML = `
+            <div class="system-load-indicator">
+                <div class="load-header">
+                    <span>📊 Нагрузка системы ${servicesHtml}</span>
+                    <span class="load-status" style="color: ${statusColor};">${statusText}</span>
+                </div>
+                <div class="load-bar-container">
+                    <div class="load-bar">
+                        <div class="load-fill ${loadClass}" style="width: ${loadPercent}%"></div>
+                    </div>
+                    <div class="load-value">
+                        <strong>${system.total_queued}</strong> в очереди
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
     function updateProcessingRequest(processing) {
         const container = document.getElementById('processing-request');
         const textEl = document.getElementById('processing-text');
@@ -1043,46 +1133,6 @@
         } else {
             container.style.display = 'none';
         }
-    }
-
-    function updateSystemLoad(system) {
-        const container = document.getElementById('system-load');
-        if (!container) return;
-        
-        if (!system) {
-            container.innerHTML = '';
-            return;
-        }
-        
-        const loadPercent = Math.min(100, (system.total_queued / 10) * 100);
-        const loadClass = system.current_load === 'high' ? 'high' : '';
-        
-        let statusText = 'Низкая';
-        let statusColor = '#28a745';
-        if (system.total_queued > 10) {
-            statusText = 'Высокая';
-            statusColor = '#dc3545';
-        } else if (system.total_queued > 5) {
-            statusText = 'Средняя';
-            statusColor = '#ffc107';
-        }
-        
-        container.innerHTML = `
-            <div class="system-load-indicator">
-                <div class="load-header">
-                    <span>📊 Нагрузка системы</span>
-                    <span class="load-status" style="color: ${statusColor};">${statusText}</span>
-                </div>
-                <div class="load-bar-container">
-                    <div class="load-bar">
-                        <div class="load-fill ${loadClass}" style="width: ${loadPercent}%"></div>
-                    </div>
-                    <div class="load-value">
-                        <strong>${system.total_queued}</strong> в очереди
-                    </div>
-                </div>
-            </div>
-        `;
     }
 
     async function cancelRequest(requestId) {
@@ -1206,6 +1256,11 @@
                 
                 const data = await response.json();
                 console.log('Ответ от сервера:', data);
+                
+                // Показываем предупреждение, если сервис не готов
+                if (data.warning) {
+                    showServiceWarning(data.warning);
+                }
                 
                 if (data.status === 'queued') {
                     const waitMinutes = Math.floor(data.estimated_wait / 60);
@@ -2153,4 +2208,101 @@
     });
 
 </script>
+
+<!-- Добавляем стили для предупреждений о статусе сервисов -->
+<style>
+.service-warnings {
+    position: fixed;
+    top: 60px;
+    right: 20px;
+    z-index: 1000;
+    max-width: 350px;
+}
+
+.service-warning {
+    background: #fff3cd;
+    border: 1px solid #ffeeba;
+    color: #856404;
+    padding: 12px 15px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: slideIn 0.3s ease;
+}
+
+.service-warning.error {
+    background: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
+}
+
+.warning-icon {
+    font-size: 1.2rem;
+}
+
+.warning-text {
+    flex: 1;
+    font-size: 0.9rem;
+}
+
+.close-warning {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    color: inherit;
+    opacity: 0.5;
+    padding: 0 5px;
+}
+
+.close-warning:hover {
+    opacity: 1;
+}
+
+/* Стили для индикаторов сервисов в панели статуса */
+.services-mini-status {
+    display: inline-flex;
+    gap: 4px;
+    margin-left: 8px;
+}
+
+.service-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.service-dot.healthy {
+    background: #28a745;
+    box-shadow: 0 0 5px #28a745;
+}
+
+.service-dot.degraded {
+    background: #ffc107;
+    box-shadow: 0 0 5px #ffc107;
+}
+
+.service-dot.down {
+    background: #dc3545;
+}
+
+.service-dot.unknown {
+    background: #6c757d;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+</style>
 {% endblock %}

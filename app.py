@@ -21,6 +21,8 @@ from collections import defaultdict
 
 # Импорт модулей
 from modules import BaseModule, MultimodalModule, ImageModule, CamModule, RagModule, AudioModule
+from modules.resource_manager import ResourceManager
+from modules.hardware_detector import ProcessingMode, ServiceLocation, ServiceHealth
 
 load_dotenv()
 
@@ -56,6 +58,7 @@ app.config.update({
     'LLM_REASONING_TOP_P': float(os.getenv('LLM_REASONING_TOP_P', 0.9)),
     'AUTOMATIC1111_URL': os.getenv('AUTOMATIC1111_URL'),
     'AUTOMATIC1111_MODEL': os.getenv('AUTOMATIC1111_MODEL'),
+    'CAMERA_API_URL': os.getenv('CAMERA_API_URL', 'http://host.docker.internal:5005'),
     'MAX_IMAGE_WIDTH': int(os.getenv('MAX_IMAGE_WIDTH', 3840)),
     'MAX_IMAGE_HEIGHT': int(os.getenv('MAX_IMAGE_HEIGHT', 2160)),
     'MAX_IMAGE_SIZE_MB': int(os.getenv('MAX_IMAGE_SIZE_MB', 5))
@@ -81,6 +84,11 @@ console_handler.setFormatter(formatter)
 app.logger.handlers = [console_handler]
 app.logger.setLevel(logging.DEBUG)
 
+# Инициализация ResourceManager
+resource_manager = ResourceManager(app)
+app.resource_manager = resource_manager  # Сохраняем в app для доступа из других модулей
+app.logger.info(f"ResourceManager инициализирован")
+
 # Инициализация модулей
 modules = {}
 
@@ -96,6 +104,8 @@ if app.config['AUTOMATIC1111_URL'] and 'multimodal' in modules:
     modules['image'] = ImageModule(app)
     # Связываем с мультимодальным модулем
     modules['image'].set_multimodal_module(modules['multimodal'])
+    # Передаём resource_manager
+    modules['image'].resource_manager = resource_manager
 else:
     app.logger.info("ImageModule не инициализирован (требуются Automatic1111_URL и мультимодальный модуль)")
 
@@ -1123,6 +1133,50 @@ def api_delete_session(session_id):
     
     return jsonify({'status': 'ok'})
 
+# ===================== НОВЫЕ ЭНДПОИНТЫ =====================
+
+@app.route('/api/services/status', methods=['GET'])
+def api_services_status():
+    """Получение статуса всех сервисов"""
+    if 'email' not in session:
+        return jsonify({'error': 'Не авторизован'}), 401
+    
+    statuses = resource_manager.get_status()
+    
+    # Преобразуем в JSON-совместимый формат
+    result = {}
+    for name, status in statuses.items():
+        # Определяем режим работы для каждого сервиса
+        mode = None
+        if name == 'ollama':
+            mode = resource_manager.ollama_mode.value
+        elif name == 'automatic1111':
+            mode = resource_manager.automatic1111_mode.value
+        
+        result[name] = {
+            'name': status.name,
+            'location': status.location.value,
+            'health': status.health.value,
+            'mode': mode,
+            'available': status.available,
+            'url': status.url,
+            'memory': status.memory,
+            'load': status.load,
+            'current_model': status.current_model,
+            'details': status.details,
+            'last_update': status.last_update.isoformat() if status.last_update else None
+        }
+    
+    return jsonify(result)
+
+@app.route('/api/system/info', methods=['GET'])
+def api_system_info():
+    """Получение информации о системе"""
+    if 'email' not in session:
+        return jsonify({'error': 'Не авторизован'}), 401
+    
+    return jsonify(resource_manager.get_system_info())
+
 # -------------------------------
 # API для очереди запросов (Redis)
 # -------------------------------
@@ -1135,12 +1189,29 @@ def api_queue_status():
     user_id = session['email']
     status = request_queue.get_user_requests_status(user_id)
     
-    # Добавляем общую информацию о системе
+    # Добавляем информацию о доступности сервисов
+    service_statuses = resource_manager.get_status()
+    
     queue_length = request_queue.redis.llen(request_queue.queue_key)
+    
+    # Определяем загрузку на основе статусов
+    current_load = 'normal'
+    if service_statuses['automatic1111'].load > 50 or service_statuses['ollama'].load > 50:
+        current_load = 'high'
+    
     status['system'] = {
         'total_queued': queue_length,
-        'current_load': 'high' if queue_length > 10 else 'normal',
-        'avg_response_time': 5  # Заглушка
+        'current_load': current_load,
+        'services': {
+            'ollama': {
+                'available': service_statuses['ollama'].available,
+                'health': service_statuses['ollama'].health.value
+            },
+            'automatic1111': {
+                'available': service_statuses['automatic1111'].available,
+                'health': service_statuses['automatic1111'].health.value
+            }
+        }
     }
     
     return jsonify(status)
@@ -1260,7 +1331,7 @@ def send_message():
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (session_id,))
-        is_first_message = c.fetchone()[0] == 1  # Только что сохранили
+        is_first_message = c.fetchone()[0] == 1
     
     if is_first_message:
         update_session_title(session_id, message_text, file_name)
@@ -1269,6 +1340,9 @@ def send_message():
     request_type = 'text'
     if file_data and file_type and file_type.startswith('image/'):
         request_type = 'image'
+    
+    # Проверяем возможность обработки через ResourceManager
+    can_process, reason, wait_time = resource_manager.can_process_request(request_type)
     
     # Создаём данные для очереди
     request_data = {
@@ -1285,13 +1359,19 @@ def send_message():
         user_id, session_id, request_data, user_class
     )
     
-    return jsonify({
+    # Если сервис не готов, добавляем предупреждение
+    response_data = {
         'status': 'queued',
         'request_id': request_id,
         'position': position_info['position'],
         'estimated_wait': position_info['estimated_seconds'],
         'message': f'Запрос поставлен в очередь (позиция {position_info["position"]})'
-    })
+    }
+    
+    if can_process == 'wait':
+        response_data['warning'] = f'⚠️ {reason}. Ожидание: ~{wait_time} сек'
+    
+    return jsonify(response_data)
 
 # -------------------------------
 # Статика и прочее

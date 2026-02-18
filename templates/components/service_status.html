@@ -1,0 +1,328 @@
+<!-- templates/components/service_status.html -->
+
+<div class="services-status-panel">
+    <div class="status-header">
+        <h3>🔌 Состояние сервисов</h3>
+        <button class="refresh-status-small" onclick="window.serviceMonitor.updateStatus()" title="Обновить">↻</button>
+    </div>
+    
+    <!-- Ollama статус -->
+    <div class="service-card" id="ollama-status">
+        <div class="service-header">
+            <span class="service-name">🦙 Ollama</span>
+            <span class="service-location" id="ollama-location"></span>
+            <span class="service-health-indicator" id="ollama-health"></span>
+        </div>
+        
+        <div class="service-details" id="ollama-details">
+            <div class="detail-row">
+                <span class="detail-label">URL:</span>
+                <span class="detail-value" id="ollama-url"></span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Модель:</span>
+                <span class="detail-value" id="ollama-model"></span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Режим:</span>
+                <span class="detail-value" id="ollama-mode"></span>
+            </div>
+            <div class="memory-indicator" id="ollama-memory">
+                <div class="memory-bar-container">
+                    <div class="memory-bar" id="ollama-memory-bar"></div>
+                </div>
+                <span class="memory-text" id="ollama-memory-text"></span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Automatic1111 статус -->
+    <div class="service-card" id="automatic1111-status">
+        <div class="service-header">
+            <span class="service-name">🎨 Automatic1111</span>
+            <span class="service-location" id="automatic1111-location"></span>
+            <span class="service-health-indicator" id="automatic1111-health"></span>
+        </div>
+        
+        <div class="service-details" id="automatic1111-details">
+            <div class="detail-row">
+                <span class="detail-label">URL:</span>
+                <span class="detail-value" id="automatic1111-url"></span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Модель:</span>
+                <span class="detail-value" id="automatic1111-model"></span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">Режим:</span>
+                <span class="detail-value" id="automatic1111-mode"></span>
+            </div>
+            <div class="detail-row" id="automatic1111-load-row" style="display: none;">
+                <span class="detail-label">Загрузка:</span>
+                <span class="detail-value" id="automatic1111-load"></span>
+            </div>
+            <div class="memory-indicator" id="automatic1111-memory">
+                <div class="memory-bar-container">
+                    <div class="memory-bar" id="automatic1111-memory-bar"></div>
+                </div>
+                <span class="memory-text" id="automatic1111-memory-text"></span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Camera API статус -->
+    <div class="service-card" id="camera-status">
+        <div class="service-header">
+            <span class="service-name">📷 Камеры</span>
+            <span class="service-location" id="camera-location"></span>
+            <span class="service-health-indicator" id="camera-health"></span>
+        </div>
+        
+        <div class="service-details" id="camera-details">
+            <div class="detail-row">
+                <span class="detail-label">URL:</span>
+                <span class="detail-value" id="camera-url"></span>
+            </div>
+            <div class="detail-row" id="camera-rooms-row">
+                <span class="detail-label">Комнаты:</span>
+                <span class="detail-value" id="camera-rooms"></span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Системная информация -->
+    <div class="system-info-card">
+        <div class="service-header">
+            <span class="service-name">💻 Система</span>
+        </div>
+        <div class="service-details">
+            <div class="detail-row">
+                <span class="detail-label">GPU:</span>
+                <span class="detail-value" id="system-gpu"></span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">CPU:</span>
+                <span class="detail-value" id="system-cpu"></span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">RAM:</span>
+                <span class="detail-value" id="system-ram"></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Добавляем CSS для индикаторов -->
+<style>
+.services-status-panel {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    font-size: 0.9rem;
+}
+
+.services-status-panel .status-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.services-status-panel h3 {
+    margin: 0;
+    color: #2c3e50;
+    font-size: 1rem;
+}
+
+.refresh-status-small {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    color: #666;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.refresh-status-small:hover {
+    background-color: #e0e0e0;
+}
+
+.service-card {
+    background: white;
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 8px;
+    border-left: 4px solid #ddd;
+    transition: all 0.3s ease;
+}
+
+.service-card.healthy {
+    border-left-color: #28a745;
+}
+
+.service-card.degraded {
+    border-left-color: #ffc107;
+}
+
+.service-card.down {
+    border-left-color: #dc3545;
+    opacity: 0.7;
+    background: #f8f9fa;
+}
+
+.service-card.unknown {
+    border-left-color: #6c757d;
+}
+
+.service-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.service-name {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.service-location {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 12px;
+    background: #e9ecef;
+    color: #495057;
+}
+
+.service-location.local {
+    background: #d4edda;
+    color: #155724;
+}
+
+.service-location.remote {
+    background: #cce5ff;
+    color: #004085;
+}
+
+.service-health-indicator {
+    margin-left: auto;
+    font-size: 0.8rem;
+}
+
+.healthy .service-health-indicator {
+    color: #28a745;
+}
+
+.degraded .service-health-indicator {
+    color: #ffc107;
+}
+
+.down .service-health-indicator {
+    color: #dc3545;
+}
+
+.down .service-name {
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
+.service-details {
+    font-size: 0.8rem;
+    color: #666;
+}
+
+.detail-row {
+    display: flex;
+    margin-bottom: 4px;
+    padding: 2px 0;
+}
+
+.detail-label {
+    width: 70px;
+    color: #999;
+}
+
+.detail-value {
+    flex: 1;
+    color: #2c3e50;
+    word-break: break-all;
+}
+
+.memory-indicator {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed #dee2e6;
+}
+
+.memory-bar-container {
+    height: 6px;
+    background: #e9ecef;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 4px;
+}
+
+.memory-bar {
+    height: 100%;
+    transition: width 0.3s ease;
+}
+
+.memory-bar.normal {
+    background: #28a745;
+}
+
+.memory-bar.warning {
+    background: #ffc107;
+}
+
+.memory-bar.critical {
+    background: #dc3545;
+}
+
+.memory-text {
+    font-size: 0.7rem;
+    color: #666;
+}
+
+.system-info-card {
+    background: #e9ecef;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-top: 8px;
+}
+
+.health-icon {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+}
+
+.health-icon.healthy {
+    background: #28a745;
+    box-shadow: 0 0 5px #28a745;
+}
+
+.health-icon.degraded {
+    background: #ffc107;
+    box-shadow: 0 0 5px #ffc107;
+}
+
+.health-icon.down {
+    background: #dc3545;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.service-card.degraded .memory-bar {
+    animation: pulse 2s infinite;
+}
+</style>

@@ -1019,6 +1019,8 @@ def create_session(user_id, title="Новый сеанс"):
             VALUES (?, ?, ?, ?, ?, ?)
         ''', (session_id, user_id, title, 'auto', current_time, current_time))
         conn.commit()
+    
+    app.logger.info(f"Создан новый сеанс {session_id} для пользователя {user_id} с заголовком '{title}'")
     return session_id
 
 def update_session_title(session_id, first_message, file_name=None):
@@ -1362,7 +1364,7 @@ def api_check_result(request_id):
     else:
         return jsonify({'status': 'pending'})
 
-# ===================== API ДЛЯ ПРОВЕРКИ ОБНОВЛЕНИЙ =====================
+# ===================== API ДЛЯ ПРОВЕРКИ ОБНОВЛЕНИЙ (УЛУЧШЕННАЯ ВЕРСИЯ) =====================
 @app.route('/api/check-updates', methods=['GET'])
 def api_check_updates():
     """Проверка обновлений для всех сеансов пользователя"""
@@ -1382,6 +1384,8 @@ def api_check_updates():
         'sessions': []       # обновлённые данные сеансов
     }
     
+    current_session_id = session.get('current_session')
+    
     for s in sessions:
         # Проверяем, было ли обновление сеанса после last_check
         try:
@@ -1397,13 +1401,17 @@ def api_check_updates():
                 })
                 
                 # Проверяем, является ли этот сеанс текущим
-                if s['id'] == session.get('current_session'):
+                if current_session_id and s['id'] == current_session_id:
                     result['current_session_updated'] = True
                 else:
                     result['new_messages'].append(s['id'])
                     
         except Exception as e:
             app.logger.error(f"Ошибка при проверке обновлений для сеанса {s['id']}: {e}")
+    
+    # Логируем для отладки
+    if result['has_updates']:
+        app.logger.debug(f"Обнаружены обновления: {result}")
     
     return jsonify(result)
 

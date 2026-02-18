@@ -340,8 +340,10 @@
                     // Обновляем список сеансов
                     await loadSessionsFromServer();
                     
-                    // ЕСЛИ ОБНОВЛЕНИЕ В ТЕКУЩЕМ СЕАНСЕ - ПРИНУДИТЕЛЬНО ПЕРЕЗАГРУЖАЕМ СООБЩЕНИЯ
-                    if (updates.current_session_updated) {
+                    // Проверяем, есть ли обновления для текущего сеанса
+                    const currentSessionUpdated = updates.sessions?.some(s => s.id === currentSessionId) || false;
+                    
+                    if (currentSessionUpdated) {
                         console.log('Обновление в текущем сеансе, принудительная перезагрузка');
                         
                         // Очищаем кэш для текущего сеанса
@@ -352,11 +354,13 @@
                     }
                     
                     // Обновляем индикаторы для других сеансов
-                    updates.new_messages.forEach(sessionId => {
-                        if (sessionId !== currentSessionId) {
-                            setNewMessageIndicator(sessionId, true);
-                        }
-                    });
+                    if (updates.new_messages && Array.isArray(updates.new_messages)) {
+                        updates.new_messages.forEach(sessionId => {
+                            if (sessionId !== currentSessionId) {
+                                setNewMessageIndicator(sessionId, true);
+                            }
+                        });
+                    }
                     
                     // Обновляем время последней проверки
                     lastUpdateCheck = Date.now() / 1000;
@@ -1155,18 +1159,26 @@
     }
 
     // -------------------------------
-    // Обновление заголовка сеанса
+    // Обновление заголовка сеанса (УЛУЧШЕННАЯ ВЕРСИЯ)
     // -------------------------------
     function updateSessionTitle(sessionId, newTitle) {
         // Обновляем в хранилище данных
         if (sessionsData[sessionId]) {
             sessionsData[sessionId].title = newTitle;
             sessionsData[sessionId].updated_at = new Date().toISOString();
+        } else {
+            sessionsData[sessionId] = {
+                title: newTitle,
+                updated_at: new Date().toISOString()
+            };
         }
         
         // Находим элемент сеанса
         const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
-        if (!sessionItem) return;
+        if (!sessionItem) {
+            console.log('Session item not found, will be updated when list reloads');
+            return;
+        }
         
         const titleElement = sessionItem.querySelector('.session-title');
         if (titleElement) {
@@ -1202,6 +1214,9 @@
         if (sessionsList.firstChild !== sessionItem) {
             sessionsList.insertBefore(sessionItem, sessionsList.firstChild);
         }
+        
+        // Обновляем счетчик сообщений в заголовке
+        updateMessageCount();
     }
 
     // -------------------------------
@@ -1579,7 +1594,7 @@
     }
 
     // -------------------------------
-    // Отправка сообщения
+    // Отправка сообщения (ИСПРАВЛЕННАЯ ВЕРСИЯ)
     // -------------------------------
     async function sendMessage() {
         const input = document.getElementById('message-input');
@@ -1596,20 +1611,32 @@
         sendButton.disabled = true;
         sendButton.innerHTML = '⏳ Отправка...';
         
+        // Проверяем, первое ли это сообщение в сеансе
         const messageCount = document.querySelectorAll('.user-message').length;
-        if (messageCount === 0) {
+        const isFirstMessage = messageCount === 0;
+        
+        if (isFirstMessage) {
             let newTitle = text ? text.slice(0, 40) + (text.length > 40 ? '...' : '') : '';
             if (!newTitle && attachedFile) {
                 newTitle = attachedFile.name.slice(0, 40) + (attachedFile.name.length > 40 ? '...' : '');
             }
             if (newTitle) {
+                // Сначала обновляем локально
                 updateSessionTitle(currentSessionId, newTitle);
                 
+                // Затем отправляем на сервер
                 fetch(`/api/sessions/${currentSessionId}/update-title`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({title: newTitle})
-                }).catch(err => console.error('Ошибка обновления заголовка:', err));
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Title updated on server:', data);
+                    // Принудительно обновляем список сеансов после обновления заголовка
+                    loadSessionsFromServer();
+                })
+                .catch(err => console.error('Ошибка обновления заголовка:', err));
             }
         }
         
@@ -1736,6 +1763,14 @@
                 sendButton.disabled = false;
                 sendButton.innerHTML = 'Отправить';
                 isSending = false;
+                
+                // После отправки сообщения принудительно обновляем список сеансов
+                // чтобы заголовок обновился на всех устройствах
+                if (isFirstMessage) {
+                    setTimeout(() => {
+                        loadSessionsFromServer();
+                    }, 1000);
+                }
             }
         };
 

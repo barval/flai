@@ -1308,6 +1308,51 @@ def api_check_result(request_id):
     else:
         return jsonify({'status': 'pending'})
 
+# ===================== API ДЛЯ ПРОВЕРКИ ОБНОВЛЕНИЙ =====================
+@app.route('/api/check-updates', methods=['GET'])
+def api_check_updates():
+    """Проверка обновлений для всех сеансов пользователя"""
+    if 'email' not in session:
+        return jsonify({'error': 'Не авторизован'}), 401
+    
+    user_id = session['email']
+    last_check = request.args.get('last_check', type=float, default=0)
+    
+    # Получаем все сеансы пользователя
+    sessions = get_user_sessions(user_id)
+    
+    result = {
+        'has_updates': False,
+        'current_session_updated': False,
+        'new_messages': [],  # список ID сеансов с новыми сообщениями
+        'sessions': []       # обновлённые данные сеансов
+    }
+    
+    for s in sessions:
+        # Проверяем, было ли обновление сеанса после last_check
+        try:
+            # Преобразуем updated_at в timestamp для сравнения
+            updated_time = datetime.strptime(s['updated_at'], '%Y-%m-%d %H:%M:%S').timestamp()
+            
+            if updated_time > last_check:
+                result['has_updates'] = True
+                result['sessions'].append({
+                    'id': s['id'],
+                    'title': s['title'],
+                    'updated_at': s['updated_at']
+                })
+                
+                # Проверяем, является ли этот сеанс текущим
+                if s['id'] == session.get('current_session'):
+                    result['current_session_updated'] = True
+                else:
+                    result['new_messages'].append(s['id'])
+                    
+        except Exception as e:
+            app.logger.error(f"Ошибка при проверке обновлений для сеанса {s['id']}: {e}")
+    
+    return jsonify(result)
+
 # ===================== API ДЛЯ ПОДПИСИ ФУТЕРА =====================
 @app.route('/api/footer-text', methods=['GET'])
 def api_footer_text():

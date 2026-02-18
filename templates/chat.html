@@ -121,6 +121,9 @@
     let lastUpdateCheck = Date.now() / 1000; // в секундах
     let globalUpdatesInterval = null;
     let messagesCache = {};
+    
+    // Глобальный Set для отслеживания уже обработанных requestId
+    let processedRequests = new Set();
 
     // -------------------------------
     // Вспомогательные функции
@@ -199,7 +202,7 @@
 
     function closeImageModal() {
         const modal = document.getElementById('image-modal');
-        modal.style.display = "none";
+        modal.style.display = 'none';
     }
 
     // -------------------------------
@@ -572,6 +575,53 @@
     function initRequestsStatusPanel() {
         // Только обновляем данные, но не показываем панель автоматически
         refreshRequestsStatus();
+    }
+
+    // -------------------------------
+    // Функция для проверки существования сообщения
+    // -------------------------------
+    function messageExists(content, timestamp, modelName) {
+        const messages = document.querySelectorAll('.assistant-message, .bot-message');
+        
+        // Проверяем все сообщения
+        for (let msg of messages) {
+            const msgTimestamp = msg.getAttribute('data-timestamp');
+            const msgModel = msg.dataset.modelName;
+            const msgContent = msg.querySelector('.message-content')?.textContent || '';
+            
+            // Если время совпадает (с точностью до секунды)
+            if (msgTimestamp && timestamp) {
+                const msgDate = new Date(msgTimestamp);
+                const newDate = new Date(timestamp);
+                
+                // Сравниваем с точностью до 1.5 секунды
+                if (Math.abs(msgDate - newDate) < 1500) {
+                    // Проверяем, что контент похож (первые 30 символов)
+                    if (msgContent.substring(0, 30) === content.substring(0, 30)) {
+                        console.log('Duplicate message found:', msgContent.substring(0, 30));
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    // -------------------------------
+    // Функция для безопасного добавления сообщения
+    // -------------------------------
+    function safelyDisplayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
+        // Для сообщений ассистента проверяем дубликаты
+        if (role === 'assistant') {
+            if (messageExists(content, timestamp, modelName)) {
+                console.log('Blocked duplicate message:', content.substring(0, 50));
+                return false;
+            }
+        }
+        
+        // Вызываем оригинальную функцию displayMessage
+        displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel);
+        return true;
     }
 
     // -------------------------------
@@ -1018,6 +1068,9 @@
     // Переключение сеанса
     // -------------------------------
     function switchSession(sessionId) {
+        // Очищаем Set обработанных запросов при смене сеанса
+        processedRequests.clear();
+        
         fetch(`/api/sessions/${sessionId}/switch`, { method: 'POST' })
             .then(res => res.json())
             .then(() => {
@@ -1044,6 +1097,9 @@
     // Создание нового сеанса
     // -------------------------------
     function createNewSession() {
+        // Очищаем Set обработанных запросов при создании нового сеанса
+        processedRequests.clear();
+        
         fetch('/api/sessions/new', { method: 'POST' })
             .then(res => res.json())
             .then(data => {
@@ -1298,6 +1354,176 @@
     }
 
     // -------------------------------
+    // Функция для опроса результата (исправленная)
+    // -------------------------------
+    function startResultPolling(requestId) {
+        console.log('Start polling for request:', requestId);
+        let pollCount = 0;
+        const maxPolls = 120;
+        
+        // Проверяем, не обрабатывали ли мы уже этот requestId
+        if (processedRequests.has(requestId)) {
+            console.log('Request already processed, skipping polling');
+            return;
+        }
+        
+        const pollInterval = setInterval(async () => {
+            pollCount++;
+            
+            try {
+                const response = await fetch(`/api/queue/result/${requestId}`);
+                const data = await response.json();
+                console.log('Poll result:', data);
+                
+                if (data.status === 'completed') {
+                    clearInterval(pollInterval);
+                    console.log('Request completed, result:', data.result);
+                    
+                    // Добавляем requestId в обработанные
+                    processedRequests.add(requestId);
+                    
+                    if (data.result) {
+                        const resultSessionId = data.result.session_id;
+                        
+                        if (data.result.response) {
+                            let responseTime = data.result.response_time;
+                            let modelUsed = data.result.model_used;
+                            const isError = data.result.is_error || false;
+                            const timestamp = data.result.assistant_timestamp || new Date().toISOString();
+                            
+                            console.log('Processing completed result:', {
+                                responseTime,
+                                modelUsed,
+                                type: typeof responseTime,
+                                value: responseTime
+                            });
+                            
+                            // Проверяем наличие раздельного времени
+                            if (data.result.mm_time && data.result.gen_time) {
+                                responseTime = {
+                                    mm_time: data.result.mm_time,
+                                    gen_time: data.result.gen_time,
+                                    mm_model: data.result.mm_model,
+                                    gen_model: data.result.gen_model
+                                };
+                                modelUsed = data.result.mm_model;
+                            } 
+                            // Если responseTime - строка, пробуем распарсить как JSON
+                            else if (typeof responseTime === 'string' && responseTime.startsWith('{')) {
+                                try {
+                                    responseTime = JSON.parse(responseTime);
+                                } catch (e) {
+                                    console.log('Failed to parse responseTime JSON:', e);
+                                }
+                            }
+                            
+                            console.log('Final responseTime before display:', responseTime);
+                            
+                            if (resultSessionId === currentSessionId) {
+                                // Используем безопасную функцию добавления
+                                safelyDisplayMessage(
+                                    'assistant',
+                                    data.result.response,
+                                    data.result.generated_image,
+                                    data.result.file_type,
+                                    data.result.file_name,
+                                    timestamp, 
+                                    responseTime,
+                                    modelUsed
+                                );
+                            } else {
+                                console.log(`Ответ для сеанса ${resultSessionId}, не текущего`);
+                                setNewMessageIndicator(resultSessionId, true, isError);
+                                loadSessionsFromServer();
+                            }
+                        } else if (data.result.error) {
+                            if (resultSessionId === currentSessionId) {
+                                const timestamp = data.result.assistant_timestamp || new Date().toISOString();
+                                
+                                // Используем безопасную функцию добавления
+                                safelyDisplayMessage(
+                                    'assistant',
+                                    `⚠️ ${data.result.error}`,
+                                    null, null, null,
+                                    timestamp,
+                                    data.result.response_time,
+                                    'system'
+                                );
+                            } else {
+                                setNewMessageIndicator(resultSessionId, true, true);
+                                loadSessionsFromServer();
+                            }
+                        }
+                    }
+                    refreshRequestsStatus();
+                    
+                    setTimeout(() => {
+                        loadSessionsFromServer();
+                    }, 500);
+                    
+                } else if (data.status === 'error') {
+                    clearInterval(pollInterval);
+                    console.error('Request error:', data.error);
+                    
+                    // Добавляем requestId в обработанные
+                    processedRequests.add(requestId);
+                    
+                    const resultSessionId = data.result?.session_id;
+                    const timestamp = data.result?.assistant_timestamp || new Date().toISOString();
+                    
+                    if (resultSessionId === currentSessionId) {
+                        // Используем безопасную функцию добавления
+                        safelyDisplayMessage(
+                            'assistant',
+                            `⚠️ Ошибка: ${data.error || 'Неизвестная ошибка'}`,
+                            null, null, null,
+                            timestamp,
+                            data.result?.response_time,
+                            'system'
+                        );
+                    } else if (resultSessionId) {
+                        setNewMessageIndicator(resultSessionId, true, true);
+                        loadSessionsFromServer();
+                    }
+                    
+                    refreshRequestsStatus();
+                    
+                } else if (data.status === 'pending') {
+                    console.log('Request still pending...');
+                }
+                
+                if (pollCount >= maxPolls) {
+                    clearInterval(pollInterval);
+                    console.log('Polling stopped after max attempts');
+                    
+                    // Добавляем requestId в обработанные
+                    processedRequests.add(requestId);
+                    
+                    const timestamp = new Date().toISOString();
+                    
+                    // Используем безопасную функцию добавления
+                    safelyDisplayMessage(
+                        'assistant',
+                        '⚠️ Превышено время ожидания ответа. Проверьте статус запроса в панели "Мои запросы".',
+                        null, null, null,
+                        timestamp,
+                        null,
+                        'system'
+                    );
+                }
+                
+            } catch (error) {
+                console.error('Error polling result:', error);
+                if (pollCount >= maxPolls) {
+                    clearInterval(pollInterval);
+                    // В случае ошибки тоже добавляем в обработанные
+                    processedRequests.add(requestId);
+                }
+            }
+        }, 3000);
+    }
+
+    // -------------------------------
     // Отправка сообщения
     // -------------------------------
     async function sendMessage() {
@@ -1458,241 +1684,6 @@
             }
         };
 
-        // Функция для проверки существования сообщения
-        function messageExists(content, timestamp) {
-            const messages = document.querySelectorAll('.assistant-message, .bot-message');
-            const lastMessages = Array.from(messages).slice(-3); // Проверяем последние 3 сообщения
-            
-            for (let msg of lastMessages) {
-                const msgTimestamp = msg.getAttribute('data-timestamp');
-                const msgContent = msg.querySelector('.message-content')?.textContent || '';
-                
-                // Если время совпадает (с точностью до секунды) и контент похож
-                if (msgTimestamp && timestamp) {
-                    const msgDate = new Date(msgTimestamp);
-                    const newDate = new Date(timestamp);
-                    
-                    // Сравниваем с точностью до секунды
-                    if (Math.abs(msgDate - newDate) < 1000) {
-                        if (msgContent.includes(content.substring(0, 20))) {
-                            return true;
-                        }
-                    }
-                }
-            }
-            return false;
-        }
-
-        // Функция для опроса результата
-        function startResultPolling(requestId) {
-            console.log('Start polling for request:', requestId);
-            let pollCount = 0;
-            const maxPolls = 120;
-            
-            // Добавляем флаг для отслеживания, было ли уже добавлено сообщение
-            let messageAdded = false;
-            
-            const pollInterval = setInterval(async () => {
-                pollCount++;
-                
-                try {
-                    const response = await fetch(`/api/queue/result/${requestId}`);
-                    const data = await response.json();
-                    console.log('Poll result:', data);
-                    
-                    if (data.status === 'completed') {
-                        clearInterval(pollInterval);
-                        console.log('Request completed, result:', data.result);
-                        
-                        // Проверяем, не было ли сообщение уже добавлено
-                        if (messageAdded) {
-                            console.log('Message already added by flag, skipping');
-                            return;
-                        }
-                        
-                        if (data.result) {
-                            const resultSessionId = data.result.session_id;
-                            
-                            if (data.result.response) {
-                                let responseTime = data.result.response_time;
-                                let modelUsed = data.result.model_used;
-                                const isError = data.result.is_error || false;
-                                const timestamp = data.result.assistant_timestamp || new Date().toISOString();
-                                
-                                console.log('Processing completed result:', {
-                                    responseTime,
-                                    modelUsed,
-                                    type: typeof responseTime,
-                                    value: responseTime
-                                });
-                                
-                                // Проверяем наличие раздельного времени
-                                if (data.result.mm_time && data.result.gen_time) {
-                                    responseTime = {
-                                        mm_time: data.result.mm_time,
-                                        gen_time: data.result.gen_time,
-                                        mm_model: data.result.mm_model,
-                                        gen_model: data.result.gen_model
-                                    };
-                                    modelUsed = data.result.mm_model;
-                                } 
-                                // Если responseTime - строка, пробуем распарсить как JSON
-                                else if (typeof responseTime === 'string' && responseTime.startsWith('{')) {
-                                    try {
-                                        responseTime = JSON.parse(responseTime);
-                                    } catch (e) {
-                                        console.log('Failed to parse responseTime JSON:', e);
-                                    }
-                                }
-                                
-                                console.log('Final responseTime before display:', responseTime);
-                                
-                                if (resultSessionId === currentSessionId) {
-                                    // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: ищем сообщение с таким же содержимым
-                                    if (messageExists(data.result.response, timestamp)) {
-                                        console.log('Message already exists in DOM, skipping');
-                                        messageAdded = true;
-                                        return;
-                                    }
-                                    
-                                    // Устанавливаем флаг перед добавлением
-                                    messageAdded = true;
-                                    
-                                    displayMessage(
-                                        'assistant',
-                                        data.result.response,
-                                        data.result.generated_image,
-                                        data.result.file_type,
-                                        data.result.file_name,
-                                        timestamp, 
-                                        responseTime,
-                                        modelUsed
-                                    );
-                                } else {
-                                    console.log(`Ответ для сеанса ${resultSessionId}, не текущего`);
-                                    setNewMessageIndicator(resultSessionId, true, isError);
-                                    loadSessionsFromServer();
-                                }
-                            } else if (data.result.error) {
-                                if (resultSessionId === currentSessionId) {
-                                    const timestamp = data.result.assistant_timestamp || new Date().toISOString();
-                                    
-                                    // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА для ошибок
-                                    if (messageExists(`⚠️ ${data.result.error}`, timestamp)) {
-                                        console.log('Error message already exists in DOM, skipping');
-                                        messageAdded = true;
-                                        return;
-                                    }
-                                    
-                                    // Устанавливаем флаг перед добавлением
-                                    messageAdded = true;
-                                    
-                                    displayMessage(
-                                        'assistant',
-                                        `⚠️ ${data.result.error}`,
-                                        null, null, null,
-                                        timestamp,
-                                        data.result.response_time,
-                                        'system'
-                                    );
-                                } else {
-                                    setNewMessageIndicator(resultSessionId, true, true);
-                                    loadSessionsFromServer();
-                                }
-                            }
-                        }
-                        refreshRequestsStatus();
-                        
-                        setTimeout(() => {
-                            loadSessionsFromServer();
-                        }, 500);
-                        
-                    } else if (data.status === 'error') {
-                        clearInterval(pollInterval);
-                        console.error('Request error:', data.error);
-                        
-                        // Проверяем, не было ли сообщение уже добавлено
-                        if (messageAdded) {
-                            console.log('Message already added by flag, skipping error display');
-                            return;
-                        }
-                        
-                        const resultSessionId = data.result?.session_id;
-                        const timestamp = data.result?.assistant_timestamp || new Date().toISOString();
-                        
-                        // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА для ошибок
-                        if (resultSessionId === currentSessionId) {
-                            if (messageExists(`⚠️ Ошибка: ${data.error || 'Неизвестная ошибка'}`, timestamp)) {
-                                console.log('Error message already exists in DOM, skipping');
-                                messageAdded = true;
-                                return;
-                            }
-                        }
-                        
-                        if (resultSessionId === currentSessionId) {
-                            // Устанавливаем флаг перед добавлением
-                            messageAdded = true;
-                            
-                            displayMessage(
-                                'assistant',
-                                `⚠️ Ошибка: ${data.error || 'Неизвестная ошибка'}`,
-                                null, null, null,
-                                timestamp,
-                                data.result?.response_time,
-                                'system'
-                            );
-                        } else if (resultSessionId) {
-                            setNewMessageIndicator(resultSessionId, true, true);
-                            loadSessionsFromServer();
-                        }
-                        
-                        refreshRequestsStatus();
-                        
-                    } else if (data.status === 'pending') {
-                        console.log('Request still pending...');
-                    }
-                    
-                    if (pollCount >= maxPolls) {
-                        clearInterval(pollInterval);
-                        console.log('Polling stopped after max attempts');
-                        
-                        // Проверяем, не было ли сообщение уже добавлено
-                        if (messageAdded) {
-                            console.log('Message already added by flag, skipping timeout message');
-                            return;
-                        }
-                        
-                        const timestamp = new Date().toISOString();
-                        
-                        // ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА для timeout сообщения
-                        if (messageExists('⚠️ Превышено время ожидания ответа', timestamp)) {
-                            console.log('Timeout message already exists in DOM, skipping');
-                            messageAdded = true;
-                            return;
-                        }
-                        
-                        // Устанавливаем флаг перед добавлением
-                        messageAdded = true;
-                        
-                        displayMessage(
-                            'assistant',
-                            '⚠️ Превышено время ожидания ответа. Проверьте статус запроса в панели "Мои запросы".',
-                            null, null, null,
-                            timestamp,
-                            null,
-                            'system'
-                        );
-                    }
-                    
-                } catch (error) {
-                    console.error('Error polling result:', error);
-                    if (pollCount >= maxPolls) {
-                        clearInterval(pollInterval);
-                    }
-                }
-            }, 3000);
-        }
-        
         if (tempAttachedFile) {
             const reader = new FileReader();
             reader.onload = async function(e) {
@@ -2415,30 +2406,6 @@
         });
     }
 
-    const originalLoadMessages = window.loadMessages || function(){};
-
-    window.loadMessages = function(sessionId) {
-        return originalLoadMessages(sessionId).then(() => {
-            setTimeout(addCopyButtonsToAllCodeBlocks, 100);
-        });
-    };
-
-    const originalDisplayMessage = window.displayMessage || function(){};
-
-    window.displayMessage = function(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName) {
-        const result = originalDisplayMessage.call(this, role, content, fileData, fileType, fileName, timestamp, responseTime, modelName);
-        
-        const messages = document.getElementById('chat-messages');
-        if (messages) {
-            const lastMessage = messages.lastElementChild;
-            if (lastMessage) {
-                setTimeout(() => addCopyButtonsToMessage(lastMessage), 50);
-            }
-        }
-        
-        return result;
-    };
-
     document.addEventListener('DOMContentLoaded', function() {
         setTimeout(setupCopyButtonsObserver, 500);
         setTimeout(addCopyButtonsToAllCodeBlocks, 1000);
@@ -2677,6 +2644,41 @@
             font-size: 0.55rem !important;
             max-width: 120px !important;
         }
+    }
+    
+    /* УЛУЧШЕННЫЙ ПЕРЕНОС ДЛЯ ИНФОРМАЦИИ О МОДЕЛИ НА МОБИЛЬНЫХ */
+    .model-response-info {
+        white-space: normal !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+        hyphens: auto !important;
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    
+    .model-info-container {
+        display: flex !important;
+        flex-direction: column !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        gap: 4px !important;
+    }
+    
+    .bot-message small .model-response-info,
+    .assistant-message small .model-response-info {
+        white-space: normal !important;
+        margin-left: 0 !important;
+        display: block !important;
+    }
+    
+    /* Улучшенный перенос для метаданных сообщения */
+    .message-metadata {
+        white-space: normal !important;
+        word-break: break-word !important;
+        line-height: 1.4 !important;
+        display: block !important;
+        width: 100% !important;
     }
 }
 

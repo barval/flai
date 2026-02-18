@@ -20,10 +20,7 @@ class ServiceStatusMonitor {
             this.updateAutomatic1111Status(data.automatic1111);
             this.updateCameraStatus(data.camera_api);
             
-            // Получаем системную информацию
-            const sysResponse = await fetch('/api/system/info');
-            const sysData = await sysResponse.json();
-            this.updateSystemInfo(sysData);
+            // Убрали вызов updateSystemInfo
             
         } catch (error) {
             console.error('Error updating service status:', error);
@@ -140,33 +137,7 @@ class ServiceStatusMonitor {
         }
     }
     
-    updateSystemInfo(data) {
-        // GPU
-        const gpuEl = document.getElementById('system-gpu');
-        if (gpuEl) {
-            let gpuText = 'Нет GPU';
-            if (data.gpu.available) {
-                gpuText = `${data.gpu.type} (${data.gpu.count}x)`;
-                if (data.gpu.memory_mb && data.gpu.memory_mb.length > 0) {
-                    const totalGB = data.gpu.memory_mb[0] / 1024;
-                    gpuText += ` ${totalGB.toFixed(1)}GB`;
-                }
-            }
-            gpuEl.textContent = gpuText;
-        }
-        
-        // CPU
-        const cpuEl = document.getElementById('system-cpu');
-        if (cpuEl) {
-            cpuEl.textContent = `Загрузка: ${data.system.cpu_load.toFixed(0)}%`;
-        }
-        
-        // RAM
-        const ramEl = document.getElementById('system-ram');
-        if (ramEl) {
-            ramEl.textContent = `${data.system.ram_available_gb.toFixed(1)}GB свободно`;
-        }
-    }
+    // Метод updateSystemInfo полностью удален
     
     updateMemoryIndicator(service, memory) {
         const bar = document.getElementById(`${service}-memory-bar`);

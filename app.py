@@ -1183,16 +1183,6 @@ def api_services_status():
     
     return jsonify(result)
 
-@app.route('/api/system/info', methods=['GET'])
-def api_system_info():
-    """Получение информации о системе"""
-    if 'email' not in session:
-        return jsonify({'error': 'Не авторизован'}), 401
-    
-    if not resource_manager:
-        return jsonify({'error': 'Resource manager не инициализирован'}), 500
-    
-    return jsonify(resource_manager.get_system_info())
 
 # -------------------------------
 # API для очереди запросов (Redis)

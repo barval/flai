@@ -629,7 +629,8 @@ class RedisRequestQueue:
                         # Замеряем время генерации изображения в Automatic1111
                         gen_start_time = time.time()
                         
-                        image_result = modules['image']._call_automatic1111(prompt_data)
+                        # Используем метод с повторной попыткой при ошибке
+                        image_result = modules['image']._call_automatic1111_with_retry(prompt_data)
                         
                         gen_time = round(time.time() - gen_start_time, 1)
                         

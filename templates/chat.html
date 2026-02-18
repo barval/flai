@@ -536,7 +536,59 @@
         
         // Инициализируем монитор статусов сервисов
         window.serviceMonitor = new ServiceStatusMonitor();
+        
+        // Добавляем обработку для мобильного меню
+        if (window.innerWidth <= 768) {
+            setupMobileSessionToggle();
+        }
+        
+        window.addEventListener('resize', function() {
+            if (window.innerWidth <= 768) {
+                setupMobileSessionToggle();
+            }
+        });
     });
+
+    // -------------------------------
+    // Настройка мобильного переключения сеансов
+    // -------------------------------
+    function setupMobileSessionToggle() {
+        const sessionsSidebar = document.querySelector('.sessions-sidebar');
+        const chatHeader = document.querySelector('.chat-header');
+        
+        // Удаляем старую кнопку, если есть
+        const oldBtn = document.querySelector('.mobile-toggle-sessions');
+        if (oldBtn) oldBtn.remove();
+        
+        // Создаем новую кнопку
+        const toggleSessionsBtn = document.createElement('button');
+        toggleSessionsBtn.className = 'mobile-toggle-sessions';
+        toggleSessionsBtn.innerHTML = '📋 Сеансы';
+        toggleSessionsBtn.style.cssText = `
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 5px 10px;
+            font-size: 0.9rem;
+            margin-right: 10px;
+            cursor: pointer;
+        `;
+        
+        // Вставляем кнопку перед заголовком
+        const chatTitle = chatHeader.querySelector('h2');
+        chatHeader.insertBefore(toggleSessionsBtn, chatTitle);
+        
+        toggleSessionsBtn.addEventListener('click', function() {
+            if (sessionsSidebar.style.display === 'none') {
+                sessionsSidebar.style.display = 'block';
+                toggleSessionsBtn.innerHTML = '📋 Скрыть';
+            } else {
+                sessionsSidebar.style.display = 'none';
+                toggleSessionsBtn.innerHTML = '📋 Сеансы';
+            }
+        });
+    }
 
     // -------------------------------
     // Загрузка сообщений сеанса
@@ -954,7 +1006,8 @@
     // -------------------------------
     function initRequestsStatusPanel() {
         // Показываем панель
-        document.getElementById('requests-status-panel').style.display = 'block';
+        const panel = document.getElementById('requests-status-panel');
+        panel.style.display = 'block';
         
         // Запускаем периодическое обновление (каждые 3 секунды)
         if (statusRefreshInterval) {
@@ -1280,12 +1333,8 @@
                     document.querySelector('.chat-header').appendChild(notification);
                     setTimeout(() => notification.remove(), 5000);
                     
-                    refreshRequestsStatus();
-                    
-                    const panel = document.getElementById('requests-status-panel');
-                    if (panel.style.display === 'none') {
-                        initRequestsStatusPanel();
-                    }
+                    // Автоматически показываем панель статуса
+                    initRequestsStatusPanel();
                     
                     startResultPolling(data.request_id);
                 } else if (data.response) {
@@ -2302,6 +2351,17 @@
     to {
         transform: translateX(0);
         opacity: 1;
+    }
+}
+
+/* Стили для мобильной кнопки переключения сеансов */
+.mobile-toggle-sessions {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .mobile-toggle-sessions {
+        display: inline-block !important;
     }
 }
 </style>

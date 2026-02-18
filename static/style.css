@@ -1267,17 +1267,96 @@ audio {
 @media (max-width: 768px) {
     .chat-container {
         flex-direction: column;
-        height: auto;
+        height: 100vh;
+        overflow: hidden;
     }
     
     .sessions-sidebar {
         width: 100%;
-        height: 250px;
+        height: 200px;
+        min-height: 200px;
+        max-height: 30vh;
+        border-right: none;
+        border-bottom: 1px solid #e0e0e0;
+        overflow-y: auto;
+        flex-shrink: 0;
     }
     
     .chat-main {
         width: 100%;
-        padding: 10px;
+        height: calc(100vh - 250px);
+        padding: 8px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    
+    .chat-header {
+        padding: 0.3rem 0;
+        margin-bottom: 0.5rem;
+        flex-shrink: 0;
+    }
+    
+    .chat-header h2 {
+        font-size: 1rem;
+    }
+    
+    .context-info-container {
+        gap: 5px;
+    }
+    
+    .context-info {
+        font-size: 0.8rem;
+        padding: 0.2rem 0.4rem;
+    }
+    
+    .save-chat-button,
+    .clear-context-button,
+    .status-toggle-button {
+        padding: 0.2rem 0.4rem;
+        font-size: 0.9rem;
+    }
+    
+    .chat-messages {
+        flex: 1 1 auto;
+        overflow-y: auto;
+        padding: 8px;
+        margin-bottom: 8px;
+        min-height: 0;
+        height: auto;
+    }
+    
+    .requests-status-panel {
+        max-height: 250px;
+        font-size: 0.8rem;
+        padding: 8px;
+        margin-bottom: 8px;
+        flex-shrink: 0;
+    }
+    
+    .message-input {
+        flex-wrap: wrap;
+        gap: 5px;
+        padding: 5px 0;
+        flex-shrink: 0;
+        margin-top: 0;
+    }
+    
+    .message-input input[type="text"] {
+        width: calc(100% - 100px);
+        padding: 0.6rem;
+        font-size: 0.9rem;
+    }
+    
+    #send-button {
+        min-width: 70px;
+        padding: 0.6rem;
+        font-size: 0.9rem;
+    }
+    
+    #attach-file-button {
+        padding: 0.6rem;
+        font-size: 0.9rem;
     }
     
     .image-container {
@@ -1290,14 +1369,6 @@ audio {
         height: auto !important;
     }
     
-    .message-input {
-        flex-wrap: wrap;
-    }
-    
-    .message-input input[type="text"] {
-        width: 100%;
-    }
-    
     .copy-code-button {
         width: 28px;
         height: 28px;
@@ -1306,18 +1377,21 @@ audio {
         right: 4px;
     }
     
-    .requests-status-panel {
-        font-size: 0.8rem;
-        padding: 8px;
-        max-height: 300px;
-    }
-    
     .queue-item {
         flex-wrap: wrap;
+        padding: 6px 8px;
+    }
+    
+    .queue-position {
+        min-width: 35px;
+        font-size: 0.65rem;
+        padding: 1px 4px;
     }
     
     .wait-time {
         margin-left: auto;
+        font-size: 0.7rem;
+        padding: 1px 4px;
     }
     
     .queue-notification {
@@ -1325,6 +1399,7 @@ audio {
         right: 10px;
         left: 10px;
         max-width: none;
+        font-size: 0.9rem;
     }
     
     .load-bar-container {
@@ -1335,6 +1410,137 @@ audio {
     
     .load-value {
         align-self: flex-end;
+    }
+    
+    /* Улучшаем отображение сеансов на мобильных */
+    .sessions-header {
+        padding: 0.5rem;
+    }
+    
+    .sessions-header h2 {
+        font-size: 1rem;
+    }
+    
+    .sessions-list {
+        padding: 0.5rem;
+    }
+    
+    .session-item {
+        padding: 0.5rem;
+        margin-bottom: 0.3rem;
+    }
+    
+    .session-title {
+        font-size: 0.9rem;
+    }
+    
+    .session-date {
+        font-size: 0.7rem;
+    }
+    
+    .delete-session-button {
+        width: 28px;
+        height: 28px;
+        font-size: 1rem;
+    }
+    
+    /* Панель статуса сервисов на мобильных */
+    .services-status-panel {
+        padding: 8px;
+        margin: 5px;
+    }
+    
+    .services-status-panel h3 {
+        font-size: 0.9rem;
+    }
+    
+    .service-card {
+        padding: 6px;
+        margin-bottom: 4px;
+    }
+    
+    .service-name {
+        font-size: 0.85rem;
+    }
+    
+    .service-location {
+        font-size: 0.65rem;
+        padding: 1px 4px;
+    }
+    
+    .service-health-indicator {
+        font-size: 0.7rem;
+    }
+    
+    /* Модальное окно на мобильных */
+    .image-modal-content {
+        max-width: 95%;
+        max-height: 80vh;
+    }
+    
+    .image-modal-close {
+        top: 10px;
+        right: 20px;
+        font-size: 30px;
+    }
+}
+
+/* Для очень маленьких экранов */
+@media (max-width: 480px) {
+    .sessions-sidebar {
+        height: 150px;
+        max-height: 25vh;
+    }
+    
+    .chat-main {
+        height: calc(100vh - 200px);
+    }
+    
+    .chat-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+    }
+    
+    .context-info-container {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .message-input input[type="text"] {
+        width: 100%;
+        margin-bottom: 5px;
+    }
+    
+    .message-input {
+        justify-content: space-between;
+    }
+    
+    #send-button {
+        width: calc(70% - 35px);
+    }
+    
+    #attach-file-button {
+        width: 35px;
+    }
+    
+    .requests-status-panel {
+        max-height: 200px;
+    }
+    
+    .system-load-container {
+        padding: 5px;
+    }
+    
+    .load-bar-container {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+    
+    .load-value {
+        width: 100%;
+        text-align: left;
+        margin-top: 3px;
     }
 }
 

@@ -35,16 +35,26 @@ class ResourceManager:
     """Менеджер ресурсов с учётом аппаратных возможностей"""
     
     def __init__(self, app_config):
-        self.config = app_config
+        # Сохраняем конфигурацию как обычный словарь, а не как Flask-приложение
+        self.config = {
+            'OLLAMA_URL': app_config.get('OLLAMA_URL'),
+            'AUTOMATIC1111_URL': app_config.get('AUTOMATIC1111_URL'),
+            'CAMERA_API_URL': app_config.get('CAMERA_API_URL'),
+            'LLM_CHAT_MODEL': app_config.get('LLM_CHAT_MODEL'),
+            'LLM_MULTIMODAL_MODEL': app_config.get('LLM_MULTIMODAL_MODEL'),
+            'LLM_REASONING_MODEL': app_config.get('LLM_REASONING_MODEL'),
+            'AUTOMATIC1111_MODEL': app_config.get('AUTOMATIC1111_MODEL')
+        }
+        
         self.hardware = HardwareDetector()
         
         # Определяем режимы работы сервисов
         self.ollama_mode = self.hardware.detect_ollama_mode(
-            app_config.get('OLLAMA_URL')
+            self.config.get('OLLAMA_URL')
         )
         
         self.automatic1111_mode = self.hardware.detect_automatic1111_mode(
-            app_config.get('AUTOMATIC1111_URL')
+            self.config.get('AUTOMATIC1111_URL')
         )
         
         # Статусы сервисов
@@ -57,6 +67,7 @@ class ResourceManager:
         # Кэш статусов
         self.cache_ttl = 5  # секунд
         self.last_check = 0
+        self.monitoring_active = True
         
         # Системные ресурсы
         self.cpu_load = 0
@@ -71,7 +82,7 @@ class ResourceManager:
     def start_monitoring(self):
         """Запуск фонового мониторинга"""
         def monitor_loop():
-            while True:
+            while self.monitoring_active:
                 try:
                     self.check_all_services()
                     self._update_system_resources()
@@ -82,14 +93,20 @@ class ResourceManager:
         thread = threading.Thread(target=monitor_loop, daemon=True)
         thread.start()
     
+    def stop_monitoring(self):
+        """Остановка мониторинга"""
+        self.monitoring_active = False
+    
     def _update_system_resources(self):
         """Обновление информации о системных ресурсах"""
         try:
             import psutil
             self.cpu_load = psutil.cpu_percent(interval=1)
             self.ram_available = psutil.virtual_memory().available / (1024**3)  # в GB
-        except:
+        except ImportError:
             pass
+        except Exception as e:
+            logger.debug(f"Ошибка при получении системных ресурсов: {e}")
     
     def check_all_services(self):
         """Проверка всех сервисов"""
@@ -123,7 +140,7 @@ class ResourceManager:
                 
                 # Получаем список моделей
                 models = data.get('models', [])
-                status.details['models'] = [m['name'] for m in models]
+                status.details['models'] = [m.get('name', 'unknown') for m in models if isinstance(m, dict)]
                 
                 # Получаем информацию о загруженных моделях
                 try:
@@ -132,13 +149,14 @@ class ResourceManager:
                         ps_data = ps_response.json()
                         loaded_models = ps_data.get('models', [])
                         
-                        if loaded_models:
+                        if loaded_models and isinstance(loaded_models[0], dict):
                             status.current_model = loaded_models[0].get('name')
                             # Оценка использования VRAM
                             size = loaded_models[0].get('size', 0)
-                            status.memory['used_gb'] = round(size / (1024**3), 1)
-                except:
-                    pass
+                            if size:
+                                status.memory['used_gb'] = round(size / (1024**3), 1)
+                except Exception as e:
+                    logger.debug(f"Ошибка при получении информации о загруженных моделях Ollama: {e}")
                 
                 # Оцениваем здоровье
                 if len(models) == 0:
@@ -211,28 +229,31 @@ class ResourceManager:
                 # Парсим информацию о памяти
                 if 'cuda' in data:
                     cuda = data['cuda']
-                    status.memory['total_gb'] = round(cuda.get('total', 0) / 1024, 1)
-                    status.memory['free_gb'] = round(cuda.get('free', 0) / 1024, 1)
-                    status.memory['used_gb'] = round(status.memory['total_gb'] - status.memory['free_gb'], 1)
-                    status.memory['used_percent'] = round(
-                        (status.memory['used_gb'] / status.memory['total_gb'] * 100) 
-                        if status.memory['total_gb'] > 0 else 0, 1
-                    )
+                    if isinstance(cuda, dict):
+                        status.memory['total_gb'] = round(cuda.get('total', 0) / 1024, 1)
+                        status.memory['free_gb'] = round(cuda.get('free', 0) / 1024, 1)
+                        status.memory['used_gb'] = round(status.memory['total_gb'] - status.memory['free_gb'], 1)
+                        status.memory['used_percent'] = round(
+                            (status.memory['used_gb'] / status.memory['total_gb'] * 100) 
+                            if status.memory['total_gb'] > 0 else 0, 1
+                        )
                 
                 # Получаем информацию о текущей загрузке
                 progress_response = requests.get(f"{url}/sdapi/v1/progress", timeout=2)
                 if progress_response.status_code == 200:
                     progress_data = progress_response.json()
-                    status.load = progress_data.get('progress', 0) * 100
-                    
-                    if status.load > 0:
-                        status.current_model = "Генерация..."
+                    if isinstance(progress_data, dict):
+                        status.load = progress_data.get('progress', 0) * 100
+                        
+                        if status.load > 0:
+                            status.current_model = "Генерация..."
                 
                 # Получаем информацию о текущей модели
                 options_response = requests.get(f"{url}/sdapi/v1/options", timeout=2)
                 if options_response.status_code == 200:
                     options_data = options_response.json()
-                    status.current_model = options_data.get('sd_model_checkpoint', status.current_model)
+                    if isinstance(options_data, dict):
+                        status.current_model = options_data.get('sd_model_checkpoint', status.current_model)
                 
                 # Определяем здоровье
                 if status.memory['used_percent'] > status.memory['critical_threshold']:
@@ -387,7 +408,8 @@ class ResourceManager:
         
         # Обновляем, если кэш устарел
         if time.time() - self.last_check > self.cache_ttl:
-            self.check_all_services()
+            # Запускаем проверку в фоне, чтобы не блокировать
+            threading.Thread(target=self.check_all_services, daemon=True).start()
         
         return self.statuses
     
@@ -406,12 +428,12 @@ class ResourceManager:
             },
             'services': {
                 'ollama': {
-                    'mode': self.ollama_mode.value,
-                    'location': self.statuses['ollama'].location.value
+                    'mode': self.ollama_mode.value if self.ollama_mode else 'unknown',
+                    'location': self.statuses['ollama'].location.value if self.statuses['ollama'] else 'unknown'
                 },
                 'automatic1111': {
-                    'mode': self.automatic1111_mode.value,
-                    'location': self.statuses['automatic1111'].location.value
+                    'mode': self.automatic1111_mode.value if self.automatic1111_mode else 'unknown',
+                    'location': self.statuses['automatic1111'].location.value if self.statuses['automatic1111'] else 'unknown'
                 }
             }
         }

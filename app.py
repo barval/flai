@@ -43,7 +43,7 @@ app.config.update({
     'FOOTER_TEXT': os.getenv('FOOTER_TEXT'),
     'TIMEZONE_STR': os.getenv('TIMEZONE'),
     'OLLAMA_URL': os.getenv('OLLAMA_URL'),
-    'REDIS_URL': os.getenv('REDIS_URL', 'redis://localhost:6379/0'),
+    'REDIS_URL': os.getenv('REDIS_URL', 'redis://redis:6379/0'),
     'LLM_CHAT_MODEL': os.getenv('LLM_CHAT_MODEL'),
     'LLM_CHAT_MODEL_CONTEXT_WINDOW': int(os.getenv('LLM_CHAT_MODEL_CONTEXT_WINDOW', 32768)),
     'LLM_CHAT_TEMPERATURE': float(os.getenv('LLM_CHAT_TEMPERATURE', 0.1)),
@@ -85,9 +85,14 @@ app.logger.handlers = [console_handler]
 app.logger.setLevel(logging.DEBUG)
 
 # Инициализация ResourceManager
-resource_manager = ResourceManager(app)
-app.resource_manager = resource_manager  # Сохраняем в app для доступа из других модулей
-app.logger.info(f"ResourceManager инициализирован")
+try:
+    # Передаём app.config как словарь, а не как Flask-приложение
+    resource_manager = ResourceManager(app.config)
+    app.resource_manager = resource_manager  # Сохраняем в app для доступа из других модулей
+    app.logger.info("ResourceManager инициализирован")
+except Exception as e:
+    app.logger.error(f"Ошибка инициализации ResourceManager: {e}")
+    resource_manager = None
 
 # Инициализация модулей
 modules = {}
@@ -104,8 +109,9 @@ if app.config['AUTOMATIC1111_URL'] and 'multimodal' in modules:
     modules['image'] = ImageModule(app)
     # Связываем с мультимодальным модулем
     modules['image'].set_multimodal_module(modules['multimodal'])
-    # Передаём resource_manager
-    modules['image'].resource_manager = resource_manager
+    # Передаём resource_manager, если он есть
+    if resource_manager:
+        modules['image'].resource_manager = resource_manager
 else:
     app.logger.info("ImageModule не инициализирован (требуются Automatic1111_URL и мультимодальный модуль)")
 
@@ -821,7 +827,12 @@ class RedisRequestQueue:
         return None
 
 # Глобальный экземпляр очереди на Redis
-request_queue = RedisRequestQueue(app.config['REDIS_URL'])
+try:
+    request_queue = RedisRequestQueue(app.config['REDIS_URL'])
+    app.logger.info("RedisRequestQueue инициализирован")
+except Exception as e:
+    app.logger.error(f"Ошибка инициализации RedisRequestQueue: {e}")
+    request_queue = None
 
 # -------------------------------
 # Функции для работы с БД (вспомогательные)
@@ -1141,6 +1152,9 @@ def api_services_status():
     if 'email' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
     
+    if not resource_manager:
+        return jsonify({'error': 'Resource manager не инициализирован'}), 500
+    
     statuses = resource_manager.get_status()
     
     # Преобразуем в JSON-совместимый формат
@@ -1149,14 +1163,14 @@ def api_services_status():
         # Определяем режим работы для каждого сервиса
         mode = None
         if name == 'ollama':
-            mode = resource_manager.ollama_mode.value
+            mode = resource_manager.ollama_mode.value if resource_manager.ollama_mode else 'unknown'
         elif name == 'automatic1111':
-            mode = resource_manager.automatic1111_mode.value
+            mode = resource_manager.automatic1111_mode.value if resource_manager.automatic1111_mode else 'unknown'
         
         result[name] = {
             'name': status.name,
-            'location': status.location.value,
-            'health': status.health.value,
+            'location': status.location.value if status.location else 'unknown',
+            'health': status.health.value if status.health else 'unknown',
             'mode': mode,
             'available': status.available,
             'url': status.url,
@@ -1175,6 +1189,9 @@ def api_system_info():
     if 'email' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
     
+    if not resource_manager:
+        return jsonify({'error': 'Resource manager не инициализирован'}), 500
+    
     return jsonify(resource_manager.get_system_info())
 
 # -------------------------------
@@ -1186,33 +1203,46 @@ def api_queue_status():
     if 'email' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
     
+    if not request_queue:
+        return jsonify({'error': 'Очередь запросов не инициализирована'}), 500
+    
     user_id = session['email']
     status = request_queue.get_user_requests_status(user_id)
     
     # Добавляем информацию о доступности сервисов
-    service_statuses = resource_manager.get_status()
-    
-    queue_length = request_queue.redis.llen(request_queue.queue_key)
-    
-    # Определяем загрузку на основе статусов
-    current_load = 'normal'
-    if service_statuses['automatic1111'].load > 50 or service_statuses['ollama'].load > 50:
-        current_load = 'high'
-    
-    status['system'] = {
-        'total_queued': queue_length,
-        'current_load': current_load,
-        'services': {
-            'ollama': {
-                'available': service_statuses['ollama'].available,
-                'health': service_statuses['ollama'].health.value
-            },
-            'automatic1111': {
-                'available': service_statuses['automatic1111'].available,
-                'health': service_statuses['automatic1111'].health.value
+    if resource_manager:
+        service_statuses = resource_manager.get_status()
+        
+        queue_length = request_queue.redis.llen(request_queue.queue_key) if request_queue.redis else 0
+        
+        # Определяем загрузку на основе статусов
+        current_load = 'normal'
+        auto_load = service_statuses['automatic1111'].load if service_statuses['automatic1111'] else 0
+        ollama_load = service_statuses['ollama'].load if service_statuses['ollama'] else 0
+        
+        if auto_load > 50 or ollama_load > 50:
+            current_load = 'high'
+        
+        status['system'] = {
+            'total_queued': queue_length,
+            'current_load': current_load,
+            'services': {
+                'ollama': {
+                    'available': service_statuses['ollama'].available if service_statuses['ollama'] else False,
+                    'health': service_statuses['ollama'].health.value if service_statuses['ollama'] else 'unknown'
+                },
+                'automatic1111': {
+                    'available': service_statuses['automatic1111'].available if service_statuses['automatic1111'] else False,
+                    'health': service_statuses['automatic1111'].health.value if service_statuses['automatic1111'] else 'unknown'
+                }
             }
         }
-    }
+    else:
+        status['system'] = {
+            'total_queued': 0,
+            'current_load': 'unknown',
+            'services': {}
+        }
     
     return jsonify(status)
 
@@ -1222,7 +1252,7 @@ def api_cancel_request(request_id):
     if 'email' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
     
-    success = request_queue.cancel_request(session['email'], request_id)
+    success = request_queue.cancel_request(session['email'], request_id) if request_queue else False
     return jsonify({'success': success})
 
 @app.route('/api/queue/result/<request_id>', methods=['GET'])
@@ -1230,6 +1260,9 @@ def api_check_result(request_id):
     """Проверить результат запроса"""
     if 'email' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
+    
+    if not request_queue:
+        return jsonify({'error': 'Очередь запросов не инициализирована'}), 500
     
     result = request_queue.check_result(request_id)
     if result:
@@ -1276,6 +1309,9 @@ def send_message():
     
     if 'email' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
+    
+    if not request_queue:
+        return jsonify({'error': 'Очередь запросов не инициализирована'}), 500
     
     user_id = session['email']
     user_class = USERS.get(user_id, {}).get('service_class', 2)
@@ -1342,7 +1378,11 @@ def send_message():
         request_type = 'image'
     
     # Проверяем возможность обработки через ResourceManager
-    can_process, reason, wait_time = resource_manager.can_process_request(request_type)
+    warning = None
+    if resource_manager:
+        can_process, reason, wait_time = resource_manager.can_process_request(request_type)
+        if can_process == 'wait':
+            warning = f'⚠️ {reason}. Ожидание: ~{wait_time} сек'
     
     # Создаём данные для очереди
     request_data = {
@@ -1359,7 +1399,7 @@ def send_message():
         user_id, session_id, request_data, user_class
     )
     
-    # Если сервис не готов, добавляем предупреждение
+    # Формируем ответ
     response_data = {
         'status': 'queued',
         'request_id': request_id,
@@ -1368,8 +1408,8 @@ def send_message():
         'message': f'Запрос поставлен в очередь (позиция {position_info["position"]})'
     }
     
-    if can_process == 'wait':
-        response_data['warning'] = f'⚠️ {reason}. Ожидание: ~{wait_time} сек'
+    if warning:
+        response_data['warning'] = warning
     
     return jsonify(response_data)
 

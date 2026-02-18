@@ -70,22 +70,28 @@ class HardwareDetector:
                     gpu_info['count'] = len(lines)
                     
                     for line in lines:
-                        if ',' in line:
-                            name, mem = line.split(',')
-                            mem_mb = int(re.sub(r'[^0-9]', '', mem))
-                            gpu_info['memory_mb'].append(mem_mb)
-                            gpu_info['details'].append({
-                                'name': name.strip(),
-                                'memory_mb': mem_mb
-                            })
-        except:
-            pass
+                        if line and ',' in line:
+                            parts = line.split(',')
+                            if len(parts) >= 2:
+                                name = parts[0].strip()
+                                mem_str = parts[1].strip()
+                                # Извлекаем только цифры
+                                mem_digits = re.sub(r'[^0-9]', '', mem_str)
+                                if mem_digits:
+                                    mem_mb = int(mem_digits)
+                                    gpu_info['memory_mb'].append(mem_mb)
+                                    gpu_info['details'].append({
+                                        'name': name,
+                                        'memory_mb': mem_mb
+                                    })
+        except Exception as e:
+            logger.debug(f"Ошибка при обнаружении NVIDIA GPU: {e}")
         
         return gpu_info
     
     def is_local_url(self, url):
         """Определение, находится ли URL на локальном сервере"""
-        if not url:
+        if not url or not isinstance(url, str):
             return False
         
         # Извлекаем хост из URL
@@ -115,6 +121,9 @@ class HardwareDetector:
     
     def detect_ollama_mode(self, ollama_url):
         """Определение режима работы Ollama (GPU/CPU)"""
+        if not ollama_url:
+            return ProcessingMode.UNKNOWN
+            
         try:
             response = requests.get(f"{ollama_url}/api/ps", timeout=3)
             if response.status_code == 200:
@@ -130,10 +139,11 @@ class HardwareDetector:
                     # В Ollama можно определить по параметру 'device'
                     if 'device' in details:
                         device = details['device']
-                        if 'gpu' in device.lower() or 'cuda' in device.lower():
-                            return ProcessingMode.GPU_ONLY
-                        elif 'cpu' in device.lower():
-                            return ProcessingMode.CPU_ONLY
+                        if isinstance(device, str):
+                            if 'gpu' in device.lower() or 'cuda' in device.lower():
+                                return ProcessingMode.GPU_ONLY
+                            elif 'cpu' in device.lower():
+                                return ProcessingMode.CPU_ONLY
                     
                     # Альтернативный способ - проверяем размер модели и наличие GPU
                     if self.gpu_info['available']:
@@ -146,8 +156,8 @@ class HardwareDetector:
                     return ProcessingMode.HYBRID
                 else:
                     return ProcessingMode.CPU_ONLY
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Ошибка при определении режима Ollama: {e}")
         
         # Если не удалось определить, возвращаем на основе наличия GPU
         if self.gpu_info['available']:
@@ -157,6 +167,9 @@ class HardwareDetector:
     
     def detect_automatic1111_mode(self, automatic1111_url):
         """Определение режима работы Automatic1111 (GPU/CPU)"""
+        if not automatic1111_url:
+            return ProcessingMode.UNKNOWN
+            
         try:
             # Проверяем наличие GPU в Automatic1111 через API
             response = requests.get(f"{automatic1111_url}/sdapi/v1/memory", timeout=3)
@@ -178,13 +191,16 @@ class HardwareDetector:
                         return ProcessingMode.GPU_ONLY
                     else:
                         return ProcessingMode.CPU_ONLY
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Ошибка при определении режима Automatic1111: {e}")
         
         return ProcessingMode.UNKNOWN
     
     def estimate_model_vram(self, model_name):
         """Оценка потребления VRAM моделью в GB"""
+        if not model_name:
+            return 4.0
+            
         # База знаний о моделях
         model_vram = {
             # Automatic1111 модели
@@ -202,7 +218,7 @@ class HardwareDetector:
         }
         
         for key, vram in model_vram.items():
-            if model_name and key in model_name:
+            if key in str(model_name):
                 return vram
         
         # Возвращаем значение по умолчанию в зависимости от типа

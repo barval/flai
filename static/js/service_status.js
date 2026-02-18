@@ -39,31 +39,30 @@ class ServiceStatusMonitor {
         
         // Локация
         const locationEl = document.getElementById('ollama-location');
-        locationEl.textContent = this.getLocationText(status.location);
-        locationEl.className = `service-location ${status.location}`;
+        if (locationEl) {
+            locationEl.textContent = this.getLocationText(status.location);
+            locationEl.className = `service-location ${status.location}`;
+        }
         
         // Индикатор здоровья
         const healthEl = document.getElementById('ollama-health');
-        healthEl.innerHTML = `<span class="health-icon ${status.health}"></span>${this.getHealthText(status.health)}`;
+        if (healthEl) {
+            healthEl.innerHTML = `<span class="health-icon ${status.health}"></span>${this.getHealthText(status.health)}`;
+        }
         
         // Режим работы
-        document.getElementById('ollama-mode').textContent = this.getModeText(status.mode);
-        
-        // URL
-        document.getElementById('ollama-url').textContent = status.url || 'Не настроен';
-        
-        // Модель
-        document.getElementById('ollama-model').textContent = status.current_model || 'Нет активной модели';
+        const modeEl = document.getElementById('ollama-mode');
+        if (modeEl) {
+            modeEl.textContent = this.getModeText(status.mode);
+        }
         
         // Память
         this.updateMemoryIndicator('ollama', status.memory);
         
         // Показываем/скрываем детали
         const details = document.getElementById('ollama-details');
-        if (status.health === 'down') {
-            details.style.opacity = '0.5';
-        } else {
-            details.style.opacity = '1';
+        if (details) {
+            details.style.opacity = status.health === 'down' ? '0.5' : '1';
         }
     }
     
@@ -74,28 +73,40 @@ class ServiceStatusMonitor {
         card.className = `service-card ${status.health}`;
         
         const locationEl = document.getElementById('automatic1111-location');
-        locationEl.textContent = this.getLocationText(status.location);
-        locationEl.className = `service-location ${status.location}`;
+        if (locationEl) {
+            locationEl.textContent = this.getLocationText(status.location);
+            locationEl.className = `service-location ${status.location}`;
+        }
         
         const healthEl = document.getElementById('automatic1111-health');
-        healthEl.innerHTML = `<span class="health-icon ${status.health}"></span>${this.getHealthText(status.health)}`;
+        if (healthEl) {
+            healthEl.innerHTML = `<span class="health-icon ${status.health}"></span>${this.getHealthText(status.health)}`;
+        }
         
-        document.getElementById('automatic1111-mode').textContent = this.getModeText(status.mode);
-        document.getElementById('automatic1111-url').textContent = status.url || 'Не настроен';
-        document.getElementById('automatic1111-model').textContent = status.current_model || 'Неизвестно';
+        const modeEl = document.getElementById('automatic1111-mode');
+        if (modeEl) {
+            modeEl.textContent = this.getModeText(status.mode);
+        }
         
         // Загрузка
-        if (status.load > 0) {
-            document.getElementById('automatic1111-load-row').style.display = 'flex';
-            document.getElementById('automatic1111-load').textContent = `${status.load.toFixed(0)}%`;
-        } else {
-            document.getElementById('automatic1111-load-row').style.display = 'none';
+        const loadRow = document.getElementById('automatic1111-load-row');
+        const loadEl = document.getElementById('automatic1111-load');
+        
+        if (loadRow && loadEl) {
+            if (status.load > 0) {
+                loadRow.style.display = 'flex';
+                loadEl.textContent = `${status.load.toFixed(0)}%`;
+            } else {
+                loadRow.style.display = 'none';
+            }
         }
         
         this.updateMemoryIndicator('automatic1111', status.memory);
         
         const details = document.getElementById('automatic1111-details');
-        details.style.opacity = status.health === 'down' ? '0.5' : '1';
+        if (details) {
+            details.style.opacity = status.health === 'down' ? '0.5' : '1';
+        }
     }
     
     updateCameraStatus(status) {
@@ -105,39 +116,58 @@ class ServiceStatusMonitor {
         card.className = `service-card ${status.health}`;
         
         const locationEl = document.getElementById('camera-location');
-        locationEl.textContent = this.getLocationText(status.location);
-        locationEl.className = `service-location ${status.location}`;
+        if (locationEl) {
+            locationEl.textContent = this.getLocationText(status.location);
+            locationEl.className = `service-location ${status.location}`;
+        }
         
         const healthEl = document.getElementById('camera-health');
-        healthEl.innerHTML = `<span class="health-icon ${status.health}"></span>${this.getHealthText(status.health)}`;
+        if (healthEl) {
+            healthEl.innerHTML = `<span class="health-icon ${status.health}"></span>${this.getHealthText(status.health)}`;
+        }
         
-        document.getElementById('camera-url').textContent = status.url || 'Не настроен';
+        const urlEl = document.getElementById('camera-url');
+        if (urlEl) {
+            urlEl.textContent = status.url || 'Не настроен';
+        }
         
         // Комнаты
-        if (status.details && status.details.rooms) {
-            document.getElementById('camera-rooms').textContent = status.details.rooms.join(', ');
-        } else {
-            document.getElementById('camera-rooms').textContent = 'Нет данных';
+        const roomsEl = document.getElementById('camera-rooms');
+        if (roomsEl) {
+            if (status.details && status.details.rooms) {
+                roomsEl.textContent = status.details.rooms.join(', ');
+            } else {
+                roomsEl.textContent = 'Нет данных';
+            }
         }
     }
     
     updateSystemInfo(data) {
         // GPU
-        let gpuText = 'Нет GPU';
-        if (data.gpu.available) {
-            gpuText = `${data.gpu.type} (${data.gpu.count}x)`;
-            if (data.gpu.memory_mb && data.gpu.memory_mb.length > 0) {
-                const totalGB = data.gpu.memory_mb[0] / 1024;
-                gpuText += ` ${totalGB.toFixed(1)}GB`;
+        const gpuEl = document.getElementById('system-gpu');
+        if (gpuEl) {
+            let gpuText = 'Нет GPU';
+            if (data.gpu.available) {
+                gpuText = `${data.gpu.type} (${data.gpu.count}x)`;
+                if (data.gpu.memory_mb && data.gpu.memory_mb.length > 0) {
+                    const totalGB = data.gpu.memory_mb[0] / 1024;
+                    gpuText += ` ${totalGB.toFixed(1)}GB`;
+                }
             }
+            gpuEl.textContent = gpuText;
         }
-        document.getElementById('system-gpu').textContent = gpuText;
         
         // CPU
-        document.getElementById('system-cpu').textContent = `Загрузка: ${data.system.cpu_load.toFixed(0)}%`;
+        const cpuEl = document.getElementById('system-cpu');
+        if (cpuEl) {
+            cpuEl.textContent = `Загрузка: ${data.system.cpu_load.toFixed(0)}%`;
+        }
         
         // RAM
-        document.getElementById('system-ram').textContent = `${data.system.ram_available_gb.toFixed(1)}GB свободно`;
+        const ramEl = document.getElementById('system-ram');
+        if (ramEl) {
+            ramEl.textContent = `${data.system.ram_available_gb.toFixed(1)}GB свободно`;
+        }
     }
     
     updateMemoryIndicator(service, memory) {

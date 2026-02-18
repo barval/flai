@@ -1395,7 +1395,7 @@
         }
     }
 
-    // ===================== ИСПРАВЛЕНИЕ 1: Улучшенный startResultPolling с поддержкой изображений =====================
+    // ===================== ИСПРАВЛЕНИЕ 1: Улучшенный startResultPolling =====================
     function startResultPolling(requestId) {
         console.log('Start polling for request:', requestId);
         
@@ -1485,6 +1485,18 @@
                                 // Для изображений используем дополнительную задержку перед отображением
                                 // чтобы убедиться, что DOM полностью готов
                                 setTimeout(() => {
+                                    // Проверяем, не было ли уже такое сообщение в DOM
+                                    const existingMessages = document.querySelectorAll('.assistant-message');
+                                    for (let msg of existingMessages) {
+                                        const msgContent = msg.querySelector('.message-content')?.textContent || '';
+                                        if (msgContent.includes(data.result.response) && 
+                                            data.result.generated_image && 
+                                            msg.querySelector('.attached-image')) {
+                                            console.log('Message already exists in DOM, skipping');
+                                            return;
+                                        }
+                                    }
+                                    
                                     // Используем безопасную функцию добавления
                                     safelyDisplayMessage(
                                         'assistant',

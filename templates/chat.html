@@ -125,6 +125,9 @@
     // Глобальный Set для отслеживания уже обработанных requestId
     let processedRequests = new Set();
 
+    // Глобальный Set для отслеживания отображенных сообщений
+    window.displayedMessages = new Set(); 
+
     // -------------------------------
     // Вспомогательные функции
     // -------------------------------
@@ -621,14 +624,35 @@
         return false;
     }
 
-    // -------------------------------
-    // Функция для безопасного добавления сообщения
-    // -------------------------------
+    // ===================== ИСПРАВЛЕНИЕ 5: Улучшенная функция безопасного добавления сообщения =====================
     function safelyDisplayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
         // Для сообщений ассистента проверяем дубликаты
         if (role === 'assistant') {
+            // Создаем уникальный идентификатор для сообщения
+            const messageId = `${content}_${fileData ? fileData.substring(0, 100) : ''}_${timestamp}`;
+            
+            // Проверяем, не было ли уже такое сообщение
+            if (window.displayedMessages && window.displayedMessages.has(messageId)) {
+                console.log('Message already displayed, skipping:', messageId.substring(0, 50));
+                return false;
+            }
+            
+            // Сохраняем идентификатор сообщения
+            if (!window.displayedMessages) {
+                window.displayedMessages = new Set();
+            }
+            window.displayedMessages.add(messageId);
+            
+            // Очищаем старые записи (оставляем только последние 100)
+            if (window.displayedMessages.size > 100) {
+                const iterator = window.displayedMessages.values();
+                for (let i = 0; i < 50; i++) {
+                    window.displayedMessages.delete(iterator.next().value);
+                }
+            }
+            
             if (messageExists(content, timestamp, modelName)) {
-                console.log('Blocked duplicate message:', content.substring(0, 50));
+                console.log('Duplicate message detected by messageExists, blocking:', content.substring(0, 50));
                 return false;
             }
         }
@@ -1356,7 +1380,7 @@
         }
     }
 
-    // ===================== ИСПРАВЛЕНИЕ 1: Улучшенный startResultPolling =====================
+    // ===================== ИСПРАВЛЕНИЕ 1: Улучшенный startResultPolling с поддержкой изображений =====================
     function startResultPolling(requestId) {
         console.log('Start polling for request:', requestId);
         
@@ -1372,6 +1396,7 @@
         let pollCount = 0;
         const maxPolls = 120;
         let lastResult = null;
+        let lastDisplayedContent = null; // Для отслеживания последнего отображенного контента
         
         const pollInterval = setInterval(async () => {
             pollCount++;
@@ -1430,24 +1455,45 @@
                             
                             console.log('Final responseTime before display:', responseTime);
                             
+                            // === ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА ДЛЯ ИЗОБРАЖЕНИЙ ===
+                            // Создаем уникальный ключ для контента (текст + наличие изображения)
+                            const contentKey = data.result.response + (data.result.generated_image ? '_with_image' : '');
+                            
+                            // Проверяем, не отображали ли мы уже этот контент
+                            if (lastDisplayedContent === contentKey) {
+                                console.log('Duplicate content detected, skipping display');
+                                return;
+                            }
+                            lastDisplayedContent = contentKey;
+                            
                             if (resultSessionId === currentSessionId) {
-                                // Используем безопасную функцию добавления
-                                safelyDisplayMessage(
-                                    'assistant',
-                                    data.result.response,
-                                    data.result.generated_image,
-                                    data.result.file_type,
-                                    data.result.file_name,
-                                    timestamp, 
-                                    responseTime,
-                                    modelUsed
-                                );
+                                // Для изображений используем дополнительную задержку перед отображением
+                                // чтобы убедиться, что DOM полностью готов
+                                setTimeout(() => {
+                                    // Используем безопасную функцию добавления
+                                    safelyDisplayMessage(
+                                        'assistant',
+                                        data.result.response,
+                                        data.result.generated_image,
+                                        data.result.file_type,
+                                        data.result.file_name,
+                                        timestamp, 
+                                        responseTime,
+                                        modelUsed
+                                    );
+                                }, 100);
                             } else {
                                 console.log(`Ответ для сеанса ${resultSessionId}, не текущего`);
                                 setNewMessageIndicator(resultSessionId, true, isError);
                                 loadSessionsFromServer();
                             }
                         } else if (data.result.error) {
+                            const contentKey = 'error_' + data.result.error;
+                            if (lastDisplayedContent === contentKey) {
+                                return;
+                            }
+                            lastDisplayedContent = contentKey;
+                            
                             if (resultSessionId === currentSessionId) {
                                 const timestamp = data.result.assistant_timestamp || new Date().toISOString();
                                 
@@ -1478,6 +1524,12 @@
                     
                     const resultSessionId = data.result?.session_id;
                     const timestamp = data.result?.assistant_timestamp || new Date().toISOString();
+                    
+                    const contentKey = 'error_' + (data.error || 'unknown');
+                    if (lastDisplayedContent === contentKey) {
+                        return;
+                    }
+                    lastDisplayedContent = contentKey;
                     
                     if (resultSessionId === currentSessionId) {
                         // Используем безопасную функцию добавления

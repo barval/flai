@@ -1464,6 +1464,9 @@
             let pollCount = 0;
             const maxPolls = 120;
             
+            // Добавляем флаг для отслеживания, было ли уже добавлено сообщение
+            let messageAdded = false;
+            
             const pollInterval = setInterval(async () => {
                 pollCount++;
                 
@@ -1475,6 +1478,12 @@
                     if (data.status === 'completed') {
                         clearInterval(pollInterval);
                         console.log('Request completed, result:', data.result);
+                        
+                        // Проверяем, не было ли сообщение уже добавлено
+                        if (messageAdded) {
+                            console.log('Message already added, skipping');
+                            return;
+                        }
                         
                         if (data.result) {
                             const resultSessionId = data.result.session_id;
@@ -1513,6 +1522,9 @@
                                 console.log('Final responseTime before display:', responseTime);
                                 
                                 if (resultSessionId === currentSessionId) {
+                                    // Устанавливаем флаг перед добавлением
+                                    messageAdded = true;
+                                    
                                     displayMessage(
                                         'assistant',
                                         data.result.response,
@@ -1530,6 +1542,9 @@
                                 }
                             } else if (data.result.error) {
                                 if (resultSessionId === currentSessionId) {
+                                    // Устанавливаем флаг перед добавлением
+                                    messageAdded = true;
+                                    
                                     displayMessage(
                                         'assistant',
                                         `⚠️ ${data.result.error}`,
@@ -1554,9 +1569,18 @@
                         clearInterval(pollInterval);
                         console.error('Request error:', data.error);
                         
+                        // Проверяем, не было ли сообщение уже добавлено
+                        if (messageAdded) {
+                            console.log('Message already added, skipping error display');
+                            return;
+                        }
+                        
                         const resultSessionId = data.result?.session_id;
                         
                         if (resultSessionId === currentSessionId) {
+                            // Устанавливаем флаг перед добавлением
+                            messageAdded = true;
+                            
                             displayMessage(
                                 'assistant',
                                 `⚠️ Ошибка: ${data.error || 'Неизвестная ошибка'}`,
@@ -1579,6 +1603,15 @@
                     if (pollCount >= maxPolls) {
                         clearInterval(pollInterval);
                         console.log('Polling stopped after max attempts');
+                        
+                        // Проверяем, не было ли сообщение уже добавлено
+                        if (messageAdded) {
+                            console.log('Message already added, skipping timeout message');
+                            return;
+                        }
+                        
+                        // Устанавливаем флаг перед добавлением
+                        messageAdded = true;
                         
                         displayMessage(
                             'assistant',

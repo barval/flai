@@ -1,6 +1,5 @@
 # modules/hardware_detector.py
 
-import subprocess
 import re
 import requests
 import socket
@@ -31,13 +30,12 @@ class HardwareDetector:
     
     def __init__(self):
         self.host_ip = self._get_host_ip()
-        self.gpu_info = self._detect_gpu()
-        logger.info(f"HardwareDetector инициализирован. GPU: {self.gpu_info}")
+        # Убираем детектирование локального GPU - оно нам не нужно
+        logger.info(f"HardwareDetector инициализирован")
     
     def _get_host_ip(self):
         """Получение IP адреса хоста"""
         try:
-            # Пытаемся получить реальный IP
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("8.8.8.8", 80))
             ip = s.getsockname()[0]
@@ -46,70 +44,23 @@ class HardwareDetector:
         except:
             return "127.0.0.1"
     
-    def _detect_gpu(self):
-        """Обнаружение GPU на сервере"""
-        gpu_info = {
-            'available': False,
-            'count': 0,
-            'type': None,  # 'nvidia', 'amd', 'intel'
-            'memory_mb': [],  # Список с информацией о памяти каждой GPU
-            'details': []
-        }
-        
-        # Проверка NVIDIA GPU
-        try:
-            result = subprocess.run(
-                ['nvidia-smi', '--query-gpu=name,memory.total', '--format=csv,noheader'],
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                lines = result.stdout.strip().split('\n')
-                if lines and lines[0]:
-                    gpu_info['available'] = True
-                    gpu_info['type'] = 'nvidia'
-                    gpu_info['count'] = len(lines)
-                    
-                    for line in lines:
-                        if line and ',' in line:
-                            parts = line.split(',')
-                            if len(parts) >= 2:
-                                name = parts[0].strip()
-                                mem_str = parts[1].strip()
-                                # Извлекаем только цифры
-                                mem_digits = re.sub(r'[^0-9]', '', mem_str)
-                                if mem_digits:
-                                    mem_mb = int(mem_digits)
-                                    gpu_info['memory_mb'].append(mem_mb)
-                                    gpu_info['details'].append({
-                                        'name': name,
-                                        'memory_mb': mem_mb
-                                    })
-        except Exception as e:
-            logger.debug(f"Ошибка при обнаружении NVIDIA GPU: {e}")
-        
-        return gpu_info
-    
     def is_local_url(self, url):
         """Определение, находится ли URL на локальном сервере"""
         if not url or not isinstance(url, str):
             return False
         
-        # Извлекаем хост из URL
         match = re.search(r'://([^:/]+)', url)
         if not match:
             return False
         
         host = match.group(1)
         
-        # Проверяем localhost варианты
         if host in ['localhost', '127.0.0.1', '0.0.0.0']:
             return True
         
-        # Проверяем host.docker.internal (особый случай для Docker)
         if host == 'host.docker.internal':
             return True
         
-        # Проверяем, совпадает ли с IP хоста
         try:
             host_ip = socket.gethostbyname(host)
             if host_ip == self.host_ip or host_ip == '127.0.0.1':
@@ -120,23 +71,23 @@ class HardwareDetector:
         return False
     
     def detect_ollama_mode(self, ollama_url):
-        """Определение режима работы Ollama (GPU/CPU)"""
+        """Определение режима работы Ollama (GPU/CPU) через API"""
         if not ollama_url:
             return ProcessingMode.UNKNOWN
-            
+        
         try:
+            # Пробуем получить информацию о загруженных моделях
             response = requests.get(f"{ollama_url}/api/ps", timeout=3)
             if response.status_code == 200:
                 data = response.json()
-                
-                # Проверяем, на каком устройстве загружены модели
                 models = data.get('models', [])
+                
                 if models:
                     # Смотрим первую модель
                     model = models[0]
                     details = model.get('details', {})
                     
-                    # В Ollama можно определить по параметру 'device'
+                    # В новой версии Ollama может быть информация о device
                     if 'device' in details:
                         device = details['device']
                         if isinstance(device, str):
@@ -145,33 +96,31 @@ class HardwareDetector:
                             elif 'cpu' in device.lower():
                                 return ProcessingMode.CPU_ONLY
                     
-                    # Альтернативный способ - проверяем размер модели и наличие GPU
-                    if self.gpu_info['available']:
-                        return ProcessingMode.HYBRID
-                    else:
-                        return ProcessingMode.CPU_ONLY
-            else:
-                # Не удалось получить информацию - проверяем наличие GPU
-                if self.gpu_info['available']:
+                    # Альтернативный способ - проверяем, есть ли в названии модели GPU-оптимизация
+                    model_name = model.get('name', '').lower()
+                    if 'cuda' in model_name or 'gpu' in model_name:
+                        return ProcessingMode.GPU_ONLY
+                    
+                    # По умолчанию считаем, что если модель загружена, то она работает
+                    # в том режиме, который поддерживает сервер
                     return ProcessingMode.HYBRID
                 else:
-                    return ProcessingMode.CPU_ONLY
+                    # Нет загруженных моделей, но сервис работает
+                    return ProcessingMode.HYBRID
+            else:
+                # Сервис недоступен
+                return ProcessingMode.UNKNOWN
         except Exception as e:
-            logger.debug(f"Ошибка при определении режима Ollama: {e}")
-        
-        # Если не удалось определить, возвращаем на основе наличия GPU
-        if self.gpu_info['available']:
-            return ProcessingMode.HYBRID
-        else:
-            return ProcessingMode.CPU_ONLY
+            logger.debug(f"Ошибка при определении режима Ollama через API: {e}")
+            return ProcessingMode.UNKNOWN
     
     def detect_automatic1111_mode(self, automatic1111_url):
-        """Определение режима работы Automatic1111 (GPU/CPU)"""
+        """Определение режима работы Automatic1111 (GPU/CPU) через API"""
         if not automatic1111_url:
             return ProcessingMode.UNKNOWN
-            
+        
         try:
-            # Проверяем наличие GPU в Automatic1111 через API
+            # Проверяем наличие GPU в Automatic1111 через API памяти
             response = requests.get(f"{automatic1111_url}/sdapi/v1/memory", timeout=3)
             if response.status_code == 200:
                 data = response.json()
@@ -179,37 +128,32 @@ class HardwareDetector:
                 # Если есть информация о CUDA, значит использует GPU
                 if 'cuda' in data:
                     return ProcessingMode.GPU_ONLY
-                else:
+                elif 'ram' in data:
                     return ProcessingMode.CPU_ONLY
+                else:
+                    return ProcessingMode.HYBRID
             else:
                 # Пробуем другой эндпоинт
                 response = requests.get(f"{automatic1111_url}/sdapi/v1/progress", timeout=3)
                 if response.status_code == 200:
-                    # Automatic1111 работает, но не дал информацию о памяти
-                    # Проверяем наличие GPU на сервере
-                    if self.gpu_info['available'] and self.is_local_url(automatic1111_url):
-                        return ProcessingMode.GPU_ONLY
-                    else:
-                        return ProcessingMode.CPU_ONLY
+                    # Automatic1111 работает, но не дал информацию о режиме
+                    return ProcessingMode.HYBRID
+                else:
+                    return ProcessingMode.UNKNOWN
         except Exception as e:
             logger.debug(f"Ошибка при определении режима Automatic1111: {e}")
-        
-        return ProcessingMode.UNKNOWN
+            return ProcessingMode.UNKNOWN
     
     def estimate_model_vram(self, model_name):
-        """Оценка потребления VRAM моделью в GB"""
+        """Оценка потребления VRAM моделью в GB (только для информации)"""
         if not model_name:
             return 4.0
             
-        # База знаний о моделях
         model_vram = {
-            # Automatic1111 модели
             'cyberrealisticXL_v90.safetensors': 8.0,
             'cyberrealisticXL_v80.safetensors': 8.0,
             'sd_xl_base': 7.0,
             'sd_v1.5': 5.0,
-            
-            # Ollama модели
             'qwen3-vl:8b-instruct-q4_K_M': 5.5,
             'qwen3:8b-q4_K_M': 5.0,
             'qwen3:4b-instruct-2507-q4_K_M': 3.0,
@@ -221,8 +165,4 @@ class HardwareDetector:
             if key in str(model_name):
                 return vram
         
-        # Возвращаем значение по умолчанию в зависимости от типа
-        if model_name and ('safetensors' in model_name or 'sd' in model_name.lower()):
-            return 6.0  # Automatic1111 модель по умолчанию
-        else:
-            return 4.0  # Ollama модель по умолчанию
+        return 4.0

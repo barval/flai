@@ -4,6 +4,8 @@ import time
 import threading
 import requests
 import logging
+import re
+import subprocess
 from datetime import datetime
 from .hardware_detector import HardwareDetector, ProcessingMode, ServiceLocation, ServiceHealth
 
@@ -48,7 +50,7 @@ class ResourceManager:
         
         self.hardware = HardwareDetector()
         
-        # Определяем режимы работы сервисов
+        # Определяем режимы работы сервисов через их API
         self.ollama_mode = self.hardware.detect_ollama_mode(
             self.config.get('OLLAMA_URL')
         )
@@ -69,7 +71,7 @@ class ResourceManager:
         self.last_check = 0
         self.monitoring_active = True
         
-        # Системные ресурсы
+        # Системные ресурсы (только для сервера с веб-приложением)
         self.cpu_load = 0
         self.ram_available = 0
         
@@ -98,7 +100,7 @@ class ResourceManager:
         self.monitoring_active = False
     
     def _update_system_resources(self):
-        """Обновление информации о системных ресурсах"""
+        """Обновление информации о системных ресурсах (только для сервера с веб-приложением)"""
         try:
             import psutil
             self.cpu_load = psutil.cpu_percent(interval=1)
@@ -116,7 +118,7 @@ class ResourceManager:
         self.last_check = time.time()
     
     def _check_ollama(self):
-        """Проверка статуса Ollama"""
+        """Проверка статуса Ollama через API"""
         status = self.statuses['ollama']
         url = self.config.get('OLLAMA_URL')
         
@@ -151,6 +153,17 @@ class ResourceManager:
                         
                         if loaded_models and isinstance(loaded_models[0], dict):
                             status.current_model = loaded_models[0].get('name')
+                            
+                            # Обновляем режим работы на основе актуальных данных
+                            details = loaded_models[0].get('details', {})
+                            if 'device' in details:
+                                device = details['device']
+                                if isinstance(device, str):
+                                    if 'gpu' in device.lower() or 'cuda' in device.lower():
+                                        self.ollama_mode = ProcessingMode.GPU_ONLY
+                                    elif 'cpu' in device.lower():
+                                        self.ollama_mode = ProcessingMode.CPU_ONLY
+                            
                             # Оценка использования VRAM
                             size = loaded_models[0].get('size', 0)
                             if size:
@@ -165,7 +178,7 @@ class ResourceManager:
                 else:
                     status.health = ServiceHealth.HEALTHY
                 
-                # Обновляем информацию о памяти
+                # Обновляем информацию о памяти (оценочно)
                 self._update_ollama_memory_estimate(status)
                 
             else:
@@ -185,19 +198,15 @@ class ResourceManager:
         status.last_update = datetime.now()
     
     def _update_ollama_memory_estimate(self, status):
-        """Оценка использования памяти Ollama"""
-        # Общая доступная VRAM (если есть GPU)
-        if self.hardware.gpu_info['available'] and status.location == ServiceLocation.LOCAL:
-            total_vram = sum(self.hardware.gpu_info['memory_mb']) / 1024  # в GB
-            status.memory['total_gb'] = round(total_vram, 1)
-            
-            # Если модель загружена, используем её размер, иначе оцениваем
-            if status.current_model:
-                estimated_used = self.hardware.estimate_model_vram(status.current_model)
-                status.memory['used_gb'] = estimated_used
-            else:
-                status.memory['used_gb'] = 0
-            
+        """Оценка использования памяти Ollama (только для информации)"""
+        # Если нет информации о памяти, оставляем как есть
+        if status.memory['used_gb'] == 0:
+            return
+        
+        # Пытаемся оценить общую доступную память на основе модели
+        if status.current_model:
+            estimated_total = self.hardware.estimate_model_vram(status.current_model) * 1.5
+            status.memory['total_gb'] = round(estimated_total, 1)
             status.memory['free_gb'] = round(max(0, status.memory['total_gb'] - status.memory['used_gb']), 1)
             status.memory['used_percent'] = round(
                 (status.memory['used_gb'] / status.memory['total_gb'] * 100) 
@@ -205,7 +214,7 @@ class ResourceManager:
             )
     
     def _check_automatic1111(self):
-        """Проверка статуса Automatic1111"""
+        """Проверка статуса Automatic1111 через API"""
         status = self.statuses['automatic1111']
         url = self.config.get('AUTOMATIC1111_URL')
         
@@ -237,6 +246,9 @@ class ResourceManager:
                             (status.memory['used_gb'] / status.memory['total_gb'] * 100) 
                             if status.memory['total_gb'] > 0 else 0, 1
                         )
+                    
+                    # Обновляем режим работы на GPU
+                    self.automatic1111_mode = ProcessingMode.GPU_ONLY
                 
                 # Получаем информацию о текущей загрузке
                 progress_response = requests.get(f"{url}/sdapi/v1/progress", timeout=2)
@@ -272,6 +284,10 @@ class ResourceManager:
                     status.available = True
                     status.health = ServiceHealth.HEALTHY
                     status.details['note'] = 'API памяти недоступно'
+                    
+                    # Не можем определить режим точно
+                    if self.automatic1111_mode == ProcessingMode.UNKNOWN:
+                        self.automatic1111_mode = ProcessingMode.HYBRID
                 else:
                     status.available = False
                     status.health = ServiceHealth.DOWN
@@ -309,10 +325,21 @@ class ResourceManager:
                 status.health = ServiceHealth.HEALTHY
                 
                 # Пробуем получить список комнат
-                rooms_response = requests.get(f"{url}/rooms", timeout=2)
-                if rooms_response.status_code == 200:
-                    rooms = rooms_response.json()
-                    status.details['rooms'] = rooms if isinstance(rooms, list) else []
+                try:
+                    rooms_response = requests.get(f"{url}/rooms", timeout=2)
+                    if rooms_response.status_code == 200:
+                        rooms = rooms_response.json()
+                        if isinstance(rooms, list):
+                            status.details['rooms'] = rooms
+                        elif isinstance(rooms, dict) and 'rooms' in rooms:
+                            status.details['rooms'] = rooms['rooms']
+                        else:
+                            status.details['rooms'] = []
+                    else:
+                        status.details['rooms'] = []
+                except Exception as e:
+                    logger.debug(f"Ошибка получения списка комнат: {e}")
+                    status.details['rooms'] = []
             else:
                 status.available = False
                 status.health = ServiceHealth.DOWN
@@ -342,21 +369,13 @@ class ResourceManager:
     def _can_process_ollama(self, request_type, model_name=None):
         """Проверка возможности обработки запроса Ollama"""
         
-        # Определяем модель, которая будет использоваться
-        if request_type == 'multimodal':
-            model = self.config.get('LLM_MULTIMODAL_MODEL', '')
-        elif request_type == 'reasoning':
-            model = self.config.get('LLM_REASONING_MODEL', '')
-        else:
-            model = self.config.get('LLM_CHAT_MODEL', '')
-        
         # Получаем статус Ollama
         status = self.statuses['ollama']
         
         if not status.available:
             return "wait", "Ollama недоступна", 5
         
-        # Проверяем в зависимости от режима работы
+        # Проверяем в зависимости от режима работы (полученного из API)
         if self.ollama_mode == ProcessingMode.GPU_ONLY:
             # Только GPU - нужна VRAM
             if status.memory['free_gb'] < 2:  # Минимум 2GB свободно
@@ -371,6 +390,7 @@ class ResourceManager:
             else:
                 return "go", "ready", 0
         
+        # HYBRID или UNKNOWN - считаем, что готов
         return "go", "ready", 0
     
     def _can_process_automatic1111(self, model_name=None):
@@ -385,7 +405,7 @@ class ResourceManager:
         if not status.available:
             return "wait", "Automatic1111 недоступен", 10
         
-        # Проверяем режим работы
+        # Проверяем режим работы (полученный из API)
         if self.automatic1111_mode == ProcessingMode.GPU_ONLY:
             if status.memory['free_gb'] < model_vram:
                 return "wait", f"Нужно {model_vram}GB VRAM, свободно {status.memory['free_gb']:.1f}GB", 15
@@ -398,6 +418,13 @@ class ResourceManager:
                 return "wait", f"Мало RAM для CPU режима", 10
             else:
                 return "go", "ready (CPU mode)", 0
+        
+        # HYBRID или UNKNOWN - проверяем наличие информации о памяти
+        if status.memory['free_gb'] > 0:
+            if status.memory['free_gb'] < model_vram:
+                return "wait", f"Нужно {model_vram}GB VRAM, свободно {status.memory['free_gb']:.1f}GB", 15
+            else:
+                return "go", "ready", 0
         
         return "go", "ready", 0
     
@@ -414,26 +441,64 @@ class ResourceManager:
         return self.statuses
     
     def get_system_info(self):
-        """Получение информации о системе"""
-        return {
-            'gpu': {
-                'available': self.hardware.gpu_info['available'],
-                'count': self.hardware.gpu_info['count'],
-                'type': self.hardware.gpu_info['type'],
-                'memory_mb': self.hardware.gpu_info['memory_mb']
-            },
+        """Получение информации о системе (только для сервера с веб-приложением)"""
+        system_info = {
             'system': {
                 'cpu_load': self.cpu_load,
                 'ram_available_gb': round(self.ram_available, 1)
-            },
-            'services': {
-                'ollama': {
-                    'mode': self.ollama_mode.value if self.ollama_mode else 'unknown',
-                    'location': self.statuses['ollama'].location.value if self.statuses['ollama'] else 'unknown'
-                },
-                'automatic1111': {
-                    'mode': self.automatic1111_mode.value if self.automatic1111_mode else 'unknown',
-                    'location': self.statuses['automatic1111'].location.value if self.statuses['automatic1111'] else 'unknown'
-                }
             }
         }
+        
+        # Добавляем информацию о GPU, ТОЛЬКО если nvidia-smi доступен на сервере с веб-приложением
+        try:
+            result = subprocess.run(
+                ['nvidia-smi', '--query-gpu=name,memory.total', '--format=csv,noheader'],
+                capture_output=True, text=True, timeout=2
+            )
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                if lines and lines[0]:
+                    gpu_info = {
+                        'available': True,
+                        'count': len(lines),
+                        'type': 'nvidia',
+                        'memory_mb': [],
+                        'details': []
+                    }
+                    
+                    for line in lines:
+                        if line and ',' in line:
+                            parts = line.split(',')
+                            if len(parts) >= 2:
+                                name = parts[0].strip()
+                                mem_str = parts[1].strip()
+                                mem_digits = re.sub(r'[^0-9]', '', mem_str)
+                                if mem_digits:
+                                    mem_mb = int(mem_digits)
+                                    gpu_info['memory_mb'].append(mem_mb)
+                                    gpu_info['details'].append({
+                                        'name': name,
+                                        'memory_mb': mem_mb
+                                    })
+                    
+                    system_info['gpu'] = gpu_info
+                else:
+                    system_info['gpu'] = {'available': False}
+            else:
+                system_info['gpu'] = {'available': False}
+        except:
+            system_info['gpu'] = {'available': False}
+        
+        # Добавляем информацию о режимах работы сервисов (из их API)
+        system_info['services'] = {
+            'ollama': {
+                'mode': self.ollama_mode.value if self.ollama_mode else 'unknown',
+                'location': self.statuses['ollama'].location.value if self.statuses['ollama'] else 'unknown'
+            },
+            'automatic1111': {
+                'mode': self.automatic1111_mode.value if self.automatic1111_mode else 'unknown',
+                'location': self.statuses['automatic1111'].location.value if self.statuses['automatic1111'] else 'unknown'
+            }
+        }
+        
+        return system_info

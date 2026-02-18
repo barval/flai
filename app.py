@@ -22,7 +22,6 @@ from collections import defaultdict
 # Импорт модулей
 from modules import BaseModule, MultimodalModule, ImageModule, CamModule, RagModule, AudioModule
 from modules.resource_manager import ResourceManager
-from modules.hardware_detector import ProcessingMode, ServiceLocation, ServiceHealth
 
 load_dotenv()
 
@@ -84,9 +83,55 @@ console_handler.setFormatter(formatter)
 app.logger.handlers = [console_handler]
 app.logger.setLevel(logging.DEBUG)
 
-# Инициализация ResourceManager
+# ===================== ГЛОБАЛЬНЫЕ СЧЕТЧИКИ АКТИВНЫХ ЗАПРОСОВ =====================
+active_ollama_requests = 0
+active_automatic1111_requests = 0
+active_camera_requests = 0
+requests_lock = threading.Lock()
+
+def increment_active_requests(service):
+    """Увеличение счетчика активных запросов"""
+    global active_ollama_requests, active_automatic1111_requests, active_camera_requests
+    with requests_lock:
+        if service == 'ollama':
+            active_ollama_requests += 1
+        elif service == 'automatic1111':
+            active_automatic1111_requests += 1
+        elif service == 'camera':
+            active_camera_requests += 1
+        
+        # Обновляем в ResourceManager
+        if resource_manager:
+            resource_manager.update_active_requests('ollama', active_ollama_requests)
+            resource_manager.update_active_requests('automatic1111', active_automatic1111_requests)
+            resource_manager.update_active_requests('camera_api', active_camera_requests)
+        
+        app.logger.debug(f"Активные запросы - Ollama: {active_ollama_requests}, "
+                        f"Auto1111: {active_automatic1111_requests}, Camera: {active_camera_requests}")
+
+def decrement_active_requests(service):
+    """Уменьшение счетчика активных запросов"""
+    global active_ollama_requests, active_automatic1111_requests, active_camera_requests
+    with requests_lock:
+        if service == 'ollama':
+            active_ollama_requests = max(0, active_ollama_requests - 1)
+        elif service == 'automatic1111':
+            active_automatic1111_requests = max(0, active_automatic1111_requests - 1)
+        elif service == 'camera':
+            active_camera_requests = max(0, active_camera_requests - 1)
+        
+        # Обновляем в ResourceManager
+        if resource_manager:
+            resource_manager.update_active_requests('ollama', active_ollama_requests)
+            resource_manager.update_active_requests('automatic1111', active_automatic1111_requests)
+            resource_manager.update_active_requests('camera_api', active_camera_requests)
+        
+        app.logger.debug(f"Активные запросы после уменьшения - Ollama: {active_ollama_requests}, "
+                        f"Auto1111: {active_automatic1111_requests}, Camera: {active_camera_requests}")
+
+# ===================== ИНИЦИАЛИЗАЦИЯ RESOURCE MANAGER =====================
 try:
-    # Передаём app.config как словарь, а не как Flask-приложение
+    # Передаём app.config как словарь
     resource_manager = ResourceManager(app.config)
     app.resource_manager = resource_manager  # Сохраняем в app для доступа из других модулей
     app.logger.info("ResourceManager инициализирован")
@@ -94,7 +139,7 @@ except Exception as e:
     app.logger.error(f"Ошибка инициализации ResourceManager: {e}")
     resource_manager = None
 
-# Инициализация модулей
+# ===================== ИНИЦИАЛИЗАЦИЯ МОДУЛЕЙ =====================
 modules = {}
 
 # Базовый модуль (всегда инициализируем)
@@ -109,9 +154,6 @@ if app.config['AUTOMATIC1111_URL'] and 'multimodal' in modules:
     modules['image'] = ImageModule(app)
     # Связываем с мультимодальным модулем
     modules['image'].set_multimodal_module(modules['multimodal'])
-    # Передаём resource_manager, если он есть
-    if resource_manager:
-        modules['image'].resource_manager = resource_manager
 else:
     app.logger.info("ImageModule не инициализирован (требуются Automatic1111_URL и мультимодальный модуль)")
 
@@ -128,9 +170,7 @@ if 'cam' in modules:
 modules['rag'] = RagModule(app)
 modules['audio'] = AudioModule(app)
 
-# -------------------------------
-# Пути к данным и шаблонам
-# -------------------------------
+# ===================== ПУТИ К ДАННЫМ И ШАБЛОНАМ =====================
 DATA_DIR = 'data'
 PROMPTS_DIR = 'prompts'
 
@@ -139,9 +179,7 @@ if not os.path.exists(DATA_DIR):
 
 CHAT_DB_PATH = os.path.join(DATA_DIR, 'chat.db')
 
-# -------------------------------
-# Функция для загрузки шаблона промпта
-# -------------------------------
+# ===================== ФУНКЦИИ ДЛЯ РАБОТЫ С ШАБЛОНАМИ =====================
 def load_prompt_template(template_name):
     """Загружает шаблон промпта из файла"""
     template_path = os.path.join(PROMPTS_DIR, template_name)
@@ -155,9 +193,6 @@ def load_prompt_template(template_name):
         app.logger.error(f"Ошибка загрузки шаблона {template_name}: {str(e)}")
         return None
 
-# -------------------------------
-# Функция для форматирования промпта с переменными
-# -------------------------------
 def format_prompt(template_name, variables):
     """Загружает шаблон и подставляет переменные"""
     template = load_prompt_template(template_name)
@@ -174,9 +209,7 @@ def format_prompt(template_name, variables):
         app.logger.error(f"Ошибка форматирования шаблона {template_name}: {str(e)}")
         return None
 
-# -------------------------------
-# Функция для получения текущего времени в заданном часовом поясе
-# -------------------------------
+# ===================== ФУНКЦИИ ДЛЯ РАБОТЫ С ВРЕМЕНЕМ =====================
 def get_current_time_in_timezone():
     """Возвращает текущее время в часовом поясе, указанном в .env"""
     if not app.config.get('TIMEZONE'):
@@ -221,9 +254,7 @@ def get_current_time_in_timezone_for_db():
         app.logger.error(f"Ошибка получения времени: {str(e)}")
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-# -------------------------------
-# Функции для работы с БД
-# -------------------------------
+# ===================== ФУНКЦИИ ДЛЯ РАБОТЫ С БД =====================
 def init_db():
     """Инициализация базы данных"""
     try:
@@ -307,9 +338,7 @@ def migrate_db_add_response_fields():
 init_db()
 migrate_db_add_response_fields()
 
-# -------------------------------
-# Функции для работы с пользователями
-# -------------------------------
+# ===================== ФУНКЦИИ ДЛЯ РАБОТЫ С ПОЛЬЗОВАТЕЛЯМИ =====================
 def load_users():
     users = {}
     users_file = 'users.list'
@@ -345,9 +374,7 @@ def load_users():
 
 USERS = load_users()
 
-# -------------------------------
-# Класс RedisRequestQueue (менеджер очереди на Redis)
-# -------------------------------
+# ===================== КЛАСС REDIS REQUEST QUEUE =====================
 class RedisRequestQueue:
     def __init__(self, redis_url):
         self.redis = redis.from_url(redis_url, decode_responses=False)
@@ -365,6 +392,45 @@ class RedisRequestQueue:
         thread.start()
         app.logger.info("RedisRequestQueue: воркер запущен")
     
+    def _check_service_before_processing(self, task):
+        """
+        Проверка доступности сервиса перед обработкой запроса
+        Возвращает True, если можно обрабатывать
+        """
+        request_type = task['data'].get('type', 'text')
+        
+        # Для запросов с изображениями используем multimodal (Ollama)
+        if request_type == 'image':
+            service_needed = 'ollama'
+        # Для текстовых запросов тоже Ollama
+        elif request_type == 'text':
+            service_needed = 'ollama'
+        else:
+            service_needed = request_type
+        
+        app.logger.info(f"Проверка сервиса {service_needed} для запроса {task['id']}")
+        
+        # Проверяем через ResourceManager
+        if resource_manager:
+            can_process, reason = resource_manager.can_process_request(service_needed)
+            if not can_process:
+                app.logger.info(f"Запрос {task['id']} отложен: {reason}")
+                # Возвращаем задачу обратно в очередь (в начало)
+                self.redis.lpush(self.queue_key, pickle.dumps(task))
+                return False
+            
+            app.logger.info(f"Запрос {task['id']} может быть обработан")
+        
+        # Увеличиваем счетчик активных запросов для соответствующего сервиса
+        if service_needed == 'ollama':
+            increment_active_requests('ollama')
+        elif service_needed == 'automatic1111':
+            increment_active_requests('automatic1111')
+        elif service_needed == 'camera':
+            increment_active_requests('camera')
+        
+        return True
+    
     def _worker_loop(self):
         """Основной цикл обработки очереди"""
         app.logger.info("RedisRequestQueue: запуск цикла обработки")
@@ -375,7 +441,6 @@ class RedisRequestQueue:
                 result = self.redis.blpop(self.queue_key, timeout=5)
                 
                 if not result:
-                    # Нет задач, продолжаем ждать
                     continue
                 
                 # Получаем данные задачи
@@ -384,12 +449,24 @@ class RedisRequestQueue:
                 
                 app.logger.info(f"RedisRequestQueue: получена задача {task['id']} из очереди для сеанса {task['session_id']}")
                 
+                # Проверяем, можно ли обрабатывать запрос сейчас
+                if not self._check_service_before_processing(task):
+                    continue
+                
                 # Помечаем задачу как обрабатываемую
                 self.redis.hset(self.processing_key, task['id'], task_data)
                 
+                service_used = 'ollama'  # по умолчанию
                 try:
                     # Обрабатываем запрос
                     result_data = self._process_request(task)
+                    
+                    # Определяем, какой сервис использовался
+                    if 'model_category' in result_data:
+                        if result_data['model_category'] == 'image':
+                            service_used = 'automatic1111'
+                        elif result_data['model_category'] == 'camera':
+                            service_used = 'camera'
                     
                     # Убеждаемся, что в результате есть session_id
                     if 'session_id' not in result_data:
@@ -417,6 +494,9 @@ class RedisRequestQueue:
                     # Удаляем из обрабатываемых
                     self.redis.hdel(self.processing_key, task['id'])
                     
+                    # Уменьшаем счетчик активных запросов для использованного сервиса
+                    decrement_active_requests(service_used)
+                    
             except Exception as e:
                 app.logger.error(f"RedisRequestQueue: ошибка в worker loop: {str(e)}")
                 time.sleep(1)
@@ -427,19 +507,19 @@ class RedisRequestQueue:
         Возвращает request_id и информацию о позиции
         """
         request_id = str(uuid.uuid4())
-        timestamp = time.time()  # Время постановки в очередь
+        timestamp = time.time()
         
         task = {
             'id': request_id,
             'user_id': user_id,
             'session_id': session_id,
             'data': request_data,
-            'timestamp': timestamp,  # Сохраняем время создания
+            'timestamp': timestamp,
             'user_class': user_class,
             'session_title': self._get_session_title(session_id)
         }
         
-        app.logger.info(f"RedisRequestQueue.add_request: добавление задачи {request_id} для сеанса {session_id} с временем {timestamp}")
+        app.logger.info(f"RedisRequestQueue.add_request: добавление задачи {request_id} для сеанса {session_id}")
         
         # Сохраняем задачу в очередь Redis
         self.redis.rpush(self.queue_key, pickle.dumps(task))
@@ -485,7 +565,7 @@ class RedisRequestQueue:
         session_id = task['session_id']
         request_data = task['data']
         
-        # Фиксируем время НАЧАЛА обработки задачи (когда она достаётся из очереди)
+        # Фиксируем время НАЧАЛА обработки задачи
         processing_start_time = time.time()
         
         # Получаем текущее время для логирования
@@ -511,14 +591,13 @@ class RedisRequestQueue:
             app.logger.info(f"RedisRequestQueue._process_request: router_result={router_result}, время маршрутизатора: {router_time} сек")
             
             if 'error' in router_result:
-                # Время ЗАВЕРШЕНИЯ обработки
                 completion_time_for_db = get_current_time_in_timezone_for_db()
                 return {
                     'error': router_result['error'],
                     'session_id': session_id,
                     'assistant_timestamp': completion_time_for_db,
                     'is_error': True,
-                    'response_time': router_time  # Время работы маршрутизатора
+                    'response_time': router_time
                 }
             
             action_type = router_result['action']
@@ -533,7 +612,7 @@ class RedisRequestQueue:
             if action_type == 'image':
                 model_category = 'image'
                 if 'image' in modules and modules['image'].available:
-                    # Замеряем время работы мультимодальной модели (генерация параметров)
+                    # Замеряем время работы мультимодальной модели
                     mm_start_time = time.time()
                     
                     # Генерируем параметры через мультимодальную модель
@@ -555,7 +634,6 @@ class RedisRequestQueue:
                         gen_time = round(time.time() - gen_start_time, 1)
                         
                         if image_result['success']:
-                            # Время ЗАВЕРШЕНИЯ генерации
                             completion_time_for_db = get_current_time_in_timezone_for_db()
                             
                             # Сохраняем оба времени в результат
@@ -590,7 +668,7 @@ class RedisRequestQueue:
                                 'gen_time': gen_time,
                                 'mm_model': image_result['mm_model'],
                                 'gen_model': image_result['gen_model'],
-                                'response_time': {  # Возвращаем объект с раздельным временем
+                                'response_time': {
                                     'mm_time': mm_time,
                                     'gen_time': gen_time,
                                     'mm_model': image_result['mm_model'],
@@ -618,7 +696,6 @@ class RedisRequestQueue:
                     camera_time = round(time.time() - camera_start_time, 1)
                     
                     if camera_result['success']:
-                        # Время ЗАВЕРШЕНИЯ получения снимка
                         completion_time_for_db = get_current_time_in_timezone_for_db()
                         
                         save_message(
@@ -639,7 +716,7 @@ class RedisRequestQueue:
                             'file_name': camera_result['file_name'],
                             'file_size': camera_result['file_size'],
                             'file_type': camera_result['image_type'],
-                            'response_time': camera_time,  # Время получения снимка
+                            'response_time': camera_time,
                             'is_error': False
                         }
                     else:
@@ -656,7 +733,6 @@ class RedisRequestQueue:
             elif action_type == 'reasoning':
                 model_category = 'reasoning'
                 if router_result.get('needs_reasoning'):
-                    # Замеряем время работы reasoning модели
                     reasoning_start_time = time.time()
                     final_response = modules['base'].process_reasoning(query, current_time_str)
                     process_time = round(time.time() - reasoning_start_time, 1)
@@ -667,16 +743,13 @@ class RedisRequestQueue:
                 is_error = False
             
             else:  # action_type == 'none'
-                # Для простых ответов время = время работы маршрутизатора
                 process_time = router_time
                 final_response = query
                 is_error = False
             
             if final_response:
-                # Время ЗАВЕРШЕНИЯ обработки
                 completion_time_for_db = get_current_time_in_timezone_for_db()
                 
-                # Сохраняем сообщение с временем обработки
                 save_message(
                     session_id, 'assistant', final_response, 
                     model_name=model_used,
@@ -689,13 +762,12 @@ class RedisRequestQueue:
                 'model_used': model_used,
                 'model_category': model_category,
                 'assistant_timestamp': completion_time_for_db,
-                'response_time': process_time,  # Только время обработки моделью
+                'response_time': process_time,
                 'is_error': is_error
             }
         
         # Для запросов с изображениями
         elif request_type == 'image' and file_data:
-            # Замеряем время обработки изображения
             process_start_time = time.time()
             is_error = False
             
@@ -721,10 +793,8 @@ class RedisRequestQueue:
                 process_time = round(time.time() - process_start_time, 1)
                 is_error = True
             
-            # Время ЗАВЕРШЕНИЯ обработки
             completion_time_for_db = get_current_time_in_timezone_for_db()
             
-            # Сохраняем сообщение
             save_message(
                 session_id, 'assistant', bot_reply, 
                 model_name=app.config['LLM_MULTIMODAL_MODEL'] if 'multimodal' in modules else 'system',
@@ -737,11 +807,10 @@ class RedisRequestQueue:
                 'model_used': app.config['LLM_MULTIMODAL_MODEL'] if 'multimodal' in modules else 'system',
                 'model_category': 'multimodal',
                 'assistant_timestamp': completion_time_for_db,
-                'response_time': process_time,  # Только время обработки моделью
+                'response_time': process_time,
                 'is_error': is_error
             }
         
-        # Время ЗАВЕРШЕНИЯ обработки для ошибки
         completion_time_for_db = get_current_time_in_timezone_for_db()
         return {
             'error': 'Неизвестный тип запроса',
@@ -769,7 +838,6 @@ class RedisRequestQueue:
             req_id = req_id.decode() if isinstance(req_id, bytes) else req_id
             if req_id in user_requests:
                 task = pickle.loads(task_data)
-                # Добавляем информацию о статусе
                 task_for_display = task.copy()
                 task_for_display['status'] = 'processing'
                 result['processing'] = self._format_request_info(task_for_display)
@@ -782,7 +850,6 @@ class RedisRequestQueue:
         for task_data in queue_tasks:
             task = pickle.loads(task_data)
             if task['user_id'] == user_id:
-                # Добавляем информацию о позиции
                 task_for_display = task.copy()
                 task_for_display['status'] = 'queued'
                 task_for_display['position_info'] = {
@@ -816,7 +883,7 @@ class RedisRequestQueue:
         }
     
     def cancel_request(self, user_id, request_id):
-        """Отмена запроса"""
+        """Отмена запроса (заглушка)"""
         return False
     
     def check_result(self, request_id):
@@ -834,9 +901,7 @@ except Exception as e:
     app.logger.error(f"Ошибка инициализации RedisRequestQueue: {e}")
     request_queue = None
 
-# -------------------------------
-# Функции для работы с БД (вспомогательные)
-# -------------------------------
+# ===================== ФУНКЦИИ ДЛЯ РАБОТЫ С БД (ВСПОМОГАТЕЛЬНЫЕ) =====================
 def get_user_sessions(user_id):
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
@@ -872,7 +937,6 @@ def get_session_messages(session_id):
                 try:
                     msg_dict['response_time'] = json.loads(msg_dict['response_time'])
                 except:
-                    # Если не JSON, оставляем как есть (число или строка)
                     pass
             
             # Преобразуем timestamp в ISO формат для JS
@@ -936,7 +1000,6 @@ def save_message(session_id, role, content, file_data=None, file_type=None, file
         if response_time and isinstance(response_time, dict):
             response_time = json.dumps(response_time, ensure_ascii=False)
         elif response_time is not None and not isinstance(response_time, str):
-            # Преобразуем число в строку для хранения
             response_time = str(response_time)
         
         c.execute('''
@@ -975,9 +1038,7 @@ def set_last_session(user_id, session_id):
         ''', (user_id, session_id))
         conn.commit()
 
-# -------------------------------
-# Маршруты аутентификации
-# -------------------------------
+# ===================== МАРШРУТЫ АУТЕНТИФИКАЦИИ =====================
 @app.route('/')
 def index():
     if 'email' not in session:
@@ -1012,9 +1073,7 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
-# -------------------------------
-# Основной чат
-# -------------------------------
+# ===================== ОСНОВНОЙ ЧАТ =====================
 @app.route('/chat')
 def chat():
     if 'email' not in session:
@@ -1039,9 +1098,7 @@ def chat():
                          current_session=session.get('current_session'),
                          footer_text=app.config.get('FOOTER_TEXT', ""))
 
-# -------------------------------
-# API для работы с сеансами
-# -------------------------------
+# ===================== API ДЛЯ РАБОТЫ С СЕАНСАМИ =====================
 @app.route('/api/sessions', methods=['GET'])
 def api_get_sessions():
     if 'email' not in session:
@@ -1144,8 +1201,7 @@ def api_delete_session(session_id):
     
     return jsonify({'status': 'ok'})
 
-# ===================== НОВЫЕ ЭНДПОИНТЫ =====================
-
+# ===================== API ДЛЯ СТАТУСА СЕРВИСОВ =====================
 @app.route('/api/services/status', methods=['GET'])
 def api_services_status():
     """Получение статуса всех сервисов"""
@@ -1160,33 +1216,27 @@ def api_services_status():
     # Преобразуем в JSON-совместимый формат
     result = {}
     for name, status in statuses.items():
-        # Определяем режим работы для каждого сервиса
-        mode = None
-        if name == 'ollama':
-            mode = resource_manager.ollama_mode.value if resource_manager.ollama_mode else 'unknown'
-        elif name == 'automatic1111':
-            mode = resource_manager.automatic1111_mode.value if resource_manager.automatic1111_mode else 'unknown'
-        
         result[name] = {
             'name': status.name,
-            'location': status.location.value if status.location else 'unknown',
-            'health': status.health.value if status.health else 'unknown',
-            'mode': mode,
+            'location': status.location,
+            'health': status.health,
             'available': status.available,
             'url': status.url,
-            'memory': status.memory,
-            'load': status.load,
-            'current_model': status.current_model,
-            'details': status.details,
+            'error': status.error,
             'last_update': status.last_update.isoformat() if status.last_update else None
         }
+        
+        # Добавляем информацию об активных запросах
+        if name == 'ollama':
+            result[name]['active_requests'] = active_ollama_requests
+        elif name == 'automatic1111':
+            result[name]['active_requests'] = active_automatic1111_requests
+        elif name == 'camera_api':
+            result[name]['active_requests'] = active_camera_requests
     
     return jsonify(result)
 
-
-# -------------------------------
-# API для очереди запросов (Redis)
-# -------------------------------
+# ===================== API ДЛЯ ОЧЕРЕДИ ЗАПРОСОВ =====================
 @app.route('/api/queue/status', methods=['GET'])
 def api_queue_status():
     """Получить статус всех запросов текущего пользователя"""
@@ -1205,32 +1255,29 @@ def api_queue_status():
         
         queue_length = request_queue.redis.llen(request_queue.queue_key) if request_queue.redis else 0
         
-        # Определяем загрузку на основе статусов
-        current_load = 'normal'
-        auto_load = service_statuses['automatic1111'].load if service_statuses['automatic1111'] else 0
-        ollama_load = service_statuses['ollama'].load if service_statuses['ollama'] else 0
-        
-        if auto_load > 50 or ollama_load > 50:
-            current_load = 'high'
-        
         status['system'] = {
             'total_queued': queue_length,
-            'current_load': current_load,
             'services': {
                 'ollama': {
                     'available': service_statuses['ollama'].available if service_statuses['ollama'] else False,
-                    'health': service_statuses['ollama'].health.value if service_statuses['ollama'] else 'unknown'
+                    'health': service_statuses['ollama'].health,
+                    'active_requests': active_ollama_requests
                 },
                 'automatic1111': {
                     'available': service_statuses['automatic1111'].available if service_statuses['automatic1111'] else False,
-                    'health': service_statuses['automatic1111'].health.value if service_statuses['automatic1111'] else 'unknown'
+                    'health': service_statuses['automatic1111'].health,
+                    'active_requests': active_automatic1111_requests
+                },
+                'camera_api': {
+                    'available': service_statuses['camera_api'].available if service_statuses['camera_api'] else False,
+                    'health': service_statuses['camera_api'].health,
+                    'active_requests': active_camera_requests
                 }
             }
         }
     else:
         status['system'] = {
             'total_queued': 0,
-            'current_load': 'unknown',
             'services': {}
         }
     
@@ -1260,16 +1307,12 @@ def api_check_result(request_id):
     else:
         return jsonify({'status': 'pending'})
 
-# -------------------------------
-# API для получения подписи футера
-# -------------------------------
+# ===================== API ДЛЯ ПОДПИСИ ФУТЕРА =====================
 @app.route('/api/footer-text', methods=['GET'])
 def api_footer_text():
     return app.config.get('FOOTER_TEXT', "Подпись не настроена")
 
-# -------------------------------
-# Очистка истории сеанса
-# -------------------------------
+# ===================== ОЧИСТКА ИСТОРИИ СЕАНСА =====================
 @app.route('/clear_history', methods=['POST'])
 def clear_history():
     if 'email' not in session:
@@ -1289,9 +1332,7 @@ def clear_history():
     
     return jsonify({'status': 'ok'})
 
-# -------------------------------
-# ОТПРАВКА СООБЩЕНИЯ
-# -------------------------------
+# ===================== ОТПРАВКА СООБЩЕНИЯ =====================
 @app.route('/send_message', methods=['POST'])
 def send_message():
     app.logger.info("=" * 50)
@@ -1367,12 +1408,21 @@ def send_message():
     if file_data and file_type and file_type.startswith('image/'):
         request_type = 'image'
     
-    # Проверяем возможность обработки через ResourceManager
+    # Простая проверка доступности сервисов через ResourceManager
     warning = None
     if resource_manager:
-        can_process, reason, wait_time = resource_manager.can_process_request(request_type)
-        if can_process == 'wait':
-            warning = f'⚠️ {reason}. Ожидание: ~{wait_time} сек'
+        # Обновляем статусы
+        resource_manager.check_all_services()
+        
+        # Проверяем доступность нужного сервиса
+        if request_type == 'image' and file_data:
+            # Для изображений нужна мультимодальная модель (Ollama)
+            if not resource_manager.statuses['ollama'].available:
+                warning = '⚠️ Сервис Ollama недоступен. Запрос будет обработан, когда сервис станет доступен.'
+        elif request_type == 'text':
+            # Для текста нужна Ollama
+            if not resource_manager.statuses['ollama'].available:
+                warning = '⚠️ Сервис Ollama недоступен. Запрос будет обработан, когда сервис станет доступен.'
     
     # Создаём данные для очереди
     request_data = {
@@ -1403,9 +1453,7 @@ def send_message():
     
     return jsonify(response_data)
 
-# -------------------------------
-# Статика и прочее
-# -------------------------------
+# ===================== СТАТИКА И ПРОЧЕЕ =====================
 @app.route('/favicon.ico')
 def favicon():
     return send_from_directory(os.path.join(app.root_path, 'static'),

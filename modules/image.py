@@ -18,11 +18,8 @@ class ImageModule:
         self.model_name = None
         self.available = False
         self.multimodal_module = None
-        self.resource_manager = None
-        self.cleanup_lock = threading.Lock()
         
         # Настройки очистки памяти
-        self.aggressive_cleanup = True
         self.cleanup_delay = 2  # секунд после генерации
         
         if app:
@@ -32,9 +29,6 @@ class ImageModule:
         """Инициализация модуля с приложением Flask"""
         self.automatic1111_url = app.config.get('AUTOMATIC1111_URL')
         self.model_name = app.config.get('AUTOMATIC1111_MODEL')
-        
-        # Получаем resource_manager из app, если есть
-        self.resource_manager = getattr(app, 'resource_manager', None)
         
         self.check_availability()
         
@@ -63,61 +57,27 @@ class ImageModule:
         
         return False
     
-    def log_vram_usage(self, stage=""):
-        """Логирование использования VRAM через API Automatic1111"""
-        try:
-            response = requests.get(f"{self.automatic1111_url}/sdapi/v1/memory", timeout=2)
-            if response.status_code == 200:
-                data = response.json()
-                if 'cuda' in data:
-                    cuda = data['cuda']
-                    used_gb = cuda.get('used', 0) / 1024
-                    total_gb = cuda.get('total', 0) / 1024
-                    free_gb = cuda.get('free', 0) / 1024
-                    self.logger.info(f"VRAM {stage}: used={used_gb:.1f}GB, free={free_gb:.1f}GB, total={total_gb:.1f}GB")
-        except Exception as e:
-            self.logger.debug(f"Не удалось получить информацию о памяти: {e}")
-    
     def free_memory(self):
-        """Принудительная очистка памяти Automatic1111"""
-        with self.cleanup_lock:
-            try:
-                self.logger.info("Запуск очистки памяти Automatic1111")
-                self.log_vram_usage("BEFORE_CLEANUP")
-                
-                # Выгружаем модель из VRAM
-                response = requests.post(
-                    f"{self.automatic1111_url}/sdapi/v1/unload-checkpoint",
-                    timeout=10
-                )
-                
-                if response.status_code == 200:
-                    self.logger.info("Модель успешно выгружена из VRAM")
-                    
-                    # Ждём немного для освобождения памяти
-                    time.sleep(2)
-                    
-                    # Опционально: перезагружаем контрольную точку (не обязательно)
-                    # Это освободит память, но модель придётся загружать заново
-                    if self.aggressive_cleanup:
-                        response = requests.post(
-                            f"{self.automatic1111_url}/sdapi/v1/reload-checkpoint",
-                            timeout=5
-                        )
-                        if response.status_code == 200:
-                            self.logger.info("Контрольная точка перезагружена")
-                        else:
-                            self.logger.warning(f"Не удалось перезагрузить контрольную точку: {response.status_code}")
-                    
-                    self.log_vram_usage("AFTER_CLEANUP")
-                    return True
-                else:
-                    self.logger.warning(f"Ошибка при выгрузке модели: {response.status_code}")
-                    return False
-                    
-            except Exception as e:
-                self.logger.error(f"Ошибка при очистке памяти: {e}")
+        """Очистка памяти Automatic1111 (выгрузка модели)"""
+        try:
+            self.logger.info("Очистка памяти Automatic1111")
+            
+            response = requests.post(
+                f"{self.automatic1111_url}/sdapi/v1/unload-checkpoint",
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                self.logger.info("Модель успешно выгружена из памяти")
+                time.sleep(1)  # Небольшая пауза для освобождения памяти
+                return True
+            else:
+                self.logger.warning(f"Ошибка при выгрузке модели: {response.status_code}")
                 return False
+                
+        except Exception as e:
+            self.logger.error(f"Ошибка при очистке памяти: {e}")
+            return False
     
     def is_ready(self):
         """Проверка, готов ли Automatic1111 к новому заданию"""
@@ -128,16 +88,11 @@ class ImageModule:
             )
             if response.status_code == 200:
                 data = response.json()
-                # Если прогресс 0 и нет активной задачи - готов
                 if data.get('progress') == 0 and not data.get('state', {}).get('active'):
-                    return True, "ready"
-                else:
-                    progress = data.get('progress', 0) * 100
-                    return False, f"busy: {progress:.0f}%"
-        except Exception as e:
-            return False, f"error: {e}"
-        
-        return False, "unknown"
+                    return True
+        except:
+            pass
+        return False
     
     def generate_image(self, user_query, start_time=None):
         """Генерация изображения по запросу пользователя"""
@@ -169,14 +124,11 @@ class ImageModule:
         """Вызов Automatic1111 API с последующей очисткой памяти"""
         
         # Проверяем готовность
-        is_ready, status = self.is_ready()
-        if not is_ready and status != "ready":
+        if not self.is_ready():
             return {
                 'success': False,
-                'error': f"Automatic1111 не готов: {status}"
+                'error': "Automatic1111 занят генерацией"
             }
-        
-        self.log_vram_usage("BEFORE_GENERATION")
         
         try:
             payload = {
@@ -209,8 +161,6 @@ class ImageModule:
                 timeout=120
             )
             
-            self.log_vram_usage("AFTER_GENERATION")
-            
             if response.status_code == 200:
                 result = response.json()
                 if result.get('images') and len(result['images']) > 0:
@@ -222,7 +172,7 @@ class ImageModule:
                     # Генерируем имя файла
                     filename = f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.jpg"
                     
-                    # Запускаем очистку памяти в фоне (не блокируем ответ)
+                    # Запускаем очистку памяти в фоне
                     threading.Thread(target=self._delayed_cleanup, daemon=True).start()
                     
                     return {
@@ -260,6 +210,6 @@ class ImageModule:
             }
     
     def _delayed_cleanup(self):
-        """Очистка памяти с задержкой (чтобы не блокировать ответ)"""
+        """Очистка памяти с задержкой"""
         time.sleep(self.cleanup_delay)
         self.free_memory()

@@ -44,16 +44,17 @@ class ServiceStatusMonitor {
             locationEl.className = `service-location ${status.location}`;
         }
         
+        // Режим работы в заголовке
+        const modeHeaderEl = document.getElementById('ollama-mode-header');
+        if (modeHeaderEl) {
+            modeHeaderEl.textContent = this.getModeIcon(status.mode);
+            modeHeaderEl.className = `service-mode ${this.getModeClass(status.mode)}`;
+        }
+        
         // Индикатор здоровья
         const healthEl = document.getElementById('ollama-health');
         if (healthEl) {
             healthEl.innerHTML = `<span class="health-icon ${status.health}"></span>${this.getHealthText(status.health)}`;
-        }
-        
-        // Режим работы
-        const modeEl = document.getElementById('ollama-mode');
-        if (modeEl) {
-            modeEl.textContent = this.getModeText(status.mode);
         }
         
         // Память
@@ -78,14 +79,16 @@ class ServiceStatusMonitor {
             locationEl.className = `service-location ${status.location}`;
         }
         
+        // Режим работы в заголовке
+        const modeHeaderEl = document.getElementById('automatic1111-mode-header');
+        if (modeHeaderEl) {
+            modeHeaderEl.textContent = this.getModeIcon(status.mode);
+            modeHeaderEl.className = `service-mode ${this.getModeClass(status.mode)}`;
+        }
+        
         const healthEl = document.getElementById('automatic1111-health');
         if (healthEl) {
             healthEl.innerHTML = `<span class="health-icon ${status.health}"></span>${this.getHealthText(status.health)}`;
-        }
-        
-        const modeEl = document.getElementById('automatic1111-mode');
-        if (modeEl) {
-            modeEl.textContent = this.getModeText(status.mode);
         }
         
         // Загрузка
@@ -124,11 +127,6 @@ class ServiceStatusMonitor {
         const healthEl = document.getElementById('camera-health');
         if (healthEl) {
             healthEl.innerHTML = `<span class="health-icon ${status.health}"></span>${this.getHealthText(status.health)}`;
-        }
-        
-        const urlEl = document.getElementById('camera-url');
-        if (urlEl) {
-            urlEl.textContent = status.url || 'Не настроен';
         }
         
         // Комнаты
@@ -214,14 +212,24 @@ class ServiceStatusMonitor {
         return texts[health] || health;
     }
     
-    getModeText(mode) {
-        const texts = {
+    getModeIcon(mode) {
+        const icons = {
             'gpu_only': '⚡ GPU',
             'cpu_only': '🐢 CPU',
             'hybrid': '🔄 Гибрид',
             'unknown': '❓'
         };
-        return texts[mode] || mode;
+        return icons[mode] || mode;
+    }
+    
+    getModeClass(mode) {
+        const classes = {
+            'gpu_only': 'gpu',
+            'cpu_only': 'cpu',
+            'hybrid': 'hybrid',
+            'unknown': ''
+        };
+        return classes[mode] || '';
     }
 }
 

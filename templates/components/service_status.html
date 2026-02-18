@@ -11,15 +11,12 @@
         <div class="service-header">
             <span class="service-name">🦙 Ollama</span>
             <span class="service-location" id="ollama-location"></span>
+            <span class="service-mode" id="ollama-mode-header"></span>
             <span class="service-health-indicator" id="ollama-health"></span>
         </div>
         
         <div class="service-details" id="ollama-details">
-            <!-- Строки URL и Модель удалены -->
-            <div class="detail-row">
-                <span class="detail-label">Режим:</span>
-                <span class="detail-value" id="ollama-mode"></span>
-            </div>
+            <!-- Только индикатор памяти -->
             <div class="memory-indicator" id="ollama-memory">
                 <div class="memory-bar-container">
                     <div class="memory-bar" id="ollama-memory-bar"></div>
@@ -34,19 +31,17 @@
         <div class="service-header">
             <span class="service-name">🎨 Automatic1111</span>
             <span class="service-location" id="automatic1111-location"></span>
+            <span class="service-mode" id="automatic1111-mode-header"></span>
             <span class="service-health-indicator" id="automatic1111-health"></span>
         </div>
         
         <div class="service-details" id="automatic1111-details">
-            <!-- Строки URL и Модель удалены -->
-            <div class="detail-row">
-                <span class="detail-label">Режим:</span>
-                <span class="detail-value" id="automatic1111-mode"></span>
-            </div>
+            <!-- Загрузка (если есть) -->
             <div class="detail-row" id="automatic1111-load-row" style="display: none;">
                 <span class="detail-label">Загрузка:</span>
                 <span class="detail-value" id="automatic1111-load"></span>
             </div>
+            <!-- Индикатор памяти -->
             <div class="memory-indicator" id="automatic1111-memory">
                 <div class="memory-bar-container">
                     <div class="memory-bar" id="automatic1111-memory-bar"></div>
@@ -65,10 +60,7 @@
         </div>
         
         <div class="service-details" id="camera-details">
-            <div class="detail-row">
-                <span class="detail-label">URL:</span>
-                <span class="detail-value" id="camera-url"></span>
-            </div>
+            <!-- URL удален, только комнаты -->
             <div class="detail-row" id="camera-rooms-row">
                 <span class="detail-label">Комнаты:</span>
                 <span class="detail-value" id="camera-rooms"></span>
@@ -98,7 +90,7 @@
     </div>
 </div>
 
-<!-- Добавляем CSS для индикаторов (без изменений) -->
+<!-- Добавляем CSS для индикаторов -->
 <style>
 .services-status-panel {
     background: #f8f9fa;
@@ -168,6 +160,7 @@
     align-items: center;
     gap: 8px;
     margin-bottom: 8px;
+    flex-wrap: wrap;
 }
 
 .service-name {
@@ -191,6 +184,29 @@
 .service-location.remote {
     background: #cce5ff;
     color: #004085;
+}
+
+.service-mode {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 12px;
+    background: #e9ecef;
+    color: #495057;
+}
+
+.service-mode.gpu {
+    background: #cce5ff;
+    color: #004085;
+}
+
+.service-mode.cpu {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.service-mode.hybrid {
+    background: #d4edda;
+    color: #155724;
 }
 
 .service-health-indicator {

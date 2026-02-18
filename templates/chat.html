@@ -1033,6 +1033,12 @@
     }
 
     async function refreshRequestsStatus() {
+        // Не обновляем, если панель скрыта
+        const panel = document.getElementById('requests-status-panel');
+        if (panel.style.display === 'none') {
+            return;
+        }
+        
         try {
             const response = await fetch('/api/queue/status');
             const status = await response.json();
@@ -1333,8 +1339,8 @@
                     document.querySelector('.chat-header').appendChild(notification);
                     setTimeout(() => notification.remove(), 5000);
                     
-                    // Автоматически показываем панель статуса
-                    initRequestsStatusPanel();
+                    // НЕ показываем панель статуса автоматически
+                    // Панель показывается только по кнопке "Статус"
                     
                     startResultPolling(data.request_id);
                 } else if (data.response) {

@@ -759,19 +759,127 @@ class RedisRequestQueue:
                     }
             
             elif action_type == 'camera':
-                # ... (код для камер)
-                pass
+                # Код для камер
+                if 'cam' in modules and modules['cam'].available:
+                    # Получаем код комнаты из запроса
+                    room_code = query.strip()
+                    
+                    # Получаем снимок с камеры
+                    camera_result = modules['cam'].get_snapshot(room_code)
+                    
+                    if camera_result['success']:
+                        completion_time_for_db = get_current_time_in_timezone_for_db()
+                        process_time = round(time.time() - processing_start_time, 1)
+                        
+                        # Сохраняем сообщение в БД
+                        save_message(
+                            session_id, 'assistant', f"Снимок с камеры: {camera_result['room_name']}",
+                            camera_result['image_data'], camera_result['image_type'],
+                            camera_result['file_name'], 'camera_api',
+                            response_time=str(process_time)
+                        )
+                        
+                        return {
+                            'response': f"Снимок с камеры: {camera_result['room_name']}",
+                            'session_id': session_id,
+                            'model_used': 'camera_api',
+                            'model_category': action_type,
+                            'assistant_timestamp': completion_time_for_db,
+                            'generated_image': camera_result['image_data'],
+                            'file_name': camera_result['file_name'],
+                            'file_size': camera_result['file_size'],
+                            'file_type': camera_result['image_type'],
+                            'response_time': process_time,
+                            'is_error': False
+                        }
+                    else:
+                        final_response = f"⚠️ {camera_result['error']}"
+                        model_used = 'system'
+                        is_error = True
+                        process_time = round(time.time() - processing_start_time, 1)
+                else:
+                    final_response = "⚠️ Модуль видеонаблюдения недоступен"
+                    model_used = 'system'
+                    is_error = True
+                    process_time = round(time.time() - processing_start_time, 1)
+                
+                if 'final_response' in locals():
+                    completion_time_for_db = get_current_time_in_timezone_for_db()
+                    save_message(
+                        session_id, 'assistant', final_response, 
+                        model_name=model_used,
+                        response_time=str(process_time)
+                    )
+                    
+                    return {
+                        'response': final_response,
+                        'session_id': session_id,
+                        'model_used': model_used,
+                        'model_category': model_category,
+                        'assistant_timestamp': completion_time_for_db,
+                        'response_time': process_time,
+                        'is_error': is_error
+                    }
             
             elif action_type == 'reasoning':
-                # ... (код для reasoning)
-                pass
+                # Код для reasoning модели
+                if 'base' in modules and modules['base'].available:
+                    reasoning_start_time = time.time()
+                    reasoning_response = modules['base'].process_reasoning(query, current_time_str)
+                    reasoning_time = round(time.time() - reasoning_start_time, 1)
+                    
+                    final_response = reasoning_response
+                    model_used = app.config['LLM_REASONING_MODEL']
+                    model_category = 'reasoning'
+                    is_error = False
+                    process_time = reasoning_time
+                    
+                    completion_time_for_db = get_current_time_in_timezone_for_db()
+                    save_message(
+                        session_id, 'assistant', final_response, 
+                        model_name=model_used,
+                        response_time=str(process_time)
+                    )
+                    
+                    return {
+                        'response': final_response,
+                        'session_id': session_id,
+                        'model_used': model_used,
+                        'model_category': model_category,
+                        'assistant_timestamp': completion_time_for_db,
+                        'response_time': process_time,
+                        'is_error': is_error
+                    }
+                else:
+                    final_response = "⚠️ Модуль для сложных запросов недоступен"
+                    model_used = 'system'
+                    is_error = True
+                    process_time = round(time.time() - processing_start_time, 1)
+                    
+                    completion_time_for_db = get_current_time_in_timezone_for_db()
+                    save_message(
+                        session_id, 'assistant', final_response, 
+                        model_name=model_used,
+                        response_time=str(process_time)
+                    )
+                    
+                    return {
+                        'response': final_response,
+                        'session_id': session_id,
+                        'model_used': model_used,
+                        'model_category': model_category,
+                        'assistant_timestamp': completion_time_for_db,
+                        'response_time': process_time,
+                        'is_error': is_error
+                    }
             
-            else:  # action_type == 'none'
+            else:  # action_type == 'none' - простой запрос
                 process_time = router_time
                 final_response = query
                 is_error = False
-            
-            if final_response:
+                model_used = app.config['LLM_CHAT_MODEL']
+                model_category = 'chat'
+                
                 completion_time_for_db = get_current_time_in_timezone_for_db()
                 
                 save_message(
@@ -779,18 +887,18 @@ class RedisRequestQueue:
                     model_name=model_used,
                     response_time=str(process_time)
                 )
-            
-            return {
-                'response': final_response,
-                'session_id': session_id,
-                'model_used': model_used,
-                'model_category': model_category,
-                'assistant_timestamp': completion_time_for_db,
-                'response_time': process_time,
-                'is_error': is_error
-            }
+                
+                return {
+                    'response': final_response,
+                    'session_id': session_id,
+                    'model_used': model_used,
+                    'model_category': model_category,
+                    'assistant_timestamp': completion_time_for_db,
+                    'response_time': process_time,
+                    'is_error': is_error
+                }
         
-        # Для запросов с изображениями
+        # Для запросов с изображениями (от пользователя)
         elif request_type == 'image' and file_data:
             process_start_time = time.time()
             is_error = False
@@ -826,17 +934,18 @@ class RedisRequestQueue:
                 response_time=str(process_time)
             )
             
-            # ВАЖНО: Возвращаем результат с флагом, что это результат обработки изображения
+            # ===== ИСПРАВЛЕНИЕ: Возвращаем результат с явным указанием model_category = 'image_result' =====
             return {
                 'response': bot_reply,
                 'session_id': session_id,
                 'model_used': app.config['LLM_MULTIMODAL_MODEL'] if 'multimodal' in modules else 'system',
-                'model_category': 'image_result',  # <-- ИЗМЕНЕНО: теперь это специальный флаг
+                'model_category': 'image_result',  # Важно: этот флаг будет использоваться на клиенте
                 'assistant_timestamp': completion_time_for_db,
                 'response_time': process_time,
                 'is_error': is_error
             }
         
+        # Для остальных типов запросов (если вдруг что-то неизвестное)
         completion_time_for_db = get_current_time_in_timezone_for_db()
         return {
             'error': 'Неизвестный тип запроса',

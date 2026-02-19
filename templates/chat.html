@@ -128,6 +128,9 @@
     // Глобальный Set для отслеживания отображенных сообщений
     window.displayedMessages = new Set(); 
 
+    // ===================== ИСПРАВЛЕНИЕ: Карта для отслеживания времени обработки запросов =====================
+    let requestProcessingTimes = new Map(); // requestId -> timestamp when processing started
+
     // -------------------------------
     // Вспомогательные функции
     // -------------------------------
@@ -314,7 +317,6 @@
         }
     }
 
-    // ===================== ИСПРАВЛЕНИЕ 3: Функция очистки кэша сообщений =====================
     function clearMessagesCache(sessionId) {
         if (sessionId) {
             delete messagesCache[sessionId];
@@ -323,285 +325,28 @@
         }
     }
 
-    // ===================== ИСПРАВЛЕНИЕ 2: Улучшенный global polling =====================
-    function startGlobalUpdatesPolling() {
-        if (globalUpdatesInterval) {
-            clearInterval(globalUpdatesInterval);
-        }
+    // ===================== ИСПРАВЛЕНИЕ: Улучшенная функция очистки старых записей =====================
+    function cleanupProcessedRequests() {
+        const now = Date.now();
+        const FIVE_MINUTES = 5 * 60 * 1000;
         
-        globalUpdatesInterval = setInterval(async () => {
-            try {
-                const response = await fetch(`/api/check-updates?last_check=${lastUpdateCheck}`);
-                const updates = await response.json();
-                
-                if (updates.has_updates) {
-                    console.log('Обнаружены обновления:', updates);
-                    
-                    // Обновляем список сеансов
-                    await loadSessionsFromServer();
-                    
-                    // Проверяем, есть ли обновления для текущего сеанса
-                    const currentSessionUpdated = updates.sessions?.some(s => s.id === currentSessionId) || false;
-                    
-                    if (currentSessionUpdated) {
-                        console.log('Обновление в текущем сеансе, принудительная перезагрузка');
-                        
-                        // Очищаем кэш для текущего сеанса
-                        clearMessagesCache(currentSessionId);
-                        
-                        // Загружаем сообщения заново
-                        await loadMessages(currentSessionId);
-                    }
-                    
-                    // Обновляем индикаторы для других сеансов
-                    if (updates.new_messages && Array.isArray(updates.new_messages)) {
-                        updates.new_messages.forEach(sessionId => {
-                            if (sessionId !== currentSessionId) {
-                                setNewMessageIndicator(sessionId, true);
-                            }
-                        });
-                    }
-                    
-                    // Обновляем время последней проверки
-                    lastUpdateCheck = Date.now() / 1000;
-                }
-            } catch (error) {
-                console.error('Ошибка при проверке обновлений:', error);
-            }
-        }, 2000); // Проверка каждые 2 секунды
-    }
-
-    // -------------------------------
-    // Загрузка списка сеансов с сервера
-    // -------------------------------
-    function loadSessionsFromServer() {
-        return fetch('/api/sessions')
-            .then(res => res.json())
-            .then(sessions => {
-                let updated = false;
-                let titlesChanged = false;
-                
-                // Обновляем данные в хранилище
-                sessions.forEach(s => {
-                    if (!sessionsData[s.id]) {
-                        sessionsData[s.id] = {
-                            title: s.title,
-                            updated_at: s.updated_at
-                        };
-                        updated = true;
-                    } else if (sessionsData[s.id].title !== s.title) {
-                        sessionsData[s.id].title = s.title;
-                        sessionsData[s.id].updated_at = s.updated_at;
-                        updated = true;
-                        titlesChanged = true;
-                    } else if (sessionsData[s.id].updated_at !== s.updated_at) {
-                        sessionsData[s.id].updated_at = s.updated_at;
-                        updated = true;
-                    }
-                });
-                
-                // Удаляем из хранилища сеансы, которых больше нет
-                Object.keys(sessionsData).forEach(id => {
-                    if (!sessions.find(s => s.id === id)) {
-                        delete sessionsData[id];
-                        delete newMessageIndicators[id];
-                        updated = true;
-                    }
-                });
-                
-                // Если были изменения, обновляем отображение
-                if (updated) {
-                    updateSessionsList(sessions, titlesChanged);
-                }
-                
-                return sessions;
-            })
-            .catch(err => console.error('Ошибка загрузки сеансов:', err));
-    }
-
-    // Принудительное обновление списка сеансов
-    function forceRefreshSessions() {
-        loadSessionsFromServer().then(() => {
-            console.log('Список сеансов обновлен');
-        });
-    }
-
-    // -------------------------------
-    // Обновление списка сеансов в DOM
-    // -------------------------------
-    function updateSessionsList(sessions, preserveIndicators = true) {
-        const sessionsList = document.getElementById('sessions-list');
-        const currentActiveId = currentSessionId;
-        
-        // Используем данные из хранилища
-        sessions.forEach(s => {
-            if (sessionsData[s.id]) {
-                s.title = sessionsData[s.id].title;
-                s.updated_at = sessionsData[s.id].updated_at;
-            }
-        });
-        
-        // Сортируем по дате обновления (новые сверху)
-        sessions.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-        
-        let html = '';
-        sessions.forEach(s => {
-            const isActive = s.id === currentActiveId ? 'active' : '';
-            const dateStr = s.updated_at ? s.updated_at.replace('T', ' ').substring(0, 19) : '';
-            const indicatorData = newMessageIndicators[s.id];
-            const hasIndicator = indicatorData && indicatorData.hasNew && s.id !== currentActiveId;
-            const isError = indicatorData && indicatorData.isError;
-            
-            html += `
-                <div class="session-item ${isActive}" data-session-id="${s.id}">
-                    <div class="session-content">
-                        <div class="session-info">
-                            <div class="session-title">${escapeHtml(s.title)}${hasIndicator ? (isError ? '<span class="error-message-indicator">●</span>' : '<span class="new-message-indicator">●</span>') : ''}</div>
-                            <div class="session-date">${dateStr}</div>
-                        </div>
-                        <button class="delete-session-button" title="Удалить сеанс">🗑️</button>
-                    </div>
-                </div>
-            `;
-        });
-        
-        sessionsList.innerHTML = html;
-        document.getElementById('sessions-count').textContent = sessions.length;
-        
-        // Перепривязываем обработчики событий
-        attachSessionEventHandlers();
-        
-        // После обновления списка, обновляем статусы запросов
-        refreshRequestsStatus();
-    }
-
-    // -------------------------------
-    // Привязка обработчиков событий к элементам сеансов
-    // -------------------------------
-    function attachSessionEventHandlers() {
-        // Клик по сеансу (но не по кнопке удаления)
-        document.querySelectorAll('.session-item').forEach(el => {
-            el.addEventListener('click', function(e) {
-                if (e.target.closest('.delete-session-button')) {
-                    return;
-                }
-                
-                const sessionId = this.dataset.sessionId;
-                if (sessionId === currentSessionId) return;
-                
-                // Очищаем индикатор для этого сеанса перед переключением
-                setNewMessageIndicator(sessionId, false);
-                
-                document.querySelectorAll('.session-item').forEach(i => i.classList.remove('active'));
-                this.classList.add('active');
-                
-                switchSession(sessionId);
-            });
-        });
-        
-        // Кнопки удаления сеансов
-        document.querySelectorAll('.delete-session-button').forEach(btn => {
-            btn.addEventListener('click', function(e) {
-                e.stopPropagation();
-                const sessionItem = this.closest('.session-item');
-                const sessionId = sessionItem.dataset.sessionId;
-                const sessionTitle = sessionItem.querySelector('.session-title').textContent;
-                const sessionDate = sessionItem.querySelector('.session-date').textContent;
-                
-                if (confirm(`Удалить сеанс "${sessionTitle}" от ${sessionDate}?`)) {
-                    deleteSession(sessionId);
-                }
-            });
-        });
-    }
-
-    // -------------------------------
-    // Запуск периодической синхронизации
-    // -------------------------------
-    function startSyncInterval() {
-        if (syncInterval) {
-            clearInterval(syncInterval);
-        }
-        // Синхронизируем каждые 3 секунды
-        syncInterval = setInterval(() => {
-            loadSessionsFromServer();
-        }, 3000);
-    }
-
-    // -------------------------------
-    // Управление состоянием панелей
-    // -------------------------------
-    function toggleRequestsPanel() {
-        const panel = document.getElementById('requests-status-panel');
-        const isHidden = panel.style.display === 'none';
-        
-        panel.style.display = isHidden ? 'block' : 'none';
-        
-        // Сохраняем состояние
-        localStorage.setItem('requestsPanelOpen', isHidden);
-        
-        if (isHidden) {
-            // При открытии обновляем данные
-            refreshRequestsStatus();
-            // Запускаем периодическое обновление
-            if (!statusRefreshInterval) {
-                statusRefreshInterval = setInterval(refreshRequestsStatus, 3000);
-            }
-        } else {
-            // При закрытии останавливаем обновление
-            if (statusRefreshInterval) {
-                clearInterval(statusRefreshInterval);
-                statusRefreshInterval = null;
+        for (let [requestId, timestamp] of requestProcessingTimes.entries()) {
+            if (now - timestamp > FIVE_MINUTES) {
+                requestProcessingTimes.delete(requestId);
+                processedRequests.delete(requestId);
             }
         }
     }
 
-    function initPanelStates() {
-        // Панель "Мои запросы" - по умолчанию закрыта
-        const requestsPanel = document.getElementById('requests-status-panel');
-        const requestsOpen = localStorage.getItem('requestsPanelOpen') === 'true';
-        
-        if (requestsOpen) {
-            requestsPanel.style.display = 'block';
-            // Запускаем обновление, если панель открыта
-            if (!statusRefreshInterval) {
-                statusRefreshInterval = setInterval(refreshRequestsStatus, 3000);
-            }
-        } else {
-            requestsPanel.style.display = 'none';
-        }
-        
-        // Обновляем статус запросов в фоне для индикаторов в сеансах
-        setInterval(() => {
-            if (requestsPanel.style.display === 'none') {
-                // Только обновляем данные для индикаторов, но не показываем панель
-                fetch('/api/queue/status')
-                    .then(res => res.json())
-                    .then(status => {
-                        if (status.processing) {
-                            updateSessionWithRequestStatus(status.processing.session_id, 'processing');
-                        }
-                        status.queued?.forEach(req => {
-                            updateSessionWithRequestStatus(req.session_id, 'queued');
-                        });
-                    })
-                    .catch(err => console.error('Error updating request indicators:', err));
-            }
-        }, 3000);
-    }
+    // Запускаем очистку каждую минуту
+    setInterval(cleanupProcessedRequests, 60000);
 
-    // Изменённая функция initRequestsStatusPanel - убрано автоматическое открытие
-    function initRequestsStatusPanel() {
-        // Только обновляем данные, но не показываем панель автоматически
-        refreshRequestsStatus();
-    }
-
-    // ===================== ИСПРАВЛЕНИЕ 4: Улучшенная проверка существования сообщения =====================
+    // ===================== ИСПРАВЛЕНИЕ: Улучшенная проверка существования сообщения =====================
     function messageExists(content, timestamp, modelName) {
         const messages = document.querySelectorAll('.assistant-message, .bot-message');
         
-        // Увеличиваем "окно" для сравнения времени до 3 секунд
-        const TIME_WINDOW_MS = 3000;
+        // Увеличиваем "окно" для сравнения времени до 5 секунд
+        const TIME_WINDOW_MS = 5000;
         
         // Проверяем все сообщения
         for (let msg of messages) {
@@ -617,7 +362,7 @@
                 // Сравниваем с увеличенным окном
                 if (Math.abs(msgDate - newDate) < TIME_WINDOW_MS) {
                     // Увеличиваем количество сравниваемых символов для надежности
-                    const compareLength = Math.min(100, content.length, msgContent.length);
+                    const compareLength = Math.min(150, content.length, msgContent.length);
                     if (msgContent.substring(0, compareLength) === content.substring(0, compareLength)) {
                         console.log('Duplicate message detected and blocked');
                         return true;
@@ -628,7 +373,7 @@
         return false;
     }
 
-    // ===================== ИСПРАВЛЕНИЕ 5: Улучшенная функция безопасного добавления сообщения =====================
+    // ===================== ИСПРАВЛЕНИЕ: Улучшенная функция безопасного добавления сообщения =====================
     function safelyDisplayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
         // Для сообщений ассистента проверяем дубликаты
         if (role === 'assistant') {
@@ -639,6 +384,18 @@
             if (window.displayedMessages && window.displayedMessages.has(messageId)) {
                 console.log('Message already displayed, skipping:', messageId.substring(0, 50));
                 return false;
+            }
+            
+            // Дополнительная проверка: смотрим на timestamp - если сообщение слишком старое, возможно это дубликат
+            if (timestamp) {
+                const msgTime = new Date(timestamp).getTime();
+                const now = Date.now();
+                
+                // Если сообщение "из будущего" или слишком старое (больше 5 минут) - пропускаем
+                if (msgTime > now + 10000 || now - msgTime > 5 * 60 * 1000) {
+                    console.log('Message timestamp is invalid, skipping');
+                    return false;
+                }
             }
             
             // Сохраняем идентификатор сообщения
@@ -1101,6 +858,7 @@
     function switchSession(sessionId) {
         // Очищаем Set обработанных запросов при смене сеанса
         processedRequests.clear();
+        requestProcessingTimes.clear();
         
         fetch(`/api/sessions/${sessionId}/switch`, { method: 'POST' })
             .then(res => res.json())
@@ -1130,6 +888,7 @@
     function createNewSession() {
         // Очищаем Set обработанных запросов при создании нового сеанса
         processedRequests.clear();
+        requestProcessingTimes.clear();
         
         fetch('/api/sessions/new', { method: 'POST' })
             .then(res => res.json())
@@ -1159,7 +918,7 @@
     }
 
     // -------------------------------
-    // Обновление заголовка сеанса (УЛУЧШЕННАЯ ВЕРСИЯ)
+    // Обновление заголовка сеанса
     // -------------------------------
     function updateSessionTitle(sessionId, newTitle) {
         // Обновляем в хранилище данных
@@ -1395,21 +1154,24 @@
         }
     }
 
-    // ===================== ИСПРАВЛЕНИЕ 1: Улучшенный startResultPolling =====================
+    // ===================== ИСПРАВЛЕНИЕ: Улучшенный startResultPolling с защитой от дубликатов =====================
     function startResultPolling(requestId) {
         console.log('Start polling for request:', requestId);
         
-        // Более строгая проверка дублирования - добавляем в Set сразу
+        // Проверяем, не обрабатывается ли уже этот запрос
         if (processedRequests.has(requestId)) {
             console.log('Request already processed, skipping polling');
             return;
         }
         
+        // Запоминаем время начала обработки
+        requestProcessingTimes.set(requestId, Date.now());
+        
         // Добавляем в Set сразу, чтобы предотвратить повторный запуск
         processedRequests.add(requestId);
         
         let pollCount = 0;
-        const maxPolls = 120;
+        const maxPolls = 120; // 6 минут (120 * 3 сек = 360 сек)
         let lastResult = null;
         let lastDisplayedContent = null; // Для отслеживания последнего отображенного контента
         
@@ -1470,7 +1232,6 @@
                             
                             console.log('Final responseTime before display:', responseTime);
                             
-                            // === ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА ДЛЯ ИЗОБРАЖЕНИЙ ===
                             // Создаем уникальный ключ для контента (текст + наличие изображения)
                             const contentKey = data.result.response + (data.result.generated_image ? '_with_image' : '');
                             
@@ -1481,18 +1242,46 @@
                             }
                             lastDisplayedContent = contentKey;
                             
+                            // ===== ИСПРАВЛЕНИЕ: Дополнительная проверка для изображений =====
+                            // Проверяем, не было ли такое сообщение уже добавлено через другой механизм
+                            const existingMessages = document.querySelectorAll('.assistant-message');
+                            let alreadyExists = false;
+                            
+                            for (let msg of existingMessages) {
+                                const msgContent = msg.querySelector('.message-content')?.textContent || '';
+                                // Проверяем последние 5 сообщений на совпадение
+                                if (msgContent.includes(data.result.response.substring(0, 100))) {
+                                    const msgTime = msg.getAttribute('data-timestamp');
+                                    if (msgTime) {
+                                        const msgDate = new Date(msgTime).getTime();
+                                        const now = Date.now();
+                                        // Если сообщение добавлено в последние 10 секунд - считаем дубликатом
+                                        if (now - msgDate < 10000) {
+                                            console.log('Message already exists in recent messages, skipping');
+                                            alreadyExists = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if (alreadyExists) {
+                                console.log('Skipping duplicate message display from polling');
+                                return;
+                            }
+                            
                             if (resultSessionId === currentSessionId) {
                                 // Для изображений используем дополнительную задержку перед отображением
                                 // чтобы убедиться, что DOM полностью готов
                                 setTimeout(() => {
-                                    // Проверяем, не было ли уже такое сообщение в DOM
-                                    const existingMessages = document.querySelectorAll('.assistant-message');
-                                    for (let msg of existingMessages) {
+                                    // Проверяем, не было ли уже такое сообщение в DOM (финальная проверка)
+                                    const finalMessages = document.querySelectorAll('.assistant-message');
+                                    for (let msg of finalMessages) {
                                         const msgContent = msg.querySelector('.message-content')?.textContent || '';
                                         if (msgContent.includes(data.result.response) && 
                                             data.result.generated_image && 
                                             msg.querySelector('.attached-image')) {
-                                            console.log('Message already exists in DOM, skipping');
+                                            console.log('Message already exists in DOM, skipping final display');
                                             return;
                                         }
                                     }
@@ -1508,6 +1297,13 @@
                                         responseTime,
                                         modelUsed
                                     );
+                                    
+                                    // Удаляем из обработанных после успешного отображения
+                                    setTimeout(() => {
+                                        processedRequests.delete(requestId);
+                                        requestProcessingTimes.delete(requestId);
+                                    }, 5000);
+                                    
                                 }, 100);
                             } else {
                                 console.log(`Ответ для сеанса ${resultSessionId}, не текущего`);
@@ -1594,12 +1390,18 @@
                         null,
                         'system'
                     );
+                    
+                    // Очищаем запись
+                    processedRequests.delete(requestId);
+                    requestProcessingTimes.delete(requestId);
                 }
                 
             } catch (error) {
                 console.error('Error polling result:', error);
                 if (pollCount >= maxPolls) {
                     clearInterval(pollInterval);
+                    processedRequests.delete(requestId);
+                    requestProcessingTimes.delete(requestId);
                 }
             }
         }, 3000);
@@ -1750,18 +1552,35 @@
                     // Обновляем данные в фоне для индикаторов
                     refreshRequestsStatus();
                     
-                    startResultPolling(data.request_id);
+                    // ===== ИСПРАВЛЕНИЕ: Проверяем тип запроса =====
+                    // Для запросов с изображениями только запускаем polling, не отображаем сразу
+                    if (tempAttachedFile && tempAttachedFile.type && tempAttachedFile.type.startsWith('image/')) {
+                        console.log('Image request - will be handled by polling only');
+                        startResultPolling(data.request_id);
+                    } else {
+                        // Для текстовых запросов тоже через polling (так надежнее)
+                        startResultPolling(data.request_id);
+                    }
+                    
                 } else if (data.response) {
-                    displayMessage(
-                        'assistant',
-                        data.response,
-                        data.generated_image,
-                        data.file_type,
-                        data.file_name,
-                        data.assistant_timestamp,
-                        data.response_time,
-                        data.model_used
-                    );
+                    // ===== ИСПРАВЛЕНИЕ: Для обратной совместимости =====
+                    // Проверяем, не является ли это результатом обработки изображения
+                    if (data.model_category === 'image_result') {
+                        console.log('Image result received directly, but will be handled by polling anyway');
+                        // Не отображаем сразу, так как polling тоже добавит
+                    } else {
+                        // Для обычных ответов отображаем сразу
+                        displayMessage(
+                            'assistant',
+                            data.response,
+                            data.generated_image,
+                            data.file_type,
+                            data.file_name,
+                            data.assistant_timestamp,
+                            data.response_time,
+                            data.model_used
+                        );
+                    }
                 }
                 
             } catch (err) {
@@ -2513,6 +2332,278 @@
         setTimeout(addCopyButtonsToAllCodeBlocks, 1000);
     });
 
+    // ===================== Global updates polling =====================
+    function startGlobalUpdatesPolling() {
+        if (globalUpdatesInterval) {
+            clearInterval(globalUpdatesInterval);
+        }
+        
+        globalUpdatesInterval = setInterval(async () => {
+            try {
+                const response = await fetch(`/api/check-updates?last_check=${lastUpdateCheck}`);
+                const updates = await response.json();
+                
+                if (updates.has_updates) {
+                    console.log('Обнаружены обновления:', updates);
+                    
+                    // Обновляем список сеансов
+                    await loadSessionsFromServer();
+                    
+                    // Проверяем, есть ли обновления для текущего сеанса
+                    const currentSessionUpdated = updates.sessions?.some(s => s.id === currentSessionId) || false;
+                    
+                    if (currentSessionUpdated) {
+                        console.log('Обновление в текущем сеансе, принудительная перезагрузка');
+                        
+                        // Очищаем кэш для текущего сеанса
+                        clearMessagesCache(currentSessionId);
+                        
+                        // Загружаем сообщения заново
+                        await loadMessages(currentSessionId);
+                    }
+                    
+                    // Обновляем индикаторы для других сеансов
+                    if (updates.new_messages && Array.isArray(updates.new_messages)) {
+                        updates.new_messages.forEach(sessionId => {
+                            if (sessionId !== currentSessionId) {
+                                setNewMessageIndicator(sessionId, true);
+                            }
+                        });
+                    }
+                    
+                    // Обновляем время последней проверки
+                    lastUpdateCheck = Date.now() / 1000;
+                }
+            } catch (error) {
+                console.error('Ошибка при проверке обновлений:', error);
+            }
+        }, 2000);
+    }
+
+    // -------------------------------
+    // Загрузка списка сеансов с сервера
+    // -------------------------------
+    function loadSessionsFromServer() {
+        return fetch('/api/sessions')
+            .then(res => res.json())
+            .then(sessions => {
+                let updated = false;
+                let titlesChanged = false;
+                
+                // Обновляем данные в хранилище
+                sessions.forEach(s => {
+                    if (!sessionsData[s.id]) {
+                        sessionsData[s.id] = {
+                            title: s.title,
+                            updated_at: s.updated_at
+                        };
+                        updated = true;
+                    } else if (sessionsData[s.id].title !== s.title) {
+                        sessionsData[s.id].title = s.title;
+                        sessionsData[s.id].updated_at = s.updated_at;
+                        updated = true;
+                        titlesChanged = true;
+                    } else if (sessionsData[s.id].updated_at !== s.updated_at) {
+                        sessionsData[s.id].updated_at = s.updated_at;
+                        updated = true;
+                    }
+                });
+                
+                // Удаляем из хранилища сеансы, которых больше нет
+                Object.keys(sessionsData).forEach(id => {
+                    if (!sessions.find(s => s.id === id)) {
+                        delete sessionsData[id];
+                        delete newMessageIndicators[id];
+                        updated = true;
+                    }
+                });
+                
+                // Если были изменения, обновляем отображение
+                if (updated) {
+                    updateSessionsList(sessions, titlesChanged);
+                }
+                
+                return sessions;
+            })
+            .catch(err => console.error('Ошибка загрузки сеансов:', err));
+    }
+
+    // Принудительное обновление списка сеансов
+    function forceRefreshSessions() {
+        loadSessionsFromServer().then(() => {
+            console.log('Список сеансов обновлен');
+        });
+    }
+
+    // -------------------------------
+    // Обновление списка сеансов в DOM
+    // -------------------------------
+    function updateSessionsList(sessions, preserveIndicators = true) {
+        const sessionsList = document.getElementById('sessions-list');
+        const currentActiveId = currentSessionId;
+        
+        // Используем данные из хранилища
+        sessions.forEach(s => {
+            if (sessionsData[s.id]) {
+                s.title = sessionsData[s.id].title;
+                s.updated_at = sessionsData[s.id].updated_at;
+            }
+        });
+        
+        // Сортируем по дате обновления (новые сверху)
+        sessions.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+        
+        let html = '';
+        sessions.forEach(s => {
+            const isActive = s.id === currentActiveId ? 'active' : '';
+            const dateStr = s.updated_at ? s.updated_at.replace('T', ' ').substring(0, 19) : '';
+            const indicatorData = newMessageIndicators[s.id];
+            const hasIndicator = indicatorData && indicatorData.hasNew && s.id !== currentActiveId;
+            const isError = indicatorData && indicatorData.isError;
+            
+            html += `
+                <div class="session-item ${isActive}" data-session-id="${s.id}">
+                    <div class="session-content">
+                        <div class="session-info">
+                            <div class="session-title">${escapeHtml(s.title)}${hasIndicator ? (isError ? '<span class="error-message-indicator">●</span>' : '<span class="new-message-indicator">●</span>') : ''}</div>
+                            <div class="session-date">${dateStr}</div>
+                        </div>
+                        <button class="delete-session-button" title="Удалить сеанс">🗑️</button>
+                    </div>
+                </div>
+            `;
+        });
+        
+        sessionsList.innerHTML = html;
+        document.getElementById('sessions-count').textContent = sessions.length;
+        
+        // Перепривязываем обработчики событий
+        attachSessionEventHandlers();
+        
+        // После обновления списка, обновляем статусы запросов
+        refreshRequestsStatus();
+    }
+
+    // -------------------------------
+    // Привязка обработчиков событий к элементам сеансов
+    // -------------------------------
+    function attachSessionEventHandlers() {
+        // Клик по сеансу (но не по кнопке удаления)
+        document.querySelectorAll('.session-item').forEach(el => {
+            el.addEventListener('click', function(e) {
+                if (e.target.closest('.delete-session-button')) {
+                    return;
+                }
+                
+                const sessionId = this.dataset.sessionId;
+                if (sessionId === currentSessionId) return;
+                
+                // Очищаем индикатор для этого сеанса перед переключением
+                setNewMessageIndicator(sessionId, false);
+                
+                document.querySelectorAll('.session-item').forEach(i => i.classList.remove('active'));
+                this.classList.add('active');
+                
+                switchSession(sessionId);
+            });
+        });
+        
+        // Кнопки удаления сеансов
+        document.querySelectorAll('.delete-session-button').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const sessionItem = this.closest('.session-item');
+                const sessionId = sessionItem.dataset.sessionId;
+                const sessionTitle = sessionItem.querySelector('.session-title').textContent;
+                const sessionDate = sessionItem.querySelector('.session-date').textContent;
+                
+                if (confirm(`Удалить сеанс "${sessionTitle}" от ${sessionDate}?`)) {
+                    deleteSession(sessionId);
+                }
+            });
+        });
+    }
+
+    // -------------------------------
+    // Запуск периодической синхронизации
+    // -------------------------------
+    function startSyncInterval() {
+        if (syncInterval) {
+            clearInterval(syncInterval);
+        }
+        // Синхронизируем каждые 3 секунды
+        syncInterval = setInterval(() => {
+            loadSessionsFromServer();
+        }, 3000);
+    }
+
+    // -------------------------------
+    // Управление состоянием панелей
+    // -------------------------------
+    function toggleRequestsPanel() {
+        const panel = document.getElementById('requests-status-panel');
+        const isHidden = panel.style.display === 'none';
+        
+        panel.style.display = isHidden ? 'block' : 'none';
+        
+        // Сохраняем состояние
+        localStorage.setItem('requestsPanelOpen', isHidden);
+        
+        if (isHidden) {
+            // При открытии обновляем данные
+            refreshRequestsStatus();
+            // Запускаем периодическое обновление
+            if (!statusRefreshInterval) {
+                statusRefreshInterval = setInterval(refreshRequestsStatus, 3000);
+            }
+        } else {
+            // При закрытии останавливаем обновление
+            if (statusRefreshInterval) {
+                clearInterval(statusRefreshInterval);
+                statusRefreshInterval = null;
+            }
+        }
+    }
+
+    function initPanelStates() {
+        // Панель "Мои запросы" - по умолчанию закрыта
+        const requestsPanel = document.getElementById('requests-status-panel');
+        const requestsOpen = localStorage.getItem('requestsPanelOpen') === 'true';
+        
+        if (requestsOpen) {
+            requestsPanel.style.display = 'block';
+            // Запускаем обновление, если панель открыта
+            if (!statusRefreshInterval) {
+                statusRefreshInterval = setInterval(refreshRequestsStatus, 3000);
+            }
+        } else {
+            requestsPanel.style.display = 'none';
+        }
+        
+        // Обновляем статус запросов в фоне для индикаторов в сеансах
+        setInterval(() => {
+            if (requestsPanel.style.display === 'none') {
+                // Только обновляем данные для индикаторов, но не показываем панель
+                fetch('/api/queue/status')
+                    .then(res => res.json())
+                    .then(status => {
+                        if (status.processing) {
+                            updateSessionWithRequestStatus(status.processing.session_id, 'processing');
+                        }
+                        status.queued?.forEach(req => {
+                            updateSessionWithRequestStatus(req.session_id, 'queued');
+                        });
+                    })
+                    .catch(err => console.error('Error updating request indicators:', err));
+            }
+        }, 3000);
+    }
+
+    function initRequestsStatusPanel() {
+        // Только обновляем данные, но не показываем панель автоматически
+        refreshRequestsStatus();
+    }
+
 </script>
 
 <!-- Добавляем стили для предупреждений о статусе сервисов и новой кнопки в уведомлении -->
@@ -2664,11 +2755,11 @@
     font-family: monospace !important;
     font-size: 0.75rem !important;
     line-height: 1.4 !important;
-    word-break: break-word !important;      /* Перенос длинных слов */
-    white-space: normal !important;          /* Разрешаем перенос */
-    max-width: 100% !important;              /* Не выходим за границы */
-    overflow-wrap: break-word !important;    /* Альтернативный перенос */
-    hyphens: auto !important;                 /* Добавляем переносы по слогам если нужно */
+    word-break: break-word !important;
+    white-space: normal !important;
+    max-width: 100% !important;
+    overflow-wrap: break-word !important;
+    hyphens: auto !important;
 }
 
 /* Стили для метаданных сообщения */
@@ -2715,8 +2806,8 @@
     .file-info {
         font-size: 0.6rem !important;
         padding: 1px 4px !important;
-        white-space: nowrap !important;  /* Оставляем в одну строку */
-        max-width: 150px !important;      /* Ограничиваем ширину */
+        white-space: nowrap !important;
+        max-width: 150px !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
         display: inline-block !important;

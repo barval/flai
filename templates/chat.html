@@ -1,3 +1,5 @@
+=== Файл: templates/chat.html ===
+
 {% extends "base.html" %}
 
 {% block content %}
@@ -342,30 +344,37 @@
     setInterval(cleanupProcessedRequests, 60000);
 
     // ===================== ИСПРАВЛЕНИЕ: Улучшенная проверка существования сообщения =====================
-    function messageExists(content, timestamp, modelName) {
+    // Добавлен параметр fileData для проверки наличия изображения
+    function messageExists(content, timestamp, modelName, fileData = null) {
         const messages = document.querySelectorAll('.assistant-message, .bot-message');
         
-        // Увеличиваем "окно" для сравнения времени до 5 секунд
         const TIME_WINDOW_MS = 5000;
+        const newHasImage = !!fileData; // у нового сообщения есть изображение?
         
-        // Проверяем все сообщения
         for (let msg of messages) {
             const msgTimestamp = msg.getAttribute('data-timestamp');
-            const msgModel = msg.dataset.modelName;
             const msgContent = msg.querySelector('.message-content')?.textContent || '';
+            const msgImage = msg.querySelector('.attached-image');
+            const hasImage = !!msgImage; // у существующего сообщения есть изображение?
             
-            // Если время совпадает (с точностью до секунды)
             if (msgTimestamp && timestamp) {
                 const msgDate = new Date(msgTimestamp);
                 const newDate = new Date(timestamp);
                 
-                // Сравниваем с увеличенным окном
                 if (Math.abs(msgDate - newDate) < TIME_WINDOW_MS) {
-                    // Увеличиваем количество сравниваемых символов для надежности
-                    const compareLength = Math.min(150, content.length, msgContent.length);
-                    if (msgContent.substring(0, compareLength) === content.substring(0, compareLength)) {
-                        console.log('Duplicate message detected and blocked');
-                        return true;
+                    // Сравниваем начало текста (достаточно 150 символов)
+                    if (msgContent.substring(0, 150) === content.substring(0, 150)) {
+                        // Если оба сообщения содержат изображение, считаем дубликатом
+                        // (предполагаем, что это одно и то же изображение с одинаковым текстом)
+                        if (hasImage && newHasImage) {
+                            console.log('Duplicate message with image detected');
+                            return true;
+                        }
+                        // Если оба без изображения
+                        if (!hasImage && !newHasImage) {
+                            console.log('Duplicate text message detected');
+                            return true;
+                        }
                     }
                 }
             }
@@ -412,7 +421,8 @@
                 }
             }
             
-            if (messageExists(content, timestamp, modelName)) {
+            // Вызываем улучшенную проверку с передачей fileData
+            if (messageExists(content, timestamp, modelName, fileData)) {
                 console.log('Duplicate message detected by messageExists, blocking:', content.substring(0, 50));
                 return false;
             }
@@ -440,6 +450,11 @@
         
         // Отправка
         document.getElementById('send-button').addEventListener('click', sendMessage);
+        // ===== ИСПРАВЛЕНИЕ: Блокируем двойное срабатывание на мобильных устройствах =====
+        document.getElementById('send-button').addEventListener('touchstart', (e) => {
+            e.preventDefault(); // предотвращает генерацию двух событий на тач-устройствах
+        }, { passive: false });
+        
         document.getElementById('message-input').addEventListener('keypress', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();

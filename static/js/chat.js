@@ -141,14 +141,26 @@ async function sendMessage() {
     try {
         const data = await api.sendMessage(formData);
         if (data.warning) showServiceWarning(data.warning);
+
+        // Отображаем сообщение пользователя (если есть текст)
+        if (text) {
+            const timestamp = new Date().toISOString();
+            ui.displayMessage('user', text, null, null, null, timestamp);
+        }
+
         if (data.status === 'queued') {
             showQueueNotification(data.position, data.estimated_wait);
             startResultPolling(data.request_id);
+
+            // Обновляем список сеансов, чтобы увидеть изменение заголовка (если это первое сообщение)
+            api.fetchSessions().then(ui.updateSessionsList);
         } else if (data.response) {
             // Для обратной совместимости (если сервер вернул сразу)
             ui.displayMessage('assistant', data.response, data.generated_image, data.file_type, data.file_name,
                 data.assistant_timestamp, data.response_time, data.model_used,
                 data.mm_time, data.gen_time, data.mm_model, data.gen_model, false);
+
+            api.fetchSessions().then(ui.updateSessionsList);
         }
     } catch (err) {
         alert('Ошибка: ' + err.message);

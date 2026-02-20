@@ -1,10 +1,31 @@
 // Функции, обновляющие DOM
 import { appState, setNewMessageIndicator } from './state.js';
-import { formatFullDateTime, formatFileSize, escapeHtml, decodeHtmlEntities } from './utils.js';
+import { formatFullDateTime, formatFileSize, escapeHtml, decodeHtmlEntities, pad } from './utils.js';
 import * as api from './api.js';
 
+// Глобальный Set для отслеживания отображенных сообщений (используется также в chat.js)
+window.displayedMessages = window.displayedMessages || new Set();
+
 // Отображение одного сообщения
-export function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
+export function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, skipDuplicateCheck = false) {
+    // Для сообщений ассистента проверяем дубликаты (если не пропущено)
+    if (role === 'assistant' && !skipDuplicateCheck) {
+        // Создаём уникальный ключ
+        const messageKey = content + (fileData ? fileData.substring(0, 100) : '') + timestamp;
+        if (window.displayedMessages.has(messageKey)) {
+            console.log('displayMessage: duplicate prevented');
+            return false;
+        }
+        window.displayedMessages.add(messageKey);
+        // Ограничиваем размер Set (оставляем последние 200)
+        if (window.displayedMessages.size > 200) {
+            const iterator = window.displayedMessages.values();
+            for (let i = 0; i < 50; i++) {
+                window.displayedMessages.delete(iterator.next().value);
+            }
+        }
+    }
+
     const container = document.getElementById('chat-messages');
     const msgDiv = document.createElement('div');
     msgDiv.className = role === 'user' ? 'user-message' : 'assistant-message bot-message';
@@ -88,7 +109,6 @@ export function displayMessage(role, content, fileData, fileType, fileName, time
             } catch { /* не JSON */ }
         }
         const decoded = role === 'assistant' ? decodeHtmlEntities(textContent) : textContent;
-        // Используем window.marked, так как marked.min.js загружается классически
         html += `<div class="message-content">${window.marked.parse(escapeHtml(decoded))}</div>`;
     }
 
@@ -109,6 +129,7 @@ export function displayMessage(role, content, fileData, fileType, fileName, time
 
     updateMessageCount();
     setTimeout(() => addCopyButtonsToMessage(msgDiv), 50);
+    return true;
 }
 
 // Обновление счётчика сообщений
@@ -160,7 +181,6 @@ function attachSessionEventHandlers() {
             const sessionId = this.dataset.sessionId;
             if (sessionId === appState.currentSessionId) return;
             setNewMessageIndicator(sessionId, false);
-            // Генерируем событие для переключения сеанса
             const event = new CustomEvent('switch-session', { detail: { sessionId } });
             document.dispatchEvent(event);
         });
@@ -173,7 +193,6 @@ function attachSessionEventHandlers() {
             const sessionId = sessionItem.dataset.sessionId;
             const sessionTitle = sessionItem.querySelector('.session-title').textContent;
             if (confirm(`Удалить сеанс "${sessionTitle}"?`)) {
-                // Генерируем событие для удаления сеанса
                 const event = new CustomEvent('delete-session', { detail: { sessionId } });
                 document.dispatchEvent(event);
             }
@@ -252,3 +271,6 @@ export function updateIndicatorsInDOM() {
         }
     });
 }
+
+// Реэкспорт утилит для chat.js (чтобы не дублировать)
+export { formatFileSize, escapeHtml, pad } from './utils.js';

@@ -1318,6 +1318,26 @@ audio {
         max-height: 300px;
     }
     
+    /* ===== ДОБАВЛЕННЫЕ ПРАВИЛА ДЛЯ ПАНЕЛИ СОСТОЯНИЯ СЕРВИСОВ ===== */
+    .services-status-panel {
+        padding: 6px;
+        margin: 5px;
+    }
+    .service-card {
+        padding: 6px;
+        margin-bottom: 4px;
+    }
+    .status-header h3 {
+        font-size: 0.9rem;
+    }
+    .status-header .header-left {
+        gap: 4px;
+    }
+    .service-name {
+        font-size: 0.9rem;
+    }
+    /* ============================================================= */
+    
     .queue-item {
         flex-wrap: wrap;
     }

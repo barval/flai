@@ -56,7 +56,12 @@ function toggleServicesPanel() {
 document.addEventListener('DOMContentLoaded', function() {
     const content = document.getElementById('services-content');
     const icon = document.getElementById('services-collapse-icon');
-    const shouldCollapse = localStorage.getItem('servicesPanelCollapsed') === 'true';
+    let shouldCollapse = localStorage.getItem('servicesPanelCollapsed') === 'true';
+    
+    // Для мобильных устройств (ширина ≤ 768px) по умолчанию сворачиваем панель, если настройка отсутствует
+    if (window.innerWidth <= 768 && localStorage.getItem('servicesPanelCollapsed') === null) {
+        shouldCollapse = false; // скрыто
+    }
     
     if (shouldCollapse) {
         content.style.display = 'block';

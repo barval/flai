@@ -65,7 +65,8 @@ async function loadMessages(sessionId) {
     messages.forEach(msg => {
         if (msg.role === 'user') {
             lastUserMessage = msg;
-            ui.displayMessage(msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.timestamp, null, null, null, null, null, null, false); // skipDeduplication = true
+            // Исправление: всегда отображаем сообщения при загрузке, игнорируя дубликаты (skipDeduplication = true)
+            ui.displayMessage(msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.timestamp, null, null, null, null, null, null, true);
         } else if (msg.role === 'assistant') {
             let responseTime = msg.response_time;
             if (lastUserMessage) {
@@ -74,8 +75,9 @@ async function loadMessages(sessionId) {
                 const diff = (assistantTime - userTime) / 1000;
                 if (!responseTime) responseTime = Math.round(diff * 10) / 10;
             }
+            // Исправление: всегда отображаем сообщения при загрузке, игнорируя дубликаты (skipDeduplication = true)
             ui.displayMessage(msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.timestamp,
-                responseTime, msg.model_name, msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, true); // skipDeduplication = true
+                responseTime, msg.model_name, msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, true);
             lastUserMessage = null;
         }
     });
@@ -240,18 +242,45 @@ async function saveChatAsHTML() {
     const cssResponse = await fetch('/static/style.css');
     const cssText = await cssResponse.text();
 
+    // Исправление: добавляем контейнер для центрирования и ограничения ширины
     const html = `<!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><title>${escapeHtml(title)}</title><style>${cssText}</style></head>
+<head><meta charset="UTF-8"><title>${escapeHtml(title)}</title>
+<style>
+${cssText}
+/* Дополнительные стили для экспорта */
+.chat-export {
+    width: 75%;
+    margin: 0 auto;
+    padding: 1rem;
+    background: white;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+body {
+    background: #f5f5f5;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+main {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+}
+</style>
+</head>
 <body>
     <header><h1>ИИ Локальный</h1></header>
-    <main><div class="chat-wrapper">${messages.map(m => `
-        <div class="${m.role}-message">
-            <small class="message-time">${m.timeHtml}</small>
-            <div class="message-content">${m.contentHtml}</div>
-            ${m.imageHtml}${m.audioHtml}${m.fileHtml}
-        </div>`).join('')}
-    </div></main>
+    <main>
+        <div class="chat-export">
+            ${messages.map(m => `
+                <div class="${m.role}-message">
+                    <small class="message-time">${m.timeHtml}</small>
+                    <div class="message-content">${m.contentHtml}</div>
+                    ${m.imageHtml}${m.audioHtml}${m.fileHtml}
+                </div>`).join('')}
+        </div>
+    </main>
     <footer><div class="footer-content">${footerText}</div></footer>
 </body>
 </html>`;
@@ -301,6 +330,8 @@ function startResultPolling(requestId) {
                     setNewMessageIndicator(result.session_id, true, result.is_error);
                 }
                 api.fetchQueueStatus().then(updateRequestsStatus);
+                // Исправление: обновляем список сеансов после получения ответа
+                api.fetchSessions().then(ui.updateSessionsList);
                 clearInterval(interval);
                 appState.processedRequests.delete(requestId);
                 appState.requestProcessingTimes.delete(requestId);

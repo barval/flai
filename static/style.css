@@ -596,19 +596,24 @@ audio {
 }
 
 /* Информация о модели */
-.bot-message small .model-response-info,
-.assistant-message small .model-response-info {
-    display: inline !important;
+.model-response-info {
+    display: block !important;
     color: #7f8c8d !important;
     font-family: monospace !important;
     font-size: 0.75rem !important;
-    letter-spacing: 0.5px !important;
-    font-weight: normal !important;
-    background: none !important;
-    padding: 0 !important;
-    border-radius: 0 !important;
-    margin-left: 4px !important;
-    white-space: nowrap !important;
+    line-height: 1.4 !important;
+    word-break: break-word !important;
+    white-space: normal !important;
+    max-width: 100% !important;
+    overflow-wrap: break-word !important;
+    hyphens: auto !important;
+}
+
+.model-info-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 4px;
 }
 
 /* ========== СТИЛИ ДЛЯ МОДАЛЬНОГО ОКНА ИЗОБРАЖЕНИЙ ========== */
@@ -1337,7 +1342,6 @@ audio {
         align-self: flex-end;
     }
     
-    /* УЛУЧШЕННЫЙ ПЕРЕНОС ДЛЯ ИНФОРМАЦИИ О МОДЕЛИ НА МОБИЛЬНЫХ */
     .model-response-info {
         white-space: normal !important;
         word-break: break-word !important;
@@ -1363,7 +1367,6 @@ audio {
         display: block !important;
     }
     
-    /* Улучшенный перенос для метаданных сообщения */
     .message-metadata {
         white-space: normal !important;
         word-break: break-word !important;
@@ -1372,7 +1375,6 @@ audio {
         width: 100% !important;
     }
     
-    /* Для очень маленьких экранов */
     @media (max-width: 480px) {
         .message-metadata,
         .model-response-info {
@@ -1402,7 +1404,6 @@ audio {
     line-height: 1.4 !important;
 }
 
-/* Для первой строки можно оставить inline, а остальные будут block */
 .model-response-info:first-of-type {
     display: inline !important;
 }
@@ -1431,14 +1432,6 @@ audio {
     animation: error-pulse 1.5s infinite;
 }
 
-/* Анимация пульсации для синего */
-@keyframes pulse {
-    0% { opacity: 0.5; }
-    50% { opacity: 1; }
-    100% { opacity: 0.5; }
-}
-
-/* Анимация пульсации для красного */
 @keyframes error-pulse {
     0% { opacity: 0.5; transform: scale(1); }
     50% { opacity: 1; transform: scale(1.1); }
@@ -1450,132 +1443,173 @@ audio {
     display: none;
 }
 
-/* ========== ДОПОЛНИТЕЛЬНЫЕ СТИЛИ ДЛЯ ПАНЕЛЕЙ ========== */
-
-/* Стили для уведомления с кнопкой */
-.queue-notification {
-    position: fixed;
-    top: 60px;
-    right: 20px;
-    background-color: #3498db;
-    color: white;
-    padding: 12px 20px;
+/* ========== СТИЛИ ИЗ service_status.html ========== */
+.services-status-panel {
+    background: #f8f9fa;
     border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    z-index: 1000;
-    animation: slideIn 0.3s ease;
-    max-width: 350px;
+    padding: 12px;
+    margin: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    font-size: 0.9rem;
 }
 
-.notification-content {
+.services-status-panel .status-header {
     display: flex;
-    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.services-status-panel .status-header:hover {
+    opacity: 0.8;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
     gap: 8px;
 }
 
-.notification-content .wait-time {
-    background-color: rgba(255,255,255,0.2);
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 0.8rem;
-    align-self: flex-start;
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 
-.show-requests-button {
-    background: rgba(255,255,255,0.2);
-    border: 1px solid rgba(255,255,255,0.3);
-    border-radius: 4px;
-    color: white;
-    padding: 6px 12px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: all 0.2s;
-    font-weight: 500;
-    margin-top: 4px;
+.services-status-panel h3 {
+    margin: 0;
+    color: #2c3e50;
+    font-size: 1rem;
 }
 
-.show-requests-button:hover {
-    background: rgba(255,255,255,0.3);
-    border-color: rgba(255,255,255,0.5);
-}
-
-/* Стили для глобального индикатора в панели сервисов */
 .services-global-indicator {
-    display: inline-block;
-    animation: none !important; /* Отключаем пульсацию */
     font-size: 1rem;
     line-height: 1;
 }
 
-/* Адаптация для мобильных */
-@media (max-width: 768px) {
-    .queue-notification {
-        top: 10px;
-        right: 10px;
-        left: 10px;
-        max-width: none;
-    }
-    
-    .services-status-panel .status-header {
-        flex-wrap: wrap;
-    }
-    
-    .header-left {
-        flex: 1;
-    }
+.collapse-icon {
+    font-size: 0.8rem;
+    color: #666;
+    transition: transform 0.3s ease;
 }
 
-/* ========== УЛУЧШЕННЫЕ СТИЛИ ДЛЯ ИНФОРМАЦИИ О МОДЕЛИ ========== */
+.refresh-status-small {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    color: #666;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
 
-/* Контейнер для всей информации о модели */
-.model-info-container {
+.refresh-status-small:hover {
+    background-color: #e0e0e0;
+}
+
+.services-content {
+    margin-top: 10px;
+    transition: all 0.3s ease;
+}
+
+.service-card {
+    background: white;
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 8px;
+    border-left: 4px solid #ddd;
+    transition: all 0.3s ease;
+}
+
+.service-card.healthy {
+    border-left-color: #28a745;
+}
+
+.service-card.degraded {
+    border-left-color: #ffc107;
+}
+
+.service-card.down {
+    border-left-color: #dc3545;
+    opacity: 0.7;
+    background: #f8f9fa;
+}
+
+.service-card.unknown {
+    border-left-color: #6c757d;
+}
+
+.service-header {
     display: flex;
-    flex-direction: column;
-    gap: 2px;
-    margin-top: 4px;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0;
 }
 
-/* Стили для информации о модели */
-.model-response-info {
-    display: block !important;
-    color: #7f8c8d !important;
-    font-family: monospace !important;
-    font-size: 0.75rem !important;
-    line-height: 1.4 !important;
-    word-break: break-word !important;      /* Перенос длинных слов */
-    white-space: normal !important;          /* Разрешаем перенос */
-    max-width: 100% !important;              /* Не выходим за границы */
-    overflow-wrap: break-word !important;    /* Альтернативный перенос */
-    hyphens: auto !important;                 /* Добавляем переносы по слогам если нужно */
+.service-name {
+    font-weight: 600;
+    color: #2c3e50;
 }
 
-/* Стили для метаданных сообщения */
-.message-metadata {
-    display: block !important;
-    margin-bottom: 6px !important;
-    color: #7f8c8d !important;
-    font-size: 0.75rem !important;
-    font-family: monospace !important;
-    letter-spacing: 0.5px !important;
-    font-weight: normal !important;
-    background: none !important;
-    padding: 0 !important;
-    border-radius: 0 !important;
-    border: none !important;
-    line-height: 1.4 !important;
+.service-location {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 12px;
+    background: #e9ecef;
+    color: #495057;
 }
 
-/* Стили для информации о файле */
-.file-info {
-    display: inline !important;
-    color: #2c3e50 !important;
-    font-size: 0.7rem !important;
-    font-family: monospace !important;
-    background-color: #f0f0f0 !important;
-    padding: 2px 6px !important;
-    border-radius: 12px !important;
-    margin-left: 4px !important;
-    white-space: nowrap !important;
-    border: 1px solid #ddd !important;
-    vertical-align: middle;
+.service-location.local {
+    background: #d4edda;
+    color: #155724;
+}
+
+.service-location.remote {
+    background: #cce5ff;
+    color: #004085;
+}
+
+.service-health-indicator {
+    margin-left: auto;
+    font-size: 0.8rem;
+}
+
+.healthy .service-health-indicator {
+    color: #28a745;
+}
+
+.degraded .service-health-indicator {
+    color: #ffc107;
+}
+
+.down .service-health-indicator {
+    color: #dc3545;
+}
+
+.down .service-name {
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
+.health-icon {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+}
+
+.health-icon.healthy {
+    background: #28a745;
+    box-shadow: 0 0 5px #28a745;
+}
+
+.health-icon.degraded {
+    background: #ffc107;
+    box-shadow: 0 0 5px #ffc107;
+}
+
+.health-icon.down {
+    background: #dc3545;
 }

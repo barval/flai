@@ -42,179 +42,6 @@
     </div>
 </div>
 
-<!-- Добавляем CSS для индикаторов и сворачиваемой панели -->
-<style>
-.services-status-panel {
-    background: #f8f9fa;
-    border-radius: 8px;
-    padding: 12px;
-    margin: 10px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    font-size: 0.9rem;
-}
-
-.services-status-panel .status-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    cursor: pointer;
-    user-select: none;
-}
-
-.services-status-panel .status-header:hover {
-    opacity: 0.8;
-}
-
-.header-left {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.header-right {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.services-status-panel h3 {
-    margin: 0;
-    color: #2c3e50;
-    font-size: 1rem;
-}
-
-.services-global-indicator {
-    font-size: 1rem;
-    line-height: 1;
-}
-
-.collapse-icon {
-    font-size: 0.8rem;
-    color: #666;
-    transition: transform 0.3s ease;
-}
-
-.refresh-status-small {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 1rem;
-    color: #666;
-    padding: 2px 6px;
-    border-radius: 4px;
-}
-
-.refresh-status-small:hover {
-    background-color: #e0e0e0;
-}
-
-.services-content {
-    margin-top: 10px;
-    transition: all 0.3s ease;
-}
-
-.service-card {
-    background: white;
-    border-radius: 6px;
-    padding: 10px;
-    margin-bottom: 8px;
-    border-left: 4px solid #ddd;
-    transition: all 0.3s ease;
-}
-
-.service-card.healthy {
-    border-left-color: #28a745;
-}
-
-.service-card.degraded {
-    border-left-color: #ffc107;
-}
-
-.service-card.down {
-    border-left-color: #dc3545;
-    opacity: 0.7;
-    background: #f8f9fa;
-}
-
-.service-card.unknown {
-    border-left-color: #6c757d;
-}
-
-.service-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 0;
-}
-
-.service-name {
-    font-weight: 600;
-    color: #2c3e50;
-}
-
-.service-location {
-    font-size: 0.7rem;
-    padding: 2px 6px;
-    border-radius: 12px;
-    background: #e9ecef;
-    color: #495057;
-}
-
-.service-location.local {
-    background: #d4edda;
-    color: #155724;
-}
-
-.service-location.remote {
-    background: #cce5ff;
-    color: #004085;
-}
-
-.service-health-indicator {
-    margin-left: auto;
-    font-size: 0.8rem;
-}
-
-.healthy .service-health-indicator {
-    color: #28a745;
-}
-
-.degraded .service-health-indicator {
-    color: #ffc107;
-}
-
-.down .service-health-indicator {
-    color: #dc3545;
-}
-
-.down .service-name {
-    text-decoration: line-through;
-    opacity: 0.7;
-}
-
-.health-icon {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-right: 4px;
-}
-
-.health-icon.healthy {
-    background: #28a745;
-    box-shadow: 0 0 5px #28a745;
-}
-
-.health-icon.degraded {
-    background: #ffc107;
-    box-shadow: 0 0 5px #ffc107;
-}
-
-.health-icon.down {
-    background: #dc3545;
-}
-</style>
-
 <script>
 function toggleServicesPanel() {
     const content = document.getElementById('services-content');
@@ -223,17 +50,12 @@ function toggleServicesPanel() {
     
     content.style.display = isCollapsed ? 'block' : 'none';
     icon.textContent = isCollapsed ? '▼' : '▶';
-    
-    // Сохраняем состояние в localStorage
     localStorage.setItem('servicesPanelCollapsed', !isCollapsed);
 }
 
-// Инициализация состояния панели при загрузке
 document.addEventListener('DOMContentLoaded', function() {
     const content = document.getElementById('services-content');
     const icon = document.getElementById('services-collapse-icon');
-    
-    // По умолчанию свёрнуто, если нет сохранённого состояния
     const shouldCollapse = localStorage.getItem('servicesPanelCollapsed') === 'true';
     
     if (shouldCollapse) {

@@ -22,7 +22,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Обработчики событий
     document.getElementById('new-session-button').addEventListener('click', createNewSession);
     document.getElementById('send-button').addEventListener('click', sendMessage);
-    document.getElementById('send-button').addEventListener('touchstart', e => e.preventDefault());
     document.getElementById('message-input').addEventListener('keypress', e => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -66,7 +65,7 @@ async function loadMessages(sessionId) {
     messages.forEach(msg => {
         if (msg.role === 'user') {
             lastUserMessage = msg;
-            ui.displayMessage(msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.timestamp, null, null, null, null, null, null, true); // skipDeduplication = true
+            ui.displayMessage(msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.timestamp, null, null, null, null, null, null, false); // skipDeduplication = true
         } else if (msg.role === 'assistant') {
             let responseTime = msg.response_time;
             if (lastUserMessage) {

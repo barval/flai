@@ -7,9 +7,6 @@ let lastUpdateCheck = Date.now() / 1000;
 let attachedFile = null;
 let isSending = false;
 
-// Глобальный Set для отслеживания уже отображенных сообщений (чтобы избежать дублирования)
-window.displayedMessages = window.displayedMessages || new Set();
-
 document.addEventListener('DOMContentLoaded', async () => {
     await loadSessions();
     if (appState.currentSessionId) {
@@ -25,7 +22,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Обработчики событий
     document.getElementById('new-session-button').addEventListener('click', createNewSession);
     document.getElementById('send-button').addEventListener('click', sendMessage);
-    // Убираем отдельный touchstart обработчик, полагаемся только на click (он работает и на мобильных)
+    document.getElementById('send-button').addEventListener('touchstart', e => e.preventDefault());
     document.getElementById('message-input').addEventListener('keypress', e => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -40,12 +37,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('show-status-button').addEventListener('click', toggleRequestsPanel);
     document.addEventListener('keydown', e => { if (e.key === 'Escape') ui.closeImageModal(); });
 
-    // Слушаем события от ui (переключение и удаление сеансов)
+    // События от UI
     document.addEventListener('switch-session', (e) => {
-        const sessionId = e.detail.sessionId;
-        if (sessionId !== appState.currentSessionId) {
-            switchSession(sessionId);
-        }
+        switchSession(e.detail.sessionId);
     });
     document.addEventListener('delete-session', (e) => {
         deleteSession(e.detail.sessionId);
@@ -72,7 +66,7 @@ async function loadMessages(sessionId) {
     messages.forEach(msg => {
         if (msg.role === 'user') {
             lastUserMessage = msg;
-            ui.displayMessage(msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.timestamp);
+            ui.displayMessage(msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.timestamp, null, null, null, null, null, null, true); // skipDeduplication = true
         } else if (msg.role === 'assistant') {
             let responseTime = msg.response_time;
             if (lastUserMessage) {
@@ -81,9 +75,8 @@ async function loadMessages(sessionId) {
                 const diff = (assistantTime - userTime) / 1000;
                 if (!responseTime) responseTime = Math.round(diff * 10) / 10;
             }
-            // При загрузке истории добавляем сообщения без проверки дубликатов
             ui.displayMessage(msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.timestamp,
-                responseTime, msg.model_name, msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, true); // skipDuplicateCheck = true
+                responseTime, msg.model_name, msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, true); // skipDeduplication = true
             lastUserMessage = null;
         }
     });
@@ -93,12 +86,11 @@ async function loadMessages(sessionId) {
 }
 
 async function switchSession(sessionId) {
+    if (sessionId === appState.currentSessionId) return;
     await api.switchSession(sessionId);
     setCurrentSessionId(sessionId);
     await loadMessages(sessionId);
-    // Обновляем список сеансов, чтобы активный класс проставился
-    const sessions = await api.fetchSessions();
-    ui.updateSessionsList(sessions);
+    ui.updateSessionsList(await api.fetchSessions()); // обновим активный класс
 }
 
 async function createNewSession() {
@@ -111,62 +103,40 @@ async function createNewSession() {
 }
 
 async function deleteSession(sessionId) {
-    try {
-        await api.deleteSession(sessionId);
-        setNewMessageIndicator(sessionId, false);
-        const sessions = await api.fetchSessions();
-        ui.updateSessionsList(sessions);
-        if (sessionId === appState.currentSessionId) {
-            if (sessions.length > 0) {
-                await switchSession(sessions[0].id);
-            } else {
-                // Если сеансов не осталось, создаём новый
-                await createNewSession();
-            }
+    await api.deleteSession(sessionId);
+    // Обновим список сеансов
+    const sessions = await api.fetchSessions();
+    ui.updateSessionsList(sessions);
+    if (sessionId === appState.currentSessionId) {
+        if (sessions.length > 0) {
+            await switchSession(sessions[0].id);
+        } else {
+            // Создаём новый сеанс, если не осталось
+            await createNewSession();
         }
-    } catch (err) {
-        alert('Ошибка при удалении сеанса: ' + err.message);
     }
 }
 
 async function sendMessage() {
+    if (isSending) return;
+    isSending = true;
+
     const input = document.getElementById('message-input');
     const text = input.value.trim();
     if (!text && !attachedFile) {
         alert('Введите сообщение или прикрепите файл');
+        isSending = false;
         return;
     }
-    if (isSending) return;
-    isSending = true;
 
     const sendButton = document.getElementById('send-button');
     sendButton.disabled = true;
     sendButton.innerHTML = '⏳ Отправка...';
 
-    // Сразу показываем сообщение пользователя
-    const now = new Date();
-    const timestamp = now.toISOString();
-    if (attachedFile) {
-        const reader = new FileReader();
-        reader.onload = async function(e) {
-            const fileData = e.target.result.split(',')[1];
-            const fileType = attachedFile.type;
-            const fileName = attachedFile.name;
-            ui.displayMessage('user', text, fileData, fileType, fileName, timestamp);
-            await doSend(text, attachedFile);
-        };
-        reader.readAsDataURL(attachedFile);
-    } else {
-        ui.displayMessage('user', text, null, null, null, timestamp);
-        await doSend(text, null);
-    }
-}
-
-async function doSend(text, file) {
     const formData = new FormData();
     formData.append('message', text);
-    if (file) {
-        formData.append('file', file);
+    if (attachedFile) {
+        formData.append('file', attachedFile);
     }
 
     try {
@@ -176,22 +146,24 @@ async function doSend(text, file) {
             showQueueNotification(data.position, data.estimated_wait);
             startResultPolling(data.request_id);
         } else if (data.response) {
-            // Для обратной совместимости (если сервер сразу вернул ответ)
-            ui.displayMessage('assistant', data.response, data.generated_image, data.file_type, data.file_name, data.assistant_timestamp, data.response_time, data.model_used);
+            // Для обратной совместимости (если сервер вернул сразу)
+            ui.displayMessage('assistant', data.response, data.generated_image, data.file_type, data.file_name,
+                data.assistant_timestamp, data.response_time, data.model_used,
+                data.mm_time, data.gen_time, data.mm_model, data.gen_model, false);
         }
     } catch (err) {
         alert('Ошибка: ' + err.message);
     } finally {
-        const sendButton = document.getElementById('send-button');
         sendButton.disabled = false;
         sendButton.innerHTML = 'Отправить';
         isSending = false;
-        // Очищаем поле ввода и файл
-        document.getElementById('message-input').value = '';
-        attachedFile = null;
-        document.getElementById('file-preview-container').style.display = 'none';
-        document.getElementById('file-input').value = '';
     }
+
+    // Очищаем поле ввода и файл
+    input.value = '';
+    attachedFile = null;
+    document.getElementById('file-preview-container').style.display = 'none';
+    document.getElementById('file-input').value = '';
 }
 
 function handleFileSelect(e) {
@@ -201,7 +173,7 @@ function handleFileSelect(e) {
         document.getElementById('file-preview-name').textContent = attachedFile.name;
         const sizeSpan = document.getElementById('file-preview-size');
         if (sizeSpan) {
-            sizeSpan.textContent = ` (${ui.formatFileSize(attachedFile.size)})`;
+            sizeSpan.textContent = ` (${formatFileSize(attachedFile.size)})`;
         }
         preview.style.display = 'block';
     }
@@ -218,7 +190,7 @@ async function clearHistory() {
         await api.clearHistory();
         document.getElementById('chat-messages').innerHTML = '';
         ui.updateMessageCount();
-        // Обновим заголовок сеанса
+        // Обновим заголовок сеанса в списке
         await loadSessions();
     }
 }
@@ -232,8 +204,9 @@ async function saveChatAsHTML() {
     }
     const title = activeSession.querySelector('.session-title')?.textContent || 'Чат';
     const now = new Date();
-    const timestamp = `${now.getFullYear()}-${ui.pad(now.getMonth()+1)}-${ui.pad(now.getDate())}-${ui.pad(now.getHours())}${ui.pad(now.getMinutes())}${ui.pad(now.getSeconds())}`;
+    const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 
+    // Получаем все сообщения
     const messages = [];
     document.querySelectorAll('.user-message, .assistant-message').forEach(msgEl => {
         const role = msgEl.classList.contains('user-message') ? 'user' : 'assistant';
@@ -252,12 +225,13 @@ async function saveChatAsHTML() {
         });
     });
 
+    // Загружаем стили с сервера (для экспорта)
     const cssResponse = await fetch('/static/style.css');
     const cssText = await cssResponse.text();
 
     const html = `<!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><title>${ui.escapeHtml(title)}</title><style>${cssText}</style></head>
+<head><meta charset="UTF-8"><title>${escapeHtml(title)}</title><style>${cssText}</style></head>
 <body>
     <header><h1>ИИ Локальный</h1></header>
     <main><div class="chat-wrapper">${messages.map(m => `
@@ -307,51 +281,39 @@ function startResultPolling(requestId) {
         try {
             const data = await api.checkResult(requestId);
             if (data.status === 'completed' && data.result) {
-                clearInterval(interval);
                 const result = data.result;
                 if (result.session_id === appState.currentSessionId) {
-                    // Проверяем, не было ли уже такое сообщение отображено
-                    const messageKey = result.response + (result.generated_image ? '_img' : '') + result.assistant_timestamp;
-                    if (!window.displayedMessages.has(messageKey)) {
-                        window.displayedMessages.add(messageKey);
-                        ui.displayMessage('assistant', result.response, result.generated_image, result.file_type, result.file_name,
-                            result.assistant_timestamp, result.response_time, result.model_used,
-                            result.mm_time, result.gen_time, result.mm_model, result.gen_model);
-                    } else {
-                        console.log('Duplicate message prevented');
-                    }
+                    ui.displayMessage('assistant', result.response, result.generated_image, result.file_type, result.file_name,
+                        result.assistant_timestamp, result.response_time, result.model_used,
+                        result.mm_time, result.gen_time, result.mm_model, result.gen_model, false);
                 } else {
                     setNewMessageIndicator(result.session_id, true, result.is_error);
                 }
+                api.fetchQueueStatus().then(updateRequestsStatus);
+                clearInterval(interval);
                 appState.processedRequests.delete(requestId);
                 appState.requestProcessingTimes.delete(requestId);
-                api.fetchQueueStatus().then(updateRequestsStatus);
+                return;
             } else if (data.status === 'error') {
-                clearInterval(interval);
                 if (data.result?.session_id === appState.currentSessionId) {
-                    const errorKey = 'error_' + data.error + data.result.assistant_timestamp;
-                    if (!window.displayedMessages.has(errorKey)) {
-                        window.displayedMessages.add(errorKey);
-                        ui.displayMessage('assistant', `⚠️ Ошибка: ${data.error}`, null, null, null, data.result.assistant_timestamp, null, 'system');
-                    }
+                    ui.displayMessage('assistant', `⚠️ Ошибка: ${data.error}`, null, null, null, new Date().toISOString(), null, 'system', null, null, null, null, false);
                 } else if (data.result?.session_id) {
                     setNewMessageIndicator(data.result.session_id, true, true);
                 }
+                clearInterval(interval);
                 appState.processedRequests.delete(requestId);
                 appState.requestProcessingTimes.delete(requestId);
+                return;
             }
             if (pollCount >= maxPolls) {
+                ui.displayMessage('assistant', '⚠️ Превышено время ожидания ответа.', null, null, null, new Date().toISOString(), null, 'system', null, null, null, null, false);
                 clearInterval(interval);
-                const timeoutKey = 'timeout_' + requestId;
-                if (!window.displayedMessages.has(timeoutKey)) {
-                    window.displayedMessages.add(timeoutKey);
-                    ui.displayMessage('assistant', '⚠️ Превышено время ожидания ответа.', null, null, null, new Date().toISOString(), null, 'system');
-                }
                 appState.processedRequests.delete(requestId);
                 appState.requestProcessingTimes.delete(requestId);
             }
         } catch (err) {
             console.error('Polling error:', err);
+            // При ошибке сети не останавливаем интервал, продолжаем попытки
         }
     }, 3000);
 }
@@ -383,9 +345,6 @@ function toggleRequestsPanel() {
     } else {
         stopStatusRefresh();
     }
-    if (isHidden) {
-        api.fetchQueueStatus().then(updateRequestsStatus);
-    }
 }
 
 function startStatusRefresh() {
@@ -403,6 +362,7 @@ function stopStatusRefresh() {
 }
 
 function updateRequestsStatus(status) {
+    // Обновление панели "Мои запросы"
     if (status.processing) {
         document.getElementById('processing-request').style.display = 'block';
         document.getElementById('processing-text').innerHTML = `${status.processing.type_icon} ${status.processing.session_title}: обрабатывается...`;
@@ -417,7 +377,7 @@ function updateRequestsStatus(status) {
             <div class="queue-item" data-request-id="${req.id}">
                 <span class="queue-position">#${req.position_info.position}</span>
                 <span class="request-icon">${req.type_icon}</span>
-                <span class="request-title">${ui.escapeHtml(req.session_title).substring(0,20)}...</span>
+                <span class="request-title">${req.session_title.substring(0,20)}...</span>
                 <span class="wait-time">⏱️ ${req.position_info.estimated_seconds}с</span>
                 <span class="cancel-request" onclick="cancelRequest('${req.id}')">✕</span>
             </div>
@@ -426,6 +386,7 @@ function updateRequestsStatus(status) {
         document.getElementById('queued-requests').style.display = 'none';
     }
 
+    // Обновление системной нагрузки
     const system = status.system;
     if (system) {
         const loadPercent = Math.min(100, (system.total_queued / 10) * 100);
@@ -444,28 +405,13 @@ function updateRequestsStatus(status) {
     }
 }
 
-async function cancelRequest(requestId) {
-    if (!confirm('Отменить этот запрос?')) return;
-    try {
-        const result = await api.cancelRequest(requestId);
-        if (result.success) {
-            api.fetchQueueStatus().then(updateRequestsStatus);
-        } else {
-            alert('Не удалось отменить запрос');
-        }
-    } catch (err) {
-        console.error('Cancel error:', err);
-    }
-}
-
 function startGlobalUpdatesPolling() {
     if (appState.intervals.globalUpdates) clearInterval(appState.intervals.globalUpdates);
     appState.intervals.globalUpdates = setInterval(async () => {
         try {
             const updates = await api.checkUpdates(lastUpdateCheck);
             if (updates.has_updates) {
-                const sessions = await api.fetchSessions();
-                ui.updateSessionsList(sessions);
+                await loadSessions();
                 if (updates.current_session_updated) {
                     clearMessagesCache(appState.currentSessionId);
                     await loadMessages(appState.currentSessionId);
@@ -481,4 +427,25 @@ function startGlobalUpdatesPolling() {
             console.error('Updates polling error:', err);
         }
     }, 2000);
+}
+
+async function cancelRequest(requestId) {
+    if (!confirm('Отменить запрос?')) return;
+    await api.cancelRequest(requestId);
+    api.fetchQueueStatus().then(updateRequestsStatus);
+}
+
+// Вспомогательная функция для pad (дублируется, но можно импортировать)
+function pad(n) { return n.toString().padStart(2, '0'); }
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+function formatFileSize(bytes) {
+    if (!bytes) return '';
+    const k = 1024;
+    const sizes = ['Б', 'КБ', 'МБ', 'ГБ'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }

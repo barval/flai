@@ -8,6 +8,7 @@ export const appState = {
     processedRequests: new Set(),
     requestProcessingTimes: new Map(),
     defaultModelName: 'qwen3-vl:8b-instruct',
+    displayedMessages: new Set(), // для отслеживания уже отображённых сообщений (предотвращение дублей)
     intervals: {
         sync: null,
         status: null,

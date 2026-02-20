@@ -1,3 +1,4 @@
+// static/js/chat.js
 // Главный модуль инициализации и обработчиков
 import { appState, setCurrentSessionId, cleanupProcessedRequests, clearMessagesCache, setNewMessageIndicator } from './state.js';
 import * as api from './api.js';
@@ -7,41 +8,9 @@ let lastUpdateCheck = Date.now() / 1000;
 let attachedFile = null;
 let isSending = false;
 
-document.addEventListener('DOMContentLoaded', async () => {
-    await loadSessions();
-    if (appState.currentSessionId) {
-        await loadMessages(appState.currentSessionId);
-    } else {
-        // Создаём новый сеанс, если нет ни одного
-        const newSession = await api.createNewSession();
-        setCurrentSessionId(newSession.id);
-        await loadSessions(); // перезагрузим список
-    }
-    startGlobalUpdatesPolling();
-    initPanelStates();
-
-    // Обработчики событий
-    document.getElementById('new-session-button').addEventListener('click', createNewSession);
-    document.getElementById('send-button').addEventListener('click', sendMessage);
-    document.getElementById('send-button').addEventListener('touchstart', e => e.preventDefault());
-    document.getElementById('message-input').addEventListener('keypress', e => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
-    document.getElementById('attach-file-button').addEventListener('click', () => document.getElementById('file-input').click());
-    document.getElementById('file-input').addEventListener('change', handleFileSelect);
-    document.getElementById('remove-file-button').addEventListener('click', removeFile);
-    document.getElementById('clear-context-button').addEventListener('click', clearHistory);
-    document.getElementById('save-chat-button').addEventListener('click', saveChatAsHTML);
-    document.getElementById('show-status-button').addEventListener('click', toggleRequestsPanel);
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') ui.closeImageModal(); });
-
-    setInterval(cleanupProcessedRequests, 60000);
-    setInterval(() => api.fetchSessions().then(ui.updateSessionsList), 5000);
-});
-
+// ------------------------------------------------------------------
+// Загрузка данных
+// ------------------------------------------------------------------
 async function loadSessions() {
     const sessions = await api.fetchSessions();
     ui.updateSessionsList(sessions);
@@ -75,7 +44,21 @@ async function loadMessages(sessionId) {
     });
     ui.updateMessageCount();
     setNewMessageIndicator(sessionId, false);
-    clearMessagesCache(sessionId); // принудительно очищаем кэш для этого сеанса
+    clearMessagesCache(sessionId);
+}
+
+// ------------------------------------------------------------------
+// Управление сеансами
+// ------------------------------------------------------------------
+async function switchSession(sessionId) {
+    if (!sessionId || sessionId === appState.currentSessionId) return;
+    await api.switchSession(sessionId);
+    setCurrentSessionId(sessionId);
+    await loadMessages(sessionId);
+    // Обновляем активный класс в списке
+    document.querySelectorAll('.session-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.sessionId === sessionId);
+    });
 }
 
 async function createNewSession() {
@@ -87,6 +70,25 @@ async function createNewSession() {
     setNewMessageIndicator(newSession.id, false);
 }
 
+async function deleteSession(sessionId) {
+    await api.deleteSession(sessionId);
+    setNewMessageIndicator(sessionId, false);
+    await loadSessions();
+    if (sessionId === appState.currentSessionId) {
+        // Если текущий сеанс удалён, переключаемся на первый в списке
+        const sessions = await api.fetchSessions();
+        if (sessions.length > 0) {
+            await switchSession(sessions[0].id);
+        } else {
+            // Если нет ни одного, создаём новый
+            await createNewSession();
+        }
+    }
+}
+
+// ------------------------------------------------------------------
+// Отправка сообщения
+// ------------------------------------------------------------------
 async function sendMessage() {
     const input = document.getElementById('message-input');
     const text = input.value.trim();
@@ -115,7 +117,8 @@ async function sendMessage() {
             startResultPolling(data.request_id);
         } else if (data.response) {
             // Для обратной совместимости
-            ui.displayMessage('assistant', data.response, data.generated_image, data.file_type, data.file_name, data.assistant_timestamp, data.response_time, data.model_used);
+            ui.displayMessage('assistant', data.response, data.generated_image, data.file_type, data.file_name,
+                data.assistant_timestamp, data.response_time, data.model_used);
         }
     } catch (err) {
         alert('Ошибка: ' + err.message);
@@ -139,7 +142,10 @@ function handleFileSelect(e) {
         document.getElementById('file-preview-name').textContent = attachedFile.name;
         const sizeSpan = document.getElementById('file-preview-size');
         if (sizeSpan) {
-            sizeSpan.textContent = ` (${formatFileSize(attachedFile.size)})`;
+            // Используем утилиту из модуля (импортируем, если нужно)
+            import('./utils.js').then(utils => {
+                sizeSpan.textContent = ` (${utils.formatFileSize(attachedFile.size)})`;
+            });
         }
         preview.style.display = 'block';
     }
@@ -151,13 +157,250 @@ function removeFile() {
     document.getElementById('file-preview-container').style.display = 'none';
 }
 
+// ------------------------------------------------------------------
+// Очередь и уведомления
+// ------------------------------------------------------------------
+function showQueueNotification(position, waitSeconds) {
+    const waitText = waitSeconds > 60 ? `${Math.floor(waitSeconds/60)} мин ${waitSeconds%60} сек` : `${waitSeconds} сек`;
+    const notification = document.createElement('div');
+    notification.className = 'queue-notification';
+    notification.innerHTML = `
+        <div class="notification-content">
+            <span>⏳ Запрос в очереди (позиция ${position})</span>
+            <span class="wait-time">~${waitText}</span>
+            <button class="show-requests-button" onclick="document.getElementById('show-status-button').click(); this.parentElement.parentElement.remove()">📊 Показать статус</button>
+        </div>
+    `;
+    document.querySelector('.chat-header').appendChild(notification);
+    setTimeout(() => notification.remove(), 8000);
+}
+
+function startResultPolling(requestId) {
+    if (appState.processedRequests.has(requestId)) return;
+    appState.processedRequests.add(requestId);
+    appState.requestProcessingTimes.set(requestId, Date.now());
+
+    let pollCount = 0;
+    const maxPolls = 120;
+    const interval = setInterval(async () => {
+        pollCount++;
+        try {
+            const data = await api.checkResult(requestId);
+            if (data.status === 'completed' && data.result) {
+                clearInterval(interval);
+                const result = data.result;
+                if (result.session_id === appState.currentSessionId) {
+                    ui.displayMessage('assistant', result.response, result.generated_image, result.file_type,
+                        result.file_name, result.assistant_timestamp, result.response_time, result.model_used,
+                        result.mm_time, result.gen_time, result.mm_model, result.gen_model);
+                } else {
+                    setNewMessageIndicator(result.session_id, true, result.is_error);
+                }
+                appState.processedRequests.delete(requestId);
+                appState.requestProcessingTimes.delete(requestId);
+                api.fetchQueueStatus().then(updateRequestsStatus);
+            } else if (data.status === 'error') {
+                clearInterval(interval);
+                if (data.result?.session_id === appState.currentSessionId) {
+                    ui.displayMessage('assistant', `⚠️ Ошибка: ${data.error}`, null, null, null,
+                        new Date().toISOString(), null, 'system');
+                } else if (data.result?.session_id) {
+                    setNewMessageIndicator(data.result.session_id, true, true);
+                }
+                appState.processedRequests.delete(requestId);
+                appState.requestProcessingTimes.delete(requestId);
+            }
+            if (pollCount >= maxPolls) {
+                clearInterval(interval);
+                ui.displayMessage('assistant', '⚠️ Превышено время ожидания ответа.', null, null, null,
+                    new Date().toISOString(), null, 'system');
+                appState.processedRequests.delete(requestId);
+                appState.requestProcessingTimes.delete(requestId);
+            }
+        } catch (err) {
+            console.error('Polling error:', err);
+        }
+    }, 3000);
+}
+
+function updateRequestsStatus(status) {
+    // Обновление панели "Мои запросы"
+    if (status.processing) {
+        document.getElementById('processing-request').style.display = 'block';
+        document.getElementById('processing-text').innerHTML = `${status.processing.type_icon} ${status.processing.session_title}: обрабатывается...`;
+    } else {
+        document.getElementById('processing-request').style.display = 'none';
+    }
+
+    const queuedList = document.getElementById('queued-list');
+    if (status.queued?.length) {
+        document.getElementById('queued-requests').style.display = 'block';
+        queuedList.innerHTML = status.queued.map(req => `
+            <div class="queue-item" data-request-id="${req.id}">
+                <span class="queue-position">#${req.position_info.position}</span>
+                <span class="request-icon">${req.type_icon}</span>
+                <span class="request-title">${req.session_title.substring(0,20)}...</span>
+                <span class="wait-time">⏱️ ${req.position_info.estimated_seconds}с</span>
+                <span class="cancel-request" onclick="cancelRequest('${req.id}')">✕</span>
+            </div>
+        `).join('');
+    } else {
+        document.getElementById('queued-requests').style.display = 'none';
+    }
+
+    // Обновление системной нагрузки
+    const system = status.system;
+    if (system) {
+        const loadPercent = Math.min(100, (system.total_queued / 10) * 100);
+        const loadClass = system.total_queued > 10 ? 'high' : '';
+        let statusText = system.total_queued > 10 ? 'Высокая' : system.total_queued > 5 ? 'Средняя' : 'Низкая';
+        let statusColor = system.total_queued > 10 ? '#dc3545' : system.total_queued > 5 ? '#ffc107' : '#28a745';
+        document.getElementById('system-load').innerHTML = `
+            <div class="system-load-indicator">
+                <div class="load-header"><span>📊 Нагрузка системы</span><span class="load-status" style="color:${statusColor};">${statusText}</span></div>
+                <div class="load-bar-container">
+                    <div class="load-bar"><div class="load-fill ${loadClass}" style="width:${loadPercent}%"></div></div>
+                    <div class="load-value"><strong>${system.total_queued}</strong> в очереди</div>
+                </div>
+            </div>
+        `;
+    }
+}
+
+async function cancelRequest(requestId) {
+    if (!confirm('Отменить этот запрос?')) return;
+    const result = await api.cancelRequest(requestId);
+    if (result.success) {
+        api.fetchQueueStatus().then(updateRequestsStatus);
+    } else {
+        alert('Не удалось отменить запрос');
+    }
+}
+
+function showServiceWarning(message, type = 'warning') {
+    const warningsDiv = document.getElementById('service-warnings');
+    if (!warningsDiv) return;
+    const warning = document.createElement('div');
+    warning.className = `service-warning ${type}`;
+    warning.innerHTML = `<span class="warning-icon">⚠️</span><span class="warning-text">${message}</span><button class="close-warning" onclick="this.parentElement.remove()">✕</button>`;
+    warningsDiv.appendChild(warning);
+    setTimeout(() => warning.remove(), 10000);
+}
+
+// ------------------------------------------------------------------
+// Панели и интервалы
+// ------------------------------------------------------------------
+function initPanelStates() {
+    const requestsPanel = document.getElementById('requests-status-panel');
+    const requestsOpen = localStorage.getItem('requestsPanelOpen') === 'true';
+    requestsPanel.style.display = requestsOpen ? 'block' : 'none';
+    if (requestsOpen) startStatusRefresh();
+}
+
+function toggleRequestsPanel() {
+    const panel = document.getElementById('requests-status-panel');
+    const isHidden = panel.style.display === 'none';
+    panel.style.display = isHidden ? 'block' : 'none';
+    localStorage.setItem('requestsPanelOpen', isHidden);
+    if (isHidden) {
+        startStatusRefresh();
+    } else {
+        stopStatusRefresh();
+    }
+}
+
+function startStatusRefresh() {
+    if (appState.intervals.status) clearInterval(appState.intervals.status);
+    appState.intervals.status = setInterval(() => {
+        api.fetchQueueStatus().then(updateRequestsStatus);
+    }, 3000);
+}
+
+function stopStatusRefresh() {
+    if (appState.intervals.status) {
+        clearInterval(appState.intervals.status);
+        appState.intervals.status = null;
+    }
+}
+
+function startGlobalUpdatesPolling() {
+    if (appState.intervals.globalUpdates) clearInterval(appState.intervals.globalUpdates);
+    appState.intervals.globalUpdates = setInterval(async () => {
+        try {
+            const updates = await api.checkUpdates(lastUpdateCheck);
+            if (updates.has_updates) {
+                await loadSessions();
+                if (updates.current_session_updated) {
+                    clearMessagesCache(appState.currentSessionId);
+                    await loadMessages(appState.currentSessionId);
+                }
+                if (updates.new_messages) {
+                    updates.new_messages.forEach(sid => {
+                        if (sid !== appState.currentSessionId) setNewMessageIndicator(sid, true);
+                    });
+                }
+                lastUpdateCheck = Date.now() / 1000;
+            }
+        } catch (err) {
+            console.error('Updates polling error:', err);
+        }
+    }, 2000);
+}
+
+// ------------------------------------------------------------------
+// Инициализация
+// ------------------------------------------------------------------
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadSessions();
+    if (appState.currentSessionId) {
+        await loadMessages(appState.currentSessionId);
+    } else {
+        const newSession = await api.createNewSession();
+        setCurrentSessionId(newSession.id);
+        await loadSessions();
+    }
+    startGlobalUpdatesPolling();
+    initPanelStates();
+
+    // Обработчики событий
+    document.getElementById('new-session-button').addEventListener('click', createNewSession);
+    document.getElementById('send-button').addEventListener('click', sendMessage);
+    document.getElementById('send-button').addEventListener('touchstart', e => e.preventDefault());
+    document.getElementById('message-input').addEventListener('keypress', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+    document.getElementById('attach-file-button').addEventListener('click', () => document.getElementById('file-input').click());
+    document.getElementById('file-input').addEventListener('change', handleFileSelect);
+    document.getElementById('remove-file-button').addEventListener('click', removeFile);
+    document.getElementById('clear-context-button').addEventListener('click', clearHistory);
+    document.getElementById('save-chat-button').addEventListener('click', saveChatAsHTML);
+    document.getElementById('show-status-button').addEventListener('click', toggleRequestsPanel);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') ui.closeImageModal(); });
+
+    // Слушатели событий от UI
+    document.addEventListener('switch-session', (e) => {
+        switchSession(e.detail.sessionId);
+    });
+    document.addEventListener('delete-session', (e) => {
+        deleteSession(e.detail.sessionId);
+    });
+
+    setInterval(cleanupProcessedRequests, 60000);
+    setInterval(() => api.fetchSessions().then(ui.updateSessionsList), 5000);
+});
+
+// ------------------------------------------------------------------
+// Очистка истории и сохранение чата
+// ------------------------------------------------------------------
 async function clearHistory() {
     if (confirm('Очистить всю переписку в этом сеансе?')) {
         await api.clearHistory();
         document.getElementById('chat-messages').innerHTML = '';
         ui.updateMessageCount();
-        // Обновим заголовок сеанса
-        await loadSessions();
+        await loadSessions(); // обновим заголовок сеанса
     }
 }
 
@@ -220,189 +463,10 @@ async function saveChatAsHTML() {
     URL.revokeObjectURL(url);
 }
 
-function showQueueNotification(position, waitSeconds) {
-    const waitText = waitSeconds > 60 ? `${Math.floor(waitSeconds/60)} мин ${waitSeconds%60} сек` : `${waitSeconds} сек`;
-    const notification = document.createElement('div');
-    notification.className = 'queue-notification';
-    notification.innerHTML = `
-        <div class="notification-content">
-            <span>⏳ Запрос в очереди (позиция ${position})</span>
-            <span class="wait-time">~${waitText}</span>
-            <button class="show-requests-button" onclick="document.getElementById('show-status-button').click(); this.parentElement.parentElement.remove()">📊 Показать статус</button>
-        </div>
-    `;
-    document.querySelector('.chat-header').appendChild(notification);
-    setTimeout(() => notification.remove(), 8000);
-}
-
-function startResultPolling(requestId) {
-    if (appState.processedRequests.has(requestId)) return;
-    appState.processedRequests.add(requestId);
-    appState.requestProcessingTimes.set(requestId, Date.now());
-
-    let pollCount = 0;
-    const maxPolls = 120;
-    const interval = setInterval(async () => {
-        pollCount++;
-        try {
-            const data = await api.checkResult(requestId);
-            if (data.status === 'completed' && data.result) {
-                clearInterval(interval);
-                const result = data.result;
-                if (result.session_id === appState.currentSessionId) {
-                    ui.displayMessage('assistant', result.response, result.generated_image, result.file_type, result.file_name,
-                        result.assistant_timestamp, result.response_time, result.model_used,
-                        result.mm_time, result.gen_time, result.mm_model, result.gen_model);
-                } else {
-                    setNewMessageIndicator(result.session_id, true, result.is_error);
-                }
-                appState.processedRequests.delete(requestId);
-                appState.requestProcessingTimes.delete(requestId);
-                api.fetchQueueStatus().then(updateRequestsStatus); // обновим панель
-            } else if (data.status === 'error') {
-                clearInterval(interval);
-                if (data.result?.session_id === appState.currentSessionId) {
-                    ui.displayMessage('assistant', `⚠️ Ошибка: ${data.error}`, null, null, null, new Date().toISOString(), null, 'system');
-                } else if (data.result?.session_id) {
-                    setNewMessageIndicator(data.result.session_id, true, true);
-                }
-                appState.processedRequests.delete(requestId);
-                appState.requestProcessingTimes.delete(requestId);
-            }
-            if (pollCount >= maxPolls) {
-                clearInterval(interval);
-                ui.displayMessage('assistant', '⚠️ Превышено время ожидания ответа.', null, null, null, new Date().toISOString(), null, 'system');
-                appState.processedRequests.delete(requestId);
-                appState.requestProcessingTimes.delete(requestId);
-            }
-        } catch (err) {
-            console.error('Polling error:', err);
-        }
-    }, 3000);
-}
-
-function showServiceWarning(message, type = 'warning') {
-    const warningsDiv = document.getElementById('service-warnings');
-    if (!warningsDiv) return;
-    const warning = document.createElement('div');
-    warning.className = `service-warning ${type}`;
-    warning.innerHTML = `<span class="warning-icon">⚠️</span><span class="warning-text">${message}</span><button class="close-warning" onclick="this.parentElement.remove()">✕</button>`;
-    warningsDiv.appendChild(warning);
-    setTimeout(() => warning.remove(), 10000);
-}
-
-function initPanelStates() {
-    const requestsPanel = document.getElementById('requests-status-panel');
-    const requestsOpen = localStorage.getItem('requestsPanelOpen') === 'true';
-    requestsPanel.style.display = requestsOpen ? 'block' : 'none';
-    if (requestsOpen) startStatusRefresh();
-}
-
-function toggleRequestsPanel() {
-    const panel = document.getElementById('requests-status-panel');
-    const isHidden = panel.style.display === 'none';
-    panel.style.display = isHidden ? 'block' : 'none';
-    localStorage.setItem('requestsPanelOpen', isHidden);
-    if (isHidden) {
-        startStatusRefresh();
-    } else {
-        stopStatusRefresh();
-    }
-}
-
-function startStatusRefresh() {
-    if (appState.intervals.status) clearInterval(appState.intervals.status);
-    appState.intervals.status = setInterval(() => {
-        api.fetchQueueStatus().then(updateRequestsStatus);
-    }, 3000);
-}
-
-function stopStatusRefresh() {
-    if (appState.intervals.status) {
-        clearInterval(appState.intervals.status);
-        appState.intervals.status = null;
-    }
-}
-
-function updateRequestsStatus(status) {
-    // Обновление панели "Мои запросы"
-    if (status.processing) {
-        document.getElementById('processing-request').style.display = 'block';
-        document.getElementById('processing-text').innerHTML = `${status.processing.type_icon} ${status.processing.session_title}: обрабатывается...`;
-    } else {
-        document.getElementById('processing-request').style.display = 'none';
-    }
-
-    const queuedList = document.getElementById('queued-list');
-    if (status.queued?.length) {
-        document.getElementById('queued-requests').style.display = 'block';
-        queuedList.innerHTML = status.queued.map(req => `
-            <div class="queue-item" data-request-id="${req.id}">
-                <span class="queue-position">#${req.position_info.position}</span>
-                <span class="request-icon">${req.type_icon}</span>
-                <span class="request-title">${req.session_title.substring(0,20)}...</span>
-                <span class="wait-time">⏱️ ${req.position_info.estimated_seconds}с</span>
-                <span class="cancel-request" onclick="cancelRequest('${req.id}')">✕</span>
-            </div>
-        `).join('');
-    } else {
-        document.getElementById('queued-requests').style.display = 'none';
-    }
-
-    // Обновление системной нагрузки
-    const system = status.system;
-    if (system) {
-        const loadPercent = Math.min(100, (system.total_queued / 10) * 100);
-        const loadClass = system.total_queued > 10 ? 'high' : '';
-        let statusText = system.total_queued > 10 ? 'Высокая' : system.total_queued > 5 ? 'Средняя' : 'Низкая';
-        let statusColor = system.total_queued > 10 ? '#dc3545' : system.total_queued > 5 ? '#ffc107' : '#28a745';
-        document.getElementById('system-load').innerHTML = `
-            <div class="system-load-indicator">
-                <div class="load-header"><span>📊 Нагрузка системы</span><span class="load-status" style="color:${statusColor};">${statusText}</span></div>
-                <div class="load-bar-container">
-                    <div class="load-bar"><div class="load-fill ${loadClass}" style="width:${loadPercent}%"></div></div>
-                    <div class="load-value"><strong>${system.total_queued}</strong> в очереди</div>
-                </div>
-            </div>
-        `;
-    }
-}
-
-function startGlobalUpdatesPolling() {
-    if (appState.intervals.globalUpdates) clearInterval(appState.intervals.globalUpdates);
-    appState.intervals.globalUpdates = setInterval(async () => {
-        try {
-            const updates = await api.checkUpdates(lastUpdateCheck);
-            if (updates.has_updates) {
-                await loadSessions();
-                if (updates.current_session_updated) {
-                    clearMessagesCache(appState.currentSessionId);
-                    await loadMessages(appState.currentSessionId);
-                }
-                if (updates.new_messages) {
-                    updates.new_messages.forEach(sid => {
-                        if (sid !== appState.currentSessionId) setNewMessageIndicator(sid, true);
-                    });
-                }
-                lastUpdateCheck = Date.now() / 1000;
-            }
-        } catch (err) {
-            console.error('Updates polling error:', err);
-        }
-    }, 2000);
-}
-
-// Вспомогательная функция для pad (дублируется, но можно импортировать)
+// Вспомогательные функции, которые не импортированы (можно заменить импортом из utils)
 function pad(n) { return n.toString().padStart(2, '0'); }
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
-}
-function formatFileSize(bytes) {
-    if (!bytes) return '';
-    const k = 1024;
-    const sizes = ['Б', 'КБ', 'МБ', 'ГБ'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }

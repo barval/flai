@@ -88,7 +88,8 @@ export function displayMessage(role, content, fileData, fileType, fileName, time
             } catch { /* не JSON */ }
         }
         const decoded = role === 'assistant' ? decodeHtmlEntities(textContent) : textContent;
-        html += `<div class="message-content">${marked.parse(escapeHtml(decoded))}</div>`;
+        // Используем window.marked, так как marked.min.js загружается классически
+        html += `<div class="message-content">${window.marked.parse(escapeHtml(decoded))}</div>`;
     }
 
     // Вложения
@@ -151,7 +152,7 @@ export function updateSessionsList(sessions) {
     attachSessionEventHandlers();
 }
 
-// Привязка обработчиков к сеансам
+// Привязка обработчиков к сеансам (генерируем события для chat.js)
 function attachSessionEventHandlers() {
     document.querySelectorAll('.session-item').forEach(el => {
         el.addEventListener('click', function(e) {
@@ -159,8 +160,9 @@ function attachSessionEventHandlers() {
             const sessionId = this.dataset.sessionId;
             if (sessionId === appState.currentSessionId) return;
             setNewMessageIndicator(sessionId, false);
-            window.location.hash = `#session-${sessionId}`; // для возможности навигации
-            // Здесь должен быть вызов переключения сеанса
+            // Генерируем событие для переключения сеанса
+            const event = new CustomEvent('switch-session', { detail: { sessionId } });
+            document.dispatchEvent(event);
         });
     });
     
@@ -171,7 +173,9 @@ function attachSessionEventHandlers() {
             const sessionId = sessionItem.dataset.sessionId;
             const sessionTitle = sessionItem.querySelector('.session-title').textContent;
             if (confirm(`Удалить сеанс "${sessionTitle}"?`)) {
-                // Здесь вызов удаления
+                // Генерируем событие для удаления сеанса
+                const event = new CustomEvent('delete-session', { detail: { sessionId } });
+                document.dispatchEvent(event);
             }
         });
     });

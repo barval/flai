@@ -105,10 +105,10 @@
 
 <!-- Подключение модулей JavaScript -->
 <script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/utils.js') }}"></script>
-<script src="{{ url_for('static', filename='js/state.js') }}"></script>
-<script src="{{ url_for('static', filename='js/api.js') }}"></script>
-<script src="{{ url_for('static', filename='js/ui.js') }}"></script>
-<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/utils.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/state.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/api.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/ui.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/chat.js') }}"></script>
 <script src="{{ url_for('static', filename='js/service_status.js') }}"></script>
 {% endblock %}

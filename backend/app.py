@@ -52,23 +52,66 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # ==================== МОНТИРОВАНИЕ ФРОНТЕНДА ====================
-# Фронтенд — само-содержимый HTML, обслуживается напрямую
-frontend_path = Path(__file__).parent.parent / "frontend"
+# Определяем путь к фронтенду более надёжно
+import sys
+from pathlib import Path
+
+# Вариант 1: Если запускаем из /app/backend/app.py
+frontend_path = Path(__file__).resolve().parent.parent.parent / "frontend"
+
+# Вариант 2: Fallback для других случаев
+if not frontend_path.exists():
+    frontend_path = Path("/app/frontend")
+
+# Вариант 3: Для локальной разработки
+if not frontend_path.exists():
+    frontend_path = Path(__file__).resolve().parent.parent / "frontend"
+
+logger.info(f"📁 Frontend path: {frontend_path}")
+logger.info(f"📁 Frontend exists: {frontend_path.exists()}")
+if frontend_path.exists():
+    index_path = frontend_path / "index.html"
+    logger.info(f"📄 index.html exists: {index_path.exists()}")
+
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_frontend():
     """Сервинг фронтенда"""
     index_path = frontend_path / "index.html"
+    
     if index_path.exists():
-        async with aiofiles.open(index_path, "r", encoding="utf-8") as f:
-            content = await f.read()
-            # Подстановка footer из настроек
-            content = content.replace(
-                'document.currentScript.dataset.footer || \'ИИ Локальный v3.3 (с) 2026 Барсуков Валерий\'',
-                f'"{settings.footer_text}"'
-            )
-            return HTMLResponse(content=content)
-    return HTMLResponse(content="<h1>Frontend not found</h1>", status_code=404)
+        try:
+            async with aiofiles.open(index_path, "r", encoding="utf-8") as f:
+                content = await f.read()
+                # Подстановка footer из настроек
+                content = content.replace(
+                    'document.currentScript.dataset.footer || \'ИИ Локальный v3.3 (с) 2026 Барсуков Валерий\'',
+                    f'"{settings.footer_text}"'
+                )
+                return HTMLResponse(content=content)
+        except Exception as e:
+            logger.error(f"Ошибка чтения index.html: {e}")
+            return HTMLResponse(content=f"<h1>Ошибка загрузки фронтенда: {e}</h1>", status_code=500)
+    
+    logger.error(f"❌ Frontend not found at {index_path}")
+    return HTMLResponse(
+        content=f"""
+        <html><body style="font-family:sans-serif;padding:2rem">
+            <h1>⚠️ Frontend not found</h1>
+            <p>Путь: <code>{index_path}</code></p>
+            <p>Существует: {index_path.exists()}</p>
+            <h3>Возможные причины:</h3>
+            <ul>
+                <li>Папка frontend не скопирована в Docker-образ</li>
+                <li>Неверный путь в app.py</li>
+                <li>Проблема с правами доступа</li>
+            </ul>
+            <h3>Проверьте структуру:</h3>
+            <pre>docker-compose exec ai-local-app ls -la /app/</pre>
+        </body></html>
+        """,
+        status_code=404
+    )
 
 # ==================== ХЕЛПЕРЫ ДЛЯ СЕССИЙ ====================
 def get_session_path(session_id: str) -> str:

@@ -1,0 +1,29 @@
+# ==================== WEB FRAMEWORK ====================
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+python-multipart==0.0.6
+
+# ==================== HTTP CLIENT ====================
+httpx==0.26.0
+
+# ==================== DATA PROCESSING ====================
+Pillow==10.2.0
+python-magic==0.4.27
+
+# ==================== CONFIGURATION ====================
+python-dotenv==1.0.1
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# ==================== FILE HANDLING ====================
+aiofiles==23.2.1
+
+# ==================== LOGGING ====================
+loguru==0.7.2
+
+# ==================== OPTIONAL: RAG WITH QDRANT ====================
+# qdrant-client==1.7.3
+# sentence-transformers==2.2.2
+
+# ==================== OPTIONAL: AUDIO PROCESSING ====================
+# whisper==1.1.10

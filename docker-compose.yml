@@ -1,48 +1,57 @@
-services:
-  redis:
-    image: redis:8-alpine
-    restart: always
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    command: redis-server --appendonly yes
-    networks:
-      - app-network
+version: '3.8'
 
-  web:
-    build: .
-    restart: always
+services:
+  # ==================== ОСНОВНОЕ ПРИЛОЖЕНИЕ ====================
+  ai-local:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai-local-app
+    restart: unless-stopped
     ports:
-      - "5000:5000"
-    depends_on:
-      - redis
-    volumes:
-      - ./data:/app/data
-      - ./.env:/app/.env:ro
-      - ./users.list:/app/users.list:ro
+      - "${APP_PORT:-5000}:8000"
     environment:
-      FLASK_ENV: production
-      OLLAMA_URL: http://host.docker.internal:11434
-      REDIS_URL: redis://redis:6379/0
-      PYTHONUNBUFFERED: 1
-      TZ: ${TIMEZONE}
+      - TIMEZONE=${TIMEZONE:-Europe/Moscow}
+      - MAX_IMAGE_WIDTH=${MAX_IMAGE_WIDTH:-3840}
+      - MAX_IMAGE_HEIGHT=${MAX_IMAGE_HEIGHT:-2160}
+      - MAX_IMAGE_SIZE_MB=${MAX_IMAGE_SIZE_MB:-5}
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - LLM_CHAT_MODEL=${LLM_CHAT_MODEL:-qwen3:4b-instruct-2507-q4_K_M}
+      - LLM_CHAT_MODEL_CONTEXT_WINDOW=${LLM_CHAT_MODEL_CONTEXT_WINDOW:-32768}
+      - LLM_CHAT_TEMPERATURE=${LLM_CHAT_TEMPERATURE:-0.1}
+      - LLM_CHAT_TOP_P=${LLM_CHAT_TOP_P:-0.1}
+      - LLM_MULTIMODAL_MODEL=${LLM_MULTIMODAL_MODEL:-qwen3-vl:8b-instruct-q4_K_M}
+      - LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW=${LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW:-32768}
+      - LLM_MULTIMODAL_TEMPERATURE=${LLM_MULTIMODAL_TEMPERATURE:-0.7}
+      - LLM_MULTIMODAL_TOP_P=${LLM_MULTIMODAL_TOP_P:-0.9}
+      - LLM_REASONING_MODEL=${LLM_REASONING_MODEL:-qwen3:8b-q4_K_M}
+      - LLM_REASONING_MODEL_CONTEXT_WINDOW=${LLM_REASONING_MODEL_CONTEXT_WINDOW:-40960}
+      - LLM_REASONING_TEMPERATURE=${LLM_REASONING_TEMPERATURE:-0.7}
+      - LLM_REASONING_TOP_P=${LLM_REASONING_TOP_P:-0.9}
+      - AUTOMATIC1111_URL=${AUTOMATIC1111_URL:-http://host.docker.internal:7860}
+      - AUTOMATIC1111_MODEL=${AUTOMATIC1111_MODEL:-cyberrealisticXL_v90.safetensors}
+      - A1111_STEPS=${A1111_STEPS:-30}
+      - A1111_CFG_SCALE=${A1111_CFG_SCALE:-7}
+      - A1111_WIDTH=${A1111_WIDTH:-1024}
+      - A1111_HEIGHT=${A1111_HEIGHT:-1024}
+      - A1111_SAMPLER=${A1111_SAMPLER:-Euler a}
+      - SECRET_KEY=${SECRET_KEY:-dev_secret_key_change_me}
+      - FOOTER_TEXT=${FOOTER_TEXT:-"ИИ Локальный v3.3 (с) 2026 Барсуков Валерий"}
+    volumes:
+      - ./backend/storage:/app/storage
+      - /etc/localtime:/etc/localtime:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    user: "1000:1000"
-    command: gunicorn --bind 0.0.0.0:5000 --workers 2 --threads 4 --timeout 120 wsgi:app
     networks:
-      - app-network
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-        tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
+      - ai-local-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 networks:
-  app-network:
+  ai-local-net:
     driver: bridge
-
-volumes:
-  redis-data:
+    name: ai-local-network

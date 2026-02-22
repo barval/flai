@@ -21,6 +21,9 @@ aiofiles==23.2.1
 # ==================== LOGGING ====================
 loguru==0.7.2
 
+# ==================== TIMEZONE ====================
+pytz==2024.1
+
 # ==================== OPTIONAL: RAG WITH QDRANT ====================
 # qdrant-client==1.7.3
 # sentence-transformers==2.2.2

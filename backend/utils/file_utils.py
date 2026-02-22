@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional, Tuple, List
 from PIL import Image
 from io import BytesIO
 from loguru import logger
-from .config import settings
+from backend.utils.config import settings
 
 
 # Поддерживаемые MIME-типы изображений

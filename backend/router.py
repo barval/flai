@@ -13,14 +13,14 @@
 from typing import Dict, List, Optional
 from loguru import logger
 
-from utils.config import settings
-from models.prompts import ROOM_NOT_FOUND
-from models.router_handler import classify_request, RouterResult
-from models.chat_handler import handle_chat
-from models.multimodal_handler import analyze_image, prepare_sd_prompt
-from models.reasoning_handler import handle_reasoning
-from models.camera_handler import get_camera_feed
-from models.image_generator import generate_image
+from backend.utils.config import settings
+from backend.models.prompts import ROOM_NOT_FOUND
+from backend.models.router_handler import classify_request, RouterResult
+from backend.models.chat_handler import handle_chat
+from backend.models.multimodal_handler import analyze_image, prepare_sd_prompt
+from backend.models.reasoning_handler import handle_reasoning
+from backend.models.camera_handler import get_camera_feed
+from backend.models.image_generator import generate_image
 
 
 class RequestRouter:

@@ -11,9 +11,9 @@ import base64
 from typing import Dict, List, Optional
 from loguru import logger
 
-from utils.ollama_client import ollama
-from utils.config import settings
-from .prompts import (
+from backend.utils.ollama_client import ollama
+from backend.utils.config import settings
+from backend.models.prompts import (
     MULTIMODAL_WITH_CAPTION_PROMPT,
     MULTIMODAL_NO_CAPTION_PROMPT,
     SD_PROMPT_PREPARATION,

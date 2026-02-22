@@ -11,7 +11,7 @@ import base64
 from typing import Optional, Dict
 from loguru import logger
 
-from .prompts import ROOM_NOT_FOUND, ROOM_CODES_REVERSE
+from backend.models.prompts import ROOM_NOT_FOUND, ROOM_CODES_REVERSE
 
 
 async def get_camera_feed(room_code: str) -> Dict:

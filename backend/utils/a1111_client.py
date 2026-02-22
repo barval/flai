@@ -5,7 +5,7 @@ import httpx
 import base64
 from loguru import logger
 from typing import Optional, Dict, Any, List
-from .config import settings
+from backend.utils.config import settings
 
 
 class A1111Client:

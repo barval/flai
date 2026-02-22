@@ -5,7 +5,7 @@ import httpx
 import json
 from loguru import logger
 from typing import List, Optional, AsyncGenerator, Dict, Any
-from .config import settings
+from backend.utils.config import settings
 
 
 class OllamaClient:

@@ -1,0 +1,26 @@
+{
+  "id": "fe3384a7-aa32-4723-b4ba-41ad4dbcb93c",
+  "created": "2026-02-22T19:01:14.616688",
+  "updated": "2026-02-22T19:01:14.616705",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Привет",
+      "timestamp": "2026-02-22T19:01:14.616703",
+      "attachment": null
+    },
+    {
+      "role": "assistant",
+      "content": "Привет! 😊",
+      "timestamp": "2026-02-22T19:01:47.665800",
+      "metadata": {
+        "model": "qwen3:4b-instruct-2507-q4_K_M",
+        "request_type": "simple",
+        "duration": 33.05,
+        "tokens": 0
+      }
+    }
+  ],
+  "title": "Привет",
+  "metadata": {}
+}

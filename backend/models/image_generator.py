@@ -9,9 +9,9 @@
 import base64
 from loguru import logger
 
-from utils.a1111_client import a1111
-from utils.config import settings
-from .multimodal_handler import prepare_sd_prompt
+from backend.utils.a1111_client import a1111
+from backend.utils.config import settings
+from backend.models.multimodal_handler import prepare_sd_prompt
 
 
 async def generate_image(user_query: str, session_id: str) -> dict:

@@ -23,7 +23,7 @@ RUN mkdir -p /app/storage/{uploads,sessions,cache} && \
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/app:/app/backend
 
 EXPOSE 8000
 

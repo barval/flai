@@ -19,9 +19,9 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pathlib import Path
 
-from utils.config import settings
-from utils.file_utils import validate_image, save_upload, load_file
-from router import router as request_router
+from backend.utils.config import settings
+from backend.utils.file_utils import validate_image, save_upload, load_file
+from backend.router import router as request_router
 
 # ==================== НАСТРОЙКА ЛОГИРОВАНИЯ ====================
 logger.remove()

@@ -9,9 +9,9 @@ import json
 from typing import Dict, Optional
 from loguru import logger
 
-from utils.ollama_client import ollama
-from utils.config import settings
-from .prompts import (
+from backend.utils.ollama_client import ollama
+from backend.utils.config import settings
+from backend.models.prompts import (
     ROUTER_PROMPT, 
     get_current_time_str,
     ROOM_CODES, 

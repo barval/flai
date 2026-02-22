@@ -15,7 +15,7 @@ class OllamaClient:
         self.base_url = settings.ollama_url.rstrip('/')
         self.timeout = 180.0
     
-    async def _post(self, endpoint: str, json_ dict) -> dict:
+    async def _post(self, endpoint: str, json_data: dict) -> dict:
         """Внутренний метод для POST-запросов"""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
@@ -36,7 +36,7 @@ class OllamaClient:
         options: Optional[Dict] = None
     ) -> Dict[str, Any]:
         """
-        Отправка чат-запроса к Ollama (НЕ стриминг)
+        Отправка чат-запроса к Ollama
         
         Returns:
             dict с полным ответом от модели
@@ -60,57 +60,6 @@ class OllamaClient:
         
         return await self._post("/api/chat", payload)
     
-    async def chat_stream(
-        self,
-        model: str,
-        messages: List[Dict[str, str]],
-        temperature: float,
-        top_p: float,
-        images: Optional[List[str]] = None,
-        options: Optional[Dict] = None
-    ) -> AsyncGenerator[str, None]:
-        """
-        Отправка чат-запроса к Ollama в потоковом режиме
-        
-        Yields:
-            str: следующий токен/часть ответа
-        """
-        payload = {
-            "model": model,
-            "messages": messages,
-            "options": {
-                "temperature": temperature,
-                "top_p": top_p,
-                "num_ctx": getattr(settings, 'llm_chat_context', 32768)
-            },
-            "stream": True
-        }
-        
-        if options:
-            payload["options"].update(options)
-        
-        if images:
-            payload["images"] = images
-        
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream(
-                "POST",
-                f"{self.base_url}/api/chat",
-                json=payload,
-                headers={"Content-Type": "application/json"}
-            ) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if line.strip():
-                        try:
-                            chunk = json.loads(line)
-                            if "message" in chunk and "content" in chunk["message"]:
-                                yield chunk["message"]["content"]
-                            if chunk.get("done"):
-                                break
-                        except json.JSONDecodeError:
-                            continue
-    
     async def generate(
         self,
         model: str,
@@ -119,9 +68,7 @@ class OllamaClient:
         top_p: float,
         images: Optional[List[str]] = None
     ) -> Dict[str, Any]:
-        """
-        Генерация текста через legacy API /api/generate
-        """
+        """Генерация текста через legacy API"""
         payload = {
             "model": model,
             "prompt": prompt,

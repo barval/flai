@@ -13,9 +13,9 @@ class OllamaClient:
     
     def __init__(self):
         self.base_url = settings.ollama_url.rstrip('/')
-        self.timeout = 180.0  # Долгие запросы к локальным моделям
+        self.timeout = 180.0
     
-    async def _post(self, endpoint: str, json_data: dict) -> dict:
+    async def _post(self, endpoint: str, json_ dict) -> dict:
         """Внутренний метод для POST-запросов"""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
@@ -32,25 +32,14 @@ class OllamaClient:
         messages: List[Dict[str, str]],
         temperature: float,
         top_p: float,
-        stream: bool = False,
         images: Optional[List[str]] = None,
         options: Optional[Dict] = None
-    ) -> AsyncGenerator[str, None] | Dict[str, Any]:
+    ) -> Dict[str, Any]:
         """
-        Отправка чат-запроса к Ollama
-        
-        Args:
-            model: имя модели (например, "qwen3:4b-instruct-2507-q4_K_M")
-            messages: список сообщений в формате [{"role": "user", "content": "..."}]
-            temperature: температура генерации (0.0-1.0)
-            top_p: параметр top-p sampling (0.0-1.0)
-            stream: если True, возвращает асинхронный генератор токенов
-            images: список base64-изображений для мультимодальных моделей
-            options: дополнительные опции модели
+        Отправка чат-запроса к Ollama (НЕ стриминг)
         
         Returns:
-            При stream=False: dict с полным ответом
-            При stream=True: асинхронный генератор токенов
+            dict с полным ответом от модели
         """
         payload = {
             "model": model,
@@ -60,7 +49,7 @@ class OllamaClient:
                 "top_p": top_p,
                 "num_ctx": getattr(settings, 'llm_chat_context', 32768)
             },
-            "stream": stream
+            "stream": False
         }
         
         if options:
@@ -69,10 +58,40 @@ class OllamaClient:
         if images:
             payload["images"] = images
         
-        if not stream:
-            return await self._post("/api/chat", payload)
+        return await self._post("/api/chat", payload)
+    
+    async def chat_stream(
+        self,
+        model: str,
+        messages: List[Dict[str, str]],
+        temperature: float,
+        top_p: float,
+        images: Optional[List[str]] = None,
+        options: Optional[Dict] = None
+    ) -> AsyncGenerator[str, None]:
+        """
+        Отправка чат-запроса к Ollama в потоковом режиме
         
-        # Потоковый режим
+        Yields:
+            str: следующий токен/часть ответа
+        """
+        payload = {
+            "model": model,
+            "messages": messages,
+            "options": {
+                "temperature": temperature,
+                "top_p": top_p,
+                "num_ctx": getattr(settings, 'llm_chat_context', 32768)
+            },
+            "stream": True
+        }
+        
+        if options:
+            payload["options"].update(options)
+        
+        if images:
+            payload["images"] = images
+        
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             async with client.stream(
                 "POST",
@@ -101,17 +120,7 @@ class OllamaClient:
         images: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
-        Генерация текста (legacy API)
-        
-        Args:
-            model: имя модели
-            prompt: текстовый промпт
-            temperature: температура генерации
-            top_p: параметр top-p sampling
-            images: список base64-изображений
-        
-        Returns:
-            dict с ответом и метаданными
+        Генерация текста через legacy API /api/generate
         """
         payload = {
             "model": model,
@@ -129,16 +138,7 @@ class OllamaClient:
         return await self._post("/api/generate", payload)
     
     async def embed(self, model: str, prompt: str) -> List[float]:
-        """
-        Получение эмбеддингов для RAG
-        
-        Args:
-            model: модель для эмбеддингов
-            prompt: текст для векторизации
-        
-        Returns:
-            список float — вектор эмбеддинга
-        """
+        """Получение эмбеддингов"""
         result = await self._post("/api/embeddings", {
             "model": model,
             "prompt": prompt
@@ -157,20 +157,10 @@ class OllamaClient:
             return []
     
     async def is_model_available(self, model: str) -> bool:
-        """
-        Проверка доступности модели
-        
-        Args:
-            model: имя модели (полное или префикс)
-        
-        Returns:
-            True если модель доступна
-        """
+        """Проверка доступности модели"""
         try:
             models = await self.list_models()
             model_names = [m["name"] for m in models]
-            
-            # Точное совпадение или совпадение по префиксу (без тега)
             model_base = model.split(":")[0]
             return model in model_names or any(m.startswith(model_base) for m in model_names)
         except Exception as e:
@@ -178,12 +168,7 @@ class OllamaClient:
             return False
     
     async def pull_model(self, model: str) -> AsyncGenerator[Dict, None]:
-        """
-        Загрузка модели (прогресс)
-        
-        Yields:
-            dict с прогрессом загрузки
-        """
+        """Загрузка модели с прогрессом"""
         async with httpx.AsyncClient(timeout=None) as client:
             async with client.stream(
                 "POST",

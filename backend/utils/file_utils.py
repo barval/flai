@@ -6,11 +6,11 @@ import uuid
 import base64
 import magic
 import aiofiles
-import json 
+import json
+from typing import Dict, Any, Optional, Tuple, List
 from PIL import Image
 from io import BytesIO
 from loguru import logger
-from typing import Optional, Tuple
 from .config import settings
 
 
@@ -51,13 +51,11 @@ def validate_image(content: bytes, mime_type: str) -> Tuple[bool, Optional[str]]
     # Проверка и валидация через PIL
     try:
         img = Image.open(BytesIO(content))
-        img.verify()  # Проверка целостности
+        img.verify()
         
-        # Перезагружаем для получения размеров (после verify() изображение "сломано")
         img = Image.open(BytesIO(content))
         width, height = img.size
         
-        # Проверка размеров
         if width > settings.max_image_width or height > settings.max_image_height:
             return False, f"Изображение слишком большое: {width}x{height} (макс. {settings.max_image_width}x{settings.max_image_height})"
         
@@ -71,19 +69,10 @@ def validate_image(content: bytes, mime_type: str) -> Tuple[bool, Optional[str]]
 def resize_image(content: bytes, max_width: int, max_height: int) -> Tuple[bytes, str]:
     """
     Изменение размера изображения с сохранением пропорций
-    
-    Args:
-        content: бинарное содержимое изображения
-        max_width: максимальная ширина
-        max_height: максимальная высота
-    
-    Returns:
-        (new_content, mime_type) — изменённое изображение и его MIME-тип
     """
     try:
         img = Image.open(BytesIO(content))
         
-        # Конвертация в RGB если нужно (для JPEG)
         if img.mode in ("RGBA", "P", "LA"):
             background = Image.new("RGB", img.size, (255, 255, 255))
             if img.mode == "P":
@@ -91,10 +80,8 @@ def resize_image(content: bytes, max_width: int, max_height: int) -> Tuple[bytes
             background.paste(img, mask=img.split()[-1] if img.mode in ("RGBA", "LA") else None)
             img = background
         
-        # Изменение размера с сохранением пропорций
         img.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
         
-        # Сохранение в буфер
         output = BytesIO()
         format_name = "JPEG" if img.format in ("JPEG", "JPG") else img.format or "PNG"
         
@@ -110,7 +97,7 @@ def resize_image(content: bytes, max_width: int, max_height: int) -> Tuple[bytes
         
     except Exception as e:
         logger.error(f"Ошибка изменения размера изображения: {e}")
-        return content, "image/png"  # Возвращаем оригинал при ошибке
+        return content, "image/png"
 
 
 def image_to_base64(content: bytes, mime_type: str) -> str:
@@ -126,29 +113,17 @@ async def save_upload(
 ) -> str:
     """
     Сохранение загруженного файла
-    
-    Args:
-        content: бинарное содержимое файла
-        original_filename: оригинальное имя файла
-        session_id: идентификатор сессии
-        resize: изменять ли размер изображения
-    
-    Returns:
-        имя сохранённого файла
     """
-    # Создание директории для сессии
     session_dir = os.path.join(settings.uploads_path, session_id)
     os.makedirs(session_dir, exist_ok=True)
     
-    # Генерация уникального имени файла
     ext = os.path.splitext(original_filename)[1].lower()
     if ext not in IMAGE_EXTENSIONS:
-        ext = ".bin"  # Fallback для неизвестных типов
+        ext = ".bin"
     
     filename = f"{uuid.uuid4().hex}{ext}"
     filepath = os.path.join(session_dir, filename)
     
-    # Обработка изображения если нужно
     if resize and ext in IMAGE_EXTENSIONS:
         mime = magic.from_buffer(content, mime=True)
         content, _ = resize_image(
@@ -157,7 +132,6 @@ async def save_upload(
             settings.max_image_height
         )
     
-    # Сохранение на диск
     async with aiofiles.open(filepath, "wb") as f:
         await f.write(content)
     
@@ -166,16 +140,7 @@ async def save_upload(
 
 
 async def load_file(session_id: str, filename: str) -> Optional[bytes]:
-    """
-    Загрузка файла из хранилища
-    
-    Args:
-        session_id: идентификатор сессии
-        filename: имя файла
-    
-    Returns:
-        бинарное содержимое файла или None если не найдено
-    """
+    """Загрузка файла из хранилища"""
     filepath = os.path.join(settings.uploads_path, session_id, filename)
     
     if not os.path.exists(filepath):
@@ -187,16 +152,7 @@ async def load_file(session_id: str, filename: str) -> Optional[bytes]:
 
 
 async def delete_file(session_id: str, filename: str) -> bool:
-    """
-    Удаление файла из хранилища
-    
-    Args:
-        session_id: идентификатор сессии
-        filename: имя файла
-    
-    Returns:
-        True если файл удалён, False если не найден
-    """
+    """Удаление файла из хранилища"""
     filepath = os.path.join(settings.uploads_path, session_id, filename)
     
     if os.path.exists(filepath):
@@ -208,15 +164,7 @@ async def delete_file(session_id: str, filename: str) -> bool:
 
 
 def get_file_info(filepath: str) -> Dict[str, Any]:
-    """
-    Получение информации о файле
-    
-    Args:
-        filepath: путь к файлу
-    
-    Returns:
-        dict с информацией о файле
-    """
+    """Получение информации о файле"""
     if not os.path.exists(filepath):
         return {}
     

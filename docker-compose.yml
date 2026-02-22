@@ -4,8 +4,8 @@ services:
   # ==================== ОСНОВНОЕ ПРИЛОЖЕНИЕ ====================
   ai-local:
     build: 
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: ai-local-app
     restart: unless-stopped
     ports:

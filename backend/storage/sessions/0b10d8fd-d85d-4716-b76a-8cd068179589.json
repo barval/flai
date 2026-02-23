@@ -1,0 +1,43 @@
+{
+  "id": "0b10d8fd-d85d-4716-b76a-8cd068179589",
+  "created": "2026-02-23T19:20:06.617078",
+  "updated": "2026-02-23T19:20:18.901607",
+  "messages": [
+    {
+      "role": "user",
+      "content": "привет",
+      "timestamp": "2026-02-23T19:20:11.661984",
+      "attachment": null
+    },
+    {
+      "role": "assistant",
+      "content": "Привет! 😊 Как я могу вам помочь сегодня? 😊",
+      "timestamp": "2026-02-23T19:20:13.349556",
+      "metadata": {
+        "model": "qwen3:4b-instruct-2507-q4_K_M",
+        "request_type": "simple",
+        "duration": 1.69,
+        "tokens": 0
+      }
+    },
+    {
+      "role": "user",
+      "content": "кто ты?",
+      "timestamp": "2026-02-23T19:20:18.901596",
+      "attachment": null
+    },
+    {
+      "role": "assistant",
+      "content": "Я — персональный ассистент на основе искусственного интеллекта \"ИИ Локальный\". 😊",
+      "timestamp": "2026-02-23T19:25:27.097049",
+      "metadata": {
+        "model": "qwen3:8b-q4_K_M",
+        "request_type": "reasoning",
+        "duration": 308.2,
+        "tokens": 408
+      }
+    }
+  ],
+  "title": "Новый сеанс",
+  "metadata": {}
+}

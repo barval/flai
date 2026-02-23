@@ -54,7 +54,6 @@ from pathlib import Path
 frontend_path = Path(__file__).resolve().parent.parent / "frontend"
 if not frontend_path.exists():
     frontend_path = Path("/app/frontend")
-
 logger.info(f"📁 Frontend path: {frontend_path}")
 logger.info(f"📁 Frontend exists: {frontend_path.exists()}")
 if frontend_path.exists():
@@ -92,8 +91,24 @@ async def serve_frontend():
     )
 
 # ==================== ХЕЛПЕРЫ ДЛЯ СЕССИЙ ====================
+
+def normalize_session_title(text: str, max_length: int = 40) -> str:
+    """
+    Нормализация текста для заголовка сеанса:
+    - Удаляет лишние пробелы (до, между и после слов)
+    - Обрезает до max_length символов
+    """
+    # Удаляем лишние пробелы
+    normalized = ' '.join(text.split())
+    # Обрезаем до нужной длины
+    if len(normalized) > max_length:
+        normalized = normalized[:max_length]
+    return normalized
+
+
 def get_session_path(session_id: str) -> str:
     return os.path.join(settings.sessions_path, f"{session_id}.json")
+
 
 async def load_session(session_id: str) -> Optional[dict]:
     path = get_session_path(session_id)
@@ -101,10 +116,11 @@ async def load_session(session_id: str) -> Optional[dict]:
         try:
             async with aiofiles.open(path, 'r', encoding='utf-8') as f:
                 content = await f.read()
-            return json.loads(content)
+                return json.loads(content)
         except Exception as e:
             logger.error(f"Ошибка загрузки сессии {session_id}: {e}")
     return None
+
 
 async def save_session(session_id: str, data: dict) -> bool:
     try:
@@ -115,6 +131,7 @@ async def save_session(session_id: str, data: dict) -> bool:
     except Exception as e:
         logger.error(f"Ошибка сохранения сессии {session_id}: {e}")
         return False
+
 
 async def cleanup_old_sessions(max_age_hours: int = 168):
     try:
@@ -129,6 +146,7 @@ async def cleanup_old_sessions(max_age_hours: int = 168):
         logger.error(f"Ошибка очистки сессий: {e}")
 
 # ==================== API ENDPOINTS ====================
+
 @app.get("/health")
 async def health_check():
     return {
@@ -171,13 +189,15 @@ async def chat_endpoint(
         session_id = str(uuid.uuid4())
     
     session = await load_session(session_id)
-    if not session:
+    is_new_session = session is None
+    
+    if is_new_session:
         session = {
             "id": session_id,
             "created": datetime.now().isoformat(),
             "updated": datetime.now().isoformat(),
             "messages": [],
-            "title": message[:50] + "..." if len(message) > 50 else message,
+            "title": "Новый сеанс",
             "metadata": {}
         }
     
@@ -211,6 +231,18 @@ async def chat_endpoint(
         "attachment": image_data["filename"] if image_data else None
     }
     session["messages"].append(user_message)
+    
+    # === ОБНОВЛЕНИЕ ЗАГОЛОВКА СЕССИИ ПОСЛЕ ПЕРВОГО СООБЩЕНИЯ ===
+    if is_new_session or len(session["messages"]) == 1:
+        if message and message.strip():
+            # Есть текст - используем первые 40 символов сообщения
+            session["title"] = normalize_session_title(message, max_length=40)
+        elif image_data and image_data.get("original_name"):
+            # Только изображение без текста - используем имя файла
+            session["title"] = image_data["original_name"]
+        else:
+            session["title"] = "Новый сеанс"
+    
     session["updated"] = datetime.now().isoformat()
     
     result = await request_router.route(
@@ -253,7 +285,6 @@ async def chat_endpoint(
             "tokens": result.get("tokens", 0)
         }
     }
-    
     if result.get("images"):
         assistant_message["images"] = result["images"]
     if result.get("camera_image"):
@@ -350,15 +381,15 @@ async def export_session(session_id: str):
     session = await load_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Сессия не найдена")
-    export_session = session.copy()
-    for msg in export_session.get("messages", []):
+    export_session_data = session.copy()
+    for msg in export_session_data.get("messages", []):
         if "images" in msg:
             msg["images"] = ["[base64_image_data_removed]"]
     filename = f"session_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     filepath = os.path.join(settings.cache_path, filename)
     try:
         async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
-            await f.write(json.dumps(export_session, ensure_ascii=False, indent=2))
+            await f.write(json.dumps(export_session_data, ensure_ascii=False, indent=2))
         return FileResponse(
             filepath,
             filename=filename,
@@ -431,6 +462,7 @@ async def get_stats():
         return {"error": str(e)}
 
 # ==================== ФОНОВЫЕ ЗАДАЧИ ====================
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("🚀 Запуск ИИ Локальный v3.3")
@@ -442,6 +474,7 @@ async def startup_event():
     os.makedirs(settings.cache_path, exist_ok=True)
 
 # ==================== ЗАПУСК ====================
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(

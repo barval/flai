@@ -346,7 +346,7 @@
             }
             
             html += `
-                <div class="session-item ${isActive}" data-session-id="${s.id}">
+                <div class="session-item ${isActive}" data-session-id="${s.id}" data-session-title="${escapeHtml(s.title)}">
                     <div class="session-content">
                         <div class="session-info">
                             <div class="session-title">
@@ -409,7 +409,8 @@
                 e.stopPropagation();
                 const sessionItem = this.closest('.session-item');
                 const sessionId = sessionItem.dataset.sessionId;
-                const sessionTitle = sessionItem.querySelector('.session-title').textContent;
+                // Используем data-session-title вместо textContent, чтобы избежать лишних символов
+                const sessionTitle = sessionItem.dataset.sessionTitle;
                 const sessionDate = sessionItem.querySelector('.session-date').textContent;
                 
                 if (confirm(`Удалить сеанс "${sessionTitle}" от ${sessionDate}?`)) {
@@ -1132,7 +1133,8 @@
                                         mm_model: data.result.mm_model,
                                         gen_model: data.result.gen_model
                                     };
-                                    modelUsed = data.result.mm_model;
+                                    // Используем gen_model как основную модель (Automatic1111)
+                                    modelUsed = data.result.gen_model;  // ← ИСПРАВЛЕНО
                                 } 
                                 // Если responseTime - строка, пробуем распарсить как JSON
                                 else if (typeof responseTime === 'string' && responseTime.startsWith('{')) {

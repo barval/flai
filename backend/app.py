@@ -233,6 +233,7 @@ async def chat_endpoint(
     session["messages"].append(user_message)
     
     # === ОБНОВЛЕНИЕ ЗАГОЛОВКА СЕССИИ ПОСЛЕ ПЕРВОГО СООБЩЕНИЯ ===
+    # Проверка: это первое сообщение в сессии (только что добавленное)
     if is_new_session or len(session["messages"]) == 1:
         if message and message.strip():
             # Есть текст - используем первые 40 символов сообщения
@@ -244,6 +245,9 @@ async def chat_endpoint(
             session["title"] = "Новый сеанс"
     
     session["updated"] = datetime.now().isoformat()
+    
+    # === МГНОВЕННОЕ СОХРАНЕНИЕ СЕССИИ (до ожидания ответа модели) ===
+    await save_session(session_id, session)
     
     result = await request_router.route(
         session_id=session_id,

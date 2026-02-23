@@ -969,10 +969,17 @@ formData.append('session_id', state.session?.id || crypto.randomUUID());
 formData.append('message', text);
 if (state.file) formData.append('file', state.file);
 try {
-const res = await fetch(`${API_BASE}/api/chat`, {
+// Запускаем запрос, но не ждём его немедленно
+const fetchPromise = fetch(`${API_BASE}/api/chat`, {
 method: 'POST',
 body: formData
 });
+
+// Сразу обновляем список сеансов (заголовок уже должен обновиться на сервере)
+loadSessions();
+
+// Теперь дожидаемся ответа
+const res = await fetchPromise;
 const result = await res.json();
 if (result.error) {
 state.messages.push({
@@ -987,6 +994,7 @@ if (result.session_id && !state.session) {
 state.session = { id: result.session_id };
 }
 renderMessages();
+// Повторно обновляем список, чтобы подхватить возможные изменения (например, если создалась новая сессия)
 loadSessions();
 } catch(e) {
 console.error('Ошибка отправки:', e);

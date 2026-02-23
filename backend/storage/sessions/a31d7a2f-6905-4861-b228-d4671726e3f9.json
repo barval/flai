@@ -1,43 +1,43 @@
 {
-  "id": "0b10d8fd-d85d-4716-b76a-8cd068179589",
-  "created": "2026-02-23T19:20:06.617078",
-  "updated": "2026-02-23T19:20:18.901607",
+  "id": "a31d7a2f-6905-4861-b228-d4671726e3f9",
+  "created": "2026-02-23T19:45:37.561188",
+  "updated": "2026-02-23T19:45:56.557590",
   "messages": [
     {
       "role": "user",
       "content": "привет",
-      "timestamp": "2026-02-23T19:20:11.661984",
+      "timestamp": "2026-02-23T19:45:49.413454",
       "attachment": null
     },
     {
       "role": "assistant",
       "content": "Привет! 😊 Как я могу вам помочь сегодня? 😊",
-      "timestamp": "2026-02-23T19:20:13.349556",
+      "timestamp": "2026-02-23T19:45:51.130627",
       "metadata": {
         "model": "qwen3:4b-instruct-2507-q4_K_M",
         "request_type": "simple",
-        "duration": 1.69,
+        "duration": 1.72,
         "tokens": 0
       }
     },
     {
       "role": "user",
       "content": "кто ты?",
-      "timestamp": "2026-02-23T19:20:18.901596",
+      "timestamp": "2026-02-23T19:45:56.557577",
       "attachment": null
     },
     {
       "role": "assistant",
-      "content": "Я — персональный ассистент на основе искусственного интеллекта \"ИИ Локальный\". 😊",
-      "timestamp": "2026-02-23T19:25:27.097049",
+      "content": "Я — персональный ассистент на основе искусственного интеллекта \"ИИ Локальный\".",
+      "timestamp": "2026-02-23T19:51:05.251379",
       "metadata": {
         "model": "qwen3:8b-q4_K_M",
         "request_type": "reasoning",
-        "duration": 308.2,
-        "tokens": 408
+        "duration": 308.69,
+        "tokens": 455
       }
     }
   ],
-  "title": "Новый сеанс",
+  "title": "привет",
   "metadata": {}
 }

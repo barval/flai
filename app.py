@@ -446,6 +446,26 @@ class RedisRequestQueue:
         
         return request_id, position_info
     
+    def get_user_queue_counts(self, user_id):
+        """
+        Возвращает (количество запросов пользователя в очереди, общее количество в очереди)
+        """
+        total = self.redis.llen(self.queue_key)
+        if total == 0:
+            return 0, 0
+        # Получаем все элементы очереди (они хранятся в pickle)
+        items = self.redis.lrange(self.queue_key, 0, -1)
+        user_count = 0
+        for item in items:
+            try:
+                task = pickle.loads(item)
+                if task.get('user_id') == user_id:
+                    user_count += 1
+            except Exception as e:
+                app.logger.error(f"Ошибка десериализации задачи: {e}")
+                continue
+        return user_count, total
+    
     def _get_session_title(self, session_id):
         """Получить заголовок сеанса по ID"""
         try:
@@ -1144,6 +1164,18 @@ def api_queue_status():
     }
     
     return jsonify(status)
+
+@app.route('/api/queue/counts', methods=['GET'])
+def api_queue_counts():
+    """Возвращает количество запросов текущего пользователя в очереди и общее количество"""
+    if 'email' not in session:
+        return jsonify({'error': 'Не авторизован'}), 401
+    user_id = session['email']
+    user_queued, total_queued = request_queue.get_user_queue_counts(user_id)
+    return jsonify({
+        'user_queued': user_queued,
+        'total_queued': total_queued
+    })
 
 @app.route('/api/queue/cancel/<request_id>', methods=['POST'])
 def api_cancel_request(request_id):

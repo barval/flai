@@ -32,40 +32,8 @@
                 <div id="context-info" class="context-info">Сообщений: 0</div>
                 <button id="save-chat-button" class="save-chat-button" title="Сохранить как HTML">💾</button>
                 <button id="clear-context-button" class="clear-context-button">🗑️</button>
-                <button id="show-status-button" class="status-toggle-button" onclick="toggleRequestsPanel()">📊 Статус</button>
-            </div>
-        </div>
-        
-        <!-- Панель состояния запросов -->
-        <div class="requests-status-panel" id="requests-status-panel" style="display: none;">
-            <div class="status-header">
-                <h3>Мои запросы</h3>
-                <button class="refresh-status" onclick="refreshRequestsStatus()">↻</button>
-            </div>
-            
-            <!-- Системная нагрузка - всегда вверху -->
-            <div class="system-load-container">
-                <div class="system-load" id="system-load"></div>
-            </div>
-
-            <!-- Текущий обрабатываемый запрос -->
-            <div id="processing-request" class="processing-request" style="display: none;">
-                <div class="request-badge processing">
-                    <span class="spinner-small"></span>
-                    <span id="processing-text"></span>
-                </div>
-            </div>
-            
-            <!-- Очередь запросов -->
-            <div id="queued-requests" class="queued-requests" style="display: none;">
-                <h4>В очереди:</h4>
-                <div id="queued-list"></div>
-            </div>
-            
-            <!-- Недавно выполненные -->
-            <div id="recent-completed" class="recent-completed" style="display: none;">
-                <h4>Недавние ответы:</h4>
-                <div id="completed-list"></div>
+                <!-- Заменяем кнопку "Статус" на компактный счётчик -->
+                <span id="status-counter" class="status-counter" title="Ваши запросы в очереди / Всего в очереди">📊 0/0</span>
             </div>
         </div>
         
@@ -110,7 +78,6 @@
     let sessionsData = {};
     let syncInterval = null;
     let newMessageIndicators = {};
-    let statusRefreshInterval = null;
 
     // -------------------------------
     // Вспомогательные функции
@@ -372,9 +339,6 @@
         
         // Перепривязываем обработчики событий
         attachSessionEventHandlers();
-        
-        // После обновления списка, обновляем статусы запросов
-        refreshRequestsStatus();
     }
 
     // -------------------------------
@@ -501,6 +465,23 @@
 
         // Периодическое обновление списка сеансов (каждые 5 секунд)
         setInterval(forceRefreshSessions, 5000);
+
+        // ========== НОВЫЙ СЧЁТЧИК СТАТУСА ==========
+        function updateStatusCounter() {
+            fetch('/api/queue/counts')
+                .then(response => response.json())
+                .then(data => {
+                    const counter = document.getElementById('status-counter');
+                    if (counter) {
+                        counter.textContent = `📊 ${data.user_queued}/${data.total_queued}`;
+                    }
+                })
+                .catch(err => console.error('Ошибка обновления счётчика:', err));
+        }
+
+        // Обновляем каждые 3 секунды
+        setInterval(updateStatusCounter, 3000);
+        updateStatusCounter(); // сразу при загрузке
     });
 
     // -------------------------------
@@ -899,196 +880,6 @@
     }
 
     // -------------------------------
-    // Функции для панели состояния запросов
-    // -------------------------------
-    function initRequestsStatusPanel() {
-        // Показываем панель
-        document.getElementById('requests-status-panel').style.display = 'block';
-        
-        // Запускаем периодическое обновление (каждые 3 секунды)
-        if (statusRefreshInterval) {
-            clearInterval(statusRefreshInterval);
-        }
-        statusRefreshInterval = setInterval(refreshRequestsStatus, 3000);
-        
-        // Первое обновление
-        refreshRequestsStatus();
-    }
-
-    function toggleRequestsPanel() {
-        const panel = document.getElementById('requests-status-panel');
-        if (panel.style.display === 'none') {
-            initRequestsStatusPanel();
-        } else {
-            panel.style.display = 'none';
-            if (statusRefreshInterval) {
-                clearInterval(statusRefreshInterval);
-                statusRefreshInterval = null;
-            }
-        }
-    }
-
-    async function refreshRequestsStatus() {
-        try {
-            const response = await fetch('/api/queue/status');
-            const status = await response.json();
-            
-            updateSystemLoad(status.system);
-            updateProcessingRequest(status.processing);
-            updateQueuedRequests(status.queued);
-            updateRecentCompleted(status.recent_completed);
-            
-            if (status.processing) {
-                updateSessionWithRequestStatus(status.processing.session_id, 'processing');
-            }
-            
-            status.queued.forEach(req => {
-                updateSessionWithRequestStatus(req.session_id, 'queued');
-            });
-            
-        } catch (error) {
-            console.error('Ошибка обновления статуса:', error);
-        }
-    }
-
-    function updateProcessingRequest(processing) {
-        const container = document.getElementById('processing-request');
-        const textEl = document.getElementById('processing-text');
-        
-        if (processing) {
-            container.style.display = 'block';
-            textEl.innerHTML = `${processing.type_icon} ${processing.session_title}: обрабатывается...`;
-        } else {
-            container.style.display = 'none';
-        }
-    }
-
-    function updateQueuedRequests(queued) {
-        const container = document.getElementById('queued-requests');
-        const listEl = document.getElementById('queued-list');
-        
-        if (queued.length > 0) {
-            container.style.display = 'block';
-            
-            let html = '';
-            queued.forEach(req => {
-                const pos = req.position_info;
-                
-                let waitText = '~5 сек';
-                if (pos && pos.estimated_seconds !== undefined && !isNaN(pos.estimated_seconds)) {
-                    const waitMinutes = Math.floor(pos.estimated_seconds / 60);
-                    const waitSeconds = Math.round(pos.estimated_seconds % 60);
-                    waitText = waitMinutes > 0 
-                        ? `${waitMinutes} мин ${waitSeconds} сек`
-                        : `${waitSeconds} сек`;
-                }
-                
-                html += `
-                    <div class="queue-item" data-request-id="${req.id}">
-                        <span class="queue-position">#${pos?.position || '?'}</span>
-                        <span class="request-icon">${req.type_icon}</span>
-                        <span class="request-title" title="${req.session_title}">
-                            ${(req.session_title || 'Неизвестный сеанс').substring(0, 20)}...
-                        </span>
-                        <span class="wait-time">⏱️ ${waitText}</span>
-                        <span class="cancel-request" onclick="cancelRequest('${req.id}')">✕</span>
-                    </div>
-                `;
-            });
-            
-            listEl.innerHTML = html;
-        } else {
-            container.style.display = 'none';
-        }
-    }
-
-    function updateRecentCompleted(completed) {
-        const container = document.getElementById('recent-completed');
-        const listEl = document.getElementById('completed-list');
-        
-        if (completed.length > 0) {
-            container.style.display = 'block';
-            
-            let html = '';
-            completed.forEach(req => {
-                html += `
-                    <div class="recent-item">
-                        <span>✅</span>
-                        <span class="request-title" title="${req.session_title}">
-                            ${req.session_title.substring(0, 15)}...
-                        </span>
-                        <span class="completed-time">${req.completed_at}</span>
-                        <span class="duration">(${req.duration}с)</span>
-                    </div>
-                `;
-            });
-            
-            listEl.innerHTML = html;
-        } else {
-            container.style.display = 'none';
-        }
-    }
-
-    function updateSystemLoad(system) {
-        const container = document.getElementById('system-load');
-        if (!container) return;
-        
-        if (!system) {
-            container.innerHTML = '';
-            return;
-        }
-        
-        const loadPercent = Math.min(100, (system.total_queued / 10) * 100);
-        const loadClass = system.current_load === 'high' ? 'high' : '';
-        
-        let statusText = 'Низкая';
-        let statusColor = '#28a745';
-        if (system.total_queued > 10) {
-            statusText = 'Высокая';
-            statusColor = '#dc3545';
-        } else if (system.total_queued > 5) {
-            statusText = 'Средняя';
-            statusColor = '#ffc107';
-        }
-        
-        container.innerHTML = `
-            <div class="system-load-indicator">
-                <div class="load-header">
-                    <span>📊 Нагрузка системы</span>
-                    <span class="load-status" style="color: ${statusColor};">${statusText}</span>
-                </div>
-                <div class="load-bar-container">
-                    <div class="load-bar">
-                        <div class="load-fill ${loadClass}" style="width: ${loadPercent}%"></div>
-                    </div>
-                    <div class="load-value">
-                        <strong>${system.total_queued}</strong> в очереди
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-
-    async function cancelRequest(requestId) {
-        if (!confirm('Отменить этот запрос?')) return;
-        
-        try {
-            const response = await fetch(`/api/queue/cancel/${requestId}`, {
-                method: 'POST'
-            });
-            const result = await response.json();
-            
-            if (result.success) {
-                refreshRequestsStatus();
-            } else {
-                alert('Не удалось отменить запрос (возможно, он уже обрабатывается)');
-            }
-        } catch (error) {
-            console.error('Ошибка отмены:', error);
-        }
-    }
-
-    // -------------------------------
     // Отправка сообщения
     // -------------------------------
     async function sendMessage() {
@@ -1209,12 +1000,8 @@
                     document.querySelector('.chat-header').appendChild(notification);
                     setTimeout(() => notification.remove(), 5000);
                     
-                    refreshRequestsStatus();
-                    
-                    const panel = document.getElementById('requests-status-panel');
-                    if (panel.style.display === 'none') {
-                        initRequestsStatusPanel();
-                    }
+                    // Обновляем счётчик
+                    updateStatusCounter();
                     
                     startResultPolling(data.request_id);
                 } else if (data.response) {
@@ -1330,7 +1117,9 @@
                                 }
                             }
                         }
-                        refreshRequestsStatus();
+                        
+                        // Обновляем счётчик после завершения
+                        updateStatusCounter();
                         
                         setTimeout(() => {
                             loadSessionsFromServer();
@@ -1356,7 +1145,7 @@
                             loadSessionsFromServer();
                         }
                         
-                        refreshRequestsStatus();
+                        updateStatusCounter();
                         
                     } else if (data.status === 'pending') {
                         console.log('Request still pending...');

@@ -173,14 +173,34 @@
     }
 
     // -------------------------------
-    // Управление индикаторами новых сообщений (✉️)
+    // Управление индикаторами новых сообщений (✉️) с сохранением в localStorage
     // -------------------------------
+    function saveNewMessageIndicators() {
+        try {
+            localStorage.setItem('newMessageIndicators', JSON.stringify(newMessageIndicators));
+        } catch (e) {
+            console.error('Ошибка сохранения в localStorage', e);
+        }
+    }
+
+    function loadNewMessageIndicators() {
+        try {
+            const saved = localStorage.getItem('newMessageIndicators');
+            if (saved) {
+                newMessageIndicators = JSON.parse(saved) || {};
+            }
+        } catch (e) {
+            console.error('Ошибка загрузки из localStorage', e);
+        }
+    }
+
     function setNewMessageIndicator(sessionId, show) {
         if (show) {
             newMessageIndicators[sessionId] = true;
         } else {
             delete newMessageIndicators[sessionId];
         }
+        saveNewMessageIndicators();
         updateSessionsListFromData();
     }
 
@@ -432,6 +452,9 @@
     // Инициализация
     // -------------------------------
     document.addEventListener('DOMContentLoaded', function() {
+        // Загружаем сохранённые индикаторы новых сообщений
+        loadNewMessageIndicators();
+
         // Загружаем список сеансов с сервера
         loadSessionsFromServer().then(() => {
             // Загружаем сообщения текущего сеанса
@@ -998,6 +1021,9 @@
                     // Локально устанавливаем статус queued для текущего сеанса
                     sessionRequestStatus[currentSessionId] = { status: 'queued' };
                     updateSessionsListFromData();
+
+                    // Сохраняем соответствие request_id -> session_id
+                    pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
                     
                     const waitMinutes = Math.floor(data.estimated_wait / 60);
                     const waitSeconds = Math.round(data.estimated_wait % 60);
@@ -1066,9 +1092,27 @@
                         console.log('Request completed, result:', data.result);
                         
                         if (data.result) {
-                            const resultSessionId = data.result.session_id;
+                            const resultSessionId = data.result.session_id || pendingRequests[requestId]?.sessionId;
                             
-                            if (data.result.response) {
+                            // Если в результате есть поле error (ошибка)
+                            if (data.result.error) {
+                                // Ошибка
+                                if (resultSessionId === currentSessionId) {
+                                    displayMessage(
+                                        'assistant',
+                                        `⚠️ ${data.result.error}`,
+                                        null, null, null,
+                                        data.result.assistant_timestamp || new Date().toISOString(),
+                                        data.result.response_time,
+                                        'system'
+                                    );
+                                    delete sessionRequestStatus[resultSessionId];
+                                } else if (resultSessionId) {
+                                    sessionRequestStatus[resultSessionId] = { status: 'error' };
+                                }
+                                lastCompletionTime[resultSessionId] = Date.now();
+                            }
+                            else if (data.result.response) {
                                 let responseTime = data.result.response_time;
                                 let modelUsed = data.result.model_used;
                                 const isError = data.result.is_error || false;
@@ -1122,26 +1166,11 @@
                                 }
                                 // Запоминаем время завершения
                                 lastCompletionTime[resultSessionId] = Date.now();
-                                
-                            } else if (data.result.error) {
-                                // Ошибка
-                                if (resultSessionId === currentSessionId) {
-                                    displayMessage(
-                                        'assistant',
-                                        `⚠️ ${data.result.error}`,
-                                        null, null, null,
-                                        data.result.assistant_timestamp || new Date().toISOString(),
-                                        data.result.response_time,
-                                        'system'
-                                    );
-                                    // Устанавливаем статус ошибки
-                                    sessionRequestStatus[resultSessionId] = { status: 'error' };
-                                } else {
-                                    sessionRequestStatus[resultSessionId] = { status: 'error' };
-                                }
-                                lastCompletionTime[resultSessionId] = Date.now();
                             }
                         }
+                        
+                        // Удаляем запись из pendingRequests
+                        delete pendingRequests[requestId];
                         
                         // Обновляем счётчик после завершения
                         window.updateStatusCounter();
@@ -1155,7 +1184,7 @@
                         clearInterval(pollInterval);
                         console.error('Request error:', data.error);
                         
-                        const resultSessionId = data.result?.session_id;
+                        const resultSessionId = data.result?.session_id || pendingRequests[requestId]?.sessionId;
                         
                         if (resultSessionId === currentSessionId) {
                             displayMessage(
@@ -1172,15 +1201,20 @@
                         }
                         lastCompletionTime[resultSessionId] = Date.now();
                         
+                        delete pendingRequests[requestId];
+                        
                         window.updateStatusCounter();
                         fetchQueueStatus();
                         
                     } else if (data.status === 'pending') {
                         console.log('Request still pending...');
-                        // Обновляем статус на processing, если он ещё не установлен
-                        if (!sessionRequestStatus[currentSessionId] || sessionRequestStatus[currentSessionId].status !== 'processing') {
-                            sessionRequestStatus[currentSessionId] = { status: 'processing' };
-                            updateSessionsListFromData();
+                        // Определяем сеанс, к которому относится запрос
+                        const reqSessionId = pendingRequests[requestId]?.sessionId;
+                        if (reqSessionId) {
+                            if (!sessionRequestStatus[reqSessionId] || sessionRequestStatus[reqSessionId].status !== 'processing') {
+                                sessionRequestStatus[reqSessionId] = { status: 'processing' };
+                                updateSessionsListFromData();
+                            }
                         }
                     }
                     
@@ -1197,6 +1231,7 @@
                             'system'
                         );
                         delete sessionRequestStatus[currentSessionId];
+                        delete pendingRequests[requestId];
                     }
                     
                 } catch (error) {
@@ -1254,6 +1289,7 @@
         delete newMessageIndicators[sessionId];
         delete sessionRequestStatus[sessionId];
         delete lastCompletionTime[sessionId];
+        saveNewMessageIndicators();
         
         fetch(`/api/sessions/${sessionId}/delete`, { method: 'POST' })
             .then(res => res.json())

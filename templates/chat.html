@@ -32,7 +32,7 @@
                 <div id="context-info" class="context-info">Сообщений: 0</div>
                 <button id="save-chat-button" class="save-chat-button" title="Сохранить как HTML">💾</button>
                 <button id="clear-context-button" class="clear-context-button">🗑️</button>
-                <!-- Заменяем кнопку "Статус" на компактный счётчик -->
+                <!-- Компактный счётчик -->
                 <span id="status-counter" class="status-counter" title="Ваши запросы в очереди / Всего в очереди">📊 0/0</span>
             </div>
         </div>
@@ -395,6 +395,21 @@
     }
 
     // -------------------------------
+    // Глобальная функция обновления счётчика очереди
+    // -------------------------------
+    window.updateStatusCounter = function() {
+        fetch('/api/queue/counts')
+            .then(response => response.json())
+            .then(data => {
+                const counter = document.getElementById('status-counter');
+                if (counter) {
+                    counter.textContent = `📊 ${data.user_queued}/${data.total_queued}`;
+                }
+            })
+            .catch(err => console.error('Ошибка обновления счётчика:', err));
+    };
+
+    // -------------------------------
     // Инициализация
     // -------------------------------
     document.addEventListener('DOMContentLoaded', function() {
@@ -466,22 +481,9 @@
         // Периодическое обновление списка сеансов (каждые 5 секунд)
         setInterval(forceRefreshSessions, 5000);
 
-        // ========== НОВЫЙ СЧЁТЧИК СТАТУСА ==========
-        function updateStatusCounter() {
-            fetch('/api/queue/counts')
-                .then(response => response.json())
-                .then(data => {
-                    const counter = document.getElementById('status-counter');
-                    if (counter) {
-                        counter.textContent = `📊 ${data.user_queued}/${data.total_queued}`;
-                    }
-                })
-                .catch(err => console.error('Ошибка обновления счётчика:', err));
-        }
-
-        // Обновляем каждые 3 секунды
-        setInterval(updateStatusCounter, 3000);
-        updateStatusCounter(); // сразу при загрузке
+        // Запускаем периодическое обновление счётчика
+        setInterval(window.updateStatusCounter, 3000);
+        window.updateStatusCounter(); // сразу при загрузке
     });
 
     // -------------------------------
@@ -1001,7 +1003,7 @@
                     setTimeout(() => notification.remove(), 5000);
                     
                     // Обновляем счётчик
-                    updateStatusCounter();
+                    window.updateStatusCounter();
                     
                     startResultPolling(data.request_id);
                 } else if (data.response) {
@@ -1119,7 +1121,7 @@
                         }
                         
                         // Обновляем счётчик после завершения
-                        updateStatusCounter();
+                        window.updateStatusCounter();
                         
                         setTimeout(() => {
                             loadSessionsFromServer();
@@ -1145,7 +1147,7 @@
                             loadSessionsFromServer();
                         }
                         
-                        updateStatusCounter();
+                        window.updateStatusCounter();
                         
                     } else if (data.status === 'pending') {
                         console.log('Request still pending...');

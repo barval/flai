@@ -607,7 +607,7 @@
     }
 
     // -------------------------------
-    // Отображение одного сообщения (ИСПРАВЛЕННАЯ)
+    // Отображение одного сообщения (ОБНОВЛЁННАЯ ВЕРСИЯ)
     // -------------------------------
     function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
         console.log('displayMessage called with:', {  // Добавляем отладку
@@ -687,62 +687,40 @@
             }
         }
         
-        // Добавляем время ответа и информацию о модели для сообщений ассистента
+        // Формируем заголовок сообщения в новом стиле
+        let headerHTML = `<span class="message-header">📅 ${timeDisplay}`;
+        
         if (role === 'assistant') {
-            console.log('Processing assistant message, responseTime:', responseTime); // Отладка
+            if (modelName) {
+                const shortModel = modelName.split('/').pop() || modelName;
+                headerHTML += ` <span class="text-muted">| ${escapeHtml(shortModel)}</span>`;
+            }
             
-            // Проверяем наличие responseTime
-            if (responseTime !== undefined && responseTime !== null) {
+            // Время ответа
+            let duration = null;
+            if (responseTime) {
                 if (typeof responseTime === 'object') {
-                    // Объект с раздельным временем
                     if (responseTime.mm_time && responseTime.gen_time) {
-                        const mmTime = parseFloat(responseTime.mm_time).toFixed(1);
-                        const genTime = parseFloat(responseTime.gen_time).toFixed(1);
-                        const mmModel = responseTime.mm_model || 'неизвестно';
-                        const genModel = responseTime.gen_model || 'неизвестно';
-                        
-                        timeDisplay += `<br><span class="model-response-info">(Обработано: ${mmModel} за ${mmTime} сек)</span>`;
-                        timeDisplay += `<br><span class="model-response-info">(Сгенерировано: ${genModel} за ${genTime} сек)</span>`;
+                        duration = (parseFloat(responseTime.mm_time) + parseFloat(responseTime.gen_time)).toFixed(1);
                     } else if (responseTime.mm_time) {
-                        const mmTime = parseFloat(responseTime.mm_time).toFixed(1);
-                        const mmModel = responseTime.mm_model || 'неизвестно';
-                        timeDisplay += `<br><span class="model-response-info">(Обработано: ${mmModel} за ${mmTime} сек)</span>`;
+                        duration = parseFloat(responseTime.mm_time).toFixed(1);
                     } else if (responseTime.gen_time) {
-                        const genTime = parseFloat(responseTime.gen_time).toFixed(1);
-                        const genModel = responseTime.gen_model || 'неизвестно';
-                        timeDisplay += `<br><span class="model-response-info">(Сгенерировано: ${genModel} за ${genTime} сек)</span>`;
+                        duration = parseFloat(responseTime.gen_time).toFixed(1);
                     }
-                } 
-                else if (typeof responseTime === 'number' || !isNaN(parseFloat(responseTime))) {
-                    // Числовое значение - обычное время ответа
-                    const timeValue = typeof responseTime === 'number' ? responseTime : parseFloat(responseTime);
-                    console.log('Displaying numeric response time:', timeValue); // Отладка
-                    
-                    if (timeValue > 0) {
-                        let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
-                        timeDisplay += ` <span class="model-response-info">(ответ: ${fullModelName} за ${timeValue.toFixed(1)} сек)</span>`;
-                    } else {
-                        let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
-                        timeDisplay += ` <span class="model-response-info">(модель: ${fullModelName})</span>`;
-                    }
+                } else if (typeof responseTime === 'number' || !isNaN(parseFloat(responseTime))) {
+                    duration = parseFloat(responseTime).toFixed(1);
                 }
-                else {
-                    // responseTime есть, но непонятного типа
-                    console.warn('Unknown responseTime type:', typeof responseTime, responseTime);
-                    let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
-                    timeDisplay += ` <span class="model-response-info">(модель: ${fullModelName})</span>`;
-                }
-            } else {
-                // Нет responseTime - показываем только модель
-                console.log('No responseTime, showing only model'); // Отладка
-                let fullModelName = modelName || defaultModelName || 'qwen3-vl:8b-instruct-q4_K_M';
-                timeDisplay += ` <span class="model-response-info">(модель: ${fullModelName})</span>`;
+            }
+            if (duration) {
+                headerHTML += ` <span class="text-muted">⏱️ ${duration}с</span>`;
             }
         }
         
-        let html = `<small>${timeDisplay}</small>`;
+        headerHTML += '</span>';
         
-        // Обработка текста
+        // Обработка текста (контент)
+        let contentHTML = `<div class="message-content">`;
+        
         if (typeof content === 'string') {
             if (content.startsWith('[')) {
                 try {
@@ -755,32 +733,38 @@
                     });
                     if (textContent) {
                         const escapedText = escapeHtml(textContent.trim());
-                        html += `<div class="message-content">${marked.parse(escapedText)}</div>`;
+                        contentHTML += marked.parse(escapedText);
                     }
                 } catch (e) {
                     if (role === 'assistant') {
                         const decodedText = decodeHtmlEntities(content);
-                        html += `<div class="message-content">${marked.parse(decodedText)}</div>`;
+                        contentHTML += marked.parse(decodedText);
                     } else {
                         const escapedText = escapeHtml(content);
-                        html += `<div class="message-content">${marked.parse(escapedText)}</div>`;
+                        contentHTML += marked.parse(escapedText);
                     }
                 }
             } else {
                 if (role === 'assistant') {
                     const decodedText = decodeHtmlEntities(content);
-                    html += `<div class="message-content">${marked.parse(decodedText)}</div>`;
+                    contentHTML += marked.parse(decodedText);
                 } else {
                     const escapedText = escapeHtml(content);
-                    html += `<div class="message-content">${marked.parse(escapedText)}</div>`;
+                    contentHTML += marked.parse(escapedText);
                 }
             }
         }
         
-        // Файл (если есть)
+        contentHTML += '</div>';
+        
+        // Собираем всё вместе
+        msgDiv.innerHTML = headerHTML + contentHTML;
+        
+        // Файл (если есть) – добавляем после контента, как и раньше
         if (fileData) {
+            let fileHTML = '';
             if (fileType && fileType.startsWith('image/')) {
-                html += `
+                fileHTML = `
                     <div class="image-container">
                         <img src="data:${fileType};base64,${fileData}" 
                             class="attached-image" 
@@ -790,16 +774,16 @@
                     </div>
                 `;
             } else if (fileType && fileType.startsWith('audio/')) {
-                html += `<audio controls src="data:${fileType};base64,${fileData}"></audio>`;
+                fileHTML = `<audio controls src="data:${fileType};base64,${fileData}"></audio>`;
             } else {
-                html += `<div class="attached-file">
-                            <span class="file-icon">📄</span>
-                            <a href="data:${fileType};base64,${fileData}" download="${fileName}">${fileName}</a>
-                        </div>`;
+                fileHTML = `<div class="attached-file">
+                                <span class="file-icon">📄</span>
+                                <a href="data:${fileType};base64,${fileData}" download="${fileName}">${fileName}</a>
+                            </div>`;
             }
+            msgDiv.innerHTML += fileHTML;
         }
         
-        msgDiv.innerHTML = html;
         container.appendChild(msgDiv);
         container.scrollTop = container.scrollHeight;
         
@@ -1521,11 +1505,11 @@
             const role = msgEl.classList.contains('user-message') ? 'user' : 'assistant';
             const timestamp = msgEl.dataset.timestamp;
             
-            const timeElement = msgEl.querySelector('small');
+            const headerEl = msgEl.querySelector('.message-header');
             let timeHtml = '';
-            if (timeElement) {
-                timeHtml = timeElement.innerHTML;
-            } else if (timestamp) {
+            if (headerEl) {
+                timeHtml = headerEl.innerHTML;
+            } else {
                 timeHtml = formatFullDateTime(timestamp);
             }
             
@@ -2151,6 +2135,27 @@
         setTimeout(setupCopyButtonsObserver, 500);
         setTimeout(addCopyButtonsToAllCodeBlocks, 1000);
     });
+
+    // Добавленные вспомогательные функции для нового стиля
+    function formatResponseTime(responseTime) {
+        if (!responseTime) return '';
+        if (typeof responseTime === 'object') {
+            if (responseTime.mm_time && responseTime.gen_time) {
+                const total = (parseFloat(responseTime.mm_time) + parseFloat(responseTime.gen_time)).toFixed(1);
+                return `⏱️ ${total}с (mm: ${responseTime.mm_time}с, gen: ${responseTime.gen_time}с)`;
+            } else if (responseTime.mm_time) {
+                return `⏱️ ${parseFloat(responseTime.mm_time).toFixed(1)}с (mm)`;
+            } else if (responseTime.gen_time) {
+                return `⏱️ ${parseFloat(responseTime.gen_time).toFixed(1)}с (gen)`;
+            }
+        } else {
+            const val = parseFloat(responseTime);
+            if (!isNaN(val)) {
+                return `⏱️ ${val.toFixed(1)}с`;
+            }
+        }
+        return '';
+    }
 
 </script>
 {% endblock %}

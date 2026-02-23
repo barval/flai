@@ -184,7 +184,7 @@ footer {
     background-color: white;
 }
 
-/* Левая колонка */
+/* Левая колонка – сеансы (новый стиль) */
 .sessions-sidebar {
     width: 25%;
     background-color: #f1f3f6;
@@ -196,51 +196,56 @@ footer {
 }
 
 .sessions-header {
+    padding: 0.8rem 1rem;
+    border-bottom: 1px solid #ddd;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem;
-    border-bottom: 1px solid #ddd;
-    background-color: #f1f3f6;
     position: sticky;
     top: 0;
+    background-color: #f1f3f6;
     z-index: 10;
 }
 
 .sessions-header h2 {
+    font-size: 1.1rem;
     color: #2c3e50;
-    margin: 0;
-    font-size: 1.2rem;
 }
 
 .new-session-button {
-    background: none;
+    background-color: #3498db;
+    color: white;
     border: none;
-    font-size: 1.5rem;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
     cursor: pointer;
-    padding: 0 8px;
-    border-radius: 4px;
-    color: #2c3e50;
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
 }
 
 .new-session-button:hover {
-    background-color: #e0e0e0;
+    background-color: #2980b9;
+    transform: scale(1.05);
 }
 
 .sessions-list {
-    padding: 1rem;
-    flex-grow: 1;
+    padding: 0.5rem;
     overflow-y: auto;
+    flex: 1;
 }
 
 .session-item {
-    padding: 0.8rem;
-    margin-bottom: 0.5rem;
+    background-color: white;
     border: 1px solid #ddd;
     border-radius: 6px;
-    background-color: white;
+    padding: 0.8rem;
+    margin-bottom: 0.5rem;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s ease;
     width: 100%;
     box-sizing: border-box;
 }
@@ -251,9 +256,9 @@ footer {
 }
 
 .session-item.active {
-    border-color: #3498db;
     background-color: #e6f2ff;
-    box-shadow: 0 0 0 2px rgba(52,152,219,0.2);
+    border-color: #3498db;
+    box-shadow: 0 2px 6px rgba(52, 152, 219, 0.2);
 }
 
 .session-content {
@@ -269,38 +274,36 @@ footer {
     flex: 1;
     min-width: 0;
     overflow: hidden;
-    padding-right: 4px;
 }
 
 .session-title {
-    font-weight: 600;
-    margin-bottom: 4px;
+    font-weight: 500;
+    margin-bottom: 0.3rem;
     color: #2c3e50;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
 }
 
 .session-date {
-    font-size: 0.8rem;
-    color: #666;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 0.75rem;
+    color: #7f8c8d;
+    font-family: 'SFMono-Regular', Consolas, monospace;
 }
 
 .delete-session-button {
     background: none;
     border: none;
-    font-size: 1.1rem;
+    color: #7f8c8d;
     cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 4px;
-    color: #999;
-    transition: all 0.2s;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    font-size: 1rem;
+    padding: 0.2rem;
     margin-left: 4px;
-    opacity: 0.6;
     flex-shrink: 0;
     width: 32px;
     height: 32px;
@@ -309,17 +312,15 @@ footer {
     justify-content: center;
 }
 
-.delete-session-button:hover {
-    background-color: #ffebee;
-    color: #e74c3c;
-    opacity: 1;
-}
-
 .session-item:hover .delete-session-button {
     opacity: 1;
 }
 
-/* Правая часть */
+.delete-session-button:hover {
+    color: #e74c3c;
+}
+
+/* Правая часть – чат */
 .chat-main {
     width: 75%;
     display: flex;
@@ -383,25 +384,56 @@ footer {
     background-color: white;
 }
 
-.user-message {
-    background-color: #e6f2ff;
+/* ===== СООБЩЕНИЯ (НОВЫЙ СТИЛЬ) ===== */
+.user-message,
+.assistant-message,
+.bot-message {
+    max-width: 85%;
     padding: 0.8rem 1rem;
-    margin-bottom: 0.8rem;
     border-radius: 8px;
-    word-wrap: break-word;
+    position: relative;
+    animation: fadeIn 0.2s ease;
+    margin-bottom: 0.8rem;
     display: flex;
     flex-direction: column;
+    word-wrap: break-word;
 }
 
-.bot-message,
-.assistant-message {
+.user-message {
+    align-self: flex-start;
+    background-color: #e6f2ff;
+    border: 1px solid #bcd5f0;
+}
+
+.assistant-message,
+.bot-message {
+    align-self: flex-start;
     background-color: #f0f0f0;
-    padding: 0.8rem 1rem;
-    margin-bottom: 0.8rem;
-    border-radius: 8px;
-    word-wrap: break-word;
+    border: 1px solid #d0d0d0;
+}
+
+.message-header {
+    font-size: 0.75rem;
+    color: #7f8c8d;
+    margin-bottom: 0.5rem;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.message-content {
+    line-height: 1.7;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.text-muted {
+    color: #7f8c8d !important;
 }
 
 /* Информация о файле в сообщениях */
@@ -577,40 +609,6 @@ audio {
     align-self: flex-start;
 }
 
-/* Стили для временных меток */
-.user-message small,
-.bot-message small,
-.assistant-message small {
-    display: block !important;
-    margin-bottom: 6px !important;
-    color: #7f8c8d !important;
-    font-size: 0.75rem !important;
-    font-family: monospace !important;
-    letter-spacing: 0.5px !important;
-    font-weight: normal !important;
-    background: none !important;
-    padding: 0 !important;
-    border-radius: 0 !important;
-    border: none !important;
-    line-height: 1.4 !important;
-}
-
-/* Информация о модели */
-.bot-message small .model-response-info,
-.assistant-message small .model-response-info {
-    display: inline !important;
-    color: #7f8c8d !important;
-    font-family: monospace !important;
-    font-size: 0.75rem !important;
-    letter-spacing: 0.5px !important;
-    font-weight: normal !important;
-    background: none !important;
-    padding: 0 !important;
-    border-radius: 0 !important;
-    margin-left: 4px !important;
-    white-space: nowrap !important;
-}
-
 /* ========== СТИЛИ ДЛЯ МОДАЛЬНОГО ОКНА ИЗОБРАЖЕНИЙ ========== */
 .image-modal {
     display: none;
@@ -698,11 +696,6 @@ audio {
 }
 
 /* ========== СТИЛИ ДЛЯ MARKDOWN ========== */
-.message-content {
-    line-height: 1.6;
-    word-wrap: break-word;
-}
-
 .message-content h1,
 .message-content h2,
 .message-content h3,
@@ -888,6 +881,22 @@ audio {
 
 .session-item.active .new-message-indicator {
     display: none;
+}
+
+/* Индикатор ошибки (красный) */
+.error-message-indicator {
+    display: inline-block;
+    color: #e74c3c;
+    margin-left: 5px;
+    font-size: 1.2rem;
+    font-weight: bold;
+    animation: error-pulse 1.5s infinite;
+}
+
+@keyframes error-pulse {
+    0% { opacity: 0.5; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.1); }
+    100% { opacity: 0.5; transform: scale(1); }
 }
 
 /* ========== СТИЛИ ДЛЯ КНОПКИ КОПИРОВАНИЯ КОДА ========== */
@@ -1362,42 +1371,4 @@ audio {
 .model-response-info:not(:first-of-type) {
     display: block !important;
     margin-left: 0 !important;
-}
-
-/* Индикатор нового сообщения (синий) */
-.new-message-indicator {
-    display: inline-block;
-    animation: pulse 1.5s infinite;
-    color: #3498db;
-    margin-left: 5px;
-    font-size: 1.2rem;
-}
-
-/* Индикатор ошибки (красный) */
-.error-message-indicator {
-    display: inline-block;
-    color: #e74c3c;
-    margin-left: 5px;
-    font-size: 1.2rem;
-    font-weight: bold;
-    animation: error-pulse 1.5s infinite;
-}
-
-/* Анимация пульсации для синего */
-@keyframes pulse {
-    0% { opacity: 0.5; }
-    50% { opacity: 1; }
-    100% { opacity: 0.5; }
-}
-
-/* Анимация пульсации для красного */
-@keyframes error-pulse {
-    0% { opacity: 0.5; transform: scale(1); }
-    50% { opacity: 1; transform: scale(1.1); }
-    100% { opacity: 0.5; transform: scale(1); }
-}
-
-.session-item.active .new-message-indicator,
-.session-item.active .error-message-indicator {
-    display: none;
 }

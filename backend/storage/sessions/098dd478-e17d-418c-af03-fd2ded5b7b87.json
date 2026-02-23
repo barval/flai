@@ -1,8 +1,26 @@
 {
   "id": "098dd478-e17d-418c-af03-fd2ded5b7b87",
   "created": "2026-02-23T14:08:19.330191",
-  "updated": "2026-02-23T14:08:19.330200",
-  "messages": [],
+  "updated": "2026-02-23T14:08:26.181129",
+  "messages": [
+    {
+      "role": "user",
+      "content": "покажи кухню",
+      "timestamp": "2026-02-23T14:08:26.181118",
+      "attachment": null
+    },
+    {
+      "role": "assistant",
+      "content": "📷 Камера 'на кухне': изображение получено (демо-режим)",
+      "timestamp": "2026-02-23T14:13:26.188712",
+      "metadata": {
+        "model": "camera_system",
+        "request_type": "camera_request",
+        "duration": 300.01,
+        "tokens": 0
+      }
+    }
+  ],
   "title": "Новый сеанс",
   "metadata": {}
 }

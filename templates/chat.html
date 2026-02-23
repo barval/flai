@@ -1,4 +1,4 @@
-<!-- templates/chat.html (полный файл с изменениями) -->
+<!-- templates/chat.html (полный файл с исправлениями) -->
 {% extends "base.html" %}
 
 {% block content %}
@@ -79,8 +79,10 @@
     let sessionsData = {};
     let syncInterval = null;
     let newMessageIndicators = {};
-    // Новый объект для хранения статусов запросов (очередь, обработка, ошибка)
+    // Статусы запросов (очередь, обработка, ошибка)
     let sessionRequestStatus = {};
+    // Время последнего завершения запроса для сеанса (чтобы подавить мерцание)
+    let lastCompletionTime = {};
 
     // -------------------------------
     // Вспомогательные функции
@@ -171,7 +173,7 @@
     }
 
     // -------------------------------
-    // Управление индикаторами новых сообщений (только ✉️)
+    // Управление индикаторами новых сообщений (✉️)
     // -------------------------------
     function setNewMessageIndicator(sessionId, show) {
         if (show) {
@@ -179,7 +181,7 @@
         } else {
             delete newMessageIndicators[sessionId];
         }
-        updateSessionsListFromData(); // перерисовать список
+        updateSessionsListFromData();
     }
 
     // -------------------------------
@@ -189,9 +191,8 @@
         fetch('/api/queue/status')
             .then(res => res.json())
             .then(data => {
-                // Обновляем sessionRequestStatus
-                // Ожидаем структуру: { processing: { session_id, ... }, queued: [{ session_id, ... }], recent_completed: [...] }
                 const newStatus = {};
+                const now = Date.now();
                 
                 // Обрабатываем текущий обрабатываемый запрос
                 if (data.processing) {
@@ -201,22 +202,24 @@
                 
                 // Обрабатываем очередь
                 data.queued.forEach(item => {
-                    // Если для этого session_id уже есть статус processing, не перезаписываем? Но в очереди не может быть processing.
-                    // Если есть и processing, и queued для одного session_id? Вряд ли, но на всякий случай приоритет: error > processing > queued
-                    if (!newStatus[item.session_id] || 
-                        (newStatus[item.session_id].status !== 'error' && newStatus[item.session_id].status !== 'processing')) {
+                    // Если для этого session_id ещё нет статуса (processing имеет приоритет)
+                    if (!newStatus[item.session_id]) {
                         newStatus[item.session_id] = { status: 'queued', ...item };
                     }
                 });
                 
-                // Проверяем недавние завершённые, чтобы отметить ошибки
-                data.recent_completed.forEach(item => {
-                    if (item.is_error) {
-                        // Если ошибка, ставим статус error
-                        newStatus[item.session_id] = { status: 'error', ...item };
-                    } else {
-                        // Если успешно завершено, убираем все статусы для этого session_id
-                        delete newStatus[item.session_id];
+                // Сохраняем предыдущие ошибки, если они не перезаписаны новыми статусами
+                const oldStatus = sessionRequestStatus;
+                for (let sid in oldStatus) {
+                    if (oldStatus[sid].status === 'error' && !newStatus[sid]) {
+                        newStatus[sid] = oldStatus[sid];
+                    }
+                }
+                
+                // Убираем статусы для сеансов, которые недавно завершились (подавление мерцания)
+                Object.keys(newStatus).forEach(sid => {
+                    if (lastCompletionTime[sid] && now - lastCompletionTime[sid] < 3000) {
+                        delete newStatus[sid];
                     }
                 });
                 
@@ -260,6 +263,7 @@
                     if (!sessions.find(s => s.id === id)) {
                         delete sessionsData[id];
                         delete newMessageIndicators[id];
+                        delete lastCompletionTime[id];
                         updated = true;
                     }
                 });
@@ -607,7 +611,7 @@
     }
 
     // -------------------------------
-    // Отображение одного сообщения (ОБНОВЛЁННАЯ ВЕРСИЯ)
+    // Отображение одного сообщения
     // -------------------------------
     function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
         console.log('displayMessage called with:', {  // Добавляем отладку
@@ -919,6 +923,9 @@
             }
         }
         
+        // Сбрасываем метку последнего завершения для этого сеанса (новый запрос)
+        delete lastCompletionTime[currentSessionId];
+        
         const now = new Date();
         const timestamp = now.toISOString();
         
@@ -1113,6 +1120,9 @@
                                     // Убираем статус для этого сеанса (он завершён)
                                     delete sessionRequestStatus[resultSessionId];
                                 }
+                                // Запоминаем время завершения
+                                lastCompletionTime[resultSessionId] = Date.now();
+                                
                             } else if (data.result.error) {
                                 // Ошибка
                                 if (resultSessionId === currentSessionId) {
@@ -1124,12 +1134,12 @@
                                         data.result.response_time,
                                         'system'
                                     );
-                                    delete sessionRequestStatus[resultSessionId];
+                                    // Устанавливаем статус ошибки
+                                    sessionRequestStatus[resultSessionId] = { status: 'error' };
                                 } else {
-                                    setNewMessageIndicator(resultSessionId, true); // всё равно показываем ✉️?
-                                    // но лучше показать ошибку иконкой ⚠️
                                     sessionRequestStatus[resultSessionId] = { status: 'error' };
                                 }
+                                lastCompletionTime[resultSessionId] = Date.now();
                             }
                         }
                         
@@ -1160,6 +1170,7 @@
                         } else if (resultSessionId) {
                             sessionRequestStatus[resultSessionId] = { status: 'error' };
                         }
+                        lastCompletionTime[resultSessionId] = Date.now();
                         
                         window.updateStatusCounter();
                         fetchQueueStatus();
@@ -1242,6 +1253,7 @@
         
         delete newMessageIndicators[sessionId];
         delete sessionRequestStatus[sessionId];
+        delete lastCompletionTime[sessionId];
         
         fetch(`/api/sessions/${sessionId}/delete`, { method: 'POST' })
             .then(res => res.json())

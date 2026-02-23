@@ -330,6 +330,7 @@ footer {
     line-height: 1;
     margin-right: 4px;
     vertical-align: middle;
+    flex-shrink: 0; /* Запрещаем сжиматься */
 }
 
 .session-status-icon.blink {
@@ -903,12 +904,6 @@ audio {
     background: #a8a8a8;
 }
 
-/* Индикатор нового сообщения (устарел, заменён иконками) */
-/* .new-message-indicator { ... } */
-
-/* Индикатор ошибки (устарел) */
-/* .error-message-indicator { ... } */
-
 /* ========== СТИЛИ ДЛЯ КНОПКИ КОПИРОВАНИЯ КОДА ========== */
 .code-block-wrapper {
     position: relative;
@@ -1210,9 +1205,6 @@ audio {
     padding: 2px 4px;
     border-radius: 4px;
 }
-
-/* Индикаторы в сеансах (устарели, заменены на иконки) */
-/* .request-status-indicator { ... } */
 
 .status-toggle-button {
     background: none;

@@ -1,3 +1,4 @@
+<!-- templates/chat.html (полный файл с изменениями) -->
 {% extends "base.html" %}
 
 {% block content %}
@@ -78,6 +79,8 @@
     let sessionsData = {};
     let syncInterval = null;
     let newMessageIndicators = {};
+    // Новый объект для хранения статусов запросов (очередь, обработка, ошибка)
+    let sessionRequestStatus = {};
 
     // -------------------------------
     // Вспомогательные функции
@@ -168,76 +171,59 @@
     }
 
     // -------------------------------
-    // Управление индикаторами новых сообщений
+    // Управление индикаторами новых сообщений (только ✉️)
     // -------------------------------
-    function setNewMessageIndicator(sessionId, show, isError = false) {
+    function setNewMessageIndicator(sessionId, show) {
         if (show) {
-            // Сохраняем не только факт наличия, но и тип
-            newMessageIndicators[sessionId] = { hasNew: true, isError: isError };
+            newMessageIndicators[sessionId] = true;
         } else {
             delete newMessageIndicators[sessionId];
         }
-        updateIndicatorsInDOM();
+        updateSessionsListFromData(); // перерисовать список
     }
 
-    function updateIndicatorsInDOM() {
-        document.querySelectorAll('.session-item').forEach(el => {
-            const sessionId = el.dataset.sessionId;
-            const titleElement = el.querySelector('.session-title');
-            let indicator = el.querySelector('.new-message-indicator');
-            let errorIndicator = el.querySelector('.error-message-indicator');
-
-            // Удаляем старые индикаторы
-            if (indicator) indicator.remove();
-            if (errorIndicator) errorIndicator.remove();
-
-            const indicatorData = newMessageIndicators[sessionId];
-            if (indicatorData && indicatorData.hasNew && sessionId !== currentSessionId) {
-                if (indicatorData.isError) {
-                    // Создаем красный индикатор для ошибки
-                    errorIndicator = document.createElement('span');
-                    errorIndicator.className = 'error-message-indicator';
-                    errorIndicator.textContent = '●';
-                    errorIndicator.title = 'Произошла ошибка';
-                    titleElement.appendChild(errorIndicator);
-                } else {
-                    // Создаем обычный синий индикатор для нового сообщения
-                    indicator = document.createElement('span');
-                    indicator.className = 'new-message-indicator';
-                    indicator.textContent = '●';
-                    titleElement.appendChild(indicator);
+    // -------------------------------
+    // Получение статусов очереди с сервера
+    // -------------------------------
+    function fetchQueueStatus() {
+        fetch('/api/queue/status')
+            .then(res => res.json())
+            .then(data => {
+                // Обновляем sessionRequestStatus
+                // Ожидаем структуру: { processing: { session_id, ... }, queued: [{ session_id, ... }], recent_completed: [...] }
+                const newStatus = {};
+                
+                // Обрабатываем текущий обрабатываемый запрос
+                if (data.processing) {
+                    const proc = data.processing;
+                    newStatus[proc.session_id] = { status: 'processing', ...proc };
                 }
-            }
-        });
-    }
-
-    function updateSessionWithRequestStatus(sessionId, status) {
-        const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
-        if (!sessionItem) return;
-        
-        // Удаляем старые индикаторы
-        const oldIndicator = sessionItem.querySelector('.request-status-indicator');
-        if (oldIndicator) oldIndicator.remove();
-        
-        if (status === 'processing') {
-            const indicator = document.createElement('span');
-            indicator.className = 'request-status-indicator processing';
-            indicator.innerHTML = '⚡';
-            indicator.title = 'Запрос обрабатывается';
-            sessionItem.querySelector('.session-title').appendChild(indicator);
-        } else if (status === 'queued') {
-            const indicator = document.createElement('span');
-            indicator.className = 'request-status-indicator queued';
-            indicator.innerHTML = '⏳';
-            indicator.title = 'Запрос в очереди';
-            sessionItem.querySelector('.session-title').appendChild(indicator);
-        }
-    }
-
-    function clearIndicatorForSession(sessionId) {
-        if (sessionId === currentSessionId) {
-            setNewMessageIndicator(sessionId, false);
-        }
+                
+                // Обрабатываем очередь
+                data.queued.forEach(item => {
+                    // Если для этого session_id уже есть статус processing, не перезаписываем? Но в очереди не может быть processing.
+                    // Если есть и processing, и queued для одного session_id? Вряд ли, но на всякий случай приоритет: error > processing > queued
+                    if (!newStatus[item.session_id] || 
+                        (newStatus[item.session_id].status !== 'error' && newStatus[item.session_id].status !== 'processing')) {
+                        newStatus[item.session_id] = { status: 'queued', ...item };
+                    }
+                });
+                
+                // Проверяем недавние завершённые, чтобы отметить ошибки
+                data.recent_completed.forEach(item => {
+                    if (item.is_error) {
+                        // Если ошибка, ставим статус error
+                        newStatus[item.session_id] = { status: 'error', ...item };
+                    } else {
+                        // Если успешно завершено, убираем все статусы для этого session_id
+                        delete newStatus[item.session_id];
+                    }
+                });
+                
+                sessionRequestStatus = newStatus;
+                updateSessionsListFromData();
+            })
+            .catch(err => console.error('Ошибка получения статусов очереди:', err));
     }
 
     // -------------------------------
@@ -296,7 +282,7 @@
     }
 
     // -------------------------------
-    // Обновление списка сеансов в DOM
+    // Обновление списка сеансов в DOM (основная функция)
     // -------------------------------
     function updateSessionsList(sessions, preserveIndicators = true) {
         const sessionsList = document.getElementById('sessions-list');
@@ -317,15 +303,32 @@
         sessions.forEach(s => {
             const isActive = s.id === currentActiveId ? 'active' : '';
             const dateStr = s.updated_at ? s.updated_at.replace('T', ' ').substring(0, 19) : '';
-            const indicatorData = newMessageIndicators[s.id];
-            const hasIndicator = indicatorData && indicatorData.hasNew && s.id !== currentActiveId;
-            const isError = indicatorData && indicatorData.isError;
+            
+            // Определяем иконку статуса по приоритету
+            let statusIcon = '';
+            const reqStatus = sessionRequestStatus[s.id];
+            if (reqStatus) {
+                if (reqStatus.status === 'error') {
+                    statusIcon = '<span class="session-status-icon error blink" title="Ошибка">⚠️</span>';
+                } else if (reqStatus.status === 'processing') {
+                    statusIcon = '<span class="session-status-icon processing blink" title="Обрабатывается">⚡</span>';
+                } else if (reqStatus.status === 'queued') {
+                    statusIcon = '<span class="session-status-icon queued" title="В очереди">⏳</span>';
+                }
+            }
+            // Если нет статуса запроса, но есть непрочитанное сообщение (и сеанс не активен)
+            if (!statusIcon && newMessageIndicators[s.id] && s.id !== currentActiveId) {
+                statusIcon = '<span class="session-status-icon unread blink" title="Новый ответ">✉️</span>';
+            }
             
             html += `
                 <div class="session-item ${isActive}" data-session-id="${s.id}">
                     <div class="session-content">
                         <div class="session-info">
-                            <div class="session-title">${escapeHtml(s.title)}${hasIndicator ? (isError ? '<span class="error-message-indicator">●</span>' : '<span class="new-message-indicator">●</span>') : ''}</div>
+                            <div class="session-title">
+                                ${statusIcon}
+                                ${escapeHtml(s.title)}
+                            </div>
                             <div class="session-date">${dateStr}</div>
                         </div>
                         <button class="delete-session-button" title="Удалить сеанс">🗑️</button>
@@ -339,6 +342,17 @@
         
         // Перепривязываем обработчики событий
         attachSessionEventHandlers();
+    }
+
+    // Обёртка для обновления списка с текущими данными
+    function updateSessionsListFromData() {
+        // Получаем сессии из хранилища sessionsData и преобразуем в массив
+        const sessions = Object.keys(sessionsData).map(id => ({
+            id: id,
+            title: sessionsData[id].title,
+            updated_at: sessionsData[id].updated_at
+        }));
+        updateSessionsList(sessions, true);
     }
 
     // -------------------------------
@@ -391,6 +405,7 @@
         // Синхронизируем каждые 3 секунды
         syncInterval = setInterval(() => {
             loadSessionsFromServer();
+            fetchQueueStatus(); // дополнительно обновляем статусы
         }, 3000);
     }
 
@@ -481,9 +496,11 @@
         // Периодическое обновление списка сеансов (каждые 5 секунд)
         setInterval(forceRefreshSessions, 5000);
 
-        // Запускаем периодическое обновление счётчика
+        // Запускаем периодическое обновление счётчика и статусов
         setInterval(window.updateStatusCounter, 3000);
+        setInterval(fetchQueueStatus, 3000);
         window.updateStatusCounter(); // сразу при загрузке
+        fetchQueueStatus(); // сразу
     });
 
     // -------------------------------
@@ -795,8 +812,8 @@
                     }
                 });
                 
-                // Обновляем индикаторы после переключения
-                updateIndicatorsInDOM();
+                // Обновляем список сеансов, чтобы убрать ✉️ для активного
+                updateSessionsListFromData();
             });
     }
 
@@ -849,21 +866,7 @@
         if (titleElement) {
             titleElement.innerHTML = escapeHtml(newTitle);
             
-            // Сохраняем индикатор, если есть
-            const indicatorData = newMessageIndicators[sessionId];
-            if (indicatorData && indicatorData.hasNew && sessionId !== currentSessionId) {
-                if (indicatorData.isError) {
-                    const errorIndicator = document.createElement('span');
-                    errorIndicator.className = 'error-message-indicator';
-                    errorIndicator.textContent = '●';
-                    titleElement.appendChild(errorIndicator);
-                } else {
-                    const indicator = document.createElement('span');
-                    indicator.className = 'new-message-indicator';
-                    indicator.textContent = '●';
-                    titleElement.appendChild(indicator);
-                }
-            }
+            // Перерисовываем иконку (она уже будет добавлена в updateSessionsListFromData)
         }
         
         // Обновляем дату
@@ -985,6 +988,10 @@
                 console.log('Ответ от сервера:', data);
                 
                 if (data.status === 'queued') {
+                    // Локально устанавливаем статус queued для текущего сеанса
+                    sessionRequestStatus[currentSessionId] = { status: 'queued' };
+                    updateSessionsListFromData();
+                    
                     const waitMinutes = Math.floor(data.estimated_wait / 60);
                     const waitSeconds = Math.round(data.estimated_wait % 60);
                     const waitText = waitMinutes > 0 
@@ -1098,12 +1105,16 @@
                                         responseTime,
                                         modelUsed
                                     );
+                                    // Убираем статус для текущего сеанса
+                                    delete sessionRequestStatus[resultSessionId];
                                 } else {
                                     console.log(`Ответ для сеанса ${resultSessionId}, не текущего`);
-                                    setNewMessageIndicator(resultSessionId, true, isError);
-                                    loadSessionsFromServer();
+                                    setNewMessageIndicator(resultSessionId, true);
+                                    // Убираем статус для этого сеанса (он завершён)
+                                    delete sessionRequestStatus[resultSessionId];
                                 }
                             } else if (data.result.error) {
+                                // Ошибка
                                 if (resultSessionId === currentSessionId) {
                                     displayMessage(
                                         'assistant',
@@ -1113,15 +1124,18 @@
                                         data.result.response_time,
                                         'system'
                                     );
+                                    delete sessionRequestStatus[resultSessionId];
                                 } else {
-                                    setNewMessageIndicator(resultSessionId, true, true);
-                                    loadSessionsFromServer();
+                                    setNewMessageIndicator(resultSessionId, true); // всё равно показываем ✉️?
+                                    // но лучше показать ошибку иконкой ⚠️
+                                    sessionRequestStatus[resultSessionId] = { status: 'error' };
                                 }
                             }
                         }
                         
                         // Обновляем счётчик после завершения
                         window.updateStatusCounter();
+                        fetchQueueStatus(); // принудительно обновить статусы
                         
                         setTimeout(() => {
                             loadSessionsFromServer();
@@ -1142,15 +1156,21 @@
                                 data.result?.response_time,
                                 'system'
                             );
+                            delete sessionRequestStatus[resultSessionId];
                         } else if (resultSessionId) {
-                            setNewMessageIndicator(resultSessionId, true, true);
-                            loadSessionsFromServer();
+                            sessionRequestStatus[resultSessionId] = { status: 'error' };
                         }
                         
                         window.updateStatusCounter();
+                        fetchQueueStatus();
                         
                     } else if (data.status === 'pending') {
                         console.log('Request still pending...');
+                        // Обновляем статус на processing, если он ещё не установлен
+                        if (!sessionRequestStatus[currentSessionId] || sessionRequestStatus[currentSessionId].status !== 'processing') {
+                            sessionRequestStatus[currentSessionId] = { status: 'processing' };
+                            updateSessionsListFromData();
+                        }
                     }
                     
                     if (pollCount >= maxPolls) {
@@ -1165,6 +1185,7 @@
                             null,
                             'system'
                         );
+                        delete sessionRequestStatus[currentSessionId];
                     }
                     
                 } catch (error) {
@@ -1220,6 +1241,7 @@
         }
         
         delete newMessageIndicators[sessionId];
+        delete sessionRequestStatus[sessionId];
         
         fetch(`/api/sessions/${sessionId}/delete`, { method: 'POST' })
             .then(res => res.json())

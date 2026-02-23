@@ -17,6 +17,7 @@ from backend.models.prompts import (
     ROOM_CODES, 
     ROOM_NOT_FOUND
 )
+from backend.utils.text_utils import clean_thinking_blocks
 
 
 class RouterResult:
@@ -102,6 +103,7 @@ def _parse_router_response(answer: str, original_query: str) -> RouterResult:
     Returns:
         RouterResult с классификацией
     """
+    answer = clean_thinking_blocks(answer)
     answer_lower = answer.lower()
     
     # 1. Простой ответ (нет специальных маркеров)

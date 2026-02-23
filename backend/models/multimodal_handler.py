@@ -14,6 +14,7 @@ from backend.models.prompts import (
     SD_PROMPT_PREPARATION,
     get_current_time_str
 )
+from backend.utils.text_utils import clean_thinking_blocks
 
 async def analyze_image(
     image_base64: str,
@@ -44,6 +45,7 @@ async def analyze_image(
             top_p=settings.llm_multimodal_top_p
         )
         content = response.get("message", {}).get("content", "").strip()
+        content = clean_thinking_blocks(content)
         tokens = response.get("eval_count", 0) + response.get("prompt_eval_count", 0)
         
         logger.info(
@@ -72,6 +74,7 @@ async def prepare_sd_prompt(user_query: str) -> Dict:
             top_p=0.1
         )
         content = response.get("message", {}).get("content", "").strip()
+        content = clean_thinking_blocks(content)
         logger.debug(f"SD prompt preparation raw: {content[:300]}")
         
         json_str = content

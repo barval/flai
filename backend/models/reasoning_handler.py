@@ -6,6 +6,7 @@ from loguru import logger
 from backend.utils.ollama_client import ollama
 from backend.utils.config import settings
 from backend.models.prompts import REASONING_PROMPT, get_current_time_str
+from backend.utils.text_utils import clean_thinking_blocks
 
 async def handle_reasoning(messages: List[Dict], session_id: str) -> Dict:
     current_time = get_current_time_str(settings.timezone)
@@ -39,6 +40,7 @@ async def handle_reasoning(messages: List[Dict], session_id: str) -> Dict:
             top_p=settings.llm_reasoning_top_p
         )
         content = response.get("message", {}).get("content", "").strip()
+        content = clean_thinking_blocks(content)
         tokens = response.get("eval_count", 0) + response.get("prompt_eval_count", 0)
         
         logger.info(

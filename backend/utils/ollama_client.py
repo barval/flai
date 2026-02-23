@@ -7,16 +7,12 @@ from loguru import logger
 from typing import List, Optional, AsyncGenerator, Dict, Any
 from backend.utils.config import settings
 
-
 class OllamaClient:
-    """Асинхронный клиент для Ollama API"""
-    
     def __init__(self):
         self.base_url = settings.ollama_url.rstrip('/')
-        self.timeout = 180.0
+        self.timeout = 300.0  # Увеличен таймаут для медленных моделей
     
     async def _post(self, endpoint: str, json_data: dict) -> dict:
-        """Внутренний метод для POST-запросов"""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
                 f"{self.base_url}{endpoint}",
@@ -35,12 +31,6 @@ class OllamaClient:
         images: Optional[List[str]] = None,
         options: Optional[Dict] = None
     ) -> Dict[str, Any]:
-        """
-        Отправка чат-запроса к Ollama
-        
-        Returns:
-            dict с полным ответом от модели
-        """
         payload = {
             "model": model,
             "messages": messages,
@@ -51,13 +41,10 @@ class OllamaClient:
             },
             "stream": False
         }
-        
         if options:
             payload["options"].update(options)
-        
         if images:
             payload["images"] = images
-        
         return await self._post("/api/chat", payload)
     
     async def generate(
@@ -68,7 +55,6 @@ class OllamaClient:
         top_p: float,
         images: Optional[List[str]] = None
     ) -> Dict[str, Any]:
-        """Генерация текста через legacy API"""
         payload = {
             "model": model,
             "prompt": prompt,
@@ -78,14 +64,11 @@ class OllamaClient:
             },
             "stream": False
         }
-        
         if images:
             payload["images"] = images
-        
         return await self._post("/api/generate", payload)
     
     async def embed(self, model: str, prompt: str) -> List[float]:
-        """Получение эмбеддингов"""
         result = await self._post("/api/embeddings", {
             "model": model,
             "prompt": prompt
@@ -93,7 +76,6 @@ class OllamaClient:
         return result.get("embedding", [])
     
     async def list_models(self) -> List[Dict[str, Any]]:
-        """Получение списка доступных моделей"""
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 response = await client.get(f"{self.base_url}/api/tags")
@@ -104,7 +86,6 @@ class OllamaClient:
             return []
     
     async def is_model_available(self, model: str) -> bool:
-        """Проверка доступности модели"""
         try:
             models = await self.list_models()
             model_names = [m["name"] for m in models]
@@ -115,7 +96,6 @@ class OllamaClient:
             return False
     
     async def pull_model(self, model: str) -> AsyncGenerator[Dict, None]:
-        """Загрузка модели с прогрессом"""
         async with httpx.AsyncClient(timeout=None) as client:
             async with client.stream(
                 "POST",
@@ -130,6 +110,4 @@ class OllamaClient:
                         except json.JSONDecodeError:
                             continue
 
-
-# Глобальный экземпляр клиента
 ollama = OllamaClient()

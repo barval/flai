@@ -1,9 +1,8 @@
 version: '3.8'
-
 services:
   # ==================== ОСНОВНОЕ ПРИЛОЖЕНИЕ ====================
   ai-local:
-    build: 
+    build:
       context: .
       dockerfile: backend/Dockerfile
     container_name: ai-local-app

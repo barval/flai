@@ -13,8 +13,6 @@ from io import BytesIO
 from loguru import logger
 from backend.utils.config import settings
 
-
-# Поддерживаемые MIME-типы изображений
 ALLOWED_IMAGE_MIMES = {
     "image/jpeg",
     "image/jpg",
@@ -23,68 +21,41 @@ ALLOWED_IMAGE_MIMES = {
     "image/gif"
 }
 
-# Расширения файлов
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
-
 def validate_image(content: bytes, mime_type: str) -> Tuple[bool, Optional[str]]:
-    """
-    Валидация изображения
-    
-    Args:
-        content: бинарное содержимое файла
-        mime_type: MIME-тип файла
-    
-    Returns:
-        (True, None) если валидно, (False, error_message) если нет
-    """
-    # Проверка MIME-типа
     if mime_type not in ALLOWED_IMAGE_MIMES:
         return False, f"Неподдерживаемый формат: {mime_type}"
     
-    # Проверка размера
     if len(content) > settings.max_image_size_bytes:
         max_mb = settings.max_image_size_mb
         actual_mb = len(content) / (1024 * 1024)
         return False, f"Файл слишком большой: {actual_mb:.1f} МБ (макс. {max_mb} МБ)"
     
-    # Проверка и валидация через PIL
     try:
         img = Image.open(BytesIO(content))
         img.verify()
-        
         img = Image.open(BytesIO(content))
         width, height = img.size
-        
         if width > settings.max_image_width or height > settings.max_image_height:
             return False, f"Изображение слишком большое: {width}x{height} (макс. {settings.max_image_width}x{settings.max_image_height})"
-        
         return True, None
-        
     except Exception as e:
         logger.error(f"Ошибка валидации изображения: {e}")
         return False, f"Ошибка чтения изображения: {e}"
 
-
 def resize_image(content: bytes, max_width: int, max_height: int) -> Tuple[bytes, str]:
-    """
-    Изменение размера изображения с сохранением пропорций
-    """
     try:
         img = Image.open(BytesIO(content))
-        
         if img.mode in ("RGBA", "P", "LA"):
             background = Image.new("RGB", img.size, (255, 255, 255))
             if img.mode == "P":
                 img = img.convert("RGBA")
             background.paste(img, mask=img.split()[-1] if img.mode in ("RGBA", "LA") else None)
             img = background
-        
         img.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
-        
         output = BytesIO()
         format_name = "JPEG" if img.format in ("JPEG", "JPG") else img.format or "PNG"
-        
         if format_name == "JPEG":
             img = img.convert("RGB")
             img.save(output, format="JPEG", quality=90, optimize=True)
@@ -92,18 +63,13 @@ def resize_image(content: bytes, max_width: int, max_height: int) -> Tuple[bytes
         else:
             img.save(output, format=format_name, optimize=True)
             mime_type = f"image/{format_name.lower()}"
-        
         return output.getvalue(), mime_type
-        
     except Exception as e:
         logger.error(f"Ошибка изменения размера изображения: {e}")
         return content, "image/png"
 
-
 def image_to_base64(content: bytes, mime_type: str) -> str:
-    """Конвертация изображения в base64 для отправки в модель"""
     return base64.b64encode(content).decode("utf-8")
-
 
 async def save_upload(
     content: bytes,
@@ -111,9 +77,6 @@ async def save_upload(
     session_id: str,
     resize: bool = True
 ) -> str:
-    """
-    Сохранение загруженного файла
-    """
     session_dir = os.path.join(settings.uploads_path, session_id)
     os.makedirs(session_dir, exist_ok=True)
     
@@ -127,8 +90,8 @@ async def save_upload(
     if resize and ext in IMAGE_EXTENSIONS:
         mime = magic.from_buffer(content, mime=True)
         content, _ = resize_image(
-            content, 
-            settings.max_image_width, 
+            content,
+            settings.max_image_width,
             settings.max_image_height
         )
     
@@ -138,39 +101,27 @@ async def save_upload(
     logger.info(f"Файл сохранён: {filepath} ({len(content)} bytes)")
     return filename
 
-
 async def load_file(session_id: str, filename: str) -> Optional[bytes]:
-    """Загрузка файла из хранилища"""
     filepath = os.path.join(settings.uploads_path, session_id, filename)
-    
     if not os.path.exists(filepath):
         logger.warning(f"Файл не найден: {filepath}")
         return None
-    
     async with aiofiles.open(filepath, "rb") as f:
         return await f.read()
 
-
 async def delete_file(session_id: str, filename: str) -> bool:
-    """Удаление файла из хранилища"""
     filepath = os.path.join(settings.uploads_path, session_id, filename)
-    
     if os.path.exists(filepath):
         os.remove(filepath)
         logger.info(f"Файл удалён: {filepath}")
         return True
-    
     return False
 
-
 def get_file_info(filepath: str) -> Dict[str, Any]:
-    """Получение информации о файле"""
     if not os.path.exists(filepath):
         return {}
-    
     stat = os.stat(filepath)
     mime = magic.from_file(filepath, mime=True)
-    
     return {
         "filename": os.path.basename(filepath),
         "size": stat.st_size,

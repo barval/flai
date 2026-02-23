@@ -1,18 +1,8 @@
 """
 Главный маршрутизатор запросов ИИ Локальный
-
-Логика обработки:
-1. Если есть изображение → мультимодальный анализ
-2. Если только текст → классификация через router-модель
-3. Маршрутизация к appropriate обработчику:
-   - Простой запрос → чат-модель (или готовый ответ)
-   - Генерация изображения → Automatic1111
-   - Запрос к камере → camera_handler
-   - Сложный запрос → reasoning-модель
 """
 from typing import Dict, List, Optional
 from loguru import logger
-
 from backend.utils.config import settings
 from backend.models.prompts import ROOM_NOT_FOUND
 from backend.models.router_handler import classify_request, RouterResult
@@ -21,7 +11,6 @@ from backend.models.multimodal_handler import analyze_image, prepare_sd_prompt
 from backend.models.reasoning_handler import handle_reasoning
 from backend.models.camera_handler import get_camera_feed
 from backend.models.image_generator import generate_image
-
 
 class RequestRouter:
     """Маршрутизация запросов к appropriate обработчикам"""
@@ -32,36 +21,11 @@ class RequestRouter:
         messages: List[Dict],
         image_data: Optional[Dict] = None
     ) -> Dict:
-        """
-        Основная точка входа для обработки запроса
-        
-        Args:
-            session_id: идентификатор сессии
-            messages: история сообщений в формате OpenAI
-            image_data: данные загруженного изображения (опционально)
-        
-        Returns:
-            dict с результатом обработки:
-            {
-                "success": bool,
-                "content": str,
-                "images": List[str],  # base64
-                "camera_image": Optional[str],
-                "model_used": str,
-                "request_type": str,
-                "duration_sec": float,
-                "tokens": int,
-                "error": Optional[str]
-            }
-        """
         import time
         start_time = time.time()
         
-        # === СЛУЧАЙ 1: Есть изображение в запросе ===
         if image_data:
             logger.info("Запрос с изображением → мультимодальный анализ")
-            
-            # Получение подписи к изображению если есть
             caption = None
             user_msg = next(
                 (m for m in reversed(messages) if m["role"] == "user"),
@@ -70,19 +34,16 @@ class RequestRouter:
             if user_msg and user_msg.get("content", "").strip():
                 caption = user_msg["content"]
             
-            # Анализ изображения
             result = await analyze_image(
                 image_base64=image_data["base64"],
                 caption=caption,
                 session_id=session_id
             )
-            
             duration = time.time() - start_time
-            
             return {
                 "success": True,
                 "content": result["content"],
-                "images": [],  # Анализ, не генерация
+                "images": [],
                 "camera_image": None,
                 "model_used": settings.llm_multimodal_model,
                 "request_type": "multimodal_analysis",
@@ -90,7 +51,6 @@ class RequestRouter:
                 "tokens": result.get("tokens", 0)
             }
         
-        # === СЛУЧАЙ 2: Только текстовый запрос ===
         user_message = next(
             (m for m in reversed(messages) if m["role"] == "user"),
             {"content": ""}
@@ -110,15 +70,11 @@ class RequestRouter:
                 "tokens": 0
             }
         
-        # Классификация запроса через LLM-маршрутизатор
         logger.info(f"Классификация запроса: '{user_query[:100]}...'")
         classification = await classify_request(user_query)
         logger.info(f"→ Тип: {classification.route_type}, payload: {classification.payload}")
         
         try:
-            # === МАРШРУТИЗАЦИЯ ПО ТИПУ ЗАПРОСА ===
-            
-            # 1. ПРОСТОЙ ЗАПРОС — ответ уже в payload
             if classification.route_type == RouterResult.SIMPLE:
                 duration = time.time() - start_time
                 return {
@@ -129,10 +85,9 @@ class RequestRouter:
                     "model_used": settings.llm_chat_model,
                     "request_type": "simple",
                     "duration_sec": round(duration, 2),
-                    "tokens": 0  # Ответ без вызова модели
+                    "tokens": 0
                 }
             
-            # 2. ГЕНЕРАЦИЯ ИЗОБРАЖЕНИЯ
             elif classification.route_type == RouterResult.IMAGE_GEN:
                 logger.info(f"→ Генерация изображения: '{classification.payload}'")
                 result = await generate_image(
@@ -145,18 +100,15 @@ class RequestRouter:
                 result["duration_sec"] = round(duration, 2)
                 return result
             
-            # 3. ЗАПРОС К КАМЕРЕ
             elif classification.route_type == RouterResult.CAMERA:
                 logger.info(f"→ Запрос к камере: {classification.payload}")
-                
                 if classification.payload == ROOM_NOT_FOUND:
                     content = ROOM_NOT_FOUND
                     camera_image = None
                 else:
                     cam_result = await get_camera_feed(classification.payload)
                     content = cam_result.get("message", cam_result.get("error", ""))
-                    camera_image = cam_result.get("image")  # base64 или None
-                
+                    camera_image = cam_result.get("image")
                 duration = time.time() - start_time
                 return {
                     "success": True,
@@ -169,7 +121,6 @@ class RequestRouter:
                     "tokens": 0
                 }
             
-            # 4. СЛОЖНЫЙ ЗАПРОС — reasoning модель
             elif classification.route_type == RouterResult.REASONING:
                 logger.info(f"→ Сложный запрос через reasoning модель")
                 result = await handle_reasoning(
@@ -188,7 +139,6 @@ class RequestRouter:
                     "tokens": result.get("tokens", 0)
                 }
             
-            # 5. НЕИЗВЕСТНЫЙ ТИП — fallback к reasoning
             else:
                 logger.warning(f"Неизвестный тип маршрутизации: {classification.route_type}")
                 result = await handle_reasoning(messages=messages, session_id=session_id)
@@ -203,7 +153,7 @@ class RequestRouter:
                     "duration_sec": round(duration, 2),
                     "tokens": result.get("tokens", 0)
                 }
-                
+        
         except Exception as e:
             logger.error(f"Ошибка маршрутизации: {e}", exc_info=True)
             return {
@@ -219,16 +169,9 @@ class RequestRouter:
             }
     
     async def get_model_status(self) -> Dict:
-        """
-        Проверка статуса всех моделей и сервисов
+        from backend.utils.ollama_client import ollama
+        from backend.utils.a1111_client import a1111
         
-        Returns:
-            dict со статусом доступности
-        """
-        from utils.ollama_client import ollama
-        from utils.a1111_client import a1111
-        
-        # Проверка Ollama
         ollama_available = False
         ollama_models = []
         try:
@@ -238,13 +181,11 @@ class RequestRouter:
         except Exception as e:
             logger.warning(f"Ollama недоступен: {e}")
         
-        # Проверка Automatic1111
         a1111_available = False
         a1111_model_info = None
         try:
             if await a1111.is_available():
                 a1111_available = True
-                # Попытка получить текущую модель
                 options = await a1111.get_options()
                 a1111_model_info = options.get("sd_model_checkpoint", settings.a1111_model)
         except Exception as e:
@@ -256,7 +197,7 @@ class RequestRouter:
                 "url": settings.ollama_url,
                 "models": [
                     settings.llm_chat_model,
-                    settings.llm_multimodal_model, 
+                    settings.llm_multimodal_model,
                     settings.llm_reasoning_model
                 ],
                 "loaded": [m for m in ollama_models if any(
@@ -277,6 +218,4 @@ class RequestRouter:
             "timestamp": __import__('datetime').datetime.now().isoformat()
         }
 
-
-# Глобальный экземпляр маршрутизатора
 router = RequestRouter()

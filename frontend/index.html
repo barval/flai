@@ -1,1344 +1,1129 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' http://localhost:* http://host.docker.internal:* ws://localhost:* ws://host.docker.internal:*;">
-  <meta name="description" content="ИИ Локальный — автономный чат-интерфейс для локальных ИИ-моделей">
-  <title>🤖 ИИ Локальный</title>
-  <style>
-    /* ==================== ПЕРЕМЕННЫЕ И БАЗОВЫЕ СТИЛИ ==================== */
-    :root {
-      --color-bg: #f5f5f5;
-      --color-header: #2c3e50;
-      --color-text: #2c3e50;
-      --color-text-secondary: #7f8c8d;
-      --color-accent: #3498db;
-      --color-accent-hover: #2980b9;
-      --color-user-msg: #e6f2ff;
-      --color-assistant-msg: #f0f0f0;
-      --color-error: #e74c3c;
-      --color-success: #28a745;
-      --color-warning: #ffc107;
-      --color-border: #ddd;
-      --color-border-light: #e0e0e0;
-      --color-sidebar-bg: #f1f3f6;
-      --color-code-bg: #f6f8fa;
-      --color-code-border: #e1e4e8;
-      --shadow-light: 0 2px 8px rgba(0,0,0,0.1);
-      --shadow-modal: 0 8px 32px rgba(0,0,0,0.3);
-      --radius: 8px;
-      --radius-sm: 6px;
-      --font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-      --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-      --transition: all 0.3s ease;
-    }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    
-    body {
-      font-family: var(--font-main);
-      background: var(--color-bg);
-      color: var(--color-text);
-      line-height: 1.6;
-      font-size: 1rem;
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-
-    /* ==================== СКРОЛЛБАРЫ ==================== */
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
-
-    /* ==================== ШАПКА ==================== */
-    header {
-      height: 50px;
-      background: var(--color-header);
-      color: #fff;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 1.5rem;
-      box-shadow: var(--shadow-light);
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
-
-    header .logo {
-      font-size: 1.3rem;
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    header .user-info {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      font-size: 0.9rem;
-    }
-
-    header .btn-logout {
-      background: rgba(255,255,255,0.15);
-      border: none;
-      color: #fff;
-      padding: 0.4rem 0.8rem;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 0.85rem;
-      transition: var(--transition);
-    }
-
-    header .btn-logout:hover { background: rgba(255,255,255,0.25); }
-
-    /* ==================== ОСНОВНОЙ КОНТЕЙНЕР ==================== */
-    .main-container {
-      display: flex;
-      flex: 1;
-      overflow: hidden;
-      padding: 1rem;
-      gap: 1rem;
-    }
-
-    /* ==================== БОКОВАЯ ПАНЕЛЬ ==================== */
-    .sidebar {
-      width: 25%;
-      min-width: 220px;
-      background: var(--color-sidebar-bg);
-      border-right: 1px solid var(--color-border-light);
-      border-radius: var(--radius);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    .sidebar-header {
-      padding: 0.8rem 1rem;
-      border-bottom: 1px solid var(--color-border);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      position: sticky;
-      top: 0;
-      background: var(--color-sidebar-bg);
-      z-index: 10;
-    }
-
-    .sidebar-header h3 { font-size: 1.1rem; }
-
-    .btn-new-session {
-      background: var(--color-accent);
-      color: #fff;
-      border: none;
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      cursor: pointer;
-      font-size: 1.2rem;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: var(--transition);
-    }
-
-    .btn-new-session:hover { background: var(--color-accent-hover); transform: scale(1.05); }
-
-    .sessions-list {
-      padding: 0.5rem;
-      overflow-y: auto;
-      flex: 1;
-    }
-
-    .session-item {
-      background: #fff;
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-sm);
-      padding: 0.8rem;
-      margin-bottom: 0.5rem;
-      cursor: pointer;
-      transition: var(--transition);
-      position: relative;
-    }
-
-    .session-item:hover {
-      background: var(--color-user-msg);
-      border-color: var(--color-accent);
-    }
-
-    .session-item.active {
-      background: var(--color-user-msg);
-      border-color: var(--color-accent);
-      box-shadow: 0 2px 6px rgba(52, 152, 219, 0.2);
-    }
-
-    .session-title {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-weight: 500;
-      margin-bottom: 0.3rem;
-    }
-
-    .session-date {
-      font-size: 0.75rem;
-      color: var(--color-text-secondary);
-      font-family: var(--font-mono);
-    }
-
-    .btn-delete-session {
-      background: none;
-      border: none;
-      color: var(--color-text-secondary);
-      cursor: pointer;
-      opacity: 0;
-      transition: var(--transition);
-      font-size: 1rem;
-      padding: 0.2rem;
-    }
-
-    .session-item:hover .btn-delete-session { opacity: 1; }
-    .btn-delete-session:hover { color: var(--color-error); }
-
-    /* Индикаторы статуса */
-    .status-indicator {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      margin-right: 0.4rem;
-      animation: pulse 1.5s infinite;
-    }
-
-    .status-new { background: var(--color-accent); }
-    .status-error { background: var(--color-error); }
-    .status-processing { background: var(--color-warning); }
-    .status-queued { background: #95a5a6; }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.6; transform: scale(0.85); }
-    }
-
-    /* ==================== ОСНОВНАЯ ОБЛАСТЬ ЧАТА ==================== */
-    .chat-area {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      background: #fff;
-      border: 1px solid var(--color-border-light);
-      border-radius: var(--radius);
-      overflow: hidden;
-    }
-
-    .chat-header {
-      padding: 0.8rem 1rem;
-      border-bottom: 1px solid #eee;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-weight: 500;
-    }
-
-    .chat-actions {
-      display: flex;
-      gap: 0.5rem;
-    }
-
-    .chat-btn {
-      background: #f1f1f1;
-      border: 1px solid var(--color-border);
-      padding: 0.4rem 0.7rem;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 0.9rem;
-      transition: var(--transition);
-      display: flex;
-      align-items: center;
-      gap: 0.3rem;
-    }
-
-    .chat-btn:hover { background: #e0e0e0; }
-    .chat-btn.primary { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
-    .chat-btn.primary:hover { background: var(--color-accent-hover); }
-
-    /* Панель статуса запросов */
-    .request-status-panel {
-      background: #f8f9fa;
-      border: 1px solid #dee2e6;
-      border-radius: var(--radius);
-      margin: 0.5rem 1rem;
-      padding: 0.8rem;
-      max-height: 400px;
-      overflow-y: auto;
-      display: none;
-    }
-
-    .request-status-panel.visible { display: block; animation: slideIn 0.3s ease; }
-
-    @keyframes slideIn {
-      from { opacity: 0; transform: translateY(-10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .status-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0.4rem 0;
-      border-bottom: 1px solid #eee;
-      font-size: 0.9rem;
-    }
-
-    .status-row:last-child { border-bottom: none; }
-
-    .progress-bar {
-      height: 6px;
-      background: #e0e0e0;
-      border-radius: 3px;
-      overflow: hidden;
-      margin: 0.3rem 0;
-    }
-
-    .progress-fill {
-      height: 100%;
-      background: var(--color-accent);
-      border-radius: 3px;
-      transition: width 0.3s ease;
-    }
-
-    .queue-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0.3rem 0;
-      font-size: 0.85rem;
-    }
-
-    .btn-cancel-queue {
-      background: none;
-      border: none;
-      color: var(--color-error);
-      cursor: pointer;
-      font-size: 1rem;
-      margin-left: 0.5rem;
-    }
-
-    /* ==================== ОБЛАСТЬ СООБЩЕНИЙ ==================== */
-    .messages-container {
-      flex: 1;
-      padding: 1rem;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
-    }
-
-    .message {
-      max-width: 85%;
-      padding: 0.8rem 1rem;
-      border-radius: var(--radius);
-      position: relative;
-      animation: fadeIn 0.2s ease;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .message.user {
-      align-self: flex-start;
-      background: var(--color-user-msg);
-      border: 1px solid #bcd5f0;
-    }
-
-    .message.assistant {
-      align-self: flex-start;
-      background: var(--color-assistant-msg);
-      border: 1px solid #d0d0d0;
-    }
-
-    .message-header {
-      font-size: 0.75rem;
-      color: var(--color-text-secondary);
-      margin-bottom: 0.5rem;
-      font-family: var(--font-mono);
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      flex-wrap: wrap;
-    }
-
-    .message-content {
-      line-height: 1.7;
-    }
-
-    .message-content p { margin: 0.5rem 0; }
-    .message-content p:first-child { margin-top: 0; }
-    .message-content p:last-child { margin-bottom: 0; }
-
-    /* Вложения */
-    .attachment {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      background: rgba(0,0,0,0.05);
-      padding: 0.4rem 0.7rem;
-      border-radius: 4px;
-      margin: 0.5rem 0;
-      font-size: 0.9rem;
-    }
-
-    .attachment img {
-      max-width: 100%;
-      max-height: 512px;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-top: 0.5rem;
-      border: 1px solid var(--color-border);
-    }
-
-    .btn-download {
-      background: none;
-      border: none;
-      color: var(--color-accent);
-      cursor: pointer;
-      font-size: 1rem;
-      margin-left: 0.3rem;
-      transition: var(--transition);
-    }
-
-    .btn-download:hover { transform: scale(1.2); opacity: 0.8; }
-
-    /* Блоки кода */
-    .code-block {
-      background: var(--color-code-bg);
-      border: 1px solid var(--color-code-border);
-      border-radius: 6px;
-      padding: 1rem;
-      margin: 0.8rem 0;
-      font-family: var(--font-mono);
-      font-size: 0.9rem;
-      overflow-x: auto;
-      position: relative;
-    }
-
-    .btn-copy-code {
-      position: absolute;
-      top: 0.5rem;
-      right: 0.5rem;
-      background: rgba(0,0,0,0.05);
-      border: none;
-      border-radius: 4px;
-      padding: 0.3rem 0.5rem;
-      cursor: pointer;
-      font-size: 0.85rem;
-      opacity: 0.7;
-      transition: var(--transition);
-    }
-
-    .btn-copy-code:hover { opacity: 1; background: var(--color-accent); color: #fff; }
-    .btn-copy-code.success { background: var(--color-success); color: #fff; }
-    .btn-copy-code.error { background: var(--color-error); color: #fff; }
-
-    /* ==================== ПОЛЕ ВВОДА ==================== */
-    .input-area {
-      padding: 1rem;
-      border-top: 1px solid #eee;
-      background: #fff;
-    }
-
-    .file-preview {
-      background: #f5f5f5;
-      border-radius: var(--radius-sm);
-      padding: 0.6rem 0.8rem;
-      margin-bottom: 0.8rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 0.9rem;
-    }
-
-    .btn-remove-file {
-      background: none;
-      border: none;
-      color: var(--color-error);
-      cursor: pointer;
-      font-size: 1.1rem;
-      font-weight: bold;
-    }
-
-    .input-wrapper {
-      display: flex;
-      gap: 0.5rem;
-      align-items: flex-end;
-    }
-
-    .message-input {
-      flex: 1;
-      padding: 0.8rem;
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-sm);
-      font-family: var(--font-main);
-      font-size: 1rem;
-      resize: none;
-      min-height: 48px;
-      max-height: 150px;
-      transition: var(--transition);
-    }
-
-    .message-input:focus {
-      outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.15);
-    }
-
-    .message-input:disabled {
-      background: #f5f5f5;
-      color: var(--color-text-secondary);
-      cursor: not-allowed;
-    }
-
-    .btn-attach, .btn-send {
-      padding: 0.8rem 1.2rem;
-      border: none;
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      font-size: 1rem;
-      transition: var(--transition);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .btn-attach {
-      background: #f1f1f1;
-      color: var(--color-text);
-    }
-
-    .btn-attach:hover { background: #e0e0e0; }
-
-    .btn-send {
-      background: var(--color-accent);
-      color: #fff;
-      min-width: 100px;
-    }
-
-    .btn-send:hover { background: var(--color-accent-hover); }
-    .btn-send:disabled { background: #95a5a6; cursor: not-allowed; }
-
-    /* ==================== МОДАЛЬНОЕ ОКНО ==================== */
-    .modal {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: rgba(0,0,0,0.95);
-      display: none;
-      justify-content: center;
-      align-items: center;
-      z-index: 1000;
-      animation: fadeIn 0.3s ease;
-    }
-
-    .modal.visible { display: flex; }
-
-    .modal-content {
-      position: relative;
-      max-width: 90vw;
-      max-height: 85vh;
-    }
-
-    .modal-img {
-      max-width: 100%;
-      max-height: 85vh;
-      border-radius: 4px;
-      box-shadow: var(--shadow-modal);
-    }
-
-    .modal-close {
-      position: absolute;
-      top: -40px;
-      right: 0;
-      background: none;
-      border: none;
-      color: #fff;
-      font-size: 2rem;
-      cursor: pointer;
-      transition: var(--transition);
-    }
-
-    .modal-close:hover { color: var(--color-accent); transform: scale(1.1); }
-
-    .modal-filename {
-      color: #fff;
-      text-align: center;
-      margin-top: 1rem;
-      font-size: 0.95rem;
-    }
-
-    /* ==================== MARKDOWN СТИЛИ ==================== */
-    .message-content h1, .message-content h2, .message-content h3 {
-      margin: 1rem 0 0.5rem;
-      font-weight: 600;
-      color: var(--color-text);
-    }
-
-    .message-content h1 { font-size: 1.8em; border-bottom: 2px solid var(--color-border); padding-bottom: 0.3rem; }
-    .message-content h2 { font-size: 1.5em; border-bottom: 1px solid var(--color-border); padding-bottom: 0.3rem; }
-    .message-content h3 { font-size: 1.25em; }
-
-    .message-content code {
-      background: rgba(27,31,35,0.05);
-      padding: 0.2em 0.4em;
-      border-radius: 3px;
-      font-family: var(--font-mono);
-      font-size: 0.9em;
-    }
-
-    .message-content pre {
-      background: var(--color-code-bg);
-      border: 1px solid var(--color-code-border);
-      border-radius: 6px;
-      padding: 1em;
-      overflow-x: auto;
-      margin: 0.8rem 0;
-    }
-
-    .message-content pre code {
-      background: none;
-      padding: 0;
-      border-radius: 0;
-    }
-
-    .message-content table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 0.8rem 0;
-      font-size: 0.95rem;
-    }
-
-    .message-content th, .message-content td {
-      border: 1px solid #dfe2e5;
-      padding: 0.5rem 0.8rem;
-      text-align: left;
-    }
-
-    .message-content th {
-      background: #f6f8fa;
-      font-weight: 600;
-    }
-
-    .message-content tr:nth-child(even) { background: #f6f8fa; }
-
-    .message-content blockquote {
-      border-left: 4px solid #dfe2e5;
-      background: #f8f9fa;
-      padding: 0.5em 1em;
-      margin: 0.8rem 0;
-      color: var(--color-text-secondary);
-    }
-
-    .message-content ul, .message-content ol {
-      padding-left: 1.5em;
-      margin: 0.5rem 0;
-    }
-
-    .message-content li { margin: 0.3rem 0; }
-
-    /* ==================== ПОДВАЛ ==================== */
-    footer {
-      height: 50px;
-      background: var(--color-header);
-      color: #fff;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      font-size: 0.85rem;
-      text-align: center;
-      padding: 0 1rem;
-    }
-
-    footer .version { font-weight: 500; }
-    footer .copyright { font-size: 0.75rem; opacity: 0.9; }
-
-    /* ==================== АДАПТИВНОСТЬ ==================== */
-    @media (max-width: 768px) {
-      .main-container {
-        flex-direction: column;
-        padding: 0.5rem;
-      }
-
-      .sidebar {
-        width: 100%;
-        height: 250px;
-        min-width: auto;
-        border-right: none;
-        border-bottom: 1px solid var(--color-border-light);
-      }
-
-      .chat-area {
-        height: calc(100vh - 310px);
-      }
-
-      .message {
-        max-width: 95%;
-      }
-
-      .input-wrapper {
-        flex-direction: column;
-        align-items: stretch;
-      }
-
-      .btn-send {
-        width: 100%;
-      }
-
-      .request-status-panel {
-        font-size: 0.8rem;
-        max-height: 300px;
-      }
-    }
-
-    /* ==================== СТРАНИЦА АВТОРИЗАЦИИ ==================== */
-    .auth-page {
-      display: none;
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      background: var(--color-bg);
-      justify-content: center;
-      align-items: center;
-      z-index: 2000;
-    }
-
-    .auth-page.visible { display: flex; }
-
-    .auth-container {
-      background: #fff;
-      padding: 2rem;
-      border-radius: var(--radius);
-      box-shadow: var(--shadow-modal);
-      width: 100%;
-      max-width: 400px;
-    }
-
-    .auth-container h2 {
-      text-align: center;
-      margin-bottom: 1.5rem;
-      color: var(--color-header);
-    }
-
-    .auth-form .form-group {
-      margin-bottom: 1rem;
-    }
-
-    .auth-form label {
-      display: block;
-      margin-bottom: 0.4rem;
-      font-weight: 500;
-      color: var(--color-text);
-    }
-
-    .auth-form input {
-      width: 100%;
-      padding: 0.75rem;
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-sm);
-      font-size: 1rem;
-      transition: var(--transition);
-    }
-
-    .auth-form input:focus {
-      outline: none;
-      border-color: var(--color-accent);
-      box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.15);
-    }
-
-    .auth-form .btn-submit {
-      width: 100%;
-      padding: 0.8rem;
-      background: var(--color-accent);
-      color: #fff;
-      border: none;
-      border-radius: var(--radius-sm);
-      font-size: 1rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: var(--transition);
-      margin-top: 0.5rem;
-    }
-
-    .auth-form .btn-submit:hover { background: var(--color-accent-hover); }
-
-    .auth-error {
-      background: #ffebee;
-      color: var(--color-error);
-      padding: 0.6rem;
-      border-radius: var(--radius-sm);
-      margin-bottom: 1rem;
-      font-size: 0.9rem;
-      display: none;
-    }
-
-    .auth-error.visible { display: block; }
-
-    /* ==================== БЕЙДЖИ ТИПОВ ЗАПРОСОВ ==================== */
-    .routing-badge {
-      display: inline-block;
-      padding: 0.2rem 0.5rem;
-      border-radius: 12px;
-      font-size: 0.75rem;
-      font-weight: 500;
-      margin-left: 0.5rem;
-      vertical-align: middle;
-    }
-    .routing-simple { background: #e3f2fd; color: #1976d2; }
-    .routing-multimodal_analysis { background: #e8f5e9; color: #388e3c; }
-    .routing-image_generation { background: #f3e5f5; color: #7b1fa2; }
-    .routing-camera_request { background: #fff3e0; color: #f57c00; }
-    .routing-reasoning { background: #ffebee; color: #c62828; }
-    .routing-reasoning_fallback { background: #ffebee; color: #c62828; }
-
-    /* Утилиты */
-    .hidden { display: none !important; }
-    .flex { display: flex; }
-    .items-center { align-items: center; }
-    .justify-between { justify-content: space-between; }
-    .text-sm { font-size: 0.85rem; }
-    .text-muted { color: var(--color-text-secondary); }
-    .text-truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; display: inline-block; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' http://localhost:* http://host.docker.internal:* ws://localhost:* ws://host.docker.internal:*;">
+<meta name="description" content="ИИ Локальный — автономный чат-интерфейс для локальных ИИ-моделей">
+<title>🤖 ИИ Локальный</title>
+<style>
+:root {
+--color-bg: #f5f5f5;
+--color-header: #2c3e50;
+--color-text: #2c3e50;
+--color-text-secondary: #7f8c8d;
+--color-accent: #3498db;
+--color-accent-hover: #2980b9;
+--color-user-msg: #e6f2ff;
+--color-assistant-msg: #f0f0f0;
+--color-error: #e74c3c;
+--color-success: #28a745;
+--color-warning: #ffc107;
+--color-border: #ddd;
+--color-border-light: #e0e0e0;
+--color-sidebar-bg: #f1f3f6;
+--color-code-bg: #f6f8fa;
+--color-code-border: #e1e4e8;
+--shadow-light: 0 2px 8px rgba(0,0,0,0.1);
+--shadow-modal: 0 8px 32px rgba(0,0,0,0.3);
+--radius: 8px;
+--radius-sm: 6px;
+--font-main: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+--font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+--transition: all 0.3s ease;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+font-family: var(--font-main);
+background: var(--color-bg);
+color: var(--color-text);
+line-height: 1.6;
+font-size: 1rem;
+height: 100vh;
+display: flex;
+flex-direction: column;
+}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+header {
+height: 50px;
+background: var(--color-header);
+color: #fff;
+display: flex;
+align-items: center;
+justify-content: space-between;
+padding: 0 1.5rem;
+box-shadow: var(--shadow-light);
+position: sticky;
+top: 0;
+z-index: 100;
+}
+header .logo {
+font-size: 1.3rem;
+font-weight: 600;
+display: flex;
+align-items: center;
+gap: 0.5rem;
+}
+header .user-info {
+display: flex;
+align-items: center;
+gap: 1rem;
+font-size: 0.9rem;
+}
+header .btn-logout {
+background: rgba(255,255,255,0.15);
+border: none;
+color: #fff;
+padding: 0.4rem 0.8rem;
+border-radius: 4px;
+cursor: pointer;
+font-size: 0.85rem;
+transition: var(--transition);
+}
+header .btn-logout:hover { background: rgba(255,255,255,0.25); }
+.main-container {
+display: flex;
+flex: 1;
+overflow: hidden;
+padding: 1rem;
+gap: 1rem;
+}
+.sidebar {
+width: 25%;
+min-width: 220px;
+background: var(--color-sidebar-bg);
+border-right: 1px solid var(--color-border-light);
+border-radius: var(--radius);
+display: flex;
+flex-direction: column;
+overflow: hidden;
+}
+.sidebar-header {
+padding: 0.8rem 1rem;
+border-bottom: 1px solid var(--color-border);
+display: flex;
+justify-content: space-between;
+align-items: center;
+position: sticky;
+top: 0;
+background: var(--color-sidebar-bg);
+z-index: 10;
+}
+.sidebar-header h3 { font-size: 1.1rem; }
+.btn-new-session {
+background: var(--color-accent);
+color: #fff;
+border: none;
+width: 28px;
+height: 28px;
+border-radius: 50%;
+cursor: pointer;
+font-size: 1.2rem;
+display: flex;
+align-items: center;
+justify-content: center;
+transition: var(--transition);
+}
+.btn-new-session:hover { background: var(--color-accent-hover); transform: scale(1.05); }
+.sessions-list {
+padding: 0.5rem;
+overflow-y: auto;
+flex: 1;
+}
+.session-item {
+background: #fff;
+border: 1px solid var(--color-border);
+border-radius: var(--radius-sm);
+padding: 0.8rem;
+margin-bottom: 0.5rem;
+cursor: pointer;
+transition: var(--transition);
+position: relative;
+}
+.session-item:hover {
+background: var(--color-user-msg);
+border-color: var(--color-accent);
+}
+.session-item.active {
+background: var(--color-user-msg);
+border-color: var(--color-accent);
+box-shadow: 0 2px 6px rgba(52, 152, 219, 0.2);
+}
+.session-title {
+display: flex;
+justify-content: space-between;
+align-items: center;
+font-weight: 500;
+margin-bottom: 0.3rem;
+}
+.session-date {
+font-size: 0.75rem;
+color: var(--color-text-secondary);
+font-family: var(--font-mono);
+}
+.btn-delete-session {
+background: none;
+border: none;
+color: var(--color-text-secondary);
+cursor: pointer;
+opacity: 0;
+transition: var(--transition);
+font-size: 1rem;
+padding: 0.2rem;
+}
+.session-item:hover .btn-delete-session { opacity: 1; }
+.btn-delete-session:hover { color: var(--color-error); }
+.status-indicator {
+display: inline-block;
+width: 8px;
+height: 8px;
+border-radius: 50%;
+margin-right: 0.4rem;
+animation: pulse 1.5s infinite;
+}
+.status-new { background: var(--color-accent); }
+.status-error { background: var(--color-error); }
+.status-processing { background: var(--color-warning); }
+.status-queued { background: #95a5a6; }
+@keyframes pulse {
+0%, 100% { opacity: 1; transform: scale(1); }
+50% { opacity: 0.6; transform: scale(0.85); }
+}
+.chat-area {
+flex: 1;
+display: flex;
+flex-direction: column;
+background: #fff;
+border: 1px solid var(--color-border-light);
+border-radius: var(--radius);
+overflow: hidden;
+}
+.chat-header {
+padding: 0.8rem 1rem;
+border-bottom: 1px solid #eee;
+display: flex;
+justify-content: space-between;
+align-items: center;
+font-weight: 500;
+}
+.chat-actions {
+display: flex;
+gap: 0.5rem;
+}
+.chat-btn {
+background: #f1f1f1;
+border: 1px solid var(--color-border);
+padding: 0.4rem 0.7rem;
+border-radius: 4px;
+cursor: pointer;
+font-size: 0.9rem;
+transition: var(--transition);
+display: flex;
+align-items: center;
+gap: 0.3rem;
+}
+.chat-btn:hover { background: #e0e0e0; }
+.chat-btn.primary { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+.chat-btn.primary:hover { background: var(--color-accent-hover); }
+.request-status-panel {
+background: #f8f9fa;
+border: 1px solid #dee2e6;
+border-radius: var(--radius);
+margin: 0.5rem 1rem;
+padding: 0.8rem;
+max-height: 400px;
+overflow-y: auto;
+display: none;
+}
+.request-status-panel.visible { display: block; animation: slideIn 0.3s ease; }
+@keyframes slideIn {
+from { opacity: 0; transform: translateY(-10px); }
+to { opacity: 1; transform: translateY(0); }
+}
+.status-row {
+display: flex;
+justify-content: space-between;
+align-items: center;
+padding: 0.4rem 0;
+border-bottom: 1px solid #eee;
+font-size: 0.9rem;
+}
+.status-row:last-child { border-bottom: none; }
+.progress-bar {
+height: 6px;
+background: #e0e0e0;
+border-radius: 3px;
+overflow: hidden;
+margin: 0.3rem 0;
+}
+.progress-fill {
+height: 100%;
+background: var(--color-accent);
+border-radius: 3px;
+transition: width 0.3s ease;
+}
+.queue-item {
+display: flex;
+justify-content: space-between;
+align-items: center;
+padding: 0.3rem 0;
+font-size: 0.85rem;
+}
+.btn-cancel-queue {
+background: none;
+border: none;
+color: var(--color-error);
+cursor: pointer;
+font-size: 1rem;
+margin-left: 0.5rem;
+}
+.messages-container {
+flex: 1;
+padding: 1rem;
+overflow-y: auto;
+display: flex;
+flex-direction: column;
+gap: 1rem;
+}
+.message {
+max-width: 85%;
+padding: 0.8rem 1rem;
+border-radius: var(--radius);
+position: relative;
+animation: fadeIn 0.2s ease;
+}
+@keyframes fadeIn {
+from { opacity: 0; transform: translateY(10px); }
+to { opacity: 1; transform: translateY(0); }
+}
+.message.user {
+align-self: flex-start;
+background: var(--color-user-msg);
+border: 1px solid #bcd5f0;
+}
+.message.assistant {
+align-self: flex-start;
+background: var(--color-assistant-msg);
+border: 1px solid #d0d0d0;
+}
+.message-header {
+font-size: 0.75rem;
+color: var(--color-text-secondary);
+margin-bottom: 0.5rem;
+font-family: var(--font-mono);
+display: flex;
+align-items: center;
+gap: 0.5rem;
+flex-wrap: wrap;
+}
+.message-content {
+line-height: 1.7;
+}
+.message-content p { margin: 0.5rem 0; }
+.message-content p:first-child { margin-top: 0; }
+.message-content p:last-child { margin-bottom: 0; }
+.attachment {
+display: inline-flex;
+align-items: center;
+gap: 0.4rem;
+background: rgba(0,0,0,0.05);
+padding: 0.4rem 0.7rem;
+border-radius: 4px;
+margin: 0.5rem 0;
+font-size: 0.9rem;
+}
+.attachment img {
+max-width: 100%;
+max-height: 512px;
+border-radius: 4px;
+cursor: pointer;
+margin-top: 0.5rem;
+border: 1px solid var(--color-border);
+}
+.btn-download {
+background: none;
+border: none;
+color: var(--color-accent);
+cursor: pointer;
+font-size: 1rem;
+margin-left: 0.3rem;
+transition: var(--transition);
+}
+.btn-download:hover { transform: scale(1.2); opacity: 0.8; }
+.code-block {
+background: var(--color-code-bg);
+border: 1px solid var(--color-code-border);
+border-radius: 6px;
+padding: 1rem;
+margin: 0.8rem 0;
+font-family: var(--font-mono);
+font-size: 0.9rem;
+overflow-x: auto;
+position: relative;
+}
+.btn-copy-code {
+position: absolute;
+top: 0.5rem;
+right: 0.5rem;
+background: rgba(0,0,0,0.05);
+border: none;
+border-radius: 4px;
+padding: 0.3rem 0.5rem;
+cursor: pointer;
+font-size: 0.85rem;
+opacity: 0.7;
+transition: var(--transition);
+}
+.btn-copy-code:hover { opacity: 1; background: var(--color-accent); color: #fff; }
+.btn-copy-code.success { background: var(--color-success); color: #fff; }
+.btn-copy-code.error { background: var(--color-error); color: #fff; }
+.input-area {
+padding: 1rem;
+border-top: 1px solid #eee;
+background: #fff;
+}
+.file-preview {
+background: #f5f5f5;
+border-radius: var(--radius-sm);
+padding: 0.6rem 0.8rem;
+margin-bottom: 0.8rem;
+display: flex;
+justify-content: space-between;
+align-items: center;
+font-size: 0.9rem;
+}
+.btn-remove-file {
+background: none;
+border: none;
+color: var(--color-error);
+cursor: pointer;
+font-size: 1.1rem;
+font-weight: bold;
+}
+.input-wrapper {
+display: flex;
+gap: 0.5rem;
+align-items: flex-end;
+}
+.message-input {
+flex: 1;
+padding: 0.8rem;
+border: 1px solid var(--color-border);
+border-radius: var(--radius-sm);
+font-family: var(--font-main);
+font-size: 1rem;
+resize: none;
+min-height: 48px;
+max-height: 150px;
+transition: var(--transition);
+}
+.message-input:focus {
+outline: none;
+border-color: var(--color-accent);
+box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.15);
+}
+.message-input:disabled {
+background: #f5f5f5;
+color: var(--color-text-secondary);
+cursor: not-allowed;
+}
+.btn-attach, .btn-send {
+padding: 0.8rem 1.2rem;
+border: none;
+border-radius: var(--radius-sm);
+cursor: pointer;
+font-size: 1rem;
+transition: var(--transition);
+display: flex;
+align-items: center;
+justify-content: center;
+}
+.btn-attach {
+background: #f1f1f1;
+color: var(--color-text);
+}
+.btn-attach:hover { background: #e0e0e0; }
+.btn-send {
+background: var(--color-accent);
+color: #fff;
+min-width: 100px;
+}
+.btn-send:hover { background: var(--color-accent-hover); }
+.btn-send:disabled { background: #95a5a6; cursor: not-allowed; }
+.modal {
+position: fixed;
+top: 0; left: 0;
+width: 100%; height: 100%;
+background: rgba(0,0,0,0.95);
+display: none;
+justify-content: center;
+align-items: center;
+z-index: 1000;
+animation: fadeIn 0.3s ease;
+}
+.modal.visible { display: flex; }
+.modal-content {
+position: relative;
+max-width: 90vw;
+max-height: 85vh;
+}
+.modal-img {
+max-width: 100%;
+max-height: 85vh;
+border-radius: 4px;
+box-shadow: var(--shadow-modal);
+}
+.modal-close {
+position: absolute;
+top: -40px;
+right: 0;
+background: none;
+border: none;
+color: #fff;
+font-size: 2rem;
+cursor: pointer;
+transition: var(--transition);
+}
+.modal-close:hover { color: var(--color-accent); transform: scale(1.1); }
+.modal-filename {
+color: #fff;
+text-align: center;
+margin-top: 1rem;
+font-size: 0.95rem;
+}
+.message-content h1, .message-content h2, .message-content h3 {
+margin: 1rem 0 0.5rem;
+font-weight: 600;
+color: var(--color-text);
+}
+.message-content h1 { font-size: 1.8em; border-bottom: 2px solid var(--color-border); padding-bottom: 0.3rem; }
+.message-content h2 { font-size: 1.5em; border-bottom: 1px solid var(--color-border); padding-bottom: 0.3rem; }
+.message-content h3 { font-size: 1.25em; }
+.message-content code {
+background: rgba(27,31,35,0.05);
+padding: 0.2em 0.4em;
+border-radius: 3px;
+font-family: var(--font-mono);
+font-size: 0.9em;
+}
+.message-content pre {
+background: var(--color-code-bg);
+border: 1px solid var(--color-code-border);
+border-radius: 6px;
+padding: 1em;
+overflow-x: auto;
+margin: 0.8rem 0;
+}
+.message-content pre code {
+background: none;
+padding: 0;
+border-radius: 0;
+}
+.message-content table {
+width: 100%;
+border-collapse: collapse;
+margin: 0.8rem 0;
+font-size: 0.95rem;
+}
+.message-content th, .message-content td {
+border: 1px solid #dfe2e5;
+padding: 0.5rem 0.8rem;
+text-align: left;
+}
+.message-content th {
+background: #f6f8fa;
+font-weight: 600;
+}
+.message-content tr:nth-child(even) { background: #f6f8fa; }
+.message-content blockquote {
+border-left: 4px solid #dfe2e5;
+background: #f8f9fa;
+padding: 0.5em 1em;
+margin: 0.8rem 0;
+color: var(--color-text-secondary);
+}
+.message-content ul, .message-content ol {
+padding-left: 1.5em;
+margin: 0.5rem 0;
+}
+.message-content li { margin: 0.3rem 0; }
+footer {
+height: 50px;
+background: var(--color-header);
+color: #fff;
+display: flex;
+flex-direction: column;
+justify-content: center;
+align-items: center;
+font-size: 0.85rem;
+text-align: center;
+padding: 0 1rem;
+}
+footer .version { font-weight: 500; }
+footer .copyright { font-size: 0.75rem; opacity: 0.9; }
+@media (max-width: 768px) {
+.main-container {
+flex-direction: column;
+padding: 0.5rem;
+}
+.sidebar {
+width: 100%;
+height: 250px;
+min-width: auto;
+border-right: none;
+border-bottom: 1px solid var(--color-border-light);
+}
+.chat-area {
+height: calc(100vh - 310px);
+}
+.message {
+max-width: 95%;
+}
+.input-wrapper {
+flex-direction: column;
+align-items: stretch;
+}
+.btn-send {
+width: 100%;
+}
+.request-status-panel {
+font-size: 0.8rem;
+max-height: 300px;
+}
+}
+.auth-page {
+display: none;
+position: fixed;
+top: 0; left: 0;
+width: 100%; height: 100%;
+background: var(--color-bg);
+justify-content: center;
+align-items: center;
+z-index: 2000;
+}
+.auth-page.visible { display: flex; }
+.auth-container {
+background: #fff;
+padding: 2rem;
+border-radius: var(--radius);
+box-shadow: var(--shadow-modal);
+width: 100%;
+max-width: 400px;
+}
+.auth-container h2 {
+text-align: center;
+margin-bottom: 1.5rem;
+color: var(--color-header);
+}
+.auth-form .form-group {
+margin-bottom: 1rem;
+}
+.auth-form label {
+display: block;
+margin-bottom: 0.4rem;
+font-weight: 500;
+color: var(--color-text);
+}
+.auth-form input {
+width: 100%;
+padding: 0.75rem;
+border: 1px solid var(--color-border);
+border-radius: var(--radius-sm);
+font-size: 1rem;
+transition: var(--transition);
+}
+.auth-form input:focus {
+outline: none;
+border-color: var(--color-accent);
+box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.15);
+}
+.auth-form .btn-submit {
+width: 100%;
+padding: 0.8rem;
+background: var(--color-accent);
+color: #fff;
+border: none;
+border-radius: var(--radius-sm);
+font-size: 1rem;
+font-weight: 500;
+cursor: pointer;
+transition: var(--transition);
+margin-top: 0.5rem;
+}
+.auth-form .btn-submit:hover { background: var(--color-accent-hover); }
+.auth-error {
+background: #ffebee;
+color: var(--color-error);
+padding: 0.6rem;
+border-radius: var(--radius-sm);
+margin-bottom: 1rem;
+font-size: 0.9rem;
+display: none;
+}
+.auth-error.visible { display: block; }
+.routing-badge {
+display: inline-block;
+padding: 0.2rem 0.5rem;
+border-radius: 12px;
+font-size: 0.75rem;
+font-weight: 500;
+margin-left: 0.5rem;
+vertical-align: middle;
+}
+.routing-simple { background: #e3f2fd; color: #1976d2; }
+.routing-multimodal_analysis { background: #e8f5e9; color: #388e3c; }
+.routing-image_generation { background: #f3e5f5; color: #7b1fa2; }
+.routing-camera_request { background: #fff3e0; color: #f57c00; }
+.routing-reasoning { background: #ffebee; color: #c62828; }
+.routing-reasoning_fallback { background: #ffebee; color: #c62828; }
+.hidden { display: none !important; }
+.flex { display: flex; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.text-sm { font-size: 0.85rem; }
+.text-muted { color: var(--color-text-secondary); }
+.text-truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; display: inline-block; }
+</style>
 </head>
 <body>
-
-  <!-- ==================== ШАПКА ==================== -->
-  <header>
-    <div class="logo">🤖 ИИ Локальный</div>
-    <div class="user-info">
-      <span id="user-email">user@local</span>
-      <button class="btn-logout" onclick="app.logout()">Выйти</button>
-    </div>
-  </header>
-
-  <!-- ==================== ОСНОВНОЙ КОНТЕЙНЕР ==================== -->
-  <div class="main-container">
-    
-    <!-- Боковая панель сеансов -->
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <h3>Сеансы (<span id="sessions-count">0</span>)</h3>
-        <button class="btn-new-session" title="Новый сеанс" onclick="app.newSession()">➕</button>
-      </div>
-      <div class="sessions-list" id="sessions-list">
-        <!-- Сеансы рендерятся через JS -->
-      </div>
-    </aside>
-
-    <!-- Основная область чата -->
-    <main class="chat-area">
-      <div class="chat-header">
-        <div>Чат <span class="text-muted text-sm">| Сообщений: <span id="msg-count">0</span></span></div>
-        <div class="chat-actions">
-          <button class="chat-btn" title="Сохранить" onclick="app.exportSession()">💾</button>
-          <button class="chat-btn" title="Очистить" onclick="app.clearChat()">🗑️</button>
-          <button class="chat-btn primary" title="Статус моделей" onclick="app.toggleStatus()">📊 Статус</button>
-        </div>
-      </div>
-
-      <!-- Панель статуса запросов -->
-      <div class="request-status-panel" id="status-panel">
-        <div class="status-row justify-between">
-          <strong>📊 Статус моделей</strong>
-          <button class="chat-btn" style="padding:0.2rem 0.5rem;font-size:0.85rem" onclick="app.refreshStatus()">↻</button>
-        </div>
-        <div id="models-status">Загрузка...</div>
-      </div>
-
-      <!-- Область сообщений -->
-      <div class="messages-container" id="messages">
-        <!-- Сообщения рендерятся через JS -->
-      </div>
-
-      <!-- Поле ввода сообщений -->
-      <div class="input-area">
-        <div class="file-preview hidden" id="file-preview">
-          <span>📄 <span id="file-name">файл</span> (<span id="file-size">0 Б</span>)</span>
-          <button class="btn-remove-file" onclick="app.removeFile()">✕</button>
-        </div>
-        <div class="input-wrapper">
-          <textarea class="message-input" id="message-input" placeholder="Введите сообщение или запрос на генерацию изображения..." rows="1" onkeydown="app.handleKey(event)" oninput="app.autoResize(this)"></textarea>
-          <button class="btn-attach" title="Прикрепить изображение" onclick="document.getElementById('file-input').click()">📎</button>
-          <input type="file" id="file-input" class="hidden" accept="image/*" onchange="app.handleFile(event)">
-          <button class="btn-send" id="send-btn" onclick="app.send()">Отправить</button>
-        </div>
-      </div>
-    </main>
-  </div>
-
-  <!-- ==================== ПОДВАЛ ==================== -->
-  <footer>
-    <div class="version" id="footer-version">ИИ Локальный v3.3</div>
-    <div class="copyright" id="footer-copyright">(с) 2026 Барсуков Валерий</div>
-  </footer>
-
-  <!-- ==================== МОДАЛЬНОЕ ОКНО ДЛЯ ИЗОБРАЖЕНИЙ ==================== -->
-  <div class="modal" id="image-modal" onclick="app.closeModal(event)">
-    <div class="modal-content">
-      <button class="modal-close" onclick="app.closeModalBtn()">×</button>
-      <img src="" alt="" class="modal-img" id="modal-img">
-      <div class="modal-filename" id="modal-filename"></div>
-    </div>
-  </div>
-
-  <!-- ==================== СТРАНИЦА АВТОРИЗАЦИИ ==================== -->
-  <div class="auth-page" id="auth-page">
-    <div class="auth-container">
-      <h2>🔐 Вход</h2>
-      <div class="auth-error" id="auth-error">Неверный email или пароль</div>
-      <form class="auth-form" onsubmit="app.login(event)">
-        <div class="form-group">
-          <label for="email">E-mail</label>
-          <input type="email" id="email" required placeholder="user@local">
-        </div>
-        <div class="form-group">
-          <label for="password">Пароль</label>
-          <input type="password" id="password" required placeholder="••••••••" minlength="4">
-        </div>
-        <button type="submit" class="btn-submit">Войти</button>
-      </form>
-    </div>
-  </div>
-
-  <!-- ==================== СКРИПТ ПРИЛОЖЕНИЯ ==================== -->
-  <script>
-    const app = (() => {
-      // === КОНФИГУРАЦИЯ ===
-      const API_BASE = '';  // Пусто, т.к. фронтенд и бэкенд на одном домене
-      const FOOTER_TEXT = "ИИ Локальный v3.3 (с) 2026 Барсуков Валерий";
-      
-      // === СОСТОЯНИЕ ===
-      let state = {
-        session: null,
-        messages: [],
-        file: null,
-        status: { ollama: false, a1111: false },
-        loading: false
-      };
-
-      // === ИНИЦИАЛИЗАЦИЯ ===
-      function init() {
-        // Подвал из настроек
-        try {
-          const parts = FOOTER_TEXT.split(' (с) ');
-          document.getElementById('footer-version').textContent = parts[0];
-          document.getElementById('footer-copyright').textContent = '(с) ' + (parts[1] || '');
-        } catch(e) {}
-        
-        // Авто-логин для демо
-        if (localStorage.getItem('ai_local_auth')) {
-          document.getElementById('user-email').textContent = localStorage.getItem('ai_local_user') || 'user@local';
-          loadSessions();
-        } else {
-          showAuth();
-        }
-        
-        // Обработчик ESC для модального окна
-        document.addEventListener('keydown', (e) => {
-          if (e.key === 'Escape') closeModalBtn();
-        });
-      }
-
-      // === АВТОРИЗАЦИЯ ===
-      function showAuth() { document.getElementById('auth-page').classList.add('visible'); }
-      
-      function login(e) {
-        e.preventDefault();
-        const email = document.getElementById('email').value;
-        const pass = document.getElementById('password').value;
-        if (pass.length >= 4) {
-          localStorage.setItem('ai_local_auth', '1');
-          localStorage.setItem('ai_local_user', email);
-          document.getElementById('user-email').textContent = email;
-          document.getElementById('auth-page').classList.remove('visible');
-          loadSessions();
-        } else {
-          document.getElementById('auth-error').classList.add('visible');
-          setTimeout(() => document.getElementById('auth-error').classList.remove('visible'), 3000);
-        }
-      }
-      
-      function logout() {
-        localStorage.clear();
-        location.reload();
-      }
-
-      // === СЕССИИ ===
-      async function loadSessions() {
-        try {
-          const res = await fetch(`${API_BASE}/api/sessions`);
-          if (!res.ok) throw new Error('Ошибка загрузки');
-          const sessions = await res.json();
-          renderSessions(sessions);
-        } catch(e) { 
-          console.error('Ошибка загрузки сессий:', e);
-          document.getElementById('sessions-list').innerHTML = '<div class="text-muted">Ошибка загрузки</div>';
-        }
-      }
-
-      function renderSessions(sessions) {
-        const list = document.getElementById('sessions-list');
-        document.getElementById('sessions-count').textContent = sessions.length;
-        
-        if (sessions.length === 0) {
-          list.innerHTML = '<div class="text-muted" style="padding:1rem;text-align:center">Нет сеансов</div>';
-          return;
-        }
-        
-        list.innerHTML = sessions.map(s => {
-          const isActive = s.id === state.session?.id;
-          return `
-            <div class="session-item ${isActive ? 'active' : ''}" onclick="app.selectSession('${s.id}')">
-              <div class="session-title">
-                <span class="text-truncate" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</span>
-                <button class="btn-delete-session" onclick="event.stopPropagation(); app.deleteSession('${s.id}')" title="Удалить">🗑️</button>
-              </div>
-              <div class="session-date">📅 ${new Date(s.created).toLocaleString('ru-RU')}</div>
-            </div>
-          `;
-        }).join('');
-      }
-
-      async function selectSession(id) {
-        try {
-          const res = await fetch(`${API_BASE}/api/sessions/${id}`);
-          if (!res.ok) throw new Error('Сессия не найдена');
-          state.session = await res.json();
-          state.messages = state.session.messages || [];
-          renderMessages();
-          loadSessions(); // Обновить список для подсветки активного
-        } catch(e) { 
-          console.error('Ошибка загрузки сессии:', e);
-          alert('Не удалось загрузить сеанс');
-        }
-      }
-
-      async function newSession() {
-        state.session = { 
-          id: crypto.randomUUID(), 
-          messages: [], 
-          created: new Date().toISOString(),
-          title: 'Новый сеанс'
-        };
-        state.messages = [];
-        renderMessages();
-        loadSessions();
-      }
-
-      async function deleteSession(id) {
-        if (!confirm('Удалить этот сеанс?')) return;
-        try {
-          await fetch(`${API_BASE}/api/sessions/${id}`, { method: 'DELETE' });
-          if (state.session?.id === id) { 
-            state.session = null; 
-            state.messages = []; 
-            renderMessages(); 
-          }
-          loadSessions();
-        } catch(e) {
-          console.error('Ошибка удаления:', e);
-          alert('Не удалось удалить сеанс');
-        }
-      }
-
-      // === СООБЩЕНИЯ ===
-      function renderMessages() {
-        const container = document.getElementById('messages');
-        document.getElementById('msg-count').textContent = state.messages.length;
-        
-        if (state.messages.length === 0) {
-          container.innerHTML = '<div class="text-muted" style="text-align:center;padding:2rem">Начните диалог...</div>';
-          return;
-        }
-        
-        container.innerHTML = state.messages.map(msg => {
-          const isUser = msg.role === 'user';
-          const meta = msg.metadata || {};
-          
-          // Бейдж типа запроса
-          const routingBadge = meta.request_type ? 
-            `<span class="routing-badge routing-${meta.request_type}">${getRoutingLabel(meta.request_type)}</span>` : '';
-          
-          // Обработка контента: код, markdown
-          let content = escapeHtml(msg.content || '')
-            .replace(/```(\w*)\n([\s\S]*?)```/g, (m, lang, code) => 
-              `<div class="code-block"><button class="btn-copy-code" onclick="app.copyCode(this)">📋 Копировать</button><code>${escapeHtml(code)}</code></div>`)
-            .replace(/`([^`]+)`/g, '<code>$1</code>')
-            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-            .replace(/\n/g, '<br>');
-          
-          // Вложения
-          let attachment = '';
-          if (msg.attachment) {
-            attachment = `<br><div class="attachment">📎 ${escapeHtml(msg.attachment)} <button class="btn-download" onclick="app.downloadFile('${msg.attachment}')">⬇️</button></div>`;
-          }
-          if (msg.images?.[0]) {
-            attachment += `<br><img src="data:image/png;base64,${msg.images[0]}" alt="Generated" onclick="app.openModal('data:image/png;base64,${msg.images[0]}', 'generated.png')">`;
-          }
-          if (msg.camera_image) {
-            attachment += `<br><img src="data:image/jpeg;base64,${msg.camera_image}" alt="Camera" onclick="app.openModal('data:image/jpeg;base64,${msg.camera_image}', 'camera.jpg')">`;
-          }
-          
-          return `
-            <div class="message ${msg.role}">
-              <div class="message-header">
-                📅 ${new Date(msg.timestamp).toLocaleString('ru-RU')}
-                ${meta.model ? `<span class="text-muted">| ${escapeHtml(meta.model.split('/').pop())}</span>` : ''}
-                ${routingBadge}
-                ${meta.duration ? `<span class="text-muted">⏱️ ${meta.duration}с</span>` : ''}
-              </div>
-              <div class="message-content">${content}${attachment}</div>
-            </div>
-          `;
-        }).join('');
-        
-        // Прокрутка вниз
-        setTimeout(() => container.scrollTop = container.scrollHeight, 100);
-      }
-
-      function getRoutingLabel(type) {
-        return {
-          'simple': '💬 Быстрый',
-          'multimodal_analysis': '👁️ Анализ',
-          'image_generation': '🎨 Генерация',
-          'camera_request': '📷 Камера',
-          'reasoning': '🧠 Рассуждение',
-          'reasoning_fallback': '🧠 Рассуждение'
-        }[type] || type;
-      }
-
-      // === ОТПРАВКА СООБЩЕНИЯ ===
-      async function send() {
-        const input = document.getElementById('message-input');
-        const text = input.value.trim();
-        if (!text && !state.file) return;
-        if (state.loading) return;
-        
-        const btn = document.getElementById('send-btn');
-        btn.disabled = true;
-        state.loading = true;
-        
-        // Сообщение пользователя
-        state.messages.push({
-          role: 'user',
-          content: text,
-          timestamp: new Date().toISOString(),
-          attachment: state.file?.name || null
-        });
-        renderMessages();
-        
-        // Подготовка FormData
-        const formData = new FormData();
-        formData.append('session_id', state.session?.id || crypto.randomUUID());
-        formData.append('message', text);
-        if (state.file) formData.append('file', state.file);
-        
-        try {
-          const res = await fetch(`${API_BASE}/api/chat`, { 
-            method: 'POST', 
-            body: formData 
-          });
-          
-          const result = await res.json();
-          
-          if (result.error) {
-            state.messages.push({ 
-              role: 'assistant', 
-              content: `❌ ${result.error}`, 
-              timestamp: new Date().toISOString() 
-            });
-          } else if (result.message) {
-            state.messages.push(result.message);
-          }
-          
-          // Обновление сессии
-          if (result.session_id && !state.session) {
-            state.session = { id: result.session_id };
-          }
-          
-          renderMessages();
-          loadSessions();
-          
-        } catch(e) {
-          console.error('Ошибка отправки:', e);
-          state.messages.push({ 
-            role: 'assistant', 
-            content: '❌ Ошибка соединения с сервером. Проверьте, запущено ли приложение.', 
-            timestamp: new Date().toISOString() 
-          });
-          renderMessages();
-        } finally {
-          input.value = '';
-          input.style.height = 'auto';
-          removeFile();
-          btn.disabled = false;
-          state.loading = false;
-        }
-      }
-
-      function handleKey(e) { 
-        if (e.key === 'Enter' && !e.shiftKey) { 
-          e.preventDefault(); 
-          send(); 
-        } 
-      }
-
-      function autoResize(el) {
-        el.style.height = 'auto';
-        el.style.height = Math.min(el.scrollHeight, 150) + 'px';
-      }
-
-      // === ФАЙЛЫ ===
-      function handleFile(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        if (file.size > 5 * 1024 * 1024) { 
-          alert('Файл слишком большой (макс. 5 МБ)'); 
-          return; 
-        }
-        
-        state.file = file;
-        document.getElementById('file-name').textContent = file.name;
-        document.getElementById('file-size').textContent = formatSize(file.size);
-        document.getElementById('file-preview').classList.remove('hidden');
-        e.target.value = '';
-      }
-
-      function removeFile() { 
-        state.file = null; 
-        document.getElementById('file-preview').classList.add('hidden'); 
-      }
-      
-      function formatSize(bytes) { 
-        if (bytes === 0) return '0 Б';
-        const k = 1024;
-        const sizes = ['Б','КБ','МБ','ГБ'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-      }
-
-      // === УТИЛИТЫ ===
-      function escapeHtml(s) { 
-        if (!s) return '';
-        return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); 
-      }
-      
-      async function copyCode(btn) {
-        const code = btn.nextElementSibling.textContent;
-        try {
-          await navigator.clipboard.writeText(code);
-          const original = btn.textContent;
-          btn.textContent = '✓ Скопировано'; 
-          btn.classList.add('success');
-          setTimeout(() => { 
-            btn.textContent = original; 
-            btn.classList.remove('success'); 
-          }, 2000);
-        } catch { 
-          btn.textContent = '✕ Ошибка'; 
-          btn.classList.add('error'); 
-          setTimeout(() => { 
-            btn.textContent = '📋 Копировать'; 
-            btn.classList.remove('error'); 
-          }, 2000); 
-        }
-      }
-
-      // === МОДАЛЬНОЕ ОКНО ===
-      function openModal(src, name) {
-        document.getElementById('modal-img').src = src;
-        document.getElementById('modal-filename').textContent = name;
-        document.getElementById('image-modal').classList.add('visible');
-        document.body.style.overflow = 'hidden';
-      }
-      
-      function closeModal(e) { 
-        if (e.target.id === 'image-modal') closeModalBtn(); 
-      }
-      
-      function closeModalBtn() { 
-        document.getElementById('image-modal').classList.remove('visible'); 
-        document.body.style.overflow = ''; 
-      }
-
-      // === СТАТУС МОДЕЛЕЙ ===
-      async function refreshStatus() {
-        try {
-          const res = await fetch(`${API_BASE}/api/models/status`);
-          const status = await res.json();
-          
-          const ollamaStatus = status.ollama?.available ? '✅' : '❌';
-          const a1111Status = status.automatic1111?.available ? '✅' : '❌';
-          
-          document.getElementById('models-status').innerHTML = `
-            <div style="margin-bottom:0.5rem">
-              <strong>Ollama:</strong> ${ollamaStatus}<br>
-              <small class="text-muted">${status.ollama?.url || 'N/A'}</small><br>
-              ${status.ollama?.loaded?.length ? `<small>Загружено: ${status.ollama.loaded.join(', ')}</small>` : ''}
-            </div>
-            <div>
-              <strong>A1111:</strong> ${a1111Status}<br>
-              <small class="text-muted">${status.automatic1111?.url || 'N/A'}</small><br>
-              <small>Модель: ${escapeHtml(status.automatic1111?.model || '')}</small>
-            </div>
-          `;
-        } catch(e) { 
-          document.getElementById('models-status').textContent = '❌ Ошибка подключения к API'; 
-        }
-      }
-      
-      function toggleStatus() { 
-        const panel = document.getElementById('status-panel');
-        panel.classList.toggle('visible'); 
-        if (panel.classList.contains('visible')) refreshStatus(); 
-      }
-
-      // === ЭКСПОРТ/ОЧИСТКА ===
-      async function exportSession() {
-        if (!state.session?.id) { alert('Нет активного сеанса'); return; }
-        window.location.href = `${API_BASE}/api/export/${state.session.id}`;
-      }
-      
-      function clearChat() { 
-        if (!confirm('Очистить сообщения в текущем сеансе?')) return; 
-        state.messages = []; 
-        renderMessages(); 
-      }
-      
-      function downloadFile(name) { 
-        if (!state.session?.id) return;
-        window.open(`${API_BASE}/api/files/${state.session.id}/${name}`, '_blank'); 
-      }
-
-      // === ПУБЛИЧНЫЙ API ===
-      return {
-        init, login, logout, 
-        newSession, selectSession, deleteSession,
-        send, handleKey, autoResize, handleFile, removeFile,
-        copyCode, openModal, closeModal, closeModalBtn,
-        refreshStatus, toggleStatus, exportSession, clearChat, downloadFile
-      };
-    })();
-
-    // Запуск после загрузки DOM
-    document.addEventListener('DOMContentLoaded', () => app.init());
-  </script>
+<header>
+<div class="logo">🤖 ИИ Локальный</div>
+<div class="user-info">
+<span id="user-email">user@local</span>
+<button class="btn-logout" onclick="app.logout()">Выйти</button>
+</div>
+</header>
+<div class="main-container">
+<aside class="sidebar">
+<div class="sidebar-header">
+<h3>Сеансы (<span id="sessions-count">0</span>)</h3>
+<button class="btn-new-session" title="Новый сеанс" onclick="app.newSession()">➕</button>
+</div>
+<div class="sessions-list" id="sessions-list"></div>
+</aside>
+<main class="chat-area">
+<div class="chat-header">
+<div>Чат <span class="text-muted text-sm">| Сообщений: <span id="msg-count">0</span></span></div>
+<div class="chat-actions">
+<button class="chat-btn" title="Сохранить" onclick="app.exportSession()">💾</button>
+<button class="chat-btn" title="Очистить" onclick="app.clearChat()">🗑️</button>
+<button class="chat-btn primary" title="Статус моделей" onclick="app.toggleStatus()">📊 Статус</button>
+</div>
+</div>
+<div class="request-status-panel" id="status-panel">
+<div class="status-row justify-between">
+<strong>📊 Статус моделей</strong>
+<button class="chat-btn" style="padding:0.2rem 0.5rem;font-size:0.85rem" onclick="app.refreshStatus()">↻</button>
+</div>
+<div id="models-status">Загрузка...</div>
+</div>
+<div class="messages-container" id="messages"></div>
+<div class="input-area">
+<div class="file-preview hidden" id="file-preview">
+<span>📄 <span id="file-name">файл</span> (<span id="file-size">0 Б</span>)</span>
+<button class="btn-remove-file" onclick="app.removeFile()">✕</button>
+</div>
+<div class="input-wrapper">
+<textarea class="message-input" id="message-input" placeholder="Введите сообщение или запрос на генерацию изображения..." rows="1" onkeydown="app.handleKey(event)" oninput="app.autoResize(this)"></textarea>
+<button class="btn-attach" title="Прикрепить изображение" onclick="document.getElementById('file-input').click()">📎</button>
+<input type="file" id="file-input" class="hidden" accept="image/*" onchange="app.handleFile(event)">
+<button class="btn-send" id="send-btn" onclick="app.send()">Отправить</button>
+</div>
+</div>
+</main>
+</div>
+<footer>
+<div class="version" id="footer-version">ИИ Локальный v3.3</div>
+<div class="copyright" id="footer-copyright">(с) 2026 Барсуков Валерий</div>
+</footer>
+<div class="modal" id="image-modal" onclick="app.closeModal(event)">
+<div class="modal-content">
+<button class="modal-close" onclick="app.closeModalBtn()">×</button>
+<img src="" alt="" class="modal-img" id="modal-img">
+<div class="modal-filename" id="modal-filename"></div>
+</div>
+</div>
+<div class="auth-page" id="auth-page">
+<div class="auth-container">
+<h2>🔐 Вход</h2>
+<div class="auth-error" id="auth-error">Неверный email или пароль</div>
+<form class="auth-form" onsubmit="app.login(event)">
+<div class="form-group">
+<label for="email">E-mail</label>
+<input type="email" id="email" required placeholder="user@local">
+</div>
+<div class="form-group">
+<label for="password">Пароль</label>
+<input type="password" id="password" required placeholder="••••••••" minlength="4">
+</div>
+<button type="submit" class="btn-submit">Войти</button>
+</form>
+</div>
+</div>
+<script>
+const app = (() => {
+const API_BASE = '';
+const FOOTER_TEXT = "ИИ Локальный v3.3 (с) 2026 Барсуков Валерий";
+let state = {
+session: null,
+messages: [],
+file: null,
+status: { ollama: false, a1111: false },
+loading: false
+};
+function init() {
+try {
+const parts = FOOTER_TEXT.split(' (с) ');
+document.getElementById('footer-version').textContent = parts[0];
+document.getElementById('footer-copyright').textContent = '(с) ' + (parts[1] || '');
+} catch(e) {}
+if (localStorage.getItem('ai_local_auth')) {
+document.getElementById('user-email').textContent = localStorage.getItem('ai_local_user') || 'user@local';
+loadSessions();
+} else {
+showAuth();
+}
+document.addEventListener('keydown', (e) => {
+if (e.key === 'Escape') closeModalBtn();
+});
+}
+function showAuth() { document.getElementById('auth-page').classList.add('visible'); }
+function login(e) {
+e.preventDefault();
+const email = document.getElementById('email').value;
+const pass = document.getElementById('password').value;
+if (pass.length >= 4) {
+localStorage.setItem('ai_local_auth', '1');
+localStorage.setItem('ai_local_user', email);
+document.getElementById('user-email').textContent = email;
+document.getElementById('auth-page').classList.remove('visible');
+loadSessions();
+} else {
+document.getElementById('auth-error').classList.add('visible');
+setTimeout(() => document.getElementById('auth-error').classList.remove('visible'), 3000);
+}
+}
+function logout() {
+localStorage.clear();
+location.reload();
+}
+async function loadSessions() {
+try {
+const res = await fetch(`${API_BASE}/api/sessions`);
+if (!res.ok) throw new Error('Ошибка загрузки');
+const sessions = await res.json();
+renderSessions(sessions);
+} catch(e) {
+console.error('Ошибка загрузки сессий:', e);
+document.getElementById('sessions-list').innerHTML = '<div class="text-muted">Ошибка загрузки</div>';
+}
+}
+function renderSessions(sessions) {
+const list = document.getElementById('sessions-list');
+document.getElementById('sessions-count').textContent = sessions.length;
+if (sessions.length === 0) {
+list.innerHTML = '<div class="text-muted" style="padding:1rem;text-align:center">Нет сеансов</div>';
+return;
+}
+list.innerHTML = sessions.map(s => {
+const isActive = s.id === state.session?.id;
+return `
+<div class="session-item ${isActive ? 'active' : ''}" onclick="app.selectSession('${s.id}')">
+<div class="session-title">
+<span class="text-truncate" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</span>
+<button class="btn-delete-session" onclick="event.stopPropagation(); app.deleteSession('${s.id}')" title="Удалить">🗑️</button>
+</div>
+<div class="session-date">📅 ${new Date(s.created).toLocaleString('ru-RU')}</div>
+</div>
+`;
+}).join('');
+}
+async function selectSession(id) {
+try {
+const res = await fetch(`${API_BASE}/api/sessions/${id}`);
+if (!res.ok) throw new Error('Сессия не найдена');
+state.session = await res.json();
+state.messages = state.session.messages || [];
+renderMessages();
+loadSessions();
+} catch(e) {
+console.error('Ошибка загрузки сессии:', e);
+alert('Не удалось загрузить сеанс');
+}
+}
+async function newSession() {
+try {
+const res = await fetch(`${API_BASE}/api/sessions/new`, { method: 'POST' });
+const data = await res.json();
+state.session = { id: data.session_id, messages: [], created: new Date().toISOString(), title: 'Новый сеанс' };
+state.messages = [];
+renderMessages();
+loadSessions();
+} catch(e) {
+console.error('Ошибка создания сессии:', e);
+state.session = { id: crypto.randomUUID(), messages: [], created: new Date().toISOString(), title: 'Новый сеанс' };
+state.messages = [];
+renderMessages();
+}
+}
+async function deleteSession(id) {
+if (!confirm('Удалить этот сеанс?')) return;
+try {
+await fetch(`${API_BASE}/api/sessions/${id}`, { method: 'DELETE' });
+if (state.session?.id === id) {
+state.session = null;
+state.messages = [];
+renderMessages();
+}
+loadSessions();
+} catch(e) {
+console.error('Ошибка удаления:', e);
+alert('Не удалось удалить сеанс');
+}
+}
+function renderMessages() {
+const container = document.getElementById('messages');
+document.getElementById('msg-count').textContent = state.messages.length;
+if (state.messages.length === 0) {
+container.innerHTML = '<div class="text-muted" style="text-align:center;padding:2rem">Начните диалог...</div>';
+return;
+}
+container.innerHTML = state.messages.map(msg => {
+const isUser = msg.role === 'user';
+const meta = msg.metadata || {};
+const routingBadge = meta.request_type ?
+`<span class="routing-badge routing-${meta.request_type}">${getRoutingLabel(meta.request_type)}</span>` : '';
+let content = escapeHtml(msg.content || '')
+.replace(/```(\w*)\n([\s\S]*?)```/g, (m, lang, code) =>
+`<div class="code-block"><button class="btn-copy-code" onclick="app.copyCode(this)">📋 Копировать</button><code>${escapeHtml(code)}</code></div>`)
+.replace(/`([^`]+)`/g, '<code>$1</code>')
+.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+.replace(/\*([^*]+)\*/g, '<em>$1</em>')
+.replace(/\n/g, '<br>');
+let attachment = '';
+if (msg.attachment) {
+const isImage = /\.(jpg|jpeg|png|webp|gif)$/i.test(msg.attachment);
+if (isImage) {
+attachment = `<br><div class="attachment">
+📎 ${escapeHtml(msg.attachment)} 
+<button class="btn-download" onclick="app.downloadFile('${msg.attachment}')">⬇️</button>
+<br><img src="${API_BASE}/api/files/${state.session?.id}/${msg.attachment}" 
+alt="${escapeHtml(msg.attachment)}" 
+style="max-width:300px;max-height:200px;border-radius:4px;margin-top:0.5rem;cursor:pointer"
+onclick="app.openModal('${API_BASE}/api/files/${state.session?.id}/${msg.attachment}', '${escapeHtml(msg.attachment)}')">
+</div>`;
+} else {
+attachment = `<br><div class="attachment">📎 ${escapeHtml(msg.attachment)} <button class="btn-download" onclick="app.downloadFile('${msg.attachment}')">⬇️</button></div>`;
+}
+}
+if (msg.images?.[0]) {
+attachment += `<br><img src="data:image/png;base64,${msg.images[0]}" alt="Generated" onclick="app.openModal('data:image/png;base64,${msg.images[0]}', 'generated.png')">`;
+}
+if (msg.camera_image) {
+attachment += `<br><img src="data:image/jpeg;base64,${msg.camera_image}" alt="Camera" onclick="app.openModal('data:image/jpeg;base64,${msg.camera_image}', 'camera.jpg')">`;
+}
+return `
+<div class="message ${msg.role}">
+<div class="message-header">
+📅 ${new Date(msg.timestamp).toLocaleString('ru-RU')}
+${meta.model ? `<span class="text-muted">| ${escapeHtml(meta.model.split('/').pop())}</span>` : ''}
+${routingBadge}
+${meta.duration ? `<span class="text-muted">⏱️ ${meta.duration}с</span>` : ''}
+</div>
+<div class="message-content">${content}${attachment}</div>
+</div>
+`;
+}).join('');
+setTimeout(() => container.scrollTop = container.scrollHeight, 100);
+}
+function getRoutingLabel(type) {
+return {
+'simple': '💬 Быстрый',
+'multimodal_analysis': '👁️ Анализ',
+'image_generation': '🎨 Генерация',
+'camera_request': '📷 Камера',
+'reasoning': '🧠 Рассуждение',
+'reasoning_fallback': '🧠 Рассуждение'
+}[type] || type;
+}
+async function send() {
+const input = document.getElementById('message-input');
+const text = input.value.trim();
+if (!text && !state.file) return;
+if (state.loading) return;
+const btn = document.getElementById('send-btn');
+btn.disabled = true;
+state.loading = true;
+state.messages.push({
+role: 'user',
+content: text,
+timestamp: new Date().toISOString(),
+attachment: state.file?.name || null
+});
+renderMessages();
+const formData = new FormData();
+formData.append('session_id', state.session?.id || crypto.randomUUID());
+formData.append('message', text);
+if (state.file) formData.append('file', state.file);
+try {
+const res = await fetch(`${API_BASE}/api/chat`, {
+method: 'POST',
+body: formData
+});
+const result = await res.json();
+if (result.error) {
+state.messages.push({
+role: 'assistant',
+content: `❌ ${result.error}`,
+timestamp: new Date().toISOString()
+});
+} else if (result.message) {
+state.messages.push(result.message);
+}
+if (result.session_id && !state.session) {
+state.session = { id: result.session_id };
+}
+renderMessages();
+loadSessions();
+} catch(e) {
+console.error('Ошибка отправки:', e);
+state.messages.push({
+role: 'assistant',
+content: '❌ Ошибка соединения с сервером. Проверьте, запущено ли приложение.',
+timestamp: new Date().toISOString()
+});
+renderMessages();
+} finally {
+input.value = '';
+input.style.height = 'auto';
+removeFile();
+btn.disabled = false;
+state.loading = false;
+}
+}
+function handleKey(e) {
+if (e.key === 'Enter' && !e.shiftKey) {
+e.preventDefault();
+send();
+}
+}
+function autoResize(el) {
+el.style.height = 'auto';
+el.style.height = Math.min(el.scrollHeight, 150) + 'px';
+}
+function handleFile(e) {
+const file = e.target.files[0];
+if (!file) return;
+if (file.size > 5 * 1024 * 1024) {
+alert('Файл слишком большой (макс. 5 МБ)');
+return;
+}
+state.file = file;
+document.getElementById('file-name').textContent = file.name;
+document.getElementById('file-size').textContent = formatSize(file.size);
+document.getElementById('file-preview').classList.remove('hidden');
+e.target.value = '';
+}
+function removeFile() {
+state.file = null;
+document.getElementById('file-preview').classList.add('hidden');
+}
+function formatSize(bytes) {
+if (bytes === 0) return '0 Б';
+const k = 1024;
+const sizes = ['Б','КБ','МБ','ГБ'];
+const i = Math.floor(Math.log(bytes) / Math.log(k));
+return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+function escapeHtml(s) {
+if (!s) return '';
+return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+async function copyCode(btn) {
+const code = btn.nextElementSibling.textContent;
+try {
+await navigator.clipboard.writeText(code);
+const original = btn.textContent;
+btn.textContent = '✓ Скопировано';
+btn.classList.add('success');
+setTimeout(() => {
+btn.textContent = original;
+btn.classList.remove('success');
+}, 2000);
+} catch {
+btn.textContent = '✕ Ошибка';
+btn.classList.add('error');
+setTimeout(() => {
+btn.textContent = '📋 Копировать';
+btn.classList.remove('error');
+}, 2000);
+}
+}
+function openModal(src, name) {
+document.getElementById('modal-img').src = src;
+document.getElementById('modal-filename').textContent = name;
+document.getElementById('image-modal').classList.add('visible');
+document.body.style.overflow = 'hidden';
+}
+function closeModal(e) {
+if (e.target.id === 'image-modal') closeModalBtn();
+}
+function closeModalBtn() {
+document.getElementById('image-modal').classList.remove('visible');
+document.body.style.overflow = '';
+}
+async function refreshStatus() {
+try {
+const res = await fetch(`${API_BASE}/api/models/status`);
+const status = await res.json();
+const ollamaStatus = status.ollama?.available ? '✅' : '❌';
+const a1111Status = status.automatic1111?.available ? '✅' : '❌';
+document.getElementById('models-status').innerHTML = `
+<div style="margin-bottom:0.5rem">
+<strong>Ollama:</strong> ${ollamaStatus}<br>
+<small class="text-muted">${status.ollama?.url || 'N/A'}</small><br>
+${status.ollama?.loaded?.length ? `<small>Загружено: ${status.ollama.loaded.join(', ')}</small>` : ''}
+</div>
+<div>
+<strong>A1111:</strong> ${a1111Status}<br>
+<small class="text-muted">${status.automatic1111?.url || 'N/A'}</small><br>
+<small>Модель: ${escapeHtml(status.automatic1111?.model || '')}</small>
+</div>
+`;
+} catch(e) {
+document.getElementById('models-status').textContent = '❌ Ошибка подключения к API';
+}
+}
+function toggleStatus() {
+const panel = document.getElementById('status-panel');
+panel.classList.toggle('visible');
+if (panel.classList.contains('visible')) refreshStatus();
+}
+async function exportSession() {
+if (!state.session?.id) { alert('Нет активного сеанса'); return; }
+window.location.href = `${API_BASE}/api/export/${state.session.id}`;
+}
+function clearChat() {
+if (!confirm('Очистить сообщения в текущем сеансе?')) return;
+state.messages = [];
+renderMessages();
+}
+function downloadFile(name) {
+if (!state.session?.id) return;
+window.open(`${API_BASE}/api/files/${state.session.id}/${name}`, '_blank');
+}
+return {
+init, login, logout,
+newSession, selectSession, deleteSession,
+send, handleKey, autoResize, handleFile, removeFile,
+copyCode, openModal, closeModal, closeModalBtn,
+refreshStatus, toggleStatus, exportSession, clearChat, downloadFile
+};
+})();
+document.addEventListener('DOMContentLoaded', () => app.init());
+</script>
 </body>
 </html>

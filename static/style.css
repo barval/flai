@@ -388,7 +388,7 @@ footer {
 .user-message,
 .assistant-message,
 .bot-message {
-    max-width: 85%;
+    max-width: 100%;
     padding: 0.8rem 1rem;
     border-radius: 8px;
     position: relative;

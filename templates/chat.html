@@ -1,3 +1,4 @@
+=== Файл: templates/chat.html ===
 <!-- templates/chat.html (полный файл с исправлениями) -->
 {% extends "base.html" %}
 
@@ -236,9 +237,9 @@
                     }
                 }
                 
-                // Убираем статусы для сеансов, которые недавно завершились (подавление мерцания)
+                // Убираем статусы для сеансов, которые недавно завершились (подавление мерцания) – увеличено до 5 секунд
                 Object.keys(newStatus).forEach(sid => {
-                    if (lastCompletionTime[sid] && now - lastCompletionTime[sid] < 3000) {
+                    if (lastCompletionTime[sid] && now - lastCompletionTime[sid] < 5000) {
                         delete newStatus[sid];
                     }
                 });
@@ -1111,7 +1112,10 @@
                                 } else if (resultSessionId) {
                                     sessionRequestStatus[resultSessionId] = { status: 'error' };
                                 }
-                                lastCompletionTime[resultSessionId] = Date.now();
+                                // Устанавливаем время завершения на 5 секунд вперёд для подавления статуса
+                                lastCompletionTime[resultSessionId] = Date.now() + 5000;
+                                // Немедленно обновляем список, чтобы показать ошибку
+                                updateSessionsListFromData();
                             }
                             else if (data.result.response) {
                                 let responseTime = data.result.response_time;
@@ -1163,11 +1167,13 @@
                                 } else {
                                     console.log(`Ответ для сеанса ${resultSessionId}, не текущего`);
                                     setNewMessageIndicator(resultSessionId, true);
+                                    // Немедленно обновляем список, чтобы появилась ✉️
+                                    updateSessionsListFromData();
                                     // Убираем статус для этого сеанса (он завершён)
                                     delete sessionRequestStatus[resultSessionId];
                                 }
-                                // Запоминаем время завершения
-                                lastCompletionTime[resultSessionId] = Date.now();
+                                // Запоминаем время завершения на 5 секунд вперёд для подавления статуса
+                                lastCompletionTime[resultSessionId] = Date.now() + 5000;
                             }
                         }
                         
@@ -1201,7 +1207,9 @@
                         } else if (resultSessionId) {
                             sessionRequestStatus[resultSessionId] = { status: 'error' };
                         }
-                        lastCompletionTime[resultSessionId] = Date.now();
+                        lastCompletionTime[resultSessionId] = Date.now() + 5000;
+                        // Немедленно обновляем список, чтобы показать ошибку
+                        updateSessionsListFromData();
                         
                         delete pendingRequests[requestId];
                         

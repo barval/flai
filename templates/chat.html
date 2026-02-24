@@ -255,13 +255,22 @@
                             updated_at: s.updated_at
                         };
                         updated = true;
-                    } else if (sessionsData[s.id].title !== s.title) {
-                        sessionsData[s.id].title = s.title;
-                        sessionsData[s.id].updated_at = s.updated_at;
-                        updated = true;
-                        titlesChanged = true;
-                    } else if (sessionsData[s.id].updated_at !== s.updated_at) {
-                        sessionsData[s.id].updated_at = s.updated_at;
+                    } else {
+                        if (sessionsData[s.id].title !== s.title) {
+                            sessionsData[s.id].title = s.title;
+                            sessionsData[s.id].updated_at = s.updated_at;
+                            updated = true;
+                            titlesChanged = true;
+                        } else if (sessionsData[s.id].updated_at !== s.updated_at) {
+                            sessionsData[s.id].updated_at = s.updated_at;
+                            updated = true;
+                        }
+                    }
+                    
+                    // --- НОВАЯ ПРОВЕРКА: изменение статуса прочитанности ---
+                    const prevUnread = newMessageIndicators[s.id] ? true : false;
+                    const newUnread = s.has_unread ? true : false;
+                    if (prevUnread !== newUnread) {
                         updated = true;
                     }
                     

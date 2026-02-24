@@ -40,8 +40,9 @@ ollama pull qwen3:8b-q4_K_M
 ```bash
 curl http://localhost:7860
 ```
-4. Скачайте необходимые модели с сайта https://civitai.com/ (для скачивания моделей может потребоваться регистрация на сайте https://civitai.com/):  
+4. Скачайте необходимые модели с сайта https://civitai.com/models (для скачивания моделей может потребоваться регистрация на сайте https://civitai.com/):  
 ```text
+Рекомендуются модели серий CyberRealistic, например:
 cyberrealisticXL_v90.safetensors  
 ```
 5. Скопируйте .env.example в .env и отредактируйте при необходимости (обязательно создайте свой SECRET_KEY):

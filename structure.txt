@@ -19,11 +19,11 @@ project/
 │   │   └── marked.min.js      # библиотека Markdown
 │   └── favicon.ico            # иконка сайта
 ├── prompts/                   # шаблоны промптов
-│   ├── base_text.template
-│   ├── reasoning.template
-│   ├── create_image.template
-│   ├── image.template
-│   └── image_text.template
+│   ├── base_text.template     # промпт базового модуля (маршрутизатора)
+│   ├── reasoning.template     # промпт для рассуждающей модели
+│   ├── create_image.template  # промпт для мультимодальной модели на подготовку промпта для Automatic1111
+│   ├── image.template         # промпт для мультимодальной модели (анализ изображения без подписи)
+│   └── image_text.template    # промпт для мультимодальной модели (анализ изображения с подписью)
 ├── .env                       # конфигурация (не в репозитории)
 ├── .env.example               # пример конфигурации
 ├── users.list                 # список пользователей (не в репозитории)

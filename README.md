@@ -48,7 +48,7 @@ cyberrealisticXL_v90.safetensors
 ```bash
 cp .env.example .env
 ```
-5. Скопируйте users.list.example в users.list и заполните учётными данными (обязательно создайте хотя бы одну запись):
+6. Скопируйте users.list.example в users.list и заполните учётными данными (обязательно создайте хотя бы одну запись):
 ```bash
 cp users.list.exapmle users.list
 ```

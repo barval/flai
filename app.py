@@ -287,9 +287,28 @@ def migrate_db_add_response_fields():
     except Exception as e:
         app.logger.error(f"Ошибка миграции БД: {str(e)}")
 
+def migrate_db_add_session_visits():
+    """Добавление таблицы для отслеживания последних посещений сеансов"""
+    try:
+        with sqlite3.connect(CHAT_DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS session_visits (
+                    user_id TEXT,
+                    session_id TEXT,
+                    last_visit DATETIME,
+                    PRIMARY KEY (user_id, session_id)
+                )
+            ''')
+            conn.commit()
+            app.logger.info("Таблица session_visits создана или уже существует")
+    except Exception as e:
+        app.logger.error(f"Ошибка миграции session_visits: {str(e)}")
+
 # Инициализация и миграция
 init_db()
 migrate_db_add_response_fields()
+migrate_db_add_session_visits()
 
 # -------------------------------
 # Функции для работы с пользователями
@@ -840,13 +859,33 @@ def get_user_sessions(user_id):
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
+        
+        # Получаем сеансы
         c.execute('''
             SELECT id, title, model_name, created_at, updated_at
             FROM chat_sessions
             WHERE user_id = ?
             ORDER BY updated_at DESC
         ''', (user_id,))
-        return [dict(row) for row in c.fetchall()]
+        sessions = [dict(row) for row in c.fetchall()]
+        
+        # Для каждого сеанса проверяем наличие непрочитанных сообщений ассистента
+        for s in sessions:
+            c.execute('''
+                SELECT last_visit FROM session_visits
+                WHERE user_id = ? AND session_id = ?
+            ''', (user_id, s['id']))
+            row = c.fetchone()
+            last_visit = row[0] if row else '1970-01-01 00:00:00'
+            
+            c.execute('''
+                SELECT COUNT(*) FROM messages
+                WHERE session_id = ? AND role = 'assistant' AND timestamp > ?
+            ''', (s['id'], last_visit))
+            count = c.fetchone()[0]
+            s['has_unread'] = count > 0
+        
+        return sessions
 
 def get_session_messages(session_id):
     with sqlite3.connect(CHAT_DB_PATH) as conn:
@@ -1057,8 +1096,20 @@ def api_get_messages(session_id):
 def api_switch_session(session_id):
     if 'email' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
+    user_id = session['email']
     session['current_session'] = session_id
-    set_last_session(session['email'], session_id)
+    set_last_session(user_id, session_id)
+    
+    # Обновляем время последнего посещения
+    current_time = get_current_time_in_timezone_for_db()
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute('''
+            INSERT OR REPLACE INTO session_visits (user_id, session_id, last_visit)
+            VALUES (?, ?, ?)
+        ''', (user_id, session_id, current_time))
+        conn.commit()
+    
     return jsonify({'status': 'ok'})
 
 @app.route('/api/sessions/<session_id>/model-info', methods=['GET'])
@@ -1135,6 +1186,9 @@ def api_delete_session(session_id):
                     c.execute('UPDATE user_sessions SET last_session_id = ? WHERE user_id = ?', (new_last[0], user_id))
                 else:
                     c.execute('DELETE FROM user_sessions WHERE user_id = ?', (user_id,))
+        
+        # Удаляем также записи о посещениях
+        c.execute('DELETE FROM session_visits WHERE session_id = ?', (session_id,))
         
         conn.commit()
     

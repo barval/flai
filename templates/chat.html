@@ -83,6 +83,8 @@
     let sessionRequestStatus = {};
     // Время последнего завершения запроса для сеанса (чтобы подавить мерцание)
     let lastCompletionTime = {};
+    // Таймер для debounce обновления списка
+    let sessionsUpdateTimeout = null;
 
     // -------------------------------
     // Вспомогательные функции
@@ -173,34 +175,15 @@
     }
 
     // -------------------------------
-    // Управление индикаторами новых сообщений (✉️) с сохранением в localStorage
+    // Управление индикаторами новых сообщений (✉️) 
+    // Теперь без localStorage, только на основе данных с сервера
     // -------------------------------
-    function saveNewMessageIndicators() {
-        try {
-            localStorage.setItem('newMessageIndicators', JSON.stringify(newMessageIndicators));
-        } catch (e) {
-            console.error('Ошибка сохранения в localStorage', e);
-        }
-    }
-
-    function loadNewMessageIndicators() {
-        try {
-            const saved = localStorage.getItem('newMessageIndicators');
-            if (saved) {
-                newMessageIndicators = JSON.parse(saved) || {};
-            }
-        } catch (e) {
-            console.error('Ошибка загрузки из localStorage', e);
-        }
-    }
-
     function setNewMessageIndicator(sessionId, show) {
         if (show) {
             newMessageIndicators[sessionId] = true;
         } else {
             delete newMessageIndicators[sessionId];
         }
-        saveNewMessageIndicators();
         updateSessionsListFromData();
     }
 
@@ -222,7 +205,6 @@
                 
                 // Обрабатываем очередь
                 data.queued.forEach(item => {
-                    // Если для этого session_id ещё нет статуса (processing имеет приоритет)
                     if (!newStatus[item.session_id]) {
                         newStatus[item.session_id] = { status: 'queued', ...item };
                     }
@@ -236,10 +218,16 @@
                     }
                 }
                 
-                // Убираем статусы для сеансов, которые недавно завершились (подавление мерцания) – увеличено до 5 секунд
+                // Подавление мерцания: удаляем статусы для сеансов, которые недавно завершились,
+                // только если у них нет активных запросов в новых данных
                 Object.keys(newStatus).forEach(sid => {
-                    if (lastCompletionTime[sid] && now - lastCompletionTime[sid] < 5000) {
-                        delete newStatus[sid];
+                    if (lastCompletionTime[sid] && now - lastCompletionTime[sid] < 3000) {
+                        // Проверяем, есть ли у этого сеанса активные запросы в новых данных
+                        const hasActive = (data.processing && data.processing.session_id === sid) ||
+                                          data.queued.some(item => item.session_id === sid);
+                        if (!hasActive) {
+                            delete newStatus[sid];
+                        }
                     }
                 });
                 
@@ -259,7 +247,7 @@
                 let updated = false;
                 let titlesChanged = false;
                 
-                // Обновляем данные в хранилище
+                // Обновляем данные в хранилище и индикаторы
                 sessions.forEach(s => {
                     if (!sessionsData[s.id]) {
                         sessionsData[s.id] = {
@@ -275,6 +263,13 @@
                     } else if (sessionsData[s.id].updated_at !== s.updated_at) {
                         sessionsData[s.id].updated_at = s.updated_at;
                         updated = true;
+                    }
+                    
+                    // Устанавливаем индикатор непрочитанных на основе данных с сервера
+                    if (s.has_unread) {
+                        newMessageIndicators[s.id] = true;
+                    } else {
+                        delete newMessageIndicators[s.id];
                     }
                 });
                 
@@ -306,8 +301,23 @@
     }
 
     // -------------------------------
-    // Обновление списка сеансов в DOM (основная функция)
+    // Обновление списка сеансов в DOM (основная функция) с debounce
     // -------------------------------
+    function updateSessionsListFromData() {
+        if (sessionsUpdateTimeout) {
+            clearTimeout(sessionsUpdateTimeout);
+        }
+        sessionsUpdateTimeout = setTimeout(() => {
+            const sessions = Object.keys(sessionsData).map(id => ({
+                id: id,
+                title: sessionsData[id].title,
+                updated_at: sessionsData[id].updated_at
+            }));
+            updateSessionsList(sessions, true);
+            sessionsUpdateTimeout = null;
+        }, 100);
+    }
+
     function updateSessionsList(sessions, preserveIndicators = true) {
         const sessionsList = document.getElementById('sessions-list');
         const currentActiveId = currentSessionId;
@@ -368,17 +378,6 @@
         attachSessionEventHandlers();
     }
 
-    // Обёртка для обновления списка с текущими данными
-    function updateSessionsListFromData() {
-        // Получаем сессии из хранилища sessionsData и преобразуем в массив
-        const sessions = Object.keys(sessionsData).map(id => ({
-            id: id,
-            title: sessionsData[id].title,
-            updated_at: sessionsData[id].updated_at
-        }));
-        updateSessionsList(sessions, true);
-    }
-
     // -------------------------------
     // Привязка обработчиков событий к элементам сеансов
     // -------------------------------
@@ -409,7 +408,6 @@
                 e.stopPropagation();
                 const sessionItem = this.closest('.session-item');
                 const sessionId = sessionItem.dataset.sessionId;
-                // Используем data-session-title вместо textContent, чтобы избежать лишних символов
                 const sessionTitle = sessionItem.dataset.sessionTitle;
                 const sessionDate = sessionItem.querySelector('.session-date').textContent;
                 
@@ -427,11 +425,12 @@
         if (syncInterval) {
             clearInterval(syncInterval);
         }
-        // Синхронизируем каждые 3 секунды
+        // Синхронизируем каждые 5 секунд (объединённый интервал)
         syncInterval = setInterval(() => {
             loadSessionsFromServer();
-            fetchQueueStatus(); // дополнительно обновляем статусы
-        }, 3000);
+            fetchQueueStatus();
+            window.updateStatusCounter();
+        }, 5000);
     }
 
     // -------------------------------
@@ -453,9 +452,6 @@
     // Инициализация
     // -------------------------------
     document.addEventListener('DOMContentLoaded', function() {
-        // Загружаем сохранённые индикаторы новых сообщений
-        loadNewMessageIndicators();
-
         // Загружаем список сеансов с сервера
         loadSessionsFromServer().then(() => {
             // Загружаем сообщения текущего сеанса
@@ -521,12 +517,7 @@
             }
         });
 
-        // Периодическое обновление списка сеансов (каждые 5 секунд)
-        setInterval(forceRefreshSessions, 5000);
-
-        // Запускаем периодическое обновление счётчика и статусов
-        setInterval(window.updateStatusCounter, 3000);
-        setInterval(fetchQueueStatus, 3000);
+        // Запускаем периодическое обновление счётчика и статусов (уже в startSyncInterval)
         window.updateStatusCounter(); // сразу при загрузке
         fetchQueueStatus(); // сразу
     });
@@ -893,8 +884,6 @@
         const titleElement = sessionItem.querySelector('.session-title');
         if (titleElement) {
             titleElement.innerHTML = escapeHtml(newTitle);
-            
-            // Перерисовываем иконку (она уже будет добавлена в updateSessionsListFromData)
         }
         
         // Обновляем дату
@@ -1136,8 +1125,7 @@
                                         mm_model: data.result.mm_model,
                                         gen_model: data.result.gen_model
                                     };
-                                    // Используем gen_model как основную модель (Automatic1111)
-                                    modelUsed = data.result.gen_model;  // ← ИСПРАВЛЕНО
+                                    modelUsed = data.result.gen_model;
                                 } 
                                 // Если responseTime - строка, пробуем распарсить как JSON
                                 else if (typeof responseTime === 'string' && responseTime.startsWith('{')) {
@@ -1165,9 +1153,8 @@
                                     delete sessionRequestStatus[resultSessionId];
                                 } else {
                                     console.log(`Ответ для сеанса ${resultSessionId}, не текущего`);
+                                    // Устанавливаем индикатор немедленно
                                     setNewMessageIndicator(resultSessionId, true);
-                                    // Немедленно обновляем список, чтобы появилась ✉️
-                                    updateSessionsListFromData();
                                     // Убираем статус для этого сеанса (он завершён)
                                     delete sessionRequestStatus[resultSessionId];
                                 }
@@ -1298,7 +1285,6 @@
         delete newMessageIndicators[sessionId];
         delete sessionRequestStatus[sessionId];
         delete lastCompletionTime[sessionId];
-        saveNewMessageIndicators();
         
         fetch(`/api/sessions/${sessionId}/delete`, { method: 'POST' })
             .then(res => res.json())

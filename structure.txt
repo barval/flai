@@ -1,15 +1,38 @@
 project/
-├── app.py (основной файл, инициализация)
-├── modules/
-│   ├── __init__.py
-│   ├── base.py (базовый модуль)
-│   ├── multimodal.py (мультимодальный модуль)
-│   ├── image.py (генерация изображений)
-│   ├── cam.py (видеонаблюдение)
-│   ├── rag.py (заглушка)
-│   └── audio.py (заглушка)
-├── templates/
-├── static/
-├── prompts/
-├── .env
-└── requirements.txt
+├── app.py                     # основной файл приложения (обновлён)
+├── modules/                   # каталог модулей
+│   ├── __init__.py            # инициализация модулей
+│   ├── base.py                # базовый модуль (маршрутизатор)
+│   ├── multimodal.py          # мультимодальный модуль (анализ изображений)
+│   ├── image.py               # модуль генерации изображений (Automatic1111)
+│   ├── cam.py                 # модуль видеонаблюдения
+│   ├── rag.py                 # заглушка RAG-модуля
+│   └── audio.py               # заглушка аудио-модуля
+├── templates/                 # шаблоны HTML
+│   ├── base.html              # базовый шаблон
+│   ├── login.html             # страница входа
+│   └── chat.html              # страница чата (обновлён)
+├── static/                    # статические файлы
+│   ├── style.css              # основные стили
+│   ├── export.css             # стили для экспорта чата
+│   ├── js/
+│   │   └── marked.min.js      # библиотека Markdown
+│   └── favicon.ico            # иконка сайта
+├── prompts/                   # шаблоны промптов
+│   ├── base_text.template
+│   ├── reasoning.template
+│   ├── create_image.template
+│   ├── image.template
+│   └── image_text.template
+├── .env                       # конфигурация (не в репозитории)
+├── .env.example               # пример конфигурации
+├── users.list                 # список пользователей (не в репозитории)
+├── users.list.example         # пример списка пользователей
+├── requirements.txt           # зависимости Python
+├── Dockerfile                 # файл для сборки Docker-образа
+├── docker-compose.yml         # конфигурация Docker Compose
+├── gunicorn_config.py         # конфигурация Gunicorn
+├── wsgi.py                    # точка входа для Gunicorn
+├── .gitignore                 # игнорируемые файлы Git
+├── README.md                  # описание проекта
+└── structure.txt              # описание структуры (данный файл)

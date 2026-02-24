@@ -6,7 +6,7 @@
 - чат с локальной ИИ-моделью (Ollama, используются модели - qwen3:4b-instruct-2507-q4_K_M, qwen3-vl:8b-instruct-q4_K_M, qwen3:8b-q4_K_M)  
 - создание изображений по описанию (Automatic1111, модель - cyberrealisticXL_v90.safetensors)  
 - анализ изображений и файлов .png, .jpg, .jpeg  
-- анализ текста из файлов .txt, .pdf  
+- анализ текста из файлов .txt, .pdf [в разработке]  
 - анализ голосовых сообщений [в разработке]  
 - воспроизведение голосовых сообщений [в разработке]  
 - домашнее видеонаблюдение  
@@ -30,7 +30,7 @@
 ```bash
 curl http://localhost:11434/api/tags
 ```
-2. Скачайте необходимые модели:  
+2. Скачайте в Ollama необходимые модели:  
 ```bash
 ollama pull qwen3:4b-instruct-2507-q4_K_M
 ollama pull qwen3-vl:8b-instruct-q4_K_M

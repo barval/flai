@@ -457,6 +457,12 @@
             .catch(err => console.error('Ошибка обновления счётчика:', err));
     };
 
+    // --- НОВАЯ ФУНКЦИЯ: обновление времени последнего посещения ---
+    function updateLastVisit(sessionId) {
+        fetch(`/api/sessions/${sessionId}/visit`, { method: 'POST' })
+            .catch(err => console.error('Ошибка обновления last_visit:', err));
+    }
+
     // -------------------------------
     // Инициализация
     // -------------------------------
@@ -631,6 +637,9 @@
                 
                 // Очищаем индикатор для этого сеанса
                 setNewMessageIndicator(sessionId, false);
+                
+                // --- НОВОЕ: обновляем время последнего посещения ---
+                updateLastVisit(sessionId);
             });
     }
 
@@ -1160,6 +1169,9 @@
                                     );
                                     // Убираем статус для текущего сеанса
                                     delete sessionRequestStatus[resultSessionId];
+                                    
+                                    // --- НОВОЕ: обновляем время посещения после получения ответа ---
+                                    updateLastVisit(currentSessionId);
                                 } else {
                                     console.log(`Ответ для сеанса ${resultSessionId}, не текущего`);
                                     // Устанавливаем индикатор немедленно

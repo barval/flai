@@ -937,6 +937,13 @@ def create_session(user_id, title="Новый сеанс"):
             INSERT INTO chat_sessions (id, user_id, title, model_name, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?)
         ''', (session_id, user_id, title, 'auto', current_time, current_time))
+        
+        # --- НОВОЕ: сразу создаём запись о посещении ---
+        c.execute('''
+            INSERT OR REPLACE INTO session_visits (user_id, session_id, last_visit)
+            VALUES (?, ?, ?)
+        ''', (user_id, session_id, current_time))
+        
         conn.commit()
     return session_id
 
@@ -1194,6 +1201,25 @@ def api_delete_session(session_id):
     
     if session.get('current_session') == session_id:
         session.pop('current_session', None)
+    
+    return jsonify({'status': 'ok'})
+
+# --- НОВЫЙ ЭНДПОИНТ для обновления времени посещения ---
+@app.route('/api/sessions/<session_id>/visit', methods=['POST'])
+def api_update_session_visit(session_id):
+    if 'email' not in session:
+        return jsonify({'error': 'Не авторизован'}), 401
+    
+    user_id = session['email']
+    current_time = get_current_time_in_timezone_for_db()
+    
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute('''
+            INSERT OR REPLACE INTO session_visits (user_id, session_id, last_visit)
+            VALUES (?, ?, ?)
+        ''', (user_id, session_id, current_time))
+        conn.commit()
     
     return jsonify({'status': 'ok'})
 

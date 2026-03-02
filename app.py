@@ -1447,6 +1447,7 @@ def send_message():
             return jsonify({
                 'status': 'queued',
                 'transcribed_text': transcribed_text,
+                'session_id': session_id,
                 'request_id': request_id,
                 'position': position_info['position'],
                 'estimated_wait': position_info['estimated_seconds'],
@@ -1457,6 +1458,7 @@ def send_message():
             return jsonify({
                 'status': 'success',
                 'transcribed_text': transcribed_text,
+                'session_id': session_id,
                 'message': 'Аудио распознано'
             })
     

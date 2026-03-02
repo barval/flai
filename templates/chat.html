@@ -1081,24 +1081,43 @@
                 
                 // Если есть транскрибированный текст (для аудио) – показываем его
                 if (data.transcribed_text) {
-                    // Уже показано пользовательское сообщение, добавляем транскрипцию
-                    displayMessage(
-                        'assistant',
-                        `🎤 Распознано: ${data.transcribed_text}`,
-                        null, null, null,
-                        new Date().toISOString(),
-                        null,
-                        'whisper'
-                    );
-                    // Если это было голосовое сообщение, сервер мог также поставить задание в очередь,
-                    // и тогда придет ответ с request_id, обрабатываем дальше.
-                    // Но если это загруженный файл (без voice_record), то здесь просто завершаем.
+                    // Сообщение для текущего сеанса – отображаем
+                    if (data.session_id && data.session_id === currentSessionId) {
+                        displayMessage(
+                            'assistant',
+                            `🎤 Распознано: ${data.transcribed_text}`,
+                            null, null, null,
+                            new Date().toISOString(),
+                            null,
+                            'whisper'
+                        );
+                    }
+                    // Сообщение для другого сеанса – ставим индикатор
+                    else if (data.session_id) {
+                        setNewMessageIndicator(data.session_id, true);
+                    }
+                    // Старая версия (без session_id) – для совместимости
+                    else {
+                        displayMessage(
+                            'assistant',
+                            `🎤 Распознано: ${data.transcribed_text}`,
+                            null, null, null,
+                            new Date().toISOString(),
+                            null,
+                            'whisper'
+                        );
+                    }
+
+                    // В любом случае отправка завершена, разблокируем кнопку
+                    sendButton.disabled = false;
+                    sendButton.innerHTML = 'Отправить';
+                    isSending = false;
+
+                    // Если нет request_id – выходим
                     if (!data.request_id) {
-                        sendButton.disabled = false;
-                        sendButton.innerHTML = 'Отправить';
-                        isSending = false;
                         return;
                     }
+                    // Иначе продолжаем опрос очереди
                 }
                 
                 if (data.status === 'queued') {

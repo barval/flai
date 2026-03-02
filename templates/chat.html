@@ -89,6 +89,7 @@
     let mediaRecorder = null;
     let audioChunks = [];
     let isRecording = false;
+    let isVoiceRecorded = false;   // true, если текущий attachedFile создан через запись с микрофона
 
     // -------------------------------
     // Вспомогательные функции
@@ -949,6 +950,9 @@
         const file = new File([blob], filename, { type: 'audio/webm' });
         attachedFile = file;
         
+        // Помечаем, что файл создан через запись с микрофона
+        isVoiceRecorded = true;
+        
         // Показываем превью
         const preview = document.getElementById('file-preview-container');
         document.getElementById('file-preview-name').textContent = file.name;
@@ -1050,9 +1054,10 @@
                     formData.append('message', tempText);
                     formData.append('file', tempAttachedFile);
                     
-                    // ИЗМЕНЕНИЕ: если имя файла начинается с "voice_", добавляем флаг голосового сообщения
-                    if (tempAttachedFile.name && tempAttachedFile.name.startsWith('voice_')) {
+                    // ИЗМЕНЕНИЕ: если файл был создан через запись с микрофона, добавляем флаг
+                    if (isVoiceRecorded) {
                         formData.append('voice_record', 'true');
+                        isVoiceRecorded = false; // сбрасываем флаг после использования
                     }
                     
                     response = await fetch('/send_message', {
@@ -1808,7 +1813,7 @@
                 background-color: #f6f8fa;
             }
 
-            /* Скрытие кнопок копирования в сохранённой версии */
+            /* Скрытие кнопок управления в сохранённой версии */
             .save-chat-button,
             .clear-context-button,
             .new-session-button,

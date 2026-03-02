@@ -1,4 +1,4 @@
-<!-- templates/chat.html (полный файл с поддержкой аудио-записи и исправлениями) -->
+<!-- templates/chat.html (полный файл с поддержкой аудио-записи и кнопками скачивания для аудио) -->
 {% extends "base.html" %}
 
 {% block content %}
@@ -649,11 +649,20 @@
             const fileSize = formatFileSize(fileSizeBytes);
             timeDisplay += ` <span class="file-info">[📎 ${fileName}, ${fileSize}]</span>`;
             
+            // Кнопка скачивания для изображений
             if (fileType && fileType.startsWith('image/')) {
                 timeDisplay += ` <a href="data:${fileType};base64,${fileData}" 
                                     download="${fileName || 'image.jpg'}" 
                                     class="download-link-inline" 
                                     title="Скачать изображение"
+                                    onclick="event.stopPropagation()">⬇️</a>`;
+            }
+            // Кнопка скачивания для аудио
+            if (fileType && fileType.startsWith('audio/')) {
+                timeDisplay += ` <a href="data:${fileType};base64,${fileData}" 
+                                    download="${fileName || 'audio.webm'}" 
+                                    class="download-link-inline" 
+                                    title="Скачать аудио"
                                     onclick="event.stopPropagation()">⬇️</a>`;
             }
         }
@@ -665,11 +674,20 @@
             const fileSize = formatFileSize(fileSizeBytes);
             timeDisplay += ` <span class="file-info">[📎 ${fileName}, ${fileSize}]</span>`;
             
+            // Кнопка скачивания для изображений
             if (fileType && fileType.startsWith('image/')) {
                 timeDisplay += ` <a href="data:${fileType};base64,${fileData}" 
                                     download="${fileName || 'generated_image.jpg'}" 
                                     class="download-link-inline" 
                                     title="Скачать изображение"
+                                    onclick="event.stopPropagation()">⬇️</a>`;
+            }
+            // Кнопка скачивания для аудио
+            if (fileType && fileType.startsWith('audio/')) {
+                timeDisplay += ` <a href="data:${fileType};base64,${fileData}" 
+                                    download="${fileName || 'audio.webm'}" 
+                                    class="download-link-inline" 
+                                    title="Скачать аудио"
                                     onclick="event.stopPropagation()">⬇️</a>`;
             }
         }

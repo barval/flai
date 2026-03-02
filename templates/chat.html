@@ -910,9 +910,21 @@
         }
     }
 
+    // -------------------------------
+    // Отправка голосового сообщения (ИЗМЕНЕНО: уникальное имя)
+    // -------------------------------
     async function sendVoiceMessage(blob) {
-        // Отправляем аудиофайл как обычный файл
-        const file = new File([blob], 'voice_message.webm', { type: 'audio/webm' });
+        // Генерируем имя с датой: voice_YYYYMMDD_HHMMSS.webm   <!-- NEW -->
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        const filename = `voice_${year}${month}${day}_${hours}${minutes}${seconds}.webm`;  
+        
+        const file = new File([blob], filename, { type: 'audio/webm' });
         attachedFile = file;
         
         // Показываем превью
@@ -922,12 +934,12 @@
         document.getElementById('file-preview-size').textContent = ` (${fileSize})`;
         preview.style.display = 'block';
         
-        // Автоматически отправляем (можно по желанию)
+        // Автоматически отправляем
         sendMessage();
     }
 
     // -------------------------------
-    // Отправка сообщения (модифицирована для учёта аудио)
+    // Отправка сообщения (ИЗМЕНЕНО: обработка transcribed_text)
     // -------------------------------
     async function sendMessage() {
         const input = document.getElementById('message-input');
@@ -1035,6 +1047,18 @@
                 const data = await response.json();
                 console.log('Ответ от сервера:', data);
                 
+                // NEW: если есть транскрибированный текст, показываем его сразу
+                if (data.transcribed_text) {
+                    displayMessage(
+                        'assistant',
+                        `🎤 Распознано: ${data.transcribed_text}`,
+                        null, null, null,
+                        new Date().toISOString(),
+                        null,
+                        'whisper'
+                    );
+                }
+                
                 if (data.status === 'queued') {
                     sessionRequestStatus[currentSessionId] = { status: 'queued' };
                     updateSessionsListFromData();
@@ -1089,6 +1113,7 @@
         };
 
         function startResultPolling(requestId) {
+            // ... (без изменений)
             console.log('Start polling for request:', requestId);
             let pollCount = 0;
             const maxPolls = 120;
@@ -1908,11 +1933,14 @@
         }
     }
 
+    // -------------------------------
+    // Добавление кнопок копирования (ИЗМЕНЕНО: добавлена кнопка для транскрибации)
+    // -------------------------------
     function addCopyButtonsToMessage(messageElement) {
         if (!messageElement) return;
         
+        // Обработка блоков кода (pre code) – без изменений
         const codeBlocks = messageElement.querySelectorAll('pre code');
-        
         codeBlocks.forEach((codeBlock) => {
             const parent = codeBlock.parentNode;
             if (parent.classList.contains('code-block-wrapper')) return;
@@ -1936,6 +1964,29 @@
             wrapper.appendChild(parent);
             wrapper.appendChild(copyButton);
         });
+        
+        // NEW: Добавляем кнопку копирования для сообщений с транскрибацией
+        const contentDiv = messageElement.querySelector('.message-content');
+        if (contentDiv && !contentDiv.querySelector('.copy-transcript-button')) {
+            const text = contentDiv.innerText || contentDiv.textContent;
+            if (text.includes('🎤 Распознано:')) {
+                const copyBtn = document.createElement('button');
+                copyBtn.className = 'copy-transcript-button';
+                copyBtn.innerHTML = '📋';
+                copyBtn.title = 'Копировать текст';
+                copyBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Извлекаем текст после эмодзи
+                    const textToCopy = text.replace('🎤 Распознано:', '').trim();
+                    copyToClipboard(textToCopy);
+                    copyBtn.innerHTML = '✓';
+                    setTimeout(() => copyBtn.innerHTML = '📋', 2000);
+                };
+                contentDiv.style.position = 'relative'; // для позиционирования
+                contentDiv.appendChild(copyBtn);
+            }
+        }
     }
 
     function addCopyButtonsToAllCodeBlocks() {

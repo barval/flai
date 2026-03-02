@@ -133,7 +133,8 @@ footer {
 }
 
 /* Скрываем кнопки копирования, но оставляем блоки кода видимыми */
-.copy-code-button {
+.copy-code-button,
+.copy-transcript-button {   /* NEW */
     display: none !important;
 }
 

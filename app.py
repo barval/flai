@@ -1322,7 +1322,7 @@ def clear_history():
     return jsonify({'status': 'ok'})
 
 # -------------------------------
-# ОТПРАВКА СООБЩЕНИЯ (ОСНОВНАЯ)
+# ОТПРАВКА СООБЩЕНИЯ (ОСНОВНАЯ) - ИЗМЕНЕНО
 # -------------------------------
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -1375,6 +1375,7 @@ def send_message():
             request_type = 'audio'
     
     # Если это аудио, сначала транскрибируем
+    transcribed_text = None
     if request_type == 'audio':
         app.logger.info("send_message: обнаружено аудио, запуск транскрибации")
         transcribed_text = modules['audio'].transcribe(file_data, file_type, file_name)
@@ -1382,11 +1383,17 @@ def send_message():
             return jsonify({'error': 'Не удалось распознать речь'}), 500
         
         app.logger.info(f"send_message: транскрибация успешна: {transcribed_text[:100]}")
+        
+        # NEW: Сохраняем системное сообщение с транскрипцией
+        system_content = f"🎤 Распознано: {transcribed_text}"
+        save_message(session_id, 'assistant', system_content, 
+                     model_name='whisper', response_time=None)
+        
         # Используем транскрибированный текст как сообщение
         message_text = transcribed_text
         # Тип запроса меняем на text для дальнейшей обработки
         request_type = 'text'
-        # Оставляем file_data для сохранения вложения, но текст уже есть
+        # Файл остаётся для сохранения вложения
     else:
         # Для не-аудио сохраняем исходный текст
         pass
@@ -1436,11 +1443,13 @@ def send_message():
         user_id, session_id, request_data, user_class
     )
     
+    # NEW: возвращаем также транскрибированный текст для немедленного отображения
     return jsonify({
         'status': 'queued',
         'request_id': request_id,
         'position': position_info['position'],
         'estimated_wait': position_info['estimated_seconds'],
+        'transcribed_text': transcribed_text,   # может быть None, если не аудио
         'message': f'Запрос поставлен в очередь (позиция {position_info["position"]})'
     })
 

@@ -943,7 +943,7 @@
     }
 
     // -------------------------------
-    // Отправка сообщения (ИЗМЕНЕНО: обработка ответов сервера)
+    // Отправка сообщения (ИЗМЕНЕНО: добавлен флаг voice_record для голосовых сообщений)
     // -------------------------------
     async function sendMessage() {
         const input = document.getElementById('message-input');
@@ -1032,6 +1032,11 @@
                     formData.append('message', tempText);
                     formData.append('file', tempAttachedFile);
                     
+                    // ИЗМЕНЕНИЕ: если имя файла начинается с "voice_", добавляем флаг голосового сообщения
+                    if (tempAttachedFile.name && tempAttachedFile.name.startsWith('voice_')) {
+                        formData.append('voice_record', 'true');
+                    }
+                    
                     response = await fetch('/send_message', {
                         method: 'POST',
                         body: formData
@@ -1062,11 +1067,15 @@
                         null,
                         'whisper'
                     );
-                    // Для аудио запрос в очередь не ставится, завершаем
-                    sendButton.disabled = false;
-                    sendButton.innerHTML = 'Отправить';
-                    isSending = false;
-                    return;
+                    // Если это было голосовое сообщение, сервер мог также поставить задание в очередь,
+                    // и тогда придет ответ с request_id, обрабатываем дальше.
+                    // Но если это загруженный файл (без voice_record), то здесь просто завершаем.
+                    if (!data.request_id) {
+                        sendButton.disabled = false;
+                        sendButton.innerHTML = 'Отправить';
+                        isSending = false;
+                        return;
+                    }
                 }
                 
                 if (data.status === 'queued') {

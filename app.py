@@ -1342,6 +1342,7 @@ def send_message():
     file_data = None
     file_type = None
     file_name = None
+    voice_record = False  # Флаг голосового сообщения (запись с микрофона)
     
     if request.content_type and 'multipart/form-data' in request.content_type:
         message_text = request.form.get('message', '')
@@ -1352,6 +1353,9 @@ def send_message():
                 file_data = base64.b64encode(file.read()).decode('utf-8')
                 file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
                 file_name = file.filename
+        
+        # ИЗМЕНЕНИЕ: проверяем наличие флага голосового сообщения
+        voice_record = request.form.get('voice_record') == 'true'
     else:
         try:
             data = request.get_json()
@@ -1423,13 +1427,38 @@ def send_message():
         save_message(session_id, 'assistant', system_content, 
                      model_name='whisper', response_time=None)
         
-        # Для любого аудио (и голосового сообщения, и загруженного файла)
-        # НЕ ставим задачу в очередь, а возвращаем только транскрипцию
-        return jsonify({
-            'status': 'success',
-            'transcribed_text': transcribed_text,
-            'message': 'Аудио распознано'
-        })
+        # ИЗМЕНЕНИЕ: различаем голосовое сообщение и загруженный аудиофайл
+        if voice_record:
+            # Это голосовое сообщение (запись с микрофона) – отправляем распознанный текст в очередь
+            app.logger.info("send_message: голосовое сообщение, ставим задачу в очередь с текстом транскрипции")
+            
+            # Формируем данные для очереди как текстовый запрос
+            request_data = {
+                'type': 'text',
+                'text': transcribed_text,
+                'preview': (transcribed_text[:50] + '...') if transcribed_text else 'Голосовой запрос'
+            }
+            
+            # Добавляем в очередь Redis
+            request_id, position_info = request_queue.add_request(
+                user_id, session_id, request_data, user_class
+            )
+            
+            return jsonify({
+                'status': 'queued',
+                'transcribed_text': transcribed_text,
+                'request_id': request_id,
+                'position': position_info['position'],
+                'estimated_wait': position_info['estimated_seconds'],
+                'message': f'Голос распознан, запрос поставлен в очередь (позиция {position_info["position"]})'
+            })
+        else:
+            # Это загруженный аудиофайл – только транскрибация, без дальнейших действий
+            return jsonify({
+                'status': 'success',
+                'transcribed_text': transcribed_text,
+                'message': 'Аудио распознано'
+            })
     
     # Для изображений и текста (без аудио) – ставим в очередь
     # Формируем данные для очереди

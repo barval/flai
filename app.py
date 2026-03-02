@@ -58,7 +58,9 @@ app.config.update({
     'AUTOMATIC1111_MODEL': os.getenv('AUTOMATIC1111_MODEL'),
     'MAX_IMAGE_WIDTH': int(os.getenv('MAX_IMAGE_WIDTH', 3840)),
     'MAX_IMAGE_HEIGHT': int(os.getenv('MAX_IMAGE_HEIGHT', 2160)),
-    'MAX_IMAGE_SIZE_MB': int(os.getenv('MAX_IMAGE_SIZE_MB', 5))
+    'MAX_IMAGE_SIZE_MB': int(os.getenv('MAX_IMAGE_SIZE_MB', 5)),
+    # Новый параметр для Whisper
+    'WHISPER_API_URL': os.getenv('WHISPER_API_URL', 'http://host.docker.internal:9000/asr')
 })
 
 # Настройка часового пояса
@@ -108,9 +110,9 @@ if 'cam' in modules:
     CamAPI.register_routes(app, modules['cam'])
     app.logger.info("API эндпоинты для камер зарегистрированы")
 
-# Модули-заглушки
+# Модули-заглушки (теперь аудио не заглушка)
 modules['rag'] = RagModule(app)
-modules['audio'] = AudioModule(app)
+modules['audio'] = AudioModule(app)  # теперь рабочий модуль
 
 # -------------------------------
 # Пути к данным и шаблонам
@@ -764,6 +766,17 @@ class RedisRequestQueue:
                 'is_error': is_error
             }
         
+        # Для аудио запросов (транскрибация уже выполнена, но оставим для полноты)
+        elif request_type == 'audio' and file_data:
+            # Эта ветка может не использоваться, так как аудио обрабатывается в send_message синхронно
+            # Оставим на случай, если будем передавать аудио в очередь
+            app.logger.warning("Получен аудио запрос в очереди, но обработка не реализована")
+            return {
+                'error': 'Аудио запросы должны обрабатываться синхронно',
+                'session_id': session_id,
+                'is_error': True
+            }
+        
         # Время ЗАВЕРШЕНИЯ обработки для ошибки
         completion_time_for_db = get_current_time_in_timezone_for_db()
         return {
@@ -824,7 +837,8 @@ class RedisRequestQueue:
             'text': '💬',
             'image': '🎨',
             'camera': '📷',
-            'reasoning': '🧠'
+            'reasoning': '🧠',
+            'audio': '🎤'   # Добавили иконку для аудио
         }
         
         return {
@@ -1308,7 +1322,7 @@ def clear_history():
     return jsonify({'status': 'ok'})
 
 # -------------------------------
-# ОТПРАВКА СООБЩЕНИЯ
+# ОТПРАВКА СООБЩЕНИЯ (ОСНОВНАЯ)
 # -------------------------------
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -1352,16 +1366,49 @@ def send_message():
     if not message_text and not file_data:
         return jsonify({'error': 'Пустое сообщение'}), 400
     
+    # Определяем тип запроса
+    request_type = 'text'
+    if file_data and file_type:
+        if file_type.startswith('image/'):
+            request_type = 'image'
+        elif modules['audio'].is_audio_file(file_type, file_name):
+            request_type = 'audio'
+    
+    # Если это аудио, сначала транскрибируем
+    if request_type == 'audio':
+        app.logger.info("send_message: обнаружено аудио, запуск транскрибации")
+        transcribed_text = modules['audio'].transcribe(file_data, file_type, file_name)
+        if transcribed_text is None:
+            return jsonify({'error': 'Не удалось распознать речь'}), 500
+        
+        app.logger.info(f"send_message: транскрибация успешна: {transcribed_text[:100]}")
+        # Используем транскрибированный текст как сообщение
+        message_text = transcribed_text
+        # Тип запроса меняем на text для дальнейшей обработки
+        request_type = 'text'
+        # Оставляем file_data для сохранения вложения, но текст уже есть
+    else:
+        # Для не-аудио сохраняем исходный текст
+        pass
+    
     # Сохраняем сообщение пользователя
     user_content = []
     if message_text:
         user_content.append({"type": "text", "text": message_text})
     
     if file_data:
+        # Определяем тип вложения (может быть изображение или аудио)
+        if file_type and file_type.startswith('image/'):
+            content_type = "image"
+        elif file_type and modules['audio'].is_audio_file(file_type, file_name):
+            content_type = "audio"
+        else:
+            content_type = "file"
+        
         user_content.append({
-            "type": "file", 
-            "file_data": file_data, 
-            "file_type": file_type, 
+            "type": content_type,
+            "file_data": file_data,
+            "file_type": file_type,
             "file_name": file_name
         })
     
@@ -1377,18 +1424,10 @@ def send_message():
     if is_first_message:
         update_session_title(session_id, message_text, file_name)
     
-    # Определяем тип запроса
-    request_type = 'text'
-    if file_data and file_type and file_type.startswith('image/'):
-        request_type = 'image'
-    
-    # Создаём данные для очереди
+    # Создаём данные для очереди (всегда text, так как аудио уже обработано)
     request_data = {
-        'type': request_type,
+        'type': 'text',  # Всегда text, даже если исходно было аудио
         'text': message_text,
-        'file_data': file_data,
-        'file_type': file_type,
-        'file_name': file_name,
         'preview': (message_text[:50] + '...') if message_text else (file_name or 'Запрос')
     }
     

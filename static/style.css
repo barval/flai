@@ -1368,3 +1368,44 @@ audio {
     display: block !important;
     margin-left: 0 !important;
 }
+
+/* Стили для кнопки записи голоса */
+.voice-record-button {
+    background-color: #f1f1f1;
+    color: #333;
+    border: none;
+    border-radius: 8px;
+    padding: 0.8rem;
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: background-color 0.3s;
+}
+
+.voice-record-button:hover {
+    background-color: #e0e0e0;
+}
+
+.voice-record-button.recording {
+    background-color: #e74c3c;
+    color: white;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+.recording-indicator {
+    margin-left: 10px;
+    color: #e74c3c;
+    font-weight: bold;
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0.3; }
+    100% { opacity: 1; }
+}

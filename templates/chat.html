@@ -1,4 +1,4 @@
-<!-- templates/chat.html (полный файл с исправлениями) -->
+<!-- templates/chat.html (полный файл с поддержкой аудио-записи) -->
 {% extends "base.html" %}
 
 {% block content %}
@@ -58,12 +58,14 @@
             <div id="modal-caption"></div>
         </div>
         
-        <!-- Поле ввода -->
+        <!-- Поле ввода + кнопки -->
         <div class="message-input">
             <input type="text" id="message-input" placeholder="Введите сообщение..." autocomplete="off">
+            <button id="voice-record-button" class="voice-record-button" title="Записать голосовое сообщение">🎤</button>
             <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt" style="display: none;">
             <button id="attach-file-button">📎</button>
             <button id="send-button">Отправить</button>
+            <span id="recording-indicator" style="display:none; margin-left: 10px; color: #e74c3c; font-weight: bold;">🔴 Запись...</span>
         </div>
     </div>
 </div>
@@ -79,12 +81,14 @@
     let sessionsData = {};
     let syncInterval = null;
     let newMessageIndicators = {};
-    // Статусы запросов (очередь, обработка, ошибка)
     let sessionRequestStatus = {};
-    // Время последнего завершения запроса для сеанса (чтобы подавить мерцание)
     let lastCompletionTime = {};
-    // Таймер для debounce обновления списка
     let sessionsUpdateTimeout = null;
+
+    // Переменные для записи голоса
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
 
     // -------------------------------
     // Вспомогательные функции
@@ -176,7 +180,6 @@
 
     // -------------------------------
     // Управление индикаторами новых сообщений (✉️) 
-    // Теперь без localStorage, только на основе данных с сервера
     // -------------------------------
     function setNewMessageIndicator(sessionId, show) {
         if (show) {
@@ -197,20 +200,17 @@
                 const newStatus = {};
                 const now = Date.now();
                 
-                // Обрабатываем текущий обрабатываемый запрос
                 if (data.processing) {
                     const proc = data.processing;
                     newStatus[proc.session_id] = { status: 'processing', ...proc };
                 }
                 
-                // Обрабатываем очередь
                 data.queued.forEach(item => {
                     if (!newStatus[item.session_id]) {
                         newStatus[item.session_id] = { status: 'queued', ...item };
                     }
                 });
                 
-                // Сохраняем предыдущие ошибки, если они не перезаписаны новыми статусами
                 const oldStatus = sessionRequestStatus;
                 for (let sid in oldStatus) {
                     if (oldStatus[sid].status === 'error' && !newStatus[sid]) {
@@ -218,11 +218,8 @@
                     }
                 }
                 
-                // Подавление мерцания: удаляем статусы для сеансов, которые недавно завершились,
-                // только если у них нет активных запросов в новых данных
                 Object.keys(newStatus).forEach(sid => {
                     if (lastCompletionTime[sid] && now - lastCompletionTime[sid] < 3000) {
-                        // Проверяем, есть ли у этого сеанса активные запросы в новых данных
                         const hasActive = (data.processing && data.processing.session_id === sid) ||
                                           data.queued.some(item => item.session_id === sid);
                         if (!hasActive) {
@@ -247,7 +244,6 @@
                 let updated = false;
                 let titlesChanged = false;
                 
-                // Обновляем данные в хранилище и индикаторы
                 sessions.forEach(s => {
                     if (!sessionsData[s.id]) {
                         sessionsData[s.id] = {
@@ -267,14 +263,12 @@
                         }
                     }
                     
-                    // --- НОВАЯ ПРОВЕРКА: изменение статуса прочитанности ---
                     const prevUnread = newMessageIndicators[s.id] ? true : false;
                     const newUnread = s.has_unread ? true : false;
                     if (prevUnread !== newUnread) {
                         updated = true;
                     }
                     
-                    // Устанавливаем индикатор непрочитанных на основе данных с сервера
                     if (s.has_unread) {
                         newMessageIndicators[s.id] = true;
                     } else {
@@ -282,7 +276,6 @@
                     }
                 });
                 
-                // Удаляем из хранилища сеансы, которых больше нет
                 Object.keys(sessionsData).forEach(id => {
                     if (!sessions.find(s => s.id === id)) {
                         delete sessionsData[id];
@@ -292,7 +285,6 @@
                     }
                 });
                 
-                // Если были изменения, обновляем отображение
                 if (updated) {
                     updateSessionsList(sessions, titlesChanged);
                 }
@@ -302,7 +294,6 @@
             .catch(err => console.error('Ошибка загрузки сеансов:', err));
     }
 
-    // Принудительное обновление списка сеансов
     function forceRefreshSessions() {
         loadSessionsFromServer().then(() => {
             console.log('Список сеансов обновлен');
@@ -331,7 +322,6 @@
         const sessionsList = document.getElementById('sessions-list');
         const currentActiveId = currentSessionId;
         
-        // Используем данные из хранилища
         sessions.forEach(s => {
             if (sessionsData[s.id]) {
                 s.title = sessionsData[s.id].title;
@@ -339,7 +329,6 @@
             }
         });
         
-        // Сортируем по дате обновления (новые сверху)
         sessions.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
         
         let html = '';
@@ -347,7 +336,6 @@
             const isActive = s.id === currentActiveId ? 'active' : '';
             const dateStr = s.updated_at ? s.updated_at.replace('T', ' ').substring(0, 19) : '';
             
-            // Определяем иконку статуса по приоритету
             let statusIcon = '';
             const reqStatus = sessionRequestStatus[s.id];
             if (reqStatus) {
@@ -359,7 +347,6 @@
                     statusIcon = '<span class="session-status-icon queued" title="В очереди">⏳</span>';
                 }
             }
-            // Если нет статуса запроса, но есть непрочитанное сообщение (и сеанс не активен)
             if (!statusIcon && newMessageIndicators[s.id] && s.id !== currentActiveId) {
                 statusIcon = '<span class="session-status-icon unread blink" title="Новый ответ">✉️</span>';
             }
@@ -383,7 +370,6 @@
         sessionsList.innerHTML = html;
         document.getElementById('sessions-count').textContent = sessions.length;
         
-        // Перепривязываем обработчики событий
         attachSessionEventHandlers();
     }
 
@@ -391,7 +377,6 @@
     // Привязка обработчиков событий к элементам сеансов
     // -------------------------------
     function attachSessionEventHandlers() {
-        // Клик по сеансу (но не по кнопке удаления)
         document.querySelectorAll('.session-item').forEach(el => {
             el.addEventListener('click', function(e) {
                 if (e.target.closest('.delete-session-button')) {
@@ -401,7 +386,6 @@
                 const sessionId = this.dataset.sessionId;
                 if (sessionId === currentSessionId) return;
                 
-                // Очищаем индикатор для этого сеанса перед переключением
                 setNewMessageIndicator(sessionId, false);
                 
                 document.querySelectorAll('.session-item').forEach(i => i.classList.remove('active'));
@@ -411,7 +395,6 @@
             });
         });
         
-        // Кнопки удаления сеансов
         document.querySelectorAll('.delete-session-button').forEach(btn => {
             btn.addEventListener('click', function(e) {
                 e.stopPropagation();
@@ -434,7 +417,6 @@
         if (syncInterval) {
             clearInterval(syncInterval);
         }
-        // Синхронизируем каждые 5 секунд (объединённый интервал)
         syncInterval = setInterval(() => {
             loadSessionsFromServer();
             fetchQueueStatus();
@@ -457,7 +439,6 @@
             .catch(err => console.error('Ошибка обновления счётчика:', err));
     };
 
-    // --- НОВАЯ ФУНКЦИЯ: обновление времени последнего посещения ---
     function updateLastVisit(sessionId) {
         fetch(`/api/sessions/${sessionId}/visit`, { method: 'POST' })
             .catch(err => console.error('Ошибка обновления last_visit:', err));
@@ -467,18 +448,12 @@
     // Инициализация
     // -------------------------------
     document.addEventListener('DOMContentLoaded', function() {
-        // Загружаем список сеансов с сервера
         loadSessionsFromServer().then(() => {
-            // Загружаем сообщения текущего сеанса
             loadMessages(currentSessionId);
-            // Запускаем периодическую синхронизацию
             startSyncInterval();
         });
         
-        // Новая беседа
         document.getElementById('new-session-button').addEventListener('click', createNewSession);
-        
-        // Отправка
         document.getElementById('send-button').addEventListener('click', sendMessage);
         document.getElementById('message-input').addEventListener('keypress', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -498,7 +473,6 @@
                 const preview = document.getElementById('file-preview-container');
                 document.getElementById('file-preview-name').textContent = attachedFile.name;
                 
-                // Добавляем отображение размера файла в превью
                 const fileSize = formatFileSize(attachedFile.size);
                 const sizeSpan = document.getElementById('file-preview-size');
                 if (sizeSpan) {
@@ -532,9 +506,12 @@
             }
         });
 
-        // Запускаем периодическое обновление счётчика и статусов (уже в startSyncInterval)
-        window.updateStatusCounter(); // сразу при загрузке
-        fetchQueueStatus(); // сразу
+        window.updateStatusCounter();
+        fetchQueueStatus();
+
+        // Кнопка записи голоса
+        const voiceButton = document.getElementById('voice-record-button');
+        voiceButton.addEventListener('click', toggleVoiceRecording);
     });
 
     // -------------------------------
@@ -547,7 +524,6 @@
                 const container = document.getElementById('chat-messages');
                 container.innerHTML = '';
                 
-                // Получаем информацию о сессии для модели по умолчанию
                 fetch(`/api/sessions/${sessionId}/model-info`)
                     .then(res => res.json())
                     .then(data => {
@@ -555,7 +531,6 @@
                     })
                     .catch(err => console.error('Error loading model info:', err));
                 
-                // Группируем сообщения для вычисления времени ответа
                 let lastUserMessage = null;
                 
                 messages.forEach((msg) => {
@@ -568,15 +543,9 @@
                             msg.file_type, 
                             msg.file_name, 
                             msg.timestamp,
-                            null,  // responseTime
-                            null,  // modelName (будет определено позже)
-                            null,  // mmTime
-                            null,  // genTime
-                            null,  // mmModel
-                            null   // genModel
+                            null, null, null, null, null, null
                         );
                     } else if (msg.role === 'assistant') {
-                        // Вычисляем разницу во времени, если есть предыдущее сообщение пользователя
                         let responseTime = null;
                         if (lastUserMessage) {
                             const userTime = new Date(lastUserMessage.timestamp);
@@ -585,25 +554,19 @@
                             responseTime = Math.round(diffSeconds * 10) / 10;
                         }
                         
-                        // Проверяем, есть ли сохранённое время ответа в БД
                         if (msg.response_time) {
-                            // Если response_time - объект (для генерации изображений)
                             if (typeof msg.response_time === 'object') {
                                 responseTime = msg.response_time;
-                            } 
-                            // Если response_time - число или строка с числом
-                            else if (!isNaN(parseFloat(msg.response_time))) {
+                            } else if (!isNaN(parseFloat(msg.response_time))) {
                                 responseTime = parseFloat(msg.response_time);
                             }
                         }
                         
-                        // Проверяем, есть ли раздельное время в сообщении из БД
                         let mmTime = msg.mm_time;
                         let genTime = msg.gen_time;
                         let mmModel = msg.mm_model;
                         let genModel = msg.gen_model;
                         
-                        // Если есть раздельное время, создаем объект responseTime
                         if (mmTime && genTime) {
                             responseTime = {
                                 mm_time: parseFloat(mmTime),
@@ -628,17 +591,14 @@
                             genModel
                         );
                         
-                        lastUserMessage = null; // Сбрасываем после пары
+                        lastUserMessage = null;
                     }
                 });
                 
                 updateMessageCount();
                 container.scrollTop = container.scrollHeight;
                 
-                // Очищаем индикатор для этого сеанса
                 setNewMessageIndicator(sessionId, false);
-                
-                // --- НОВОЕ: обновляем время последнего посещения ---
                 updateLastVisit(sessionId);
             });
     }
@@ -647,18 +607,9 @@
     // Отображение одного сообщения
     // -------------------------------
     function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
-        console.log('displayMessage called with:', {  // Добавляем отладку
-            role,
-            responseTime,
-            modelName,
-            type: typeof responseTime,
-            value: responseTime
-        });
-        
         const container = document.getElementById('chat-messages');
         const msgDiv = document.createElement('div');
         
-        // Устанавливаем правильный класс в зависимости от роли
         if (role === 'user') {
             msgDiv.className = 'user-message';
         } else {
@@ -672,7 +623,6 @@
         
         msgDiv.setAttribute('data-timestamp', timestamp);
         
-        // Для сообщений ассистента сохраняем дополнительную информацию
         if (role === 'assistant') {
             if (modelName) {
                 msgDiv.dataset.modelName = modelName;
@@ -724,7 +674,6 @@
             }
         }
         
-        // Формируем заголовок сообщения в новом стиле
         let headerHTML = `<span class="message-header">📅 ${timeDisplay}`;
         
         if (role === 'assistant') {
@@ -733,7 +682,6 @@
                 headerHTML += ` <span class="text-muted">| ${escapeHtml(shortModel)}</span>`;
             }
             
-            // Время ответа
             let duration = null;
             if (responseTime) {
                 if (typeof responseTime === 'object') {
@@ -755,7 +703,6 @@
         
         headerHTML += '</span>';
         
-        // Обработка текста (контент)
         let contentHTML = `<div class="message-content">`;
         
         if (typeof content === 'string') {
@@ -794,10 +741,8 @@
         
         contentHTML += '</div>';
         
-        // Собираем всё вместе
         msgDiv.innerHTML = headerHTML + contentHTML;
         
-        // Файл (если есть) – добавляем после контента, как и раньше
         if (fileData) {
             let fileHTML = '';
             if (fileType && fileType.startsWith('image/')) {
@@ -849,7 +794,6 @@
                     }
                 });
                 
-                // Обновляем список сеансов, чтобы убрать ✉️ для активного
                 updateSessionsListFromData();
             });
     }
@@ -861,21 +805,17 @@
         fetch('/api/sessions/new', { method: 'POST' })
             .then(res => res.json())
             .then(data => {
-                // Добавляем в хранилище данных
                 sessionsData[data.id] = {
                     title: data.title,
                     updated_at: new Date().toISOString()
                 };
                 
-                // НЕМЕДЛЕННО убираем выделение со всех сеансов
                 document.querySelectorAll('.session-item').forEach(el => {
                     el.classList.remove('active');
                 });
                 
-                // НЕМЕДЛЕННО устанавливаем новый currentSessionId
                 currentSessionId = data.id;
                 
-                // Перезагружаем список сеансов с сервера
                 loadSessionsFromServer().then(() => {
                     document.getElementById('chat-messages').innerHTML = '';
                     updateMessageCount();
@@ -889,13 +829,11 @@
     // Обновление заголовка сеанса
     // -------------------------------
     function updateSessionTitle(sessionId, newTitle) {
-        // Обновляем в хранилище данных
         if (sessionsData[sessionId]) {
             sessionsData[sessionId].title = newTitle;
             sessionsData[sessionId].updated_at = new Date().toISOString();
         }
         
-        // Находим элемент сеанса
         const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
         if (!sessionItem) return;
         
@@ -904,7 +842,6 @@
             titleElement.innerHTML = escapeHtml(newTitle);
         }
         
-        // Обновляем дату
         const now = new Date();
         const formattedDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
         const dateElement = sessionItem.querySelector('.session-date');
@@ -912,7 +849,6 @@
             dateElement.textContent = formattedDate;
         }
         
-        // НЕМЕДЛЕННО перемещаем сеанс вверх списка
         const sessionsList = document.getElementById('sessions-list');
         if (sessionsList.firstChild !== sessionItem) {
             sessionsList.insertBefore(sessionItem, sessionsList.firstChild);
@@ -920,7 +856,78 @@
     }
 
     // -------------------------------
-    // Отправка сообщения
+    // Функции записи голоса
+    // -------------------------------
+    async function toggleVoiceRecording() {
+        if (isRecording) {
+            await stopRecording();
+        } else {
+            await startRecording();
+        }
+    }
+
+    async function startRecording() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            alert('Ваш браузер не поддерживает запись audio');
+            return;
+        }
+        
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            
+            mediaRecorder.ondataavailable = event => {
+                if (event.data.size > 0) {
+                    audioChunks.push(event.data);
+                }
+            };
+            
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                sendVoiceMessage(audioBlob);
+                stream.getTracks().forEach(track => track.stop());
+            };
+            
+            mediaRecorder.start();
+            isRecording = true;
+            
+            document.getElementById('voice-record-button').classList.add('recording');
+            document.getElementById('recording-indicator').style.display = 'inline';
+        } catch (err) {
+            console.error('Ошибка доступа к микрофону:', err);
+            alert('Не удалось получить доступ к микрофону');
+        }
+    }
+
+    async function stopRecording() {
+        if (mediaRecorder && isRecording) {
+            mediaRecorder.stop();
+            isRecording = false;
+            
+            document.getElementById('voice-record-button').classList.remove('recording');
+            document.getElementById('recording-indicator').style.display = 'none';
+        }
+    }
+
+    async function sendVoiceMessage(blob) {
+        // Отправляем аудиофайл как обычный файл
+        const file = new File([blob], 'voice_message.webm', { type: 'audio/webm' });
+        attachedFile = file;
+        
+        // Показываем превью
+        const preview = document.getElementById('file-preview-container');
+        document.getElementById('file-preview-name').textContent = file.name;
+        const fileSize = formatFileSize(file.size);
+        document.getElementById('file-preview-size').textContent = ` (${fileSize})`;
+        preview.style.display = 'block';
+        
+        // Автоматически отправляем (можно по желанию)
+        sendMessage();
+    }
+
+    // -------------------------------
+    // Отправка сообщения (модифицирована для учёта аудио)
     // -------------------------------
     async function sendMessage() {
         const input = document.getElementById('message-input');
@@ -954,7 +961,6 @@
             }
         }
         
-        // Сбрасываем метку последнего завершения для этого сеанса (новый запрос)
         delete lastCompletionTime[currentSessionId];
         
         const now = new Date();
@@ -974,8 +980,12 @@
         
         const displayUserMessage = (fileData, fileType, fileName) => {
             if (fileData) {
+                // Определяем тип вложения
+                let type = "file";
+                if (fileType && fileType.startsWith('image/')) type = "image";
+                else if (fileType && fileType.startsWith('audio/')) type = "audio";
                 userContent.push({
-                    "type": "file", 
+                    "type": type, 
                     "file_data": fileData, 
                     "file_type": fileType, 
                     "file_name": fileName
@@ -1026,11 +1036,9 @@
                 console.log('Ответ от сервера:', data);
                 
                 if (data.status === 'queued') {
-                    // Локально устанавливаем статус queued для текущего сеанса
                     sessionRequestStatus[currentSessionId] = { status: 'queued' };
                     updateSessionsListFromData();
 
-                    // Сохраняем соответствие request_id -> session_id
                     pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
                     
                     const waitMinutes = Math.floor(data.estimated_wait / 60);
@@ -1050,7 +1058,6 @@
                     document.querySelector('.chat-header').appendChild(notification);
                     setTimeout(() => notification.remove(), 5000);
                     
-                    // Обновляем счётчик
                     window.updateStatusCounter();
                     
                     startResultPolling(data.request_id);
@@ -1081,7 +1088,6 @@
             }
         };
 
-        // Функция для опроса результата
         function startResultPolling(requestId) {
             console.log('Start polling for request:', requestId);
             let pollCount = 0;
@@ -1102,9 +1108,7 @@
                         if (data.result) {
                             const resultSessionId = data.result.session_id || pendingRequests[requestId]?.sessionId;
                             
-                            // Если в результате есть поле error (ошибка)
                             if (data.result.error) {
-                                // Ошибка
                                 if (resultSessionId === currentSessionId) {
                                     displayMessage(
                                         'assistant',
@@ -1118,9 +1122,7 @@
                                 } else if (resultSessionId) {
                                     sessionRequestStatus[resultSessionId] = { status: 'error' };
                                 }
-                                // Устанавливаем время завершения на 5 секунд вперёд для подавления статуса
                                 lastCompletionTime[resultSessionId] = Date.now() + 5000;
-                                // Немедленно обновляем список, чтобы показать ошибку
                                 updateSessionsListFromData();
                             }
                             else if (data.result.response) {
@@ -1135,7 +1137,6 @@
                                     value: responseTime
                                 });
                                 
-                                // Проверяем наличие раздельного времени
                                 if (data.result.mm_time && data.result.gen_time) {
                                     responseTime = {
                                         mm_time: data.result.mm_time,
@@ -1144,9 +1145,7 @@
                                         gen_model: data.result.gen_model
                                     };
                                     modelUsed = data.result.gen_model;
-                                } 
-                                // Если responseTime - строка, пробуем распарсить как JSON
-                                else if (typeof responseTime === 'string' && responseTime.startsWith('{')) {
+                                } else if (typeof responseTime === 'string' && responseTime.startsWith('{')) {
                                     try {
                                         responseTime = JSON.parse(responseTime);
                                     } catch (e) {
@@ -1167,29 +1166,22 @@
                                         responseTime,
                                         modelUsed
                                     );
-                                    // Убираем статус для текущего сеанса
                                     delete sessionRequestStatus[resultSessionId];
                                     
-                                    // --- НОВОЕ: обновляем время посещения после получения ответа ---
                                     updateLastVisit(currentSessionId);
                                 } else {
                                     console.log(`Ответ для сеанса ${resultSessionId}, не текущего`);
-                                    // Устанавливаем индикатор немедленно
                                     setNewMessageIndicator(resultSessionId, true);
-                                    // Убираем статус для этого сеанса (он завершён)
                                     delete sessionRequestStatus[resultSessionId];
                                 }
-                                // Запоминаем время завершения на 5 секунд вперёд для подавления статуса
                                 lastCompletionTime[resultSessionId] = Date.now() + 5000;
                             }
                         }
                         
-                        // Удаляем запись из pendingRequests
                         delete pendingRequests[requestId];
                         
-                        // Обновляем счётчик после завершения
                         window.updateStatusCounter();
-                        fetchQueueStatus(); // принудительно обновить статусы
+                        fetchQueueStatus();
                         
                         setTimeout(() => {
                             loadSessionsFromServer();
@@ -1215,7 +1207,6 @@
                             sessionRequestStatus[resultSessionId] = { status: 'error' };
                         }
                         lastCompletionTime[resultSessionId] = Date.now() + 5000;
-                        // Немедленно обновляем список, чтобы показать ошибку
                         updateSessionsListFromData();
                         
                         delete pendingRequests[requestId];
@@ -1225,7 +1216,6 @@
                         
                     } else if (data.status === 'pending') {
                         console.log('Request still pending...');
-                        // Определяем сеанс, к которому относится запрос
                         const reqSessionId = pendingRequests[requestId]?.sessionId;
                         if (reqSessionId) {
                             if (!sessionRequestStatus[reqSessionId] || sessionRequestStatus[reqSessionId].status !== 'processing') {

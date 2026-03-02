@@ -108,6 +108,10 @@ class MultimodalModule:
     
     def process_image_with_text(self, image_data, user_text, current_time_str):
         """Обработка изображения с текстом"""
+        # Проверяем доступность модуля
+        if not self.check_availability():
+            return None, "⚠️ Мультимодальная модель недоступна"
+        
         from app import format_prompt
         
         if user_text.strip():
@@ -134,6 +138,10 @@ class MultimodalModule:
     
     def generate_image_params(self, user_query):
         """Генерация параметров для создания изображения"""
+        # Проверяем доступность модуля
+        if not self.check_availability():
+            return None, "⚠️ Мультимодальная модель недоступна"
+        
         from app import format_prompt
         
         create_prompt = format_prompt('create_image.template', {
@@ -152,6 +160,9 @@ class MultimodalModule:
         ]
         
         response = self._call_multimodal(messages)
+        
+        # Логируем ответ модели для отладки
+        self.logger.info(f"Ответ мультимодальной модели на запрос генерации параметров: {response}")
         
         # Пытаемся распарсить JSON
         try:

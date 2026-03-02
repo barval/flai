@@ -697,10 +697,10 @@ class RedisRequestQueue:
                 final_response = query
                 is_error = False
             
+            # ИСПРАВЛЕНИЕ: определяем completion_time_for_db до проверки final_response
+            completion_time_for_db = get_current_time_in_timezone_for_db()
+            
             if final_response:
-                # Время ЗАВЕРШЕНИЯ обработки
-                completion_time_for_db = get_current_time_in_timezone_for_db()
-                
                 # Сохраняем сообщение с временем обработки
                 save_message(
                     session_id, 'assistant', final_response, 
@@ -1381,6 +1381,8 @@ def send_message():
         transcribed_text = modules['audio'].transcribe(file_data, file_type, file_name)
         if transcribed_text is None:
             return jsonify({'error': 'Не удалось распознать речь'}), 500
+        if not transcribed_text.strip():
+            return jsonify({'error': 'Распознанный текст пуст'}), 500
         
         app.logger.info(f"send_message: транскрибация успешна: {transcribed_text[:100]}")
         

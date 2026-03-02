@@ -85,26 +85,54 @@ class AudioModule:
                 'audio_file': (filename, audio_bytes, audio_format)
             }
             
-            self.logger.info(f"Отправка аудио на транскрибацию, размер {len(audio_bytes)} байт, формат {audio_format}")
+            # ИСПРАВЛЕНИЕ: добавляем параметр output=json для получения JSON-ответа
+            params = {'output': 'json'}
+            
+            self.logger.info(f"Отправка аудио на транскрибацию, размер {len(audio_bytes)} байт, формат {audio_format}, params={params}")
             
             response = requests.post(
                 self.whisper_api_url,
                 files=files,
+                params=params,
                 timeout=60
             )
             
+            self.logger.info(f"Whisper API ответ: статус {response.status_code}, заголовки: {response.headers}")
+            
             if response.status_code == 200:
-                result = response.json()
-                # Ожидаем, что ответ содержит поле "text"
-                text = result.get('text', '')
-                if text:
-                    self.logger.info(f"Транскрибация успешна: {text[:50]}...")
-                    return text.strip()
+                content_type = response.headers.get('content-type', '')
+                
+                # Пытаемся распарсить JSON, если это JSON
+                if 'application/json' in content_type or response.text.strip().startswith('{'):
+                    try:
+                        result = response.json()
+                        text = result.get('text', '')
+                        if text:
+                            self.logger.info(f"Транскрибация успешна (JSON): {text[:50]}...")
+                            return text.strip()
+                        else:
+                            self.logger.error("Whisper API вернул пустой текст в JSON")
+                            return None
+                    except Exception as e:
+                        self.logger.error(f"Ошибка парсинга JSON: {str(e)}")
+                        # Пробуем прочитать как текст
+                        text = response.text.strip()
+                        if text:
+                            self.logger.info(f"Транскрибация успешна (plain text после ошибки JSON): {text[:50]}...")
+                            return text
+                        else:
+                            return None
                 else:
-                    self.logger.error("Whisper API вернул пустой текст")
-                    return None
+                    # Не JSON, считаем, что ответ - это просто текст
+                    text = response.text.strip()
+                    if text:
+                        self.logger.info(f"Транскрибация успешна (plain text): {text[:50]}...")
+                        return text
+                    else:
+                        self.logger.error("Whisper API вернул пустой ответ")
+                        return None
             else:
-                self.logger.error(f"Ошибка Whisper API: статус {response.status_code}, ответ: {response.text}")
+                self.logger.error(f"Ошибка Whisper API: статус {response.status_code}, ответ: {response.text[:200]}")
                 return None
                 
         except requests.exceptions.ConnectionError:

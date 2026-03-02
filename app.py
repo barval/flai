@@ -59,7 +59,7 @@ app.config.update({
     'MAX_IMAGE_WIDTH': int(os.getenv('MAX_IMAGE_WIDTH', 3840)),
     'MAX_IMAGE_HEIGHT': int(os.getenv('MAX_IMAGE_HEIGHT', 2160)),
     'MAX_IMAGE_SIZE_MB': int(os.getenv('MAX_IMAGE_SIZE_MB', 5)),
-    # Новый параметр для Whisper
+    # URL для Whisper API
     'WHISPER_API_URL': os.getenv('WHISPER_API_URL', 'http://host.docker.internal:9000/asr')
 })
 
@@ -110,9 +110,9 @@ if 'cam' in modules:
     CamAPI.register_routes(app, modules['cam'])
     app.logger.info("API эндпоинты для камер зарегистрированы")
 
-# Модули-заглушки (теперь аудио не заглушка)
+# Модули
 modules['rag'] = RagModule(app)
-modules['audio'] = AudioModule(app)  # теперь рабочий модуль
+modules['audio'] = AudioModule(app)
 
 # -------------------------------
 # Пути к данным и шаблонам
@@ -697,7 +697,7 @@ class RedisRequestQueue:
                 final_response = query
                 is_error = False
             
-            # ИСПРАВЛЕНИЕ: определяем completion_time_for_db до проверки final_response
+            # Определяем completion_time_for_db до проверки final_response
             completion_time_for_db = get_current_time_in_timezone_for_db()
             
             if final_response:
@@ -766,10 +766,8 @@ class RedisRequestQueue:
                 'is_error': is_error
             }
         
-        # Для аудио запросов (транскрибация уже выполнена, но оставим для полноты)
+        # Для аудио запросов (не должны попадать сюда, но на всякий случай)
         elif request_type == 'audio' and file_data:
-            # Эта ветка может не использоваться, так как аудио обрабатывается в send_message синхронно
-            # Оставим на случай, если будем передавать аудио в очередь
             app.logger.warning("Получен аудио запрос в очереди, но обработка не реализована")
             return {
                 'error': 'Аудио запросы должны обрабатываться синхронно',
@@ -838,7 +836,7 @@ class RedisRequestQueue:
             'image': '🎨',
             'camera': '📷',
             'reasoning': '🧠',
-            'audio': '🎤'   # Добавили иконку для аудио
+            'audio': '🎤'
         }
         
         return {
@@ -952,7 +950,7 @@ def create_session(user_id, title="Новый сеанс"):
             VALUES (?, ?, ?, ?, ?, ?)
         ''', (session_id, user_id, title, 'auto', current_time, current_time))
         
-        # --- НОВОЕ: сразу создаём запись о посещении ---
+        # Сразу создаём запись о посещении
         c.execute('''
             INSERT OR REPLACE INTO session_visits (user_id, session_id, last_visit)
             VALUES (?, ?, ?)
@@ -1218,7 +1216,6 @@ def api_delete_session(session_id):
     
     return jsonify({'status': 'ok'})
 
-# --- НОВЫЙ ЭНДПОИНТ для обновления времени посещения ---
 @app.route('/api/sessions/<session_id>/visit', methods=['POST'])
 def api_update_session_visit(session_id):
     if 'email' not in session:
@@ -1374,39 +1371,13 @@ def send_message():
         elif modules['audio'].is_audio_file(file_type, file_name):
             request_type = 'audio'
     
-    # Если это аудио, сначала транскрибируем
-    transcribed_text = None
-    if request_type == 'audio':
-        app.logger.info("send_message: обнаружено аудио, запуск транскрибации")
-        transcribed_text = modules['audio'].transcribe(file_data, file_type, file_name)
-        if transcribed_text is None:
-            return jsonify({'error': 'Не удалось распознать речь'}), 500
-        if not transcribed_text.strip():
-            return jsonify({'error': 'Распознанный текст пуст'}), 500
-        
-        app.logger.info(f"send_message: транскрибация успешна: {transcribed_text[:100]}")
-        
-        # NEW: Сохраняем системное сообщение с транскрипцией
-        system_content = f"🎤 Распознано: {transcribed_text}"
-        save_message(session_id, 'assistant', system_content, 
-                     model_name='whisper', response_time=None)
-        
-        # Используем транскрибированный текст как сообщение
-        message_text = transcribed_text
-        # Тип запроса меняем на text для дальнейшей обработки
-        request_type = 'text'
-        # Файл остаётся для сохранения вложения
-    else:
-        # Для не-аудио сохраняем исходный текст
-        pass
-    
-    # Сохраняем сообщение пользователя
+    # Формируем содержимое пользовательского сообщения
     user_content = []
     if message_text:
         user_content.append({"type": "text", "text": message_text})
     
     if file_data:
-        # Определяем тип вложения (может быть изображение или аудио)
+        # Определяем тип вложения
         if file_type and file_type.startswith('image/'):
             content_type = "image"
         elif file_type and modules['audio'].is_audio_file(file_type, file_name):
@@ -1422,36 +1393,74 @@ def send_message():
         })
     
     user_content_json = json.dumps(user_content, ensure_ascii=False)
+    
+    # Сохраняем сообщение пользователя (сначала!)
     save_message(session_id, 'user', user_content_json, file_data, file_type, file_name, None)
     
     # Проверяем, первое ли это сообщение
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (session_id,))
-        is_first_message = c.fetchone()[0] == 1  # Только что сохранили
+        message_count = c.fetchone()[0]
+        is_first_message = message_count == 1  # Только что сохранили пользовательское
     
     if is_first_message:
         update_session_title(session_id, message_text, file_name)
     
-    # Создаём данные для очереди (всегда text, так как аудио уже обработано)
-    request_data = {
-        'type': 'text',  # Всегда text, даже если исходно было аудио
-        'text': message_text,
-        'preview': (message_text[:50] + '...') if message_text else (file_name or 'Запрос')
-    }
+    # Если это аудио, выполняем транскрибацию
+    transcribed_text = None
+    if request_type == 'audio':
+        app.logger.info("send_message: обнаружено аудио, запуск транскрибации")
+        transcribed_text = modules['audio'].transcribe(file_data, file_type, file_name)
+        
+        if transcribed_text is None:
+            return jsonify({'error': 'Не удалось распознать речь'}), 500
+        
+        app.logger.info(f"send_message: транскрибация успешна: {transcribed_text[:100]}")
+        
+        # Сохраняем системное сообщение с транскрипцией (после пользовательского)
+        system_content = f"🎤 Распознано: {transcribed_text}"
+        save_message(session_id, 'assistant', system_content, 
+                     model_name='whisper', response_time=None)
+        
+        # Для любого аудио (и голосового сообщения, и загруженного файла)
+        # НЕ ставим задачу в очередь, а возвращаем только транскрипцию
+        return jsonify({
+            'status': 'success',
+            'transcribed_text': transcribed_text,
+            'message': 'Аудио распознано'
+        })
+    
+    # Для изображений и текста (без аудио) – ставим в очередь
+    # Формируем данные для очереди
+    if request_type == 'image' and file_data:
+        # Для изображений передаём файл
+        request_data = {
+            'type': 'image',
+            'text': message_text,
+            'file_data': file_data,
+            'file_type': file_type,
+            'file_name': file_name,
+            'preview': (message_text[:50] + '...') if message_text else (file_name or 'Изображение')
+        }
+    else:
+        # Текстовый запрос (без файла или с файлом, который не аудио и не изображение – например, документ, но пока не обрабатываем)
+        request_data = {
+            'type': 'text',
+            'text': message_text,
+            'preview': (message_text[:50] + '...') if message_text else 'Текстовый запрос'
+        }
     
     # Добавляем в очередь Redis
     request_id, position_info = request_queue.add_request(
         user_id, session_id, request_data, user_class
     )
     
-    # NEW: возвращаем также транскрибированный текст для немедленного отображения
     return jsonify({
         'status': 'queued',
         'request_id': request_id,
         'position': position_info['position'],
         'estimated_wait': position_info['estimated_seconds'],
-        'transcribed_text': transcribed_text,   # может быть None, если не аудио
         'message': f'Запрос поставлен в очередь (позиция {position_info["position"]})'
     })
 

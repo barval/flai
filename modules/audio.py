@@ -85,7 +85,7 @@ class AudioModule:
                 'audio_file': (filename, audio_bytes, audio_format)
             }
             
-            # ИСПРАВЛЕНИЕ: добавляем параметр output=json для получения JSON-ответа
+            # Добавляем параметр output=json для получения JSON-ответа
             params = {'output': 'json'}
             
             self.logger.info(f"Отправка аудио на транскрибацию, размер {len(audio_bytes)} байт, формат {audio_format}, params={params}")

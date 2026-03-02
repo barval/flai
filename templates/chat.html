@@ -1,4 +1,4 @@
-<!-- templates/chat.html (полный файл с поддержкой аудио-записи) -->
+<!-- templates/chat.html (полный файл с поддержкой аудио-записи и исправлениями) -->
 {% extends "base.html" %}
 
 {% block content %}
@@ -871,7 +871,11 @@
             alert('Ваш браузер не поддерживает запись audio');
             return;
         }
-        
+        // Проверка безопасного контекста для мобильных
+        if (!window.isSecureContext) {
+            alert('Для записи голоса требуется безопасное соединение (HTTPS).\nПопробуйте открыть сайт по HTTPS или localhost.');
+            return;
+        }
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
@@ -896,7 +900,7 @@
             document.getElementById('recording-indicator').style.display = 'inline';
         } catch (err) {
             console.error('Ошибка доступа к микрофону:', err);
-            alert('Не удалось получить доступ к микрофону');
+            alert('Не удалось получить доступ к микрофону. Убедитесь, что сайт открыт по HTTPS или localhost, и разрешите использование микрофона.');
         }
     }
 
@@ -911,10 +915,10 @@
     }
 
     // -------------------------------
-    // Отправка голосового сообщения (ИЗМЕНЕНО: уникальное имя)
+    // Отправка голосового сообщения
     // -------------------------------
     async function sendVoiceMessage(blob) {
-        // Генерируем имя с датой: voice_YYYYMMDD_HHMMSS.webm   <!-- NEW -->
+        // Генерируем имя с датой: voice_YYYYMMDD_HHMMSS.webm
         const now = new Date();
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -939,7 +943,7 @@
     }
 
     // -------------------------------
-    // Отправка сообщения (ИЗМЕНЕНО: обработка transcribed_text)
+    // Отправка сообщения (ИЗМЕНЕНО: обработка ответов сервера)
     // -------------------------------
     async function sendMessage() {
         const input = document.getElementById('message-input');
@@ -1047,8 +1051,9 @@
                 const data = await response.json();
                 console.log('Ответ от сервера:', data);
                 
-                // NEW: если есть транскрибированный текст, показываем его сразу
+                // Если есть транскрибированный текст (для аудио) – показываем его
                 if (data.transcribed_text) {
+                    // Уже показано пользовательское сообщение, добавляем транскрипцию
                     displayMessage(
                         'assistant',
                         `🎤 Распознано: ${data.transcribed_text}`,
@@ -1057,6 +1062,11 @@
                         null,
                         'whisper'
                     );
+                    // Для аудио запрос в очередь не ставится, завершаем
+                    sendButton.disabled = false;
+                    sendButton.innerHTML = 'Отправить';
+                    isSending = false;
+                    return;
                 }
                 
                 if (data.status === 'queued') {
@@ -1113,7 +1123,6 @@
         };
 
         function startResultPolling(requestId) {
-            // ... (без изменений)
             console.log('Start polling for request:', requestId);
             let pollCount = 0;
             const maxPolls = 120;
@@ -1934,12 +1943,12 @@
     }
 
     // -------------------------------
-    // Добавление кнопок копирования (ИЗМЕНЕНО: добавлена кнопка для транскрибации)
+    // Добавление кнопок копирования
     // -------------------------------
     function addCopyButtonsToMessage(messageElement) {
         if (!messageElement) return;
         
-        // Обработка блоков кода (pre code) – без изменений
+        // Обработка блоков кода (pre code)
         const codeBlocks = messageElement.querySelectorAll('pre code');
         codeBlocks.forEach((codeBlock) => {
             const parent = codeBlock.parentNode;
@@ -1965,7 +1974,7 @@
             wrapper.appendChild(copyButton);
         });
         
-        // NEW: Добавляем кнопку копирования для сообщений с транскрибацией
+        // Кнопка для транскрибированных сообщений
         const contentDiv = messageElement.querySelector('.message-content');
         if (contentDiv && !contentDiv.querySelector('.copy-transcript-button')) {
             const text = contentDiv.innerText || contentDiv.textContent;
@@ -1977,13 +1986,12 @@
                 copyBtn.onclick = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    // Извлекаем текст после эмодзи
                     const textToCopy = text.replace('🎤 Распознано:', '').trim();
                     copyToClipboard(textToCopy);
                     copyBtn.innerHTML = '✓';
                     setTimeout(() => copyBtn.innerHTML = '📋', 2000);
                 };
-                contentDiv.style.position = 'relative'; // для позиционирования
+                contentDiv.style.position = 'relative';
                 contentDiv.appendChild(copyBtn);
             }
         }
@@ -2054,7 +2062,6 @@
         setTimeout(addCopyButtonsToAllCodeBlocks, 1000);
     });
 
-    // Добавленные вспомогательные функции для нового стиля
     function formatResponseTime(responseTime) {
         if (!responseTime) return '';
         if (typeof responseTime === 'object') {

@@ -44,8 +44,8 @@ def create_app():
 
     app.modules = modules  # сохраняем в приложении для доступа из маршрутов
 
-    # Инициализация очереди Redis
-    app.request_queue = RedisRequestQueue(app.config['REDIS_URL'])
+    # Инициализация очереди Redis (передаём app)
+    app.request_queue = RedisRequestQueue(app)
 
     # Регистрация маршрутов
     from . import auth, routes_chat, routes_queue

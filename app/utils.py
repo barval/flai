@@ -3,11 +3,13 @@ import pytz
 from datetime import datetime
 import os
 
-def get_current_time_in_timezone():
+def get_current_time_in_timezone(app=None):
     """Возвращает текущее время в часовом поясе, указанном в .env, в читаемом формате."""
-    tz = current_app.config.get('TIMEZONE')
+    if app is None:
+        app = current_app
+    tz = app.config.get('TIMEZONE')
     if not tz:
-        current_app.logger.error("Часовой пояс не настроен")
+        app.logger.error("Часовой пояс не настроен")
         return None
     try:
         utc_now = datetime.now(pytz.UTC)
@@ -26,12 +28,14 @@ def get_current_time_in_timezone():
             tz_abbr = ""
         return f"{formatted_date} {formatted_time} {weekday_ru} {tz_abbr}"
     except Exception as e:
-        current_app.logger.error(f"Ошибка получения времени: {str(e)}")
+        app.logger.error(f"Ошибка получения времени: {str(e)}")
         return None
 
-def get_current_time_in_timezone_for_db():
+def get_current_time_in_timezone_for_db(app=None):
     """Возвращает текущее время в формате SQLite."""
-    tz = current_app.config.get('TIMEZONE')
+    if app is None:
+        app = current_app
+    tz = app.config.get('TIMEZONE')
     if not tz:
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
@@ -39,7 +43,7 @@ def get_current_time_in_timezone_for_db():
         local_time = utc_now.astimezone(tz)
         return local_time.strftime('%Y-%m-%d %H:%M:%S')
     except Exception as e:
-        current_app.logger.error(f"Ошибка получения времени: {str(e)}")
+        app.logger.error(f"Ошибка получения времени: {str(e)}")
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
 PROMPTS_DIR = 'prompts'

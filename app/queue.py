@@ -15,7 +15,7 @@ class RedisRequestQueue:
         self.processing_key = 'processing_requests'
         self.results_key = 'request_results'
         self.user_requests_key = 'user_requests'
-        self.timeouts = {}  # будут загружены из конфига приложения
+        self.timeouts = {}
         self.start_worker()
 
     def start_worker(self):
@@ -33,7 +33,7 @@ class RedisRequestQueue:
                 queue_key, task_data = result
                 task = pickle.loads(task_data)
                 queue_time = time.time() - task.get('timestamp', time.time())
-                if queue_time > 300:  # 5 минут
+                if queue_time > 300:
                     self.app.logger.warning(f"Задача {task['id']} слишком долго ждала в очереди ({queue_time:.1f}с). Отмена.")
                     self.redis.hset(self.results_key, task['id'], pickle.dumps({
                         'status': 'error',
@@ -45,7 +45,9 @@ class RedisRequestQueue:
                 self.app.logger.info(f"RedisRequestQueue: получена задача {task['id']} из очереди для сеанса {task['session_id']}, ожидание в очереди: {queue_time:.1f}с")
                 self.redis.hset(self.processing_key, task['id'], task_data)
                 try:
-                    result_data = self._process_request(task)
+                    # Выполняем задачу в контексте приложения
+                    with self.app.app_context():
+                        result_data = self._process_request(task)
                     if 'session_id' not in result_data:
                         result_data['session_id'] = task['session_id']
                     self.redis.hset(self.results_key, task['id'], pickle.dumps({

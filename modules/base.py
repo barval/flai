@@ -4,12 +4,8 @@ import requests
 from datetime import datetime
 import os
 
-# Условный импорт для избежания циклических зависимостей
-try:
-    from app import format_prompt
-except ImportError:
-    # Будет импортировано позже
-    pass
+# Импортируем format_prompt из utils
+from app.utils import format_prompt
 
 class BaseModule:
     """Базовый модуль для работы с чатом и рассуждающей моделью"""
@@ -168,9 +164,6 @@ class BaseModule:
     
     def process_message(self, message_text, current_time_str):
         """Обработка текстового сообщения через модель-маршрутизатор"""
-        # Импортируем здесь, чтобы избежать циклических зависимостей
-        from app import format_prompt
-        
         prompt = format_prompt('base_text.template', {
             'current_time_str': current_time_str,
             'user_query': message_text
@@ -230,8 +223,6 @@ class BaseModule:
     
     def process_reasoning(self, query, current_time_str):
         """Обработка сложного запроса через reasoning модель"""
-        from app import format_prompt
-        
         reasoning_prompt = format_prompt('reasoning.template', {
             'current_time_str': current_time_str,
             'reasoning_query': query

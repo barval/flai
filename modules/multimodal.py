@@ -7,6 +7,8 @@ from PIL import Image
 from io import BytesIO
 import os
 
+from app.utils import format_prompt
+
 class MultimodalModule:
     """Модуль для работы с мультимодальной моделью (изображения)"""
     
@@ -116,8 +118,6 @@ class MultimodalModule:
         if not self.check_availability():
             return None, "⚠️ Мультимодальная модель недоступна"
         
-        from app import format_prompt
-        
         if user_text.strip():
             prompt = format_prompt('image_text.template', {
                 'current_time_str': current_time_str,
@@ -145,8 +145,6 @@ class MultimodalModule:
         # Проверяем доступность модуля
         if not self.check_availability():
             return None, "⚠️ Мультимодальная модель недоступна"
-        
-        from app import format_prompt
         
         create_prompt = format_prompt('create_image.template', {
             'image_query': user_query

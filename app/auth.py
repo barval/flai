@@ -1,5 +1,8 @@
+import os
+import logging
 from flask import Blueprint, render_template, request, redirect, url_for, session, current_app
 
+logger = logging.getLogger(__name__)
 bp = Blueprint('auth', __name__)
 
 def load_users():
@@ -7,7 +10,7 @@ def load_users():
     users = {}
     users_file = 'users.list'
     if not os.path.exists(users_file):
-        current_app.logger.error("users.list not found")
+        logger.error("users.list not found")
         return users
     with open(users_file, 'r', encoding='utf-8') as f:
         for line_num, line in enumerate(f, 1):
@@ -22,9 +25,9 @@ def load_users():
                 if email and password and service_class in [0,1,2]:
                     users[email] = {'password': password, 'service_class': service_class}
                 else:
-                    current_app.logger.error(f"Некорректные данные в строке {line_num}")
+                    logger.error(f"Некорректные данные в строке {line_num}")
             else:
-                current_app.logger.error(f"Некорректная строка {line_num}")
+                logger.error(f"Некорректная строка {line_num}")
     return users
 
 USERS = load_users()

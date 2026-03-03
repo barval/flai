@@ -1455,17 +1455,21 @@ def send_message():
     transcribed_text = None
     if request_type == 'audio':
         app.logger.info("send_message: обнаружено аудио, запуск транскрибации")
+        # ИЗМЕНЕНИЕ: замеряем время транскрибации
+        transcribe_start = time.time()
         transcribed_text = modules['audio'].transcribe(file_data, file_type, file_name)
+        transcribe_time = round(time.time() - transcribe_start, 1)  # время в секундах
         
         if transcribed_text is None:
             return jsonify({'error': 'Не удалось распознать речь'}), 500
         
-        app.logger.info(f"send_message: транскрибация успешна: {transcribed_text[:100]}")
+        app.logger.info(f"send_message: транскрибация успешна за {transcribe_time}с")
         
-        # Сохраняем системное сообщение с транскрипцией (после пользовательского)
+        # Сохраняем системное сообщение с транскрипцией и временем обработки
         system_content = f"🎤 Распознано: {transcribed_text}"
-        save_message(session_id, 'assistant', system_content, 
-                     model_name='whisper', response_time=None)
+        save_message(session_id, 'assistant', system_content,
+                     model_name='whisper',
+                     response_time=transcribe_time)   # ← добавляем время
         
         # Различаем голосовое сообщение и загруженный аудиофайл
         if voice_record:
@@ -1484,6 +1488,7 @@ def send_message():
                 user_id, session_id, request_data, user_class
             )
             
+            # ИЗМЕНЕНИЕ: добавили response_time в ответ
             return jsonify({
                 'status': 'queued',
                 'transcribed_text': transcribed_text,
@@ -1491,14 +1496,17 @@ def send_message():
                 'request_id': request_id,
                 'position': position_info['position'],
                 'estimated_wait': position_info['estimated_seconds'],
+                'response_time': transcribe_time,   # ← добавляем
                 'message': f'Голос распознан, запрос поставлен в очередь (позиция {position_info["position"]})'
             })
         else:
             # Это загруженный аудиофайл – только транскрибация, без дальнейших действий
+            # ИЗМЕНЕНИЕ: добавили response_time в ответ
             return jsonify({
                 'status': 'success',
                 'transcribed_text': transcribed_text,
                 'session_id': session_id,
+                'response_time': transcribe_time,   # ← добавляем
                 'message': 'Аудио распознано'
             })
     

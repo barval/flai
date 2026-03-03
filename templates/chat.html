@@ -1088,7 +1088,7 @@
                             `🎤 Распознано: ${data.transcribed_text}`,
                             null, null, null,
                             new Date().toISOString(),
-                            null,
+                            data.response_time,   // ИЗМЕНЕНИЕ: передаём время
                             'whisper'
                         );
                     }
@@ -1103,7 +1103,7 @@
                             `🎤 Распознано: ${data.transcribed_text}`,
                             null, null, null,
                             new Date().toISOString(),
-                            null,
+                            data.response_time,   // ИЗМЕНЕНИЕ: передаём время
                             'whisper'
                         );
                     }

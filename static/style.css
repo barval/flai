@@ -300,7 +300,7 @@ footer {
     border: none;
     color: #7f8c8d;
     cursor: pointer;
-    opacity: 0;
+    opacity: 1;  /* Всегда видима */
     transition: opacity 0.2s ease;
     font-size: 1rem;
     padding: 0.2rem;
@@ -311,10 +311,6 @@ footer {
     display: flex;
     align-items: center;
     justify-content: center;
-}
-
-.session-item:hover .delete-session-button {
-    opacity: 1;
 }
 
 .delete-session-button:hover {

@@ -28,13 +28,11 @@
     <!-- Правая часть – чат -->
     <div class="chat-main">
         <div class="chat-header">
-            <h2>Чат</h2>
+            <h2>Чат <span id="status-counter" class="status-counter" title="Ваши запросы в очереди / Всего в очереди">📊 0/0</span></h2>
             <div class="context-info-container">
                 <div id="context-info" class="context-info">Сообщений: 0</div>
                 <button id="save-chat-button" class="save-chat-button" title="Сохранить как HTML">💾</button>
-                <button id="clear-context-button" class="clear-context-button">🗑️</button>
-                <!-- Компактный счётчик -->
-                <span id="status-counter" class="status-counter" title="Ваши запросы в очереди / Всего в очереди">📊 0/0</span>
+                <!-- Кнопка очистки контекста удалена по требованию -->
             </div>
         </div>
         
@@ -490,12 +488,7 @@
             document.getElementById('file-preview-container').style.display = 'none';
         });
         
-        // Очистка контекста
-        document.getElementById('clear-context-button').addEventListener('click', function() {
-            if (confirm('Очистить всю переписку в этом сеансе?')) {
-                clearHistory();
-            }
-        });
+        // Обработчик кнопки очистки контекста удалён по требованию
         
         // Сохранение чата
         document.getElementById('save-chat-button').addEventListener('click', saveChatAsHTML);
@@ -1132,16 +1125,7 @@
                         ? `${waitMinutes} мин ${waitSeconds} сек`
                         : `${waitSeconds} сек`;
                     
-                    const notification = document.createElement('div');
-                    notification.className = 'queue-notification';
-                    notification.innerHTML = `
-                        <div class="notification-content">
-                            <span>⏳ Запрос в очереди (позиция ${data.position})</span>
-                            <span class="wait-time">~${waitText}</span>
-                        </div>
-                    `;
-                    document.querySelector('.chat-header').appendChild(notification);
-                    setTimeout(() => notification.remove(), 5000);
+                    // Удалено всплывающее уведомление по требованию
                     
                     window.updateStatusCounter();
                     
@@ -1266,7 +1250,7 @@
                         delete pendingRequests[requestId];
                         
                         window.updateStatusCounter();
-                        fetchQueueStatus();
+                        fetchQueueStatus();  // ← Добавлено для немедленного обновления статусов сеансов
                         
                         setTimeout(() => {
                             loadSessionsFromServer();
@@ -1297,7 +1281,7 @@
                         delete pendingRequests[requestId];
                         
                         window.updateStatusCounter();
-                        fetchQueueStatus();
+                        fetchQueueStatus();  // ← Добавлено для немедленного обновления статусов сеансов
                         
                     } else if (data.status === 'pending') {
                         console.log('Request still pending...');

@@ -17,7 +17,7 @@
         {% if 'email' in session %}
         <div class="logout-container">
             <span>{{ session['email'] }}</span>
-            <a href="{{ url_for('logout') }}" class="logout-button">Выйти</a>
+            <a href="{{ url_for('auth.logout') }}" class="logout-button">Выйти</a>
         </div>
         {% endif %}
     </header>

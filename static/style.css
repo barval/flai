@@ -1,5 +1,4 @@
-/* static/style.css (полный файл с добавленными стилями для иконок и кнопки копирования транскрибации) */
-/* Основные стили */
+/* ===== ОБЩИЕ СТИЛИ ===== */
 * {
     margin: 0;
     padding: 0;
@@ -7,7 +6,6 @@
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-/* Структура страницы */
 body {
     display: flex;
     flex-direction: column;
@@ -20,7 +18,7 @@ main {
     flex: 1;
 }
 
-/* Шапка и подвал */
+/* ===== ШАПКА И ПОДВАЛ ===== */
 header {
     background-color: #2c3e50;
     color: white;
@@ -29,7 +27,7 @@ header {
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     height: 50px;
     display: flex;
-    align-items: center; 
+    align-items: center;
 }
 
 header h1 {
@@ -69,7 +67,6 @@ footer {
     opacity: 0.9;
 }
 
-/* Выход из системы */
 .logout-container {
     display: flex;
     align-items: center;
@@ -96,7 +93,7 @@ footer {
     background-color: #c0392b;
 }
 
-/* ========== СТРАНИЦА АВТОРИЗАЦИИ ========== */
+/* ===== СТРАНИЦА АВТОРИЗАЦИИ ===== */
 .login-wrapper {
     display: flex;
     justify-content: center;
@@ -175,7 +172,7 @@ footer {
     text-align: center;
 }
 
-/* ========== КОНТЕЙНЕР ЧАТА ========== */
+/* ===== КОНТЕЙНЕР ЧАТА ===== */
 .chat-container {
     display: flex;
     height: calc(100vh - 100px);
@@ -185,7 +182,7 @@ footer {
     background-color: white;
 }
 
-/* Левая колонка – сеансы (новый стиль) */
+/* ===== ЛЕВАЯ КОЛОНКА – СЕАНСЫ ===== */
 .sessions-sidebar {
     width: 25%;
     background-color: #f1f3f6;
@@ -259,7 +256,7 @@ footer {
 .session-item.active {
     background-color: #e6f2ff;
     border-color: #3498db;
-    box-shadow: 0 2px 6px rgba(52, 152, 219, 0.2);
+    box-shadow: 0 2px 6px rgba(52,152,219,0.2);
 }
 
 .session-content {
@@ -300,8 +297,6 @@ footer {
     border: none;
     color: #7f8c8d;
     cursor: pointer;
-    opacity: 1;  /* Всегда видима */
-    transition: opacity 0.2s ease;
     font-size: 1rem;
     padding: 0.2rem;
     margin-left: 4px;
@@ -317,7 +312,6 @@ footer {
     color: #e74c3c;
 }
 
-/* Стили для иконок статуса сеанса */
 .session-status-icon {
     display: inline-block;
     width: 1.2em;
@@ -326,7 +320,7 @@ footer {
     line-height: 1;
     margin-right: 4px;
     vertical-align: middle;
-    flex-shrink: 0; /* Запрещаем сжиматься */
+    flex-shrink: 0;
 }
 
 .session-status-icon.blink {
@@ -339,24 +333,20 @@ footer {
     100% { opacity: 1; }
 }
 
-/* Цвета для ошибки */
 .session-status-icon.error {
     color: #e74c3c;
 }
-
 .session-status-icon.processing {
     color: #f39c12;
 }
-
 .session-status-icon.queued {
     color: #95a5a6;
 }
-
 .session-status-icon.unread {
     color: #3498db;
 }
 
-/* Правая часть – чат */
+/* ===== ПРАВАЯ ЧАСТЬ – СООБЩЕНИЯ ===== */
 .chat-main {
     width: 75%;
     display: flex;
@@ -420,7 +410,7 @@ footer {
     background-color: white;
 }
 
-/* ===== СООБЩЕНИЯ (НОВЫЙ СТИЛЬ) ===== */
+/* ===== СООБЩЕНИЯ ===== */
 .user-message,
 .assistant-message,
 .bot-message {
@@ -461,7 +451,7 @@ footer {
 
 .message-content {
     line-height: 1.7;
-    position: relative; /* Для позиционирования кнопки копирования */
+    position: relative;
 }
 
 @keyframes fadeIn {
@@ -473,7 +463,6 @@ footer {
     color: #7f8c8d !important;
 }
 
-/* Информация о файле в сообщениях */
 .file-info {
     display: inline !important;
     color: #2c3e50 !important;
@@ -488,7 +477,6 @@ footer {
     vertical-align: middle;
 }
 
-/* Стили для контейнера изображения */
 .image-container {
     position: relative;
     display: inline-block;
@@ -510,7 +498,247 @@ footer {
     opacity: 0.95;
 }
 
-/* Стили для превью файла с размером */
+/* ===== МОДАЛЬНОЕ ОКНО ИЗОБРАЖЕНИЙ ===== */
+.image-modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    padding-top: 50px;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.95);
+    animation: fadeIn 0.3s;
+}
+
+.image-modal-content {
+    margin: auto;
+    display: block;
+    max-width: 90%;
+    max-height: 85vh;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 0 30px rgba(0,0,0,0.5);
+}
+
+.image-modal-close {
+    position: absolute;
+    top: 15px;
+    right: 35px;
+    color: #f1f1f1;
+    font-size: 40px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: color 0.3s;
+    z-index: 1001;
+}
+
+.image-modal-close:hover,
+.image-modal-close:focus {
+    color: #e74c3c;
+    text-decoration: none;
+}
+
+#modal-caption {
+    margin: 20px auto;
+    display: block;
+    width: 80%;
+    max-width: 700px;
+    text-align: center;
+    color: #ccc;
+    padding: 10px 0;
+    font-size: 1rem;
+}
+
+/* ===== MARKDOWN ===== */
+.message-content h1,
+.message-content h2,
+.message-content h3,
+.message-content h4,
+.message-content h5,
+.message-content h6 {
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.message-content h1 {
+    font-size: 1.8em;
+    border-bottom: 1px solid #eaecef;
+    padding-bottom: 0.3em;
+}
+.message-content h2 {
+    font-size: 1.5em;
+    border-bottom: 1px solid #eaecef;
+    padding-bottom: 0.3em;
+}
+.message-content h3 { font-size: 1.25em; }
+.message-content h4 { font-size: 1.1em; }
+.message-content h5 { font-size: 1em; }
+.message-content h6 { font-size: 0.9em; color: #6a737d; }
+
+.message-content p {
+    margin-bottom: 1em;
+}
+
+.message-content strong {
+    font-weight: 700;
+    color: #2c3e50;
+}
+
+.message-content em {
+    font-style: italic;
+    color: #2c3e50;
+}
+
+.message-content blockquote {
+    border-left: 4px solid #dfe2e5;
+    padding: 0.5em 1em;
+    color: #6a737d;
+    background-color: #f8f9fa;
+    margin: 1em 0;
+    border-radius: 0 4px 4px 0;
+}
+
+.message-content ul,
+.message-content ol {
+    margin-left: 1.5em;
+    margin-bottom: 1em;
+}
+
+.message-content li {
+    margin-bottom: 0.25em;
+}
+
+.message-content li > ul,
+.message-content li > ol {
+    margin-top: 0.25em;
+    margin-bottom: 0.25em;
+}
+
+.message-content code {
+    padding: 0.2em 0.4em;
+    margin: 0;
+    font-size: 85%;
+    background-color: rgba(27,31,35,0.05);
+    border-radius: 3px;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    color: #24292e;
+}
+
+.message-content pre {
+    background-color: #f6f8fa;
+    color: #24292e;
+    border-radius: 6px;
+    padding: 1em;
+    overflow: auto;
+    line-height: 1.45;
+    margin-bottom: 1em;
+    border: 1px solid #e1e4e8;
+}
+
+.message-content pre code {
+    background-color: transparent;
+    color: inherit;
+    padding: 0;
+    margin: 0;
+    font-size: 100%;
+    white-space: pre;
+    border: 0;
+}
+
+.message-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 1em;
+}
+
+.message-content table th,
+.message-content table td {
+    padding: 6px 13px;
+    border: 1px solid #dfe2e5;
+}
+
+.message-content table th {
+    font-weight: 600;
+    background-color: #f6f8fa;
+}
+
+.message-content a {
+    color: #0366d6;
+    text-decoration: none;
+}
+
+.message-content a:hover {
+    text-decoration: underline;
+}
+
+.message-content img {
+    max-width: 100%;
+    box-sizing: content-box;
+    border-radius: 4px;
+}
+
+.message-content p code,
+.message-content li code {
+    background-color: #f0f0f0;
+    color: #2c3e50;
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    border: 1px solid #ddd;
+}
+
+/* ===== КНОПКИ КОПИРОВАНИЯ ===== */
+.code-block-wrapper {
+    position: relative;
+    margin: 1em 0;
+}
+
+.copy-code-button,
+.copy-transcript-button {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background-color: rgba(52,73,94,0.8);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.6;
+    transition: all 0.2s ease;
+    z-index: 10;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    backdrop-filter: blur(2px);
+}
+
+.copy-code-button:hover,
+.copy-transcript-button:hover {
+    opacity: 1;
+    background-color: #3498db;
+    transform: scale(1.05);
+}
+
+.copy-code-button.copied,
+.copy-transcript-button.copied {
+    background-color: #27ae60;
+    opacity: 1;
+}
+
+/* ===== ПОЛЕ ВВОДА И КНОПКИ ===== */
+#file-preview-container {
+    display: none;
+    margin: 10px 0;
+}
+
 #file-preview-container div {
     display: flex;
     align-items: center;
@@ -530,6 +758,24 @@ footer {
     font-size: 0.8rem;
     color: #666;
     margin-left: 5px;
+}
+
+#remove-file-button {
+    background-color: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    width: 25px;
+    height: 25px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#remove-file-button:hover {
+    background-color: #c0392b;
 }
 
 .message-input {
@@ -585,830 +831,6 @@ footer {
     background-color: #e0e0e0;
 }
 
-/* Превью файлов */
-#file-preview-container {
-    display: none;
-    margin: 10px 0;
-}
-
-#file-preview-container div {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: #f5f5f5;
-    padding: 8px;
-    border-radius: 8px;
-}
-
-#remove-file-button {
-    background-color: #e74c3c;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    width: 25px;
-    height: 25px;
-    cursor: pointer;
-    font-size: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-#remove-file-button:hover {
-    background-color: #c0392b;
-}
-
-/* Вложения */
-.attached-file {
-    margin-top: 10px;
-    padding: 8px 12px;
-    background: #f8f9fa;
-    border-radius: 4px;
-    border: 1px solid #dee2e6;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    align-self: flex-start;
-}
-
-.attached-file a {
-    color: #3498db;
-    text-decoration: none;
-}
-
-.attached-file a:hover {
-    text-decoration: underline;
-}
-
-audio {
-    width: 100%;
-    margin-top: 10px;
-    align-self: flex-start;
-}
-
-/* ========== СТИЛИ ДЛЯ МОДАЛЬНОГО ОКНА ИЗОБРАЖЕНИЙ ========== */
-.image-modal {
-    display: none;
-    position: fixed;
-    z-index: 1000;
-    padding-top: 50px;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    overflow: auto;
-    background-color: rgba(0, 0, 0, 0.95);
-    animation: fadeIn 0.3s;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-.image-modal-content {
-    margin: auto;
-    display: block;
-    max-width: 90%;
-    max-height: 85vh;
-    object-fit: contain;
-    border-radius: 8px;
-    box-shadow: 0 0 30px rgba(0,0,0,0.5);
-}
-
-.image-modal-close {
-    position: absolute;
-    top: 15px;
-    right: 35px;
-    color: #f1f1f1;
-    font-size: 40px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: color 0.3s;
-    z-index: 1001;
-}
-
-.image-modal-close:hover,
-.image-modal-close:focus {
-    color: #e74c3c;
-    text-decoration: none;
-}
-
-#modal-caption {
-    margin: 20px auto;
-    display: block;
-    width: 80%;
-    max-width: 700px;
-    text-align: center;
-    color: #ccc;
-    padding: 10px 0;
-    font-size: 1rem;
-}
-
-/* ========== СТИЛИ ДЛЯ КНОПКИ СКАЧИВАНИЯ В СТРОКЕ ========== */
-.download-link-inline {
-    display: inline-block;
-    margin-left: 6px;
-    color: #3498db;
-    text-decoration: none;
-    font-size: 1rem;
-    transition: all 0.2s;
-    opacity: 0.7;
-    vertical-align: middle;
-}
-
-.download-link-inline:hover {
-    opacity: 1;
-    transform: scale(1.2);
-    color: #2980b9;
-}
-
-/* Стили для ссылок внутри small */
-.user-message small a,
-.bot-message small a,
-.assistant-message small a {
-    color: #3498db;
-    text-decoration: none;
-    border-bottom: 1px dotted #3498db;
-}
-
-/* ========== СТИЛИ ДЛЯ MARKDOWN ========== */
-.message-content h1,
-.message-content h2,
-.message-content h3,
-.message-content h4,
-.message-content h5,
-.message-content h6 {
-    margin-top: 1.5em;
-    margin-bottom: 0.5em;
-    font-weight: 600;
-    color: #2c3e50;
-}
-
-.message-content h1 { 
-    font-size: 1.8em; 
-    border-bottom: 1px solid #eaecef; 
-    padding-bottom: 0.3em; 
-}
-
-.message-content h2 { 
-    font-size: 1.5em; 
-    border-bottom: 1px solid #eaecef; 
-    padding-bottom: 0.3em; 
-}
-
-.message-content h3 { font-size: 1.25em; }
-.message-content h4 { font-size: 1.1em; }
-.message-content h5 { font-size: 1em; }
-.message-content h6 { font-size: 0.9em; color: #6a737d; }
-
-.message-content p {
-    margin-bottom: 1em;
-}
-
-.message-content strong {
-    font-weight: 700;
-    color: #2c3e50;
-}
-
-.message-content em {
-    font-style: italic;
-    color: #2c3e50;
-}
-
-.message-content blockquote {
-    border-left: 4px solid #dfe2e5;
-    padding: 0.5em 1em;
-    color: #6a737d;
-    background-color: #f8f9fa;
-    margin: 1em 0;
-    border-radius: 0 4px 4px 0;
-}
-
-.message-content ul,
-.message-content ol {
-    margin-left: 1.5em;
-    margin-bottom: 1em;
-}
-
-.message-content li {
-    margin-bottom: 0.25em;
-}
-
-.message-content li > ul,
-.message-content li > ol {
-    margin-top: 0.25em;
-    margin-bottom: 0.25em;
-}
-
-.message-content code {
-    padding: 0.2em 0.4em;
-    margin: 0;
-    font-size: 85%;
-    background-color: rgba(27,31,35,0.05);
-    border-radius: 3px;
-    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
-    color: #24292e;
-}
-
-/* Стили для блоков кода - СВЕТЛАЯ ТЕМА */
-.message-content pre {
-    background-color: #f6f8fa;
-    color: #24292e;
-    border-radius: 6px;
-    padding: 1em;
-    overflow: auto;
-    line-height: 1.45;
-    margin-bottom: 1em;
-    border: 1px solid #e1e4e8;
-}
-
-.message-content pre code {
-    background-color: transparent;
-    color: inherit;
-    padding: 0;
-    margin: 0;
-    font-size: 100%;
-    white-space: pre;
-    border: 0;
-}
-
-.message-content hr {
-    height: 0.25em;
-    padding: 0;
-    margin: 24px 0;
-    background-color: #e1e4e8;
-    border: 0;
-}
-
-.message-content table {
-    border-collapse: collapse;
-    width: 100%;
-    margin-bottom: 1em;
-}
-
-.message-content table th,
-.message-content table td {
-    padding: 6px 13px;
-    border: 1px solid #dfe2e5;
-}
-
-.message-content table th {
-    font-weight: 600;
-    background-color: #f6f8fa;
-}
-
-.message-content table tr {
-    background-color: #fff;
-    border-top: 1px solid #c6cbd1;
-}
-
-.message-content table tr:nth-child(2n) {
-    background-color: #f6f8fa;
-}
-
-.message-content a {
-    color: #0366d6;
-    text-decoration: none;
-}
-
-.message-content a:hover {
-    text-decoration: underline;
-}
-
-.message-content img {
-    max-width: 100%;
-    box-sizing: content-box;
-    border-radius: 4px;
-}
-
-/* Скроллбар */
-::-webkit-scrollbar {
-    width: 8px;
-}
-
-::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
-}
-
-/* ========== СТИЛИ ДЛЯ КНОПКИ КОПИРОВАНИЯ КОДА ========== */
-.code-block-wrapper {
-    position: relative;
-    margin: 1em 0;
-}
-
-.copy-code-button {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    background-color: rgba(52, 73, 94, 0.8);
-    color: white;
-    border: none;
-    border-radius: 4px;
-    width: 32px;
-    height: 32px;
-    cursor: pointer;
-    font-size: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0.6;
-    transition: all 0.2s ease;
-    z-index: 10;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    backdrop-filter: blur(2px);
-}
-
-.copy-code-button:hover {
-    opacity: 1;
-    background-color: #3498db;
-    transform: scale(1.05);
-}
-
-.copy-code-button.copied {
-    background-color: #27ae60;
-    opacity: 1;
-}
-
-/* ========== СТИЛИ ДЛЯ КНОПКИ КОПИРОВАНИЯ ТРАНСКРИБАЦИИ (NEW) ========== */
-.copy-transcript-button {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    background-color: rgba(52, 73, 94, 0.8);
-    color: white;
-    border: none;
-    border-radius: 4px;
-    width: 32px;
-    height: 32px;
-    cursor: pointer;
-    font-size: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0.6;
-    transition: all 0.2s ease;
-    z-index: 10;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    backdrop-filter: blur(2px);
-}
-
-.copy-transcript-button:hover {
-    opacity: 1;
-    background-color: #3498db;
-    transform: scale(1.05);
-}
-
-.copy-transcript-button.copied {
-    background-color: #27ae60;
-    opacity: 1;
-}
-
-/* Для инлайн-кода */
-.message-content p code,
-.message-content li code {
-    background-color: #f0f0f0;
-    color: #2c3e50;
-    padding: 0.2em 0.4em;
-    border-radius: 3px;
-    border: 1px solid #ddd;
-}
-
-/* ========== СТИЛИ ДЛЯ ПАНЕЛИ СОСТОЯНИЯ ЗАПРОСОВ ========== */
-.requests-status-panel {
-    background: #f8f9fa;
-    border: 1px solid #dee2e6;
-    border-radius: 8px;
-    padding: 12px;
-    margin-bottom: 15px;
-    font-size: 0.9rem;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-    max-height: 400px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-}
-
-.status-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 15px;
-    background: #f8f9fa;
-    padding: 5px 0;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-}
-
-.status-header h3 {
-    margin: 0;
-    font-size: 1rem;
-    color: #2c3e50;
-    font-weight: 600;
-}
-
-.refresh-status {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 1.1rem;
-    color: #666;
-    padding: 2px 6px;
-    border-radius: 4px;
-    transition: background-color 0.2s;
-}
-
-.refresh-status:hover {
-    background-color: #e0e0e0;
-}
-
-/* Контейнер для системной нагрузки - всегда вверху */
-.system-load-container {
-    background: #f8f9fa;
-    padding: 10px;
-    margin-bottom: 15px;
-    border-bottom: 2px solid #3498db;
-    border-radius: 6px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-
-.system-load-indicator {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.system-load-indicator .load-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-weight: 600;
-    color: #2c3e50;
-    font-size: 0.9rem;
-}
-
-.system-load-indicator .load-header span:first-child {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}
-
-.load-bar-container {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.load-bar {
-    flex: 1;
-    height: 10px;
-    background-color: #e9ecef;
-    border-radius: 5px;
-    overflow: hidden;
-    box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
-}
-
-.load-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #28a745, #20c997);
-    transition: width 0.3s ease;
-    border-radius: 5px;
-}
-
-.load-fill.high {
-    background: linear-gradient(90deg, #dc3545, #ff6b6b);
-}
-
-.load-value {
-    font-size: 0.85rem;
-    color: #495057;
-    white-space: nowrap;
-    min-width: 90px;
-    text-align: right;
-    font-weight: 500;
-}
-
-.load-value strong {
-    color: #2c3e50;
-    font-size: 1rem;
-}
-
-.processing-request {
-    background-color: #e3f2fd;
-    border-left: 3px solid #2196f3;
-    padding: 10px 12px;
-    border-radius: 6px;
-    margin-bottom: 15px;
-}
-
-.request-badge {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.request-badge.processing .spinner-small {
-    width: 16px;
-    height: 16px;
-    border: 2px solid #f3f3f3;
-    border-top: 2px solid #3498db;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-.queued-requests, .recent-completed {
-    margin-top: 15px;
-}
-
-.queued-requests h4, .recent-completed h4 {
-    font-size: 0.85rem;
-    color: #666;
-    margin: 8px 0;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-bottom: 1px dashed #dee2e6;
-    padding-bottom: 4px;
-}
-
-.queue-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
-    border-bottom: 1px solid #eee;
-    font-size: 0.85rem;
-    transition: background-color 0.2s;
-    border-radius: 4px;
-}
-
-.queue-item:hover {
-    background-color: #f1f3f5;
-}
-
-.queue-position {
-    background-color: #ffc107;
-    color: #000;
-    padding: 2px 8px;
-    border-radius: 12px;
-    font-size: 0.7rem;
-    font-weight: bold;
-    min-width: 40px;
-    text-align: center;
-}
-
-.request-icon {
-    font-size: 1rem;
-}
-
-.request-title {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: #495057;
-}
-
-.wait-time {
-    color: #666;
-    font-size: 0.75rem;
-    white-space: nowrap;
-    background-color: #f1f3f5;
-    padding: 2px 6px;
-    border-radius: 4px;
-}
-
-.cancel-request {
-    margin-left: auto;
-    color: #dc3545;
-    cursor: pointer;
-    opacity: 0.7;
-    font-size: 1rem;
-    padding: 2px 6px;
-    border-radius: 4px;
-    transition: all 0.2s;
-}
-
-.cancel-request:hover {
-    opacity: 1;
-    background-color: #ffebee;
-    transform: scale(1.1);
-}
-
-.recent-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    color: #28a745;
-    font-size: 0.8rem;
-    border-bottom: 1px dashed #eee;
-    background-color: #f8fff9;
-    border-radius: 4px;
-    margin-bottom: 2px;
-}
-
-.recent-item .completed-time {
-    color: #666;
-    font-size: 0.7rem;
-    margin-left: auto;
-}
-
-.recent-item .duration {
-    color: #999;
-    font-size: 0.7rem;
-    background-color: #f1f3f5;
-    padding: 2px 4px;
-    border-radius: 4px;
-}
-
-.status-toggle-button {
-    background: none;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 0.3rem 0.6rem;
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: all 0.3s;
-    color: #2c3e50;
-}
-
-.status-toggle-button:hover {
-    background-color: #f0f0f0;
-    border-color: #3498db;
-}
-
-/* Уведомления о статусе очереди */
-.queue-notification {
-    position: fixed;
-    top: 60px;
-    right: 20px;
-    background-color: #3498db;
-    color: white;
-    padding: 12px 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    z-index: 1000;
-    animation: slideIn 0.3s ease;
-    max-width: 350px;
-}
-
-@keyframes slideIn {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
-}
-
-.notification-content {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.notification-content .wait-time {
-    background-color: rgba(255,255,255,0.2);
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 0.8rem;
-    align-self: flex-start;
-}
-
-/* ========== МОБИЛЬНАЯ ВЕРСИЯ ========== */
-@media (max-width: 768px) {
-    .chat-container {
-        flex-direction: column;
-        height: auto;
-    }
-    
-    .sessions-sidebar {
-        width: 100%;
-        height: 250px;
-    }
-    
-    .chat-main {
-        width: 100%;
-        padding: 10px;
-    }
-    
-    .image-container {
-        width: 100% !important;
-    }
-    
-    .attached-image {
-        width: 100% !important;
-        max-width: 100% !important;
-        height: auto !important;
-    }
-    
-    .message-input {
-        flex-wrap: wrap;
-    }
-    
-    .message-input input[type="text"] {
-        width: 100%;
-    }
-    
-    .copy-code-button {
-        width: 28px;
-        height: 28px;
-        font-size: 14px;
-        top: 4px;
-        right: 4px;
-    }
-
-    .copy-transcript-button {   /* NEW */
-        width: 28px;
-        height: 28px;
-        font-size: 14px;
-        top: 4px;
-        right: 4px;
-    }
-    
-    .requests-status-panel {
-        font-size: 0.8rem;
-        padding: 8px;
-        max-height: 300px;
-    }
-    
-    .queue-item {
-        flex-wrap: wrap;
-    }
-    
-    .wait-time {
-        margin-left: auto;
-    }
-    
-    .queue-notification {
-        top: 10px;
-        right: 10px;
-        left: 10px;
-        max-width: none;
-    }
-    
-    .load-bar-container {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 5px;
-    }
-    
-    .load-value {
-        align-self: flex-end;
-    }
-
-    /* Корректировка иконок на мобильных */
-    .session-status-icon {
-        font-size: 1rem;
-        width: 1.1em;
-    }
-}
-
-@media print {
-    .copy-code-button, .copy-transcript-button {
-        display: none !important;
-    }
-}
-
-/* Стили для многострочной информации о модели */
-.model-response-info {
-    display: block !important;
-    color: #7f8c8d !important;
-    font-family: monospace !important;
-    font-size: 0.75rem !important;
-    margin-top: 2px !important;
-    line-height: 1.4 !important;
-}
-
-/* Для первой строки можно оставить inline, а остальные будут block */
-.model-response-info:first-of-type {
-    display: inline !important;
-}
-
-.model-response-info:not(:first-of-type) {
-    display: block !important;
-    margin-left: 0 !important;
-}
-
-/* Стили для кнопки записи голоса */
 .voice-record-button {
     background-color: #f1f1f1;
     color: #333;
@@ -1436,15 +858,87 @@ audio {
     100% { transform: scale(1); }
 }
 
-.recording-indicator {
-    margin-left: 10px;
-    color: #e74c3c;
-    font-weight: bold;
-    animation: blink 1s infinite;
+.attached-file {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-radius: 4px;
+    border: 1px solid #dee2e6;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    align-self: flex-start;
 }
 
-@keyframes blink {
-    0% { opacity: 1; }
-    50% { opacity: 0.3; }
-    100% { opacity: 1; }
+.attached-file a {
+    color: #3498db;
+    text-decoration: none;
+}
+
+.attached-file a:hover {
+    text-decoration: underline;
+}
+
+audio {
+    width: 100%;
+    margin-top: 10px;
+    align-self: flex-start;
+}
+
+/* ===== СКРОЛЛБАР ===== */
+::-webkit-scrollbar {
+    width: 8px;
+}
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* ===== МЕДИА-ЗАПРОСЫ ===== */
+@media (max-width: 768px) {
+    .chat-container {
+        flex-direction: column;
+        height: auto;
+    }
+    .sessions-sidebar {
+        width: 100%;
+        height: 250px;
+    }
+    .chat-main {
+        width: 100%;
+        padding: 10px;
+    }
+    .image-container {
+        width: 100% !important;
+    }
+    .attached-image {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+    }
+    .message-input {
+        flex-wrap: wrap;
+    }
+    .message-input input[type="text"] {
+        width: 100%;
+    }
+    .copy-code-button,
+    .copy-transcript-button {
+        width: 28px;
+        height: 28px;
+        font-size: 14px;
+        top: 4px;
+        right: 4px;
+    }
+    .session-status-icon {
+        font-size: 1rem;
+        width: 1.1em;
+    }
 }

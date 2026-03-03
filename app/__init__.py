@@ -47,6 +47,11 @@ def create_app():
     # Инициализация очереди Redis (передаём app)
     app.request_queue = RedisRequestQueue(app)
 
+    # Контекстный процессор для передачи подписи футера во все шаблоны
+    @app.context_processor
+    def inject_footer():
+        return dict(footer_content=app.config.get('FOOTER_TEXT', ""))
+
     # Регистрация маршрутов
     from . import auth, routes_chat, routes_queue
     app.register_blueprint(auth.bp)

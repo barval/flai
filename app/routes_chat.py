@@ -35,8 +35,7 @@ def chat():
             sessions = db.get_user_sessions(user_id)
     return render_template('chat.html',
                          sessions=sessions,
-                         current_session=session.get('current_session'),
-                         footer_text=current_app.config.get('FOOTER_TEXT', ""))
+                         current_session=session.get('current_session'))
 
 # API для сессий
 @bp.route('/api/sessions', methods=['GET'])

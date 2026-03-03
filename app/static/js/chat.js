@@ -8,7 +8,8 @@ let defaultModelName = 'qwen3-vl:8b-instruct';
 let sessionsData = {};
 let syncInterval = null;
 let newMessageIndicators = {};
-let sessionRequestStatus = {};
+let sessionQueueInfo = {};          // агрегированная информация о статусах задач
+let stableSessionStatus = {};       // стабилизированные статусы (чтобы избежать мерцания)
 let lastCompletionTime = {};
 let sessionsUpdateTimeout = null;
 
@@ -104,39 +105,86 @@ function setNewMessageIndicator(sessionId, show) {
 }
 
 // -------------------------------
-// Получение статусов очереди
+// Получение статусов очереди (агрегированных)
 // -------------------------------
 function fetchQueueStatus() {
     fetch('/api/queue/status')
         .then(res => res.json())
         .then(data => {
-            const newStatus = {};
             const now = Date.now();
+            const agg = {}; // агрегированные данные по сеансам
+
+            // Задача в обработке (processing)
             if (data.processing) {
                 const proc = data.processing;
-                newStatus[proc.session_id] = { status: 'processing', ...proc };
+                if (!agg[proc.session_id]) agg[proc.session_id] = { processing: false, queued: 0 };
+                agg[proc.session_id].processing = true;
             }
+
+            // Задачи в очереди (queued)
             data.queued.forEach(item => {
-                if (!newStatus[item.session_id]) {
-                    newStatus[item.session_id] = { status: 'queued', ...item };
-                }
+                if (!agg[item.session_id]) agg[item.session_id] = { processing: false, queued: 0 };
+                agg[item.session_id].queued += 1;
             });
-            const oldStatus = sessionRequestStatus;
-            for (let sid in oldStatus) {
-                if (oldStatus[sid].status === 'error' && !newStatus[sid]) {
-                    newStatus[sid] = oldStatus[sid];
-                }
-            }
-            Object.keys(newStatus).forEach(sid => {
-                if (lastCompletionTime[sid] && now - lastCompletionTime[sid] < 3000) {
-                    const hasActive = (data.processing && data.processing.session_id === sid) ||
-                                      data.queued.some(item => item.session_id === sid);
-                    if (!hasActive) {
-                        delete newStatus[sid];
+
+            // Стабилизация: применяем новый статус, только если он держится не менее двух циклов (6 секунд)
+            const newStable = {};
+            Object.keys(agg).forEach(sid => {
+                const current = agg[sid];
+                const prev = stableSessionStatus[sid];
+                if (!prev || prev.processing !== current.processing || prev.queued !== current.queued) {
+                    // Статус изменился — запоминаем время изменения
+                    if (!prev || prev.pendingChange) {
+                        // Если уже было запланировано изменение, проверяем, прошло ли 6 секунд
+                        if (prev && now - prev.changeTime > 6000) {
+                            // Применяем изменение
+                            newStable[sid] = {
+                                processing: current.processing,
+                                queued: current.queued,
+                                changeTime: now,
+                                pendingChange: false
+                            };
+                        } else {
+                            // Ещё не прошло 6 секунд — оставляем старый статус, но помечаем ожидание
+                            newStable[sid] = {
+                                ...prev,
+                                pendingChange: true,
+                                changeTime: prev ? prev.changeTime : now
+                            };
+                        }
+                    } else {
+                        // Первое изменение
+                        newStable[sid] = {
+                            ...current,
+                            changeTime: now,
+                            pendingChange: true
+                        };
                     }
+                } else {
+                    // Статус не изменился — просто копируем
+                    newStable[sid] = { ...current, changeTime: now, pendingChange: false };
                 }
             });
-            sessionRequestStatus = newStatus;
+
+            // Удаляем устаревшие сеансы (которых нет в agg более 10 секунд)
+            Object.keys(stableSessionStatus).forEach(sid => {
+                if (!agg[sid] && (now - stableSessionStatus[sid].changeTime) > 10000) {
+                    delete stableSessionStatus[sid];
+                }
+            });
+
+            stableSessionStatus = newStable;
+
+            // Преобразуем стабилизированные статусы в итоговый объект sessionQueueInfo
+            // (убираем служебные поля changeTime, pendingChange)
+            sessionQueueInfo = {};
+            Object.keys(stableSessionStatus).forEach(sid => {
+                sessionQueueInfo[sid] = {
+                    processing: stableSessionStatus[sid].processing,
+                    queued: stableSessionStatus[sid].queued
+                };
+            });
+
             updateSessionsListFromData();
         })
         .catch(err => console.error('Ошибка получения статусов очереди:', err));
@@ -222,19 +270,20 @@ function updateSessionsList(sessions) {
     sessions.forEach(s => {
         const isActive = s.id === currentActiveId ? 'active' : '';
         const dateStr = s.updated_at ? s.updated_at.replace('T', ' ').substring(0, 19) : '';
-        let statusIcon = '';
-        const reqStatus = sessionRequestStatus[s.id];
-        if (reqStatus) {
-            if (reqStatus.status === 'error') {
-                statusIcon = '<span class="session-status-icon error blink" title="Ошибка">⚠️</span>';
-            } else if (reqStatus.status === 'processing') {
-                statusIcon = '<span class="session-status-icon processing blink" title="Обрабатывается">⚡</span>';
-            } else if (reqStatus.status === 'queued') {
-                statusIcon = '<span class="session-status-icon queued" title="В очереди">⏳</span>';
+        
+        // Определяем значок статуса по приоритету
+        let statusIcons = '';
+        const info = sessionQueueInfo[s.id];
+        if (info) {
+            if (info.processing) {
+                statusIcons = '<span class="session-status-icon processing blink" title="Обрабатывается">⚡</span>';
+            } else if (info.queued > 0) {
+                const count = info.queued > 1 ? ` ${info.queued}` : '';
+                statusIcons = '<span class="session-status-icon queued" title="В очереди">⏳' + count + '</span>';
             }
         }
-        if (!statusIcon && newMessageIndicators[s.id] && s.id !== currentActiveId) {
-            statusIcon = '<span class="session-status-icon unread blink" title="Новый ответ">✉️</span>';
+        if (!statusIcons && newMessageIndicators[s.id] && s.id !== currentActiveId) {
+            statusIcons = '<span class="session-status-icon unread blink" title="Новый ответ">✉️</span>';
         }
 
         html += `
@@ -242,7 +291,7 @@ function updateSessionsList(sessions) {
                 <div class="session-content">
                     <div class="session-info">
                         <div class="session-title">
-                            ${statusIcon}
+                            ${statusIcons}
                             ${escapeHtml(s.title)}
                         </div>
                         <div class="session-date">${dateStr}</div>
@@ -807,8 +856,7 @@ async function sendMessage() {
             }
 
             if (data.status === 'queued') {
-                sessionRequestStatus[currentSessionId] = { status: 'queued' };
-                updateSessionsListFromData();
+                // Статус будет обновлён через fetchQueueStatus, поэтому не меняем локально
                 pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
                 window.updateStatusCounter();
                 startResultPolling(data.request_id);
@@ -845,12 +893,11 @@ async function sendMessage() {
                             if (resultSessionId === currentSessionId) {
                                 displayMessage('assistant', `⚠️ ${data.result.error}`, null, null, null,
                                     data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'system');
-                                delete sessionRequestStatus[resultSessionId];
+                                delete stableSessionStatus[resultSessionId];
                             } else if (resultSessionId) {
-                                sessionRequestStatus[resultSessionId] = { status: 'error' };
+                                // Статус ошибки будет виден через fetchQueueStatus
                             }
                             lastCompletionTime[resultSessionId] = Date.now() + 5000;
-                            updateSessionsListFromData();
                         } else if (data.result.messages) {
                             for (const msg of data.result.messages) {
                                 displayMessage('assistant', msg.response, msg.generated_image, msg.file_type, msg.file_name,
@@ -870,11 +917,11 @@ async function sendMessage() {
                                 displayMessage('assistant', data.result.response, data.result.generated_image,
                                     data.result.file_type, data.result.file_name,
                                     data.result.assistant_timestamp || new Date().toISOString(), responseTime, modelUsed);
-                                delete sessionRequestStatus[resultSessionId];
+                                delete stableSessionStatus[resultSessionId];
                                 updateLastVisit(currentSessionId);
                             } else {
                                 setNewMessageIndicator(resultSessionId, true);
-                                delete sessionRequestStatus[resultSessionId];
+                                delete stableSessionStatus[resultSessionId];
                             }
                             lastCompletionTime[resultSessionId] = Date.now() + 5000;
                         }
@@ -889,27 +936,22 @@ async function sendMessage() {
                     if (resultSessionId === currentSessionId) {
                         displayMessage('assistant', `⚠️ Ошибка: ${data.error || 'Неизвестная ошибка'}`, null, null, null,
                             data.result?.assistant_timestamp || new Date().toISOString(), data.result?.response_time, 'system');
-                        delete sessionRequestStatus[resultSessionId];
+                        delete stableSessionStatus[resultSessionId];
                     } else if (resultSessionId) {
-                        sessionRequestStatus[resultSessionId] = { status: 'error' };
+                        // Статус ошибки будет виден через fetchQueueStatus
                     }
                     lastCompletionTime[resultSessionId] = Date.now() + 5000;
-                    updateSessionsListFromData();
                     delete pendingRequests[requestId];
                     window.updateStatusCounter();
                     fetchQueueStatus();
                 } else if (data.status === 'pending') {
-                    const reqSessionId = pendingRequests[requestId]?.sessionId;
-                    if (reqSessionId && (!sessionRequestStatus[reqSessionId] || sessionRequestStatus[reqSessionId].status !== 'processing')) {
-                        sessionRequestStatus[reqSessionId] = { status: 'processing' };
-                        updateSessionsListFromData();
-                    }
+                    // Статус обновится через fetchQueueStatus
                 }
                 if (pollCount >= maxPolls) {
                     clearInterval(pollInterval);
                     displayMessage('assistant', '⚠️ Превышено время ожидания ответа. Проверьте статус запроса в панели "Мои запросы".',
                         null, null, null, new Date().toISOString(), null, 'system');
-                    delete sessionRequestStatus[currentSessionId];
+                    delete stableSessionStatus[currentSessionId];
                     delete pendingRequests[requestId];
                 }
             } catch (error) {
@@ -945,7 +987,7 @@ function deleteSession(sessionId) {
         }
     }
     delete newMessageIndicators[sessionId];
-    delete sessionRequestStatus[sessionId];
+    delete stableSessionStatus[sessionId];
     delete lastCompletionTime[sessionId];
 
     fetch(`/api/sessions/${sessionId}/delete`, { method: 'POST' })
@@ -1024,10 +1066,8 @@ async function saveChatAsHTML() {
         return;
     }
 
-    const styles = `...`; // Здесь будет полный CSS из export.css (опущен для краткости, но в реальном файле он будет)
+    const styles = `...`; // Здесь должен быть полный CSS из export.css
     // В реальном коде нужно вставить содержимое export.css, но для краткости здесь не дублируем.
-    // При сохранении мы будем использовать тот же CSS, что и на сайте (через импорт в export.css),
-    // поэтому в генерируемом HTML достаточно подключить export.css.
 
     const html = `<!DOCTYPE html>
 <html lang="ru">

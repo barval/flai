@@ -681,31 +681,71 @@ class RedisRequestQueue:
                     camera_start_time = time.time()
                     camera_result = modules['cam'].get_snapshot(query)
                     camera_time = round(time.time() - camera_start_time, 1)
-                    
+
                     if camera_result['success']:
-                        # Время ЗАВЕРШЕНИЯ получения снимка
                         completion_time_for_db = get_current_time_in_timezone_for_db()
-                        
+                        camera_model = 'camera'  # или None, если не нужно указывать модель
+
+                        # Сохраняем сообщение с изображением
                         save_message(
                             session_id, 'assistant',
                             f"Изображение с камеры: {camera_result['room_name']}",
                             camera_result['image_data'], camera_result['image_type'],
-                            camera_result['file_name'], model_used,
+                            camera_result['file_name'], camera_model,
                             response_time=str(camera_time)
                         )
-                        
-                        return {
+
+                        # Первое сообщение для возврата
+                        first_message = {
                             'response': f"Изображение с камеры: {camera_result['room_name']}",
                             'session_id': session_id,
-                            'model_used': model_used,
+                            'model_used': camera_model,
                             'model_category': action_type,
                             'assistant_timestamp': completion_time_for_db,
                             'generated_image': camera_result['image_data'],
                             'file_name': camera_result['file_name'],
                             'file_size': camera_result['file_size'],
                             'file_type': camera_result['image_type'],
-                            'response_time': camera_time,  # Время получения снимка
+                            'response_time': camera_time,
                             'is_error': False
+                        }
+                        messages = [first_message]
+
+                        # Если есть текст запроса и доступен мультимодальный модуль – выполняем анализ
+                        if message_text and 'multimodal' in modules and modules['multimodal'].available:
+                            mm_start_time = time.time()
+                            bot_reply, error = modules['multimodal'].process_image_with_text(
+                                camera_result['image_data'], message_text, current_time_str
+                            )
+                            mm_time = round(time.time() - mm_start_time, 1)
+
+                            if error:
+                                bot_reply = f"⚠️ {error}"
+                                is_error = True
+                            else:
+                                is_error = False
+
+                            # Сохраняем второе сообщение (анализ)
+                            save_message(
+                                session_id, 'assistant', bot_reply,
+                                model_name=app.config['LLM_MULTIMODAL_MODEL'],
+                                response_time=str(mm_time)
+                            )
+
+                            second_message = {
+                                'response': bot_reply,
+                                'session_id': session_id,
+                                'model_used': app.config['LLM_MULTIMODAL_MODEL'],
+                                'model_category': 'multimodal',
+                                'assistant_timestamp': get_current_time_in_timezone_for_db(),
+                                'response_time': mm_time,
+                                'is_error': is_error
+                            }
+                            messages.append(second_message)
+
+                        return {
+                            'messages': messages,
+                            'session_id': session_id
                         }
                     else:
                         final_response = f"⚠️ {camera_result['error']}"

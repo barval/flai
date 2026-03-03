@@ -1194,6 +1194,21 @@
                                 lastCompletionTime[resultSessionId] = Date.now() + 5000;
                                 updateSessionsListFromData();
                             }
+                            else if (data.result.messages) {
+                                // Несколько сообщений (например, изображение + анализ)
+                                for (const msg of data.result.messages) {
+                                    displayMessage(
+                                        'assistant',
+                                        msg.response,
+                                        msg.generated_image,   // может быть undefined для текстовых сообщений
+                                        msg.file_type,
+                                        msg.file_name,
+                                        msg.assistant_timestamp,
+                                        msg.response_time,
+                                        msg.model_used
+                                    );
+                                }
+                            }
                             else if (data.result.response) {
                                 let responseTime = data.result.response_time;
                                 let modelUsed = data.result.model_used;

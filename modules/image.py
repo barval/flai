@@ -14,6 +14,7 @@ class ImageModule:
         self.model_name = None
         self.available = False
         self.multimodal_module = None  # Будет установлен извне
+        self.timeout = 180  # Значение по умолчанию
         
         if app:
             self.init_app(app)
@@ -22,11 +23,12 @@ class ImageModule:
         """Инициализация модуля с приложением Flask"""
         self.automatic1111_url = app.config.get('AUTOMATIC1111_URL')
         self.model_name = app.config.get('AUTOMATIC1111_MODEL')
+        self.timeout = app.config.get('AUTOMATIC1111_TIMEOUT', 180)
         
         self.check_availability()
         
         if self.available:
-            self.logger.info("ImageModule инициализирован и доступен")
+            self.logger.info(f"ImageModule инициализирован и доступен. Таймаут: {self.timeout}с")
         else:
             self.logger.warning("ImageModule инициализирован, но Automatic1111 недоступен")
     
@@ -78,7 +80,7 @@ class ImageModule:
         return self._call_automatic1111(prompt_data)
     
     def _call_automatic1111(self, prompt_data):
-        """Вызов Automatic1111 API"""
+        """Вызов Automatic1111 API с настраиваемым таймаутом"""
         try:
             payload = {
                 "prompt": prompt_data.get("prompt", ""),
@@ -102,12 +104,12 @@ class ImageModule:
                     "sd_model_checkpoint": self.model_name
                 }
             
-            self.logger.info(f"Отправка запроса в Automatic1111")
+            self.logger.info(f"Отправка запроса в Automatic1111, таймаут: {self.timeout}с")
             
             response = requests.post(
                 f"{self.automatic1111_url}/sdapi/v1/txt2img",
                 json=payload,
-                timeout=60
+                timeout=self.timeout
             )
             
             if response.status_code == 200:
@@ -143,6 +145,12 @@ class ImageModule:
                     'error': f"Ошибка Automatic1111: {response.status_code}"
                 }
                 
+        except requests.exceptions.Timeout:
+            self.logger.error(f"Таймаут ({self.timeout}с) при генерации изображения")
+            return {
+                'success': False,
+                'error': f"Превышено время ожидания генерации изображения ({self.timeout}с)"
+            }
         except requests.exceptions.ConnectionError:
             return {
                 'success': False,

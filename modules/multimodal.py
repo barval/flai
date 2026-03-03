@@ -16,6 +16,7 @@ class MultimodalModule:
         self.models_config = models_config or {}
         self.available = False
         self.image_settings = {}
+        self.timeout = 120  # Значение по умолчанию
         
         if app:
             self.init_app(app)
@@ -23,12 +24,15 @@ class MultimodalModule:
     def init_app(self, app):
         """Инициализация модуля с приложением Flask"""
         self.ollama_url = app.config.get('OLLAMA_URL')
+        self.timeout = app.config.get('LLM_MULTIMODAL_TIMEOUT', 120)
+        
         self.models_config = {
             'multimodal': {
                 'model': app.config.get('LLM_MULTIMODAL_MODEL'),
                 'context': app.config.get('LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW', 32768),
                 'temperature': app.config.get('LLM_MULTIMODAL_TEMPERATURE', 0.7),
-                'top_p': app.config.get('LLM_MULTIMODAL_TOP_P', 0.9)
+                'top_p': app.config.get('LLM_MULTIMODAL_TOP_P', 0.9),
+                'timeout': self.timeout
             }
         }
         
@@ -51,7 +55,7 @@ class MultimodalModule:
         self.check_availability()
         
         if self.available:
-            self.logger.info("MultimodalModule инициализирован и доступен")
+            self.logger.info(f"MultimodalModule инициализирован и доступен. Таймаут: {self.timeout}с")
         else:
             self.logger.warning("MultimodalModule инициализирован, но мультимодальная модель недоступна")
     
@@ -186,12 +190,13 @@ class MultimodalModule:
             return None, f"Ошибка парсинга JSON: {str(e)}"
     
     def _call_multimodal(self, messages):
-        """Вызов мультимодальной модели"""
+        """Вызов мультимодальной модели с настраиваемым таймаутом"""
         if not self.available:
             return "⚠️ Мультимодальная модель недоступна"
         
         model_config = self.models_config['multimodal']
         model = model_config['model']
+        timeout = model_config.get('timeout', 120)
         
         try:
             payload = {
@@ -205,12 +210,12 @@ class MultimodalModule:
                 }
             }
             
-            self.logger.info(f"Отправка запроса к мультимодальной модели: {model}")
+            self.logger.info(f"Отправка запроса к мультимодальной модели: {model}, таймаут: {timeout}с")
             
             response = requests.post(
                 f"{self.ollama_url}/api/chat",
                 json=payload,
-                timeout=120
+                timeout=timeout
             )
             
             if response.status_code == 200:
@@ -220,6 +225,12 @@ class MultimodalModule:
                 self.logger.error(f"Ошибка мультимодальной модели: {response.status_code}")
                 return f"⚠️ Ошибка: {response.status_code}"
                 
+        except requests.exceptions.Timeout:
+            self.logger.error(f"Таймаут ({timeout}с) мультимодальной модели")
+            return f"⚠️ Превышено время ожидания ответа от мультимодальной модели ({timeout}с)"
+        except requests.exceptions.ConnectionError:
+            self.logger.error(f"Ошибка подключения к Ollama по адресу {self.ollama_url}")
+            return "⚠️ Не удалось подключиться к Ollama"
         except Exception as e:
             self.logger.error(f"Ошибка вызова мультимодальной модели: {str(e)}")
             return f"⚠️ Ошибка: {str(e)}"

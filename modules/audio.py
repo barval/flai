@@ -12,6 +12,7 @@ class AudioModule:
         self.logger = logging.getLogger(__name__)
         self.whisper_api_url = None
         self.available = False
+        self.timeout = 120  # Значение по умолчанию
         # Поддерживаемые аудио MIME-типы
         self.supported_audio_mimetypes = [
             'audio/webm', 'audio/wav', 'audio/mp3', 'audio/mpeg',
@@ -36,10 +37,11 @@ class AudioModule:
     def init_app(self, app):
         """Инициализация модуля с приложением Flask"""
         self.whisper_api_url = app.config.get('WHISPER_API_URL', 'http://host.docker.internal:9000/asr')
+        self.timeout = app.config.get('WHISPER_API_TIMEOUT', 120)
         self.check_availability()
 
         if self.available:
-            self.logger.info(f"AudioModule инициализирован и доступен (Whisper API: {self.whisper_api_url})")
+            self.logger.info(f"AudioModule инициализирован и доступен (Whisper API: {self.whisper_api_url}), таймаут: {self.timeout}с")
         else:
             self.logger.warning(f"AudioModule инициализирован, но Whisper API недоступен ({self.whisper_api_url})")
 
@@ -69,7 +71,7 @@ class AudioModule:
 
     def transcribe(self, audio_data, audio_format='audio/webm', filename='audio.webm'):
         """
-        Транскрибация аудио через Whisper API
+        Транскрибация аудио через Whisper API с настраиваемым таймаутом
         audio_data: base64-encoded audio data
         audio_format: MIME-тип файла (может быть аудио или видео)
         filename: исходное имя файла (для отправки)
@@ -93,13 +95,13 @@ class AudioModule:
             params = {'output': 'json'}
 
             self.logger.info(f"Отправка файла на транскрибацию, размер {len(audio_bytes)} байт, "
-                           f"имя: {filename}, формат: {audio_format}, params={params}")
+                           f"имя: {filename}, формат: {audio_format}, таймаут: {self.timeout}с")
 
             response = requests.post(
                 self.whisper_api_url,
                 files=files,
                 params=params,
-                timeout=120  # Увеличен таймаут для больших видео
+                timeout=self.timeout  # Увеличен таймаут для больших видео
             )
 
             self.logger.info(f"Whisper API ответ: статус {response.status_code}")
@@ -140,12 +142,15 @@ class AudioModule:
                 self.logger.error(f"Ошибка Whisper API: статус {response.status_code}, ответ: {response.text[:200]}")
                 return None
 
+        except requests.exceptions.Timeout:
+            self.logger.error(f"Таймаут ({self.timeout}с) при транскрибации аудио")
+            return None
         except requests.exceptions.ConnectionError:
             self.logger.error("Ошибка подключения к Whisper API")
+            return None
         except Exception as e:
             self.logger.error(f"Ошибка при транскрибации: {str(e)}")
-
-        return None
+            return None
 
     def is_audio_file(self, file_type, file_name):
         """

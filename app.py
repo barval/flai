@@ -60,7 +60,23 @@ app.config.update({
     'MAX_IMAGE_HEIGHT': int(os.getenv('MAX_IMAGE_HEIGHT', 2160)),
     'MAX_IMAGE_SIZE_MB': int(os.getenv('MAX_IMAGE_SIZE_MB', 5)),
     # URL для Whisper API
-    'WHISPER_API_URL': os.getenv('WHISPER_API_URL', 'http://host.docker.internal:9000/asr')
+    'WHISPER_API_URL': os.getenv('WHISPER_API_URL', 'http://host.docker.internal:9000/asr'),
+    
+    # Таймауты для моделей Ollama
+    'LLM_CHAT_TIMEOUT': int(os.getenv('LLM_CHAT_TIMEOUT', 60)),
+    'LLM_MULTIMODAL_TIMEOUT': int(os.getenv('LLM_MULTIMODAL_TIMEOUT', 120)),
+    'LLM_REASONING_TIMEOUT': int(os.getenv('LLM_REASONING_TIMEOUT', 300)),
+    
+    # Таймаут для Automatic1111
+    'AUTOMATIC1111_TIMEOUT': int(os.getenv('AUTOMATIC1111_TIMEOUT', 180)),
+    
+    # Таймаут для Whisper API
+    'WHISPER_API_TIMEOUT': int(os.getenv('WHISPER_API_TIMEOUT', 120)),
+    
+    # Настройки для камер
+    'CAMERA_API_URL': os.getenv('CAMERA_API_URL', 'http://host.docker.internal:5005'),
+    'CAMERA_API_TIMEOUT': int(os.getenv('CAMERA_API_TIMEOUT', 15)),
+    'CAMERA_CHECK_INTERVAL': int(os.getenv('CAMERA_CHECK_INTERVAL', 30)),
 })
 
 # Настройка часового пояса
@@ -361,6 +377,18 @@ class RedisRequestQueue:
         self.results_key = 'request_results'
         self.user_requests_key = 'user_requests'
         
+        # Загружаем таймауты из конфига для логирования
+        self.timeouts = {
+            'chat': app.config.get('LLM_CHAT_TIMEOUT', 60),
+            'multimodal': app.config.get('LLM_MULTIMODAL_TIMEOUT', 120),
+            'reasoning': app.config.get('LLM_REASONING_TIMEOUT', 300),
+            'image_gen': app.config.get('AUTOMATIC1111_TIMEOUT', 180),
+            'whisper': app.config.get('WHISPER_API_TIMEOUT', 120),
+            'camera': app.config.get('CAMERA_API_TIMEOUT', 15)
+        }
+        
+        app.logger.info(f"RedisRequestQueue: загружены таймауты: {self.timeouts}")
+        
         # Запускаем обработчик в отдельном потоке
         self.start_worker()
     
@@ -387,7 +415,19 @@ class RedisRequestQueue:
                 queue_key, task_data = result
                 task = pickle.loads(task_data)
                 
-                app.logger.info(f"RedisRequestQueue: получена задача {task['id']} из очереди для сеанса {task['session_id']}")
+                # Проверяем, сколько задача уже в очереди
+                queue_time = time.time() - task.get('timestamp', time.time())
+                if queue_time > 300:  # 5 минут
+                    app.logger.warning(f"Задача {task['id']} слишком долго ждала в очереди ({queue_time:.1f}с). Отмена.")
+                    self.redis.hset(self.results_key, task['id'], pickle.dumps({
+                        'status': 'error',
+                        'error': f'Запрос отменён - слишком долгое ожидание в очереди ({queue_time:.1f}с)',
+                        'result': {'session_id': task['session_id']},
+                        'timestamp': time.time()
+                    }))
+                    continue
+                
+                app.logger.info(f"RedisRequestQueue: получена задача {task['id']} из очереди для сеанса {task['session_id']}, ожидание в очереди: {queue_time:.1f}с")
                 
                 # Помечаем задачу как обрабатываемую
                 self.redis.hset(self.processing_key, task['id'], task_data)
@@ -1319,7 +1359,7 @@ def clear_history():
     return jsonify({'status': 'ok'})
 
 # -------------------------------
-# ОТПРАВКА СООБЩЕНИЯ (ОСНОВНАЯ) - ИЗМЕНЕНО
+# ОТПРАВКА СООБЩЕНИЯ (ОСНОВНАЯ)
 # -------------------------------
 @app.route('/send_message', methods=['POST'])
 def send_message():
@@ -1354,7 +1394,7 @@ def send_message():
                 file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
                 file_name = file.filename
         
-        # ИЗМЕНЕНИЕ: проверяем наличие флага голосового сообщения
+        # Проверяем наличие флага голосового сообщения
         voice_record = request.form.get('voice_record') == 'true'
     else:
         try:
@@ -1427,7 +1467,7 @@ def send_message():
         save_message(session_id, 'assistant', system_content, 
                      model_name='whisper', response_time=None)
         
-        # ИЗМЕНЕНИЕ: различаем голосовое сообщение и загруженный аудиофайл
+        # Различаем голосовое сообщение и загруженный аудиофайл
         if voice_record:
             # Это голосовое сообщение (запись с микрофона) – отправляем распознанный текст в очередь
             app.logger.info("send_message: голосовое сообщение, ставим задачу в очередь с текстом транскрипции")

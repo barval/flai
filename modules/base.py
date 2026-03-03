@@ -19,6 +19,7 @@ class BaseModule:
         self.ollama_url = ollama_url
         self.models_config = models_config or {}
         self.available = False
+        self.timeouts = {}  # Словарь для хранения таймаутов
         
         if app:
             self.init_app(app)
@@ -28,25 +29,42 @@ class BaseModule:
     def init_app(self, app):
         """Инициализация модуля с приложением Flask"""
         self.ollama_url = app.config.get('OLLAMA_URL')
+        
+        # Загружаем таймауты
+        self.timeouts = {
+            'chat': app.config.get('LLM_CHAT_TIMEOUT', 60),
+            'multimodal': app.config.get('LLM_MULTIMODAL_TIMEOUT', 120),
+            'reasoning': app.config.get('LLM_REASONING_TIMEOUT', 300)
+        }
+        
         self.models_config = {
             'chat': {
                 'model': app.config.get('LLM_CHAT_MODEL'),
                 'context': app.config.get('LLM_CHAT_MODEL_CONTEXT_WINDOW', 32768),
                 'temperature': app.config.get('LLM_CHAT_TEMPERATURE', 0.1),
-                'top_p': app.config.get('LLM_CHAT_TOP_P', 0.1)
+                'top_p': app.config.get('LLM_CHAT_TOP_P', 0.1),
+                'timeout': self.timeouts['chat']
             },
             'reasoning': {
                 'model': app.config.get('LLM_REASONING_MODEL'),
                 'context': app.config.get('LLM_REASONING_MODEL_CONTEXT_WINDOW', 40960),
                 'temperature': app.config.get('LLM_REASONING_TEMPERATURE', 0.7),
-                'top_p': app.config.get('LLM_REASONING_TOP_P', 0.9)
+                'top_p': app.config.get('LLM_REASONING_TOP_P', 0.9),
+                'timeout': self.timeouts['reasoning']
+            },
+            'multimodal': {
+                'model': app.config.get('LLM_MULTIMODAL_MODEL', app.config.get('LLM_MULTIMODAL_MODEL')),
+                'context': app.config.get('LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW', 32768),
+                'temperature': app.config.get('LLM_MULTIMODAL_TEMPERATURE', 0.7),
+                'top_p': app.config.get('LLM_MULTIMODAL_TOP_P', 0.9),
+                'timeout': self.timeouts.get('multimodal', 120)
             }
         }
         
         self.check_availability()
         
         if self.available:
-            self.logger.info("BaseModule инициализирован и доступен")
+            self.logger.info(f"BaseModule инициализирован и доступен. Таймауты: {self.timeouts}")
         else:
             self.logger.warning("BaseModule инициализирован, но Ollama недоступна")
     
@@ -87,7 +105,7 @@ class BaseModule:
         return False
     
     def call_ollama(self, messages, model_type='chat', stream=False):
-        """Вызов Ollama API"""
+        """Вызов Ollama API с настраиваемым таймаутом"""
         if not self.available:
             self.check_availability()
             if not self.available:
@@ -95,6 +113,7 @@ class BaseModule:
         
         model_config = self.models_config.get(model_type, self.models_config['chat'])
         model = model_config['model']
+        timeout = model_config.get('timeout', 60)  # Используем таймаут из конфига
         
         if not model:
             return f"⚠️ Модель для {model_type} не настроена"
@@ -112,12 +131,12 @@ class BaseModule:
                 }
             }
             
-            self.logger.info(f"Отправка запроса к Ollama. Модель: {model}")
+            self.logger.info(f"Отправка запроса к Ollama. Модель: {model}, таймаут: {timeout}с")
             
             response = requests.post(
                 f"{self.ollama_url}/api/chat",
                 json=payload,
-                timeout=120
+                timeout=timeout  # Используем настраиваемый таймаут
             )
             
             if response.status_code == 200:
@@ -137,8 +156,11 @@ class BaseModule:
                 self.logger.error(error_msg)
                 return f"⚠️ Ошибка Ollama: {response.status_code}"
                 
+        except requests.exceptions.Timeout:
+            self.logger.error(f"Таймаут ({timeout}с) при обращении к Ollama. Модель: {model}")
+            return f"⚠️ Превышено время ожидания ответа от модели ({timeout}с). Попробуйте увеличить таймаут в .env или упростите запрос."
         except requests.exceptions.ConnectionError:
-            self.logger.error("Ошибка подключения к Ollama")
+            self.logger.error(f"Ошибка подключения к Ollama по адресу {self.ollama_url}")
             return "⚠️ Не удалось подключиться к Ollama"
         except Exception as e:
             self.logger.error(f"Error calling Ollama: {str(e)}")

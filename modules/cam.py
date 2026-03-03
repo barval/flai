@@ -13,7 +13,8 @@ class CamModule:
         self.camera_api_url = None
         self.available = False
         self.last_check = 0
-        self.check_interval = 30  # Проверять доступность каждые 30 секунд
+        self.check_interval = 30  # Интервал проверки доступности по умолчанию
+        self.timeout = 15  # Таймаут для запросов по умолчанию
         
         # Словарь соответствия кодов комнат читаемым названиям
         self.room_names = {
@@ -38,12 +39,14 @@ class CamModule:
         """Инициализация модуля с приложением Flask"""
         # Получаем URL из конфига или используем значение по умолчанию
         self.camera_api_url = app.config.get('CAMERA_API_URL', 'http://host.docker.internal:5005')
+        self.timeout = app.config.get('CAMERA_API_TIMEOUT', 15)
+        self.check_interval = app.config.get('CAMERA_CHECK_INTERVAL', 30)
         
         # Проверяем доступность при инициализации
         self.check_availability()
         
         if self.available:
-            self.logger.info(f"CamModule инициализирован и доступен (API: {self.camera_api_url})")
+            self.logger.info(f"CamModule инициализирован и доступен (API: {self.camera_api_url}), таймаут: {self.timeout}с")
         else:
             self.logger.warning(f"CamModule инициализирован, но API камер недоступно ({self.camera_api_url})")
     
@@ -131,6 +134,8 @@ class CamModule:
             'last_check': datetime.fromtimestamp(self.last_check).isoformat() if self.last_check else None,
             'rooms': list(self.room_names.keys()),
             'room_names': self.room_names,
+            'timeout': self.timeout,
+            'check_interval': self.check_interval,
             'message': 'Доступно' if self.available else 'Недоступно'
         }
         
@@ -168,7 +173,7 @@ class CamModule:
     
     def get_snapshot(self, room_code):
         """
-        Получение снимка с камеры
+        Получение снимка с камеры с настраиваемым таймаутом
         room_code может быть как кодом ('tam'), так и названием ('тамбур')
         """
         # Обновляем статус доступности
@@ -208,11 +213,11 @@ class CamModule:
             last_error = None
             for endpoint in endpoints:
                 try:
-                    self.logger.info(f"Запрос к камере: {endpoint}")
+                    self.logger.info(f"Запрос к камере: {endpoint}, таймаут: {self.timeout}с")
                     
                     response = requests.get(
                         endpoint, 
-                        timeout=10,
+                        timeout=self.timeout,
                         headers={'Accept': 'image/jpeg,image/png,*/*'}
                     )
                     
@@ -274,7 +279,7 @@ class CamModule:
                     last_error = "Ошибка подключения"
                     continue
                 except requests.exceptions.Timeout:
-                    last_error = "Таймаут ожидания"
+                    last_error = f"Таймаут ожидания ({self.timeout}с)"
                     continue
                 except Exception as e:
                     last_error = str(e)
@@ -389,5 +394,7 @@ class CamAPI:
                 'module': 'cam',
                 'available': cam_module.available,
                 'url': cam_module.camera_api_url,
+                'timeout': cam_module.timeout,
+                'check_interval': cam_module.check_interval,
                 'timestamp': datetime.now().isoformat()
             })

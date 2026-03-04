@@ -1,6 +1,6 @@
-# ИНСТРУКЦИЯ
-- **Язык ответа:** Русский.
-- **Формат ответа:** Краткий, без рассуждений. Не задавай вопросов. Не пиши о том, чего нет на изображении.
-- **Задача:** Списком перечисли все предметы на изображении. Опиши само изображение и всё, что можно про него рассказать. 
-# ВХОДНЫЕ ДАННЫЕ
-- **Текущее время:** {current_time_str}.
+# INSTRUCTION
+- **Response language:** {response_language}.
+- **Response format:** Brief, without reasoning. Do not ask questions. Do not write about things not in the image.
+- **Task:** List all objects in the image. Describe the image itself and everything that can be said about it.
+# INPUT DATA
+- **Current time:** {current_time_str}.

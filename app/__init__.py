@@ -1,4 +1,5 @@
-from flask import Flask
+from flask import Flask, request, session
+from flask_babel import Babel
 import logging
 from logging import Formatter
 import os
@@ -9,13 +10,21 @@ from .queue import RedisRequestQueue
 from .userdb import init_user_db
 from modules import BaseModule, MultimodalModule, ImageModule, CamModule, RagModule, AudioModule
 
+babel = Babel()
+
+def get_locale():
+    # Language from session or Accept-Language header
+    if 'language' in session:
+        return session['language']
+    return request.accept_languages.best_match(['ru', 'en']) or 'ru'
+
 def create_app():
     app = Flask(__name__)
 
-    # Загрузка конфигурации
+    # Load configuration
     load_config(app)
 
-    # Настройка логирования
+    # Setup logging
     formatter = Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                          datefmt='%Y-%m-%d %H:%M:%S')
     console_handler = logging.StreamHandler()
@@ -23,15 +32,19 @@ def create_app():
     app.logger.handlers = [console_handler]
     app.logger.setLevel(logging.DEBUG)
 
-    # Инициализация БД чатов (теперь chats.db)
+    # Initialize Babel
+    babel.init_app(app, locale_selector=get_locale)
+    app.jinja_env.add_extension('jinja2.ext.i18n')  # for _() in templates
+
+    # Initialize chat DB
     init_db()
     migrate_db_add_response_fields()
     migrate_db_add_session_visits()
 
-    # Инициализация БД пользователей
+    # Initialize user DB
     init_user_db()
 
-    # Инициализация модулей
+    # Initialize modules
     modules = {}
     modules['base'] = BaseModule(app)
 
@@ -42,37 +55,41 @@ def create_app():
         modules['image'] = ImageModule(app)
         modules['image'].set_multimodal_module(modules['multimodal'])
 
-    # Модуль камер (условно, по CAMERA_ENABLED)
     if app.config['CAMERA_ENABLED']:
         modules['cam'] = CamModule(app)
-        app.logger.info("Модуль камер включён")
+        app.logger.info("Camera module enabled")
     else:
-        app.logger.info("Модуль камер отключён (CAMERA_ENABLED=False)")
+        app.logger.info("Camera module disabled (CAMERA_ENABLED=False)")
 
     modules['rag'] = RagModule(app)
     modules['audio'] = AudioModule(app)
 
     app.modules = modules
 
-    # Инициализация очереди Redis
+    # Initialize Redis queue
     app.request_queue = RedisRequestQueue(app)
 
-    # Контекстный процессор для подписи футера
+    # Context processor for footer text (translated)
     @app.context_processor
     def inject_footer():
-        return dict(footer_content=app.config.get('FOOTER_TEXT', ""))
+        lang = session.get('language', 'ru')
+        if lang == 'ru':
+            footer = app.config.get('FOOTER_TEXT_RU', '')
+        else:
+            footer = app.config.get('FOOTER_TEXT_EN', '')
+        return dict(footer_content=footer)
 
-    # Регистрация маршрутов
+    # Register blueprints
     from . import auth, routes_chat, routes_queue, routes_admin, cli
     app.register_blueprint(auth.bp)
     app.register_blueprint(routes_chat.bp)
     app.register_blueprint(routes_queue.bp)
     app.register_blueprint(routes_admin.bp)
 
-    # Регистрация CLI команд
+    # Register CLI commands
     app.cli.add_command(cli.set_admin_password)
 
-    # Дополнительная регистрация API для камер (только если модуль включён)
+    # Additional camera routes
     if 'cam' in modules:
         from modules.cam import CamAPI
         CamAPI.register_routes(app, modules['cam'])

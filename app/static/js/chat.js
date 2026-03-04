@@ -1,5 +1,4 @@
 // static/js/chat.js
-// Глобальные переменные (будут инициализированы в шаблоне)
 let currentSessionId = window.initialSessionId;
 let isSending = false;
 let attachedFile = null;
@@ -8,29 +7,29 @@ let defaultModelName = 'qwen3-vl:8b-instruct';
 let sessionsData = {};
 let syncInterval = null;
 let newMessageIndicators = {};
-let sessionQueueInfo = {};          // агрегированная информация о статусах задач
-let stableSessionStatus = {};       // стабилизированные статусы (чтобы избежать мерцания)
+let sessionQueueInfo = {};
+let stableSessionStatus = {};
 let lastCompletionTime = {};
 let sessionsUpdateTimeout = null;
 
-// Переменные для записи голоса
+// Variables for voice recording
 let mediaRecorder = null;
 let audioChunks = [];
 let isRecording = false;
 let isVoiceRecorded = false;
 
 // -------------------------------
-// Вспомогательные функции
+// Helper functions
 // -------------------------------
 function pad(n) {
     return n.toString().padStart(2, '0');
 }
 
 function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Б';
+    if (bytes === 0) return '0 B';
     if (!bytes) return '';
     const k = 1024;
-    const sizes = ['Б', 'КБ', 'МБ', 'ГБ'];
+    const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
@@ -55,20 +54,18 @@ function formatFullDateTime(ts) {
         if (isNaN(date.getTime())) {
             return ts.replace('T', ' ').slice(0, 19);
         }
-        const year = date.getFullYear();
-        const month = (date.getMonth() + 1).toString().padStart(2, '0');
-        const day = date.getDate().toString().padStart(2, '0');
-        const hours = date.getHours().toString().padStart(2, '0');
-        const minutes = date.getMinutes().toString().padStart(2, '0');
-        const seconds = date.getSeconds().toString().padStart(2, '0');
-        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        const options = {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+        };
+        return date.toLocaleString(CURRENT_LANG === 'ru' ? 'ru-RU' : 'en-US', options).replace(',', '');
     } catch (e) {
         return ts.replace('T', ' ').slice(0, 19);
     }
 }
 
 // -------------------------------
-// Модальное окно изображений
+// Image modal
 // -------------------------------
 function openImageModal(imgSrc, imgAlt) {
     const modal = document.getElementById('image-modal');
@@ -85,15 +82,15 @@ function closeImageModal() {
 }
 
 // -------------------------------
-// Обновление счётчика сообщений
+// Message counter update
 // -------------------------------
 function updateMessageCount() {
     const count = document.querySelectorAll('.user-message, .assistant-message, .bot-message').length;
-    document.getElementById('context-info').textContent = `Сообщений: ${count}`;
+    document.getElementById('context-info').textContent = t('messages') + ': ' + count;
 }
 
 // -------------------------------
-// Управление индикаторами новых сообщений
+// New message indicators
 // -------------------------------
 function setNewMessageIndicator(sessionId, show) {
     if (show) {
@@ -105,39 +102,36 @@ function setNewMessageIndicator(sessionId, show) {
 }
 
 // -------------------------------
-// Получение статусов очереди (агрегированных)
+// Fetch queue status (aggregated)
 // -------------------------------
 function fetchQueueStatus() {
     fetch('/api/queue/status')
         .then(res => res.json())
         .then(data => {
             const now = Date.now();
-            const agg = {}; // агрегированные данные по сеансам
+            const agg = {}; // aggregated data per session
 
-            // Задача в обработке (processing)
+            // Task in processing
             if (data.processing) {
                 const proc = data.processing;
                 if (!agg[proc.session_id]) agg[proc.session_id] = { processing: false, queued: 0 };
                 agg[proc.session_id].processing = true;
             }
 
-            // Задачи в очереди (queued)
+            // Tasks in queue
             data.queued.forEach(item => {
                 if (!agg[item.session_id]) agg[item.session_id] = { processing: false, queued: 0 };
                 agg[item.session_id].queued += 1;
             });
 
-            // Стабилизация: применяем новый статус, только если он держится не менее двух циклов (6 секунд)
+            // Stabilization: apply new status only if it persists for at least two cycles (6 seconds)
             const newStable = {};
             Object.keys(agg).forEach(sid => {
                 const current = agg[sid];
                 const prev = stableSessionStatus[sid];
                 if (!prev || prev.processing !== current.processing || prev.queued !== current.queued) {
-                    // Статус изменился — запоминаем время изменения
                     if (!prev || prev.pendingChange) {
-                        // Если уже было запланировано изменение, проверяем, прошло ли 6 секунд
                         if (prev && now - prev.changeTime > 6000) {
-                            // Применяем изменение
                             newStable[sid] = {
                                 processing: current.processing,
                                 queued: current.queued,
@@ -145,7 +139,6 @@ function fetchQueueStatus() {
                                 pendingChange: false
                             };
                         } else {
-                            // Ещё не прошло 6 секунд — оставляем старый статус, но помечаем ожидание
                             newStable[sid] = {
                                 ...prev,
                                 pendingChange: true,
@@ -153,7 +146,6 @@ function fetchQueueStatus() {
                             };
                         }
                     } else {
-                        // Первое изменение
                         newStable[sid] = {
                             ...current,
                             changeTime: now,
@@ -161,12 +153,11 @@ function fetchQueueStatus() {
                         };
                     }
                 } else {
-                    // Статус не изменился — просто копируем
                     newStable[sid] = { ...current, changeTime: now, pendingChange: false };
                 }
             });
 
-            // Удаляем устаревшие сеансы (которых нет в agg более 10 секунд)
+            // Remove stale sessions (not in agg for more than 10 seconds)
             Object.keys(stableSessionStatus).forEach(sid => {
                 if (!agg[sid] && (now - stableSessionStatus[sid].changeTime) > 10000) {
                     delete stableSessionStatus[sid];
@@ -175,8 +166,7 @@ function fetchQueueStatus() {
 
             stableSessionStatus = newStable;
 
-            // Преобразуем стабилизированные статусы в итоговый объект sessionQueueInfo
-            // (убираем служебные поля changeTime, pendingChange)
+            // Convert stabilized status to final sessionQueueInfo
             sessionQueueInfo = {};
             Object.keys(stableSessionStatus).forEach(sid => {
                 sessionQueueInfo[sid] = {
@@ -187,11 +177,11 @@ function fetchQueueStatus() {
 
             updateSessionsListFromData();
         })
-        .catch(err => console.error('Ошибка получения статусов очереди:', err));
+        .catch(err => console.error('Error fetching queue status:', err));
 }
 
 // -------------------------------
-// Загрузка списка сеансов
+// Load session list from server
 // -------------------------------
 function loadSessionsFromServer() {
     return fetch('/api/sessions')
@@ -239,11 +229,11 @@ function loadSessionsFromServer() {
             }
             return sessions;
         })
-        .catch(err => console.error('Ошибка загрузки сеансов:', err));
+        .catch(err => console.error('Error loading sessions:', err));
 }
 
 // -------------------------------
-// Обновление списка сеансов в DOM
+// Update session list in DOM
 // -------------------------------
 function updateSessionsListFromData() {
     if (sessionsUpdateTimeout) {
@@ -269,21 +259,21 @@ function updateSessionsList(sessions) {
     let html = '';
     sessions.forEach(s => {
         const isActive = s.id === currentActiveId ? 'active' : '';
-        const dateStr = s.updated_at ? s.updated_at.replace('T', ' ').substring(0, 19) : '';
+        const dateStr = s.updated_at ? formatFullDateTime(s.updated_at) : '';
         
-        // Определяем значок статуса по приоритету
+        // Determine status icon by priority
         let statusIcons = '';
         const info = sessionQueueInfo[s.id];
         if (info) {
             if (info.processing) {
-                statusIcons = '<span class="session-status-icon processing blink" title="Обрабатывается">⚡</span>';
+                statusIcons = '<span class="session-status-icon processing blink" title="' + t('processing') + '">⚡</span>';
             } else if (info.queued > 0) {
                 const count = info.queued > 1 ? ` ${info.queued}` : '';
-                statusIcons = '<span class="session-status-icon queued" title="В очереди">⏳' + count + '</span>';
+                statusIcons = '<span class="session-status-icon queued" title="' + t('queued') + '">⏳' + count + '</span>';
             }
         }
         if (!statusIcons && newMessageIndicators[s.id] && s.id !== currentActiveId) {
-            statusIcons = '<span class="session-status-icon unread blink" title="Новый ответ">✉️</span>';
+            statusIcons = '<span class="session-status-icon unread blink" title="' + t('new_response') + '">✉️</span>';
         }
 
         html += `
@@ -296,7 +286,7 @@ function updateSessionsList(sessions) {
                         </div>
                         <div class="session-date">${dateStr}</div>
                     </div>
-                    <button class="delete-session-button" title="Удалить сеанс">🗑️</button>
+                    <button class="delete-session-button" title="${t('delete_session')}">🗑️</button>
                 </div>
             </div>
         `;
@@ -326,7 +316,7 @@ function attachSessionEventHandlers() {
             const sessionId = sessionItem.dataset.sessionId;
             const sessionTitle = sessionItem.dataset.sessionTitle;
             const sessionDate = sessionItem.querySelector('.session-date').textContent;
-            if (confirm(`Удалить сеанс "${sessionTitle}" от ${sessionDate}?`)) {
+            if (confirm(t('delete_session_confirm').replace('{title}', sessionTitle).replace('{date}', sessionDate))) {
                 deleteSession(sessionId);
             }
         });
@@ -334,7 +324,7 @@ function attachSessionEventHandlers() {
 }
 
 // -------------------------------
-// Периодическая синхронизация
+// Periodic sync
 // -------------------------------
 function startSyncInterval() {
     if (syncInterval) clearInterval(syncInterval);
@@ -352,18 +342,19 @@ window.updateStatusCounter = function() {
             const counter = document.getElementById('status-counter');
             if (counter) {
                 counter.textContent = `📊 ${data.user_queued}/${data.total_queued}`;
+                counter.title = t('your_requests');
             }
         })
-        .catch(err => console.error('Ошибка обновления счётчика:', err));
+        .catch(err => console.error('Error updating counter:', err));
 };
 
 function updateLastVisit(sessionId) {
     fetch(`/api/sessions/${sessionId}/visit`, { method: 'POST' })
-        .catch(err => console.error('Ошибка обновления last_visit:', err));
+        .catch(err => console.error('Error updating last_visit:', err));
 }
 
 // -------------------------------
-// Инициализация после загрузки DOM
+// Initialization after DOM load
 // -------------------------------
 document.addEventListener('DOMContentLoaded', function() {
     loadSessionsFromServer().then(() => {
@@ -415,7 +406,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // -------------------------------
-// Загрузка сообщений сеанса
+// Load session messages
 // -------------------------------
 function loadMessages(sessionId) {
     return fetch(`/api/sessions/${sessionId}/messages`)
@@ -468,8 +459,8 @@ function loadMessages(sessionId) {
                         responseTime = {
                             mm_time: parseFloat(mmTime),
                             gen_time: parseFloat(genTime),
-                            mm_model: mmModel || 'неизвестно',
-                            gen_model: genModel || 'неизвестно'
+                            mm_model: mmModel || 'unknown',
+                            gen_model: genModel || 'unknown'
                         };
                     }
                     displayMessage(
@@ -498,7 +489,7 @@ function loadMessages(sessionId) {
 }
 
 // -------------------------------
-// Отображение одного сообщения
+// Display a single message
 // -------------------------------
 function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
     const container = document.getElementById('chat-messages');
@@ -517,8 +508,8 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
         } else if (mmTime && genTime) {
             msgDiv.dataset.mmTime = mmTime;
             msgDiv.dataset.genTime = genTime;
-            msgDiv.dataset.mmModel = mmModel || 'неизвестно';
-            msgDiv.dataset.genModel = genModel || 'неизвестно';
+            msgDiv.dataset.mmModel = mmModel || 'unknown';
+            msgDiv.dataset.genModel = genModel || 'unknown';
         }
     }
 
@@ -530,10 +521,10 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
         const fileSize = formatFileSize(fileSizeBytes);
         timeDisplay += ` <span class="file-info">[📎 ${fileName}, ${fileSize}]</span>`;
         if (fileType && fileType.startsWith('image/')) {
-            timeDisplay += ` <a href="data:${fileType};base64,${fileData}" download="${fileName || 'image.jpg'}" class="download-link-inline" title="Скачать изображение" onclick="event.stopPropagation()">⬇️</a>`;
+            timeDisplay += ` <a href="data:${fileType};base64,${fileData}" download="${fileName || 'image.jpg'}" class="download-link-inline" title="${t('download_image')}" onclick="event.stopPropagation()">⬇️</a>`;
         }
         if (fileType && fileType.startsWith('audio/')) {
-            timeDisplay += ` <a href="data:${fileType};base64,${fileData}" download="${fileName || 'audio.webm'}" class="download-link-inline" title="Скачать аудио" onclick="event.stopPropagation()">⬇️</a>`;
+            timeDisplay += ` <a href="data:${fileType};base64,${fileData}" download="${fileName || 'audio.webm'}" class="download-link-inline" title="${t('download_audio')}" onclick="event.stopPropagation()">⬇️</a>`;
         }
     }
     if (role === 'assistant' && fileName && fileData) {
@@ -542,10 +533,10 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
         const fileSize = formatFileSize(fileSizeBytes);
         timeDisplay += ` <span class="file-info">[📎 ${fileName}, ${fileSize}]</span>`;
         if (fileType && fileType.startsWith('image/')) {
-            timeDisplay += ` <a href="data:${fileType};base64,${fileData}" download="${fileName || 'generated_image.jpg'}" class="download-link-inline" title="Скачать изображение" onclick="event.stopPropagation()">⬇️</a>`;
+            timeDisplay += ` <a href="data:${fileType};base64,${fileData}" download="${fileName || 'generated_image.jpg'}" class="download-link-inline" title="${t('download_image')}" onclick="event.stopPropagation()">⬇️</a>`;
         }
         if (fileType && fileType.startsWith('audio/')) {
-            timeDisplay += ` <a href="data:${fileType};base64,${fileData}" download="${fileName || 'audio.webm'}" class="download-link-inline" title="Скачать аудио" onclick="event.stopPropagation()">⬇️</a>`;
+            timeDisplay += ` <a href="data:${fileType};base64,${fileData}" download="${fileName || 'audio.webm'}" class="download-link-inline" title="${t('download_audio')}" onclick="event.stopPropagation()">⬇️</a>`;
         }
     }
 
@@ -569,7 +560,7 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
                 duration = parseFloat(responseTime).toFixed(1);
             }
         }
-        if (duration) headerHTML += ` <span class="text-muted">⏱️ ${duration}с</span>`;
+        if (duration) headerHTML += ` <span class="text-muted">⏱️ ${duration}s</span>`;
     }
     headerHTML += '</span>';
 
@@ -603,7 +594,7 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
         if (fileType && fileType.startsWith('image/')) {
             fileHTML = `
                 <div class="image-container">
-                    <img src="data:${fileType};base64,${fileData}" class="attached-image" alt="${fileName || 'attached image'}" title="Нажмите для увеличения" onclick="openImageModal(this.src, '${fileName || 'Изображение'}')">
+                    <img src="data:${fileType};base64,${fileData}" class="attached-image" alt="${fileName || 'attached image'}" title="${t('click_to_enlarge')}" onclick="openImageModal(this.src, '${fileName || t('image')}')">
                 </div>
             `;
         } else if (fileType && fileType.startsWith('audio/')) {
@@ -624,7 +615,7 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
 }
 
 // -------------------------------
-// Переключение сеанса
+// Switch session
 // -------------------------------
 function switchSession(sessionId) {
     fetch(`/api/sessions/${sessionId}/switch`, { method: 'POST' })
@@ -644,7 +635,7 @@ function switchSession(sessionId) {
 }
 
 // -------------------------------
-// Создание нового сеанса
+// Create new session
 // -------------------------------
 function createNewSession() {
     fetch('/api/sessions/new', { method: 'POST' })
@@ -666,7 +657,7 @@ function createNewSession() {
 }
 
 // -------------------------------
-// Обновление заголовка сеанса
+// Update session title
 // -------------------------------
 function updateSessionTitle(sessionId, newTitle) {
     if (sessionsData[sessionId]) {
@@ -678,7 +669,7 @@ function updateSessionTitle(sessionId, newTitle) {
     const titleElement = sessionItem.querySelector('.session-title');
     if (titleElement) titleElement.innerHTML = escapeHtml(newTitle);
     const now = new Date();
-    const formattedDate = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const formattedDate = formatFullDateTime(now.toISOString());
     const dateElement = sessionItem.querySelector('.session-date');
     if (dateElement) dateElement.textContent = formattedDate;
     const sessionsList = document.getElementById('sessions-list');
@@ -688,7 +679,7 @@ function updateSessionTitle(sessionId, newTitle) {
 }
 
 // -------------------------------
-// Запись голоса
+// Voice recording
 // -------------------------------
 async function toggleVoiceRecording() {
     if (isRecording) {
@@ -700,11 +691,11 @@ async function toggleVoiceRecording() {
 
 async function startRecording() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert('Ваш браузер не поддерживает запись audio');
+        alert(t('browser_no_audio_support'));
         return;
     }
     if (!window.isSecureContext) {
-        alert('Для записи голоса требуется безопасное соединение (HTTPS).\nПопробуйте открыть сайт по HTTPS или localhost.');
+        alert(t('secure_context_required'));
         return;
     }
     try {
@@ -724,8 +715,8 @@ async function startRecording() {
         document.getElementById('voice-record-button').classList.add('recording');
         document.getElementById('recording-indicator').style.display = 'inline';
     } catch (err) {
-        console.error('Ошибка доступа к микрофону:', err);
-        alert('Не удалось получить доступ к микрофону. Убедитесь, что сайт открыт по HTTPS или localhost, и разрешите использование микрофона.');
+        console.error('Error accessing microphone:', err);
+        alert(t('microphone_access_denied'));
     }
 }
 
@@ -759,13 +750,13 @@ async function sendVoiceMessage(blob) {
 }
 
 // -------------------------------
-// Отправка сообщения
+// Send message
 // -------------------------------
 async function sendMessage() {
     const input = document.getElementById('message-input');
     const text = input.value.trim();
     if (!text && !attachedFile) {
-        alert('Введите сообщение или прикрепите файл');
+        alert(t('enter_message_or_file'));
         return;
     }
     if (isSending) return;
@@ -773,7 +764,7 @@ async function sendMessage() {
 
     const sendButton = document.getElementById('send-button');
     sendButton.disabled = true;
-    sendButton.innerHTML = '⏳ Отправка...';
+    sendButton.innerHTML = '⏳ ' + t('sending');
 
     const messageCount = document.querySelectorAll('.user-message').length;
     if (messageCount === 0) {
@@ -787,7 +778,7 @@ async function sendMessage() {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({title: newTitle})
-            }).catch(err => console.error('Ошибка обновления заголовка:', err));
+            }).catch(err => console.error('Error updating title:', err));
         }
     }
 
@@ -837,26 +828,25 @@ async function sendMessage() {
                 });
             }
             const data = await response.json();
-            console.log('Ответ от сервера:', data);
+            console.log('Server response:', data);
 
             if (data.transcribed_text) {
                 if (data.session_id && data.session_id === currentSessionId) {
-                    displayMessage('assistant', `🎤 Распознано: ${data.transcribed_text}`, null, null, null,
+                    displayMessage('assistant', `🎤 ${t('transcribed')}: ${data.transcribed_text}`, null, null, null,
                         new Date().toISOString(), data.response_time, 'whisper');
                 } else if (data.session_id) {
                     setNewMessageIndicator(data.session_id, true);
                 } else {
-                    displayMessage('assistant', `🎤 Распознано: ${data.transcribed_text}`, null, null, null,
+                    displayMessage('assistant', `🎤 ${t('transcribed')}: ${data.transcribed_text}`, null, null, null,
                         new Date().toISOString(), data.response_time, 'whisper');
                 }
                 sendButton.disabled = false;
-                sendButton.innerHTML = 'Отправить';
+                sendButton.innerHTML = t('send');
                 isSending = false;
                 if (!data.request_id) return;
             }
 
             if (data.status === 'queued') {
-                // Статус будет обновлён через fetchQueueStatus, поэтому не меняем локально
                 pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
                 window.updateStatusCounter();
                 startResultPolling(data.request_id);
@@ -865,13 +855,13 @@ async function sendMessage() {
                     data.assistant_timestamp, data.response_time, data.model_used);
             }
         } catch (err) {
-            alert('Ошибка: ' + err.message);
+            alert(t('error') + ': ' + err.message);
             console.error('Send message error:', err);
             const lastMessage = document.querySelector('.user-message:last-child');
             if (lastMessage) lastMessage.style.borderLeft = '3px solid #e74c3c';
         } finally {
             sendButton.disabled = false;
-            sendButton.innerHTML = 'Отправить';
+            sendButton.innerHTML = t('send');
             isSending = false;
         }
     };
@@ -895,7 +885,7 @@ async function sendMessage() {
                                     data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'system');
                                 delete stableSessionStatus[resultSessionId];
                             } else if (resultSessionId) {
-                                // Статус ошибки будет виден через fetchQueueStatus
+                                // will be shown via queue status
                             }
                             lastCompletionTime[resultSessionId] = Date.now() + 5000;
                         } else if (data.result.messages) {
@@ -934,22 +924,22 @@ async function sendMessage() {
                     clearInterval(pollInterval);
                     const resultSessionId = data.result?.session_id || pendingRequests[requestId]?.sessionId;
                     if (resultSessionId === currentSessionId) {
-                        displayMessage('assistant', `⚠️ Ошибка: ${data.error || 'Неизвестная ошибка'}`, null, null, null,
+                        displayMessage('assistant', `⚠️ ${t('error')}: ${data.error || t('unknown_error')}`, null, null, null,
                             data.result?.assistant_timestamp || new Date().toISOString(), data.result?.response_time, 'system');
                         delete stableSessionStatus[resultSessionId];
                     } else if (resultSessionId) {
-                        // Статус ошибки будет виден через fetchQueueStatus
+                        // will be shown via queue status
                     }
                     lastCompletionTime[resultSessionId] = Date.now() + 5000;
                     delete pendingRequests[requestId];
                     window.updateStatusCounter();
                     fetchQueueStatus();
                 } else if (data.status === 'pending') {
-                    // Статус обновится через fetchQueueStatus
+                    // status updates via fetchQueueStatus
                 }
                 if (pollCount >= maxPolls) {
                     clearInterval(pollInterval);
-                    displayMessage('assistant', '⚠️ Превышено время ожидания ответа. Проверьте статус запроса в панели "Мои запросы".',
+                    displayMessage('assistant', `⚠️ ${t('request_timeout')}`,
                         null, null, null, new Date().toISOString(), null, 'system');
                     delete stableSessionStatus[currentSessionId];
                     delete pendingRequests[requestId];
@@ -978,7 +968,7 @@ async function sendMessage() {
 }
 
 // -------------------------------
-// Удаление сеанса
+// Delete session
 // -------------------------------
 function deleteSession(sessionId) {
     for (let [id, req] of Object.entries(pendingRequests)) {
@@ -1009,41 +999,36 @@ function deleteSession(sessionId) {
                 }
             }
         })
-        .catch(err => alert('Ошибка при удалении сеанса: ' + err.message));
+        .catch(err => alert(t('error') + ': ' + err.message));
 }
 
 // -------------------------------
-// Сохранение чата как HTML
+// Save chat as HTML
 // -------------------------------
 async function saveChatAsHTML() {
-    // Получаем текст подвала
     let footerText = "";
     try {
         const response = await fetch('/api/footer-text');
         if (response.ok) footerText = await response.text();
-        else footerText = "Подпись не настроена";
+        else footerText = t('footer_not_configured');
     } catch (error) {
-        console.error('Ошибка получения подписи:', error);
-        footerText = "Ошибка загрузки подписи";
+        console.error('Error fetching footer:', error);
+        footerText = t('footer_load_error');
     }
 
-    // Получаем имя пользователя из шапки
     const userNameElement = document.querySelector('.logout-container span');
-    const userName = userNameElement ? userNameElement.textContent.trim() : 'Пользователь';
+    const userName = userNameElement ? userNameElement.textContent.trim() : t('user');
 
-    // Активный сеанс
     const activeSession = document.querySelector('.session-item.active');
     if (!activeSession) {
-        alert('Нет активного сеанса для сохранения');
+        alert(t('no_active_session_save'));
         return;
     }
 
-    // Заголовок сеанса
-    const title = activeSession.querySelector('.session-title')?.textContent || 'Чат';
+    const title = activeSession.querySelector('.session-title')?.textContent || t('chat');
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 
-    // Разделяем подпись на две строки, если есть (с)
     let footerLine1 = footerText, footerLine2 = '';
     if (footerText.includes('(с)')) {
         const parts = footerText.split('(с)', 1);
@@ -1051,7 +1036,6 @@ async function saveChatAsHTML() {
         footerLine2 = '(с)' + footerText.split('(с)')[1].trim();
     }
 
-    // Собираем сообщения
     const messages = [];
     document.querySelectorAll('.user-message, .assistant-message, .bot-message').forEach(msgEl => {
         const role = msgEl.classList.contains('user-message') ? 'user' : 'assistant';
@@ -1071,42 +1055,37 @@ async function saveChatAsHTML() {
     });
 
     if (messages.length === 0) {
-        alert('Нет сообщений для сохранения');
+        alert(t('no_messages_to_save'));
         return;
     }
 
-    // Загружаем актуальные CSS-файлы
     let styleContent = '';
     let exportStyleContent = '';
     try {
         const styleResponse = await fetch('/static/style.css');
         styleContent = await styleResponse.text();
     } catch (e) {
-        console.error('Не удалось загрузить style.css', e);
+        console.error('Failed to load style.css', e);
     }
     try {
         const exportResponse = await fetch('/static/export.css');
         exportStyleContent = await exportResponse.text();
     } catch (e) {
-        console.error('Не удалось загрузить export.css', e);
+        console.error('Failed to load export.css', e);
     }
 
-    // Удаляем @import из export.css (если он там есть)
     exportStyleContent = exportStyleContent.replace(/@import\s+url\(['"]?style\.css['"]?\);?\s*/g, '');
 
-    // Объединяем стили
     const combinedStyles = styleContent + '\n' + exportStyleContent;
 
-    // Получаем заголовок сайта из живой страницы
-    const siteTitle = document.querySelector('header h1')?.textContent || 'ПЛИИ';
+    const siteTitle = document.querySelector('header h1')?.textContent || 'FLAI';
 
-    // Формируем HTML
     const html = `<!DOCTYPE html>
-<html lang="ru">
+<html lang="${CURRENT_LANG}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${escapeHtml(title)} - Сохраненный чат</title>
+    <title>${escapeHtml(title)} - ${t('saved_chat')}</title>
     <style>${combinedStyles}</style>
 </head>
 <body>
@@ -1116,10 +1095,10 @@ async function saveChatAsHTML() {
     <main>
         <div class="chat-wrapper">
             <div class="chat-header">
-                <h1>Сеанс: ${escapeHtml(title)}</h1>
-                <p class="user-info">👤 Пользователь: ${escapeHtml(userName)}</p>
-                <p>📅 Сохранено: ${now.toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' })}</p>
-                <p>💬 Всего сообщений: ${messages.length}</p>
+                <h1>${t('session')}: ${escapeHtml(title)}</h1>
+                <p class="user-info">👤 ${t('user')}: ${escapeHtml(userName)}</p>
+                <p>📅 ${t('saved_on')}: ${now.toLocaleString(CURRENT_LANG === 'ru' ? 'ru-RU' : 'en-US', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' })}</p>
+                <p>💬 ${t('total_messages')}: ${messages.length}</p>
             </div>
             <div class="chat-messages">
                 ${messages.map(msg => `
@@ -1151,14 +1130,14 @@ async function saveChatAsHTML() {
 }
 
 // -------------------------------
-// Копирование кода
+// Code copying
 // -------------------------------
 async function copyToClipboard(text) {
     try {
         await navigator.clipboard.writeText(text);
         return true;
     } catch (err) {
-        console.error('Ошибка копирования через clipboard API:', err);
+        console.error('Clipboard API error:', err);
         try {
             const textarea = document.createElement('textarea');
             textarea.value = text;
@@ -1170,7 +1149,7 @@ async function copyToClipboard(text) {
             document.body.removeChild(textarea);
             return success;
         } catch (fallbackErr) {
-            console.error('Ошибка копирования через execCommand:', fallbackErr);
+            console.error('Fallback copy error:', fallbackErr);
             return false;
         }
     }
@@ -1186,19 +1165,19 @@ async function handleCopyClick(button, codeElement) {
     if (success) {
         button.innerHTML = '✓';
         button.className = originalClass + ' copied';
-        button.title = 'Скопировано!';
+        button.title = t('copied');
         setTimeout(() => {
             button.innerHTML = '📋';
             button.className = originalClass.replace(' copied', '');
-            button.title = 'Копировать код';
+            button.title = t('copy_code');
             button.disabled = false;
         }, 2000);
     } else {
         button.innerHTML = '✗';
-        button.title = 'Ошибка копирования';
+        button.title = t('copy_failed');
         setTimeout(() => {
             button.innerHTML = '📋';
-            button.title = 'Копировать код';
+            button.title = t('copy_code');
             button.disabled = false;
         }, 2000);
     }
@@ -1215,7 +1194,7 @@ function addCopyButtonsToMessage(messageElement) {
         const copyButton = document.createElement('button');
         copyButton.className = 'copy-code-button';
         copyButton.innerHTML = '📋';
-        copyButton.title = 'Копировать код';
+        copyButton.title = t('copy_code');
         copyButton.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -1229,15 +1208,15 @@ function addCopyButtonsToMessage(messageElement) {
     const contentDiv = messageElement.querySelector('.message-content');
     if (contentDiv && !contentDiv.querySelector('.copy-transcript-button')) {
         const text = contentDiv.innerText || contentDiv.textContent;
-        if (text.includes('🎤 Распознано:')) {
+        if (text.includes('🎤 ' + t('transcribed') + ':')) {
             const copyBtn = document.createElement('button');
             copyBtn.className = 'copy-transcript-button';
             copyBtn.innerHTML = '📋';
-            copyBtn.title = 'Копировать текст';
+            copyBtn.title = t('copy_text');
             copyBtn.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                const textToCopy = text.replace('🎤 Распознано:', '').trim();
+                const textToCopy = text.replace('🎤 ' + t('transcribed') + ':', '').trim();
                 copyToClipboard(textToCopy);
                 copyBtn.innerHTML = '✓';
                 setTimeout(() => copyBtn.innerHTML = '📋', 2000);
@@ -1267,7 +1246,7 @@ function setupCopyButtonsObserver() {
     observer.observe(chatMessages, { childList: true, subtree: true });
 }
 
-// Сохраняем оригинальные функции для переопределения
+// Save original functions for overriding
 const originalLoadMessages = loadMessages;
 window.loadMessages = function(sessionId) {
     return originalLoadMessages(sessionId).then(() => {

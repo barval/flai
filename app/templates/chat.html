@@ -4,8 +4,8 @@
 <div class="chat-container">
     <div class="sessions-sidebar">
         <div class="sessions-header">
-            <h2>Сеансы (<span id="sessions-count">{{ sessions|length }}</span>)</h2>
-            <button id="new-session-button" class="new-session-button">➕</button>
+            <h2>{{ _('Sessions') }} (<span id="sessions-count">{{ sessions|length }}</span>)</h2>
+            <button id="new-session-button" class="new-session-button" title="{{ _('New session') }}">➕</button>
         </div>
         <div class="sessions-list" id="sessions-list">
             {% for s in sessions %}
@@ -15,7 +15,7 @@
                         <div class="session-title">{{ s.title }}</div>
                         <div class="session-date">{{ s.updated_at[:19].replace('T', ' ') }}</div>
                     </div>
-                    <button class="delete-session-button" title="Удалить сеанс">🗑️</button>
+                    <button class="delete-session-button" title="{{ _('Delete session') }}">🗑️</button>
                 </div>
             </div>
             {% endfor %}
@@ -23,10 +23,10 @@
     </div>
     <div class="chat-main">
         <div class="chat-header">
-            <h2>Чат <span id="status-counter" class="status-counter" title="Ваши запросы в очереди / Всего в очереди">📊 0/0</span></h2>
+            <h2>{{ _('Chat') }} <span id="status-counter" class="status-counter" title="{{ _('Your requests in queue / Total in queue') }}">📊 0/0</span></h2>
             <div class="context-info-container">
-                <div id="context-info" class="context-info">Сообщений: 0</div>
-                <button id="save-chat-button" class="save-chat-button" title="Сохранить как HTML">💾</button>
+                <div id="context-info" class="context-info">{{ _('Messages') }}: 0</div>
+                <button id="save-chat-button" class="save-chat-button" title="{{ _('Save as HTML') }}">💾</button>
             </div>
         </div>
         <div class="chat-messages" id="chat-messages"></div>
@@ -43,20 +43,52 @@
             <div id="modal-caption"></div>
         </div>
         <div class="message-input">
-            <input type="text" id="message-input" placeholder="Введите сообщение..." autocomplete="off">
-            <button id="voice-record-button" class="voice-record-button" title="Записать голосовое сообщение">🎤</button>
+            <input type="text" id="message-input" placeholder="{{ _('Enter message...') }}" autocomplete="off">
+            <button id="voice-record-button" class="voice-record-button" title="{{ _('Record voice message') }}">🎤</button>
             <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt" style="display: none;">
             <button id="attach-file-button">📎</button>
-            <button id="send-button">Отправить</button>
-            <span id="recording-indicator" style="display:none; margin-left: 10px; color: #e74c3c; font-weight: bold;">🔴 Запись...</span>
+            <button id="send-button">{{ _('Send') }}</button>
+            <span id="recording-indicator" style="display:none; margin-left: 10px; color: #e74c3c; font-weight: bold;">🔴 {{ _('Recording...') }}</span>
         </div>
     </div>
 </div>
 
 <script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
 <script>
-    // Глобальные переменные, инициализируемые из контекста Flask
     window.initialSessionId = "{{ current_session }}";
+    window.TRANSLATIONS = {
+        'send': '{{ _("Send") }}',
+        'sending': '{{ _("Sending...") }}',
+        'recording': '{{ _("Recording...") }}',
+        'error_not_authorized': '{{ _("Not authorized") }}',
+        'empty_message': '{{ _("Empty message") }}',
+        'failed_recognize_speech': '{{ _("Failed to recognize speech") }}',
+        'voice_request': '{{ _("Voice request") }}',
+        'audio_transcribed': '{{ _("Audio transcribed") }}',
+        'request_queued': '{{ _("Request queued (position {pos})") }}',
+        'speech_recognized_queued': '{{ _("Speech recognized, request queued (position {pos})") }}',
+        'transcribed': '{{ _("Transcribed") }}',
+        'image_generated_from': '{{ _("Image generated from request") }}',
+        'camera_snapshot': '{{ _("Camera snapshot") }}',
+        'unknown_session': '{{ _("Unknown session") }}',
+        'new_session': '{{ _("New session") }}',
+        'delete_session': '{{ _("Delete session") }}',
+        'permission_denied': '{{ _("Permission denied") }}',
+        'session_not_found': '{{ _("Session not found") }}',
+        'no_active_session': '{{ _("No active session") }}',
+        'save_as_html': '{{ _("Save as HTML") }}',
+        'chat': '{{ _("Chat") }}',
+        'sessions': '{{ _("Sessions") }}',
+        'messages': '{{ _("Messages") }}',
+        'your_requests': '{{ _("Your requests in queue / Total in queue") }}',
+        'error': '{{ _("Error") }}',
+        'warning': '{{ _("Warning") }}',
+        'info': '{{ _("Info") }}'
+    };
+    window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
+    function t(key) {
+        return window.TRANSLATIONS[key] || key;
+    }
 </script>
 <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 {% endblock %}

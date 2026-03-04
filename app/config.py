@@ -6,7 +6,7 @@ from pytz.exceptions import UnknownTimeZoneError
 load_dotenv()
 
 def load_config(app):
-    """Загружает все переменные из .env в конфиг Flask."""
+    """Load all variables from .env into Flask config."""
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
     if not app.config['SECRET_KEY']:
         raise ValueError("SECRET_KEY must be set in .env file")
@@ -14,7 +14,10 @@ def load_config(app):
     app.config['JSON_AS_ASCII'] = False
     app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
-    app.config['FOOTER_TEXT'] = os.getenv('FOOTER_TEXT')
+    # Footer texts (multilingual)
+    app.config['FOOTER_TEXT_RU'] = os.getenv('FOOTER_TEXT_RU', '')
+    app.config['FOOTER_TEXT_EN'] = os.getenv('FOOTER_TEXT_EN', '')
+
     app.config['TIMEZONE_STR'] = os.getenv('TIMEZONE')
     app.config['OLLAMA_URL'] = os.getenv('OLLAMA_URL')
     app.config['REDIS_URL'] = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
@@ -46,14 +49,14 @@ def load_config(app):
     app.config['CAMERA_API_TIMEOUT'] = int(os.getenv('CAMERA_API_TIMEOUT', 15))
     app.config['CAMERA_CHECK_INTERVAL'] = int(os.getenv('CAMERA_CHECK_INTERVAL', 30))
 
-    # Настройка часового пояса
+    # Timezone setup
     if app.config['TIMEZONE_STR']:
         try:
             app.config['TIMEZONE'] = pytz.timezone(app.config['TIMEZONE_STR'])
-            app.logger.info(f"Используется часовой пояс: {app.config['TIMEZONE_STR']}")
+            app.logger.info(f"Using timezone: {app.config['TIMEZONE_STR']}")
         except UnknownTimeZoneError:
-            app.logger.error(f"Неизвестный часовой пояс '{app.config['TIMEZONE_STR']}'")
+            app.logger.error(f"Unknown timezone '{app.config['TIMEZONE_STR']}'")
             app.config['TIMEZONE'] = None
     else:
         app.config['TIMEZONE'] = None
-        app.logger.error("TIMEZONE не найден в .env файле")
+        app.logger.error("TIMEZONE not found in .env file")

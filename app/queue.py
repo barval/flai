@@ -21,10 +21,10 @@ class RedisRequestQueue:
     def start_worker(self):
         thread = threading.Thread(target=self._worker_loop, daemon=True)
         thread.start()
-        self.app.logger.info("RedisRequestQueue: воркер запущен")
+        self.app.logger.info("RedisRequestQueue: worker started")
 
     def _worker_loop(self):
-        self.app.logger.info("RedisRequestQueue: запуск цикла обработки")
+        self.app.logger.info("RedisRequestQueue: processing loop started")
         while True:
             try:
                 result = self.redis.blpop(self.queue_key, timeout=5)
@@ -34,18 +34,17 @@ class RedisRequestQueue:
                 task = pickle.loads(task_data)
                 queue_time = time.time() - task.get('timestamp', time.time())
                 if queue_time > 300:
-                    self.app.logger.warning(f"Задача {task['id']} слишком долго ждала в очереди ({queue_time:.1f}с). Отмена.")
+                    self.app.logger.warning(f"Task {task['id']} waited too long in queue ({queue_time:.1f}s). Cancelling.")
                     self.redis.hset(self.results_key, task['id'], pickle.dumps({
                         'status': 'error',
-                        'error': f'Запрос отменён - слишком долгое ожидание в очереди ({queue_time:.1f}с)',
+                        'error': _('Request cancelled - too long in queue ({queue_time:.1f}s)'),
                         'result': {'session_id': task['session_id']},
                         'timestamp': time.time()
                     }))
                     continue
-                self.app.logger.info(f"RedisRequestQueue: получена задача {task['id']} из очереди для сеанса {task['session_id']}, ожидание в очереди: {queue_time:.1f}с")
+                self.app.logger.info(f"RedisRequestQueue: got task {task['id']} from queue for session {task['session_id']}, queue time: {queue_time:.1f}s")
                 self.redis.hset(self.processing_key, task['id'], task_data)
                 try:
-                    # Выполняем задачу в контексте приложения
                     with self.app.app_context():
                         result_data = self._process_request(task)
                     if 'session_id' not in result_data:
@@ -55,9 +54,9 @@ class RedisRequestQueue:
                         'result': result_data,
                         'timestamp': time.time()
                     }))
-                    self.app.logger.info(f"RedisRequestQueue: задача {task['id']} выполнена успешно для сеанса {task['session_id']}")
+                    self.app.logger.info(f"RedisRequestQueue: task {task['id']} completed successfully for session {task['session_id']}")
                 except Exception as e:
-                    self.app.logger.error(f"RedisRequestQueue: ошибка обработки задачи {task['id']}: {str(e)}")
+                    self.app.logger.error(f"RedisRequestQueue: error processing task {task['id']}: {str(e)}")
                     self.redis.hset(self.results_key, task['id'], pickle.dumps({
                         'status': 'error',
                         'error': str(e),
@@ -67,10 +66,10 @@ class RedisRequestQueue:
                 finally:
                     self.redis.hdel(self.processing_key, task['id'])
             except Exception as e:
-                self.app.logger.error(f"RedisRequestQueue: ошибка в worker loop: {str(e)}")
+                self.app.logger.error(f"RedisRequestQueue: error in worker loop: {str(e)}")
                 time.sleep(1)
 
-    def add_request(self, user_id, session_id, request_data, user_class):
+    def add_request(self, user_id, session_id, request_data, user_class, lang='ru'):
         request_id = str(uuid.uuid4())
         timestamp = time.time()
         task = {
@@ -80,15 +79,16 @@ class RedisRequestQueue:
             'data': request_data,
             'timestamp': timestamp,
             'user_class': user_class,
-            'session_title': self._get_session_title(session_id)
+            'session_title': self._get_session_title(session_id),
+            'lang': lang  # Store user's language
         }
-        self.app.logger.info(f"RedisRequestQueue.add_request: добавление задачи {request_id} для сеанса {session_id} с временем {timestamp}")
+        self.app.logger.info(f"RedisRequestQueue.add_request: adding task {request_id} for session {session_id} at {timestamp}")
         self.redis.rpush(self.queue_key, pickle.dumps(task))
         self.redis.sadd(f"{self.user_requests_key}:{user_id}", request_id)
         queue_length = self.redis.llen(self.queue_key)
         estimated_wait = max(1, queue_length * 5)
         position_info = {'position': queue_length, 'estimated_seconds': estimated_wait}
-        self.app.logger.info(f"RedisRequestQueue.add_request: задача добавлена, позиция={queue_length}")
+        self.app.logger.info(f"RedisRequestQueue.add_request: task added, position={queue_length}")
         return request_id, position_info
 
     def get_user_queue_counts(self, user_id):
@@ -112,16 +112,17 @@ class RedisRequestQueue:
                 c = conn.cursor()
                 c.execute('SELECT title FROM chat_sessions WHERE id = ?', (session_id,))
                 row = c.fetchone()
-                return row[0] if row else "Неизвестный сеанс"
+                return row[0] if row else _('Unknown session')
         except Exception as e:
-            self.app.logger.error(f"Ошибка получения заголовка сессии: {str(e)}")
-            return "Неизвестный сеанс"
+            self.app.logger.error(f"Error getting session title: {str(e)}")
+            return _('Unknown session')
 
     def _process_request(self, task):
-        self.app.logger.info(f"RedisRequestQueue._process_request: обработка задачи {task['id']} для сеанса {task['session_id']}")
+        self.app.logger.info(f"RedisRequestQueue._process_request: processing task {task['id']} for session {task['session_id']}")
         user_id = task['user_id']
         session_id = task['session_id']
         request_data = task['data']
+        lang = task.get('lang', 'ru')  # Get language
         processing_start_time = time.time()
         current_time_str = get_current_time_in_timezone(self.app)
 
@@ -133,7 +134,7 @@ class RedisRequestQueue:
 
         if request_type == 'text':
             router_start_time = time.time()
-            router_result = self.app.modules['base'].process_message(message_text, current_time_str)
+            router_result = self.app.modules['base'].process_message(message_text, current_time_str, lang=lang)
             router_time = round(time.time() - router_start_time, 1)
             if 'error' in router_result:
                 completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
@@ -154,7 +155,7 @@ class RedisRequestQueue:
             if action_type == 'image':
                 if 'image' in self.app.modules and self.app.modules['image'].available:
                     mm_start_time = time.time()
-                    prompt_data, error = self.app.modules['multimodal'].generate_image_params(query)
+                    prompt_data, error = self.app.modules['multimodal'].generate_image_params(query, lang=lang)
                     mm_time = round(time.time() - mm_start_time, 1)
                     if error:
                         final_response = f"⚠️ {error}"
@@ -163,7 +164,7 @@ class RedisRequestQueue:
                         process_time = mm_time
                     else:
                         gen_start_time = time.time()
-                        image_result = self.app.modules['image']._call_automatic1111(prompt_data)
+                        image_result = self.app.modules['image']._call_automatic1111(prompt_data, lang=lang)
                         gen_time = round(time.time() - gen_start_time, 1)
                         if image_result['success']:
                             completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
@@ -171,7 +172,7 @@ class RedisRequestQueue:
                             image_result['gen_time'] = gen_time
                             image_result['mm_model'] = self.app.config['LLM_MULTIMODAL_MODEL']
                             image_result['gen_model'] = self.app.config['AUTOMATIC1111_MODEL']
-                            message_text = f"Изображение сгенерировано по запросу: {query}"
+                            message_text = _('Image generated from request: {query}').format(query=query)
                             save_message(
                                 session_id, 'assistant', message_text,
                                 image_result['image_data'], image_result['file_type'],
@@ -203,7 +204,7 @@ class RedisRequestQueue:
                             is_error = True
                             process_time = mm_time + gen_time
                 else:
-                    final_response = "⚠️ Модуль генерации изображений недоступен"
+                    final_response = "⚠️ " + _('Image generation module unavailable')
                     model_used = 'system'
                     is_error = True
                     process_time = 0
@@ -211,21 +212,20 @@ class RedisRequestQueue:
             elif action_type == 'camera':
                 if 'cam' in self.app.modules and self.app.modules['cam'].available:
                     camera_start_time = time.time()
-                    # Исправлено: передаём user_id и query
-                    camera_result = self.app.modules['cam'].get_snapshot(user_id, query)
+                    camera_result = self.app.modules['cam'].get_snapshot(user_id, query, lang=lang)
                     camera_time = round(time.time() - camera_start_time, 1)
                     if camera_result['success']:
                         completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
                         camera_model = 'camera'
                         save_message(
                             session_id, 'assistant',
-                            f"Изображение с камеры: {camera_result['room_name']}",
+                            _('Camera snapshot: {room_name}').format(room_name=camera_result['room_name']),
                             camera_result['image_data'], camera_result['image_type'],
                             camera_result['file_name'], camera_model,
                             response_time=str(camera_time)
                         )
                         first_message = {
-                            'response': f"Изображение с камеры: {camera_result['room_name']}",
+                            'response': _('Camera snapshot: {room_name}').format(room_name=camera_result['room_name']),
                             'session_id': session_id,
                             'model_used': camera_model,
                             'assistant_timestamp': completion_time_for_db,
@@ -240,7 +240,7 @@ class RedisRequestQueue:
                         if message_text and 'multimodal' in self.app.modules and self.app.modules['multimodal'].available:
                             mm_start_time = time.time()
                             bot_reply, error = self.app.modules['multimodal'].process_image_with_text(
-                                camera_result['image_data'], message_text, current_time_str
+                                camera_result['image_data'], message_text, current_time_str, lang=lang
                             )
                             mm_time = round(time.time() - mm_start_time, 1)
                             if error:
@@ -269,7 +269,7 @@ class RedisRequestQueue:
                         is_error = True
                         process_time = camera_time
                 else:
-                    final_response = "⚠️ Модуль видеонаблюдения недоступен"
+                    final_response = "⚠️ " + _('Camera module unavailable')
                     model_used = 'system'
                     is_error = True
                     process_time = 0
@@ -277,7 +277,7 @@ class RedisRequestQueue:
             elif action_type == 'reasoning':
                 if router_result.get('needs_reasoning'):
                     reasoning_start_time = time.time()
-                    final_response = self.app.modules['base'].process_reasoning(query, current_time_str)
+                    final_response = self.app.modules['base'].process_reasoning(query, current_time_str, lang=lang)
                     process_time = round(time.time() - reasoning_start_time, 1)
                     model_used = self.app.config['LLM_REASONING_MODEL']
                 else:
@@ -309,7 +309,7 @@ class RedisRequestQueue:
                 file_size = int((len(file_data) * 3) / 4) if file_data else 0
                 is_valid, error = self.app.modules['multimodal'].validate_image(file_data, file_type, file_name, file_size)
                 if is_valid:
-                    bot_reply, error = self.app.modules['multimodal'].process_image_with_text(file_data, message_text, current_time_str)
+                    bot_reply, error = self.app.modules['multimodal'].process_image_with_text(file_data, message_text, current_time_str, lang=lang)
                     process_time = round(time.time() - process_start_time, 1)
                     if error:
                         bot_reply = f"⚠️ {error}"
@@ -319,7 +319,7 @@ class RedisRequestQueue:
                     process_time = round(time.time() - process_start_time, 1)
                     is_error = True
             else:
-                bot_reply = "⚠️ Мультимодальная модель недоступна"
+                bot_reply = "⚠️ " + _('Multimodal model unavailable')
                 process_time = round(time.time() - process_start_time, 1)
                 is_error = True
             completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
@@ -336,7 +336,7 @@ class RedisRequestQueue:
         else:
             completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
             return {
-                'error': 'Неизвестный тип запроса',
+                'error': _('Unknown request type'),
                 'session_id': session_id,
                 'assistant_timestamp': completion_time_for_db,
                 'is_error': True,
@@ -373,7 +373,7 @@ class RedisRequestQueue:
         return {
             'id': task['id'],
             'session_id': task['session_id'],
-            'session_title': task.get('session_title', 'Неизвестный сеанс'),
+            'session_title': task.get('session_title', _('Unknown session')),
             'type': task['data'].get('type', 'unknown'),
             'type_icon': type_icons.get(task['data'].get('type', 'unknown'), '📄'),
             'status': task.get('status', 'queued'),

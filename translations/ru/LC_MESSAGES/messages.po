@@ -1,0 +1,297 @@
+# Russian translations for FLAI.
+# Copyright (C) 2026
+# This file is distributed under the same license as the FLAI project.
+# Automatically generated, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: FLAI 6.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-03-05 12:00+0300\n"
+"PO-Revision-Date: 2026-03-05 13:00+0300\n"
+"Last-Translator: Valeriy Barsukov\n"
+"Language: ru\n"
+"Language-Team: Russian\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+msgid "FLAI"
+msgstr "ПЛИИ"
+
+msgid "Administrator"
+msgstr "Администратор"
+
+msgid "Logout"
+msgstr "Выйти"
+
+msgid "Authorization"
+msgstr "Авторизация"
+
+msgid "All fields are required"
+msgstr "Все поля обязательны"
+
+msgid "Invalid login or password"
+msgstr "Неверный логин или пароль"
+
+msgid "Login"
+msgstr "Логин"
+
+msgid "Password"
+msgstr "Пароль"
+
+msgid "Not authorized"
+msgstr "Не авторизован"
+
+msgid "New session"
+msgstr "Новый сеанс"
+
+msgid "Permission denied or session not found"
+msgstr "Нет прав или сеанс не найден"
+
+msgid "No active session"
+msgstr "Нет активного сеанса"
+
+msgid "Empty message"
+msgstr "Пустое сообщение"
+
+msgid "Failed to recognize speech"
+msgstr "Не удалось распознать речь"
+
+msgid "Transcribed"
+msgstr "Распознано"
+
+msgid "Voice request"
+msgstr "Голосовой запрос"
+
+msgid "Audio transcribed"
+msgstr "Аудио распознано"
+
+msgid "Request queued (position {pos})"
+msgstr "Запрос поставлен в очередь (позиция {pos})"
+
+msgid "Speech recognized, request queued (position {pos})"
+msgstr "Голос распознан, запрос поставлен в очередь (позиция {pos})"
+
+msgid "Image"
+msgstr "Изображение"
+
+msgid "Text request"
+msgstr "Текстовый запрос"
+
+msgid "Unknown session"
+msgstr "Неизвестный сеанс"
+
+msgid "Sessions"
+msgstr "Сеансы"
+
+msgid "Delete session"
+msgstr "Удалить сеанс"
+
+msgid "Chat"
+msgstr "Чат"
+
+msgid "Messages"
+msgstr "Сообщения"
+
+msgid "Your requests in queue / Total in queue"
+msgstr "Ваши запросы в очереди / Всего в очереди"
+
+msgid "Save as HTML"
+msgstr "Сохранить как HTML"
+
+msgid "Enter message..."
+msgstr "Введите сообщение..."
+
+msgid "Record voice message"
+msgstr "Записать голосовое сообщение"
+
+msgid "Send"
+msgstr "Отправить"
+
+msgid "Recording..."
+msgstr "Запись..."
+
+msgid "Sending..."
+msgstr "Отправка..."
+
+msgid "processing"
+msgstr "обрабатывается"
+
+msgid "queued"
+msgstr "в очереди"
+
+msgid "new_response"
+msgstr "новый ответ"
+
+msgid "delete_session_confirm"
+msgstr "Удалить сеанс \"{title}\" от {date}?"
+
+msgid "download_image"
+msgstr "Скачать изображение"
+
+msgid "download_audio"
+msgstr "Скачать аудио"
+
+msgid "click_to_enlarge"
+msgstr "Нажмите для увеличения"
+
+msgid "image"
+msgstr "изображение"
+
+msgid "browser_no_audio_support"
+msgstr "Ваш браузер не поддерживает запись аудио"
+
+msgid "secure_context_required"
+msgstr "Для записи голоса требуется безопасное соединение (HTTPS).\nПопробуйте открыть сайт по HTTPS или localhost."
+
+msgid "microphone_access_denied"
+msgstr "Не удалось получить доступ к микрофону."
+
+msgid "enter_message_or_file"
+msgstr "Введите сообщение или прикрепите файл"
+
+msgid "error"
+msgstr "Ошибка"
+
+msgid "unknown_error"
+msgstr "Неизвестная ошибка"
+
+msgid "request_timeout"
+msgstr "Превышено время ожидания ответа. Проверьте статус запроса."
+
+msgid "footer_not_configured"
+msgstr "Подпись не настроена"
+
+msgid "footer_load_error"
+msgstr "Ошибка загрузки подписи"
+
+msgid "user"
+msgstr "Пользователь"
+
+msgid "no_active_session_save"
+msgstr "Нет активного сеанса для сохранения"
+
+msgid "chat"
+msgstr "Чат"
+
+msgid "saved_chat"
+msgstr "Сохраненный чат"
+
+msgid "session"
+msgstr "Сеанс"
+
+msgid "saved_on"
+msgstr "Сохранено"
+
+msgid "total_messages"
+msgstr "Всего сообщений"
+
+msgid "no_messages_to_save"
+msgstr "Нет сообщений для сохранения"
+
+msgid "copied"
+msgstr "Скопировано!"
+
+msgid "copy_code"
+msgstr "Копировать код"
+
+msgid "copy_failed"
+msgstr "Ошибка копирования"
+
+msgid "copy_text"
+msgstr "Копировать текст"
+
+# Admin panel
+msgid "Admin Panel"
+msgstr "Панель администратора"
+
+msgid "Add user"
+msgstr "Добавить пользователя"
+
+msgid "Chat DB"
+msgstr "База чатов"
+
+msgid "User DB"
+msgstr "База пользователей"
+
+msgid "Status"
+msgstr "Статус"
+
+msgid "Name"
+msgstr "Имя"
+
+msgid "Class"
+msgstr "Класс"
+
+msgid "Sessions"
+msgstr "Сеансов"
+
+msgid "Messages"
+msgstr "Сообщений"
+
+msgid "Camera access"
+msgstr "Доступ к камерам"
+
+msgid "Actions"
+msgstr "Действия"
+
+msgid "New user"
+msgstr "Новый пользователь"
+
+msgid "Only lowercase letters and digits"
+msgstr "Только строчные латинские буквы и цифры"
+
+msgid "highest"
+msgstr "высший"
+
+msgid "medium"
+msgstr "средний"
+
+msgid "lowest"
+msgstr "низший"
+
+msgid "Active"
+msgstr "Активен"
+
+msgid "Leave all unchecked to deny access to all cameras."
+msgstr "Оставьте все неотмеченными — доступ будет закрыт ко всем камерам."
+
+msgid "Create"
+msgstr "Создать"
+
+msgid "Change password"
+msgstr "Смена пароля"
+
+msgid "New password"
+msgstr "Новый пароль"
+
+msgid "Save"
+msgstr "Сохранить"
+
+msgid "Delete user {login}?"
+msgstr "Удалить пользователя {login}?"
+
+msgid "Internal server error"
+msgstr "Внутренняя ошибка сервера"
+
+msgid "Missing fields"
+msgstr "Не все поля заполнены"
+
+msgid "Login already exists"
+msgstr "Логин уже существует"
+
+msgid "New password not specified"
+msgstr "Новый пароль не указан"
+
+msgid "OK"
+msgstr "ОК"
+
+msgid "Cancel"
+msgstr "Отмена"
+
+msgid "Change"
+msgstr "Сменить"
+
+msgid "delete"
+msgstr "Удалить"

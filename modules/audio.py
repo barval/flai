@@ -6,164 +6,168 @@ import os
 from datetime import datetime
 
 class AudioModule:
-    """Модуль для работы с аудио (транскрибация через Whisper API)"""
+    """Module for audio transcription via Whisper API"""
 
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
         self.whisper_api_url = None
         self.available = False
-        self.timeout = 120  # Значение по умолчанию
-        # Поддерживаемые аудио MIME-типы
+        self.timeout = 120
         self.supported_audio_mimetypes = [
             'audio/webm', 'audio/wav', 'audio/mp3', 'audio/mpeg',
             'audio/ogg', 'audio/x-m4a', 'audio/x-wav', 'audio/aac'
         ]
-        # Поддерживаемые видео MIME-типы (из них FFmpeg извлечёт аудио)
         self.supported_video_mimetypes = [
             'video/mp4', 'video/x-msvideo', 'video/quicktime',
             'video/x-matroska', 'video/webm', 'video/ogg',
             'video/mpeg', 'video/3gpp', 'video/x-ms-wmv'
         ]
-        # Расширения файлов (для случаев, когда MIME-тип не определён или не точен)
         self.supported_extensions = [
-            '.webm', '.wav', '.mp3', '.ogg', '.m4a', '.aac',      # аудио
-            '.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv',       # видео
+            '.webm', '.wav', '.mp3', '.ogg', '.m4a', '.aac',
+            '.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv',
             '.m4v', '.3gp', '.mpg', '.mpeg'
         ]
+        self.messages = {
+            'ru': {
+                'transcription_failed': 'Не удалось распознать речь',
+                'timeout': 'Таймаут ({timeout}с) при транскрибации аудио',
+                'connection_error': 'Ошибка подключения к Whisper API',
+                'error_prefix': 'Ошибка'
+            },
+            'en': {
+                'transcription_failed': 'Failed to recognize speech',
+                'timeout': 'Timeout ({timeout}s) during audio transcription',
+                'connection_error': 'Connection error to Whisper API',
+                'error_prefix': 'Error'
+            }
+        }
 
         if app:
             self.init_app(app)
 
+    def get_message(self, key, lang='ru', **kwargs):
+        msg_dict = self.messages.get(lang, self.messages['ru'])
+        msg = msg_dict.get(key, key)
+        if kwargs:
+            try:
+                return msg.format(**kwargs)
+            except KeyError:
+                return msg
+        return msg
+
     def init_app(self, app):
-        """Инициализация модуля с приложением Flask"""
+        """Initialize module with Flask app"""
         self.whisper_api_url = app.config.get('WHISPER_API_URL', 'http://host.docker.internal:9000/asr')
         self.timeout = app.config.get('WHISPER_API_TIMEOUT', 120)
         self.check_availability()
 
         if self.available:
-            self.logger.info(f"AudioModule инициализирован и доступен (Whisper API: {self.whisper_api_url}), таймаут: {self.timeout}с")
+            self.logger.info(f"AudioModule initialized and available (Whisper API: {self.whisper_api_url}), timeout: {self.timeout}s")
         else:
-            self.logger.warning(f"AudioModule инициализирован, но Whisper API недоступен ({self.whisper_api_url})")
+            self.logger.warning(f"AudioModule initialized, but Whisper API unavailable ({self.whisper_api_url})")
 
     def check_availability(self):
-        """Проверка доступности Whisper API"""
+        """Check Whisper API availability"""
         if not self.whisper_api_url:
-            self.logger.error("WHISPER_API_URL не настроен")
+            self.logger.error("WHISPER_API_URL not configured")
             return False
 
         try:
-            # Пробуем сделать простой GET-запрос (некоторые API отвечают)
             response = requests.get(self.whisper_api_url, timeout=3)
             if response.status_code == 200:
                 self.available = True
                 return True
             else:
-                # Если ответ не 200, но сервер доступен – считаем доступным
                 self.available = True
                 return True
         except requests.exceptions.ConnectionError:
-            self.logger.error(f"Ошибка подключения к Whisper API: {self.whisper_api_url}")
+            self.logger.error(f"Connection error to Whisper API: {self.whisper_api_url}")
         except Exception as e:
-            self.logger.error(f"Ошибка при проверке Whisper API: {str(e)}")
+            self.logger.error(f"Error checking Whisper API: {str(e)}")
 
         self.available = False
         return False
 
-    def transcribe(self, audio_data, audio_format='audio/webm', filename='audio.webm'):
+    def transcribe(self, audio_data, audio_format='audio/webm', filename='audio.webm', lang='ru'):
         """
-        Транскрибация аудио через Whisper API с настраиваемым таймаутом
+        Transcribe audio via Whisper API
         audio_data: base64-encoded audio data
-        audio_format: MIME-тип файла (может быть аудио или видео)
-        filename: исходное имя файла (для отправки)
-        Возвращает текст или None при ошибке
+        audio_format: MIME type
+        filename: original filename
+        Returns text or None on error
         """
         if not self.available:
-            self.logger.error("Whisper API недоступен")
+            self.logger.error("Whisper API unavailable")
             return None
 
         try:
-            # Декодируем base64 в бинарные данные
             audio_bytes = base64.b64decode(audio_data)
-
-            # Используем переданное имя файла как есть
-            # Whisper API может определять формат по расширению или содержимому
             files = {
                 'audio_file': (filename, audio_bytes, audio_format)
             }
-
-            # Добавляем параметр output=json для получения JSON-ответа
             params = {'output': 'json'}
 
-            self.logger.info(f"Отправка файла на транскрибацию, размер {len(audio_bytes)} байт, "
-                           f"имя: {filename}, формат: {audio_format}, таймаут: {self.timeout}с")
+            self.logger.info(f"Sending file for transcription, size {len(audio_bytes)} bytes, "
+                           f"filename: {filename}, format: {audio_format}, timeout: {self.timeout}s")
 
             response = requests.post(
                 self.whisper_api_url,
                 files=files,
                 params=params,
-                timeout=self.timeout  # Увеличен таймаут для больших видео
+                timeout=self.timeout
             )
 
-            self.logger.info(f"Whisper API ответ: статус {response.status_code}")
+            self.logger.info(f"Whisper API response: status {response.status_code}")
 
             if response.status_code == 200:
                 content_type = response.headers.get('content-type', '')
-
-                # Пытаемся распарсить JSON, если это JSON
                 if 'application/json' in content_type or response.text.strip().startswith('{'):
                     try:
                         result = response.json()
                         text = result.get('text', '')
                         if text:
-                            self.logger.info(f"Транскрибация успешна (JSON): {text[:50]}...")
+                            self.logger.info(f"Transcription successful (JSON): {text[:50]}...")
                             return text.strip()
                         else:
-                            self.logger.error("Whisper API вернул пустой текст в JSON")
+                            self.logger.error("Whisper API returned empty text in JSON")
                             return None
                     except Exception as e:
-                        self.logger.error(f"Ошибка парсинга JSON: {str(e)}")
-                        # Пробуем прочитать как текст
+                        self.logger.error(f"JSON parsing error: {str(e)}")
                         text = response.text.strip()
                         if text:
-                            self.logger.info(f"Транскрибация успешна (plain text после ошибки JSON): {text[:50]}...")
+                            self.logger.info(f"Transcription successful (plain text after JSON error): {text[:50]}...")
                             return text
                         else:
                             return None
                 else:
-                    # Не JSON, считаем, что ответ - это просто текст
                     text = response.text.strip()
                     if text:
-                        self.logger.info(f"Транскрибация успешна (plain text): {text[:50]}...")
+                        self.logger.info(f"Transcription successful (plain text): {text[:50]}...")
                         return text
                     else:
-                        self.logger.error("Whisper API вернул пустой ответ")
+                        self.logger.error("Whisper API returned empty response")
                         return None
             else:
-                self.logger.error(f"Ошибка Whisper API: статус {response.status_code}, ответ: {response.text[:200]}")
+                self.logger.error(f"Whisper API error: status {response.status_code}, response: {response.text[:200]}")
                 return None
 
         except requests.exceptions.Timeout:
-            self.logger.error(f"Таймаут ({self.timeout}с) при транскрибации аудио")
+            self.logger.error(f"Timeout ({self.timeout}s) during audio transcription")
             return None
         except requests.exceptions.ConnectionError:
-            self.logger.error("Ошибка подключения к Whisper API")
+            self.logger.error("Connection error to Whisper API")
             return None
         except Exception as e:
-            self.logger.error(f"Ошибка при транскрибации: {str(e)}")
+            self.logger.error(f"Error during transcription: {str(e)}")
             return None
 
     def is_audio_file(self, file_type, file_name):
-        """
-        Проверка, является ли файл пригодным для отправки на транскрибацию.
-        Возвращает True для аудио и видеофайлов, поддерживаемых Whisper API с FFmpeg.
-        """
-        # По MIME-типу
+        """Check if file is suitable for transcription."""
         if file_type:
             if file_type in self.supported_audio_mimetypes:
                 return True
             if file_type in self.supported_video_mimetypes:
                 return True
-        # По расширению
         if file_name:
             ext = os.path.splitext(file_name)[1].lower()
             if ext in self.supported_extensions:

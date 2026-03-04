@@ -5,6 +5,10 @@ document.addEventListener('DOMContentLoaded', function() {
     setupModals();
 });
 
+function t(key) {
+    return window.TRANSLATIONS[key] || key;
+}
+
 function loadUsers() {
     fetch('/admin/api/users')
         .then(response => response.json())
@@ -15,19 +19,17 @@ function loadUsers() {
             users.forEach(user => {
                 const row = document.createElement('tr');
                 row.dataset.login = user.login;
-                // Устанавливаем класс неактивного, если нужно
                 if (!user.is_active) {
                     row.classList.add('user-inactive');
                 }
 
-                // Статус
+                // Status
                 const statusCell = document.createElement('td');
                 const statusCheck = document.createElement('input');
                 statusCheck.type = 'checkbox';
                 statusCheck.checked = user.is_active == 1;
                 statusCheck.addEventListener('change', () => {
                     updateUserField(user.login, 'is_active', statusCheck.checked);
-                    // Меняем класс строки
                     if (statusCheck.checked) {
                         row.classList.remove('user-inactive');
                     } else {
@@ -37,21 +39,21 @@ function loadUsers() {
                 statusCell.appendChild(statusCheck);
                 row.appendChild(statusCell);
 
-                // Логин
+                // Login
                 const loginCell = document.createElement('td');
                 loginCell.textContent = user.login;
                 row.appendChild(loginCell);
 
-                // Пароль (кнопка смены)
+                // Password (change button)
                 const passCell = document.createElement('td');
                 const changePassBtn = document.createElement('button');
-                changePassBtn.textContent = 'Сменить';
+                changePassBtn.textContent = t('change');
                 changePassBtn.className = 'change-password-btn';
                 changePassBtn.onclick = () => openPasswordModal(user.login);
                 passCell.appendChild(changePassBtn);
                 row.appendChild(passCell);
 
-                // Имя
+                // Name
                 const nameCell = document.createElement('td');
                 const nameInput = document.createElement('input');
                 nameInput.type = 'text';
@@ -60,7 +62,7 @@ function loadUsers() {
                 nameCell.appendChild(nameInput);
                 row.appendChild(nameCell);
 
-                // Класс
+                // Class
                 const classCell = document.createElement('td');
                 const classSelect = document.createElement('select');
                 [0,1,2].forEach(val => {
@@ -74,17 +76,17 @@ function loadUsers() {
                 classCell.appendChild(classSelect);
                 row.appendChild(classCell);
 
-                // Сеансы
+                // Sessions
                 const sessionsCell = document.createElement('td');
                 sessionsCell.textContent = user.sessions_count;
                 row.appendChild(sessionsCell);
 
-                // Сообщения
+                // Messages
                 const messagesCell = document.createElement('td');
                 messagesCell.textContent = user.messages_count;
                 row.appendChild(messagesCell);
 
-                // Доступ к камерам (если есть комнаты)
+                // Camera access
                 if (window.ROOMS && Object.keys(window.ROOMS).length > 0) {
                     const camCell = document.createElement('td');
                     const camContainer = document.createElement('div');
@@ -107,10 +109,10 @@ function loadUsers() {
                     row.appendChild(camCell);
                 }
 
-                // Действия
+                // Actions
                 const actionsCell = document.createElement('td');
                 const deleteBtn = document.createElement('button');
-                deleteBtn.textContent = 'Удалить';
+                deleteBtn.textContent = t('delete');
                 deleteBtn.className = 'delete-user-btn';
                 deleteBtn.onclick = () => deleteUser(user.login);
                 actionsCell.appendChild(deleteBtn);
@@ -154,14 +156,14 @@ function updateCameraPermissions(login) {
 }
 
 function deleteUser(login) {
-    if (confirm(`Удалить пользователя ${login}?`)) {
+    if (confirm(t('delete_user_confirm').replace('{login}', login))) {
         fetch(`/admin/api/users/${login}`, { method: 'DELETE' })
             .then(response => response.json())
             .then(result => {
                 if (result.status === 'ok') {
                     loadUsers();
                 } else {
-                    alert('Ошибка при удалении');
+                    alert(t('error') + ': ' + (result.error || t('unknown_error')));
                 }
             })
             .catch(err => console.error('Error deleting user:', err));
@@ -214,7 +216,6 @@ function setupModals() {
         addForm.addEventListener('submit', function(e) {
             e.preventDefault();
             const formData = new FormData(e.target);
-            // Собираем выбранные камеры из модального окна
             const cameraPermissions = Array.from(document.querySelectorAll('#add-user-modal input[name="camera"]:checked')).map(cb => cb.value);
             const data = {
                 login: formData.get('login'),
@@ -222,7 +223,7 @@ function setupModals() {
                 name: formData.get('name'),
                 service_class: parseInt(formData.get('service_class')),
                 is_active: formData.get('is_active') === 'on',
-                camera_permissions: cameraPermissions.length > 0 ? cameraPermissions : []  // теперь пустой массив, а не null
+                camera_permissions: cameraPermissions.length > 0 ? cameraPermissions : []
             };
             fetch('/admin/api/users', {
                 method: 'POST',
@@ -236,7 +237,7 @@ function setupModals() {
                     loadUsers();
                     e.target.reset();
                 } else {
-                    alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
+                    alert(t('error') + ': ' + (result.error || t('unknown_error')));
                 }
             })
             .catch(err => console.error('Error adding user:', err));
@@ -260,7 +261,7 @@ function setupModals() {
                     passModal.style.display = 'none';
                     document.getElementById('new-user-password').value = '';
                 } else {
-                    alert('Ошибка при смене пароля');
+                    alert(t('error') + ': ' + (result.error || t('unknown_error')));
                 }
             })
             .catch(err => console.error('Error changing password:', err));

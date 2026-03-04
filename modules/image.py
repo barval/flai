@@ -6,21 +6,50 @@ from datetime import datetime
 import os
 
 class ImageModule:
-    """Модуль для генерации изображений через Automatic1111"""
+    """Module for image generation via Automatic1111"""
     
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
         self.automatic1111_url = None
         self.model_name = None
         self.available = False
-        self.multimodal_module = None  # Будет установлен извне
-        self.timeout = 180  # Значение по умолчанию
+        self.multimodal_module = None
+        self.timeout = 180
+        
+        self.messages = {
+            'ru': {
+                'service_unavailable': 'Сервис генерации изображений недоступен',
+                'multimodal_unavailable': 'Мультимодальный модуль недоступен (требуется для генерации параметров)',
+                'timeout': 'Превышено время ожидания генерации изображения ({timeout}с)',
+                'connection_error': 'Не удалось подключиться к Automatic1111',
+                'error_prefix': 'Ошибка',
+                'no_image': 'Automatic1111 не вернул изображение'
+            },
+            'en': {
+                'service_unavailable': 'Image generation service unavailable',
+                'multimodal_unavailable': 'Multimodal module unavailable (required for parameter generation)',
+                'timeout': 'Image generation timeout ({timeout}s)',
+                'connection_error': 'Could not connect to Automatic1111',
+                'error_prefix': 'Error',
+                'no_image': 'Automatic1111 returned no image'
+            }
+        }
         
         if app:
             self.init_app(app)
     
+    def get_message(self, key, lang='ru', **kwargs):
+        msg_dict = self.messages.get(lang, self.messages['ru'])
+        msg = msg_dict.get(key, key)
+        if kwargs:
+            try:
+                return msg.format(**kwargs)
+            except KeyError:
+                return msg
+        return msg
+    
     def init_app(self, app):
-        """Инициализация модуля с приложением Flask"""
+        """Initialize module with Flask app"""
         self.automatic1111_url = app.config.get('AUTOMATIC1111_URL')
         self.model_name = app.config.get('AUTOMATIC1111_MODEL')
         self.timeout = app.config.get('AUTOMATIC1111_TIMEOUT', 180)
@@ -28,47 +57,45 @@ class ImageModule:
         self.check_availability()
         
         if self.available:
-            self.logger.info(f"ImageModule инициализирован и доступен. Таймаут: {self.timeout}с")
+            self.logger.info(f"ImageModule initialized and available. Timeout: {self.timeout}s")
         else:
-            self.logger.warning("ImageModule инициализирован, но Automatic1111 недоступен")
+            self.logger.warning("ImageModule initialized, but Automatic1111 unavailable")
     
     def set_multimodal_module(self, multimodal_module):
-        """Установка ссылки на мультимодальный модуль"""
+        """Set reference to multimodal module"""
         self.multimodal_module = multimodal_module
     
     def check_availability(self):
-        """Проверка доступности модуля"""
+        """Check module availability"""
         if not self.automatic1111_url:
-            self.logger.error("AUTOMATIC1111_URL не настроен")
+            self.logger.error("AUTOMATIC1111_URL not configured")
             return False
         
         try:
-            # Проверяем доступность Automatic1111
             response = requests.get(f"{self.automatic1111_url}/sdapi/v1/progress", timeout=5)
             if response.status_code == 200:
                 self.available = True
                 return True
         except Exception as e:
-            self.logger.error(f"Ошибка подключения к Automatic1111: {str(e)}")
+            self.logger.error(f"Error connecting to Automatic1111: {str(e)}")
         
         return False
     
-    def generate_image(self, user_query, start_time=None):
-        """Генерация изображения по запросу пользователя"""
+    def generate_image(self, user_query, start_time=None, lang='ru'):
+        """Generate image from user query"""
         if not self.available:
             return {
                 'success': False,
-                'error': "Сервис генерации изображений недоступен"
+                'error': self.get_message('service_unavailable', lang)
             }
         
         if not self.multimodal_module or not self.multimodal_module.available:
             return {
                 'success': False,
-                'error': "Мультимодальный модуль недоступен (требуется для генерации параметров)"
+                'error': self.get_message('multimodal_unavailable', lang)
             }
         
-        # Генерируем параметры через мультимодальную модель
-        prompt_data, error = self.multimodal_module.generate_image_params(user_query)
+        prompt_data, error = self.multimodal_module.generate_image_params(user_query, lang=lang)
         
         if error:
             return {
@@ -76,11 +103,10 @@ class ImageModule:
                 'error': error
             }
         
-        # Отправляем запрос в Automatic1111
-        return self._call_automatic1111(prompt_data)
+        return self._call_automatic1111(prompt_data, lang)
     
-    def _call_automatic1111(self, prompt_data):
-        """Вызов Automatic1111 API с настраиваемым таймаутом"""
+    def _call_automatic1111(self, prompt_data, lang='ru'):
+        """Call Automatic1111 API with configurable timeout"""
         try:
             payload = {
                 "prompt": prompt_data.get("prompt", ""),
@@ -98,13 +124,12 @@ class ImageModule:
                 "hr_second_pass_steps": int(prompt_data.get("hr_second_pass_steps", 25))
             }
             
-            # Добавляем модель, если указана
             if self.model_name:
                 payload["override_settings"] = {
                     "sd_model_checkpoint": self.model_name
                 }
             
-            self.logger.info(f"Отправка запроса в Automatic1111, таймаут: {self.timeout}с")
+            self.logger.info(f"Sending request to Automatic1111, timeout: {self.timeout}s")
             
             response = requests.post(
                 f"{self.automatic1111_url}/sdapi/v1/txt2img",
@@ -117,10 +142,7 @@ class ImageModule:
                 if result.get('images') and len(result['images']) > 0:
                     image_data = result['images'][0]
                     
-                    # Вычисляем размер файла
                     file_size_bytes = int((len(image_data) * 3) / 4)
-                    
-                    # Генерируем имя файла
                     filename = f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.jpg"
                     
                     return {
@@ -129,36 +151,36 @@ class ImageModule:
                         'file_name': filename,
                         'file_size': file_size_bytes,
                         'file_type': 'image/jpeg',
-                        'mm_time': None,  # Будет заполнено в app.py
-                        'gen_time': None,  # Будет заполнено в app.py
-                        'mm_model': None,  # Будет заполнено в app.py
+                        'mm_time': None,
+                        'gen_time': None,
+                        'mm_model': None,
                         'gen_model': self.model_name or "Stable Diffusion"
                     }
                 else:
                     return {
                         'success': False,
-                        'error': "Automatic1111 не вернул изображение"
+                        'error': self.get_message('no_image', lang)
                     }
             else:
                 return {
                     'success': False,
-                    'error': f"Ошибка Automatic1111: {response.status_code}"
+                    'error': f"Automatic1111 error: {response.status_code}"
                 }
                 
         except requests.exceptions.Timeout:
-            self.logger.error(f"Таймаут ({self.timeout}с) при генерации изображения")
+            self.logger.error(f"Timeout ({self.timeout}s) during image generation")
             return {
                 'success': False,
-                'error': f"Превышено время ожидания генерации изображения ({self.timeout}с)"
+                'error': self.get_message('timeout', lang, timeout=self.timeout)
             }
         except requests.exceptions.ConnectionError:
             return {
                 'success': False,
-                'error': "Не удалось подключиться к Automatic1111"
+                'error': self.get_message('connection_error', lang)
             }
         except Exception as e:
-            self.logger.error(f"Ошибка вызова Automatic1111: {str(e)}")
+            self.logger.error(f"Error calling Automatic1111: {str(e)}")
             return {
                 'success': False,
-                'error': f"Ошибка: {str(e)}"
+                'error': f"{self.get_message('error_prefix', lang)}: {str(e)}"
             }

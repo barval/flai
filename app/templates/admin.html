@@ -2,72 +2,72 @@
 
 {% block content %}
 <div class="admin-container">
-    <h2 class="admin-panel-title">Панель администрирования</h2>
+    <h2 class="admin-panel-title">{{ _('Admin Panel') }}</h2>
     <div style="display: flex; align-items: center; gap: 30px; margin-bottom: 20px;">
-        <button id="add-user-button" class="add-user-button">➕ Добавить пользователя</button>
+        <button id="add-user-button" class="add-user-button">➕ {{ _('Add user') }}</button>
         <div class="db-info" style="display: flex; gap: 20px;">
-            <span>База чатов: {{ chat_db_size }}</span>
-            <span>База пользователей: {{ user_db_size }}</span>
+            <span>{{ _('Chat DB') }}: {{ chat_db_size }}</span>
+            <span>{{ _('User DB') }}: {{ user_db_size }}</span>
         </div>
     </div>
     <div class="users-table-wrapper">
         <table id="users-table">
             <thead>
                 <tr>
-                    <th>Статус</th>
-                    <th>Логин</th>
-                    <th>Пароль</th>
-                    <th>Имя</th>
-                    <th>Класс</th>
-                    <th>Сеансов</th>
-                    <th>Сообщений</th>
+                    <th>{{ _('Status') }}</th>
+                    <th>{{ _('Login') }}</th>
+                    <th>{{ _('Password') }}</th>
+                    <th>{{ _('Name') }}</th>
+                    <th>{{ _('Class') }}</th>
+                    <th>{{ _('Sessions') }}</th>
+                    <th>{{ _('Messages') }}</th>
                     {% if rooms %}
-                    <th>Доступ к камерам</th>
+                    <th>{{ _('Camera access') }}</th>
                     {% endif %}
-                    <th>Действия</th>
+                    <th>{{ _('Actions') }}</th>
                 </tr>
             </thead>
             <tbody id="users-tbody">
-                <!-- Данные загружаются через JS -->
+                <!-- Data loaded via JS -->
             </tbody>
         </table>
     </div>
 </div>
 
-<!-- Модальное окно для добавления пользователя -->
+<!-- Add user modal -->
 <div id="add-user-modal" class="modal">
     <div class="modal-content">
         <span class="close">&times;</span>
-        <h3>Новый пользователь</h3>
+        <h3>{{ _('New user') }}</h3>
         <form id="add-user-form">
             <div class="form-group">
-                <label for="new-login">Логин:</label>
-                <input type="text" id="new-login" name="login" required pattern="[a-z0-9]+" title="Только строчные латинские буквы и цифры">
+                <label for="new-login">{{ _('Login') }}:</label>
+                <input type="text" id="new-login" name="login" required pattern="[a-z0-9]+" title="{{ _('Only lowercase letters and digits') }}">
             </div>
             <div class="form-group">
-                <label for="new-password">Пароль:</label>
+                <label for="new-password">{{ _('Password') }}:</label>
                 <input type="password" id="new-password" name="password" required>
             </div>
             <div class="form-group">
-                <label for="new-name">Имя:</label>
+                <label for="new-name">{{ _('Name') }}:</label>
                 <input type="text" id="new-name" name="name" required>
             </div>
             <div class="form-group">
-                <label for="new-service-class">Класс:</label>
+                <label for="new-service-class">{{ _('Class') }}:</label>
                 <select id="new-service-class" name="service_class">
-                    <option value="0">0 - высший</option>
-                    <option value="1">1 - средний</option>
-                    <option value="2" selected>2 - низший</option>
+                    <option value="0">0 - {{ _('highest') }}</option>
+                    <option value="1">1 - {{ _('medium') }}</option>
+                    <option value="2" selected>2 - {{ _('lowest') }}</option>
                 </select>
             </div>
             <div class="form-group">
                 <label for="new-is-active">
-                    <input type="checkbox" id="new-is-active" name="is_active" checked> Активен
+                    <input type="checkbox" id="new-is-active" name="is_active" checked> {{ _('Active') }}
                 </label>
             </div>
             {% if rooms %}
             <div class="form-group">
-                <label>Доступ к камерам:</label>
+                <label>{{ _('Camera access') }}:</label>
                 <div class="camera-checkboxes">
                     {% for code, name in rooms.items() %}
                     <label>
@@ -75,34 +75,45 @@
                     </label>
                     {% endfor %}
                 </div>
-                <small>Оставьте все неотмеченными — доступ будет закрыт ко всем камерам.</small>
+                <small>{{ _('Leave all unchecked to deny access to all cameras.') }}</small>
             </div>
             {% endif %}
-            <button type="submit">Создать</button>
+            <button type="submit">{{ _('Create') }}</button>
         </form>
     </div>
 </div>
 
-<!-- Модальное окно для смены пароля -->
+<!-- Password change modal -->
 <div id="password-modal" class="modal">
     <div class="modal-content">
         <span class="close">&times;</span>
-        <h3>Смена пароля</h3>
+        <h3>{{ _('Change password') }}</h3>
         <form id="password-form">
             <input type="hidden" id="password-user-login">
             <div class="form-group">
-                <label for="new-user-password">Новый пароль:</label>
+                <label for="new-user-password">{{ _('New password') }}:</label>
                 <input type="password" id="new-user-password" required>
             </div>
-            <button type="submit">Сохранить</button>
+            <button type="submit">{{ _('Save') }}</button>
         </form>
     </div>
 </div>
 
-<!-- Подключение стилей и скриптов -->
 <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
 <script>
     window.ROOMS = {{ rooms|tojson|safe }};
+    window.TRANSLATIONS = {
+        'delete_user_confirm': '{{ _("Delete user {login}?") }}',
+        'error': '{{ _("Error") }}',
+        'internal_server_error': '{{ _("Internal server error") }}',
+        'missing_fields': '{{ _("Missing fields") }}',
+        'login_exists': '{{ _("Login already exists") }}',
+        'password_not_specified': '{{ _("New password not specified") }}',
+        'ok': '{{ _("OK") }}',
+        'save': '{{ _("Save") }}',
+        'cancel': '{{ _("Cancel") }}',
+        'change': '{{ _("Change") }}'
+    };
 </script>
 <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
 {% endblock %}

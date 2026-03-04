@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ПЛИИ</title>
+    <title>{{ _('FLAI') }}</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <style>
@@ -13,11 +13,15 @@
 </head>
 <body>
     <header>
-        <h1>ПЛИИ</h1>
+        <h1>{{ _('FLAI') }}</h1>
         {% if 'login' in session %}
         <div class="logout-container">
-            <span>{{ session['name'] if not session.get('is_admin') else 'Администратор' }}</span>
-            <a href="{{ url_for('auth.logout') }}" class="logout-button">Выйти</a>
+            <span>{{ session['name'] if not session.get('is_admin') else _('Administrator') }}</span>
+            <div class="language-switcher">
+                <a href="{{ url_for('auth.set_language', lang='ru') }}">Русский</a> |
+                <a href="{{ url_for('auth.set_language', lang='en') }}">English</a>
+            </div>
+            <a href="{{ url_for('auth.logout') }}" class="logout-button">{{ _('Logout') }}</a>
         </div>
         {% endif %}
     </header>

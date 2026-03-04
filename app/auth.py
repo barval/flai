@@ -12,7 +12,7 @@ def login():
         login_input = request.form.get('login')
         password = request.form.get('password')
         if not login_input or not password:
-            return render_template('login.html', error='Все поля обязательны')
+            return render_template('login.html', error=_('All fields are required'))
 
         user = get_user_by_login(login_input)
         if user and user['is_active'] and check_password_hash(user['password_hash'], password):
@@ -20,14 +20,16 @@ def login():
             session['name'] = user['name']
             session['service_class'] = user['service_class']
             session['is_admin'] = user['is_admin']
-            session['user_id'] = user['login']   # для совместимости с chat.db
-            # Редирект для администратора
+            session['user_id'] = user['login']
+            # Set default language
+            if 'language' not in session:
+                session['language'] = 'ru'
             if user['is_admin']:
                 return redirect(url_for('admin.admin_panel'))
             else:
                 return redirect(url_for('chat.chat'))
         else:
-            return render_template('login.html', error='Неверный логин или пароль')
+            return render_template('login.html', error=_('Invalid login or password'))
     return render_template('login.html')
 
 @bp.route('/logout')
@@ -37,3 +39,9 @@ def logout():
         set_last_session(session['login'], session['current_session'])
     session.clear()
     return redirect(url_for('auth.login'))
+
+@bp.route('/set-language/<lang>')
+def set_language(lang):
+    if lang in ['ru', 'en']:
+        session['language'] = lang
+    return redirect(request.referrer or url_for('chat.chat'))

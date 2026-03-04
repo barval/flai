@@ -1,0 +1,296 @@
+# English translations for FLAI.
+# Copyright (C) 2026
+# This file is distributed under the same license as the FLAI project.
+# Automatically generated, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: FLAI 6.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-03-05 12:00+0300\n"
+"PO-Revision-Date: 2026-03-05 13:00+0300\n"
+"Last-Translator: Valeriy Barsukov\n"
+"Language: en\n"
+"Language-Team: English\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "FLAI"
+msgstr "FLAI"
+
+msgid "Administrator"
+msgstr "Administrator"
+
+msgid "Logout"
+msgstr "Logout"
+
+msgid "Authorization"
+msgstr "Authorization"
+
+msgid "All fields are required"
+msgstr "All fields are required"
+
+msgid "Invalid login or password"
+msgstr "Invalid login or password"
+
+msgid "Login"
+msgstr "Login"
+
+msgid "Password"
+msgstr "Password"
+
+msgid "Not authorized"
+msgstr "Not authorized"
+
+msgid "New session"
+msgstr "New session"
+
+msgid "Permission denied or session not found"
+msgstr "Permission denied or session not found"
+
+msgid "No active session"
+msgstr "No active session"
+
+msgid "Empty message"
+msgstr "Empty message"
+
+msgid "Failed to recognize speech"
+msgstr "Failed to recognize speech"
+
+msgid "Transcribed"
+msgstr "Transcribed"
+
+msgid "Voice request"
+msgstr "Voice request"
+
+msgid "Audio transcribed"
+msgstr "Audio transcribed"
+
+msgid "Request queued (position {pos})"
+msgstr "Request queued (position {pos})"
+
+msgid "Speech recognized, request queued (position {pos})"
+msgstr "Speech recognized, request queued (position {pos})"
+
+msgid "Image"
+msgstr "Image"
+
+msgid "Text request"
+msgstr "Text request"
+
+msgid "Unknown session"
+msgstr "Unknown session"
+
+msgid "Sessions"
+msgstr "Sessions"
+
+msgid "Delete session"
+msgstr "Delete session"
+
+msgid "Chat"
+msgstr "Chat"
+
+msgid "Messages"
+msgstr "Messages"
+
+msgid "Your requests in queue / Total in queue"
+msgstr "Your requests in queue / Total in queue"
+
+msgid "Save as HTML"
+msgstr "Save as HTML"
+
+msgid "Enter message..."
+msgstr "Enter message..."
+
+msgid "Record voice message"
+msgstr "Record voice message"
+
+msgid "Send"
+msgstr "Send"
+
+msgid "Recording..."
+msgstr "Recording..."
+
+msgid "Sending..."
+msgstr "Sending..."
+
+msgid "processing"
+msgstr "processing"
+
+msgid "queued"
+msgstr "queued"
+
+msgid "new_response"
+msgstr "new response"
+
+msgid "delete_session_confirm"
+msgstr "Delete session \"{title}\" from {date}?"
+
+msgid "download_image"
+msgstr "Download image"
+
+msgid "download_audio"
+msgstr "Download audio"
+
+msgid "click_to_enlarge"
+msgstr "Click to enlarge"
+
+msgid "image"
+msgstr "image"
+
+msgid "browser_no_audio_support"
+msgstr "Your browser does not support audio recording"
+
+msgid "secure_context_required"
+msgstr "Voice recording requires a secure connection (HTTPS).\nTry opening the site via HTTPS or localhost."
+
+msgid "microphone_access_denied"
+msgstr "Could not access microphone."
+
+msgid "enter_message_or_file"
+msgstr "Enter a message or attach a file"
+
+msgid "error"
+msgstr "Error"
+
+msgid "unknown_error"
+msgstr "Unknown error"
+
+msgid "request_timeout"
+msgstr "Request timeout. Check request status."
+
+msgid "footer_not_configured"
+msgstr "Footer not configured"
+
+msgid "footer_load_error"
+msgstr "Error loading footer"
+
+msgid "user"
+msgstr "User"
+
+msgid "no_active_session_save"
+msgstr "No active session to save"
+
+msgid "chat"
+msgstr "Chat"
+
+msgid "saved_chat"
+msgstr "Saved chat"
+
+msgid "session"
+msgstr "Session"
+
+msgid "saved_on"
+msgstr "Saved on"
+
+msgid "total_messages"
+msgstr "Total messages"
+
+msgid "no_messages_to_save"
+msgstr "No messages to save"
+
+msgid "copied"
+msgstr "Copied!"
+
+msgid "copy_code"
+msgstr "Copy code"
+
+msgid "copy_failed"
+msgstr "Copy failed"
+
+msgid "copy_text"
+msgstr "Copy text"
+
+# Admin panel
+msgid "Admin Panel"
+msgstr "Admin Panel"
+
+msgid "Add user"
+msgstr "Add user"
+
+msgid "Chat DB"
+msgstr "Chat DB"
+
+msgid "User DB"
+msgstr "User DB"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Name"
+msgstr "Name"
+
+msgid "Class"
+msgstr "Class"
+
+msgid "Sessions"
+msgstr "Sessions"
+
+msgid "Messages"
+msgstr "Messages"
+
+msgid "Camera access"
+msgstr "Camera access"
+
+msgid "Actions"
+msgstr "Actions"
+
+msgid "New user"
+msgstr "New user"
+
+msgid "Only lowercase letters and digits"
+msgstr "Only lowercase letters and digits"
+
+msgid "highest"
+msgstr "highest"
+
+msgid "medium"
+msgstr "medium"
+
+msgid "lowest"
+msgstr "lowest"
+
+msgid "Active"
+msgstr "Active"
+
+msgid "Leave all unchecked to deny access to all cameras."
+msgstr "Leave all unchecked to deny access to all cameras."
+
+msgid "Create"
+msgstr "Create"
+
+msgid "Change password"
+msgstr "Change password"
+
+msgid "New password"
+msgstr "New password"
+
+msgid "Save"
+msgstr "Save"
+
+msgid "Delete user {login}?"
+msgstr "Delete user {login}?"
+
+msgid "Internal server error"
+msgstr "Internal server error"
+
+msgid "Missing fields"
+msgstr "Missing fields"
+
+msgid "Login already exists"
+msgstr "Login already exists"
+
+msgid "New password not specified"
+msgstr "New password not specified"
+
+msgid "OK"
+msgstr "OK"
+
+msgid "Cancel"
+msgstr "Cancel"
+
+msgid "Change"
+msgstr "Change"
+
+msgid "delete"
+msgstr "Delete"

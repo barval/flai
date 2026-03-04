@@ -8,7 +8,7 @@ from datetime import datetime
 from app.userdb import check_camera_permission
 
 class CamModule:
-    """Модуль для работы с системой видеонаблюдения"""
+    """Module for interacting with CCTV camera system"""
     
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
@@ -32,8 +32,39 @@ class CamModule:
         
         self.room_codes = {v: k for k, v in self.room_names.items()}
         
+        self.messages = {
+            'ru': {
+                'permission_denied': 'Доступ к данной камере запрещён',
+                'service_unavailable': 'Сервис видеонаблюдения недоступен',
+                'unknown_room': 'Неизвестная комната: {room}',
+                'fetch_failed': 'Не удалось получить изображение с камеры {room_name}',
+                'timeout': 'Таймаут ожидания ({timeout}с)',
+                'connection_error': 'Ошибка подключения',
+                'error_prefix': 'Ошибка'
+            },
+            'en': {
+                'permission_denied': 'Access to this camera is denied',
+                'service_unavailable': 'CCTV service unavailable',
+                'unknown_room': 'Unknown room: {room}',
+                'fetch_failed': 'Failed to get snapshot from camera {room_name}',
+                'timeout': 'Timeout ({timeout}s)',
+                'connection_error': 'Connection error',
+                'error_prefix': 'Error'
+            }
+        }
+        
         if app:
             self.init_app(app)
+    
+    def get_message(self, key, lang='ru', **kwargs):
+        msg_dict = self.messages.get(lang, self.messages['ru'])
+        msg = msg_dict.get(key, key)
+        if kwargs:
+            try:
+                return msg.format(**kwargs)
+            except KeyError:
+                return msg
+        return msg
     
     def init_app(self, app):
         self.camera_api_url = app.config.get('CAMERA_API_URL', 'http://host.docker.internal:5005')
@@ -41,20 +72,20 @@ class CamModule:
         self.check_interval = app.config.get('CAMERA_CHECK_INTERVAL', 30)
         self.check_availability()
         if self.available:
-            self.logger.info(f"CamModule инициализирован и доступен (API: {self.camera_api_url}), таймаут: {self.timeout}с")
+            self.logger.info(f"CamModule initialized and available (API: {self.camera_api_url}), timeout: {self.timeout}s")
         else:
-            self.logger.warning(f"CamModule инициализирован, но API камер недоступно ({self.camera_api_url})")
+            self.logger.warning(f"CamModule initialized, but camera API unavailable ({self.camera_api_url})")
     
     def get_all_rooms(self):
-        """Возвращает словарь {код: название} всех известных камер."""
+        """Return dictionary {code: name} of all known cameras."""
         return self.room_names.copy()
     
     def check_permission(self, user_login, room_code):
-        """Проверяет, имеет ли пользователь доступ к камере."""
+        """Check if user has permission to access the camera."""
         return check_camera_permission(user_login, room_code)
     
     def get_available_rooms(self, user_login):
-        """Возвращает словарь доступных пользователю камер (код -> название)."""
+        """Return dictionary of cameras accessible to user (code -> name)."""
         all_rooms = self.get_all_rooms()
         if user_login is None:
             return all_rooms
@@ -85,7 +116,7 @@ class CamModule:
         
         for endpoint in health_endpoints:
             try:
-                self.logger.debug(f"Проверка доступности API камер: {endpoint}")
+                self.logger.debug(f"Checking camera API availability: {endpoint}")
                 response = requests.get(endpoint, timeout=3)
                 if response.status_code == 200:
                     try:
@@ -93,21 +124,21 @@ class CamModule:
                         if isinstance(data, dict) and data.get('status') == 'ok':
                             self.available = True
                             self.last_check = current_time
-                            self.logger.info(f"API камер доступно (через {endpoint})")
+                            self.logger.info(f"Camera API available (via {endpoint})")
                             return True
                     except:
                         self.available = True
                         self.last_check = current_time
-                        self.logger.info(f"API камер доступно (через {endpoint})")
+                        self.logger.info(f"Camera API available (via {endpoint})")
                         return True
             except requests.exceptions.ConnectionError:
-                self.logger.debug(f"Ошибка подключения к {endpoint}")
+                self.logger.debug(f"Connection error to {endpoint}")
                 continue
             except requests.exceptions.Timeout:
-                self.logger.debug(f"Таймаут при подключении к {endpoint}")
+                self.logger.debug(f"Timeout connecting to {endpoint}")
                 continue
             except Exception as e:
-                self.logger.debug(f"Ошибка при проверке {endpoint}: {str(e)}")
+                self.logger.debug(f"Error checking {endpoint}: {str(e)}")
                 continue
         
         try:
@@ -115,14 +146,14 @@ class CamModule:
             if response.status_code == 200:
                 self.available = True
                 self.last_check = current_time
-                self.logger.info(f"API камер доступно (через /rooms)")
+                self.logger.info(f"Camera API available (via /rooms)")
                 return True
         except:
             pass
         
         self.available = False
         self.last_check = current_time
-        self.logger.warning(f"API камер недоступно по адресу {self.camera_api_url}")
+        self.logger.warning(f"Camera API unavailable at {self.camera_api_url}")
         return False
     
     def get_status(self):
@@ -135,7 +166,7 @@ class CamModule:
             'room_names': self.room_names,
             'timeout': self.timeout,
             'check_interval': self.check_interval,
-            'message': 'Доступно' if self.available else 'Недоступно'
+            'message': 'Available' if self.available else 'Unavailable'
         }
         if self.available:
             try:
@@ -149,7 +180,7 @@ class CamModule:
         return status
     
     def get_room_name(self, room_code):
-        return self.room_names.get(room_code, f"комната '{room_code}'")
+        return self.room_names.get(room_code, f"room '{room_code}'")
     
     def get_room_code(self, room_name):
         room_name_lower = room_name.lower().strip()
@@ -160,11 +191,11 @@ class CamModule:
                 return code
         return None
     
-    def get_snapshot(self, user_login, room_code):
+    def get_snapshot(self, user_login, room_code, lang='ru'):
         if not self.check_permission(user_login, room_code):
             return {
                 'success': False,
-                'error': 'Доступ к данной камере запрещён',
+                'error': self.get_message('permission_denied', lang),
                 'status_code': 403
             }
         
@@ -172,7 +203,7 @@ class CamModule:
         if not self.available:
             return {
                 'success': False,
-                'error': "Сервис видеонаблюдения недоступен",
+                'error': self.get_message('service_unavailable', lang),
                 'status_code': 503
             }
         
@@ -180,11 +211,11 @@ class CamModule:
             code = self.get_room_code(room_code)
             if code:
                 room_code = code
-                self.logger.info(f"Преобразовано название '{room_code}' в код '{code}'")
+                self.logger.info(f"Converted room name '{room_code}' to code '{code}'")
             else:
                 return {
                     'success': False,
-                    'error': f"Неизвестная комната: {room_code}",
+                    'error': self.get_message('unknown_room', lang, room=room_code),
                     'status_code': 404,
                     'available_rooms': list(self.room_names.keys())
                 }
@@ -201,7 +232,7 @@ class CamModule:
             last_error = None
             for endpoint in endpoints:
                 try:
-                    self.logger.info(f"Запрос к камере: {endpoint}, таймаут: {self.timeout}с")
+                    self.logger.info(f"Request to camera: {endpoint}, timeout: {self.timeout}s")
                     response = requests.get(
                         endpoint, 
                         timeout=self.timeout,
@@ -241,7 +272,7 @@ class CamModule:
                         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                         filename = f'camera_{room_code}_{timestamp}.jpg'
                         
-                        self.logger.info(f"Успешно получено изображение с камеры {room_code}")
+                        self.logger.info(f"Successfully got snapshot from camera {room_code}")
                         
                         return {
                             'success': True,
@@ -255,16 +286,16 @@ class CamModule:
                         }
                         
                 except requests.exceptions.ConnectionError:
-                    last_error = "Ошибка подключения"
+                    last_error = self.get_message('connection_error', lang)
                     continue
                 except requests.exceptions.Timeout:
-                    last_error = f"Таймаут ожидания ({self.timeout}с)"
+                    last_error = self.get_message('timeout', lang, timeout=self.timeout)
                     continue
                 except Exception as e:
                     last_error = str(e)
                     continue
             
-            error_msg = f"Не удалось получить изображение с камеры {room_name}"
+            error_msg = self.get_message('fetch_failed', lang, room_name=room_name)
             if last_error:
                 error_msg += f": {last_error}"
             
@@ -276,10 +307,10 @@ class CamModule:
             }
                 
         except Exception as e:
-            self.logger.error(f"Ошибка при обращении к API камер: {str(e)}")
+            self.logger.error(f"Error calling camera API: {str(e)}")
             return {
                 'success': False,
-                'error': f"Ошибка: {str(e)}",
+                'error': f"{self.get_message('error_prefix', lang)}: {str(e)}",
                 'status_code': 500
             }
     
@@ -288,7 +319,7 @@ class CamModule:
         if not self.available:
             return {
                 'success': False,
-                'error': "Сервис видеонаблюдения недоступен",
+                'error': self.get_message('service_unavailable', 'ru'),  # Use 'ru' as default for internal
                 'rooms': list(self.room_names.keys()),
                 'room_names': self.room_names
             }
@@ -308,20 +339,20 @@ class CamAPI:
         @app.route('/api/cam/status', methods=['GET'])
         def cam_status():
             if 'login' not in session:
-                return jsonify({'error': 'Не авторизован'}), 401
+                return jsonify({'error': 'Not authorized'}), 401
             return jsonify(cam_module.get_status())
         
         @app.route('/api/cam/rooms', methods=['GET'])
         def cam_rooms():
             if 'login' not in session:
-                return jsonify({'error': 'Не авторизован'}), 401
+                return jsonify({'error': 'Not authorized'}), 401
             user_login = session['login']
             return jsonify(cam_module.get_available_rooms(user_login))
         
         @app.route('/api/cam/snapshot/<room>', methods=['GET'])
         def cam_snapshot(room):
             if 'login' not in session:
-                return jsonify({'error': 'Не авторизован'}), 401
+                return jsonify({'error': 'Not authorized'}), 401
             user_login = session['login']
             result = cam_module.get_snapshot(user_login, room)
             if result['success']:
@@ -338,7 +369,7 @@ class CamAPI:
         @app.route('/api/cam/health', methods=['GET'])
         def cam_health():
             if 'login' not in session:
-                return jsonify({'error': 'Не авторизован'}), 401
+                return jsonify({'error': 'Not authorized'}), 401
             cam_module.check_availability(force=True)
             return jsonify({
                 'module': 'cam',

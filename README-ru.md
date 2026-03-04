@@ -188,18 +188,20 @@ networks:
 ## ⚙️ Конфигурация (.env)
 Все настройки задаются в файле `.env`. Ниже приведены наиболее важные переменные; полный список см. в `.env.example`.
 
-Переменная	Описание	Пример
-SECRET_KEY	Секрет для сессий Flask (сгенерируйте надёжный)	mysecretkey
-TIMEZONE	Ваш локальный часовой пояс	Europe/Moscow
-OLLAMA_URL	Адрес API Ollama	http://ollama:11434
-LLM_CHAT_MODEL	Модель‑маршрутизатор / чат‑модель	qwen3:4b-instruct-2507-q4_K_M
-LLM_MULTIMODAL_MODEL	Мультимодальная модель для изображений	qwen3-vl:8b-instruct-q4_K_M
-LLM_REASONING_MODEL	Модель для сложных рассуждений	qwen3:8b-q4_K_M
-AUTOMATIC1111_URL	Адрес API Automatic1111	http://sd-webui:7860
-AUTOMATIC1111_MODEL	Имя чекпоинта Stable Diffusion	cyberrealisticXL_v90.safetensors
-WHISPER_API_URL	Адрес API Whisper ASR	http://openai-whisper:9000/asr
-CAMERA_API_URL	Адрес API камер (если используется)	http://host.docker.internal:5005
-FOOTER_TEXT	Пользовательский текст подвала	ПЛИИ v6.0 (с) 2026
+| Переменная | Описание	| Пример |
+|------------|----------|--------|
+| SECRET_KEY | Секрет для сессий Flask (сгенерируйте надёжный) | mysecretkey |
+| TIMEZONE | Ваш локальный часовой пояс | Europe/Moscow |
+| OLLAMA_URL | Адрес API Ollama | http://ollama:11434 |
+| LLM_CHAT_MODEL | Модель‑маршрутизатор / чат‑модель | qwen3:4b-instruct-2507-q4_K_M |
+| LLM_MULTIMODAL_MODEL | Мультимодальная модель для изображений | qwen3-vl:8b-instruct-q4_K_M |
+| LLM_REASONING_MODEL | Модель для сложных рассуждений | qwen3:8b-q4_K_M |
+| AUTOMATIC1111_URL | Адрес API Automatic1111	| http://sd-webui:7860 |
+| AUTOMATIC1111_MODEL | Имя чекпоинта Stable Diffusion | cyberrealisticXL_v90.safetensors |
+| WHISPER_API_URL | Адрес API Whisper ASR | http://openai-whisper:9000/asr |
+| CAMERA_API_URL | Адрес API камер (если используется) | http://host.docker.internal:5005 |
+| FOOTER_TEXT | Пользовательский текст подвала | ПЛИИ v6.0 (с) 2026 |
+
 👥 Управление пользователями
 Обычные пользователи определяются в файле users.list (формат: логин:пароль:имя:класс_обслуживания).
 

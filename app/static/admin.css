@@ -5,18 +5,33 @@
     max-width: 1400px;
     margin: 0 auto;
 }
+
+.admin-panel-title {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.db-info {
+    display: flex;
+    gap: 20px;
+    font-size: 1rem;
+    color: #2c3e50;
+}
+
 .users-table-wrapper {
     overflow-x: auto;
     margin-top: 20px;
     border-radius: 8px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
 }
+
 #users-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 14px;
     background-color: #fff;
 }
+
 #users-table th,
 #users-table td {
     padding: 12px 8px;
@@ -24,28 +39,33 @@
     vertical-align: middle;
     border-bottom: 1px solid #eee;
 }
+
 #users-table th {
-    background-color: #3498db;
+    background-color: #7f8c8d;  /* серый цвет, не совпадает со строкой неактивного пользователя */
     color: white;
     font-weight: 600;
     font-size: 14px;
     letter-spacing: 0.5px;
     border-bottom: 2px solid #2980b9;
 }
+
 #users-table td input[type="checkbox"] {
     transform: scale(1.5);
     cursor: pointer;
     accent-color: #27ae60;
 }
+
 #users-table tr.user-inactive {
     opacity: 0.6;
     background-color: #f9f9f9;
     font-style: italic;
     color: #999;
 }
+
 #users-table tr.user-inactive td {
     background-color: inherit;
 }
+
 .camera-checkboxes {
     max-height: 150px;
     overflow-y: auto;
@@ -53,7 +73,9 @@
     flex-direction: column;
     gap: 4px;
     text-align: left;
+    padding-left: 20px; /* отступ от левого края */
 }
+
 .modal {
     display: none;
     position: fixed;
@@ -65,6 +87,7 @@
     overflow: auto;
     background-color: rgba(0,0,0,0.4);
 }
+
 .modal-content {
     background-color: #fefefe;
     margin: 15% auto;
@@ -74,6 +97,7 @@
     border-radius: 8px;
     position: relative;
 }
+
 .modal .close {
     color: #aaa;
     float: right;
@@ -84,12 +108,14 @@
     top: 10px;
     right: 20px;
 }
+
 .modal .close:hover,
 .modal .close:focus {
     color: black;
     text-decoration: none;
     cursor: pointer;
 }
+
 .add-user-button {
     background-color: #3498db;
     color: white;
@@ -99,6 +125,7 @@
     cursor: pointer;
     font-size: 16px;
 }
+
 .delete-user-btn {
     background-color: #e74c3c;
     color: white;
@@ -107,6 +134,7 @@
     border-radius: 4px;
     cursor: pointer;
 }
+
 .change-password-btn {
     background-color: #f39c12;
     color: white;

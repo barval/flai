@@ -222,7 +222,7 @@ function setupModals() {
                 name: formData.get('name'),
                 service_class: parseInt(formData.get('service_class')),
                 is_active: formData.get('is_active') === 'on',
-                camera_permissions: cameraPermissions.length > 0 ? cameraPermissions : null
+                camera_permissions: cameraPermissions.length > 0 ? cameraPermissions : []  // теперь пустой массив, а не null
             };
             fetch('/admin/api/users', {
                 method: 'POST',

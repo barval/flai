@@ -2,8 +2,14 @@
 
 {% block content %}
 <div class="admin-container">
-    <h2>Управление пользователями</h2>
-    <button id="add-user-button" class="add-user-button">➕ Добавить пользователя</button>
+    <h2 class="admin-panel-title">Панель администрирования</h2>
+    <div style="display: flex; align-items: center; gap: 30px; margin-bottom: 20px;">
+        <button id="add-user-button" class="add-user-button">➕ Добавить пользователя</button>
+        <div class="db-info" style="display: flex; gap: 20px;">
+            <span>База чатов: {{ chat_db_size }}</span>
+            <span>База пользователей: {{ user_db_size }}</span>
+        </div>
+    </div>
     <div class="users-table-wrapper">
         <table id="users-table">
             <thead>
@@ -69,7 +75,7 @@
                     </label>
                     {% endfor %}
                 </div>
-                <small>Оставьте все неотмеченными для доступа ко всем камерам.</small>
+                <small>Оставьте все неотмеченными — доступ будет закрыт ко всем камерам.</small>
             </div>
             {% endif %}
             <button type="submit">Создать</button>

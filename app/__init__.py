@@ -42,7 +42,13 @@ def create_app():
         modules['image'] = ImageModule(app)
         modules['image'].set_multimodal_module(modules['multimodal'])
 
-    modules['cam'] = CamModule(app)
+    # Модуль камер (условно, по CAMERA_ENABLED)
+    if app.config['CAMERA_ENABLED']:
+        modules['cam'] = CamModule(app)
+        app.logger.info("Модуль камер включён")
+    else:
+        app.logger.info("Модуль камер отключён (CAMERA_ENABLED=False)")
+
     modules['rag'] = RagModule(app)
     modules['audio'] = AudioModule(app)
 
@@ -66,7 +72,7 @@ def create_app():
     # Регистрация CLI команд
     app.cli.add_command(cli.set_admin_password)
 
-    # Дополнительная регистрация API для камер
+    # Дополнительная регистрация API для камер (только если модуль включён)
     if 'cam' in modules:
         from modules.cam import CamAPI
         CamAPI.register_routes(app, modules['cam'])

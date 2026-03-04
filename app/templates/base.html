@@ -16,10 +16,7 @@
         <h1>ПЛИИ</h1>
         {% if 'login' in session %}
         <div class="logout-container">
-            <span>{{ session['name'] }}</span>
-            {% if session.get('is_admin') %}
-                <a href="{{ url_for('admin.admin_panel') }}" class="logout-button" style="background-color: #27ae60;">Админка</a>
-            {% endif %}
+            <span>{{ session['name'] if not session.get('is_admin') else 'Администратор' }}</span>
             <a href="{{ url_for('auth.logout') }}" class="logout-button">Выйти</a>
         </div>
         {% endif %}

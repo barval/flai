@@ -1,15 +1,25 @@
 import json
 import logging
+import os
 from flask import Blueprint, render_template, session, jsonify, request, current_app
 from functools import wraps
+
 from app.userdb import (
     list_users, create_user, update_user, delete_user,
     get_user_by_login, update_password
 )
-from app.db import get_db as get_chat_db
+from app.db import get_db as get_chat_db, CHAT_DB_PATH
+from app.userdb import USER_DB_PATH
 
 bp = Blueprint('admin', __name__, url_prefix='/admin')
 logger = logging.getLogger(__name__)
+
+def get_file_size_mb(path):
+    try:
+        size = os.path.getsize(path)
+        return f"{size / (1024 * 1024):.2f} МБ"
+    except OSError:
+        return "0 МБ"
 
 def admin_required(f):
     @wraps(f)
@@ -25,7 +35,9 @@ def admin_panel():
     rooms = {}
     if 'cam' in current_app.modules and current_app.modules['cam'].available:
         rooms = current_app.modules['cam'].get_all_rooms()
-    return render_template('admin.html', rooms=rooms)
+    chat_db_size = get_file_size_mb(CHAT_DB_PATH)
+    user_db_size = get_file_size_mb(USER_DB_PATH)
+    return render_template('admin.html', rooms=rooms, chat_db_size=chat_db_size, user_db_size=user_db_size)
 
 @bp.route('/api/users', methods=['GET'])
 @admin_required
@@ -84,7 +96,7 @@ def add_user():
             name=name,
             service_class=service_class,
             is_admin=False,
-            camera_permissions=camera_permissions
+            camera_permissions=camera_permissions  # может быть [] (пустой список)
         )
         if not is_active:
             update_user(login, is_active=False)

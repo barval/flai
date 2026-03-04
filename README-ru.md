@@ -122,7 +122,7 @@ networks:
 ```bash
 docker exec ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
 docker exec ollama ollama pull qwen3-vl:8b-instruct-q4_K_M
-docker exec ollama ollama pull qwen3:8b-q4_K_M
+docker exec ollama ollama pull gpt-oss:20b
 ```
 
 ### 🎨 Automatic1111 (WebUI Stable Diffusion)
@@ -158,27 +158,36 @@ networks:
   flai_network:
     external: true
 ```
-Поместите ваш чекпоинт Stable Diffusion (например, cyberrealisticXL_v90.safetensors) в каталог ./models.
+Поместите ваш чекпоинт Stable Diffusion (например, `cyberrealisticXL_v90.safetensors`) в каталог `./models`.
 
 ### 🎤 Whisper ASR (распознавание речи)
 ```yaml
 services:
   openai-whisper:
-    image: onerahmet/openai-whisper-asr-webservice:latest   # CPU версия
-    # image: onerahmet/openai-whisper-asr-webservice:latest-gpu   # для GPU
+    image: onerahmet/openai-whisper-asr-webservice:latest         # CPU
+    # image: onerahmet/openai-whisper-asr-webservice:latest-gpu   # GPU
     container_name: openai-whisper
     networks:
       - flai_network
     ports:
       - "9000:9000"
     environment:
-      ASR_MODEL: "medium"               # или "small", "large"
+      ASR_MODEL: "medium"                # или "small", "large"
       ASR_ENGINE: "faster_whisper"       # рекомендуется faster_whisper
       ASR_DEVICE: "cpu"                  # измените на "cuda" для GPU
     volumes:
       - ~/.cache/huggingface:/root/.cache/huggingface
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    restart: always
+    # GPU
+#    deploy:
+#      resources:
+#        reservations:
+#          devices:
+#            - driver: nvidia
+#              count: all
+#              capabilities: [gpu]
 
 networks:
   flai_network:
@@ -190,36 +199,33 @@ networks:
 
 | Переменная | Описание	| Пример |
 |------------|----------|--------|
-| SECRET_KEY | Секрет для сессий Flask (сгенерируйте надёжный) | mysecretkey |
-| TIMEZONE | Ваш локальный часовой пояс | Europe/Moscow |
-| OLLAMA_URL | Адрес API Ollama | http://ollama:11434 |
-| LLM_CHAT_MODEL | Модель‑маршрутизатор / чат‑модель | qwen3:4b-instruct-2507-q4_K_M |
-| LLM_MULTIMODAL_MODEL | Мультимодальная модель для изображений | qwen3-vl:8b-instruct-q4_K_M |
-| LLM_REASONING_MODEL | Модель для сложных рассуждений | qwen3:8b-q4_K_M |
-| AUTOMATIC1111_URL | Адрес API Automatic1111	| http://sd-webui:7860 |
-| AUTOMATIC1111_MODEL | Имя чекпоинта Stable Diffusion | cyberrealisticXL_v90.safetensors |
-| WHISPER_API_URL | Адрес API Whisper ASR | http://openai-whisper:9000/asr |
-| CAMERA_API_URL | Адрес API камер (если используется) | http://host.docker.internal:5005 |
-| FOOTER_TEXT | Пользовательский текст подвала | ПЛИИ v6.0 (с) 2026 |
+| `SECRET_KEY` | Секрет для сессий Flask (сгенерируйте надёжный) | `mysecretkey` |
+| `TIMEZONE` | Ваш локальный часовой пояс | `Europe/Moscow` |
+| `OLLAMA_URL` | Адрес API Ollama | `http://ollama:11434` |
+| `LLM_CHAT_MODEL` | Модель‑маршрутизатор / чат‑модель | `qwen3:4b-instruct-2507-q4_K_M` |
+| `LLM_MULTIMODAL_MODEL` | Мультимодальная модель для изображений | `qwen3-vl:8b-instruct-q4_K_M` |
+| `LLM_REASONING_MODEL` | Модель для сложных рассуждений | `gpt-oss:20b` |
+| `AUTOMATIC1111_URL` | Адрес API Automatic1111	| `http://sd-webui:7860` |
+| `AUTOMATIC1111_MODEL` | Имя чекпоинта Stable Diffusion | `cyberrealisticXL_v90.safetensors` |
+| `WHISPER_API_URL` | Адрес API Whisper ASR | `http://openai-whisper:9000/asr` |
+| `CAMERA_API_URL` | Адрес API камер (если используется) | `http://host.docker.internal:5005` |
+| `FOOTER_TEXT` | Пользовательский текст подвала | `ПЛИИ v6.0 (с) 2026` |
 
-👥 Управление пользователями
-Обычные пользователи определяются в файле users.list (формат: логин:пароль:имя:класс_обслуживания).
+## 👥 Управление пользователями
+Вы можете управлять пользователями через Панель администратора (/admin) – добавлять, редактировать, удалять, менять пароли и назначать права доступа к камерам.
 
-При первом запуске приложения этот файл импортируется в базу данных.
+Учётная запись администратора создаётся и меняется командой:
+```bash
+docker exec -it flai_web_1 flask admin-password <ваш_пароль_администратора>
+```
 
-После этого вы можете управлять пользователями через Панель администратора (/admin) – добавлять, редактировать, удалять, менять пароли и назначать права доступа к камерам.
+## 🗺️ Планы развития
+- 🗣️ Синтез речи (TTS) – озвучивание ответов ассистента с помощью локального TTS‑движка (например, Coqui TTS, Piper) для полноценного голосового взаимодействия.
+- 📚 RAG с Qdrant – реализация генерации с дополнением извлечения (Retrieval‑Augmented Generation) по загруженным пользователем документам (PDF, TXT и др.) с использованием векторной базы данных Qdrant для семантического поиска.
+- 🧠 Долговременная память диалогов – поддержание длительного контекста между сеансами путём суммаризации или хранения истории общения.
 
-Учётная запись администратора создаётся отдельно командой flask admin-password.
-
-🗺️ Планы развития
-🗣️ Синтез речи (TTS) – озвучивание ответов ассистента с помощью локального TTS‑движка (например, Coqui TTS, Piper) для полноценного голосового взаимодействия.
-
-📚 RAG с Qdrant – реализация генерации с дополнением извлечения (Retrieval‑Augmented Generation) по загруженным пользователем документам (PDF, TXT и др.) с использованием векторной базы данных Qdrant для семантического поиска.
-
-🧠 Долговременная память диалогов – поддержание длительного контекста между сеансами путём суммаризации или хранения истории общения.
-
-📄 Лицензия
-Этот проект распространяется под лицензией MIT – подробности см. в файле LICENSE.
+## 📄 Лицензия
+Этот проект распространяется под лицензией MIT – подробности см. в файле [LICENSE-ru](LICENSE-ru).
 
 <br> <div align="center"> Сделано с ❤️ для сообщества локального ИИ </div>
   

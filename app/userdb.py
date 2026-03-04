@@ -1,0 +1,107 @@
+import sqlite3
+import json
+import os
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask import current_app
+
+USER_DB_PATH = 'data/users.db'
+
+def get_db():
+    """Возвращает соединение с БД пользователей."""
+    conn = sqlite3.connect(USER_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_user_db():
+    """Инициализация таблицы пользователей."""
+    if not os.path.exists('data'):
+        os.makedirs('data', exist_ok=True)
+    with get_db() as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                login TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                service_class INTEGER NOT NULL DEFAULT 2,
+                is_active BOOLEAN NOT NULL DEFAULT 1,
+                is_admin BOOLEAN NOT NULL DEFAULT 0,
+                camera_permissions TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
+def get_user_by_login(login):
+    """Получить пользователя по логину."""
+    with get_db() as conn:
+        return conn.execute('SELECT * FROM users WHERE login = ?', (login,)).fetchone()
+
+def create_user(login, password, name, service_class=2, is_admin=False, camera_permissions=None):
+    """Создать нового пользователя."""
+    if camera_permissions is not None:
+        camera_permissions = json.dumps(camera_permissions)
+    password_hash = generate_password_hash(password)
+    with get_db() as conn:
+        conn.execute('''
+            INSERT INTO users (login, name, password_hash, service_class, is_admin, camera_permissions)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (login, name, password_hash, service_class, is_admin, camera_permissions))
+        conn.commit()
+
+def update_user(login, name=None, service_class=None, is_active=None, camera_permissions=None):
+    """Обновить данные пользователя (кроме пароля)."""
+    updates = []
+    params = []
+    if name is not None:
+        updates.append("name = ?")
+        params.append(name)
+    if service_class is not None:
+        updates.append("service_class = ?")
+        params.append(service_class)
+    if is_active is not None:
+        updates.append("is_active = ?")
+        params.append(int(is_active))
+    if camera_permissions is not None:
+        updates.append("camera_permissions = ?")
+        params.append(json.dumps(camera_permissions) if camera_permissions is not None else None)
+    if not updates:
+        return
+    params.append(login)
+    with get_db() as conn:
+        conn.execute(f'UPDATE users SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP WHERE login = ?', params)
+        conn.commit()
+
+def update_password(login, new_password):
+    """Обновить пароль пользователя."""
+    password_hash = generate_password_hash(new_password)
+    with get_db() as conn:
+        conn.execute('UPDATE users SET password_hash = ? WHERE login = ?', (password_hash, login))
+        conn.commit()
+
+def delete_user(login):
+    """Удалить пользователя."""
+    with get_db() as conn:
+        conn.execute('DELETE FROM users WHERE login = ?', (login,))
+        conn.commit()
+
+def list_users(exclude_admin=True):
+    """Получить список всех пользователей (кроме admin, если exclude_admin=True)."""
+    with get_db() as conn:
+        if exclude_admin:
+            return conn.execute('SELECT * FROM users WHERE login != "admin" ORDER BY login').fetchall()
+        else:
+            return conn.execute('SELECT * FROM users ORDER BY login').fetchall()
+
+def check_camera_permission(login, room_code):
+    """Проверить, имеет ли пользователь доступ к указанной камере."""
+    user = get_user_by_login(login)
+    if not user or not user['is_active']:
+        return False
+    if user['camera_permissions'] is None:
+        return True
+    try:
+        allowed = json.loads(user['camera_permissions'])
+        return room_code in allowed
+    except:
+        return False

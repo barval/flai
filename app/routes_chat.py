@@ -7,21 +7,21 @@ from flask import Blueprint, render_template, request, session, jsonify, current
 
 from . import db
 from .utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, format_prompt
-from .auth import USERS
+from .userdb import get_user_by_login   # для проверки активности (опционально)
 
 bp = Blueprint('chat', __name__)
 
 @bp.route('/')
 def index():
-    if 'email' not in session:
+    if 'login' not in session:
         return redirect(url_for('auth.login'))
     return redirect(url_for('chat.chat'))
 
 @bp.route('/chat')
 def chat():
-    if 'email' not in session:
+    if 'login' not in session:
         return redirect(url_for('auth.login'))
-    user_id = session['email']
+    user_id = session['login']          # используем логин как user_id
     sessions = db.get_user_sessions(user_id)
     if not session.get('current_session'):
         last_id = db.get_last_session(user_id)
@@ -37,24 +37,24 @@ def chat():
                          sessions=sessions,
                          current_session=session.get('current_session'))
 
-# API для сессий
+# API для сессий (все используют user_id = session['login'])
 @bp.route('/api/sessions', methods=['GET'])
 def api_get_sessions():
-    if 'email' not in session:
+    if 'login' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
-    return jsonify(db.get_user_sessions(session['email']))
+    return jsonify(db.get_user_sessions(session['login']))
 
 @bp.route('/api/sessions/<session_id>/messages', methods=['GET'])
 def api_get_messages(session_id):
-    if 'email' not in session:
+    if 'login' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
     return jsonify(db.get_session_messages(session_id))
 
 @bp.route('/api/sessions/<session_id>/switch', methods=['POST'])
 def api_switch_session(session_id):
-    if 'email' not in session:
+    if 'login' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
-    user_id = session['email']
+    user_id = session['login']
     session['current_session'] = session_id
     db.set_last_session(user_id, session_id)
     db.update_session_visit(user_id, session_id)
@@ -62,7 +62,7 @@ def api_switch_session(session_id):
 
 @bp.route('/api/sessions/<session_id>/model-info', methods=['GET'])
 def api_get_session_model(session_id):
-    if 'email' not in session:
+    if 'login' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
     with sqlite3.connect(db.CHAT_DB_PATH) as conn:
         c = conn.cursor()
@@ -72,16 +72,16 @@ def api_get_session_model(session_id):
 
 @bp.route('/api/sessions/new', methods=['POST'])
 def api_new_session():
-    if 'email' not in session:
+    if 'login' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
-    session_id = db.create_session(session['email'])
+    session_id = db.create_session(session['login'])
     session['current_session'] = session_id
-    db.set_last_session(session['email'], session_id)
+    db.set_last_session(session['login'], session_id)
     return jsonify({'id': session_id, 'title': 'Новый сеанс'})
 
 @bp.route('/api/sessions/<session_id>/update-title', methods=['POST'])
 def api_update_session_title(session_id):
-    if 'email' not in session:
+    if 'login' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
     data = request.get_json()
     new_title = data.get('title', 'Новый сеанс')
@@ -92,15 +92,15 @@ def api_update_session_title(session_id):
             UPDATE chat_sessions
             SET title = ?, updated_at = ?
             WHERE id = ? AND user_id = ?
-        ''', (new_title, current_time, session_id, session['email']))
+        ''', (new_title, current_time, session_id, session['login']))
         conn.commit()
     return jsonify({'status': 'ok', 'title': new_title})
 
 @bp.route('/api/sessions/<session_id>/delete', methods=['POST'])
 def api_delete_session(session_id):
-    if 'email' not in session:
+    if 'login' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
-    success = db.delete_session_and_messages(session_id, session['email'])
+    success = db.delete_session_and_messages(session_id, session['login'])
     if not success:
         return jsonify({'error': 'Нет прав или сеанс не найден'}), 403
     if session.get('current_session') == session_id:
@@ -109,9 +109,9 @@ def api_delete_session(session_id):
 
 @bp.route('/api/sessions/<session_id>/visit', methods=['POST'])
 def api_update_session_visit(session_id):
-    if 'email' not in session:
+    if 'login' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
-    db.update_session_visit(session['email'], session_id)
+    db.update_session_visit(session['login'], session_id)
     return jsonify({'status': 'ok'})
 
 @bp.route('/api/footer-text', methods=['GET'])
@@ -120,7 +120,7 @@ def api_footer_text():
 
 @bp.route('/clear_history', methods=['POST'])
 def clear_history():
-    if 'email' not in session:
+    if 'login' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
     session_id = session.get('current_session')
     if not session_id:
@@ -138,11 +138,11 @@ def clear_history():
 def send_message():
     current_app.logger.info("=" * 50)
     current_app.logger.info("send_message: НАЧАЛО ОБРАБОТКИ ЗАПРОСА")
-    if 'email' not in session:
+    if 'login' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
 
-    user_id = session['email']
-    user_class = USERS.get(user_id, {}).get('service_class', 2)
+    user_id = session['login']          # логин
+    user_class = session.get('service_class', 2)   # класс обслуживания из сессии
     session_id = session.get('current_session')
     if not session_id:
         session_id = db.create_session(user_id)

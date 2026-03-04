@@ -1,6 +1,5 @@
 services:
   redis:
-#    image: redis:8-alpine
     image: redis:8.0.6-alpine
     restart: always
     ports:
@@ -21,7 +20,6 @@ services:
     volumes:
       - ./data:/app/data
       - ./.env:/app/.env:ro
-      - ./users.list:/app/users.list:ro
     environment:
       FLASK_ENV: production
       OLLAMA_URL: http://host.docker.internal:11434

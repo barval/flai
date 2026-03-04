@@ -4,9 +4,9 @@ bp = Blueprint('queue', __name__)
 
 @bp.route('/api/queue/status', methods=['GET'])
 def api_queue_status():
-    if 'email' not in session:
+    if 'login' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
-    user_id = session['email']
+    user_id = session['login']
     status = current_app.request_queue.get_user_requests_status(user_id)
     queue_length = current_app.request_queue.redis.llen(current_app.request_queue.queue_key)
     status['system'] = {
@@ -18,15 +18,15 @@ def api_queue_status():
 
 @bp.route('/api/queue/counts', methods=['GET'])
 def api_queue_counts():
-    if 'email' not in session:
+    if 'login' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
-    user_id = session['email']
+    user_id = session['login']
     user_queued, total_queued = current_app.request_queue.get_user_queue_counts(user_id)
     return jsonify({'user_queued': user_queued, 'total_queued': total_queued})
 
 @bp.route('/api/queue/result/<request_id>', methods=['GET'])
 def api_check_result(request_id):
-    if 'email' not in session:
+    if 'login' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
     result = current_app.request_queue.check_result(request_id)
     if result:

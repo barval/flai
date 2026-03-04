@@ -58,5 +58,9 @@ cp users.list.exapmle users.list
 ```bash
 docker-compose up --build    
 ```
-8. Откройте http://localhost:5000 и войдите с учетными данными из users.list  
+8. Создайте учётную запись администратора, выполнив команду внутри контейнера:
+```bash
+docker exec -it <имя_контейнера> flask admin-password ваш_пароль_администратора
+```
+9. Откройте http://localhost:5000 и войдите с учетными данными из users.list  
   

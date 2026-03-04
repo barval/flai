@@ -1,7 +1,0 @@
-# ОБЯЗАТЕЛЬНО: этот файл должен существовать и содержать хотя бы одного пользователя
-# Формат: email,password,service_class
-# service_class: 0 - высший, 1 - средний, 2 - низший
-admin@local.com,admin123,0
-manager@local.com,manager123,1
-user@local.com,user123,2
-guest@local.com,guest123,2

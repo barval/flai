@@ -6,6 +6,7 @@ import os
 from .config import load_config
 from .db import init_db, migrate_db_add_response_fields, migrate_db_add_session_visits
 from .queue import RedisRequestQueue
+from .userdb import init_user_db  # новая функция
 from modules import BaseModule, MultimodalModule, ImageModule, CamModule, RagModule, AudioModule
 
 def create_app():
@@ -22,10 +23,13 @@ def create_app():
     app.logger.handlers = [console_handler]
     app.logger.setLevel(logging.DEBUG)
 
-    # Инициализация БД
+    # Инициализация БД чатов (теперь chats.db)
     init_db()
     migrate_db_add_response_fields()
     migrate_db_add_session_visits()
+
+    # Инициализация БД пользователей
+    init_user_db()
 
     # Инициализация модулей
     modules = {}
@@ -42,23 +46,27 @@ def create_app():
     modules['rag'] = RagModule(app)
     modules['audio'] = AudioModule(app)
 
-    app.modules = modules  # сохраняем в приложении для доступа из маршрутов
+    app.modules = modules
 
-    # Инициализация очереди Redis (передаём app)
+    # Инициализация очереди Redis
     app.request_queue = RedisRequestQueue(app)
 
-    # Контекстный процессор для передачи подписи футера во все шаблоны
+    # Контекстный процессор для подписи футера
     @app.context_processor
     def inject_footer():
         return dict(footer_content=app.config.get('FOOTER_TEXT', ""))
 
     # Регистрация маршрутов
-    from . import auth, routes_chat, routes_queue
+    from . import auth, routes_chat, routes_queue, routes_admin, cli
     app.register_blueprint(auth.bp)
     app.register_blueprint(routes_chat.bp)
     app.register_blueprint(routes_queue.bp)
+    app.register_blueprint(routes_admin.bp)  # новый blueprint админки
 
-    # Дополнительная регистрация API для камер (через CamAPI)
+    # Регистрация CLI команд
+    app.cli.add_command(cli.set_admin_password)
+
+    # Дополнительная регистрация API для камер
     if 'cam' in modules:
         from modules.cam import CamAPI
         CamAPI.register_routes(app, modules['cam'])

@@ -14,9 +14,12 @@
 <body>
     <header>
         <h1>ПЛИИ</h1>
-        {% if 'email' in session %}
+        {% if 'login' in session %}
         <div class="logout-container">
-            <span>{{ session['email'] }}</span>
+            <span>{{ session['name'] }}</span>
+            {% if session.get('is_admin') %}
+                <a href="{{ url_for('admin.admin_panel') }}" class="logout-button" style="background-color: #27ae60;">Админка</a>
+            {% endif %}
             <a href="{{ url_for('auth.logout') }}" class="logout-button">Выйти</a>
         </div>
         {% endif %}

@@ -1,0 +1,399 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="admin-container">
+    <h2>Управление пользователями</h2>
+    <button id="add-user-button" class="add-user-button">➕ Добавить пользователя</button>
+    <div class="users-table-wrapper">
+        <table id="users-table">
+            <thead>
+                <tr>
+                    <th>Статус</th>
+                    <th>Логин</th>
+                    <th>Пароль</th>
+                    <th>Имя</th>
+                    <th>Класс</th>
+                    <th>Сеансов</th>
+                    <th>Сообщений</th>
+                    {% if rooms %}
+                    <th>Доступ к камерам</th>
+                    {% endif %}
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody id="users-tbody">
+                <!-- Данные загружаются через JS -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Модальное окно для добавления пользователя -->
+<div id="add-user-modal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>Новый пользователь</h3>
+        <form id="add-user-form">
+            <div class="form-group">
+                <label for="new-login">Логин:</label>
+                <input type="text" id="new-login" name="login" required pattern="[a-z0-9]+" title="Только строчные латинские буквы и цифры">
+            </div>
+            <div class="form-group">
+                <label for="new-password">Пароль:</label>
+                <input type="password" id="new-password" name="password" required>
+            </div>
+            <div class="form-group">
+                <label for="new-name">Имя:</label>
+                <input type="text" id="new-name" name="name" required>
+            </div>
+            <div class="form-group">
+                <label for="new-service-class">Класс:</label>
+                <select id="new-service-class" name="service_class">
+                    <option value="0">0 - высший</option>
+                    <option value="1">1 - средний</option>
+                    <option value="2" selected>2 - низший</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="new-is-active">
+                    <input type="checkbox" id="new-is-active" name="is_active" checked> Активен
+                </label>
+            </div>
+            {% if rooms %}
+            <div class="form-group">
+                <label>Доступ к камерам:</label>
+                <div class="camera-checkboxes">
+                    {% for code, name in rooms.items() %}
+                    <label>
+                        <input type="checkbox" name="camera" value="{{ code }}"> {{ name }}
+                    </label>
+                    {% endfor %}
+                </div>
+                <small>Оставьте все неотмеченными для доступа ко всем камерам.</small>
+            </div>
+            {% endif %}
+            <button type="submit">Создать</button>
+        </form>
+    </div>
+</div>
+
+<!-- Модальное окно для смены пароля -->
+<div id="password-modal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>Смена пароля</h3>
+        <form id="password-form">
+            <input type="hidden" id="password-user-login">
+            <div class="form-group">
+                <label for="new-user-password">Новый пароль:</label>
+                <input type="password" id="new-user-password" required>
+            </div>
+            <button type="submit">Сохранить</button>
+        </form>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadUsers();
+    setupModals();
+});
+
+function loadUsers() {
+    fetch('/admin/api/users')
+        .then(response => response.json())
+        .then(users => {
+            const tbody = document.getElementById('users-tbody');
+            tbody.innerHTML = '';
+            users.forEach(user => {
+                const row = document.createElement('tr');
+                row.dataset.login = user.login;
+
+                // Статус
+                const statusCell = document.createElement('td');
+                const statusCheck = document.createElement('input');
+                statusCheck.type = 'checkbox';
+                statusCheck.checked = user.is_active == 1;
+                statusCheck.addEventListener('change', () => updateUserField(user.login, 'is_active', statusCheck.checked));
+                statusCell.appendChild(statusCheck);
+                row.appendChild(statusCell);
+
+                // Логин
+                const loginCell = document.createElement('td');
+                const loginSpan = document.createElement('span');
+                loginSpan.textContent = user.login;
+                loginCell.appendChild(loginSpan);
+                row.appendChild(loginCell);
+
+                // Пароль (кнопка смены)
+                const passCell = document.createElement('td');
+                const changePassBtn = document.createElement('button');
+                changePassBtn.textContent = 'Сменить';
+                changePassBtn.className = 'change-password-btn';
+                changePassBtn.onclick = () => openPasswordModal(user.login);
+                passCell.appendChild(changePassBtn);
+                row.appendChild(passCell);
+
+                // Имя
+                const nameCell = document.createElement('td');
+                const nameInput = document.createElement('input');
+                nameInput.type = 'text';
+                nameInput.value = user.name;
+                nameInput.addEventListener('change', () => updateUserField(user.login, 'name', nameInput.value));
+                nameCell.appendChild(nameInput);
+                row.appendChild(nameCell);
+
+                // Класс
+                const classCell = document.createElement('td');
+                const classSelect = document.createElement('select');
+                [0,1,2].forEach(val => {
+                    const opt = document.createElement('option');
+                    opt.value = val;
+                    opt.textContent = val;
+                    if (val == user.service_class) opt.selected = true;
+                    classSelect.appendChild(opt);
+                });
+                classSelect.addEventListener('change', () => updateUserField(user.login, 'service_class', parseInt(classSelect.value)));
+                classCell.appendChild(classSelect);
+                row.appendChild(classCell);
+
+                // Сеансы
+                const sessionsCell = document.createElement('td');
+                sessionsCell.textContent = user.sessions_count;
+                row.appendChild(sessionsCell);
+
+                // Сообщения
+                const messagesCell = document.createElement('td');
+                messagesCell.textContent = user.messages_count;
+                row.appendChild(messagesCell);
+
+                // Доступ к камерам (если есть комнаты)
+                {% if rooms %}
+                const camCell = document.createElement('td');
+                const camContainer = document.createElement('div');
+                camContainer.className = 'camera-checkboxes';
+                {% for code, name in rooms.items() %}
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.value = '{{ code }}';
+                cb.checked = user.camera_permissions && user.camera_permissions.includes('{{ code }}');
+                cb.addEventListener('change', () => updateCameraPermissions(user.login));
+                const label = document.createElement('label');
+                label.appendChild(cb);
+                label.appendChild(document.createTextNode(' {{ name }}'));
+                camContainer.appendChild(label);
+                {% endfor %}
+                camCell.appendChild(camContainer);
+                row.appendChild(camCell);
+                {% endif %}
+
+                // Действия
+                const actionsCell = document.createElement('td');
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Удалить';
+                deleteBtn.className = 'delete-user-btn';
+                deleteBtn.onclick = () => deleteUser(user.login);
+                actionsCell.appendChild(deleteBtn);
+                row.appendChild(actionsCell);
+
+                tbody.appendChild(row);
+            });
+        });
+}
+
+function updateUserField(login, field, value) {
+    const data = { [field]: value };
+    fetch(`/admin/api/users/${login}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    }).then(response => response.json()).then(result => {
+        if (result.status === 'ok') {
+            console.log('Updated', login, field, value);
+        }
+    });
+}
+
+function updateCameraPermissions(login) {
+    const row = document.querySelector(`tr[data-login="${login}"]`);
+    const checkboxes = row.querySelectorAll('.camera-checkboxes input[type=checkbox]');
+    const permissions = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
+    fetch(`/admin/api/users/${login}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ camera_permissions: permissions })
+    }).then(response => response.json());
+}
+
+function deleteUser(login) {
+    if (confirm(`Удалить пользователя ${login}?`)) {
+        fetch(`/admin/api/users/${login}`, { method: 'DELETE' })
+            .then(response => response.json())
+            .then(result => {
+                if (result.status === 'ok') {
+                    loadUsers();
+                }
+            });
+    }
+}
+
+function openPasswordModal(login) {
+    document.getElementById('password-user-login').value = login;
+    document.getElementById('password-modal').style.display = 'block';
+}
+
+function setupModals() {
+    const modal = document.getElementById('add-user-modal');
+    const passModal = document.getElementById('password-modal');
+    const addBtn = document.getElementById('add-user-button');
+    const closeSpans = document.querySelectorAll('.modal .close');
+
+    addBtn.onclick = () => modal.style.display = 'block';
+    closeSpans.forEach(span => span.onclick = () => {
+        modal.style.display = 'none';
+        passModal.style.display = 'none';
+    });
+    window.onclick = event => {
+        if (event.target == modal) modal.style.display = 'none';
+        if (event.target == passModal) passModal.style.display = 'none';
+    };
+
+    document.getElementById('add-user-form').onsubmit = e => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const data = {
+            login: formData.get('login'),
+            password: formData.get('password'),
+            name: formData.get('name'),
+            service_class: parseInt(formData.get('service_class')),
+            is_active: formData.get('is_active') === 'on',
+            camera_permissions: Array.from(document.querySelectorAll('#add-user-modal input[name="camera"]:checked')).map(cb => cb.value)
+        };
+        fetch('/admin/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        }).then(res => res.json()).then(result => {
+            if (result.status === 'ok') {
+                modal.style.display = 'none';
+                loadUsers();
+                e.target.reset();
+            } else {
+                alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
+            }
+        });
+    };
+
+    document.getElementById('password-form').onsubmit = e => {
+        e.preventDefault();
+        const login = document.getElementById('password-user-login').value;
+        const newPassword = document.getElementById('new-user-password').value;
+        fetch(`/admin/api/users/${login}/password`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_password: newPassword })
+        }).then(res => res.json()).then(result => {
+            if (result.status === 'ok') {
+                passModal.style.display = 'none';
+                document.getElementById('new-user-password').value = '';
+            }
+        });
+    };
+}
+</script>
+
+<style>
+.admin-container {
+    padding: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+.users-table-wrapper {
+    overflow-x: auto;
+    margin-top: 20px;
+}
+#users-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+#users-table th, #users-table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+#users-table th {
+    background-color: #f2f2f2;
+}
+#users-table tr:hover {
+    background-color: #f5f5f5;
+}
+.camera-checkboxes {
+    max-height: 150px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.4);
+}
+.modal-content {
+    background-color: #fefefe;
+    margin: 15% auto;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 400px;
+    border-radius: 8px;
+    position: relative;
+}
+.modal .close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    position: absolute;
+    top: 10px;
+    right: 20px;
+}
+.modal .close:hover,
+.modal .close:focus {
+    color: black;
+    text-decoration: none;
+    cursor: pointer;
+}
+.add-user-button {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+}
+.delete-user-btn {
+    background-color: #e74c3c;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.change-password-btn {
+    background-color: #f39c12;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+</style>
+{% endblock %}

@@ -6,7 +6,7 @@ from datetime import datetime
 from flask import current_app, g
 
 DATA_DIR = 'data'
-CHAT_DB_PATH = os.path.join(DATA_DIR, 'chat.db')
+CHAT_DB_PATH = os.path.join(DATA_DIR, 'chats.db')   # переименовано
 
 def get_db():
     """Возвращает соединение с БД (для использования в маршрутах)."""
@@ -97,7 +97,7 @@ def migrate_db_add_session_visits():
     except Exception as e:
         current_app.logger.error(f"Ошибка миграции session_visits: {str(e)}")
 
-# Функции для работы с сессиями и сообщениями
+# Функции для работы с сессиями и сообщениями (все используют user_id = логин)
 def get_user_sessions(user_id):
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row

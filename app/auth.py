@@ -21,7 +21,11 @@ def login():
             session['service_class'] = user['service_class']
             session['is_admin'] = user['is_admin']
             session['user_id'] = user['login']   # для совместимости с chat.db
-            return redirect(url_for('chat.chat'))
+            # Редирект для администратора
+            if user['is_admin']:
+                return redirect(url_for('admin.admin_panel'))
+            else:
+                return redirect(url_for('chat.chat'))
         else:
             return render_template('login.html', error='Неверный логин или пароль')
     return render_template('login.html')

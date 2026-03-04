@@ -20,6 +20,9 @@ def index():
 def chat():
     if 'login' not in session:
         return redirect(url_for('auth.login'))
+    # Если пользователь админ, отправляем в админку
+    if session.get('is_admin'):
+        return redirect(url_for('admin.admin_panel'))
     user_id = session['login']          # используем логин как user_id
     sessions = db.get_user_sessions(user_id)
     if not session.get('current_session'):

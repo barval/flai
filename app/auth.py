@@ -1,7 +1,7 @@
 import logging
 from flask import Blueprint, render_template, request, redirect, url_for, session, current_app
 from werkzeug.security import check_password_hash
-from .userdb import get_user_by_login, init_user_db
+from .userdb import get_user_by_login
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('auth', __name__)

@@ -6,7 +6,7 @@ import os
 from .config import load_config
 from .db import init_db, migrate_db_add_response_fields, migrate_db_add_session_visits
 from .queue import RedisRequestQueue
-from .userdb import init_user_db  # новая функция
+from .userdb import init_user_db
 from modules import BaseModule, MultimodalModule, ImageModule, CamModule, RagModule, AudioModule
 
 def create_app():
@@ -61,7 +61,7 @@ def create_app():
     app.register_blueprint(auth.bp)
     app.register_blueprint(routes_chat.bp)
     app.register_blueprint(routes_queue.bp)
-    app.register_blueprint(routes_admin.bp)  # новый blueprint админки
+    app.register_blueprint(routes_admin.bp)
 
     # Регистрация CLI команд
     app.cli.add_command(cli.set_admin_password)

@@ -276,7 +276,6 @@ function setupModals() {
         return;
     }
 
-    // Используем addEventListener вместо onclick для надёжности
     addBtn.addEventListener('click', () => {
         console.log('Add button clicked');
         modal.style.display = 'block';
@@ -294,19 +293,19 @@ function setupModals() {
         if (event.target == passModal) passModal.style.display = 'none';
     });
 
-    // Обработка формы добавления
     const addForm = document.getElementById('add-user-form');
     if (addForm) {
         addForm.addEventListener('submit', function(e) {
             e.preventDefault();
             const formData = new FormData(e.target);
+            const cameraPermissions = Array.from(document.querySelectorAll('#add-user-modal input[name="camera"]:checked')).map(cb => cb.value);
             const data = {
                 login: formData.get('login'),
                 password: formData.get('password'),
                 name: formData.get('name'),
                 service_class: parseInt(formData.get('service_class')),
                 is_active: formData.get('is_active') === 'on',
-                camera_permissions: Array.from(document.querySelectorAll('#add-user-modal input[name="camera"]:checked')).map(cb => cb.value)
+                camera_permissions: cameraPermissions.length > 0 ? cameraPermissions : null
             };
             fetch('/admin/api/users', {
                 method: 'POST',
@@ -327,7 +326,6 @@ function setupModals() {
         });
     }
 
-    // Обработка формы смены пароля
     const passForm = document.getElementById('password-form');
     if (passForm) {
         passForm.addEventListener('submit', function(e) {

@@ -7,7 +7,6 @@ from flask import Blueprint, render_template, request, session, jsonify, current
 
 from . import db
 from .utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, format_prompt
-from .userdb import get_user_by_login   # для проверки активности (опционально)
 
 bp = Blueprint('chat', __name__)
 
@@ -141,8 +140,8 @@ def send_message():
     if 'login' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
 
-    user_id = session['login']          # логин
-    user_class = session.get('service_class', 2)   # класс обслуживания из сессии
+    user_id = session['login']
+    user_class = session.get('service_class', 2)
     session_id = session.get('current_session')
     if not session_id:
         session_id = db.create_session(user_id)
@@ -204,8 +203,6 @@ def send_message():
     if is_first_message:
         db.update_session_title(session_id, message_text, file_name)
 
-    # Обработка аудио
-    transcribed_text = None
     if request_type == 'audio':
         current_app.logger.info("send_message: обнаружено аудио, запуск транскрибации")
         transcribe_start = time.time()
@@ -243,7 +240,6 @@ def send_message():
                 'message': 'Аудио распознано'
             })
 
-    # Для изображений и текста – ставим в очередь
     if request_type == 'image' and file_data:
         request_data = {
             'type': 'image',

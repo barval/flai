@@ -5,7 +5,7 @@ import base64
 import time
 import json
 from datetime import datetime
-from app.userdb import check_camera_permission  # импортируем функцию проверки
+from app.userdb import check_camera_permission
 
 class CamModule:
     """Модуль для работы с системой видеонаблюдения"""
@@ -58,7 +58,6 @@ class CamModule:
         all_rooms = self.get_all_rooms()
         if user_login is None:
             return all_rooms
-        # Получаем разрешённые коды
         from app.userdb import get_user_by_login
         user = get_user_by_login(user_login)
         if user and user['camera_permissions'] is not None:
@@ -67,7 +66,7 @@ class CamModule:
                 return {code: name for code, name in all_rooms.items() if code in allowed_codes}
             except:
                 return {}
-        return all_rooms  # если permissions == NULL, то доступны все
+        return all_rooms
     
     def check_availability(self, force=False):
         current_time = time.time()
@@ -162,10 +161,6 @@ class CamModule:
         return None
     
     def get_snapshot(self, user_login, room_code):
-        """
-        Получение снимка с камеры с проверкой прав доступа.
-        """
-        # Проверяем доступ
         if not self.check_permission(user_login, room_code):
             return {
                 'success': False,
@@ -289,7 +284,6 @@ class CamModule:
             }
     
     def get_available_rooms(self, user_login):
-        """Возвращает список доступных комнат для пользователя."""
         self.check_availability()
         if not self.available:
             return {
@@ -299,7 +293,6 @@ class CamModule:
                 'room_names': self.room_names
             }
         
-        # Получаем список всех комнат (или только разрешённых)
         allowed_rooms = self.get_available_rooms(user_login)
         return {
             'success': True,
@@ -308,10 +301,9 @@ class CamModule:
         }
 
 class CamAPI:
-    """Класс для регистрации API эндпоинтов модуля камер"""
-    
     @staticmethod
     def register_routes(app, cam_module):
+        from flask import session, jsonify
         
         @app.route('/api/cam/status', methods=['GET'])
         def cam_status():

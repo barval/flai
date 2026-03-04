@@ -95,3 +95,10 @@ footer {
         padding: 15px;
     }
 }
+
+.user-info {
+    color: #2c3e50;
+    font-size: 1.2em;
+    margin-bottom: 5px;
+    font-weight: 500;
+}

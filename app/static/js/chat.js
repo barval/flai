@@ -1027,6 +1027,10 @@ async function saveChatAsHTML() {
         footerText = "Ошибка загрузки подписи";
     }
 
+    // Получаем имя пользователя из шапки
+    const userNameElement = document.querySelector('.logout-container span');
+    const userName = userNameElement ? userNameElement.textContent.trim() : 'Пользователь';
+
     // Активный сеанс
     const activeSession = document.querySelector('.session-item.active');
     if (!activeSession) {
@@ -1112,6 +1116,7 @@ async function saveChatAsHTML() {
     <main>
         <div class="chat-wrapper">
             <div class="chat-header">
+                <p class="user-info">Пользователь: ${escapeHtml(userName)}</p>
                 <h1>Сеанс: ${escapeHtml(title)}</h1>
                 <p>📅 Сохранено: ${now.toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' })}</p>
                 <p>💬 Всего сообщений: ${messages.length}</p>

@@ -32,6 +32,7 @@ def admin_panel():
 def get_users():
     try:
         users = list_users(exclude_admin=True)
+        result = []
         with get_chat_db() as conn:
             for u in users:
                 stats = conn.execute('''
@@ -50,7 +51,8 @@ def get_users():
                         u_dict['camera_permissions'] = []
                 else:
                     u_dict['camera_permissions'] = []
-        return jsonify(users)
+                result.append(u_dict)
+        return jsonify(result)
     except Exception as e:
         logger.error(f"Error in get_users: {str(e)}", exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500

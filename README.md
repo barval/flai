@@ -222,7 +222,7 @@ All settings are defined in the `.env` file. Below are the most important variab
 ## 👥 User Management
 You can manage users through the Admin Panel (/admin) – add, edit, delete, change passwords and assign access rights to cameras.
 
-The administrator account is created and changed by the command:
+The password for the administrator account is created and changed by the command:
 ```bash
 docker exec -it flai_web_1 flask admin-password <your_admin_password>
 ```

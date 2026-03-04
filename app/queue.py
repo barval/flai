@@ -211,7 +211,8 @@ class RedisRequestQueue:
             elif action_type == 'camera':
                 if 'cam' in self.app.modules and self.app.modules['cam'].available:
                     camera_start_time = time.time()
-                    camera_result = self.app.modules['cam'].get_snapshot(query)
+                    # Исправлено: передаём user_id и query
+                    camera_result = self.app.modules['cam'].get_snapshot(user_id, query)
                     camera_time = round(time.time() - camera_start_time, 1)
                     if camera_result['success']:
                         completion_time_for_db = get_current_time_in_timezone_for_db(self.app)

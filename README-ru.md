@@ -2,7 +2,7 @@
  
   # Fully Local AI (FLAI)
   
-  **FLAI - a fully local personal assistant based on artificial intelligence.**
+  **ПЛИИ - полностью локальный персональный ассистент на основе искусственного интеллекта.**
   
   [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
   [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)

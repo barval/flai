@@ -12,6 +12,7 @@ from modules import BaseModule, MultimodalModule, ImageModule, CamModule, RagMod
 
 babel = Babel()
 
+@babel.localeselector
 def get_locale():
     # Language from session or Accept-Language header
     if 'language' in session:
@@ -33,7 +34,7 @@ def create_app():
     app.logger.setLevel(logging.DEBUG)
 
     # Initialize Babel
-    babel.init_app(app, locale_selector=get_locale)
+    babel.init_app(app)
     app.jinja_env.add_extension('jinja2.ext.i18n')  # for _() in templates
 
     # Initialize chat DB

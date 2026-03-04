@@ -1016,7 +1016,7 @@ function deleteSession(sessionId) {
 // Сохранение чата как HTML
 // -------------------------------
 async function saveChatAsHTML() {
-    // Получаем подпись футера
+    // Получаем текст подвала
     let footerText = "";
     try {
         const response = await fetch('/api/footer-text');
@@ -1027,17 +1027,19 @@ async function saveChatAsHTML() {
         footerText = "Ошибка загрузки подписи";
     }
 
+    // Активный сеанс
     const activeSession = document.querySelector('.session-item.active');
     if (!activeSession) {
         alert('Нет активного сеанса для сохранения');
         return;
     }
 
+    // Заголовок сеанса
     const title = activeSession.querySelector('.session-title')?.textContent || 'Чат';
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 
-    // Разделяем подпись на строки, если есть (с)
+    // Разделяем подпись на две строки, если есть (с)
     let footerLine1 = footerText, footerLine2 = '';
     if (footerText.includes('(с)')) {
         const parts = footerText.split('(с)', 1);
@@ -1069,9 +1071,6 @@ async function saveChatAsHTML() {
         return;
     }
 
-    // Получаем заголовок сайта из шапки (чтобы совпадал с сайтом)
-    const siteTitle = document.querySelector('header h1')?.textContent || 'ПЛИИ';
-
     // Загружаем актуальные CSS-файлы
     let styleContent = '';
     let exportStyleContent = '';
@@ -1094,16 +1093,10 @@ async function saveChatAsHTML() {
     // Объединяем стили
     const combinedStyles = styleContent + '\n' + exportStyleContent;
 
-    // Формируем дату сохранения в нужном формате
-    const formattedDate = now.toLocaleString('ru-RU', { 
-        day: '2-digit', 
-        month: '2-digit', 
-        year: 'numeric', 
-        hour: '2-digit', 
-        minute: '2-digit', 
-        second: '2-digit' 
-    });
+    // Получаем заголовок сайта из живой страницы
+    const siteTitle = document.querySelector('header h1')?.textContent || 'ПЛИИ';
 
+    // Формируем HTML
     const html = `<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -1120,7 +1113,7 @@ async function saveChatAsHTML() {
         <div class="chat-wrapper">
             <div class="chat-header">
                 <h1>Сеанс: ${escapeHtml(title)}</h1>
-                <p>📅 Сохранено: ${formattedDate}</p>
+                <p>📅 Сохранено: ${now.toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' })}</p>
                 <p>💬 Всего сообщений: ${messages.length}</p>
             </div>
             <div class="chat-messages">

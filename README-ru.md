@@ -129,7 +129,8 @@ docker exec ollama ollama pull gpt-oss:20b
 ```yaml
 services:
   automatic1111:
-    image: siutin/stable-diffusion-webui-docker:latest-cuda
+    # image: siutin/stable-diffusion-webui-docker:latest-cuda # CPU
+    image: siutin/stable-diffusion-webui-docker:latest-cuda   # GPU
     container_name: sd-webui
     networks:
       - flai_network
@@ -140,8 +141,11 @@ services:
       - ./embeddings:/app/stable-diffusion-webui/embeddings
       - ./outputs:/app/stable-diffusion-webui/outputs
     environment:
+    # GPU
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_REQUIRE_CUDA=cuda>=13.1
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     runtime: nvidia
     command:
       - /app/stable-diffusion-webui/webui.sh
@@ -194,6 +198,8 @@ networks:
     external: true
 ```
 
+---
+
 ## ⚙️ Конфигурация (.env)
 Все настройки задаются в файле `.env`. Ниже приведены наиболее важные переменные; полный список см. в `.env.example`.
 
@@ -211,6 +217,8 @@ networks:
 | `CAMERA_API_URL` | Адрес API камер (если используется) | `http://host.docker.internal:5005` |
 | `FOOTER_TEXT` | Пользовательский текст подвала | `ПЛИИ v6.0 (с) 2026` |
 
+---
+
 ## 👥 Управление пользователями
 Вы можете управлять пользователями через Панель администратора (/admin) – добавлять, редактировать, удалять, менять пароли и назначать права доступа к камерам.
 
@@ -219,10 +227,14 @@ networks:
 docker exec -it flai_web_1 flask admin-password <ваш_пароль_администратора>
 ```
 
+---
+
 ## 🗺️ Планы развития
 - 🗣️ Синтез речи (TTS) – озвучивание ответов ассистента с помощью локального TTS‑движка (например, Coqui TTS, Piper) для полноценного голосового взаимодействия.
 - 📚 RAG с Qdrant – реализация генерации с дополнением извлечения (Retrieval‑Augmented Generation) по загруженным пользователем документам (PDF, TXT и др.) с использованием векторной базы данных Qdrant для семантического поиска.
 - 🧠 Долговременная память диалогов – поддержание длительного контекста между сеансами путём суммаризации или хранения истории общения.
+
+---
 
 ## 📄 Лицензия
 Этот проект распространяется под лицензией MIT – подробности см. в файле [LICENSE-ru](LICENSE-ru).

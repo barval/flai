@@ -1016,6 +1016,7 @@ function deleteSession(sessionId) {
 // Сохранение чата как HTML
 // -------------------------------
 async function saveChatAsHTML() {
+    // Получаем подпись футера
     let footerText = "";
     try {
         const response = await fetch('/api/footer-text');
@@ -1036,6 +1037,7 @@ async function saveChatAsHTML() {
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 
+    // Разделяем подпись на строки, если есть (с)
     let footerLine1 = footerText, footerLine2 = '';
     if (footerText.includes('(с)')) {
         const parts = footerText.split('(с)', 1);
@@ -1043,6 +1045,7 @@ async function saveChatAsHTML() {
         footerLine2 = '(с)' + footerText.split('(с)')[1].trim();
     }
 
+    // Собираем сообщения
     const messages = [];
     document.querySelectorAll('.user-message, .assistant-message, .bot-message').forEach(msgEl => {
         const role = msgEl.classList.contains('user-message') ? 'user' : 'assistant';
@@ -1066,6 +1069,9 @@ async function saveChatAsHTML() {
         return;
     }
 
+    // Получаем заголовок сайта из шапки (чтобы совпадал с сайтом)
+    const siteTitle = document.querySelector('header h1')?.textContent || 'ПЛИИ';
+
     // Загружаем актуальные CSS-файлы
     let styleContent = '';
     let exportStyleContent = '';
@@ -1088,6 +1094,16 @@ async function saveChatAsHTML() {
     // Объединяем стили
     const combinedStyles = styleContent + '\n' + exportStyleContent;
 
+    // Формируем дату сохранения в нужном формате
+    const formattedDate = now.toLocaleString('ru-RU', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit' 
+    });
+
     const html = `<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -1098,13 +1114,13 @@ async function saveChatAsHTML() {
 </head>
 <body>
     <header>
-        <h1>ИИ Локальный</h1>
+        <h1>${escapeHtml(siteTitle)}</h1>
     </header>
     <main>
         <div class="chat-wrapper">
             <div class="chat-header">
                 <h1>Сеанс: ${escapeHtml(title)}</h1>
-                <p>📅 Сохранено: ${now.toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' })}</p>
+                <p>📅 Сохранено: ${formattedDate}</p>
                 <p>💬 Всего сообщений: ${messages.length}</p>
             </div>
             <div class="chat-messages">

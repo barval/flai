@@ -1066,8 +1066,27 @@ async function saveChatAsHTML() {
         return;
     }
 
-    const styles = `...`; // Здесь должен быть полный CSS из export.css
-    // В реальном коде нужно вставить содержимое export.css, но для краткости здесь не дублируем.
+    // Загружаем актуальные CSS-файлы
+    let styleContent = '';
+    let exportStyleContent = '';
+    try {
+        const styleResponse = await fetch('/static/style.css');
+        styleContent = await styleResponse.text();
+    } catch (e) {
+        console.error('Не удалось загрузить style.css', e);
+    }
+    try {
+        const exportResponse = await fetch('/static/export.css');
+        exportStyleContent = await exportResponse.text();
+    } catch (e) {
+        console.error('Не удалось загрузить export.css', e);
+    }
+
+    // Удаляем @import из export.css (если он там есть)
+    exportStyleContent = exportStyleContent.replace(/@import\s+url\(['"]?style\.css['"]?\);?\s*/g, '');
+
+    // Объединяем стили
+    const combinedStyles = styleContent + '\n' + exportStyleContent;
 
     const html = `<!DOCTYPE html>
 <html lang="ru">
@@ -1075,7 +1094,7 @@ async function saveChatAsHTML() {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${escapeHtml(title)} - Сохраненный чат</title>
-    <link rel="stylesheet" href="/static/export.css">
+    <style>${combinedStyles}</style>
 </head>
 <body>
     <header>

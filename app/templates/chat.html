@@ -88,7 +88,8 @@
         'user': '{{ _("user") }}',
         'session': '{{ _("session") }}',
         'saved_on': '{{ _("saved_on") }}',
-        'total_messages': '{{ _("total_messages") }}'
+        'total_messages': '{{ _("total_messages") }}',
+        'speak': '{{ _("speak")|tojson }}'  
     };
     window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
     function t(key) {

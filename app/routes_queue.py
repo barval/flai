@@ -7,7 +7,8 @@ def api_queue_status():
     if 'login' not in session:
         return jsonify({'error': 'Не авторизован'}), 401
     user_id = session['login']
-    status = current_app.request_queue.get_user_requests_status(user_id)
+    lang = session.get('language', 'ru')
+    status = current_app.request_queue.get_user_requests_status(user_id, lang=lang)
     queue_length = current_app.request_queue.redis.llen(current_app.request_queue.queue_key)
     status['system'] = {
         'total_queued': queue_length,

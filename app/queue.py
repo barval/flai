@@ -37,7 +37,11 @@ class RedisRequestQueue:
                     self.app.logger.warning(f"Task {task['id']} waited too long in queue ({queue_time:.1f}s). Cancelling.")
                     self.redis.hset(self.results_key, task['id'], pickle.dumps({
                         'status': 'error',
-                        'error': _('Request cancelled - too long in queue ({queue_time:.1f}s)'),
+                        'error': self.app.modules['base']._(
+                            'Request cancelled - too long in queue ({queue_time:.1f}s)',
+                            lang=task.get('lang', 'ru'),
+                            queue_time=queue_time
+                        ),
                         'result': {'session_id': task['session_id']},
                         'timestamp': time.time()
                     }))
@@ -79,7 +83,7 @@ class RedisRequestQueue:
             'data': request_data,
             'timestamp': timestamp,
             'user_class': user_class,
-            'session_title': self._get_session_title(session_id),
+            'session_title': self._get_session_title(session_id, lang),
             'lang': lang  # Store user's language
         }
         self.app.logger.info(f"RedisRequestQueue.add_request: adding task {request_id} for session {session_id} at {timestamp}")
@@ -106,16 +110,16 @@ class RedisRequestQueue:
                 continue
         return user_count, total
 
-    def _get_session_title(self, session_id):
+    def _get_session_title(self, session_id, lang='ru'):
         try:
             with sqlite3.connect(CHAT_DB_PATH) as conn:
                 c = conn.cursor()
                 c.execute('SELECT title FROM chat_sessions WHERE id = ?', (session_id,))
                 row = c.fetchone()
-                return row[0] if row else _('Unknown session')
+                return row[0] if row else self.app.modules['base']._('Unknown session', lang=lang)
         except Exception as e:
             self.app.logger.error(f"Error getting session title: {str(e)}")
-            return _('Unknown session')
+            return self.app.modules['base']._('Unknown session', lang=lang)
 
     def _process_request(self, task):
         self.app.logger.info(f"RedisRequestQueue._process_request: processing task {task['id']} for session {task['session_id']}")
@@ -172,7 +176,7 @@ class RedisRequestQueue:
                             image_result['gen_time'] = gen_time
                             image_result['mm_model'] = self.app.config['LLM_MULTIMODAL_MODEL']
                             image_result['gen_model'] = self.app.config['AUTOMATIC1111_MODEL']
-                            message_text = _('Image generated from request: {query}').format(query=query)
+                            message_text = self.app.modules['base']._('Image generated from request: {query}', lang=lang, query=query)
                             save_message(
                                 session_id, 'assistant', message_text,
                                 image_result['image_data'], image_result['file_type'],
@@ -204,7 +208,7 @@ class RedisRequestQueue:
                             is_error = True
                             process_time = mm_time + gen_time
                 else:
-                    final_response = "⚠️ " + _('Image generation module unavailable')
+                    final_response = "⚠️ " + self.app.modules['base']._('Image generation module unavailable', lang=lang)
                     model_used = 'system'
                     is_error = True
                     process_time = 0
@@ -219,13 +223,13 @@ class RedisRequestQueue:
                         camera_model = 'camera'
                         save_message(
                             session_id, 'assistant',
-                            _('Camera snapshot: {room_name}').format(room_name=camera_result['room_name']),
+                            self.app.modules['base']._('Camera snapshot: {room_name}', lang=lang, room_name=camera_result['room_name']),
                             camera_result['image_data'], camera_result['image_type'],
                             camera_result['file_name'], camera_model,
                             response_time=str(camera_time)
                         )
                         first_message = {
-                            'response': _('Camera snapshot: {room_name}').format(room_name=camera_result['room_name']),
+                            'response': self.app.modules['base']._('Camera snapshot: {room_name}', lang=lang, room_name=camera_result['room_name']),
                             'session_id': session_id,
                             'model_used': camera_model,
                             'assistant_timestamp': completion_time_for_db,
@@ -269,7 +273,7 @@ class RedisRequestQueue:
                         is_error = True
                         process_time = camera_time
                 else:
-                    final_response = "⚠️ " + _('Camera module unavailable')
+                    final_response = "⚠️ " + self.app.modules['base']._('Camera module unavailable', lang=lang)
                     model_used = 'system'
                     is_error = True
                     process_time = 0
@@ -319,7 +323,7 @@ class RedisRequestQueue:
                     process_time = round(time.time() - process_start_time, 1)
                     is_error = True
             else:
-                bot_reply = "⚠️ " + _('Multimodal model unavailable')
+                bot_reply = "⚠️ " + self.app.modules['base']._('Multimodal model unavailable', lang=lang)
                 process_time = round(time.time() - process_start_time, 1)
                 is_error = True
             completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
@@ -336,14 +340,14 @@ class RedisRequestQueue:
         else:
             completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
             return {
-                'error': _('Unknown request type'),
+                'error': self.app.modules['base']._('Unknown request type', lang=lang),
                 'session_id': session_id,
                 'assistant_timestamp': completion_time_for_db,
                 'is_error': True,
                 'response_time': 0
             }
 
-    def get_user_requests_status(self, user_id):
+    def get_user_requests_status(self, user_id, lang='ru'):
         result = {'processing': None, 'queued': [], 'recent_completed': []}
         user_requests = self.redis.smembers(f"{self.user_requests_key}:{user_id}")
         user_requests = {r.decode() if isinstance(r, bytes) else r for r in user_requests}
@@ -354,7 +358,7 @@ class RedisRequestQueue:
             if req_id in user_requests:
                 task = pickle.loads(task_data)
                 task['status'] = 'processing'
-                result['processing'] = self._format_request_info(task)
+                result['processing'] = self._format_request_info(task, lang)
 
         queue_length = self.redis.llen(self.queue_key)
         queue_tasks = self.redis.lrange(self.queue_key, 0, queue_length - 1) if queue_length > 0 else []
@@ -364,16 +368,16 @@ class RedisRequestQueue:
             if task['user_id'] == user_id:
                 task['status'] = 'queued'
                 task['position_info'] = {'position': position, 'estimated_seconds': max(1, position * 5)}
-                result['queued'].append(self._format_request_info(task))
+                result['queued'].append(self._format_request_info(task, lang))
             position += 1
         return result
 
-    def _format_request_info(self, task):
+    def _format_request_info(self, task, lang='ru'):
         type_icons = {'text': '💬', 'image': '🎨', 'camera': '📷', 'reasoning': '🧠', 'audio': '🎤'}
         return {
             'id': task['id'],
             'session_id': task['session_id'],
-            'session_title': task.get('session_title', _('Unknown session')),
+            'session_title': task.get('session_title', self.app.modules['base']._('Unknown session', lang=lang)),
             'type': task['data'].get('type', 'unknown'),
             'type_icon': type_icons.get(task['data'].get('type', 'unknown'), '📄'),
             'status': task.get('status', 'queued'),

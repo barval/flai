@@ -1,5 +1,6 @@
 <div align="center">
- 
+  <img src="docs/logo.png" alt="Fully Local AI (FLAI)" width="200">
+
   # Fully Local AI (FLAI)
   
   **FLAI — a fully local personal assistant powered by artificial intelligence.**  

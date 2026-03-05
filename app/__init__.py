@@ -25,13 +25,17 @@ def create_app():
     # Load configuration
     load_config(app)
 
-    # Explicit Babel configuration with correct absolute path
+    # Explicit Babel configuration with absolute path
     translations_path = os.path.join(app.root_path, '..', 'translations')
     app.config['BABEL_TRANSLATION_DIRECTORIES'] = translations_path
     app.config['BABEL_DEFAULT_LOCALE'] = 'ru'
 
-    # Log the translations path for debugging
+    # Log the translations path and check if .mo files exist
     app.logger.info(f"Translations path: {translations_path}")
+    ru_mo = os.path.join(translations_path, 'ru', 'LC_MESSAGES', 'messages.mo')
+    en_mo = os.path.join(translations_path, 'en', 'LC_MESSAGES', 'messages.mo')
+    app.logger.info(f"Russian .mo exists: {os.path.exists(ru_mo)}")
+    app.logger.info(f"English .mo exists: {os.path.exists(en_mo)}")
 
     # Setup logging
     formatter = Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -46,10 +50,6 @@ def create_app():
     app.jinja_env.add_extension('jinja2.ext.i18n')  # for _() in templates
     # Make _ available globally in templates
     app.jinja_env.globals['_'] = gettext
-
-    # Log available translations for debugging
-    from flask_babel import list_translations
-    app.logger.info(f"Available translations: {[str(l) for l in list_translations()]}")
 
     # Initialize chat DB
     init_db()

@@ -80,12 +80,12 @@ def create_app():
     modules['audio'] = AudioModule(app)
 
     # TTS module
-    if app.config.get('MELOTTS_URL'):
+    if app.config.get('PIPER_URL'):
         from modules.tts import TTSModule
         modules['tts'] = TTSModule(app)
         app.logger.info("TTS module enabled")
     else:
-        app.logger.info("TTS module disabled (MELOTTS_URL not set)")
+        app.logger.info("TTS module disabled (PIPER_URL not set)")
 
     app.modules = modules
 

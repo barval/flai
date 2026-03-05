@@ -6,7 +6,7 @@ from flask_babel import gettext as _
 from flask_babel import force_locale
 
 class TTSModule:
-    """Module for text-to-speech synthesis via MeloTTS."""
+    """Module for text-to-speech synthesis via Piper TTS."""
 
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
@@ -22,27 +22,30 @@ class TTSModule:
                 return _(key, **kwargs)
 
     def init_app(self, app):
+        """Initialize module with Flask app."""
         self.app = app
-        self.tts_url = app.config.get('MELOTTS_URL')
-        self.timeout = app.config.get('MELOTTS_TIMEOUT', 30)
+        self.tts_url = app.config.get('PIPER_URL')
+        self.timeout = app.config.get('PIPER_TIMEOUT', 30)
         self.check_availability()
         if self.available:
             self.logger.info(f"TTSModule initialized and available (URL: {self.tts_url}), timeout: {self.timeout}s")
         else:
-            self.logger.warning(f"TTSModule initialized, but MeloTTS unavailable ({self.tts_url})")
+            self.logger.warning(f"TTSModule initialized, but Piper TTS unavailable ({self.tts_url})")
 
     def check_availability(self):
+        """Check Piper TTS service availability."""
         if not self.tts_url:
-            self.logger.error("MELOTTS_URL not configured")
+            self.logger.error("PIPER_URL not configured")
             return False
         try:
-            # Simple accessibility check (HEAD request)
-            response = requests.head(self.tts_url, timeout=3)
-            if response.status_code < 500:
+            # Simple accessibility check (HEAD request to /health)
+            base_url = self.tts_url.replace('/tts', '')
+            response = requests.head(f"{base_url}/health", timeout=3)
+            if response.status_code == 200:
                 self.available = True
                 return True
         except Exception as e:
-            self.logger.error(f"Error checking MeloTTS availability: {str(e)}")
+            self.logger.error(f"Error checking Piper TTS availability: {str(e)}")
         self.available = False
         return False
 
@@ -52,7 +55,7 @@ class TTSModule:
             self.logger.error("TTS unavailable")
             return None
         try:
-            # We expect the MeloTTS service to accept a JSON POST with the text and language fields.
+            # We expect the Piper TTS service to accept a JSON POST with the text and language fields.
             payload = {'text': text, 'language': lang}
             self.logger.info(f"Sending TTS request for text (len={len(text)}) in {lang}")
             response = requests.post(self.tts_url, json=payload, timeout=self.timeout)

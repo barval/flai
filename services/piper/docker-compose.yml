@@ -1,0 +1,31 @@
+# piper tts service
+services:
+  piper:
+    build:
+      context: .
+      dockerfile: Dockerfile.piper
+    container_name: piper
+    restart: unless-stopped
+    ports:
+      - "18888:8888"
+    networks:
+      - flai_network
+    volumes:
+      - piper_models:/app/models
+    # Uncomment for GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  piper_models:
+    external: true
+    name: piper_models
+
+networks:
+  flai_network:
+    external: true

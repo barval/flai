@@ -3,6 +3,9 @@ import logging
 import requests
 from datetime import datetime
 import os
+from flask import current_app
+from flask_babel import gettext as _
+from flask_babel import force_locale
 
 from app.utils import format_prompt
 
@@ -15,46 +18,20 @@ class BaseModule:
         self.models_config = models_config or {}
         self.available = False
         self.timeouts = {}
-        # Internal message translations
-        self.messages = {
-            'ru': {
-                'ollama_unavailable': '⚠️ Сервис Ollama недоступен',
-                'model_not_configured': '⚠️ Модель для {model_type} не настроена',
-                'timeout': '⚠️ Превышено время ожидания ответа от модели ({timeout}с). Попробуйте увеличить таймаут в .env или упростите запрос.',
-                'connection_error': '⚠️ Не удалось подключиться к Ollama',
-                'error_prefix': '⚠️ Ошибка',
-                'prompt_load_error': 'Ошибка загрузки шаблона промпта',
-                'no_action': 'Не удалось определить действие'
-            },
-            'en': {
-                'ollama_unavailable': '⚠️ Ollama service unavailable',
-                'model_not_configured': '⚠️ Model for {model_type} not configured',
-                'timeout': '⚠️ Timeout ({timeout}s) when calling the model. Try increasing timeout in .env or simplify your request.',
-                'connection_error': '⚠️ Could not connect to Ollama',
-                'error_prefix': '⚠️ Error',
-                'prompt_load_error': 'Error loading prompt template',
-                'no_action': 'Could not determine action'
-            }
-        }
-        
         if app:
             self.init_app(app)
         elif ollama_url:
             self.check_availability()
-    
-    def get_message(self, key, lang='ru', **kwargs):
-        """Get translated message with optional formatting."""
-        msg_dict = self.messages.get(lang, self.messages['ru'])
-        msg = msg_dict.get(key, key)
-        if kwargs:
-            try:
-                return msg.format(**kwargs)
-            except KeyError:
-                return msg
-        return msg
+
+    def _(self, key, lang='ru', **kwargs):
+        """Get translated message using Flask-Babel."""
+        with self.app.app_context():
+            with force_locale(lang):
+                return _(key, **kwargs)
     
     def init_app(self, app):
         """Initialize module with Flask app"""
+        self.app = app
         self.ollama_url = app.config.get('OLLAMA_URL')
         
         self.timeouts = {
@@ -135,14 +112,14 @@ class BaseModule:
         if not self.available:
             self.check_availability()
             if not self.available:
-                return self.get_message('ollama_unavailable', lang)
+                return self._('Ollama service unavailable', lang)
         
         model_config = self.models_config.get(model_type, self.models_config['chat'])
         model = model_config['model']
         timeout = model_config.get('timeout', 60)
         
         if not model:
-            return self.get_message('model_not_configured', lang, model_type=model_type)
+            return self._('Model for {model_type} not configured', lang, model_type=model_type)
         
         try:
             payload = {
@@ -180,17 +157,17 @@ class BaseModule:
             else:
                 error_msg = f"Ollama error: {response.status_code}"
                 self.logger.error(error_msg)
-                return f"{self.get_message('error_prefix', lang)}: {response.status_code}"
+                return f"{self._('Error', lang)}: {response.status_code}"
                 
         except requests.exceptions.Timeout:
             self.logger.error(f"Timeout ({timeout}s) when calling Ollama. Model: {model}")
-            return self.get_message('timeout', lang, timeout=timeout)
+            return self._('Timeout ({timeout}s) when calling the model. Try increasing timeout in .env or simplify your request.', lang, timeout=timeout)
         except requests.exceptions.ConnectionError:
             self.logger.error(f"Connection error to Ollama at {self.ollama_url}")
-            return self.get_message('connection_error', lang)
+            return self._('Could not connect to Ollama', lang)
         except Exception as e:
             self.logger.error(f"Error calling Ollama: {str(e)}")
-            return f"{self.get_message('error_prefix', lang)}: {str(e)}"
+            return f"{self._('Error', lang)}: {str(e)}"
     
     def process_message(self, message_text, current_time_str, lang='ru'):
         """Process text message through router model"""
@@ -199,11 +176,11 @@ class BaseModule:
             'current_time_str': current_time_str,
             'user_query': message_text,
             'response_language': response_language
-        })
+        }, lang=lang)
         
         if not prompt:
             self.logger.error("Error loading prompt template")
-            return {'error': self.get_message('prompt_load_error', lang)}
+            return {'error': self._('Error loading prompt template', lang)}
         
         router_messages = [
             {
@@ -260,10 +237,10 @@ class BaseModule:
             'current_time_str': current_time_str,
             'reasoning_query': query,
             'response_language': response_language
-        })
+        }, lang=lang)
         
         if not reasoning_prompt:
-            return "⚠️ " + self.get_message('prompt_load_error', lang)
+            return "⚠️ " + self._('Error loading prompt template', lang)
         
         self.logger.info(f"Sending request to reasoning model: {query}")
         response = self.call_ollama(

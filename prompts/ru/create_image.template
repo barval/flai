@@ -1,0 +1,48 @@
+# ИНСТРУКЦИЯ
+- **Язык ответа:** English. (Всегда английский для промптов генерации)
+- **Задачи:**
+1) Проанализируй запрос и классифицируй его в одну из трёх категорий (если классификация не удаётся, считай как "landscape"):
+   - "people" — если запрос явно описывает портрет, человека, людей, группу людей, персонажей или сцену, сфокусированную на людях.
+   - "interior" — если запрос явно описывает натюрморт, объект, предметы интерьера, мебель, еду, посуду или внутреннее пространство.
+   - "landscape" — если запрос явно описывает пейзаж, природу, открытое пространство, город (снаружи), горы, лес, море, небо, улицу.
+
+2) На основе классификации подготовь оптимизированный промпт для Stable Diffusion (на английском). Используй соответствующий шаблон для каждой категории (добавь pre_prompt из шаблона в начало промпта, т.е. prompt = pre_prompt + сгенерированный промпт Stable Diffusion).
+
+- *Шаблоны для каждой категории:*
+
+- Категория "people":
+	pre_prompt = "masterpiece, best quality, ultra-detailed, photorealistic, 8k, (perfect human anatomy:1.3), (detailed face:1.2), (detailed eyes:1.2), (detailed hands:1.1), symmetrical face, professional lighting, sharp focus, beautiful detailed eyes, symmetrical eyes, perfect hands, delicate fingers, professional anatomy, "
+	negative_prompt = "(bad eyes, deformed pupils, distorted iris, cross-eyed, asymmetrical eyes:1.5), (poorly drawn hands, poorly drawn fingers, extra fingers, missing fingers, fused fingers:1.4), (bad anatomy, malformed limbs, extra limbs, disconnected limbs:1.3), (worst quality, low quality, normal quality:1.3), (text, watermark, signature, username:1.3), (deformed, mutated, disfigured, ugly:1.2), (mutilated, amputee, blood, gore:1.2), (blurry, grainy, out of focus, noisy, jpeg artifacts:1.1), (3d render, cgi, cartoon, anime, doll, plastic:1.1)"
+
+- Категория "interior":
+	pre_prompt = "masterpiece, best quality, ultra-detailed, photorealistic, 8k, architectural detail, textured surfaces, realistic materials, professional interior photography, perfect composition, volumetric lighting, sharp focus, "
+	negative_prompt = "(worst quality, low quality, normal quality:1.4), (bad_pictures:1.2), (rotten, moldy, stained, dirty, burnt:1.3), (broken, cracked, damaged, deformed object, misshapen object:1.3), (unrealistic object, floating object, gravity-defying, melting object:1.3), (bad perspective, distorted perspective, warped object, stretched object:1.3), (too many objects, cluttered, junk, trash, debris:1.3), (text, watermark, signature, logo, letters, numbers, price tag:1.4), (painting, drawing, cartoon, clip art, 3d render, cgi, plastic, toy:1.3), (blurry, out of focus, motion blur, depth of field problems:1.2), (grainy, noisy, JPEG artifacts, compression artifacts:1.2), (oversaturated, undersaturated, unnatural colors, color bleed:1.2), (empty frame, centered object, flat composition, boring:1.1), (people, human, face, portrait, hands:1.1), (fused fruits, merged fruits, conjoined fruits, fruits sticking together:1.4), (multiple cores, double core, split fruit, unnatural fruit anatomy:1.3), (identical fruits, cloned fruit, repeating pattern:1.2), (symmetrical arrangement, perfect alignment, grid pattern:1.1)"
+
+- Категория "landscape":
+	pre_prompt = "masterpiece, best quality, ultra-detailed, photorealistic, 8k, (atmospheric perspective:1.3), (detailed environment:1.2), epic scale, dramatic skies, natural lighting, golden hour, depth of field, sharp focus, "
+	negative_prompt = "(worst quality, low quality, normal quality:1.4), (bad_pictures:1.2), (unrealistic landscape, impossible geography, gravity-defying:1.3), (bad perspective, distorted perspective, warped landscape, fisheye:1.3), (mismatched seasons, wrong biome, unnatural vegetation, plastic trees:1.3), (repetitive patterns, cloned trees, repeating textures:1.3), (unrealistic water, glass water, unnatural waves, wrong reflection:1.3), (bad sky, flat sky, repeating clouds, unnatural clouds:1.3), (bad lighting, multiple suns, wrong shadows, conflicting light:1.3), (blurry, out of focus, excessive depth of field, overdone bokeh:1.2), (oversaturated, undersaturated, neon colors, unnatural colors:1.2), (signature, text, watermark, logo, frame, border:1.4), (painting, drawing, sketch, cartoon, 3d render, cgi, videogame:1.3), (heavy pollution, smog, haze, fog artifacts, dust spots:1.1), (modern architecture, skyscrapers, cars, power lines, trash, litter:1.1)"
+
+3) Учитывая описанное формирование переменных подстановки:
+   prompt = pre_prompt (из шаблона категории) + сгенерированный промпт Stable Diffusion
+   negative_prompt = negative_prompt (из шаблона категории)
+
+Выведи результат строго в следующем JSON-формате, без каких-либо дополнительных объяснений:
+
+{{{{
+  "prompt": "полный промпт здесь",
+  "negative_prompt": "негативный промпт здесь",
+  "steps": "40",
+  "width": "512",
+  "height": "512",
+  "cfg_scale": "7",
+  "sampler_name": "DPM++ 2M Karras",
+  "batch_size": "1",
+  "enable_hr": "true",
+  "hr_scale": "2",
+  "hr_upscaler": "Latent (nearest)",
+  "denoising_strength": "0.7",
+  "hr_second_pass_steps": "25"
+}}}}
+
+# ВХОДНЫЕ ДАННЫЕ
+- **Запрос:** "{image_query}".

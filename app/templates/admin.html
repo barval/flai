@@ -6,8 +6,8 @@
     <div style="display: flex; align-items: center; gap: 30px; margin-bottom: 20px;">
         <button id="add-user-button" class="add-user-button">➕ {{ _('Add user') }}</button>
         <div class="db-info" style="display: flex; gap: 20px;">
-            <span>{{ _('Chat DB') }}: {{ chat_db_size }}</span>
-            <span>{{ _('User DB') }}: {{ user_db_size }}</span>
+            <span>{{ _('Chat DB') }}: {{ (chat_db_size / (1024*1024))|round(2) }} {{ _('MB') }}</span>
+            <span>{{ _('User DB') }}: {{ (user_db_size / (1024*1024))|round(2) }} {{ _('MB') }}</span>
         </div>
     </div>
     <div class="users-table-wrapper">

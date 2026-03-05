@@ -295,3 +295,100 @@ msgstr "Сменить"
 
 msgid "delete"
 msgstr "Удалить"
+
+# Новые ключи из модулей
+msgid "Ollama service unavailable"
+msgstr "Сервис Ollama недоступен"
+
+msgid "Model for {model_type} not configured"
+msgstr "Модель для {model_type} не настроена"
+
+msgid "Timeout ({timeout}s) when calling the model. Try increasing timeout in .env or simplify your request."
+msgstr "Превышено время ожидания ответа от модели ({timeout}с). Попробуйте увеличить таймаут в .env или упростите запрос."
+
+msgid "Could not connect to Ollama"
+msgstr "Не удалось подключиться к Ollama"
+
+msgid "Error"
+msgstr "Ошибка"
+
+msgid "Error loading prompt template"
+msgstr "Ошибка загрузки шаблона промпта"
+
+msgid "Could not determine action"
+msgstr "Не удалось определить действие"
+
+msgid "Access to this camera is denied"
+msgstr "Доступ к данной камере запрещён"
+
+msgid "CCTV service unavailable"
+msgstr "Сервис видеонаблюдения недоступен"
+
+msgid "Unknown room: {room}"
+msgstr "Неизвестная комната: {room}"
+
+msgid "Failed to get snapshot from camera {room_name}"
+msgstr "Не удалось получить изображение с камеры {room_name}"
+
+msgid "Timeout ({timeout}s)"
+msgstr "Таймаут ({timeout}с)"
+
+msgid "Connection error"
+msgstr "Ошибка подключения"
+
+msgid "Failed to recognize speech"
+msgstr "Не удалось распознать речь"
+
+msgid "Timeout ({timeout}s) during audio transcription"
+msgstr "Таймаут ({timeout}с) при транскрибации аудио"
+
+msgid "Connection error to Whisper API"
+msgstr "Ошибка подключения к Whisper API"
+
+msgid "Multimodal model unavailable"
+msgstr "Мультимодальная модель недоступна"
+
+msgid "Maximum file size {max_size} MB"
+msgstr "Максимальный размер файла {max_size} Мб"
+
+msgid "Unsupported file type"
+msgstr "Неподдерживаемый тип файла"
+
+msgid "Maximum resolution {max_width}×{max_height}"
+msgstr "Максимальное разрешение {max_width}×{max_height}"
+
+msgid "Could not process image file"
+msgstr "Не удалось обработать файл изображения"
+
+msgid "Timeout ({timeout}s) when calling multimodal model"
+msgstr "Превышено время ожидания ответа от мультимодальной модели ({timeout}с)"
+
+msgid "Could not connect to Ollama"
+msgstr "Не удалось подключиться к Ollama"
+
+msgid "Could not find JSON in model response"
+msgstr "Не удалось найти JSON в ответе модели"
+
+msgid "JSON parsing error: {error}"
+msgstr "Ошибка парсинга JSON: {error}"
+
+msgid "Image generation service unavailable"
+msgstr "Сервис генерации изображений недоступен"
+
+msgid "Multimodal module unavailable (required for parameter generation)"
+msgstr "Мультимодальный модуль недоступен (требуется для генерации параметров)"
+
+msgid "Image generation timeout ({timeout}s)"
+msgstr "Превышено время ожидания генерации изображения ({timeout}с)"
+
+msgid "Could not connect to Automatic1111"
+msgstr "Не удалось подключиться к Automatic1111"
+
+msgid "Automatic1111 returned no image"
+msgstr "Automatic1111 не вернул изображение"
+
+msgid "MB"
+msgstr "МБ"
+
+msgid "footer_text"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v6.1 (с) 2026 Барсуков Валерий"

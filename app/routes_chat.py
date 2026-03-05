@@ -4,7 +4,7 @@ import base64
 import time
 import mimetypes
 from flask import Blueprint, render_template, request, session, jsonify, current_app, redirect, url_for
-from flask_babel import gettext as _
+from flask_babel import gettext as _, force_locale
 
 from . import db
 from .utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, format_prompt
@@ -118,10 +118,8 @@ def api_update_session_visit(session_id):
 @bp.route('/api/footer-text', methods=['GET'])
 def api_footer_text():
     lang = session.get('language', 'ru')
-    if lang == 'ru':
-        return current_app.config.get('FOOTER_TEXT_RU', '')
-    else:
-        return current_app.config.get('FOOTER_TEXT_EN', '')
+    with force_locale(lang):
+        return gettext('footer_text')
 
 @bp.route('/clear_history', methods=['POST'])
 def clear_history():

@@ -4,6 +4,9 @@ import requests
 import base64
 from datetime import datetime
 import os
+from flask import current_app
+from flask_babel import gettext as _
+from flask_babel import force_locale
 
 class ImageModule:
     """Module for image generation via Automatic1111"""
@@ -16,40 +19,17 @@ class ImageModule:
         self.multimodal_module = None
         self.timeout = 180
         
-        self.messages = {
-            'ru': {
-                'service_unavailable': 'Сервис генерации изображений недоступен',
-                'multimodal_unavailable': 'Мультимодальный модуль недоступен (требуется для генерации параметров)',
-                'timeout': 'Превышено время ожидания генерации изображения ({timeout}с)',
-                'connection_error': 'Не удалось подключиться к Automatic1111',
-                'error_prefix': 'Ошибка',
-                'no_image': 'Automatic1111 не вернул изображение'
-            },
-            'en': {
-                'service_unavailable': 'Image generation service unavailable',
-                'multimodal_unavailable': 'Multimodal module unavailable (required for parameter generation)',
-                'timeout': 'Image generation timeout ({timeout}s)',
-                'connection_error': 'Could not connect to Automatic1111',
-                'error_prefix': 'Error',
-                'no_image': 'Automatic1111 returned no image'
-            }
-        }
-        
         if app:
             self.init_app(app)
-    
-    def get_message(self, key, lang='ru', **kwargs):
-        msg_dict = self.messages.get(lang, self.messages['ru'])
-        msg = msg_dict.get(key, key)
-        if kwargs:
-            try:
-                return msg.format(**kwargs)
-            except KeyError:
-                return msg
-        return msg
+
+    def _(self, key, lang='ru', **kwargs):
+        with self.app.app_context():
+            with force_locale(lang):
+                return _(key, **kwargs)
     
     def init_app(self, app):
         """Initialize module with Flask app"""
+        self.app = app
         self.automatic1111_url = app.config.get('AUTOMATIC1111_URL')
         self.model_name = app.config.get('AUTOMATIC1111_MODEL')
         self.timeout = app.config.get('AUTOMATIC1111_TIMEOUT', 180)
@@ -86,13 +66,13 @@ class ImageModule:
         if not self.available:
             return {
                 'success': False,
-                'error': self.get_message('service_unavailable', lang)
+                'error': self._('Image generation service unavailable', lang)
             }
         
         if not self.multimodal_module or not self.multimodal_module.available:
             return {
                 'success': False,
-                'error': self.get_message('multimodal_unavailable', lang)
+                'error': self._('Multimodal module unavailable (required for parameter generation)', lang)
             }
         
         prompt_data, error = self.multimodal_module.generate_image_params(user_query, lang=lang)
@@ -159,7 +139,7 @@ class ImageModule:
                 else:
                     return {
                         'success': False,
-                        'error': self.get_message('no_image', lang)
+                        'error': self._('Automatic1111 returned no image', lang)
                     }
             else:
                 return {
@@ -171,16 +151,16 @@ class ImageModule:
             self.logger.error(f"Timeout ({self.timeout}s) during image generation")
             return {
                 'success': False,
-                'error': self.get_message('timeout', lang, timeout=self.timeout)
+                'error': self._('Image generation timeout ({timeout}s)', lang, timeout=self.timeout)
             }
         except requests.exceptions.ConnectionError:
             return {
                 'success': False,
-                'error': self.get_message('connection_error', lang)
+                'error': self._('Could not connect to Automatic1111', lang)
             }
         except Exception as e:
             self.logger.error(f"Error calling Automatic1111: {str(e)}")
             return {
                 'success': False,
-                'error': f"{self.get_message('error_prefix', lang)}: {str(e)}"
+                'error': f"{self._('Error', lang)}: {str(e)}"
             }

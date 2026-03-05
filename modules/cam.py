@@ -5,6 +5,9 @@ import base64
 import time
 import json
 from datetime import datetime
+from flask import current_app
+from flask_babel import gettext as _
+from flask_babel import force_locale
 from app.userdb import check_camera_permission
 
 class CamModule:
@@ -32,41 +35,16 @@ class CamModule:
         
         self.room_codes = {v: k for k, v in self.room_names.items()}
         
-        self.messages = {
-            'ru': {
-                'permission_denied': 'Доступ к данной камере запрещён',
-                'service_unavailable': 'Сервис видеонаблюдения недоступен',
-                'unknown_room': 'Неизвестная комната: {room}',
-                'fetch_failed': 'Не удалось получить изображение с камеры {room_name}',
-                'timeout': 'Таймаут ожидания ({timeout}с)',
-                'connection_error': 'Ошибка подключения',
-                'error_prefix': 'Ошибка'
-            },
-            'en': {
-                'permission_denied': 'Access to this camera is denied',
-                'service_unavailable': 'CCTV service unavailable',
-                'unknown_room': 'Unknown room: {room}',
-                'fetch_failed': 'Failed to get snapshot from camera {room_name}',
-                'timeout': 'Timeout ({timeout}s)',
-                'connection_error': 'Connection error',
-                'error_prefix': 'Error'
-            }
-        }
-        
         if app:
             self.init_app(app)
-    
-    def get_message(self, key, lang='ru', **kwargs):
-        msg_dict = self.messages.get(lang, self.messages['ru'])
-        msg = msg_dict.get(key, key)
-        if kwargs:
-            try:
-                return msg.format(**kwargs)
-            except KeyError:
-                return msg
-        return msg
+
+    def _(self, key, lang='ru', **kwargs):
+        with self.app.app_context():
+            with force_locale(lang):
+                return _(key, **kwargs)
     
     def init_app(self, app):
+        self.app = app
         self.camera_api_url = app.config.get('CAMERA_API_URL', 'http://host.docker.internal:5005')
         self.timeout = app.config.get('CAMERA_API_TIMEOUT', 15)
         self.check_interval = app.config.get('CAMERA_CHECK_INTERVAL', 30)
@@ -195,7 +173,7 @@ class CamModule:
         if not self.check_permission(user_login, room_code):
             return {
                 'success': False,
-                'error': self.get_message('permission_denied', lang),
+                'error': self._('Access to this camera is denied', lang),
                 'status_code': 403
             }
         
@@ -203,7 +181,7 @@ class CamModule:
         if not self.available:
             return {
                 'success': False,
-                'error': self.get_message('service_unavailable', lang),
+                'error': self._('CCTV service unavailable', lang),
                 'status_code': 503
             }
         
@@ -215,7 +193,7 @@ class CamModule:
             else:
                 return {
                     'success': False,
-                    'error': self.get_message('unknown_room', lang, room=room_code),
+                    'error': self._('Unknown room: {room}', lang, room=room_code),
                     'status_code': 404,
                     'available_rooms': list(self.room_names.keys())
                 }
@@ -286,16 +264,16 @@ class CamModule:
                         }
                         
                 except requests.exceptions.ConnectionError:
-                    last_error = self.get_message('connection_error', lang)
+                    last_error = self._('Connection error', lang)
                     continue
                 except requests.exceptions.Timeout:
-                    last_error = self.get_message('timeout', lang, timeout=self.timeout)
+                    last_error = self._('Timeout ({timeout}s)', lang, timeout=self.timeout)
                     continue
                 except Exception as e:
                     last_error = str(e)
                     continue
             
-            error_msg = self.get_message('fetch_failed', lang, room_name=room_name)
+            error_msg = self._('Failed to get snapshot from camera {room_name}', lang, room_name=room_name)
             if last_error:
                 error_msg += f": {last_error}"
             
@@ -310,7 +288,7 @@ class CamModule:
             self.logger.error(f"Error calling camera API: {str(e)}")
             return {
                 'success': False,
-                'error': f"{self.get_message('error_prefix', lang)}: {str(e)}",
+                'error': f"{self._('Error', lang)}: {str(e)}",
                 'status_code': 500
             }
     
@@ -319,7 +297,7 @@ class CamModule:
         if not self.available:
             return {
                 'success': False,
-                'error': self.get_message('service_unavailable', 'ru'),  # Use 'ru' as default for internal
+                'error': self._('CCTV service unavailable', 'ru'),  # Use 'ru' as default for internal
                 'rooms': list(self.room_names.keys()),
                 'room_names': self.room_names
             }

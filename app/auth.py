@@ -44,4 +44,6 @@ def logout():
 def set_language(lang):
     if lang in ['ru', 'en']:
         session['language'] = lang
-    return redirect(request.referrer or url_for('chat.chat'))
+    response = redirect(request.referrer or url_for('chat.chat'))
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return response

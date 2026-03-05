@@ -294,3 +294,100 @@ msgstr "Change"
 
 msgid "delete"
 msgstr "Delete"
+
+# New keys from modules
+msgid "Ollama service unavailable"
+msgstr "Ollama service unavailable"
+
+msgid "Model for {model_type} not configured"
+msgstr "Model for {model_type} not configured"
+
+msgid "Timeout ({timeout}s) when calling the model. Try increasing timeout in .env or simplify your request."
+msgstr "Timeout ({timeout}s) when calling the model. Try increasing timeout in .env or simplify your request."
+
+msgid "Could not connect to Ollama"
+msgstr "Could not connect to Ollama"
+
+msgid "Error"
+msgstr "Error"
+
+msgid "Error loading prompt template"
+msgstr "Error loading prompt template"
+
+msgid "Could not determine action"
+msgstr "Could not determine action"
+
+msgid "Access to this camera is denied"
+msgstr "Access to this camera is denied"
+
+msgid "CCTV service unavailable"
+msgstr "CCTV service unavailable"
+
+msgid "Unknown room: {room}"
+msgstr "Unknown room: {room}"
+
+msgid "Failed to get snapshot from camera {room_name}"
+msgstr "Failed to get snapshot from camera {room_name}"
+
+msgid "Timeout ({timeout}s)"
+msgstr "Timeout ({timeout}s)"
+
+msgid "Connection error"
+msgstr "Connection error"
+
+msgid "Failed to recognize speech"
+msgstr "Failed to recognize speech"
+
+msgid "Timeout ({timeout}s) during audio transcription"
+msgstr "Timeout ({timeout}s) during audio transcription"
+
+msgid "Connection error to Whisper API"
+msgstr "Connection error to Whisper API"
+
+msgid "Multimodal model unavailable"
+msgstr "Multimodal model unavailable"
+
+msgid "Maximum file size {max_size} MB"
+msgstr "Maximum file size {max_size} MB"
+
+msgid "Unsupported file type"
+msgstr "Unsupported file type"
+
+msgid "Maximum resolution {max_width}×{max_height}"
+msgstr "Maximum resolution {max_width}×{max_height}"
+
+msgid "Could not process image file"
+msgstr "Could not process image file"
+
+msgid "Timeout ({timeout}s) when calling multimodal model"
+msgstr "Timeout ({timeout}s) when calling multimodal model"
+
+msgid "Could not connect to Ollama"
+msgstr "Could not connect to Ollama"
+
+msgid "Could not find JSON in model response"
+msgstr "Could not find JSON in model response"
+
+msgid "JSON parsing error: {error}"
+msgstr "JSON parsing error: {error}"
+
+msgid "Image generation service unavailable"
+msgstr "Image generation service unavailable"
+
+msgid "Multimodal module unavailable (required for parameter generation)"
+msgstr "Multimodal module unavailable (required for parameter generation)"
+
+msgid "Image generation timeout ({timeout}s)"
+msgstr "Image generation timeout ({timeout}s)"
+
+msgid "Could not connect to Automatic1111"
+msgstr "Could not connect to Automatic1111"
+
+msgid "Automatic1111 returned no image"
+msgstr "Automatic1111 returned no image"
+
+msgid "MB"
+msgstr "MB"
+
+msgid "footer_text"
+msgstr "Fully Local AI (FLAI) v6.1 (c) 2026 Valery Barsukov"

@@ -4,6 +4,9 @@ import requests
 import base64
 import os
 from datetime import datetime
+from flask import current_app
+from flask_babel import gettext as _
+from flask_babel import force_locale
 
 class AudioModule:
     """Module for audio transcription via Whisper API"""
@@ -27,36 +30,18 @@ class AudioModule:
             '.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv',
             '.m4v', '.3gp', '.mpg', '.mpeg'
         ]
-        self.messages = {
-            'ru': {
-                'transcription_failed': 'Не удалось распознать речь',
-                'timeout': 'Таймаут ({timeout}с) при транскрибации аудио',
-                'connection_error': 'Ошибка подключения к Whisper API',
-                'error_prefix': 'Ошибка'
-            },
-            'en': {
-                'transcription_failed': 'Failed to recognize speech',
-                'timeout': 'Timeout ({timeout}s) during audio transcription',
-                'connection_error': 'Connection error to Whisper API',
-                'error_prefix': 'Error'
-            }
-        }
 
         if app:
             self.init_app(app)
 
-    def get_message(self, key, lang='ru', **kwargs):
-        msg_dict = self.messages.get(lang, self.messages['ru'])
-        msg = msg_dict.get(key, key)
-        if kwargs:
-            try:
-                return msg.format(**kwargs)
-            except KeyError:
-                return msg
-        return msg
+    def _(self, key, lang='ru', **kwargs):
+        with self.app.app_context():
+            with force_locale(lang):
+                return _(key, **kwargs)
 
     def init_app(self, app):
         """Initialize module with Flask app"""
+        self.app = app
         self.whisper_api_url = app.config.get('WHISPER_API_URL', 'http://host.docker.internal:9000/asr')
         self.timeout = app.config.get('WHISPER_API_TIMEOUT', 120)
         self.check_availability()

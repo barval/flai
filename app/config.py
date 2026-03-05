@@ -14,10 +14,6 @@ def load_config(app):
     app.config['JSON_AS_ASCII'] = False
     app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
-    # Footer texts (multilingual)
-    app.config['FOOTER_TEXT_RU'] = os.getenv('FOOTER_TEXT_RU', '')
-    app.config['FOOTER_TEXT_EN'] = os.getenv('FOOTER_TEXT_EN', '')
-
     app.config['TIMEZONE_STR'] = os.getenv('TIMEZONE')
     app.config['OLLAMA_URL'] = os.getenv('OLLAMA_URL')
     app.config['REDIS_URL'] = os.getenv('REDIS_URL', 'redis://localhost:6379/0')

@@ -18,10 +18,19 @@
         <div class="logout-container">
             <span>{{ session['name'] if not session.get('is_admin') else _('Administrator') }}</span>
             <div class="language-switcher">
-                <a href="{{ url_for('auth.set_language', lang='ru') }}">Русский</a> |
-                <a href="{{ url_for('auth.set_language', lang='en') }}">English</a>
+                <select id="language-select" onchange="switchLanguage(this.value)">
+                    <option value="ru" {% if session.get('language') == 'ru' %}selected{% endif %}>Русский</option>
+                    <option value="en" {% if session.get('language') == 'en' %}selected{% endif %}>English</option>
+                </select>
             </div>
             <a href="{{ url_for('auth.logout') }}" class="logout-button">{{ _('Logout') }}</a>
+        </div>
+        {% else %}
+        <div class="language-switcher" style="margin-left: auto;">
+            <select id="language-select" onchange="switchLanguage(this.value)">
+                <option value="ru" {% if session.get('language', 'ru') == 'ru' %}selected{% endif %}>Русский</option>
+                <option value="en" {% if session.get('language', 'ru') == 'en' %}selected{% endif %}>English</option>
+            </select>
         </div>
         {% endif %}
     </header>
@@ -32,14 +41,30 @@
     
     <footer>
         <div class="footer-content">
-            {% set footer_parts = footer_content.split('(с)', 1) %}
-            {% if footer_parts|length > 1 %}
-                <div class="footer-line1">{{ footer_parts[0].strip() }}</div>
-                <div class="footer-line2">(с){{ footer_parts[1].strip() }}</div>
+            {% set footer_text = _('footer_text') %}
+            {% if '(c)' in footer_text %}
+                {% set parts = footer_text.split('(c)', 1) %}
+                <div class="footer-line1">{{ parts[0].strip() }}</div>
+                <div class="footer-line2">(c){{ parts[1].strip() }}</div>
             {% else %}
-                <div class="footer-line1">{{ footer_content }}</div>
+                <div class="footer-line1">{{ footer_text }}</div>
             {% endif %}
         </div>
     </footer>
+
+    <script>
+        function switchLanguage(lang) {
+            fetch('/set-language/' + lang, {
+                method: 'GET',
+                headers: {
+                    'Cache-Control': 'no-cache'
+                }
+            }).then(() => {
+                window.location.reload();
+            }).catch(() => {
+                window.location.reload();
+            });
+        }
+    </script>
 </body>
 </html>

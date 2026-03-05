@@ -3,6 +3,7 @@ import logging
 import os
 from flask import Blueprint, render_template, session, jsonify, request, current_app
 from functools import wraps
+from flask_babel import gettext as _
 
 from app.userdb import (
     list_users, create_user, update_user, delete_user,
@@ -14,12 +15,11 @@ from app.userdb import USER_DB_PATH
 bp = Blueprint('admin', __name__, url_prefix='/admin')
 logger = logging.getLogger(__name__)
 
-def get_file_size_mb(path):
+def get_file_size_bytes(path):
     try:
-        size = os.path.getsize(path)
-        return f"{size / (1024 * 1024):.2f} МБ"
+        return os.path.getsize(path)
     except OSError:
-        return "0 МБ"
+        return 0
 
 def admin_required(f):
     @wraps(f)
@@ -35,8 +35,8 @@ def admin_panel():
     rooms = {}
     if 'cam' in current_app.modules and current_app.modules['cam'].available:
         rooms = current_app.modules['cam'].get_all_rooms()
-    chat_db_size = get_file_size_mb(CHAT_DB_PATH)
-    user_db_size = get_file_size_mb(USER_DB_PATH)
+    chat_db_size = get_file_size_bytes(CHAT_DB_PATH)
+    user_db_size = get_file_size_bytes(USER_DB_PATH)
     return render_template('admin.html', rooms=rooms, chat_db_size=chat_db_size, user_db_size=user_db_size)
 
 @bp.route('/api/users', methods=['GET'])
@@ -85,10 +85,10 @@ def add_user():
         camera_permissions = data.get('camera_permissions')
 
         if not login or not password or not name:
-            return jsonify({'error': 'Не все поля заполнены'}), 400
+            return jsonify({'error': _('Missing fields')}), 400
 
         if get_user_by_login(login):
-            return jsonify({'error': 'Логин уже существует'}), 400
+            return jsonify({'error': _('Login already exists')}), 400
 
         create_user(
             login=login,
@@ -96,7 +96,7 @@ def add_user():
             name=name,
             service_class=service_class,
             is_admin=False,
-            camera_permissions=camera_permissions  # может быть [] (пустой список)
+            camera_permissions=camera_permissions
         )
         if not is_active:
             update_user(login, is_active=False)
@@ -134,7 +134,7 @@ def change_password(login):
         data = request.get_json()
         new_password = data.get('new_password')
         if not new_password:
-            return jsonify({'error': 'Новый пароль не указан'}), 400
+            return jsonify({'error': _('New password not specified')}), 400
         update_password(login, new_password)
         return jsonify({'status': 'ok'})
     except Exception as e:

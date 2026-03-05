@@ -316,9 +316,7 @@ function attachSessionEventHandlers() {
             const sessionId = sessionItem.dataset.sessionId;
             const sessionTitle = sessionItem.dataset.sessionTitle;
             const sessionDate = sessionItem.querySelector('.session-date').textContent;
-            if (confirm(t('delete_session_confirm').replace('{title}', sessionTitle).replace('{date}', sessionDate))) {
-                deleteSession(sessionId);
-            }
+            deleteSession(sessionId, sessionTitle, sessionDate);
         });
     });
 }
@@ -970,7 +968,13 @@ async function sendMessage() {
 // -------------------------------
 // Delete session
 // -------------------------------
-function deleteSession(sessionId) {
+function deleteSession(sessionId, sessionTitle, sessionDate) {
+    let confirmMessage = t('delete_session_confirm');
+    if (confirmMessage === 'delete_session_confirm') {
+        confirmMessage = `Delete session "${sessionTitle}" from ${sessionDate}?`;
+    }
+    if (!confirm(confirmMessage)) return;
+
     for (let [id, req] of Object.entries(pendingRequests)) {
         if (req.sessionId === sessionId && !req.processed) {
             pendingRequests[id].processed = true;
@@ -1030,10 +1034,12 @@ async function saveChatAsHTML() {
     const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 
     let footerLine1 = footerText, footerLine2 = '';
-    if (footerText.includes('(с)')) {
-        const parts = footerText.split('(с)', 1);
+    if (footerText.includes('(c)')) {
+        const parts = footerText.split('(c)');
         footerLine1 = parts[0].trim();
-        footerLine2 = '(с)' + footerText.split('(с)')[1].trim();
+        footerLine2 = '(c)' + (parts[1] || '').trim();
+    } else {
+        footerLine1 = footerText;
     }
 
     const messages = [];

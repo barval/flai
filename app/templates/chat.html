@@ -83,7 +83,8 @@
         'your_requests': '{{ _("Your requests in queue / Total in queue") }}',
         'error': '{{ _("Error") }}',
         'warning': '{{ _("Warning") }}',
-        'info': '{{ _("Info") }}'
+        'info': '{{ _("Info") }}',
+        'delete_session_confirm': {{ _("Delete session {title} from {date}?")|tojson }}
     };
     window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
     function t(key) {

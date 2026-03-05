@@ -70,16 +70,6 @@ def create_app():
     # Initialize Redis queue
     app.request_queue = RedisRequestQueue(app)
 
-    # Context processor for footer text (translated)
-    @app.context_processor
-    def inject_footer():
-        lang = session.get('language', 'ru')
-        if lang == 'ru':
-            footer = app.config.get('FOOTER_TEXT_RU', '')
-        else:
-            footer = app.config.get('FOOTER_TEXT_EN', '')
-        return dict(footer_content=footer)
-
     # Register blueprints
     from . import auth, routes_chat, routes_queue, routes_admin, cli
     app.register_blueprint(auth.bp)

@@ -6,6 +6,9 @@ import base64
 from PIL import Image
 from io import BytesIO
 import os
+from flask import current_app
+from flask_babel import gettext as _
+from flask_babel import force_locale
 
 from app.utils import format_prompt
 
@@ -20,50 +23,17 @@ class MultimodalModule:
         self.image_settings = {}
         self.timeout = 120
         
-        self.messages = {
-            'ru': {
-                'model_unavailable': '⚠️ Мультимодальная модель недоступна',
-                'prompt_load_error': 'Ошибка загрузки шаблона промпта',
-                'image_too_large': 'Максимальный размер файла {max_size} Мб',
-                'unsupported_type': 'Неподдерживаемый тип файла',
-                'image_too_big_resolution': 'Максимальное разрешение {max_width}×{max_height}',
-                'image_processing_error': 'Не удалось обработать файл изображения',
-                'timeout': '⚠️ Превышено время ожидания ответа от мультимодальной модели ({timeout}с)',
-                'connection_error': '⚠️ Не удалось подключиться к Ollama',
-                'error_prefix': '⚠️ Ошибка',
-                'json_parse_error': 'Не удалось найти JSON в ответе модели',
-                'json_parse_error_detail': 'Ошибка парсинга JSON: {error}'
-            },
-            'en': {
-                'model_unavailable': '⚠️ Multimodal model unavailable',
-                'prompt_load_error': 'Error loading prompt template',
-                'image_too_large': 'Maximum file size {max_size} MB',
-                'unsupported_type': 'Unsupported file type',
-                'image_too_big_resolution': 'Maximum resolution {max_width}×{max_height}',
-                'image_processing_error': 'Could not process image file',
-                'timeout': '⚠️ Timeout ({timeout}s) when calling multimodal model',
-                'connection_error': '⚠️ Could not connect to Ollama',
-                'error_prefix': '⚠️ Error',
-                'json_parse_error': 'Could not find JSON in model response',
-                'json_parse_error_detail': 'JSON parsing error: {error}'
-            }
-        }
-        
         if app:
             self.init_app(app)
-    
-    def get_message(self, key, lang='ru', **kwargs):
-        msg_dict = self.messages.get(lang, self.messages['ru'])
-        msg = msg_dict.get(key, key)
-        if kwargs:
-            try:
-                return msg.format(**kwargs)
-            except KeyError:
-                return msg
-        return msg
+
+    def _(self, key, lang='ru', **kwargs):
+        with self.app.app_context():
+            with force_locale(lang):
+                return _(key, **kwargs)
     
     def init_app(self, app):
         """Initialize module with Flask app"""
+        self.app = app
         self.ollama_url = app.config.get('OLLAMA_URL')
         self.timeout = app.config.get('LLM_MULTIMODAL_TIMEOUT', 120)
         
@@ -128,12 +98,12 @@ class MultimodalModule:
     def validate_image(self, file_data, file_type, file_name, file_size):
         """Validate image against requirements"""
         if file_size > self.image_settings['max_size_bytes']:
-            return False, self.get_message('image_too_large', max_size=self.image_settings['max_size_mb'])
+            return False, self._('Maximum file size {max_size} MB', max_size=self.image_settings['max_size_mb'])
         
         if file_type not in self.image_settings['supported_mimetypes']:
             ext = os.path.splitext(file_name)[1].lower()
             if ext not in self.image_settings['supported_extensions']:
-                return False, self.get_message('unsupported_type')
+                return False, self._('Unsupported file type')
         
         try:
             image_bytes = base64.b64decode(file_data)
@@ -141,17 +111,17 @@ class MultimodalModule:
             width, height = img.size
             
             if width > self.image_settings['max_width'] or height > self.image_settings['max_height']:
-                return False, self.get_message('image_too_big_resolution', max_width=self.image_settings['max_width'], max_height=self.image_settings['max_height'])
+                return False, self._('Maximum resolution {max_width}×{max_height}', max_width=self.image_settings['max_width'], max_height=self.image_settings['max_height'])
             
             return True, None
         except Exception as e:
             self.logger.error(f"Error validating image: {str(e)}")
-            return False, self.get_message('image_processing_error')
+            return False, self._('Could not process image file')
     
     def process_image_with_text(self, image_data, user_text, current_time_str, lang='ru'):
         """Process image with text"""
         if not self.check_availability():
-            return None, self.get_message('model_unavailable', lang)
+            return None, self._('Multimodal model unavailable', lang)
         
         response_language = 'Russian' if lang == 'ru' else 'English'
         if user_text.strip():
@@ -159,15 +129,15 @@ class MultimodalModule:
                 'current_time_str': current_time_str,
                 'user_query': user_text,
                 'response_language': response_language
-            })
+            }, lang=lang)
         else:
             prompt = format_prompt('image.template', {
                 'current_time_str': current_time_str,
                 'response_language': response_language
-            })
+            }, lang=lang)
         
         if not prompt:
-            return None, self.get_message('prompt_load_error', lang)
+            return None, self._('Error loading prompt template', lang)
         
         messages = [{
             'role': 'user',
@@ -181,16 +151,16 @@ class MultimodalModule:
     def generate_image_params(self, user_query, lang='ru'):
         """Generate parameters for image creation"""
         if not self.check_availability():
-            return None, self.get_message('model_unavailable', lang)
+            return None, self._('Multimodal model unavailable', lang)
         
         response_language = 'English'  # Always English for generation prompts
         create_prompt = format_prompt('create_image.template', {
             'image_query': user_query,
             'response_language': response_language
-        })
+        }, lang=lang)
         
         if not create_prompt:
-            return None, self.get_message('prompt_load_error', lang)
+            return None, self._('Error loading prompt template', lang)
         
         messages = [
             {
@@ -218,15 +188,15 @@ class MultimodalModule:
                 
                 return prompt_data, None
             else:
-                return None, self.get_message('json_parse_error', lang)
+                return None, self._('Could not find JSON in model response', lang)
         except Exception as e:
             self.logger.error(f"JSON parsing error: {str(e)}")
-            return None, self.get_message('json_parse_error_detail', lang, error=str(e))
+            return None, self._('JSON parsing error: {error}', lang, error=str(e))
     
     def _call_multimodal(self, messages, lang='ru'):
         """Call multimodal model with configurable timeout"""
         if not self.available:
-            return self.get_message('model_unavailable', lang)
+            return self._('Multimodal model unavailable', lang)
         
         model_config = self.models_config['multimodal']
         model = model_config['model']
@@ -257,14 +227,14 @@ class MultimodalModule:
                 return result['message']['content'].strip()
             else:
                 self.logger.error(f"Multimodal model error: {response.status_code}")
-                return f"{self.get_message('error_prefix', lang)}: {response.status_code}"
+                return f"{self._('Error', lang)}: {response.status_code}"
                 
         except requests.exceptions.Timeout:
             self.logger.error(f"Timeout ({timeout}s) for multimodal model")
-            return self.get_message('timeout', lang, timeout=timeout)
+            return self._('Timeout ({timeout}s) when calling multimodal model', lang, timeout=timeout)
         except requests.exceptions.ConnectionError:
             self.logger.error(f"Connection error to Ollama at {self.ollama_url}")
-            return self.get_message('connection_error', lang)
+            return self._('Could not connect to Ollama', lang)
         except Exception as e:
             self.logger.error(f"Error calling multimodal model: {str(e)}")
-            return f"{self.get_message('error_prefix', lang)}: {str(e)}"
+            return f"{self._('Error', lang)}: {str(e)}"

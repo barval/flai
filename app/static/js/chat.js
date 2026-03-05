@@ -1015,7 +1015,7 @@ function deleteSession(sessionId, sessionTitle, sessionDate) {
 // Save chat as HTML
 // -------------------------------
 async function saveChatAsHTML() {
-    // --- Получение подвала (без изменений) ---
+    // --- Fetch footer (unchanged) ---
     let footerText = "";
     try {
         const response = await fetch('/api/footer-text');
@@ -1031,11 +1031,11 @@ async function saveChatAsHTML() {
         footerText = t('footer_text');
     }
 
-    // --- Получение имени пользователя (без изменений) ---
+    // --- Get user name (unchanged) ---
     const userNameElement = document.querySelector('.logout-container span');
     const userName = userNameElement ? userNameElement.textContent.trim() : t('user');
 
-    // --- Получение названия сессии (без изменений) ---
+    // --- Get session title (unchanged) ---
     const activeSession = document.querySelector('.session-item.active');
     if (!activeSession) {
         alert(t('no_active_session_save'));
@@ -1043,7 +1043,7 @@ async function saveChatAsHTML() {
     }
     const rawTitle = activeSession.querySelector('.session-title')?.textContent || t('chat');
 
-    // Форматирование названия, если это дата (без изменений)
+    // Format title if it's a date (unchanged)
     let displayTitle = rawTitle;
     const filenameDateRegex = /(voice_)?(\d{8})_(\d{6})(\.webm)?$/;
     const match = rawTitle.match(filenameDateRegex);
@@ -1064,12 +1064,12 @@ async function saveChatAsHTML() {
         displayTitle = escapeHtml(rawTitle);
     }
 
-    // --- Получение и преобразование логотипа в Base64 (НОВЫЙ КОД) ---
+    // --- Get logo and convert to Base64 (NEW CODE) ---
     let logoBase64 = '';
     const logoImg = document.querySelector('.header-logo');
     if (logoImg) {
-        const logoSrc = logoImg.src; // может быть путь или data URI
-        // Если это не data URI, загружаем и конвертируем
+        const logoSrc = logoImg.src; // may be a path or data URI
+        // If it's not a data URI, fetch and convert
         if (logoSrc && !logoSrc.startsWith('data:')) {
             try {
                 const response = await fetch(logoSrc);
@@ -1089,14 +1089,14 @@ async function saveChatAsHTML() {
         }
     }
 
-    // --- Формирование HTML для шапки с логотипом ---
+    // --- Generate HTML header with logo ---
     const headerLogoHtml = logoBase64 ? `<img src="data:image/png;base64,${logoBase64}" alt="FLAI Logo" class="header-logo">` : '';
 
-    // --- Время и дата (без изменений) ---
+    // --- Time and date (unchanged) ---
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 
-    // --- Подвал (без изменений) ---
+    // --- Footer (unchanged) ---
     let footerLine1 = footerText, footerLine2 = '';
     if (footerText.includes('(c)')) {
         const parts = footerText.split('(c)');
@@ -1106,7 +1106,7 @@ async function saveChatAsHTML() {
         footerLine1 = footerText;
     }
 
-    // --- Сбор сообщений (без изменений) ---
+    // --- Collect messages (unchanged) ---
     const messages = [];
     document.querySelectorAll('.user-message, .assistant-message, .bot-message').forEach(msgEl => {
         const role = msgEl.classList.contains('user-message') ? 'user' : 'assistant';
@@ -1130,7 +1130,7 @@ async function saveChatAsHTML() {
         return;
     }
 
-    // --- Загрузка стилей (без изменений) ---
+    // --- Load styles (unchanged) ---
     let styleContent = '';
     let exportStyleContent = '';
     try {
@@ -1154,7 +1154,7 @@ async function saveChatAsHTML() {
     const dateOptions = { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
     const formattedDate = now.toLocaleString(CURRENT_LANG === 'ru' ? 'ru-RU' : 'en-US', dateOptions);
 
-    // --- Финальная сборка HTML с логотипом ---
+    // --- Final HTML assembly with logo ---
     const html = `<!DOCTYPE html>
 <html lang="${CURRENT_LANG}">
 <head>

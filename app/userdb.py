@@ -7,13 +7,13 @@ from flask import current_app
 USER_DB_PATH = 'data/users.db'
 
 def get_db():
-    """Возвращает соединение с БД пользователей."""
+    """Return a connection to the user database."""
     conn = sqlite3.connect(USER_DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 def init_user_db():
-    """Инициализация таблицы пользователей."""
+    """Initialize the user table."""
     if not os.path.exists('data'):
         os.makedirs('data', exist_ok=True)
     with get_db() as conn:
@@ -33,12 +33,12 @@ def init_user_db():
         ''')
 
 def get_user_by_login(login):
-    """Получить пользователя по логину."""
+    """Get a user by login."""
     with get_db() as conn:
         return conn.execute('SELECT * FROM users WHERE login = ?', (login,)).fetchone()
 
 def create_user(login, password, name, service_class=2, is_admin=False, camera_permissions=None):
-    """Создать нового пользователя."""
+    """Create a new user."""
     if camera_permissions is not None:
         camera_permissions = json.dumps(camera_permissions)
     password_hash = generate_password_hash(password)
@@ -50,7 +50,7 @@ def create_user(login, password, name, service_class=2, is_admin=False, camera_p
         conn.commit()
 
 def update_user(login, name=None, service_class=None, is_active=None, camera_permissions=None):
-    """Обновить данные пользователя (кроме пароля)."""
+    """Update user data (except password)."""
     updates = []
     params = []
     if name is not None:
@@ -73,20 +73,20 @@ def update_user(login, name=None, service_class=None, is_active=None, camera_per
         conn.commit()
 
 def update_password(login, new_password):
-    """Обновить пароль пользователя."""
+    """Update a user's password."""
     password_hash = generate_password_hash(new_password)
     with get_db() as conn:
         conn.execute('UPDATE users SET password_hash = ? WHERE login = ?', (password_hash, login))
         conn.commit()
 
 def delete_user(login):
-    """Удалить пользователя."""
+    """Delete a user."""
     with get_db() as conn:
         conn.execute('DELETE FROM users WHERE login = ?', (login,))
         conn.commit()
 
 def list_users(exclude_admin=True):
-    """Получить список всех пользователей (кроме admin, если exclude_admin=True)."""
+    """List all users (excluding admin if exclude_admin=True)."""
     with get_db() as conn:
         if exclude_admin:
             return conn.execute('SELECT * FROM users WHERE login != "admin" ORDER BY login').fetchall()
@@ -94,7 +94,7 @@ def list_users(exclude_admin=True):
             return conn.execute('SELECT * FROM users ORDER BY login').fetchall()
 
 def check_camera_permission(login, room_code):
-    """Проверить, имеет ли пользователь доступ к указанной камере."""
+    """Check if a user has permission to access a specific camera."""
     user = get_user_by_login(login)
     if not user or not user['is_active']:
         return False

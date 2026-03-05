@@ -35,7 +35,7 @@ class RedisRequestQueue:
                 queue_time = time.time() - task.get('timestamp', time.time())
                 if queue_time > 300:
                     self.app.logger.warning(f"Task {task['id']} waited too long in queue ({queue_time:.1f}s). Cancelling.")
-                    # Получаем шаблон перевода и подставляем время
+                    # Get translation template and substitute time
                     template = self.app.modules['base']._(
                         'Request cancelled - too long in queue ({queue_time:.1f}s)',
                         lang=task.get('lang', 'ru')
@@ -178,7 +178,7 @@ class RedisRequestQueue:
                             image_result['gen_time'] = gen_time
                             image_result['mm_model'] = self.app.config['LLM_MULTIMODAL_MODEL']
                             image_result['gen_model'] = self.app.config['AUTOMATIC1111_MODEL']
-                            # Получаем шаблон и подставляем запрос
+                            # Get template and substitute query
                             template = self.app.modules['base']._('Image generated from request: {query}', lang=lang)
                             message_text = template.format(query=query)
                             save_message(
@@ -233,7 +233,7 @@ class RedisRequestQueue:
                         completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
                         camera_model = 'camera'
 
-                        # --- ИСПРАВЛЕНИЕ: получаем шаблон и подставляем название комнаты ---
+                        # --- FIX: get template and substitute room name ---
                         template = self.app.modules['base']._('Camera snapshot: {room_name}', lang=lang)
                         translated_text = template.format(room_name=camera_result['room_name'])
                         self.app.logger.info(f"[CAMERA DEBUG] Translated text after format: '{translated_text}'")

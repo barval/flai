@@ -2,7 +2,7 @@
 import logging
 
 class RagModule:
-    """Модуль для работы с RAG-системой (в разработке)"""
+    """Module for working with the RAG system (under development)"""
     
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
@@ -12,25 +12,25 @@ class RagModule:
             self.init_app(app)
     
     def init_app(self, app):
-        """Инициализация модуля с приложением Flask"""
-        # TODO: Реализовать инициализацию RAG-системы
-        self.logger.info("RagModule инициализирован (заглушка)")
+        """Initialize the module with the Flask app"""
+        # TODO: Implement RAG system initialization
+        self.logger.info("RagModule initialized (stub)")
         self.available = False
     
     def check_availability(self):
-        """Проверка доступности модуля"""
+        """Check module availability"""
         return self.available
     
     def process_query(self, query, context=None):
-        """Обработка запроса через RAG-систему (заглушка)"""
+        """Process a query through the RAG system (stub)"""
         if not self.available:
             return {
                 'success': False,
-                'error': "RAG-модуль недоступен (в разработке)"
+                'error': "RAG module unavailable (under development)"
             }
         
-        # TODO: Реализовать обработку запроса
+        # TODO: Implement query processing
         return {
             'success': True,
-            'response': "RAG-модуль находится в разработке"
+            'response': "RAG module is under development"
         }

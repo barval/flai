@@ -6,10 +6,10 @@ from datetime import datetime
 from flask import current_app, g
 
 DATA_DIR = 'data'
-CHAT_DB_PATH = os.path.join(DATA_DIR, 'chats.db')   # переименовано
+CHAT_DB_PATH = os.path.join(DATA_DIR, 'chats.db')   # renamed
 
 def get_db():
-    """Возвращает соединение с БД (для использования в маршрутах)."""
+    """Return a database connection (for use in routes)."""
     db = getattr(g, '_database', None)
     if db is None:
         db = g._database = sqlite3.connect(CHAT_DB_PATH)
@@ -22,7 +22,7 @@ def close_db(e=None):
         db.close()
 
 def init_db():
-    """Инициализация базы данных (создание таблиц)."""
+    """Initialize the database (create tables)."""
     if not os.path.exists(DATA_DIR):
         os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -60,7 +60,7 @@ def init_db():
         conn.commit()
 
 def migrate_db_add_response_fields():
-    """Добавление полей для хранения времени ответа."""
+    """Add fields to store response times."""
     try:
         with sqlite3.connect(CHAT_DB_PATH) as conn:
             c = conn.cursor()
@@ -78,10 +78,10 @@ def migrate_db_add_response_fields():
                 c.execute('ALTER TABLE messages ADD COLUMN gen_model TEXT')
             conn.commit()
     except Exception as e:
-        current_app.logger.error(f"Ошибка миграции БД: {str(e)}")
+        current_app.logger.error(f"Database migration error: {str(e)}")
 
 def migrate_db_add_session_visits():
-    """Добавление таблицы для отслеживания последних посещений."""
+    """Add table for tracking last visits."""
     try:
         with sqlite3.connect(CHAT_DB_PATH) as conn:
             c = conn.cursor()
@@ -95,7 +95,7 @@ def migrate_db_add_session_visits():
             ''')
             conn.commit()
     except Exception as e:
-        current_app.logger.error(f"Ошибка миграции session_visits: {str(e)}")
+        current_app.logger.error(f"session_visits migration error: {str(e)}")
 
 def get_user_sessions(user_id):
     with sqlite3.connect(CHAT_DB_PATH) as conn:
@@ -154,7 +154,7 @@ def get_session_messages(session_id):
             messages.append(msg_dict)
         return messages
 
-def create_session(user_id, title="Новый сеанс"):
+def create_session(user_id, title="New session"):
     session_id = str(uuid.uuid4())
     current_time = get_current_time_for_db()
     with sqlite3.connect(CHAT_DB_PATH) as conn:
@@ -176,7 +176,7 @@ def update_session_title(session_id, first_message, file_name=None):
     elif file_name:
         title = file_name[:40] + ('...' if len(file_name) > 40 else '')
     else:
-        title = "Новый сеанс"
+        title = "New session"
     current_time = get_current_time_for_db()
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
@@ -268,6 +268,6 @@ def update_session_visit(user_id, session_id):
         conn.commit()
 
 def get_current_time_for_db():
-    """Возвращает текущее время в формате для БД с учётом часового пояса."""
+    """Return the current time in DB format, taking timezone into account."""
     from .utils import get_current_time_in_timezone_for_db
     return get_current_time_in_timezone_for_db()

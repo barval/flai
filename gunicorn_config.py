@@ -2,21 +2,21 @@ import multiprocessing
 import logging
 from logging import Formatter
 
-# Количество рабочих процессов
+# Number of worker processes
 workers = multiprocessing.cpu_count() * 2 + 1
 
-# Адрес и порт для прослушивания
+# Address and port to listen on
 bind = "0.0.0.0:5000"
 
-# Таймауты
+# Timeouts
 timeout = 30
 
-# Логирование с временными метками
+# Logging with timestamps
 accesslog = "-"
 errorlog = "-"
 loglevel = "info"
 access_log_format = '%(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"'
 
-# Настройка форматирования логов
-# Gunicorn использует свои форматы, но можно настроить через переменные окружения
-# или через дополнительные параметры
+# Log format configuration
+# Gunicorn uses its own formats, but can be configured via environment variables
+# or via additional parameters

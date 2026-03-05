@@ -41,7 +41,7 @@
 }
 
 #users-table th {
-    background-color: #7f8c8d;  /* серый цвет, не совпадает со строкой неактивного пользователя */
+    background-color: #7f8c8d;  /* grey, does not match inactive user row */
     color: white;
     font-weight: 600;
     font-size: 14px;
@@ -73,7 +73,7 @@
     flex-direction: column;
     gap: 4px;
     text-align: left;
-    padding-left: 20px; /* отступ от левого края */
+    padding-left: 20px; /* indent from left edge */
 }
 
 .modal {

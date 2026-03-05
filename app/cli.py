@@ -6,11 +6,11 @@ from app.userdb import get_user_by_login, create_user, update_password
 @click.argument('password')
 @with_appcontext
 def set_admin_password(password):
-    """Установить пароль администратора (создаёт пользователя admin, если его нет)"""
+    """Set the admin password (creates admin user if it doesn't exist)."""
     admin = get_user_by_login('admin')
     if admin:
         update_password('admin', password)
-        click.echo('Пароль администратора изменён.')
+        click.echo('Admin password changed.')
     else:
         create_user(
             login='admin',
@@ -19,4 +19,4 @@ def set_admin_password(password):
             service_class=0,
             is_admin=True
         )
-        click.echo('Администратор создан.')
+        click.echo('Admin created.')

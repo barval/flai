@@ -1,0 +1,24 @@
+# melotts
+services:
+  melotts:
+    build:
+      context: .
+      dockerfile: Dockerfile.melotts
+    container_name: melotts
+    restart: unless-stopped
+    ports:
+      - "8888:8888" # Проброс порта для доступа к API и WebUI
+    networks:
+      - flai_network
+    # Uncomment for GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+networks:
+  flai_network:
+    external: true

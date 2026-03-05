@@ -1,0 +1,31 @@
+# openai-whisper
+services:
+  openai-whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest         # CPU
+    # image: onerahmet/openai-whisper-asr-webservice:latest-gpu   # GPU
+    container_name: openai-whisper
+    networks:
+      - flai_network
+    ports:
+      - "9000:9000"
+    environment:
+      ASR_MODEL: "medium"                # or "small", "large"
+      ASR_ENGINE: "faster_whisper"       # faster_whisper recommended
+      ASR_DEVICE: "cpu"                  # change to "cuda" for GPU
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: always
+    # Uncomment for GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+networks:
+  flai_network:
+    external: true

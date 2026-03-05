@@ -1,0 +1,20 @@
+# Dockerfile.melotts
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Cloning the MeloTTS repository
+RUN apt-get update && apt-get install -y git && \
+    git clone https://github.com/myshell-ai/MeloTTS.git . && \
+    apt-get remove -y git && apt-get autoremove -y
+
+# Installing dependencies
+RUN pip install --no-cache-dir -e .
+
+# Uploading the necessary language data
+RUN python -m unidic download
+
+# The command to start the WebUI server
+CMD ["python", "melo/app.py"]
+
+EXPOSE 8888

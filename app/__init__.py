@@ -1,8 +1,8 @@
+import os
 from flask import Flask, request, session
 from flask_babel import Babel, gettext
 import logging
 from logging import Formatter
-import os
 
 from .config import load_config
 from .db import init_db, migrate_db_add_response_fields, migrate_db_add_session_visits
@@ -25,9 +25,13 @@ def create_app():
     # Load configuration
     load_config(app)
 
-    # Explicit Babel configuration
+    # Explicit Babel configuration with correct absolute path
+    translations_path = os.path.join(app.root_path, '..', 'translations')
+    app.config['BABEL_TRANSLATION_DIRECTORIES'] = translations_path
     app.config['BABEL_DEFAULT_LOCALE'] = 'ru'
-    app.config['BABEL_TRANSLATION_DIRECTORIES'] = 'translations'
+
+    # Log the translations path for debugging
+    app.logger.info(f"Translations path: {translations_path}")
 
     # Setup logging
     formatter = Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -42,6 +46,10 @@ def create_app():
     app.jinja_env.add_extension('jinja2.ext.i18n')  # for _() in templates
     # Make _ available globally in templates
     app.jinja_env.globals['_'] = gettext
+
+    # Log available translations for debugging
+    from flask_babel import list_translations
+    app.logger.info(f"Available translations: {[str(l) for l in list_translations()]}")
 
     # Initialize chat DB
     init_db()

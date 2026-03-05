@@ -20,6 +20,8 @@ services:
     volumes:
       - ./data:/app/data
       - ./.env:/app/.env:ro
+    env_file:
+      - .env  
     environment:
       FLASK_ENV: production
       OLLAMA_URL: http://host.docker.internal:11434

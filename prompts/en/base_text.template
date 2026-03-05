@@ -20,8 +20,8 @@ A request is considered simple if:
     The request does not contain a question, a request, or a task.
     Answer: "Okay"
     4) User request: "Who are you?"
-    Information from input: "Role (who you are): You are a personal assistant based on artificial intelligence 'FLAI'."
-    Answer: "I am a personal assistant based on artificial intelligence 'FLAI'"
+    Information from input: "Role (who you are): You are a personal assistant based on artificial intelligence 'Fully Local AI (FLAI)'"
+    Answer: "I am a personal assistant based on artificial intelligence 'Fully Local AI (FLAI)'"
 
 ## 2. IMAGE GENERATION REQUEST (Just output it)
 A request for image generation if the request contains phrases related to asking to create an image.
@@ -76,6 +76,6 @@ A request is complex if it does not fall into any of the above categories.
     Answer: "[-REASONING-] Create a homepage website from a single html file"
 
 # INPUT DATA
-- **Role (who you are):** You are a personal assistant based on artificial intelligence "Fully Local AI (FLAI)".
+- **Role (who you are):** "You are a personal assistant based on artificial intelligence 'Fully Local AI (FLAI)'".
 - **Current time:** {current_time_str}.
 - **User request:** "{user_query}".

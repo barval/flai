@@ -1,5 +1,5 @@
 from flask import Flask, request, session
-from flask_babel import Babel
+from flask_babel import Babel, gettext
 import logging
 from logging import Formatter
 import os
@@ -25,6 +25,10 @@ def create_app():
     # Load configuration
     load_config(app)
 
+    # Explicit Babel configuration
+    app.config['BABEL_DEFAULT_LOCALE'] = 'ru'
+    app.config['BABEL_TRANSLATION_DIRECTORIES'] = 'translations'
+
     # Setup logging
     formatter = Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                          datefmt='%Y-%m-%d %H:%M:%S')
@@ -33,9 +37,11 @@ def create_app():
     app.logger.handlers = [console_handler]
     app.logger.setLevel(logging.DEBUG)
 
-    # Initialize Babel
-    babel.init_app(app)
+    # Initialize Babel with locale selector
+    babel.init_app(app, locale_selector=get_locale)
     app.jinja_env.add_extension('jinja2.ext.i18n')  # for _() in templates
+    # Make _ available globally in templates
+    app.jinja_env.globals['_'] = gettext
 
     # Initialize chat DB
     init_db()

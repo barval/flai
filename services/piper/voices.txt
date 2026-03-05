@@ -1,12 +1,10 @@
 # Piper TTS voices to download
-# Format: model_id OR full HuggingFace URL
-# Lines starting with # are comments
+# Format: HuggingFace URL
 
 # Russian voices
-ru_RU-ruslan-medium
+https://huggingface.co/rhasspy/piper-voices/blob/main/ru/ru_RU/ruslan/medium/ru_RU-ruslan-medium.onnx
+https://huggingface.co/rhasspy/piper-voices/blob/main/ru/ru_RU/ruslan/medium/ru_RU-ruslan-medium.onnx.json
 
 # English voices
-en_US-bryce-medium
-
-# Example with full URL (optional):
-# https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/bryce/medium/en_US-bryce-medium.onnx
+https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/bryce/medium/en_US-bryce-medium.onnx.json

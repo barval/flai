@@ -20,14 +20,14 @@ def get_voice_path(language):
     """
     Return the full path to the .onnx model file for the given language.
     Expected naming convention: <lang_code>-<speaker>-<quality>.onnx
-    (e.g., ru_RU-dmitri-medium.onnx)
+    (e.g., ru_RU-ruslan-medium.onnx)
     The corresponding .json file must be in the same directory.
     """
     # Mapping from language code to expected model file prefix
     # You can customize this mapping or make it configurable.
     lang_to_model = {
-        'ru': 'ru_RU-dmitri-medium',
-        'en': 'en_US-lessac-medium'
+        'ru': 'ru_RU-ruslan-medium',
+        'en': 'en_US-bryce-medium'
     }
     if language not in lang_to_model:
         app.logger.warning(f"Language '{language}' not found in mapping, falling back to English.")

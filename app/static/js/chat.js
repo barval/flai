@@ -64,7 +64,7 @@ function formatFullDateTime(ts) {
     }
 }
 
-// Функция для форматирования строк с плейсхолдерами вида {key}
+// A function for formatting strings with placeholders like {key}
 function formatString(str, params) {
     return str.replace(/{(\w+)}/g, (match, key) => params[key] || match);
 }
@@ -973,8 +973,7 @@ async function sendMessage() {
 // -------------------------------
 // Delete session
 // -------------------------------
-function deleteSession(sessionId, sessionTitle, sessionDate) {
-    // Форматируем сообщение подтверждения с подстановкой переменных
+function deleteSession(sessionId, sessionTitle, sessionDate) {   
     const confirmMessage = formatString(t('delete_session_confirm'), {
         title: sessionTitle,
         date: sessionDate
@@ -1019,11 +1018,16 @@ async function saveChatAsHTML() {
     let footerText = "";
     try {
         const response = await fetch('/api/footer-text');
-        if (response.ok) footerText = await response.text();
-        else footerText = t('footer_not_configured');
+        if (response.ok) {
+            footerText = await response.text();
+            console.log('Footer text fetched:', footerText);
+        } else {
+            console.error('Footer API returned status:', response.status);
+            footerText = t('footer_text'); 
+        }
     } catch (error) {
         console.error('Error fetching footer:', error);
-        footerText = t('footer_load_error');
+        footerText = t('footer_text'); 
     }
 
     const userNameElement = document.querySelector('.logout-container span');
@@ -1092,6 +1096,17 @@ async function saveChatAsHTML() {
 
     const siteTitle = document.querySelector('header h1')?.textContent || 'FLAI';
 
+    // Formatting the date based on the language
+    const dateOptions = { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit' 
+    };
+    const formattedDate = now.toLocaleString(CURRENT_LANG === 'ru' ? 'ru-RU' : 'en-US', dateOptions);
+
     const html = `<!DOCTYPE html>
 <html lang="${CURRENT_LANG}">
 <head>
@@ -1109,7 +1124,7 @@ async function saveChatAsHTML() {
             <div class="chat-header">
                 <h1>${t('session')}: ${escapeHtml(title)}</h1>
                 <p class="user-info">👤 ${t('user')}: ${escapeHtml(userName)}</p>
-                <p>📅 ${t('saved_on')}: ${now.toLocaleString(CURRENT_LANG === 'ru' ? 'ru-RU' : 'en-US', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' })}</p>
+                <p>📅 ${t('saved_on')}: ${formattedDate}</p>
                 <p>💬 ${t('total_messages')}: ${messages.length}</p>
             </div>
             <div class="chat-messages">

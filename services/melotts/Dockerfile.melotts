@@ -8,13 +8,15 @@ RUN apt-get update && apt-get install -y git && \
     git clone https://github.com/myshell-ai/MeloTTS.git . && \
     apt-get remove -y git && apt-get autoremove -y
 
-# Installing dependencies
-RUN pip install --no-cache-dir -e .
+# Installing dependencies with pinned versions to avoid compatibility issues
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -e . && \
+    pip install botocore==1.34.88 cached_path==1.6.2
 
-# Uploading the necessary language data
+# Downloading the necessary language data
 RUN python -m unidic download
 
-# The command to start the WebUI server
+# Command to start the WebUI server
 CMD ["python", "melo/app.py"]
 
 EXPOSE 8888

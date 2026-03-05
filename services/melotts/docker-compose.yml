@@ -7,7 +7,7 @@ services:
     container_name: melotts
     restart: unless-stopped
     ports:
-      - "8888:8888" # Проброс порта для доступа к API и WebUI
+      - "8888:8888" # Forwarding the API and WebUI access port
     networks:
       - flai_network
     # Uncomment for GPU support

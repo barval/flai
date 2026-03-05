@@ -37,8 +37,8 @@ def create_app():
     app.logger.handlers = [console_handler]
     app.logger.setLevel(logging.DEBUG)
 
-    # Initialize Babel with locale selector
-    babel.init_app(app, locale_selector=get_locale)
+    # Initialize Babel with the app (locale selector is already set via decorator)
+    babel.init_app(app)
     app.jinja_env.add_extension('jinja2.ext.i18n')  # for _() in templates
     # Make _ available globally in templates
     app.jinja_env.globals['_'] = gettext

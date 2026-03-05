@@ -64,6 +64,11 @@ function formatFullDateTime(ts) {
     }
 }
 
+// Функция для форматирования строк с плейсхолдерами вида {key}
+function formatString(str, params) {
+    return str.replace(/{(\w+)}/g, (match, key) => params[key] || match);
+}
+
 // -------------------------------
 // Image modal
 // -------------------------------
@@ -969,10 +974,11 @@ async function sendMessage() {
 // Delete session
 // -------------------------------
 function deleteSession(sessionId, sessionTitle, sessionDate) {
-    let confirmMessage = t('delete_session_confirm');
-    if (confirmMessage === 'delete_session_confirm') {
-        confirmMessage = `Delete session "${sessionTitle}" from ${sessionDate}?`;
-    }
+    // Форматируем сообщение подтверждения с подстановкой переменных
+    const confirmMessage = formatString(t('delete_session_confirm'), {
+        title: sessionTitle,
+        date: sessionDate
+    });
     if (!confirm(confirmMessage)) return;
 
     for (let [id, req] of Object.entries(pendingRequests)) {

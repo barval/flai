@@ -52,6 +52,9 @@ msgstr "Нет прав или сеанс не найден"
 msgid "No active session"
 msgstr "Нет активного сеанса"
 
+msgid "Delete session {title} from {date}?"
+msgstr "Удалить сеанс \"{title}\" от {date}?"
+
 msgid "Empty message"
 msgstr "Пустое сообщение"
 

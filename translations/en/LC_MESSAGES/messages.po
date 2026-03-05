@@ -51,6 +51,9 @@ msgstr "Permission denied or session not found"
 msgid "No active session"
 msgstr "No active session"
 
+msgid "Delete session {title} from {date}?"
+msgstr "Delete session {title} from {date}?"
+
 msgid "Empty message"
 msgstr "Empty message"
 

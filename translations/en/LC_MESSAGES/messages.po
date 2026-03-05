@@ -386,6 +386,9 @@ msgstr "Multimodal module unavailable (required for parameter generation)"
 msgid "Image generation timeout ({timeout}s)"
 msgstr "Image generation timeout ({timeout}s)"
 
+msgid "Image generated from request: {query}"
+msgstr "Image generated from request: {query}"
+
 msgid "Could not connect to Automatic1111"
 msgstr "Could not connect to Automatic1111"
 

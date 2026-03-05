@@ -387,6 +387,9 @@ msgstr "Мультимодальный модуль недоступен (тре
 msgid "Image generation timeout ({timeout}s)"
 msgstr "Превышено время ожидания генерации изображения ({timeout}с)"
 
+msgid "Image generated from request: {query}"
+msgstr "Изображение сгенерировано по запросу: {query}"
+
 msgid "Could not connect to Automatic1111"
 msgstr "Не удалось подключиться к Automatic1111"
 

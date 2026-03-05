@@ -2,7 +2,7 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Устанавливаем системные зависимости (Pillow требует дополнительные библиотеки)
+# Installing system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libjpeg-dev \
@@ -11,24 +11,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libwebp-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Устанавливаем Python зависимости
+# Installing Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
-# Копируем код
+# Copying the code
 COPY . .
 
-# Создаем пользователя
-RUN addgroup --system --gid 1000 appuser && \
-    adduser --system --uid 1000 --gid 1000 appuser
+# Compiling translations (Babel is already installed via Flask-Babel)
+RUN python -m babel compile -d translations
 
-# Создаем папку для данных и даем права
-RUN mkdir -p /app/data && \
+# Creating a user and a folder for the data
+RUN addgroup --system --gid 1000 appuser && \
+    adduser --system --uid 1000 --gid 1000 appuser && \
+    mkdir -p /app/data && \
     chown -R appuser:appuser /app && \
     chmod -R 755 /app/data
 
-# Переключаемся на непривилегированного пользователя
+# Switching to an unprivileged user
 USER appuser
 
-# Запускаем с Gunicorn
+# Launching with Gunicorn
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "2", "wsgi:app"]

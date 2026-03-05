@@ -43,6 +43,15 @@ msgstr "Пароль"
 msgid "Not authorized"
 msgstr "Не авторизован"
 
+msgid "session"
+msgstr "Сеанс"
+
+msgid "saved_on"
+msgstr "Сохранено"
+
+msgid "total_messages"
+msgstr "Всего сообщений"
+
 msgid "New session"
 msgstr "Новый сеанс"
 

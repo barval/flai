@@ -42,6 +42,15 @@ msgstr "Password"
 msgid "Not authorized"
 msgstr "Not authorized"
 
+msgid "session"
+msgstr "Session"
+
+msgid "saved_on"
+msgstr "Saved on"
+
+msgid "total_messages"
+msgstr "Total messages"
+
 msgid "New session"
 msgstr "New session"
 

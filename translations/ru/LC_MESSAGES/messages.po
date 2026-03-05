@@ -408,5 +408,17 @@ msgstr "Automatic1111 не вернул изображение"
 msgid "MB"
 msgstr "МБ"
 
+msgid "TTS service unavailable"
+msgstr "Сервис озвучки недоступен"
+
+msgid "TTS synthesis failed"
+msgstr "Ошибка синтеза речи"
+
+msgid "Missing text"
+msgstr "Отсутствует текст"
+
+msgid "speak"
+msgstr "Озвучить"
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v6.2 (c) 2026 Барсуков Валерий"

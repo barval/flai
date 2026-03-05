@@ -407,5 +407,17 @@ msgstr "Automatic1111 returned no image"
 msgid "MB"
 msgstr "MB"
 
+msgid "TTS service unavailable"
+msgstr "TTS service unavailable"
+
+msgid "TTS synthesis failed"
+msgstr "TTS synthesis failed"
+
+msgid "Missing text"
+msgstr "Missing text"
+
+msgid "speak"
+msgstr "Speak"
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v6.2 (c) 2026 Valery Barsukov"

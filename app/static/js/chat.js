@@ -64,7 +64,7 @@ function formatFullDateTime(ts) {
     }
 }
 
-// A function for formatting strings with placeholders like {key}
+// Format string with placeholders like {key}
 function formatString(str, params) {
     return str.replace(/{(\w+)}/g, (match, key) => params[key] || match);
 }
@@ -357,6 +357,38 @@ function updateLastVisit(sessionId) {
 }
 
 // -------------------------------
+// TTS (Text-to-Speech) playback
+// -------------------------------
+async function playTTS(button) {
+    const msgDiv = button.closest('.assistant-message, .bot-message');
+    if (!msgDiv) return;
+    const text = msgDiv.dataset.rawText;
+    if (!text) return;
+    const lang = CURRENT_LANG;
+
+    try {
+        const response = await fetch('/api/tts/synthesize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: text, lang: lang })
+        });
+        if (!response.ok) {
+            const error = await response.json();
+            alert(t('error') + ': ' + (error.error || t('unknown_error')));
+            return;
+        }
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        audio.play();
+        audio.onended = () => URL.revokeObjectURL(audioUrl);
+    } catch (err) {
+        console.error('TTS error:', err);
+        alert(t('error') + ': ' + err.message);
+    }
+}
+
+// -------------------------------
 // Initialization after DOM load
 // -------------------------------
 document.addEventListener('DOMContentLoaded', function() {
@@ -502,6 +534,7 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
     msgDiv.setAttribute('data-timestamp', timestamp);
 
     if (role === 'assistant') {
+        msgDiv.setAttribute('data-raw-text', content); // store original text for TTS
         if (modelName) msgDiv.dataset.modelName = modelName;
         if (responseTime && typeof responseTime === 'object') {
             if (responseTime.mm_time) msgDiv.dataset.mmTime = responseTime.mm_time;
@@ -549,6 +582,8 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
             const shortModel = modelName.split('/').pop() || modelName;
             headerHTML += ` <span class="text-muted">| ${escapeHtml(shortModel)}</span>`;
         }
+        // TTS button
+        headerHTML += ` <button class="tts-button" onclick="playTTS(this)" title="${t('speak')}">🔊</button>`;
         let duration = null;
         if (responseTime) {
             if (typeof responseTime === 'object') {
@@ -1015,7 +1050,7 @@ function deleteSession(sessionId, sessionTitle, sessionDate) {
 // Save chat as HTML
 // -------------------------------
 async function saveChatAsHTML() {
-    // --- Fetch footer (unchanged) ---
+    // Fetch footer
     let footerText = "";
     try {
         const response = await fetch('/api/footer-text');
@@ -1031,11 +1066,11 @@ async function saveChatAsHTML() {
         footerText = t('footer_text');
     }
 
-    // --- Get user name (unchanged) ---
+    // Get user name
     const userNameElement = document.querySelector('.logout-container span');
     const userName = userNameElement ? userNameElement.textContent.trim() : t('user');
 
-    // --- Get session title (unchanged) ---
+    // Get session title
     const activeSession = document.querySelector('.session-item.active');
     if (!activeSession) {
         alert(t('no_active_session_save'));
@@ -1043,7 +1078,7 @@ async function saveChatAsHTML() {
     }
     const rawTitle = activeSession.querySelector('.session-title')?.textContent || t('chat');
 
-    // Format title if it's a date (unchanged)
+    // Format title if it's a date
     let displayTitle = rawTitle;
     const filenameDateRegex = /(voice_)?(\d{8})_(\d{6})(\.webm)?$/;
     const match = rawTitle.match(filenameDateRegex);
@@ -1064,11 +1099,11 @@ async function saveChatAsHTML() {
         displayTitle = escapeHtml(rawTitle);
     }
 
-    // --- Get logo and convert to Base64 (NEW CODE) ---
+    // Get logo and convert to Base64
     let logoBase64 = '';
     const logoImg = document.querySelector('.header-logo');
     if (logoImg) {
-        const logoSrc = logoImg.src; // may be a path or data URI
+        const logoSrc = logoImg.src;
         // If it's not a data URI, fetch and convert
         if (logoSrc && !logoSrc.startsWith('data:')) {
             try {
@@ -1089,14 +1124,14 @@ async function saveChatAsHTML() {
         }
     }
 
-    // --- Generate HTML header with logo ---
+    // Generate HTML header with logo
     const headerLogoHtml = logoBase64 ? `<img src="data:image/png;base64,${logoBase64}" alt="FLAI Logo" class="header-logo">` : '';
 
-    // --- Time and date (unchanged) ---
+    // Time and date
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 
-    // --- Footer (unchanged) ---
+    // Footer
     let footerLine1 = footerText, footerLine2 = '';
     if (footerText.includes('(c)')) {
         const parts = footerText.split('(c)');
@@ -1106,7 +1141,7 @@ async function saveChatAsHTML() {
         footerLine1 = footerText;
     }
 
-    // --- Collect messages (unchanged) ---
+    // Collect messages
     const messages = [];
     document.querySelectorAll('.user-message, .assistant-message, .bot-message').forEach(msgEl => {
         const role = msgEl.classList.contains('user-message') ? 'user' : 'assistant';
@@ -1130,7 +1165,7 @@ async function saveChatAsHTML() {
         return;
     }
 
-    // --- Load styles (unchanged) ---
+    // Load styles
     let styleContent = '';
     let exportStyleContent = '';
     try {
@@ -1154,7 +1189,7 @@ async function saveChatAsHTML() {
     const dateOptions = { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
     const formattedDate = now.toLocaleString(CURRENT_LANG === 'ru' ? 'ru-RU' : 'en-US', dateOptions);
 
-    // --- Final HTML assembly with logo ---
+    // Final HTML assembly
     const html = `<!DOCTYPE html>
 <html lang="${CURRENT_LANG}">
 <head>

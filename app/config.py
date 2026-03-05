@@ -44,6 +44,8 @@ def load_config(app):
     app.config['CAMERA_ENABLED'] = os.getenv('CAMERA_ENABLED', 'true').lower() in ('true', '1', 'yes')
     app.config['CAMERA_API_TIMEOUT'] = int(os.getenv('CAMERA_API_TIMEOUT', 15))
     app.config['CAMERA_CHECK_INTERVAL'] = int(os.getenv('CAMERA_CHECK_INTERVAL', 30))
+    app.config['MELOTTS_URL'] = os.getenv('MELOTTS_URL')
+    app.config['MELOTTS_TIMEOUT'] = int(os.getenv('MELOTTS_TIMEOUT', 30))
 
     # Timezone setup
     if app.config['TIMEZONE_STR']:

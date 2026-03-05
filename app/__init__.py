@@ -79,6 +79,14 @@ def create_app():
     modules['rag'] = RagModule(app)
     modules['audio'] = AudioModule(app)
 
+    # TTS module
+    if app.config.get('MELOTTS_URL'):
+        from modules.tts import TTSModule
+        modules['tts'] = TTSModule(app)
+        app.logger.info("TTS module enabled")
+    else:
+        app.logger.info("TTS module disabled (MELOTTS_URL not set)")
+
     app.modules = modules
 
     # Initialize Redis queue
@@ -90,6 +98,10 @@ def create_app():
     app.register_blueprint(routes_chat.bp)
     app.register_blueprint(routes_queue.bp)
     app.register_blueprint(routes_admin.bp)
+
+    # Register TTS blueprint (if TTS module is enabled)
+    from . import routes_tts
+    app.register_blueprint(routes_tts.bp)
 
     # Register CLI commands
     app.cli.add_command(cli.set_admin_password)

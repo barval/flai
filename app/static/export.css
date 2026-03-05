@@ -47,7 +47,7 @@ footer {
     color: #7f8c8d;
     font-size: 0.9em;
     margin: 5px 0;
-    display: block !important; /* гарантия видимости */
+    display: block !important;
 }
 
 .message-time {
@@ -58,7 +58,7 @@ footer {
     margin-bottom: 8px !important;
 }
 
-/* Скрытие всех элементов управления */
+/* Hiding all controls*/
 .save-chat-button,
 .clear-context-button,
 .new-session-button,
@@ -75,7 +75,6 @@ footer {
     display: none !important;
 }
 
-/* Убираем обёртки, чтобы не создавали лишних отступов */
 .code-block-wrapper {
     margin: 1em 0;
     position: static !important;
@@ -99,4 +98,8 @@ footer {
     font-size: 1.2em;
     margin-bottom: 5px;
     font-weight: 500;
+}
+
+.tts-button {
+    display: none !important;
 }

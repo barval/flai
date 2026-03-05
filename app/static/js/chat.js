@@ -1151,6 +1151,7 @@ async function saveChatAsHTML() {
     };
     const formattedDate = now.toLocaleString(CURRENT_LANG === 'ru' ? 'ru-RU' : 'en-US', dateOptions);
 
+    // Using translations from the TRANSLATIONS object
     const html = `<!DOCTYPE html>
 <html lang="${CURRENT_LANG}">
 <head>

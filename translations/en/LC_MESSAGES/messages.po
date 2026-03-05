@@ -232,6 +232,9 @@ msgstr "Messages"
 msgid "Camera access"
 msgstr "Camera access"
 
+msgid "Camera snapshot: {room_name}"
+msgstr "Camera snapshot: {room_name}"
+
 msgid "Actions"
 msgstr "Actions"
 

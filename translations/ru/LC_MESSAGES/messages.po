@@ -233,6 +233,9 @@ msgstr "Сообщений"
 msgid "Camera access"
 msgstr "Доступ к камерам"
 
+msgid "Camera snapshot: {room_name}"
+msgstr "Снимок с камеры: {room_name}"
+
 msgid "Actions"
 msgstr "Действия"
 

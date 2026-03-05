@@ -408,4 +408,4 @@ msgid "MB"
 msgstr "MB"
 
 msgid "footer_text"
-msgstr "Fully Local AI (FLAI) v6.1 (c) 2026 Valery Barsukov"
+msgstr "Fully Local AI (FLAI) v6.2 (c) 2026 Valery Barsukov"

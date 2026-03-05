@@ -1039,7 +1039,51 @@ async function saveChatAsHTML() {
         return;
     }
 
-    const title = activeSession.querySelector('.session-title')?.textContent || t('chat');
+    // We get the "raw" session name from the element
+    const rawTitle = activeSession.querySelector('.session-title')?.textContent || t('chat');
+    
+    // --- Format the session name if it is a date ---
+    let displayTitle = rawTitle;
+    
+    // A regular expression for searching for a date in the voice_yyymmdd_hhmmss or YYYYMMDD_HHMMSS format
+    // It searches for: optionally "voice_", then 8 digits (date), then "_", then 6 digits (time), and optionally ".webm" at the end
+    const filenameDateRegex = /(voice_)?(\d{8})_(\d{6})(\.webm)?$/;
+    const match = rawTitle.match(filenameDateRegex);
+    
+    if (match) {
+        // If the session name matches the format voice_20260305_151122.webm or 20260305_151122
+        const datePart = match[2]; // YYYYMMDD
+        const timePart = match[3]; // HHMMSS
+        
+        // Parsimony of the date
+        const year = datePart.substring(0, 4);
+        const month = datePart.substring(4, 6);
+        const day = datePart.substring(6, 8);
+        const hours = timePart.substring(0, 2);
+        const minutes = timePart.substring(2, 4);
+        const seconds = timePart.substring(4, 6);
+        
+        // Creating a Date object (months in JS start at 0, so month is 1)
+        const dateObj = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
+        
+        // Formatting the date based on the current language (CURRENT_LANG)
+        const dateOptions = { 
+            year: 'numeric', 
+            month: '2-digit', 
+            day: '2-digit', 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit' 
+        };
+        const formattedDate = dateObj.toLocaleString(CURRENT_LANG === 'ru' ? 'ru-RU' : 'en-US', dateOptions);
+        
+        // We form a beautiful name with a microphone icon
+        displayTitle = `🎤 ${t('voice_request')} (${formattedDate})`;
+    } else {
+        // If it is not a date, then we use the original name, but we shield it for safety.
+        displayTitle = escapeHtml(rawTitle);
+    }
+
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 
@@ -1112,7 +1156,7 @@ async function saveChatAsHTML() {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${escapeHtml(title)} - ${t('saved_chat')}</title>
+    <title>${escapeHtml(rawTitle)} - ${t('saved_chat')}</title>
     <style>${combinedStyles}</style>
 </head>
 <body>
@@ -1122,7 +1166,7 @@ async function saveChatAsHTML() {
     <main>
         <div class="chat-wrapper">
             <div class="chat-header">
-                <h1>${t('session')}: ${escapeHtml(title)}</h1>
+                <h1>${t('session')}: ${displayTitle}</h1>
                 <p class="user-info">👤 ${t('user')}: ${escapeHtml(userName)}</p>
                 <p>📅 ${t('saved_on')}: ${formattedDate}</p>
                 <p>💬 ${t('total_messages')}: ${messages.length}</p>

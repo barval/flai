@@ -18,8 +18,8 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn
 # Copying the code
 COPY . .
 
-# Compiling translations (Babel is already installed via Flask-Babel)
-RUN python -m babel compile -d translations
+# Compiling translations (via the internal Babel module)
+RUN python -m babel.messages.frontend compile -d translations
 
 # Creating a user and a folder for the data
 RUN addgroup --system --gid 1000 appuser && \

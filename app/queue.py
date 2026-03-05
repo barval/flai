@@ -218,18 +218,31 @@ class RedisRequestQueue:
                     camera_start_time = time.time()
                     camera_result = self.app.modules['cam'].get_snapshot(user_id, query, lang=lang)
                     camera_time = round(time.time() - camera_start_time, 1)
+
+                    # --- DEBUG LOGGING ---
+                    self.app.logger.info(f"[CAMERA DEBUG] camera_result: room_name={camera_result.get('room_name')}, "
+                                         f"success={camera_result.get('success')}, "
+                                         f"image_data_present={bool(camera_result.get('image_data'))}")
+                    # ---------------------
+
                     if camera_result['success']:
                         completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
                         camera_model = 'camera'
+
+                        # --- DEBUG LOGGING: translated text ---
+                        translated_text = self.app.modules['base']._('Camera snapshot: {room_name}', lang=lang, room_name=camera_result['room_name'])
+                        self.app.logger.info(f"[CAMERA DEBUG] Translated text: '{translated_text}'")
+                        # ---------------------------------------
+
                         save_message(
                             session_id, 'assistant',
-                            self.app.modules['base']._('Camera snapshot: {room_name}', lang=lang, room_name=camera_result['room_name']),
+                            translated_text,
                             camera_result['image_data'], camera_result['image_type'],
                             camera_result['file_name'], camera_model,
                             response_time=str(camera_time)
                         )
                         first_message = {
-                            'response': self.app.modules['base']._('Camera snapshot: {room_name}', lang=lang, room_name=camera_result['room_name']),
+                            'response': translated_text,
                             'session_id': session_id,
                             'model_used': camera_model,
                             'assistant_timestamp': completion_time_for_db,
@@ -240,6 +253,11 @@ class RedisRequestQueue:
                             'response_time': camera_time,
                             'is_error': False
                         }
+
+                        # --- DEBUG LOGGING: first_message response ---
+                        self.app.logger.info(f"[CAMERA DEBUG] first_message['response'] = '{first_message['response']}'")
+                        # ---------------------------------------------
+
                         messages = [first_message]
                         if message_text and 'multimodal' in self.app.modules and self.app.modules['multimodal'].available:
                             mm_start_time = time.time()

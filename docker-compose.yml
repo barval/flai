@@ -26,6 +26,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       PYTHONUNBUFFERED: 1
       TZ: ${TIMEZONE}
+      PIPER_URL: ${PIPER_URL}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     user: "1000:1000"

@@ -1015,6 +1015,7 @@ function deleteSession(sessionId, sessionTitle, sessionDate) {
 // Save chat as HTML
 // -------------------------------
 async function saveChatAsHTML() {
+    // --- Получение подвала (без изменений) ---
     let footerText = "";
     try {
         const response = await fetch('/api/footer-text');
@@ -1023,70 +1024,79 @@ async function saveChatAsHTML() {
             console.log('Footer text fetched:', footerText);
         } else {
             console.error('Footer API returned status:', response.status);
-            footerText = t('footer_text'); 
+            footerText = t('footer_text');
         }
     } catch (error) {
         console.error('Error fetching footer:', error);
-        footerText = t('footer_text'); 
+        footerText = t('footer_text');
     }
 
+    // --- Получение имени пользователя (без изменений) ---
     const userNameElement = document.querySelector('.logout-container span');
     const userName = userNameElement ? userNameElement.textContent.trim() : t('user');
 
+    // --- Получение названия сессии (без изменений) ---
     const activeSession = document.querySelector('.session-item.active');
     if (!activeSession) {
         alert(t('no_active_session_save'));
         return;
     }
-
-    // We get the "raw" session name from the element
     const rawTitle = activeSession.querySelector('.session-title')?.textContent || t('chat');
-    
-    // --- Format the session name if it is a date ---
+
+    // Форматирование названия, если это дата (без изменений)
     let displayTitle = rawTitle;
-    
-    // A regular expression for searching for a date in the voice_yyymmdd_hhmmss or YYYYMMDD_HHMMSS format
-    // It searches for: optionally "voice_", then 8 digits (date), then "_", then 6 digits (time), and optionally ".webm" at the end
     const filenameDateRegex = /(voice_)?(\d{8})_(\d{6})(\.webm)?$/;
     const match = rawTitle.match(filenameDateRegex);
-    
     if (match) {
-        // If the session name matches the format voice_20260305_151122.webm or 20260305_151122
-        const datePart = match[2]; // YYYYMMDD
-        const timePart = match[3]; // HHMMSS
-        
-        // Parsimony of the date
+        const datePart = match[2];
+        const timePart = match[3];
         const year = datePart.substring(0, 4);
         const month = datePart.substring(4, 6);
         const day = datePart.substring(6, 8);
         const hours = timePart.substring(0, 2);
         const minutes = timePart.substring(2, 4);
         const seconds = timePart.substring(4, 6);
-        
-        // Creating a Date object (months in JS start at 0, so month is 1)
         const dateObj = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
-        
-        // Formatting the date based on the current language (CURRENT_LANG)
-        const dateOptions = { 
-            year: 'numeric', 
-            month: '2-digit', 
-            day: '2-digit', 
-            hour: '2-digit', 
-            minute: '2-digit', 
-            second: '2-digit' 
-        };
+        const dateOptions = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' };
         const formattedDate = dateObj.toLocaleString(CURRENT_LANG === 'ru' ? 'ru-RU' : 'en-US', dateOptions);
-        
-        // We form a beautiful name with a microphone icon
         displayTitle = `🎤 ${t('voice_request')} (${formattedDate})`;
     } else {
-        // If it is not a date, then we use the original name, but we shield it for safety.
         displayTitle = escapeHtml(rawTitle);
     }
 
+    // --- Получение и преобразование логотипа в Base64 (НОВЫЙ КОД) ---
+    let logoBase64 = '';
+    const logoImg = document.querySelector('.header-logo');
+    if (logoImg) {
+        const logoSrc = logoImg.src; // может быть путь или data URI
+        // Если это не data URI, загружаем и конвертируем
+        if (logoSrc && !logoSrc.startsWith('data:')) {
+            try {
+                const response = await fetch(logoSrc);
+                const blob = await response.blob();
+                const reader = new FileReader();
+                const base64Promise = new Promise((resolve, reject) => {
+                    reader.onloadend = () => resolve(reader.result.split(',')[1]);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+                logoBase64 = await base64Promise;
+            } catch (e) {
+                console.error('Failed to load logo for export:', e);
+            }
+        } else if (logoSrc && logoSrc.startsWith('data:')) {
+            logoBase64 = logoSrc.split(',')[1];
+        }
+    }
+
+    // --- Формирование HTML для шапки с логотипом ---
+    const headerLogoHtml = logoBase64 ? `<img src="data:image/png;base64,${logoBase64}" alt="FLAI Logo" class="header-logo">` : '';
+
+    // --- Время и дата (без изменений) ---
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 
+    // --- Подвал (без изменений) ---
     let footerLine1 = footerText, footerLine2 = '';
     if (footerText.includes('(c)')) {
         const parts = footerText.split('(c)');
@@ -1096,6 +1106,7 @@ async function saveChatAsHTML() {
         footerLine1 = footerText;
     }
 
+    // --- Сбор сообщений (без изменений) ---
     const messages = [];
     document.querySelectorAll('.user-message, .assistant-message, .bot-message').forEach(msgEl => {
         const role = msgEl.classList.contains('user-message') ? 'user' : 'assistant';
@@ -1119,6 +1130,7 @@ async function saveChatAsHTML() {
         return;
     }
 
+    // --- Загрузка стилей (без изменений) ---
     let styleContent = '';
     let exportStyleContent = '';
     try {
@@ -1135,23 +1147,14 @@ async function saveChatAsHTML() {
     }
 
     exportStyleContent = exportStyleContent.replace(/@import\s+url\(['"]?style\.css['"]?\);?\s*/g, '');
-
     const combinedStyles = styleContent + '\n' + exportStyleContent;
 
     const siteTitle = document.querySelector('header h1')?.textContent || 'FLAI';
 
-    // Formatting the date based on the language
-    const dateOptions = { 
-        day: '2-digit', 
-        month: '2-digit', 
-        year: 'numeric', 
-        hour: '2-digit', 
-        minute: '2-digit', 
-        second: '2-digit' 
-    };
+    const dateOptions = { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
     const formattedDate = now.toLocaleString(CURRENT_LANG === 'ru' ? 'ru-RU' : 'en-US', dateOptions);
 
-    // Using translations from the TRANSLATIONS object
+    // --- Финальная сборка HTML с логотипом ---
     const html = `<!DOCTYPE html>
 <html lang="${CURRENT_LANG}">
 <head>
@@ -1162,6 +1165,7 @@ async function saveChatAsHTML() {
 </head>
 <body>
     <header>
+        ${headerLogoHtml}
         <h1>${escapeHtml(siteTitle)}</h1>
     </header>
     <main>
@@ -1192,7 +1196,7 @@ async function saveChatAsHTML() {
 </body>
 </html>`;
 
-    const blob = new Blob([html], {type: 'text/html;charset=utf-8'});
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

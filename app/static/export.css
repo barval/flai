@@ -1,7 +1,5 @@
 /* static/export.css */
-/* Стили для экспорта HTML (без @import) */
-
-/* Основные стили уже будут встроены из style.css, поэтому здесь только специфика */
+/* Styles for HTML export (without @import)*/
 
 main {
     width: 75%;

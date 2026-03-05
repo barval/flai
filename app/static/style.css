@@ -1,4 +1,4 @@
-/* ===== ОБЩИЕ СТИЛИ ===== */
+/* ===== COMMON STYLES ===== */
 * {
     margin: 0;
     padding: 0;
@@ -18,7 +18,7 @@ main {
     flex: 1;
 }
 
-/* ===== ШАПКА И ПОДВАЛ ===== */
+/* ===== HEADER AND FOOTER ===== */
 header {
     background-color: #2c3e50;
     color: white;
@@ -28,6 +28,12 @@ header {
     height: 50px;
     display: flex;
     align-items: center;
+}
+
+.header-logo {
+    height: 40px;
+    width: auto;
+    object-fit: contain;
 }
 
 header h1 {
@@ -93,7 +99,7 @@ footer {
     background-color: #c0392b;
 }
 
-/* ===== СТРАНИЦА АВТОРИЗАЦИИ ===== */
+/* ===== LOGIN PAGE ===== */
 .login-wrapper {
     display: flex;
     justify-content: center;
@@ -172,7 +178,7 @@ footer {
     text-align: center;
 }
 
-/* ===== КОНТЕЙНЕР ЧАТА ===== */
+/* ===== CHAT CONTAINER ===== */
 .chat-container {
     display: flex;
     height: calc(100vh - 100px);
@@ -182,7 +188,7 @@ footer {
     background-color: white;
 }
 
-/* ===== ЛЕВАЯ КОЛОНКА – СЕАНСЫ ===== */
+/* ===== LEFT COLUMN – SESSIONS ===== */
 .sessions-sidebar {
     width: 25%;
     background-color: #f1f3f6;
@@ -346,7 +352,7 @@ footer {
     color: #3498db;
 }
 
-/* ===== ПРАВАЯ ЧАСТЬ – СООБЩЕНИЯ ===== */
+/* ===== RIGHT PART – MESSAGES ===== */
 .chat-main {
     width: 75%;
     display: flex;
@@ -410,7 +416,7 @@ footer {
     background-color: white;
 }
 
-/* ===== СООБЩЕНИЯ ===== */
+/* ===== MESSAGES ===== */
 .user-message,
 .assistant-message,
 .bot-message {
@@ -498,7 +504,7 @@ footer {
     opacity: 0.95;
 }
 
-/* ===== МОДАЛЬНОЕ ОКНО ИЗОБРАЖЕНИЙ ===== */
+/* ===== IMAGE MODAL WINDOW ===== */
 .image-modal {
     display: none;
     position: fixed;
@@ -691,7 +697,7 @@ footer {
     border: 1px solid #ddd;
 }
 
-/* ===== КНОПКИ КОПИРОВАНИЯ ===== */
+/* ===== COPY BUTTONS ===== */
 .code-block-wrapper {
     position: relative;
     margin: 1em 0;
@@ -733,7 +739,7 @@ footer {
     opacity: 1;
 }
 
-/* ===== ПОЛЕ ВВОДА И КНОПКИ ===== */
+/* ===== INPUT FIELD AND BUTTONS ===== */
 #file-preview-container {
     display: none;
     margin: 10px 0;
@@ -885,7 +891,7 @@ audio {
     align-self: flex-start;
 }
 
-/* ===== СКРОЛЛБАР ===== */
+/* ===== SCROLLBAR ===== */
 ::-webkit-scrollbar {
     width: 8px;
 }
@@ -901,7 +907,7 @@ audio {
     background: #a8a8a8;
 }
 
-/* ===== МЕДИА-ЗАПРОСЫ ===== */
+/* ===== MEDIA QUERIES ===== */
 @media (max-width: 768px) {
     .chat-container {
         flex-direction: column;

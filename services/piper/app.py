@@ -9,24 +9,39 @@ from pydub import AudioSegment
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# Directory to store downloaded models
-MODEL_DIR = "/app/models"
+# Directory where voice models are mounted (set via environment variable or default)
+MODEL_DIR = os.environ.get('PIPER_MODEL_DIR', '/app/models')
 os.makedirs(MODEL_DIR, exist_ok=True)
-os.environ['PIPER_CACHE_DIR'] = MODEL_DIR
 
-# Cache for loaded voices
+# Cache for loaded voices (dictionary: voice_id -> PiperVoice instance)
 voices = {}
 
-def get_model_path(language):
-    """Return the Piper model name for the given language."""
-    # Map language codes to Piper model names
-    lang_map = {
-        'ru': 'ru_RU',
-        'en': 'en_US'
+def get_voice_path(language):
+    """
+    Return the full path to the .onnx model file for the given language.
+    Expected naming convention: <lang_code>-<speaker>-<quality>.onnx
+    (e.g., ru_RU-dmitri-medium.onnx)
+    The corresponding .json file must be in the same directory.
+    """
+    # Mapping from language code to expected model file prefix
+    # You can customize this mapping or make it configurable.
+    lang_to_model = {
+        'ru': 'ru_RU-dmitri-medium',
+        'en': 'en_US-lessac-medium'
     }
-    if language not in lang_map:
-        language = 'en'  # fallback
-    return lang_map[language]
+    if language not in lang_to_model:
+        app.logger.warning(f"Language '{language}' not found in mapping, falling back to English.")
+        language = 'en'
+    model_prefix = lang_to_model[language]
+    onnx_path = os.path.join(MODEL_DIR, model_prefix + '.onnx')
+    json_path = os.path.join(MODEL_DIR, model_prefix + '.onnx.json')
+    
+    if not os.path.exists(onnx_path):
+        raise FileNotFoundError(f"Model file not found: {onnx_path}")
+    if not os.path.exists(json_path):
+        raise FileNotFoundError(f"Model config file not found: {json_path}")
+    
+    return onnx_path
 
 @app.route('/tts', methods=['POST'])
 def synthesize():
@@ -38,12 +53,13 @@ def synthesize():
     language = data.get('language', 'en')
 
     try:
-        model_name = get_model_path(language)
-        # Load voice (cached)
-        if model_name not in voices:
-            # PiperVoice.load will download if not cached
-            voices[model_name] = PiperVoice.load(model_name, use_cuda=False)
-        voice = voices[model_name]
+        # Determine the full path to the model file
+        model_path = get_voice_path(language)
+        
+        # Load voice (cached by model path)
+        if model_path not in voices:
+            voices[model_path] = PiperVoice.load(model_path, use_cuda=False)
+        voice = voices[model_path]
 
         # Synthesize to WAV in memory
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=True) as f:
@@ -61,6 +77,9 @@ def synthesize():
             as_attachment=False,
             download_name='speech.mp3'
         )
+    except FileNotFoundError as e:
+        app.logger.error(f"Model not found: {str(e)}")
+        return jsonify({'error': f'Voice model for language {language} not found. Please ensure the model files are placed in the mounted directory.'}), 404
     except Exception as e:
         app.logger.error(f"TTS synthesis error: {str(e)}")
         return jsonify({'error': 'TTS synthesis failed'}), 500

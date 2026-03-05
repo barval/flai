@@ -1,0 +1,12 @@
+# Piper TTS voices to download
+# Format: model_id OR full HuggingFace URL
+# Lines starting with # are comments
+
+# Russian voices
+ru_RU-ruslan-medium
+
+# English voices
+en_US-bryce-medium
+
+# Example with full URL (optional):
+# https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx

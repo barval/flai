@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application
 COPY app.py .
 
-# Create directory for models
+# Create directory for mounted models
 RUN mkdir -p /app/models
 
 # Expose port

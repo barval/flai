@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import io
+import wave
 import logging
 import tempfile
 from flask import Flask, request, jsonify, send_file
@@ -10,7 +11,6 @@ from pydub import AudioSegment
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# Directory where voice models are mounted
 MODEL_DIR = os.environ.get('PIPER_MODEL_DIR', '/app/models')
 os.makedirs(MODEL_DIR, exist_ok=True)
 
@@ -55,13 +55,18 @@ def synthesize():
             voices[model_path] = PiperVoice.load(model_path, use_cuda=False)
         voice = voices[model_path]
         
-        # Synthesize to a temporary WAV file (using file PATH, not object)
+        # Create temporary WAV file path
         wav_fd, wav_path = tempfile.mkstemp(suffix='.wav')
-        os.close(wav_fd)  # Close the file descriptor, we only need the path
+        os.close(wav_fd)  # Close FD, we only need the path
         
         try:
-            # Piper expects a file path string
-            voice.synthesize(text, wav_path)
+            # Open WAV file with wave module and synthesize
+            # Piper expects a wave.Wave_write object, not a string path
+            with wave.open(wav_path, 'wb') as wav_file:
+                wav_file.setnchannels(1)  # Mono
+                wav_file.setsampwidth(2)  # 16-bit
+                wav_file.setframerate(voice.config.sample_rate)
+                voice.synthesize(text, wav_file)
             
             # Convert WAV to MP3 using pydub
             audio = AudioSegment.from_wav(wav_path)

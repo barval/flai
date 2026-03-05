@@ -84,7 +84,10 @@
         'error': '{{ _("Error") }}',
         'warning': '{{ _("Warning") }}',
         'info': '{{ _("Info") }}',
-        'delete_session_confirm': {{ _("Delete session {title} from {date}?")|tojson }}
+        'delete_session_confirm': {{ _("Delete session {title} from {date}?")|tojson }},
+        'session': '{{ _("session") }}',
+        'saved_on': '{{ _("saved_on") }}',
+        'total_messages': '{{ _("total_messages") }}'
     };
     window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
     function t(key) {

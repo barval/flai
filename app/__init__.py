@@ -16,11 +16,8 @@ babel = Babel()
 def get_locale():
     # Language from session or Accept-Language header
     if 'language' in session:
-        current_app.logger.debug(f"Locale from session: {session['language']}")
         return session['language']
-    best_match = request.accept_languages.best_match(['ru', 'en']) or 'ru'
-    current_app.logger.debug(f"Locale from accept header: {best_match}")
-    return best_match
+    return request.accept_languages.best_match(['ru', 'en']) or 'ru'
 
 def create_app():
     app = Flask(__name__)

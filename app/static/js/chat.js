@@ -444,7 +444,6 @@ async function playTTS(button, messageElement) {
         console.error('TTS error:', err);
         alert(t('error') + ': ' + err.message);
         setTTSButtonState(button, false); // Reset the error status
-}
     }
 }
 

@@ -18,6 +18,10 @@ let audioChunks = [];
 let isRecording = false;
 let isVoiceRecorded = false;
 
+// TTS global variables
+let currentAudio = null;
+let currentTTSButton = null;
+
 // -------------------------------
 // Helper functions
 // -------------------------------
@@ -359,18 +363,53 @@ function updateLastVisit(sessionId) {
 // -------------------------------
 // TTS (Text-to-Speech) playback
 // -------------------------------
-async function playTTS(button) {
-    const msgDiv = button.closest('.assistant-message, .bot-message');
-    if (!msgDiv) return;
-    const text = msgDiv.dataset.rawText;
+function setTTSButtonState(button, isPlaying) {
+    if (isPlaying) {
+        button.innerHTML = '🗣️';
+        button.style.color = '#e74c3c';  // red color for active state
+        button.title = t('stop');
+        button.classList.add('playing');
+    } else {
+        button.innerHTML = '🗣️';
+        button.style.color = '';          // revert to default (usually black)
+        button.title = t('speak');
+        button.classList.remove('playing');
+    }
+}
+
+function stopTTS(button) {
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+        URL.revokeObjectURL(currentAudio.src);
+        currentAudio = null;
+    }
+    if (currentTTSButton) {
+        setTTSButtonState(currentTTSButton, false);
+        currentTTSButton = null;
+    }
+}
+
+async function playTTS(button, messageElement) {
+    const text = messageElement.dataset.rawText;
     if (!text) return;
-    const lang = CURRENT_LANG;
+
+    // If the same button is clicked while playing, stop playback
+    if (currentAudio && currentTTSButton === button && !currentAudio.paused) {
+        stopTTS(button);
+        return;
+    }
+
+    // If another message is playing, stop it first
+    if (currentAudio) {
+        stopTTS(currentTTSButton);
+    }
 
     try {
         const response = await fetch('/api/tts/synthesize', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: text, lang: lang })
+            body: JSON.stringify({ text: text, lang: CURRENT_LANG })
         });
         if (!response.ok) {
             const error = await response.json();
@@ -380,8 +419,21 @@ async function playTTS(button) {
         const audioBlob = await response.blob();
         const audioUrl = URL.createObjectURL(audioBlob);
         const audio = new Audio(audioUrl);
+
+        currentAudio = audio;
+        currentTTSButton = button;
+        setTTSButtonState(button, true);
+
+        audio.onended = () => {
+            URL.revokeObjectURL(audioUrl);
+            if (currentTTSButton === button) {
+                setTTSButtonState(button, false);
+                currentAudio = null;
+                currentTTSButton = null;
+            }
+        };
+
         audio.play();
-        audio.onended = () => URL.revokeObjectURL(audioUrl);
     } catch (err) {
         console.error('TTS error:', err);
         alert(t('error') + ': ' + err.message);
@@ -583,7 +635,7 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
             headerHTML += ` <span class="text-muted">| ${escapeHtml(shortModel)}</span>`;
         }
         // TTS button
-        headerHTML += ` <button class="tts-button" onclick="playTTS(this)" title="${t('speak')}">🔊</button>`;
+        headerHTML += ` <button class="tts-button" onclick="playTTS(this, msgDiv)" title="${t('speak')}">🗣️</button>`;
         let duration = null;
         if (responseTime) {
             if (typeof responseTime === 'object') {

@@ -419,5 +419,8 @@ msgstr "Missing text"
 msgid "speak"
 msgstr "Speak"
 
+msgid "stop"
+msgstr "Stop"
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v6.2 (c) 2026 Valery Barsukov"

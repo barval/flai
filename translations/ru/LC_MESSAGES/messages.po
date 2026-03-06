@@ -420,5 +420,8 @@ msgstr "Отсутствует текст"
 msgid "speak"
 msgstr "Озвучить"
 
+msgid "stop"
+msgstr "Остановить"
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v6.2 (c) 2026 Барсуков Валерий"

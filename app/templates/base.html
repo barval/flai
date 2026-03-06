@@ -9,6 +9,48 @@
     <style>
         body, html { width: 100%; margin: 0; padding: 0; }
         main { width: 100%; max-width: 100%; margin: 0; padding: 0; }
+
+        /* Voice gender toggle button with colored backgrounds */
+        .voice-gender-button {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0 5px;
+            transition: transform 0.2s;
+            vertical-align: middle;
+            line-height: 1;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .voice-gender-button.male {
+            background-color: #3498db;  /* blue for male */
+        }
+
+        .voice-gender-button.female {
+            background-color: #e83e8c;  /* pink for female */
+        }
+
+        .voice-gender-button:hover {
+            transform: scale(1.1);
+        }
+
+        .voice-gender-switcher {
+            margin-left: 10px;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        #voice-gender-icon {
+            color: white;
+            font-size: 1.2rem;
+            line-height: 1;
+        }
     </style>
 </head>
 <body>
@@ -24,9 +66,9 @@
                     <option value="en" {% if session.get('language') == 'en' %}selected{% endif %}>English</option>
                 </select>
             </div>
-            <!-- Voice gender toggle button -->
+            <!-- Voice gender toggle button with background -->
             <div class="voice-gender-switcher">
-                <button id="voice-gender-toggle" class="voice-gender-button" title="{{ _('toggle_voice_gender') }}">
+                <button id="voice-gender-toggle" class="voice-gender-button {% if session.get('voice_gender') == 'female' %}female{% else %}male{% endif %}" title="{{ _('toggle_voice_gender') }}">
                     <span id="voice-gender-icon">
                         {% if session.get('voice_gender') == 'female' %}👩{% else %}👨{% endif %}
                     </span>
@@ -98,8 +140,9 @@
                 const icon = document.getElementById('voice-gender-icon');
                 icon.textContent = gender === 'female' ? '👩' : '👨';
                 
-                // Update button title
+                // Update button class and title
                 const btn = document.getElementById('voice-gender-toggle');
+                btn.className = 'voice-gender-button ' + gender;
                 btn.title = gender === 'female' 
                     ? window.TRANSLATIONS['female_voice'] 
                     : window.TRANSLATIONS['male_voice'];

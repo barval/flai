@@ -51,6 +51,7 @@ function loadUsers() {
                 const passCell = document.createElement('td');
                 const changePassBtn = document.createElement('button');
                 changePassBtn.textContent = t('change');
+                changePassBtn.title = t('change_password');  // tooltip added
                 changePassBtn.className = 'change-password-btn';
                 changePassBtn.onclick = () => openPasswordModal(user.login);
                 passCell.appendChild(changePassBtn);
@@ -116,6 +117,7 @@ function loadUsers() {
                 const actionsCell = document.createElement('td');
                 const deleteBtn = document.createElement('button');
                 deleteBtn.textContent = t('delete');
+                deleteBtn.title = t('delete_user');  // tooltip added
                 deleteBtn.className = 'delete-user-btn';
                 deleteBtn.onclick = () => deleteUser(user.login);
                 actionsCell.appendChild(deleteBtn);

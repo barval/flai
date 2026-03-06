@@ -49,6 +49,12 @@
                 <option value="en" {% if session.get('language', 'ru') == 'en' %}selected{% endif %}>English</option>
             </select>
         </div>
+        <!-- Theme toggle for unauthenticated users -->
+        <div class="theme-switcher" style="margin-left: 10px;">
+            <button id="theme-toggle-guest" class="theme-toggle-button" title="{{ _('Toggle theme') }}">
+                🌙
+            </button>
+        </div>
         {% endif %}
     </header>
     
@@ -88,5 +94,7 @@
 
     <!-- Header JavaScript module -->
     <script src="{{ url_for('static', filename='js/header.js') }}"></script>
+    <!-- Guest theme switcher script -->
+    <script src="{{ url_for('static', filename='js/guest-theme.js') }}"></script>
 </body>
 </html>

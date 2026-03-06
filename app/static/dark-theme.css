@@ -290,6 +290,31 @@
     background-color: #c44569;
 }
 
+/* Admin panel dark theme styles */
+.dark-theme #users-table {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+    border-color: #444;
+}
+.dark-theme #users-table th {
+    background-color: #1e2b38;
+    color: #ecf0f1;
+    border-bottom-color: #3498db;
+}
+.dark-theme #users-table td {
+    border-bottom-color: #444;
+}
+.dark-theme #users-table tr.user-inactive {
+    background-color: #3a3a3a;
+    opacity: 0.7;
+}
+.dark-theme .camera-checkboxes label {
+    color: #e0e0e0;
+}
+.dark-theme .camera-checkboxes input[type="checkbox"] {
+    accent-color: #3498db;
+}
+
 /* Scrollbar dark */
 .dark-theme ::-webkit-scrollbar-track {
     background: #2d2d2d;

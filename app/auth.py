@@ -13,20 +13,26 @@ def login():
     if request.method == 'POST':
         login_input = request.form.get('login')
         password = request.form.get('password')
+        theme = request.form.get('theme', 'light')  # Get theme from hidden field
+
         if not login_input or not password:
             return render_template('login.html', error=_('All fields are required'))
 
         user = get_user_by_login(login_input)
         if user and user['is_active'] and check_password_hash(user['password_hash'], password):
+            # Update user's theme preference if it changed
+            if user['theme'] != theme:
+                update_user(login_input, theme=theme)
+
             # Set session variables from user data
             session['login'] = user['login']
             session['name'] = user['name']
             session['service_class'] = user['service_class']
             session['is_admin'] = user['is_admin']
             session['user_id'] = user['login']
-            session['language'] = user['language']  # from DB
-            session['voice_gender'] = user['voice_gender']  # from DB
-            session['theme'] = user['theme']  # from DB
+            session['language'] = user['language']
+            session['voice_gender'] = user['voice_gender']
+            session['theme'] = theme  # Use the theme from form (updated)
 
             if user['is_admin']:
                 return redirect(url_for('admin.admin_panel'))

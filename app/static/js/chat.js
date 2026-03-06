@@ -13,7 +13,7 @@ let sessionQueueInfo = {};
 let stableSessionStatus = {};
 let lastCompletionTime = {};
 let sessionsUpdateTimeout = null;
-// Variables for voice recording
+// Voice recording variables
 let mediaRecorder = null;
 let audioChunks = [];
 let isRecording = false;
@@ -468,7 +468,7 @@ async function startRecording() {
         // Change send button text to "Recording..." with transparent background
         const sendButton = document.getElementById('send-button');
         sendButton.disabled = true;
-        sendButton.innerHTML = t('recording');  // Just the translated text, no red circle
+        sendButton.innerHTML = t('recording');
         sendButton.classList.add('recording-mode');
         // The separate recording indicator has been removed from the template
     } catch (err) {
@@ -1128,26 +1128,38 @@ async function saveChatAsHTML() {
         alert(t('no_messages_to_save'));
         return;
     }
-    let styleContent = '';
-    let exportStyleContent = '';
-    try {
-        const styleResponse = await fetch('/static/style.css');
-        styleContent = await styleResponse.text();
-    } catch (e) {
-        console.error('Failed to load style.css', e);
+    // List of CSS files to load
+    const cssFiles = [
+        '/static/base.css',
+        '/static/header-footer.css',
+        '/static/chat.css',
+        '/static/modal.css',
+        '/static/markdown.css',
+        '/static/export.css'
+    ];
+    // Add dark theme CSS if needed
+    if (document.body.classList.contains('dark-theme')) {
+        cssFiles.push('/static/dark-theme.css');
     }
-    try {
-        const exportResponse = await fetch('/static/export.css');
-        exportStyleContent = await exportResponse.text();
-    } catch (e) {
-        console.error('Failed to load export.css', e);
-    }
-    exportStyleContent = exportStyleContent.replace(/@import\s+url\(['"]?style\.css['"]?\);?\s*/g, '');
-    const combinedStyles = styleContent + '\n' + exportStyleContent;
+    // Load all CSS files in parallel
+    const cssContents = await Promise.all(
+        cssFiles.map(async (url) => {
+            try {
+                const response = await fetch(url);
+                return await response.text();
+            } catch (e) {
+                console.error(`Failed to load ${url}:`, e);
+                return ''; // skip on error
+            }
+        })
+    );
+    // Combine all styles into one string
+    const combinedStyles = cssContents.join('\n');
     const siteTitle = document.querySelector('header h1')?.textContent || 'FLAI';
     const dateOptions = { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
     const formattedDate = now.toLocaleString(CURRENT_LANG === 'ru' ? 'ru-RU' : 'en-US', dateOptions);
-    const html = '<!DOCTYPE html>\n<html lang="' + CURRENT_LANG + '">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>' + escapeHtml(rawTitle) + ' - ' + t('saved_chat') + '</title>\n<style>' + combinedStyles + '</style>\n</head>\n<body>\n<header>\n' + headerLogoHtml + '\n<h1>' + escapeHtml(siteTitle) + '</h1>\n</header>\n<main>\n<div class="chat-wrapper">\n<div class="chat-header">\n<h1>' + t('session') + ': ' + displayTitle + '</h1>\n<p class="user-info">👤 ' + t('user') + ': ' + escapeHtml(userName) + '</p>\n<p>📅 ' + t('saved_on') + ': ' + formattedDate + '</p>\n<p>💬 ' + t('total_messages') + ': ' + messages.length + '</p>\n</div>\n<div class="chat-messages">\n' + messages.map(msg => '\n<div class="' + (msg.role === 'user' ? 'user-message' : 'assistant-message') + '">\n<small class="message-time">' + msg.timeHtml + '</small>\n<div class="message-content">' + msg.contentHtml + '</div>\n' + msg.fileHtml + '\n</div>\n').join('') + '\n</div>\n</div>\n</main>\n<footer>\n<div class="footer-content">\n<div class="footer-line1">' + escapeHtml(footerLine1) + '</div>\n' + (footerLine2 ? '<div class="footer-line2">' + escapeHtml(footerLine2) + '</div>' : '') + '\n</div>\n</footer>\n</body>\n</html>';
+    const bodyClass = document.body.classList.contains('dark-theme') ? 'dark-theme' : '';
+    const html = '<!DOCTYPE html>\n<html lang="' + CURRENT_LANG + '">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>' + escapeHtml(rawTitle) + ' - ' + t('saved_chat') + '</title>\n<style>' + combinedStyles + '</style>\n</head>\n<body class="' + bodyClass + '">\n<header>\n' + headerLogoHtml + '\n<h1>' + escapeHtml(siteTitle) + '</h1>\n</header>\n<main>\n<div class="chat-wrapper">\n<div class="chat-header">\n<h1>' + t('session') + ': ' + displayTitle + '</h1>\n<p class="user-info">👤 ' + t('user') + ': ' + escapeHtml(userName) + '</p>\n<p>📅 ' + t('saved_on') + ': ' + formattedDate + '</p>\n<p>💬 ' + t('total_messages') + ': ' + messages.length + '</p>\n</div>\n<div class="chat-messages">\n' + messages.map(msg => '\n<div class="' + (msg.role === 'user' ? 'user-message' : 'assistant-message') + '">\n<small class="message-time">' + msg.timeHtml + '</small>\n<div class="message-content">' + msg.contentHtml + '</div>\n' + msg.fileHtml + '\n</div>\n').join('') + '\n</div>\n</div>\n</main>\n<footer>\n<div class="footer-content">\n<div class="footer-line1">' + escapeHtml(footerLine1) + '</div>\n' + (footerLine2 ? '<div class="footer-line2">' + escapeHtml(footerLine2) + '</div>' : '') + '\n</div>\n</footer>\n</body>\n</html>';
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

@@ -31,6 +31,7 @@ def init_user_db():
                 camera_permissions TEXT,
                 language TEXT DEFAULT 'ru',
                 voice_gender TEXT DEFAULT 'male',
+                theme TEXT DEFAULT 'light',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
@@ -42,6 +43,8 @@ def init_user_db():
             conn.execute("ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'ru'")
         if 'voice_gender' not in columns:
             conn.execute("ALTER TABLE users ADD COLUMN voice_gender TEXT DEFAULT 'male'")
+        if 'theme' not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'light'")
         conn.commit()
 
 def get_user_by_login(login):
@@ -49,19 +52,19 @@ def get_user_by_login(login):
     with get_db() as conn:
         return conn.execute('SELECT * FROM users WHERE login = ?', (login,)).fetchone()
 
-def create_user(login, password, name, service_class=2, is_admin=False, camera_permissions=None, language='ru', voice_gender='male'):
+def create_user(login, password, name, service_class=2, is_admin=False, camera_permissions=None, language='ru', voice_gender='male', theme='light'):
     """Create a new user."""
     if camera_permissions is not None:
         camera_permissions = json.dumps(camera_permissions)
     password_hash = generate_password_hash(password)
     with get_db() as conn:
         conn.execute('''
-            INSERT INTO users (login, name, password_hash, service_class, is_admin, camera_permissions, language, voice_gender)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (login, name, password_hash, service_class, is_admin, camera_permissions, language, voice_gender))
+            INSERT INTO users (login, name, password_hash, service_class, is_admin, camera_permissions, language, voice_gender, theme)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (login, name, password_hash, service_class, is_admin, camera_permissions, language, voice_gender, theme))
         conn.commit()
 
-def update_user(login, name=None, service_class=None, is_active=None, camera_permissions=None, language=None, voice_gender=None):
+def update_user(login, name=None, service_class=None, is_active=None, camera_permissions=None, language=None, voice_gender=None, theme=None):
     """Update user data (except password)."""
     updates = []
     params = []
@@ -83,6 +86,9 @@ def update_user(login, name=None, service_class=None, is_active=None, camera_per
     if voice_gender is not None:
         updates.append("voice_gender = ?")
         params.append(voice_gender)
+    if theme is not None:
+        updates.append("theme = ?")
+        params.append(theme)
     if not updates:
         return
     params.append(login)

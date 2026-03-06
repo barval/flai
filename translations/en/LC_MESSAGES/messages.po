@@ -431,5 +431,8 @@ msgstr "Female voice"
 msgid "toggle_voice_gender"
 msgstr "Toggle voice gender"
 
+msgid "Toggle theme"
+msgstr "Toggle theme"
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v6.3 (c) 2026 Valery Barsukov"

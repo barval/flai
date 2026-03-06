@@ -432,5 +432,8 @@ msgstr "Женский голос"
 msgid "toggle_voice_gender"
 msgstr "Переключить пол голоса"
 
+msgid "Toggle theme"
+msgstr "Переключить тему"
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v6.3 (c) 2026 Барсуков Валерий"

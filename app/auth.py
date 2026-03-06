@@ -26,6 +26,7 @@ def login():
             session['user_id'] = user['login']
             session['language'] = user['language']  # from DB
             session['voice_gender'] = user['voice_gender']  # from DB
+            session['theme'] = user['theme']  # from DB
 
             if user['is_admin']:
                 return redirect(url_for('admin.admin_panel'))
@@ -65,6 +66,19 @@ def set_voice_gender(gender):
         update_user(session['login'], voice_gender=gender)
         # Update session
         session['voice_gender'] = gender
+    response = redirect(request.referrer or url_for('chat.chat'))
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return response
+
+@bp.route('/set-theme/<theme>')
+def set_theme(theme):
+    if 'login' not in session:
+        return redirect(url_for('auth.login'))
+    if theme in ['light', 'dark']:
+        # Update in database
+        update_user(session['login'], theme=theme)
+        # Update session
+        session['theme'] = theme
     response = redirect(request.referrer or url_for('chat.chat'))
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     return response

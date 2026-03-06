@@ -4,56 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ _('FLAI') }}</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/base.css">
+    <link rel="stylesheet" href="/static/header-footer.css">
+    <link rel="stylesheet" href="/static/login.css">
+    <link rel="stylesheet" href="/static/chat.css">
+    <link rel="stylesheet" href="/static/modal.css">
+    <link rel="stylesheet" href="/static/markdown.css">
+    <link rel="stylesheet" href="/static/dark-theme.css">
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
-    <style>
-        body, html { width: 100%; margin: 0; padding: 0; }
-        main { width: 100%; max-width: 100%; margin: 0; padding: 0; }
-
-        /* Voice gender toggle button with colored backgrounds */
-        .voice-gender-button {
-            background: none;
-            border: none;
-            font-size: 1.5rem;
-            cursor: pointer;
-            padding: 0 5px;
-            transition: transform 0.2s;
-            vertical-align: middle;
-            line-height: 1;
-            border-radius: 50%;
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .voice-gender-button.male {
-            background-color: #3498db;  /* blue for male */
-        }
-
-        .voice-gender-button.female {
-            background-color: #e83e8c;  /* pink for female */
-        }
-
-        .voice-gender-button:hover {
-            transform: scale(1.1);
-        }
-
-        .voice-gender-switcher {
-            margin-left: 10px;
-            display: inline-flex;
-            align-items: center;
-        }
-
-        #voice-gender-icon {
-            color: white;
-            font-size: 1.2rem;
-            line-height: 1;
-        }
-    </style>
 </head>
-<body>
+<body class="{% if session.get('theme') == 'dark' %}dark-theme{% endif %}">
     <header>
         <img src="{{ url_for('static', filename='logo-header.png') }}" alt="FLAI Logo" class="header-logo">
         <h1>{{ _('FLAI') }}</h1>
@@ -66,12 +26,18 @@
                     <option value="en" {% if session.get('language') == 'en' %}selected{% endif %}>English</option>
                 </select>
             </div>
-            <!-- Voice gender toggle button with background -->
+            <!-- Voice gender toggle button -->
             <div class="voice-gender-switcher">
                 <button id="voice-gender-toggle" class="voice-gender-button {% if session.get('voice_gender') == 'female' %}female{% else %}male{% endif %}" title="{{ _('toggle_voice_gender') }}">
                     <span id="voice-gender-icon">
                         {% if session.get('voice_gender') == 'female' %}👩{% else %}👨{% endif %}
                     </span>
+                </button>
+            </div>
+            <!-- Theme toggle button -->
+            <div class="theme-switcher">
+                <button id="theme-toggle" class="theme-toggle-button" title="{{ _('Toggle theme') }}">
+                    {% if session.get('theme') == 'dark' %}☀️{% else %}🌙{% endif %}
                 </button>
             </div>
             <a href="{{ url_for('auth.logout') }}" class="logout-button">{{ _('Logout') }}</a>
@@ -108,65 +74,19 @@
         window.TRANSLATIONS = {
             'male_voice': {{ _('male_voice')|tojson|safe }},
             'female_voice': {{ _('female_voice')|tojson|safe }},
-            'toggle_voice_gender': {{ _('toggle_voice_gender')|tojson|safe }}
+            'toggle_voice_gender': {{ _('toggle_voice_gender')|tojson|safe }},
+            'toggle_theme': {{ _('Toggle theme')|tojson|safe }}
         };
     </script>
 
-    <!-- Global language and voice gender settings -->
+    <!-- Global language, voice gender and theme settings -->
     <script>
         window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
         window.CURRENT_VOICE_GENDER = '{{ session.get("voice_gender", "male") }}';
+        window.CURRENT_THEME = '{{ session.get("theme", "light") }}';
     </script>
 
-    <script>
-        function switchLanguage(lang) {
-            fetch('/set-language/' + lang, {
-                method: 'GET',
-                headers: {
-                    'Cache-Control': 'no-cache'
-                }
-            }).then(() => {
-                window.location.reload();
-            }).catch(() => {
-                window.location.reload();
-            });
-        }
-
-        function switchVoiceGender(gender) {
-            fetch('/set-voice-gender/' + gender, {
-                method: 'GET',
-                headers: { 'Cache-Control': 'no-cache' }
-            }).then(() => {
-                const icon = document.getElementById('voice-gender-icon');
-                icon.textContent = gender === 'female' ? '👩' : '👨';
-                
-                // Update button class and title
-                const btn = document.getElementById('voice-gender-toggle');
-                btn.className = 'voice-gender-button ' + gender;
-                btn.title = gender === 'female' 
-                    ? window.TRANSLATIONS['female_voice'] 
-                    : window.TRANSLATIONS['male_voice'];
-            }).catch(() => {
-                window.location.reload();
-            });
-        }
-
-        document.addEventListener('DOMContentLoaded', function() {
-            const btn = document.getElementById('voice-gender-toggle');
-            if (btn) {
-                // Set initial title based on current gender
-                const currentGender = window.CURRENT_VOICE_GENDER;
-                btn.title = currentGender === 'female' 
-                    ? window.TRANSLATIONS['female_voice'] 
-                    : window.TRANSLATIONS['male_voice'];
-                
-                btn.addEventListener('click', function() {
-                    const currentIcon = document.getElementById('voice-gender-icon').textContent;
-                    const newGender = currentIcon === '👨' ? 'female' : 'male';
-                    switchVoiceGender(newGender);
-                });
-            }
-        });
-    </script>
+    <!-- Header JavaScript module -->
+    <script src="{{ url_for('static', filename='js/header.js') }}"></script>
 </body>
 </html>

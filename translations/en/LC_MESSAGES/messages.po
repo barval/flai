@@ -422,5 +422,14 @@ msgstr "Speak"
 msgid "stop"
 msgstr "Stop"
 
+msgid "male_voice"
+msgstr "Male voice"
+
+msgid "female_voice"
+msgstr "Female voice"
+
+msgid "toggle_voice_gender"
+msgstr "Toggle voice gender"
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v6.2 (c) 2026 Valery Barsukov"

@@ -16,16 +16,16 @@ def synthesize():
 
     text = data['text']
     lang = data.get('lang', session.get('language', 'ru'))
+    gender = data.get('gender', session.get('voice_gender', 'male'))
 
     tts_module = current_app.modules.get('tts')
     if not tts_module or not tts_module.available:
         return jsonify({'error': _('TTS service unavailable')}), 503
 
-    audio_bytes = tts_module.synthesize(text, lang)
+    audio_bytes = tts_module.synthesize(text, lang, gender)
     if audio_bytes is None:
         return jsonify({'error': _('TTS synthesis failed')}), 500
 
-    # We are returning the audio file (presumably MP3)
     return send_file(
         io.BytesIO(audio_bytes),
         mimetype='audio/mpeg',

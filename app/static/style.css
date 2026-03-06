@@ -997,3 +997,26 @@ audio {
     font-size: 1.1rem;
     margin-right: 2px;
 }
+
+/* Voice gender toggle button */
+.voice-gender-button {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0 5px;
+    transition: transform 0.2s;
+    vertical-align: middle;
+    line-height: 1;
+}
+
+.voice-gender-button:hover {
+    transform: scale(1.1);
+}
+
+/* Optional: style for the wrapper if needed */
+.voice-gender-switcher {
+    margin-left: 10px;
+    display: inline-flex;
+    align-items: center;
+}

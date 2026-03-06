@@ -1,3 +1,4 @@
+# services/piper/app.py
 #!/usr/bin/env python3
 import os
 import io
@@ -17,17 +18,24 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 # Cache for loaded voices
 voices = {}
 
-def get_voice_path(language):
-    """Return the full path to the .onnx model file for the given language."""
-    lang_to_model = {
-        'ru': 'ru_RU-ruslan-medium',
-        'en': 'en_US-bryce-medium'
-    }
-    if language not in lang_to_model:
-        app.logger.warning(f"Language '{language}' not found in mapping, falling back to English.")
-        language = 'en'
-    
-    model_prefix = lang_to_model[language]
+# Voice mapping: (language, gender) -> model prefix (without extension)
+voice_map = {
+    ('ru', 'male'):   'ru_RU-dmitri-medium',
+    ('ru', 'female'): 'ru_RU-irina-medium',
+    ('en', 'male'):   'en_US-ryan-medium',
+    ('en', 'female'): 'en_US-ljspeech-medium',
+}
+
+def get_voice_path(language, gender):
+    """Return the full path to the .onnx model file for the given language and gender."""
+    key = (language, gender)
+    if key not in voice_map:
+        # Fallback to male voice of the same language
+        app.logger.warning(f"Voice for {language}/{gender} not found, falling back to male")
+        key = (language, 'male')
+        if key not in voice_map:
+            raise ValueError(f"No voice available for language {language}")
+    model_prefix = voice_map[key]
     onnx_path = os.path.join(MODEL_DIR, model_prefix + '.onnx')
     json_path = os.path.join(MODEL_DIR, model_prefix + '.onnx.json')
     
@@ -46,9 +54,10 @@ def synthesize():
     
     text = data['text']
     language = data.get('language', 'en')
+    gender = data.get('gender', 'male')
     
     try:
-        model_path = get_voice_path(language)
+        model_path = get_voice_path(language, gender)
         
         # Load voice (cached by model path)
         if model_path not in voices:
@@ -61,7 +70,6 @@ def synthesize():
         
         try:
             # Open WAV file with wave module and synthesize
-            # Piper expects a wave.Wave_write object, not a string path
             with wave.open(wav_path, 'wb') as wav_file:
                 wav_file.setnchannels(1)  # Mono
                 wav_file.setsampwidth(2)  # 16-bit
@@ -87,7 +95,7 @@ def synthesize():
                 
     except FileNotFoundError as e:
         app.logger.error(f"Model not found: {str(e)}")
-        return jsonify({'error': f'Voice model for language {language} not found'}), 404
+        return jsonify({'error': f'Voice model for language {language} and gender {gender} not found'}), 404
     except Exception as e:
         app.logger.error(f"TTS synthesis error: {str(e)}", exc_info=True)
         return jsonify({'error': 'TTS synthesis failed'}), 500

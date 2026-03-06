@@ -1,3 +1,4 @@
+# app/userdb.py
 import sqlite3
 import json
 import os
@@ -17,6 +18,7 @@ def init_user_db():
     if not os.path.exists('data'):
         os.makedirs('data', exist_ok=True)
     with get_db() as conn:
+        # Check if columns exist and add them if not
         conn.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,29 +29,39 @@ def init_user_db():
                 is_active BOOLEAN NOT NULL DEFAULT 1,
                 is_admin BOOLEAN NOT NULL DEFAULT 0,
                 camera_permissions TEXT,
+                language TEXT DEFAULT 'ru',
+                voice_gender TEXT DEFAULT 'male',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # For existing databases, add columns if missing
+        cursor = conn.execute("PRAGMA table_info(users)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'language' not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'ru'")
+        if 'voice_gender' not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN voice_gender TEXT DEFAULT 'male'")
+        conn.commit()
 
 def get_user_by_login(login):
     """Get a user by login."""
     with get_db() as conn:
         return conn.execute('SELECT * FROM users WHERE login = ?', (login,)).fetchone()
 
-def create_user(login, password, name, service_class=2, is_admin=False, camera_permissions=None):
+def create_user(login, password, name, service_class=2, is_admin=False, camera_permissions=None, language='ru', voice_gender='male'):
     """Create a new user."""
     if camera_permissions is not None:
         camera_permissions = json.dumps(camera_permissions)
     password_hash = generate_password_hash(password)
     with get_db() as conn:
         conn.execute('''
-            INSERT INTO users (login, name, password_hash, service_class, is_admin, camera_permissions)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (login, name, password_hash, service_class, is_admin, camera_permissions))
+            INSERT INTO users (login, name, password_hash, service_class, is_admin, camera_permissions, language, voice_gender)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (login, name, password_hash, service_class, is_admin, camera_permissions, language, voice_gender))
         conn.commit()
 
-def update_user(login, name=None, service_class=None, is_active=None, camera_permissions=None):
+def update_user(login, name=None, service_class=None, is_active=None, camera_permissions=None, language=None, voice_gender=None):
     """Update user data (except password)."""
     updates = []
     params = []
@@ -65,6 +77,12 @@ def update_user(login, name=None, service_class=None, is_active=None, camera_per
     if camera_permissions is not None:
         updates.append("camera_permissions = ?")
         params.append(json.dumps(camera_permissions) if camera_permissions is not None else None)
+    if language is not None:
+        updates.append("language = ?")
+        params.append(language)
+    if voice_gender is not None:
+        updates.append("voice_gender = ?")
+        params.append(voice_gender)
     if not updates:
         return
     params.append(login)

@@ -24,6 +24,14 @@
                     <option value="en" {% if session.get('language') == 'en' %}selected{% endif %}>English</option>
                 </select>
             </div>
+            <!-- Voice gender toggle button -->
+            <div class="voice-gender-switcher">
+                <button id="voice-gender-toggle" class="voice-gender-button" title="{{ _('toggle_voice_gender') }}">
+                    <span id="voice-gender-icon">
+                        {% if session.get('voice_gender') == 'female' %}👩{% else %}👨{% endif %}
+                    </span>
+                </button>
+            </div>
             <a href="{{ url_for('auth.logout') }}" class="logout-button">{{ _('Logout') }}</a>
         </div>
         {% else %}
@@ -53,6 +61,21 @@
         </div>
     </footer>
 
+    <!-- Translations for JavaScript -->
+    <script>
+        window.TRANSLATIONS = {
+            'male_voice': {{ _('male_voice')|tojson|safe }},
+            'female_voice': {{ _('female_voice')|tojson|safe }},
+            'toggle_voice_gender': {{ _('toggle_voice_gender')|tojson|safe }}
+        };
+    </script>
+
+    <!-- Global language and voice gender settings -->
+    <script>
+        window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
+        window.CURRENT_VOICE_GENDER = '{{ session.get("voice_gender", "male") }}';
+    </script>
+
     <script>
         function switchLanguage(lang) {
             fetch('/set-language/' + lang, {
@@ -66,6 +89,41 @@
                 window.location.reload();
             });
         }
+
+        function switchVoiceGender(gender) {
+            fetch('/set-voice-gender/' + gender, {
+                method: 'GET',
+                headers: { 'Cache-Control': 'no-cache' }
+            }).then(() => {
+                const icon = document.getElementById('voice-gender-icon');
+                icon.textContent = gender === 'female' ? '👩' : '👨';
+                
+                // Update button title
+                const btn = document.getElementById('voice-gender-toggle');
+                btn.title = gender === 'female' 
+                    ? window.TRANSLATIONS['female_voice'] 
+                    : window.TRANSLATIONS['male_voice'];
+            }).catch(() => {
+                window.location.reload();
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const btn = document.getElementById('voice-gender-toggle');
+            if (btn) {
+                // Set initial title based on current gender
+                const currentGender = window.CURRENT_VOICE_GENDER;
+                btn.title = currentGender === 'female' 
+                    ? window.TRANSLATIONS['female_voice'] 
+                    : window.TRANSLATIONS['male_voice'];
+                
+                btn.addEventListener('click', function() {
+                    const currentIcon = document.getElementById('voice-gender-icon').textContent;
+                    const newGender = currentIcon === '👨' ? 'female' : 'male';
+                    switchVoiceGender(newGender);
+                });
+            }
+        });
     </script>
 </body>
 </html>

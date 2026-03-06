@@ -423,5 +423,14 @@ msgstr "Озвучить"
 msgid "stop"
 msgstr "Остановить"
 
+msgid "male_voice"
+msgstr "Мужской голос"
+
+msgid "female_voice"
+msgstr "Женский голос"
+
+msgid "toggle_voice_gender"
+msgstr "Переключить пол голоса"
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v6.2 (c) 2026 Барсуков Валерий"

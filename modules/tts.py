@@ -38,7 +38,6 @@ class TTSModule:
             self.logger.error("PIPER_URL not configured")
             return False
         try:
-            # Simple accessibility check (HEAD request to /health)
             base_url = self.tts_url.replace('/tts', '')
             response = requests.head(f"{base_url}/health", timeout=3)
             if response.status_code == 200:
@@ -49,15 +48,18 @@ class TTSModule:
         self.available = False
         return False
 
-    def synthesize(self, text, lang='ru'):
-        """Generate speech audio bytes for given text."""
+    def synthesize(self, text, lang='ru', gender='male'):
+        """Generate speech audio bytes for given text and gender."""
         if not self.available:
             self.logger.error("TTS unavailable")
             return None
         try:
-            # We expect the Piper TTS service to accept a JSON POST with the text and language fields.
-            payload = {'text': text, 'language': lang}
-            self.logger.info(f"Sending TTS request for text (len={len(text)}) in {lang}")
+            payload = {
+                'text': text,
+                'language': lang,
+                'gender': gender
+            }
+            self.logger.info(f"Sending TTS request for text (len={len(text)}) in {lang}, gender={gender}")
             response = requests.post(self.tts_url, json=payload, timeout=self.timeout)
             if response.status_code == 200:
                 content_type = response.headers.get('content-type', '')

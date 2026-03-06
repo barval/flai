@@ -972,8 +972,9 @@ audio {
 }
 
 .tts-button.playing {
-    color: #e74c3c !important;
-    animation: pulse 1.5s infinite; 
+    background-color: #e74c3c !important;  /* red background */
+    color: white !important;               /* white emoji color for contrast */
+    animation: pulse 1.5s infinite;
 }
 
 @keyframes pulse {

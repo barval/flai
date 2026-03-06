@@ -21,6 +21,7 @@ let isVoiceRecorded = false;
 // TTS global variables
 let currentAudio = null;
 let currentTTSButton = null;
+let currentPlayingSessionId = null;   // ID of the session where TTS is currently playing
 
 // -------------------------------
 // Helper functions
@@ -285,12 +286,18 @@ function updateSessionsList(sessions) {
             statusIcons = '<span class="session-status-icon unread blink" title="' + t('new_response') + '">✉️</span>';
         }
 
+        // TTS icon for currently playing session
+        let ttsIcon = '';
+        if (currentPlayingSessionId === s.id) {
+            ttsIcon = '<span class="session-status-icon tts playing" title="' + t('speak') + '">🗣️</span>';
+        }
+
         html += `
             <div class="session-item ${isActive}" data-session-id="${s.id}" data-session-title="${escapeHtml(s.title)}">
                 <div class="session-content">
                     <div class="session-info">
                         <div class="session-title">
-                            ${statusIcons}
+                            ${ttsIcon}${statusIcons}
                             ${escapeHtml(s.title)}
                         </div>
                         <div class="session-date">${dateStr}</div>
@@ -366,18 +373,19 @@ function updateLastVisit(sessionId) {
 function setTTSButtonState(button, isPlaying) {
     if (isPlaying) {
         button.innerHTML = '🗣️';
-        // button.style.color = '#e74c3c';  // red color for active state
         button.title = t('stop');
         button.classList.add('playing');
     } else {
         button.innerHTML = '🗣️';
-        // button.style.color = '';          // revert to default (usually black)
         button.title = t('speak');
         button.classList.remove('playing');
     }
 }
 
-function stopTTS(button) {
+/**
+ * Fully stops current TTS, cleans up resources and resets session indicator.
+ */
+function resetTtsState() {
     if (currentAudio) {
         currentAudio.pause();
         currentAudio.currentTime = 0;
@@ -388,21 +396,30 @@ function stopTTS(button) {
         setTTSButtonState(currentTTSButton, false);
         currentTTSButton = null;
     }
+    currentPlayingSessionId = null;
+    updateSessionsListFromData();   // update session list (hide TTS icon)
 }
 
 async function playTTS(button, messageElement) {
     const text = messageElement.dataset.rawText;
     if (!text) return;
 
+    const sessionId = messageElement.dataset.sessionId;   // ID of the session this message belongs to
+
+    // If another session is playing, stop it first
+    if (currentPlayingSessionId && currentPlayingSessionId !== sessionId) {
+        resetTtsState();
+    }
+
     // If the same button is clicked while playing, stop playback
     if (currentAudio && currentTTSButton === button && !currentAudio.paused) {
-        stopTTS(button);
+        resetTtsState();
         return;
     }
 
-    // If another message is playing, stop it first
+    // Stop any previous playback (if any)
     if (currentAudio) {
-        stopTTS(currentTTSButton);
+        resetTtsState();
     }
 
     try {
@@ -422,28 +439,24 @@ async function playTTS(button, messageElement) {
 
         currentAudio = audio;
         currentTTSButton = button;
+        currentPlayingSessionId = sessionId;
         setTTSButtonState(button, true);
+        updateSessionsListFromData();   // show TTS icon in session list
 
         audio.onended = () => {
             URL.revokeObjectURL(audioUrl);
-            if (currentTTSButton === button) {
-                setTTSButtonState(button, false);
-                currentAudio = null;
-                currentTTSButton = null;
-            }
+            resetTtsState();
         };
 
-        audio.onerror = () => {  // Handling playback errors
-            setTTSButtonState(button, false);
-                currentAudio = null;
-                currentTTSButton = null;
+        audio.onerror = () => {
+            resetTtsState();
         };
 
         audio.play();
     } catch (err) {
         console.error('TTS error:', err);
         alert(t('error') + ': ' + err.message);
-        setTTSButtonState(button, false); // Reset the error status
+        resetTtsState();
     }
 }
 
@@ -591,6 +604,7 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
     msgDiv.className = (role === 'user') ? 'user-message' : 'assistant-message bot-message';
     if (!timestamp) timestamp = new Date().toISOString();
     msgDiv.setAttribute('data-timestamp', timestamp);
+    msgDiv.dataset.sessionId = currentSessionId;   // store session ID for TTS tracking
 
     if (role === 'assistant') {
         msgDiv.setAttribute('data-raw-text', content); // store original text for TTS
@@ -1087,6 +1101,11 @@ async function sendMessage() {
 // Delete session
 // -------------------------------
 function deleteSession(sessionId, sessionTitle, sessionDate) {   
+    // Stop TTS if it is playing in this session
+    if (currentPlayingSessionId === sessionId) {
+        resetTtsState();
+    }
+
     const confirmMessage = formatString(t('delete_session_confirm'), {
         title: sessionTitle,
         date: sessionDate

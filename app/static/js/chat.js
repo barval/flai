@@ -1,4 +1,6 @@
 // static/js/chat.js
+// Chat interface JavaScript - handles messages, sessions, voice recording, TTS, and translations
+
 let currentSessionId = window.initialSessionId;
 let isSending = false;
 let attachedFile = null;
@@ -11,25 +13,32 @@ let sessionQueueInfo = {};
 let stableSessionStatus = {};
 let lastCompletionTime = {};
 let sessionsUpdateTimeout = null;
-
 // Variables for voice recording
 let mediaRecorder = null;
 let audioChunks = [];
 let isRecording = false;
 let isVoiceRecorded = false;
-
 // TTS global variables
 let currentAudio = null;
 let currentTTSButton = null;
-let currentPlayingSessionId = null;   // ID of the session where TTS is currently playing
+let currentPlayingSessionId = null;
 
-// -------------------------------
-// Helper functions
-// -------------------------------
+// Helper function for translations - returns translated string or key if not found
+function t(key) {
+    return window.TRANSLATIONS[key] || key;
+}
+
+// Format string with placeholders like {key}
+function formatString(str, params) {
+    return str.replace(/{(\w+)}/g, (match, key) => params[key] || match);
+}
+
+// Pad number with leading zero
 function pad(n) {
     return n.toString().padStart(2, '0');
 }
 
+// Format file size in human-readable format
 function formatFileSize(bytes) {
     if (bytes === 0) return '0 B';
     if (!bytes) return '';
@@ -39,6 +48,7 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
+// Decode HTML entities
 function decodeHtmlEntities(text) {
     if (!text) return '';
     const textarea = document.createElement('textarea');
@@ -46,12 +56,14 @@ function decodeHtmlEntities(text) {
     return textarea.value;
 }
 
+// Escape HTML special characters
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
 }
 
+// Format full date time string
 function formatFullDateTime(ts) {
     if (!ts) return '';
     try {
@@ -69,14 +81,7 @@ function formatFullDateTime(ts) {
     }
 }
 
-// Format string with placeholders like {key}
-function formatString(str, params) {
-    return str.replace(/{(\w+)}/g, (match, key) => params[key] || match);
-}
-
-// -------------------------------
-// Image modal
-// -------------------------------
+// Open image modal
 function openImageModal(imgSrc, imgAlt) {
     const modal = document.getElementById('image-modal');
     const modalImg = document.getElementById('modal-image');
@@ -86,22 +91,19 @@ function openImageModal(imgSrc, imgAlt) {
     captionText.innerHTML = imgAlt;
 }
 
+// Close image modal
 function closeImageModal() {
     const modal = document.getElementById('image-modal');
     modal.style.display = "none";
 }
 
-// -------------------------------
-// Message counter update
-// -------------------------------
+// Update message counter (translated)
 function updateMessageCount() {
     const count = document.querySelectorAll('.user-message, .assistant-message, .bot-message').length;
     document.getElementById('context-info').textContent = t('messages') + ': ' + count;
 }
 
-// -------------------------------
-// New message indicators
-// -------------------------------
+// Set new message indicator for session
 function setNewMessageIndicator(sessionId, show) {
     if (show) {
         newMessageIndicators[sessionId] = true;
@@ -111,140 +113,122 @@ function setNewMessageIndicator(sessionId, show) {
     updateSessionsListFromData();
 }
 
-// -------------------------------
-// Fetch queue status (aggregated)
-// -------------------------------
+// Fetch queue status from server
 function fetchQueueStatus() {
     fetch('/api/queue/status')
-        .then(res => res.json())
-        .then(data => {
-            const now = Date.now();
-            const agg = {}; // aggregated data per session
-
-            // Task in processing
-            if (data.processing) {
-                const proc = data.processing;
-                if (!agg[proc.session_id]) agg[proc.session_id] = { processing: false, queued: 0 };
-                agg[proc.session_id].processing = true;
-            }
-
-            // Tasks in queue
-            data.queued.forEach(item => {
-                if (!agg[item.session_id]) agg[item.session_id] = { processing: false, queued: 0 };
-                agg[item.session_id].queued += 1;
-            });
-
-            // Stabilization: apply new status only if it persists for at least two cycles (6 seconds)
-            const newStable = {};
-            Object.keys(agg).forEach(sid => {
-                const current = agg[sid];
-                const prev = stableSessionStatus[sid];
-                if (!prev || prev.processing !== current.processing || prev.queued !== current.queued) {
-                    if (!prev || prev.pendingChange) {
-                        if (prev && now - prev.changeTime > 6000) {
-                            newStable[sid] = {
-                                processing: current.processing,
-                                queued: current.queued,
-                                changeTime: now,
-                                pendingChange: false
-                            };
-                        } else {
-                            newStable[sid] = {
-                                ...prev,
-                                pendingChange: true,
-                                changeTime: prev ? prev.changeTime : now
-                            };
-                        }
+    .then(res => res.json())
+    .then(data => {
+        const now = Date.now();
+        const agg = {};
+        if (data.processing) {
+            const proc = data.processing;
+            if (!agg[proc.session_id]) agg[proc.session_id] = { processing: false, queued: 0 };
+            agg[proc.session_id].processing = true;
+        }
+        data.queued.forEach(item => {
+            if (!agg[item.session_id]) agg[item.session_id] = { processing: false, queued: 0 };
+            agg[item.session_id].queued += 1;
+        });
+        const newStable = {};
+        Object.keys(agg).forEach(sid => {
+            const current = agg[sid];
+            const prev = stableSessionStatus[sid];
+            if (!prev || prev.processing !== current.processing || prev.queued !== current.queued) {
+                if (!prev || prev.pendingChange) {
+                    if (prev && now - prev.changeTime > 6000) {
+                        newStable[sid] = {
+                            processing: current.processing,
+                            queued: current.queued,
+                            changeTime: now,
+                            pendingChange: false
+                        };
                     } else {
                         newStable[sid] = {
-                            ...current,
-                            changeTime: now,
-                            pendingChange: true
+                            ...prev,
+                            pendingChange: true,
+                            changeTime: prev ? prev.changeTime : now
                         };
                     }
                 } else {
-                    newStable[sid] = { ...current, changeTime: now, pendingChange: false };
+                    newStable[sid] = {
+                        ...current,
+                        changeTime: now,
+                        pendingChange: true
+                    };
                 }
-            });
-
-            // Remove stale sessions (not in agg for more than 10 seconds)
-            Object.keys(stableSessionStatus).forEach(sid => {
-                if (!agg[sid] && (now - stableSessionStatus[sid].changeTime) > 10000) {
-                    delete stableSessionStatus[sid];
-                }
-            });
-
-            stableSessionStatus = newStable;
-
-            // Convert stabilized status to final sessionQueueInfo
-            sessionQueueInfo = {};
-            Object.keys(stableSessionStatus).forEach(sid => {
-                sessionQueueInfo[sid] = {
-                    processing: stableSessionStatus[sid].processing,
-                    queued: stableSessionStatus[sid].queued
-                };
-            });
-
-            updateSessionsListFromData();
-        })
-        .catch(err => console.error('Error fetching queue status:', err));
+            } else {
+                newStable[sid] = { ...current, changeTime: now, pendingChange: false };
+            }
+        });
+        Object.keys(stableSessionStatus).forEach(sid => {
+            if (!agg[sid] && (now - stableSessionStatus[sid].changeTime) > 10000) {
+                delete stableSessionStatus[sid];
+            }
+        });
+        stableSessionStatus = newStable;
+        sessionQueueInfo = {};
+        Object.keys(stableSessionStatus).forEach(sid => {
+            sessionQueueInfo[sid] = {
+                processing: stableSessionStatus[sid].processing,
+                queued: stableSessionStatus[sid].queued
+            };
+        });
+        updateSessionsListFromData();
+    })
+    .catch(err => console.error('Error fetching queue status:', err));
 }
 
-// -------------------------------
 // Load session list from server
-// -------------------------------
 function loadSessionsFromServer() {
     return fetch('/api/sessions')
-        .then(res => res.json())
-        .then(sessions => {
-            let updated = false;
-            sessions.forEach(s => {
-                if (!sessionsData[s.id]) {
-                    sessionsData[s.id] = {
-                        title: s.title,
-                        updated_at: s.updated_at
-                    };
+    .then(res => res.json())
+    .then(sessions => {
+        let updated = false;
+        sessions.forEach(s => {
+            if (!sessionsData[s.id]) {
+                sessionsData[s.id] = {
+                    title: s.title,
+                    updated_at: s.updated_at
+                };
+                updated = true;
+            } else {
+                if (sessionsData[s.id].title !== s.title) {
+                    sessionsData[s.id].title = s.title;
+                    sessionsData[s.id].updated_at = s.updated_at;
                     updated = true;
-                } else {
-                    if (sessionsData[s.id].title !== s.title) {
-                        sessionsData[s.id].title = s.title;
-                        sessionsData[s.id].updated_at = s.updated_at;
-                        updated = true;
-                    } else if (sessionsData[s.id].updated_at !== s.updated_at) {
-                        sessionsData[s.id].updated_at = s.updated_at;
-                        updated = true;
-                    }
-                }
-                const prevUnread = newMessageIndicators[s.id] ? true : false;
-                const newUnread = s.has_unread ? true : false;
-                if (prevUnread !== newUnread) {
+                } else if (sessionsData[s.id].updated_at !== s.updated_at) {
+                    sessionsData[s.id].updated_at = s.updated_at;
                     updated = true;
                 }
-                if (s.has_unread) {
-                    newMessageIndicators[s.id] = true;
-                } else {
-                    delete newMessageIndicators[s.id];
-                }
-            });
-            Object.keys(sessionsData).forEach(id => {
-                if (!sessions.find(s => s.id === id)) {
-                    delete sessionsData[id];
-                    delete newMessageIndicators[id];
-                    delete lastCompletionTime[id];
-                    updated = true;
-                }
-            });
-            if (updated) {
-                updateSessionsList(sessions);
             }
-            return sessions;
-        })
-        .catch(err => console.error('Error loading sessions:', err));
+            const prevUnread = newMessageIndicators[s.id] ? true : false;
+            const newUnread = s.has_unread ? true : false;
+            if (prevUnread !== newUnread) {
+                updated = true;
+            }
+            if (s.has_unread) {
+                newMessageIndicators[s.id] = true;
+            } else {
+                delete newMessageIndicators[s.id];
+            }
+        });
+        Object.keys(sessionsData).forEach(id => {
+            if (!sessions.find(s => s.id === id)) {
+                delete sessionsData[id];
+                delete newMessageIndicators[id];
+                delete lastCompletionTime[id];
+                updated = true;
+            }
+        });
+        if (updated) {
+            updateSessionsList(sessions);
+        }
+        return sessions;
+    })
+    .catch(err => console.error('Error loading sessions:', err));
 }
 
-// -------------------------------
-// Update session list in DOM
-// -------------------------------
+// Update session list from cached data
 function updateSessionsListFromData() {
     if (sessionsUpdateTimeout) {
         clearTimeout(sessionsUpdateTimeout);
@@ -260,59 +244,53 @@ function updateSessionsListFromData() {
     }, 100);
 }
 
+// Update session list in DOM (translated)
 function updateSessionsList(sessions) {
     const sessionsList = document.getElementById('sessions-list');
     const currentActiveId = currentSessionId;
-
     sessions.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-
     let html = '';
     sessions.forEach(s => {
         const isActive = s.id === currentActiveId ? 'active' : '';
         const dateStr = s.updated_at ? formatFullDateTime(s.updated_at) : '';
-        
-        // Determine status icon by priority
         let statusIcons = '';
         const info = sessionQueueInfo[s.id];
         if (info) {
             if (info.processing) {
                 statusIcons = '<span class="session-status-icon processing blink" title="' + t('processing') + '">⚡</span>';
             } else if (info.queued > 0) {
-                const count = info.queued > 1 ? ` ${info.queued}` : '';
+                const count = info.queued > 1 ? ' ' + info.queued : '';
                 statusIcons = '<span class="session-status-icon queued" title="' + t('queued') + '">⏳' + count + '</span>';
             }
         }
         if (!statusIcons && newMessageIndicators[s.id] && s.id !== currentActiveId) {
             statusIcons = '<span class="session-status-icon unread blink" title="' + t('new_response') + '">✉️</span>';
         }
-
-        // TTS icon for currently playing session
         let ttsIcon = '';
         if (currentPlayingSessionId === s.id) {
             ttsIcon = '<span class="session-status-icon tts playing" title="' + t('speak') + '">🗣️</span>';
         }
-
         html += `
-            <div class="session-item ${isActive}" data-session-id="${s.id}" data-session-title="${escapeHtml(s.title)}">
-                <div class="session-content">
-                    <div class="session-info">
-                        <div class="session-title">
-                            ${ttsIcon}${statusIcons}
-                            ${escapeHtml(s.title)}
-                        </div>
-                        <div class="session-date">${dateStr}</div>
+        <div class="session-item ${isActive}" data-session-id="${s.id}" data-session-title="${escapeHtml(s.title)}">
+            <div class="session-content">
+                <div class="session-info">
+                    <div class="session-title">
+                        ${ttsIcon}${statusIcons}
+                        ${escapeHtml(s.title)}
                     </div>
-                    <button class="delete-session-button" title="${t('delete_session')}">🗑️</button>
+                    <div class="session-date">${dateStr}</div>
                 </div>
+                <button class="delete-session-button" title="${t('delete_session')}">🗑️</button>
             </div>
+        </div>
         `;
     });
-
     sessionsList.innerHTML = html;
     document.getElementById('sessions-count').textContent = sessions.length;
     attachSessionEventHandlers();
 }
 
+// Attach event handlers to session items
 function attachSessionEventHandlers() {
     document.querySelectorAll('.session-item').forEach(el => {
         el.addEventListener('click', function(e) {
@@ -337,9 +315,7 @@ function attachSessionEventHandlers() {
     });
 }
 
-// -------------------------------
-// Periodic sync
-// -------------------------------
+// Start periodic sync interval
 function startSyncInterval() {
     if (syncInterval) clearInterval(syncInterval);
     syncInterval = setInterval(() => {
@@ -349,27 +325,27 @@ function startSyncInterval() {
     }, 5000);
 }
 
+// Update status counter (translated)
 window.updateStatusCounter = function() {
     fetch('/api/queue/counts')
-        .then(response => response.json())
-        .then(data => {
-            const counter = document.getElementById('status-counter');
-            if (counter) {
-                counter.textContent = `📊 ${data.user_queued}/${data.total_queued}`;
-                counter.title = t('your_requests');
-            }
-        })
-        .catch(err => console.error('Error updating counter:', err));
+    .then(response => response.json())
+    .then(data => {
+        const counter = document.getElementById('status-counter');
+        if (counter) {
+            counter.textContent = '📊 ' + data.user_queued + '/' + data.total_queued;
+            counter.title = t('your_requests');
+        }
+    })
+    .catch(err => console.error('Error updating counter:', err));
 };
 
+// Update last visit timestamp for session
 function updateLastVisit(sessionId) {
     fetch(`/api/sessions/${sessionId}/visit`, { method: 'POST' })
-        .catch(err => console.error('Error updating last_visit:', err));
+    .catch(err => console.error('Error updating last_visit:', err));
 }
 
-// -------------------------------
-// TTS (Text-to-Speech) playback
-// -------------------------------
+// Set TTS button state (translated)
 function setTTSButtonState(button, isPlaying) {
     if (isPlaying) {
         button.innerHTML = '🗣️';
@@ -382,9 +358,7 @@ function setTTSButtonState(button, isPlaying) {
     }
 }
 
-/**
- * Fully stops current TTS, cleans up resources and resets session indicator.
- */
+// Reset TTS state completely
 function resetTtsState() {
     if (currentAudio) {
         currentAudio.pause();
@@ -397,31 +371,24 @@ function resetTtsState() {
         currentTTSButton = null;
     }
     currentPlayingSessionId = null;
-    updateSessionsListFromData();   // update session list (hide TTS icon)
+    updateSessionsListFromData();
 }
 
+// Play TTS audio for message
 async function playTTS(button, messageElement) {
     const text = messageElement.dataset.rawText;
     if (!text) return;
-
-    const sessionId = messageElement.dataset.sessionId;   // ID of the session this message belongs to
-
-    // If another session is playing, stop it first
+    const sessionId = messageElement.dataset.sessionId;
     if (currentPlayingSessionId && currentPlayingSessionId !== sessionId) {
         resetTtsState();
     }
-
-    // If the same button is clicked while playing, stop playback
     if (currentAudio && currentTTSButton === button && !currentAudio.paused) {
         resetTtsState();
         return;
     }
-
-    // Stop any previous playback (if any)
     if (currentAudio) {
         resetTtsState();
     }
-
     try {
         const response = await fetch('/api/tts/synthesize', {
             method: 'POST',
@@ -436,22 +403,18 @@ async function playTTS(button, messageElement) {
         const audioBlob = await response.blob();
         const audioUrl = URL.createObjectURL(audioBlob);
         const audio = new Audio(audioUrl);
-
         currentAudio = audio;
         currentTTSButton = button;
         currentPlayingSessionId = sessionId;
         setTTSButtonState(button, true);
-        updateSessionsListFromData();   // show TTS icon in session list
-
+        updateSessionsListFromData();
         audio.onended = () => {
             URL.revokeObjectURL(audioUrl);
             resetTtsState();
         };
-
         audio.onerror = () => {
             resetTtsState();
         };
-
         audio.play();
     } catch (err) {
         console.error('TTS error:', err);
@@ -460,357 +423,7 @@ async function playTTS(button, messageElement) {
     }
 }
 
-// -------------------------------
-// Initialization after DOM load
-// -------------------------------
-document.addEventListener('DOMContentLoaded', function() {
-    loadSessionsFromServer().then(() => {
-        loadMessages(currentSessionId);
-        startSyncInterval();
-    });
-
-    document.getElementById('new-session-button').addEventListener('click', createNewSession);
-    document.getElementById('send-button').addEventListener('click', sendMessage);
-    document.getElementById('message-input').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
-
-    document.getElementById('attach-file-button').addEventListener('click', function() {
-        document.getElementById('file-input').click();
-    });
-
-    document.getElementById('file-input').addEventListener('change', function(e) {
-        if (e.target.files.length > 0) {
-            attachedFile = e.target.files[0];
-            const preview = document.getElementById('file-preview-container');
-            document.getElementById('file-preview-name').textContent = attachedFile.name;
-            const fileSize = formatFileSize(attachedFile.size);
-            const sizeSpan = document.getElementById('file-preview-size');
-            if (sizeSpan) sizeSpan.textContent = ` (${fileSize})`;
-            preview.style.display = 'block';
-        }
-    });
-
-    document.getElementById('remove-file-button').addEventListener('click', function() {
-        attachedFile = null;
-        document.getElementById('file-input').value = '';
-        document.getElementById('file-preview-container').style.display = 'none';
-    });
-
-    document.getElementById('save-chat-button').addEventListener('click', saveChatAsHTML);
-
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') closeImageModal();
-    });
-
-    window.updateStatusCounter();
-    fetchQueueStatus();
-
-    document.getElementById('voice-record-button').addEventListener('click', toggleVoiceRecording);
-});
-
-// -------------------------------
-// Load session messages
-// -------------------------------
-function loadMessages(sessionId) {
-    return fetch(`/api/sessions/${sessionId}/messages`)
-        .then(res => res.json())
-        .then(messages => {
-            const container = document.getElementById('chat-messages');
-            container.innerHTML = '';
-
-            fetch(`/api/sessions/${sessionId}/model-info`)
-                .then(res => res.json())
-                .then(data => {
-                    defaultModelName = data.model_name || 'qwen3-vl:8b-instruct-q4_K_M';
-                })
-                .catch(err => console.error('Error loading model info:', err));
-
-            let lastUserMessage = null;
-
-            messages.forEach((msg) => {
-                if (msg.role === 'user') {
-                    lastUserMessage = msg;
-                    displayMessage(
-                        msg.role,
-                        msg.content,
-                        msg.file_data,
-                        msg.file_type,
-                        msg.file_name,
-                        msg.timestamp,
-                        null, null, null, null, null, null
-                    );
-                } else if (msg.role === 'assistant') {
-                    let responseTime = null;
-                    if (lastUserMessage) {
-                        const userTime = new Date(lastUserMessage.timestamp);
-                        const assistantTime = new Date(msg.timestamp);
-                        const diffSeconds = (assistantTime - userTime) / 1000;
-                        responseTime = Math.round(diffSeconds * 10) / 10;
-                    }
-                    if (msg.response_time) {
-                        if (typeof msg.response_time === 'object') {
-                            responseTime = msg.response_time;
-                        } else if (!isNaN(parseFloat(msg.response_time))) {
-                            responseTime = parseFloat(msg.response_time);
-                        }
-                    }
-                    let mmTime = msg.mm_time;
-                    let genTime = msg.gen_time;
-                    let mmModel = msg.mm_model;
-                    let genModel = msg.gen_model;
-                    if (mmTime && genTime) {
-                        responseTime = {
-                            mm_time: parseFloat(mmTime),
-                            gen_time: parseFloat(genTime),
-                            mm_model: mmModel || 'unknown',
-                            gen_model: genModel || 'unknown'
-                        };
-                    }
-                    displayMessage(
-                        msg.role,
-                        msg.content,
-                        msg.file_data,
-                        msg.file_type,
-                        msg.file_name,
-                        msg.timestamp,
-                        responseTime,
-                        msg.model_name || defaultModelName,
-                        mmTime,
-                        genTime,
-                        mmModel,
-                        genModel
-                    );
-                    lastUserMessage = null;
-                }
-            });
-
-            updateMessageCount();
-            container.scrollTop = container.scrollHeight;
-            setNewMessageIndicator(sessionId, false);
-            updateLastVisit(sessionId);
-        });
-}
-
-// -------------------------------
-// Display a single message
-// -------------------------------
-function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
-    const container = document.getElementById('chat-messages');
-    const msgDiv = document.createElement('div');
-    msgDiv.className = (role === 'user') ? 'user-message' : 'assistant-message bot-message';
-    if (!timestamp) timestamp = new Date().toISOString();
-    msgDiv.setAttribute('data-timestamp', timestamp);
-    msgDiv.dataset.sessionId = currentSessionId;   // store session ID for TTS tracking
-
-    if (role === 'assistant') {
-        msgDiv.setAttribute('data-raw-text', content); // store original text for TTS
-        if (modelName) msgDiv.dataset.modelName = modelName;
-        if (responseTime && typeof responseTime === 'object') {
-            if (responseTime.mm_time) msgDiv.dataset.mmTime = responseTime.mm_time;
-            if (responseTime.gen_time) msgDiv.dataset.genTime = responseTime.gen_time;
-            if (responseTime.mm_model) msgDiv.dataset.mmModel = responseTime.mm_model;
-            if (responseTime.gen_model) msgDiv.dataset.genModel = responseTime.gen_model;
-        } else if (mmTime && genTime) {
-            msgDiv.dataset.mmTime = mmTime;
-            msgDiv.dataset.genTime = genTime;
-            msgDiv.dataset.mmModel = mmModel || 'unknown';
-            msgDiv.dataset.genModel = genModel || 'unknown';
-        }
-    }
-
-    let timeDisplay = formatFullDateTime(timestamp);
-
-    if (role === 'user' && fileName && fileData) {
-        const base64Length = fileData.length;
-        const fileSizeBytes = Math.round((base64Length * 3) / 4);
-        const fileSize = formatFileSize(fileSizeBytes);
-        timeDisplay += ` <span class="file-info">[📎 ${fileName}, ${fileSize}]</span>`;
-        if (fileType && fileType.startsWith('image/')) {
-            timeDisplay += ` <a href="data:${fileType};base64,${fileData}" download="${fileName || 'image.jpg'}" class="download-link-inline" title="${t('download_image')}" onclick="event.stopPropagation()">⬇️</a>`;
-        }
-        if (fileType && fileType.startsWith('audio/')) {
-            timeDisplay += ` <a href="data:${fileType};base64,${fileData}" download="${fileName || 'audio.webm'}" class="download-link-inline" title="${t('download_audio')}" onclick="event.stopPropagation()">⬇️</a>`;
-        }
-    }
-    if (role === 'assistant' && fileName && fileData) {
-        const base64Length = fileData.length;
-        const fileSizeBytes = Math.round((base64Length * 3) / 4);
-        const fileSize = formatFileSize(fileSizeBytes);
-        timeDisplay += ` <span class="file-info">[📎 ${fileName}, ${fileSize}]</span>`;
-        if (fileType && fileType.startsWith('image/')) {
-            timeDisplay += ` <a href="data:${fileType};base64,${fileData}" download="${fileName || 'generated_image.jpg'}" class="download-link-inline" title="${t('download_image')}" onclick="event.stopPropagation()">⬇️</a>`;
-        }
-        if (fileType && fileType.startsWith('audio/')) {
-            timeDisplay += ` <a href="data:${fileType};base64,${fileData}" download="${fileName || 'audio.webm'}" class="download-link-inline" title="${t('download_audio')}" onclick="event.stopPropagation()">⬇️</a>`;
-        }
-    }
-
-    let headerHTML = `<span class="message-header">📅 ${timeDisplay}`;
-    if (role === 'assistant') {
-        let headerExtra = '';
-        if (modelName) {
-            const shortModel = modelName.split('/').pop() || modelName;
-            headerExtra += ` <span class="text-muted">| ${escapeHtml(shortModel)}</span>`;
-        }
-
-        // Calculate response duration
-        let duration = null;
-        if (responseTime) {
-            if (typeof responseTime === 'object') {
-                if (responseTime.mm_time && responseTime.gen_time) {
-                    duration = (parseFloat(responseTime.mm_time) + parseFloat(responseTime.gen_time)).toFixed(1);
-                } else if (responseTime.mm_time) {
-                    duration = parseFloat(responseTime.mm_time).toFixed(1);
-                } else if (responseTime.gen_time) {
-                    duration = parseFloat(responseTime.gen_time).toFixed(1);
-                }
-            } else if (typeof responseTime === 'number' || !isNaN(parseFloat(responseTime))) {
-                duration = parseFloat(responseTime).toFixed(1);
-            }
-        }
-        if (duration) {
-            const langSuffix = window.CURRENT_LANG === 'ru' ? 'с' : 's';
-            headerExtra += ` <span class="text-muted">⏱️ ${duration}${langSuffix}</span>`;
-        }
-
-        // TTS button – always after the duration
-        headerExtra += ` <button class="tts-button" title="${t('speak')}">🗣️</button>`;
-
-        headerHTML += headerExtra;
-    }
-    headerHTML += '</span>';
-
-    let contentHTML = `<div class="message-content">`;
-    if (typeof content === 'string') {
-        if (content.startsWith('[')) {
-            try {
-                const parts = JSON.parse(content);
-                let textContent = '';
-                parts.forEach(part => {
-                    if (part.type === 'text') textContent += part.text + '\n';
-                });
-                if (textContent) {
-                    const escapedText = escapeHtml(textContent.trim());
-                    contentHTML += marked.parse(escapedText);
-                }
-            } catch (e) {
-                const decodedText = (role === 'assistant') ? decodeHtmlEntities(content) : escapeHtml(content);
-                contentHTML += marked.parse(decodedText);
-            }
-        } else {
-            const decodedText = (role === 'assistant') ? decodeHtmlEntities(content) : escapeHtml(content);
-            contentHTML += marked.parse(decodedText);
-        }
-    }
-    contentHTML += '</div>';
-    msgDiv.innerHTML = headerHTML + contentHTML;
-
-    if (fileData) {
-        let fileHTML = '';
-        if (fileType && fileType.startsWith('image/')) {
-            fileHTML = `
-                <div class="image-container">
-                    <img src="data:${fileType};base64,${fileData}" class="attached-image" alt="${fileName || 'attached image'}" title="${t('click_to_enlarge')}" onclick="openImageModal(this.src, '${fileName || t('image')}')">
-                </div>
-            `;
-        } else if (fileType && fileType.startsWith('audio/')) {
-            fileHTML = `<audio controls src="data:${fileType};base64,${fileData}"></audio>`;
-        } else {
-            fileHTML = `<div class="attached-file"><span class="file-icon">📄</span><a href="data:${fileType};base64,${fileData}" download="${fileName}">${fileName}</a></div>`;
-        }
-        msgDiv.innerHTML += fileHTML;
-    }
-
-    container.appendChild(msgDiv);
-    container.scrollTop = container.scrollHeight;
-    updateMessageCount();
-
-    // Find the TTS button inside this newly created message and attach a click handler
-    const ttsButton = msgDiv.querySelector('.tts-button');
-    if (ttsButton) {
-        ttsButton.removeAttribute('onclick'); // ensure no inline handler remains
-        ttsButton.addEventListener('click', (e) => {
-            e.preventDefault();
-            playTTS(ttsButton, msgDiv); // msgDiv is the current message element
-        });
-    }
-
-    setTimeout(() => {
-        addCopyButtonsToMessage(msgDiv);
-    }, 50);
-}
-
-// -------------------------------
-// Switch session
-// -------------------------------
-function switchSession(sessionId) {
-    fetch(`/api/sessions/${sessionId}/switch`, { method: 'POST' })
-        .then(res => res.json())
-        .then(() => {
-            currentSessionId = sessionId;
-            loadMessages(sessionId);
-            document.querySelectorAll('.session-item').forEach(el => {
-                if (el.dataset.sessionId === sessionId) {
-                    el.classList.add('active');
-                } else {
-                    el.classList.remove('active');
-                }
-            });
-            updateSessionsListFromData();
-        });
-}
-
-// -------------------------------
-// Create new session
-// -------------------------------
-function createNewSession() {
-    fetch('/api/sessions/new', { method: 'POST' })
-        .then(res => res.json())
-        .then(data => {
-            sessionsData[data.id] = {
-                title: data.title,
-                updated_at: new Date().toISOString()
-            };
-            document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
-            currentSessionId = data.id;
-            loadSessionsFromServer().then(() => {
-                document.getElementById('chat-messages').innerHTML = '';
-                updateMessageCount();
-                defaultModelName = 'qwen3-vl:8b-instruct';
-                setNewMessageIndicator(data.id, false);
-            });
-        });
-}
-
-// -------------------------------
-// Update session title
-// -------------------------------
-function updateSessionTitle(sessionId, newTitle) {
-    if (sessionsData[sessionId]) {
-        sessionsData[sessionId].title = newTitle;
-        sessionsData[sessionId].updated_at = new Date().toISOString();
-    }
-    const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
-    if (!sessionItem) return;
-    const titleElement = sessionItem.querySelector('.session-title');
-    if (titleElement) titleElement.innerHTML = escapeHtml(newTitle);
-    const now = new Date();
-    const formattedDate = formatFullDateTime(now.toISOString());
-    const dateElement = sessionItem.querySelector('.session-date');
-    if (dateElement) dateElement.textContent = formattedDate;
-    const sessionsList = document.getElementById('sessions-list');
-    if (sessionsList.firstChild !== sessionItem) {
-        sessionsList.insertBefore(sessionItem, sessionsList.firstChild);
-    }
-}
-
-// -------------------------------
-// Voice recording
-// -------------------------------
+// Toggle voice recording state
 async function toggleVoiceRecording() {
     if (isRecording) {
         await stopRecording();
@@ -819,6 +432,7 @@ async function toggleVoiceRecording() {
     }
 }
 
+// Start voice recording with visual feedback
 async function startRecording() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         alert(t('browser_no_audio_support'));
@@ -842,7 +456,14 @@ async function startRecording() {
         };
         mediaRecorder.start();
         isRecording = true;
-        document.getElementById('voice-record-button').classList.add('recording');
+        // Change microphone button visual state (red background)
+        const voiceBtn = document.getElementById('voice-record-button');
+        voiceBtn.classList.add('recording');
+        // Change send button text and remove blue background (translated)
+        const sendButton = document.getElementById('send-button');
+        sendButton.disabled = true;
+        sendButton.innerHTML = '🔴 ' + t('recording');
+        sendButton.classList.add('recording-mode');
         document.getElementById('recording-indicator').style.display = 'inline';
     } catch (err) {
         console.error('Error accessing microphone:', err);
@@ -850,15 +471,24 @@ async function startRecording() {
     }
 }
 
+// Stop voice recording and restore visual state
 async function stopRecording() {
     if (mediaRecorder && isRecording) {
         mediaRecorder.stop();
         isRecording = false;
-        document.getElementById('voice-record-button').classList.remove('recording');
+        // Restore microphone button visual state
+        const voiceBtn = document.getElementById('voice-record-button');
+        voiceBtn.classList.remove('recording');
+        // Restore send button text and blue background (translated)
+        const sendButton = document.getElementById('send-button');
+        sendButton.disabled = false;
+        sendButton.innerHTML = t('send');
+        sendButton.classList.remove('recording-mode');
         document.getElementById('recording-indicator').style.display = 'none';
     }
 }
 
+// Send voice message to server
 async function sendVoiceMessage(blob) {
     const now = new Date();
     const year = now.getFullYear();
@@ -867,21 +497,19 @@ async function sendVoiceMessage(blob) {
     const hours = String(now.getHours()).padStart(2, '0');
     const minutes = String(now.getMinutes()).padStart(2, '0');
     const seconds = String(now.getSeconds()).padStart(2, '0');
-    const filename = `voice_${year}${month}${day}_${hours}${minutes}${seconds}.webm`;
+    const filename = 'voice_' + year + month + day + '_' + hours + minutes + seconds + '.webm';
     const file = new File([blob], filename, { type: 'audio/webm' });
     attachedFile = file;
     isVoiceRecorded = true;
     const preview = document.getElementById('file-preview-container');
     document.getElementById('file-preview-name').textContent = file.name;
     const fileSize = formatFileSize(file.size);
-    document.getElementById('file-preview-size').textContent = ` (${fileSize})`;
+    document.getElementById('file-preview-size').textContent = ' (' + fileSize + ')';
     preview.style.display = 'block';
     sendMessage();
 }
 
-// -------------------------------
-// Send message
-// -------------------------------
+// Send message to server (translated)
 async function sendMessage() {
     const input = document.getElementById('message-input');
     const text = input.value.trim();
@@ -891,11 +519,9 @@ async function sendMessage() {
     }
     if (isSending) return;
     isSending = true;
-
     const sendButton = document.getElementById('send-button');
     sendButton.disabled = true;
     sendButton.innerHTML = '⏳ ' + t('sending');
-
     const messageCount = document.querySelectorAll('.user-message').length;
     if (messageCount === 0) {
         let newTitle = text ? text.slice(0, 40) + (text.length > 40 ? '...' : '') : '';
@@ -904,26 +530,21 @@ async function sendMessage() {
         }
         if (newTitle) {
             updateSessionTitle(currentSessionId, newTitle);
-            fetch(`/api/sessions/${currentSessionId}/update-title`, {
+            fetch('/api/sessions/' + currentSessionId + '/update-title', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({title: newTitle})
             }).catch(err => console.error('Error updating title:', err));
         }
     }
-
     delete lastCompletionTime[currentSessionId];
-
     const now = new Date();
     const timestamp = now.toISOString();
-
     const userContent = [];
     if (text) userContent.push({"type": "text", "text": text});
-
     let fileData = null, fileType = null, fileName = null;
     const tempAttachedFile = attachedFile;
     const tempText = text;
-
     const displayUserMessage = (fileData, fileType, fileName) => {
         if (fileData) {
             let type = "file";
@@ -937,7 +558,6 @@ async function sendMessage() {
         document.getElementById('file-preview-container').style.display = 'none';
         document.getElementById('file-input').value = '';
     };
-
     const sendToServer = async () => {
         try {
             let response;
@@ -959,15 +579,14 @@ async function sendMessage() {
             }
             const data = await response.json();
             console.log('Server response:', data);
-
             if (data.transcribed_text) {
                 if (data.session_id && data.session_id === currentSessionId) {
-                    displayMessage('assistant', `🎤 ${t('transcribed')}: ${data.transcribed_text}`, null, null, null,
+                    displayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,
                         new Date().toISOString(), data.response_time, 'whisper');
                 } else if (data.session_id) {
                     setNewMessageIndicator(data.session_id, true);
                 } else {
-                    displayMessage('assistant', `🎤 ${t('transcribed')}: ${data.transcribed_text}`, null, null, null,
+                    displayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,
                         new Date().toISOString(), data.response_time, 'whisper');
                 }
                 sendButton.disabled = false;
@@ -975,7 +594,6 @@ async function sendMessage() {
                 isSending = false;
                 if (!data.request_id) return;
             }
-
             if (data.status === 'queued') {
                 pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
                 window.updateStatusCounter();
@@ -995,7 +613,6 @@ async function sendMessage() {
             isSending = false;
         }
     };
-
     function startResultPolling(requestId) {
         console.log('Start polling for request:', requestId);
         let pollCount = 0;
@@ -1003,7 +620,7 @@ async function sendMessage() {
         const pollInterval = setInterval(async () => {
             pollCount++;
             try {
-                const response = await fetch(`/api/queue/result/${requestId}`);
+                const response = await fetch('/api/queue/result/' + requestId);
                 const data = await response.json();
                 if (data.status === 'completed') {
                     clearInterval(pollInterval);
@@ -1011,7 +628,7 @@ async function sendMessage() {
                         const resultSessionId = data.result.session_id || pendingRequests[requestId]?.sessionId;
                         if (data.result.error) {
                             if (resultSessionId === currentSessionId) {
-                                displayMessage('assistant', `⚠️ ${data.result.error}`, null, null, null,
+                                displayMessage('assistant', '⚠️ ' + data.result.error, null, null, null,
                                     data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'system');
                                 delete stableSessionStatus[resultSessionId];
                             } else if (resultSessionId) {
@@ -1054,7 +671,7 @@ async function sendMessage() {
                     clearInterval(pollInterval);
                     const resultSessionId = data.result?.session_id || pendingRequests[requestId]?.sessionId;
                     if (resultSessionId === currentSessionId) {
-                        displayMessage('assistant', `⚠️ ${t('error')}: ${data.error || t('unknown_error')}`, null, null, null,
+                        displayMessage('assistant', '⚠️ ' + t('error') + ': ' + (data.error || t('unknown_error')), null, null, null,
                             data.result?.assistant_timestamp || new Date().toISOString(), data.result?.response_time, 'system');
                         delete stableSessionStatus[resultSessionId];
                     } else if (resultSessionId) {
@@ -1069,7 +686,7 @@ async function sendMessage() {
                 }
                 if (pollCount >= maxPolls) {
                     clearInterval(pollInterval);
-                    displayMessage('assistant', `⚠️ ${t('request_timeout')}`,
+                    displayMessage('assistant', '⚠️ ' + t('request_timeout'),
                         null, null, null, new Date().toISOString(), null, 'system');
                     delete stableSessionStatus[currentSessionId];
                     delete pendingRequests[requestId];
@@ -1080,7 +697,6 @@ async function sendMessage() {
             }
         }, 3000);
     }
-
     if (tempAttachedFile) {
         const reader = new FileReader();
         reader.onload = async function(e) {
@@ -1097,21 +713,279 @@ async function sendMessage() {
     }
 }
 
-// -------------------------------
-// Delete session
-// -------------------------------
-function deleteSession(sessionId, sessionTitle, sessionDate) {   
-    // Stop TTS if it is playing in this session
+// Load session messages from server
+function loadMessages(sessionId) {
+    return fetch('/api/sessions/' + sessionId + '/messages')
+    .then(res => res.json())
+    .then(messages => {
+        const container = document.getElementById('chat-messages');
+        container.innerHTML = '';
+        fetch('/api/sessions/' + sessionId + '/model-info')
+        .then(res => res.json())
+        .then(data => {
+            defaultModelName = data.model_name || 'qwen3-vl:8b-instruct-q4_K_M';
+        })
+        .catch(err => console.error('Error loading model info:', err));
+        let lastUserMessage = null;
+        messages.forEach((msg) => {
+            if (msg.role === 'user') {
+                lastUserMessage = msg;
+                displayMessage(
+                    msg.role,
+                    msg.content,
+                    msg.file_data,
+                    msg.file_type,
+                    msg.file_name,
+                    msg.timestamp,
+                    null, null, null, null, null, null
+                );
+            } else if (msg.role === 'assistant') {
+                let responseTime = null;
+                if (lastUserMessage) {
+                    const userTime = new Date(lastUserMessage.timestamp);
+                    const assistantTime = new Date(msg.timestamp);
+                    const diffSeconds = (assistantTime - userTime) / 1000;
+                    responseTime = Math.round(diffSeconds * 10) / 10;
+                }
+                if (msg.response_time) {
+                    if (typeof msg.response_time === 'object') {
+                        responseTime = msg.response_time;
+                    } else if (!isNaN(parseFloat(msg.response_time))) {
+                        responseTime = parseFloat(msg.response_time);
+                    }
+                }
+                let mmTime = msg.mm_time;
+                let genTime = msg.gen_time;
+                let mmModel = msg.mm_model;
+                let genModel = msg.gen_model;
+                if (mmTime && genTime) {
+                    responseTime = {
+                        mm_time: parseFloat(mmTime),
+                        gen_time: parseFloat(genTime),
+                        mm_model: mmModel || 'unknown',
+                        gen_model: genModel || 'unknown'
+                    };
+                }
+                displayMessage(
+                    msg.role,
+                    msg.content,
+                    msg.file_data,
+                    msg.file_type,
+                    msg.file_name,
+                    msg.timestamp,
+                    responseTime,
+                    msg.model_name || defaultModelName,
+                    mmTime,
+                    genTime,
+                    mmModel,
+                    genModel
+                );
+                lastUserMessage = null;
+            }
+        });
+        updateMessageCount();
+        container.scrollTop = container.scrollHeight;
+        setNewMessageIndicator(sessionId, false);
+        updateLastVisit(sessionId);
+    });
+}
+
+// Display a single message (translated)
+function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
+    const container = document.getElementById('chat-messages');
+    const msgDiv = document.createElement('div');
+    msgDiv.className = (role === 'user') ? 'user-message' : 'assistant-message bot-message';
+    if (!timestamp) timestamp = new Date().toISOString();
+    msgDiv.setAttribute('data-timestamp', timestamp);
+    msgDiv.dataset.sessionId = currentSessionId;
+    if (role === 'assistant') {
+        msgDiv.setAttribute('data-raw-text', content);
+        if (modelName) msgDiv.dataset.modelName = modelName;
+        if (responseTime && typeof responseTime === 'object') {
+            if (responseTime.mm_time) msgDiv.dataset.mmTime = responseTime.mm_time;
+            if (responseTime.gen_time) msgDiv.dataset.genTime = responseTime.gen_time;
+            if (responseTime.mm_model) msgDiv.dataset.mmModel = responseTime.mm_model;
+            if (responseTime.gen_model) msgDiv.dataset.genModel = responseTime.gen_model;
+        } else if (mmTime && genTime) {
+            msgDiv.dataset.mmTime = mmTime;
+            msgDiv.dataset.genTime = genTime;
+            msgDiv.dataset.mmModel = mmModel || 'unknown';
+            msgDiv.dataset.genModel = genModel || 'unknown';
+        }
+    }
+    let timeDisplay = formatFullDateTime(timestamp);
+    if (role === 'user' && fileName && fileData) {
+        const base64Length = fileData.length;
+        const fileSizeBytes = Math.round((base64Length * 3) / 4);
+        const fileSize = formatFileSize(fileSizeBytes);
+        timeDisplay += ' <span class="file-info">[📎 ' + fileName + ', ' + fileSize + ']</span>';
+        if (fileType && fileType.startsWith('image/')) {
+            timeDisplay += ' <a href="data:' + fileType + ';base64,' + fileData + '" download="' + (fileName || 'image.jpg') + '" class="download-link-inline" title="' + t('download_image') + '" onclick="event.stopPropagation()">⬇️</a>';
+        }
+        if (fileType && fileType.startsWith('audio/')) {
+            timeDisplay += ' <a href="data:' + fileType + ';base64,' + fileData + '" download="' + (fileName || 'audio.webm') + '" class="download-link-inline" title="' + t('download_audio') + '" onclick="event.stopPropagation()">⬇️</a>';
+        }
+    }
+    if (role === 'assistant' && fileName && fileData) {
+        const base64Length = fileData.length;
+        const fileSizeBytes = Math.round((base64Length * 3) / 4);
+        const fileSize = formatFileSize(fileSizeBytes);
+        timeDisplay += ' <span class="file-info">[📎 ' + fileName + ', ' + fileSize + ']</span>';
+        if (fileType && fileType.startsWith('image/')) {
+            timeDisplay += ' <a href="data:' + fileType + ';base64,' + fileData + '" download="' + (fileName || 'generated_image.jpg') + '" class="download-link-inline" title="' + t('download_image') + '" onclick="event.stopPropagation()">⬇️</a>';
+        }
+        if (fileType && fileType.startsWith('audio/')) {
+            timeDisplay += ' <a href="data:' + fileType + ';base64,' + fileData + '" download="' + (fileName || 'audio.webm') + '" class="download-link-inline" title="' + t('download_audio') + '" onclick="event.stopPropagation()">⬇️</a>';
+        }
+    }
+    let headerHTML = '<span class="message-header">📅 ' + timeDisplay;
+    if (role === 'assistant') {
+        let headerExtra = '';
+        if (modelName) {
+            const shortModel = modelName.split('/').pop() || modelName;
+            headerExtra += ' <span class="text-muted">| ' + escapeHtml(shortModel) + '</span>';
+        }
+        let duration = null;
+        if (responseTime) {
+            if (typeof responseTime === 'object') {
+                if (responseTime.mm_time && responseTime.gen_time) {
+                    duration = (parseFloat(responseTime.mm_time) + parseFloat(responseTime.gen_time)).toFixed(1);
+                } else if (responseTime.mm_time) {
+                    duration = parseFloat(responseTime.mm_time).toFixed(1);
+                } else if (responseTime.gen_time) {
+                    duration = parseFloat(responseTime.gen_time).toFixed(1);
+                }
+            } else if (typeof responseTime === 'number' || !isNaN(parseFloat(responseTime))) {
+                duration = parseFloat(responseTime).toFixed(1);
+            }
+        }
+        if (duration) {
+            const langSuffix = window.CURRENT_LANG === 'ru' ? 'с' : 's';
+            headerExtra += ' <span class="text-muted">⏱️ ' + duration + langSuffix + '</span>';
+        }
+        headerExtra += ' <button class="tts-button" title="' + t('speak') + '">🗣️</button>';
+        headerHTML += headerExtra;
+    }
+    headerHTML += '</span>';
+    let contentHTML = '<div class="message-content">';
+    if (typeof content === 'string') {
+        if (content.startsWith('[')) {
+            try {
+                const parts = JSON.parse(content);
+                let textContent = '';
+                parts.forEach(part => {
+                    if (part.type === 'text') textContent += part.text + '\n';
+                });
+                if (textContent) {
+                    const escapedText = escapeHtml(textContent.trim());
+                    contentHTML += marked.parse(escapedText);
+                }
+            } catch (e) {
+                const decodedText = (role === 'assistant') ? decodeHtmlEntities(content) : escapeHtml(content);
+                contentHTML += marked.parse(decodedText);
+            }
+        } else {
+            const decodedText = (role === 'assistant') ? decodeHtmlEntities(content) : escapeHtml(content);
+            contentHTML += marked.parse(decodedText);
+        }
+    }
+    contentHTML += '</div>';
+    msgDiv.innerHTML = headerHTML + contentHTML;
+    if (fileData) {
+        let fileHTML = '';
+        if (fileType && fileType.startsWith('image/')) {
+            fileHTML = '<div class="image-container"><img src="data:' + fileType + ';base64,' + fileData + '" class="attached-image" alt="' + (fileName || 'attached image') + '" title="' + t('click_to_enlarge') + '" onclick="openImageModal(this.src, \'' + (fileName || t('image')) + '\')"></div>';
+        } else if (fileType && fileType.startsWith('audio/')) {
+            fileHTML = '<audio controls src="data:' + fileType + ';base64,' + fileData + '"></audio>';
+        } else {
+            fileHTML = '<div class="attached-file"><span class="file-icon">📄</span><a href="data:' + fileType + ';base64,' + fileData + '" download="' + fileName + '">' + fileName + '</a></div>';
+        }
+        msgDiv.innerHTML += fileHTML;
+    }
+    container.appendChild(msgDiv);
+    container.scrollTop = container.scrollHeight;
+    updateMessageCount();
+    const ttsButton = msgDiv.querySelector('.tts-button');
+    if (ttsButton) {
+        ttsButton.removeAttribute('onclick');
+        ttsButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            playTTS(ttsButton, msgDiv);
+        });
+    }
+    setTimeout(() => {
+        addCopyButtonsToMessage(msgDiv);
+    }, 50);
+}
+
+// Switch to different session
+function switchSession(sessionId) {
+    fetch('/api/sessions/' + sessionId + '/switch', { method: 'POST' })
+    .then(res => res.json())
+    .then(() => {
+        currentSessionId = sessionId;
+        loadMessages(sessionId);
+        document.querySelectorAll('.session-item').forEach(el => {
+            if (el.dataset.sessionId === sessionId) {
+                el.classList.add('active');
+            } else {
+                el.classList.remove('active');
+            }
+        });
+        updateSessionsListFromData();
+    });
+}
+
+// Create new session (translated)
+function createNewSession() {
+    fetch('/api/sessions/new', { method: 'POST' })
+    .then(res => res.json())
+    .then(data => {
+        sessionsData[data.id] = {
+            title: data.title,
+            updated_at: new Date().toISOString()
+        };
+        document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+        currentSessionId = data.id;
+        loadSessionsFromServer().then(() => {
+            document.getElementById('chat-messages').innerHTML = '';
+            updateMessageCount();
+            defaultModelName = 'qwen3-vl:8b-instruct';
+            setNewMessageIndicator(data.id, false);
+        });
+    });
+}
+
+// Update session title
+function updateSessionTitle(sessionId, newTitle) {
+    if (sessionsData[sessionId]) {
+        sessionsData[sessionId].title = newTitle;
+        sessionsData[sessionId].updated_at = new Date().toISOString();
+    }
+    const sessionItem = document.querySelector('.session-item[data-session-id="' + sessionId + '"]');
+    if (!sessionItem) return;
+    const titleElement = sessionItem.querySelector('.session-title');
+    if (titleElement) titleElement.innerHTML = escapeHtml(newTitle);
+    const now = new Date();
+    const formattedDate = formatFullDateTime(now.toISOString());
+    const dateElement = sessionItem.querySelector('.session-date');
+    if (dateElement) dateElement.textContent = formattedDate;
+    const sessionsList = document.getElementById('sessions-list');
+    if (sessionsList.firstChild !== sessionItem) {
+        sessionsList.insertBefore(sessionItem, sessionsList.firstChild);
+    }
+}
+
+// Delete session (translated)
+function deleteSession(sessionId, sessionTitle, sessionDate) {
     if (currentPlayingSessionId === sessionId) {
         resetTtsState();
     }
-
     const confirmMessage = formatString(t('delete_session_confirm'), {
         title: sessionTitle,
         date: sessionDate
     });
     if (!confirm(confirmMessage)) return;
-
     for (let [id, req] of Object.entries(pendingRequests)) {
         if (req.sessionId === sessionId && !req.processed) {
             pendingRequests[id].processed = true;
@@ -1120,34 +994,30 @@ function deleteSession(sessionId, sessionTitle, sessionDate) {
     delete newMessageIndicators[sessionId];
     delete stableSessionStatus[sessionId];
     delete lastCompletionTime[sessionId];
-
-    fetch(`/api/sessions/${sessionId}/delete`, { method: 'POST' })
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === 'ok') {
-                delete sessionsData[sessionId];
-                const sessionItem = document.querySelector(`.session-item[data-session-id="${sessionId}"]`);
-                if (sessionItem) sessionItem.remove();
-                const sessionsCount = document.querySelectorAll('.session-item').length;
-                document.getElementById('sessions-count').textContent = sessionsCount;
-                if (sessionId === currentSessionId) {
-                    const remainingSessions = document.querySelectorAll('.session-item');
-                    if (remainingSessions.length > 0) {
-                        switchSession(remainingSessions[0].dataset.sessionId);
-                    } else {
-                        setTimeout(() => createNewSession(), 50);
-                    }
+    fetch('/api/sessions/' + sessionId + '/delete', { method: 'POST' })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            delete sessionsData[sessionId];
+            const sessionItem = document.querySelector('.session-item[data-session-id="' + sessionId + '"]');
+            if (sessionItem) sessionItem.remove();
+            const sessionsCount = document.querySelectorAll('.session-item').length;
+            document.getElementById('sessions-count').textContent = sessionsCount;
+            if (sessionId === currentSessionId) {
+                const remainingSessions = document.querySelectorAll('.session-item');
+                if (remainingSessions.length > 0) {
+                    switchSession(remainingSessions[0].dataset.sessionId);
+                } else {
+                    setTimeout(() => createNewSession(), 50);
                 }
             }
-        })
-        .catch(err => alert(t('error') + ': ' + err.message));
+        }
+    })
+    .catch(err => alert(t('error') + ': ' + err.message));
 }
 
-// -------------------------------
-// Save chat as HTML
-// -------------------------------
+// Save chat as HTML file (translated)
 async function saveChatAsHTML() {
-    // Fetch footer
     let footerText = "";
     try {
         const response = await fetch('/api/footer-text');
@@ -1162,20 +1032,14 @@ async function saveChatAsHTML() {
         console.error('Error fetching footer:', error);
         footerText = t('footer_text');
     }
-
-    // Get user name
     const userNameElement = document.querySelector('.logout-container span');
     const userName = userNameElement ? userNameElement.textContent.trim() : t('user');
-
-    // Get session title
     const activeSession = document.querySelector('.session-item.active');
     if (!activeSession) {
         alert(t('no_active_session_save'));
         return;
     }
     const rawTitle = activeSession.querySelector('.session-title')?.textContent || t('chat');
-
-    // Format title if it's a date
     let displayTitle = rawTitle;
     const filenameDateRegex = /(voice_)?(\d{8})_(\d{6})(\.webm)?$/;
     const match = rawTitle.match(filenameDateRegex);
@@ -1191,17 +1055,14 @@ async function saveChatAsHTML() {
         const dateObj = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
         const dateOptions = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' };
         const formattedDate = dateObj.toLocaleString(CURRENT_LANG === 'ru' ? 'ru-RU' : 'en-US', dateOptions);
-        displayTitle = `🎤 ${t('voice_request')} (${formattedDate})`;
+        displayTitle = '🎤 ' + t('voice_request') + ' (' + formattedDate + ')';
     } else {
         displayTitle = escapeHtml(rawTitle);
     }
-
-    // Get logo and convert to Base64
     let logoBase64 = '';
     const logoImg = document.querySelector('.header-logo');
     if (logoImg) {
         const logoSrc = logoImg.src;
-        // If it's not a data URI, fetch and convert
         if (logoSrc && !logoSrc.startsWith('data:')) {
             try {
                 const response = await fetch(logoSrc);
@@ -1220,15 +1081,9 @@ async function saveChatAsHTML() {
             logoBase64 = logoSrc.split(',')[1];
         }
     }
-
-    // Generate HTML header with logo
-    const headerLogoHtml = logoBase64 ? `<img src="data:image/png;base64,${logoBase64}" alt="FLAI Logo" class="header-logo">` : '';
-
-    // Time and date
+    const headerLogoHtml = logoBase64 ? '<img src="data:image/png;base64,' + logoBase64 + '" alt="FLAI Logo" class="header-logo">' : '';
     const now = new Date();
-    const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-
-    // Footer
+    const timestamp = now.getFullYear() + '-' + pad(now.getMonth()+1) + '-' + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
     let footerLine1 = footerText, footerLine2 = '';
     if (footerText.includes('(c)')) {
         const parts = footerText.split('(c)');
@@ -1237,8 +1092,6 @@ async function saveChatAsHTML() {
     } else {
         footerLine1 = footerText;
     }
-
-    // Collect messages
     const messages = [];
     document.querySelectorAll('.user-message, .assistant-message, .bot-message').forEach(msgEl => {
         const role = msgEl.classList.contains('user-message') ? 'user' : 'assistant';
@@ -1249,20 +1102,17 @@ async function saveChatAsHTML() {
         let contentHtml = contentEl ? contentEl.innerHTML : '';
         let fileHtml = '';
         const imageEl = msgEl.querySelector('.attached-image');
-        if (imageEl) fileHtml += `<div class="image-container">${imageEl.outerHTML}</div>`;
+        if (imageEl) fileHtml += '<div class="image-container">' + imageEl.outerHTML + '</div>';
         const audioEl = msgEl.querySelector('audio');
-        if (audioEl && !imageEl) fileHtml += `<div class="audio-container">${audioEl.outerHTML}</div>`;
+        if (audioEl && !imageEl) fileHtml += '<div class="audio-container">' + audioEl.outerHTML + '</div>';
         const fileEl = msgEl.querySelector('.attached-file');
-        if (fileEl && !imageEl && !audioEl) fileHtml += `<div class="file-container">${fileEl.outerHTML}</div>`;
+        if (fileEl && !imageEl && !audioEl) fileHtml += '<div class="file-container">' + fileEl.outerHTML + '</div>';
         messages.push({ role, timestamp, timeHtml, contentHtml, fileHtml });
     });
-
     if (messages.length === 0) {
         alert(t('no_messages_to_save'));
         return;
     }
-
-    // Load styles
     let styleContent = '';
     let exportStyleContent = '';
     try {
@@ -1277,69 +1127,22 @@ async function saveChatAsHTML() {
     } catch (e) {
         console.error('Failed to load export.css', e);
     }
-
     exportStyleContent = exportStyleContent.replace(/@import\s+url\(['"]?style\.css['"]?\);?\s*/g, '');
     const combinedStyles = styleContent + '\n' + exportStyleContent;
-
     const siteTitle = document.querySelector('header h1')?.textContent || 'FLAI';
-
     const dateOptions = { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' };
     const formattedDate = now.toLocaleString(CURRENT_LANG === 'ru' ? 'ru-RU' : 'en-US', dateOptions);
-
-    // Final HTML assembly
-    const html = `<!DOCTYPE html>
-<html lang="${CURRENT_LANG}">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${escapeHtml(rawTitle)} - ${t('saved_chat')}</title>
-    <style>${combinedStyles}</style>
-</head>
-<body>
-    <header>
-        ${headerLogoHtml}
-        <h1>${escapeHtml(siteTitle)}</h1>
-    </header>
-    <main>
-        <div class="chat-wrapper">
-            <div class="chat-header">
-                <h1>${t('session')}: ${displayTitle}</h1>
-                <p class="user-info">👤 ${t('user')}: ${escapeHtml(userName)}</p>
-                <p>📅 ${t('saved_on')}: ${formattedDate}</p>
-                <p>💬 ${t('total_messages')}: ${messages.length}</p>
-            </div>
-            <div class="chat-messages">
-                ${messages.map(msg => `
-                    <div class="${msg.role === 'user' ? 'user-message' : 'assistant-message'}">
-                        <small class="message-time">${msg.timeHtml}</small>
-                        <div class="message-content">${msg.contentHtml}</div>
-                        ${msg.fileHtml}
-                    </div>
-                `).join('')}
-            </div>
-        </div>
-    </main>
-    <footer>
-        <div class="footer-content">
-            <div class="footer-line1">${escapeHtml(footerLine1)}</div>
-            ${footerLine2 ? `<div class="footer-line2">${escapeHtml(footerLine2)}</div>` : ''}
-        </div>
-    </footer>
-</body>
-</html>`;
-
+    const html = '<!DOCTYPE html>\n<html lang="' + CURRENT_LANG + '">\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n<title>' + escapeHtml(rawTitle) + ' - ' + t('saved_chat') + '</title>\n<style>' + combinedStyles + '</style>\n</head>\n<body>\n<header>\n' + headerLogoHtml + '\n<h1>' + escapeHtml(siteTitle) + '</h1>\n</header>\n<main>\n<div class="chat-wrapper">\n<div class="chat-header">\n<h1>' + t('session') + ': ' + displayTitle + '</h1>\n<p class="user-info">👤 ' + t('user') + ': ' + escapeHtml(userName) + '</p>\n<p>📅 ' + t('saved_on') + ': ' + formattedDate + '</p>\n<p>💬 ' + t('total_messages') + ': ' + messages.length + '</p>\n</div>\n<div class="chat-messages">\n' + messages.map(msg => '\n<div class="' + (msg.role === 'user' ? 'user-message' : 'assistant-message') + '">\n<small class="message-time">' + msg.timeHtml + '</small>\n<div class="message-content">' + msg.contentHtml + '</div>\n' + msg.fileHtml + '\n</div>\n').join('') + '\n</div>\n</div>\n</main>\n<footer>\n<div class="footer-content">\n<div class="footer-line1">' + escapeHtml(footerLine1) + '</div>\n' + (footerLine2 ? '<div class="footer-line2">' + escapeHtml(footerLine2) + '</div>' : '') + '\n</div>\n</footer>\n</body>\n</html>';
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `chat_${timestamp}.html`;
+    a.download = 'chat_' + timestamp + '.html';
     a.click();
     URL.revokeObjectURL(url);
 }
 
-// -------------------------------
-// Code copying
-// -------------------------------
+// Copy text to clipboard
 async function copyToClipboard(text) {
     try {
         await navigator.clipboard.writeText(text);
@@ -1363,6 +1166,7 @@ async function copyToClipboard(text) {
     }
 }
 
+// Handle copy button click (translated)
 async function handleCopyClick(button, codeElement) {
     const code = codeElement.textContent || codeElement.innerText;
     const originalHTML = button.innerHTML;
@@ -1391,6 +1195,7 @@ async function handleCopyClick(button, codeElement) {
     }
 }
 
+// Add copy buttons to message (translated)
 function addCopyButtonsToMessage(messageElement) {
     if (!messageElement) return;
     const codeBlocks = messageElement.querySelectorAll('pre code');
@@ -1412,7 +1217,6 @@ function addCopyButtonsToMessage(messageElement) {
         wrapper.appendChild(parent);
         wrapper.appendChild(copyButton);
     });
-
     const contentDiv = messageElement.querySelector('.message-content');
     if (contentDiv && !contentDiv.querySelector('.copy-transcript-button')) {
         const text = contentDiv.innerText || contentDiv.textContent;
@@ -1435,6 +1239,7 @@ function addCopyButtonsToMessage(messageElement) {
     }
 }
 
+// Setup observer for copy buttons
 function setupCopyButtonsObserver() {
     const chatMessages = document.getElementById('chat-messages');
     if (!chatMessages) return;
@@ -1461,7 +1266,6 @@ window.loadMessages = function(sessionId) {
         setTimeout(addCopyButtonsToAllCodeBlocks, 100);
     });
 };
-
 const originalDisplayMessage = displayMessage;
 window.displayMessage = function(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
     const result = originalDisplayMessage.call(this, role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel);
@@ -1473,11 +1277,51 @@ window.displayMessage = function(role, content, fileData, fileType, fileName, ti
     return result;
 };
 
+// Add copy buttons to all code blocks
 function addCopyButtonsToAllCodeBlocks() {
     document.querySelectorAll('.user-message, .assistant-message, .bot-message').forEach(addCopyButtonsToMessage);
 }
 
+// Initialize on DOM load
 document.addEventListener('DOMContentLoaded', function() {
+    loadSessionsFromServer().then(() => {
+        loadMessages(currentSessionId);
+        startSyncInterval();
+    });
+    document.getElementById('new-session-button').addEventListener('click', createNewSession);
+    document.getElementById('send-button').addEventListener('click', sendMessage);
+    document.getElementById('message-input').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+    document.getElementById('attach-file-button').addEventListener('click', function() {
+        document.getElementById('file-input').click();
+    });
+    document.getElementById('file-input').addEventListener('change', function(e) {
+        if (e.target.files.length > 0) {
+            attachedFile = e.target.files[0];
+            const preview = document.getElementById('file-preview-container');
+            document.getElementById('file-preview-name').textContent = attachedFile.name;
+            const fileSize = formatFileSize(attachedFile.size);
+            const sizeSpan = document.getElementById('file-preview-size');
+            if (sizeSpan) sizeSpan.textContent = ' (' + fileSize + ')';
+            preview.style.display = 'block';
+        }
+    });
+    document.getElementById('remove-file-button').addEventListener('click', function() {
+        attachedFile = null;
+        document.getElementById('file-input').value = '';
+        document.getElementById('file-preview-container').style.display = 'none';
+    });
+    document.getElementById('save-chat-button').addEventListener('click', saveChatAsHTML);
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeImageModal();
+    });
+    window.updateStatusCounter();
+    fetchQueueStatus();
+    document.getElementById('voice-record-button').addEventListener('click', toggleVoiceRecording);
     setTimeout(setupCopyButtonsObserver, 500);
     setTimeout(addCopyButtonsToAllCodeBlocks, 1000);
 });

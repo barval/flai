@@ -1,134 +1,125 @@
 // static/js/admin.js
+// Admin panel JavaScript - handles user management and translations
+
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Admin page loaded');
     loadUsers();
     setupModals();
-
     // Refresh stats every 30 seconds
     setInterval(refreshStats, 30000);
 });
 
+// Translation helper function - returns translated string or key if not found
 function t(key) {
     return window.TRANSLATIONS[key] || key;
 }
 
+// Load users from API and render table
 function loadUsers() {
     fetch('/admin/api/users')
-        .then(response => response.json())
-        .then(users => {
-            console.log('Users loaded:', users);
-            const tbody = document.getElementById('users-tbody');
-            tbody.innerHTML = '';
-            users.forEach(user => {
-                const row = document.createElement('tr');
-                row.dataset.login = user.login;
-                if (!user.is_active) {
+    .then(response => response.json())
+    .then(users => {
+        console.log('Users loaded:', users);
+        const tbody = document.getElementById('users-tbody');
+        tbody.innerHTML = '';
+        users.forEach(user => {
+            const row = document.createElement('tr');
+            row.dataset.login = user.login;
+            if (!user.is_active) {
+                row.classList.add('user-inactive');
+            }
+            // Status cell with checkbox
+            const statusCell = document.createElement('td');
+            const statusCheck = document.createElement('input');
+            statusCheck.type = 'checkbox';
+            statusCheck.checked = user.is_active == 1;
+            statusCheck.addEventListener('change', () => {
+                updateUserField(user.login, 'is_active', statusCheck.checked);
+                if (statusCheck.checked) {
+                    row.classList.remove('user-inactive');
+                } else {
                     row.classList.add('user-inactive');
                 }
-
-                // Status
-                const statusCell = document.createElement('td');
-                const statusCheck = document.createElement('input');
-                statusCheck.type = 'checkbox';
-                statusCheck.checked = user.is_active == 1;
-                statusCheck.addEventListener('change', () => {
-                    updateUserField(user.login, 'is_active', statusCheck.checked);
-                    if (statusCheck.checked) {
-                        row.classList.remove('user-inactive');
-                    } else {
-                        row.classList.add('user-inactive');
-                    }
-                });
-                statusCell.appendChild(statusCheck);
-                row.appendChild(statusCell);
-
-                // Login
-                const loginCell = document.createElement('td');
-                loginCell.textContent = user.login;
-                row.appendChild(loginCell);
-
-                // Password (change button)
-                const passCell = document.createElement('td');
-                const changePassBtn = document.createElement('button');
-                changePassBtn.textContent = t('change');
-                changePassBtn.title = t('change_password');  // tooltip added
-                changePassBtn.className = 'change-password-btn';
-                changePassBtn.onclick = () => openPasswordModal(user.login);
-                passCell.appendChild(changePassBtn);
-                row.appendChild(passCell);
-
-                // Name
-                const nameCell = document.createElement('td');
-                const nameInput = document.createElement('input');
-                nameInput.type = 'text';
-                nameInput.value = user.name;
-                nameInput.addEventListener('change', () => updateUserField(user.login, 'name', nameInput.value));
-                nameCell.appendChild(nameInput);
-                row.appendChild(nameCell);
-
-                // Class
-                const classCell = document.createElement('td');
-                const classSelect = document.createElement('select');
-                [0,1,2].forEach(val => {
-                    const opt = document.createElement('option');
-                    opt.value = val;
-                    opt.textContent = val;
-                    if (val == user.service_class) opt.selected = true;
-                    classSelect.appendChild(opt);
-                });
-                classSelect.addEventListener('change', () => updateUserField(user.login, 'service_class', parseInt(classSelect.value)));
-                classCell.appendChild(classSelect);
-                row.appendChild(classCell);
-
-                // Sessions
-                const sessionsCell = document.createElement('td');
-                sessionsCell.textContent = user.sessions_count;
-                row.appendChild(sessionsCell);
-
-                // Messages
-                const messagesCell = document.createElement('td');
-                messagesCell.textContent = user.messages_count;
-                row.appendChild(messagesCell);
-
-                // Camera access
-                if (window.ROOMS && Object.keys(window.ROOMS).length > 0) {
-                    const camCell = document.createElement('td');
-                    const camContainer = document.createElement('div');
-                    camContainer.className = 'camera-checkboxes';
-                    
-                    for (const [code, name] of Object.entries(window.ROOMS)) {
-                        const cb = document.createElement('input');
-                        cb.type = 'checkbox';
-                        cb.value = code;
-                        cb.checked = user.camera_permissions && user.camera_permissions.includes(code);
-                        cb.addEventListener('change', () => updateCameraPermissions(user.login));
-                        
-                        const label = document.createElement('label');
-                        label.appendChild(cb);
-                        label.appendChild(document.createTextNode(' ' + name));
-                        camContainer.appendChild(label);
-                    }
-                    
-                    camCell.appendChild(camContainer);
-                    row.appendChild(camCell);
-                }
-
-                // Actions
-                const actionsCell = document.createElement('td');
-                const deleteBtn = document.createElement('button');
-                deleteBtn.textContent = t('delete');
-                deleteBtn.title = t('delete_user');  // tooltip added
-                deleteBtn.className = 'delete-user-btn';
-                deleteBtn.onclick = () => deleteUser(user.login);
-                actionsCell.appendChild(deleteBtn);
-                row.appendChild(actionsCell);
-
-                tbody.appendChild(row);
             });
-        })
-        .catch(err => console.error('Error loading users:', err));
+            statusCell.appendChild(statusCheck);
+            row.appendChild(statusCell);
+            // Login cell
+            const loginCell = document.createElement('td');
+            loginCell.textContent = user.login;
+            row.appendChild(loginCell);
+            // Password cell with change button (translated)
+            const passCell = document.createElement('td');
+            const changePassBtn = document.createElement('button');
+            changePassBtn.textContent = t('change');
+            changePassBtn.title = t('change_password');
+            changePassBtn.className = 'change-password-btn';
+            changePassBtn.onclick = () => openPasswordModal(user.login);
+            passCell.appendChild(changePassBtn);
+            row.appendChild(passCell);
+            // Name cell with editable input
+            const nameCell = document.createElement('td');
+            const nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            nameInput.value = user.name;
+            nameInput.addEventListener('change', () => updateUserField(user.login, 'name', nameInput.value));
+            nameCell.appendChild(nameInput);
+            row.appendChild(nameCell);
+            // Class cell with dropdown
+            const classCell = document.createElement('td');
+            const classSelect = document.createElement('select');
+            [0,1,2].forEach(val => {
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = val;
+                if (val == user.service_class) opt.selected = true;
+                classSelect.appendChild(opt);
+            });
+            classSelect.addEventListener('change', () => updateUserField(user.login, 'service_class', parseInt(classSelect.value)));
+            classCell.appendChild(classSelect);
+            row.appendChild(classCell);
+            // Sessions count cell
+            const sessionsCell = document.createElement('td');
+            sessionsCell.textContent = user.sessions_count;
+            row.appendChild(sessionsCell);
+            // Messages count cell
+            const messagesCell = document.createElement('td');
+            messagesCell.textContent = user.messages_count;
+            row.appendChild(messagesCell);
+            // Camera access cell with checkboxes
+            if (window.ROOMS && Object.keys(window.ROOMS).length > 0) {
+                const camCell = document.createElement('td');
+                const camContainer = document.createElement('div');
+                camContainer.className = 'camera-checkboxes';
+                for (const [code, name] of Object.entries(window.ROOMS)) {
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.value = code;
+                    cb.checked = user.camera_permissions && user.camera_permissions.includes(code);
+                    cb.addEventListener('change', () => updateCameraPermissions(user.login));
+                    const label = document.createElement('label');
+                    label.appendChild(cb);
+                    label.appendChild(document.createTextNode(' ' + name));
+                    camContainer.appendChild(label);
+                }
+                camCell.appendChild(camContainer);
+                row.appendChild(camCell);
+            }
+            // Actions cell with delete button (translated)
+            const actionsCell = document.createElement('td');
+            const deleteBtn = document.createElement('button');
+            deleteBtn.textContent = t('delete');
+            deleteBtn.title = t('delete_user');
+            deleteBtn.className = 'delete-user-btn';
+            deleteBtn.onclick = () => deleteUser(user.login);
+            actionsCell.appendChild(deleteBtn);
+            row.appendChild(actionsCell);
+            tbody.appendChild(row);
+        });
+    })
+    .catch(err => console.error('Error loading users:', err));
 }
 
+// Update user field via API
 function updateUserField(login, field, value) {
     const data = { [field]: value };
     fetch(`/admin/api/users/${login}`, {
@@ -144,6 +135,7 @@ function updateUserField(login, field, value) {
     }).catch(err => console.error('Error updating user:', err));
 }
 
+// Update camera permissions for user
 function updateCameraPermissions(login) {
     const row = document.querySelector(`tr[data-login="${login}"]`);
     if (!row) return;
@@ -160,32 +152,34 @@ function updateCameraPermissions(login) {
     }).catch(err => console.error('Error updating camera permissions:', err));
 }
 
+// Delete user with confirmation (translated)
 function deleteUser(login) {
     if (confirm(t('delete_user_confirm').replace('{login}', login))) {
         fetch(`/admin/api/users/${login}`, { method: 'DELETE' })
-            .then(response => response.json())
-            .then(result => {
-                if (result.status === 'ok') {
-                    loadUsers();
-                } else {
-                    alert(t('error') + ': ' + (result.error || t('unknown_error')));
-                }
-            })
-            .catch(err => console.error('Error deleting user:', err));
+        .then(response => response.json())
+        .then(result => {
+            if (result.status === 'ok') {
+                loadUsers();
+            } else {
+                alert(t('error') + ': ' + (result.error || t('unknown_error')));
+            }
+        })
+        .catch(err => console.error('Error deleting user:', err));
     }
 }
 
+// Open password change modal
 function openPasswordModal(login) {
     document.getElementById('password-user-login').value = login;
     document.getElementById('password-modal').style.display = 'block';
 }
 
+// Setup modal windows and event handlers
 function setupModals() {
     const modal = document.getElementById('add-user-modal');
     const passModal = document.getElementById('password-modal');
     const addBtn = document.getElementById('add-user-button');
     const closeSpans = document.querySelectorAll('.modal .close');
-
     if (!addBtn) {
         console.error('Add user button not found');
         return;
@@ -198,24 +192,21 @@ function setupModals() {
         console.error('Password modal not found');
         return;
     }
-
     addBtn.addEventListener('click', () => {
         console.log('Add button clicked');
         modal.style.display = 'block';
     });
-
     closeSpans.forEach(span => {
         span.addEventListener('click', () => {
             modal.style.display = 'none';
             passModal.style.display = 'none';
         });
     });
-
     window.addEventListener('click', (event) => {
         if (event.target == modal) modal.style.display = 'none';
         if (event.target == passModal) passModal.style.display = 'none';
     });
-
+    // Add user form submit handler
     const addForm = document.getElementById('add-user-form');
     if (addForm) {
         addForm.addEventListener('submit', function(e) {
@@ -248,7 +239,7 @@ function setupModals() {
             .catch(err => console.error('Error adding user:', err));
         });
     }
-
+    // Password change form submit handler
     const passForm = document.getElementById('password-form');
     if (passForm) {
         passForm.addEventListener('submit', function(e) {
@@ -274,24 +265,23 @@ function setupModals() {
     }
 }
 
-// New function to refresh database sizes and reload user table
+// Refresh database sizes and reload user table
 function refreshStats() {
     // Reload users table to update session/message counts
     loadUsers();
-
     // Fetch current database sizes
     fetch('/admin/api/stats')
-        .then(response => response.json())
-        .then(data => {
-            if (data.error) {
-                console.error('Error fetching stats:', data.error);
-                return;
-            }
-            // Convert bytes to MB with two decimal places
-            const chatMb = (data.chat_db_size / (1024 * 1024)).toFixed(2);
-            const userMb = (data.user_db_size / (1024 * 1024)).toFixed(2);
-            document.getElementById('chat-db-size').textContent = chatMb;
-            document.getElementById('user-db-size').textContent = userMb;
-        })
-        .catch(err => console.error('Error fetching stats:', err));
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            console.error('Error fetching stats:', data.error);
+            return;
+        }
+        // Convert bytes to MB with two decimal places
+        const chatMb = (data.chat_db_size / (1024 * 1024)).toFixed(2);
+        const userMb = (data.user_db_size / (1024 * 1024)).toFixed(2);
+        document.getElementById('chat-db-size').textContent = chatMb;
+        document.getElementById('user-db-size').textContent = userMb;
+    })
+    .catch(err => console.error('Error fetching stats:', err));
 }

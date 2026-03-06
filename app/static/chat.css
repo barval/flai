@@ -8,7 +8,7 @@
     background-color: white;
 }
 
-/* ===== LEFT COLUMN – SESSIONS ===== */
+/* ===== LEFT COLUMN - SESSIONS ===== */
 .sessions-sidebar {
     width: 25%;
     background-color: #f1f3f6;
@@ -162,12 +162,15 @@
 .session-status-icon.error {
     color: #e74c3c;
 }
+
 .session-status-icon.processing {
     color: #f39c12;
 }
+
 .session-status-icon.queued {
     color: #95a5a6;
 }
+
 .session-status-icon.unread {
     color: #3498db;
 }
@@ -187,7 +190,7 @@
     margin-right: 2px;
 }
 
-/* ===== RIGHT PART – MESSAGES ===== */
+/* ===== RIGHT PART - MESSAGES ===== */
 .chat-main {
     width: 75%;
     display: flex;
@@ -389,8 +392,8 @@ audio {
 }
 
 .tts-button.playing {
-    background-color: #e74c3c !important;  /* red background */
-    color: white !important;               /* white emoji color for contrast */
+    background-color: #e74c3c !important;
+    color: white !important;
     animation: pulse 1.5s infinite;
 }
 
@@ -489,6 +492,16 @@ audio {
     cursor: not-allowed;
 }
 
+#send-button.recording-mode {
+    background-color: #e74c3c !important;
+    color: white !important;
+    animation: pulse 1.5s infinite;
+}
+
+#send-button.recording-mode:hover {
+    background-color: #c0392b !important;
+}
+
 #attach-file-button {
     background-color: #f1f1f1;
     color: #333;
@@ -514,9 +527,10 @@ audio {
 }
 
 .voice-record-button.recording {
-    background-color: #e74c3c;
-    color: white;
+    background-color: #e74c3c !important;
+    color: white !important;
     animation: pulse 1.5s infinite;
+    box-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
 }
 
 /* ===== COPY BUTTONS ===== */
@@ -601,4 +615,15 @@ audio {
         font-size: 1rem;
         width: 1.1em;
     }
+}
+
+/* ===== DARK THEME SUPPORT ===== */
+.dark-theme .voice-record-button.recording {
+    background-color: #e74c3c !important;
+    color: white !important;
+}
+
+.dark-theme #send-button.recording-mode {
+    background-color: #e74c3c !important;
+    color: white !important;
 }

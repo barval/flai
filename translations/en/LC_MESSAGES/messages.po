@@ -154,7 +154,7 @@ msgid "browser_no_audio_support"
 msgstr "Your browser does not support audio recording"
 
 msgid "secure_context_required"
-msgstr "Voice recording requires a secure connection (HTTPS).\nTry opening the site via HTTPS or localhost."
+msgstr "Voice recording requires a secure connection (HTTPS). Try opening the site via HTTPS or localhost."
 
 msgid "microphone_access_denied"
 msgstr "Could not access microphone."
@@ -213,7 +213,6 @@ msgstr "Copy failed"
 msgid "copy_text"
 msgstr "Copy text"
 
-# Admin panel
 msgid "Admin Panel"
 msgstr "Admin Panel"
 
@@ -352,9 +351,6 @@ msgstr "Timeout ({timeout}s)"
 msgid "Connection error"
 msgstr "Connection error"
 
-msgid "Failed to recognize speech"
-msgstr "Failed to recognize speech"
-
 msgid "Timeout ({timeout}s) during audio transcription"
 msgstr "Timeout ({timeout}s) during audio transcription"
 
@@ -370,17 +366,14 @@ msgstr "Maximum file size {max_size} MB"
 msgid "Unsupported file type"
 msgstr "Unsupported file type"
 
-msgid "Maximum resolution {max_width}×{max_height}"
-msgstr "Maximum resolution {max_width}×{max_height}"
+msgid "Maximum resolution {max_width}x{max_height}"
+msgstr "Maximum resolution {max_width}x{max_height}"
 
 msgid "Could not process image file"
 msgstr "Could not process image file"
 
 msgid "Timeout ({timeout}s) when calling multimodal model"
 msgstr "Timeout ({timeout}s) when calling multimodal model"
-
-msgid "Could not connect to Ollama"
-msgstr "Could not connect to Ollama"
 
 msgid "Could not find JSON in model response"
 msgstr "Could not find JSON in model response"

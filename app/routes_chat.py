@@ -1,3 +1,6 @@
+# app/routes_chat.py
+# Chat routes - handles session management, message sending, and translations
+
 import sqlite3
 import json
 import base64
@@ -5,7 +8,6 @@ import time
 import mimetypes
 from flask import Blueprint, render_template, request, session, jsonify, current_app, redirect, url_for
 from flask_babel import gettext as _, gettext, force_locale
-
 from . import db
 from .utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, format_prompt
 
@@ -36,8 +38,8 @@ def chat():
             session['current_session'] = new_id
             sessions = db.get_user_sessions(user_id)
     return render_template('chat.html',
-                         sessions=sessions,
-                         current_session=session.get('current_session'))
+        sessions=sessions,
+        current_session=session.get('current_session'))
 
 @bp.route('/api/sessions', methods=['GET'])
 def api_get_sessions():
@@ -75,10 +77,15 @@ def api_get_session_model(session_id):
 def api_new_session():
     if 'login' not in session:
         return jsonify({'error': _('Not authorized')}), 401
-    session_id = db.create_session(session['login'])
+    # Get user language for translated session title
+    lang = session.get('language', 'ru')
+    session_id = db.create_session(session['login'], lang=lang)
     session['current_session'] = session_id
     db.set_last_session(session['login'], session_id)
-    return jsonify({'id': session_id, 'title': _('New session')})
+    # Get translated title
+    with force_locale(lang):
+        title = _('New session')
+    return jsonify({'id': session_id, 'title': title})
 
 @bp.route('/api/sessions/<session_id>/update-title', methods=['POST'])
 def api_update_session_title(session_id):
@@ -133,7 +140,7 @@ def clear_history():
         c.execute('DELETE FROM messages WHERE session_id = ?', (session_id,))
         current_time = get_current_time_in_timezone_for_db()
         c.execute('UPDATE chat_sessions SET title = ?, updated_at = ? WHERE id = ?',
-                 (_('New session'), current_time, session_id))
+            (_('New session'), current_time, session_id))
         conn.commit()
     return jsonify({'status': 'ok'})
 
@@ -143,20 +150,17 @@ def send_message():
     current_app.logger.info("send_message: START PROCESSING")
     if 'login' not in session:
         return jsonify({'error': _('Not authorized')}), 401
-
     user_id = session['login']
     user_class = session.get('service_class', 2)
     session_id = session.get('current_session')
     if not session_id:
         session_id = db.create_session(user_id)
         session['current_session'] = session_id
-
     message_text = ""
     file_data = None
     file_type = None
     file_name = None
     voice_record = False
-
     if request.content_type and 'multipart/form-data' in request.content_type:
         message_text = request.form.get('message', '')
         if 'file' in request.files:
@@ -173,17 +177,14 @@ def send_message():
                 message_text = data.get('message', '')
         except:
             message_text = request.form.get('message', '')
-
     if not message_text and not file_data:
         return jsonify({'error': _('Empty message')}), 400
-
     request_type = 'text'
     if file_data and file_type:
         if file_type.startswith('image/'):
             request_type = 'image'
         elif current_app.modules['audio'].is_audio_file(file_type, file_name):
             request_type = 'audio'
-
     user_content = []
     if message_text:
         user_content.append({"type": "text", "text": message_text})
@@ -196,26 +197,29 @@ def send_message():
             content_type = "file"
         user_content.append({"type": content_type, "file_data": file_data, "file_type": file_type, "file_name": file_name})
     user_content_json = json.dumps(user_content, ensure_ascii=False)
-
     db.save_message(session_id, 'user', user_content_json, file_data, file_type, file_name, None)
-
     with sqlite3.connect(db.CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (session_id,))
         message_count = c.fetchone()[0]
         is_first_message = message_count == 1
-    if is_first_message:
-        db.update_session_title(session_id, message_text, file_name)
-
+        if is_first_message:
+            db.update_session_title(session_id, message_text, file_name)
     if request_type == 'audio':
         current_app.logger.info("send_message: audio detected, starting transcription")
         transcribe_start = time.time()
         transcribed_text = current_app.modules['audio'].transcribe(file_data, file_type, file_name)
         transcribe_time = round(time.time() - transcribe_start, 1)
         if transcribed_text is None:
-            return jsonify({'error': _('Failed to recognize speech')}), 500
+            # Get user language for error message
+            lang = session.get('language', 'ru')
+            with force_locale(lang):
+                return jsonify({'error': _('Failed to recognize speech')}), 500
         current_app.logger.info(f"send_message: transcription successful in {transcribe_time}s")
-        system_content = f"🎤 {_('Transcribed')}: {transcribed_text}"
+        # Get translated transcribed label
+        lang = session.get('language', 'ru')
+        with force_locale(lang):
+            system_content = '🎤 ' + _('Transcribed') + ': ' + transcribed_text
         db.save_message(session_id, 'assistant', system_content, model_name='whisper', response_time=transcribe_time)
         if voice_record:
             current_app.logger.info("send_message: voice message, queueing task with transcribed text")
@@ -246,7 +250,6 @@ def send_message():
                 'response_time': transcribe_time,
                 'message': _('Audio transcribed')
             })
-
     if request_type == 'image' and file_data:
         request_data = {
             'type': 'image',
@@ -262,7 +265,6 @@ def send_message():
             'text': message_text,
             'preview': (message_text[:50] + '...') if message_text else _('Text request')
         }
-
     request_id, position_info = current_app.request_queue.add_request(
         user_id, session_id, request_data, user_class,
         lang=session.get('language', 'ru')

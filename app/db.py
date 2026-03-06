@@ -1,3 +1,6 @@
+# app/db.py
+# Database functions - handles sessions, messages, and translations
+
 import sqlite3
 import os
 import json
@@ -6,7 +9,7 @@ from datetime import datetime
 from flask import current_app, g
 
 DATA_DIR = 'data'
-CHAT_DB_PATH = os.path.join(DATA_DIR, 'chats.db')   # renamed
+CHAT_DB_PATH = os.path.join(DATA_DIR, 'chats.db')
 
 def get_db():
     """Return a database connection (for use in routes)."""
@@ -25,7 +28,6 @@ def init_db():
     """Initialize the database (create tables)."""
     if not os.path.exists(DATA_DIR):
         os.makedirs(DATA_DIR, exist_ok=True)
-
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('''
@@ -129,8 +131,8 @@ def get_session_messages(session_id):
         c = conn.cursor()
         c.execute('''
             SELECT role, content, file_data, file_type, file_name,
-                   timestamp, model_name, response_time, mm_time, gen_time,
-                   mm_model, gen_model
+                timestamp, model_name, response_time, mm_time, gen_time,
+                mm_model, gen_model
             FROM messages
             WHERE session_id = ?
             ORDER BY timestamp ASC
@@ -154,9 +156,18 @@ def get_session_messages(session_id):
             messages.append(msg_dict)
         return messages
 
-def create_session(user_id, title="New session"):
+def create_session(user_id, title="New session", lang='ru'):
+    """Create new session with translated title based on language."""
     session_id = str(uuid.uuid4())
     current_time = get_current_time_for_db()
+    # Get translated title based on language
+    if title == "New session":
+        from flask import current_app
+        from flask_babel import force_locale
+        from flask_babel import gettext as _
+        with current_app.app_context():
+            with force_locale(lang):
+                title = _("New session")
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('''
@@ -189,8 +200,8 @@ def update_session_title(session_id, first_message, file_name=None):
     return title
 
 def save_message(session_id, role, content, file_data=None, file_type=None, file_name=None,
-                 model_name=None, response_time=None, mm_time=None, gen_time=None,
-                 mm_model=None, gen_model=None):
+    model_name=None, response_time=None, mm_time=None, gen_time=None,
+    mm_model=None, gen_model=None):
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         current_time = get_current_time_for_db()
@@ -205,8 +216,8 @@ def save_message(session_id, role, content, file_data=None, file_type=None, file
                 mm_model, gen_model
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (session_id, role, content, file_data, file_type, file_name,
-              model_name, current_time, response_time, mm_time, gen_time,
-              mm_model, gen_model))
+            model_name, current_time, response_time, mm_time, gen_time,
+            mm_model, gen_model))
         c.execute('''
             UPDATE chat_sessions
             SET updated_at = ?

@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-
 {% block content %}
 <div class="admin-container">
     <h2 class="admin-panel-title">{{ _('Admin Panel') }}</h2>
@@ -101,40 +100,40 @@
 
 <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
 <script>
-    window.ROOMS = {{ rooms|tojson }};
-    window.TRANSLATIONS = {
-        'delete_user_confirm': {{ _('Delete user {login}?')|tojson }},
-        'error': {{ _('Error')|tojson }},
-        'internal_server_error': {{ _('Internal server error')|tojson }},
-        'missing_fields': {{ _('Missing fields')|tojson }},
-        'login_exists': {{ _('Login already exists')|tojson }},
-        'password_not_specified': {{ _('New password not specified')|tojson }},
-        'ok': {{ _('OK')|tojson }},
-        'save': {{ _('Save')|tojson }},
-        'cancel': {{ _('Cancel')|tojson }},
-        'change': {{ _('Change')|tojson }},
-        'delete': {{ _('delete')|tojson }},
-        'change_password': {{ _('Change password')|tojson }},
-        'delete_user': {{ _('Delete user')|tojson }},
-        'status': {{ _('Status')|tojson }},
-        'login': {{ _('Login')|tojson }},
-        'password': {{ _('Password')|tojson }},
-        'name': {{ _('Name')|tojson }},
-        'class': {{ _('Class')|tojson }},
-        'sessions': {{ _('Sessions')|tojson }},
-        'messages': {{ _('Messages')|tojson }},
-        'camera_access': {{ _('Camera access')|tojson }},
-        'actions': {{ _('Actions')|tojson }},
-        'active': {{ _('Active')|tojson }},
-        'create': {{ _('Create')|tojson }},
-        'new_password': {{ _('New password')|tojson }},
-        'new_user': {{ _('New user')|tojson }},
-        'only_lowercase': {{ _('Only lowercase letters and digits')|tojson }},
-        'highest': {{ _('highest')|tojson }},
-        'medium': {{ _('medium')|tojson }},
-        'lowest': {{ _('lowest')|tojson }},
-        'leave_unchecked': {{ _('Leave all unchecked to deny access to all cameras.')|tojson }}
-    };
+window.ROOMS = {{ rooms|tojson }};
+window.TRANSLATIONS = {
+    'delete_user_confirm': {{ _('Delete user {login}?')|tojson }},
+    'error': {{ _('Error')|tojson }},
+    'internal_server_error': {{ _('Internal server error')|tojson }},
+    'missing_fields': {{ _('Missing fields')|tojson }},
+    'login_exists': {{ _('Login already exists')|tojson }},
+    'password_not_specified': {{ _('New password not specified')|tojson }},
+    'ok': {{ _('OK')|tojson }},
+    'save': {{ _('Save')|tojson }},
+    'cancel': {{ _('Cancel')|tojson }},
+    'change': {{ _('Change')|tojson }},
+    'delete': {{ _('delete')|tojson }},
+    'change_password': {{ _('Change password')|tojson }},
+    'delete_user': {{ _('Delete user')|tojson }},
+    'status': {{ _('Status')|tojson }},
+    'login': {{ _('Login')|tojson }},
+    'password': {{ _('Password')|tojson }},
+    'name': {{ _('Name')|tojson }},
+    'class': {{ _('Class')|tojson }},
+    'sessions': {{ _('Sessions')|tojson }},
+    'messages': {{ _('Messages')|tojson }},
+    'camera_access': {{ _('Camera access')|tojson }},
+    'actions': {{ _('Actions')|tojson }},
+    'active': {{ _('Active')|tojson }},
+    'create': {{ _('Create')|tojson }},
+    'new_password': {{ _('New password')|tojson }},
+    'new_user': {{ _('New user')|tojson }},
+    'only_lowercase': {{ _('Only lowercase letters and digits')|tojson }},
+    'highest': {{ _('highest')|tojson }},
+    'medium': {{ _('medium')|tojson }},
+    'lowest': {{ _('lowest')|tojson }},
+    'leave_unchecked': {{ _('Leave all unchecked to deny access to all cameras.')|tojson }}
+};
 </script>
 <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
 {% endblock %}

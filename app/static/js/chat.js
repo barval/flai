@@ -634,8 +634,8 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
             const shortModel = modelName.split('/').pop() || modelName;
             headerHTML += ` <span class="text-muted">| ${escapeHtml(shortModel)}</span>`;
         }
-        // TTS button
-        headerHTML += ` <button class="tts-button" onclick="playTTS(this, msgDiv)" title="${t('speak')}">🗣️</button>`;
+        // TTS button – temporarily added without onclick
+        headerHTML += ` <button class="tts-button" title="${t('speak')}">🗣️</button>`;
         let duration = null;
         if (responseTime) {
             if (typeof responseTime === 'object') {
@@ -698,6 +698,16 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
     container.appendChild(msgDiv);
     container.scrollTop = container.scrollHeight;
     updateMessageCount();
+
+    // Find the TTS button inside this newly created message and attach a click handler
+    const ttsButton = msgDiv.querySelector('.tts-button');
+    if (ttsButton) {
+        ttsButton.removeAttribute('onclick'); // ensure no inline handler remains
+        ttsButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            playTTS(ttsButton, msgDiv); // msgDiv is the current message element
+        });
+    }
 
     setTimeout(() => {
         addCopyButtonsToMessage(msgDiv);

@@ -75,14 +75,13 @@
         </div>
     </footer>
 
-    <!-- Translations for JavaScript -->
+    <!-- Translations for JavaScript (base keys) -->
     <script>
-        window.TRANSLATIONS = {
-            'male_voice': {{ _('male_voice')|tojson }},
-            'female_voice': {{ _('female_voice')|tojson }},
-            'toggle_voice_gender': {{ _('toggle_voice_gender')|tojson }},
-            'toggle_theme': {{ _('Toggle theme')|tojson }}
-        };
+        window.TRANSLATIONS = window.TRANSLATIONS || {};
+        window.TRANSLATIONS['male_voice'] = {{ _('male_voice')|tojson }};
+        window.TRANSLATIONS['female_voice'] = {{ _('female_voice')|tojson }};
+        window.TRANSLATIONS['toggle_voice_gender'] = {{ _('toggle_voice_gender')|tojson }};
+        window.TRANSLATIONS['toggle_theme'] = {{ _('Toggle theme')|tojson }};
     </script>
 
     <!-- Global language, voice gender and theme settings -->
@@ -92,10 +91,10 @@
         window.CURRENT_THEME = '{{ session.get("theme", "light") }}';
     </script>
 
-    <!-- Debug translations if needed -->
+    <!-- Debug translations if enabled -->
     {% if config.get('DEBUG_TRANSLATIONS') %}
     <script>
-        console.log('TRANSLATIONS loaded:', window.TRANSLATIONS);
+        console.log('Base TRANSLATIONS loaded:', window.TRANSLATIONS);
     </script>
     {% endif %}
 

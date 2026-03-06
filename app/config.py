@@ -59,13 +59,13 @@ def load_config(app):
     app.config['CAMERA_API_TIMEOUT'] = int(os.getenv('CAMERA_API_TIMEOUT', 15))
     app.config['CAMERA_CHECK_INTERVAL'] = int(os.getenv('CAMERA_CHECK_INTERVAL', 30))
     
-    # === Piper TTS settings ===
+    # Piper TTS settings
     app.config['PIPER_URL'] = os.getenv('PIPER_URL')
     app.config['PIPER_TIMEOUT'] = int(os.getenv('PIPER_TIMEOUT', 30))
-    # ======================================
-    # Add a debugging variable for translations
-    app.config['DEBUG_TRANSLATIONS'] = os.getenv('DEBUG_TRANSLATIONS', 'false').lower() == 'true'
 
+    # Debug translations
+    app.config['DEBUG_TRANSLATIONS'] = os.getenv('DEBUG_TRANSLATIONS', 'false').lower() == 'true'
+    
     # Timezone setup
     if app.config['TIMEZONE_STR']:
         try:

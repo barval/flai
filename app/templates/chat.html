@@ -55,7 +55,8 @@
 <script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
 <script>
 window.initialSessionId = "{{ current_session }}";
-window.TRANSLATIONS = {
+// Merge translations with base
+window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'send': {{ _("Send")|tojson }},
     'sending': {{ _("Sending...")|tojson }},
     'recording': {{ _("Recording...")|tojson }},
@@ -115,7 +116,7 @@ window.TRANSLATIONS = {
     'footer_load_error': {{ _("footer_load_error")|tojson }},
     'text_request': {{ _("Text request")|tojson }},
     'record_voice_message': {{ _("Record voice message")|tojson }}
-};
+});
 window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
 function t(key) {
     if (!(key in window.TRANSLATIONS)) {
@@ -124,6 +125,10 @@ function t(key) {
     }
     return window.TRANSLATIONS[key];
 }
+// Debug output if enabled
+{% if config.get('DEBUG_TRANSLATIONS') %}
+console.log('Chat TRANSLATIONS merged:', window.TRANSLATIONS);
+{% endif %}
 </script>
 <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 {% endblock %}

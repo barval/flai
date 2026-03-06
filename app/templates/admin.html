@@ -101,7 +101,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
 <script>
 window.ROOMS = {{ rooms|tojson }};
-window.TRANSLATIONS = {
+// Merge translations with base
+window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'delete_user_confirm': {{ _('Delete user {login}?')|tojson }},
     'error': {{ _('Error')|tojson }},
     'internal_server_error': {{ _('Internal server error')|tojson }},
@@ -134,7 +135,11 @@ window.TRANSLATIONS = {
     'lowest': {{ _('lowest')|tojson }},
     'leave_unchecked': {{ _('Leave all unchecked to deny access to all cameras.')|tojson }},
     'unknown_error': {{ _('unknown_error')|tojson }}
-};
+});
+// Debug output if enabled
+{% if config.get('DEBUG_TRANSLATIONS') %}
+console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);
+{% endif %}
 </script>
 <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
 {% endblock %}

@@ -150,3 +150,19 @@ def delete_user_account(login):
     except Exception as e:
         logger.error(f"Error in delete_user_account for {login}: {str(e)}", exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500
+
+# New endpoint to get current database sizes
+@bp.route('/api/stats')
+@admin_required
+def get_stats():
+    """Return current sizes of chat and user databases in bytes."""
+    try:
+        chat_db_size = get_file_size_bytes(CHAT_DB_PATH)
+        user_db_size = get_file_size_bytes(USER_DB_PATH)
+        return jsonify({
+            'chat_db_size': chat_db_size,
+            'user_db_size': user_db_size
+        })
+    except Exception as e:
+        logger.error(f"Error in get_stats: {str(e)}", exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500

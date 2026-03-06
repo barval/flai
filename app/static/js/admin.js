@@ -3,6 +3,9 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('Admin page loaded');
     loadUsers();
     setupModals();
+
+    // Refresh stats every 30 seconds
+    setInterval(refreshStats, 30000);
 });
 
 function t(key) {
@@ -267,4 +270,26 @@ function setupModals() {
             .catch(err => console.error('Error changing password:', err));
         });
     }
+}
+
+// New function to refresh database sizes and reload user table
+function refreshStats() {
+    // Reload users table to update session/message counts
+    loadUsers();
+
+    // Fetch current database sizes
+    fetch('/admin/api/stats')
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                console.error('Error fetching stats:', data.error);
+                return;
+            }
+            // Convert bytes to MB with two decimal places
+            const chatMb = (data.chat_db_size / (1024 * 1024)).toFixed(2);
+            const userMb = (data.user_db_size / (1024 * 1024)).toFixed(2);
+            document.getElementById('chat-db-size').textContent = chatMb;
+            document.getElementById('user-db-size').textContent = userMb;
+        })
+        .catch(err => console.error('Error fetching stats:', err));
 }

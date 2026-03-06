@@ -286,6 +286,9 @@ msgstr "Save"
 msgid "Delete user {login}?"
 msgstr "Delete user {login}?"
 
+msgid "Delete user"
+msgstr "Delete user"
+
 msgid "Internal server error"
 msgstr "Internal server error"
 

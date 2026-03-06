@@ -287,6 +287,9 @@ msgstr "Сохранить"
 msgid "Delete user {login}?"
 msgstr "Удалить пользователя {login}?"
 
+msgid "Delete user"
+msgstr "Удалить пользователя"
+
 msgid "Internal server error"
 msgstr "Внутренняя ошибка сервера"
 

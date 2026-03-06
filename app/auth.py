@@ -52,39 +52,32 @@ def logout():
 
 @bp.route('/set-language/<lang>')
 def set_language(lang):
-    if 'login' not in session:
-        return redirect(url_for('auth.login'))
+    # Allow setting language for both authenticated and anonymous users
     if lang in ['ru', 'en']:
-        # Update in database
-        update_user(session['login'], language=lang)
-        # Update session
         session['language'] = lang
-    response = redirect(request.referrer or url_for('chat.chat'))
+        # If user is logged in, update database
+        if 'login' in session:
+            update_user(session['login'], language=lang)
+    response = redirect(request.referrer or url_for('auth.login'))
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     return response
 
 @bp.route('/set-voice-gender/<gender>')
 def set_voice_gender(gender):
-    if 'login' not in session:
-        return redirect(url_for('auth.login'))
     if gender in ['male', 'female']:
-        # Update in database
-        update_user(session['login'], voice_gender=gender)
-        # Update session
         session['voice_gender'] = gender
-    response = redirect(request.referrer or url_for('chat.chat'))
+        if 'login' in session:
+            update_user(session['login'], voice_gender=gender)
+    response = redirect(request.referrer or url_for('auth.login'))
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     return response
 
 @bp.route('/set-theme/<theme>')
 def set_theme(theme):
-    if 'login' not in session:
-        return redirect(url_for('auth.login'))
     if theme in ['light', 'dark']:
-        # Update in database
-        update_user(session['login'], theme=theme)
-        # Update session
         session['theme'] = theme
-    response = redirect(request.referrer or url_for('chat.chat'))
+        if 'login' in session:
+            update_user(session['login'], theme=theme)
+    response = redirect(request.referrer or url_for('auth.login'))
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     return response

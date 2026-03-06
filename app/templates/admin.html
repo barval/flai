@@ -101,22 +101,22 @@
 
 <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
 <script>
-    window.ROOMS = {{ rooms|tojson|safe }};
+    window.ROOMS = {{ rooms|tojson }};
     window.TRANSLATIONS = {
-        'delete_user_confirm': '{{ _("Delete user {login}?") }}',
-        'error': '{{ _("Error") }}',
-        'internal_server_error': '{{ _("Internal server error") }}',
-        'missing_fields': '{{ _("Missing fields") }}',
-        'login_exists': '{{ _("Login already exists") }}',
-        'password_not_specified': '{{ _("New password not specified") }}',
-        'ok': '{{ _("OK") }}',
-        'save': '{{ _("Save") }}',
-        'cancel': '{{ _("Cancel") }}',
-        'change': '{{ _("Change") }}',
-        'delete': {{ _("delete")|tojson }},
+        'delete_user_confirm': {{ _('Delete user {login}?')|tojson }},
+        'error': {{ _('Error')|tojson }},
+        'internal_server_error': {{ _('Internal server error')|tojson }},
+        'missing_fields': {{ _('Missing fields')|tojson }},
+        'login_exists': {{ _('Login already exists')|tojson }},
+        'password_not_specified': {{ _('New password not specified')|tojson }},
+        'ok': {{ _('OK')|tojson }},
+        'save': {{ _('Save')|tojson }},
+        'cancel': {{ _('Cancel')|tojson }},
+        'change': {{ _('Change')|tojson }},
+        'delete': {{ _('delete')|tojson }},
         // Additional translations for tooltips
-        'change_password': '{{ _("Change password") }}',
-        'delete_user': '{{ _("Delete user") }}'
+        'change_password': {{ _('Change password')|tojson }},
+        'delete_user': {{ _('Delete user')|tojson }}
     };
 </script>
 <script src="{{ url_for('static', filename='js/admin.js') }}"></script>

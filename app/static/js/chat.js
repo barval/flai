@@ -366,12 +366,12 @@ function updateLastVisit(sessionId) {
 function setTTSButtonState(button, isPlaying) {
     if (isPlaying) {
         button.innerHTML = '🗣️';
-        button.style.color = '#e74c3c';  // red color for active state
+        // button.style.color = '#e74c3c';  // red color for active state
         button.title = t('stop');
         button.classList.add('playing');
     } else {
         button.innerHTML = '🗣️';
-        button.style.color = '';          // revert to default (usually black)
+        // button.style.color = '';          // revert to default (usually black)
         button.title = t('speak');
         button.classList.remove('playing');
     }
@@ -433,10 +433,18 @@ async function playTTS(button, messageElement) {
             }
         };
 
+        audio.onerror = () => {  // Handling playback errors
+            setTTSButtonState(button, false);
+                currentAudio = null;
+                currentTTSButton = null;
+        };
+
         audio.play();
     } catch (err) {
         console.error('TTS error:', err);
         alert(t('error') + ': ' + err.message);
+        setTTSButtonState(button, false); // Reset the error status
+}
     }
 }
 

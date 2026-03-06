@@ -366,12 +366,12 @@ function updateLastVisit(sessionId) {
 function setTTSButtonState(button, isPlaying) {
     if (isPlaying) {
         button.innerHTML = '🗣️';
-        button.style.color = '#e74c3c';  // red color for active state
+        // button.style.color = '#e74c3c';  // red color for active state
         button.title = t('stop');
         button.classList.add('playing');
     } else {
         button.innerHTML = '🗣️';
-        button.style.color = '';          // revert to default (usually black)
+        // button.style.color = '';          // revert to default (usually black)
         button.title = t('speak');
         button.classList.remove('playing');
     }
@@ -637,12 +637,13 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
 
     let headerHTML = `<span class="message-header">📅 ${timeDisplay}`;
     if (role === 'assistant') {
+        let headerExtra = '';
         if (modelName) {
             const shortModel = modelName.split('/').pop() || modelName;
-            headerHTML += ` <span class="text-muted">| ${escapeHtml(shortModel)}</span>`;
+            headerExtra += ` <span class="text-muted">| ${escapeHtml(shortModel)}</span>`;
         }
-        // TTS button – temporarily added without onclick
-        headerHTML += ` <button class="tts-button" title="${t('speak')}">🗣️</button>`;
+
+        // Calculate response duration
         let duration = null;
         if (responseTime) {
             if (typeof responseTime === 'object') {
@@ -657,7 +658,15 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
                 duration = parseFloat(responseTime).toFixed(1);
             }
         }
-        if (duration) headerHTML += ` <span class="text-muted">⏱️ ${duration}s</span>`;
+        if (duration) {
+            const langSuffix = window.CURRENT_LANG === 'ru' ? 'с' : 's';
+            headerExtra += ` <span class="text-muted">⏱️ ${duration}${langSuffix}</span>`;
+        }
+
+        // TTS button – always after the duration
+        headerExtra += ` <button class="tts-button" title="${t('speak')}">🗣️</button>`;
+
+        headerHTML += headerExtra;
     }
     headerHTML += '</span>';
 

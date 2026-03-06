@@ -313,7 +313,6 @@ msgstr "Change"
 msgid "delete"
 msgstr "Delete"
 
-# New keys from modules
 msgid "Ollama service unavailable"
 msgstr "Ollama service unavailable"
 

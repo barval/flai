@@ -314,7 +314,6 @@ msgstr "Сменить"
 msgid "delete"
 msgstr "Удалить"
 
-# Новые ключи из модулей
 msgid "Ollama service unavailable"
 msgstr "Сервис Ollama недоступен"
 

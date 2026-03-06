@@ -465,12 +465,12 @@ async function startRecording() {
         const voiceBtn = document.getElementById('voice-record-button');
         voiceBtn.classList.add('recording');
 
-        // Change send button to red "Recording..." and disable
+        // Change send button text to "Recording..." with transparent background
         const sendButton = document.getElementById('send-button');
         sendButton.disabled = true;
-        sendButton.innerHTML = '🔴 ' + t('recording');
+        sendButton.innerHTML = t('recording');  // Just the translated text, no red circle
         sendButton.classList.add('recording-mode');
-        document.getElementById('recording-indicator').style.display = 'inline';
+        // The separate recording indicator has been removed from the template
     } catch (err) {
         console.error('Error accessing microphone:', err);
         alert(t('microphone_access_denied'));
@@ -492,7 +492,6 @@ async function stopRecording() {
         sendButton.disabled = false;
         sendButton.innerHTML = t('send');
         sendButton.classList.remove('recording-mode');
-        document.getElementById('recording-indicator').style.display = 'none';
     }
 }
 

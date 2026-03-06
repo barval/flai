@@ -366,12 +366,12 @@ function updateLastVisit(sessionId) {
 function setTTSButtonState(button, isPlaying) {
     if (isPlaying) {
         button.innerHTML = '🗣️';
-        // button.style.color = '#e74c3c';  // red color for active state
+        button.style.color = '#e74c3c';  // red color for active state
         button.title = t('stop');
         button.classList.add('playing');
     } else {
         button.innerHTML = '🗣️';
-        // button.style.color = '';          // revert to default (usually black)
+        button.style.color = '';          // revert to default (usually black)
         button.title = t('speak');
         button.classList.remove('playing');
     }

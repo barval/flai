@@ -92,6 +92,13 @@
         window.CURRENT_THEME = '{{ session.get("theme", "light") }}';
     </script>
 
+    <!-- Debug translations if needed -->
+    {% if config.get('DEBUG_TRANSLATIONS') %}
+    <script>
+        console.log('TRANSLATIONS loaded:', window.TRANSLATIONS);
+    </script>
+    {% endif %}
+
     <!-- Header JavaScript module -->
     <script src="{{ url_for('static', filename='js/header.js') }}"></script>
     <!-- Guest theme switcher script -->

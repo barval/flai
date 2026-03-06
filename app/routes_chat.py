@@ -34,7 +34,7 @@ def chat():
         elif sessions:
             session['current_session'] = sessions[0]['id']
         else:
-            new_id = db.create_session(user_id)
+            new_id = db.create_session(user_id, lang=session.get('language', 'ru'))
             session['current_session'] = new_id
             sessions = db.get_user_sessions(user_id)
     return render_template('chat.html',
@@ -82,9 +82,11 @@ def api_new_session():
     session_id = db.create_session(session['login'], lang=lang)
     session['current_session'] = session_id
     db.set_last_session(session['login'], session_id)
-    # Get translated title
-    with force_locale(lang):
-        title = _('New session')
+    # Get translated title from database (already stored) or return new one
+    with sqlite3.connect(db.CHAT_DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute('SELECT title FROM chat_sessions WHERE id = ?', (session_id,))
+        title = c.fetchone()[0]
     return jsonify({'id': session_id, 'title': title})
 
 @bp.route('/api/sessions/<session_id>/update-title', methods=['POST'])
@@ -154,7 +156,7 @@ def send_message():
     user_class = session.get('service_class', 2)
     session_id = session.get('current_session')
     if not session_id:
-        session_id = db.create_session(user_id)
+        session_id = db.create_session(user_id, lang=session.get('language', 'ru'))
         session['current_session'] = session_id
     message_text = ""
     file_data = None

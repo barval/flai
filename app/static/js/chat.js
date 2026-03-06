@@ -25,7 +25,11 @@ let currentPlayingSessionId = null;
 
 // Helper function for translations - returns translated string or key if not found
 function t(key) {
-    return window.TRANSLATIONS[key] || key;
+    if (!(key in window.TRANSLATIONS)) {
+        console.warn('Missing translation key:', key);
+        return key;
+    }
+    return window.TRANSLATIONS[key];
 }
 
 // Format string with placeholders like {key}
@@ -456,10 +460,12 @@ async function startRecording() {
         };
         mediaRecorder.start();
         isRecording = true;
-        // Change microphone button visual state (red background)
+
+        // Red background for microphone button
         const voiceBtn = document.getElementById('voice-record-button');
         voiceBtn.classList.add('recording');
-        // Change send button text and remove blue background (translated)
+
+        // Change send button to red "Recording..." and disable
         const sendButton = document.getElementById('send-button');
         sendButton.disabled = true;
         sendButton.innerHTML = '🔴 ' + t('recording');
@@ -476,10 +482,12 @@ async function stopRecording() {
     if (mediaRecorder && isRecording) {
         mediaRecorder.stop();
         isRecording = false;
-        // Restore microphone button visual state
+
+        // Restore microphone button
         const voiceBtn = document.getElementById('voice-record-button');
         voiceBtn.classList.remove('recording');
-        // Restore send button text and blue background (translated)
+
+        // Restore send button
         const sendButton = document.getElementById('send-button');
         sendButton.disabled = false;
         sendButton.innerHTML = t('send');
@@ -522,6 +530,7 @@ async function sendMessage() {
     const sendButton = document.getElementById('send-button');
     sendButton.disabled = true;
     sendButton.innerHTML = '⏳ ' + t('sending');
+
     const messageCount = document.querySelectorAll('.user-message').length;
     if (messageCount === 0) {
         let newTitle = text ? text.slice(0, 40) + (text.length > 40 ? '...' : '') : '';
@@ -537,14 +546,18 @@ async function sendMessage() {
             }).catch(err => console.error('Error updating title:', err));
         }
     }
+
     delete lastCompletionTime[currentSessionId];
     const now = new Date();
     const timestamp = now.toISOString();
+
     const userContent = [];
     if (text) userContent.push({"type": "text", "text": text});
+
     let fileData = null, fileType = null, fileName = null;
     const tempAttachedFile = attachedFile;
     const tempText = text;
+
     const displayUserMessage = (fileData, fileType, fileName) => {
         if (fileData) {
             let type = "file";
@@ -558,6 +571,7 @@ async function sendMessage() {
         document.getElementById('file-preview-container').style.display = 'none';
         document.getElementById('file-input').value = '';
     };
+
     const sendToServer = async () => {
         try {
             let response;
@@ -613,6 +627,7 @@ async function sendMessage() {
             isSending = false;
         }
     };
+
     function startResultPolling(requestId) {
         console.log('Start polling for request:', requestId);
         let pollCount = 0;
@@ -697,6 +712,7 @@ async function sendMessage() {
             }
         }, 3000);
     }
+
     if (tempAttachedFile) {
         const reader = new FileReader();
         reader.onload = async function(e) {
@@ -942,7 +958,7 @@ function createNewSession() {
     .then(res => res.json())
     .then(data => {
         sessionsData[data.id] = {
-            title: data.title,
+            title: data.title,  // Title is already translated from server
             updated_at: new Date().toISOString()
         };
         document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));

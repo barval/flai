@@ -492,6 +492,7 @@ audio {
     cursor: not-allowed;
 }
 
+/* Recording mode styles */
 #send-button.recording-mode {
     background-color: #e74c3c !important;
     color: white !important;

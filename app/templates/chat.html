@@ -112,11 +112,17 @@ window.TRANSLATIONS = {
     'no_messages_to_save': {{ _("no_messages_to_save")|tojson }},
     'footer_text': {{ _("footer_text")|tojson }},
     'footer_not_configured': {{ _("footer_not_configured")|tojson }},
-    'footer_load_error': {{ _("footer_load_error")|tojson }}
+    'footer_load_error': {{ _("footer_load_error")|tojson }},
+    'text_request': {{ _("Text request")|tojson }},
+    'record_voice_message': {{ _("Record voice message")|tojson }}
 };
 window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
 function t(key) {
-    return window.TRANSLATIONS[key] || key;
+    if (!(key in window.TRANSLATIONS)) {
+        console.warn('Missing translation key:', key);
+        return key;
+    }
+    return window.TRANSLATIONS[key];
 }
 </script>
 <script src="{{ url_for('static', filename='js/chat.js') }}"></script>

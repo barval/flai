@@ -7,6 +7,7 @@ import json
 import uuid
 from datetime import datetime
 from flask import current_app, g
+from flask_babel import gettext as _
 
 DATA_DIR = 'data'
 CHAT_DB_PATH = os.path.join(DATA_DIR, 'chats.db')
@@ -156,15 +157,17 @@ def get_session_messages(session_id):
             messages.append(msg_dict)
         return messages
 
-def create_session(user_id, title="New session", lang='ru'):
-    """Create new session with translated title based on language."""
+def create_session(user_id, title=None, lang='ru'):
+    """
+    Create new session with translated title.
+    If title is None, use translated "New session".
+    """
     session_id = str(uuid.uuid4())
     current_time = get_current_time_for_db()
-    # Get translated title based on language
-    if title == "New session":
+    if title is None:
+        # Use Flask-Babel gettext with forced locale
         from flask import current_app
         from flask_babel import force_locale
-        from flask_babel import gettext as _
         with current_app.app_context():
             with force_locale(lang):
                 title = _("New session")

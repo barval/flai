@@ -11,7 +11,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Translation helper function - returns translated string or key if not found
 function t(key) {
-    return window.TRANSLATIONS[key] || key;
+    if (!(key in window.TRANSLATIONS)) {
+        console.warn('Missing translation key:', key);
+        return key;
+    }
+    return window.TRANSLATIONS[key];
 }
 
 // Load users from API and render table

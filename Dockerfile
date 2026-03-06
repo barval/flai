@@ -18,8 +18,8 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn
 # Copying the code
 COPY . .
 
-# Compiling translations (via the internal Babel module)
-RUN python -m babel.messages.frontend compile -d translations
+# Compile translations
+RUN pybabel compile -d translations
 
 # Creating a user and a folder for the data
 RUN addgroup --system --gid 1000 appuser && \

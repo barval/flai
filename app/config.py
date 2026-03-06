@@ -63,7 +63,9 @@ def load_config(app):
     app.config['PIPER_URL'] = os.getenv('PIPER_URL')
     app.config['PIPER_TIMEOUT'] = int(os.getenv('PIPER_TIMEOUT', 30))
     # ======================================
-    
+    # Add a debugging variable for translations
+    app.config['DEBUG_TRANSLATIONS'] = os.getenv('DEBUG_TRANSLATIONS', 'false').lower() == 'true'
+
     # Timezone setup
     if app.config['TIMEZONE_STR']:
         try:

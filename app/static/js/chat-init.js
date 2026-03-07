@@ -1,6 +1,10 @@
 // static/js/chat-init.js
 // Main chat initialization and send message logic
 
+// Save references to original functions from chat-messages.js
+const originalLoadMessages = loadMessages;
+const originalDisplayMessage = displayMessage;
+
 function startResultPolling(requestId) {
     console.log('Start polling for request:', requestId);
     let pollCount = 0;
@@ -16,7 +20,7 @@ function startResultPolling(requestId) {
                     const resultSessionId = data.result.session_id || pendingRequests[requestId]?.sessionId;
                     if (data.result.error) {
                         if (resultSessionId === currentSessionId) {
-                            displayMessage('assistant', '⚠️ ' + data.result.error, null, null, null,
+                            originalDisplayMessage('assistant', '⚠️ ' + data.result.error, null, null, null,
                                 data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'system');
                             delete stableSessionStatus[resultSessionId];
                         } else if (resultSessionId) {
@@ -25,7 +29,7 @@ function startResultPolling(requestId) {
                         lastCompletionTime[resultSessionId] = Date.now() + 5000;
                     } else if (data.result.messages) {
                         for (const msg of data.result.messages) {
-                            displayMessage('assistant', msg.response, msg.generated_image, msg.file_type, msg.file_name,
+                            originalDisplayMessage('assistant', msg.response, msg.generated_image, msg.file_type, msg.file_name,
                                 msg.assistant_timestamp, msg.response_time, msg.model_used);
                         }
                     } else if (data.result.response) {
@@ -39,7 +43,7 @@ function startResultPolling(requestId) {
                             try { responseTime = JSON.parse(responseTime); } catch (e) {}
                         }
                         if (resultSessionId === currentSessionId) {
-                            displayMessage('assistant', data.result.response, data.result.generated_image,
+                            originalDisplayMessage('assistant', data.result.response, data.result.generated_image,
                                 data.result.file_type, data.result.file_name,
                                 data.result.assistant_timestamp || new Date().toISOString(), responseTime, modelUsed);
                             delete stableSessionStatus[resultSessionId];
@@ -59,7 +63,7 @@ function startResultPolling(requestId) {
                 clearInterval(pollInterval);
                 const resultSessionId = data.result?.session_id || pendingRequests[requestId]?.sessionId;
                 if (resultSessionId === currentSessionId) {
-                    displayMessage('assistant', '⚠️ ' + t('error') + ': ' + (data.error || t('unknown_error')), null, null, null,
+                    originalDisplayMessage('assistant', '⚠️ ' + t('error') + ': ' + (data.error || t('unknown_error')), null, null, null,
                         data.result?.assistant_timestamp || new Date().toISOString(), data.result?.response_time, 'system');
                     delete stableSessionStatus[resultSessionId];
                 } else if (resultSessionId) {
@@ -74,7 +78,7 @@ function startResultPolling(requestId) {
             }
             if (pollCount >= maxPolls) {
                 clearInterval(pollInterval);
-                displayMessage('assistant', '⚠️ ' + t('request_timeout'),
+                originalDisplayMessage('assistant', '⚠️ ' + t('request_timeout'),
                     null, null, null, new Date().toISOString(), null, 'system');
                 delete stableSessionStatus[currentSessionId];
                 delete pendingRequests[requestId];
@@ -134,7 +138,7 @@ async function sendMessage() {
                 else if (fileType && fileType.startsWith('audio/')) type = "audio";
                 userContent.push({ "type": type, "file_data": fileData, "file_type": fileType, "file_name": fileName });
             }
-            displayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, timestamp);
+            originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, timestamp);
             input.value = '';
             attachedFile = null;
             document.getElementById('file-preview-container').style.display = 'none';
@@ -164,12 +168,12 @@ async function sendMessage() {
                 console.log('Server response:', data);
                 if (data.transcribed_text) {
                     if (data.session_id && data.session_id === currentSessionId) {
-                        displayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,
+                        originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,
                             new Date().toISOString(), data.response_time, 'whisper');
                     } else if (data.session_id) {
                         setNewMessageIndicator(data.session_id, true);
                     } else {
-                        displayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,
+                        originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,
                             new Date().toISOString(), data.response_time, 'whisper');
                     }
                     sendButton.disabled = false;
@@ -182,7 +186,7 @@ async function sendMessage() {
                     window.updateStatusCounter();
                     startResultPolling(data.request_id);
                 } else if (data.response) {
-                    displayMessage('assistant', data.response, data.generated_image, data.file_type, data.file_name,
+                    originalDisplayMessage('assistant', data.response, data.generated_image, data.file_type, data.file_name,
                         data.assistant_timestamp, data.response_time, data.model_used);
                 }
             } catch (err) {
@@ -237,14 +241,15 @@ async function sendMessage() {
     }
 }
 
-// Override original functions for compatibility (if needed)
+// Override global functions with wrappers that call the originals
 window.loadMessages = function(sessionId) {
-    return loadMessages(sessionId).then(() => {
+    return originalLoadMessages(sessionId).then(() => {
         setTimeout(addCopyButtonsToAllCodeBlocks, 100);
     });
 };
+
 window.displayMessage = function(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
-    const result = displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel);
+    const result = originalDisplayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel);
     const messages = document.getElementById('chat-messages');
     if (messages) {
         const lastMessage = messages.lastElementChild;
@@ -260,7 +265,7 @@ function addCopyButtonsToAllCodeBlocks() {
 // Initialize on DOM load
 document.addEventListener('DOMContentLoaded', function() {
     loadSessionsFromServer().then(() => {
-        loadMessages(currentSessionId);
+        originalLoadMessages(currentSessionId);
         startSyncInterval();
     });
     document.getElementById('new-session-button').addEventListener('click', createNewSession);

@@ -265,7 +265,11 @@ function addCopyButtonsToAllCodeBlocks() {
 // Initialize on DOM load
 document.addEventListener('DOMContentLoaded', function() {
     loadSessionsFromServer().then(() => {
-        originalLoadMessages(currentSessionId);
+        // Load messages with error handling to prevent unhandled promise rejections
+        originalLoadMessages(currentSessionId).catch(err => {
+            console.error('Error loading messages after language switch:', err);
+            // Optionally show a user-friendly message? Not needed for now.
+        });
         startSyncInterval();
     });
     document.getElementById('new-session-button').addEventListener('click', createNewSession);

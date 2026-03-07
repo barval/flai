@@ -99,116 +99,141 @@ async function sendMessage() {
     sendButton.disabled = true;
     sendButton.innerHTML = '⏳ ' + t('sending');
 
-    const messageCount = document.querySelectorAll('.user-message').length;
-    if (messageCount === 0) {
-        let newTitle = text ? text.slice(0, 40) + (text.length > 40 ? '...' : '') : '';
-        if (!newTitle && attachedFile) {
-            newTitle = attachedFile.name.slice(0, 40) + (attachedFile.name.length > 40 ? '...' : '');
-        }
-        if (newTitle) {
-            updateSessionTitle(currentSessionId, newTitle);
-            fetch('/api/sessions/' + currentSessionId + '/update-title', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({title: newTitle})
-            }).catch(err => console.error('Error updating title:', err));
-        }
-    }
-
-    delete lastCompletionTime[currentSessionId];
-    const now = new Date();
-    const timestamp = now.toISOString();
-
-    const userContent = [];
-    if (text) userContent.push({"type": "text", "text": text});
-
-    let fileData = null, fileType = null, fileName = null;
-    const tempAttachedFile = attachedFile;
-    const tempText = text;
-
-    const displayUserMessage = (fileData, fileType, fileName) => {
-        if (fileData) {
-            let type = "file";
-            if (fileType && fileType.startsWith('image/')) type = "image";
-            else if (fileType && fileType.startsWith('audio/')) type = "audio";
-            userContent.push({ "type": type, "file_data": fileData, "file_type": fileType, "file_name": fileName });
-        }
-        displayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, timestamp);
-        input.value = '';
-        attachedFile = null;
-        document.getElementById('file-preview-container').style.display = 'none';
-        document.getElementById('file-input').value = '';
-    };
-
-    const sendToServer = async () => {
-        try {
-            let response;
-            if (tempAttachedFile) {
-                const formData = new FormData();
-                formData.append('message', tempText);
-                formData.append('file', tempAttachedFile);
-                if (isVoiceRecorded) {
-                    formData.append('voice_record', 'true');
-                    isVoiceRecorded = false;
-                }
-                response = await fetch('/send_message', { method: 'POST', body: formData });
-            } else {
-                response = await fetch('/send_message', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: tempText })
-                });
+    try {
+        const messageCount = document.querySelectorAll('.user-message').length;
+        if (messageCount === 0) {
+            let newTitle = text ? text.slice(0, 40) + (text.length > 40 ? '...' : '') : '';
+            if (!newTitle && attachedFile) {
+                newTitle = attachedFile.name.slice(0, 40) + (attachedFile.name.length > 40 ? '...' : '');
             }
-            const data = await response.json();
-            console.log('Server response:', data);
-            if (data.transcribed_text) {
-                if (data.session_id && data.session_id === currentSessionId) {
-                    displayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,
-                        new Date().toISOString(), data.response_time, 'whisper');
-                } else if (data.session_id) {
-                    setNewMessageIndicator(data.session_id, true);
+            if (newTitle) {
+                updateSessionTitle(currentSessionId, newTitle);
+                fetch('/api/sessions/' + currentSessionId + '/update-title', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({title: newTitle})
+                }).catch(err => console.error('Error updating title:', err));
+            }
+        }
+
+        delete lastCompletionTime[currentSessionId];
+        const now = new Date();
+        const timestamp = now.toISOString();
+
+        const userContent = [];
+        if (text) userContent.push({"type": "text", "text": text});
+
+        let fileData = null, fileType = null, fileName = null;
+        const tempAttachedFile = attachedFile;
+        const tempText = text;
+
+        const displayUserMessage = (fileData, fileType, fileName) => {
+            if (fileData) {
+                let type = "file";
+                if (fileType && fileType.startsWith('image/')) type = "image";
+                else if (fileType && fileType.startsWith('audio/')) type = "audio";
+                userContent.push({ "type": type, "file_data": fileData, "file_type": fileType, "file_name": fileName });
+            }
+            displayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, timestamp);
+            input.value = '';
+            attachedFile = null;
+            document.getElementById('file-preview-container').style.display = 'none';
+            document.getElementById('file-input').value = '';
+        };
+
+        const sendToServer = async () => {
+            try {
+                let response;
+                if (tempAttachedFile) {
+                    const formData = new FormData();
+                    formData.append('message', tempText);
+                    formData.append('file', tempAttachedFile);
+                    if (isVoiceRecorded) {
+                        formData.append('voice_record', 'true');
+                        isVoiceRecorded = false;
+                    }
+                    response = await fetch('/send_message', { method: 'POST', body: formData });
                 } else {
-                    displayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,
-                        new Date().toISOString(), data.response_time, 'whisper');
+                    response = await fetch('/send_message', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: tempText })
+                    });
                 }
+                const data = await response.json();
+                console.log('Server response:', data);
+                if (data.transcribed_text) {
+                    if (data.session_id && data.session_id === currentSessionId) {
+                        displayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,
+                            new Date().toISOString(), data.response_time, 'whisper');
+                    } else if (data.session_id) {
+                        setNewMessageIndicator(data.session_id, true);
+                    } else {
+                        displayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,
+                            new Date().toISOString(), data.response_time, 'whisper');
+                    }
+                    sendButton.disabled = false;
+                    sendButton.innerHTML = t('send');
+                    isSending = false;
+                    if (!data.request_id) return;
+                }
+                if (data.status === 'queued') {
+                    pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
+                    window.updateStatusCounter();
+                    startResultPolling(data.request_id);
+                } else if (data.response) {
+                    displayMessage('assistant', data.response, data.generated_image, data.file_type, data.file_name,
+                        data.assistant_timestamp, data.response_time, data.model_used);
+                }
+            } catch (err) {
+                alert(t('error') + ': ' + err.message);
+                console.error('Send message error:', err);
+                const lastMessage = document.querySelector('.user-message:last-child');
+                if (lastMessage) lastMessage.style.borderLeft = '3px solid #e74c3c';
+            } finally {
                 sendButton.disabled = false;
                 sendButton.innerHTML = t('send');
                 isSending = false;
-                if (!data.request_id) return;
             }
-            if (data.status === 'queued') {
-                pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
-                window.updateStatusCounter();
-                startResultPolling(data.request_id);
-            } else if (data.response) {
-                displayMessage('assistant', data.response, data.generated_image, data.file_type, data.file_name,
-                    data.assistant_timestamp, data.response_time, data.model_used);
-            }
-        } catch (err) {
-            alert(t('error') + ': ' + err.message);
-            console.error('Send message error:', err);
-            const lastMessage = document.querySelector('.user-message:last-child');
-            if (lastMessage) lastMessage.style.borderLeft = '3px solid #e74c3c';
-        } finally {
-            sendButton.disabled = false;
-            sendButton.innerHTML = t('send');
-            isSending = false;
-        }
-    };
-
-    if (tempAttachedFile) {
-        const reader = new FileReader();
-        reader.onload = async function(e) {
-            fileData = e.target.result.split(',')[1];
-            fileType = tempAttachedFile.type;
-            fileName = tempAttachedFile.name;
-            displayUserMessage(fileData, fileType, fileName);
-            await sendToServer();
         };
-        reader.readAsDataURL(tempAttachedFile);
-    } else {
-        displayUserMessage(null, null, null);
-        await sendToServer();
+
+        if (tempAttachedFile) {
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    fileData = e.target.result.split(',')[1];
+                    fileType = tempAttachedFile.type;
+                    fileName = tempAttachedFile.name;
+                    displayUserMessage(fileData, fileType, fileName);
+                    await sendToServer();
+                } catch (err) {
+                    console.error('Error in reader.onload:', err);
+                    alert(t('error') + ': ' + err.message);
+                    sendButton.disabled = false;
+                    sendButton.innerHTML = t('send');
+                    isSending = false;
+                }
+            };
+            reader.readAsDataURL(tempAttachedFile);
+        } else {
+            try {
+                displayUserMessage(null, null, null);
+                await sendToServer();
+            } catch (err) {
+                console.error('Error in no-file branch:', err);
+                alert(t('error') + ': ' + err.message);
+                sendButton.disabled = false;
+                sendButton.innerHTML = t('send');
+                isSending = false;
+            }
+        }
+    } catch (err) {
+        console.error('Unexpected error in sendMessage:', err);
+        alert(t('error') + ': ' + err.message);
+        const sendButton = document.getElementById('send-button');
+        sendButton.disabled = false;
+        sendButton.innerHTML = t('send');
+        isSending = false;
     }
 }
 

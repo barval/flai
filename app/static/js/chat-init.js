@@ -108,7 +108,7 @@ async function pollNewMessages() {
                     genTime,
                     mmModel,
                     genModel,
-                    msg.id  // передаём ID
+                    msg.id  // pass ID
                 );
             }
             // Update last visit timestamp
@@ -235,6 +235,14 @@ async function sendMessage() {
     if (!text && !attachedFile) {
         alert(t('enter_message_or_file'));
         return;
+    }
+
+    // Ensure we have a valid sessionId
+    if (!currentSessionId) {
+        if (!ensureValidSessionId()) {
+            alert(t('no_active_session'));
+            return;
+        }
     }
 
     const sendButton = document.getElementById('send-button');
@@ -424,6 +432,10 @@ async function sendMessage() {
 // Override global functions with wrappers that call the originals
 window.loadMessages = function(sessionId) {
     console.log('loadMessages called for session', sessionId);
+    if (!sessionId) {
+        console.error('loadMessages called with empty sessionId');
+        return Promise.reject(new Error('Session ID is empty'));
+    }
     stopMessagePolling(); // Stop any existing polling before loading
     return originalLoadMessages(sessionId)
         .then(() => {
@@ -456,7 +468,16 @@ function addCopyButtonsToAllCodeBlocks() {
 
 // Initialize on DOM load
 document.addEventListener('DOMContentLoaded', function() {
-    loadSessionsFromServer().then(() => {
+    loadSessionsFromServer().then((sessions) => {
+        // After loading sessions, ensure currentSessionId is valid
+        if (!currentSessionId || (sessions.length > 0 && !sessions.some(s => s.id === currentSessionId))) {
+            if (sessions.length > 0) {
+                currentSessionId = sessions[0].id;
+            } else {
+                // No sessions, create a new one
+                return createNewSession();
+            }
+        }
         // Load messages with error handling to prevent unhandled promise rejections
         originalLoadMessages(currentSessionId).catch(err => {
             console.error('Error loading messages after language switch:', err);
@@ -465,6 +486,10 @@ document.addEventListener('DOMContentLoaded', function() {
             startMessagePolling(); // Start polling after initial load
         });
         startSyncInterval();
+    }).catch(err => {
+        console.error('Error initializing sessions:', err);
+        // Try to create a new session anyway
+        createNewSession();
     });
     document.getElementById('new-session-button').addEventListener('click', createNewSession);
     document.getElementById('send-button').addEventListener('click', sendMessage);

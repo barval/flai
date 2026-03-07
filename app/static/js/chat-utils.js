@@ -74,3 +74,20 @@ function closeImageModal() {
     const modal = document.getElementById('image-modal');
     modal.style.display = "none";
 }
+
+// Helper to ensure currentSessionId is valid
+function ensureValidSessionId() {
+    if (!currentSessionId) {
+        console.warn('currentSessionId is empty, trying to recover');
+        const sessions = document.querySelectorAll('.session-item');
+        if (sessions.length > 0) {
+            const firstId = sessions[0].dataset.sessionId;
+            if (firstId) {
+                currentSessionId = firstId;
+                return true;
+            }
+        }
+        return false;
+    }
+    return true;
+}

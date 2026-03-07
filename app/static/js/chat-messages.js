@@ -9,6 +9,10 @@ function updateMessageCount() {
 
 function loadMessages(sessionId) {
     if (window.IS_RELOADING) return Promise.resolve();
+    if (!sessionId) {
+        console.error('loadMessages called with empty sessionId');
+        return Promise.reject(new Error('Session ID is empty'));
+    }
     console.log('originalLoadMessages: loading messages for session', sessionId);
     displayedMessageIds.clear(); // Clear IDs for the new session
     return fetch('/api/sessions/' + sessionId + '/messages')
@@ -44,7 +48,7 @@ function loadMessages(sessionId) {
                         msg.file_name,
                         msg.timestamp,
                         null, null, null, null, null, null,
-                        msg.id  // передаём ID
+                        msg.id
                     );
                 } else if (msg.role === 'assistant') {
                     let responseTime = null;
@@ -86,7 +90,7 @@ function loadMessages(sessionId) {
                         genTime,
                         mmModel,
                         genModel,
-                        msg.id  // передаём ID
+                        msg.id
                     );
                     lastUserMessage = null;
                 }
@@ -101,7 +105,7 @@ function loadMessages(sessionId) {
     })
     .catch(err => {
         console.error('Error in originalLoadMessages:', err);
-        throw err; // rethrow to propagate to caller
+        throw err;
     });
 }
 

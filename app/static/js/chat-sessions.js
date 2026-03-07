@@ -12,7 +12,12 @@ function setNewMessageIndicator(sessionId, show) {
 
 function loadSessionsFromServer() {
     return fetch('/api/sessions')
-    .then(res => res.json())
+    .then(res => {
+        if (!res.ok) {
+            throw new Error(`HTTP error ${res.status}`);
+        }
+        return res.json();
+    })
     .then(sessions => {
         let updated = false;
         sessions.forEach(s => {
@@ -62,7 +67,11 @@ function loadSessionsFromServer() {
         }
         return sessions;
     })
-    .catch(err => console.error('Error loading sessions:', err));
+    .catch(err => {
+        console.error('Error loading sessions:', err);
+        // Return empty array to avoid breaking further logic
+        return [];
+    });
 }
 
 function updateSessionsListFromData() {
@@ -152,7 +161,12 @@ function attachSessionEventHandlers() {
 
 function createNewSession() {
     fetch('/api/sessions/new', { method: 'POST' })
-    .then(res => res.json())
+    .then(res => {
+        if (!res.ok) {
+            throw new Error(`HTTP error ${res.status}`);
+        }
+        return res.json();
+    })
     .then(data => {
         sessionsData[data.id] = {
             title: data.title,
@@ -167,6 +181,10 @@ function createNewSession() {
             defaultModelName = 'qwen3-vl:8b-instruct';
             setNewMessageIndicator(data.id, false);
         });
+    })
+    .catch(err => {
+        console.error('Error creating new session:', err);
+        alert(t('error') + ': ' + err.message);
     });
 }
 
@@ -229,6 +247,10 @@ function deleteSession(sessionId, sessionTitle, sessionDate) {
 }
 
 function switchSession(sessionId) {
+    if (!sessionId) {
+        console.error('switchSession called with empty sessionId');
+        return;
+    }
     fetch('/api/sessions/' + sessionId + '/switch', { method: 'POST' })
     .then(res => res.json())
     .then(() => {
@@ -244,10 +266,12 @@ function switchSession(sessionId) {
             }
         });
         updateSessionsListFromData();
-    });
+    })
+    .catch(err => console.error('Error switching session:', err));
 }
 
 function updateLastVisit(sessionId) {
+    if (!sessionId) return;
     fetch(`/api/sessions/${sessionId}/visit`, { method: 'POST' })
     .catch(err => console.error('Error updating last_visit:', err));
 }

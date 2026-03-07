@@ -248,7 +248,8 @@ class CamModule:
                         
                         file_size_bytes = int((len(image_data) * 3) / 4)
                         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                        filename = f'camera_{room_code}_{timestamp}.jpg'
+                        # Changed filename format: timestamp_roomcode.jpg
+                        filename = f'{timestamp}_{room_code}.jpg'
                         
                         self.logger.info(f"Successfully got snapshot from camera {room_code}")
                         

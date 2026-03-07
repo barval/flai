@@ -63,6 +63,23 @@ footer {
     margin-left: auto;
 }
 
+.header-row {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+@media (max-width: 768px) {
+    .logout-container {
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 5px;
+    }
+    .header-row {
+        gap: 8px;
+    }
+}
+
 .logout-container span {
     font-size: 0.9rem;
     color: #ecf0f1;

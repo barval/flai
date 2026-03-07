@@ -47,7 +47,6 @@
             <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt" style="display: none;">
             <button id="attach-file-button">📎</button>
             <button id="send-button">{{ _('Send') }}</button>
-            <!-- Индикатор записи удалён -->
         </div>
     </div>
 </div>
@@ -130,5 +129,14 @@ function t(key) {
 console.log('Chat TRANSLATIONS merged:', window.TRANSLATIONS);
 {% endif %}
 </script>
-<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+<!-- Split chat.js into multiple modules -->
+<script src="{{ url_for('static', filename='js/chat-constants.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-utils.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-sessions.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-messages.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-tts.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-recording.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-export.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-queue.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-init.js') }}"></script>
 {% endblock %}

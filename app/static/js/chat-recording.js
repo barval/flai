@@ -1,0 +1,87 @@
+// static/js/chat-recording.js
+// Voice recording functions
+
+async function toggleVoiceRecording() {
+    if (isRecording) {
+        await stopRecording();
+    } else {
+        await startRecording();
+    }
+}
+
+async function startRecording() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert(t('browser_no_audio_support'));
+        return;
+    }
+    if (!window.isSecureContext) {
+        alert(t('secure_context_required'));
+        return;
+    }
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        mediaRecorder.ondataavailable = event => {
+            if (event.data.size > 0) audioChunks.push(event.data);
+        };
+        mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            sendVoiceMessage(audioBlob);
+            stream.getTracks().forEach(track => track.stop());
+        };
+        mediaRecorder.start();
+        isRecording = true;
+
+        // Red background for microphone button
+        const voiceBtn = document.getElementById('voice-record-button');
+        voiceBtn.classList.add('recording');
+
+        // Change send button text to "Recording..." with transparent background
+        const sendButton = document.getElementById('send-button');
+        sendButton.disabled = true;
+        sendButton.innerHTML = t('recording');
+        sendButton.classList.add('recording-mode');
+    } catch (err) {
+        console.error('Error accessing microphone:', err);
+        alert(t('microphone_access_denied'));
+    }
+}
+
+async function stopRecording() {
+    if (mediaRecorder && isRecording) {
+        mediaRecorder.stop();
+        isRecording = false;
+
+        // Restore microphone button
+        const voiceBtn = document.getElementById('voice-record-button');
+        voiceBtn.classList.remove('recording');
+
+        // Restore send button
+        const sendButton = document.getElementById('send-button');
+        sendButton.disabled = false;
+        sendButton.innerHTML = t('send');
+        sendButton.classList.remove('recording-mode');
+    }
+}
+
+async function sendVoiceMessage(blob) {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    // Remove 'voice_' prefix as requested
+    const filename = year + month + day + '_' + hours + minutes + seconds + '.webm';
+    const file = new File([blob], filename, { type: 'audio/webm' });
+    attachedFile = file;
+    isVoiceRecorded = true;
+    const preview = document.getElementById('file-preview-container');
+    document.getElementById('file-preview-name').textContent = file.name;
+    const fileSize = formatFileSize(file.size);
+    document.getElementById('file-preview-size').textContent = ' (' + fileSize + ')';
+    preview.style.display = 'block';
+    sendMessage();
+}

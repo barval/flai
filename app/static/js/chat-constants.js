@@ -1,0 +1,24 @@
+// static/js/chat-constants.js
+// Global variables used across chat modules
+
+let currentSessionId = window.initialSessionId;
+let isSending = false;
+let attachedFile = null;
+let pendingRequests = {};
+let defaultModelName = 'qwen3-vl:8b-instruct';
+let sessionsData = {};
+let syncInterval = null;
+let newMessageIndicators = {};
+let sessionQueueInfo = {};
+let stableSessionStatus = {};
+let lastCompletionTime = {};
+let sessionsUpdateTimeout = null;
+// Voice recording variables
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+let isVoiceRecorded = false;
+// TTS global variables
+let currentAudio = null;
+let currentTTSButton = null;
+let currentPlayingSessionId = null;

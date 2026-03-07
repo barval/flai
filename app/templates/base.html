@@ -19,28 +19,30 @@
         <h1>{{ _('FLAI') }}</h1>
         {% if 'login' in session %}
         <div class="logout-container">
-            <span>{{ session['name'] if not session.get('is_admin') else _('Administrator') }}</span>
-            <div class="language-switcher">
-                <select id="language-select" onchange="switchLanguage(this.value)">
-                    <option value="ru" {% if session.get('language') == 'ru' %}selected{% endif %}>Русский</option>
-                    <option value="en" {% if session.get('language') == 'en' %}selected{% endif %}>English</option>
-                </select>
+            <div class="header-row row1">
+                <span class="user-name">{{ session['name'] if not session.get('is_admin') else _('Administrator') }}</span>
+                <div class="language-switcher">
+                    <select id="language-select" onchange="switchLanguage(this.value)">
+                        <option value="ru" {% if session.get('language') == 'ru' %}selected{% endif %}>Русский</option>
+                        <option value="en" {% if session.get('language') == 'en' %}selected{% endif %}>English</option>
+                    </select>
+                </div>
             </div>
-            <!-- Voice gender toggle button -->
-            <div class="voice-gender-switcher">
-                <button id="voice-gender-toggle" class="voice-gender-button {% if session.get('voice_gender') == 'female' %}female{% else %}male{% endif %}" title="{{ _('toggle_voice_gender') }}">
-                    <span id="voice-gender-icon">
-                        {% if session.get('voice_gender') == 'female' %}👩{% else %}👨{% endif %}
-                    </span>
-                </button>
+            <div class="header-row row2">
+                <div class="voice-gender-switcher">
+                    <button id="voice-gender-toggle" class="voice-gender-button {% if session.get('voice_gender') == 'female' %}female{% else %}male{% endif %}" title="{{ _('toggle_voice_gender') }}">
+                        <span id="voice-gender-icon">
+                            {% if session.get('voice_gender') == 'female' %}👩{% else %}👨{% endif %}
+                        </span>
+                    </button>
+                </div>
+                <div class="theme-switcher">
+                    <button id="theme-toggle" class="theme-toggle-button" title="{{ _('Toggle theme') }}">
+                        {% if session.get('theme') == 'dark' %}☀️{% else %}🌙{% endif %}
+                    </button>
+                </div>
+                <a href="{{ url_for('auth.logout') }}" class="logout-button">{{ _('Logout') }}</a>
             </div>
-            <!-- Theme toggle button -->
-            <div class="theme-switcher">
-                <button id="theme-toggle" class="theme-toggle-button" title="{{ _('Toggle theme') }}">
-                    {% if session.get('theme') == 'dark' %}☀️{% else %}🌙{% endif %}
-                </button>
-            </div>
-            <a href="{{ url_for('auth.logout') }}" class="logout-button">{{ _('Logout') }}</a>
         </div>
         {% else %}
         <div class="language-switcher" style="margin-left: auto;">

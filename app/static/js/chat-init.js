@@ -154,11 +154,21 @@ function startResultPolling(requestId) {
                         lastCompletionTime[resultSessionId] = Date.now() + 5000;
                     } else if (data.result.messages) {
                         for (const msg of data.result.messages) {
+                            // Skip if already displayed by ID
+                            if (msg.message_id && displayedMessageIds.has(msg.message_id)) {
+                                console.log('Skipping duplicate camera message by ID', msg.message_id);
+                                continue;
+                            }
                             originalDisplayMessage('assistant', msg.response, msg.generated_image, msg.file_type, msg.file_name,
                                 msg.assistant_timestamp, msg.response_time, msg.model_used,
                                 null, null, null, null, msg.message_id);
                         }
                     } else if (data.result.response) {
+                        // Skip if already displayed by ID
+                        if (data.result.message_id && displayedMessageIds.has(data.result.message_id)) {
+                            console.log('Skipping duplicate response message by ID', data.result.message_id);
+                            continue;
+                        }
                         let responseTime = data.result.response_time;
                         let modelUsed = data.result.model_used;
                         const isError = data.result.is_error || false;

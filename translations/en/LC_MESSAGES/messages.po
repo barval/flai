@@ -430,4 +430,4 @@ msgid "Toggle theme"
 msgstr "Toggle theme"
 
 msgid "footer_text"
-msgstr "Fully Local AI (FLAI) v6.4 (c) 2026 Valery Barsukov"
+msgstr "Fully Local AI (FLAI) v6.5 (c) 2026 Valery Barsukov"

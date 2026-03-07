@@ -179,6 +179,13 @@ async function sendMessage() {
                 const data = await response.json();
                 if (window.IS_RELOADING) return;
                 console.log('Server response:', data);
+
+                // Handle image resize notification
+                if (data.resize_notice) {
+                    originalDisplayMessage('assistant', data.resize_notice, null, null, null,
+                        new Date().toISOString(), 0, 'system');
+                }
+
                 if (data.transcribed_text) {
                     if (data.session_id && data.session_id === currentSessionId) {
                         originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,

@@ -9,7 +9,7 @@ import mimetypes
 from flask import Blueprint, render_template, request, session, jsonify, current_app, redirect, url_for
 from flask_babel import gettext as _, gettext, force_locale
 from . import db
-from .utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, format_prompt
+from .utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, format_prompt, resize_image_if_needed
 
 bp = Blueprint('chat', __name__)
 
@@ -187,6 +187,30 @@ def send_message():
             request_type = 'image'
         elif current_app.modules['audio'].is_audio_file(file_type, file_name):
             request_type = 'audio'
+
+    # --- Image resize handling ---
+    resize_notice = None
+    if request_type == 'image':
+        max_width = current_app.config.get('MAX_IMAGE_WIDTH', 3840)
+        max_height = current_app.config.get('MAX_IMAGE_HEIGHT', 2160)
+        new_file_data, new_file_type, new_file_name, resized, orig_dims, new_dims = resize_image_if_needed(
+            file_data, file_type, file_name, max_width, max_height
+        )
+        if resized:
+            # Save assistant notice about resize
+            lang = session.get('language', 'ru')
+            with force_locale(lang):
+                notice_text = _('⚠️ Maximum resolution {max_width}x{max_height}. The image has been reduced.').format(
+                    max_width=max_width, max_height=max_height
+                )
+            db.save_message(session_id, 'assistant', notice_text, model_name='system', response_time='0')
+            resize_notice = notice_text
+            # Use resized data
+            file_data = new_file_data
+            file_type = new_file_type
+            file_name = new_file_name
+    # --- End image resize handling ---
+
     user_content = []
     if message_text:
         user_content.append({"type": "text", "text": message_text})
@@ -200,6 +224,7 @@ def send_message():
         user_content.append({"type": content_type, "file_data": file_data, "file_type": file_type, "file_name": file_name})
     user_content_json = json.dumps(user_content, ensure_ascii=False)
     db.save_message(session_id, 'user', user_content_json, file_data, file_type, file_name, None)
+
     with sqlite3.connect(db.CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (session_id,))
@@ -207,6 +232,7 @@ def send_message():
         is_first_message = message_count == 1
         if is_first_message:
             db.update_session_title(session_id, message_text, file_name)
+
     if request_type == 'audio':
         current_app.logger.info("send_message: audio detected, starting transcription")
         transcribe_start = time.time()
@@ -256,6 +282,7 @@ def send_message():
                 'response_time': transcribe_time,
                 'message': _('Audio transcribed')
             })
+
     if request_type == 'image' and file_data:
         request_data = {
             'type': 'image',
@@ -271,14 +298,20 @@ def send_message():
             'text': message_text,
             'preview': (message_text[:50] + '...') if message_text else _('Text request')
         }
+
     request_id, position_info = current_app.request_queue.add_request(
         user_id, session_id, request_data, user_class,
         lang=session.get('language', 'ru')
     )
-    return jsonify({
+
+    response_data = {
         'status': 'queued',
         'request_id': request_id,
         'position': position_info['position'],
         'estimated_wait': position_info['estimated_seconds'],
         'message': _('Request queued (position {pos})').format(pos=position_info['position'])
-    })
+    }
+    if resize_notice:
+        response_data['resize_notice'] = resize_notice
+
+    return jsonify(response_data)

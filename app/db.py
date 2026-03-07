@@ -311,7 +311,7 @@ def get_session_text_history(session_id, max_tokens, max_messages=None):
     
     # Rough token estimation: 1 token ≈ 4 characters (simple heuristic)
     def estimate_tokens(text):
-        return len(text) // 4 + 1  # add 1 for safety
+        return len(text) // 3 + 1  # add 1 for safety
     
     # Work from the end backwards, accumulating until we hit the limit
     selected = []

@@ -174,8 +174,8 @@ class BaseModule:
     
     # --- Context handling methods ---
     def _estimate_tokens(self, text):
-        """Rough token estimation: 1 token ≈ 4 characters."""
-        return len(text) // 4 + 1
+        """Rough token estimation: 1 token ≈ 3 characters."""
+        return len(text) // 3 + 1
     
     def _build_context_prompt(self, history, lang='ru'):
         """

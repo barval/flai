@@ -123,7 +123,7 @@ class MultimodalModule:
     
     # --- Context handling (similar to BaseModule) ---
     def _estimate_tokens(self, text):
-        return len(text) // 4 + 1
+        return len(text) // 3 + 1
     
     def _build_context_prompt(self, history, lang='ru'):
         if not history:

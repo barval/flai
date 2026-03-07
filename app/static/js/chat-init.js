@@ -97,9 +97,9 @@ async function sendMessage() {
         alert(t('enter_message_or_file'));
         return;
     }
-    if (isSending) return;
-    isSending = true;
+
     const sendButton = document.getElementById('send-button');
+    // Disable button only to prevent double-click during preparation
     sendButton.disabled = true;
     sendButton.innerHTML = '⏳ ' + t('sending');
 
@@ -176,9 +176,6 @@ async function sendMessage() {
                         originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,
                             new Date().toISOString(), data.response_time, 'whisper');
                     }
-                    sendButton.disabled = false;
-                    sendButton.innerHTML = t('send');
-                    isSending = false;
                     if (!data.request_id) return;
                 }
                 if (data.status === 'queued') {
@@ -194,10 +191,6 @@ async function sendMessage() {
                 console.error('Send message error:', err);
                 const lastMessage = document.querySelector('.user-message:last-child');
                 if (lastMessage) lastMessage.style.borderLeft = '3px solid #e74c3c';
-            } finally {
-                sendButton.disabled = false;
-                sendButton.innerHTML = t('send');
-                isSending = false;
             }
         };
 
@@ -209,35 +202,42 @@ async function sendMessage() {
                     fileType = tempAttachedFile.type;
                     fileName = tempAttachedFile.name;
                     displayUserMessage(fileData, fileType, fileName);
-                    await sendToServer();
+                    // Start sending without awaiting, so button can be re-enabled immediately
+                    sendToServer().catch(err => {
+                        console.error('Error in sendToServer:', err);
+                        alert(t('error') + ': ' + err.message);
+                    });
                 } catch (err) {
                     console.error('Error in reader.onload:', err);
                     alert(t('error') + ': ' + err.message);
+                } finally {
+                    // Re-enable send button immediately after starting the send process
                     sendButton.disabled = false;
                     sendButton.innerHTML = t('send');
-                    isSending = false;
                 }
             };
             reader.readAsDataURL(tempAttachedFile);
         } else {
             try {
                 displayUserMessage(null, null, null);
-                await sendToServer();
+                // Start sending without awaiting
+                sendToServer().catch(err => {
+                    console.error('Error in sendToServer:', err);
+                    alert(t('error') + ': ' + err.message);
+                });
             } catch (err) {
                 console.error('Error in no-file branch:', err);
                 alert(t('error') + ': ' + err.message);
+            } finally {
                 sendButton.disabled = false;
                 sendButton.innerHTML = t('send');
-                isSending = false;
             }
         }
     } catch (err) {
         console.error('Unexpected error in sendMessage:', err);
         alert(t('error') + ': ' + err.message);
-        const sendButton = document.getElementById('send-button');
         sendButton.disabled = false;
         sendButton.innerHTML = t('send');
-        isSending = false;
     }
 }
 

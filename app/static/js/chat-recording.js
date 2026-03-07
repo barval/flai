@@ -1,6 +1,9 @@
 // static/js/chat-recording.js
 // Voice recording functions
 
+let recordTimerInterval = null;
+let recordSeconds = 0;
+
 async function toggleVoiceRecording() {
     if (isRecording) {
         await stopRecording();
@@ -37,11 +40,22 @@ async function startRecording() {
         const voiceBtn = document.getElementById('voice-record-button');
         voiceBtn.classList.add('recording');
 
-        // Change send button text to "Recording..." with transparent background
+        // Change send button to show recording status with timer
         const sendButton = document.getElementById('send-button');
         sendButton.disabled = true;
-        sendButton.innerHTML = t('recording');
+        sendButton.innerHTML = '<span>' + t('recording') + '</span><span class="record-timer">0с</span>';
         sendButton.classList.add('recording-mode');
+
+        // Start timer
+        recordSeconds = 0;
+        if (recordTimerInterval) clearInterval(recordTimerInterval);
+        recordTimerInterval = setInterval(() => {
+            recordSeconds++;
+            const timerSpan = sendButton.querySelector('.record-timer');
+            if (timerSpan) {
+                timerSpan.textContent = recordSeconds + 'с';
+            }
+        }, 1000);
     } catch (err) {
         console.error('Error accessing microphone:', err);
         alert(t('microphone_access_denied'));
@@ -52,6 +66,12 @@ async function stopRecording() {
     if (mediaRecorder && isRecording) {
         mediaRecorder.stop();
         isRecording = false;
+
+        // Stop timer
+        if (recordTimerInterval) {
+            clearInterval(recordTimerInterval);
+            recordTimerInterval = null;
+        }
 
         // Restore microphone button
         const voiceBtn = document.getElementById('voice-record-button');

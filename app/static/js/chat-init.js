@@ -16,6 +16,18 @@ function isMessageAlreadyDisplayed(timestamp, rawText, role) {
     return false;
 }
 
+// ----- Helper to check for duplicate message by timestamp and content -----
+function isDuplicateMessage(msg) {
+    const messages = document.querySelectorAll(`.${msg.role}-message`);
+    for (let el of messages) {
+        if (el.dataset.rawText === msg.content && 
+            Math.abs(new Date(el.dataset.timestamp) - new Date(msg.timestamp)) < 2000) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // ----- Message polling functions -----
 function startMessagePolling() {
     if (messagePollingInterval) clearInterval(messagePollingInterval);
@@ -56,6 +68,11 @@ async function pollNewMessages() {
                 // Skip if already displayed by ID
                 if (displayedMessageIds.has(msg.id)) {
                     console.log('Skipping duplicate message by ID', msg.id);
+                    continue;
+                }
+                // Additional check by timestamp and content (for messages without ID)
+                if (isDuplicateMessage(msg)) {
+                    console.log('Skipping duplicate message by timestamp/content', msg.id);
                     continue;
                 }
                 let responseTime = null;

@@ -271,6 +271,7 @@ def send_message():
                 'status': 'queued',
                 'transcribed_text': transcribed_text,
                 'transcribed_message_id': transcribed_message_id,
+                'user_message_id': user_message_id,
                 'session_id': session_id,
                 'request_id': request_id,
                 'position': position_info['position'],
@@ -283,6 +284,7 @@ def send_message():
                 'status': 'success',
                 'transcribed_text': transcribed_text,
                 'transcribed_message_id': transcribed_message_id,
+                'user_message_id': user_message_id,
                 'session_id': session_id,
                 'response_time': transcribe_time,
                 'message': _('Audio transcribed')

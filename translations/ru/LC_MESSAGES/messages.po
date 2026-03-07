@@ -430,5 +430,8 @@ msgstr "Переключить пол голоса"
 msgid "Toggle theme"
 msgstr "Переключить тему"
 
+msgid "seconds_suffix"
+msgstr "с"
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v6.5 (c) 2026 Барсуков Валерий"

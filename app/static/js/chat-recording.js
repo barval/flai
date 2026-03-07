@@ -57,8 +57,8 @@ async function startRecording() {
             recordSeconds++;
             const timerSpan = sendButton.querySelector('.record-timer');
             if (timerSpan) {
-                // Use language-dependent seconds suffix
-                const secondsSuffix = window.CURRENT_LANG === 'ru' ? 'с' : 's';
+                // Use translated seconds suffix
+                const secondsSuffix = t('seconds_suffix');   // <-- replaced hardcoded check
                 timerSpan.textContent = recordSeconds + secondsSuffix;
             }
         }, 1000);

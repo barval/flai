@@ -156,7 +156,7 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
             }
         }
         if (duration) {
-            const langSuffix = window.CURRENT_LANG === 'ru' ? 'с' : 's';
+            const langSuffix = t('seconds_suffix');
             headerExtra += ' <span class="text-muted">⏱️ ' + duration + langSuffix + '</span>';
         }
         // TTS button

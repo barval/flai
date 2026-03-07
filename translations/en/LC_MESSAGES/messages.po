@@ -449,4 +449,4 @@ msgid "The image has been reduced."
 msgstr "The image has been reduced."
 
 msgid "footer_text"
-msgstr "Fully Local AI (FLAI) v6.5 (c) 2026 Valery Barsukov"
+msgstr "Fully Local AI (FLAI) v6.6 (c) 2026 Valery Barsukov"

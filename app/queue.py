@@ -1,3 +1,5 @@
+# app/queue.py
+
 import redis
 import pickle
 import uuid
@@ -140,7 +142,8 @@ class RedisRequestQueue:
 
         if request_type == 'text':
             router_start_time = time.time()
-            router_result = self.app.modules['base'].process_message(message_text, current_time_str, lang=lang)
+            # Pass session_id to process_message
+            router_result = self.app.modules['base'].process_message(message_text, current_time_str, lang=lang, session_id=session_id)
             router_time = round(time.time() - router_start_time, 1)
             if 'error' in router_result:
                 completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
@@ -223,21 +226,12 @@ class RedisRequestQueue:
                     camera_result = self.app.modules['cam'].get_snapshot(user_id, query, lang=lang)
                     camera_time = round(time.time() - camera_start_time, 1)
 
-                    # --- DEBUG LOGGING ---
-                    self.app.logger.info(f"[CAMERA DEBUG] camera_result: room_name={camera_result.get('room_name')}, "
-                                         f"success={camera_result.get('success')}, "
-                                         f"image_data_present={bool(camera_result.get('image_data'))}")
-                    # ---------------------
-
                     if camera_result['success']:
                         completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
                         camera_model = 'camera'
 
-                        # --- FIX: get template and substitute room name ---
                         template = self.app.modules['base']._('Camera snapshot: {room_name}', lang=lang)
                         translated_text = template.format(room_name=camera_result['room_name'])
-                        self.app.logger.info(f"[CAMERA DEBUG] Translated text after format: '{translated_text}'")
-                        # ---------------------------------------------------------------
 
                         save_message(
                             session_id, 'assistant',
@@ -259,15 +253,12 @@ class RedisRequestQueue:
                             'is_error': False
                         }
 
-                        # --- DEBUG LOGGING: first_message response ---
-                        self.app.logger.info(f"[CAMERA DEBUG] first_message['response'] = '{first_message['response']}'")
-                        # ---------------------------------------------
-
                         messages = [first_message]
                         if message_text and 'multimodal' in self.app.modules and self.app.modules['multimodal'].available:
                             mm_start_time = time.time()
+                            # Pass session_id to multimodal analysis
                             bot_reply, error = self.app.modules['multimodal'].process_image_with_text(
-                                camera_result['image_data'], message_text, current_time_str, lang=lang
+                                camera_result['image_data'], message_text, current_time_str, lang=lang, session_id=session_id
                             )
                             mm_time = round(time.time() - mm_start_time, 1)
                             if error:
@@ -304,7 +295,8 @@ class RedisRequestQueue:
             elif action_type == 'reasoning':
                 if router_result.get('needs_reasoning'):
                     reasoning_start_time = time.time()
-                    final_response = self.app.modules['base'].process_reasoning(query, current_time_str, lang=lang)
+                    # Pass session_id to process_reasoning
+                    final_response = self.app.modules['base'].process_reasoning(query, current_time_str, lang=lang, session_id=session_id)
                     process_time = round(time.time() - reasoning_start_time, 1)
                     model_used = self.app.config['LLM_REASONING_MODEL']
                 else:
@@ -336,7 +328,8 @@ class RedisRequestQueue:
                 file_size = int((len(file_data) * 3) / 4) if file_data else 0
                 is_valid, error = self.app.modules['multimodal'].validate_image(file_data, file_type, file_name, file_size)
                 if is_valid:
-                    bot_reply, error = self.app.modules['multimodal'].process_image_with_text(file_data, message_text, current_time_str, lang=lang)
+                    # Pass session_id to multimodal analysis
+                    bot_reply, error = self.app.modules['multimodal'].process_image_with_text(file_data, message_text, current_time_str, lang=lang, session_id=session_id)
                     process_time = round(time.time() - process_start_time, 1)
                     if error:
                         bot_reply = f"⚠️ {error}"

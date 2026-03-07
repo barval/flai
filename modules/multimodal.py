@@ -11,6 +11,7 @@ from flask_babel import gettext as _
 from flask_babel import force_locale
 
 from app.utils import format_prompt
+from app.db import get_session_text_history  # new import
 
 class MultimodalModule:
     """Module for multimodal model (image processing)"""
@@ -120,22 +121,59 @@ class MultimodalModule:
             self.logger.error(f"Error validating image: {str(e)}")
             return False, self._('Could not process image file', lang)
     
-    def process_image_with_text(self, image_data, user_text, current_time_str, lang='ru'):
-        """Process image with text"""
+    # --- Context handling (similar to BaseModule) ---
+    def _estimate_tokens(self, text):
+        return len(text) // 4 + 1
+    
+    def _build_context_prompt(self, history, lang='ru'):
+        if not history:
+            return ""
+        lines = []
+        for msg in history:
+            role = self._("User", lang) if msg['role'] == 'user' else self._("Assistant", lang)
+            lines.append(f"{role}: {msg['content']}")
+        return "\n".join(lines)
+    
+    def _get_context_for_model(self, session_id, current_query, lang='ru'):
+        """Retrieve text-only history for multimodal model, limited to 75% of its context window."""
+        if not session_id:
+            return ""
+        
+        model_config = self.models_config['multimodal']
+        max_context_tokens = model_config['context']
+        available_tokens = int(max_context_tokens * 0.75)
+        
+        overhead = 500  # prompt overhead
+        query_tokens = self._estimate_tokens(current_query)
+        remaining_for_history = available_tokens - query_tokens - overhead
+        if remaining_for_history <= 0:
+            return ""
+        
+        history_msgs = get_session_text_history(session_id, remaining_for_history)
+        return self._build_context_prompt(history_msgs, lang)
+    
+    def process_image_with_text(self, image_data, user_text, current_time_str, lang='ru', session_id=None):
+        """Process image with text, including conversation history."""
         if not self.check_availability():
             return None, self._('Multimodal model unavailable', lang)
         
         response_language = 'Russian' if lang == 'ru' else 'English'
+        
+        # Get context history
+        context_str = self._get_context_for_model(session_id, user_text, lang)
+        
         if user_text.strip():
             prompt = format_prompt('image_text.template', {
                 'current_time_str': current_time_str,
                 'user_query': user_text,
-                'response_language': response_language
+                'response_language': response_language,
+                'conversation_history': context_str
             }, lang=lang)
         else:
             prompt = format_prompt('image.template', {
                 'current_time_str': current_time_str,
-                'response_language': response_language
+                'response_language': response_language,
+                'conversation_history': context_str
             }, lang=lang)
         
         if not prompt:
@@ -151,7 +189,7 @@ class MultimodalModule:
         return response, None
     
     def generate_image_params(self, user_query, lang='ru'):
-        """Generate parameters for image creation"""
+        """Generate parameters for image creation (no context needed, but could be added if desired)."""
         if not self.check_availability():
             return None, self._('Multimodal model unavailable', lang)
         

@@ -8,6 +8,7 @@ from flask_babel import gettext as _
 from flask_babel import force_locale
 
 from app.utils import format_prompt
+from app.db import get_session_text_history  # new import
 
 class BaseModule:
     """Base module for chat and reasoning model interactions"""
@@ -171,13 +172,63 @@ class BaseModule:
             self.logger.error(f"Error calling Ollama: {str(e)}")
             return f"{self._('Error', lang)}: {str(e)}"
     
-    def process_message(self, message_text, current_time_str, lang='ru'):
-        """Process text message through router model"""
+    # --- Context handling methods ---
+    def _estimate_tokens(self, text):
+        """Rough token estimation: 1 token ≈ 4 characters."""
+        return len(text) // 4 + 1
+    
+    def _build_context_prompt(self, history, lang='ru'):
+        """
+        Format conversation history into a string for inclusion in the prompt.
+        Only text is used; timestamps are omitted unless needed.
+        """
+        if not history:
+            return ""
+        lines = []
+        for msg in history:
+            role = self._("User", lang) if msg['role'] == 'user' else self._("Assistant", lang)
+            lines.append(f"{role}: {msg['content']}")
+        return "\n".join(lines)
+    
+    def _get_context_for_model(self, session_id, model_type, current_query, lang='ru'):
+        """
+        Retrieve and prune conversation history to fit within 75% of the model's context window.
+        Returns a formatted history string.
+        """
+        if not session_id:
+            return ""
+        
+        model_config = self.models_config.get(model_type, self.models_config['chat'])
+        max_context_tokens = model_config['context']
+        # Reserve 75% of the window for history + current query
+        available_tokens = int(max_context_tokens * 0.75)
+        
+        # Estimate tokens for the current query (including prompt overhead)
+        # We'll be conservative: assume the prompt template adds some tokens.
+        # For simplicity, we subtract a fixed overhead (e.g., 500 tokens) for the rest of the prompt.
+        overhead = 500
+        query_tokens = self._estimate_tokens(current_query)
+        remaining_for_history = available_tokens - query_tokens - overhead
+        if remaining_for_history <= 0:
+            return ""
+        
+        # Fetch history limited by token count
+        history_msgs = get_session_text_history(session_id, remaining_for_history)
+        return self._build_context_prompt(history_msgs, lang)
+    
+    # --- Existing methods with context added ---
+    def process_message(self, message_text, current_time_str, lang='ru', session_id=None):
+        """Process text message through router model, including conversation history."""
         response_language = 'Russian' if lang == 'ru' else 'English'
+        
+        # Retrieve context if session_id is provided
+        context_str = self._get_context_for_model(session_id, 'chat', message_text, lang)
+        
         prompt = format_prompt('base_text.template', {
             'current_time_str': current_time_str,
             'user_query': message_text,
-            'response_language': response_language
+            'response_language': response_language,
+            'conversation_history': context_str
         }, lang=lang)
         
         if not prompt:
@@ -232,13 +283,18 @@ class BaseModule:
             'needs_reasoning': False
         }
     
-    def process_reasoning(self, query, current_time_str, lang='ru'):
-        """Process complex query via reasoning model"""
+    def process_reasoning(self, query, current_time_str, lang='ru', session_id=None):
+        """Process complex query via reasoning model, including conversation history."""
         response_language = 'Russian' if lang == 'ru' else 'English'
+        
+        # Retrieve context
+        context_str = self._get_context_for_model(session_id, 'reasoning', query, lang)
+        
         reasoning_prompt = format_prompt('reasoning.template', {
             'current_time_str': current_time_str,
             'reasoning_query': query,
-            'response_language': response_language
+            'response_language': response_language,
+            'conversation_history': context_str
         }, lang=lang)
         
         if not reasoning_prompt:

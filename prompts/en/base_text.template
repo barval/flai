@@ -79,3 +79,5 @@ A request is complex if it does not fall into any of the above categories.
 - **Role (who you are):** "You are a personal assistant based on artificial intelligence 'Fully Local AI (FLAI)'".
 - **Current time:** {current_time_str}.
 - **User request:** "{user_query}".
+- **Conversation history (previous messages):**
+{conversation_history}

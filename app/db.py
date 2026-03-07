@@ -285,3 +285,44 @@ def get_current_time_for_db():
     """Return the current time in DB format, taking timezone into account."""
     from .utils import get_current_time_in_timezone_for_db
     return get_current_time_in_timezone_for_db()
+
+# ----- New function for retrieving text-only conversation history -----
+def get_session_text_history(session_id, max_tokens, max_messages=None):
+    """
+    Retrieve text-only messages from a session, ordered by time ascending,
+    limited by max_tokens and optionally max_messages.
+    Only messages with role 'user' or 'assistant' are included.
+    File data (images, audio) are ignored; only the text content is used.
+    The function returns a list of dicts with keys: 'role', 'content', 'timestamp'.
+    """
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute('''
+            SELECT role, content, timestamp
+            FROM messages
+            WHERE session_id = ? AND role IN ('user', 'assistant')
+            ORDER BY timestamp ASC
+        ''', (session_id,))
+        rows = c.fetchall()
+    
+    # Convert to list of dicts
+    all_messages = [{'role': r['role'], 'content': r['content'], 'timestamp': r['timestamp']} for r in rows]
+    
+    # Rough token estimation: 1 token ≈ 4 characters (simple heuristic)
+    def estimate_tokens(text):
+        return len(text) // 4 + 1  # add 1 for safety
+    
+    # Work from the end backwards, accumulating until we hit the limit
+    selected = []
+    total_tokens = 0
+    for msg in reversed(all_messages):
+        tokens = estimate_tokens(msg['content'])
+        if total_tokens + tokens > max_tokens:
+            break
+        if max_messages is not None and len(selected) >= max_messages:
+            break
+        selected.insert(0, msg)  # prepend to keep chronological order
+        total_tokens += tokens
+    
+    return selected

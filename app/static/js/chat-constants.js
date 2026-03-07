@@ -25,3 +25,4 @@ let currentPlayingSessionId = null;
 // Message polling
 let messagePollingInterval = null;
 let lastMessageTimestamp = null;
+let displayedMessageIds = new Set(); // IDs of messages already displayed in current session

@@ -9,6 +9,7 @@ function updateMessageCount() {
 
 function loadMessages(sessionId) {
     if (window.IS_RELOADING) return Promise.resolve();
+    displayedMessageIds.clear(); // Clear IDs for the new session
     return fetch('/api/sessions/' + sessionId + '/messages')
     .then(res => res.json())
     .then(messages => {
@@ -33,7 +34,8 @@ function loadMessages(sessionId) {
                     msg.file_type,
                     msg.file_name,
                     msg.timestamp,
-                    null, null, null, null, null, null
+                    null, null, null, null, null, null,
+                    msg.id  // передаём ID
                 );
             } else if (msg.role === 'assistant') {
                 let responseTime = null;
@@ -74,7 +76,8 @@ function loadMessages(sessionId) {
                     mmTime,
                     genTime,
                     mmModel,
-                    genModel
+                    genModel,
+                    msg.id  // передаём ID
                 );
                 lastUserMessage = null;
             }
@@ -86,7 +89,7 @@ function loadMessages(sessionId) {
     });
 }
 
-function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
+function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId) {
     if (window.IS_RELOADING) return;
     const container = document.getElementById('chat-messages');
     const msgDiv = document.createElement('div');
@@ -94,8 +97,11 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
     if (!timestamp) timestamp = new Date().toISOString();
     msgDiv.setAttribute('data-timestamp', timestamp);
     msgDiv.dataset.sessionId = currentSessionId;
-    // Store raw text for duplicate detection and TTS
     msgDiv.setAttribute('data-raw-text', content);
+    if (messageId) {
+        msgDiv.setAttribute('data-message-id', messageId);
+        displayedMessageIds.add(messageId);
+    }
     if (role === 'assistant') {
         if (modelName) msgDiv.dataset.modelName = modelName;
         if (responseTime && typeof responseTime === 'object') {

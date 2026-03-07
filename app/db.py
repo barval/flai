@@ -135,7 +135,7 @@ def get_session_messages(session_id, since=None):
         c = conn.cursor()
         if since:
             c.execute('''
-                SELECT role, content, file_data, file_type, file_name,
+                SELECT id, role, content, file_data, file_type, file_name,
                     timestamp, model_name, response_time, mm_time, gen_time,
                     mm_model, gen_model
                 FROM messages
@@ -144,7 +144,7 @@ def get_session_messages(session_id, since=None):
             ''', (session_id, since))
         else:
             c.execute('''
-                SELECT role, content, file_data, file_type, file_name,
+                SELECT id, role, content, file_data, file_type, file_name,
                     timestamp, model_name, response_time, mm_time, gen_time,
                     mm_model, gen_model
                 FROM messages
@@ -234,12 +234,14 @@ def save_message(session_id, role, content, file_data=None, file_type=None, file
         ''', (session_id, role, content, file_data, file_type, file_name,
             model_name, current_time, response_time, mm_time, gen_time,
             mm_model, gen_model))
+        message_id = c.lastrowid
         c.execute('''
             UPDATE chat_sessions
             SET updated_at = ?
             WHERE id = ?
         ''', (current_time, session_id))
         conn.commit()
+        return message_id
 
 def get_last_session(user_id):
     with sqlite3.connect(CHAT_DB_PATH) as conn:

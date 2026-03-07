@@ -160,6 +160,7 @@ class RedisRequestQueue:
             model_used = self.app.config['LLM_CHAT_MODEL']
             is_error = False
             process_time = 0
+            message_id = None
 
             if action_type == 'image':
                 if 'image' in self.app.modules and self.app.modules['image'].available:
@@ -184,7 +185,7 @@ class RedisRequestQueue:
                             # Get template and substitute query
                             template = self.app.modules['base']._('Image generated from request: {query}', lang=lang)
                             message_text = template.format(query=query)
-                            save_message(
+                            msg_id = save_message(
                                 session_id, 'assistant', message_text,
                                 image_result['image_data'], image_result['file_type'],
                                 image_result['file_name'], self.app.config['AUTOMATIC1111_MODEL'],
@@ -207,7 +208,8 @@ class RedisRequestQueue:
                                 'mm_model': image_result['mm_model'],
                                 'gen_model': image_result['gen_model'],
                                 'response_time': {'mm_time': mm_time, 'gen_time': gen_time, 'mm_model': image_result['mm_model'], 'gen_model': image_result['gen_model']},
-                                'is_error': False
+                                'is_error': False,
+                                'message_id': msg_id
                             }
                         else:
                             final_response = f"⚠️ {image_result['error']}"
@@ -233,7 +235,7 @@ class RedisRequestQueue:
                         template = self.app.modules['base']._('Camera snapshot: {room_name}', lang=lang)
                         translated_text = template.format(room_name=camera_result['room_name'])
 
-                        save_message(
+                        msg_id = save_message(
                             session_id, 'assistant',
                             translated_text,
                             camera_result['image_data'], camera_result['image_type'],
@@ -250,7 +252,8 @@ class RedisRequestQueue:
                             'file_size': camera_result['file_size'],
                             'file_type': camera_result['image_type'],
                             'response_time': camera_time,
-                            'is_error': False
+                            'is_error': False,
+                            'message_id': msg_id
                         }
 
                         messages = [first_message]
@@ -266,7 +269,7 @@ class RedisRequestQueue:
                                 is_error = True
                             else:
                                 is_error = False
-                            save_message(
+                            msg_id2 = save_message(
                                 session_id, 'assistant', bot_reply,
                                 model_name=self.app.config['LLM_MULTIMODAL_MODEL'],
                                 response_time=str(mm_time)
@@ -277,7 +280,8 @@ class RedisRequestQueue:
                                 'model_used': self.app.config['LLM_MULTIMODAL_MODEL'],
                                 'assistant_timestamp': get_current_time_in_timezone_for_db(self.app),
                                 'response_time': mm_time,
-                                'is_error': is_error
+                                'is_error': is_error,
+                                'message_id': msg_id2
                             }
                             messages.append(second_message)
                         return {'messages': messages, 'session_id': session_id}
@@ -311,14 +315,15 @@ class RedisRequestQueue:
 
             completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
             if final_response:
-                save_message(session_id, 'assistant', final_response, model_name=model_used, response_time=str(process_time))
+                message_id = save_message(session_id, 'assistant', final_response, model_name=model_used, response_time=str(process_time))
             return {
                 'response': final_response,
                 'session_id': session_id,
                 'model_used': model_used,
                 'assistant_timestamp': completion_time_for_db,
                 'response_time': process_time,
-                'is_error': is_error
+                'is_error': is_error,
+                'message_id': message_id
             }
 
         elif request_type == 'image' and file_data:
@@ -343,14 +348,15 @@ class RedisRequestQueue:
                 process_time = round(time.time() - process_start_time, 1)
                 is_error = True
             completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
-            save_message(session_id, 'assistant', bot_reply, model_name=self.app.config['LLM_MULTIMODAL_MODEL'] if 'multimodal' in self.app.modules else 'system', response_time=str(process_time))
+            message_id = save_message(session_id, 'assistant', bot_reply, model_name=self.app.config['LLM_MULTIMODAL_MODEL'] if 'multimodal' in self.app.modules else 'system', response_time=str(process_time))
             return {
                 'response': bot_reply,
                 'session_id': session_id,
                 'model_used': self.app.config['LLM_MULTIMODAL_MODEL'] if 'multimodal' in self.app.modules else 'system',
                 'assistant_timestamp': completion_time_for_db,
                 'response_time': process_time,
-                'is_error': is_error
+                'is_error': is_error,
+                'message_id': message_id
             }
 
         else:

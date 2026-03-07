@@ -53,9 +53,9 @@ async function pollNewMessages() {
         if (newMessages.length > 0) {
             // Display each new message
             for (const msg of newMessages) {
-                // Check if already displayed
-                if (isMessageAlreadyDisplayed(msg.timestamp, msg.content, msg.role)) {
-                    console.log('Skipping duplicate message', msg.timestamp);
+                // Skip if already displayed by ID
+                if (displayedMessageIds.has(msg.id)) {
+                    console.log('Skipping duplicate message by ID', msg.id);
                     continue;
                 }
                 let responseTime = null;
@@ -90,7 +90,8 @@ async function pollNewMessages() {
                     mmTime,
                     genTime,
                     mmModel,
-                    genModel
+                    genModel,
+                    msg.id  // передаём ID
                 );
             }
             // Update last visit timestamp
@@ -127,7 +128,8 @@ function startResultPolling(requestId) {
                     if (data.result.error) {
                         if (resultSessionId === currentSessionId) {
                             originalDisplayMessage('assistant', '⚠️ ' + data.result.error, null, null, null,
-                                data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'system');
+                                data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'system',
+                                null, null, null, null, null);
                             delete stableSessionStatus[resultSessionId];
                         } else if (resultSessionId) {
                             // will be shown via queue status
@@ -136,7 +138,8 @@ function startResultPolling(requestId) {
                     } else if (data.result.messages) {
                         for (const msg of data.result.messages) {
                             originalDisplayMessage('assistant', msg.response, msg.generated_image, msg.file_type, msg.file_name,
-                                msg.assistant_timestamp, msg.response_time, msg.model_used);
+                                msg.assistant_timestamp, msg.response_time, msg.model_used,
+                                null, null, null, null, msg.message_id);
                         }
                     } else if (data.result.response) {
                         let responseTime = data.result.response_time;
@@ -151,7 +154,8 @@ function startResultPolling(requestId) {
                         if (resultSessionId === currentSessionId) {
                             originalDisplayMessage('assistant', data.result.response, data.result.generated_image,
                                 data.result.file_type, data.result.file_name,
-                                data.result.assistant_timestamp || new Date().toISOString(), responseTime, modelUsed);
+                                data.result.assistant_timestamp || new Date().toISOString(), responseTime, modelUsed,
+                                null, null, null, null, data.result.message_id);
                             delete stableSessionStatus[resultSessionId];
                             updateLastVisit(currentSessionId);
                         } else {
@@ -170,7 +174,8 @@ function startResultPolling(requestId) {
                 const resultSessionId = data.result?.session_id || pendingRequests[requestId]?.sessionId;
                 if (resultSessionId === currentSessionId) {
                     originalDisplayMessage('assistant', '⚠️ ' + t('error') + ': ' + (data.error || t('unknown_error')), null, null, null,
-                        data.result?.assistant_timestamp || new Date().toISOString(), data.result?.response_time, 'system');
+                        data.result?.assistant_timestamp || new Date().toISOString(), data.result?.response_time, 'system',
+                        null, null, null, null, null);
                     delete stableSessionStatus[resultSessionId];
                 } else if (resultSessionId) {
                     // will be shown via queue status
@@ -185,7 +190,8 @@ function startResultPolling(requestId) {
             if (pollCount >= maxPolls) {
                 clearInterval(pollInterval);
                 originalDisplayMessage('assistant', '⚠️ ' + t('request_timeout'),
-                    null, null, null, new Date().toISOString(), null, 'system');
+                    null, null, null, new Date().toISOString(), null, 'system',
+                    null, null, null, null, null);
                 delete stableSessionStatus[currentSessionId];
                 delete pendingRequests[requestId];
             }
@@ -370,9 +376,9 @@ window.loadMessages = function(sessionId) {
     });
 };
 
-window.displayMessage = function(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
+window.displayMessage = function(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId) {
     if (window.IS_RELOADING) return;
-    const result = originalDisplayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel);
+    const result = originalDisplayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId);
     const messages = document.getElementById('chat-messages');
     if (messages) {
         const lastMessage = messages.lastElementChild;

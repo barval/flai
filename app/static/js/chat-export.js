@@ -97,18 +97,18 @@ async function saveChatAsHTML() {
         alert(t('no_messages_to_save'));
         return;
     }
-    // List of CSS files to load
+    // List of CSS files to load (updated paths)
     const cssFiles = [
-        '/static/base.css',
-        '/static/header-footer.css',
-        '/static/chat.css',
-        '/static/modal.css',
-        '/static/markdown.css',
-        '/static/export.css'
+        '/static/css/base.css',
+        '/static/css/header-footer.css',
+        '/static/css/chat.css',
+        '/static/css/modal.css',
+        '/static/css/markdown.css',
+        '/static/css/export.css'
     ];
     // Add dark theme CSS if needed
     if (document.body.classList.contains('dark-theme')) {
-        cssFiles.push('/static/dark-theme.css');
+        cssFiles.push('/static/css/dark-theme.css');
     }
     // Load all CSS files in parallel
     const cssContents = await Promise.all(

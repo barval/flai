@@ -165,6 +165,24 @@
     color: #3498db;
 }
 
+/* Dark theme styles for code blocks (override markdown.css) */
+.dark-theme .message-content pre {
+    background-color: #1e1e1e;
+    border-color: #555;
+    color: #d4d4d4;
+}
+
+.dark-theme .message-content code {
+    background-color: #2d2d2d;
+    color: #d4d4d4;
+    border-color: #555;
+}
+
+.dark-theme .message-content pre code {
+    background-color: transparent;
+    color: inherit;
+}
+
 .dark-theme .copy-code-button,
 .dark-theme .copy-transcript-button {
     background-color: rgba(200,200,200,0.8);
@@ -313,6 +331,14 @@
 }
 .dark-theme .camera-checkboxes input[type="checkbox"] {
     accent-color: #3498db;
+}
+
+/* Light grey text for database info in dark theme */
+.dark-theme .db-info {
+    color: #cccccc;
+}
+.dark-theme .db-info span {
+    color: #cccccc;
 }
 
 /* Scrollbar dark */

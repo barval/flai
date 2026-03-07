@@ -201,6 +201,38 @@
     color: white;
 }
 
+/* Dark theme styles for headings */
+.dark-theme .message-content h1,
+.dark-theme .message-content h2,
+.dark-theme .message-content h3,
+.dark-theme .message-content h4,
+.dark-theme .message-content h5,
+.dark-theme .message-content h6 {
+    color: #ecf0f1;
+    border-bottom-color: #444;
+}
+
+/* Dark theme styles for tables */
+.dark-theme .message-content table {
+    border-color: #555;
+}
+
+.dark-theme .message-content th {
+    background-color: #2c3e50;
+    color: #ecf0f1;
+    border-color: #555;
+}
+
+.dark-theme .message-content td {
+    border-color: #555;
+    color: #e0e0e0;
+}
+
+/* Dark theme hover for copy message button */
+.dark-theme .copy-message-button:hover {
+    background-color: rgba(255,255,255,0.1);
+}
+
 .dark-theme footer {
     background-color: #1a2632;
 }

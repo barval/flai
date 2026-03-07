@@ -154,7 +154,10 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
             const langSuffix = window.CURRENT_LANG === 'ru' ? 'с' : 's';
             headerExtra += ' <span class="text-muted">⏱️ ' + duration + langSuffix + '</span>';
         }
+        // TTS button
         headerExtra += ' <button class="tts-button" title="' + t('speak') + '">🗣️</button>';
+        // Copy message button
+        headerExtra += ' <button class="copy-message-button" title="' + t('copy_text') + '">📋</button>';
         headerHTML += headerExtra;
     }
     headerHTML += '</span>';
@@ -196,6 +199,8 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
     container.appendChild(msgDiv);
     container.scrollTop = container.scrollHeight;
     updateMessageCount();
+
+    // TTS button handler
     const ttsButton = msgDiv.querySelector('.tts-button');
     if (ttsButton) {
         ttsButton.removeAttribute('onclick');
@@ -204,6 +209,35 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
             playTTS(ttsButton, msgDiv);
         });
     }
+
+    // Copy message button handler
+    const copyButton = msgDiv.querySelector('.copy-message-button');
+    if (copyButton) {
+        copyButton.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const rawText = msgDiv.dataset.rawText;
+            if (!rawText) return;
+            const success = await copyToClipboard(rawText);
+            const originalHTML = copyButton.innerHTML;
+            const originalTitle = copyButton.title;
+            if (success) {
+                copyButton.innerHTML = '✓';
+                copyButton.title = t('copied');
+                setTimeout(() => {
+                    copyButton.innerHTML = originalHTML;
+                    copyButton.title = originalTitle;
+                }, 2000);
+            } else {
+                copyButton.innerHTML = '✗';
+                copyButton.title = t('copy_failed');
+                setTimeout(() => {
+                    copyButton.innerHTML = originalHTML;
+                    copyButton.title = originalTitle;
+                }, 2000);
+            }
+        });
+    }
+
     setTimeout(() => {
         addCopyButtonsToMessage(msgDiv);
     }, 50);

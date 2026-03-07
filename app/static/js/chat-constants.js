@@ -22,3 +22,6 @@ let isVoiceRecorded = false;
 let currentAudio = null;
 let currentTTSButton = null;
 let currentPlayingSessionId = null;
+// Message polling
+let messagePollingInterval = null;
+let lastMessageTimestamp = null;

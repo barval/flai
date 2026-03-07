@@ -5,6 +5,87 @@
 const originalLoadMessages = loadMessages;
 const originalDisplayMessage = displayMessage;
 
+// ----- Message polling functions -----
+function startMessagePolling() {
+    if (messagePollingInterval) clearInterval(messagePollingInterval);
+    // Poll every 5 seconds
+    messagePollingInterval = setInterval(pollNewMessages, 5000);
+}
+
+function stopMessagePolling() {
+    if (messagePollingInterval) {
+        clearInterval(messagePollingInterval);
+        messagePollingInterval = null;
+    }
+}
+
+async function pollNewMessages() {
+    if (window.IS_RELOADING || !currentSessionId) return;
+
+    // Get the timestamp of the last displayed message in the current session
+    const messagesContainer = document.getElementById('chat-messages');
+    const lastMessageEl = messagesContainer.lastElementChild;
+    if (lastMessageEl && lastMessageEl.dataset.timestamp) {
+        lastMessageTimestamp = lastMessageEl.dataset.timestamp;
+    } else {
+        // No messages yet, skip polling
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/sessions/${currentSessionId}/messages?since=${encodeURIComponent(lastMessageTimestamp)}`);
+        if (!response.ok) {
+            console.error('Failed to fetch new messages:', response.status);
+            return;
+        }
+        const newMessages = await response.json();
+        if (newMessages.length > 0) {
+            // Display each new message
+            for (const msg of newMessages) {
+                let responseTime = null;
+                if (msg.response_time) {
+                    if (typeof msg.response_time === 'object') {
+                        responseTime = msg.response_time;
+                    } else if (!isNaN(parseFloat(msg.response_time))) {
+                        responseTime = parseFloat(msg.response_time);
+                    }
+                }
+                let mmTime = msg.mm_time;
+                let genTime = msg.gen_time;
+                let mmModel = msg.mm_model;
+                let genModel = msg.gen_model;
+                if (mmTime && genTime) {
+                    responseTime = {
+                        mm_time: parseFloat(mmTime),
+                        gen_time: parseFloat(genTime),
+                        mm_model: mmModel || 'unknown',
+                        gen_model: genModel || 'unknown'
+                    };
+                }
+                originalDisplayMessage(
+                    msg.role,
+                    msg.content,
+                    msg.file_data,
+                    msg.file_type,
+                    msg.file_name,
+                    msg.timestamp,
+                    responseTime,
+                    msg.model_name,
+                    mmTime,
+                    genTime,
+                    mmModel,
+                    genModel
+                );
+            }
+            // Update last visit timestamp
+            updateLastVisit(currentSessionId);
+        }
+    } catch (err) {
+        console.error('Error polling new messages:', err);
+    }
+}
+// ----- End of message polling functions -----
+
 function startResultPolling(requestId) {
     if (window.IS_RELOADING) return;
     console.log('Start polling for request:', requestId);
@@ -265,9 +346,11 @@ async function sendMessage() {
 
 // Override global functions with wrappers that call the originals
 window.loadMessages = function(sessionId) {
+    stopMessagePolling(); // Stop any existing polling before loading
     return originalLoadMessages(sessionId).then(() => {
         if (window.IS_RELOADING) return;
         setTimeout(addCopyButtonsToAllCodeBlocks, 100);
+        startMessagePolling(); // Start polling after messages are loaded
     });
 };
 
@@ -294,9 +377,10 @@ document.addEventListener('DOMContentLoaded', function() {
         originalLoadMessages(currentSessionId).catch(err => {
             console.error('Error loading messages after language switch:', err);
             // Optionally show a user-friendly message? Not needed for now.
+        }).finally(() => {
+            startMessagePolling(); // Start polling after initial load
         });
         startSyncInterval();
-        startMessagePolling(); // Start polling for new messages
     });
     document.getElementById('new-session-button').addEventListener('click', createNewSession);
     document.getElementById('send-button').addEventListener('click', sendMessage);

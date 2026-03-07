@@ -286,6 +286,27 @@ def get_current_time_for_db():
     from .utils import get_current_time_in_timezone_for_db
     return get_current_time_in_timezone_for_db()
 
+# ----- Helper function to extract text from user message JSON -----
+def _extract_text_from_user_content(content):
+    """
+    Extract only the text parts from a user message that may contain JSON
+    with file data. If content is not JSON, return it as is.
+    """
+    if not content or not content.startswith('['):
+        return content
+    try:
+        parts = json.loads(content)
+        texts = []
+        for part in parts:
+            if isinstance(part, dict) and part.get('type') == 'text':
+                text = part.get('text', '')
+                if text:
+                    texts.append(text)
+        return '\n'.join(texts).strip()
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        # In case of parsing error, return original content
+        return content
+
 # ----- New function for retrieving text-only conversation history -----
 def get_session_text_history(session_id, max_tokens, max_messages=None):
     """
@@ -306,12 +327,18 @@ def get_session_text_history(session_id, max_tokens, max_messages=None):
         ''', (session_id,))
         rows = c.fetchall()
     
-    # Convert to list of dicts
-    all_messages = [{'role': r['role'], 'content': r['content'], 'timestamp': r['timestamp']} for r in rows]
+    # Convert to list of dicts, cleaning user content
+    all_messages = []
+    for r in rows:
+        role = r['role']
+        content = r['content']
+        if role == 'user':
+            content = _extract_text_from_user_content(content)
+        all_messages.append({'role': role, 'content': content, 'timestamp': r['timestamp']})
     
-    # Rough token estimation: 1 token ≈ 4 characters (simple heuristic)
+    # Rough token estimation: 1 token ≈ 4 characters (heuristic)
     def estimate_tokens(text):
-        return len(text) // 3 + 1  # add 1 for safety
+        return len(text) // 4 + 1  # add 1 for safety
     
     # Work from the end backwards, accumulating until we hit the limit
     selected = []

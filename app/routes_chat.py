@@ -51,7 +51,8 @@ def api_get_sessions():
 def api_get_messages(session_id):
     if 'login' not in session:
         return jsonify({'error': _('Not authorized')}), 401
-    return jsonify(db.get_session_messages(session_id))
+    since = request.args.get('since')
+    return jsonify(db.get_session_messages(session_id, since=since))
 
 @bp.route('/api/sessions/<session_id>/switch', methods=['POST'])
 def api_switch_session(session_id):

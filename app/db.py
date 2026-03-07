@@ -124,20 +124,33 @@ def get_user_sessions(user_id):
             ''', (s['id'], last_visit))
             count = c.fetchone()[0]
             s['has_unread'] = count > 0
+            # Get total message count for the session
+            c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (s['id'],))
+            s['message_count'] = c.fetchone()[0]
         return sessions
 
-def get_session_messages(session_id):
+def get_session_messages(session_id, since=None):
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
-        c.execute('''
-            SELECT role, content, file_data, file_type, file_name,
-                timestamp, model_name, response_time, mm_time, gen_time,
-                mm_model, gen_model
-            FROM messages
-            WHERE session_id = ?
-            ORDER BY timestamp ASC
-        ''', (session_id,))
+        if since:
+            c.execute('''
+                SELECT role, content, file_data, file_type, file_name,
+                    timestamp, model_name, response_time, mm_time, gen_time,
+                    mm_model, gen_model
+                FROM messages
+                WHERE session_id = ? AND timestamp > ?
+                ORDER BY timestamp ASC
+            ''', (session_id, since))
+        else:
+            c.execute('''
+                SELECT role, content, file_data, file_type, file_name,
+                    timestamp, model_name, response_time, mm_time, gen_time,
+                    mm_model, gen_model
+                FROM messages
+                WHERE session_id = ?
+                ORDER BY timestamp ASC
+            ''', (session_id,))
         messages = []
         for row in c.fetchall():
             msg_dict = dict(row)
@@ -336,9 +349,11 @@ def get_session_text_history(session_id, max_tokens, max_messages=None):
             content = _extract_text_from_user_content(content)
         all_messages.append({'role': role, 'content': content, 'timestamp': r['timestamp']})
     
-    # Rough token estimation: 1 token ≈ 4 characters (heuristic)
+    # Rough token estimation using configurable characters per token
+    from flask import current_app
+    token_chars = current_app.config.get('TOKEN_CHARS', 3) if current_app else 3
     def estimate_tokens(text):
-        return len(text) // 4 + 1  # add 1 for safety
+        return len(text) // token_chars + 1
     
     # Work from the end backwards, accumulating until we hit the limit
     selected = []

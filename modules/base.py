@@ -19,6 +19,8 @@ class BaseModule:
         self.models_config = models_config or {}
         self.available = False
         self.timeouts = {}
+        self.token_chars = 3
+        self.context_history_percent = 75
         if app:
             self.init_app(app)
         elif ollama_url:
@@ -64,6 +66,10 @@ class BaseModule:
                 'timeout': self.timeouts.get('multimodal', 120)
             }
         }
+        
+        # Token estimation settings
+        self.token_chars = app.config.get('TOKEN_CHARS', 3)
+        self.context_history_percent = app.config.get('CONTEXT_HISTORY_PERCENT', 75)
         
         self.check_availability()
         
@@ -174,8 +180,8 @@ class BaseModule:
     
     # --- Context handling methods ---
     def _estimate_tokens(self, text):
-        """Rough token estimation: 1 token ≈ 3 characters."""
-        return len(text) // 3 + 1
+        """Rough token estimation using configured characters per token."""
+        return len(text) // self.token_chars + 1
     
     def _build_context_prompt(self, history, lang='ru'):
         """
@@ -192,7 +198,7 @@ class BaseModule:
     
     def _get_context_for_model(self, session_id, model_type, current_query, lang='ru'):
         """
-        Retrieve and prune conversation history to fit within 75% of the model's context window.
+        Retrieve and prune conversation history to fit within CONTEXT_HISTORY_PERCENT% of the model's context window.
         Returns a formatted history string.
         """
         if not session_id:
@@ -200,8 +206,8 @@ class BaseModule:
         
         model_config = self.models_config.get(model_type, self.models_config['chat'])
         max_context_tokens = model_config['context']
-        # Reserve 75% of the window for history + current query
-        available_tokens = int(max_context_tokens * 0.75)
+        # Reserve configured percentage of the window for history + current query
+        available_tokens = int(max_context_tokens * (self.context_history_percent / 100.0))
         
         # Estimate tokens for the current query (including prompt overhead)
         # We'll be conservative: assume the prompt template adds some tokens.

@@ -19,16 +19,22 @@ function loadSessionsFromServer() {
             if (!sessionsData[s.id]) {
                 sessionsData[s.id] = {
                     title: s.title,
-                    updated_at: s.updated_at
+                    updated_at: s.updated_at,
+                    message_count: s.message_count
                 };
                 updated = true;
             } else {
                 if (sessionsData[s.id].title !== s.title) {
                     sessionsData[s.id].title = s.title;
                     sessionsData[s.id].updated_at = s.updated_at;
+                    sessionsData[s.id].message_count = s.message_count;
                     updated = true;
                 } else if (sessionsData[s.id].updated_at !== s.updated_at) {
                     sessionsData[s.id].updated_at = s.updated_at;
+                    sessionsData[s.id].message_count = s.message_count;
+                    updated = true;
+                } else if (sessionsData[s.id].message_count !== s.message_count) {
+                    sessionsData[s.id].message_count = s.message_count;
                     updated = true;
                 }
             }
@@ -67,7 +73,8 @@ function updateSessionsListFromData() {
         const sessions = Object.keys(sessionsData).map(id => ({
             id: id,
             title: sessionsData[id].title,
-            updated_at: sessionsData[id].updated_at
+            updated_at: sessionsData[id].updated_at,
+            message_count: sessionsData[id].message_count
         }));
         updateSessionsList(sessions);
         sessionsUpdateTimeout = null;
@@ -107,7 +114,7 @@ function updateSessionsList(sessions) {
                         ${ttsIcon}${statusIcons}
                         ${escapeHtml(s.title)}
                     </div>
-                    <div class="session-date">${dateStr}</div>
+                    <div class="session-date">${dateStr} [${s.message_count}]</div>
                 </div>
                 <button class="delete-session-button" title="${t('delete_session')}">🗑️</button>
             </div>
@@ -149,7 +156,8 @@ function createNewSession() {
     .then(data => {
         sessionsData[data.id] = {
             title: data.title,
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            message_count: 0
         };
         document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
         currentSessionId = data.id;

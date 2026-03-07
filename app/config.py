@@ -63,6 +63,10 @@ def load_config(app):
     app.config['PIPER_URL'] = os.getenv('PIPER_URL')
     app.config['PIPER_TIMEOUT'] = int(os.getenv('PIPER_TIMEOUT', 30))
 
+    # Token estimation settings
+    app.config['TOKEN_CHARS'] = int(os.getenv('TOKEN_CHARS', 3))
+    app.config['CONTEXT_HISTORY_PERCENT'] = int(os.getenv('CONTEXT_HISTORY_PERCENT', 75))
+
     # Debug translations
     app.config['DEBUG_TRANSLATIONS'] = os.getenv('DEBUG_TRANSLATIONS', 'false').lower() == 'true'
     

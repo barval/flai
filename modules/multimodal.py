@@ -23,6 +23,8 @@ class MultimodalModule:
         self.available = False
         self.image_settings = {}
         self.timeout = 120
+        self.token_chars = 3
+        self.context_history_percent = 75
         
         if app:
             self.init_app(app)
@@ -63,6 +65,10 @@ class MultimodalModule:
                 '.bmp', '.webp', '.tif', '.tiff'
             }
         }
+        
+        # Token estimation settings
+        self.token_chars = app.config.get('TOKEN_CHARS', 3)
+        self.context_history_percent = app.config.get('CONTEXT_HISTORY_PERCENT', 75)
         
         self.check_availability()
         
@@ -123,7 +129,7 @@ class MultimodalModule:
     
     # --- Context handling (similar to BaseModule) ---
     def _estimate_tokens(self, text):
-        return len(text) // 3 + 1
+        return len(text) // self.token_chars + 1
     
     def _build_context_prompt(self, history, lang='ru'):
         if not history:
@@ -135,13 +141,13 @@ class MultimodalModule:
         return "\n".join(lines)
     
     def _get_context_for_model(self, session_id, current_query, lang='ru'):
-        """Retrieve text-only history for multimodal model, limited to 75% of its context window."""
+        """Retrieve text-only history for multimodal model, limited to configured percent of its context window."""
         if not session_id:
             return ""
         
         model_config = self.models_config['multimodal']
         max_context_tokens = model_config['context']
-        available_tokens = int(max_context_tokens * 0.75)
+        available_tokens = int(max_context_tokens * (self.context_history_percent / 100.0))
         
         overhead = 500  # prompt overhead
         query_tokens = self._estimate_tokens(current_query)

@@ -296,6 +296,7 @@ document.addEventListener('DOMContentLoaded', function() {
             // Optionally show a user-friendly message? Not needed for now.
         });
         startSyncInterval();
+        startMessagePolling(); // Start polling for new messages
     });
     document.getElementById('new-session-button').addEventListener('click', createNewSession);
     document.getElementById('send-button').addEventListener('click', sendMessage);

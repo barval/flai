@@ -166,6 +166,11 @@
     color: #3498db;
 }
 
+/* ===== AUDIO PLAYER DARK MODE ===== */
+.dark-theme audio {
+    color-scheme: dark; /* Forces dark mode for native audio controls */
+}
+
 /* ===== DARK THEME – MARKDOWN CONTENT OVERRIDES ===== */
 .dark-theme .message-content p,
 .dark-theme .message-content li,

@@ -315,26 +315,7 @@ function addCopyButtonsToMessage(messageElement) {
         wrapper.appendChild(parent);
         wrapper.appendChild(copyButton);
     });
-    const contentDiv = messageElement.querySelector('.message-content');
-    if (contentDiv && !contentDiv.querySelector('.copy-transcript-button')) {
-        const text = contentDiv.innerText || contentDiv.textContent;
-        if (text.includes('🎤 ' + t('transcribed') + ':')) {
-            const copyBtn = document.createElement('button');
-            copyBtn.className = 'copy-transcript-button';
-            copyBtn.innerHTML = '📋';
-            copyBtn.title = t('copy_text');
-            copyBtn.onclick = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const textToCopy = text.replace('🎤 ' + t('transcribed') + ':', '').trim();
-                copyToClipboard(textToCopy);
-                copyBtn.innerHTML = '✓';
-                setTimeout(() => copyBtn.innerHTML = '📋', 2000);
-            };
-            contentDiv.style.position = 'relative';
-            contentDiv.appendChild(copyBtn);
-        }
-    }
+    // Removed duplicate copy button for transcribed messages (copy-transcript-button)
 }
 
 function setupCopyButtonsObserver() {

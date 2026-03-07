@@ -191,9 +191,10 @@ class CamModule:
                 room_code = code
                 self.logger.info(f"Converted room name '{room_code}' to code '{code}'")
             else:
+                template = self._('Unknown room: {room}', lang)
                 return {
                     'success': False,
-                    'error': self._('Unknown room: {room}', lang, room=room_code),
+                    'error': template.format(room=room_code),
                     'status_code': 404,
                     'available_rooms': list(self.room_names.keys())
                 }
@@ -268,13 +269,15 @@ class CamModule:
                     last_error = self._('Connection error', lang)
                     continue
                 except requests.exceptions.Timeout:
-                    last_error = self._('Timeout ({timeout}s)', lang, timeout=self.timeout)
+                    template = self._('Timeout ({timeout}s)', lang)
+                    last_error = template.format(timeout=self.timeout)
                     continue
                 except Exception as e:
                     last_error = str(e)
                     continue
             
-            error_msg = self._('Failed to get snapshot from camera {room_name}', lang, room_name=room_name)
+            template = self._('Failed to get snapshot from camera {room_name}', lang)
+            error_msg = template.format(room_name=room_name)
             if last_error:
                 error_msg += f": {last_error}"
             

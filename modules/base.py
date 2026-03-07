@@ -119,7 +119,8 @@ class BaseModule:
         timeout = model_config.get('timeout', 60)
         
         if not model:
-            return self._('Model for {model_type} not configured', lang, model_type=model_type)
+            template = self._('Model for {model_type} not configured', lang)
+            return template.format(model_type=model_type)
         
         try:
             payload = {
@@ -161,7 +162,8 @@ class BaseModule:
                 
         except requests.exceptions.Timeout:
             self.logger.error(f"Timeout ({timeout}s) when calling Ollama. Model: {model}")
-            return self._('Timeout ({timeout}s) when calling the model. Try increasing timeout in .env or simplify your request.', lang, timeout=timeout)
+            template = self._('Timeout ({timeout}s) when calling the model. Try increasing timeout in .env or simplify your request.', lang)
+            return template.format(timeout=timeout)
         except requests.exceptions.ConnectionError:
             self.logger.error(f"Connection error to Ollama at {self.ollama_url}")
             return self._('Could not connect to Ollama', lang)

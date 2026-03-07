@@ -95,15 +95,16 @@ class MultimodalModule:
         
         return False
     
-    def validate_image(self, file_data, file_type, file_name, file_size):
+    def validate_image(self, file_data, file_type, file_name, file_size, lang='ru'):
         """Validate image against requirements"""
         if file_size > self.image_settings['max_size_bytes']:
-            return False, self._('Maximum file size {max_size} MB', max_size=self.image_settings['max_size_mb'])
+            template = self._('Maximum file size {max_size} MB', lang)
+            return False, template.format(max_size=self.image_settings['max_size_mb'])
         
         if file_type not in self.image_settings['supported_mimetypes']:
             ext = os.path.splitext(file_name)[1].lower()
             if ext not in self.image_settings['supported_extensions']:
-                return False, self._('Unsupported file type')
+                return False, self._('Unsupported file type', lang)
         
         try:
             image_bytes = base64.b64decode(file_data)
@@ -111,12 +112,13 @@ class MultimodalModule:
             width, height = img.size
             
             if width > self.image_settings['max_width'] or height > self.image_settings['max_height']:
-                return False, self._('Maximum resolution {max_width}×{max_height}', max_width=self.image_settings['max_width'], max_height=self.image_settings['max_height'])
+                template = self._('Maximum resolution {max_width}x{max_height}', lang)
+                return False, template.format(max_width=self.image_settings['max_width'], max_height=self.image_settings['max_height'])
             
             return True, None
         except Exception as e:
             self.logger.error(f"Error validating image: {str(e)}")
-            return False, self._('Could not process image file')
+            return False, self._('Could not process image file', lang)
     
     def process_image_with_text(self, image_data, user_text, current_time_str, lang='ru'):
         """Process image with text"""
@@ -231,7 +233,8 @@ class MultimodalModule:
                 
         except requests.exceptions.Timeout:
             self.logger.error(f"Timeout ({timeout}s) for multimodal model")
-            return self._('Timeout ({timeout}s) when calling multimodal model', lang, timeout=timeout)
+            template = self._('Timeout ({timeout}s) when calling multimodal model', lang)
+            return template.format(timeout=timeout)
         except requests.exceptions.ConnectionError:
             self.logger.error(f"Connection error to Ollama at {self.ollama_url}")
             return self._('Could not connect to Ollama', lang)

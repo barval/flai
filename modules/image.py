@@ -149,9 +149,10 @@ class ImageModule:
                 
         except requests.exceptions.Timeout:
             self.logger.error(f"Timeout ({self.timeout}s) during image generation")
+            template = self._('Image generation timeout ({timeout}s)', lang)
             return {
                 'success': False,
-                'error': self._('Image generation timeout ({timeout}s)', lang, timeout=self.timeout)
+                'error': template.format(timeout=self.timeout)
             }
         except requests.exceptions.ConnectionError:
             return {

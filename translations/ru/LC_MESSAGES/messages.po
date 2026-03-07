@@ -446,5 +446,8 @@ msgstr "ГБ"
 msgid "seconds_suffix"
 msgstr "с"
 
+msgid "The image has been reduced."
+msgstr "Изображение было уменьшено."
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v6.5 (c) 2026 Барсуков Валерий"

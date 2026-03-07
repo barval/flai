@@ -197,12 +197,14 @@ def send_message():
             file_data, file_type, file_name, max_width, max_height
         )
         if resized:
-            # Save assistant notice about resize
+            # Save assistant notice about resize using translated parts
             lang = session.get('language', 'ru')
             with force_locale(lang):
-                notice_text = _('⚠️ Maximum resolution {max_width}x{max_height}. The image has been reduced.').format(
+                resolution_msg = _('Maximum resolution {max_width}x{max_height}').format(
                     max_width=max_width, max_height=max_height
                 )
+                reduced_msg = _('The image has been reduced.')
+                notice_text = f'⚠️ {resolution_msg}. {reduced_msg}'
             db.save_message(session_id, 'assistant', notice_text, model_name='system', response_time='0')
             resize_notice = notice_text
             # Use resized data

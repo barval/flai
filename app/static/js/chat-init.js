@@ -5,6 +5,17 @@
 const originalLoadMessages = loadMessages;
 const originalDisplayMessage = displayMessage;
 
+// ----- Helper to check if message already displayed -----
+function isMessageAlreadyDisplayed(timestamp, rawText, role) {
+    const messages = document.querySelectorAll(`.${role}-message`);
+    for (let msg of messages) {
+        if (msg.dataset.timestamp === timestamp && msg.dataset.rawText === rawText) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // ----- Message polling functions -----
 function startMessagePolling() {
     if (messagePollingInterval) clearInterval(messagePollingInterval);
@@ -42,6 +53,11 @@ async function pollNewMessages() {
         if (newMessages.length > 0) {
             // Display each new message
             for (const msg of newMessages) {
+                // Check if already displayed
+                if (isMessageAlreadyDisplayed(msg.timestamp, msg.content, msg.role)) {
+                    console.log('Skipping duplicate message', msg.timestamp);
+                    continue;
+                }
                 let responseTime = null;
                 if (msg.response_time) {
                     if (typeof msg.response_time === 'object') {

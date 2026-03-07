@@ -94,8 +94,9 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
     if (!timestamp) timestamp = new Date().toISOString();
     msgDiv.setAttribute('data-timestamp', timestamp);
     msgDiv.dataset.sessionId = currentSessionId;
+    // Store raw text for duplicate detection and TTS
+    msgDiv.setAttribute('data-raw-text', content);
     if (role === 'assistant') {
-        msgDiv.setAttribute('data-raw-text', content);
         if (modelName) msgDiv.dataset.modelName = modelName;
         if (responseTime && typeof responseTime === 'object') {
             if (responseTime.mm_time) msgDiv.dataset.mmTime = responseTime.mm_time;

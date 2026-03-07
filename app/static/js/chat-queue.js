@@ -2,8 +2,9 @@
 // Queue status functions
 
 function startSyncInterval() {
-    if (syncInterval) clearInterval(syncInterval);
-    syncInterval = setInterval(() => {
+    if (window.syncInterval) clearInterval(window.syncInterval);
+    window.syncInterval = setInterval(() => {
+        if (window.IS_RELOADING) return;
         loadSessionsFromServer();
         fetchQueueStatus();
         window.updateStatusCounter();
@@ -11,9 +12,11 @@ function startSyncInterval() {
 }
 
 function fetchQueueStatus() {
+    if (window.IS_RELOADING) return;
     fetch('/api/queue/status')
     .then(res => res.json())
     .then(data => {
+        if (window.IS_RELOADING) return;
         const now = Date.now();
         const agg = {};
         if (data.processing) {
@@ -75,9 +78,11 @@ function fetchQueueStatus() {
 }
 
 window.updateStatusCounter = function() {
+    if (window.IS_RELOADING) return;
     fetch('/api/queue/counts')
     .then(response => response.json())
     .then(data => {
+        if (window.IS_RELOADING) return;
         const counter = document.getElementById('status-counter');
         if (counter) {
             counter.textContent = '📊 ' + data.user_queued + '/' + data.total_queued;

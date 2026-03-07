@@ -6,14 +6,23 @@ const originalLoadMessages = loadMessages;
 const originalDisplayMessage = displayMessage;
 
 function startResultPolling(requestId) {
+    if (window.IS_RELOADING) return;
     console.log('Start polling for request:', requestId);
     let pollCount = 0;
     const maxPolls = 120;
     const pollInterval = setInterval(async () => {
+        if (window.IS_RELOADING) {
+            clearInterval(pollInterval);
+            return;
+        }
         pollCount++;
         try {
             const response = await fetch('/api/queue/result/' + requestId);
             const data = await response.json();
+            if (window.IS_RELOADING) {
+                clearInterval(pollInterval);
+                return;
+            }
             if (data.status === 'completed') {
                 clearInterval(pollInterval);
                 if (data.result) {
@@ -132,6 +141,7 @@ async function sendMessage() {
         const tempText = text;
 
         const displayUserMessage = (fileData, fileType, fileName) => {
+            if (window.IS_RELOADING) return;
             if (fileData) {
                 let type = "file";
                 if (fileType && fileType.startsWith('image/')) type = "image";
@@ -146,6 +156,7 @@ async function sendMessage() {
         };
 
         const sendToServer = async () => {
+            if (window.IS_RELOADING) return;
             try {
                 let response;
                 if (tempAttachedFile) {
@@ -164,7 +175,9 @@ async function sendMessage() {
                         body: JSON.stringify({ message: tempText })
                     });
                 }
+                if (window.IS_RELOADING) return;
                 const data = await response.json();
+                if (window.IS_RELOADING) return;
                 console.log('Server response:', data);
                 if (data.transcribed_text) {
                     if (data.session_id && data.session_id === currentSessionId) {
@@ -187,6 +200,7 @@ async function sendMessage() {
                         data.assistant_timestamp, data.response_time, data.model_used);
                 }
             } catch (err) {
+                if (window.IS_RELOADING) return;
                 alert(t('error') + ': ' + err.message);
                 console.error('Send message error:', err);
                 const lastMessage = document.querySelector('.user-message:last-child');
@@ -197,6 +211,7 @@ async function sendMessage() {
         if (tempAttachedFile) {
             const reader = new FileReader();
             reader.onload = async function(e) {
+                if (window.IS_RELOADING) return;
                 try {
                     fileData = e.target.result.split(',')[1];
                     fileType = tempAttachedFile.type;
@@ -205,11 +220,11 @@ async function sendMessage() {
                     // Start sending without awaiting, so button can be re-enabled immediately
                     sendToServer().catch(err => {
                         console.error('Error in sendToServer:', err);
-                        alert(t('error') + ': ' + err.message);
+                        if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
                     });
                 } catch (err) {
                     console.error('Error in reader.onload:', err);
-                    alert(t('error') + ': ' + err.message);
+                    if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
                 } finally {
                     // Re-enable send button immediately after starting the send process
                     sendButton.disabled = false;
@@ -223,11 +238,11 @@ async function sendMessage() {
                 // Start sending without awaiting
                 sendToServer().catch(err => {
                     console.error('Error in sendToServer:', err);
-                    alert(t('error') + ': ' + err.message);
+                    if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
                 });
             } catch (err) {
                 console.error('Error in no-file branch:', err);
-                alert(t('error') + ': ' + err.message);
+                if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
             } finally {
                 sendButton.disabled = false;
                 sendButton.innerHTML = t('send');
@@ -235,7 +250,7 @@ async function sendMessage() {
         }
     } catch (err) {
         console.error('Unexpected error in sendMessage:', err);
-        alert(t('error') + ': ' + err.message);
+        if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
         sendButton.disabled = false;
         sendButton.innerHTML = t('send');
     }
@@ -244,11 +259,13 @@ async function sendMessage() {
 // Override global functions with wrappers that call the originals
 window.loadMessages = function(sessionId) {
     return originalLoadMessages(sessionId).then(() => {
+        if (window.IS_RELOADING) return;
         setTimeout(addCopyButtonsToAllCodeBlocks, 100);
     });
 };
 
 window.displayMessage = function(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
+    if (window.IS_RELOADING) return;
     const result = originalDisplayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel);
     const messages = document.getElementById('chat-messages');
     if (messages) {
@@ -259,6 +276,7 @@ window.displayMessage = function(role, content, fileData, fileType, fileName, ti
 };
 
 function addCopyButtonsToAllCodeBlocks() {
+    if (window.IS_RELOADING) return;
     document.querySelectorAll('.user-message, .assistant-message, .bot-message').forEach(addCopyButtonsToMessage);
 }
 

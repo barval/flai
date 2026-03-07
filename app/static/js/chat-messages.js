@@ -2,19 +2,23 @@
 // Message display and loading functions
 
 function updateMessageCount() {
+    if (window.IS_RELOADING) return;
     const count = document.querySelectorAll('.user-message, .assistant-message, .bot-message').length;
     document.getElementById('context-info').textContent = t('messages') + ': ' + count;
 }
 
 function loadMessages(sessionId) {
+    if (window.IS_RELOADING) return Promise.resolve();
     return fetch('/api/sessions/' + sessionId + '/messages')
     .then(res => res.json())
     .then(messages => {
+        if (window.IS_RELOADING) return;
         const container = document.getElementById('chat-messages');
         container.innerHTML = '';
         fetch('/api/sessions/' + sessionId + '/model-info')
         .then(res => res.json())
         .then(data => {
+            if (window.IS_RELOADING) return;
             defaultModelName = data.model_name || 'qwen3-vl:8b-instruct-q4_K_M';
         })
         .catch(err => console.error('Error loading model info:', err));
@@ -83,6 +87,7 @@ function loadMessages(sessionId) {
 }
 
 function displayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel) {
+    if (window.IS_RELOADING) return;
     const container = document.getElementById('chat-messages');
     const msgDiv = document.createElement('div');
     msgDiv.className = (role === 'user') ? 'user-message' : 'assistant-message bot-message';
@@ -206,6 +211,7 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
         ttsButton.removeAttribute('onclick');
         ttsButton.addEventListener('click', (e) => {
             e.preventDefault();
+            if (window.IS_RELOADING) return;
             playTTS(ttsButton, msgDiv);
         });
     }
@@ -215,6 +221,7 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
     if (copyButton) {
         copyButton.addEventListener('click', async (e) => {
             e.preventDefault();
+            if (window.IS_RELOADING) return;
             const rawText = msgDiv.dataset.rawText;
             if (!rawText) return;
             const success = await copyToClipboard(rawText);
@@ -239,6 +246,7 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
     }
 
     setTimeout(() => {
+        if (window.IS_RELOADING) return;
         addCopyButtonsToMessage(msgDiv);
     }, 50);
 }
@@ -267,6 +275,7 @@ async function copyToClipboard(text) {
 }
 
 async function handleCopyClick(button, codeElement) {
+    if (window.IS_RELOADING) return;
     const code = codeElement.textContent || codeElement.innerText;
     const originalHTML = button.innerHTML;
     const originalClass = button.className;
@@ -295,6 +304,7 @@ async function handleCopyClick(button, codeElement) {
 }
 
 function addCopyButtonsToMessage(messageElement) {
+    if (window.IS_RELOADING) return;
     if (!messageElement) return;
     const codeBlocks = messageElement.querySelectorAll('pre code');
     codeBlocks.forEach((codeBlock) => {
@@ -309,6 +319,7 @@ function addCopyButtonsToMessage(messageElement) {
         copyButton.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
+            if (window.IS_RELOADING) return;
             handleCopyClick(copyButton, codeBlock);
         });
         parent.parentNode.insertBefore(wrapper, parent);
@@ -324,6 +335,7 @@ function setupCopyButtonsObserver() {
     const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
             mutation.addedNodes.forEach((node) => {
+                if (window.IS_RELOADING) return;
                 if (node.nodeType === Node.ELEMENT_NODE) {
                     if (node.classList && (node.classList.contains('user-message') || node.classList.contains('assistant-message') || node.classList.contains('bot-message'))) {
                         addCopyButtonsToMessage(node);

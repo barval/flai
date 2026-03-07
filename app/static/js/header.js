@@ -24,12 +24,14 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function switchLanguage(lang) {
+    // Set reloading flag and clear intervals
+    window.IS_RELOADING = true;
+    if (window.syncInterval) clearInterval(window.syncInterval);
+    if (window.recordTimerInterval) clearInterval(window.recordTimerInterval);
     fetch('/set-language/' + lang, {
         method: 'GET',
         headers: { 'Cache-Control': 'no-cache' }
-    }).then(() => {
-        window.location.reload();
-    }).catch(() => {
+    }).finally(() => {
         window.location.reload();
     });
 }

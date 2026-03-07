@@ -50,6 +50,10 @@ async function startRecording() {
         recordSeconds = 0;
         if (recordTimerInterval) clearInterval(recordTimerInterval);
         recordTimerInterval = setInterval(() => {
+            if (window.IS_RELOADING) {
+                clearInterval(recordTimerInterval);
+                return;
+            }
             recordSeconds++;
             const timerSpan = sendButton.querySelector('.record-timer');
             if (timerSpan) {

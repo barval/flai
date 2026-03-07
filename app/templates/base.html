@@ -12,6 +12,9 @@
     <link rel="stylesheet" href="/static/css/markdown.css">
     <link rel="stylesheet" href="/static/css/dark-theme.css">
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <script>
+        window.IS_RELOADING = false;
+    </script>
 </head>
 <body class="{% if session.get('theme') == 'dark' %}dark-theme{% endif %}">
     <header>

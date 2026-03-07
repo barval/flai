@@ -79,6 +79,7 @@ class AudioModule:
         audio_data: base64-encoded audio data
         audio_format: MIME type
         filename: original filename
+        lang: language code (e.g., 'ru', 'en')
         Returns text or None on error
         """
         if not self.available:
@@ -90,10 +91,13 @@ class AudioModule:
             files = {
                 'audio_file': (filename, audio_bytes, audio_format)
             }
-            params = {'output': 'json'}
+            params = {
+                'output': 'json',
+                'language': lang   # Pass language to Whisper API
+            }
 
             self.logger.info(f"Sending file for transcription, size {len(audio_bytes)} bytes, "
-                           f"filename: {filename}, format: {audio_format}, timeout: {self.timeout}s")
+                           f"filename: {filename}, format: {audio_format}, language: {lang}, timeout: {self.timeout}s")
 
             response = requests.post(
                 self.whisper_api_url,

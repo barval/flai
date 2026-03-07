@@ -18,12 +18,17 @@ function pad(n) {
 }
 
 function formatFileSize(bytes) {
-    if (bytes === 0) return '0 B';
+    if (bytes === 0) return '0 ' + t('byte_abbr');
     if (!bytes) return '';
     const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const units = [
+        t('byte_abbr'),
+        t('kb_abbr'),
+        t('mb_abbr'),
+        t('gb_abbr')
+    ];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + units[i];
 }
 
 function decodeHtmlEntities(text) {

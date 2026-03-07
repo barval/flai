@@ -210,7 +210,11 @@ def send_message():
     if request_type == 'audio':
         current_app.logger.info("send_message: audio detected, starting transcription")
         transcribe_start = time.time()
-        transcribed_text = current_app.modules['audio'].transcribe(file_data, file_type, file_name)
+        # Pass user's language to transcribe
+        user_lang = session.get('language', 'ru')
+        transcribed_text = current_app.modules['audio'].transcribe(
+            file_data, file_type, file_name, lang=user_lang
+        )
         transcribe_time = round(time.time() - transcribe_start, 1)
         if transcribed_text is None:
             # Get user language for error message

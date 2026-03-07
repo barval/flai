@@ -115,7 +115,12 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'footer_load_error': {{ _("footer_load_error")|tojson }},
     'text_request': {{ _("Text request")|tojson }},
     'record_voice_message': {{ _("Record voice message")|tojson }},
-    'seconds_suffix': {{ _('seconds_suffix')|tojson }}   {# Added key for seconds abbreviation #}
+    'seconds_suffix': {{ _('seconds_suffix')|tojson }},
+    // File size units
+    'byte_abbr': {{ _('byte_abbr')|tojson }},
+    'kb_abbr': {{ _('kb_abbr')|tojson }},
+    'mb_abbr': {{ _('mb_abbr')|tojson }},
+    'gb_abbr': {{ _('gb_abbr')|tojson }}
 });
 window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
 function t(key) {

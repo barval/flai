@@ -433,5 +433,18 @@ msgstr "Переключить тему"
 msgid "seconds_suffix"
 msgstr "с"
 
+# File size units
+msgid "byte_abbr"
+msgstr "Б"
+
+msgid "kb_abbr"
+msgstr "КБ"
+
+msgid "mb_abbr"
+msgstr "МБ"
+
+msgid "gb_abbr"
+msgstr "ГБ"
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v6.5 (c) 2026 Барсуков Валерий"

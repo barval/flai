@@ -432,5 +432,18 @@ msgstr "Toggle theme"
 msgid "seconds_suffix"
 msgstr "s"
 
+# File size units
+msgid "byte_abbr"
+msgstr "B"
+
+msgid "kb_abbr"
+msgstr "KB"
+
+msgid "mb_abbr"
+msgstr "MB"
+
+msgid "gb_abbr"
+msgstr "GB"
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v6.5 (c) 2026 Valery Barsukov"

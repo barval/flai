@@ -53,7 +53,9 @@ async function startRecording() {
             recordSeconds++;
             const timerSpan = sendButton.querySelector('.record-timer');
             if (timerSpan) {
-                timerSpan.textContent = recordSeconds + 'с';
+                // Use language-dependent seconds suffix
+                const secondsSuffix = window.CURRENT_LANG === 'ru' ? 'с' : 's';
+                timerSpan.textContent = recordSeconds + secondsSuffix;
             }
         }, 1000);
     } catch (err) {

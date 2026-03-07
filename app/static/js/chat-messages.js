@@ -256,6 +256,8 @@ function displayMessage(role, content, fileData, fileType, fileName, timestamp, 
         if (window.IS_RELOADING) return;
         addCopyButtonsToMessage(msgDiv);
     }, 50);
+
+    return msgDiv; // Return the element for potential further manipulation
 }
 
 async function copyToClipboard(text) {

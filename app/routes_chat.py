@@ -226,7 +226,7 @@ def send_message():
             content_type = "file"
         user_content.append({"type": content_type, "file_data": file_data, "file_type": file_type, "file_name": file_name})
     user_content_json = json.dumps(user_content, ensure_ascii=False)
-    db.save_message(session_id, 'user', user_content_json, file_data, file_type, file_name, None)
+    user_message_id = db.save_message(session_id, 'user', user_content_json, file_data, file_type, file_name, None)
 
     with sqlite3.connect(db.CHAT_DB_PATH) as conn:
         c = conn.cursor()
@@ -255,7 +255,7 @@ def send_message():
         lang = session.get('language', 'ru')
         with force_locale(lang):
             system_content = '🎤 ' + _('Transcribed') + ': ' + transcribed_text
-        db.save_message(session_id, 'assistant', system_content, model_name='whisper', response_time=transcribe_time)
+        transcribed_message_id = db.save_message(session_id, 'assistant', system_content, model_name='whisper', response_time=transcribe_time)
         if voice_record:
             current_app.logger.info("send_message: voice message, queueing task with transcribed text")
             request_data = {
@@ -270,6 +270,7 @@ def send_message():
             return jsonify({
                 'status': 'queued',
                 'transcribed_text': transcribed_text,
+                'transcribed_message_id': transcribed_message_id,
                 'session_id': session_id,
                 'request_id': request_id,
                 'position': position_info['position'],
@@ -281,6 +282,7 @@ def send_message():
             return jsonify({
                 'status': 'success',
                 'transcribed_text': transcribed_text,
+                'transcribed_message_id': transcribed_message_id,
                 'session_id': session_id,
                 'response_time': transcribe_time,
                 'message': _('Audio transcribed')
@@ -312,7 +314,8 @@ def send_message():
         'request_id': request_id,
         'position': position_info['position'],
         'estimated_wait': position_info['estimated_seconds'],
-        'message': _('Request queued (position {pos})').format(pos=position_info['position'])
+        'message': _('Request queued (position {pos})').format(pos=position_info['position']),
+        'user_message_id': user_message_id  # include user message ID
     }
     if resize_notice:
         response_data['resize_notice'] = resize_notice

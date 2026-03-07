@@ -134,6 +134,9 @@ def get_session_messages(session_id, since=None):
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
         if since:
+            # Convert ISO timestamp to DB format if necessary
+            if 'T' in since:
+                since = since.replace('T', ' ')[:19]
             c.execute('''
                 SELECT id, role, content, file_data, file_type, file_name,
                     timestamp, model_name, response_time, mm_time, gen_time,

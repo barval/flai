@@ -289,15 +289,43 @@ async function sendMessage() {
                         new Date().toISOString(), 0, 'system');
                 }
 
+                // Assign message ID to the user message if we have it
+                if (data.user_message_id) {
+                    // Find the last user message (the one we just added) by timestamp
+                    const userMessages = document.querySelectorAll('.user-message');
+                    const lastUserMsg = userMessages[userMessages.length - 1];
+                    if (lastUserMsg && lastUserMsg.dataset.timestamp === timestamp) {
+                        lastUserMsg.dataset.messageId = data.user_message_id;
+                        displayedMessageIds.add(data.user_message_id);
+                    }
+                }
+
                 if (data.transcribed_text) {
                     if (data.session_id && data.session_id === currentSessionId) {
-                        originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,
+                        const assistantMsgId = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,
                             new Date().toISOString(), data.response_time, 'whisper');
+                        // If we have an ID from server, update the message
+                        if (data.transcribed_message_id) {
+                            const assistantMessages = document.querySelectorAll('.assistant-message');
+                            const lastAssistant = assistantMessages[assistantMessages.length - 1];
+                            if (lastAssistant) {
+                                lastAssistant.dataset.messageId = data.transcribed_message_id;
+                                displayedMessageIds.add(data.transcribed_message_id);
+                            }
+                        }
                     } else if (data.session_id) {
                         setNewMessageIndicator(data.session_id, true);
                     } else {
-                        originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,
+                        const assistantMsgId = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,
                             new Date().toISOString(), data.response_time, 'whisper');
+                        if (data.transcribed_message_id) {
+                            const assistantMessages = document.querySelectorAll('.assistant-message');
+                            const lastAssistant = assistantMessages[assistantMessages.length - 1];
+                            if (lastAssistant) {
+                                lastAssistant.dataset.messageId = data.transcribed_message_id;
+                                displayedMessageIds.add(data.transcribed_message_id);
+                            }
+                        }
                     }
                     if (!data.request_id) return;
                 }

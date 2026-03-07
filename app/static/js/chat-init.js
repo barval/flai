@@ -423,12 +423,19 @@ async function sendMessage() {
 
 // Override global functions with wrappers that call the originals
 window.loadMessages = function(sessionId) {
+    console.log('loadMessages called for session', sessionId);
     stopMessagePolling(); // Stop any existing polling before loading
-    return originalLoadMessages(sessionId).then(() => {
-        if (window.IS_RELOADING) return;
-        setTimeout(addCopyButtonsToAllCodeBlocks, 100);
-        startMessagePolling(); // Start polling after messages are loaded
-    });
+    return originalLoadMessages(sessionId)
+        .then(() => {
+            console.log('loadMessages completed for session', sessionId);
+            if (window.IS_RELOADING) return;
+            setTimeout(addCopyButtonsToAllCodeBlocks, 100);
+            startMessagePolling(); // Start polling after messages are loaded
+        })
+        .catch(err => {
+            console.error('Error in loadMessages:', err);
+            // Optionally show a user-friendly message
+        });
 };
 
 window.displayMessage = function(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId) {

@@ -9,11 +9,19 @@ function updateMessageCount() {
 
 function loadMessages(sessionId) {
     if (window.IS_RELOADING) return Promise.resolve();
+    console.log('originalLoadMessages: loading messages for session', sessionId);
     displayedMessageIds.clear(); // Clear IDs for the new session
     return fetch('/api/sessions/' + sessionId + '/messages')
-    .then(res => res.json())
+    .then(res => {
+        if (!res.ok) {
+            console.error('Failed to load messages:', res.status);
+            throw new Error('HTTP error ' + res.status);
+        }
+        return res.json();
+    })
     .then(messages => {
         if (window.IS_RELOADING) return;
+        console.log('Received messages:', messages.length);
         const container = document.getElementById('chat-messages');
         container.innerHTML = '';
         fetch('/api/sessions/' + sessionId + '/model-info')
@@ -25,67 +33,75 @@ function loadMessages(sessionId) {
         .catch(err => console.error('Error loading model info:', err));
         let lastUserMessage = null;
         messages.forEach((msg) => {
-            if (msg.role === 'user') {
-                lastUserMessage = msg;
-                displayMessage(
-                    msg.role,
-                    msg.content,
-                    msg.file_data,
-                    msg.file_type,
-                    msg.file_name,
-                    msg.timestamp,
-                    null, null, null, null, null, null,
-                    msg.id  // передаём ID
-                );
-            } else if (msg.role === 'assistant') {
-                let responseTime = null;
-                if (lastUserMessage) {
-                    const userTime = new Date(lastUserMessage.timestamp);
-                    const assistantTime = new Date(msg.timestamp);
-                    const diffSeconds = (assistantTime - userTime) / 1000;
-                    responseTime = Math.round(diffSeconds * 10) / 10;
-                }
-                if (msg.response_time) {
-                    if (typeof msg.response_time === 'object') {
-                        responseTime = msg.response_time;
-                    } else if (!isNaN(parseFloat(msg.response_time))) {
-                        responseTime = parseFloat(msg.response_time);
+            try {
+                if (msg.role === 'user') {
+                    lastUserMessage = msg;
+                    displayMessage(
+                        msg.role,
+                        msg.content,
+                        msg.file_data,
+                        msg.file_type,
+                        msg.file_name,
+                        msg.timestamp,
+                        null, null, null, null, null, null,
+                        msg.id  // передаём ID
+                    );
+                } else if (msg.role === 'assistant') {
+                    let responseTime = null;
+                    if (lastUserMessage) {
+                        const userTime = new Date(lastUserMessage.timestamp);
+                        const assistantTime = new Date(msg.timestamp);
+                        const diffSeconds = (assistantTime - userTime) / 1000;
+                        responseTime = Math.round(diffSeconds * 10) / 10;
                     }
+                    if (msg.response_time) {
+                        if (typeof msg.response_time === 'object') {
+                            responseTime = msg.response_time;
+                        } else if (!isNaN(parseFloat(msg.response_time))) {
+                            responseTime = parseFloat(msg.response_time);
+                        }
+                    }
+                    let mmTime = msg.mm_time;
+                    let genTime = msg.gen_time;
+                    let mmModel = msg.mm_model;
+                    let genModel = msg.gen_model;
+                    if (mmTime && genTime) {
+                        responseTime = {
+                            mm_time: parseFloat(mmTime),
+                            gen_time: parseFloat(genTime),
+                            mm_model: mmModel || 'unknown',
+                            gen_model: genModel || 'unknown'
+                        };
+                    }
+                    displayMessage(
+                        msg.role,
+                        msg.content,
+                        msg.file_data,
+                        msg.file_type,
+                        msg.file_name,
+                        msg.timestamp,
+                        responseTime,
+                        msg.model_name || defaultModelName,
+                        mmTime,
+                        genTime,
+                        mmModel,
+                        genModel,
+                        msg.id  // передаём ID
+                    );
+                    lastUserMessage = null;
                 }
-                let mmTime = msg.mm_time;
-                let genTime = msg.gen_time;
-                let mmModel = msg.mm_model;
-                let genModel = msg.gen_model;
-                if (mmTime && genTime) {
-                    responseTime = {
-                        mm_time: parseFloat(mmTime),
-                        gen_time: parseFloat(genTime),
-                        mm_model: mmModel || 'unknown',
-                        gen_model: genModel || 'unknown'
-                    };
-                }
-                displayMessage(
-                    msg.role,
-                    msg.content,
-                    msg.file_data,
-                    msg.file_type,
-                    msg.file_name,
-                    msg.timestamp,
-                    responseTime,
-                    msg.model_name || defaultModelName,
-                    mmTime,
-                    genTime,
-                    mmModel,
-                    genModel,
-                    msg.id  // передаём ID
-                );
-                lastUserMessage = null;
+            } catch (e) {
+                console.error('Error displaying message', msg, e);
             }
         });
         updateMessageCount();
         container.scrollTop = container.scrollHeight;
         setNewMessageIndicator(sessionId, false);
         updateLastVisit(sessionId);
+    })
+    .catch(err => {
+        console.error('Error in originalLoadMessages:', err);
+        throw err; // rethrow to propagate to caller
     });
 }
 

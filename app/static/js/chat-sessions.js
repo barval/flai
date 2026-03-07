@@ -233,7 +233,9 @@ function switchSession(sessionId) {
     .then(res => res.json())
     .then(() => {
         currentSessionId = sessionId;
-        loadMessages(sessionId);
+        loadMessages(sessionId).catch(err => {
+            console.error('Error loading messages in switchSession:', err);
+        });
         document.querySelectorAll('.session-item').forEach(el => {
             if (el.dataset.sessionId === sessionId) {
                 el.classList.add('active');

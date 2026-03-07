@@ -76,17 +76,18 @@
     border-color: #444;
 }
 
+/* ===== MESSAGES – improved contrast ===== */
 .dark-theme .user-message {
     background-color: #2c3e50;
     border-color: #1e2b38;
-    color: #ecf0f1;
+    color: #ffffff; /* increased contrast */
 }
 
 .dark-theme .assistant-message,
 .dark-theme .bot-message {
     background-color: #3a3a3a;
     border-color: #555;
-    color: #ecf0f1;
+    color: #ffffff; /* increased contrast */
 }
 
 .dark-theme .message-header {
@@ -201,31 +202,31 @@
     color: white;
 }
 
-/* Dark theme styles for headings */
+/* Dark theme styles for headings – ensure consistency */
 .dark-theme .message-content h1,
 .dark-theme .message-content h2,
 .dark-theme .message-content h3,
 .dark-theme .message-content h4,
 .dark-theme .message-content h5,
 .dark-theme .message-content h6 {
-    color: #ecf0f1;
+    color: #ffffff; /* match main text color */
     border-bottom-color: #444;
 }
 
-/* Dark theme styles for tables */
+/* Dark theme styles for tables – improve contrast */
 .dark-theme .message-content table {
     border-color: #555;
 }
 
 .dark-theme .message-content th {
     background-color: #2c3e50;
-    color: #ecf0f1;
+    color: #ffffff; /* increased contrast */
     border-color: #555;
 }
 
 .dark-theme .message-content td {
     border-color: #555;
-    color: #e0e0e0;
+    color: #ffffff; /* increased contrast */
 }
 
 /* Dark theme hover for copy message button */

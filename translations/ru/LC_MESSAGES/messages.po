@@ -226,6 +226,9 @@ msgstr "База чатов"
 msgid "User DB"
 msgstr "База пользователей"
 
+msgid "Files DB"
+msgstr "База файлов"
+
 msgid "Status"
 msgstr "Статус"
 
@@ -240,6 +243,9 @@ msgstr "Сеансов"
 
 msgid "Messages"
 msgstr "Сообщений"
+
+msgid "Files"
+msgstr "Файлов"
 
 msgid "Camera access"
 msgstr "Доступ к камерам"

@@ -1,4 +1,4 @@
-// static/js/chat-init.js
+// app/static/js/chat-init.js
 // Main chat initialization and send message logic
 
 // Save references to original functions from chat-messages.js
@@ -104,6 +104,7 @@ async function pollNewMessages() {
                     msg.file_data,
                     msg.file_type,
                     msg.file_name,
+                    msg.file_path,  // new argument
                     msg.timestamp,
                     responseTime,
                     msg.model_name,
@@ -147,7 +148,7 @@ function startResultPolling(requestId) {
                     const resultSessionId = data.result.session_id || pendingRequests[requestId]?.sessionId;
                     if (data.result.error) {
                         if (resultSessionId === currentSessionId) {
-                            originalDisplayMessage('assistant', '⚠️ ' + data.result.error, null, null, null,
+                            originalDisplayMessage('assistant', '⚠️ ' + data.result.error, null, null, null, null,
                                 data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'system',
                                 null, null, null, null, null);
                             delete stableSessionStatus[resultSessionId];
@@ -162,7 +163,7 @@ function startResultPolling(requestId) {
                                 console.log('Skipping duplicate camera message by ID', msg.message_id);
                                 continue;
                             }
-                            originalDisplayMessage('assistant', msg.response, msg.generated_image, msg.file_type, msg.file_name,
+                            originalDisplayMessage('assistant', msg.response, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                                 msg.assistant_timestamp, msg.response_time, msg.model_used,
                                 null, null, null, null, msg.message_id);
                         }
@@ -182,8 +183,8 @@ function startResultPolling(requestId) {
                                 try { responseTime = JSON.parse(responseTime); } catch (e) {}
                             }
                             if (resultSessionId === currentSessionId) {
-                                originalDisplayMessage('assistant', data.result.response, data.result.generated_image,
-                                    data.result.file_type, data.result.file_name,
+                                originalDisplayMessage('assistant', data.result.response, data.result.file_data,
+                                    data.result.file_type, data.result.file_name, data.result.file_path,
                                     data.result.assistant_timestamp || new Date().toISOString(), responseTime, modelUsed,
                                     null, null, null, null, data.result.message_id);
                                 delete stableSessionStatus[resultSessionId];
@@ -204,7 +205,7 @@ function startResultPolling(requestId) {
                 clearInterval(pollInterval);
                 const resultSessionId = data.result?.session_id || pendingRequests[requestId]?.sessionId;
                 if (resultSessionId === currentSessionId) {
-                    originalDisplayMessage('assistant', '⚠️ ' + t('error') + ': ' + (data.error || t('unknown_error')), null, null, null,
+                    originalDisplayMessage('assistant', '⚠️ ' + t('error') + ': ' + (data.error || t('unknown_error')), null, null, null, null,
                         data.result?.assistant_timestamp || new Date().toISOString(), data.result?.response_time, 'system',
                         null, null, null, null, null);
                     delete stableSessionStatus[resultSessionId];
@@ -221,7 +222,7 @@ function startResultPolling(requestId) {
             if (pollCount >= maxPolls) {
                 clearInterval(pollInterval);
                 originalDisplayMessage('assistant', '⚠️ ' + t('request_timeout'),
-                    null, null, null, new Date().toISOString(), null, 'system',
+                    null, null, null, null, new Date().toISOString(), null, 'system',
                     null, null, null, null, null);
                 delete stableSessionStatus[currentSessionId];
                 delete pendingRequests[requestId];
@@ -276,19 +277,19 @@ async function sendMessage() {
         const userContent = [];
         if (text) userContent.push({"type": "text", "text": text});
 
-        let fileData = null, fileType = null, fileName = null;
+        let fileData = null, fileType = null, fileName = null, filePath = null;
         const tempAttachedFile = attachedFile;
         const tempText = text;
 
-        const displayUserMessage = (fileData, fileType, fileName) => {
+        const displayUserMessage = (fileData, fileType, fileName, filePath) => {
             if (window.IS_RELOADING) return;
-            if (fileData) {
+            if (fileData || filePath) {
                 let type = "file";
                 if (fileType && fileType.startsWith('image/')) type = "image";
                 else if (fileType && fileType.startsWith('audio/')) type = "audio";
-                userContent.push({ "type": type, "file_data": fileData, "file_type": fileType, "file_name": fileName });
+                userContent.push({ "type": type, "file_data": fileData, "file_type": fileType, "file_name": fileName, "file_path": filePath });
             }
-            const msgElement = originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, timestamp);
+            const msgElement = originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, filePath, timestamp);
             // Add temporary ID to prevent duplication during polling before real ID arrives
             const tempId = `temp-${timestamp}`;
             displayedMessageIds.add(tempId);
@@ -328,7 +329,7 @@ async function sendMessage() {
 
                 // Handle image resize notification
                 if (data.resize_notice) {
-                    originalDisplayMessage('assistant', data.resize_notice, null, null, null,
+                    originalDisplayMessage('assistant', data.resize_notice, null, null, null, null,
                         new Date().toISOString(), 0, 'system');
                 }
 
@@ -350,7 +351,7 @@ async function sendMessage() {
 
                 if (data.transcribed_text) {
                     if (data.session_id && data.session_id === currentSessionId) {
-                        const assistantMsgId = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,
+                        const assistantMsgId = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null, null,
                             new Date().toISOString(), data.response_time, 'whisper');
                         // If we have an ID from server, update the message
                         if (data.transcribed_message_id) {
@@ -364,7 +365,7 @@ async function sendMessage() {
                     } else if (data.session_id) {
                         setNewMessageIndicator(data.session_id, true);
                     } else {
-                        const assistantMsgId = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null,
+                        const assistantMsgId = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null, null,
                             new Date().toISOString(), data.response_time, 'whisper');
                         if (data.transcribed_message_id) {
                             const assistantMessages = document.querySelectorAll('.assistant-message');
@@ -382,7 +383,7 @@ async function sendMessage() {
                     window.updateStatusCounter();
                     startResultPolling(data.request_id);
                 } else if (data.response) {
-                    originalDisplayMessage('assistant', data.response, data.generated_image, data.file_type, data.file_name,
+                    originalDisplayMessage('assistant', data.response, data.file_data, data.file_type, data.file_name, data.file_path,
                         data.assistant_timestamp, data.response_time, data.model_used);
                 }
             } catch (err) {
@@ -402,7 +403,7 @@ async function sendMessage() {
                     fileData = e.target.result.split(',')[1];
                     fileType = tempAttachedFile.type;
                     fileName = tempAttachedFile.name;
-                    displayUserMessage(fileData, fileType, fileName);
+                    displayUserMessage(fileData, fileType, fileName, null); // filePath not known yet
                     // Start sending without awaiting, so button can be re-enabled immediately
                     sendToServer().catch(err => {
                         console.error('Error in sendToServer:', err);
@@ -421,7 +422,7 @@ async function sendMessage() {
             reader.readAsDataURL(tempAttachedFile);
         } else {
             try {
-                displayUserMessage(null, null, null);
+                displayUserMessage(null, null, null, null);
                 // Start sending without awaiting
                 sendToServer().catch(err => {
                     console.error('Error in sendToServer:', err);
@@ -474,9 +475,9 @@ window.loadMessages = function(sessionId) {
         });
 };
 
-window.displayMessage = function(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId) {
+window.displayMessage = function(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId) {
     if (window.IS_RELOADING) return;
-    const result = originalDisplayMessage(role, content, fileData, fileType, fileName, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId);
+    const result = originalDisplayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId);
     const messages = document.getElementById('chat-messages');
     if (messages) {
         const lastMessage = messages.lastElementChild;

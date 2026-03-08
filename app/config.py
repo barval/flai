@@ -1,3 +1,4 @@
+# app/config.py
 import os
 from dotenv import load_dotenv
 import pytz
@@ -69,6 +70,10 @@ def load_config(app):
 
     # Debug translations
     app.config['DEBUG_TRANSLATIONS'] = os.getenv('DEBUG_TRANSLATIONS', 'false').lower() == 'true'
+    
+    # Upload folder for images and files
+    app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', 'data/uploads')
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     
     # Timezone setup
     if app.config['TIMEZONE_STR']:

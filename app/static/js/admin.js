@@ -1,6 +1,5 @@
 // static/js/admin.js
 // Admin panel JavaScript - handles user management and translations
-
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Admin page loaded');
     loadUsers();
@@ -89,6 +88,10 @@ function loadUsers() {
             const messagesCell = document.createElement('td');
             messagesCell.textContent = user.messages_count;
             row.appendChild(messagesCell);
+            // Files count cell (NEW)
+            const filesCell = document.createElement('td');
+            filesCell.textContent = user.files_count || 0;
+            row.appendChild(filesCell);
             // Camera access cell with checkboxes
             if (window.ROOMS && Object.keys(window.ROOMS).length > 0) {
                 const camCell = document.createElement('td');
@@ -271,7 +274,7 @@ function setupModals() {
 
 // Refresh database sizes and reload user table
 function refreshStats() {
-    // Reload users table to update session/message counts
+    // Reload users table to update session/message/files counts
     loadUsers();
     // Fetch current database sizes
     fetch('/admin/api/stats')
@@ -284,8 +287,10 @@ function refreshStats() {
         // Convert bytes to MB with two decimal places
         const chatMb = (data.chat_db_size / (1024 * 1024)).toFixed(2);
         const userMb = (data.user_db_size / (1024 * 1024)).toFixed(2);
+        const filesMb = (data.files_db_size / (1024 * 1024)).toFixed(2);
         document.getElementById('chat-db-size').textContent = chatMb;
         document.getElementById('user-db-size').textContent = userMb;
+        document.getElementById('files-db-size').textContent = filesMb;
     })
     .catch(err => console.error('Error fetching stats:', err));
 }

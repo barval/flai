@@ -225,6 +225,9 @@ msgstr "Chat DB"
 msgid "User DB"
 msgstr "User DB"
 
+msgid "Files DB"
+msgstr "Files DB"
+
 msgid "Status"
 msgstr "Status"
 
@@ -239,6 +242,9 @@ msgstr "Sessions"
 
 msgid "Messages"
 msgstr "Messages"
+
+msgid "Files"
+msgstr "Files"
 
 msgid "Camera access"
 msgstr "Camera access"

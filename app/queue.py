@@ -6,7 +6,7 @@ import uuid
 import time
 import threading
 import sqlite3
-from .utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db
+from .utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, save_uploaded_file
 from .db import save_message, CHAT_DB_PATH
 
 class RedisRequestQueue:
@@ -185,10 +185,24 @@ class RedisRequestQueue:
                             # Get template and substitute query
                             template = self.app.modules['base']._('Image generated from request: {query}', lang=lang)
                             message_text = template.format(query=query)
+                            
+                            # Save image to disk instead of storing base64 in DB
+                            file_path = None
+                            if image_result.get('image_data'):
+                                file_path = save_uploaded_file(
+                                    file_data=image_result['image_data'],
+                                    filename=image_result['file_name'],
+                                    session_id=session_id,
+                                    upload_folder=self.app.config['UPLOAD_FOLDER']
+                                )
+                            
                             msg_id = save_message(
                                 session_id, 'assistant', message_text,
-                                image_result['image_data'], image_result['file_type'],
-                                image_result['file_name'], self.app.config['AUTOMATIC1111_MODEL'],
+                                file_data=None,  # Do not store base64
+                                file_type=image_result['file_type'],
+                                file_name=image_result['file_name'],
+                                file_path=file_path,
+                                model_name=self.app.config['AUTOMATIC1111_MODEL'],
                                 response_time={'mm_time': mm_time, 'gen_time': gen_time},
                                 mm_time=str(mm_time), gen_time=str(gen_time),
                                 mm_model=self.app.config['LLM_MULTIMODAL_MODEL'],
@@ -199,7 +213,7 @@ class RedisRequestQueue:
                                 'session_id': session_id,
                                 'model_used': self.app.config['AUTOMATIC1111_MODEL'],
                                 'assistant_timestamp': completion_time_for_db,
-                                'generated_image': image_result['image_data'],
+                                'file_path': file_path,
                                 'file_name': image_result['file_name'],
                                 'file_size': image_result['file_size'],
                                 'file_type': image_result['file_type'],
@@ -235,11 +249,24 @@ class RedisRequestQueue:
                         template = self.app.modules['base']._('Camera snapshot: {room_name}', lang=lang)
                         translated_text = template.format(room_name=camera_result['room_name'])
 
+                        # Save image to disk
+                        file_path = None
+                        if camera_result.get('image_data'):
+                            file_path = save_uploaded_file(
+                                file_data=camera_result['image_data'],
+                                filename=camera_result['file_name'],
+                                session_id=session_id,
+                                upload_folder=self.app.config['UPLOAD_FOLDER']
+                            )
+
                         msg_id = save_message(
                             session_id, 'assistant',
                             translated_text,
-                            camera_result['image_data'], camera_result['image_type'],
-                            camera_result['file_name'], camera_model,
+                            file_data=None,
+                            file_type=camera_result['image_type'],
+                            file_name=camera_result['file_name'],
+                            file_path=file_path,
+                            model_name=camera_model,
                             response_time=str(camera_time)
                         )
                         first_message = {
@@ -247,7 +274,7 @@ class RedisRequestQueue:
                             'session_id': session_id,
                             'model_used': camera_model,
                             'assistant_timestamp': completion_time_for_db,
-                            'generated_image': camera_result['image_data'],
+                            'file_path': file_path,
                             'file_name': camera_result['file_name'],
                             'file_size': camera_result['file_size'],
                             'file_type': camera_result['image_type'],

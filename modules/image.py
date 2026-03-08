@@ -1,4 +1,5 @@
 # modules/image.py
+# modules/image.py
 import logging
 import requests
 import base64

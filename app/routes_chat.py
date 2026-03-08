@@ -6,10 +6,11 @@ import json
 import base64
 import time
 import mimetypes
+import os
 from flask import Blueprint, render_template, request, session, jsonify, current_app, redirect, url_for
 from flask_babel import gettext as _, gettext, force_locale
 from . import db
-from .utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, format_prompt, resize_image_if_needed
+from .utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, format_prompt, resize_image_if_needed, save_uploaded_file
 
 bp = Blueprint('chat', __name__)
 
@@ -111,7 +112,12 @@ def api_update_session_title(session_id):
 def api_delete_session(session_id):
     if 'login' not in session:
         return jsonify({'error': _('Not authorized')}), 401
-    success = db.delete_session_and_messages(session_id, session['login'])
+    # Pass upload_folder to delete files correctly
+    success = db.delete_session_and_messages(
+        session_id,
+        session['login'],
+        upload_folder=current_app.config['UPLOAD_FOLDER']
+    )
     if not success:
         return jsonify({'error': _('Permission denied or session not found')}), 403
     if session.get('current_session') == session_id:
@@ -191,6 +197,7 @@ def send_message():
 
     # --- Image resize handling ---
     resize_notice = None
+    file_path = None
     if request_type == 'image':
         max_width = current_app.config.get('MAX_IMAGE_WIDTH', 3840)
         max_height = current_app.config.get('MAX_IMAGE_HEIGHT', 2160)
@@ -212,6 +219,18 @@ def send_message():
             file_data = new_file_data
             file_type = new_file_type
             file_name = new_file_name
+
+        # Save the uploaded image to disk
+        file_path = save_uploaded_file(
+            file_data=file_data,
+            filename=file_name,
+            session_id=session_id,
+            upload_folder=current_app.config['UPLOAD_FOLDER']
+        )
+        # After saving, we can set file_data to None to avoid storing base64 in the message JSON
+        # But we still need file_data for the user message content (which is JSON with file_data)
+        # So we'll keep file_data for now. The user message will store base64, but that's only one message.
+        # TODO: Consider also saving user-uploaded files and storing path.
     # --- End image resize handling ---
 
     user_content = []
@@ -226,6 +245,8 @@ def send_message():
             content_type = "file"
         user_content.append({"type": content_type, "file_data": file_data, "file_type": file_type, "file_name": file_name})
     user_content_json = json.dumps(user_content, ensure_ascii=False)
+    
+    # For user messages, we still store file_data in the JSON content. That's okay because user messages are few.
     user_message_id = db.save_message(session_id, 'user', user_content_json, file_data, file_type, file_name, None)
 
     with sqlite3.connect(db.CHAT_DB_PATH) as conn:

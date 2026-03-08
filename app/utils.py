@@ -1,3 +1,4 @@
+# app/utils.py
 from flask import current_app
 import pytz
 from datetime import datetime
@@ -5,6 +6,7 @@ import os
 import base64
 from io import BytesIO
 from PIL import Image
+import uuid
 
 def get_current_time_in_timezone(app=None):
     """Returns current time in configured timezone in readable format."""
@@ -132,3 +134,40 @@ def resize_image_if_needed(file_data, file_type, file_name, max_width, max_heigh
         current_app.logger.error(f"Error resizing image: {str(e)}")
         # Return original data on error
         return file_data, file_type, file_name, False, None, None
+
+def save_uploaded_file(file_data, filename, session_id, upload_folder):
+    """
+    Save a base64 encoded file to disk.
+    Returns the relative path to the saved file (session_id/unique_filename) for use in URLs.
+    """
+    if not file_data:
+        return None
+    # Decode base64
+    try:
+        file_bytes = base64.b64decode(file_data)
+    except Exception as e:
+        current_app.logger.error(f"Failed to decode base64 file data: {e}")
+        return None
+
+    # Create session subfolder
+    session_folder = os.path.join(upload_folder, session_id)
+    os.makedirs(session_folder, exist_ok=True)
+
+    # Generate unique filename
+    ext = os.path.splitext(filename)[1] if filename else '.bin'
+    if not ext:
+        ext = '.bin'
+    unique_name = f"{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(session_folder, unique_name)
+
+    # Write file
+    try:
+        with open(file_path, 'wb') as f:
+            f.write(file_bytes)
+        current_app.logger.info(f"Saved uploaded file to {file_path}")
+        # Return relative path
+        relative_path = os.path.join(session_id, unique_name)
+        return relative_path
+    except Exception as e:
+        current_app.logger.error(f"Failed to save file {file_path}: {e}")
+        return None

@@ -3,8 +3,10 @@
 
 let recordTimerInterval = null;
 let recordSeconds = 0;
+let isRecordingLocked = false;  // Prevent double start/stop
 
 async function toggleVoiceRecording() {
+    if (isRecordingLocked) return;
     if (isRecording) {
         await stopRecording();
     } else {
@@ -13,12 +15,17 @@ async function toggleVoiceRecording() {
 }
 
 async function startRecording() {
+    if (isRecordingLocked) return;
+    isRecordingLocked = true;
+
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         alert(t('browser_no_audio_support'));
+        isRecordingLocked = false;
         return;
     }
     if (!window.isSecureContext) {
         alert(t('secure_context_required'));
+        isRecordingLocked = false;
         return;
     }
     try {
@@ -57,18 +64,22 @@ async function startRecording() {
             recordSeconds++;
             const timerSpan = sendButton.querySelector('.record-timer');
             if (timerSpan) {
-                // Use translated seconds suffix
-                const secondsSuffix = t('seconds_suffix');   // <-- replaced hardcoded check
+                const secondsSuffix = t('seconds_suffix');
                 timerSpan.textContent = recordSeconds + secondsSuffix;
             }
         }, 1000);
     } catch (err) {
         console.error('Error accessing microphone:', err);
         alert(t('microphone_access_denied'));
+    } finally {
+        isRecordingLocked = false;
     }
 }
 
 async function stopRecording() {
+    if (isRecordingLocked) return;
+    isRecordingLocked = true;
+
     if (mediaRecorder && isRecording) {
         mediaRecorder.stop();
         isRecording = false;
@@ -89,6 +100,7 @@ async function stopRecording() {
         sendButton.innerHTML = t('send');
         sendButton.classList.remove('recording-mode');
     }
+    isRecordingLocked = false;
 }
 
 async function sendVoiceMessage(blob) {

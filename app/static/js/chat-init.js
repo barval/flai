@@ -63,8 +63,11 @@ async function pollNewMessages() {
         }
         const newMessages = await response.json();
         if (newMessages.length > 0) {
-            // Display each new message
+            // Display each new message, but skip user messages (they are already shown)
             for (const msg of newMessages) {
+                // Ignore user messages – they are already displayed immediately after sending
+                if (msg.role === 'user') continue;
+
                 // Skip if already displayed by ID
                 if (displayedMessageIds.has(msg.id)) {
                     console.log('Skipping duplicate message by ID', msg.id);
@@ -231,6 +234,12 @@ function startResultPolling(requestId) {
 }
 
 async function sendMessage() {
+    // Prevent double sending
+    if (isSending) {
+        console.log('sendMessage already in progress, ignoring');
+        return;
+    }
+
     const input = document.getElementById('message-input');
     const text = input.value.trim();
     if (!text && !attachedFile) {
@@ -239,7 +248,7 @@ async function sendMessage() {
     }
 
     const sendButton = document.getElementById('send-button');
-    // Disable button only to prevent double-click during preparation
+    isSending = true;
     sendButton.disabled = true;
     sendButton.innerHTML = '⏳ ' + t('sending');
 
@@ -279,7 +288,13 @@ async function sendMessage() {
                 else if (fileType && fileType.startsWith('audio/')) type = "audio";
                 userContent.push({ "type": type, "file_data": fileData, "file_type": fileType, "file_name": fileName });
             }
-            originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, timestamp);
+            const msgElement = originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, timestamp);
+            // Add temporary ID to prevent duplication during polling before real ID arrives
+            const tempId = `temp-${timestamp}`;
+            displayedMessageIds.add(tempId);
+            if (msgElement) {
+                msgElement.dataset.tempId = tempId;
+            }
             input.value = '';
             attachedFile = null;
             document.getElementById('file-preview-container').style.display = 'none';
@@ -296,7 +311,7 @@ async function sendMessage() {
                     formData.append('file', tempAttachedFile);
                     if (isVoiceRecorded) {
                         formData.append('voice_record', 'true');
-                        isVoiceRecorded = false;
+                        isVoiceRecorded = false;  // Reset flag after sending
                     }
                     response = await fetch('/send_message', { method: 'POST', body: formData });
                 } else {
@@ -323,6 +338,11 @@ async function sendMessage() {
                     const userMessages = document.querySelectorAll('.user-message');
                     const lastUserMsg = userMessages[userMessages.length - 1];
                     if (lastUserMsg && lastUserMsg.dataset.timestamp === timestamp) {
+                        // Remove temporary ID if present
+                        if (lastUserMsg.dataset.tempId) {
+                            displayedMessageIds.delete(lastUserMsg.dataset.tempId);
+                            delete lastUserMsg.dataset.tempId;
+                        }
                         lastUserMsg.dataset.messageId = data.user_message_id;
                         displayedMessageIds.add(data.user_message_id);
                     }
@@ -392,9 +412,10 @@ async function sendMessage() {
                     console.error('Error in reader.onload:', err);
                     if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
                 } finally {
-                    // Re-enable send button immediately after starting the send process
+                    // Re-enable send button and reset sending flag
                     sendButton.disabled = false;
                     sendButton.innerHTML = t('send');
+                    isSending = false;
                 }
             };
             reader.readAsDataURL(tempAttachedFile);
@@ -412,6 +433,7 @@ async function sendMessage() {
             } finally {
                 sendButton.disabled = false;
                 sendButton.innerHTML = t('send');
+                isSending = false;
             }
         }
     } catch (err) {
@@ -419,6 +441,7 @@ async function sendMessage() {
         if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
         sendButton.disabled = false;
         sendButton.innerHTML = t('send');
+        isSending = false;
     }
 }
 
@@ -426,16 +449,28 @@ async function sendMessage() {
 window.loadMessages = function(sessionId) {
     console.log('loadMessages called for session', sessionId);
     stopMessagePolling(); // Stop any existing polling before loading
+    // Show loading indicator
+    const statusCounter = document.getElementById('status-counter');
+    if (statusCounter) {
+        statusCounter.innerHTML = '⏳ ' + t('loading');
+    }
     return originalLoadMessages(sessionId)
         .then(() => {
             console.log('loadMessages completed for session', sessionId);
             if (window.IS_RELOADING) return;
             setTimeout(addCopyButtonsToAllCodeBlocks, 100);
             startMessagePolling(); // Start polling after messages are loaded
+            // Hide loading indicator
+            if (statusCounter) {
+                window.updateStatusCounter(); // restore normal counter
+            }
         })
         .catch(err => {
             console.error('Error in loadMessages:', err);
-            // Optionally show a user-friendly message
+            if (statusCounter) {
+                statusCounter.innerHTML = '❌';
+                setTimeout(() => window.updateStatusCounter(), 2000);
+            }
         });
 };
 

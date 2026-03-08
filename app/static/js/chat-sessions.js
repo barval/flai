@@ -251,12 +251,25 @@ function switchSession(sessionId) {
         console.error('switchSession called with empty sessionId');
         return;
     }
+    // Show loading indicator in chat header
+    const statusCounter = document.getElementById('status-counter');
+    if (statusCounter) {
+        statusCounter.innerHTML = '⏳ ' + t('loading');
+    }
     fetch('/api/sessions/' + sessionId + '/switch', { method: 'POST' })
     .then(res => res.json())
     .then(() => {
         currentSessionId = sessionId;
+        // Load messages and hide loading indicator when done
         loadMessages(sessionId).catch(err => {
             console.error('Error loading messages in switchSession:', err);
+            if (statusCounter) {
+                statusCounter.innerHTML = '❌';
+                setTimeout(() => window.updateStatusCounter(), 2000);
+            }
+        }).finally(() => {
+            // Ensure counter is updated after load
+            window.updateStatusCounter();
         });
         document.querySelectorAll('.session-item').forEach(el => {
             if (el.dataset.sessionId === sessionId) {
@@ -267,7 +280,13 @@ function switchSession(sessionId) {
         });
         updateSessionsListFromData();
     })
-    .catch(err => console.error('Error switching session:', err));
+    .catch(err => {
+        console.error('Error switching session:', err);
+        if (statusCounter) {
+            statusCounter.innerHTML = '❌';
+            setTimeout(() => window.updateStatusCounter(), 2000);
+        }
+    });
 }
 
 function updateLastVisit(sessionId) {

@@ -2,7 +2,7 @@
 // Global variables used across chat modules
 
 let currentSessionId = window.initialSessionId;
-let isSending = false;
+let isSending = false;               // Flag to prevent double sending
 let attachedFile = null;
 let pendingRequests = {};
 let defaultModelName = 'qwen3-vl:8b-instruct';

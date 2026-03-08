@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 6.0\n"
+"Project-Id-Version: FLAI 6.8\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-05 12:00+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -447,6 +447,9 @@ msgstr "s"
 
 msgid "The image has been reduced."
 msgstr "The image has been reduced."
+
+msgid "loading"
+msgstr "Loading..."
 
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v6.8 (c) 2026 Valery Barsukov"

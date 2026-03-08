@@ -1,3 +1,5 @@
+/* app/static/css/chat.css */
+
 /* ===== CHAT CONTAINER ===== */
 .chat-container {
     display: flex;
@@ -631,6 +633,15 @@ audio {
 
 /* ===== MEDIA QUERIES FOR CHAT ===== */
 @media (max-width: 768px) {
+    /* Prevent body scrolling on mobile chat */
+    body {
+        overflow: hidden;
+    }
+
+    main {
+        overflow: hidden;
+    }
+
     .chat-container {
         flex-direction: column;
         height: 100%;            /* fill main container */
@@ -659,7 +670,7 @@ audio {
 
     .chat-main {
         width: 100%;
-        padding: 10px;
+        padding: 10px 10px 0 10px;  /* no bottom padding – message input will sit at the very bottom */
         flex: 1;                  /* take remaining space */
         display: flex;
         flex-direction: column;
@@ -677,6 +688,7 @@ audio {
         overflow-y: auto;
         min-height: 0;
         margin-bottom: 0.5rem;    /* reduce margin to save space */
+        padding-bottom: 10px;      /* give some air between last message and input */
     }
 
     /* Remove extra margin from last elements to prevent empty space */

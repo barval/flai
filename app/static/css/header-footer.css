@@ -23,6 +23,13 @@ header {
     }
     body {
         padding-top: 75px; /* Prevent content from hiding under fixed header */
+        overflow: hidden;   /* Prevent page scrolling */
+        height: 100vh;      /* Fix height to viewport */
+        box-sizing: border-box;
+    }
+    main {
+        height: 100%;       /* Take remaining space after padding */
+        overflow: hidden;   /* Inner scrolling will be handled by children */
     }
 }
 

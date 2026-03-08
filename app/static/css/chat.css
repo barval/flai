@@ -29,13 +29,13 @@
     top: 0;
     background-color: #f1f3f6;
     z-index: 10;
-    cursor: pointer; /* Указывает, что заголовок можно нажать */
+    cursor: pointer; /* indicates the header is clickable */
 }
 
 .sessions-header h2 {
     font-size: 1.1rem;
     color: #2c3e50;
-    user-select: none; /* предотвращает выделение текста при двойном клике */
+    user-select: none; /* prevents text selection on double-click */
 }
 
 .new-session-button {
@@ -51,7 +51,7 @@
     align-items: center;
     justify-content: center;
     transition: all 0.3s ease;
-    /* кнопка не должна перехватывать клик от заголовка */
+    /* button should not intercept click from header */
     pointer-events: auto;
 }
 
@@ -66,7 +66,7 @@
     flex: 1;
 }
 
-/* Состояние "свёрнуто" для списка сеансов */
+/* Collapsed state for the session list */
 .sessions-sidebar.collapsed .sessions-list {
     display: none;
 }
@@ -362,18 +362,18 @@
     align-items: center;
     gap: 8px;
     align-self: flex-start;
-    max-width: 100%; /* ограничиваем ширину */
+    max-width: 100%; /* limit width */
     overflow: hidden;
 }
 
 .attached-file a {
     color: #3498db;
     text-decoration: none;
-    word-break: break-word;      /* разрешаем перенос длинных слов */
+    word-break: break-word;      /* allow long words to wrap */
     overflow-wrap: break-word;
-    white-space: normal;         /* разрешаем перенос на новую строку */
-    flex: 1;                     /* занимает доступное пространство */
-    min-width: 0;                /* позволяет сжиматься */
+    white-space: normal;         /* allow wrapping to new line */
+    flex: 1;                     /* take available space */
+    min-width: 0;                /* allow shrinking */
 }
 
 .attached-file a:hover {
@@ -631,18 +631,18 @@ audio {
 @media (max-width: 768px) {
     .chat-container {
         flex-direction: column;
-        height: auto;
+        height: 100%; /* instead of auto – takes full height of parent (main) */
     }
     .sessions-sidebar {
         width: 100%;
-        /* Вместо фиксированной высоты используем max-height */
+        /* Instead of fixed height, use max-height */
         height: auto;
         max-height: 250px;
         overflow-y: auto;
     }
-    /* Когда список свёрнут, высота определяется только заголовком */
+    /* When collapsed, height is determined only by the header */
     .sessions-sidebar.collapsed {
-        max-height: none; /* убираем ограничение, так как список скрыт */
+        max-height: none; /* remove limit because list is hidden */
         height: auto;
     }
     .chat-main {
@@ -675,7 +675,7 @@ audio {
         font-size: 1rem;
         width: 1.1em;
     }
-    /* Улучшение для предпросмотра файлов на мобильных */
+    /* Improved file preview on mobile */
     #file-preview-container div {
         flex-wrap: wrap;
         gap: 8px;

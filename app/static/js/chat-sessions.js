@@ -306,7 +306,7 @@ function initCollapsibleSessions() {
     header.addEventListener('click', toggleSessions);
 
     // Restore state from localStorage
-    const login = window.CURRENT_USER_LOGIN; // need to define this variable
+    const login = window.CURRENT_USER_LOGIN;
     if (login) {
         const collapsed = localStorage.getItem(`sessions_collapsed_${login}`);
         if (collapsed === 'true') {
@@ -331,6 +331,3 @@ function toggleSessions(e) {
         localStorage.setItem(`sessions_collapsed_${login}`, sidebar.classList.contains('collapsed'));
     }
 }
-
-// Make CURRENT_USER_LOGIN available globally (set in base.html or chat.html)
-// We'll add it in chat.html template

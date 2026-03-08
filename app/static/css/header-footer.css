@@ -10,26 +10,11 @@ header {
     align-items: center;
 }
 
-/* Increase header height on mobile devices and make it fixed */
+/* Increase header height on mobile devices and keep it in flow */
 @media (max-width: 768px) {
     header {
-        height: 75px; /* 50% more than original */
+        height: 75px;
         padding: 0.75rem 1rem;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        z-index: 1000;
-    }
-    body {
-        padding-top: 75px; /* Prevent content from hiding under fixed header */
-        overflow: hidden;   /* Prevent page scrolling */
-        height: 100vh;      /* Fix height to viewport */
-        box-sizing: border-box;
-    }
-    main {
-        height: 100%;       /* Take remaining space after padding */
-        overflow: hidden;   /* Inner scrolling will be handled by children */
     }
 }
 

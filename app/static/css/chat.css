@@ -16,7 +16,7 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-    overflow-y: auto;
+    overflow: hidden;          /* changed from auto to hidden, scrolling handled inside list */
 }
 
 .sessions-header {
@@ -25,17 +25,16 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    position: sticky;
-    top: 0;
     background-color: #f1f3f6;
     z-index: 10;
-    cursor: pointer; /* indicates the header is clickable */
+    cursor: pointer;           /* indicates the header is clickable */
+    flex-shrink: 0;            /* prevent header from shrinking */
 }
 
 .sessions-header h2 {
     font-size: 1.1rem;
     color: #2c3e50;
-    user-select: none; /* prevents text selection on double-click */
+    user-select: none;
 }
 
 .new-session-button {
@@ -51,7 +50,6 @@
     align-items: center;
     justify-content: center;
     transition: all 0.3s ease;
-    /* button should not intercept click from header */
     pointer-events: auto;
 }
 
@@ -62,8 +60,8 @@
 
 .sessions-list {
     padding: 0.5rem;
-    overflow-y: auto;
-    flex: 1;
+    overflow-y: auto;           /* scrollable list */
+    flex: 1;                    /* take remaining space */
 }
 
 /* Collapsed state for the session list */
@@ -206,6 +204,7 @@
     flex-direction: column;
     padding: 1rem;
     height: 100%;
+    min-height: 0;               /* important for flex children */
 }
 
 .chat-header {
@@ -214,8 +213,9 @@
     align-items: center;
     padding: 0.5rem 0;
     border-bottom: 1px solid #eee;
-    margin-top: -0.7rem;  /* Align with sessions header (0.8rem padding top of .sessions-header minus extra .chat-main padding) */
+    margin-top: -0.7rem;
     margin-bottom: 1rem;
+    flex-shrink: 0;               /* keep header from shrinking */
 }
 
 .chat-header h2 {
@@ -255,13 +255,14 @@
 }
 
 .chat-messages {
-    flex: 1;
-    overflow-y: auto;
+    flex: 1;                       /* take remaining space */
+    overflow-y: auto;               /* scroll messages */
     padding: 1rem;
     border: 1px solid #eee;
     border-radius: 8px;
     margin-bottom: 1rem;
     background-color: white;
+    min-height: 0;                  /* important for Firefox */
 }
 
 /* ===== MESSAGES ===== */
@@ -362,18 +363,18 @@
     align-items: center;
     gap: 8px;
     align-self: flex-start;
-    max-width: 100%; /* limit width */
+    max-width: 100%;
     overflow: hidden;
 }
 
 .attached-file a {
     color: #3498db;
     text-decoration: none;
-    word-break: break-word;      /* allow long words to wrap */
+    word-break: break-word;
     overflow-wrap: break-word;
-    white-space: normal;         /* allow wrapping to new line */
-    flex: 1;                     /* take available space */
-    min-width: 0;                /* allow shrinking */
+    white-space: normal;
+    flex: 1;
+    min-width: 0;
 }
 
 .attached-file a:hover {
@@ -502,6 +503,7 @@ audio {
     display: flex;
     gap: 0.5rem;
     margin-top: 0.5rem;
+    flex-shrink: 0;              /* keep input at bottom */
 }
 
 .message-input input[type="text"] {
@@ -631,24 +633,47 @@ audio {
 @media (max-width: 768px) {
     .chat-container {
         flex-direction: column;
-        height: 100%; /* instead of auto – takes full height of parent (main) */
+        height: 100%;            /* fill main container */
     }
+
     .sessions-sidebar {
         width: 100%;
-        /* Instead of fixed height, use max-height */
-        height: auto;
-        max-height: 250px;
-        overflow-y: auto;
+        max-height: 250px;        /* limit height, list will scroll */
+        height: auto;             /* allow shrinking when collapsed */
+        flex-shrink: 0;           /* prevent from shrinking below content */
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;         /* scrolling handled inside list */
     }
-    /* When collapsed, height is determined only by the header */
-    .sessions-sidebar.collapsed {
-        max-height: none; /* remove limit because list is hidden */
-        height: auto;
+
+    .sessions-list {
+        overflow-y: auto;         /* scroll sessions */
+        flex: 1;                  /* take remaining height */
     }
+
+    /* When collapsed, hide the list, height becomes header height */
+    .sessions-sidebar.collapsed .sessions-list {
+        display: none;
+    }
+
     .chat-main {
         width: 100%;
         padding: 10px;
+        flex: 1;                  /* take remaining space */
+        display: flex;
+        flex-direction: column;
+        min-height: 0;            /* important for Firefox */
     }
+
+    .chat-header {
+        flex-shrink: 0;
+    }
+
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+    }
+
     .image-container {
         width: 100% !important;
     }

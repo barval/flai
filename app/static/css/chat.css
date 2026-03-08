@@ -665,7 +665,7 @@ audio {
         flex-direction: column;
         min-height: 0;            /* important for Firefox */
         overflow: hidden;         /* contain children, scroll only messages */
-        height: 100%;             /* ensure it fills parent */
+        /* height: 100%; removed — let flex handle it */
     }
 
     .chat-header {
@@ -676,6 +676,18 @@ audio {
         flex: 1 1 0;              /* take remaining space, allow shrinking */
         overflow-y: auto;
         min-height: 0;
+        margin-bottom: 0.5rem;    /* reduce margin to save space */
+    }
+
+    /* Remove extra margin from last elements to prevent empty space */
+    .message-input {
+        margin-top: 0.25rem;      /* minimal top margin */
+        margin-bottom: 0;
+    }
+
+    /* Ensure file preview doesn't add extra space */
+    #file-preview-container {
+        margin: 5px 0;
     }
 
     .image-container {

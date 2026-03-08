@@ -60,9 +60,12 @@ def init_db():
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Create indexes for better performance
+        c.execute('CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_messages_session_timestamp ON messages(session_id, timestamp)')
         conn.commit()
 
-def migrate_db_add_response_fields():
+def migrate_db_add_response_fields(app):
     """Add fields to store response times."""
     try:
         with sqlite3.connect(CHAT_DB_PATH) as conn:
@@ -81,9 +84,9 @@ def migrate_db_add_response_fields():
                 c.execute('ALTER TABLE messages ADD COLUMN gen_model TEXT')
             conn.commit()
     except Exception as e:
-        current_app.logger.error(f"Database migration error: {str(e)}")
+        app.logger.error(f"Database migration error (response fields): {str(e)}")
 
-def migrate_db_add_session_visits():
+def migrate_db_add_session_visits(app):
     """Add table for tracking last visits."""
     try:
         with sqlite3.connect(CHAT_DB_PATH) as conn:
@@ -98,7 +101,19 @@ def migrate_db_add_session_visits():
             ''')
             conn.commit()
     except Exception as e:
-        current_app.logger.error(f"session_visits migration error: {str(e)}")
+        app.logger.error(f"session_visits migration error: {str(e)}")
+
+def migrate_db_add_indexes(app):
+    """Add indexes to messages table for faster session switching."""
+    try:
+        with sqlite3.connect(CHAT_DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute('CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)')
+            c.execute('CREATE INDEX IF NOT EXISTS idx_messages_session_timestamp ON messages(session_id, timestamp)')
+            conn.commit()
+            app.logger.info("Indexes on messages table created/verified.")
+    except Exception as e:
+        app.logger.error(f"Index migration error: {str(e)}")
 
 def get_user_sessions(user_id):
     with sqlite3.connect(CHAT_DB_PATH) as conn:

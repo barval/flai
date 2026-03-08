@@ -1,3 +1,5 @@
+# app/__init__.py
+
 import os
 from flask import Flask, request, session
 from flask_babel import Babel, gettext
@@ -5,7 +7,7 @@ import logging
 from logging import Formatter
 
 from .config import load_config
-from .db import init_db, migrate_db_add_response_fields, migrate_db_add_session_visits
+from .db import init_db, migrate_db_add_response_fields, migrate_db_add_session_visits, migrate_db_add_indexes
 from .queue import RedisRequestQueue
 from .userdb import init_user_db
 from modules import BaseModule, MultimodalModule, ImageModule, CamModule, RagModule, AudioModule
@@ -53,8 +55,9 @@ def create_app():
 
     # Initialize chat DB
     init_db()
-    migrate_db_add_response_fields()
-    migrate_db_add_session_visits()
+    migrate_db_add_response_fields(app)
+    migrate_db_add_session_visits(app)
+    migrate_db_add_indexes(app)  # Add indexes for performance
 
     # Initialize user DB
     init_user_db()

@@ -255,14 +255,14 @@
 }
 
 .chat-messages {
-    flex: 1;                       /* take remaining space */
-    overflow-y: auto;               /* scroll messages */
+    flex: 1 1 0;                 /* take remaining space, allow shrinking */
+    overflow-y: auto;             /* scroll messages */
     padding: 1rem;
     border: 1px solid #eee;
     border-radius: 8px;
     margin-bottom: 1rem;
     background-color: white;
-    min-height: 0;                  /* important for Firefox */
+    min-height: 0;                /* important for Firefox */
 }
 
 /* ===== MESSAGES ===== */
@@ -665,6 +665,7 @@ audio {
         flex-direction: column;
         min-height: 0;            /* important for Firefox */
         overflow: hidden;         /* contain children, scroll only messages */
+        height: 100%;             /* ensure it fills parent */
     }
 
     .chat-header {
@@ -672,8 +673,9 @@ audio {
     }
 
     .chat-messages {
-        flex: 1;
+        flex: 1 1 0;              /* take remaining space, allow shrinking */
         overflow-y: auto;
+        min-height: 0;
     }
 
     .image-container {

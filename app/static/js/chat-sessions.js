@@ -294,3 +294,43 @@ function updateLastVisit(sessionId) {
     fetch(`/api/sessions/${sessionId}/visit`, { method: 'POST' })
     .catch(err => console.error('Error updating last_visit:', err));
 }
+
+// ===== Collapsible sessions for mobile =====
+function initCollapsibleSessions() {
+    const sidebar = document.querySelector('.sessions-sidebar');
+    const header = document.querySelector('.sessions-header');
+    if (!sidebar || !header) return;
+
+    // Remove any existing listener to avoid duplicates
+    header.removeEventListener('click', toggleSessions);
+    header.addEventListener('click', toggleSessions);
+
+    // Restore state from localStorage
+    const login = window.CURRENT_USER_LOGIN; // need to define this variable
+    if (login) {
+        const collapsed = localStorage.getItem(`sessions_collapsed_${login}`);
+        if (collapsed === 'true') {
+            sidebar.classList.add('collapsed');
+        } else {
+            sidebar.classList.remove('collapsed');
+        }
+    }
+}
+
+function toggleSessions(e) {
+    // Prevent toggling when clicking the new session button
+    if (e.target.closest('.new-session-button')) return;
+
+    const sidebar = document.querySelector('.sessions-sidebar');
+    if (!sidebar) return;
+    sidebar.classList.toggle('collapsed');
+
+    // Save state to localStorage
+    const login = window.CURRENT_USER_LOGIN;
+    if (login) {
+        localStorage.setItem(`sessions_collapsed_${login}`, sidebar.classList.contains('collapsed'));
+    }
+}
+
+// Make CURRENT_USER_LOGIN available globally (set in base.html or chat.html)
+// We'll add it in chat.html template

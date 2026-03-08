@@ -54,6 +54,7 @@
 <script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
 <script>
 window.initialSessionId = "{{ current_session }}";
+window.CURRENT_USER_LOGIN = "{{ session.get('login', '') }}"; // for localStorage per user
 // Merge translations with base
 window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'send': {{ _("Send")|tojson }},
@@ -146,4 +147,12 @@ console.log('Chat TRANSLATIONS merged:', window.TRANSLATIONS);
 <script src="{{ url_for('static', filename='js/chat-queue.js') }}"></script>
 <!-- chat-message-polling.js removed, its logic is now in chat-init.js -->
 <script src="{{ url_for('static', filename='js/chat-init.js') }}"></script>
+<script>
+    // Initialize collapsible sessions after DOM is ready
+    document.addEventListener('DOMContentLoaded', function() {
+        if (typeof initCollapsibleSessions === 'function') {
+            initCollapsibleSessions();
+        }
+    });
+</script>
 {% endblock %}

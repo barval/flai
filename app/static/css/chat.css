@@ -29,11 +29,13 @@
     top: 0;
     background-color: #f1f3f6;
     z-index: 10;
+    cursor: pointer; /* Указывает, что заголовок можно нажать */
 }
 
 .sessions-header h2 {
     font-size: 1.1rem;
     color: #2c3e50;
+    user-select: none; /* предотвращает выделение текста при двойном клике */
 }
 
 .new-session-button {
@@ -49,6 +51,8 @@
     align-items: center;
     justify-content: center;
     transition: all 0.3s ease;
+    /* кнопка не должна перехватывать клик от заголовка */
+    pointer-events: auto;
 }
 
 .new-session-button:hover {
@@ -60,6 +64,11 @@
     padding: 0.5rem;
     overflow-y: auto;
     flex: 1;
+}
+
+/* Состояние "свёрнуто" для списка сеансов */
+.sessions-sidebar.collapsed .sessions-list {
+    display: none;
 }
 
 .session-item {
@@ -353,11 +362,18 @@
     align-items: center;
     gap: 8px;
     align-self: flex-start;
+    max-width: 100%; /* ограничиваем ширину */
+    overflow: hidden;
 }
 
 .attached-file a {
     color: #3498db;
     text-decoration: none;
+    word-break: break-word;      /* разрешаем перенос длинных слов */
+    overflow-wrap: break-word;
+    white-space: normal;         /* разрешаем перенос на новую строку */
+    flex: 1;                     /* занимает доступное пространство */
+    min-width: 0;                /* позволяет сжиматься */
 }
 
 .attached-file a:hover {
@@ -439,18 +455,28 @@ audio {
     background: #f5f5f5;
     padding: 8px;
     border-radius: 8px;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 #file-preview-name {
     font-size: 0.9rem;
     color: #2c3e50;
     font-weight: 500;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+    flex: 1;
+    min-width: 0;
+    margin-right: 8px;
 }
 
 #file-preview-size {
     font-size: 0.8rem;
     color: #666;
     margin-left: 5px;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 #remove-file-button {
@@ -465,6 +491,7 @@ audio {
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
 }
 
 #remove-file-button:hover {
@@ -608,7 +635,15 @@ audio {
     }
     .sessions-sidebar {
         width: 100%;
-        height: 250px;
+        /* Вместо фиксированной высоты используем max-height */
+        height: auto;
+        max-height: 250px;
+        overflow-y: auto;
+    }
+    /* Когда список свёрнут, высота определяется только заголовком */
+    .sessions-sidebar.collapsed {
+        max-height: none; /* убираем ограничение, так как список скрыт */
+        height: auto;
     }
     .chat-main {
         width: 100%;
@@ -639,6 +674,21 @@ audio {
     .session-status-icon {
         font-size: 1rem;
         width: 1.1em;
+    }
+    /* Улучшение для предпросмотра файлов на мобильных */
+    #file-preview-container div {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    #file-preview-name {
+        width: 100%;
+        margin-right: 0;
+    }
+    #file-preview-size {
+        margin-left: 0;
+    }
+    .attached-file {
+        flex-wrap: wrap;
     }
 }
 

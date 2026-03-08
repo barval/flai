@@ -10,11 +10,19 @@ header {
     align-items: center;
 }
 
-/* Increase header height on mobile devices */
+/* Increase header height on mobile devices and make it fixed */
 @media (max-width: 768px) {
     header {
         height: 75px; /* 50% more than original */
         padding: 0.75rem 1rem;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        z-index: 1000;
+    }
+    body {
+        padding-top: 75px; /* Prevent content from hiding under fixed header */
     }
 }
 

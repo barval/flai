@@ -8,6 +8,7 @@
 <span>{{ _('User DB') }}: <span id="user-db-size">{{ (user_db_size / (1024*1024))|round(2) }}</span> {{ _('MB') }}</span>
 <span>{{ _('Chat DB') }}: <span id="chat-db-size">{{ (chat_db_size / (1024*1024))|round(2) }}</span> {{ _('MB') }}</span>
 <span>{{ _('Files DB') }}: <span id="files-db-size">{{ (files_db_size / (1024*1024))|round(2) }}</span> {{ _('MB') }}</span>
+<span>{{ _('Documents DB') }}: <span id="documents-db-size">{{ (documents_db_size / (1024*1024))|round(2) }}</span> {{ _('MB') }}</span>
 </div>
 </div>
 <div class="users-table-wrapper">
@@ -22,6 +23,7 @@
 <th>{{ _('Sessions') }}</th>
 <th>{{ _('Messages') }}</th>
 <th>{{ _('Files') }}</th>
+<th>{{ _('Documents') }}</th>
 {% if rooms %}
 <th>{{ _('Camera access') }}</th>
 {% endif %}
@@ -49,7 +51,7 @@
 <input type="password" id="new-password" name="password" required>
 </div>
 <div class="form-group">
-<label for="new-name">{{ _('Name') }}:</label>
+<label for="new-name">{{ _('Name') }}</label>
 <input type="text" id="new-name" name="name" required>
 </div>
 <div class="form-group">
@@ -100,7 +102,6 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
 <script>
 window.ROOMS = {{ rooms|tojson }};
-// Merge translations with base
 window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
 'delete_user_confirm': {{ _('Delete user {login}?')|tojson }},
 'error': {{ _('Error')|tojson }},
@@ -123,6 +124,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
 'sessions': {{ _('Sessions')|tojson }},
 'messages': {{ _('Messages')|tojson }},
 'files': {{ _('Files')|tojson }},
+'documents': {{ _('Documents')|tojson }},
 'camera_access': {{ _('Camera access')|tojson }},
 'actions': {{ _('Actions')|tojson }},
 'active': {{ _('Active')|tojson }},
@@ -138,9 +140,9 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
 'user_db': {{ _('User DB')|tojson }},
 'chat_db': {{ _('Chat DB')|tojson }},
 'files_db': {{ _('Files DB')|tojson }},
+'documents_db': {{ _('Documents DB')|tojson }},
 'mb': {{ _('MB')|tojson }}
 });
-// Debug output if enabled
 {% if config.get('DEBUG_TRANSLATIONS') %}
 console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);
 {% endif %}

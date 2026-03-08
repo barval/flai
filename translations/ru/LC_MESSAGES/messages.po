@@ -16,6 +16,45 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
+msgid "Documents"
+msgstr "Документы"
+
+msgid "New document"
+msgstr "Новый документ"
+
+msgid "Delete document"
+msgstr "Удалить документ"
+
+msgid "Delete document \"{filename}\"?"
+msgstr "Удалить документ \"{filename}\"?"
+
+msgid "Upload document"
+msgstr "Загрузить документ"
+
+msgid "Document uploaded"
+msgstr "Документ загружен"
+
+msgid "Document upload failed"
+msgstr "Ошибка загрузки документа"
+
+msgid "Supported formats: PDF, DOC, DOCX, TXT"
+msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
+
+msgid "No file provided"
+msgstr "Файл не предоставлен"
+
+msgid "No file selected"
+msgstr "Файл не выбран"
+
+msgid "Document not found"
+msgstr "Документ не найден"
+
+msgid "Documents DB"
+msgstr "База документов"
+
+msgid "Documents"
+msgstr "Документов"
+
 msgid "FLAI"
 msgstr "ПЛИИ"
 
@@ -436,7 +475,6 @@ msgstr "Переключить пол голоса"
 msgid "Toggle theme"
 msgstr "Переключить тему"
 
-# File size units
 msgid "byte_abbr"
 msgstr "Б"
 

@@ -1,10 +1,13 @@
 # app/config.py
+# Configuration loader for FLAI application
+
 import os
 from dotenv import load_dotenv
 import pytz
 from pytz.exceptions import UnknownTimeZoneError
 
 load_dotenv()
+
 
 def load_config(app):
     """Load all variables from .env into Flask config."""
@@ -13,8 +16,7 @@ def load_config(app):
         raise ValueError("SECRET_KEY must be set in .env file")
     
     app.config['JSON_AS_ASCII'] = False
-    app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
-    
+    app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
     app.config['TIMEZONE_STR'] = os.getenv('TIMEZONE')
     app.config['OLLAMA_URL'] = os.getenv('OLLAMA_URL')
     app.config['REDIS_URL'] = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
@@ -63,17 +65,21 @@ def load_config(app):
     # Piper TTS settings
     app.config['PIPER_URL'] = os.getenv('PIPER_URL')
     app.config['PIPER_TIMEOUT'] = int(os.getenv('PIPER_TIMEOUT', 30))
-
+    
     # Token estimation settings
     app.config['TOKEN_CHARS'] = int(os.getenv('TOKEN_CHARS', 3))
     app.config['CONTEXT_HISTORY_PERCENT'] = int(os.getenv('CONTEXT_HISTORY_PERCENT', 75))
-
+    
     # Debug translations
     app.config['DEBUG_TRANSLATIONS'] = os.getenv('DEBUG_TRANSLATIONS', 'false').lower() == 'true'
     
     # Upload folder for images and files
     app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER', 'data/uploads')
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    
+    # Documents folder for uploaded documents
+    app.config['DOCUMENTS_FOLDER'] = os.getenv('DOCUMENTS_FOLDER', 'data/documents')
+    os.makedirs(app.config['DOCUMENTS_FOLDER'], exist_ok=True)
     
     # Timezone setup
     if app.config['TIMEZONE_STR']:

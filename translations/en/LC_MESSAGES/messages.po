@@ -15,6 +15,45 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
+msgid "Documents"
+msgstr "Documents"
+
+msgid "New document"
+msgstr "New document"
+
+msgid "Delete document"
+msgstr "Delete document"
+
+msgid "Delete document \"{filename}\"?"
+msgstr "Delete document \"{filename}\"?"
+
+msgid "Upload document"
+msgstr "Upload document"
+
+msgid "Document uploaded"
+msgstr "Document uploaded"
+
+msgid "Document upload failed"
+msgstr "Document upload failed"
+
+msgid "Supported formats: PDF, DOC, DOCX, TXT"
+msgstr "Supported formats: PDF, DOC, DOCX, TXT"
+
+msgid "No file provided"
+msgstr "No file provided"
+
+msgid "No file selected"
+msgstr "No file selected"
+
+msgid "Document not found"
+msgstr "Document not found"
+
+msgid "Documents DB"
+msgstr "Documents DB"
+
+msgid "Documents"
+msgstr "Documents"
+
 msgid "FLAI"
 msgstr "FLAI"
 
@@ -435,7 +474,6 @@ msgstr "Toggle voice gender"
 msgid "Toggle theme"
 msgstr "Toggle theme"
 
-# File size units
 msgid "byte_abbr"
 msgstr "B"
 

@@ -32,7 +32,7 @@ msgid "Upload document"
 msgstr "Загрузить документ"
 
 msgid "Document uploaded"
-msgstr "Документ загружен"
+msgstr "Документ XXX загружен"
 
 msgid "Document upload failed"
 msgstr "Ошибка загрузки документа"
@@ -284,7 +284,7 @@ msgid "Messages"
 msgstr "Сообщений"
 
 msgid "Files"
-msgstr "Файлов"
+msgstr "Файлы"
 
 msgid "Camera access"
 msgstr "Доступ к камерам"

@@ -31,7 +31,7 @@ msgid "Upload document"
 msgstr "Upload document"
 
 msgid "Document uploaded"
-msgstr "Document uploaded"
+msgstr "Document XXX uploaded"
 
 msgid "Document upload failed"
 msgstr "Document upload failed"

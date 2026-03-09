@@ -17,6 +17,7 @@ display: flex;
 flex-direction: column;
 height: 100%;
 overflow: hidden;
+transition: max-height 0.3s ease;
 }
 .sessions-header {
 padding: 0;
@@ -24,6 +25,7 @@ border-bottom: 1px solid #ddd;
 background-color: #f1f3f6;
 z-index: 10;
 flex-shrink: 0;
+cursor: pointer;
 }
 .header-tabs {
 display: flex;
@@ -86,11 +88,15 @@ transform: scale(1.1);
 padding: 0.5rem;
 overflow-y: auto;
 flex: 1;
+transition: all 0.3s ease;
 }
 .documents-list {
 display: none;
 }
 .documents-list.active {
+display: block;
+}
+.sessions-list {
 display: block;
 }
 .sessions-list.active {
@@ -615,14 +621,17 @@ display: flex;
 flex-direction: column;
 overflow: hidden;
 }
+.sessions-sidebar.collapsed {
+max-height: 52px;
+}
+.sessions-sidebar.collapsed .sessions-list,
+.sessions-sidebar.collapsed .documents-list {
+display: none !important;
+}
 .sessions-list,
 .documents-list {
 overflow-y: auto;
 flex: 1;
-}
-.sessions-sidebar.collapsed .sessions-list,
-.sessions-sidebar.collapsed .documents-list {
-display: none;
 }
 .chat-main {
 width: 100%;

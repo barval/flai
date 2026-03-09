@@ -1,65 +1,65 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="chat-container">
-<div class="sessions-sidebar">
-<div class="sessions-header">
-<div class="header-tabs">
-<div class="header-tab documents-tab {% if active_view == 'documents' %}active{% endif %}" data-view="documents">
-<span>{{ _('Documents') }} (<span id="documents-count">{{ documents|length }}</span>)</span>
-<button id="new-document-button" class="new-tab-button" title="{{ _('New document') }}">➕</button>
-</div>
-<div class="header-tab sessions-tab {% if active_view == 'sessions' %}active{% endif %}" data-view="sessions">
-<span>{{ _('Sessions') }} (<span id="sessions-count">{{ sessions|length }}</span>)</span>
-<button id="new-session-button" class="new-tab-button" title="{{ _('New session') }}">➕</button>
-</div>
-</div>
-</div>
-<div class="sessions-list" id="sessions-list">
-{% for s in sessions %}
-<div class="session-item {% if s.id == current_session %}active{% endif %}" data-session-id="{{ s.id }}">
-<div class="session-content">
-<div class="session-info">
-<div class="session-title">📝 {{ s.title }}</div>
-<div class="session-date">🕐 {{ s.updated_at[:19].replace('T', ' ') }} [{{ s.message_count }}]</div>
-</div>
-<button class="delete-session-button" title="{{ _('Delete session') }}">🗑️</button>
-</div>
-</div>
-{% endfor %}
-</div>
-<div class="documents-list" id="documents-list" style="display: none;">
-<!-- Documents will be loaded via JS -->
-</div>
-</div>
-<div class="chat-main">
-<div class="chat-header">
-<h2>{{ _('Chat') }} <span id="status-counter" class="status-counter" title="{{ _('Your requests in queue / Total in queue') }}">📊 0/0</span></h2>
-<div class="context-info-container">
-<div id="context-info" class="context-info">{{ _('Messages') }}: 0</div>
-<button id="save-chat-button" class="save-chat-button" title="{{ _('Save as HTML') }}">💾</button>
-</div>
-</div>
-<div class="chat-messages" id="chat-messages"></div>
-<div id="file-preview-container" style="display: none;">
-<div>
-<span id="file-preview-name"></span>
-<span id="file-preview-size"></span>
-<button id="remove-file-button">✕</button>
-</div>
-</div>
-<div id="image-modal" class="image-modal" onclick="closeImageModal()">
-<span class="image-modal-close">&times;</span>
-<img class="image-modal-content" id="modal-image">
-<div id="modal-caption"></div>
-</div>
-<div class="message-input">
-<input type="text" id="message-input" placeholder="{{ _('Enter message...') }}" autocomplete="off">
-<button id="voice-record-button" class="voice-record-button" title="{{ _('Record voice message') }}">🎤</button>
-<input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt" style="display: none;">
-<button id="attach-file-button">📎</button>
-<button id="send-button">{{ _('Send') }}</button>
-</div>
-</div>
+    <div class="sessions-sidebar">
+        <div class="sessions-header">
+            <div class="header-tabs">
+                <div class="header-tab documents-tab {% if active_view == 'documents' %}active{% endif %}" data-view="documents">
+                    <span>{{ _('Documents') }} (<span id="documents-count">{{ documents|length }}</span>)</span>
+                    <button id="new-document-button" class="new-tab-button" title="{{ _('New document') }}">➕</button>
+                </div>
+                <div class="header-tab sessions-tab {% if active_view == 'sessions' or not active_view %}active{% endif %}" data-view="sessions">
+                    <span>{{ _('Sessions') }} (<span id="sessions-count">{{ sessions|length }}</span>)</span>
+                    <button id="new-session-button" class="new-tab-button" title="{{ _('New session') }}">➕</button>
+                </div>
+            </div>
+        </div>
+        <div class="sessions-list {% if active_view == 'sessions' or not active_view %}active{% endif %}" id="sessions-list">
+            {% for s in sessions %}
+            <div class="session-item {% if s.id == current_session %}active{% endif %}" data-session-id="{{ s.id }}">
+                <div class="session-content">
+                    <div class="session-info">
+                        <div class="session-title">📝 {{ s.title }}</div>
+                        <div class="session-date">📅 {{ s.updated_at[:19].replace('T', ' ') }} [{{ s.message_count }}]</div>
+                    </div>
+                    <button class="delete-session-button" title="{{ _('Delete session') }}">🗑️</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="documents-list {% if active_view == 'documents' %}active{% endif %}" id="documents-list">
+            <!-- Documents will be loaded via JS -->
+        </div>
+    </div>
+    <div class="chat-main">
+        <div class="chat-header">
+            <h2>{{ _('Chat') }} <span id="status-counter" class="status-counter" title="{{ _('Your requests in queue / Total in queue') }}">📊 0/0</span></h2>
+            <div class="context-info-container">
+                <div id="context-info" class="context-info">{{ _('Messages') }}: 0</div>
+                <button id="save-chat-button" class="save-chat-button" title="{{ _('Save as HTML') }}">💾</button>
+            </div>
+        </div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div id="file-preview-container" style="display: none;">
+            <div>
+                <span id="file-preview-name"></span>
+                <span id="file-preview-size"></span>
+                <button id="remove-file-button">✕</button>
+            </div>
+        </div>
+        <div id="image-modal" class="image-modal" onclick="closeImageModal()">
+            <span class="image-modal-close">&times;</span>
+            <img class="image-modal-content" id="modal-image">
+            <div id="modal-caption"></div>
+        </div>
+        <div class="message-input">
+            <input type="text" id="message-input" placeholder="{{ _('Enter message...') }}" autocomplete="off">
+            <button id="voice-record-button" class="voice-record-button" title="{{ _('Record voice message') }}">🎤</button>
+            <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt" style="display: none;">
+            <button id="attach-file-button">📎</button>
+            <button id="send-button">{{ _('Send') }}</button>
+        </div>
+    </div>
 </div>
 <script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
 <script>

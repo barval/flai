@@ -293,14 +293,15 @@ function updateLastVisit(sessionId) {
 // ===== Collapsible sidebar for mobile =====
 function initCollapsibleSessions() {
     const sidebar = document.querySelector('.sessions-sidebar');
-    const header = document.querySelector('.sessions-header');
-    const collapseToggle = document.getElementById('mobile-collapse-toggle');
-    if (!sidebar || !header) return;
+    const collapseToggle = document.getElementById('collapse-toggle-mobile');
+    if (!sidebar || !collapseToggle) return;
+    
     // Remove old click handler if exists
-    if (collapseToggle) {
-        collapseToggle.removeEventListener('click', toggleSessions);
-        collapseToggle.addEventListener('click', toggleSessions);
-    }
+    collapseToggle.removeEventListener('click', toggleSessions);
+    
+    // Add click handler to collapse toggle
+    collapseToggle.addEventListener('click', toggleSessions);
+    
     // Restore state from localStorage
     const login = window.CURRENT_USER_LOGIN;
     if (login) {
@@ -311,6 +312,7 @@ function initCollapsibleSessions() {
             sidebar.classList.remove('collapsed');
         }
     }
+    
     // On mobile, start with sidebar collapsed by default
     if (window.innerWidth <= 768 && login) {
         const collapsed = localStorage.getItem(`sidebar_collapsed_${login}`);
@@ -318,13 +320,13 @@ function initCollapsibleSessions() {
             sidebar.classList.add('collapsed');
         }
     }
+    
     // Update collapse icon
     updateCollapseIcon();
 }
 
 function toggleSessions(e) {
-    // Don't toggle if clicking on tabs or new session/document buttons
-    if (e.target.closest('.header-tab') || e.target.closest('.new-tab-button')) return;
+    e.stopPropagation();
     const sidebar = document.querySelector('.sessions-sidebar');
     if (!sidebar) return;
     sidebar.classList.toggle('collapsed');
@@ -334,4 +336,17 @@ function toggleSessions(e) {
     }
     // Update collapse icon
     updateCollapseIcon();
+}
+
+// Update collapse icon based on sidebar state
+function updateCollapseIcon() {
+    const sidebar = document.querySelector('.sessions-sidebar');
+    const collapseIcon = document.getElementById('collapse-icon');
+    if (sidebar && collapseIcon) {
+        if (sidebar.classList.contains('collapsed')) {
+            collapseIcon.textContent = '➡️';
+        } else {
+            collapseIcon.textContent = '⬇️';
+        }
+    }
 }

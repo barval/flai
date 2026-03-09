@@ -4,6 +4,9 @@
     <div class="sessions-sidebar">
         <div class="sessions-header">
             <div class="header-tabs">
+                <div class="collapse-toggle-mobile" id="collapse-toggle-mobile" title="Toggle collapse">
+                    <span class="collapse-icon" id="collapse-icon">➡️</span>
+                </div>
                 <div class="header-tab documents-tab {% if active_view == 'documents' %}active{% endif %}" data-view="documents">
                     <span class="tab-text">{{ _('Documents') }} (<span id="documents-count">{{ documents|length }}</span>)</span>
                     <button id="new-document-button" class="new-tab-button" title="{{ _('New document') }}">➕</button>
@@ -12,10 +15,6 @@
                     <span class="tab-text">{{ _('Sessions') }} (<span id="sessions-count">{{ sessions|length }}</span>)</span>
                     <button id="new-session-button" class="new-tab-button" title="{{ _('New session') }}">➕</button>
                 </div>
-            </div>
-            <!-- Mobile collapse/expand toggle -->
-            <div class="mobile-collapse-toggle" id="mobile-collapse-toggle">
-                <span class="collapse-icon" id="collapse-icon">➡️</span>
             </div>
         </div>
         <div class="sessions-list {% if active_view == 'sessions' or not active_view %}active{% endif %}" id="sessions-list">

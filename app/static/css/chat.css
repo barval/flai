@@ -34,6 +34,28 @@
     width: 100%;
 }
 
+/* Mobile collapse toggle - inside header-tabs */
+.collapse-toggle-mobile {
+    display: none;
+    padding: 0.6rem 0.3rem;
+    background-color: #e8eaed;
+    cursor: pointer;
+    text-align: center;
+    border-right: 1px solid #ddd;
+    flex-shrink: 0;
+    min-width: 40px;
+}
+
+.collapse-toggle-mobile:hover {
+    background-color: #d0d0d0;
+}
+
+.collapse-icon {
+    font-size: 1.2rem;
+    display: inline-block;
+    transition: transform 0.3s ease;
+}
+
 .header-tab {
     flex: 1;
     display: flex;
@@ -70,26 +92,6 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-/* Mobile collapse toggle */
-.mobile-collapse-toggle {
-    display: none;
-    padding: 0.5rem;
-    background-color: #e8eaed;
-    border-bottom: 1px solid #ddd;
-    cursor: pointer;
-    text-align: center;
-}
-
-.mobile-collapse-toggle:hover {
-    background-color: #d0d0d0;
-}
-
-.collapse-icon {
-    font-size: 1.2rem;
-    display: inline-block;
-    transition: transform 0.3s ease;
 }
 
 .new-tab-button {
@@ -728,10 +730,16 @@ audio {
         overflow: hidden;
     }
 
-    /* Mobile header tabs - equal width */
+    /* Mobile header tabs - include collapse toggle */
     .header-tabs {
         display: flex;
         width: 100%;
+    }
+
+    .collapse-toggle-mobile {
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .header-tab {
@@ -747,11 +755,6 @@ audio {
         width: 20px;
         height: 20px;
         font-size: 0.9rem;
-    }
-
-    /* Mobile collapse toggle - visible on mobile */
-    .mobile-collapse-toggle {
-        display: block;
     }
 
     .sessions-list,

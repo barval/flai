@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 6.11\n"
+"Project-Id-Version: FLAI 6.12\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-05 12:00+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -496,4 +496,4 @@ msgid "loading"
 msgstr "Loading..."
 
 msgid "footer_text"
-msgstr "Fully Local AI (FLAI) v6.11 (c) 2026 Valery Barsukov"
+msgstr "Fully Local AI (FLAI) v6.12 (c) 2026 Valery Barsukov"

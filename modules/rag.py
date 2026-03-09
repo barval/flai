@@ -6,7 +6,7 @@ import uuid
 from flask import current_app
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
-from app.utils import extract_text_from_file, chunk_text
+from app.utils import extract_text_from_file, chunk_text, get_current_time_in_timezone, format_prompt
 from app.db import get_session_text_history  # new import for history
 
 class RagModule:
@@ -175,13 +175,13 @@ class RagModule:
             self.logger.error(f"Qdrant search error: {e}")
             return []
 
-    # --- New helper: rough token estimation (copied from BaseModule) ---
+    # --- Helper: rough token estimation (copied from BaseModule) ---
     def _estimate_tokens(self, text):
         """Rough token estimation using configured characters per token."""
         token_chars = current_app.config.get('TOKEN_CHARS', 3)
         return len(text) // token_chars + 1
 
-    # --- New helper: build history string from list of messages ---
+    # --- Helper: build history string from list of messages ---
     def _build_context_prompt(self, history, lang='ru'):
         """Format conversation history into a string for inclusion in the prompt."""
         if not history:
@@ -195,7 +195,7 @@ class RagModule:
 
     def generate_answer(self, user_id, query, session_id, lang='ru'):
         """
-        Full RAG answer: search + call reasoning model with context and conversation history.
+        Full RAG answer: search + call reasoning model with context, history, and role information.
         Returns (answer, error_message).
         """
         # 1. Retrieve relevant chunks
@@ -203,41 +203,44 @@ class RagModule:
         if not chunks:
             return None, "No relevant documents found"
 
-        # 2. Estimate token counts for the query and chunks
-        query_tokens = self._estimate_tokens(query)
-        chunks_text = "\n\n".join(chunks)
-        chunks_tokens = self._estimate_tokens(chunks_text)
+        # 2. Prepare context string
+        context = "\n\n".join(chunks)
 
-        # 3. Get model's context window and reserved percentage
+        # 3. Get conversation history (with token limit)
+        # Estimate token count for context and query
+        query_tokens = self._estimate_tokens(query)
+        context_tokens = self._estimate_tokens(context)
+        template_overhead = 800  # rough estimate for template text + instructions
+
+        # Get model's context window and reserved percentage
         reasoning_model_config = current_app.config
         max_context_tokens = int(reasoning_model_config.get('LLM_REASONING_MODEL_CONTEXT_WINDOW', 40960))
         history_percent = int(reasoning_model_config.get('CONTEXT_HISTORY_PERCENT', 75))
 
-        # Reserve a fixed overhead for the prompt template (instructions, separators, etc.)
-        template_overhead = 500
-
-        # Calculate available tokens for history = total reserved - query - chunks - overhead
         available_tokens = int(max_context_tokens * (history_percent / 100.0))
-        remaining_for_history = available_tokens - query_tokens - chunks_tokens - template_overhead
+        remaining_for_history = available_tokens - query_tokens - context_tokens - template_overhead
 
-        # 4. Retrieve conversation history if there is space
         history_str = ""
         if remaining_for_history > 0 and session_id:
             history_msgs = get_session_text_history(session_id, remaining_for_history)
             history_str = self._build_context_prompt(history_msgs, lang)
 
-        # 5. Construct the final prompt
-        if history_str:
-            prompt = (
-                f"Conversation history:\n{history_str}\n\n"
-                f"Context from documents:\n{chunks_text}\n\n"
-                f"Question: {query}\n\nAnswer:"
-            )
-        else:
-            prompt = (
-                f"Context from documents:\n{chunks_text}\n\n"
-                f"Question: {query}\n\nAnswer:"
-            )
+        # 4. Get current time and response language
+        current_time_str = get_current_time_in_timezone(current_app)
+        response_language = 'Russian' if lang == 'ru' else 'English'
+
+        # 5. Format prompt using template
+        prompt = format_prompt('rag.template', {
+            'current_time_str': current_time_str,
+            'response_language': response_language,
+            'conversation_history': history_str,
+            'context': context,
+            'user_query': query
+        }, lang=lang)
+
+        if not prompt:
+            self.logger.error("Failed to load rag.template")
+            return None, "Error loading prompt template"
 
         # 6. Call reasoning model
         reasoning_module = current_app.modules.get('base')

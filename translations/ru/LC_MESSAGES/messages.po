@@ -32,7 +32,7 @@ msgid "Upload document"
 msgstr "Загрузить документ"
 
 msgid "Document uploaded"
-msgstr "Документ XXX загружен"
+msgstr "Документ загружен"
 
 msgid "Document upload failed"
 msgstr "Ошибка загрузки документа"

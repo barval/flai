@@ -285,6 +285,12 @@
 .dark-theme .tts-button:hover {
     background-color: rgba(255,255,255,0.1);
 }
+
+.dark-theme .tts-button.pending {
+    background-color: #f39c12 !important;
+    color: white !important;
+}
+
 .dark-theme .tts-button.playing {
     background-color: #e74c3c !important;
     color: white !important;

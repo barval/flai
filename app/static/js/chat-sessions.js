@@ -1,5 +1,6 @@
 // app/static/js/chat-sessions.js
 // Session management functions
+
 function setNewMessageIndicator(sessionId, show) {
     if (show) {
         newMessageIndicators[sessionId] = true;
@@ -11,65 +12,65 @@ function setNewMessageIndicator(sessionId, show) {
 
 function loadSessionsFromServer() {
     return fetch('/api/sessions')
-        .then(res => {
-            if (!res.ok) {
-                throw new Error(`HTTP error ${res.status}`);
+    .then(res => {
+        if (!res.ok) {
+            throw new Error(`HTTP error ${res.status}`);
+        }
+        return res.json();
+    })
+    .then(sessions => {
+        let updated = false;
+        sessions.forEach(s => {
+            if (!sessionsData[s.id]) {
+                sessionsData[s.id] = {
+                    title: s.title,
+                    updated_at: s.updated_at,
+                    message_count: s.message_count
+                };
+                updated = true;
+            } else {
+                if (sessionsData[s.id].title !== s.title) {
+                    sessionsData[s.id].title = s.title;
+                    sessionsData[s.id].updated_at = s.updated_at;
+                    sessionsData[s.id].message_count = s.message_count;
+                    updated = true;
+                } else if (sessionsData[s.id].updated_at !== s.updated_at) {
+                    sessionsData[s.id].updated_at = s.updated_at;
+                    sessionsData[s.id].message_count = s.message_count;
+                    updated = true;
+                } else if (sessionsData[s.id].message_count !== s.message_count) {
+                    sessionsData[s.id].message_count = s.message_count;
+                    updated = true;
+                }
             }
-            return res.json();
-        })
-        .then(sessions => {
-            let updated = false;
-            sessions.forEach(s => {
-                if (!sessionsData[s.id]) {
-                    sessionsData[s.id] = {
-                        title: s.title,
-                        updated_at: s.updated_at,
-                        message_count: s.message_count
-                    };
-                    updated = true;
-                } else {
-                    if (sessionsData[s.id].title !== s.title) {
-                        sessionsData[s.id].title = s.title;
-                        sessionsData[s.id].updated_at = s.updated_at;
-                        sessionsData[s.id].message_count = s.message_count;
-                        updated = true;
-                    } else if (sessionsData[s.id].updated_at !== s.updated_at) {
-                        sessionsData[s.id].updated_at = s.updated_at;
-                        sessionsData[s.id].message_count = s.message_count;
-                        updated = true;
-                    } else if (sessionsData[s.id].message_count !== s.message_count) {
-                        sessionsData[s.id].message_count = s.message_count;
-                        updated = true;
-                    }
-                }
-                const prevUnread = newMessageIndicators[s.id] ? true : false;
-                const newUnread = s.has_unread ? true : false;
-                if (prevUnread !== newUnread) {
-                    updated = true;
-                }
-                if (s.has_unread) {
-                    newMessageIndicators[s.id] = true;
-                } else {
-                    delete newMessageIndicators[s.id];
-                }
-            });
-            Object.keys(sessionsData).forEach(id => {
-                if (!sessions.find(s => s.id === id)) {
-                    delete sessionsData[id];
-                    delete newMessageIndicators[id];
-                    delete lastCompletionTime[id];
-                    updated = true;
-                }
-            });
-            if (updated) {
-                updateSessionsList(sessions);
+            const prevUnread = newMessageIndicators[s.id] ? true : false;
+            const newUnread = s.has_unread ? true : false;
+            if (prevUnread !== newUnread) {
+                updated = true;
             }
-            return sessions;
-        })
-        .catch(err => {
-            console.error('Error loading sessions:', err);
-            return [];
+            if (s.has_unread) {
+                newMessageIndicators[s.id] = true;
+            } else {
+                delete newMessageIndicators[s.id];
+            }
         });
+        Object.keys(sessionsData).forEach(id => {
+            if (!sessions.find(s => s.id === id)) {
+                delete sessionsData[id];
+                delete newMessageIndicators[id];
+                delete lastCompletionTime[id];
+                updated = true;
+            }
+        });
+        if (updated) {
+            updateSessionsList(sessions);
+        }
+        return sessions;
+    })
+    .catch(err => {
+        console.error('Error loading sessions:', err);
+        return [];
+    });
 }
 
 function updateSessionsListFromData() {
@@ -159,31 +160,31 @@ function attachSessionEventHandlers() {
 
 function createNewSession() {
     fetch('/api/sessions/new', { method: 'POST' })
-        .then(res => {
-            if (!res.ok) {
-                throw new Error(`HTTP error ${res.status}`);
-            }
-            return res.json();
-        })
-        .then(data => {
-            sessionsData[data.id] = {
-                title: data.title,
-                updated_at: new Date().toISOString(),
-                message_count: 0
-            };
-            document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
-            currentSessionId = data.id;
-            loadSessionsFromServer().then(() => {
-                document.getElementById('chat-messages').innerHTML = '';
-                updateMessageCount();
-                defaultModelName = 'qwen3-vl:8b-instruct';
-                setNewMessageIndicator(data.id, false);
-            });
-        })
-        .catch(err => {
-            console.error('Error creating new session:', err);
-            alert(t('error') + ': ' + err.message);
+    .then(res => {
+        if (!res.ok) {
+            throw new Error(`HTTP error ${res.status}`);
+        }
+        return res.json();
+    })
+    .then(data => {
+        sessionsData[data.id] = {
+            title: data.title,
+            updated_at: new Date().toISOString(),
+            message_count: 0
+        };
+        document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+        currentSessionId = data.id;
+        loadSessionsFromServer().then(() => {
+            document.getElementById('chat-messages').innerHTML = '';
+            updateMessageCount();
+            defaultModelName = 'qwen3-vl:8b-instruct';
+            setNewMessageIndicator(data.id, false);
         });
+    })
+    .catch(err => {
+        console.error('Error creating new session:', err);
+        alert(t('error') + ': ' + err.message);
+    });
 }
 
 function updateSessionTitle(sessionId, newTitle) {
@@ -206,8 +207,11 @@ function updateSessionTitle(sessionId, newTitle) {
 }
 
 function deleteSession(sessionId, sessionTitle, sessionDate) {
+    // Stop TTS if playing in this session
     if (currentPlayingSessionId === sessionId) {
-        resetTtsState();
+        if (typeof window.resetTtsState === 'function') {
+            window.resetTtsState();
+        }
     }
     const confirmMessage = formatString(t('delete_session_confirm'), {
         title: sessionTitle,
@@ -223,25 +227,25 @@ function deleteSession(sessionId, sessionTitle, sessionDate) {
     delete stableSessionStatus[sessionId];
     delete lastCompletionTime[sessionId];
     fetch('/api/sessions/' + sessionId + '/delete', { method: 'POST' })
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === 'ok') {
-                delete sessionsData[sessionId];
-                const sessionItem = document.querySelector('.session-item[data-session-id="' + sessionId + '"]');
-                if (sessionItem) sessionItem.remove();
-                const sessionsCount = document.querySelectorAll('.session-item').length;
-                document.getElementById('sessions-count').textContent = sessionsCount;
-                if (sessionId === currentSessionId) {
-                    const remainingSessions = document.querySelectorAll('.session-item');
-                    if (remainingSessions.length > 0) {
-                        switchSession(remainingSessions[0].dataset.sessionId);
-                    } else {
-                        setTimeout(() => createNewSession(), 50);
-                    }
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            delete sessionsData[sessionId];
+            const sessionItem = document.querySelector('.session-item[data-session-id="' + sessionId + '"]');
+            if (sessionItem) sessionItem.remove();
+            const sessionsCount = document.querySelectorAll('.session-item').length;
+            document.getElementById('sessions-count').textContent = sessionsCount;
+            if (sessionId === currentSessionId) {
+                const remainingSessions = document.querySelectorAll('.session-item');
+                if (remainingSessions.length > 0) {
+                    switchSession(remainingSessions[0].dataset.sessionId);
+                } else {
+                    setTimeout(() => createNewSession(), 50);
                 }
             }
-        })
-        .catch(err => alert(t('error') + ': ' + err.message));
+        }
+    })
+    .catch(err => alert(t('error') + ': ' + err.message));
 }
 
 function switchSession(sessionId) {
@@ -254,40 +258,40 @@ function switchSession(sessionId) {
         statusCounter.innerHTML = '⏳ ' + t('loading');
     }
     fetch('/api/sessions/' + sessionId + '/switch', { method: 'POST' })
-        .then(res => res.json())
-        .then(() => {
-            currentSessionId = sessionId;
-            loadMessages(sessionId).catch(err => {
-                console.error('Error loading messages in switchSession:', err);
-                if (statusCounter) {
-                    statusCounter.innerHTML = '❌';
-                    setTimeout(() => window.updateStatusCounter(), 2000);
-                }
-            }).finally(() => {
-                window.updateStatusCounter();
-            });
-            document.querySelectorAll('.session-item').forEach(el => {
-                if (el.dataset.sessionId === sessionId) {
-                    el.classList.add('active');
-                } else {
-                    el.classList.remove('active');
-                }
-            });
-            updateSessionsListFromData();
-        })
-        .catch(err => {
-            console.error('Error switching session:', err);
+    .then(res => res.json())
+    .then(() => {
+        currentSessionId = sessionId;
+        loadMessages(sessionId).catch(err => {
+            console.error('Error loading messages in switchSession:', err);
             if (statusCounter) {
                 statusCounter.innerHTML = '❌';
                 setTimeout(() => window.updateStatusCounter(), 2000);
             }
+        }).finally(() => {
+            window.updateStatusCounter();
         });
+        document.querySelectorAll('.session-item').forEach(el => {
+            if (el.dataset.sessionId === sessionId) {
+                el.classList.add('active');
+            } else {
+                el.classList.remove('active');
+            }
+        });
+        updateSessionsListFromData();
+    })
+    .catch(err => {
+        console.error('Error switching session:', err);
+        if (statusCounter) {
+            statusCounter.innerHTML = '❌';
+            setTimeout(() => window.updateStatusCounter(), 2000);
+        }
+    });
 }
 
 function updateLastVisit(sessionId) {
     if (!sessionId) return;
     fetch(`/api/sessions/${sessionId}/visit`, { method: 'POST' })
-        .catch(err => console.error('Error updating last_visit:', err));
+    .catch(err => console.error('Error updating last_visit:', err));
 }
 
 // ===== Collapsible sidebar for mobile =====
@@ -295,13 +299,10 @@ function initCollapsibleSessions() {
     const sidebar = document.querySelector('.sessions-sidebar');
     const collapseToggle = document.getElementById('collapse-toggle-mobile');
     if (!sidebar || !collapseToggle) return;
-    
     // Remove old click handler if exists
     collapseToggle.removeEventListener('click', toggleSessions);
-    
     // Add click handler to collapse toggle
     collapseToggle.addEventListener('click', toggleSessions);
-    
     // Restore state from localStorage
     const login = window.CURRENT_USER_LOGIN;
     if (login) {
@@ -312,7 +313,6 @@ function initCollapsibleSessions() {
             sidebar.classList.remove('collapsed');
         }
     }
-    
     // On mobile, start with sidebar collapsed by default
     if (window.innerWidth <= 768 && login) {
         const collapsed = localStorage.getItem(`sidebar_collapsed_${login}`);
@@ -320,7 +320,6 @@ function initCollapsibleSessions() {
             sidebar.classList.add('collapsed');
         }
     }
-    
     // Update collapse icon
     updateCollapseIcon();
 }

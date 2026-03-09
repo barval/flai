@@ -489,6 +489,11 @@ audio {
     animation: pulse 1.5s infinite;
 }
 
+.tts-button.pending {
+    background-color: #f39c12 !important;
+    color: white !important;
+}
+
 /* ===== COPY MESSAGE BUTTON ===== */
 .copy-message-button {
     background: none;

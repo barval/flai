@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', function() {
             switchVoiceGender(newGender);
         });
     }
-
+    
     // Theme toggle
     const themeBtn = document.getElementById('theme-toggle');
     if (themeBtn) {
@@ -37,18 +37,22 @@ function switchLanguage(lang) {
 }
 
 function switchVoiceGender(gender) {
+    // Stop current TTS playback if any (will restart with new voice)
+    if (window.resetTtsState) {
+        window.resetTtsState();
+    }
+    
     fetch('/set-voice-gender/' + gender, {
         method: 'GET',
         headers: { 'Cache-Control': 'no-cache' }
     }).then(() => {
         const icon = document.getElementById('voice-gender-icon');
         icon.textContent = gender === 'female' ? '👩' : '👨';
-        
         // Update button class and title
         const btn = document.getElementById('voice-gender-toggle');
         btn.className = 'voice-gender-button ' + gender;
-        btn.title = gender === 'female' 
-            ? window.TRANSLATIONS['female_voice'] 
+        btn.title = gender === 'female'
+            ? window.TRANSLATIONS['female_voice']
             : window.TRANSLATIONS['male_voice'];
     }).catch(() => {
         window.location.reload();
@@ -56,6 +60,7 @@ function switchVoiceGender(gender) {
 }
 
 function switchTheme(theme) {
+    // Do NOT stop TTS playback when switching theme
     fetch('/set-theme/' + theme, {
         method: 'GET',
         headers: { 'Cache-Control': 'no-cache' }

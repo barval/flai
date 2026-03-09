@@ -109,6 +109,7 @@ function updateDocumentsList(documents) {
     let html = '';
     documents.forEach(doc => {
         const dateStr = doc.uploaded_at ? formatFullDateTime(doc.uploaded_at) : '';
+        const fileSizeFormatted = doc.file_size ? formatFileSize(doc.file_size) : '';
         const statusIcon = getStatusIcon(doc.index_status);
         const statusTitle = getStatusTitle(doc.index_status);
         html += `
@@ -119,7 +120,7 @@ function updateDocumentsList(documents) {
                         <span class="document-status-icon" title="${statusTitle}">${statusIcon}</span>
                         📄 ${escapeHtml(doc.filename)}
                     </div>
-                    <div class="document-date">📅 ${dateStr}</div>
+                    <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}</div>
                 </div>
                 <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>
             </div>
@@ -136,13 +137,9 @@ function updateDocumentsList(documents) {
 }
 
 function attachDocumentEventHandlers() {
-    document.querySelectorAll('.document-item').forEach(el => {
-        el.addEventListener('click', function(e) {
-            if (e.target.closest('.delete-document-button')) return;
-            const docId = this.dataset.documentId;
-            downloadDocument(docId);
-        });
-    });
+    // Removed click handler on document-item that triggered download.
+    // Now clicking on a document does nothing (no download).
+    // Only delete button remains functional.
 
     document.querySelectorAll('.delete-document-button').forEach(btn => {
         btn.addEventListener('click', function(e) {

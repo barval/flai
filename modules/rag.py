@@ -7,6 +7,7 @@ from flask import current_app
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from app.utils import extract_text_from_file, chunk_text
+from app.db import get_session_text_history  # new import for history
 
 class RagModule:
     """Module for Retrieval-Augmented Generation using Qdrant and Ollama embeddings."""
@@ -174,22 +175,75 @@ class RagModule:
             self.logger.error(f"Qdrant search error: {e}")
             return []
 
+    # --- New helper: rough token estimation (copied from BaseModule) ---
+    def _estimate_tokens(self, text):
+        """Rough token estimation using configured characters per token."""
+        token_chars = current_app.config.get('TOKEN_CHARS', 3)
+        return len(text) // token_chars + 1
+
+    # --- New helper: build history string from list of messages ---
+    def _build_context_prompt(self, history, lang='ru'):
+        """Format conversation history into a string for inclusion in the prompt."""
+        if not history:
+            return ""
+        lines = []
+        for msg in history:
+            # We can use simple role names; translation is optional here
+            role = "User" if msg['role'] == 'user' else "Assistant"
+            lines.append(f"{role}: {msg['content']}")
+        return "\n".join(lines)
+
     def generate_answer(self, user_id, query, session_id, lang='ru'):
         """
-        Full RAG answer: search + call reasoning model with context.
+        Full RAG answer: search + call reasoning model with context and conversation history.
         Returns (answer, error_message).
         """
+        # 1. Retrieve relevant chunks
         chunks = self.search(user_id, query)
         if not chunks:
             return None, "No relevant documents found"
 
-        context = "\n\n".join(chunks)
+        # 2. Estimate token counts for the query and chunks
+        query_tokens = self._estimate_tokens(query)
+        chunks_text = "\n\n".join(chunks)
+        chunks_tokens = self._estimate_tokens(chunks_text)
+
+        # 3. Get model's context window and reserved percentage
+        reasoning_model_config = current_app.config
+        max_context_tokens = int(reasoning_model_config.get('LLM_REASONING_MODEL_CONTEXT_WINDOW', 40960))
+        history_percent = int(reasoning_model_config.get('CONTEXT_HISTORY_PERCENT', 75))
+
+        # Reserve a fixed overhead for the prompt template (instructions, separators, etc.)
+        template_overhead = 500
+
+        # Calculate available tokens for history = total reserved - query - chunks - overhead
+        available_tokens = int(max_context_tokens * (history_percent / 100.0))
+        remaining_for_history = available_tokens - query_tokens - chunks_tokens - template_overhead
+
+        # 4. Retrieve conversation history if there is space
+        history_str = ""
+        if remaining_for_history > 0 and session_id:
+            history_msgs = get_session_text_history(session_id, remaining_for_history)
+            history_str = self._build_context_prompt(history_msgs, lang)
+
+        # 5. Construct the final prompt
+        if history_str:
+            prompt = (
+                f"Conversation history:\n{history_str}\n\n"
+                f"Context from documents:\n{chunks_text}\n\n"
+                f"Question: {query}\n\nAnswer:"
+            )
+        else:
+            prompt = (
+                f"Context from documents:\n{chunks_text}\n\n"
+                f"Question: {query}\n\nAnswer:"
+            )
+
+        # 6. Call reasoning model
         reasoning_module = current_app.modules.get('base')
         if not reasoning_module:
             return None, "Reasoning module unavailable"
 
-        # Construct prompt with context
-        prompt = f"Answer the user's question using only the provided context.\n\nContext:\n{context}\n\nQuestion: {query}\n\nAnswer:"
         response = reasoning_module.call_ollama(
             [{'role': 'user', 'content': prompt}],
             model_type='reasoning',

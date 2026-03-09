@@ -1,11 +1,11 @@
 // app/static/js/chat-documents.js
-// Document management functions
+// Document management functions with index status
+
 let currentView = 'sessions'; // 'sessions' or 'documents'
 let documentsData = {};
-let selectedDocumentId = null; // Track selected document
 
-function switchView(view, forceUpdate = false) {
-    if (view === currentView && !forceUpdate) {
+function switchView(view) {
+    if (view === currentView) {
         // On mobile, toggle collapse when clicking active tab
         if (window.innerWidth <= 768) {
             const sidebar = document.querySelector('.sessions-sidebar');
@@ -15,12 +15,13 @@ function switchView(view, forceUpdate = false) {
                 if (login) {
                     localStorage.setItem(`sidebar_collapsed_${login}`, sidebar.classList.contains('collapsed'));
                 }
-                updateCollapseIcon();
             }
         }
         return;
     }
+
     currentView = view;
+
     // Update tab styling
     document.querySelectorAll('.header-tab').forEach(tab => {
         tab.classList.remove('active');
@@ -28,21 +29,20 @@ function switchView(view, forceUpdate = false) {
             tab.classList.add('active');
         }
     });
+
     // Show/hide lists
     const sessionsList = document.getElementById('sessions-list');
     const documentsList = document.getElementById('documents-list');
+
     if (view === 'sessions') {
         sessionsList.style.display = 'block';
-        sessionsList.classList.add('active');
         documentsList.style.display = 'none';
-        documentsList.classList.remove('active');
     } else {
         sessionsList.style.display = 'none';
-        sessionsList.classList.remove('active');
         documentsList.style.display = 'block';
-        documentsList.classList.add('active');
         loadDocuments();
     }
+
     // Save preference
     const login = window.CURRENT_USER_LOGIN;
     if (login) {
@@ -52,62 +52,98 @@ function switchView(view, forceUpdate = false) {
 
 function loadDocuments() {
     fetch('/api/documents')
-    .then(res => {
-        if (!res.ok) {
-            throw new Error(`HTTP error ${res.status}`);
-        }
-        return res.json();
-    })
-    .then(documents => {
-        documentsData = {};
-        documents.forEach(doc => {
-            documentsData[doc.id] = doc;
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`HTTP error ${res.status}`);
+            }
+            return res.json();
+        })
+        .then(documents => {
+            documentsData = {};
+            documents.forEach(doc => {
+                documentsData[doc.id] = doc;
+            });
+            updateDocumentsList(documents);
+        })
+        .catch(err => {
+            console.error('Error loading documents:', err);
         });
-        updateDocumentsList(documents);
-    })
-    .catch(err => {
-        console.error('Error loading documents:', err);
-    });
+}
+
+function getStatusIcon(status) {
+    switch (status) {
+        case 'pending':
+            return '⏳'; // pending
+        case 'indexing':
+            return '⚡'; // indexing
+        case 'indexed':
+            return '✅'; // indexed
+        case 'failed':
+            return '❌'; // failed
+        default:
+            return '📄'; // unknown
+    }
+}
+
+function getStatusTitle(status) {
+    switch (status) {
+        case 'pending':
+            return 'Pending indexing';
+        case 'indexing':
+            return 'Indexing in progress';
+        case 'indexed':
+            return 'Indexed';
+        case 'failed':
+            return 'Indexing failed';
+        default:
+            return 'Not indexed';
+    }
 }
 
 function updateDocumentsList(documents) {
     const documentsList = document.getElementById('documents-list');
     const documentsCount = document.getElementById('documents-count');
+
     documents.sort((a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at));
+
     let html = '';
     documents.forEach(doc => {
         const dateStr = doc.uploaded_at ? formatFullDateTime(doc.uploaded_at) : '';
-        const sizeStr = doc.file_size ? formatFileSize(doc.file_size) : '';
-        const isSelected = selectedDocumentId === doc.id ? 'selected' : '';
+        const statusIcon = getStatusIcon(doc.index_status);
+        const statusTitle = getStatusTitle(doc.index_status);
         html += `
-        <div class="document-item ${isSelected}" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}">
-        <div class="document-content">
-        <div class="document-info">
-        <div class="document-title">📄 ${escapeHtml(doc.filename)}</div>
-        <div class="document-date">📅 ${dateStr}${sizeStr ? ' [' + sizeStr + ']' : ''}</div>
-        </div>
-        <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>
-        </div>
+        <div class="document-item" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}">
+            <div class="document-content">
+                <div class="document-info">
+                    <div class="document-title">
+                        <span class="document-status-icon" title="${statusTitle}">${statusIcon}</span>
+                        📄 ${escapeHtml(doc.filename)}
+                    </div>
+                    <div class="document-date">📅 ${dateStr}</div>
+                </div>
+                <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>
+            </div>
         </div>
         `;
     });
+
     documentsList.innerHTML = html;
     if (documentsCount) {
         documentsCount.textContent = documents.length;
     }
+
     attachDocumentEventHandlers();
 }
 
 function attachDocumentEventHandlers() {
     document.querySelectorAll('.document-item').forEach(el => {
         el.addEventListener('click', function(e) {
-            // Prevent download - just select the document
             if (e.target.closest('.delete-document-button')) return;
             const docId = this.dataset.documentId;
-            // Select document (highlight only, no download)
-            selectDocument(docId);
+            downloadDocument(docId);
         });
     });
+
     document.querySelectorAll('.delete-document-button').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
@@ -119,24 +155,8 @@ function attachDocumentEventHandlers() {
     });
 }
 
-function selectDocument(docId) {
-    // Remove selection from all documents
-    document.querySelectorAll('.document-item').forEach(item => {
-        item.classList.remove('selected');
-    });
-    // Add selection to clicked document
-    const selectedItem = document.querySelector(`.document-item[data-document-id="${docId}"]`);
-    if (selectedItem) {
-        selectedItem.classList.add('selected');
-        selectedDocumentId = docId;
-    }
-    // Temporary placeholder - no download action
-    console.log('Document selected:', docId, '(download disabled - temporary placeholder)');
-}
-
 function downloadDocument(docId) {
-    // Disabled - temporary placeholder
-    console.log('Download disabled for document:', docId);
+    window.open(`/api/documents/${docId}`, '_blank');
 }
 
 function deleteDocument(docId, docName) {
@@ -144,42 +164,41 @@ function deleteDocument(docId, docName) {
         filename: docName
     });
     if (!confirm(confirmMessage)) return;
+
     fetch(`/api/documents/${docId}`, { method: 'DELETE' })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === 'ok') {
-            delete documentsData[docId];
-            if (selectedDocumentId === docId) {
-                selectedDocumentId = null;
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                delete documentsData[docId];
+                const docItem = document.querySelector(`.document-item[data-document-id="${docId}"]`);
+                if (docItem) docItem.remove();
+                const documentsCount = document.querySelectorAll('.document-item').length;
+                document.getElementById('documents-count').textContent = documentsCount;
+            } else {
+                alert(t('error') + ': ' + (data.error || t('unknown_error')));
             }
-            const docItem = document.querySelector(`.document-item[data-document-id="${docId}"]`);
-            if (docItem) docItem.remove();
-            const documentsCount = document.querySelectorAll('.document-item').length;
-            document.getElementById('documents-count').textContent = documentsCount;
-        } else {
-            alert(t('error') + ': ' + (data.error || t('unknown_error')));
-        }
-    })
-    .catch(err => alert(t('error') + ': ' + err.message));
+        })
+        .catch(err => alert(t('error') + ': ' + err.message));
 }
 
 function uploadDocument(file) {
     const formData = new FormData();
     formData.append('file', file);
+
     fetch('/api/documents/upload', {
         method: 'POST',
         body: formData
     })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === 'ok') {
-            alert(t('document_uploaded'));
-            loadDocuments();
-        } else {
-            alert(t('error') + ': ' + (data.error || t('document_upload_failed')));
-        }
-    })
-    .catch(err => alert(t('error') + ': ' + err.message));
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                alert(t('document_uploaded'));
+                loadDocuments(); // Reload list to show new document with pending status
+            } else {
+                alert(t('error') + ': ' + (data.error || t('document_upload_failed')));
+            }
+        })
+        .catch(err => alert(t('error') + ': ' + err.message));
 }
 
 function initDocumentsView() {
@@ -191,12 +210,14 @@ function initDocumentsView() {
             currentView = savedView;
         }
     }
+
     // Set up tab click handlers
     document.querySelectorAll('.header-tab').forEach(tab => {
         tab.addEventListener('click', function() {
             switchView(this.dataset.view);
         });
     });
+
     // Set up new document button
     const newDocBtn = document.getElementById('new-document-button');
     if (newDocBtn) {
@@ -213,19 +234,7 @@ function initDocumentsView() {
             fileInput.click();
         });
     }
-    // Initialize with current view - force update to ensure tabs are styled correctly
-    switchView(currentView, true);
-}
 
-// Update collapse icon based on sidebar state
-function updateCollapseIcon() {
-    const sidebar = document.querySelector('.sessions-sidebar');
-    const collapseIcon = document.getElementById('collapse-icon');
-    if (sidebar && collapseIcon) {
-        if (sidebar.classList.contains('collapsed')) {
-            collapseIcon.textContent = '➡️';
-        } else {
-            collapseIcon.textContent = '⬇️';
-        }
-    }
+    // Initialize with current view
+    switchView(currentView);
 }

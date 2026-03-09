@@ -5,7 +5,7 @@ from flask_babel import Babel, gettext
 import logging
 from logging import Formatter
 from .config import load_config
-from .db import init_db, migrate_db_add_response_fields, migrate_db_add_session_visits, migrate_db_add_indexes
+from .db import init_db, migrate_db_add_response_fields, migrate_db_add_session_visits, migrate_db_add_indexes, migrate_db_add_index_status
 from .queue import RedisRequestQueue
 from .userdb import init_user_db, get_user_by_login
 from modules import BaseModule, MultimodalModule, ImageModule, CamModule, RagModule, AudioModule
@@ -51,6 +51,7 @@ def create_app():
     migrate_db_add_response_fields(app)
     migrate_db_add_session_visits(app)
     migrate_db_add_indexes(app)  # Add indexes for performance
+    migrate_db_add_index_status(app)  # Add index_status column to documents table for RAG
     # Initialize user DB
     init_user_db()
     # Initialize modules
@@ -66,7 +67,12 @@ def create_app():
         app.logger.info("Camera module enabled")
     else:
         app.logger.info("Camera module disabled (CAMERA_ENABLED=False)")
-    modules['rag'] = RagModule(app)
+    # Initialize RAG module if Qdrant URL is configured
+    if app.config.get('QDRANT_URL'):
+        modules['rag'] = RagModule(app)
+        app.logger.info("RAG module enabled with Qdrant")
+    else:
+        app.logger.info("RAG module disabled (QDRANT_URL not set)")
     modules['audio'] = AudioModule(app)
     # TTS module
     if app.config.get('PIPER_URL'):
@@ -97,6 +103,12 @@ def create_app():
     if not os.path.isabs(app.config['UPLOAD_FOLDER']):
         app.config['UPLOAD_FOLDER'] = os.path.abspath(app.config['UPLOAD_FOLDER'])
     app.logger.info(f"Upload folder: {app.config['UPLOAD_FOLDER']}")
+
+    # Ensure DOCUMENTS_FOLDER is an absolute path
+    if not os.path.isabs(app.config['DOCUMENTS_FOLDER']):
+        app.config['DOCUMENTS_FOLDER'] = os.path.abspath(app.config['DOCUMENTS_FOLDER'])
+    app.logger.info(f"Documents folder: {app.config['DOCUMENTS_FOLDER']}")
+
     # File serving endpoint
     @app.route('/api/files/<path:filename>')
     def serve_upload(filename):

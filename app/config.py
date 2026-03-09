@@ -70,6 +70,14 @@ def load_config(app):
     app.config['TOKEN_CHARS'] = int(os.getenv('TOKEN_CHARS', 3))
     app.config['CONTEXT_HISTORY_PERCENT'] = int(os.getenv('CONTEXT_HISTORY_PERCENT', 75))
     
+    # Qdrant settings for RAG
+    app.config['QDRANT_URL'] = os.getenv('QDRANT_URL')
+    app.config['QDRANT_API_KEY'] = os.getenv('QDRANT_API_KEY')
+    app.config['EMBEDDING_MODEL'] = os.getenv('EMBEDDING_MODEL', 'bge-m3:latest')
+    app.config['RAG_CHUNK_SIZE'] = int(os.getenv('RAG_CHUNK_SIZE', 500))
+    app.config['RAG_CHUNK_OVERLAP'] = int(os.getenv('RAG_CHUNK_OVERLAP', 50))
+    app.config['RAG_TOP_K'] = int(os.getenv('RAG_TOP_K', 5))
+    
     # Debug translations
     app.config['DEBUG_TRANSLATIONS'] = os.getenv('DEBUG_TRANSLATIONS', 'false').lower() == 'true'
     

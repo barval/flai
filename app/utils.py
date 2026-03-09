@@ -7,6 +7,8 @@ import base64
 from io import BytesIO
 from PIL import Image
 import uuid
+import PyPDF2
+from docx import Document
 
 def get_current_time_in_timezone(app=None):
     """Returns current time in configured timezone in readable format."""
@@ -171,3 +173,40 @@ def save_uploaded_file(file_data, filename, session_id, upload_folder):
     except Exception as e:
         current_app.logger.error(f"Failed to save file {file_path}: {e}")
         return None
+
+def extract_text_from_file(file_path):
+    """Extract text from a file (PDF, DOCX, TXT)."""
+    ext = os.path.splitext(file_path)[1].lower()
+    try:
+        if ext == '.txt':
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        elif ext == '.pdf':
+            text = ''
+            with open(file_path, 'rb') as f:
+                reader = PyPDF2.PdfReader(f)
+                for page in reader.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + '\n'
+            return text.strip()
+        elif ext == '.docx':
+            doc = Document(file_path)
+            return '\n'.join([para.text for para in doc.paragraphs])
+        else:
+            return None
+    except Exception as e:
+        current_app.logger.error(f"Error extracting text from {file_path}: {e}")
+        return None
+
+def chunk_text(text, chunk_size=500, overlap=50):
+    """Split text into overlapping chunks of approximately chunk_size words."""
+    words = text.split()
+    chunks = []
+    i = 0
+    while i < len(words):
+        chunk = ' '.join(words[i:i+chunk_size])
+        if chunk:
+            chunks.append(chunk)
+        i += chunk_size - overlap
+    return chunks

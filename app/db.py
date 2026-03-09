@@ -12,6 +12,11 @@ from flask_babel import gettext as _
 DATA_DIR = 'data'
 CHAT_DB_PATH = os.path.join(DATA_DIR, 'chats.db')
 
+# Index status constants
+INDEX_STATUS_PENDING = 'pending'
+INDEX_STATUS_INDEXING = 'indexing'
+INDEX_STATUS_INDEXED = 'indexed'
+INDEX_STATUS_FAILED = 'failed'
 
 def get_db():
     """Return a database connection (for use in routes)."""
@@ -21,13 +26,11 @@ def get_db():
         db.row_factory = sqlite3.Row
     return db
 
-
 def close_db(e=None):
     """Close database connection."""
     db = g.pop('_database', None)
     if db is not None:
         db.close()
-
 
 def init_db():
     """Initialize the database (create tables)."""
@@ -79,6 +82,8 @@ def init_db():
             file_size INTEGER,
             file_ext TEXT,
             file_path TEXT,
+            index_status TEXT,
+            indexed_at DATETIME,
             uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
         ''')
@@ -89,7 +94,6 @@ def init_db():
         c.execute('CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id)')
         
         conn.commit()
-
 
 def migrate_db_add_response_fields(app):
     """Add fields to store response times."""
@@ -116,7 +120,6 @@ def migrate_db_add_response_fields(app):
     except Exception as e:
         app.logger.error(f"Database migration error (response fields): {str(e)}")
 
-
 def migrate_db_add_session_visits(app):
     """Add table for tracking last visits."""
     try:
@@ -134,7 +137,6 @@ def migrate_db_add_session_visits(app):
     except Exception as e:
         app.logger.error(f"session_visits migration error: {str(e)}")
 
-
 def migrate_db_add_indexes(app):
     """Add indexes to messages table for faster session switching."""
     try:
@@ -147,6 +149,24 @@ def migrate_db_add_indexes(app):
     except Exception as e:
         app.logger.error(f"Index migration error: {str(e)}")
 
+def migrate_db_add_index_status(app):
+    """Add index_status and indexed_at columns to documents table."""
+    try:
+        with sqlite3.connect(CHAT_DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("PRAGMA table_info(documents)")
+            columns = [col[1] for col in c.fetchall()]
+            
+            if 'index_status' not in columns:
+                c.execute("ALTER TABLE documents ADD COLUMN index_status TEXT")
+                app.logger.info("Added column index_status to documents table")
+            if 'indexed_at' not in columns:
+                c.execute("ALTER TABLE documents ADD COLUMN indexed_at DATETIME")
+                app.logger.info("Added column indexed_at to documents table")
+            
+            conn.commit()
+    except Exception as e:
+        app.logger.error(f"Index status migration error: {str(e)}")
 
 def get_user_sessions(user_id):
     """Get all sessions for a user."""
@@ -183,7 +203,6 @@ def get_user_sessions(user_id):
             s['message_count'] = c.fetchone()[0]
         
         return sessions
-
 
 def get_session_messages(session_id, since=None):
     """Get messages for a session."""
@@ -235,7 +254,6 @@ def get_session_messages(session_id, since=None):
         
         return messages
 
-
 def create_session(user_id, title=None, lang='ru'):
     """Create new session with translated title."""
     session_id = str(uuid.uuid4())
@@ -264,7 +282,6 @@ def create_session(user_id, title=None, lang='ru'):
     
     return session_id
 
-
 def update_session_title(session_id, first_message, file_name=None):
     """Update session title based on first message."""
     if first_message and first_message.strip():
@@ -286,7 +303,6 @@ def update_session_title(session_id, first_message, file_name=None):
         conn.commit()
     
     return title
-
 
 def save_message(session_id, role, content, file_data=None, file_type=None, file_name=None,
                  file_path=None, model_name=None, response_time=None, mm_time=None, gen_time=None,
@@ -332,7 +348,6 @@ def save_message(session_id, role, content, file_data=None, file_type=None, file
         conn.commit()
         return message_id
 
-
 def get_last_session(user_id):
     """Get user's last session."""
     with sqlite3.connect(CHAT_DB_PATH) as conn:
@@ -340,7 +355,6 @@ def get_last_session(user_id):
         c.execute('SELECT last_session_id FROM user_sessions WHERE user_id = ?', (user_id,))
         row = c.fetchone()
         return row[0] if row else None
-
 
 def set_last_session(user_id, session_id):
     """Set user's last session."""
@@ -351,7 +365,6 @@ def set_last_session(user_id, session_id):
         VALUES (?, ?)
         ''', (user_id, session_id))
         conn.commit()
-
 
 def delete_session_and_messages(session_id, user_id, upload_folder=None):
     """Delete a session, its messages, and associated files from disk."""
@@ -401,7 +414,6 @@ def delete_session_and_messages(session_id, user_id, upload_folder=None):
         conn.commit()
         return True
 
-
 def update_session_visit(user_id, session_id):
     """Update session last visit timestamp."""
     current_time = get_current_time_for_db()
@@ -413,12 +425,10 @@ def update_session_visit(user_id, session_id):
         ''', (user_id, session_id, current_time))
         conn.commit()
 
-
 def get_current_time_for_db():
     """Return the current time in DB format, taking timezone into account."""
     from .utils import get_current_time_in_timezone_for_db
     return get_current_time_in_timezone_for_db()
-
 
 def get_user_file_count(user_id):
     """Count all files associated with a user."""
@@ -433,7 +443,6 @@ def get_user_file_count(user_id):
         rows = c.fetchall()
         return len(rows)
 
-
 def get_user_document_count(user_id):
     """Count all documents uploaded by a user."""
     with sqlite3.connect(CHAT_DB_PATH) as conn:
@@ -441,14 +450,13 @@ def get_user_document_count(user_id):
         c.execute('SELECT COUNT(*) FROM documents WHERE user_id = ?', (user_id,))
         return c.fetchone()[0]
 
-
 def get_user_documents(user_id):
-    """Get all documents for a user."""
+    """Get all documents for a user, including index status."""
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
         c.execute('''
-        SELECT id, filename, file_size, file_ext, file_path, uploaded_at
+        SELECT id, filename, file_size, file_ext, file_path, uploaded_at, index_status, indexed_at
         FROM documents
         WHERE user_id = ?
         ORDER BY uploaded_at DESC
@@ -463,11 +471,18 @@ def get_user_documents(user_id):
                     doc['uploaded_at'] = dt.isoformat()
                 except:
                     pass
+            if doc.get('indexed_at'):
+                try:
+                    dt = datetime.strptime(doc['indexed_at'], '%Y-%m-%d %H:%M:%S')
+                    if current_app.config.get('TIMEZONE'):
+                        dt = current_app.config['TIMEZONE'].localize(dt)
+                    doc['indexed_at'] = dt.isoformat()
+                except:
+                    pass
         return documents
 
-
 def save_document(user_id, doc_id, filename, file_size, file_ext, file_path):
-    """Save document metadata to database."""
+    """Save document metadata to database. Index status is NULL initially."""
     current_time = get_current_time_for_db()
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
@@ -478,20 +493,36 @@ def save_document(user_id, doc_id, filename, file_size, file_ext, file_path):
         conn.commit()
         return doc_id
 
-
 def get_document(doc_id, user_id):
     """Get document metadata."""
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
         c.execute('''
-        SELECT id, filename, file_size, file_ext, file_path, uploaded_at
+        SELECT id, filename, file_size, file_ext, file_path, uploaded_at, index_status, indexed_at
         FROM documents
         WHERE id = ? AND user_id = ?
         ''', (doc_id, user_id))
         row = c.fetchone()
         return dict(row) if row else None
 
+def update_document_index_status(doc_id, status, indexed_at=None):
+    """Update the index status and optionally indexed_at for a document."""
+    with sqlite3.connect(CHAT_DB_PATH) as conn:
+        c = conn.cursor()
+        if indexed_at:
+            c.execute('''
+            UPDATE documents
+            SET index_status = ?, indexed_at = ?
+            WHERE id = ?
+            ''', (status, indexed_at, doc_id))
+        else:
+            c.execute('''
+            UPDATE documents
+            SET index_status = ?
+            WHERE id = ?
+            ''', (status, doc_id))
+        conn.commit()
 
 def delete_document(doc_id, user_id):
     """Delete document metadata from database."""
@@ -499,7 +530,6 @@ def delete_document(doc_id, user_id):
         c = conn.cursor()
         c.execute('DELETE FROM documents WHERE id = ? AND user_id = ?', (doc_id, user_id))
         conn.commit()
-
 
 def get_documents_total_size(user_id=None):
     """Get total size of all documents (optionally filtered by user)."""
@@ -511,7 +541,6 @@ def get_documents_total_size(user_id=None):
             c.execute('SELECT SUM(file_size) FROM documents')
         result = c.fetchone()[0]
         return result if result else 0
-
 
 def _extract_text_from_user_content(content):
     """Extract only the text parts from a user message."""
@@ -528,7 +557,6 @@ def _extract_text_from_user_content(content):
         return '\n'.join(texts).strip()
     except (json.JSONDecodeError, TypeError, AttributeError):
         return content
-
 
 def get_session_text_history(session_id, max_tokens, max_messages=None):
     """Retrieve text-only messages from a session."""

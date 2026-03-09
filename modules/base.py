@@ -262,7 +262,8 @@ class BaseModule:
         markers = {
             '[-IMAGE-]': 'image',
             '[-CAMERA-]': 'camera',
-            '[-REASONING-]': 'reasoning'
+            '[-REASONING-]': 'reasoning',
+            '[-RAG-]': 'rag'  # new marker for document search
         }
         
         for marker, action in markers.items():

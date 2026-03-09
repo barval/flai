@@ -142,6 +142,15 @@ class RedisRequestQueue:
             self.app.logger.error(f"Error getting session title: {str(e)}")
             return self.app.modules['base']._('Unknown session', lang=lang)
 
+    def _try_rag_answer(self, query, session_id, user_id, lang):
+        """Attempt to answer using RAG. Returns answer string if successful, None otherwise."""
+        rag = self.app.modules.get('rag')
+        if rag and rag.available:
+            answer, error = rag.generate_answer(user_id, query, session_id, lang=lang)
+            if answer and not error:
+                return answer
+        return None
+
     def _process_request(self, task):
         self.app.logger.info(f"RedisRequestQueue._process_request: processing task {task['id']}")
         
@@ -183,6 +192,28 @@ class RedisRequestQueue:
             is_error = False
             process_time = 0
             message_id = None
+
+            # --- NEW: Try RAG first for reasoning queries ---
+            if action_type == 'reasoning':
+                rag_start_time = time.time()
+                rag_answer = self._try_rag_answer(query, session_id, user_id, lang)
+                rag_time = round(time.time() - rag_start_time, 1)
+                if rag_answer is not None:
+                    completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
+                    model_used = self.app.config.get('LLM_REASONING_MODEL', 'unknown') + " (RAG)"
+                    message_id = save_message(session_id, 'assistant', rag_answer,
+                                              model_name=model_used, response_time=str(rag_time))
+                    return {
+                        'response': rag_answer,
+                        'session_id': session_id,
+                        'model_used': model_used,
+                        'assistant_timestamp': completion_time_for_db,
+                        'response_time': rag_time,
+                        'is_error': False,
+                        'message_id': message_id
+                    }
+                # If RAG returns nothing, continue with normal reasoning processing
+            # --- END NEW ---
 
             if action_type == 'image':
                 if 'image' in self.app.modules and self.app.modules['image'].available:
@@ -342,6 +373,7 @@ class RedisRequestQueue:
                     process_time = 0
 
             elif action_type == 'reasoning':
+                # This case is now only reached if RAG attempt returned None (no relevant documents)
                 if router_result.get('needs_reasoning'):
                     reasoning_start_time = time.time()
                     final_response = self.app.modules['base'].process_reasoning(query, current_time_str, lang=lang, session_id=session_id)
@@ -353,7 +385,7 @@ class RedisRequestQueue:
                 is_error = False
 
             elif action_type == 'rag':
-                # RAG action
+                # RAG action (explicit user request)
                 rag_module = self.app.modules.get('rag')
                 if rag_module and rag_module.available:
                     rag_start_time = time.time()

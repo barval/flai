@@ -2,6 +2,7 @@
 // Document management functions
 let currentView = 'sessions'; // 'sessions' or 'documents'
 let documentsData = {};
+let selectedDocumentId = null; // Track selected document
 
 function switchView(view) {
     if (view === currentView) {
@@ -14,6 +15,7 @@ function switchView(view) {
                 if (login) {
                     localStorage.setItem(`sidebar_collapsed_${login}`, sidebar.classList.contains('collapsed'));
                 }
+                updateCollapseIcon();
             }
         }
         return;
@@ -76,16 +78,17 @@ function updateDocumentsList(documents) {
     documents.forEach(doc => {
         const dateStr = doc.uploaded_at ? formatFullDateTime(doc.uploaded_at) : '';
         const sizeStr = doc.file_size ? formatFileSize(doc.file_size) : '';
+        const isSelected = selectedDocumentId === doc.id ? 'selected' : '';
         html += `
-            <div class="document-item" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}">
-                <div class="document-content">
-                    <div class="document-info">
-                        <div class="document-title">📄 ${escapeHtml(doc.filename)}</div>
-                        <div class="document-date">📅 ${dateStr}${sizeStr ? ' [' + sizeStr + ']' : ''}</div>
-                    </div>
-                    <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>
+        <div class="document-item ${isSelected}" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}">
+            <div class="document-content">
+                <div class="document-info">
+                    <div class="document-title">📄 ${escapeHtml(doc.filename)}</div>
+                    <div class="document-date">📅 ${dateStr}${sizeStr ? ' [' + sizeStr + ']' : ''}</div>
                 </div>
+                <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>
             </div>
+        </div>
         `;
     });
     documentsList.innerHTML = html;
@@ -98,9 +101,11 @@ function updateDocumentsList(documents) {
 function attachDocumentEventHandlers() {
     document.querySelectorAll('.document-item').forEach(el => {
         el.addEventListener('click', function(e) {
+            // Prevent download - just select the document
             if (e.target.closest('.delete-document-button')) return;
             const docId = this.dataset.documentId;
-            downloadDocument(docId);
+            // Select document (highlight only, no download)
+            selectDocument(docId);
         });
     });
     document.querySelectorAll('.delete-document-button').forEach(btn => {
@@ -114,8 +119,24 @@ function attachDocumentEventHandlers() {
     });
 }
 
+function selectDocument(docId) {
+    // Remove selection from all documents
+    document.querySelectorAll('.document-item').forEach(item => {
+        item.classList.remove('selected');
+    });
+    // Add selection to clicked document
+    const selectedItem = document.querySelector(`.document-item[data-document-id="${docId}"]`);
+    if (selectedItem) {
+        selectedItem.classList.add('selected');
+        selectedDocumentId = docId;
+    }
+    // Temporary placeholder - no download action
+    console.log('Document selected:', docId, '(download disabled - temporary placeholder)');
+}
+
 function downloadDocument(docId) {
-    window.open(`/api/documents/${docId}`, '_blank');
+    // Disabled - temporary placeholder
+    console.log('Download disabled for document:', docId);
 }
 
 function deleteDocument(docId, docName) {
@@ -128,6 +149,9 @@ function deleteDocument(docId, docName) {
         .then(data => {
             if (data.status === 'ok') {
                 delete documentsData[docId];
+                if (selectedDocumentId === docId) {
+                    selectedDocumentId = null;
+                }
                 const docItem = document.querySelector(`.document-item[data-document-id="${docId}"]`);
                 if (docItem) docItem.remove();
                 const documentsCount = document.querySelectorAll('.document-item').length;
@@ -191,4 +215,17 @@ function initDocumentsView() {
     }
     // Initialize with current view
     switchView(currentView);
+}
+
+// Update collapse icon based on sidebar state
+function updateCollapseIcon() {
+    const sidebar = document.querySelector('.sessions-sidebar');
+    const collapseIcon = document.getElementById('collapse-icon');
+    if (sidebar && collapseIcon) {
+        if (sidebar.classList.contains('collapsed')) {
+            collapseIcon.textContent = '➡️';
+        } else {
+            collapseIcon.textContent = '⬇️';
+        }
+    }
 }

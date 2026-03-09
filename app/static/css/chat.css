@@ -583,6 +583,7 @@ audio {
     gap: 0.5rem;
     margin-top: 0.5rem;
     flex-shrink: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
 .message-input input[type="text"] {

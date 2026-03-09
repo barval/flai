@@ -4,8 +4,8 @@ let currentView = 'sessions'; // 'sessions' or 'documents'
 let documentsData = {};
 let selectedDocumentId = null; // Track selected document
 
-function switchView(view) {
-    if (view === currentView) {
+function switchView(view, forceUpdate = false) {
+    if (view === currentView && !forceUpdate) {
         // On mobile, toggle collapse when clicking active tab
         if (window.innerWidth <= 768) {
             const sidebar = document.querySelector('.sessions-sidebar');
@@ -52,22 +52,22 @@ function switchView(view) {
 
 function loadDocuments() {
     fetch('/api/documents')
-        .then(res => {
-            if (!res.ok) {
-                throw new Error(`HTTP error ${res.status}`);
-            }
-            return res.json();
-        })
-        .then(documents => {
-            documentsData = {};
-            documents.forEach(doc => {
-                documentsData[doc.id] = doc;
-            });
-            updateDocumentsList(documents);
-        })
-        .catch(err => {
-            console.error('Error loading documents:', err);
+    .then(res => {
+        if (!res.ok) {
+            throw new Error(`HTTP error ${res.status}`);
+        }
+        return res.json();
+    })
+    .then(documents => {
+        documentsData = {};
+        documents.forEach(doc => {
+            documentsData[doc.id] = doc;
         });
+        updateDocumentsList(documents);
+    })
+    .catch(err => {
+        console.error('Error loading documents:', err);
+    });
 }
 
 function updateDocumentsList(documents) {
@@ -81,13 +81,13 @@ function updateDocumentsList(documents) {
         const isSelected = selectedDocumentId === doc.id ? 'selected' : '';
         html += `
         <div class="document-item ${isSelected}" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}">
-            <div class="document-content">
-                <div class="document-info">
-                    <div class="document-title">📄 ${escapeHtml(doc.filename)}</div>
-                    <div class="document-date">📅 ${dateStr}${sizeStr ? ' [' + sizeStr + ']' : ''}</div>
-                </div>
-                <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>
-            </div>
+        <div class="document-content">
+        <div class="document-info">
+        <div class="document-title">📄 ${escapeHtml(doc.filename)}</div>
+        <div class="document-date">📅 ${dateStr}${sizeStr ? ' [' + sizeStr + ']' : ''}</div>
+        </div>
+        <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>
+        </div>
         </div>
         `;
     });
@@ -145,22 +145,22 @@ function deleteDocument(docId, docName) {
     });
     if (!confirm(confirmMessage)) return;
     fetch(`/api/documents/${docId}`, { method: 'DELETE' })
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === 'ok') {
-                delete documentsData[docId];
-                if (selectedDocumentId === docId) {
-                    selectedDocumentId = null;
-                }
-                const docItem = document.querySelector(`.document-item[data-document-id="${docId}"]`);
-                if (docItem) docItem.remove();
-                const documentsCount = document.querySelectorAll('.document-item').length;
-                document.getElementById('documents-count').textContent = documentsCount;
-            } else {
-                alert(t('error') + ': ' + (data.error || t('unknown_error')));
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            delete documentsData[docId];
+            if (selectedDocumentId === docId) {
+                selectedDocumentId = null;
             }
-        })
-        .catch(err => alert(t('error') + ': ' + err.message));
+            const docItem = document.querySelector(`.document-item[data-document-id="${docId}"]`);
+            if (docItem) docItem.remove();
+            const documentsCount = document.querySelectorAll('.document-item').length;
+            document.getElementById('documents-count').textContent = documentsCount;
+        } else {
+            alert(t('error') + ': ' + (data.error || t('unknown_error')));
+        }
+    })
+    .catch(err => alert(t('error') + ': ' + err.message));
 }
 
 function uploadDocument(file) {
@@ -170,16 +170,16 @@ function uploadDocument(file) {
         method: 'POST',
         body: formData
     })
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === 'ok') {
-                alert(t('document_uploaded'));
-                loadDocuments();
-            } else {
-                alert(t('error') + ': ' + (data.error || t('document_upload_failed')));
-            }
-        })
-        .catch(err => alert(t('error') + ': ' + err.message));
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            alert(t('document_uploaded'));
+            loadDocuments();
+        } else {
+            alert(t('error') + ': ' + (data.error || t('document_upload_failed')));
+        }
+    })
+    .catch(err => alert(t('error') + ': ' + err.message));
 }
 
 function initDocumentsView() {
@@ -213,8 +213,8 @@ function initDocumentsView() {
             fileInput.click();
         });
     }
-    // Initialize with current view
-    switchView(currentView);
+    // Initialize with current view - force update to ensure tabs are styled correctly
+    switchView(currentView, true);
 }
 
 // Update collapse icon based on sidebar state

@@ -216,7 +216,7 @@ networks:
     external: true
 ```
 Поместите ваш чекпоинт Stable Diffusion (например, `cyberrealisticXL_v90.safetensors`) в каталог `./models`.
-Найти чекпоит можно тут: `https://civitai.com/`
+Найти чекпоинт можно тут: `https://civitai.com/`
 
 ### 🎤 Whisper ASR (распознавание речи)
 ```yaml

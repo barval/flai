@@ -16,80 +16,151 @@
 ---
 
 ## ✨ Features
-- 💬 Intelligent Chat – interact with local LLMs via Ollama (routing, reasoning, multimodal).
-- 🎨 Image Generation – create images from text using Stable Diffusion (Automatic1111).
-- 🔍 Image Analysis – upload images and ask questions about them (multimodal model).
-- 🎤 Voice Transcription – convert voice messages to text using Whisper ASR.
-- 📹 Home Surveillance – request snapshots from IP cameras (optional) and optionally analyze them.
-- 🗂️ Chat Sessions – multiple independent conversations with automatic titling and unread indicators.
-- ⚙️ Admin Panel – manage users, set camera permissions, change passwords.
-- 🚦 Request Queue – Redis‑backed queue with real‑time status and position tracking.
-- 💾 Export Chats – save any conversation as a clean HTML file.
-- 🔒 Fully Local – everything runs on your own hardware; no data ever leaves your network.
+
+### 🤖 Core AI Capabilities
+- 💬 **Intelligent Chat** – interact with local LLMs via Ollama with smart request routing (fast models for simple queries, powerful models for complex reasoning)
+- 🧠 **Advanced Reasoning** – dedicated model for complex tasks: calculations, code generation, creative writing
+- 🔍 **Multimodal Analysis** – upload images and ask questions about their content using vision-capable models
+- 🎨 **Image Generation** – create images from text descriptions using Stable Diffusion (Automatic1111) with automatic prompt optimization
+- 🎤 **Voice Transcription** – convert voice messages and audio files to text using Whisper ASR
+- 🗣️ **Text-to-Speech** – hear assistant responses spoken aloud via Piper TTS (male/female voice selection)
+
+### 📁 Document & Knowledge Management
+- 📚 **RAG with Qdrant** – upload documents (PDF, DOC, DOCX, TXT) and ask questions about their content using semantic search
+- 🗂️ **Chat Sessions** – maintain multiple independent conversations with automatic titling and unread message indicators
+- 💾 **Export Chats** – save any conversation as a self-contained HTML file with embedded media
+
+### 🏠 Home Integration (Optional)
+- 📹 **Camera Surveillance** – request snapshots from IP cameras and optionally analyze them with multimodal models
+- 🔐 **Access Control** – granular camera permissions per user via admin panel
+
+### 👥 User Experience
+- 🌐 **Multi-language Support** – full interface and AI responses in Russian and English
+- 🌓 **Dark/Light Theme** – toggle between themes with persistent preference storage
+- 🎚️ **Voice Gender Selection** – choose male or female voice for TTS responses
+- 📊 **Request Queue** – real-time status tracking with position indicators for queued requests
+- 📎 **File Attachments** – support for images, audio files, and documents in conversations
+
+### ⚙️ Administration
+- 👤 **User Management** – add, edit, delete users; change passwords; assign service classes
+- 🔑 **Camera Permissions** – control which users can access which cameras
+- 📈 **System Monitoring** – view database sizes and system statistics
+- 🔧 **CLI Tools** – manage admin password via Flask CLI command
+
+### 🔒 Privacy & Security
+- 🏠 **100% Local** – all processing happens on your hardware; no data leaves your network
+- 🔐 **Session-based Auth** – secure user authentication with password hashing
+- 🛡️ **File Access Control** – uploaded files are served only to authorized users
+- 🧹 **Data Isolation** – each user's sessions, messages, and documents are strictly separated
 
 ---
 
 ## 🧱 Architecture
-FLAI is a Flask web application that orchestrates several self‑hosted AI services:
-- **Ollama** – provides chat, reasoning, and multimodal models.
-- **Automatic1111** – Stable Diffusion WebUI for image generation.
-- **Whisper ASR** – speech‑to‑text service (faster‑whisper or OpenAI Whisper).
-- **Redis** – manages the request queue to keep the web UI responsive.
-- **SQLite** – stores user accounts, chat sessions, and messages.
 
-All components can run in Docker containers, making deployment straightforward.
+FLAI is a modular Flask web application that orchestrates several self-hosted AI services:
+
+┌─────────────────────────────────────────┐
+│ FLAI Web App │
+│ (Flask + Redis Queue + SQLite + Babel) │
+└────────────────┬────────────────────────┘
+│
+┌────────────┼────────────┐
+│ │ │
+▼ ▼ ▼
+┌────────┐ ┌────────┐ ┌────────┐
+│ Ollama │ │Auto1111│ │Whisper │
+│ LLMs │ │ SD │ │ ASR │
+└────────┘ └────────┘ └────────┘
+│ │ │
+▼ ▼ ▼
+┌────────┐ ┌────────┐ ┌────────┐
+│Piper │ │ Qdrant │ │ Camera │
+│ TTS │ │ RAG │ │ API │
+└────────┘ └────────┘ └────────┘
+
+
+### Core Components
+
+| Component | Purpose | Technology |
+|-----------|---------|------------|
+| **Flask** | Web framework, routing, templating | Python |
+| **Ollama** | Local LLM inference (chat, reasoning, multimodal) | Go + llama.cpp |
+| **Automatic1111** | Stable Diffusion image generation | Python + PyTorch |
+| **Whisper ASR** | Speech-to-text transcription | OpenAI Whisper / faster-whisper |
+| **Piper TTS** | Text-to-speech synthesis | ONNX + Piper |
+| **Qdrant** | Vector database for RAG semantic search | Rust |
+| **Redis** | Request queue management for async processing | C |
+| **SQLite** | User accounts, sessions, messages, documents | Embedded SQL |
+
+All components can run in Docker containers with a unified network configuration.
 
 ---
 
-## 📋 Requirements
-- Linux server (or Windows/macOS with Docker Desktop) with Docker and Docker Compose installed.
-- At least 8 GB RAM (more recommended for larger models).
-- NVIDIA GPU with CUDA support (for acceleration it is desirable, but not necessary).
-- Internet connection only for downloading models; afterwards everything works offline.
+## 📋 System Requirements
+
+### Hardware Recommendations
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| **RAM** | 8 GB | 16–32 GB (for larger models) |
+| **CPU** | 4 cores | 8+ cores |
+| **GPU** | Optional | NVIDIA with CUDA (for acceleration) |
+| **Storage** | 20 GB | 100+ GB (for models and user data) |
+
+### Software Prerequisites
+- Linux server (or Windows/macOS with Docker Desktop)
+- Docker Engine ≥ 20.10
+- Docker Compose ≥ 2.0
+- Internet connection (only for initial model downloads)
+
+> 💡 **Note**: After downloading models, FLAI works completely offline.
 
 ---
 
 ## 🚀 Quick Start
-### 1. Clone the repository
+
+### 1. Clone the Repository
 ```bash
 git clone https://github.com/barval/flai.git
 cd flai
 ```
-### 2. Prepare the configuration file
-Copy the sample environment file:
+
+### 2. Configure Environment
 ```bash
 cp .env.example .env
+# Edit .env with your preferred settings (see Configuration section)
 ```
-Edit the `.env` file by specifying your values (see `Configuration` below).
-### 3. Launch the FLAI web app
+
+### 3. Start the Application
 ```bash
 docker-compose up -d
 ```
-The application will be available at `http://localhost:5000`.
-### 4. Create an admin user
+The web interface will be available at `http://localhost:5000`.
+
+### 4. Create Admin Account
 ```bash
-docker exec -it flai_web_1 flask admin-password <your_admin_password>
+docker exec -it flai-web-1 flask admin-password YourSecurePassword123
 ```
-Now you can log in with login `admin` and the password you set.
+Log in with:
+- Login: `admin`
+- Password: `the password you just set`
 
 ---
 
-### 🔧 Setting Up Dependent Services
-FLAI relies on external services: Ollama, Automatic1111, and Whisper.
-You can run them on the same machine using the Docker Compose examples below.
-Important: All services should be connected to the same Docker network (e.g., flai_network) so that FLAI can reach them via container names.
+## 🔧 Setting Up Dependent Services
+FLAI integrates with several external AI services. Below are Docker Compose examples for running them alongside the main application.
+- ⚠️ Important: All services must share the same Docker network (flai_network) for proper communication.
 
-Create the shared network first:
+### Create Shared Network
 ```bash
 docker network create flai_network
 ```
 
-### 🤖 Ollama (LLM server)
-Create a docker-compose.yml for Ollama:
+### 🤖 Ollama (LLM Server)
 ```yaml
+# services/ollama/docker-compose.yml
 services:
   ollama:
-    image: ollama/ollama
+    image: ollama/ollama:latest
     container_name: ollama
     networks:
       - flai_network
@@ -101,7 +172,7 @@ services:
       - OLLAMA_REQUEST_TIMEOUT=1200s
       - OLLAMA_MAX_LOADED_MODELS=1
       - OLLAMA_KEEP_ALIVE=0
-    # Uncomment for GPU support
+    # Uncomment for GPU support:
     # deploy:
     #   resources:
     #     reservations:
@@ -119,19 +190,21 @@ networks:
   flai_network:
     external: true
 ```
-Pull the required models:
+
+Pull Required Models:
 ```bash
-docker exec ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
-docker exec ollama ollama pull qwen3-vl:8b-instruct-q4_K_M
-docker exec ollama ollama pull gpt-oss:20b
+docker exec ollama ollama pull qwen3:4b-instruct-2507-q4_K_M      # Chat/Router
+docker exec ollama ollama pull qwen3-vl:8b-instruct-q4_K_M        # Multimodal
+docker exec ollama ollama pull gpt-oss:20b                        # Reasoning
+docker exec ollama ollama pull bge-m3:latest                      # Embeddings (RAG)
 ```
 
-### 🎨 Automatic1111 (Stable Diffusion WebUI)
+### 🎨 Automatic1111 (Stable Diffusion)
 ```yaml
+# services/automatic1111/docker-compose.yml
 services:
   automatic1111:
-    # image: siutin/stable-diffusion-webui-docker:latest-cuda # CPU
-    image: siutin/stable-diffusion-webui-docker:latest-cuda   # GPU
+    image: siutin/stable-diffusion-webui-docker:latest-cuda  # Use -cpu for CPU-only
     container_name: sd-webui
     networks:
       - flai_network
@@ -142,10 +215,9 @@ services:
       - ./embeddings:/app/stable-diffusion-webui/embeddings
       - ./outputs:/app/stable-diffusion-webui/outputs
     environment:
-    # GPU
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - NVIDIA_REQUIRE_CUDA=cuda>=13.1
+      - NVIDIA_REQUIRE_CUDA=cuda>=12.1
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     runtime: nvidia
     command:
@@ -157,83 +229,241 @@ services:
       - --opt-sdp-attention
       - --medvram
       - --medvram-sdxl
-      - --opt-split-attention
 
 networks:
   flai_network:
     external: true
 ```
-Place your Stable Diffusion checkpoint (e.g., `cyberrealisticXL_v90.safetensors`) into the `./models` directory.
+Place your Stable Diffusion checkpoint (e.g., `cyberrealisticXL_v90.safetensors`) in the `./models` directory.
 
-### 🎤 Whisper ASR (speech‑to‑text)
+### 🎤 Whisper ASR (Speech-to-Text)
 ```yaml
+# services/openai-whisper/docker-compose.yml
 services:
   openai-whisper:
-    image: onerahmet/openai-whisper-asr-webservice:latest         # CPU
-    # image: onerahmet/openai-whisper-asr-webservice:latest-gpu   # GPU
+    image: onerahmet/openai-whisper-asr-webservice:latest        # CPU
+    # image: onerahmet/openai-whisper-asr-webservice:latest-gpu  # GPU
     container_name: openai-whisper
     networks:
       - flai_network
     ports:
       - "9000:9000"
     environment:
-      ASR_MODEL: "medium"                # or "small", "large"
-      ASR_ENGINE: "faster_whisper"       # faster_whisper recommended
-      ASR_DEVICE: "cpu"                  # change to "cuda" for GPU
+      ASR_MODEL: "medium"                  # Options: tiny, base, small, medium, large
+      ASR_ENGINE: "faster_whisper"         # Recommended for performance
+      ASR_DEVICE: "cpu"                    # Change to "cuda" for GPU
     volumes:
       - ~/.cache/huggingface:/root/.cache/huggingface
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: always
-    # Uncomment for GPU support
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
 
 networks:
   flai_network:
     external: true
 ```
 
----
+### 🗣️ Piper TTS (Text-to-Speech)
+```yaml
+# services/piper/docker-compose.yml
+services:
+  piper:
+    build:
+      context: ./services/piper
+      dockerfile: Dockerfile.piper
+    container_name: piper
+    networks:
+      - flai_network
+    ports:
+      - "18888:8888"
+    volumes:
+      - ./piper_models:/app/models
+    environment:
+      - PIPER_MODEL_DIR=/app/models
+    restart: unless-stopped
+
+networks:
+  flai_network:
+    external: true
+```
+
+Download Voice Models:
+```text
+# Russian voices
+wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx
+wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json
+wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx
+wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
+
+# English voices
+wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx
+wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json
+```
+
+### 🗄️ Qdrant (Vector Database for RAG)
+```yaml
+# services/qdrant/docker-compose.yml
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    networks:
+      - flai_network
+    ports:
+      - "6333:6333"   # HTTP API
+      - "6334:6334"   # gRPC API (optional)
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
+      QDRANT__SERVICE__ENABLE_TLS: 0  # Disable TLS for local dev
+
+volumes:
+  qdrant_data:
+    external: true
+    name: qdrant_data
+
+networks:
+  flai_network:
+    external: true
+```
 
 ## ⚙️ Configuration (.env)
-All settings are defined in the `.env` file. Below are the most important variables; see `.env.example` for a complete list.
+All settings are defined in the `.env` file. Key variables:
 
+### Core Settings
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `SECRET_KEY` | Flask session secret (generate a strong one) | `mysecretkey` |
-| `TIMEZONE` | Your local timezone | `Europe/Moscow` |
+| `SECRET_KEY` | Flask session secret (generate a strong random value) | `x8#kL9$mP2@vN5!qR` |
+| `TIMEZONE` | Local timezone for timestamps | `Europe/Moscow` |
+| `REDIS_URL` | Redis connection string | `redis://redis:6379/0` |
+
+### LLM Models (Ollama)
+| Variable | Description | Example |
+|----------|-------------|---------|
 | `OLLAMA_URL` | Ollama API endpoint | `http://ollama:11434` |
-| `LLM_CHAT_MODEL` | Router/chat model | `qwen3:4b-instruct-2507-q4_K_M` |
-| `LLM_MULTIMODAL_MODEL` | Multimodal model for images | `qwen3-vl:8b-instruct-q4_K_M` |
-| `LLM_REASONING_MODEL` | Model for complex reasoning tasks | `gpt-oss:20b` |
-| `AUTOMATIC1111_URL` | Automatic1111 API endpoint | `http://sd-webui:7860` |
-| `AUTOMATIC1111_MODEL` | Stable Diffusion checkpoint name | `cyberrealisticXL_v90.safetensors` |
-| `WHISPER_API_URL` | Whisper ASR API URL | `http://openai-whisper:9000/asr` |
-| `CAMERA_API_URL` | Camera snapshot API (if used) | `http://host.docker.internal:5005` |
-| `FOOTER_TEXT` | Custom footer text | `FLAI v6.0 (с) 2026` |
+| `LLM_CHAT_MODEL` | Fast model for chat/routing | `qwen3:4b-instruct-2507-q4_K_M` |
+| `LLM_MULTIMODAL_MODEL` | Vision-capable model | `qwen3-vl:8b-instruct-q4_K_M` |
+| `LLM_REASONING_MODEL` | Powerful model for complex tasks | `gpt-oss:20b` |
+| `LLM_*_CONTEXT_WINDOW` | Context window size (tokens) | `8192`, `16384`, `32768` |
+| `LLM_*_TEMPERATURE` | Creativity/randomness (0.0–1.0) | `0.1` (chat), `0.7` (reasoning) |
+| `LLM_*_TOP_P` | Nucleus sampling parameter | `0.1`, `0.9` |
+| `LLM_*_TIMEOUT` | Request timeout in seconds | `60`, `120`, `300` |
+
+### Image Generation (Automatic1111)
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `AUTOMATIC1111_URL` | WebUI API endpoint | `http://sd-webui:7860` |
+| `AUTOMATIC1111_MODEL` | Checkpoint filename | `cyberrealisticXL_v90.safetensors` |
+| `AUTOMATIC1111_TIMEOUT` | Generation timeout (seconds) | `180` |
+| `MAX_IMAGE_WIDTH` / `HEIGHT` | Max output resolution | `3840`, `2160` |
+| `MAX_IMAGE_SIZE_MB` | Max upload size | `5` |
+
+### Audio Processing
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `WHISPER_API_URL` | Whisper ASR endpoint | `http://openai-whisper:9000/asr` |
+| `WHISPER_API_TIMEOUT` | Transcription timeout | `120` |
+| `PIPER_URL` | Piper TTS endpoint | `http://piper:8888/tts` |
+| `PIPER_TIMEOUT` | TTS synthesis timeout | `30` |
+| `MAX_VOICE_SIZE_MB` | Max voice recording size | `5` |
+| `MAX_AUDIO_SIZE_MB` | Max uploaded audio size | `5` |
+
+### Camera Integration (Optional)
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `CAMERA_API_URL` | Camera service endpoint | `http://host.docker.internal:5005` |
+| `CAMERA_ENABLED` | Enable/disable camera module | `true` / `false` |
+| `CAMERA_API_TIMEOUT` | Snapshot request timeout (seconds) | `15` |
+| `CAMERA_CHECK_INTERVAL` | Health check interval (seconds) | `30` |
+
+### RAG / Qdrant
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `QDRANT_URL` | Qdrant HTTP API endpoint | `http://qdrant:6333` |
+| `QDRANT_API_KEY` | API key for authentication | `your_secure_key` |
+| `EMBEDDING_MODEL` | Ollama embedding model | `bge-m3:latest` |
+| `RAG_CHUNK_SIZE` | Text chunk size for indexing | `500` |
+| `RAG_CHUNK_OVERLAP` | Overlap between chunks | `50` |
+| `RAG_TOP_K` | Number of chunks to retrieve | `10` |
+
+### File & Document Settings
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `MAX_DOCUMENT_SIZE_MB` | Max uploaded document size | `25` |
+| `UPLOAD_FOLDER` | Path for uploaded media | `data/uploads` |
+| `DOCUMENTS_FOLDER` | Path for uploaded documents | `data/documents` |
+
+### Advanced / Debug
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `TOKEN_CHARS` | Est. characters per token for context calc | `3` |
+| `CONTEXT_HISTORY_PERCENT` | % of context window for history | `75` |
+| `DEBUG_TRANSLATIONS` | Enable translation debugging | `false` |
 
 ---
 
 ## 👥 User Management
-You can manage users through the Admin Panel (/admin) – add, edit, delete, change passwords and assign access rights to cameras.
 
-The password for the administrator account is created and changed by the command:
+### Admin Panel (/admin)
+- 👤 User Operations: Create, edit, delete user accounts
+- 🔑 Password Management: Reset passwords for any user
+- 🔐 Camera Permissions: Grant/revoke access to specific cameras per user
+- 📊 System Stats: Monitor database sizes (users, chats, files, documents)
+- 🎚️ Service Classes: Assign priority levels (0=highest, 2=lowest) for queue processing
+
+### CLI Commands
 ```bash
-docker exec -it flai_web_1 flask admin-password <your_admin_password>
+# Set or change admin password
+docker exec -it flai-web-1 flask admin-password NewPassword123
 ```
+
+### User Self-Service
+- 🌐 Language Switching: Toggle between Russian and English interface
+- 🌓 Theme Toggle: Switch between light/dark modes (persisted per user)
+- 🎚️ Voice Gender: Choose male/female voice for TTS responses
+- 📁 Document Upload: Add PDF/DOC/TXT files for RAG-powered Q&A
+- 💾 Chat Export: Save conversations as standalone HTML files
 
 ---
 
-## 🗺️ Future Plans
-- 🗣️ Text‑to‑Speech (TTS) – synthesize assistant replies using a local TTS engine (e.g., Coqui TTS, Piper) to enable voice interaction.
-- 📚 RAG with Qdrant – implement Retrieval‑Augmented Generation over user‑uploaded documents (PDF, TXT, etc.) using a vector database (Qdrant) for semantic search.
-- 🧠 Persistent Dialog Memory – maintain long‑term context across sessions by summarizing or storing conversation history.
+## 🗺️ Roadmap
+
+### ✅ Completed
+- Multi-model request routing (simple → fast model, complex → reasoning model)
+- Multimodal image analysis with conversation history
+- Image generation with automatic prompt optimization
+- Voice transcription (Whisper) and synthesis (Piper TTS)
+- Document upload + RAG with Qdrant semantic search
+- Camera integration with permission system
+- Redis-backed request queue with real-time status
+- Full i18n support (RU/EN) with Flask-Babel
+- Dark/light theme with persistent preferences
+- HTML chat export with embedded media
+
+### 🔄 In Progress
+- Long-term dialog memory (cross-session context persistence)
+- Advanced RAG features: metadata filtering, hybrid search, re-ranking
+- Mobile-responsive UI optimizations
+- Performance Improvements
+- Security Enhancements
+- User activity analytics and usage statistics
+
+### 📅 Planned
+- Plugin architecture for custom modules
+- API for external integrations (webhooks, REST endpoints)
+- Backup/restore utilities for user data
+- Multi-user collaboration features (shared sessions, document libraries)
+- Local model fine-tuning utilities (LoRA, QLoRA support)
+
+---
+
+## 🤝 Contributing
+Contributions are welcome! Here's how you can help:
+- 🔍 Report Issues: Found a bug? Open an issue with reproduction steps
+- 💡 Suggest Features: Have an idea? Start a discussion before coding
+- 🛠️ Submit PRs: Fork, branch, code, test, and submit a pull request
+- 📚 Improve Docs: Help refine documentation, examples, or translations
 
 ---
 

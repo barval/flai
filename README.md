@@ -59,24 +59,24 @@
 
 FLAI is a modular Flask web application that orchestrates several self-hosted AI services:
 
-┌─────────────────────────────────────────┐
-│ FLAI Web App │
-│ (Flask + Redis Queue + SQLite + Babel) │
-└────────────────┬────────────────────────┘
-│
-┌────────────┼────────────┐
-│ │ │
-▼ ▼ ▼
-┌────────┐ ┌────────┐ ┌────────┐
-│ Ollama │ │Auto1111│ │Whisper │
-│ LLMs │ │ SD │ │ ASR │
-└────────┘ └────────┘ └────────┘
-│ │ │
-▼ ▼ ▼
-┌────────┐ ┌────────┐ ┌────────┐
-│Piper │ │ Qdrant │ │ Camera │
-│ TTS │ │ RAG │ │ API │
-└────────┘ └────────┘ └────────┘
+┌─────────────────────────────────────────┐  
+│ FLAI Web App │  
+│ (Flask + Redis Queue + SQLite + Babel) │  
+└────────────────┬────────────────────────┘  
+│  
+┌────────────┼────────────┐  
+│ │ │  
+▼ ▼ ▼  
+┌────────┐ ┌────────┐ ┌────────┐  
+│ Ollama │ │Auto1111│ │Whisper │  
+│ LLMs │ │ SD │ │ ASR │  
+└────────┘ └────────┘ └────────┘  
+│ │ │  
+▼ ▼ ▼  
+┌────────┐ ┌────────┐ ┌────────┐  
+│Piper │ │ Qdrant │ │ Camera │  
+│ TTS │ │ RAG │ │ API │  
+└────────┘ └────────┘ └────────┘  
 
 
 ### Core Components
@@ -235,6 +235,7 @@ networks:
     external: true
 ```
 Place your Stable Diffusion checkpoint (e.g., `cyberrealisticXL_v90.safetensors`) in the `./models` directory.
+You can find the checkpoint here: `https://civitai.com/`
 
 ### 🎤 Whisper ASR (Speech-to-Text)
 ```yaml
@@ -341,7 +342,7 @@ All settings are defined in the `.env` file. Key variables:
 ### LLM Models (Ollama)
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `OLLAMA_URL` | Ollama API endpoint | `http://ollama:11434` |
+| `OLLAMA_URL` | Ollama API endpoint | `http://host.docker.internal:11434` |
 | `LLM_CHAT_MODEL` | Fast model for chat/routing | `qwen3:4b-instruct-2507-q4_K_M` |
 | `LLM_MULTIMODAL_MODEL` | Vision-capable model | `qwen3-vl:8b-instruct-q4_K_M` |
 | `LLM_REASONING_MODEL` | Powerful model for complex tasks | `gpt-oss:20b` |
@@ -353,7 +354,7 @@ All settings are defined in the `.env` file. Key variables:
 ### Image Generation (Automatic1111)
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `AUTOMATIC1111_URL` | WebUI API endpoint | `http://sd-webui:7860` |
+| `AUTOMATIC1111_URL` | WebUI API endpoint | `http://host.docker.internal:7860` |
 | `AUTOMATIC1111_MODEL` | Checkpoint filename | `cyberrealisticXL_v90.safetensors` |
 | `AUTOMATIC1111_TIMEOUT` | Generation timeout (seconds) | `180` |
 | `MAX_IMAGE_WIDTH` / `HEIGHT` | Max output resolution | `3840`, `2160` |
@@ -362,7 +363,7 @@ All settings are defined in the `.env` file. Key variables:
 ### Audio Processing
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `WHISPER_API_URL` | Whisper ASR endpoint | `http://openai-whisper:9000/asr` |
+| `WHISPER_API_URL` | Whisper ASR endpoint | `http://host.docker.internal:9000/asr` |
 | `WHISPER_API_TIMEOUT` | Transcription timeout | `120` |
 | `PIPER_URL` | Piper TTS endpoint | `http://piper:8888/tts` |
 | `PIPER_TIMEOUT` | TTS synthesis timeout | `30` |
@@ -376,11 +377,12 @@ All settings are defined in the `.env` file. Key variables:
 | `CAMERA_ENABLED` | Enable/disable camera module | `true` / `false` |
 | `CAMERA_API_TIMEOUT` | Snapshot request timeout (seconds) | `15` |
 | `CAMERA_CHECK_INTERVAL` | Health check interval (seconds) | `30` |
+API for retrieving snapshots from surveillance cameras in various rooms: `https://github.com/barval/room-snapshot-api`
 
 ### RAG / Qdrant
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `QDRANT_URL` | Qdrant HTTP API endpoint | `http://qdrant:6333` |
+| `QDRANT_URL` | Qdrant HTTP API endpoint | `http://host.docker.internal:6333` |
 | `QDRANT_API_KEY` | API key for authentication | `your_secure_key` |
 | `EMBEDDING_MODEL` | Ollama embedding model | `bge-m3:latest` |
 | `RAG_CHUNK_SIZE` | Text chunk size for indexing | `500` |

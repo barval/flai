@@ -59,24 +59,24 @@
 
 ПЛИИ — это модульное веб-приложение на Flask, которое координирует несколько самостоятельно размещённых ИИ-сервисов:
 
-┌─────────────────────────────────────────┐
-│ Веб-приложение ПЛИИ │
-│ (Flask + Redis Queue + SQLite + Babel) │
-└────────────────┬────────────────────────┘
-│
-┌────────────┼────────────┐
-│ │ │
-▼ ▼ ▼
-┌────────┐ ┌────────┐ ┌────────┐
-│ Ollama │ │Auto1111│ │Whisper │
-│ LLMs │ │ SD │ │ ASR │
-└────────┘ └────────┘ └────────┘
-│ │ │
-▼ ▼ ▼
-┌────────┐ ┌────────┐ ┌────────┐
-│Piper │ │ Qdrant │ │ Camera │
-│ TTS │ │ RAG │ │ API │
-└────────┘ └────────┘ └────────┘
+┌─────────────────────────────────────────┐  
+│ Веб-приложение ПЛИИ │  
+│ (Flask + Redis Queue + SQLite + Babel) │  
+└────────────────┬────────────────────────┘  
+│  
+┌────────────┼────────────┐  
+│ │ │  
+▼ ▼ ▼  
+┌────────┐ ┌────────┐ ┌────────┐  
+│ Ollama │ │Auto1111│ │Whisper │  
+│ LLMs │ │ SD │ │ ASR │  
+└────────┘ └────────┘ └────────┘  
+│ │ │  
+▼ ▼ ▼  
+┌────────┐ ┌────────┐ ┌────────┐  
+│Piper │ │ Qdrant │ │ Camera │  
+│ TTS │ │ RAG │ │ API │  
+└────────┘ └────────┘ └────────┘  
 
 
 ### Основные компоненты
@@ -235,6 +235,7 @@ networks:
     external: true
 ```
 Поместите ваш чекпоинт Stable Diffusion (например, `cyberrealisticXL_v90.safetensors`) в каталог `./models`.
+Найти чекпоит можно тут: `https://civitai.com/`
 
 ### 🎤 Whisper ASR (распознавание речи)
 ```yaml
@@ -340,7 +341,7 @@ networks:
 ### Модели LLM (Ollama)
 | Переменная | Описание | Пример |
 |------------|----------|--------|
-| `OLLAMA_URL` | Адрес API Ollama | `http://ollama:11434` |
+| `OLLAMA_URL` | Адрес API Ollama | `http://host.docker.internal:11434` |
 | `LLM_CHAT_MODEL` | Быстрая модель для чата/маршрутизации | `qwen3:4b-instruct-2507-q4_K_M` |
 | `LLM_MULTIMODAL_MODEL` | Модель с поддержкой зрения | `qwen3-vl:8b-instruct-q4_K_M` |
 | `LLM_REASONING_MODEL` | Мощная модель для сложных задач | `gpt-oss:20b` |
@@ -352,7 +353,7 @@ networks:
 ### Генерация изображений (Automatic1111)
 | Переменная | Описание | Пример |
 |------------|----------|--------|
-| `AUTOMATIC1111_URL` | Адрес API WebUI | `http://sd-webui:7860` |
+| `AUTOMATIC1111_URL` | Адрес API WebUI | `http://host.docker.internal:7860` |
 | `AUTOMATIC1111_MODEL` | Имя файла чекпоинта | `cyberrealisticXL_v90.safetensors` |
 | `AUTOMATIC1111_TIMEOUT` | Таймаут генерации (секунды) | `180` |
 | `MAX_IMAGE_WIDTH` / `HEIGHT` | Максимальное разрешение вывода | `3840`, `2160` |
@@ -361,7 +362,7 @@ networks:
 ### Обработка аудио
 | Переменная | Описание | Пример |
 |------------|----------|--------|
-| `WHISPER_API_URL` | Адрес API Whisper ASR | `http://openai-whisper:9000/asr` |
+| `WHISPER_API_URL` | Адрес API Whisper ASR | `http://host.docker.internal:9000/asr` |
 | `WHISPER_API_TIMEOUT` | Таймаут транскрибации | `120` |
 | `PIPER_URL` | Адрес API Piper TTS | `http://piper:8888/tts` |
 | `PIPER_TIMEOUT` | Таймаут синтеза речи | `30` |
@@ -375,11 +376,12 @@ networks:
 | `CAMERA_ENABLED` | Включить/отключить модуль камер | `true` / `false` |
 | `CAMERA_API_TIMEOUT` | Таймаут запроса снимка (сек) | `15` |
 | `CAMERA_CHECK_INTERVAL` | Интервал проверки доступности (сек) | `30` |
+API для получения снимков с камер видеонаблюдения в различных комнатах: `https://github.com/barval/room-snapshot-api`
 
 ### RAG / Qdrant
 | Переменная | Описание | Пример |
 |------------|----------|--------|
-| `QDRANT_URL` | Адрес HTTP API Qdrant | `http://qdrant:6333` |
+| `QDRANT_URL` | Адрес HTTP API Qdrant | `http://host.docker.internal:6333` |
 | `QDRANT_API_KEY` | API-ключ для аутентификации | `ваш_надёжный_ключ` |
 | `EMBEDDING_MODEL` | Модель эмбеддингов Ollama | `bge-m3:latest` |
 | `RAG_CHUNK_SIZE` | Размер текстового чанка для индексации | `500` |
@@ -462,91 +464,6 @@ docker exec -it flai-web-1 flask admin-password НовыйПароль123
 - 💡 Предложить функцию: есть идея? Начните обсуждение перед написанием кода
 - 🛠️ Отправить PR: форкните, создайте ветку, напишите код, протестируйте, отправьте pull request
 - 📚 Улучшить документацию: помогите уточнить документацию, примеры или переводы
-
----
-
-## 📄 Лицензия
-Этот проект распространяется под лицензией MIT – подробности см. в файле [LICENSE-ru](LICENSE-ru).
-
-
-
-
-
-
-
-
-
-
-
-### 🎤 Whisper ASR (распознавание речи)
-```yaml
-services:
-  openai-whisper:
-    image: onerahmet/openai-whisper-asr-webservice:latest         # CPU
-    # image: onerahmet/openai-whisper-asr-webservice:latest-gpu   # GPU
-    container_name: openai-whisper
-    networks:
-      - flai_network
-    ports:
-      - "9000:9000"
-    environment:
-      ASR_MODEL: "medium"                # или "small", "large"
-      ASR_ENGINE: "faster_whisper"       # рекомендуется faster_whisper
-      ASR_DEVICE: "cpu"                  # измените на "cuda" для GPU
-    volumes:
-      - ~/.cache/huggingface:/root/.cache/huggingface
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    restart: always
-    # Раскомментируйте для поддержки GPU
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
-
-networks:
-  flai_network:
-    external: true
-```
-
----
-
-## ⚙️ Конфигурация (.env)
-Все настройки задаются в файле `.env`. Ниже приведены наиболее важные переменные; полный список см. в `.env.example`.
-
-| Переменная | Описание	| Пример |
-|------------|----------|--------|
-| `SECRET_KEY` | Секрет для сессий Flask (сгенерируйте надёжный) | `mysecretkey` |
-| `TIMEZONE` | Ваш локальный часовой пояс | `Europe/Moscow` |
-| `OLLAMA_URL` | Адрес API Ollama | `http://ollama:11434` |
-| `LLM_CHAT_MODEL` | Модель‑маршрутизатор / чат‑модель | `qwen3:4b-instruct-2507-q4_K_M` |
-| `LLM_MULTIMODAL_MODEL` | Мультимодальная модель для изображений | `qwen3-vl:8b-instruct-q4_K_M` |
-| `LLM_REASONING_MODEL` | Модель для сложных рассуждений | `gpt-oss:20b` |
-| `AUTOMATIC1111_URL` | Адрес API Automatic1111	| `http://sd-webui:7860` |
-| `AUTOMATIC1111_MODEL` | Имя чекпоинта Stable Diffusion | `cyberrealisticXL_v90.safetensors` |
-| `WHISPER_API_URL` | Адрес API Whisper ASR | `http://openai-whisper:9000/asr` |
-| `CAMERA_API_URL` | Адрес API камер (если используется) | `http://host.docker.internal:5005` |
-| `FOOTER_TEXT` | Пользовательский текст подвала | `ПЛИИ v6.0 (с) 2026` |
-
----
-
-## 👥 Управление пользователями
-Вы можете управлять пользователями через Панель администратора (/admin) – добавлять, редактировать, удалять, менять пароли и назначать права доступа к камерам.
-
-Пароль для учетной записи администратора создается и изменяется с помощью команды:
-```bash
-docker exec -it flai_web_1 flask admin-password <ваш_пароль_администратора>
-```
-
----
-
-## 🗺️ Планы развития
-- 🗣️ Синтез речи (TTS) – озвучивание ответов ассистента с помощью локального TTS‑движка (например, Coqui TTS, Piper) для полноценного голосового взаимодействия.
-- 📚 RAG с Qdrant – реализация генерации с дополнением извлечения (Retrieval‑Augmented Generation) по загруженным пользователем документам (PDF, TXT и др.) с использованием векторной базы данных Qdrant для семантического поиска.
-- 🧠 Долговременная память диалогов – поддержание длительного контекста между сеансами путём суммаризации или хранения истории общения.
 
 ---
 

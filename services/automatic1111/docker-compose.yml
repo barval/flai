@@ -1,0 +1,35 @@
+# automatic1111
+services:
+  automatic1111:
+    # image: siutin/stable-diffusion-webui-docker:latest-cuda # CPU
+    image: siutin/stable-diffusion-webui-docker:latest-cuda   # GPU
+    container_name: sd-webui
+    networks:
+      - flai_network
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./models:/app/stable-diffusion-webui/models
+      - ./embeddings:/app/stable-diffusion-webui/embeddings
+      - ./outputs:/app/stable-diffusion-webui/outputs
+    environment:
+    # GPU
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_REQUIRE_CUDA=cuda>=13.1
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    runtime: nvidia
+    command:
+      - /app/stable-diffusion-webui/webui.sh
+      - --listen
+      - --port=7860
+      - --api
+      - --api-log
+      - --opt-sdp-attention
+      - --medvram
+      - --medvram-sdxl
+      - --opt-split-attention
+
+networks:
+  flai_network:
+    external: true

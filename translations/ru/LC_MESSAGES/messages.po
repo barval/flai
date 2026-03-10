@@ -1,0 +1,518 @@
+# Russian translations for FLAI.
+# Copyright (C) 2026
+# This file is distributed under the same license as the FLAI project.
+# Automatically generated, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: FLAI 7.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-03-05 12:00+0300\n"
+"PO-Revision-Date: 2026-03-05 13:00+0300\n"
+"Last-Translator: Valeriy Barsukov\n"
+"Language: ru\n"
+"Language-Team: Russian\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+msgid "Documents"
+msgstr "Документы"
+
+msgid "New document"
+msgstr "Новый документ"
+
+msgid "Delete document"
+msgstr "Удалить документ"
+
+msgid "Delete document \"{filename}\"?"
+msgstr "Удалить документ \"{filename}\"?"
+
+msgid "Upload document"
+msgstr "Загрузить документ"
+
+msgid "Document uploaded"
+msgstr "Документ загружен"
+
+msgid "Document upload failed"
+msgstr "Ошибка загрузки документа"
+
+msgid "Supported formats: PDF, DOC, DOCX, TXT"
+msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
+
+msgid "No file provided"
+msgstr "Файл не предоставлен"
+
+msgid "No file selected"
+msgstr "Файл не выбран"
+
+msgid "Document not found"
+msgstr "Документ не найден"
+
+msgid "Documents DB"
+msgstr "База документов"
+
+msgid "Documents"
+msgstr "Документов"
+
+msgid "FLAI"
+msgstr "ПЛИИ"
+
+msgid "Administrator"
+msgstr "Администратор"
+
+msgid "Logout"
+msgstr "Выйти"
+
+msgid "Authorization"
+msgstr "Авторизация"
+
+msgid "All fields are required"
+msgstr "Все поля обязательны"
+
+msgid "Invalid login or password"
+msgstr "Неверный логин или пароль"
+
+msgid "Login"
+msgstr "Логин"
+
+msgid "Password"
+msgstr "Пароль"
+
+msgid "Not authorized"
+msgstr "Не авторизован"
+
+msgid "session"
+msgstr "Сеанс"
+
+msgid "saved_on"
+msgstr "Сохранено"
+
+msgid "total_messages"
+msgstr "Всего сообщений"
+
+msgid "New session"
+msgstr "Новый сеанс"
+
+msgid "Permission denied or session not found"
+msgstr "Нет прав или сеанс не найден"
+
+msgid "No active session"
+msgstr "Нет активного сеанса"
+
+msgid "Delete session {title} from {date}?"
+msgstr "Удалить сеанс \"{title}\" от {date}?"
+
+msgid "Empty message"
+msgstr "Пустое сообщение"
+
+msgid "Failed to recognize speech"
+msgstr "Не удалось распознать речь"
+
+msgid "Transcribed"
+msgstr "Распознано"
+
+msgid "Voice request"
+msgstr "Голосовой запрос"
+
+msgid "Audio transcribed"
+msgstr "Аудио распознано"
+
+msgid "Request queued (position {pos})"
+msgstr "Запрос поставлен в очередь (позиция {pos})"
+
+msgid "Speech recognized, request queued (position {pos})"
+msgstr "Голос распознан, запрос поставлен в очередь (позиция {pos})"
+
+msgid "Image"
+msgstr "Изображение"
+
+msgid "Text request"
+msgstr "Текстовый запрос"
+
+msgid "Unknown session"
+msgstr "Неизвестный сеанс"
+
+msgid "Sessions"
+msgstr "Сеансы"
+
+msgid "Delete session"
+msgstr "Удалить сеанс"
+
+msgid "Chat"
+msgstr "Чат"
+
+msgid "Messages"
+msgstr "Сообщения"
+
+msgid "Your requests in queue / Total in queue"
+msgstr "Ваши запросы в очереди / Всего в очереди"
+
+msgid "Save as HTML"
+msgstr "Сохранить как HTML"
+
+msgid "Enter message..."
+msgstr "Введите сообщение..."
+
+msgid "Record voice message"
+msgstr "Записать голосовое сообщение"
+
+msgid "Send"
+msgstr "Отправить"
+
+msgid "Recording..."
+msgstr "Запись..."
+
+msgid "Sending..."
+msgstr "Отправка..."
+
+msgid "processing"
+msgstr "обрабатывается"
+
+msgid "queued"
+msgstr "в очереди"
+
+msgid "new_response"
+msgstr "новый ответ"
+
+msgid "delete_session_confirm"
+msgstr "Удалить сеанс \"{title}\" от {date}?"
+
+msgid "download_image"
+msgstr "Скачать изображение"
+
+msgid "download_audio"
+msgstr "Скачать аудио"
+
+msgid "click_to_enlarge"
+msgstr "Нажмите для увеличения"
+
+msgid "image"
+msgstr "изображение"
+
+msgid "browser_no_audio_support"
+msgstr "Ваш браузер не поддерживает запись аудио"
+
+msgid "secure_context_required"
+msgstr "Для записи голоса требуется безопасное соединение (HTTPS). Попробуйте открыть сайт по HTTPS или localhost."
+
+msgid "microphone_access_denied"
+msgstr "Не удалось получить доступ к микрофону."
+
+msgid "enter_message_or_file"
+msgstr "Введите сообщение или прикрепите файл"
+
+msgid "error"
+msgstr "Ошибка"
+
+msgid "unknown_error"
+msgstr "Неизвестная ошибка"
+
+msgid "request_timeout"
+msgstr "Превышено время ожидания ответа. Проверьте статус запроса."
+
+msgid "footer_not_configured"
+msgstr "Подпись не настроена"
+
+msgid "footer_load_error"
+msgstr "Ошибка загрузки подписи"
+
+msgid "user"
+msgstr "Пользователь"
+
+msgid "no_active_session_save"
+msgstr "Нет активного сеанса для сохранения"
+
+msgid "chat"
+msgstr "Чат"
+
+msgid "saved_chat"
+msgstr "Сохраненный чат"
+
+msgid "session"
+msgstr "Сеанс"
+
+msgid "saved_on"
+msgstr "Сохранено"
+
+msgid "total_messages"
+msgstr "Всего сообщений"
+
+msgid "no_messages_to_save"
+msgstr "Нет сообщений для сохранения"
+
+msgid "copied"
+msgstr "Скопировано!"
+
+msgid "copy_code"
+msgstr "Копировать код"
+
+msgid "copy_failed"
+msgstr "Ошибка копирования"
+
+msgid "copy_text"
+msgstr "Копировать текст"
+
+msgid "Admin Panel"
+msgstr "Панель администратора"
+
+msgid "Add user"
+msgstr "Добавить пользователя"
+
+msgid "Chat DB"
+msgstr "База чатов"
+
+msgid "User DB"
+msgstr "База пользователей"
+
+msgid "Files DB"
+msgstr "База файлов"
+
+msgid "Status"
+msgstr "Статус"
+
+msgid "Name"
+msgstr "Имя"
+
+msgid "Class"
+msgstr "Класс"
+
+msgid "Sessions"
+msgstr "Сеансов"
+
+msgid "Messages"
+msgstr "Сообщений"
+
+msgid "Files"
+msgstr "Файлы"
+
+msgid "Camera access"
+msgstr "Доступ к камерам"
+
+msgid "Camera snapshot: {room_name}"
+msgstr "Снимок с камеры: {room_name}"
+
+msgid "Actions"
+msgstr "Действия"
+
+msgid "New user"
+msgstr "Новый пользователь"
+
+msgid "Only lowercase letters and digits"
+msgstr "Только строчные латинские буквы и цифры"
+
+msgid "highest"
+msgstr "высший"
+
+msgid "medium"
+msgstr "средний"
+
+msgid "lowest"
+msgstr "низший"
+
+msgid "Active"
+msgstr "Активен"
+
+msgid "Leave all unchecked to deny access to all cameras."
+msgstr "Оставьте все неотмеченными — доступ будет закрыт ко всем камерам."
+
+msgid "Create"
+msgstr "Создать"
+
+msgid "Change password"
+msgstr "Смена пароля"
+
+msgid "New password"
+msgstr "Новый пароль"
+
+msgid "Save"
+msgstr "Сохранить"
+
+msgid "Delete user {login}?"
+msgstr "Удалить пользователя {login}?"
+
+msgid "Delete user"
+msgstr "Удалить пользователя"
+
+msgid "Internal server error"
+msgstr "Внутренняя ошибка сервера"
+
+msgid "Missing fields"
+msgstr "Не все поля заполнены"
+
+msgid "Login already exists"
+msgstr "Логин уже существует"
+
+msgid "New password not specified"
+msgstr "Новый пароль не указан"
+
+msgid "OK"
+msgstr "ОК"
+
+msgid "Cancel"
+msgstr "Отмена"
+
+msgid "Change"
+msgstr "Сменить"
+
+msgid "delete"
+msgstr "Удалить"
+
+msgid "Ollama service unavailable"
+msgstr "Сервис Ollama недоступен"
+
+msgid "Model for {model_type} not configured"
+msgstr "Модель для {model_type} не настроена"
+
+msgid "Timeout ({timeout}s) when calling the model. Try increasing timeout in .env or simplify your request."
+msgstr "Превышено время ожидания ответа от модели ({timeout}с). Попробуйте увеличить таймаут в .env или упростите запрос."
+
+msgid "Could not connect to Ollama"
+msgstr "Не удалось подключиться к Ollama"
+
+msgid "Error"
+msgstr "Ошибка"
+
+msgid "Error loading prompt template"
+msgstr "Ошибка загрузки шаблона промпта"
+
+msgid "Could not determine action"
+msgstr "Не удалось определить действие"
+
+msgid "Access to this camera is denied"
+msgstr "Доступ к данной камере запрещён"
+
+msgid "CCTV service unavailable"
+msgstr "Сервис видеонаблюдения недоступен"
+
+msgid "Unknown room: {room}"
+msgstr "Неизвестная комната: {room}"
+
+msgid "Failed to get snapshot from camera {room_name}"
+msgstr "Не удалось получить изображение с камеры {room_name}"
+
+msgid "Timeout ({timeout}s)"
+msgstr "Таймаут ({timeout}с)"
+
+msgid "Connection error"
+msgstr "Ошибка подключения"
+
+msgid "Timeout ({timeout}s) during audio transcription"
+msgstr "Таймаут ({timeout}с) при транскрибации аудио"
+
+msgid "Connection error to Whisper API"
+msgstr "Ошибка подключения к Whisper API"
+
+msgid "Multimodal model unavailable"
+msgstr "Мультимодальная модель недоступна"
+
+msgid "Maximum file size {max_size} MB"
+msgstr "Максимальный размер файла {max_size} Мб"
+
+msgid "Unsupported file type"
+msgstr "Неподдерживаемый тип файла"
+
+msgid "Maximum resolution {max_width}x{max_height}"
+msgstr "Максимальное разрешение {max_width}x{max_height}"
+
+msgid "Could not process image file"
+msgstr "Не удалось обработать файл изображения"
+
+msgid "Timeout ({timeout}s) when calling multimodal model"
+msgstr "Превышено время ожидания ответа от мультимодальной модели ({timeout}с)"
+
+msgid "Could not find JSON in model response"
+msgstr "Не удалось найти JSON в ответе модели"
+
+msgid "JSON parsing error: {error}"
+msgstr "Ошибка парсинга JSON: {error}"
+
+msgid "Image generation service unavailable"
+msgstr "Сервис генерации изображений недоступен"
+
+msgid "Multimodal module unavailable (required for parameter generation)"
+msgstr "Мультимодальный модуль недоступен (требуется для генерации параметров)"
+
+msgid "Image generation timeout ({timeout}s)"
+msgstr "Превышено время ожидания генерации изображения ({timeout}с)"
+
+msgid "Image generated from request: {query}"
+msgstr "Изображение сгенерировано по запросу: {query}"
+
+msgid "Could not connect to Automatic1111"
+msgstr "Не удалось подключиться к Automatic1111"
+
+msgid "Automatic1111 returned no image"
+msgstr "Automatic1111 не вернул изображение"
+
+msgid "MB"
+msgstr "МБ"
+
+msgid "TTS service unavailable"
+msgstr "Сервис озвучки недоступен"
+
+msgid "TTS synthesis failed"
+msgstr "Ошибка синтеза речи"
+
+msgid "Missing text"
+msgstr "Отсутствует текст"
+
+msgid "speak"
+msgstr "Озвучить"
+
+msgid "stop"
+msgstr "Остановить"
+
+msgid "male_voice"
+msgstr "Мужской голос"
+
+msgid "female_voice"
+msgstr "Женский голос"
+
+msgid "toggle_voice_gender"
+msgstr "Переключить пол голоса"
+
+msgid "Toggle theme"
+msgstr "Переключить тему"
+
+msgid "byte_abbr"
+msgstr "Б"
+
+msgid "kb_abbr"
+msgstr "КБ"
+
+msgid "mb_abbr"
+msgstr "МБ"
+
+msgid "gb_abbr"
+msgstr "ГБ"
+
+msgid "seconds_suffix"
+msgstr "с"
+
+msgid "The image has been reduced."
+msgstr "Изображение было уменьшено."
+
+msgid "loading"
+msgstr "Загрузка..."
+
+msgid "minutes_abbr"
+msgstr "мин"
+
+msgid "status_pending"
+msgstr "Ожидает индексации"
+
+msgid "status_indexing"
+msgstr "Индексация выполняется"
+
+msgid "status_indexed"
+msgstr "Проиндексирован"
+
+msgid "status_failed"
+msgstr "Ошибка индексации"
+
+msgid "status_unknown"
+msgstr "Не индексирован"
+
+msgid "footer_text"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v7.0 (c) 2026 Барсуков Валерий"

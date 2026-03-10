@@ -1,0 +1,29 @@
+# piper tts service
+services:
+  piper:
+    build:
+      context: .
+      dockerfile: Dockerfile.piper
+    container_name: piper
+    restart: unless-stopped
+    ports:
+      - "18888:8888"
+    networks:
+      - flai_network
+    volumes:
+      # Mount the host directory containing voice models (e.g., ./piper_models) to /app/models in container
+      - ./piper_models:/app/models
+    environment:
+      - PIPER_MODEL_DIR=/app/models   # optional, defaults to /app/models
+    # Uncomment for GPU support (not needed for Piper, but if you have CUDA, you can enable)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+networks:
+  flai_network:
+    external: true

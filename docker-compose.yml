@@ -1,0 +1,50 @@
+services:
+  redis:
+    image: redis:8.0.6-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - app-network
+
+  web:
+    build: .
+    restart: always
+    ports:
+      - "5000:5000"
+    depends_on:
+      - redis
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    env_file:
+      - .env  
+    environment:
+      FLASK_ENV: production
+      OLLAMA_URL: http://host.docker.internal:11434
+      REDIS_URL: redis://redis:6379/0
+      PYTHONUNBUFFERED: 1
+      TZ: ${TIMEZONE}
+      PIPER_URL: ${PIPER_URL}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    user: "1000:1000"
+    command: gunicorn --bind 0.0.0.0:5000 --workers 2 --threads 4 --timeout 120 wsgi:app
+    networks:
+      - app-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  redis-data:

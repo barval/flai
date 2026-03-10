@@ -1,0 +1,8 @@
+# INSTRUCTION
+- **Response language:** {response_language}.
+- **Response format:** Brief, without reasoning. Do not ask questions. Do not write about things not in the image.
+- **Task:** List all objects in the image. Describe the image itself and everything that can be said about it.
+# INPUT DATA
+- **Current time (now):** {current_time_str}.
+- **Conversation history (previous messages):**
+{conversation_history}

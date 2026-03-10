@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="admin-container">
+    <h2 class="admin-panel-title">{{ _('Admin Panel') }}</h2>
+    <div style="display: flex; align-items: center; gap: 30px; margin-bottom: 20px;">
+        <button id="add-user-button" class="add-user-button">➕ {{ _('Add user') }}</button>
+        <div class="db-info" style="display: flex; gap: 20px;">
+            <span>{{ _('User DB') }}: <span id="user-db-size">{{ (user_db_size / (1024*1024))|round(2) }}</span> {{ _('MB') }}</span>
+            <span>{{ _('Chat DB') }}: <span id="chat-db-size">{{ (chat_db_size / (1024*1024))|round(2) }}</span> {{ _('MB') }}</span>
+            <span>{{ _('Files DB') }}: <span id="files-db-size">{{ (files_db_size / (1024*1024))|round(2) }}</span> {{ _('MB') }}</span>
+            <span>{{ _('Documents DB') }}: <span id="documents-db-size">{{ (documents_db_size / (1024*1024))|round(2) }}</span> {{ _('MB') }}</span>
+        </div>
+    </div>
+    <div class="users-table-wrapper">
+        <table id="users-table">
+            <thead>
+                <tr>
+                    <th data-sort="is_active">{{ _('Status') }}</th>
+                    <th data-sort="login">{{ _('Login') }}</th>
+                    <th>{{ _('Password') }}</th>
+                    <th data-sort="name">{{ _('Name') }}</th>
+                    <th data-sort="service_class">{{ _('Class') }}</th>
+                    <th data-sort="sessions_count">{{ _('Sessions') }}</th>
+                    <th data-sort="messages_count">{{ _('Messages') }}</th>
+                    <th data-sort="files_count">{{ _('Files') }}</th>
+                    <th data-sort="documents_count">{{ _('Documents') }}</th>
+                    {% if rooms %}
+                    <th>{{ _('Camera access') }}</th>
+                    {% endif %}
+                    <th>{{ _('Actions') }}</th>
+                </tr>
+            </thead>
+            <tbody id="users-tbody">
+                <!-- Data loaded via JS -->
+            </tbody>
+        </table>
+    </div>
+</div>
+<!-- Add user modal -->
+<div id="add-user-modal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>{{ _('New user') }}</h3>
+        <form id="add-user-form">
+            <div class="form-group">
+                <label for="new-login">{{ _('Login') }}:</label>
+                <input type="text" id="new-login" name="login" required pattern="[a-z0-9]+" title="{{ _('Only lowercase letters and digits') }}">
+            </div>
+            <div class="form-group">
+                <label for="new-password">{{ _('Password') }}:</label>
+                <input type="password" id="new-password" name="password" required>
+            </div>
+            <div class="form-group">
+                <label for="new-name">{{ _('Name') }}</label>
+                <input type="text" id="new-name" name="name" required>
+            </div>
+            <div class="form-group">
+                <label for="new-service-class">{{ _('Class') }}:</label>
+                <select id="new-service-class" name="service_class">
+                    <option value="0">0 - {{ _('highest') }}</option>
+                    <option value="1">1 - {{ _('medium') }}</option>
+                    <option value="2" selected>2 - {{ _('lowest') }}</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="new-is-active">
+                    <input type="checkbox" id="new-is-active" name="is_active" checked> {{ _('Active') }}
+                </label>
+            </div>
+            {% if rooms %}
+            <div class="form-group">
+                <label>{{ _('Camera access') }}:</label>
+                <div class="camera-checkboxes">
+                    {% for code, name in rooms.items() %}
+                    <label>
+                        <input type="checkbox" name="camera" value="{{ code }}"> {{ name }}
+                    </label>
+                    {% endfor %}
+                </div>
+                <small>{{ _('Leave all unchecked to deny access to all cameras.') }}</small>
+            </div>
+            {% endif %}
+            <button type="submit">{{ _('Create') }}</button>
+        </form>
+    </div>
+</div>
+<!-- Password change modal -->
+<div id="password-modal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>{{ _('Change password') }}</h3>
+        <form id="password-form">
+            <input type="hidden" id="password-user-login">
+            <div class="form-group">
+                <label for="new-user-password">{{ _('New password') }}:</label>
+                <input type="password" id="new-user-password" required>
+            </div>
+            <button type="submit">{{ _('Save') }}</button>
+        </form>
+    </div>
+</div>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+<script>
+window.ROOMS = {{ rooms|tojson }};
+window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
+    'delete_user_confirm': {{ _('Delete user {login}?')|tojson }},
+    'error': {{ _('Error')|tojson }},
+    'internal_server_error': {{ _('Internal server error')|tojson }},
+    'missing_fields': {{ _('Missing fields')|tojson }},
+    'login_exists': {{ _('Login already exists')|tojson }},
+    'password_not_specified': {{ _('New password not specified')|tojson }},
+    'ok': {{ _('OK')|tojson }},
+    'save': {{ _('Save')|tojson }},
+    'cancel': {{ _('Cancel')|tojson }},
+    'change': {{ _('Change')|tojson }},
+    'delete': {{ _('delete')|tojson }},
+    'change_password': {{ _('Change password')|tojson }},
+    'delete_user': {{ _('Delete user')|tojson }},
+    'status': {{ _('Status')|tojson }},
+    'login': {{ _('Login')|tojson }},
+    'password': {{ _('Password')|tojson }},
+    'name': {{ _('Name')|tojson }},
+    'class': {{ _('Class')|tojson }},
+    'sessions': {{ _('Sessions')|tojson }},
+    'messages': {{ _('Messages')|tojson }},
+    'files': {{ _('Files')|tojson }},
+    'documents': {{ _('Documents')|tojson }},
+    'camera_access': {{ _('Camera access')|tojson }},
+    'actions': {{ _('Actions')|tojson }},
+    'active': {{ _('Active')|tojson }},
+    'create': {{ _('Create')|tojson }},
+    'new_password': {{ _('New password')|tojson }},
+    'new_user': {{ _('New user')|tojson }},
+    'only_lowercase': {{ _('Only lowercase letters and digits')|tojson }},
+    'highest': {{ _('highest')|tojson }},
+    'medium': {{ _('medium')|tojson }},
+    'lowest': {{ _('lowest')|tojson }},
+    'leave_unchecked': {{ _('Leave all unchecked to deny access to all cameras.')|tojson }},
+    'unknown_error': {{ _('unknown_error')|tojson }},
+    'user_db': {{ _('User DB')|tojson }},
+    'chat_db': {{ _('Chat DB')|tojson }},
+    'files_db': {{ _('Files DB')|tojson }},
+    'documents_db': {{ _('Documents DB')|tojson }},
+    'mb': {{ _('MB')|tojson }}
+});
+{% if config.get('DEBUG_TRANSLATIONS') %}
+console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);
+{% endif %}
+</script>
+<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+{% endblock %}

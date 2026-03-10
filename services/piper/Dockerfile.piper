@@ -1,0 +1,26 @@
+# piper
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Install system dependencies for piper and audio conversion
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python packages
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application
+COPY app.py .
+
+# Create directory for mounted models
+RUN mkdir -p /app/models
+
+# Expose port
+EXPOSE 8888
+
+# Run the Flask app
+CMD ["python", "app.py"]

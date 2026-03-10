@@ -168,10 +168,16 @@ def api_upload_document():
     if ext not in allowed_extensions:
         return jsonify({'error': _('Unsupported file type')}), 400
     
-    doc_id = str(uuid.uuid4())
-    filename = file.filename
     file_content = file.read()
     file_size = len(file_content)
+    
+    # Check file size limit
+    max_size_mb = current_app.config['MAX_DOCUMENT_SIZE_MB']
+    if file_size > max_size_mb * 1024 * 1024:
+        return jsonify({'error': _('Maximum file size {max_size} MB').format(max_size=max_size_mb)}), 400
+    
+    doc_id = str(uuid.uuid4())
+    filename = file.filename
     
     documents_folder = current_app.config['DOCUMENTS_FOLDER']
     user_folder = os.path.join(documents_folder, session['login'])
@@ -302,13 +308,16 @@ def send_message():
     file_type = None
     file_name = None
     voice_record = False
+    file_size_bytes = 0
     
     if request.content_type and 'multipart/form-data' in request.content_type:
         message_text = request.form.get('message', '')
         if 'file' in request.files:
             file = request.files['file']
             if file and file.filename:
-                file_data = base64.b64encode(file.read()).decode('utf-8')
+                file_bytes = file.read()
+                file_size_bytes = len(file_bytes)
+                file_data = base64.b64encode(file_bytes).decode('utf-8')
                 file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
                 file_name = file.filename
         voice_record = request.form.get('voice_record') == 'true'
@@ -359,6 +368,15 @@ def send_message():
             session_id=session_id,
             upload_folder=current_app.config['UPLOAD_FOLDER']
         )
+    
+    # --- Audio file size check ---
+    if request_type == 'audio':
+        if voice_record:
+            limit_mb = current_app.config['MAX_VOICE_SIZE_MB']
+        else:
+            limit_mb = current_app.config['MAX_AUDIO_SIZE_MB']
+        if file_size_bytes > limit_mb * 1024 * 1024:
+            return jsonify({'error': _('Maximum file size {max_size} MB').format(max_size=limit_mb)}), 400
     
     user_content = []
     if message_text:

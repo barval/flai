@@ -46,6 +46,11 @@ def load_config(app):
     app.config['MAX_IMAGE_HEIGHT'] = int(os.getenv('MAX_IMAGE_HEIGHT', 2160))
     app.config['MAX_IMAGE_SIZE_MB'] = int(os.getenv('MAX_IMAGE_SIZE_MB', 5))
     
+    # Document upload settings
+    app.config['MAX_DOCUMENT_SIZE_MB'] = int(os.getenv('MAX_DOCUMENT_SIZE_MB', 5))
+    app.config['MAX_VOICE_SIZE_MB'] = int(os.getenv('MAX_VOICE_SIZE_MB', 5))
+    app.config['MAX_AUDIO_SIZE_MB'] = int(os.getenv('MAX_AUDIO_SIZE_MB', 4))
+    
     # Whisper ASR settings
     app.config['WHISPER_API_URL'] = os.getenv('WHISPER_API_URL', 'http://host.docker.internal:9000/asr')
     

@@ -4,6 +4,30 @@
 let currentView = 'sessions'; // 'sessions' or 'documents'
 let documentsData = {};
 
+// Apply the current view to the UI: update tab active state and show/hide the correct list
+function applyCurrentView() {
+    const view = currentView;
+    // Update tab styling
+    document.querySelectorAll('.header-tab').forEach(tab => {
+        tab.classList.remove('active');
+        if (tab.dataset.view === view) {
+            tab.classList.add('active');
+        }
+    });
+    // Show/hide lists
+    const sessionsList = document.getElementById('sessions-list');
+    const documentsList = document.getElementById('documents-list');
+    if (view === 'sessions') {
+        sessionsList.style.display = 'block';
+        documentsList.style.display = 'none';
+    } else {
+        sessionsList.style.display = 'none';
+        documentsList.style.display = 'block';
+        // Load documents when switching to documents view
+        loadDocuments();
+    }
+}
+
 function switchView(view) {
     if (view === currentView) {
         // On mobile, toggle collapse when clicking active tab
@@ -21,27 +45,7 @@ function switchView(view) {
     }
 
     currentView = view;
-
-    // Update tab styling
-    document.querySelectorAll('.header-tab').forEach(tab => {
-        tab.classList.remove('active');
-        if (tab.dataset.view === view) {
-            tab.classList.add('active');
-        }
-    });
-
-    // Show/hide lists
-    const sessionsList = document.getElementById('sessions-list');
-    const documentsList = document.getElementById('documents-list');
-
-    if (view === 'sessions') {
-        sessionsList.style.display = 'block';
-        documentsList.style.display = 'none';
-    } else {
-        sessionsList.style.display = 'none';
-        documentsList.style.display = 'block';
-        loadDocuments();
-    }
+    applyCurrentView();
 
     // Save preference
     const login = window.CURRENT_USER_LOGIN;
@@ -232,6 +236,6 @@ function initDocumentsView() {
         });
     }
 
-    // Initialize with current view
-    switchView(currentView);
+    // Apply the initial view (synchronizes UI with currentView)
+    applyCurrentView();
 }

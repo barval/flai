@@ -1,8 +1,10 @@
 // app/static/js/chat-documents.js
-// Document management functions with index status
+// Document management functions with index status, processing time display,
+// periodic updates, and blinking animation for indexing documents.
 
 let currentView = 'sessions'; // 'sessions' or 'documents'
 let documentsData = {};
+let documentsPollingInterval = null;
 
 // Apply the current view to the UI: update tab active state and show/hide the correct list
 function applyCurrentView() {
@@ -20,11 +22,12 @@ function applyCurrentView() {
     if (view === 'sessions') {
         sessionsList.style.display = 'block';
         documentsList.style.display = 'none';
+        stopDocumentsPolling();
     } else {
         sessionsList.style.display = 'none';
         documentsList.style.display = 'block';
-        // Load documents when switching to documents view
-        loadDocuments();
+        loadDocuments(); // immediate load
+        startDocumentsPolling();
     }
 }
 
@@ -54,7 +57,29 @@ function switchView(view) {
     }
 }
 
-function loadDocuments() {
+function startDocumentsPolling() {
+    if (documentsPollingInterval) clearInterval(documentsPollingInterval);
+    // Poll every 10 seconds
+    documentsPollingInterval = setInterval(() => {
+        if (currentView === 'documents') {
+            loadDocuments(false); // silent update
+        } else {
+            stopDocumentsPolling();
+        }
+    }, 10000);
+}
+
+function stopDocumentsPolling() {
+    if (documentsPollingInterval) {
+        clearInterval(documentsPollingInterval);
+        documentsPollingInterval = null;
+    }
+}
+
+function loadDocuments(showLoading = true) {
+    if (showLoading) {
+        // Optional: show a loading indicator
+    }
     fetch('/api/documents')
         .then(res => {
             if (!res.ok) {
@@ -90,17 +115,18 @@ function getStatusIcon(status) {
 }
 
 function getStatusTitle(status) {
+    // Use translated strings from window.TRANSLATIONS
     switch (status) {
         case 'pending':
-            return 'Pending indexing';
+            return t('status_pending');
         case 'indexing':
-            return 'Indexing in progress';
+            return t('status_indexing');
         case 'indexed':
-            return 'Indexed';
+            return t('status_indexed');
         case 'failed':
-            return 'Indexing failed';
+            return t('status_failed');
         default:
-            return 'Not indexed';
+            return t('status_unknown');
     }
 }
 
@@ -116,15 +142,27 @@ function updateDocumentsList(documents) {
         const fileSizeFormatted = doc.file_size ? formatFileSize(doc.file_size) : '';
         const statusIcon = getStatusIcon(doc.index_status);
         const statusTitle = getStatusTitle(doc.index_status);
+        const isIndexing = doc.index_status === 'indexing';
+        // Add blink class if indexing
+        const iconClass = isIndexing ? 'document-status-icon blink' : 'document-status-icon';
+
+        // Format processing time if available
+        let processingTimeStr = '';
+        if (doc.processing_time !== null && doc.processing_time !== undefined) {
+            // Show with one decimal place, in minutes, using localized abbreviation
+            const minAbbr = t('minutes_abbr');
+            processingTimeStr = ` ⏱️ ${doc.processing_time.toFixed(1)}${minAbbr}`;
+        }
+
         html += `
         <div class="document-item" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}">
             <div class="document-content">
                 <div class="document-info">
                     <div class="document-title">
-                        <span class="document-status-icon" title="${statusTitle}">${statusIcon}</span>
+                        <span class="${iconClass}" title="${statusTitle}">${statusIcon}</span>
                         📄 ${escapeHtml(doc.filename)}
                     </div>
-                    <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}</div>
+                    <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}${processingTimeStr}</div>
                 </div>
                 <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>
             </div>
@@ -141,10 +179,6 @@ function updateDocumentsList(documents) {
 }
 
 function attachDocumentEventHandlers() {
-    // Removed click handler on document-item that triggered download.
-    // Now clicking on a document does nothing (no download).
-    // Only delete button remains functional.
-
     document.querySelectorAll('.delete-document-button').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
@@ -154,10 +188,6 @@ function attachDocumentEventHandlers() {
             deleteDocument(docId, docName);
         });
     });
-}
-
-function downloadDocument(docId) {
-    window.open(`/api/documents/${docId}`, '_blank');
 }
 
 function deleteDocument(docId, docName) {

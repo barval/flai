@@ -451,7 +451,7 @@ def get_user_document_count(user_id):
         return c.fetchone()[0]
 
 def get_user_documents(user_id):
-    """Get all documents for a user, including index status."""
+    """Get all documents for a user, including index status and processing time."""
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
@@ -462,23 +462,43 @@ def get_user_documents(user_id):
         ORDER BY uploaded_at DESC
         ''', (user_id,))
         documents = [dict(row) for row in c.fetchall()]
+
+        now = datetime.now()  # current local time
         for doc in documents:
+            uploaded_dt = None
+            indexed_dt = None
             if doc.get('uploaded_at'):
                 try:
-                    dt = datetime.strptime(doc['uploaded_at'], '%Y-%m-%d %H:%M:%S')
-                    if current_app.config.get('TIMEZONE'):
-                        dt = current_app.config['TIMEZONE'].localize(dt)
-                    doc['uploaded_at'] = dt.isoformat()
+                    uploaded_dt = datetime.strptime(doc['uploaded_at'], '%Y-%m-%d %H:%M:%S')
                 except:
                     pass
             if doc.get('indexed_at'):
                 try:
-                    dt = datetime.strptime(doc['indexed_at'], '%Y-%m-%d %H:%M:%S')
-                    if current_app.config.get('TIMEZONE'):
-                        dt = current_app.config['TIMEZONE'].localize(dt)
-                    doc['indexed_at'] = dt.isoformat()
+                    indexed_dt = datetime.strptime(doc['indexed_at'], '%Y-%m-%d %H:%M:%S')
                 except:
                     pass
+
+            processing_time = None
+            status = doc.get('index_status')
+            if status == INDEX_STATUS_INDEXED and indexed_dt and uploaded_dt:
+                delta = indexed_dt - uploaded_dt
+                processing_time = delta.total_seconds() / 60.0
+            elif status == INDEX_STATUS_INDEXING and uploaded_dt:
+                delta = now - uploaded_dt
+                processing_time = delta.total_seconds() / 60.0
+            # For pending or failed, processing_time remains None
+
+            doc['processing_time'] = processing_time
+
+            # Convert dates to ISO format for JSON response
+            if uploaded_dt:
+                if current_app.config.get('TIMEZONE'):
+                    uploaded_dt = current_app.config['TIMEZONE'].localize(uploaded_dt)
+                doc['uploaded_at'] = uploaded_dt.isoformat()
+            if indexed_dt:
+                if current_app.config.get('TIMEZONE'):
+                    indexed_dt = current_app.config['TIMEZONE'].localize(indexed_dt)
+                doc['indexed_at'] = indexed_dt.isoformat()
         return documents
 
 def save_document(user_id, doc_id, filename, file_size, file_ext, file_path):

@@ -496,5 +496,23 @@ msgstr "Изображение было уменьшено."
 msgid "loading"
 msgstr "Загрузка..."
 
+msgid "minutes_abbr"
+msgstr "мин"
+
+msgid "status_pending"
+msgstr "Ожидает индексации"
+
+msgid "status_indexing"
+msgstr "Индексация выполняется"
+
+msgid "status_indexed"
+msgstr "Проиндексирован"
+
+msgid "status_failed"
+msgstr "Ошибка индексации"
+
+msgid "status_unknown"
+msgstr "Не индексирован"
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v6.12 (c) 2026 Барсуков Валерий"

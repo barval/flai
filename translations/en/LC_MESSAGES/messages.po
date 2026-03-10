@@ -495,5 +495,23 @@ msgstr "The image has been reduced."
 msgid "loading"
 msgstr "Loading..."
 
+msgid "minutes_abbr"
+msgstr "min"
+
+msgid "status_pending"
+msgstr "Pending indexing"
+
+msgid "status_indexing"
+msgstr "Indexing in progress"
+
+msgid "status_indexed"
+msgstr "Indexed"
+
+msgid "status_failed"
+msgstr "Indexing failed"
+
+msgid "status_unknown"
+msgstr "Not indexed"
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v6.12 (c) 2026 Valery Barsukov"

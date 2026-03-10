@@ -231,7 +231,21 @@
     flex-shrink: 0;
 }
 
-.session-status-icon.blink {
+/* Document status icon styles */
+.document-status-icon {
+    display: inline-block;
+    width: 1.2em;
+    text-align: center;
+    font-size: 1.1rem;
+    line-height: 1;
+    margin-right: 4px;
+    vertical-align: middle;
+    flex-shrink: 0;
+}
+
+/* Blink animation for both session and document icons */
+.session-status-icon.blink,
+.document-status-icon.blink {
     animation: blink-animation 1.5s infinite;
 }
 

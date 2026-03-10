@@ -58,25 +58,26 @@
 ## 🧱 Architecture
 
 FLAI is a modular Flask web application that orchestrates several self-hosted AI services:
-
-┌─────────────────────────────────────────┐  
-│ FLAI Web App │  
-│ (Flask + Redis Queue + SQLite + Babel) │  
-└────────────────┬────────────────────────┘  
-│  
-┌────────────┼────────────┐  
-│ │ │  
-▼ ▼ ▼  
-┌────────┐ ┌────────┐ ┌────────┐  
-│ Ollama │ │Auto1111│ │Whisper │  
-│ LLMs │ │ SD │ │ ASR │  
-└────────┘ └────────┘ └────────┘  
-│ │ │  
-▼ ▼ ▼  
-┌────────┐ ┌────────┐ ┌────────┐  
-│Piper │ │ Qdrant │ │ Camera │  
-│ TTS │ │ RAG │ │ API │  
-└────────┘ └────────┘ └────────┘  
+```text
+┌─────────────────────────────────────────┐
+│ FLAI Web App                            │
+│ (Flask + Redis Queue + SQLite + Babel)  │
+└────────────────┬────────────────────────┘
+                 │
+        ┌────────┼────────┐
+        │        │        │
+        ▼        ▼        ▼
+   ┌────────┐ ┌────────┐ ┌────────┐
+   │ Ollama │ │Auto1111│ │ Whisper│
+   │  LLMs  │ │   SD   │ │  ASR   │
+   └────────┘ └────────┘ └────────┘
+        │        │        │
+        ▼        ▼        ▼
+   ┌────────┐ ┌────────┐ ┌────────┐
+   │ Piper  │ │ Qdrant │ │ Camera │
+   │  TTS   │ │  RAG   │ │  API   │
+   └────────┘ └────────┘ └────────┘
+```
 
 
 ### Core Components

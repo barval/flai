@@ -269,15 +269,24 @@ networks:
 
 Загрузка голосовых моделей:
 ```text
-# Русские голоса
-wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx
-wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json
-wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx
-wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
+# Голоса Piper TTS для скачивания
+# Формат: HuggingFace URL
 
-# Английские голоса
-wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx
-wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json
+# Русский мужской голос
+https://huggingface.co/rhasspy/piper-voices/blob/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx
+https://huggingface.co/rhasspy/piper-voices/blob/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json
+
+# Русский женский голос
+https://huggingface.co/rhasspy/piper-voices/blob/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx
+https://huggingface.co/rhasspy/piper-voices/blob/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
+
+# Английский мужской голос
+https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx
+https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json
+
+# Английский женский голос
+https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx
+https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json
 ```
 
 ### 🗄️ Qdrant (векторная база данных для RAG)

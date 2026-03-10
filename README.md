@@ -270,15 +270,24 @@ networks:
 
 Download Voice Models:
 ```text
-# Russian voices
-wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx
-wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json
-wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx
-wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
+# Piper TTS voices to download
+# Format: HuggingFace URL
 
-# English voices
-wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx
-wget -P ./piper_models https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json
+# Russian male voice
+https://huggingface.co/rhasspy/piper-voices/blob/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx
+https://huggingface.co/rhasspy/piper-voices/blob/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json
+
+# Russian female voice
+https://huggingface.co/rhasspy/piper-voices/blob/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx
+https://huggingface.co/rhasspy/piper-voices/blob/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
+
+# English male voice
+https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx
+https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json
+
+# English female voice
+https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx
+https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json
 ```
 
 ### 🗄️ Qdrant (Vector Database for RAG)

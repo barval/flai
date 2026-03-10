@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>{{ _('FLAI') }}</title>
+    <link rel="stylesheet" href="/static/css/base.css">
+    <link rel="stylesheet" href="/static/css/header-footer.css">
+    <link rel="stylesheet" href="/static/css/login.css">
+    <link rel="stylesheet" href="/static/css/chat.css">
+    <link rel="stylesheet" href="/static/css/modal.css">
+    <link rel="stylesheet" href="/static/css/markdown.css">
+    <link rel="stylesheet" href="/static/css/dark-theme.css">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <script>
+        window.IS_RELOADING = false;
+    </script>
+</head>
+<body class="{% if session.get('theme') == 'dark' %}dark-theme{% endif %}">
+    <header>
+        <img src="{{ url_for('static', filename='logo-header.png') }}" alt="FLAI Logo" class="header-logo">
+        <h1>{{ _('FLAI') }}</h1>
+        {% if 'login' in session %}
+        <div class="logout-container">
+            <div class="header-row row1">
+                <span class="user-name">{{ session['name'] if not session.get('is_admin') else _('Administrator') }}</span>
+                <div class="language-switcher">
+                    <select id="language-select" onchange="switchLanguage(this.value)">
+                        <option value="ru" {% if session.get('language') == 'ru' %}selected{% endif %}>Русский</option>
+                        <option value="en" {% if session.get('language') == 'en' %}selected{% endif %}>English</option>
+                    </select>
+                </div>
+            </div>
+            <div class="header-row row2">
+                <div class="voice-gender-switcher">
+                    <button id="voice-gender-toggle" class="voice-gender-button {% if session.get('voice_gender') == 'female' %}female{% else %}male{% endif %}" title="{{ _('toggle_voice_gender') }}">
+                        <span id="voice-gender-icon">
+                            {% if session.get('voice_gender') == 'female' %}👩{% else %}👨{% endif %}
+                        </span>
+                    </button>
+                </div>
+                <div class="theme-switcher">
+                    <button id="theme-toggle" class="theme-toggle-button" title="{{ _('Toggle theme') }}">
+                        {% if session.get('theme') == 'dark' %}☀️{% else %}🌙{% endif %}
+                    </button>
+                </div>
+                <a href="{{ url_for('auth.logout') }}" class="logout-button">{{ _('Logout') }}</a>
+            </div>
+        </div>
+        {% else %}
+        <div class="language-switcher" style="margin-left: auto;">
+            <select id="language-select" onchange="switchLanguage(this.value)">
+                <option value="ru" {% if session.get('language', 'ru') == 'ru' %}selected{% endif %}>Русский</option>
+                <option value="en" {% if session.get('language', 'ru') == 'en' %}selected{% endif %}>English</option>
+            </select>
+        </div>
+        <!-- Theme toggle for unauthenticated users -->
+        <div class="theme-switcher" style="margin-left: 10px;">
+            <button id="theme-toggle-guest" class="theme-toggle-button" title="{{ _('Toggle theme') }}">
+                🌙
+            </button>
+        </div>
+        {% endif %}
+    </header>
+    
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    
+    <footer>
+        <div class="footer-content">
+            {% set footer_text = _('footer_text') %}
+            {% if '(c)' in footer_text %}
+                {% set parts = footer_text.split('(c)', 1) %}
+                <div class="footer-line1">{{ parts[0].strip() }}</div>
+                <div class="footer-line2">(c){{ parts[1].strip() }}</div>
+            {% else %}
+                <div class="footer-line1">{{ footer_text }}</div>
+            {% endif %}
+        </div>
+    </footer>
+
+    <!-- Translations for JavaScript (base keys) -->
+    <script>
+        window.TRANSLATIONS = window.TRANSLATIONS || {};
+        window.TRANSLATIONS['male_voice'] = {{ _('male_voice')|tojson }};
+        window.TRANSLATIONS['female_voice'] = {{ _('female_voice')|tojson }};
+        window.TRANSLATIONS['toggle_voice_gender'] = {{ _('toggle_voice_gender')|tojson }};
+        window.TRANSLATIONS['toggle_theme'] = {{ _('Toggle theme')|tojson }};
+        window.TRANSLATIONS['loading'] = {{ _('loading')|tojson }};
+    </script>
+
+    <!-- Global language, voice gender and theme settings -->
+    <script>
+        window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
+        window.CURRENT_VOICE_GENDER = '{{ session.get("voice_gender", "male") }}';
+        window.CURRENT_THEME = '{{ session.get("theme", "light") }}';
+    </script>
+
+    <!-- Debug translations if enabled -->
+    {% if config.get('DEBUG_TRANSLATIONS') %}
+    <script>
+        console.log('Base TRANSLATIONS loaded:', window.TRANSLATIONS);
+    </script>
+    {% endif %}
+
+    <!-- Header JavaScript module -->
+    <script src="{{ url_for('static', filename='js/header.js') }}"></script>
+    <!-- Guest theme switcher script -->
+    <script src="{{ url_for('static', filename='js/guest-theme.js') }}"></script>
+</body>
+</html>

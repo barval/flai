@@ -1,0 +1,517 @@
+# English translations for FLAI.
+# Copyright (C) 2026
+# This file is distributed under the same license as the FLAI project.
+# Automatically generated, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: FLAI 7.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-03-05 12:00+0300\n"
+"PO-Revision-Date: 2026-03-05 13:00+0300\n"
+"Last-Translator: Valeriy Barsukov\n"
+"Language: en\n"
+"Language-Team: English\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Documents"
+msgstr "Documents"
+
+msgid "New document"
+msgstr "New document"
+
+msgid "Delete document"
+msgstr "Delete document"
+
+msgid "Delete document \"{filename}\"?"
+msgstr "Delete document \"{filename}\"?"
+
+msgid "Upload document"
+msgstr "Upload document"
+
+msgid "Document uploaded"
+msgstr "Document uploaded"
+
+msgid "Document upload failed"
+msgstr "Document upload failed"
+
+msgid "Supported formats: PDF, DOC, DOCX, TXT"
+msgstr "Supported formats: PDF, DOC, DOCX, TXT"
+
+msgid "No file provided"
+msgstr "No file provided"
+
+msgid "No file selected"
+msgstr "No file selected"
+
+msgid "Document not found"
+msgstr "Document not found"
+
+msgid "Documents DB"
+msgstr "Documents DB"
+
+msgid "Documents"
+msgstr "Documents"
+
+msgid "FLAI"
+msgstr "FLAI"
+
+msgid "Administrator"
+msgstr "Administrator"
+
+msgid "Logout"
+msgstr "Logout"
+
+msgid "Authorization"
+msgstr "Authorization"
+
+msgid "All fields are required"
+msgstr "All fields are required"
+
+msgid "Invalid login or password"
+msgstr "Invalid login or password"
+
+msgid "Login"
+msgstr "Login"
+
+msgid "Password"
+msgstr "Password"
+
+msgid "Not authorized"
+msgstr "Not authorized"
+
+msgid "session"
+msgstr "Session"
+
+msgid "saved_on"
+msgstr "Saved on"
+
+msgid "total_messages"
+msgstr "Total messages"
+
+msgid "New session"
+msgstr "New session"
+
+msgid "Permission denied or session not found"
+msgstr "Permission denied or session not found"
+
+msgid "No active session"
+msgstr "No active session"
+
+msgid "Delete session {title} from {date}?"
+msgstr "Delete session {title} from {date}?"
+
+msgid "Empty message"
+msgstr "Empty message"
+
+msgid "Failed to recognize speech"
+msgstr "Failed to recognize speech"
+
+msgid "Transcribed"
+msgstr "Transcribed"
+
+msgid "Voice request"
+msgstr "Voice request"
+
+msgid "Audio transcribed"
+msgstr "Audio transcribed"
+
+msgid "Request queued (position {pos})"
+msgstr "Request queued (position {pos})"
+
+msgid "Speech recognized, request queued (position {pos})"
+msgstr "Speech recognized, request queued (position {pos})"
+
+msgid "Image"
+msgstr "Image"
+
+msgid "Text request"
+msgstr "Text request"
+
+msgid "Unknown session"
+msgstr "Unknown session"
+
+msgid "Sessions"
+msgstr "Sessions"
+
+msgid "Delete session"
+msgstr "Delete session"
+
+msgid "Chat"
+msgstr "Chat"
+
+msgid "Messages"
+msgstr "Messages"
+
+msgid "Your requests in queue / Total in queue"
+msgstr "Your requests in queue / Total in queue"
+
+msgid "Save as HTML"
+msgstr "Save as HTML"
+
+msgid "Enter message..."
+msgstr "Enter message..."
+
+msgid "Record voice message"
+msgstr "Record voice message"
+
+msgid "Send"
+msgstr "Send"
+
+msgid "Recording..."
+msgstr "Recording..."
+
+msgid "Sending..."
+msgstr "Sending..."
+
+msgid "processing"
+msgstr "processing"
+
+msgid "queued"
+msgstr "queued"
+
+msgid "new_response"
+msgstr "new response"
+
+msgid "delete_session_confirm"
+msgstr "Delete session \"{title}\" from {date}?"
+
+msgid "download_image"
+msgstr "Download image"
+
+msgid "download_audio"
+msgstr "Download audio"
+
+msgid "click_to_enlarge"
+msgstr "Click to enlarge"
+
+msgid "image"
+msgstr "image"
+
+msgid "browser_no_audio_support"
+msgstr "Your browser does not support audio recording"
+
+msgid "secure_context_required"
+msgstr "Voice recording requires a secure connection (HTTPS). Try opening the site via HTTPS or localhost."
+
+msgid "microphone_access_denied"
+msgstr "Could not access microphone."
+
+msgid "enter_message_or_file"
+msgstr "Enter a message or attach a file"
+
+msgid "error"
+msgstr "Error"
+
+msgid "unknown_error"
+msgstr "Unknown error"
+
+msgid "request_timeout"
+msgstr "Request timeout. Check request status."
+
+msgid "footer_not_configured"
+msgstr "Footer not configured"
+
+msgid "footer_load_error"
+msgstr "Error loading footer"
+
+msgid "user"
+msgstr "User"
+
+msgid "no_active_session_save"
+msgstr "No active session to save"
+
+msgid "chat"
+msgstr "Chat"
+
+msgid "saved_chat"
+msgstr "Saved chat"
+
+msgid "session"
+msgstr "Session"
+
+msgid "saved_on"
+msgstr "Saved on"
+
+msgid "total_messages"
+msgstr "Total messages"
+
+msgid "no_messages_to_save"
+msgstr "No messages to save"
+
+msgid "copied"
+msgstr "Copied!"
+
+msgid "copy_code"
+msgstr "Copy code"
+
+msgid "copy_failed"
+msgstr "Copy failed"
+
+msgid "copy_text"
+msgstr "Copy text"
+
+msgid "Admin Panel"
+msgstr "Admin Panel"
+
+msgid "Add user"
+msgstr "Add user"
+
+msgid "Chat DB"
+msgstr "Chat DB"
+
+msgid "User DB"
+msgstr "User DB"
+
+msgid "Files DB"
+msgstr "Files DB"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Name"
+msgstr "Name"
+
+msgid "Class"
+msgstr "Class"
+
+msgid "Sessions"
+msgstr "Sessions"
+
+msgid "Messages"
+msgstr "Messages"
+
+msgid "Files"
+msgstr "Files"
+
+msgid "Camera access"
+msgstr "Camera access"
+
+msgid "Camera snapshot: {room_name}"
+msgstr "Camera snapshot: {room_name}"
+
+msgid "Actions"
+msgstr "Actions"
+
+msgid "New user"
+msgstr "New user"
+
+msgid "Only lowercase letters and digits"
+msgstr "Only lowercase letters and digits"
+
+msgid "highest"
+msgstr "highest"
+
+msgid "medium"
+msgstr "medium"
+
+msgid "lowest"
+msgstr "lowest"
+
+msgid "Active"
+msgstr "Active"
+
+msgid "Leave all unchecked to deny access to all cameras."
+msgstr "Leave all unchecked to deny access to all cameras."
+
+msgid "Create"
+msgstr "Create"
+
+msgid "Change password"
+msgstr "Change password"
+
+msgid "New password"
+msgstr "New password"
+
+msgid "Save"
+msgstr "Save"
+
+msgid "Delete user {login}?"
+msgstr "Delete user {login}?"
+
+msgid "Delete user"
+msgstr "Delete user"
+
+msgid "Internal server error"
+msgstr "Internal server error"
+
+msgid "Missing fields"
+msgstr "Missing fields"
+
+msgid "Login already exists"
+msgstr "Login already exists"
+
+msgid "New password not specified"
+msgstr "New password not specified"
+
+msgid "OK"
+msgstr "OK"
+
+msgid "Cancel"
+msgstr "Cancel"
+
+msgid "Change"
+msgstr "Change"
+
+msgid "delete"
+msgstr "Delete"
+
+msgid "Ollama service unavailable"
+msgstr "Ollama service unavailable"
+
+msgid "Model for {model_type} not configured"
+msgstr "Model for {model_type} not configured"
+
+msgid "Timeout ({timeout}s) when calling the model. Try increasing timeout in .env or simplify your request."
+msgstr "Timeout ({timeout}s) when calling the model. Try increasing timeout in .env or simplify your request."
+
+msgid "Could not connect to Ollama"
+msgstr "Could not connect to Ollama"
+
+msgid "Error"
+msgstr "Error"
+
+msgid "Error loading prompt template"
+msgstr "Error loading prompt template"
+
+msgid "Could not determine action"
+msgstr "Could not determine action"
+
+msgid "Access to this camera is denied"
+msgstr "Access to this camera is denied"
+
+msgid "CCTV service unavailable"
+msgstr "CCTV service unavailable"
+
+msgid "Unknown room: {room}"
+msgstr "Unknown room: {room}"
+
+msgid "Failed to get snapshot from camera {room_name}"
+msgstr "Failed to get snapshot from camera {room_name}"
+
+msgid "Timeout ({timeout}s)"
+msgstr "Timeout ({timeout}s)"
+
+msgid "Connection error"
+msgstr "Connection error"
+
+msgid "Timeout ({timeout}s) during audio transcription"
+msgstr "Timeout ({timeout}s) during audio transcription"
+
+msgid "Connection error to Whisper API"
+msgstr "Connection error to Whisper API"
+
+msgid "Multimodal model unavailable"
+msgstr "Multimodal model unavailable"
+
+msgid "Maximum file size {max_size} MB"
+msgstr "Maximum file size {max_size} MB"
+
+msgid "Unsupported file type"
+msgstr "Unsupported file type"
+
+msgid "Maximum resolution {max_width}x{max_height}"
+msgstr "Maximum resolution {max_width}x{max_height}"
+
+msgid "Could not process image file"
+msgstr "Could not process image file"
+
+msgid "Timeout ({timeout}s) when calling multimodal model"
+msgstr "Timeout ({timeout}s) when calling multimodal model"
+
+msgid "Could not find JSON in model response"
+msgstr "Could not find JSON in model response"
+
+msgid "JSON parsing error: {error}"
+msgstr "JSON parsing error: {error}"
+
+msgid "Image generation service unavailable"
+msgstr "Image generation service unavailable"
+
+msgid "Multimodal module unavailable (required for parameter generation)"
+msgstr "Multimodal module unavailable (required for parameter generation)"
+
+msgid "Image generation timeout ({timeout}s)"
+msgstr "Image generation timeout ({timeout}s)"
+
+msgid "Image generated from request: {query}"
+msgstr "Image generated from request: {query}"
+
+msgid "Could not connect to Automatic1111"
+msgstr "Could not connect to Automatic1111"
+
+msgid "Automatic1111 returned no image"
+msgstr "Automatic1111 returned no image"
+
+msgid "MB"
+msgstr "MB"
+
+msgid "TTS service unavailable"
+msgstr "TTS service unavailable"
+
+msgid "TTS synthesis failed"
+msgstr "TTS synthesis failed"
+
+msgid "Missing text"
+msgstr "Missing text"
+
+msgid "speak"
+msgstr "Speak"
+
+msgid "stop"
+msgstr "Stop"
+
+msgid "male_voice"
+msgstr "Male voice"
+
+msgid "female_voice"
+msgstr "Female voice"
+
+msgid "toggle_voice_gender"
+msgstr "Toggle voice gender"
+
+msgid "Toggle theme"
+msgstr "Toggle theme"
+
+msgid "byte_abbr"
+msgstr "B"
+
+msgid "kb_abbr"
+msgstr "KB"
+
+msgid "mb_abbr"
+msgstr "MB"
+
+msgid "gb_abbr"
+msgstr "GB"
+
+msgid "seconds_suffix"
+msgstr "s"
+
+msgid "The image has been reduced."
+msgstr "The image has been reduced."
+
+msgid "loading"
+msgstr "Loading..."
+
+msgid "minutes_abbr"
+msgstr "min"
+
+msgid "status_pending"
+msgstr "Pending indexing"
+
+msgid "status_indexing"
+msgstr "Indexing in progress"
+
+msgid "status_indexed"
+msgstr "Indexed"
+
+msgid "status_failed"
+msgstr "Indexing failed"
+
+msgid "status_unknown"
+msgstr "Not indexed"
+
+msgid "footer_text"
+msgstr "Fully Local AI (FLAI) v7.0 (c) 2026 Valery Barsukov"

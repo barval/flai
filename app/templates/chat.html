@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="chat-container">
+    <div class="sessions-sidebar">
+        <div class="sessions-header">
+            <div class="header-tabs">
+                <!-- Mobile collapse toggle (visible only on mobile) -->
+                <div class="collapse-toggle-mobile" id="collapse-toggle-mobile" title="Toggle collapse">
+                    <span class="collapse-icon" id="collapse-icon">➡️</span>
+                </div>
+                <!-- Documents tab -->
+                <div class="header-tab documents-tab {% if active_view == 'documents' %}active{% endif %}" data-view="documents">
+                    <span class="tab-text">{{ _('Documents') }} (<span id="documents-count">{{ documents|length }}</span>)</span>
+                    <button id="new-document-button" class="new-tab-button" title="{{ _('New document') }}">➕</button>
+                </div>
+                <!-- Sessions tab -->
+                <div class="header-tab sessions-tab {% if active_view == 'sessions' or not active_view %}active{% endif %}" data-view="sessions">
+                    <span class="tab-text">{{ _('Sessions') }} (<span id="sessions-count">{{ sessions|length }}</span>)</span>
+                    <button id="new-session-button" class="new-tab-button" title="{{ _('New session') }}">➕</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sessions list (visible by default) -->
+        <div class="sessions-list" id="sessions-list">
+            {% for s in sessions %}
+            <div class="session-item {% if s.id == current_session %}active{% endif %}" data-session-id="{{ s.id }}">
+                <div class="session-content">
+                    <div class="session-info">
+                        <div class="session-title">📝 {{ s.title }}</div>
+                        <div class="session-date">📅 {{ s.updated_at[:19].replace('T', ' ') }} [{{ s.message_count }}]</div>
+                    </div>
+                    <button class="delete-session-button" title="{{ _('Delete session') }}">🗑️</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Documents list (hidden by default) -->
+        <div class="documents-list" id="documents-list" style="display: none;">
+            <!-- Documents will be loaded via JavaScript -->
+        </div>
+    </div>
+
+    <div class="chat-main">
+        <div class="chat-header">
+            <h2>{{ _('Chat') }} <span id="status-counter" class="status-counter" title="{{ _('Your requests in queue / Total in queue') }}">📊 0/0</span></h2>
+            <div class="context-info-container">
+                <div id="context-info" class="context-info">{{ _('Messages') }}: 0</div>
+                <button id="save-chat-button" class="save-chat-button" title="{{ _('Save as HTML') }}">💾</button>
+            </div>
+        </div>
+
+        <!-- Chat messages area -->
+        <div class="chat-messages" id="chat-messages"></div>
+
+        <!-- File preview container (shown when a file is attached) -->
+        <div id="file-preview-container" style="display: none;">
+            <div>
+                <span id="file-preview-name"></span>
+                <span id="file-preview-size"></span>
+                <button id="remove-file-button">✕</button>
+            </div>
+        </div>
+
+        <!-- Image modal for enlarging images -->
+        <div id="image-modal" class="image-modal" onclick="closeImageModal()">
+            <span class="image-modal-close">&times;</span>
+            <img class="image-modal-content" id="modal-image">
+            <div id="modal-caption"></div>
+        </div>
+
+        <!-- Message input area -->
+        <div class="message-input">
+            <input type="text" id="message-input" placeholder="{{ _('Enter message...') }}" autocomplete="off">
+            <button id="voice-record-button" class="voice-record-button" title="{{ _('Record voice message') }}">🎤</button>
+            <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt" style="display: none;">
+            <button id="attach-file-button">📎</button>
+            <button id="send-button">{{ _('Send') }}</button>
+        </div>
+    </div>
+</div>
+
+<!-- Markdown parser library -->
+<script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
+
+<!-- JavaScript translations and configuration -->
+<script>
+window.initialSessionId = "{{ current_session }}";
+window.CURRENT_USER_LOGIN = "{{ session.get('login', '') }}";
+window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
+    'send': {{ _("Send")|tojson }},
+    'sending': {{ _("Sending...")|tojson }},
+    'recording': {{ _("Recording...")|tojson }},
+    'error_not_authorized': {{ _("Not authorized")|tojson }},
+    'empty_message': {{ _("Empty message")|tojson }},
+    'failed_recognize_speech': {{ _("Failed to recognize speech")|tojson }},
+    'voice_request': {{ _("Voice request")|tojson }},
+    'audio_transcribed': {{ _("Audio transcribed")|tojson }},
+    'request_queued': {{ _("Request queued (position {pos})")|tojson }},
+    'speech_recognized_queued': {{ _("Speech recognized, request queued (position {pos})")|tojson }},
+    'transcribed': {{ _("Transcribed")|tojson }},
+    'image_generated_from': {{ _("Image generated from request: {query}")|tojson }},
+    'camera_snapshot': {{ _("Camera snapshot: {room_name}")|tojson }},
+    'unknown_session': {{ _("Unknown session")|tojson }},
+    'new_session': {{ _("New session")|tojson }},
+    'delete_session': {{ _("Delete session")|tojson }},
+    'delete_session_confirm': {{ _("Delete session {title} from {date}?")|tojson }},
+    'permission_denied': {{ _("Permission denied")|tojson }},
+    'session_not_found': {{ _("Session not found")|tojson }},
+    'no_active_session': {{ _("No active session")|tojson }},
+    'save_as_html': {{ _("Save as HTML")|tojson }},
+    'chat': {{ _("Chat")|tojson }},
+    'sessions': {{ _("Sessions")|tojson }},
+    'documents': {{ _("Documents")|tojson }},
+    'messages': {{ _("Messages")|tojson }},
+    'your_requests': {{ _("Your requests in queue / Total in queue")|tojson }},
+    'error': {{ _("Error")|tojson }},
+    'warning': {{ _("Warning")|tojson }},
+    'info': {{ _("Info")|tojson }},
+    'user': {{ _("user")|tojson }},
+    'session': {{ _("session")|tojson }},
+    'saved_on': {{ _("saved_on")|tojson }},
+    'total_messages': {{ _("total_messages")|tojson }},
+    'speak': {{ _("speak")|tojson }},
+    'stop': {{ _("stop")|tojson }},
+    'download_image': {{ _("download_image")|tojson }},
+    'download_audio': {{ _("download_audio")|tojson }},
+    'click_to_enlarge': {{ _("click_to_enlarge")|tojson }},
+    'image': {{ _("image")|tojson }},
+    'enter_message_or_file': {{ _("enter_message_or_file")|tojson }},
+    'request_timeout': {{ _("request_timeout")|tojson }},
+    'unknown_error': {{ _("unknown_error")|tojson }},
+    'copied': {{ _("copied")|tojson }},
+    'copy_code': {{ _("copy_code")|tojson }},
+    'copy_failed': {{ _("copy_failed")|tojson }},
+    'copy_text': {{ _("copy_text")|tojson }},
+    'processing': {{ _("processing")|tojson }},
+    'queued': {{ _("queued")|tojson }},
+    'new_response': {{ _("new_response")|tojson }},
+    'browser_no_audio_support': {{ _("browser_no_audio_support")|tojson }},
+    'secure_context_required': {{ _("secure_context_required")|tojson }},
+    'microphone_access_denied': {{ _("microphone_access_denied")|tojson }},
+    'no_active_session_save': {{ _("no_active_session_save")|tojson }},
+    'saved_chat': {{ _("saved_chat")|tojson }},
+    'no_messages_to_save': {{ _("no_messages_to_save")|tojson }},
+    'footer_text': {{ _("footer_text")|tojson }},
+    'footer_not_configured': {{ _("footer_not_configured")|tojson }},
+    'footer_load_error': {{ _("footer_load_error")|tojson }},
+    'text_request': {{ _("Text request")|tojson }},
+    'record_voice_message': {{ _("Record voice message")|tojson }},
+    'seconds_suffix': {{ _('seconds_suffix')|tojson }},
+    'byte_abbr': {{ _('byte_abbr')|tojson }},
+    'kb_abbr': {{ _('kb_abbr')|tojson }},
+    'mb_abbr': {{ _('mb_abbr')|tojson }},
+    'gb_abbr': {{ _('gb_abbr')|tojson }},
+    'new_document': {{ _('New document')|tojson }},
+    'delete_document': {{ _('Delete document')|tojson }},
+    'delete_document_confirm': {{ _('Delete document "{filename}"?')|tojson }},
+    'upload_document': {{ _('Upload document')|tojson }},
+    'document_uploaded': {{ _('Document uploaded')|tojson }},
+    'document_upload_failed': {{ _('Document upload failed')|tojson }},
+    'supported_formats': {{ _('Supported formats: PDF, DOC, DOCX, TXT')|tojson }},
+    'minutes_abbr': {{ _('minutes_abbr')|tojson }},
+    'status_pending': {{ _('status_pending')|tojson }},
+    'status_indexing': {{ _('status_indexing')|tojson }},
+    'status_indexed': {{ _('status_indexed')|tojson }},
+    'status_failed': {{ _('status_failed')|tojson }},
+    'status_unknown': {{ _('status_unknown')|tojson }}
+});
+window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
+function t(key) {
+    if (!(key in window.TRANSLATIONS)) {
+        console.warn('Missing translation key:', key);
+        return key;
+    }
+    return window.TRANSLATIONS[key];
+}
+{% if config.get('DEBUG_TRANSLATIONS') %}
+console.log('Chat TRANSLATIONS merged:', window.TRANSLATIONS);
+{% endif %}
+</script>
+
+<!-- Chat JavaScript modules (order matters) -->
+<script src="{{ url_for('static', filename='js/chat-constants.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-utils.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-sessions.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-documents.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-messages.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-tts.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-recording.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-export.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-queue.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-init.js') }}"></script>
+
+<!-- Additional initialization for collapsible sidebar -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof initCollapsibleSessions === 'function') {
+        initCollapsibleSessions();
+    }
+});
+</script>
+{% endblock %}

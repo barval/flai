@@ -1,0 +1,32 @@
+# ollama
+services:
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    networks:
+      - flai_network
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    environment:
+      - OLLAMA_REQUEST_TIMEOUT=1200s
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_KEEP_ALIVE=0
+    # Uncomment for GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  ollama:
+    external: true
+    name: ollama
+
+networks:
+  flai_network:
+    external: true

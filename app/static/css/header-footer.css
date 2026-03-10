@@ -1,0 +1,202 @@
+/* ===== HEADER ===== */
+header {
+    background-color: #2c3e50;
+    color: white;
+    padding: 0.5rem 1rem;
+    text-align: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    height: 50px;
+    display: flex;
+    align-items: center;
+}
+
+/* Increase header height on mobile devices and keep it in flow */
+@media (max-width: 768px) {
+    header {
+        height: 75px;
+        padding: 0.75rem 1rem;
+    }
+}
+
+.header-logo {
+    height: 40px;
+    width: auto;
+    object-fit: contain;
+    margin-right: 12px;
+}
+
+header h1 {
+    font-size: 1.3rem;
+    margin: 0;
+    margin-right: auto;
+    color: white;
+}
+
+/* ===== FOOTER ===== */
+footer {
+    background-color: #2c3e50;
+    color: white;
+    padding: 0.5rem 1rem;
+    text-align: center;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: auto;
+}
+
+.footer-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.2;
+}
+
+.footer-line1,
+.footer-line2 {
+    font-size: 0.9rem;
+    color: white;
+}
+
+.footer-line2 {
+    opacity: 0.9;
+}
+
+/* ===== LOGOUT CONTAINER ===== */
+.logout-container {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-left: auto;
+}
+
+.header-row {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+@media (max-width: 768px) {
+    .logout-container {
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 5px;
+    }
+    .header-row {
+        gap: 8px;
+    }
+}
+
+.logout-container span {
+    font-size: 0.9rem;
+    color: #ecf0f1;
+}
+
+.logout-button {
+    color: white;
+    background-color: #e74c3c;
+    padding: 0.3rem 0.8rem;
+    border-radius: 4px;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: background-color 0.3s;
+}
+
+.logout-button:hover {
+    background-color: #c0392b;
+}
+
+/* ===== LANGUAGE SWITCHER ===== */
+.language-switcher select {
+    padding: 0.2rem;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    background-color: white;
+    color: #333;
+    cursor: pointer;
+}
+
+/* ===== VOICE GENDER TOGGLE ===== */
+.voice-gender-switcher {
+    margin-left: 10px;
+    display: inline-flex;
+    align-items: center;
+}
+
+.voice-gender-button {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0 5px;
+    transition: transform 0.2s;
+    vertical-align: middle;
+    line-height: 1;
+}
+
+.voice-gender-button:hover {
+    transform: scale(1.1);
+}
+
+/* Colored backgrounds for voice gender button */
+.voice-gender-button.male {
+    background-color: #3498db;  /* blue for male */
+}
+
+.voice-gender-button.female {
+    background-color: #e83e8c;  /* pink for female */
+}
+
+.voice-gender-button.male,
+.voice-gender-button.female {
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+#voice-gender-icon {
+    color: white;
+    font-size: 1.2rem;
+    line-height: 1;
+}
+
+/* ===== THEME TOGGLE BUTTON ===== */
+.theme-switcher {
+    margin-left: 10px;
+    display: inline-flex;
+    align-items: center;
+}
+
+.theme-toggle-button {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0 5px;
+    transition: transform 0.2s;
+    vertical-align: middle;
+    line-height: 1;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f1f1f1;
+    color: #333;
+}
+
+.theme-toggle-button:hover {
+    transform: scale(1.1);
+    background-color: #e0e0e0;
+}
+
+.dark-theme .theme-toggle-button {
+    background-color: #34495e;
+    color: #f1c40f;
+}

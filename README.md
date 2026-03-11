@@ -128,6 +128,7 @@ Log in with:
 
 ## 🔧 Setting Up Dependent Services
 FLAI integrates with several external AI services. Below are Docker Compose examples for running them alongside the main application.
+Also see the examples in the `services` folder.
 - ⚠️ Important: All services must share the same Docker network (flai_network) for proper communication.
 
 ### Create Shared Network

@@ -86,40 +86,25 @@ async function fetchAllModelsDetails(models) {
     modelDetails = details;
 }
 
-// Filtering helpers
+// Filtering helpers based on model details from Ollama
 function isChatModel(modelName, info) {
-    if (!info) return true; // fallback
-    // Exclude embedding models
-    if (info.capabilities && info.capabilities.embedding) return false;
-    return true;
+    // Any model that is not an embedding model is suitable for chat
+    return info && !info.is_embedding;
 }
 
 function isReasoningModel(modelName, info) {
-    if (!info) return true;
-    // Exclude embedding models
-    if (info.capabilities && info.capabilities.embedding) return false;
-    // Optionally, you could add heuristics based on size, but for now allow all non-embedding
-    return true;
+    // For reasoning we also allow any non-embedding model (including multimodal)
+    return info && !info.is_embedding;
 }
 
 function isMultimodalModel(modelName, info) {
-    if (!info) return false;
-    // Vision capability is the primary indicator
-    if (info.capabilities && info.capabilities.vision) return true;
-    // Fallback: name-based heuristics
-    const nameLower = modelName.toLowerCase();
-    if (nameLower.includes('vl') || nameLower.includes('vision') || 
-        nameLower.includes('llava') || nameLower.includes('moondream')) return true;
-    return false;
+    // Only models that explicitly support vision
+    return info && info.is_vision;
 }
 
 function isEmbeddingModel(modelName, info) {
-    if (!info) return false;
-    if (info.capabilities && info.capabilities.embedding) return true;
-    const nameLower = modelName.toLowerCase();
-    if (nameLower.includes('embed') || nameLower.includes('bge') || 
-        nameLower.includes('e5') || nameLower.includes('minilm')) return true;
-    return false;
+    // Only models that are identified as embedding models
+    return info && info.is_embedding;
 }
 
 function renderModelCards() {
@@ -244,23 +229,12 @@ async function onModelSelect(event) {
         }
     }
 
-    // Build capabilities display
-    let caps = '';
-    if (info.capabilities) {
-        caps = '<div class="capabilities">';
-        for (const [key, val] of Object.entries(info.capabilities)) {
-            caps += `<span class="capability ${val}">${key}</span>`;
-        }
-        caps += '</div>';
-    }
-
     detailsDiv.innerHTML = `
         <p><strong>${t('Architecture:')}</strong> ${info.architecture || 'N/A'}</p>
         <p><strong>${t('Parameters:')}</strong> ${info.parameters || 'N/A'}</p>
         <p><strong>${t('Quantization:')}</strong> ${info.quantization || 'N/A'}</p>
         <p><strong>${t('Max context length:')}</strong> ${info.context_length || 'N/A'}</p>
         <p><strong>${t('Embedding length:')}</strong> ${info.embedding_length || 'N/A'}</p>
-        ${caps}
     `;
 
     // Set max attribute for context length input

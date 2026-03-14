@@ -271,14 +271,15 @@ def ollama_model_info(name):
             details = data.get('details', {})
             model_info = data.get('model_info', {})
             template = data.get('template', '')
-            
+
             # Extract relevant fields
             context_length = None
             embedding_length = None
             is_embedding = False
             is_vision = False
             is_tools = False
-            
+            is_reasoning = False
+
             for k, v in model_info.items():
                 if k.endswith('.context_length') or k == 'context_length':
                     context_length = v
@@ -292,30 +293,42 @@ def ollama_model_info(name):
                 # Tools indicators (optional)
                 if 'tools' in k.lower() and v:
                     is_tools = True
-            
+
             architecture = details.get('family', '').lower()
-            
-            # Determine if the model is embedding-only
-            if embedding_length and int(embedding_length) > 0:
-                # Check if architecture is known embedding family
-                if architecture in EMBEDDING_ARCHITECTURES:
-                    is_embedding = True
-                else:
-                    # Additional heuristic: if no template (or empty template), treat as embedding
-                    if not template or template.strip() == '':
-                        is_embedding = True
-            
-            # Vision detection via architecture
-            if architecture in VISION_ARCHITECTURES:
+
+            # --- Improved vision detection ---
+            families = details.get('families', [])
+            # Check for 'clip' in families
+            if any('clip' in f.lower() for f in families):
                 is_vision = True
-            
-            # Also, if the model has vision capability, it's not embedding (even if embedding_length present)
+            # Check template for image placeholders
+            if template and ('{{ .Images }}' in template or '{{ .Image }}' in template):
+                is_vision = True
+
+            # --- Reasoning detection (by name) ---
+            reasoning_keywords = ['r1', 'reasoning', 'o1', 'deepseek', 'qwq']
+            name_lower = name.lower()
+            if any(kw in name_lower for kw in reasoning_keywords):
+                is_reasoning = True
+
+            # --- Embedding detection ---
+            # If already vision, it's not embedding
             if is_vision:
                 is_embedding = False
-            
+            else:
+                # Heuristics for embedding models
+                if embedding_length and int(embedding_length) > 0:
+                    # Check architecture or name or empty template
+                    if architecture in EMBEDDING_ARCHITECTURES:
+                        is_embedding = True
+                    elif 'embed' in name_lower:
+                        is_embedding = True
+                    elif not template or template.strip() == '':
+                        is_embedding = True
+
             params = details.get('parameter_size', '')
             quantization = details.get('quantization_level', '')
-            
+
             return jsonify({
                 'name': name,
                 'architecture': details.get('family', ''),
@@ -326,10 +339,12 @@ def ollama_model_info(name):
                 'is_embedding': is_embedding,
                 'is_vision': is_vision,
                 'is_tools': is_tools,
-                'capabilities': {  # kept for backward compatibility
+                'is_reasoning': is_reasoning,
+                'capabilities': {
                     'embedding': is_embedding,
                     'vision': is_vision,
-                    'tools': is_tools
+                    'tools': is_tools,
+                    'reasoning': is_reasoning
                 }
             })
         else:

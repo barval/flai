@@ -335,11 +335,14 @@ def update_model_config(module):
 
 def _reload_model_configs(app):
     """Helper to reload model configs from DB into app.config."""
-    from app.db import get_db
-    with get_db() as conn:
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        c.execute('SELECT * FROM model_configs')
-        rows = c.fetchall()
-        configs = {row['module']: dict(row) for row in rows}
+    # Use direct connection without Flask's g to avoid context issues during startup
+    import sqlite3
+    from app.db import CHAT_DB_PATH
+    conn = sqlite3.connect(CHAT_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute('SELECT * FROM model_configs')
+    rows = c.fetchall()
+    configs = {row['module']: dict(row) for row in rows}
+    conn.close()
     app.config['MODEL_CONFIGS'] = configs

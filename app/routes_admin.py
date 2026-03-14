@@ -225,7 +225,7 @@ def get_stats():
         return jsonify({'error': 'Internal server error'}), 500
 
 
-# ==================== NEW ENDPOINTS FOR MODEL MANAGEMENT ====================
+# ==================== ENDPOINTS FOR MODEL MANAGEMENT ====================
 
 @bp.route('/api/ollama/models', methods=['GET'])
 @admin_required
@@ -259,6 +259,7 @@ def ollama_model_info(name):
             data = resp.json()
             details = data.get('details', {})
             model_info = data.get('model_info', {})
+            template = data.get('template', '')
             
             # Extract relevant fields
             context_length = None
@@ -272,30 +273,27 @@ def ollama_model_info(name):
                     context_length = v
                 if k.endswith('.embedding_length') or k == 'embedding_length':
                     embedding_length = v
-                    if v and int(v) > 0:
-                        is_embedding = True
-                if 'vision' in k.lower() and v:
-                    is_vision = True
+                # Check for vision-related keys
+                if 'vision' in k.lower() or 'mmproj' in k.lower():
+                    if v:
+                        is_vision = True
+                # Check for tools support
                 if 'tools' in k.lower() and v:
                     is_tools = True
             
-            # Check architecture for additional hints
-            architecture = details.get('family', '')
-            if 'bert' in architecture or 'bge' in architecture or 'e5' in architecture:
-                is_embedding = True
-            if 'llava' in architecture or 'moondream' in architecture or 'vision' in architecture:
-                is_vision = True
+            # A model is considered embedding-only if it has embedding_length > 0 and no template.
+            # This heuristic helps distinguish dedicated embedding models from general LLMs.
+            if embedding_length and int(embedding_length) > 0:
+                if not template or template.strip() == '':
+                    is_embedding = True
             
-            # Fallback based on name if still not detected
-            name_lower = name.lower()
-            if not is_embedding and ('embed' in name_lower or 'bge' in name_lower or 'e5' in name_lower):
-                is_embedding = True
-            if not is_vision and ('vl' in name_lower or 'vision' in name_lower or 'llava' in name_lower or 'moondream' in name_lower):
+            # Architecture-based hints for vision (without relying on model name)
+            architecture = details.get('family', '')
+            if 'llava' in architecture.lower() or 'moondream' in architecture.lower() or 'qwen2vl' in architecture.lower() or 'phi3v' in architecture.lower():
                 is_vision = True
             
             params = details.get('parameter_size', '')
             quantization = details.get('quantization_level', '')
-            architecture = details.get('family', '')
             
             return jsonify({
                 'name': name,
@@ -307,7 +305,7 @@ def ollama_model_info(name):
                 'is_embedding': is_embedding,
                 'is_vision': is_vision,
                 'is_tools': is_tools,
-                'capabilities': {  # kept for backward compatibility, but unused in new JS
+                'capabilities': {  # kept for backward compatibility
                     'embedding': is_embedding,
                     'vision': is_vision,
                     'tools': is_tools

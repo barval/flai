@@ -142,6 +142,26 @@ class RedisRequestQueue:
             self.app.logger.error(f"Error getting session title: {str(e)}")
             return self.app.modules['base']._('Unknown session', lang=lang)
 
+    def _get_model_name(self, module_type):
+        """
+        Get current model name for given module type (chat, reasoning, multimodal, embedding).
+        Returns model name string or None if not configured.
+        """
+        if self.app.config.get('MODEL_CONFIGS') and module_type in self.app.config['MODEL_CONFIGS']:
+            db_model = self.app.config['MODEL_CONFIGS'][module_type].get('model_name')
+            if db_model:
+                return db_model
+        # Fallback to env config
+        key_map = {
+            'chat': 'LLM_CHAT_MODEL',
+            'reasoning': 'LLM_REASONING_MODEL',
+            'multimodal': 'LLM_MULTIMODAL_MODEL',
+            'embedding': 'EMBEDDING_MODEL'
+        }
+        if module_type in key_map:
+            return self.app.config.get(key_map[module_type])
+        return None
+
     def _try_rag_answer(self, query, session_id, user_id, lang):
         """Attempt to answer using RAG. Returns answer string if successful, None otherwise."""
         rag = self.app.modules.get('rag')
@@ -158,7 +178,7 @@ class RedisRequestQueue:
         if task.get('type') == 'index_document':
             return self._process_index_task(task)
         
-        # Regular message processing (existing code)
+        # Regular message processing
         user_id = task['user_id']
         session_id = task['session_id']
         request_data = task['data']
@@ -188,19 +208,20 @@ class RedisRequestQueue:
             action_type = router_result['action']
             query = router_result['query']
             final_response = ""
-            model_used = self.app.config['LLM_CHAT_MODEL']
+            model_used = self._get_model_name('chat') or self.app.config['LLM_CHAT_MODEL']
             is_error = False
             process_time = 0
             message_id = None
 
-            # --- NEW: Try RAG first for reasoning queries ---
+            # Try RAG first for reasoning queries
             if action_type == 'reasoning':
                 rag_start_time = time.time()
                 rag_answer = self._try_rag_answer(query, session_id, user_id, lang)
                 rag_time = round(time.time() - rag_start_time, 1)
                 if rag_answer is not None:
                     completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
-                    model_used = self.app.config.get('LLM_REASONING_MODEL', 'unknown') + " (RAG)"
+                    model_used = self._get_model_name('reasoning') or self.app.config.get('LLM_REASONING_MODEL', 'unknown')
+                    model_used += " (RAG)"
                     message_id = save_message(session_id, 'assistant', rag_answer,
                                               model_name=model_used, response_time=str(rag_time))
                     return {
@@ -213,7 +234,6 @@ class RedisRequestQueue:
                         'message_id': message_id
                     }
                 # If RAG returns nothing, continue with normal reasoning processing
-            # --- END NEW ---
 
             if action_type == 'image':
                 if 'image' in self.app.modules and self.app.modules['image'].available:
@@ -233,7 +253,7 @@ class RedisRequestQueue:
                             completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
                             image_result['mm_time'] = mm_time
                             image_result['gen_time'] = gen_time
-                            image_result['mm_model'] = self.app.config['LLM_MULTIMODAL_MODEL']
+                            image_result['mm_model'] = self._get_model_name('multimodal') or self.app.config['LLM_MULTIMODAL_MODEL']
                             image_result['gen_model'] = self.app.config['AUTOMATIC1111_MODEL']
                             template = self.app.modules['base']._('Image generated from request: {query}', lang=lang)
                             message_text = template.format(query=query)
@@ -256,7 +276,7 @@ class RedisRequestQueue:
                                 model_name=self.app.config['AUTOMATIC1111_MODEL'],
                                 response_time={'mm_time': mm_time, 'gen_time': gen_time},
                                 mm_time=str(mm_time), gen_time=str(gen_time),
-                                mm_model=self.app.config['LLM_MULTIMODAL_MODEL'],
+                                mm_model=image_result['mm_model'],
                                 gen_model=self.app.config['AUTOMATIC1111_MODEL']
                             )
                             return {
@@ -345,15 +365,17 @@ class RedisRequestQueue:
                                 is_error = True
                             else:
                                 is_error = False
+                            # Get actual multimodal model name
+                            mm_model_name = self._get_model_name('multimodal') or self.app.config['LLM_MULTIMODAL_MODEL']
                             msg_id2 = save_message(
                                 session_id, 'assistant', bot_reply,
-                                model_name=self.app.config['LLM_MULTIMODAL_MODEL'],
+                                model_name=mm_model_name,
                                 response_time=str(mm_time)
                             )
                             second_message = {
                                 'response': bot_reply,
                                 'session_id': session_id,
-                                'model_used': self.app.config['LLM_MULTIMODAL_MODEL'],
+                                'model_used': mm_model_name,
                                 'assistant_timestamp': get_current_time_in_timezone_for_db(self.app),
                                 'response_time': mm_time,
                                 'is_error': is_error,
@@ -378,7 +400,7 @@ class RedisRequestQueue:
                     reasoning_start_time = time.time()
                     final_response = self.app.modules['base'].process_reasoning(query, current_time_str, lang=lang, session_id=session_id)
                     process_time = round(time.time() - reasoning_start_time, 1)
-                    model_used = self.app.config['LLM_REASONING_MODEL']
+                    model_used = self._get_model_name('reasoning') or self.app.config['LLM_REASONING_MODEL']
                 else:
                     process_time = 0
                     final_response = query
@@ -444,11 +466,13 @@ class RedisRequestQueue:
                 process_time = round(time.time() - process_start_time, 1)
                 is_error = True
             completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
-            message_id = save_message(session_id, 'assistant', bot_reply, model_name=self.app.config['LLM_MULTIMODAL_MODEL'] if 'multimodal' in self.app.modules else 'system', response_time=str(process_time))
+            # Get actual multimodal model name
+            mm_model_name = self._get_model_name('multimodal') or (self.app.config['LLM_MULTIMODAL_MODEL'] if 'multimodal' in self.app.modules else 'system')
+            message_id = save_message(session_id, 'assistant', bot_reply, model_name=mm_model_name, response_time=str(process_time))
             return {
                 'response': bot_reply,
                 'session_id': session_id,
-                'model_used': self.app.config['LLM_MULTIMODAL_MODEL'] if 'multimodal' in self.app.modules else 'system',
+                'model_used': mm_model_name,
                 'assistant_timestamp': completion_time_for_db,
                 'response_time': process_time,
                 'is_error': is_error,

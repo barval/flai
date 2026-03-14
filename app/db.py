@@ -168,6 +168,53 @@ def migrate_db_add_index_status(app):
     except Exception as e:
         app.logger.error(f"Index status migration error: {str(e)}")
 
+def migrate_add_model_configs(app):
+    """Create model_configs table and populate with defaults from .env."""
+    try:
+        with sqlite3.connect(CHAT_DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS model_configs (
+                    module TEXT PRIMARY KEY,
+                    model_name TEXT,
+                    context_length INTEGER,
+                    temperature REAL,
+                    top_p REAL,
+                    timeout INTEGER,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            # Insert default rows if not present (values from current app.config)
+            default_modules = [
+                ('chat', app.config.get('LLM_CHAT_MODEL', ''),
+                 app.config.get('LLM_CHAT_MODEL_CONTEXT_WINDOW', 32768),
+                 app.config.get('LLM_CHAT_TEMPERATURE', 0.1),
+                 app.config.get('LLM_CHAT_TOP_P', 0.1),
+                 app.config.get('LLM_CHAT_TIMEOUT', 60)),
+                ('reasoning', app.config.get('LLM_REASONING_MODEL', ''),
+                 app.config.get('LLM_REASONING_MODEL_CONTEXT_WINDOW', 40960),
+                 app.config.get('LLM_REASONING_TEMPERATURE', 0.7),
+                 app.config.get('LLM_REASONING_TOP_P', 0.9),
+                 app.config.get('LLM_REASONING_TIMEOUT', 300)),
+                ('multimodal', app.config.get('LLM_MULTIMODAL_MODEL', ''),
+                 app.config.get('LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW', 32768),
+                 app.config.get('LLM_MULTIMODAL_TEMPERATURE', 0.7),
+                 app.config.get('LLM_MULTIMODAL_TOP_P', 0.9),
+                 app.config.get('LLM_MULTIMODAL_TIMEOUT', 120)),
+                ('embedding', app.config.get('EMBEDDING_MODEL', 'bge-m3:latest'),
+                 0, 0.0, 0.0, 0)   # embedding doesn't use these, but we store model name
+            ]
+            for mod in default_modules:
+                c.execute('''
+                    INSERT OR IGNORE INTO model_configs
+                    (module, model_name, context_length, temperature, top_p, timeout)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', mod)
+            conn.commit()
+            app.logger.info("model_configs table created/verified.")
+    except Exception as e:
+        app.logger.error(f"Model config migration error: {str(e)}")
+
 def get_user_sessions(user_id):
     """Get all sessions for a user."""
     with sqlite3.connect(CHAT_DB_PATH) as conn:

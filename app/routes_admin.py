@@ -4,6 +4,8 @@
 import json
 import logging
 import os
+import sqlite3
+import requests
 from flask import Blueprint, render_template, session, jsonify, request, current_app
 from functools import wraps
 from flask_babel import gettext as _
@@ -221,3 +223,123 @@ def get_stats():
     except Exception as e:
         logger.error(f"Error in get_stats: {str(e)}", exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500
+
+
+# ==================== NEW ENDPOINTS FOR MODEL MANAGEMENT ====================
+
+@bp.route('/api/ollama/models', methods=['GET'])
+@admin_required
+def ollama_models():
+    """Return list of available models from Ollama."""
+    ollama_url = current_app.config.get('OLLAMA_URL')
+    if not ollama_url:
+        return jsonify({'error': 'OLLAMA_URL not configured'}), 500
+    try:
+        resp = requests.get(f"{ollama_url}/api/tags", timeout=5)
+        if resp.status_code == 200:
+            models = [m['name'] for m in resp.json().get('models', [])]
+            return jsonify(models)
+        else:
+            return jsonify({'error': f'Ollama returned {resp.status_code}'}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error fetching Ollama models: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/ollama/model/<name>', methods=['GET'])
+@admin_required
+def ollama_model_info(name):
+    """Return detailed information about a specific model via /api/show."""
+    ollama_url = current_app.config.get('OLLAMA_URL')
+    if not ollama_url:
+        return jsonify({'error': 'OLLAMA_URL not configured'}), 500
+    try:
+        resp = requests.post(f"{ollama_url}/api/show", json={"model": name}, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            # Extract relevant fields
+            details = data.get('details', {})
+            model_info = data.get('model_info', {})
+            # Find context length
+            context_length = None
+            embedding_length = None
+            for k, v in model_info.items():
+                if k.endswith('.context_length') or k == 'context_length':
+                    context_length = v
+                if k.endswith('.embedding_length') or k == 'embedding_length':
+                    embedding_length = v
+            # Fallback to parameters string
+            params = details.get('parameter_size', '')
+            quantization = details.get('quantization_level', '')
+            architecture = details.get('family', '')
+            return jsonify({
+                'name': name,
+                'architecture': architecture,
+                'parameters': params,
+                'quantization': quantization,
+                'context_length': context_length,
+                'embedding_length': embedding_length,
+                'capabilities': {
+                    'completion': 'completion' in name.lower(),  # naive; could be smarter
+                    'tools': 'tools' in name.lower(),
+                    'thinking': 'reasoning' in name.lower() or 'think' in name.lower()
+                }
+            })
+        else:
+            return jsonify({'error': f'Ollama returned {resp.status_code}'}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error fetching model info for {name}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/model_configs', methods=['GET'])
+@admin_required
+def get_model_configs():
+    """Return all model configurations from the database."""
+    from app.db import get_db
+    with get_db() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute('SELECT * FROM model_configs')
+        rows = c.fetchall()
+        configs = {row['module']: dict(row) for row in rows}
+    return jsonify(configs)
+
+
+@bp.route('/api/model_configs/<module>', methods=['PUT'])
+@admin_required
+def update_model_config(module):
+    """Update configuration for a specific module."""
+    data = request.get_json()
+    allowed_fields = ['model_name', 'context_length', 'temperature', 'top_p', 'timeout']
+    updates = {k: v for k, v in data.items() if k in allowed_fields}
+    if not updates:
+        return jsonify({'error': 'No valid fields'}), 400
+
+    from app.db import get_db
+    with get_db() as conn:
+        c = conn.cursor()
+        set_clause = ', '.join([f"{k}=?" for k in updates.keys()])
+        values = list(updates.values()) + [module]
+        c.execute(f'''
+            UPDATE model_configs
+            SET {set_clause}, updated_at = CURRENT_TIMESTAMP
+            WHERE module = ?
+        ''', values)
+        conn.commit()
+
+    # Reload configs into app.config
+    _reload_model_configs(current_app)
+    return jsonify({'status': 'ok'})
+
+
+def _reload_model_configs(app):
+    """Helper to reload model configs from DB into app.config."""
+    from app.db import get_db
+    with get_db() as conn:
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute('SELECT * FROM model_configs')
+        rows = c.fetchall()
+        configs = {row['module']: dict(row) for row in rows}
+    app.config['MODEL_CONFIGS'] = configs

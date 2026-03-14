@@ -5,7 +5,10 @@ from flask_babel import Babel, gettext
 import logging
 from logging import Formatter
 from .config import load_config
-from .db import init_db, migrate_db_add_response_fields, migrate_db_add_session_visits, migrate_db_add_indexes, migrate_db_add_index_status
+from .db import (
+    init_db, migrate_db_add_response_fields, migrate_db_add_session_visits,
+    migrate_db_add_indexes, migrate_db_add_index_status, migrate_add_model_configs
+)
 from .queue import RedisRequestQueue
 from .userdb import init_user_db, get_user_by_login
 from modules import BaseModule, MultimodalModule, ImageModule, CamModule, RagModule, AudioModule
@@ -52,6 +55,7 @@ def create_app():
     migrate_db_add_session_visits(app)
     migrate_db_add_indexes(app)  # Add indexes for performance
     migrate_db_add_index_status(app)  # Add index_status column to documents table for RAG
+    migrate_add_model_configs(app)   # New migration for model configs
     # Initialize user DB
     init_user_db()
     # Initialize modules
@@ -108,6 +112,10 @@ def create_app():
     if not os.path.isabs(app.config['DOCUMENTS_FOLDER']):
         app.config['DOCUMENTS_FOLDER'] = os.path.abspath(app.config['DOCUMENTS_FOLDER'])
     app.logger.info(f"Documents folder: {app.config['DOCUMENTS_FOLDER']}")
+
+    # Reload model configs from DB into app.config
+    from .routes_admin import _reload_model_configs
+    _reload_model_configs(app)
 
     # File serving endpoint
     @app.route('/api/files/<path:filename>')

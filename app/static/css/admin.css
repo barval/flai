@@ -139,3 +139,135 @@ padding: 5px 10px;
 border-radius: 4px;
 cursor: pointer;
 }
+
+/* Admin tabs */
+.admin-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #ddd;
+    padding-bottom: 10px;
+}
+.admin-tab {
+    padding: 8px 16px;
+    background-color: #f1f1f1;
+    border: none;
+    border-radius: 4px 4px 0 0;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+.admin-tab.active {
+    background-color: #3498db;
+    color: white;
+}
+.admin-tab-content {
+    display: none;
+}
+.admin-tab-content.active {
+    display: block;
+}
+
+/* Models container */
+.models-header {
+    margin-bottom: 20px;
+}
+.refresh-button {
+    padding: 8px 16px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.refresh-button:hover {
+    background-color: #2980b9;
+}
+
+/* Model cards */
+.model-card {
+    background-color: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.model-card h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #2c3e50;
+}
+.model-card .module-name {
+    font-size: 1.2em;
+    font-weight: bold;
+}
+.model-card .model-selector {
+    margin-bottom: 15px;
+}
+.model-card select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+.model-card .model-details {
+    background-color: #f9f9f9;
+    padding: 10px;
+    border-radius: 4px;
+    margin: 15px 0;
+    font-size: 0.9em;
+}
+.model-card .model-details p {
+    margin: 5px 0;
+}
+.model-card .capabilities {
+    display: flex;
+    gap: 15px;
+    margin: 10px 0;
+}
+.model-card .capability {
+    background-color: #e0e0e0;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+.model-card .capability.true {
+    background-color: #27ae60;
+    color: white;
+}
+.model-card .parameters {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+    margin: 15px 0;
+}
+.model-card .param {
+    display: flex;
+    flex-direction: column;
+}
+.model-card .param label {
+    font-size: 0.85em;
+    color: #666;
+    margin-bottom: 2px;
+}
+.model-card .param input {
+    padding: 6px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+.model-card .param input[type="number"] {
+    width: 100%;
+}
+.model-card .save-button {
+    padding: 8px 16px;
+    background-color: #27ae60;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-top: 10px;
+}
+.model-card .save-button:hover {
+    background-color: #219a52;
+}

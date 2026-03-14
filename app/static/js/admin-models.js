@@ -72,28 +72,28 @@ function renderModelCards() {
     modules.forEach(mod => {
         html += `
         <div class="model-card" data-module="${mod.id}">
-            <h3><span class="module-name">${mod.name}</span></h3>
+            <h3><span class="module-name">${t(mod.name)}</span></h3>
             <div class="model-selector">
                 <select class="model-dropdown" data-module="${mod.id}">
-                    <option value="">-- Select model --</option>
+                    <option value="">${t('-- Select model --')}</option>
                 </select>
             </div>
             <div class="model-details" id="details-${mod.id}" style="display:none;"></div>
             <div class="parameters">
                 <div class="param">
-                    <label>Context Length</label>
+                    <label>${t('Context Length')}</label>
                     <input type="number" class="context-length" data-module="${mod.id}" value="${mod.config.context_length || ''}" min="1" step="1">
                 </div>
                 <div class="param">
-                    <label>Temperature</label>
+                    <label>${t('Temperature')}</label>
                     <input type="number" class="temperature" data-module="${mod.id}" value="${mod.config.temperature || ''}" min="0" max="2" step="0.01">
                 </div>
                 <div class="param">
-                    <label>Top P</label>
+                    <label>${t('Top P')}</label>
                     <input type="number" class="top-p" data-module="${mod.id}" value="${mod.config.top_p || ''}" min="0" max="1" step="0.01">
                 </div>
                 <div class="param">
-                    <label>Timeout (s)</label>
+                    <label>${t('Timeout (s)')}</label>
                     <input type="number" class="timeout" data-module="${mod.id}" value="${mod.config.timeout || ''}" min="1" step="1">
                 </div>
             </div>
@@ -149,11 +149,11 @@ function onModelSelect(event) {
                 caps += '</div>';
             }
             detailsDiv.innerHTML = `
-                <p><strong>Architecture:</strong> ${info.architecture || 'N/A'}</p>
-                <p><strong>Parameters:</strong> ${info.parameters || 'N/A'}</p>
-                <p><strong>Quantization:</strong> ${info.quantization || 'N/A'}</p>
-                <p><strong>Max context length:</strong> ${info.context_length || 'N/A'}</p>
-                <p><strong>Embedding length:</strong> ${info.embedding_length || 'N/A'}</p>
+                <p><strong>${t('Architecture:')}</strong> ${info.architecture || 'N/A'}</p>
+                <p><strong>${t('Parameters:')}</strong> ${info.parameters || 'N/A'}</p>
+                <p><strong>${t('Quantization:')}</strong> ${info.quantization || 'N/A'}</p>
+                <p><strong>${t('Max context length:')}</strong> ${info.context_length || 'N/A'}</p>
+                <p><strong>${t('Embedding length:')}</strong> ${info.embedding_length || 'N/A'}</p>
                 ${caps}
             `;
             // Set max attribute for context length input

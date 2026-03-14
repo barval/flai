@@ -167,7 +167,22 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'mb': {{ _('MB')|tojson }},
     // New translations for models tab
     'Refresh models from Ollama': {{ _('Refresh models from Ollama')|tojson }},
-    'Saved': {{ _('Saved')|tojson }}
+    'Saved': {{ _('Saved')|tojson }},
+    // Model tab translations
+    'Chat': {{ _('Chat')|tojson }},
+    'Reasoning': {{ _('Reasoning')|tojson }},
+    'Multimodal': {{ _('Multimodal')|tojson }},
+    'Embedding': {{ _('Embedding')|tojson }},
+    '-- Select model --': {{ _('-- Select model --')|tojson }},
+    'Context Length': {{ _('Context Length')|tojson }},
+    'Temperature': {{ _('Temperature')|tojson }},
+    'Top P': {{ _('Top P')|tojson }},
+    'Timeout (s)': {{ _('Timeout (s)')|tojson }},
+    'Architecture:': {{ _('Architecture:')|tojson }},
+    'Parameters:': {{ _('Parameters:')|tojson }},
+    'Quantization:': {{ _('Quantization:')|tojson }},
+    'Max context length:': {{ _('Max context length:')|tojson }},
+    'Embedding length:': {{ _('Embedding length:')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}
 console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);

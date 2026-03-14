@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 7.0\n"
+"Project-Id-Version: FLAI 7.1\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-05 12:00+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -514,5 +514,50 @@ msgstr "Ошибка индексации"
 msgid "status_unknown"
 msgstr "Не индексирован"
 
+msgid "Refresh models from Ollama"
+msgstr "Обновить модели из Ollama"
+
+msgid "Saved"
+msgstr "Сохранено"
+
+msgid "Reasoning"
+msgstr "Рассуждения"
+
+msgid "Multimodal"
+msgstr "Мультимодальная"
+
+msgid "Embedding"
+msgstr "Эмбеддинги"
+
+msgid "-- Select model --"
+msgstr "-- Выберите модель --"
+
+msgid "Context Length"
+msgstr "Длина контекста"
+
+msgid "Temperature"
+msgstr "Температура"
+
+msgid "Top P"
+msgstr "Top P"
+
+msgid "Timeout (s)"
+msgstr "Таймаут (с)"
+
+msgid "Architecture:"
+msgstr "Архитектура:"
+
+msgid "Parameters:"
+msgstr "Параметры:"
+
+msgid "Quantization:"
+msgstr "Квантование:"
+
+msgid "Max context length:"
+msgstr "Макс. длина контекста:"
+
+msgid "Embedding length:"
+msgstr "Длина эмбеддинга:"
+
 msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v7.0 (c) 2026 Барсуков Валерий"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v7.1 (c) 2026 Барсуков Валерий"

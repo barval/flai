@@ -246,6 +246,17 @@ def ollama_models():
         return jsonify({'error': str(e)}), 500
 
 
+# Known embedding architectures (family names)
+EMBEDDING_ARCHITECTURES = {
+    'bert', 'bge', 'e5', 'snowflake-arctic-embed', 'minilm', 'nomic-embed', 'gte', 'qwen2embed'
+}
+
+# Known vision architectures (models that support images)
+VISION_ARCHITECTURES = {
+    'llava', 'moondream', 'qwen2vl', 'phi3v'
+}
+
+
 @bp.route('/api/ollama/model/<name>', methods=['GET'])
 @admin_required
 def ollama_model_info(name):
@@ -273,31 +284,41 @@ def ollama_model_info(name):
                     context_length = v
                 if k.endswith('.embedding_length') or k == 'embedding_length':
                     embedding_length = v
-                # Check for vision-related keys
-                if 'vision' in k.lower() or 'mmproj' in k.lower():
-                    if v:
-                        is_vision = True
-                # Check for tools support
+                # Vision indicators: keys containing "vision" or "mmproj"
+                if 'vision' in k.lower() and v:
+                    is_vision = True
+                if 'mmproj' in k.lower() and v:
+                    is_vision = True
+                # Tools indicators (optional)
                 if 'tools' in k.lower() and v:
                     is_tools = True
             
-            # A model is considered embedding-only if it has embedding_length > 0 and no template.
-            # This heuristic helps distinguish dedicated embedding models from general LLMs.
-            if embedding_length and int(embedding_length) > 0:
-                if not template or template.strip() == '':
-                    is_embedding = True
+            architecture = details.get('family', '').lower()
             
-            # Architecture-based hints for vision (without relying on model name)
-            architecture = details.get('family', '')
-            if 'llava' in architecture.lower() or 'moondream' in architecture.lower() or 'qwen2vl' in architecture.lower() or 'phi3v' in architecture.lower():
+            # Determine if the model is embedding-only
+            if embedding_length and int(embedding_length) > 0:
+                # Check if architecture is known embedding family
+                if architecture in EMBEDDING_ARCHITECTURES:
+                    is_embedding = True
+                else:
+                    # Additional heuristic: if no template (or empty template), treat as embedding
+                    if not template or template.strip() == '':
+                        is_embedding = True
+            
+            # Vision detection via architecture
+            if architecture in VISION_ARCHITECTURES:
                 is_vision = True
+            
+            # Also, if the model has vision capability, it's not embedding (even if embedding_length present)
+            if is_vision:
+                is_embedding = False
             
             params = details.get('parameter_size', '')
             quantization = details.get('quantization_level', '')
             
             return jsonify({
                 'name': name,
-                'architecture': architecture,
+                'architecture': details.get('family', ''),
                 'parameters': params,
                 'quantization': quantization,
                 'context_length': context_length,

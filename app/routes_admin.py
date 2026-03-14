@@ -253,7 +253,7 @@ EMBEDDING_ARCHITECTURES = {
 
 # Known vision architectures (models that support images)
 VISION_ARCHITECTURES = {
-    'llava', 'moondream', 'qwen2vl', 'phi3v'
+    'llava', 'moondream', 'qwen2vl', 'phi3v', 'gemma3n'
 }
 
 
@@ -295,19 +295,25 @@ def ollama_model_info(name):
                     is_tools = True
 
             architecture = details.get('family', '').lower()
+            name_lower = name.lower()
 
-            # --- Improved vision detection ---
-            families = details.get('families', [])
-            # Check for 'clip' in families
-            if any('clip' in f.lower() for f in families):
+            # --- Vision detection (enhanced) ---
+            # 1. By architecture
+            if architecture in VISION_ARCHITECTURES:
                 is_vision = True
-            # Check template for image placeholders
+            # 2. By model name containing 'gemma3n'
+            if 'gemma3n' in name_lower:
+                is_vision = True
+            # 3. By families list
+            families = details.get('families', [])
+            if any('clip' in f.lower() or 'vision' in f.lower() for f in families):
+                is_vision = True
+            # 4. By template containing image placeholders
             if template and ('{{ .Images }}' in template or '{{ .Image }}' in template):
                 is_vision = True
 
             # --- Reasoning detection (by name) ---
             reasoning_keywords = ['r1', 'reasoning', 'o1', 'deepseek', 'qwq']
-            name_lower = name.lower()
             if any(kw in name_lower for kw in reasoning_keywords):
                 is_reasoning = True
 

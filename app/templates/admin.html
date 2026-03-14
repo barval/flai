@@ -9,7 +9,7 @@
         <button class="admin-tab" data-tab="models">{{ _('Models') }}</button>
     </div>
 
-    <!-- Users tab content (existing) -->
+    <!-- Users tab content -->
     <div id="users-tab" class="admin-tab-content active">
         <div style="display: flex; align-items: center; gap: 30px; margin-bottom: 20px;">
             <button id="add-user-button" class="add-user-button">➕ {{ _('Add user') }}</button>
@@ -107,6 +107,7 @@
         </form>
     </div>
 </div>
+
 <!-- Password change modal -->
 <div id="password-modal" class="modal">
     <div class="modal-content">
@@ -122,6 +123,7 @@
         </form>
     </div>
 </div>
+
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
 <script>
 window.ROOMS = {{ rooms|tojson }};
@@ -182,7 +184,9 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'Parameters:': {{ _('Parameters:')|tojson }},
     'Quantization:': {{ _('Quantization:')|tojson }},
     'Max context length:': {{ _('Max context length:')|tojson }},
-    'Embedding length:': {{ _('Embedding length:')|tojson }}
+    'Embedding length:': {{ _('Embedding length:')|tojson }},
+    // Added missing translation for Save button
+    'Save': {{ _('Save')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}
 console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);

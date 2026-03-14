@@ -558,5 +558,11 @@ msgstr "Max context length:"
 msgid "Embedding length:"
 msgstr "Embedding length:"
 
+msgid "Users"
+msgstr "Users"
+
+msgid "Models"
+msgstr "Models"
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v7.1 (c) 2026 Valery Barsukov"

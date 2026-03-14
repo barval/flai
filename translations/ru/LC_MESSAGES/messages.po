@@ -559,5 +559,11 @@ msgstr "Макс. длина контекста:"
 msgid "Embedding length:"
 msgstr "Длина эмбеддинга:"
 
+msgid "Users"
+msgstr "Пользователи"
+
+msgid "Models"
+msgstr "Модели"
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v7.1 (c) 2026 Барсуков Валерий"

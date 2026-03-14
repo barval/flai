@@ -140,7 +140,7 @@ border-radius: 4px;
 cursor: pointer;
 }
 
-/* Admin tabs */
+/* Admin tabs - unified with chat header tabs */
 .admin-tabs {
     display: flex;
     gap: 10px;
@@ -150,17 +150,25 @@ cursor: pointer;
 }
 .admin-tab {
     padding: 8px 16px;
-    background-color: #f1f1f1;
+    background-color: #e8eaed;  /* like chat header tabs */
     border: none;
-    border-radius: 4px 4px 0 0;
     cursor: pointer;
     font-size: 16px;
-    transition: background-color 0.3s;
+    transition: background-color 0.2s ease;
+    border-bottom: 3px solid transparent;
 }
 .admin-tab.active {
-    background-color: #3498db;
-    color: white;
+    background-color: #d0e8ff;
+    border-bottom-color: #3498db;
 }
+.admin-tab:hover {
+    background-color: #e0e0e0;
+}
+.admin-tab.active:hover {
+    background-color: #c0e0ff;
+}
+
+/* Tab content containers */
 .admin-tab-content {
     display: none;
 }

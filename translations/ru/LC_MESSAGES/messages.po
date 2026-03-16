@@ -565,5 +565,23 @@ msgstr "Пользователи"
 msgid "Models"
 msgstr "Модели"
 
+msgid "Please select a model first."
+msgstr "Сначала выберите модель."
+
+msgid "Context length must be at least 512."
+msgstr "Длина контекста должна быть не менее 512."
+
+msgid "Context length cannot exceed {max} (max for this model)."
+msgstr "Длина контекста не может превышать {max} (максимум для этой модели)."
+
+msgid "Temperature must be between 0.0 and 2.0."
+msgstr "Температура должна быть в диапазоне от 0.0 до 2.0."
+
+msgid "Top P must be between 0.0 and 1.0."
+msgstr "Top P должен быть в диапазоне от 0.0 до 1.0."
+
+msgid "Timeout must be between 0 and 1200 seconds."
+msgstr "Таймаут должен быть в диапазоне от 0 до 1200 секунд."
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v7.1 (c) 2026 Барсуков Валерий"

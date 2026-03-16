@@ -384,6 +384,29 @@ def update_model_config(module):
     if not updates:
         return jsonify({'error': 'No valid fields'}), 400
 
+    # Server-side validation
+    if 'context_length' in updates and updates['context_length'] is not None:
+        val = updates['context_length']
+        if not isinstance(val, int) or val < 512:
+            return jsonify({'error': _('Context length must be at least 512.')}), 400
+        # Optionally, we could also check against model's max context, but we don't have model name in this request.
+        # Client already does that; server can skip if needed.
+
+    if 'temperature' in updates and updates['temperature'] is not None:
+        val = updates['temperature']
+        if not isinstance(val, (int, float)) or val < 0.0 or val > 2.0:
+            return jsonify({'error': _('Temperature must be between 0.0 and 2.0.')}), 400
+
+    if 'top_p' in updates and updates['top_p'] is not None:
+        val = updates['top_p']
+        if not isinstance(val, (int, float)) or val < 0.0 or val > 1.0:
+            return jsonify({'error': _('Top P must be between 0.0 and 1.0.')}), 400
+
+    if 'timeout' in updates and updates['timeout'] is not None:
+        val = updates['timeout']
+        if not isinstance(val, int) or val < 0 or val > 1200:
+            return jsonify({'error': _('Timeout must be between 0 and 1200 seconds.')}), 400
+
     from app.db import get_db
     with get_db() as conn:
         c = conn.cursor()

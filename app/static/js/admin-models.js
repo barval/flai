@@ -167,7 +167,7 @@ function renderModelCards() {
                 </div>
                 <div class="param">
                     <label>${t('Timeout (s)')}</label>
-                    <input type="number" class="timeout" data-module="${mod.id}" value="${mod.config.timeout || ''}" min="1" step="1">
+                    <input type="number" class="timeout" data-module="${mod.id}" value="${mod.config.timeout || ''}" min="0" max="1200" step="1">
                 </div>
             </div>`;
         }
@@ -244,10 +244,78 @@ async function onModelSelect(event) {
     }
 }
 
+// Validation function for model parameters
+function validateModelConfig(module, card) {
+    const modelName = card.querySelector('.model-dropdown').value;
+    if (!modelName) {
+        alert(t('Please select a model first.'));
+        return false;
+    }
+
+    // Skip validation for embedding module (no parameters)
+    if (module === 'embedding') return true;
+
+    const contextLength = card.querySelector('.context-length')?.value;
+    const temperature = card.querySelector('.temperature')?.value;
+    const topP = card.querySelector('.top-p')?.value;
+    const timeout = card.querySelector('.timeout')?.value;
+
+    // Get max context length for the selected model
+    const info = modelDetails[modelName];
+    const maxContext = info && info.context_length ? parseInt(info.context_length) : null;
+
+    // Validate context length
+    if (contextLength !== undefined && contextLength !== '') {
+        const val = parseInt(contextLength);
+        if (isNaN(val) || val < 512) {
+            alert(t('Context length must be at least 512.'));
+            return false;
+        }
+        if (maxContext && val > maxContext) {
+            alert(t('Context length cannot exceed {max} (max for this model).').replace('{max}', maxContext));
+            return false;
+        }
+    }
+
+    // Validate temperature
+    if (temperature !== undefined && temperature !== '') {
+        const val = parseFloat(temperature);
+        if (isNaN(val) || val < 0.0 || val > 2.0) {
+            alert(t('Temperature must be between 0.0 and 2.0.'));
+            return false;
+        }
+    }
+
+    // Validate top_p
+    if (topP !== undefined && topP !== '') {
+        const val = parseFloat(topP);
+        if (isNaN(val) || val < 0.0 || val > 1.0) {
+            alert(t('Top P must be between 0.0 and 1.0.'));
+            return false;
+        }
+    }
+
+    // Validate timeout
+    if (timeout !== undefined && timeout !== '') {
+        const val = parseInt(timeout);
+        if (isNaN(val) || val < 0 || val > 1200) {
+            alert(t('Timeout must be between 0 and 1200 seconds.'));
+            return false;
+        }
+    }
+
+    return true;
+}
+
 function onSaveConfig(event) {
     const btn = event.target;
     const module = btn.dataset.module;
     const card = document.querySelector(`.model-card[data-module="${module}"]`);
+
+    // Run client-side validation
+    if (!validateModelConfig(module, card)) {
+        return;
+    }
 
     const modelName = card.querySelector('.model-dropdown').value;
     const contextLength = card.querySelector('.context-length')?.value;

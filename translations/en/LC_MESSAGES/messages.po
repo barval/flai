@@ -564,5 +564,23 @@ msgstr "Users"
 msgid "Models"
 msgstr "Models"
 
+msgid "Please select a model first."
+msgstr "Please select a model first."
+
+msgid "Context length must be at least 512."
+msgstr "Context length must be at least 512."
+
+msgid "Context length cannot exceed {max} (max for this model)."
+msgstr "Context length cannot exceed {max} (max for this model)."
+
+msgid "Temperature must be between 0.0 and 2.0."
+msgstr "Temperature must be between 0.0 and 2.0."
+
+msgid "Top P must be between 0.0 and 1.0."
+msgstr "Top P must be between 0.0 and 1.0."
+
+msgid "Timeout must be between 0 and 1200 seconds."
+msgstr "Timeout must be between 0 and 1200 seconds."
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v7.1 (c) 2026 Valery Barsukov"

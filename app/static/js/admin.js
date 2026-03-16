@@ -1,10 +1,14 @@
 // app/static/js/admin.js
-// Admin panel JavaScript - handles user management and translations
+// Admin panel JavaScript - handles user management, translations, and page-specific setup
+
 let currentSortField = null;
 let currentSortDirection = 'asc';
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Admin page loaded');
+    // Add a class to body to identify admin page for CSS overrides
+    document.body.classList.add('admin-page');
+    
     loadUsers();
     setupModals();
     setupSortableHeaders();

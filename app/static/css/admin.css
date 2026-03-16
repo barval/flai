@@ -282,11 +282,9 @@ cursor: pointer;
 
 /* ===== MOBILE ADAPTATIONS ===== */
 @media (max-width: 768px) {
-    /* Make tab content scrollable vertically */
+    /* Allow the whole page to scroll naturally */
     .admin-tab-content.active {
-        max-height: calc(100vh - 200px);
-        overflow-y: auto;
-        padding-right: 5px; /* avoid scrollbar overlap */
+        /* Remove max-height and overflow-y to let content determine height */
     }
 
     /* Database info row: wrap items and allow horizontal scroll if needed */

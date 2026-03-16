@@ -194,7 +194,9 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'Top P must be between 0.0 and 1.0.': {{ _('Top P must be between 0.0 and 1.0.')|tojson }},
     'Timeout must be between 0 and 1200 seconds.': {{ _('Timeout must be between 0 and 1200 seconds.')|tojson }},
     // Added missing translation for Save button
-    'Save': {{ _('Save')|tojson }}
+    'Save': {{ _('Save')|tojson }},
+    // Reindex notification
+    'reindex_started': {{ _('Reindexing all documents with new embedding model started. This may take a while.')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}
 console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);

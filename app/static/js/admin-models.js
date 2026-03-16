@@ -341,6 +341,10 @@ function onSaveConfig(event) {
         if (result.status === 'ok') {
             btn.textContent = '✓ ' + t('Saved');
             setTimeout(() => { btn.textContent = t('Save'); }, 2000);
+            // If embedding module, notify user about reindexing
+            if (module === 'embedding') {
+                alert(t('reindex_started'));
+            }
         } else {
             alert(t('error') + ': ' + (result.error || t('unknown_error')));
         }

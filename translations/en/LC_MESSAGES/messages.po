@@ -582,5 +582,8 @@ msgstr "Top P must be between 0.0 and 1.0."
 msgid "Timeout must be between 0 and 1200 seconds."
 msgstr "Timeout must be between 0 and 1200 seconds."
 
+msgid "Reindexing all documents with new embedding model started. This may take a while."
+msgstr "Reindexing all documents with new embedding model started. This may take a while."
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v7.1 (c) 2026 Valery Barsukov"

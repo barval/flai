@@ -583,5 +583,8 @@ msgstr "Top P должен быть в диапазоне от 0.0 до 1.0."
 msgid "Timeout must be between 0 and 1200 seconds."
 msgstr "Таймаут должен быть в диапазоне от 0 до 1200 секунд."
 
+msgid "Reindexing all documents with new embedding model started. This may take a while."
+msgstr "Начата переиндексация всех документов с новой моделью эмбеддингов. Это может занять некоторое время."
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v7.1 (c) 2026 Барсуков Валерий"

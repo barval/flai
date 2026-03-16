@@ -410,6 +410,13 @@ def update_model_config(module):
     from app.db import get_db
     with get_db() as conn:
         c = conn.cursor()
+        # Get old model name for embedding module
+        old_model = None
+        if module == 'embedding':
+            c.execute('SELECT model_name FROM model_configs WHERE module = ?', (module,))
+            row = c.fetchone()
+            old_model = row[0] if row else None
+
         set_clause = ', '.join([f"{k}=?" for k in updates.keys()])
         values = list(updates.values()) + [module]
         c.execute(f'''
@@ -421,6 +428,14 @@ def update_model_config(module):
 
     # Reload configs into app.config
     _reload_model_configs(current_app)
+
+    # If embedding model changed, start reindexing all documents
+    if module == 'embedding':
+        new_model = updates.get('model_name')
+        if new_model and new_model != old_model:
+            current_app.logger.info(f"Embedding model changed from {old_model} to {new_model}, starting reindex all")
+            current_app.request_queue.add_reindex_all_task(lang='ru')  # default language
+
     return jsonify({'status': 'ok'})
 
 

@@ -6,6 +6,7 @@ import uuid
 import time
 import threading
 import sqlite3
+import os
 from .utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, save_uploaded_file
 from .db import save_message, CHAT_DB_PATH, update_document_index_status, INDEX_STATUS_INDEXING, INDEX_STATUS_INDEXED, INDEX_STATUS_FAILED
 
@@ -116,6 +117,20 @@ class RedisRequestQueue:
         # Not adding to user_requests set because it's not a user-facing request
         return request_id
 
+    def add_reindex_all_task(self, lang='ru'):
+        """Add a task to reindex all documents for all users."""
+        request_id = str(uuid.uuid4())
+        timestamp = time.time()
+        task = {
+            'id': request_id,
+            'type': 'reindex_all_embeddings',
+            'timestamp': timestamp,
+            'lang': lang
+        }
+        self.app.logger.info(f"RedisRequestQueue.add_reindex_all_task: adding task {request_id}")
+        self.redis.rpush(self.queue_key, pickle.dumps(task))
+        return request_id
+
     def get_user_queue_counts(self, user_id):
         total = self.redis.llen(self.queue_key)
         if total == 0:
@@ -177,6 +192,10 @@ class RedisRequestQueue:
         # Handle document indexing task
         if task.get('type') == 'index_document':
             return self._process_index_task(task)
+        
+        # Handle reindex all task
+        if task.get('type') == 'reindex_all_embeddings':
+            return self._process_reindex_all_task(task)
         
         # Regular message processing
         user_id = task['user_id']
@@ -520,6 +539,64 @@ class RedisRequestQueue:
             self.app.logger.error(f"Indexing failed for doc {doc_id}: {e}")
             update_document_index_status(doc_id, INDEX_STATUS_FAILED)
             return {'success': False, 'error': str(e), 'doc_id': doc_id}
+
+    def _process_reindex_all_task(self, task):
+        """Process reindex all documents task."""
+        self.app.logger.info("Starting reindex of all documents with new embedding model.")
+        lang = task.get('lang', 'ru')
+        
+        from app.db import CHAT_DB_PATH
+        import sqlite3
+        
+        # Get all documents from the database
+        conn = sqlite3.connect(CHAT_DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute('SELECT id, user_id, file_path FROM documents')
+        documents = c.fetchall()
+        conn.close()
+        
+        rag = self.app.modules.get('rag')
+        if not rag or not rag.available:
+            self.app.logger.error("RAG module not available for reindexing")
+            return {'success': False, 'error': 'RAG module unavailable'}
+        
+        total = len(documents)
+        success_count = 0
+        fail_count = 0
+        
+        for doc in documents:
+            doc_id = doc['id']
+            user_id = doc['user_id']
+            file_path = doc['file_path']
+            # Build absolute path
+            documents_folder = self.app.config['DOCUMENTS_FOLDER']
+            full_path = os.path.join(documents_folder, file_path)
+            
+            self.app.logger.info(f"Reindexing document {doc_id} for user {user_id}")
+            
+            # Delete old vectors
+            try:
+                rag.delete_document(doc_id, user_id)
+            except Exception as e:
+                self.app.logger.error(f"Failed to delete old vectors for doc {doc_id}: {e}")
+                # Continue anyway, maybe collection doesn't exist
+            
+            # Index again with new model
+            try:
+                success, message = rag.index_document(user_id, doc_id, full_path)
+                if success:
+                    success_count += 1
+                    self.app.logger.info(f"Reindexed doc {doc_id}: {message}")
+                else:
+                    fail_count += 1
+                    self.app.logger.error(f"Failed to reindex doc {doc_id}: {message}")
+            except Exception as e:
+                fail_count += 1
+                self.app.logger.error(f"Exception reindexing doc {doc_id}: {e}")
+        
+        self.app.logger.info(f"Reindex all completed. Total: {total}, Success: {success_count}, Failed: {fail_count}")
+        return {'success': True, 'total': total, 'success_count': success_count, 'failed_count': fail_count}
 
     def get_user_requests_status(self, user_id, lang='ru'):
         result = {'processing': None, 'queued': [], 'recent_completed': []}

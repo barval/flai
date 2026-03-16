@@ -8,7 +8,7 @@ from .config import load_config
 from .db import (
     init_db, migrate_db_add_response_fields, migrate_db_add_session_visits,
     migrate_db_add_indexes, migrate_db_add_index_status, migrate_add_model_configs,
-    migrate_add_embedding_model  # new import
+    migrate_add_embedding_model
 )
 from .queue import RedisRequestQueue
 from .userdb import init_user_db, get_user_by_login
@@ -63,12 +63,13 @@ def create_app():
     # Initialize modules
     modules = {}
     modules['base'] = BaseModule(app)
-    if app.config['LLM_MULTIMODAL_MODEL']:
+    # Multimodal module is always created if Ollama is available (model selected via admin)
+    if app.config.get('OLLAMA_URL'):
         modules['multimodal'] = MultimodalModule(app)
-    if app.config['AUTOMATIC1111_URL'] and 'multimodal' in modules:
+    if app.config.get('AUTOMATIC1111_URL') and 'multimodal' in modules:
         modules['image'] = ImageModule(app)
         modules['image'].set_multimodal_module(modules['multimodal'])
-    if app.config['CAMERA_ENABLED']:
+    if app.config.get('CAMERA_ENABLED'):
         modules['cam'] = CamModule(app)
         app.logger.info("Camera module enabled")
     else:

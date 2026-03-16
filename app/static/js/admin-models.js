@@ -338,6 +338,7 @@ function onSaveConfig(event) {
     })
     .then(res => res.json())
     .then(result => {
+        console.log('Server response:', result); // Debug: log server response
         if (result.status === 'ok') {
             btn.textContent = '✓ ' + t('Saved');
             setTimeout(() => { btn.textContent = t('Save'); }, 2000);
@@ -348,6 +349,8 @@ function onSaveConfig(event) {
                 if (result.model_name) {
                     window.CURRENT_EMBEDDING_MODEL = result.model_name;
                     console.log('Updated CURRENT_EMBEDDING_MODEL to', result.model_name);
+                } else {
+                    console.warn('No model_name in response, CURRENT_EMBEDDING_MODEL not updated');
                 }
                 alert(t('reindex_started'));
             }

@@ -534,6 +534,7 @@ class RedisRequestQueue:
                 indexed_at = get_current_time_for_db()
                 embedding_model = self._get_model_name('embedding') or self.app.config.get('EMBEDDING_MODEL')
                 update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at, embedding_model=embedding_model)
+                self.app.logger.info(f"Set embedding_model for doc {doc_id} to {embedding_model}")
                 return {'success': True, 'message': message, 'doc_id': doc_id}
             else:
                 update_document_index_status(doc_id, INDEX_STATUS_FAILED)
@@ -610,6 +611,7 @@ class RedisRequestQueue:
                     indexed_at = get_current_time_for_db()
                     embedding_model = self._get_model_name('embedding') or self.app.config.get('EMBEDDING_MODEL')
                     update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at, embedding_model=embedding_model)
+                    self.app.logger.info(f"Set embedding_model for doc {doc_id} to {embedding_model}")
                     success_count += 1
                     self.app.logger.info(f"Reindexed doc {doc_id}: {message}")
                 else:

@@ -389,8 +389,6 @@ def update_model_config(module):
         val = updates['context_length']
         if not isinstance(val, int) or val < 512:
             return jsonify({'error': _('Context length must be at least 512.')}), 400
-        # Optionally, we could also check against model's max context, but we don't have model name in this request.
-        # Client already does that; server can skip if needed.
 
     if 'temperature' in updates and updates['temperature'] is not None:
         val = updates['temperature']
@@ -435,6 +433,8 @@ def update_model_config(module):
         if new_model and new_model != old_model:
             current_app.logger.info(f"Embedding model changed from {old_model} to {new_model}, starting reindex all")
             current_app.request_queue.add_reindex_all_task(lang='ru')  # default language
+        else:
+            current_app.logger.info(f"Embedding model unchanged ({old_model}), no reindex triggered")
 
     return jsonify({'status': 'ok'})
 

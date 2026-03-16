@@ -566,7 +566,7 @@ class RedisRequestQueue:
         success_count = 0
         fail_count = 0
 
-        # --- NEW: Set all documents to pending status before starting ---
+        # Set all documents to pending status before starting
         doc_ids = [doc['id'] for doc in documents]
         if doc_ids:
             placeholders = ','.join(['?'] * len(doc_ids))
@@ -579,7 +579,6 @@ class RedisRequestQueue:
                 ''', [INDEX_STATUS_PENDING] + doc_ids)
                 conn.commit()
                 self.app.logger.info(f"Set {len(doc_ids)} documents to pending status")
-        # ----------------------------------------------------------------
         
         for doc in documents:
             doc_id = doc['id']

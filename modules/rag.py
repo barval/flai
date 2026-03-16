@@ -100,23 +100,34 @@ class RagModule:
         if not self.available:
             return False, "RAG service unavailable"
 
+        self.logger.info(f"index_document: starting for doc_id={doc_id}, file_path={file_path}")
+
         # 1. Extract text
         text = extract_text_from_file(file_path)
         if not text:
+            self.logger.error(f"index_document: failed to extract text from {file_path}")
             return False, "Failed to extract text from document"
+
+        self.logger.info(f"index_document: extracted {len(text)} characters from {file_path}")
 
         # 2. Chunk text
         chunks = chunk_text(text, self.chunk_size, self.chunk_overlap)
         if not chunks:
+            self.logger.error(f"index_document: no text chunks generated from {file_path}")
             return False, "No text chunks generated"
+
+        self.logger.info(f"index_document: generated {len(chunks)} chunks")
 
         # 3. Get embeddings for each chunk
         embeddings = []
-        for chunk in chunks:
+        for idx, chunk in enumerate(chunks):
             emb = self._get_embedding(chunk)
             if emb is None:
+                self.logger.error(f"index_document: failed to get embedding for chunk {idx}")
                 return False, "Failed to get embedding for a chunk"
             embeddings.append(emb)
+
+        self.logger.info(f"index_document: obtained embeddings for all {len(chunks)} chunks")
 
         # 4. Prepare points with valid UUIDs as IDs
         points = []
@@ -143,6 +154,7 @@ class RagModule:
                 collection_name=collection_name,
                 points=points
             )
+            self.logger.info(f"index_document: upserted {len(points)} points for doc_id={doc_id}")
             return True, f"Indexed {len(chunks)} chunks"
         except Exception as e:
             self.logger.error(f"Error during upsert: {e}")
@@ -160,6 +172,7 @@ class RagModule:
                     must=[models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id))]
                 )
             )
+            self.logger.info(f"delete_document: deleted vectors for doc_id={doc_id}")
             return True
         except Exception as e:
             # If the collection does not exist, there is nothing to delete -> treat as success
@@ -192,6 +205,7 @@ class RagModule:
                 limit=top_k
             )
             chunks = [hit.payload["text"] for hit in search_result]
+            self.logger.info(f"search: found {len(chunks)} chunks for query '{query[:50]}...'")
             return chunks
         except Exception as e:
             self.logger.error(f"Qdrant search error: {e}")
@@ -285,13 +299,17 @@ class RagModule:
             db_config = current_app.config['MODEL_CONFIGS'].get('embedding')
             if db_config and db_config.get('model_name'):
                 embedding_model = db_config['model_name']
+                self.logger.debug(f"_get_embedding: using dynamic model '{embedding_model}'")
         try:
             response = requests.post(
                 f"{ollama_url}/api/embeddings",
-                json={"model": embedding_model, "prompt": text}
+                json={"model": embedding_model, "prompt": text},
+                timeout=30
             )
             if response.status_code == 200:
-                return response.json()["embedding"]
+                emb = response.json()["embedding"]
+                self.logger.debug(f"_get_embedding: got embedding of length {len(emb)}")
+                return emb
             else:
                 self.logger.error(f"Ollama embedding error: {response.text}")
                 return None

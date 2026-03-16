@@ -116,9 +116,9 @@ def create_app():
         app.config['DOCUMENTS_FOLDER'] = os.path.abspath(app.config['DOCUMENTS_FOLDER'])
     app.logger.info(f"Documents folder: {app.config['DOCUMENTS_FOLDER']}")
 
-    # Reload model configs from DB into app.config
-    from .routes_admin import _reload_model_configs
-    _reload_model_configs(app)
+    # (Optional) Reload model configs into app.config – no longer needed for modules, but kept for admin panel compatibility
+    # from .routes_admin import _reload_model_configs
+    # _reload_model_configs(app)
 
     # File serving endpoint
     @app.route('/api/files/<path:filename>')

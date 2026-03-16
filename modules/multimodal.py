@@ -12,6 +12,7 @@ from flask_babel import force_locale
 
 from app.utils import format_prompt
 from app.db import get_session_text_history
+from app.model_config import get_model_config
 
 class MultimodalModule:
     """Module for multimodal model (image processing)"""
@@ -91,12 +92,8 @@ class MultimodalModule:
         return False
     
     def _get_model_config(self):
-        """Retrieve multimodal model configuration from current app config."""
-        if not current_app:
-            self.logger.error("No application context to get model config")
-            return None
-        configs = current_app.config.get('MODEL_CONFIGS', {})
-        return configs.get('multimodal', {})
+        """Retrieve multimodal model configuration directly from the database."""
+        return get_model_config('multimodal')
     
     def validate_image(self, file_data, file_type, file_name, file_size, lang='ru'):
         """Validate image against requirements"""

@@ -8,6 +8,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from app.utils import extract_text_from_file, chunk_text, get_current_time_in_timezone, format_prompt
 from app.db import get_session_text_history, update_document_index_status
+from app.model_config import get_model_config
 
 class RagModule:
     """Module for Retrieval-Augmented Generation using Qdrant and Ollama embeddings."""
@@ -47,12 +48,9 @@ class RagModule:
             app.logger.error(f"Failed to connect to Qdrant: {e}")
 
     def _get_embedding_model(self):
-        """Retrieve embedding model name from database config."""
-        if not current_app:
-            return None
-        configs = current_app.config.get('MODEL_CONFIGS', {})
-        embedding_config = configs.get('embedding', {})
-        return embedding_config.get('model_name')
+        """Retrieve embedding model name from database."""
+        config = get_model_config('embedding')
+        return config.get('model_name') if config else None
 
     def _get_collection_name(self, user_id):
         """Return collection name for a specific user."""
@@ -255,10 +253,9 @@ class RagModule:
         template_overhead = 800  # rough estimate for template text + instructions
 
         # Get reasoning model config from DB
-        if not current_app:
-            return None, "Application context unavailable"
-        configs = current_app.config.get('MODEL_CONFIGS', {})
-        reasoning_config = configs.get('reasoning', {})
+        reasoning_config = get_model_config('reasoning')
+        if not reasoning_config:
+            return None, "Reasoning model configuration missing"
         max_context_tokens = reasoning_config.get('context_length', 40960)
         history_percent = int(current_app.config.get('CONTEXT_HISTORY_PERCENT', 75))
 

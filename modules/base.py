@@ -9,6 +9,7 @@ from flask_babel import force_locale
 
 from app.utils import format_prompt
 from app.db import get_session_text_history
+from app.model_config import get_model_config
 
 class BaseModule:
     """Base module for chat and reasoning model interactions"""
@@ -69,12 +70,8 @@ class BaseModule:
         return False
     
     def _get_model_config(self, model_type='chat'):
-        """Retrieve model configuration from current app config (database)."""
-        if not current_app:
-            self.logger.error("No application context to get model config")
-            return None
-        configs = current_app.config.get('MODEL_CONFIGS', {})
-        return configs.get(model_type, {})
+        """Retrieve model configuration directly from the database."""
+        return get_model_config(model_type)
     
     def call_ollama(self, messages, model_type='chat', stream=False, lang='ru'):
         """Call Ollama API with configuration from database."""
@@ -83,10 +80,9 @@ class BaseModule:
             if not self.available:
                 return self._('Ollama service unavailable', lang)
         
-        # Get model config from database (via app.config)
+        # Get model config from database
         model_config = self._get_model_config(model_type)
         if not model_config:
-            # Fallback to empty dict – will cause error below
             self.logger.error(f"No configuration found for model type '{model_type}'")
             return self._('Model configuration missing', lang)
         
@@ -175,7 +171,7 @@ class BaseModule:
         if not session_id:
             return ""
         
-        # Get model context window from current config
+        # Get model context window from database
         model_config = self._get_model_config(model_type)
         if not model_config:
             return ""

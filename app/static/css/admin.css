@@ -1,4 +1,4 @@
-/* static/admin.css */
+/* app/static/css/admin.css */
 /* Admin panel styles */
 .admin-container {
 padding: 20px;
@@ -282,9 +282,9 @@ cursor: pointer;
 
 /* ===== MOBILE ADAPTATIONS ===== */
 @media (max-width: 768px) {
-    /* Allow the whole page to scroll naturally */
+    /* Let the page scroll naturally – no height restrictions on tab content */
     .admin-tab-content.active {
-        /* Remove max-height and overflow-y to let content determine height */
+        /* No max-height or overflow-y – content determines height, body scrolls */
     }
 
     /* Database info row: wrap items and allow horizontal scroll if needed */

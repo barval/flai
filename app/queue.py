@@ -8,7 +8,9 @@ import threading
 import sqlite3
 import os
 from .utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, save_uploaded_file
-from .db import save_message, CHAT_DB_PATH, update_document_index_status, INDEX_STATUS_INDEXING, INDEX_STATUS_INDEXED, INDEX_STATUS_FAILED
+from .db import save_message, CHAT_DB_PATH, update_document_index_status, \
+    INDEX_STATUS_PENDING, INDEX_STATUS_INDEXING, INDEX_STATUS_INDEXED, INDEX_STATUS_FAILED, \
+    get_current_time_for_db
 
 class RedisRequestQueue:
     def __init__(self, app):
@@ -528,7 +530,6 @@ class RedisRequestQueue:
             success, message = rag.index_document(user_id, doc_id, file_path)
             if success:
                 # Update status to indexed with current time
-                from .db import get_current_time_for_db
                 indexed_at = get_current_time_for_db()
                 update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at)
                 return {'success': True, 'message': message, 'doc_id': doc_id}
@@ -564,6 +565,21 @@ class RedisRequestQueue:
         total = len(documents)
         success_count = 0
         fail_count = 0
+
+        # --- NEW: Set all documents to pending status before starting ---
+        doc_ids = [doc['id'] for doc in documents]
+        if doc_ids:
+            placeholders = ','.join(['?'] * len(doc_ids))
+            with sqlite3.connect(CHAT_DB_PATH) as conn:
+                c = conn.cursor()
+                c.execute(f'''
+                    UPDATE documents
+                    SET index_status = ?, indexed_at = NULL
+                    WHERE id IN ({placeholders})
+                ''', [INDEX_STATUS_PENDING] + doc_ids)
+                conn.commit()
+                self.app.logger.info(f"Set {len(doc_ids)} documents to pending status")
+        # ----------------------------------------------------------------
         
         for doc in documents:
             doc_id = doc['id']
@@ -586,12 +602,17 @@ class RedisRequestQueue:
             try:
                 success, message = rag.index_document(user_id, doc_id, full_path)
                 if success:
+                    # Update status to indexed with current time
+                    indexed_at = get_current_time_for_db()
+                    update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at)
                     success_count += 1
                     self.app.logger.info(f"Reindexed doc {doc_id}: {message}")
                 else:
+                    update_document_index_status(doc_id, INDEX_STATUS_FAILED)
                     fail_count += 1
                     self.app.logger.error(f"Failed to reindex doc {doc_id}: {message}")
             except Exception as e:
+                update_document_index_status(doc_id, INDEX_STATUS_FAILED)
                 fail_count += 1
                 self.app.logger.error(f"Exception reindexing doc {doc_id}: {e}")
         

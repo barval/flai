@@ -236,12 +236,12 @@ class RagModule:
     def generate_answer(self, user_id, query, session_id, lang='ru'):
         """
         Full RAG answer: search + call reasoning model with context, history, and role information.
-        Returns (answer, error_message).
+        Returns (answer, error_message, model_name).
         """
         # 1. Retrieve relevant chunks
         chunks = self.search(user_id, query)
         if not chunks:
-            return None, "No relevant documents found"
+            return None, "No relevant documents found", None
 
         # 2. Prepare context string
         context = "\n\n".join(chunks)
@@ -255,7 +255,7 @@ class RagModule:
         # Get reasoning model config from DB
         reasoning_config = get_model_config('reasoning')
         if not reasoning_config:
-            return None, "Reasoning model configuration missing"
+            return None, "Reasoning model configuration missing", None
         max_context_tokens = reasoning_config.get('context_length', 40960)
         history_percent = int(current_app.config.get('CONTEXT_HISTORY_PERCENT', 75))
 
@@ -282,19 +282,20 @@ class RagModule:
 
         if not prompt:
             self.logger.error("Failed to load rag.template")
-            return None, "Error loading prompt template"
+            return None, "Error loading prompt template", None
 
         # 6. Call reasoning model
         reasoning_module = current_app.modules.get('base')
         if not reasoning_module:
-            return None, "Reasoning module unavailable"
+            return None, "Reasoning module unavailable", None
 
         response = reasoning_module.call_ollama(
             [{'role': 'user', 'content': prompt}],
             model_type='reasoning',
             lang=lang
         )
-        return response, None
+        model_name = reasoning_config.get('model_name', 'unknown')
+        return response, None, model_name
 
     def _get_embedding(self, text):
         """Get embedding vector from Ollama using configured embedding model."""

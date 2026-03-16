@@ -11,6 +11,7 @@ from .utils import get_current_time_in_timezone, get_current_time_in_timezone_fo
 from .db import save_message, CHAT_DB_PATH, update_document_index_status, \
     INDEX_STATUS_PENDING, INDEX_STATUS_INDEXING, INDEX_STATUS_INDEXED, INDEX_STATUS_FAILED, \
     get_current_time_for_db
+from .model_config import get_model_config   # <-- NEW IMPORT
 
 class RedisRequestQueue:
     def __init__(self, app):
@@ -160,22 +161,19 @@ class RedisRequestQueue:
     def _get_model_name(self, module_type):
         """
         Get current model name for given module type (chat, reasoning, multimodal, embedding)
-        from database configuration.
+        directly from database configuration.
         """
-        if self.app.config.get('MODEL_CONFIGS') and module_type in self.app.config['MODEL_CONFIGS']:
-            db_model = self.app.config['MODEL_CONFIGS'][module_type].get('model_name')
-            if db_model:
-                return db_model
-        return None
+        config = get_model_config(module_type)
+        return config.get('model_name') if config else None
 
     def _try_rag_answer(self, query, session_id, user_id, lang):
         """Attempt to answer using RAG. Returns answer string if successful, None otherwise."""
         rag = self.app.modules.get('rag')
         if rag and rag.available:
-            answer, error = rag.generate_answer(user_id, query, session_id, lang=lang)
+            answer, error, model_name = rag.generate_answer(user_id, query, session_id, lang=lang)
             if answer and not error:
-                return answer
-        return None
+                return answer, model_name
+        return None, None
 
     def _process_request(self, task):
         self.app.logger.info(f"RedisRequestQueue._process_request: processing task {task['id']}")
@@ -226,12 +224,11 @@ class RedisRequestQueue:
             # Try RAG first for reasoning queries
             if action_type == 'reasoning':
                 rag_start_time = time.time()
-                rag_answer = self._try_rag_answer(query, session_id, user_id, lang)
+                rag_answer, rag_model_name = self._try_rag_answer(query, session_id, user_id, lang)
                 rag_time = round(time.time() - rag_start_time, 1)
                 if rag_answer is not None:
                     completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
-                    model_used = self._get_model_name('reasoning') or 'unknown'
-                    model_used += " (RAG)"
+                    model_used = rag_model_name + " (RAG)" if rag_model_name else 'unknown (RAG)'
                     message_id = save_message(session_id, 'assistant', rag_answer,
                                               model_name=model_used, response_time=str(rag_time))
                     return {
@@ -421,7 +418,7 @@ class RedisRequestQueue:
                 rag_module = self.app.modules.get('rag')
                 if rag_module and rag_module.available:
                     rag_start_time = time.time()
-                    answer, error = rag_module.generate_answer(user_id, query, session_id, lang=lang)
+                    answer, error, model_name = rag_module.generate_answer(user_id, query, session_id, lang=lang)
                     process_time = round(time.time() - rag_start_time, 1)
                     if error:
                         final_response = f"⚠️ {error}"
@@ -429,7 +426,7 @@ class RedisRequestQueue:
                         is_error = True
                     else:
                         final_response = answer
-                        model_used = 'rag+reasoning'
+                        model_used = (model_name + " (RAG)") if model_name else 'unknown (RAG)'
                         is_error = False
                 else:
                     final_response = "⚠️ " + self.app.modules['base']._('RAG module unavailable', lang=lang)

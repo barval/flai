@@ -20,7 +20,6 @@ class RedisRequestQueue:
         self.processing_key = 'processing_requests'
         self.results_key = 'request_results'
         self.user_requests_key = 'user_requests'
-        self.timeouts = {}
         self.start_worker()
 
     def start_worker(self):
@@ -116,7 +115,6 @@ class RedisRequestQueue:
         }
         self.app.logger.info(f"RedisRequestQueue.add_index_task: adding task {request_id} for document {doc_id}")
         self.redis.rpush(self.queue_key, pickle.dumps(task))
-        # Not adding to user_requests set because it's not a user-facing request
         return request_id
 
     def add_reindex_all_task(self, lang='ru'):
@@ -161,22 +159,13 @@ class RedisRequestQueue:
 
     def _get_model_name(self, module_type):
         """
-        Get current model name for given module type (chat, reasoning, multimodal, embedding).
-        Returns model name string or None if not configured.
+        Get current model name for given module type (chat, reasoning, multimodal, embedding)
+        from database configuration.
         """
         if self.app.config.get('MODEL_CONFIGS') and module_type in self.app.config['MODEL_CONFIGS']:
             db_model = self.app.config['MODEL_CONFIGS'][module_type].get('model_name')
             if db_model:
                 return db_model
-        # Fallback to env config
-        key_map = {
-            'chat': 'LLM_CHAT_MODEL',
-            'reasoning': 'LLM_REASONING_MODEL',
-            'multimodal': 'LLM_MULTIMODAL_MODEL',
-            'embedding': 'EMBEDDING_MODEL'
-        }
-        if module_type in key_map:
-            return self.app.config.get(key_map[module_type])
         return None
 
     def _try_rag_answer(self, query, session_id, user_id, lang):
@@ -229,7 +218,7 @@ class RedisRequestQueue:
             action_type = router_result['action']
             query = router_result['query']
             final_response = ""
-            model_used = self._get_model_name('chat') or self.app.config['LLM_CHAT_MODEL']
+            model_used = self._get_model_name('chat') or 'unknown'
             is_error = False
             process_time = 0
             message_id = None
@@ -241,7 +230,7 @@ class RedisRequestQueue:
                 rag_time = round(time.time() - rag_start_time, 1)
                 if rag_answer is not None:
                     completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
-                    model_used = self._get_model_name('reasoning') or self.app.config.get('LLM_REASONING_MODEL', 'unknown')
+                    model_used = self._get_model_name('reasoning') or 'unknown'
                     model_used += " (RAG)"
                     message_id = save_message(session_id, 'assistant', rag_answer,
                                               model_name=model_used, response_time=str(rag_time))
@@ -274,7 +263,7 @@ class RedisRequestQueue:
                             completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
                             image_result['mm_time'] = mm_time
                             image_result['gen_time'] = gen_time
-                            image_result['mm_model'] = self._get_model_name('multimodal') or self.app.config['LLM_MULTIMODAL_MODEL']
+                            image_result['mm_model'] = self._get_model_name('multimodal') or 'unknown'
                             image_result['gen_model'] = self.app.config['AUTOMATIC1111_MODEL']
                             template = self.app.modules['base']._('Image generated from request: {query}', lang=lang)
                             message_text = template.format(query=query)
@@ -387,7 +376,7 @@ class RedisRequestQueue:
                             else:
                                 is_error = False
                             # Get actual multimodal model name
-                            mm_model_name = self._get_model_name('multimodal') or self.app.config['LLM_MULTIMODAL_MODEL']
+                            mm_model_name = self._get_model_name('multimodal') or 'unknown'
                             msg_id2 = save_message(
                                 session_id, 'assistant', bot_reply,
                                 model_name=mm_model_name,
@@ -421,7 +410,7 @@ class RedisRequestQueue:
                     reasoning_start_time = time.time()
                     final_response = self.app.modules['base'].process_reasoning(query, current_time_str, lang=lang, session_id=session_id)
                     process_time = round(time.time() - reasoning_start_time, 1)
-                    model_used = self._get_model_name('reasoning') or self.app.config['LLM_REASONING_MODEL']
+                    model_used = self._get_model_name('reasoning') or 'unknown'
                 else:
                     process_time = 0
                     final_response = query
@@ -488,7 +477,7 @@ class RedisRequestQueue:
                 is_error = True
             completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
             # Get actual multimodal model name
-            mm_model_name = self._get_model_name('multimodal') or (self.app.config['LLM_MULTIMODAL_MODEL'] if 'multimodal' in self.app.modules else 'system')
+            mm_model_name = self._get_model_name('multimodal') or 'unknown'
             message_id = save_message(session_id, 'assistant', bot_reply, model_name=mm_model_name, response_time=str(process_time))
             return {
                 'response': bot_reply,
@@ -532,7 +521,7 @@ class RedisRequestQueue:
             if success:
                 # Update status to indexed with current time and embedding model
                 indexed_at = get_current_time_for_db()
-                embedding_model = self._get_model_name('embedding') or self.app.config.get('EMBEDDING_MODEL')
+                embedding_model = self._get_model_name('embedding') or 'unknown'
                 update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at, embedding_model=embedding_model)
                 self.app.logger.info(f"Set embedding_model for doc {doc_id} to {embedding_model}")
                 return {'success': True, 'message': message, 'doc_id': doc_id}
@@ -609,7 +598,7 @@ class RedisRequestQueue:
                 success, message = rag.index_document(user_id, doc_id, full_path)
                 if success:
                     indexed_at = get_current_time_for_db()
-                    embedding_model = self._get_model_name('embedding') or self.app.config.get('EMBEDDING_MODEL')
+                    embedding_model = self._get_model_name('embedding') or 'unknown'
                     update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at, embedding_model=embedding_model)
                     self.app.logger.info(f"Set embedding_model for doc {doc_id} to {embedding_model}")
                     success_count += 1

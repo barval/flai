@@ -7,7 +7,7 @@ from flask import current_app
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from app.utils import extract_text_from_file, chunk_text, get_current_time_in_timezone, format_prompt
-from app.db import get_session_text_history, update_document_index_status  # new import for history and status update
+from app.db import get_session_text_history, update_document_index_status
 
 class RagModule:
     """Module for Retrieval-Augmented Generation using Qdrant and Ollama embeddings."""
@@ -16,7 +16,6 @@ class RagModule:
         self.logger = logging.getLogger(__name__)
         self.qdrant_client = None
         self.available = False
-        self.embedding_model = None
         self.collection_name_prefix = "user_"
         self.chunk_size = 500
         self.chunk_overlap = 50
@@ -28,7 +27,6 @@ class RagModule:
         """Initialize module with Flask app configuration."""
         qdrant_url = app.config.get('QDRANT_URL')
         qdrant_api_key = app.config.get('QDRANT_API_KEY')
-        self.embedding_model = app.config.get('EMBEDDING_MODEL', 'bge-m3:latest')
         self.chunk_size = app.config.get('RAG_CHUNK_SIZE', 500)
         self.chunk_overlap = app.config.get('RAG_CHUNK_OVERLAP', 50)
         self.top_k = app.config.get('RAG_TOP_K', 5)
@@ -47,6 +45,14 @@ class RagModule:
         except Exception as e:
             self.available = False
             app.logger.error(f"Failed to connect to Qdrant: {e}")
+
+    def _get_embedding_model(self):
+        """Retrieve embedding model name from database config."""
+        if not current_app:
+            return None
+        configs = current_app.config.get('MODEL_CONFIGS', {})
+        embedding_config = configs.get('embedding', {})
+        return embedding_config.get('model_name')
 
     def _get_collection_name(self, user_id):
         """Return collection name for a specific user."""
@@ -248,10 +254,13 @@ class RagModule:
         context_tokens = self._estimate_tokens(context)
         template_overhead = 800  # rough estimate for template text + instructions
 
-        # Get model's context window and reserved percentage
-        reasoning_model_config = current_app.config
-        max_context_tokens = int(reasoning_model_config.get('LLM_REASONING_MODEL_CONTEXT_WINDOW', 40960))
-        history_percent = int(reasoning_model_config.get('CONTEXT_HISTORY_PERCENT', 75))
+        # Get reasoning model config from DB
+        if not current_app:
+            return None, "Application context unavailable"
+        configs = current_app.config.get('MODEL_CONFIGS', {})
+        reasoning_config = configs.get('reasoning', {})
+        max_context_tokens = reasoning_config.get('context_length', 40960)
+        history_percent = int(current_app.config.get('CONTEXT_HISTORY_PERCENT', 75))
 
         available_tokens = int(max_context_tokens * (history_percent / 100.0))
         remaining_for_history = available_tokens - query_tokens - context_tokens - template_overhead
@@ -291,15 +300,12 @@ class RagModule:
         return response, None
 
     def _get_embedding(self, text):
-        """Get embedding vector from Ollama."""
+        """Get embedding vector from Ollama using configured embedding model."""
         ollama_url = current_app.config.get('OLLAMA_URL')
-        # Use dynamic embedding model if available
-        embedding_model = self.embedding_model
-        if current_app and current_app.config.get('MODEL_CONFIGS'):
-            db_config = current_app.config['MODEL_CONFIGS'].get('embedding')
-            if db_config and db_config.get('model_name'):
-                embedding_model = db_config['model_name']
-                self.logger.debug(f"_get_embedding: using dynamic model '{embedding_model}'")
+        embedding_model = self._get_embedding_model()
+        if not embedding_model:
+            self.logger.error("No embedding model configured in database")
+            return None
         try:
             response = requests.post(
                 f"{ollama_url}/api/embeddings",

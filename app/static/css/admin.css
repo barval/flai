@@ -282,9 +282,14 @@ cursor: pointer;
 
 /* ===== MOBILE ADAPTATIONS ===== */
 @media (max-width: 768px) {
-    /* Let the page scroll naturally – no height restrictions on tab content */
-    .admin-tab-content.active {
-        /* No max-height or overflow-y – content determines height, body scrolls */
+    /* Override global mobile restrictions from chat.css that prevent scrolling */
+    body:has(.admin-container) {
+        overflow: auto !important;
+        height: auto !important;
+    }
+    main:has(.admin-container) {
+        overflow: auto !important;
+        height: auto !important;
     }
 
     /* Database info row: wrap items and allow horizontal scroll if needed */

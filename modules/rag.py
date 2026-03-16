@@ -53,22 +53,44 @@ class RagModule:
         return f"{self.collection_name_prefix}{user_id}"
 
     def _ensure_collection(self, user_id):
-        """Create collection for user if it doesn't exist."""
+        """
+        Ensure that a collection exists for the user with the correct vector dimension.
+        If the collection exists but has a different dimension, it is deleted and recreated.
+        """
         collection_name = self._get_collection_name(user_id)
+
+        # Get current embedding dimension
+        test_emb = self._get_embedding("test")
+        if test_emb is None:
+            raise RuntimeError("Cannot get embedding to determine vector size")
+        current_dim = len(test_emb)
+
         try:
-            self.qdrant_client.get_collection(collection_name)
-        except Exception:
-            # Collection doesn't exist, create it
-            # Determine vector size by getting a test embedding
-            test_emb = self._get_embedding("test")
-            if test_emb is None:
-                raise RuntimeError("Cannot get embedding to determine vector size")
-            vector_size = len(test_emb)
-            self.qdrant_client.create_collection(
-                collection_name=collection_name,
-                vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE)
-            )
-            self.logger.info(f"Created collection {collection_name} with vector size {vector_size}")
+            # Check if collection exists and get its dimension
+            info = self.qdrant_client.get_collection(collection_name)
+            existing_dim = info.config.params.vectors.size
+            if existing_dim == current_dim:
+                # All good, nothing to do
+                self.logger.debug(f"Collection {collection_name} already exists with correct dimension {current_dim}")
+                return
+            else:
+                # Dimension mismatch: delete and recreate
+                self.logger.warning(
+                    f"Dimension mismatch for {collection_name}: "
+                    f"collection has {existing_dim}, model gives {current_dim}. Recreating."
+                )
+                self.qdrant_client.delete_collection(collection_name)
+        except Exception as e:
+            # Collection does not exist or other error – we will create it
+            if "Not found" not in str(e) and "doesn't exist" not in str(e):
+                self.logger.warning(f"Unexpected error checking collection {collection_name}: {e}")
+
+        # Create the collection with current dimension
+        self.qdrant_client.create_collection(
+            collection_name=collection_name,
+            vectors_config=models.VectorParams(size=current_dim, distance=models.Distance.COSINE)
+        )
+        self.logger.info(f"Created collection {collection_name} with vector size {current_dim}")
 
     def index_document(self, user_id, doc_id, file_path):
         """

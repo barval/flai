@@ -279,3 +279,47 @@ cursor: pointer;
 .model-card .save-button:hover {
     background-color: #219a52;
 }
+
+/* ===== MOBILE ADAPTATIONS ===== */
+@media (max-width: 768px) {
+    /* Make tab content scrollable vertically */
+    .admin-tab-content.active {
+        max-height: calc(100vh - 200px);
+        overflow-y: auto;
+        padding-right: 5px; /* avoid scrollbar overlap */
+    }
+
+    /* Database info row: wrap items and allow horizontal scroll if needed */
+    .db-info {
+        flex-wrap: wrap;
+        gap: 10px;
+        overflow-x: auto;
+        white-space: nowrap;
+        padding-bottom: 5px;
+    }
+    .db-info span {
+        display: inline-block;
+        white-space: nowrap;
+    }
+
+    /* Ensure table wrapper takes full width and scrolls */
+    .users-table-wrapper {
+        width: 100%;
+        overflow-x: auto;
+    }
+    #users-table {
+        min-width: 800px; /* force table to be wider than screen to enable horizontal scroll */
+    }
+
+    /* Model cards: prevent content overflow */
+    .model-card {
+        word-wrap: break-word;
+    }
+    .model-card select,
+    .model-card input {
+        max-width: 100%;
+    }
+    .model-card .parameters {
+        grid-template-columns: 1fr; /* stack parameter inputs on small screens */
+    }
+}

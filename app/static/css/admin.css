@@ -307,16 +307,21 @@
         padding: 15px;
     }
 
-    /* Database info row: wrap items and allow horizontal scroll if needed */
+    /* Database info row: stack items vertically with each on two lines */
     .db-info {
-        flex-wrap: wrap;
-        gap: 10px;
-        overflow-x: auto;
-        white-space: nowrap;
+        display: block !important;
+        gap: initial;
+        overflow-x: visible;
         padding-bottom: 5px;
     }
-    .db-info span {
-        display: inline-block;
+    .db-info > span {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 5px;
+        white-space: normal;
+    }
+    /* Keep the number and unit together on the second line */
+    .db-value {
         white-space: nowrap;
     }
 
@@ -339,24 +344,5 @@
     }
     .model-card .parameters {
         grid-template-columns: 1fr; /* stack parameter inputs on small screens */
-    }
-}
-
-/* ===== MOBILE FIX FOR DATABASE INFO VERTICAL LAYOUT ===== */
-@media (max-width: 768px) {
-    .db-info {
-        display: block !important;
-        gap: initial;
-        white-space: normal;
-        overflow-x: visible;
-    }
-    .db-info > span {
-        display: block;
-        margin-bottom: 5px;
-        white-space: normal;
-    }
-    /* Ensure the number and unit stay together */
-    .db-value {
-        white-space: nowrap;
     }
 }

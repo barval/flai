@@ -530,9 +530,10 @@ class RedisRequestQueue:
         try:
             success, message = rag.index_document(user_id, doc_id, file_path)
             if success:
-                # Update status to indexed with current time, also keep indexing_started_at for record
+                # Update status to indexed with current time and embedding model
                 indexed_at = get_current_time_for_db()
-                update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at)
+                embedding_model = self._get_model_name('embedding') or self.app.config.get('EMBEDDING_MODEL')
+                update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at, embedding_model=embedding_model)
                 return {'success': True, 'message': message, 'doc_id': doc_id}
             else:
                 update_document_index_status(doc_id, INDEX_STATUS_FAILED)
@@ -575,7 +576,7 @@ class RedisRequestQueue:
                 c = conn.cursor()
                 c.execute(f'''
                     UPDATE documents
-                    SET index_status = ?, indexed_at = NULL, indexing_started_at = NULL
+                    SET index_status = ?, indexed_at = NULL, indexing_started_at = NULL, embedding_model = NULL
                     WHERE id IN ({placeholders})
                 ''', [INDEX_STATUS_PENDING] + doc_ids)
                 conn.commit()
@@ -607,7 +608,8 @@ class RedisRequestQueue:
                 success, message = rag.index_document(user_id, doc_id, full_path)
                 if success:
                     indexed_at = get_current_time_for_db()
-                    update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at)
+                    embedding_model = self._get_model_name('embedding') or self.app.config.get('EMBEDDING_MODEL')
+                    update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at, embedding_model=embedding_model)
                     success_count += 1
                     self.app.logger.info(f"Reindexed doc {doc_id}: {message}")
                 else:

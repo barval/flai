@@ -7,7 +7,7 @@ from flask import current_app
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from app.utils import extract_text_from_file, chunk_text, get_current_time_in_timezone, format_prompt
-from app.db import get_session_text_history  # new import for history
+from app.db import get_session_text_history, update_document_index_status  # new import for history and status update
 
 class RagModule:
     """Module for Retrieval-Augmented Generation using Qdrant and Ollama embeddings."""

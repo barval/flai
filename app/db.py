@@ -172,6 +172,22 @@ def migrate_db_add_index_status(app):
     except Exception as e:
         app.logger.error(f"Index status migration error: {str(e)}")
 
+def migrate_add_embedding_model(app):
+    """Add embedding_model column to documents table."""
+    try:
+        with sqlite3.connect(CHAT_DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("PRAGMA table_info(documents)")
+            columns = [col[1] for col in c.fetchall()]
+            
+            if 'embedding_model' not in columns:
+                c.execute("ALTER TABLE documents ADD COLUMN embedding_model TEXT")
+                app.logger.info("Added column embedding_model to documents table")
+            
+            conn.commit()
+    except Exception as e:
+        app.logger.error(f"Embedding model migration error: {str(e)}")
+
 def migrate_add_model_configs(app):
     """Create model_configs table and populate with defaults from .env."""
     try:
@@ -502,13 +518,13 @@ def get_user_document_count(user_id):
         return c.fetchone()[0]
 
 def get_user_documents(user_id):
-    """Get all documents for a user, including index status and processing time."""
+    """Get all documents for a user, including index status, processing time and embedding model."""
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
         c.execute('''
         SELECT id, filename, file_size, file_ext, file_path, uploaded_at,
-               index_status, indexed_at, indexing_started_at
+               index_status, indexed_at, indexing_started_at, embedding_model
         FROM documents
         WHERE user_id = ?
         ORDER BY uploaded_at DESC
@@ -592,15 +608,15 @@ def get_document(doc_id, user_id):
         c = conn.cursor()
         c.execute('''
         SELECT id, filename, file_size, file_ext, file_path, uploaded_at,
-               index_status, indexed_at, indexing_started_at
+               index_status, indexed_at, indexing_started_at, embedding_model
         FROM documents
         WHERE id = ? AND user_id = ?
         ''', (doc_id, user_id))
         row = c.fetchone()
         return dict(row) if row else None
 
-def update_document_index_status(doc_id, status, indexed_at=None, indexing_started_at=None):
-    """Update the index status, optionally indexed_at and indexing_started_at for a document."""
+def update_document_index_status(doc_id, status, indexed_at=None, indexing_started_at=None, embedding_model=None):
+    """Update the index status, optionally indexed_at, indexing_started_at and embedding_model for a document."""
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         updates = []
@@ -614,6 +630,9 @@ def update_document_index_status(doc_id, status, indexed_at=None, indexing_start
         if indexing_started_at is not None:
             updates.append("indexing_started_at = ?")
             params.append(indexing_started_at)
+        if embedding_model is not None:
+            updates.append("embedding_model = ?")
+            params.append(embedding_model)
         if not updates:
             return
         params.append(doc_id)

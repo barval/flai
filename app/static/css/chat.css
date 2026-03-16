@@ -930,3 +930,22 @@ audio {
     opacity: 0.9;
     margin-top: 2px;
 }
+
+.document-embedding {
+    font-size: 0.75rem;
+    color: #7f8c8d;
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.document-embedding .document-status-icon {
+    font-size: 1rem;
+    width: 1.2em;
+    text-align: center;
+}
+
+.dark-theme .document-embedding {
+    color: #b0b0b0;
+}

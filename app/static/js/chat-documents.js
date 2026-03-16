@@ -138,7 +138,8 @@ function updateDocumentsList(documents) {
 
     let html = '';
     documents.forEach(doc => {
-        const dateStr = doc.uploaded_at ? formatFullDateTime(doc.uploaded_at) : '';
+        // Use indexed_at if available, otherwise uploaded_at
+        const dateStr = doc.indexed_at ? formatFullDateTime(doc.indexed_at) : (doc.uploaded_at ? formatFullDateTime(doc.uploaded_at) : '');
         const fileSizeFormatted = doc.file_size ? formatFileSize(doc.file_size) : '';
         const statusIcon = getStatusIcon(doc.index_status);
         const statusTitle = getStatusTitle(doc.index_status);
@@ -154,6 +155,12 @@ function updateDocumentsList(documents) {
             processingTimeStr = ` ⏱️ ${doc.processing_time.toFixed(1)}${minAbbr}`;
         }
 
+        // Embedding model line
+        let embeddingLine = '';
+        if (doc.embedding_model) {
+            embeddingLine = `<div class="document-embedding"><span class="${iconClass}" style="margin-right:4px;">${statusIcon}</span> ${doc.embedding_model}</div>`;
+        }
+
         html += `
         <div class="document-item" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}">
             <div class="document-content">
@@ -163,6 +170,7 @@ function updateDocumentsList(documents) {
                         📄 ${escapeHtml(doc.filename)}
                     </div>
                     <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}${processingTimeStr}</div>
+                    ${embeddingLine}
                 </div>
                 <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>
             </div>

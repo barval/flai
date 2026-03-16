@@ -7,7 +7,8 @@ from logging import Formatter
 from .config import load_config
 from .db import (
     init_db, migrate_db_add_response_fields, migrate_db_add_session_visits,
-    migrate_db_add_indexes, migrate_db_add_index_status, migrate_add_model_configs
+    migrate_db_add_indexes, migrate_db_add_index_status, migrate_add_model_configs,
+    migrate_add_embedding_model  # new import
 )
 from .queue import RedisRequestQueue
 from .userdb import init_user_db, get_user_by_login
@@ -56,6 +57,7 @@ def create_app():
     migrate_db_add_indexes(app)  # Add indexes for performance
     migrate_db_add_index_status(app)  # Add index_status column to documents table for RAG
     migrate_add_model_configs(app)   # New migration for model configs
+    migrate_add_embedding_model(app) # Add embedding_model column to documents table
     # Initialize user DB
     init_user_db()
     # Initialize modules

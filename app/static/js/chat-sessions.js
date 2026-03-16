@@ -58,7 +58,6 @@ function loadSessionsFromServer() {
             if (!sessions.find(s => s.id === id)) {
                 delete sessionsData[id];
                 delete newMessageIndicators[id];
-                delete lastCompletionTime[id];
                 updated = true;
             }
         });
@@ -225,8 +224,6 @@ function deleteSession(sessionId, sessionTitle, sessionDate) {
         }
     }
     delete newMessageIndicators[sessionId];
-    delete stableSessionStatus[sessionId];
-    delete lastCompletionTime[sessionId];
     delete localProcessingSessions[sessionId];
     fetch('/api/sessions/' + sessionId + '/delete', { method: 'POST' })
     .then(res => res.json())

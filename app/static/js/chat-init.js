@@ -135,11 +135,9 @@ function startResultPolling(requestId) {
                             originalDisplayMessage('assistant', '⚠️ ' + data.result.error, null, null, null, null,
                                 data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'system',
                                 null, null, null, null, null);
-                            delete stableSessionStatus[resultSessionId];
                         } else if (resultSessionId) {
                             // will be shown via queue status
                         }
-                        lastCompletionTime[resultSessionId] = Date.now() + 5000;
                     } else if (data.result.messages) {
                         for (const msg of data.result.messages) {
                             if (msg.message_id && displayedMessageIds.has(msg.message_id)) {
@@ -168,14 +166,15 @@ function startResultPolling(requestId) {
                                     data.result.file_type, data.result.file_name, data.result.file_path,
                                     data.result.assistant_timestamp || new Date().toISOString(), responseTime, modelUsed,
                                     null, null, null, null, data.result.message_id);
-                                delete stableSessionStatus[resultSessionId];
                                 updateLastVisit(currentSessionId);
                             } else {
                                 setNewMessageIndicator(resultSessionId, true);
-                                delete stableSessionStatus[resultSessionId];
                             }
                         }
-                        lastCompletionTime[resultSessionId] = Date.now() + 5000;
+                    }
+                    // Clear local processing flag for this session
+                    if (resultSessionId && window.setLocalProcessing) {
+                        window.setLocalProcessing(resultSessionId, false);
                     }
                 }
                 delete pendingRequests[requestId];
@@ -189,11 +188,13 @@ function startResultPolling(requestId) {
                     originalDisplayMessage('assistant', '⚠️ ' + t('error') + ': ' + (data.error || t('unknown_error')), null, null, null, null,
                         data.result?.assistant_timestamp || new Date().toISOString(), data.result?.response_time, 'system',
                         null, null, null, null, null);
-                    delete stableSessionStatus[resultSessionId];
                 } else if (resultSessionId) {
                     // will be shown via queue status
                 }
-                lastCompletionTime[resultSessionId] = Date.now() + 5000;
+                // Clear local processing flag for this session
+                if (resultSessionId && window.setLocalProcessing) {
+                    window.setLocalProcessing(resultSessionId, false);
+                }
                 delete pendingRequests[requestId];
                 window.updateStatusCounter();
                 fetchQueueStatus();
@@ -205,7 +206,9 @@ function startResultPolling(requestId) {
                 originalDisplayMessage('assistant', '⚠️ ' + t('request_timeout'),
                     null, null, null, null, new Date().toISOString(), null, 'system',
                     null, null, null, null, null);
-                delete stableSessionStatus[currentSessionId];
+                if (resultSessionId && window.setLocalProcessing) {
+                    window.setLocalProcessing(resultSessionId, false);
+                }
                 delete pendingRequests[requestId];
             }
         } catch (error) {
@@ -252,7 +255,6 @@ async function sendMessage() {
                 }).catch(err => console.error('Error updating title:', err));
             }
         }
-        delete lastCompletionTime[currentSessionId];
         const now = new Date();
         const timestamp = now.toISOString();
         const userContent = [];
@@ -345,22 +347,19 @@ async function sendMessage() {
                             }
                         }
                     }
-                    if (!data.request_id) {
-                        // Transcription only (non-voice file) – done, clear local processing
-                        if (currentSessionId && window.setLocalProcessing) {
-                            window.setLocalProcessing(currentSessionId, false);
-                        }
-                        return;
+                    if (data.request_id) {
+                        pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
+                        window.setLocalProcessing(currentSessionId, true);  // set local processing for queued task
+                        window.updateStatusCounter();
+                        startResultPolling(data.request_id);
                     }
+                    return;
                 }
                 if (data.status === 'queued') {
                     pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
+                    window.setLocalProcessing(currentSessionId, true);  // set local processing for queued task
                     window.updateStatusCounter();
                     startResultPolling(data.request_id);
-                    // Task is now in queue, we can clear local processing (real status will take over)
-                    if (currentSessionId && window.setLocalProcessing) {
-                        window.setLocalProcessing(currentSessionId, false);
-                    }
                 } else if (data.response) {
                     originalDisplayMessage('assistant', data.response, data.file_data, data.file_type, data.file_name, data.file_path,
                         data.assistant_timestamp, data.response_time, data.model_used);

@@ -1,6 +1,6 @@
 # app/__init__.py
 import os
-from flask import Flask, request, session, send_file, abort
+from flask import Flask, request, session, send_file, abort, jsonify
 from flask_babel import Babel, gettext
 import logging
 from logging import Formatter
@@ -116,10 +116,6 @@ def create_app():
         app.config['DOCUMENTS_FOLDER'] = os.path.abspath(app.config['DOCUMENTS_FOLDER'])
     app.logger.info(f"Documents folder: {app.config['DOCUMENTS_FOLDER']}")
 
-    # (Optional) Reload model configs into app.config – no longer needed for modules, but kept for admin panel compatibility
-    # from .routes_admin import _reload_model_configs
-    # _reload_model_configs(app)
-
     # File serving endpoint
     @app.route('/api/files/<path:filename>')
     def serve_upload(filename):
@@ -169,4 +165,18 @@ def create_app():
         except Exception as e:
             app.logger.error(f"Error serving file {safe_path}: {e}")
             abort(404)
+
+    # --- Global error handlers for API routes ---
+    @app.errorhandler(500)
+    def internal_error(error):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Internal server error'}), 500
+        return error
+
+    @app.errorhandler(404)
+    def not_found(error):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Not found'}), 404
+        return error
+
     return app

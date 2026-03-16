@@ -88,6 +88,7 @@
 <script>
 window.initialSessionId = "{{ current_session }}";
 window.CURRENT_USER_LOGIN = "{{ session.get('login', '') }}";
+window.CURRENT_EMBEDDING_MODEL = {{ embedding_model|tojson }};
 window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'send': {{ _("Send")|tojson }},
     'sending': {{ _("Sending...")|tojson }},

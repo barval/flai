@@ -144,7 +144,7 @@ function updateDocumentsList(documents) {
         const statusIcon = getStatusIcon(doc.index_status);
         const statusTitle = getStatusTitle(doc.index_status);
         const isIndexing = doc.index_status === 'indexing';
-        // Add blink class if indexing
+        // Add blink class if indexing for the main status icon
         const iconClass = isIndexing ? 'document-status-icon blink' : 'document-status-icon';
 
         // Format processing time if available
@@ -155,10 +155,12 @@ function updateDocumentsList(documents) {
             processingTimeStr = ` ⏱️ ${doc.processing_time.toFixed(1)}${minAbbr}`;
         }
 
-        // Embedding model line
+        // Embedding model line - always show with a fixed 🔄 icon, regardless of status
+        let displayModel = doc.embedding_model || window.CURRENT_EMBEDDING_MODEL || '';
         let embeddingLine = '';
-        if (doc.embedding_model) {
-            embeddingLine = `<div class="document-embedding"><span class="${iconClass}" style="margin-right:4px;">${statusIcon}</span> ${doc.embedding_model}</div>`;
+        if (displayModel) {
+            // Use a fixed icon '🔄' for the embedding model line, with no status-dependent class.
+            embeddingLine = `<div class="document-embedding"><span class="document-status-icon" style="margin-right:4px;">🔄</span> ${displayModel}</div>`;
         }
 
         html += `

@@ -186,6 +186,13 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'Quantization:': {{ _('Quantization:')|tojson }},
     'Max context length:': {{ _('Max context length:')|tojson }},
     'Embedding length:': {{ _('Embedding length:')|tojson }},
+    // Validation messages
+    'Please select a model first.': {{ _('Please select a model first.')|tojson }},
+    'Context length must be at least 512.': {{ _('Context length must be at least 512.')|tojson }},
+    'Context length cannot exceed {max} (max for this model).': {{ _('Context length cannot exceed {max} (max for this model).')|tojson }},
+    'Temperature must be between 0.0 and 2.0.': {{ _('Temperature must be between 0.0 and 2.0.')|tojson }},
+    'Top P must be between 0.0 and 1.0.': {{ _('Top P must be between 0.0 and 1.0.')|tojson }},
+    'Timeout must be between 0 and 1200 seconds.': {{ _('Timeout must be between 0 and 1200 seconds.')|tojson }},
     // Added missing translation for Save button
     'Save': {{ _('Save')|tojson }}
 });

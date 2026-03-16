@@ -341,8 +341,14 @@ function onSaveConfig(event) {
         if (result.status === 'ok') {
             btn.textContent = '✓ ' + t('Saved');
             setTimeout(() => { btn.textContent = t('Save'); }, 2000);
-            // If embedding module, notify user about reindexing
+            
+            // If embedding module, update global variable and notify user about reindexing
             if (module === 'embedding') {
+                // Update the global CURRENT_EMBEDDING_MODEL with the new model name
+                if (result.model_name) {
+                    window.CURRENT_EMBEDDING_MODEL = result.model_name;
+                    console.log('Updated CURRENT_EMBEDDING_MODEL to', result.model_name);
+                }
                 alert(t('reindex_started'));
             }
         } else {

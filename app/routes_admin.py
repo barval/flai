@@ -428,15 +428,20 @@ def update_model_config(module):
     _reload_model_configs(current_app)
 
     # If embedding model changed, start reindexing all documents
+    result = {'status': 'ok'}
     if module == 'embedding':
         new_model = updates.get('model_name')
         if new_model and new_model != old_model:
             current_app.logger.info(f"Embedding model changed from {old_model} to {new_model}, starting reindex all")
             current_app.request_queue.add_reindex_all_task(lang='ru')  # default language
+            # Include the new model name in the response so client can update its global variable
+            result['model_name'] = new_model
         else:
             current_app.logger.info(f"Embedding model unchanged ({old_model}), no reindex triggered")
+            # Still return the current model name (maybe old_model)
+            result['model_name'] = old_model or new_model
 
-    return jsonify({'status': 'ok'})
+    return jsonify(result)
 
 
 def _reload_model_configs(app):

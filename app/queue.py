@@ -517,8 +517,9 @@ class RedisRequestQueue:
         user_id = task['user_id']
         lang = task.get('lang', 'ru')
         
-        # Update status to indexing
-        update_document_index_status(doc_id, INDEX_STATUS_INDEXING)
+        # Set status to indexing and record start time
+        indexing_started_at = get_current_time_for_db()
+        update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=indexing_started_at)
         
         rag = self.app.modules.get('rag')
         if not rag or not rag.available:
@@ -529,9 +530,9 @@ class RedisRequestQueue:
         try:
             success, message = rag.index_document(user_id, doc_id, file_path)
             if success:
-                # Update status to indexed with current time
+                # Update status to indexed with current time, also keep indexing_started_at for record
                 indexed_at = get_current_time_for_db()
-                update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at)
+                update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at)
                 return {'success': True, 'message': message, 'doc_id': doc_id}
             else:
                 update_document_index_status(doc_id, INDEX_STATUS_FAILED)
@@ -574,7 +575,7 @@ class RedisRequestQueue:
                 c = conn.cursor()
                 c.execute(f'''
                     UPDATE documents
-                    SET index_status = ?, indexed_at = NULL
+                    SET index_status = ?, indexed_at = NULL, indexing_started_at = NULL
                     WHERE id IN ({placeholders})
                 ''', [INDEX_STATUS_PENDING] + doc_ids)
                 conn.commit()
@@ -599,11 +600,14 @@ class RedisRequestQueue:
             
             # Index again with new model
             try:
+                # Set status to indexing and record start time
+                indexing_started_at = get_current_time_for_db()
+                update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=indexing_started_at)
+                
                 success, message = rag.index_document(user_id, doc_id, full_path)
                 if success:
-                    # Update status to indexed with current time
                     indexed_at = get_current_time_for_db()
-                    update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at)
+                    update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at)
                     success_count += 1
                     self.app.logger.info(f"Reindexed doc {doc_id}: {message}")
                 else:

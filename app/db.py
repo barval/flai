@@ -163,6 +163,10 @@ def migrate_db_add_index_status(app):
             if 'indexed_at' not in columns:
                 c.execute("ALTER TABLE documents ADD COLUMN indexed_at DATETIME")
                 app.logger.info("Added column indexed_at to documents table")
+            # New column for tracking start of indexing
+            if 'indexing_started_at' not in columns:
+                c.execute("ALTER TABLE documents ADD COLUMN indexing_started_at DATETIME")
+                app.logger.info("Added column indexing_started_at to documents table")
             
             conn.commit()
     except Exception as e:
@@ -503,7 +507,8 @@ def get_user_documents(user_id):
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
         c.execute('''
-        SELECT id, filename, file_size, file_ext, file_path, uploaded_at, index_status, indexed_at
+        SELECT id, filename, file_size, file_ext, file_path, uploaded_at,
+               index_status, indexed_at, indexing_started_at
         FROM documents
         WHERE user_id = ?
         ORDER BY uploaded_at DESC
@@ -514,6 +519,7 @@ def get_user_documents(user_id):
         for doc in documents:
             uploaded_dt = None
             indexed_dt = None
+            indexing_started_dt = None
             if doc.get('uploaded_at'):
                 try:
                     uploaded_dt = datetime.strptime(doc['uploaded_at'], '%Y-%m-%d %H:%M:%S')
@@ -524,13 +530,28 @@ def get_user_documents(user_id):
                     indexed_dt = datetime.strptime(doc['indexed_at'], '%Y-%m-%d %H:%M:%S')
                 except:
                     pass
+            if doc.get('indexing_started_at'):
+                try:
+                    indexing_started_dt = datetime.strptime(doc['indexing_started_at'], '%Y-%m-%d %H:%M:%S')
+                except:
+                    pass
 
             processing_time = None
             status = doc.get('index_status')
-            if status == INDEX_STATUS_INDEXED and indexed_dt and uploaded_dt:
+            if status == INDEX_STATUS_INDEXED and indexed_dt and indexing_started_dt:
+                # Use indexing_started_at as start time for accurate duration
+                delta = indexed_dt - indexing_started_dt
+                processing_time = delta.total_seconds() / 60.0
+            elif status == INDEX_STATUS_INDEXING and indexing_started_dt:
+                # Currently indexing – show elapsed time since start
+                delta = now - indexing_started_dt
+                processing_time = delta.total_seconds() / 60.0
+            elif status == INDEX_STATUS_INDEXED and indexed_dt and uploaded_dt:
+                # Fallback if indexing_started_at missing (old records)
                 delta = indexed_dt - uploaded_dt
                 processing_time = delta.total_seconds() / 60.0
             elif status == INDEX_STATUS_INDEXING and uploaded_dt:
+                # Fallback if indexing_started_at missing
                 delta = now - uploaded_dt
                 processing_time = delta.total_seconds() / 60.0
             # For pending or failed, processing_time remains None
@@ -546,6 +567,10 @@ def get_user_documents(user_id):
                 if current_app.config.get('TIMEZONE'):
                     indexed_dt = current_app.config['TIMEZONE'].localize(indexed_dt)
                 doc['indexed_at'] = indexed_dt.isoformat()
+            if indexing_started_dt:
+                if current_app.config.get('TIMEZONE'):
+                    indexing_started_dt = current_app.config['TIMEZONE'].localize(indexing_started_dt)
+                doc['indexing_started_at'] = indexing_started_dt.isoformat()
         return documents
 
 def save_document(user_id, doc_id, filename, file_size, file_ext, file_path):
@@ -566,29 +591,33 @@ def get_document(doc_id, user_id):
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
         c.execute('''
-        SELECT id, filename, file_size, file_ext, file_path, uploaded_at, index_status, indexed_at
+        SELECT id, filename, file_size, file_ext, file_path, uploaded_at,
+               index_status, indexed_at, indexing_started_at
         FROM documents
         WHERE id = ? AND user_id = ?
         ''', (doc_id, user_id))
         row = c.fetchone()
         return dict(row) if row else None
 
-def update_document_index_status(doc_id, status, indexed_at=None):
-    """Update the index status and optionally indexed_at for a document."""
+def update_document_index_status(doc_id, status, indexed_at=None, indexing_started_at=None):
+    """Update the index status, optionally indexed_at and indexing_started_at for a document."""
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
-        if indexed_at:
-            c.execute('''
-            UPDATE documents
-            SET index_status = ?, indexed_at = ?
-            WHERE id = ?
-            ''', (status, indexed_at, doc_id))
-        else:
-            c.execute('''
-            UPDATE documents
-            SET index_status = ?
-            WHERE id = ?
-            ''', (status, doc_id))
+        updates = []
+        params = []
+        if status is not None:
+            updates.append("index_status = ?")
+            params.append(status)
+        if indexed_at is not None:
+            updates.append("indexed_at = ?")
+            params.append(indexed_at)
+        if indexing_started_at is not None:
+            updates.append("indexing_started_at = ?")
+            params.append(indexing_started_at)
+        if not updates:
+            return
+        params.append(doc_id)
+        c.execute(f'UPDATE documents SET {", ".join(updates)} WHERE id = ?', params)
         conn.commit()
 
 def delete_document(doc_id, user_id):

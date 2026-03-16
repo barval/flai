@@ -230,6 +230,12 @@ async function sendMessage() {
     isSending = true;
     sendButton.disabled = true;
     sendButton.innerHTML = '⏳ ' + t('sending');
+
+    // Set local processing flag for the current session
+    if (currentSessionId && window.setLocalProcessing) {
+        window.setLocalProcessing(currentSessionId, true);
+    }
+
     try {
         const messageCount = document.querySelectorAll('.user-message').length;
         if (messageCount === 0) {
@@ -339,15 +345,34 @@ async function sendMessage() {
                             }
                         }
                     }
-                    if (!data.request_id) return;
+                    if (!data.request_id) {
+                        // Transcription only (non-voice file) – done, clear local processing
+                        if (currentSessionId && window.setLocalProcessing) {
+                            window.setLocalProcessing(currentSessionId, false);
+                        }
+                        return;
+                    }
                 }
                 if (data.status === 'queued') {
                     pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
                     window.updateStatusCounter();
                     startResultPolling(data.request_id);
+                    // Task is now in queue, we can clear local processing (real status will take over)
+                    if (currentSessionId && window.setLocalProcessing) {
+                        window.setLocalProcessing(currentSessionId, false);
+                    }
                 } else if (data.response) {
                     originalDisplayMessage('assistant', data.response, data.file_data, data.file_type, data.file_name, data.file_path,
                         data.assistant_timestamp, data.response_time, data.model_used);
+                    // Response received, clear local processing
+                    if (currentSessionId && window.setLocalProcessing) {
+                        window.setLocalProcessing(currentSessionId, false);
+                    }
+                } else {
+                    // No further action, clear local processing
+                    if (currentSessionId && window.setLocalProcessing) {
+                        window.setLocalProcessing(currentSessionId, false);
+                    }
                 }
             } catch (err) {
                 if (window.IS_RELOADING) return;
@@ -355,6 +380,10 @@ async function sendMessage() {
                 console.error('Send message error:', err);
                 const lastMessage = document.querySelector('.user-message:last-child');
                 if (lastMessage) lastMessage.style.borderLeft = '3px solid #e74c3c';
+                // Clear local processing on error
+                if (currentSessionId && window.setLocalProcessing) {
+                    window.setLocalProcessing(currentSessionId, false);
+                }
             }
         };
         if (tempAttachedFile) {
@@ -402,6 +431,10 @@ async function sendMessage() {
         sendButton.disabled = false;
         sendButton.innerHTML = t('send');
         isSending = false;
+        // Clear local processing on unexpected error
+        if (currentSessionId && window.setLocalProcessing) {
+            window.setLocalProcessing(currentSessionId, false);
+        }
     }
 }
 

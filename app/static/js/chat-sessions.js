@@ -99,13 +99,14 @@ function updateSessionsList(sessions) {
         const dateStr = s.updated_at ? formatFullDateTime(s.updated_at) : '';
         let statusIcons = '';
         const info = sessionQueueInfo[s.id];
-        if (info) {
-            if (info.processing) {
-                statusIcons = '<span class="session-status-icon processing blink" title="' + t('processing') + '">⚡</span>';
-            } else if (info.queued > 0) {
-                const count = info.queued > 1 ? ' ' + info.queued : '';
-                statusIcons = '<span class="session-status-icon queued" title="' + t('queued') + '">⏳' + count + '</span>';
-            }
+        // Check both real queue info and local processing flag
+        const isProcessing = (info && info.processing) || localProcessingSessions[s.id];
+        const hasQueued = info && info.queued > 0;
+        if (isProcessing) {
+            statusIcons = '<span class="session-status-icon processing blink" title="' + t('processing') + '">⚡</span>';
+        } else if (hasQueued) {
+            const count = info.queued > 1 ? ' ' + info.queued : '';
+            statusIcons = '<span class="session-status-icon queued" title="' + t('queued') + '">⏳' + count + '</span>';
         }
         if (!statusIcons && newMessageIndicators[s.id] && s.id !== currentActiveId) {
             statusIcons = '<span class="session-status-icon unread blink" title="' + t('new_response') + '">✉️</span>';
@@ -226,6 +227,7 @@ function deleteSession(sessionId, sessionTitle, sessionDate) {
     delete newMessageIndicators[sessionId];
     delete stableSessionStatus[sessionId];
     delete lastCompletionTime[sessionId];
+    delete localProcessingSessions[sessionId];
     fetch('/api/sessions/' + sessionId + '/delete', { method: 'POST' })
     .then(res => res.json())
     .then(data => {

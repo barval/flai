@@ -13,6 +13,9 @@ let sessionQueueInfo = {};
 let stableSessionStatus = {};
 let lastCompletionTime = {};
 let sessionsUpdateTimeout = null;
+// Local processing flag for sessions (used during sync operations like transcription)
+let localProcessingSessions = {};    // sessionId -> boolean
+
 // Voice recording variables
 let mediaRecorder = null;
 let audioChunks = [];

@@ -77,6 +77,20 @@ function fetchQueueStatus() {
     .catch(err => console.error('Error fetching queue status:', err));
 }
 
+// Local processing status (used for synchronous operations like transcription)
+function setLocalProcessing(sessionId, isProcessing) {
+    if (!sessionId) return;
+    if (isProcessing) {
+        localProcessingSessions[sessionId] = true;
+    } else {
+        delete localProcessingSessions[sessionId];
+    }
+    updateSessionsListFromData();
+}
+
+// Make function globally accessible
+window.setLocalProcessing = setLocalProcessing;
+
 window.updateStatusCounter = function() {
     if (window.IS_RELOADING) return;
     fetch('/api/queue/counts')

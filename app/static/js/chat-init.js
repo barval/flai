@@ -349,7 +349,10 @@ async function sendMessage() {
                     }
                     if (data.request_id) {
                         pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
-                        window.setLocalProcessing(currentSessionId, true);  // set local processing for queued task
+                        // Task is now queued, clear local processing flag
+                        if (currentSessionId && window.setLocalProcessing) {
+                            window.setLocalProcessing(currentSessionId, false);
+                        }
                         window.updateStatusCounter();
                         startResultPolling(data.request_id);
                     }
@@ -357,7 +360,10 @@ async function sendMessage() {
                 }
                 if (data.status === 'queued') {
                     pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
-                    window.setLocalProcessing(currentSessionId, true);  // set local processing for queued task
+                    // Task is now queued, clear local processing flag
+                    if (currentSessionId && window.setLocalProcessing) {
+                        window.setLocalProcessing(currentSessionId, false);
+                    }
                     window.updateStatusCounter();
                     startResultPolling(data.request_id);
                 } else if (data.response) {

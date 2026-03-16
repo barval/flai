@@ -85,7 +85,18 @@ function setLocalProcessing(sessionId, isProcessing) {
     } else {
         delete localProcessingSessions[sessionId];
     }
-    updateSessionsListFromData();
+    // Immediately update sessions list, bypassing debounce
+    if (sessionsUpdateTimeout) {
+        clearTimeout(sessionsUpdateTimeout);
+        sessionsUpdateTimeout = null;
+    }
+    const sessions = Object.keys(sessionsData).map(id => ({
+        id: id,
+        title: sessionsData[id].title,
+        updated_at: sessionsData[id].updated_at,
+        message_count: sessionsData[id].message_count
+    }));
+    updateSessionsList(sessions);
 }
 
 // Make function globally accessible

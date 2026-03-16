@@ -40,10 +40,12 @@
 - 🎚️ **Voice Gender Selection** – choose male or female voice for TTS responses
 - 📊 **Request Queue** – real-time status tracking with position indicators for queued requests
 - 📎 **File Attachments** – support for images, audio files, and documents in conversations
+- 🔔 **Notifications** – unread message indicators and blinking status icons for processing/queued requests
 
 ### ⚙️ Administration
 - 👤 **User Management** – add, edit, delete users; change passwords; assign service classes
 - 🔑 **Camera Permissions** – control which users can access which cameras
+- 🤖 **Model Management** – select and configure models for chat, reasoning, multimodal, and embedding directly from the admin panel  
 - 📈 **System Monitoring** – view database sizes and system statistics
 - 🔧 **CLI Tools** – manage admin password via Flask CLI command
 
@@ -329,7 +331,7 @@ All settings are defined in the `.env` file. Key variables:
 | `TIMEZONE` | Local timezone for timestamps | `Europe/Moscow` |
 | `REDIS_URL` | Redis connection string | `redis://redis:6379/0` |
 
-### LLM Models (Ollama)
+### LLM Models (Ollama) - Initial defaults (overridden by admin panel after first run)
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `OLLAMA_URL` | Ollama API endpoint | `http://host.docker.internal:11434` |
@@ -401,6 +403,9 @@ API for retrieving snapshots from surveillance cameras in various rooms: `https:
 - 👤 User Operations: Create, edit, delete user accounts
 - 🔑 Password Management: Reset passwords for any user
 - 🔐 Camera Permissions: Grant/revoke access to specific cameras per user
+- 🤖 Model Management: Select and configure models for chat, reasoning, multimodal, and embedding.
+Model details (architecture, context length, embedding length) are fetched from Ollama.
+Changing the embedding model triggers automatic re‑indexing of all documents.
 - 📊 System Stats: Monitor database sizes (users, chats, files, documents)
 - 🎚️ Service Classes: Assign priority levels (0=highest, 2=lowest) for queue processing
 
@@ -432,6 +437,9 @@ docker exec -it flai-web-1 flask admin-password NewPassword123
 - Full i18n support (RU/EN) with Flask-Babel
 - Dark/light theme with persistent preferences
 - HTML chat export with embedded media
+- Admin panel with model management (select models for each role, view model info)
+- Document index status display (pending, indexing, indexed, failed) with processing time
+- Local processing indicator (for synchronous operations like transcription)
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context persistence)

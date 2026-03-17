@@ -12,7 +12,6 @@ from app.model_config import get_model_config
 
 class RagModule:
     """Module for Retrieval-Augmented Generation using Qdrant and Ollama embeddings."""
-
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
         self.qdrant_client = None
@@ -31,12 +30,10 @@ class RagModule:
         self.chunk_size = app.config.get('RAG_CHUNK_SIZE', 500)
         self.chunk_overlap = app.config.get('RAG_CHUNK_OVERLAP', 50)
         self.top_k = app.config.get('RAG_TOP_K', 5)
-
         if not qdrant_url:
             app.logger.warning("QDRANT_URL not set, RAG module disabled")
             self.available = False
             return
-
         try:
             self.qdrant_client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
             # Test connection
@@ -62,13 +59,11 @@ class RagModule:
         If the collection exists but has a different dimension, it is deleted and recreated.
         """
         collection_name = self._get_collection_name(user_id)
-
         # Get current embedding dimension
         test_emb = self._get_embedding("test")
         if test_emb is None:
             raise RuntimeError("Cannot get embedding to determine vector size")
         current_dim = len(test_emb)
-
         try:
             # Check if collection exists and get its dimension
             info = self.qdrant_client.get_collection(collection_name)
@@ -88,7 +83,6 @@ class RagModule:
             # Collection does not exist or other error – we will create it
             if "Not found" not in str(e) and "doesn't exist" not in str(e):
                 self.logger.warning(f"Unexpected error checking collection {collection_name}: {e}")
-
         # Create the collection with current dimension
         self.qdrant_client.create_collection(
             collection_name=collection_name,
@@ -103,25 +97,19 @@ class RagModule:
         """
         if not self.available:
             return False, "RAG service unavailable"
-
         self.logger.info(f"index_document: starting for doc_id={doc_id}, file_path={file_path}")
-
         # 1. Extract text
         text = extract_text_from_file(file_path)
         if not text:
             self.logger.error(f"index_document: failed to extract text from {file_path}")
             return False, "Failed to extract text from document"
-
         self.logger.info(f"index_document: extracted {len(text)} characters from {file_path}")
-
         # 2. Chunk text
         chunks = chunk_text(text, self.chunk_size, self.chunk_overlap)
         if not chunks:
             self.logger.error(f"index_document: no text chunks generated from {file_path}")
             return False, "No text chunks generated"
-
         self.logger.info(f"index_document: generated {len(chunks)} chunks")
-
         # 3. Get embeddings for each chunk
         embeddings = []
         for idx, chunk in enumerate(chunks):
@@ -130,9 +118,7 @@ class RagModule:
                 self.logger.error(f"index_document: failed to get embedding for chunk {idx}")
                 return False, "Failed to get embedding for a chunk"
             embeddings.append(emb)
-
         self.logger.info(f"index_document: obtained embeddings for all {len(chunks)} chunks")
-
         # 4. Prepare points with valid UUIDs as IDs
         points = []
         for idx, (chunk, emb) in enumerate(zip(chunks, embeddings)):
@@ -149,7 +135,6 @@ class RagModule:
                 }
             )
             points.append(point)
-
         # 5. Ensure collection exists and upsert
         try:
             self._ensure_collection(user_id)
@@ -192,12 +177,10 @@ class RagModule:
         """
         if not self.available:
             return []
-
         top_k = top_k or self.top_k
         query_emb = self._get_embedding(query)
         if query_emb is None:
             return []
-
         collection_name = self._get_collection_name(user_id)
         try:
             search_result = self.qdrant_client.search(
@@ -237,14 +220,17 @@ class RagModule:
         """
         Full RAG answer: search + call reasoning model with context, history, and role information.
         Returns (answer, error_message, model_name).
+        Returns (None, None, None) if no relevant documents found (triggers fallback).
         """
         # 1. Retrieve relevant chunks
         chunks = self.search(user_id, query)
         if not chunks:
-            return None, "No relevant documents found", None
+            # No relevant documents - return None to trigger fallback to reasoning model
+            self.logger.info(f"No relevant documents found for query: {query[:50]}...")
+            return None, None, None
 
         # 2. Prepare context string
-        context = "\n\n".join(chunks)
+        context = "\n".join(chunks)
 
         # 3. Get conversation history (with token limit)
         # Estimate token count for context and query
@@ -256,12 +242,11 @@ class RagModule:
         reasoning_config = get_model_config('reasoning')
         if not reasoning_config:
             return None, "Reasoning model configuration missing", None
+
         max_context_tokens = reasoning_config.get('context_length', 40960)
         history_percent = int(current_app.config.get('CONTEXT_HISTORY_PERCENT', 75))
-
         available_tokens = int(max_context_tokens * (history_percent / 100.0))
         remaining_for_history = available_tokens - query_tokens - context_tokens - template_overhead
-
         history_str = ""
         if remaining_for_history > 0 and session_id:
             history_msgs = get_session_text_history(session_id, remaining_for_history)
@@ -279,7 +264,6 @@ class RagModule:
             'context': context,
             'user_query': query
         }, lang=lang)
-
         if not prompt:
             self.logger.error("Failed to load rag.template")
             return None, "Error loading prompt template", None

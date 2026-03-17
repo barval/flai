@@ -52,21 +52,19 @@ function setLocalTranscribing(sessionId, isTranscribing) {
         }));
         updateSessionsList(sessions);
     } else {
-        // Use setTimeout to allow mic to be visible briefly before removal
-        setTimeout(() => {
-            delete localTranscribingSessions[sessionId];
-            if (sessionsUpdateTimeout) {
-                clearTimeout(sessionsUpdateTimeout);
-                sessionsUpdateTimeout = null;
-            }
-            const sessions = Object.keys(sessionsData).map(id => ({
-                id: id,
-                title: sessionsData[id].title,
-                updated_at: sessionsData[id].updated_at,
-                message_count: sessionsData[id].message_count
-            }));
-            updateSessionsList(sessions);
-        }, 50); // small delay to ensure mic was shown
+        // Remove flag and update immediately (no delay)
+        delete localTranscribingSessions[sessionId];
+        if (sessionsUpdateTimeout) {
+            clearTimeout(sessionsUpdateTimeout);
+            sessionsUpdateTimeout = null;
+        }
+        const sessions = Object.keys(sessionsData).map(id => ({
+            id: id,
+            title: sessionsData[id].title,
+            updated_at: sessionsData[id].updated_at,
+            message_count: sessionsData[id].message_count
+        }));
+        updateSessionsList(sessions);
     }
 }
 

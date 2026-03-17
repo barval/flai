@@ -916,6 +916,11 @@ audio {
     #send-button {
         min-width: 80px;
     }
+
+    /* Ensure transcribing icon is always visible on mobile */
+    .session-status-icon.transcribing {
+        display: inline-block !important;
+    }
 }
 
 /* ===== DARK THEME SUPPORT ===== */

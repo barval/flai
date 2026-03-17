@@ -97,19 +97,20 @@ function updateSessionsList(sessions) {
         const isActive = s.id === currentActiveId ? 'active' : '';
         const dateStr = s.updated_at ? formatFullDateTime(s.updated_at) : '';
         let statusIcons = '';
+        const transcribing = localTranscribingSessions[s.id];
         const info = sessionQueueInfo[s.id];
-        // Check both real queue info and local processing flag
-        const isProcessing = (info && info.processing) || localProcessingSessions[s.id];
-        const hasQueued = info && info.queued > 0;
-        if (isProcessing) {
+        
+        if (transcribing) {
+            statusIcons = '<span class="session-status-icon transcribing blink" title="' + t('transcribing') + '">🎤</span>';
+        } else if (info && info.processing) {
             statusIcons = '<span class="session-status-icon processing blink" title="' + t('processing') + '">⚡</span>';
-        } else if (hasQueued) {
+        } else if (info && info.queued > 0) {
             const count = info.queued > 1 ? ' ' + info.queued : '';
             statusIcons = '<span class="session-status-icon queued" title="' + t('queued') + '">⏳' + count + '</span>';
-        }
-        if (!statusIcons && newMessageIndicators[s.id] && s.id !== currentActiveId) {
+        } else if (newMessageIndicators[s.id] && s.id !== currentActiveId) {
             statusIcons = '<span class="session-status-icon unread blink" title="' + t('new_response') + '">✉️</span>';
         }
+        
         let ttsIcon = '';
         if (currentPlayingSessionId === s.id) {
             ttsIcon = '<span class="session-status-icon tts playing" title="' + t('speak') + '">🗣️</span>';
@@ -224,7 +225,7 @@ function deleteSession(sessionId, sessionTitle, sessionDate) {
         }
     }
     delete newMessageIndicators[sessionId];
-    delete localProcessingSessions[sessionId];
+    delete localTranscribingSessions[sessionId];
     fetch('/api/sessions/' + sessionId + '/delete', { method: 'POST' })
     .then(res => res.json())
     .then(data => {

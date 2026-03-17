@@ -172,9 +172,10 @@ function startResultPolling(requestId) {
                             }
                         }
                     }
-                    // Clear local processing flag for this session
-                    if (resultSessionId && window.setLocalProcessing) {
-                        window.setLocalProcessing(resultSessionId, false);
+                    // Update queue status to remove processing flag for this session
+                    if (resultSessionId) {
+                        // Force refresh queue status to get updated processing info
+                        fetchQueueStatus();
                     }
                 }
                 delete pendingRequests[requestId];
@@ -191,10 +192,6 @@ function startResultPolling(requestId) {
                 } else if (resultSessionId) {
                     // will be shown via queue status
                 }
-                // Clear local processing flag for this session
-                if (resultSessionId && window.setLocalProcessing) {
-                    window.setLocalProcessing(resultSessionId, false);
-                }
                 delete pendingRequests[requestId];
                 window.updateStatusCounter();
                 fetchQueueStatus();
@@ -206,9 +203,6 @@ function startResultPolling(requestId) {
                 originalDisplayMessage('assistant', '⚠️ ' + t('request_timeout'),
                     null, null, null, null, new Date().toISOString(), null, 'system',
                     null, null, null, null, null);
-                if (resultSessionId && window.setLocalProcessing) {
-                    window.setLocalProcessing(resultSessionId, false);
-                }
                 delete pendingRequests[requestId];
             }
         } catch (error) {
@@ -234,10 +228,8 @@ async function sendMessage() {
     sendButton.disabled = true;
     sendButton.innerHTML = '⏳ ' + t('sending');
 
-    // Set local processing flag for the current session
-    if (currentSessionId && window.setLocalProcessing) {
-        window.setLocalProcessing(currentSessionId, true);
-    }
+    // Set local transcribing flag if this is a voice message (will be set later when we know)
+    // We'll set it inside the voice branch after checking file type
 
     try {
         const messageCount = document.querySelectorAll('.user-message').length;
@@ -322,6 +314,9 @@ async function sendMessage() {
                     }
                 }
                 if (data.transcribed_text) {
+                    // Transcribing finished, remove the mic icon
+                    setLocalTranscribing(currentSessionId, false);
+                    
                     if (data.session_id && data.session_id === currentSessionId) {
                         const assistantMsgId = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null, null,
                             new Date().toISOString(), data.response_time, 'whisper');
@@ -348,36 +343,35 @@ async function sendMessage() {
                         }
                     }
                     if (data.request_id) {
-                        pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
-                        // Task is now queued, clear local processing flag
-                        if (currentSessionId && window.setLocalProcessing) {
-                            window.setLocalProcessing(currentSessionId, false);
+                        // Task is queued, update sessionQueueInfo to show hourglass
+                        if (!sessionQueueInfo[currentSessionId]) {
+                            sessionQueueInfo[currentSessionId] = { processing: false, queued: 1 };
+                        } else {
+                            sessionQueueInfo[currentSessionId].queued += 1;
                         }
+                        updateSessionsListFromData();
+                        
+                        pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
                         window.updateStatusCounter();
                         startResultPolling(data.request_id);
                     }
                     return;
                 }
                 if (data.status === 'queued') {
-                    pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
-                    // Task is now queued, clear local processing flag
-                    if (currentSessionId && window.setLocalProcessing) {
-                        window.setLocalProcessing(currentSessionId, false);
+                    // Task is queued, update sessionQueueInfo to show hourglass
+                    if (!sessionQueueInfo[currentSessionId]) {
+                        sessionQueueInfo[currentSessionId] = { processing: false, queued: 1 };
+                    } else {
+                        sessionQueueInfo[currentSessionId].queued += 1;
                     }
+                    updateSessionsListFromData();
+                    
+                    pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
                     window.updateStatusCounter();
                     startResultPolling(data.request_id);
                 } else if (data.response) {
                     originalDisplayMessage('assistant', data.response, data.file_data, data.file_type, data.file_name, data.file_path,
                         data.assistant_timestamp, data.response_time, data.model_used);
-                    // Response received, clear local processing
-                    if (currentSessionId && window.setLocalProcessing) {
-                        window.setLocalProcessing(currentSessionId, false);
-                    }
-                } else {
-                    // No further action, clear local processing
-                    if (currentSessionId && window.setLocalProcessing) {
-                        window.setLocalProcessing(currentSessionId, false);
-                    }
                 }
             } catch (err) {
                 if (window.IS_RELOADING) return;
@@ -385,10 +379,8 @@ async function sendMessage() {
                 console.error('Send message error:', err);
                 const lastMessage = document.querySelector('.user-message:last-child');
                 if (lastMessage) lastMessage.style.borderLeft = '3px solid #e74c3c';
-                // Clear local processing on error
-                if (currentSessionId && window.setLocalProcessing) {
-                    window.setLocalProcessing(currentSessionId, false);
-                }
+                // Clear transcribing flag if it was set
+                setLocalTranscribing(currentSessionId, false);
             }
         };
         if (tempAttachedFile) {
@@ -399,14 +391,23 @@ async function sendMessage() {
                     fileData = e.target.result.split(',')[1];
                     fileType = tempAttachedFile.type;
                     fileName = tempAttachedFile.name;
+                    
+                    // If it's an audio file, set transcribing flag
+                    if (fileType && fileType.startsWith('audio/')) {
+                        setLocalTranscribing(currentSessionId, true);
+                    }
+                    
                     displayUserMessage(fileData, fileType, fileName, null);
                     sendToServer().catch(err => {
                         console.error('Error in sendToServer:', err);
                         if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
+                        // Clear transcribing flag on error
+                        setLocalTranscribing(currentSessionId, false);
                     });
                 } catch (err) {
                     console.error('Error in reader.onload:', err);
                     if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
+                    setLocalTranscribing(currentSessionId, false);
                 } finally {
                     sendButton.disabled = false;
                     sendButton.innerHTML = t('send');
@@ -415,6 +416,7 @@ async function sendMessage() {
             };
             reader.readAsDataURL(tempAttachedFile);
         } else {
+            // Text only request
             try {
                 displayUserMessage(null, null, null, null);
                 sendToServer().catch(err => {
@@ -436,10 +438,8 @@ async function sendMessage() {
         sendButton.disabled = false;
         sendButton.innerHTML = t('send');
         isSending = false;
-        // Clear local processing on unexpected error
-        if (currentSessionId && window.setLocalProcessing) {
-            window.setLocalProcessing(currentSessionId, false);
-        }
+        // Clear transcribing flag if it was set
+        setLocalTranscribing(currentSessionId, false);
     }
 }
 

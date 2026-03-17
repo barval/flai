@@ -34,15 +34,15 @@ function fetchQueueStatus() {
     .catch(err => console.error('Error fetching queue status:', err));
 }
 
-// Local processing status (used for synchronous operations like transcription)
-function setLocalProcessing(sessionId, isProcessing) {
+// Local transcribing status (for voice messages)
+function setLocalTranscribing(sessionId, isTranscribing) {
     if (!sessionId) return;
-    if (isProcessing) {
-        localProcessingSessions[sessionId] = true;
+    if (isTranscribing) {
+        localTranscribingSessions[sessionId] = true;
     } else {
-        delete localProcessingSessions[sessionId];
+        delete localTranscribingSessions[sessionId];
     }
-    // Immediately update sessions list, bypassing debounce
+    // Immediately update sessions list
     if (sessionsUpdateTimeout) {
         clearTimeout(sessionsUpdateTimeout);
         sessionsUpdateTimeout = null;
@@ -57,7 +57,7 @@ function setLocalProcessing(sessionId, isProcessing) {
 }
 
 // Make function globally accessible
-window.setLocalProcessing = setLocalProcessing;
+window.setLocalTranscribing = setLocalTranscribing;
 
 window.updateStatusCounter = function() {
     if (window.IS_RELOADING) return;

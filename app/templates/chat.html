@@ -167,7 +167,8 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'status_indexing': {{ _('status_indexing')|tojson }},
     'status_indexed': {{ _('status_indexed')|tojson }},
     'status_failed': {{ _('status_failed')|tojson }},
-    'status_unknown': {{ _('status_unknown')|tojson }}
+    'status_unknown': {{ _('status_unknown')|tojson }},
+    'transcribing': {{ _('transcribing')|tojson }}
 });
 window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
 function t(key) {

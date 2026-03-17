@@ -11,8 +11,8 @@ let syncInterval = null;
 let newMessageIndicators = {};
 let sessionQueueInfo = {};
 let sessionsUpdateTimeout = null;
-// Local processing flag for sessions (used during synchronous operations like transcription)
-let localProcessingSessions = {};    // sessionId -> boolean
+// Local transcribing flag for voice messages
+let localTranscribingSessions = {};    // sessionId -> boolean
 
 // Voice recording variables
 let mediaRecorder = null;

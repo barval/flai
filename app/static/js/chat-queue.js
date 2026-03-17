@@ -39,21 +39,35 @@ function setLocalTranscribing(sessionId, isTranscribing) {
     if (!sessionId) return;
     if (isTranscribing) {
         localTranscribingSessions[sessionId] = true;
+        // Immediate update to show mic
+        if (sessionsUpdateTimeout) {
+            clearTimeout(sessionsUpdateTimeout);
+            sessionsUpdateTimeout = null;
+        }
+        const sessions = Object.keys(sessionsData).map(id => ({
+            id: id,
+            title: sessionsData[id].title,
+            updated_at: sessionsData[id].updated_at,
+            message_count: sessionsData[id].message_count
+        }));
+        updateSessionsList(sessions);
     } else {
-        delete localTranscribingSessions[sessionId];
+        // Use setTimeout to allow mic to be visible briefly before removal
+        setTimeout(() => {
+            delete localTranscribingSessions[sessionId];
+            if (sessionsUpdateTimeout) {
+                clearTimeout(sessionsUpdateTimeout);
+                sessionsUpdateTimeout = null;
+            }
+            const sessions = Object.keys(sessionsData).map(id => ({
+                id: id,
+                title: sessionsData[id].title,
+                updated_at: sessionsData[id].updated_at,
+                message_count: sessionsData[id].message_count
+            }));
+            updateSessionsList(sessions);
+        }, 50); // small delay to ensure mic was shown
     }
-    // Immediately update sessions list
-    if (sessionsUpdateTimeout) {
-        clearTimeout(sessionsUpdateTimeout);
-        sessionsUpdateTimeout = null;
-    }
-    const sessions = Object.keys(sessionsData).map(id => ({
-        id: id,
-        title: sessionsData[id].title,
-        updated_at: sessionsData[id].updated_at,
-        message_count: sessionsData[id].message_count
-    }));
-    updateSessionsList(sessions);
 }
 
 // Make function globally accessible

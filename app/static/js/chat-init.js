@@ -340,7 +340,8 @@ async function sendMessage() {
                         window.updateStatusCounter();
                         startResultPolling(data.request_id);
 
-                        // Do NOT clear transcribing flag here; it will be cleared when the queued task completes.
+                        // Clear transcribing flag; the mic icon will be removed shortly
+                        setLocalTranscribing(currentSessionId, false);
                     } else {
                         // Simple transcription, no queue – transcription finished, remove mic icon
                         setLocalTranscribing(currentSessionId, false);

@@ -228,9 +228,6 @@ async function sendMessage() {
     sendButton.disabled = true;
     sendButton.innerHTML = '⏳ ' + t('sending');
 
-    // Set local transcribing flag if this is a voice message (will be set later when we know)
-    // We'll set it inside the voice branch after checking file type
-
     try {
         const messageCount = document.querySelectorAll('.user-message').length;
         if (messageCount === 0) {
@@ -314,7 +311,21 @@ async function sendMessage() {
                     }
                 }
                 if (data.transcribed_text) {
-                    // Transcribing finished, remove the mic icon
+                    // First, if there is a request_id, update queue info immediately
+                    if (data.request_id) {
+                        if (!sessionQueueInfo[currentSessionId]) {
+                            sessionQueueInfo[currentSessionId] = { processing: false, queued: 1 };
+                        } else {
+                            sessionQueueInfo[currentSessionId].queued += 1;
+                        }
+                        updateSessionsListFromData();
+                        
+                        pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
+                        window.updateStatusCounter();
+                        startResultPolling(data.request_id);
+                    }
+                    
+                    // Now transcribing is finished, remove the mic icon
                     setLocalTranscribing(currentSessionId, false);
                     
                     if (data.session_id && data.session_id === currentSessionId) {
@@ -341,19 +352,6 @@ async function sendMessage() {
                                 displayedMessageIds.add(data.transcribed_message_id);
                             }
                         }
-                    }
-                    if (data.request_id) {
-                        // Task is queued, update sessionQueueInfo to show hourglass
-                        if (!sessionQueueInfo[currentSessionId]) {
-                            sessionQueueInfo[currentSessionId] = { processing: false, queued: 1 };
-                        } else {
-                            sessionQueueInfo[currentSessionId].queued += 1;
-                        }
-                        updateSessionsListFromData();
-                        
-                        pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
-                        window.updateStatusCounter();
-                        startResultPolling(data.request_id);
                     }
                     return;
                 }

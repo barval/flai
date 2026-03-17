@@ -228,7 +228,7 @@
     line-height: 1;
     margin-right: 4px;
     vertical-align: middle;
-    flex-shrink: 0;
+    flex-shrink: 0; /* prevent icon from shrinking on mobile */
 }
 
 /* Document status icon styles */

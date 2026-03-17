@@ -138,6 +138,10 @@ function startResultPolling(requestId) {
                         } else if (resultSessionId) {
                             // will be shown via queue status
                         }
+                        // Clear transcribing flag for this session if it was set
+                        if (resultSessionId) {
+                            setLocalTranscribing(resultSessionId, false);
+                        }
                     } else if (data.result.messages) {
                         for (const msg of data.result.messages) {
                             if (msg.message_id && displayedMessageIds.has(msg.message_id)) {
@@ -147,6 +151,10 @@ function startResultPolling(requestId) {
                             originalDisplayMessage('assistant', msg.response, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                                 msg.assistant_timestamp, msg.response_time, msg.model_used,
                                 null, null, null, null, msg.message_id);
+                        }
+                        // Clear transcribing flag for the session
+                        if (resultSessionId) {
+                            setLocalTranscribing(resultSessionId, false);
                         }
                     } else if (data.result.response) {
                         if (data.result.message_id && displayedMessageIds.has(data.result.message_id)) {
@@ -171,6 +179,10 @@ function startResultPolling(requestId) {
                                 setNewMessageIndicator(resultSessionId, true);
                             }
                         }
+                        // Clear transcribing flag for this session
+                        if (resultSessionId) {
+                            setLocalTranscribing(resultSessionId, false);
+                        }
                     }
                     // Update queue status to remove processing flag for this session
                     if (resultSessionId) {
@@ -191,6 +203,10 @@ function startResultPolling(requestId) {
                         null, null, null, null, null);
                 } else if (resultSessionId) {
                     // will be shown via queue status
+                }
+                // Clear transcribing flag for the session
+                if (resultSessionId) {
+                    setLocalTranscribing(resultSessionId, false);
                 }
                 delete pendingRequests[requestId];
                 window.updateStatusCounter();
@@ -319,15 +335,17 @@ async function sendMessage() {
                             sessionQueueInfo[currentSessionId].queued += 1;
                         }
                         updateSessionsListFromData();
-                        
+
                         pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
                         window.updateStatusCounter();
                         startResultPolling(data.request_id);
+
+                        // Do NOT clear transcribing flag here; it will be cleared when the queued task completes.
+                    } else {
+                        // Simple transcription, no queue – transcription finished, remove mic icon
+                        setLocalTranscribing(currentSessionId, false);
                     }
-                    
-                    // Now transcribing is finished, remove the mic icon
-                    setLocalTranscribing(currentSessionId, false);
-                    
+
                     if (data.session_id && data.session_id === currentSessionId) {
                         const assistantMsgId = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null, null,
                             new Date().toISOString(), data.response_time, 'whisper');
@@ -363,7 +381,7 @@ async function sendMessage() {
                         sessionQueueInfo[currentSessionId].queued += 1;
                     }
                     updateSessionsListFromData();
-                    
+
                     pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
                     window.updateStatusCounter();
                     startResultPolling(data.request_id);
@@ -389,12 +407,12 @@ async function sendMessage() {
                     fileData = e.target.result.split(',')[1];
                     fileType = tempAttachedFile.type;
                     fileName = tempAttachedFile.name;
-                    
+
                     // If it's an audio file, set transcribing flag
                     if (fileType && fileType.startsWith('audio/')) {
                         setLocalTranscribing(currentSessionId, true);
                     }
-                    
+
                     displayUserMessage(fileData, fileType, fileName, null);
                     sendToServer().catch(err => {
                         console.error('Error in sendToServer:', err);

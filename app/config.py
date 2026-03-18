@@ -21,24 +21,6 @@ def load_config(app):
     app.config['OLLAMA_URL'] = os.getenv('OLLAMA_URL')
     app.config['REDIS_URL'] = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
     
-    # LLM Chat model settings
-    app.config['LLM_CHAT_MODEL'] = os.getenv('LLM_CHAT_MODEL')
-    app.config['LLM_CHAT_MODEL_CONTEXT_WINDOW'] = int(os.getenv('LLM_CHAT_MODEL_CONTEXT_WINDOW', 32768))
-    app.config['LLM_CHAT_TEMPERATURE'] = float(os.getenv('LLM_CHAT_TEMPERATURE', 0.1))
-    app.config['LLM_CHAT_TOP_P'] = float(os.getenv('LLM_CHAT_TOP_P', 0.1))
-    
-    # LLM Multimodal model settings
-    app.config['LLM_MULTIMODAL_MODEL'] = os.getenv('LLM_MULTIMODAL_MODEL')
-    app.config['LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW'] = int(os.getenv('LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW', 32768))
-    app.config['LLM_MULTIMODAL_TEMPERATURE'] = float(os.getenv('LLM_MULTIMODAL_TEMPERATURE', 0.7))
-    app.config['LLM_MULTIMODAL_TOP_P'] = float(os.getenv('LLM_MULTIMODAL_TOP_P', 0.9))
-    
-    # LLM Reasoning model settings
-    app.config['LLM_REASONING_MODEL'] = os.getenv('LLM_REASONING_MODEL')
-    app.config['LLM_REASONING_MODEL_CONTEXT_WINDOW'] = int(os.getenv('LLM_REASONING_MODEL_CONTEXT_WINDOW', 40960))
-    app.config['LLM_REASONING_TEMPERATURE'] = float(os.getenv('LLM_REASONING_TEMPERATURE', 0.7))
-    app.config['LLM_REASONING_TOP_P'] = float(os.getenv('LLM_REASONING_TOP_P', 0.9))
-    
     # Automatic1111 settings
     app.config['AUTOMATIC1111_URL'] = os.getenv('AUTOMATIC1111_URL')
     app.config['AUTOMATIC1111_MODEL'] = os.getenv('AUTOMATIC1111_MODEL')
@@ -54,10 +36,7 @@ def load_config(app):
     # Whisper ASR settings
     app.config['WHISPER_API_URL'] = os.getenv('WHISPER_API_URL', 'http://host.docker.internal:9000/asr')
     
-    # Timeouts
-    app.config['LLM_CHAT_TIMEOUT'] = int(os.getenv('LLM_CHAT_TIMEOUT', 60))
-    app.config['LLM_MULTIMODAL_TIMEOUT'] = int(os.getenv('LLM_MULTIMODAL_TIMEOUT', 120))
-    app.config['LLM_REASONING_TIMEOUT'] = int(os.getenv('LLM_REASONING_TIMEOUT', 300))
+    # Timeouts for services (not model-specific, used for HTTP requests)
     app.config['AUTOMATIC1111_TIMEOUT'] = int(os.getenv('AUTOMATIC1111_TIMEOUT', 180))
     app.config['WHISPER_API_TIMEOUT'] = int(os.getenv('WHISPER_API_TIMEOUT', 120))
     
@@ -78,7 +57,6 @@ def load_config(app):
     # Qdrant settings for RAG
     app.config['QDRANT_URL'] = os.getenv('QDRANT_URL')
     app.config['QDRANT_API_KEY'] = os.getenv('QDRANT_API_KEY')
-    app.config['EMBEDDING_MODEL'] = os.getenv('EMBEDDING_MODEL', 'bge-m3:latest')
     app.config['RAG_CHUNK_SIZE'] = int(os.getenv('RAG_CHUNK_SIZE', 500))
     app.config['RAG_CHUNK_OVERLAP'] = int(os.getenv('RAG_CHUNK_OVERLAP', 50))
     app.config['RAG_TOP_K'] = int(os.getenv('RAG_TOP_K', 5))

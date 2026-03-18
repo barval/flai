@@ -10,9 +10,10 @@ let sessionsData = {};
 let syncInterval = null;
 let newMessageIndicators = {};
 let sessionQueueInfo = {};
-let stableSessionStatus = {};
-let lastCompletionTime = {};
 let sessionsUpdateTimeout = null;
+// Local transcribing flag for voice messages
+let localTranscribingSessions = {};    // sessionId -> boolean
+
 // Voice recording variables
 let mediaRecorder = null;
 let audioChunks = [];

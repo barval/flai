@@ -1,3 +1,4 @@
+/* app/static/css/base.css */
 /* ===== BASE STYLES ===== */
 * {
     margin: 0;
@@ -13,6 +14,7 @@ body {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    overflow-y: auto; /* Allow vertical scrolling when content overflows */
 }
 
 main {

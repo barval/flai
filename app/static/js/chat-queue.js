@@ -1,93 +1,87 @@
 // static/js/chat-queue.js
 // Queue status functions
-
 function startSyncInterval() {
-    if (window.syncInterval) clearInterval(window.syncInterval);
-    window.syncInterval = setInterval(() => {
-        if (window.IS_RELOADING) return;
-        loadSessionsFromServer();
-        fetchQueueStatus();
-        window.updateStatusCounter();
-    }, 5000);
+if (window.syncInterval) clearInterval(window.syncInterval);
+window.syncInterval = setInterval(() => {
+if (window.IS_RELOADING) return;
+loadSessionsFromServer();
+fetchQueueStatus();
+window.updateStatusCounter();
+}, 5000);
 }
-
 function fetchQueueStatus() {
-    if (window.IS_RELOADING) return;
-    fetch('/api/queue/status')
-    .then(res => res.json())
-    .then(data => {
-        if (window.IS_RELOADING) return;
-        const now = Date.now();
-        const agg = {};
-        if (data.processing) {
-            const proc = data.processing;
-            if (!agg[proc.session_id]) agg[proc.session_id] = { processing: false, queued: 0 };
-            agg[proc.session_id].processing = true;
-        }
-        data.queued.forEach(item => {
-            if (!agg[item.session_id]) agg[item.session_id] = { processing: false, queued: 0 };
-            agg[item.session_id].queued += 1;
-        });
-        const newStable = {};
-        Object.keys(agg).forEach(sid => {
-            const current = agg[sid];
-            const prev = stableSessionStatus[sid];
-            if (!prev || prev.processing !== current.processing || prev.queued !== current.queued) {
-                if (!prev || prev.pendingChange) {
-                    if (prev && now - prev.changeTime > 6000) {
-                        newStable[sid] = {
-                            processing: current.processing,
-                            queued: current.queued,
-                            changeTime: now,
-                            pendingChange: false
-                        };
-                    } else {
-                        newStable[sid] = {
-                            ...prev,
-                            pendingChange: true,
-                            changeTime: prev ? prev.changeTime : now
-                        };
-                    }
-                } else {
-                    newStable[sid] = {
-                        ...current,
-                        changeTime: now,
-                        pendingChange: true
-                    };
-                }
-            } else {
-                newStable[sid] = { ...current, changeTime: now, pendingChange: false };
-            }
-        });
-        Object.keys(stableSessionStatus).forEach(sid => {
-            if (!agg[sid] && (now - stableSessionStatus[sid].changeTime) > 10000) {
-                delete stableSessionStatus[sid];
-            }
-        });
-        stableSessionStatus = newStable;
-        sessionQueueInfo = {};
-        Object.keys(stableSessionStatus).forEach(sid => {
-            sessionQueueInfo[sid] = {
-                processing: stableSessionStatus[sid].processing,
-                queued: stableSessionStatus[sid].queued
-            };
-        });
-        updateSessionsListFromData();
-    })
-    .catch(err => console.error('Error fetching queue status:', err));
+if (window.IS_RELOADING) return;
+fetch('/api/queue/status')
+.then(res => res.json())
+.then(data => {
+if (window.IS_RELOADING) return;
+const newInfo = {};
+if (data.processing) {
+const proc = data.processing;
+newInfo[proc.session_id] = { processing: true, queued: 0 };
 }
-
+data.queued.forEach(item => {
+if (!newInfo[item.session_id]) {
+newInfo[item.session_id] = { processing: false, queued: 0 };
+}
+newInfo[item.session_id].queued += 1;
+});
+sessionQueueInfo = newInfo;
+updateSessionsListFromData();
+})
+.catch(err => console.error('Error fetching queue status:', err));
+}
+// Local transcribing status (for voice messages)
+function setLocalTranscribing(sessionId, isTranscribing) {
+if (!sessionId) return;
+console.log('setLocalTranscribing called:', sessionId, isTranscribing);
+if (isTranscribing) {
+localTranscribingSessions[sessionId] = true;
+// Immediate update to show mic - clear any pending timeout
+if (sessionsUpdateTimeout) {
+clearTimeout(sessionsUpdateTimeout);
+sessionsUpdateTimeout = null;
+}
+// Force immediate update with current data
+const sessions = Object.keys(sessionsData).map(id => ({
+id: id,
+title: sessionsData[id].title,
+updated_at: sessionsData[id].updated_at,
+message_count: sessionsData[id].message_count
+}));
+updateSessionsList(sessions);
+console.log('Transcribing flag SET for session:', sessionId);
+} else {
+// Remove flag and update immediately (no delay)
+delete localTranscribingSessions[sessionId];
+if (sessionsUpdateTimeout) {
+clearTimeout(sessionsUpdateTimeout);
+sessionsUpdateTimeout = null;
+}
+// Force immediate update with current data
+const sessions = Object.keys(sessionsData).map(id => ({
+id: id,
+title: sessionsData[id].title,
+updated_at: sessionsData[id].updated_at,
+message_count: sessionsData[id].message_count
+}));
+updateSessionsList(sessions);
+console.log('Transcribing flag CLEARED for session:', sessionId);
+}
+}
+// Make function globally accessible
+window.setLocalTranscribing = setLocalTranscribing;
 window.updateStatusCounter = function() {
-    if (window.IS_RELOADING) return;
-    fetch('/api/queue/counts')
-    .then(response => response.json())
-    .then(data => {
-        if (window.IS_RELOADING) return;
-        const counter = document.getElementById('status-counter');
-        if (counter) {
-            counter.textContent = '📊 ' + data.user_queued + '/' + data.total_queued;
-            counter.title = t('your_requests');
-        }
-    })
-    .catch(err => console.error('Error updating counter:', err));
+if (window.IS_RELOADING) return;
+fetch('/api/queue/counts')
+.then(response => response.json())
+.then(data => {
+if (window.IS_RELOADING) return;
+const counter = document.getElementById('status-counter');
+if (counter) {
+counter.textContent = '📊 ' + data.user_queued + '/' + data.total_queued;
+counter.title = t('your_requests');
+}
+})
+.catch(err => console.error('Error updating counter:', err));
 };

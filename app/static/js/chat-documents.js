@@ -138,12 +138,13 @@ function updateDocumentsList(documents) {
 
     let html = '';
     documents.forEach(doc => {
-        const dateStr = doc.uploaded_at ? formatFullDateTime(doc.uploaded_at) : '';
+        // Use indexed_at if available, otherwise uploaded_at
+        const dateStr = doc.indexed_at ? formatFullDateTime(doc.indexed_at) : (doc.uploaded_at ? formatFullDateTime(doc.uploaded_at) : '');
         const fileSizeFormatted = doc.file_size ? formatFileSize(doc.file_size) : '';
         const statusIcon = getStatusIcon(doc.index_status);
         const statusTitle = getStatusTitle(doc.index_status);
         const isIndexing = doc.index_status === 'indexing';
-        // Add blink class if indexing
+        // Add blink class if indexing for the main status icon
         const iconClass = isIndexing ? 'document-status-icon blink' : 'document-status-icon';
 
         // Format processing time if available
@@ -152,6 +153,14 @@ function updateDocumentsList(documents) {
             // Show with one decimal place, in minutes, using localized abbreviation
             const minAbbr = t('minutes_abbr');
             processingTimeStr = ` ⏱️ ${doc.processing_time.toFixed(1)}${minAbbr}`;
+        }
+
+        // Embedding model line - always show with a fixed 🔄 icon, regardless of status
+        let displayModel = doc.embedding_model || window.CURRENT_EMBEDDING_MODEL || '';
+        let embeddingLine = '';
+        if (displayModel) {
+            // Use a fixed icon '🔄' for the embedding model line, with no status-dependent class.
+            embeddingLine = `<div class="document-embedding"><span class="document-status-icon" style="margin-right:4px;">🔄</span> ${displayModel}</div>`;
         }
 
         html += `
@@ -163,6 +172,7 @@ function updateDocumentsList(documents) {
                         📄 ${escapeHtml(doc.filename)}
                     </div>
                     <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}${processingTimeStr}</div>
+                    ${embeddingLine}
                 </div>
                 <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>
             </div>

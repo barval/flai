@@ -46,10 +46,14 @@ def chat():
             session['current_session'] = new_id
             sessions = db.get_user_sessions(user_id)
     
+    # Get current embedding model from config
+    embedding_model = current_app.config.get('MODEL_CONFIGS', {}).get('embedding', {}).get('model_name') or current_app.config.get('EMBEDDING_MODEL', '')
+    
     return render_template('chat.html',
                           sessions=sessions,
                           documents=documents,
-                          current_session=session.get('current_session'))
+                          current_session=session.get('current_session'),
+                          embedding_model=embedding_model)
 
 
 @bp.route('/api/sessions', methods=['GET'])

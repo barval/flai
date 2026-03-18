@@ -163,10 +163,77 @@ def migrate_db_add_index_status(app):
             if 'indexed_at' not in columns:
                 c.execute("ALTER TABLE documents ADD COLUMN indexed_at DATETIME")
                 app.logger.info("Added column indexed_at to documents table")
+            # New column for tracking start of indexing
+            if 'indexing_started_at' not in columns:
+                c.execute("ALTER TABLE documents ADD COLUMN indexing_started_at DATETIME")
+                app.logger.info("Added column indexing_started_at to documents table")
             
             conn.commit()
     except Exception as e:
         app.logger.error(f"Index status migration error: {str(e)}")
+
+def migrate_add_embedding_model(app):
+    """Add embedding_model column to documents table."""
+    try:
+        with sqlite3.connect(CHAT_DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("PRAGMA table_info(documents)")
+            columns = [col[1] for col in c.fetchall()]
+            
+            if 'embedding_model' not in columns:
+                c.execute("ALTER TABLE documents ADD COLUMN embedding_model TEXT")
+                app.logger.info("Added column embedding_model to documents table")
+            
+            conn.commit()
+    except Exception as e:
+        app.logger.error(f"Embedding model migration error: {str(e)}")
+
+def migrate_add_model_configs(app):
+    """Create model_configs table and populate with defaults from .env."""
+    try:
+        with sqlite3.connect(CHAT_DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS model_configs (
+                    module TEXT PRIMARY KEY,
+                    model_name TEXT,
+                    context_length INTEGER,
+                    temperature REAL,
+                    top_p REAL,
+                    timeout INTEGER,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            # Insert default rows if not present (values from current app.config)
+            default_modules = [
+                ('chat', app.config.get('LLM_CHAT_MODEL', ''),
+                 app.config.get('LLM_CHAT_MODEL_CONTEXT_WINDOW', 32768),
+                 app.config.get('LLM_CHAT_TEMPERATURE', 0.1),
+                 app.config.get('LLM_CHAT_TOP_P', 0.1),
+                 app.config.get('LLM_CHAT_TIMEOUT', 60)),
+                ('reasoning', app.config.get('LLM_REASONING_MODEL', ''),
+                 app.config.get('LLM_REASONING_MODEL_CONTEXT_WINDOW', 40960),
+                 app.config.get('LLM_REASONING_TEMPERATURE', 0.7),
+                 app.config.get('LLM_REASONING_TOP_P', 0.9),
+                 app.config.get('LLM_REASONING_TIMEOUT', 300)),
+                ('multimodal', app.config.get('LLM_MULTIMODAL_MODEL', ''),
+                 app.config.get('LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW', 32768),
+                 app.config.get('LLM_MULTIMODAL_TEMPERATURE', 0.7),
+                 app.config.get('LLM_MULTIMODAL_TOP_P', 0.9),
+                 app.config.get('LLM_MULTIMODAL_TIMEOUT', 120)),
+                ('embedding', app.config.get('EMBEDDING_MODEL', 'bge-m3:latest'),
+                 0, 0.0, 0.0, 0)   # embedding doesn't use these, but we store model name
+            ]
+            for mod in default_modules:
+                c.execute('''
+                    INSERT OR IGNORE INTO model_configs
+                    (module, model_name, context_length, temperature, top_p, timeout)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', mod)
+            conn.commit()
+            app.logger.info("model_configs table created/verified.")
+    except Exception as e:
+        app.logger.error(f"Model config migration error: {str(e)}")
 
 def get_user_sessions(user_id):
     """Get all sessions for a user."""
@@ -451,12 +518,13 @@ def get_user_document_count(user_id):
         return c.fetchone()[0]
 
 def get_user_documents(user_id):
-    """Get all documents for a user, including index status and processing time."""
+    """Get all documents for a user, including index status, processing time and embedding model."""
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
         c.execute('''
-        SELECT id, filename, file_size, file_ext, file_path, uploaded_at, index_status, indexed_at
+        SELECT id, filename, file_size, file_ext, file_path, uploaded_at,
+               index_status, indexed_at, indexing_started_at, embedding_model
         FROM documents
         WHERE user_id = ?
         ORDER BY uploaded_at DESC
@@ -467,6 +535,7 @@ def get_user_documents(user_id):
         for doc in documents:
             uploaded_dt = None
             indexed_dt = None
+            indexing_started_dt = None
             if doc.get('uploaded_at'):
                 try:
                     uploaded_dt = datetime.strptime(doc['uploaded_at'], '%Y-%m-%d %H:%M:%S')
@@ -477,13 +546,28 @@ def get_user_documents(user_id):
                     indexed_dt = datetime.strptime(doc['indexed_at'], '%Y-%m-%d %H:%M:%S')
                 except:
                     pass
+            if doc.get('indexing_started_at'):
+                try:
+                    indexing_started_dt = datetime.strptime(doc['indexing_started_at'], '%Y-%m-%d %H:%M:%S')
+                except:
+                    pass
 
             processing_time = None
             status = doc.get('index_status')
-            if status == INDEX_STATUS_INDEXED and indexed_dt and uploaded_dt:
+            if status == INDEX_STATUS_INDEXED and indexed_dt and indexing_started_dt:
+                # Use indexing_started_at as start time for accurate duration
+                delta = indexed_dt - indexing_started_dt
+                processing_time = delta.total_seconds() / 60.0
+            elif status == INDEX_STATUS_INDEXING and indexing_started_dt:
+                # Currently indexing – show elapsed time since start
+                delta = now - indexing_started_dt
+                processing_time = delta.total_seconds() / 60.0
+            elif status == INDEX_STATUS_INDEXED and indexed_dt and uploaded_dt:
+                # Fallback if indexing_started_at missing (old records)
                 delta = indexed_dt - uploaded_dt
                 processing_time = delta.total_seconds() / 60.0
             elif status == INDEX_STATUS_INDEXING and uploaded_dt:
+                # Fallback if indexing_started_at missing
                 delta = now - uploaded_dt
                 processing_time = delta.total_seconds() / 60.0
             # For pending or failed, processing_time remains None
@@ -499,6 +583,10 @@ def get_user_documents(user_id):
                 if current_app.config.get('TIMEZONE'):
                     indexed_dt = current_app.config['TIMEZONE'].localize(indexed_dt)
                 doc['indexed_at'] = indexed_dt.isoformat()
+            if indexing_started_dt:
+                if current_app.config.get('TIMEZONE'):
+                    indexing_started_dt = current_app.config['TIMEZONE'].localize(indexing_started_dt)
+                doc['indexing_started_at'] = indexing_started_dt.isoformat()
         return documents
 
 def save_document(user_id, doc_id, filename, file_size, file_ext, file_path):
@@ -519,29 +607,36 @@ def get_document(doc_id, user_id):
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
         c.execute('''
-        SELECT id, filename, file_size, file_ext, file_path, uploaded_at, index_status, indexed_at
+        SELECT id, filename, file_size, file_ext, file_path, uploaded_at,
+               index_status, indexed_at, indexing_started_at, embedding_model
         FROM documents
         WHERE id = ? AND user_id = ?
         ''', (doc_id, user_id))
         row = c.fetchone()
         return dict(row) if row else None
 
-def update_document_index_status(doc_id, status, indexed_at=None):
-    """Update the index status and optionally indexed_at for a document."""
+def update_document_index_status(doc_id, status, indexed_at=None, indexing_started_at=None, embedding_model=None):
+    """Update the index status, optionally indexed_at, indexing_started_at and embedding_model for a document."""
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
-        if indexed_at:
-            c.execute('''
-            UPDATE documents
-            SET index_status = ?, indexed_at = ?
-            WHERE id = ?
-            ''', (status, indexed_at, doc_id))
-        else:
-            c.execute('''
-            UPDATE documents
-            SET index_status = ?
-            WHERE id = ?
-            ''', (status, doc_id))
+        updates = []
+        params = []
+        if status is not None:
+            updates.append("index_status = ?")
+            params.append(status)
+        if indexed_at is not None:
+            updates.append("indexed_at = ?")
+            params.append(indexed_at)
+        if indexing_started_at is not None:
+            updates.append("indexing_started_at = ?")
+            params.append(indexing_started_at)
+        if embedding_model is not None:
+            updates.append("embedding_model = ?")
+            params.append(embedding_model)
+        if not updates:
+            return
+        params.append(doc_id)
+        c.execute(f'UPDATE documents SET {", ".join(updates)} WHERE id = ?', params)
         conn.commit()
 
 def delete_document(doc_id, user_id):

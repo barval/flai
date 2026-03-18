@@ -7,16 +7,15 @@ from flask import current_app
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from app.utils import extract_text_from_file, chunk_text, get_current_time_in_timezone, format_prompt
-from app.db import get_session_text_history  # new import for history
+from app.db import get_session_text_history, update_document_index_status
+from app.model_config import get_model_config
 
 class RagModule:
     """Module for Retrieval-Augmented Generation using Qdrant and Ollama embeddings."""
-
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
         self.qdrant_client = None
         self.available = False
-        self.embedding_model = None
         self.collection_name_prefix = "user_"
         self.chunk_size = 500
         self.chunk_overlap = 50
@@ -28,16 +27,13 @@ class RagModule:
         """Initialize module with Flask app configuration."""
         qdrant_url = app.config.get('QDRANT_URL')
         qdrant_api_key = app.config.get('QDRANT_API_KEY')
-        self.embedding_model = app.config.get('EMBEDDING_MODEL', 'bge-m3:latest')
         self.chunk_size = app.config.get('RAG_CHUNK_SIZE', 500)
         self.chunk_overlap = app.config.get('RAG_CHUNK_OVERLAP', 50)
         self.top_k = app.config.get('RAG_TOP_K', 5)
-
         if not qdrant_url:
             app.logger.warning("QDRANT_URL not set, RAG module disabled")
             self.available = False
             return
-
         try:
             self.qdrant_client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
             # Test connection
@@ -48,27 +44,51 @@ class RagModule:
             self.available = False
             app.logger.error(f"Failed to connect to Qdrant: {e}")
 
+    def _get_embedding_model(self):
+        """Retrieve embedding model name from database."""
+        config = get_model_config('embedding')
+        return config.get('model_name') if config else None
+
     def _get_collection_name(self, user_id):
         """Return collection name for a specific user."""
         return f"{self.collection_name_prefix}{user_id}"
 
     def _ensure_collection(self, user_id):
-        """Create collection for user if it doesn't exist."""
+        """
+        Ensure that a collection exists for the user with the correct vector dimension.
+        If the collection exists but has a different dimension, it is deleted and recreated.
+        """
         collection_name = self._get_collection_name(user_id)
+        # Get current embedding dimension
+        test_emb = self._get_embedding("test")
+        if test_emb is None:
+            raise RuntimeError("Cannot get embedding to determine vector size")
+        current_dim = len(test_emb)
         try:
-            self.qdrant_client.get_collection(collection_name)
-        except Exception:
-            # Collection doesn't exist, create it
-            # Determine vector size by getting a test embedding
-            test_emb = self._get_embedding("test")
-            if test_emb is None:
-                raise RuntimeError("Cannot get embedding to determine vector size")
-            vector_size = len(test_emb)
-            self.qdrant_client.create_collection(
-                collection_name=collection_name,
-                vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE)
-            )
-            self.logger.info(f"Created collection {collection_name} with vector size {vector_size}")
+            # Check if collection exists and get its dimension
+            info = self.qdrant_client.get_collection(collection_name)
+            existing_dim = info.config.params.vectors.size
+            if existing_dim == current_dim:
+                # All good, nothing to do
+                self.logger.debug(f"Collection {collection_name} already exists with correct dimension {current_dim}")
+                return
+            else:
+                # Dimension mismatch: delete and recreate
+                self.logger.warning(
+                    f"Dimension mismatch for {collection_name}: "
+                    f"collection has {existing_dim}, model gives {current_dim}. Recreating."
+                )
+                self.qdrant_client.delete_collection(collection_name)
+        except Exception as e:
+            # Collection does not exist or other error – we will create it
+            if "Not found" not in str(e) and "doesn't exist" not in str(e):
+                self.logger.warning(f"Unexpected error checking collection {collection_name}: {e}")
+        # Create the collection with current dimension
+        self.qdrant_client.create_collection(
+            collection_name=collection_name,
+            vectors_config=models.VectorParams(size=current_dim, distance=models.Distance.COSINE)
+        )
+        self.logger.info(f"Created collection {collection_name} with vector size {current_dim}")
 
     def index_document(self, user_id, doc_id, file_path):
         """
@@ -77,25 +97,28 @@ class RagModule:
         """
         if not self.available:
             return False, "RAG service unavailable"
-
+        self.logger.info(f"index_document: starting for doc_id={doc_id}, file_path={file_path}")
         # 1. Extract text
         text = extract_text_from_file(file_path)
         if not text:
+            self.logger.error(f"index_document: failed to extract text from {file_path}")
             return False, "Failed to extract text from document"
-
+        self.logger.info(f"index_document: extracted {len(text)} characters from {file_path}")
         # 2. Chunk text
         chunks = chunk_text(text, self.chunk_size, self.chunk_overlap)
         if not chunks:
+            self.logger.error(f"index_document: no text chunks generated from {file_path}")
             return False, "No text chunks generated"
-
+        self.logger.info(f"index_document: generated {len(chunks)} chunks")
         # 3. Get embeddings for each chunk
         embeddings = []
-        for chunk in chunks:
+        for idx, chunk in enumerate(chunks):
             emb = self._get_embedding(chunk)
             if emb is None:
+                self.logger.error(f"index_document: failed to get embedding for chunk {idx}")
                 return False, "Failed to get embedding for a chunk"
             embeddings.append(emb)
-
+        self.logger.info(f"index_document: obtained embeddings for all {len(chunks)} chunks")
         # 4. Prepare points with valid UUIDs as IDs
         points = []
         for idx, (chunk, emb) in enumerate(zip(chunks, embeddings)):
@@ -112,7 +135,6 @@ class RagModule:
                 }
             )
             points.append(point)
-
         # 5. Ensure collection exists and upsert
         try:
             self._ensure_collection(user_id)
@@ -121,6 +143,7 @@ class RagModule:
                 collection_name=collection_name,
                 points=points
             )
+            self.logger.info(f"index_document: upserted {len(points)} points for doc_id={doc_id}")
             return True, f"Indexed {len(chunks)} chunks"
         except Exception as e:
             self.logger.error(f"Error during upsert: {e}")
@@ -138,6 +161,7 @@ class RagModule:
                     must=[models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id))]
                 )
             )
+            self.logger.info(f"delete_document: deleted vectors for doc_id={doc_id}")
             return True
         except Exception as e:
             # If the collection does not exist, there is nothing to delete -> treat as success
@@ -153,12 +177,10 @@ class RagModule:
         """
         if not self.available:
             return []
-
         top_k = top_k or self.top_k
         query_emb = self._get_embedding(query)
         if query_emb is None:
             return []
-
         collection_name = self._get_collection_name(user_id)
         try:
             search_result = self.qdrant_client.search(
@@ -170,6 +192,7 @@ class RagModule:
                 limit=top_k
             )
             chunks = [hit.payload["text"] for hit in search_result]
+            self.logger.info(f"search: found {len(chunks)} chunks for query '{query[:50]}...'")
             return chunks
         except Exception as e:
             self.logger.error(f"Qdrant search error: {e}")
@@ -196,15 +219,18 @@ class RagModule:
     def generate_answer(self, user_id, query, session_id, lang='ru'):
         """
         Full RAG answer: search + call reasoning model with context, history, and role information.
-        Returns (answer, error_message).
+        Returns (answer, error_message, model_name).
+        Returns (None, None, None) if no relevant documents found (triggers fallback).
         """
         # 1. Retrieve relevant chunks
         chunks = self.search(user_id, query)
         if not chunks:
-            return None, "No relevant documents found"
+            # No relevant documents - return None to trigger fallback to reasoning model
+            self.logger.info(f"No relevant documents found for query: {query[:50]}...")
+            return None, None, None
 
         # 2. Prepare context string
-        context = "\n\n".join(chunks)
+        context = "\n".join(chunks)
 
         # 3. Get conversation history (with token limit)
         # Estimate token count for context and query
@@ -212,14 +238,15 @@ class RagModule:
         context_tokens = self._estimate_tokens(context)
         template_overhead = 800  # rough estimate for template text + instructions
 
-        # Get model's context window and reserved percentage
-        reasoning_model_config = current_app.config
-        max_context_tokens = int(reasoning_model_config.get('LLM_REASONING_MODEL_CONTEXT_WINDOW', 40960))
-        history_percent = int(reasoning_model_config.get('CONTEXT_HISTORY_PERCENT', 75))
+        # Get reasoning model config from DB
+        reasoning_config = get_model_config('reasoning')
+        if not reasoning_config:
+            return None, "Reasoning model configuration missing", None
 
+        max_context_tokens = reasoning_config.get('context_length', 40960)
+        history_percent = int(current_app.config.get('CONTEXT_HISTORY_PERCENT', 75))
         available_tokens = int(max_context_tokens * (history_percent / 100.0))
         remaining_for_history = available_tokens - query_tokens - context_tokens - template_overhead
-
         history_str = ""
         if remaining_for_history > 0 and session_id:
             history_msgs = get_session_text_history(session_id, remaining_for_history)
@@ -237,33 +264,40 @@ class RagModule:
             'context': context,
             'user_query': query
         }, lang=lang)
-
         if not prompt:
             self.logger.error("Failed to load rag.template")
-            return None, "Error loading prompt template"
+            return None, "Error loading prompt template", None
 
         # 6. Call reasoning model
         reasoning_module = current_app.modules.get('base')
         if not reasoning_module:
-            return None, "Reasoning module unavailable"
+            return None, "Reasoning module unavailable", None
 
         response = reasoning_module.call_ollama(
             [{'role': 'user', 'content': prompt}],
             model_type='reasoning',
             lang=lang
         )
-        return response, None
+        model_name = reasoning_config.get('model_name', 'unknown')
+        return response, None, model_name
 
     def _get_embedding(self, text):
-        """Get embedding vector from Ollama."""
+        """Get embedding vector from Ollama using configured embedding model."""
         ollama_url = current_app.config.get('OLLAMA_URL')
+        embedding_model = self._get_embedding_model()
+        if not embedding_model:
+            self.logger.error("No embedding model configured in database")
+            return None
         try:
             response = requests.post(
                 f"{ollama_url}/api/embeddings",
-                json={"model": self.embedding_model, "prompt": text}
+                json={"model": embedding_model, "prompt": text},
+                timeout=30
             )
             if response.status_code == 200:
-                return response.json()["embedding"]
+                emb = response.json()["embedding"]
+                self.logger.debug(f"_get_embedding: got embedding of length {len(emb)}")
+                return emb
             else:
                 self.logger.error(f"Ollama embedding error: {response.text}")
                 return None

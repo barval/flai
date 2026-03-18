@@ -1,11 +1,15 @@
 # app/__init__.py
 import os
-from flask import Flask, request, session, send_file, abort
+from flask import Flask, request, session, send_file, abort, jsonify
 from flask_babel import Babel, gettext
 import logging
 from logging import Formatter
 from .config import load_config
-from .db import init_db, migrate_db_add_response_fields, migrate_db_add_session_visits, migrate_db_add_indexes, migrate_db_add_index_status
+from .db import (
+    init_db, migrate_db_add_response_fields, migrate_db_add_session_visits,
+    migrate_db_add_indexes, migrate_db_add_index_status, migrate_add_model_configs,
+    migrate_add_embedding_model
+)
 from .queue import RedisRequestQueue
 from .userdb import init_user_db, get_user_by_login
 from modules import BaseModule, MultimodalModule, ImageModule, CamModule, RagModule, AudioModule
@@ -52,17 +56,20 @@ def create_app():
     migrate_db_add_session_visits(app)
     migrate_db_add_indexes(app)  # Add indexes for performance
     migrate_db_add_index_status(app)  # Add index_status column to documents table for RAG
+    migrate_add_model_configs(app)   # New migration for model configs
+    migrate_add_embedding_model(app) # Add embedding_model column to documents table
     # Initialize user DB
     init_user_db()
     # Initialize modules
     modules = {}
     modules['base'] = BaseModule(app)
-    if app.config['LLM_MULTIMODAL_MODEL']:
+    # Multimodal module is always created if Ollama is available (model selected via admin)
+    if app.config.get('OLLAMA_URL'):
         modules['multimodal'] = MultimodalModule(app)
-    if app.config['AUTOMATIC1111_URL'] and 'multimodal' in modules:
+    if app.config.get('AUTOMATIC1111_URL') and 'multimodal' in modules:
         modules['image'] = ImageModule(app)
         modules['image'].set_multimodal_module(modules['multimodal'])
-    if app.config['CAMERA_ENABLED']:
+    if app.config.get('CAMERA_ENABLED'):
         modules['cam'] = CamModule(app)
         app.logger.info("Camera module enabled")
     else:
@@ -158,4 +165,18 @@ def create_app():
         except Exception as e:
             app.logger.error(f"Error serving file {safe_path}: {e}")
             abort(404)
+
+    # --- Global error handlers for API routes ---
+    @app.errorhandler(500)
+    def internal_error(error):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Internal server error'}), 500
+        return error
+
+    @app.errorhandler(404)
+    def not_found(error):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Not found'}), 404
+        return error
+
     return app

@@ -11,18 +11,16 @@ from flask_babel import gettext as _
 from flask_babel import force_locale
 
 from app.utils import format_prompt
-from app.db import get_session_text_history  # new import
+from app.db import get_session_text_history
+from app.model_config import get_model_config
 
 class MultimodalModule:
     """Module for multimodal model (image processing)"""
     
-    def __init__(self, app=None, ollama_url=None, models_config=None):
+    def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
-        self.ollama_url = ollama_url
-        self.models_config = models_config or {}
         self.available = False
         self.image_settings = {}
-        self.timeout = 120
         self.token_chars = 3
         self.context_history_percent = 75
         
@@ -38,17 +36,6 @@ class MultimodalModule:
         """Initialize module with Flask app"""
         self.app = app
         self.ollama_url = app.config.get('OLLAMA_URL')
-        self.timeout = app.config.get('LLM_MULTIMODAL_TIMEOUT', 120)
-        
-        self.models_config = {
-            'multimodal': {
-                'model': app.config.get('LLM_MULTIMODAL_MODEL'),
-                'context': app.config.get('LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW', 32768),
-                'temperature': app.config.get('LLM_MULTIMODAL_TEMPERATURE', 0.7),
-                'top_p': app.config.get('LLM_MULTIMODAL_TOP_P', 0.9),
-                'timeout': self.timeout
-            }
-        }
         
         self.image_settings = {
             'max_width': app.config.get('MAX_IMAGE_WIDTH', 3840),
@@ -73,7 +60,7 @@ class MultimodalModule:
         self.check_availability()
         
         if self.available:
-            self.logger.info(f"MultimodalModule initialized and available. Timeout: {self.timeout}s")
+            self.logger.info(f"MultimodalModule initialized and available.")
         else:
             self.logger.warning("MultimodalModule initialized, but multimodal model unavailable")
     
@@ -89,9 +76,11 @@ class MultimodalModule:
                 models = response.json().get('models', [])
                 available_models = [m['name'] for m in models]
                 
-                multimodal_model = self.models_config['multimodal']['model']
+                # Get configured multimodal model name from DB config
+                model_config = self._get_model_config()
+                multimodal_model = model_config.get('model_name') if model_config else None
                 
-                if multimodal_model not in available_models:
+                if multimodal_model and multimodal_model not in available_models:
                     self.logger.warning(f"Multimodal model {multimodal_model} not found in Ollama")
                     return False
                 
@@ -101,6 +90,10 @@ class MultimodalModule:
             self.logger.error(f"Error connecting to Ollama: {str(e)}")
         
         return False
+    
+    def _get_model_config(self):
+        """Retrieve multimodal model configuration directly from the database."""
+        return get_model_config('multimodal')
     
     def validate_image(self, file_data, file_type, file_name, file_size, lang='ru'):
         """Validate image against requirements"""
@@ -127,7 +120,7 @@ class MultimodalModule:
             self.logger.error(f"Error validating image: {str(e)}")
             return False, self._('Could not process image file', lang)
     
-    # --- Context handling (similar to BaseModule) ---
+    # --- Context handling ---
     def _estimate_tokens(self, text):
         return len(text) // self.token_chars + 1
     
@@ -145,8 +138,10 @@ class MultimodalModule:
         if not session_id:
             return ""
         
-        model_config = self.models_config['multimodal']
-        max_context_tokens = model_config['context']
+        model_config = self._get_model_config()
+        if not model_config:
+            return ""
+        max_context_tokens = model_config.get('context_length', 32768)
         available_tokens = int(max_context_tokens * (self.context_history_percent / 100.0))
         
         overhead = 500  # prompt overhead
@@ -195,7 +190,7 @@ class MultimodalModule:
         return response, None
     
     def generate_image_params(self, user_query, lang='ru'):
-        """Generate parameters for image creation (no context needed, but could be added if desired)."""
+        """Generate parameters for image creation (no context needed)."""
         if not self.check_availability():
             return None, self._('Multimodal model unavailable', lang)
         
@@ -240,13 +235,23 @@ class MultimodalModule:
             return None, self._('JSON parsing error: {error}', lang, error=str(e))
     
     def _call_multimodal(self, messages, lang='ru'):
-        """Call multimodal model with configurable timeout"""
+        """Call multimodal model with configuration from database."""
         if not self.available:
             return self._('Multimodal model unavailable', lang)
         
-        model_config = self.models_config['multimodal']
-        model = model_config['model']
+        # Get model config from DB
+        model_config = self._get_model_config()
+        if not model_config:
+            return self._('Multimodal model not configured', lang)
+        
+        model = model_config.get('model_name')
         timeout = model_config.get('timeout', 120)
+        context = model_config.get('context_length', 32768)
+        temperature = model_config.get('temperature', 0.7)
+        top_p = model_config.get('top_p', 0.9)
+        
+        if not model:
+            return self._('Multimodal model not configured', lang)
         
         try:
             payload = {
@@ -254,9 +259,9 @@ class MultimodalModule:
                 'messages': messages,
                 'stream': False,
                 'options': {
-                    'num_ctx': model_config['context'],
-                    'temperature': model_config['temperature'],
-                    'top_p': model_config['top_p'],
+                    'num_ctx': context,
+                    'temperature': temperature,
+                    'top_p': top_p,
                 }
             }
             

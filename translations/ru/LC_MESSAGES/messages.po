@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 7.0\n"
+"Project-Id-Version: FLAI 7.1\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-05 12:00+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -514,5 +514,80 @@ msgstr "Ошибка индексации"
 msgid "status_unknown"
 msgstr "Не индексирован"
 
+msgid "Refresh models from Ollama"
+msgstr "Обновить модели из Ollama"
+
+msgid "Saved"
+msgstr "Сохранено"
+
+msgid "Reasoning"
+msgstr "Рассуждения"
+
+msgid "Multimodal"
+msgstr "Мультимодальная"
+
+msgid "Embedding"
+msgstr "Эмбеддинги"
+
+msgid "-- Select model --"
+msgstr "-- Выберите модель --"
+
+msgid "Context Length"
+msgstr "Длина контекста"
+
+msgid "Temperature"
+msgstr "Температура"
+
+msgid "Top P"
+msgstr "Top P"
+
+msgid "Timeout (s)"
+msgstr "Таймаут (с)"
+
+msgid "Architecture:"
+msgstr "Архитектура:"
+
+msgid "Parameters:"
+msgstr "Параметры:"
+
+msgid "Quantization:"
+msgstr "Квантование:"
+
+msgid "Max context length:"
+msgstr "Макс. длина контекста:"
+
+msgid "Embedding length:"
+msgstr "Длина эмбеддинга:"
+
+msgid "Users"
+msgstr "Пользователи"
+
+msgid "Models"
+msgstr "Модели"
+
+msgid "Please select a model first."
+msgstr "Сначала выберите модель."
+
+msgid "Context length must be at least 512."
+msgstr "Длина контекста должна быть не менее 512."
+
+msgid "Context length cannot exceed {max} (max for this model)."
+msgstr "Длина контекста не может превышать {max} (максимум для этой модели)."
+
+msgid "Temperature must be between 0.0 and 2.0."
+msgstr "Температура должна быть в диапазоне от 0.0 до 2.0."
+
+msgid "Top P must be between 0.0 and 1.0."
+msgstr "Top P должен быть в диапазоне от 0.0 до 1.0."
+
+msgid "Timeout must be between 0 and 1200 seconds."
+msgstr "Таймаут должен быть в диапазоне от 0 до 1200 секунд."
+
+msgid "Reindexing all documents with new embedding model started. This may take a while."
+msgstr "Начата переиндексация всех документов с новой моделью эмбеддингов. Это может занять некоторое время."
+
+msgid "transcribing"
+msgstr "Распознаётся..."
+
 msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v7.0 (c) 2026 Барсуков Валерий"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v7.1 (c) 2026 Барсуков Валерий"

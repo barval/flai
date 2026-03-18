@@ -1,7 +1,7 @@
 # automatic1111
 services:
   automatic1111:
-    # image: siutin/stable-diffusion-webui-docker:latest-cpu  # CPU
+    # image: siutin/stable-diffusion-webui-docker:latest-cpu # CPU
     image: siutin/stable-diffusion-webui-docker:latest-cuda   # GPU
     container_name: sd-webui
     networks:

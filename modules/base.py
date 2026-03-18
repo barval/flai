@@ -8,23 +8,19 @@ from flask_babel import gettext as _
 from flask_babel import force_locale
 
 from app.utils import format_prompt
-from app.db import get_session_text_history  # new import
+from app.db import get_session_text_history
+from app.model_config import get_model_config
 
 class BaseModule:
     """Base module for chat and reasoning model interactions"""
     
-    def __init__(self, app=None, ollama_url=None, models_config=None):
+    def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
-        self.ollama_url = ollama_url
-        self.models_config = models_config or {}
         self.available = False
-        self.timeouts = {}
         self.token_chars = 3
         self.context_history_percent = 75
         if app:
             self.init_app(app)
-        elif ollama_url:
-            self.check_availability()
 
     def _(self, key, lang='ru', **kwargs):
         """Get translated message using Flask-Babel."""
@@ -37,44 +33,14 @@ class BaseModule:
         self.app = app
         self.ollama_url = app.config.get('OLLAMA_URL')
         
-        self.timeouts = {
-            'chat': app.config.get('LLM_CHAT_TIMEOUT', 60),
-            'multimodal': app.config.get('LLM_MULTIMODAL_TIMEOUT', 120),
-            'reasoning': app.config.get('LLM_REASONING_TIMEOUT', 300)
-        }
-        
-        self.models_config = {
-            'chat': {
-                'model': app.config.get('LLM_CHAT_MODEL'),
-                'context': app.config.get('LLM_CHAT_MODEL_CONTEXT_WINDOW', 32768),
-                'temperature': app.config.get('LLM_CHAT_TEMPERATURE', 0.1),
-                'top_p': app.config.get('LLM_CHAT_TOP_P', 0.1),
-                'timeout': self.timeouts['chat']
-            },
-            'reasoning': {
-                'model': app.config.get('LLM_REASONING_MODEL'),
-                'context': app.config.get('LLM_REASONING_MODEL_CONTEXT_WINDOW', 40960),
-                'temperature': app.config.get('LLM_REASONING_TEMPERATURE', 0.7),
-                'top_p': app.config.get('LLM_REASONING_TOP_P', 0.9),
-                'timeout': self.timeouts['reasoning']
-            },
-            'multimodal': {
-                'model': app.config.get('LLM_MULTIMODAL_MODEL', app.config.get('LLM_MULTIMODAL_MODEL')),
-                'context': app.config.get('LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW', 32768),
-                'temperature': app.config.get('LLM_MULTIMODAL_TEMPERATURE', 0.7),
-                'top_p': app.config.get('LLM_MULTIMODAL_TOP_P', 0.9),
-                'timeout': self.timeouts.get('multimodal', 120)
-            }
-        }
-        
-        # Token estimation settings
+        # Token estimation settings (from .env, not model-specific)
         self.token_chars = app.config.get('TOKEN_CHARS', 3)
         self.context_history_percent = app.config.get('CONTEXT_HISTORY_PERCENT', 75)
         
         self.check_availability()
         
         if self.available:
-            self.logger.info(f"BaseModule initialized and available. Timeouts: {self.timeouts}")
+            self.logger.info(f"BaseModule initialized and available.")
         else:
             self.logger.warning("BaseModule initialized, but Ollama is unavailable")
     
@@ -90,18 +56,7 @@ class BaseModule:
             if response.status_code == 200:
                 models = response.json().get('models', [])
                 available_models = [m['name'] for m in models]
-                
-                chat_model = self.models_config['chat']['model']
-                reasoning_model = self.models_config['reasoning']['model']
-                
                 self.logger.info(f"Available models in Ollama: {available_models}")
-                
-                if chat_model not in available_models:
-                    self.logger.warning(f"Chat model {chat_model} not found in Ollama")
-                
-                if reasoning_model not in available_models:
-                    self.logger.warning(f"Reasoning model {reasoning_model} not found in Ollama")
-                
                 self.available = True
                 return True
             else:
@@ -114,16 +69,28 @@ class BaseModule:
         self.available = False
         return False
     
+    def _get_model_config(self, model_type='chat'):
+        """Retrieve model configuration directly from the database."""
+        return get_model_config(model_type)
+    
     def call_ollama(self, messages, model_type='chat', stream=False, lang='ru'):
-        """Call Ollama API with configurable timeout"""
+        """Call Ollama API with configuration from database."""
         if not self.available:
             self.check_availability()
             if not self.available:
                 return self._('Ollama service unavailable', lang)
         
-        model_config = self.models_config.get(model_type, self.models_config['chat'])
-        model = model_config['model']
+        # Get model config from database
+        model_config = self._get_model_config(model_type)
+        if not model_config:
+            self.logger.error(f"No configuration found for model type '{model_type}'")
+            return self._('Model configuration missing', lang)
+        
+        model = model_config.get('model_name')
         timeout = model_config.get('timeout', 60)
+        context = model_config.get('context_length', 32768)
+        temperature = model_config.get('temperature', 0.1)
+        top_p = model_config.get('top_p', 0.1)
         
         if not model:
             template = self._('Model for {model_type} not configured', lang)
@@ -135,9 +102,9 @@ class BaseModule:
                 'messages': messages,
                 'stream': stream,
                 'options': {
-                    'num_ctx': model_config['context'],
-                    'temperature': model_config['temperature'],
-                    'top_p': model_config['top_p'],
+                    'num_ctx': context,
+                    'temperature': temperature,
+                    'top_p': top_p,
                     'stop': ['<|im_end|>', '<|endoftext|>', '\n\n\n'],
                 }
             }
@@ -158,7 +125,7 @@ class BaseModule:
                     if stop_token in content:
                         content = content[:content.index(stop_token)]
                 
-                if model_type == 'chat' and model_config['temperature'] < 0.3:
+                if model_type == 'chat' and temperature < 0.3:
                     content = content.split('\n')[0].strip()
                 
                 return content.strip()
@@ -169,7 +136,7 @@ class BaseModule:
                 
         except requests.exceptions.Timeout:
             self.logger.error(f"Timeout ({timeout}s) when calling Ollama. Model: {model}")
-            template = self._('Timeout ({timeout}s) when calling the model. Try increasing timeout in .env or simplify your request.', lang)
+            template = self._('Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request.', lang)
             return template.format(timeout=timeout)
         except requests.exceptions.ConnectionError:
             self.logger.error(f"Connection error to Ollama at {self.ollama_url}")
@@ -204,14 +171,16 @@ class BaseModule:
         if not session_id:
             return ""
         
-        model_config = self.models_config.get(model_type, self.models_config['chat'])
-        max_context_tokens = model_config['context']
+        # Get model context window from database
+        model_config = self._get_model_config(model_type)
+        if not model_config:
+            return ""
+        max_context_tokens = model_config.get('context_length', 32768)
         # Reserve configured percentage of the window for history + current query
         available_tokens = int(max_context_tokens * (self.context_history_percent / 100.0))
         
         # Estimate tokens for the current query (including prompt overhead)
         # We'll be conservative: assume the prompt template adds some tokens.
-        # For simplicity, we subtract a fixed overhead (e.g., 500 tokens) for the rest of the prompt.
         overhead = 500
         query_tokens = self._estimate_tokens(current_query)
         remaining_for_history = available_tokens - query_tokens - overhead

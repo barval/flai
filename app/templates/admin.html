@@ -1,41 +1,65 @@
+<!-- app/templates/admin.html -->
 {% extends "base.html" %}
 {% block content %}
 <div class="admin-container">
     <h2 class="admin-panel-title">{{ _('Admin Panel') }}</h2>
-    <div style="display: flex; align-items: center; gap: 30px; margin-bottom: 20px;">
-        <button id="add-user-button" class="add-user-button">➕ {{ _('Add user') }}</button>
-        <div class="db-info" style="display: flex; gap: 20px;">
-            <span>{{ _('User DB') }}: <span id="user-db-size">{{ (user_db_size / (1024*1024))|round(2) }}</span> {{ _('MB') }}</span>
-            <span>{{ _('Chat DB') }}: <span id="chat-db-size">{{ (chat_db_size / (1024*1024))|round(2) }}</span> {{ _('MB') }}</span>
-            <span>{{ _('Files DB') }}: <span id="files-db-size">{{ (files_db_size / (1024*1024))|round(2) }}</span> {{ _('MB') }}</span>
-            <span>{{ _('Documents DB') }}: <span id="documents-db-size">{{ (documents_db_size / (1024*1024))|round(2) }}</span> {{ _('MB') }}</span>
+    
+    <!-- Tab navigation -->
+    <div class="admin-tabs">
+        <button class="admin-tab active" data-tab="users">{{ _('Users') }}</button>
+        <button class="admin-tab" data-tab="models">{{ _('Models') }}</button>
+    </div>
+
+    <!-- Users tab content -->
+    <div id="users-tab" class="admin-tab-content active">
+        <div style="display: flex; align-items: center; gap: 30px; margin-bottom: 20px;">
+            <button id="add-user-button" class="add-user-button">➕ {{ _('Add user') }}</button>
+            <div class="db-info" style="display: flex; gap: 20px;">
+                <span>{{ _('User DB') }}: <span id="user-db-size" class="db-value">{{ (user_db_size / (1024*1024))|round(2) }} {{ _('MB') }}</span></span>
+                <span>{{ _('Chat DB') }}: <span id="chat-db-size" class="db-value">{{ (chat_db_size / (1024*1024))|round(2) }} {{ _('MB') }}</span></span>
+                <span>{{ _('Files DB') }}: <span id="files-db-size" class="db-value">{{ (files_db_size / (1024*1024))|round(2) }} {{ _('MB') }}</span></span>
+                <span>{{ _('Documents DB') }}: <span id="documents-db-size" class="db-value">{{ (documents_db_size / (1024*1024))|round(2) }} {{ _('MB') }}</span></span>
+            </div>
+        </div>
+        <div class="users-table-wrapper">
+            <table id="users-table">
+                <thead>
+                    <tr>
+                        <th data-sort="is_active">{{ _('Status') }}</th>
+                        <th data-sort="login">{{ _('Login') }}</th>
+                        <th>{{ _('Password') }}</th>
+                        <th data-sort="name">{{ _('Name') }}</th>
+                        <th data-sort="service_class">{{ _('Class') }}</th>
+                        <th data-sort="sessions_count">{{ _('Sessions') }}</th>
+                        <th data-sort="messages_count">{{ _('Messages') }}</th>
+                        <th data-sort="files_count">{{ _('Files') }}</th>
+                        <th data-sort="documents_count">{{ _('Documents') }}</th>
+                        {% if rooms %}
+                        <th>{{ _('Camera access') }}</th>
+                        {% endif %}
+                        <th>{{ _('Actions') }}</th>
+                    </tr>
+                </thead>
+                <tbody id="users-tbody">
+                    <!-- Data loaded via JS -->
+                </tbody>
+            </table>
         </div>
     </div>
-    <div class="users-table-wrapper">
-        <table id="users-table">
-            <thead>
-                <tr>
-                    <th data-sort="is_active">{{ _('Status') }}</th>
-                    <th data-sort="login">{{ _('Login') }}</th>
-                    <th>{{ _('Password') }}</th>
-                    <th data-sort="name">{{ _('Name') }}</th>
-                    <th data-sort="service_class">{{ _('Class') }}</th>
-                    <th data-sort="sessions_count">{{ _('Sessions') }}</th>
-                    <th data-sort="messages_count">{{ _('Messages') }}</th>
-                    <th data-sort="files_count">{{ _('Files') }}</th>
-                    <th data-sort="documents_count">{{ _('Documents') }}</th>
-                    {% if rooms %}
-                    <th>{{ _('Camera access') }}</th>
-                    {% endif %}
-                    <th>{{ _('Actions') }}</th>
-                </tr>
-            </thead>
-            <tbody id="users-tbody">
-                <!-- Data loaded via JS -->
-            </tbody>
-        </table>
+
+    <!-- Models tab content -->
+    <div id="models-tab" class="admin-tab-content">
+        <div class="models-container">
+            <div class="models-header">
+                <button id="refresh-models" class="refresh-button">🔄 {{ _('Refresh models from Ollama') }}</button>
+            </div>
+            <div id="models-list">
+                <!-- Cards will be populated by JavaScript -->
+            </div>
+        </div>
     </div>
 </div>
+
 <!-- Add user modal -->
 <div id="add-user-modal" class="modal">
     <div class="modal-content">
@@ -84,6 +108,7 @@
         </form>
     </div>
 </div>
+
 <!-- Password change modal -->
 <div id="password-modal" class="modal">
     <div class="modal-content">
@@ -99,6 +124,7 @@
         </form>
     </div>
 </div>
+
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
 <script>
 window.ROOMS = {{ rooms|tojson }};
@@ -141,11 +167,41 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'chat_db': {{ _('Chat DB')|tojson }},
     'files_db': {{ _('Files DB')|tojson }},
     'documents_db': {{ _('Documents DB')|tojson }},
-    'mb': {{ _('MB')|tojson }}
+    'mb': {{ _('MB')|tojson }},
+    // New translations for models tab
+    'Refresh models from Ollama': {{ _('Refresh models from Ollama')|tojson }},
+    'Saved': {{ _('Saved')|tojson }},
+    // Model tab translations
+    'Chat': {{ _('Chat')|tojson }},
+    'Reasoning': {{ _('Reasoning')|tojson }},
+    'Multimodal': {{ _('Multimodal')|tojson }},
+    'Embedding': {{ _('Embedding')|tojson }},
+    '-- Select model --': {{ _('-- Select model --')|tojson }},
+    'Context Length': {{ _('Context Length')|tojson }},
+    'Temperature': {{ _('Temperature')|tojson }},
+    'Top P': {{ _('Top P')|tojson }},
+    'Timeout (s)': {{ _('Timeout (s)')|tojson }},
+    'Architecture:': {{ _('Architecture:')|tojson }},
+    'Parameters:': {{ _('Parameters:')|tojson }},
+    'Quantization:': {{ _('Quantization:')|tojson }},
+    'Max context length:': {{ _('Max context length:')|tojson }},
+    'Embedding length:': {{ _('Embedding length:')|tojson }},
+    // Validation messages
+    'Please select a model first.': {{ _('Please select a model first.')|tojson }},
+    'Context length must be at least 512.': {{ _('Context length must be at least 512.')|tojson }},
+    'Context length cannot exceed {max} (max for this model).': {{ _('Context length cannot exceed {max} (max for this model).')|tojson }},
+    'Temperature must be between 0.0 and 2.0.': {{ _('Temperature must be between 0.0 and 2.0.')|tojson }},
+    'Top P must be between 0.0 and 1.0.': {{ _('Top P must be between 0.0 and 1.0.')|tojson }},
+    'Timeout must be between 0 and 1200 seconds.': {{ _('Timeout must be between 0 and 1200 seconds.')|tojson }},
+    // Added missing translation for Save button
+    'Save': {{ _('Save')|tojson }},
+    // Reindex notification
+    'reindex_started': {{ _('Reindexing all documents with new embedding model started. This may take a while.')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}
 console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);
 {% endif %}
 </script>
 <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+<script src="{{ url_for('static', filename='js/admin-models.js') }}"></script>
 {% endblock %}

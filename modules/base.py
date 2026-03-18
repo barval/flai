@@ -121,6 +121,11 @@ class BaseModule:
                 result = response.json()
                 content = result['message']['content']
                 
+                # Добавлена защита от None
+                if content is None:
+                    self.logger.error(f"Ollama returned None content for model {model}: {result}")
+                    return self._('Model returned empty response', lang)
+                
                 for stop_token in ['<|endoftext|>', '<|im_end|>']:
                     if stop_token in content:
                         content = content[:content.index(stop_token)]

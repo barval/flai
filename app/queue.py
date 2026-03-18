@@ -452,15 +452,14 @@ class RedisRequestQueue:
                         bot_reply = f"⚠️ {error}"
                         is_error = True
                     else:
-                        bot_reply = f"⚠️ {error}"
-                        process_time = round(time.time() - process_start_time, 1)
-                        is_error = True
+                        # bot_reply already contains the model's answer
+                        is_error = False
                 else:
-                    bot_reply = "⚠️ " + self.app.modules['base']._('Multimodal model unavailable', lang=lang)
+                    bot_reply = "⚠️ " + (error or self.app.modules['base']._('Invalid image', lang))
                     process_time = round(time.time() - process_start_time, 1)
                     is_error = True
             else:
-                bot_reply = "⚠️ " + self.app.modules['base']._('Multimodal model unavailable', lang=lang)
+                bot_reply = "⚠️ " + self.app.modules['base']._('Multimodal model unavailable', lang)
                 process_time = round(time.time() - process_start_time, 1)
                 is_error = True
 

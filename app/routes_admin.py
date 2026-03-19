@@ -253,7 +253,7 @@ EMBEDDING_ARCHITECTURES = {
 
 # Known vision architectures (models that support images)
 VISION_ARCHITECTURES = {
-    'llava', 'moondream', 'qwen2vl', 'phi3v', 'gemma3n'
+    'llava', 'moondream', 'qwen2vl', 'phi3v'
 }
 
 

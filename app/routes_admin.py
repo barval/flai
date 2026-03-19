@@ -253,7 +253,7 @@ EMBEDDING_ARCHITECTURES = {
 
 # Known vision architectures (models that support images)
 VISION_ARCHITECTURES = {
-    'llava', 'moondream', 'qwen2vl', 'phi3v', 'gemma3n'
+    'llava', 'moondream', 'qwen2vl', 'phi3v'
 }
 
 
@@ -302,8 +302,8 @@ def ollama_model_info(name):
             if architecture in VISION_ARCHITECTURES:
                 is_vision = True
             # 2. By model name containing 'gemma3n'
-            if 'gemma3n' in name_lower:
-                is_vision = True
+            #if 'gemma3n' in name_lower:
+            #    is_vision = True
             # 3. By families list
             families = details.get('families', [])
             if any('clip' in f.lower() or 'vision' in f.lower() for f in families):

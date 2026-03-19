@@ -1,6 +1,7 @@
 # modules/base.py
 import logging
 import requests
+import traceback
 from datetime import datetime
 import os
 from flask import current_app
@@ -121,6 +122,11 @@ class BaseModule:
                 result = response.json()
                 content = result['message']['content']
                 
+                # Protect against None content
+                if content is None:
+                    self.logger.error(f"Ollama returned None content for model {model}: {result}")
+                    return self._('Model returned empty response', lang)
+                
                 for stop_token in ['<|endoftext|>', '<|im_end|>']:
                     if stop_token in content:
                         content = content[:content.index(stop_token)]
@@ -142,7 +148,7 @@ class BaseModule:
             self.logger.error(f"Connection error to Ollama at {self.ollama_url}")
             return self._('Could not connect to Ollama', lang)
         except Exception as e:
-            self.logger.error(f"Error calling Ollama: {str(e)}")
+            self.logger.error(f"Error calling Ollama: {str(e)}\n{traceback.format_exc()}")
             return f"{self._('Error', lang)}: {str(e)}"
     
     # --- Context handling methods ---
@@ -222,10 +228,25 @@ class BaseModule:
         router_response = self.call_ollama(router_messages, model_type='chat', lang=lang)
         self.logger.info(f"Router response: {router_response}")
         
+        # Additional protection: if response is None, return an error
+        if router_response is None:
+            self.logger.error("Router response is None")
+            return {'error': self._('Model returned empty response', lang)}
+        
         return self._parse_router_response(router_response, message_text, current_time_str, lang)
     
     def _parse_router_response(self, response, original_query, current_time_str, lang='ru'):
         """Parse router response"""
+        # Protect against None
+        if response is None:
+            self.logger.error("Router response is None in _parse_router_response")
+            return {
+                'action': 'none',
+                'query': '',
+                'needs_reasoning': False,
+                'error': self._('Model returned empty response', lang)
+            }
+        
         response = response.strip()
         
         markers = {

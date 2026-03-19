@@ -589,5 +589,8 @@ msgstr "Начата переиндексация всех документов 
 msgid "transcribing"
 msgstr "Распознаётся..."
 
+msgid "Model returned empty response"
+msgstr "Модель вернула пустой ответ"
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v7.1 (c) 2026 Барсуков Валерий"

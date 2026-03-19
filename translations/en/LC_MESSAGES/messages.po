@@ -588,5 +588,8 @@ msgstr "Reindexing all documents with new embedding model started. This may take
 msgid "transcribing"
 msgstr "Transcribing..."
 
+msgid "Model returned empty response"
+msgstr "Model returned empty response"
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v7.1 (c) 2026 Valery Barsukov"

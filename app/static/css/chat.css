@@ -652,13 +652,12 @@ opacity: 1;
 }
 /* ===== MEDIA QUERIES FOR CHAT ===== */
 @media (max-width: 768px) {
+/* Ensure body and main don't scroll */
 body {
 overflow: hidden;
-height: 100vh;
 }
 main {
 overflow: hidden;
-height: calc(100vh - 100px);
 }
 .chat-container {
 flex-direction: column;
@@ -721,7 +720,7 @@ flex-shrink: 0;
 margin-bottom: 5px;
 }
 .chat-messages {
-flex: 1 1 auto;
+flex: 1;
 overflow-y: auto;
 min-height: 0;
 margin-bottom: 5px;

@@ -7,10 +7,14 @@
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+html, body {
+    height: 100%;
+}
+
 body {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    min-height: 100%; /* use percentage instead of vh for better mobile keyboard handling */
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -36,4 +40,14 @@ main {
 }
 ::-webkit-scrollbar-thumb:hover {
     background: #a8a8a8;
+}
+
+/* Mobile adjustments for main to prevent whole-page scroll */
+@media (max-width: 768px) {
+    body {
+        overflow: hidden; /* prevent body scrolling, only internal containers scroll */
+    }
+    main {
+        overflow: hidden; /* ensure main doesn't scroll, child containers handle it */
+    }
 }

@@ -313,9 +313,9 @@ def ollama_model_info(name):
                 is_vision = True
 
             # --- Reasoning detection (by name) ---
-            reasoning_keywords = ['r1', 'reasoning', 'o1', 'deepseek', 'qwq']
-            if any(kw in name_lower for kw in reasoning_keywords):
-                is_reasoning = True
+            #reasoning_keywords = ['r1', 'reasoning', 'o1', 'deepseek', 'qwq']
+            #if any(kw in name_lower for kw in reasoning_keywords):
+            #    is_reasoning = True
 
             # --- Embedding detection ---
             # If already vision, it's not embedding

@@ -1,33 +1,40 @@
 // static/js/guest-theme.js
 // Handles theme switching for unauthenticated users using localStorage
+// Also auto-detects system theme on first visit
+
+function applyTheme(theme) {
+    if (theme === 'dark') {
+        document.body.classList.add('dark-theme');
+        document.getElementById('theme-toggle-guest').textContent = '☀️';
+    } else {
+        document.body.classList.remove('dark-theme');
+        document.getElementById('theme-toggle-guest').textContent = '🌙';
+    }
+    // Save to localStorage (always update)
+    localStorage.setItem('guest_theme', theme);
+    // Optionally inform server to store in session (for consistency after login)
+    fetch('/set-theme/' + theme, {
+        method: 'GET',
+        headers: { 'Cache-Control': 'no-cache' }
+    }).catch(() => {});
+}
 
 document.addEventListener('DOMContentLoaded', function() {
     const guestThemeBtn = document.getElementById('theme-toggle-guest');
-    if (guestThemeBtn) {
-        // Load saved theme from localStorage
-        const savedTheme = localStorage.getItem('guest_theme') || 'light';
-        if (savedTheme === 'dark') {
-            document.body.classList.add('dark-theme');
-            guestThemeBtn.textContent = '☀️';
-        } else {
-            document.body.classList.remove('dark-theme');
-            guestThemeBtn.textContent = '🌙';
-        }
+    if (!guestThemeBtn) return;
 
-        guestThemeBtn.addEventListener('click', function() {
-            const isDark = document.body.classList.contains('dark-theme');
-            const newTheme = isDark ? 'light' : 'dark';
-            // Update body class
-            document.body.classList.toggle('dark-theme', !isDark);
-            // Update button icon
-            guestThemeBtn.textContent = newTheme === 'dark' ? '☀️' : '🌙';
-            // Save to localStorage
-            localStorage.setItem('guest_theme', newTheme);
-            // Also notify server to store in session (optional, for consistency)
-            fetch('/set-theme/' + newTheme, {
-                method: 'GET',
-                headers: { 'Cache-Control': 'no-cache' }
-            }).catch(() => {});
-        });
+    // Determine theme: from localStorage or system preference
+    let savedTheme = localStorage.getItem('guest_theme');
+    if (!savedTheme) {
+        // Auto-detect system color scheme
+        savedTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        localStorage.setItem('guest_theme', savedTheme);
     }
+    applyTheme(savedTheme);
+
+    guestThemeBtn.addEventListener('click', function() {
+        const isDark = document.body.classList.contains('dark-theme');
+        const newTheme = isDark ? 'light' : 'dark';
+        applyTheme(newTheme);
+    });
 });

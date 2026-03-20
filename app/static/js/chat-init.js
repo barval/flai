@@ -49,7 +49,7 @@ return;
 const newMessages = await response.json();
 if (newMessages.length > 0) {
 for (const msg of newMessages) {
-if (msg.role === 'user') continue;
+//if (msg.role === 'user') continue;
 if (displayedMessageIds.has(msg.id)) {
 console.log('Skipping duplicate message by ID', msg.id);
 continue;

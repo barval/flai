@@ -346,3 +346,8 @@
         grid-template-columns: 1fr; /* stack parameter inputs on small screens */
     }
 }
+
+/* Hide voice gender switcher in admin panel – not needed there */
+body.admin-page .voice-gender-switcher {
+    display: none;
+}

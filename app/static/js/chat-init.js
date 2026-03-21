@@ -370,6 +370,21 @@ async function sendMessage() {
                             }
                         }
                     }
+
+                    // Update user message ID for voice messages (critical to prevent duplicates)
+                    if (data.user_message_id) {
+                        const userMessages = document.querySelectorAll('.user-message');
+                        const lastUserMsg = userMessages[userMessages.length - 1];
+                        if (lastUserMsg && lastUserMsg.dataset.timestamp === timestamp) {
+                            if (lastUserMsg.dataset.tempId) {
+                                displayedMessageIds.delete(lastUserMsg.dataset.tempId);
+                                delete lastUserMsg.dataset.tempId;
+                            }
+                            lastUserMsg.dataset.messageId = data.user_message_id;
+                            displayedMessageIds.add(data.user_message_id);
+                        }
+                    }
+
                     return;
                 }
 
@@ -399,8 +414,10 @@ async function sendMessage() {
 
         if (tempAttachedFile) {
             const reader = new FileReader();
+            let processed = false;  // Prevent double onload on desktop
             reader.onload = async function(e) {
-                if (window.IS_RELOADING) return;
+                if (processed) return;
+                processed = true;
                 try {
                     fileData = e.target.result.split(',')[1];
                     fileType = tempAttachedFile.type;
@@ -411,11 +428,7 @@ async function sendMessage() {
                         setLocalTranscribing(currentSessionId, true);
                     }
                     displayUserMessage(fileData, fileType, fileName, null);
-                    sendToServer().catch(err => {
-                        console.error('Error in sendToServer:', err);
-                        if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
-                        setLocalTranscribing(currentSessionId, false);
-                    });
+                    await sendToServer();
                 } catch (err) {
                     console.error('Error in reader.onload:', err);
                     if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
@@ -430,10 +443,7 @@ async function sendMessage() {
         } else {
             try {
                 displayUserMessage(null, null, null, null);
-                sendToServer().catch(err => {
-                    console.error('Error in sendToServer:', err);
-                    if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
-                });
+                await sendToServer();
             } catch (err) {
                 console.error('Error in no-file branch:', err);
                 if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);

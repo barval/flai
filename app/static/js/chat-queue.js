@@ -1,4 +1,4 @@
-// static/js/chat-queue.js
+// app/static/js/chat-queue.js
 // Queue status functions
 function startSyncInterval() {
 if (window.syncInterval) clearInterval(window.syncInterval);

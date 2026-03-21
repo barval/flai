@@ -333,8 +333,13 @@ async function sendMessage() {
                 }
 
                 if (data.transcribed_text) {
-                    console.log('Transcription completed, keeping transcribing flag until task completes');
+                    console.log('Transcription completed');
+                    
+                    // Clear transcribing flag after transcription
+                    setLocalTranscribing(currentSessionId, false);
+                    
                     if (data.request_id) {
+                        // Voice message: task queued, show queue status immediately
                         if (!sessionQueueInfo[currentSessionId]) {
                             sessionQueueInfo[currentSessionId] = { processing: false, queued: 1 };
                         } else {
@@ -344,47 +349,36 @@ async function sendMessage() {
                         pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
                         window.updateStatusCounter();
                         startResultPolling(data.request_id);
-                    }
-                    if (data.session_id && data.session_id === currentSessionId) {
-                        const assistantMsgId = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null, null,
-                            new Date().toISOString(), data.response_time, 'whisper');
-                        if (data.transcribed_message_id) {
-                            const assistantMessages = document.querySelectorAll('.assistant-message');
-                            const lastAssistant = assistantMessages[assistantMessages.length - 1];
-                            if (lastAssistant) {
-                                lastAssistant.dataset.messageId = data.transcribed_message_id;
-                                displayedMessageIds.add(data.transcribed_message_id);
-                            }
-                        }
-                    } else if (data.session_id) {
-                        setNewMessageIndicator(data.session_id, true);
+                        // Refresh queue status to ensure correct icons
+                        fetchQueueStatus();
                     } else {
-                        const assistantMsgId = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null, null,
-                            new Date().toISOString(), data.response_time, 'whisper');
-                        if (data.transcribed_message_id) {
-                            const assistantMessages = document.querySelectorAll('.assistant-message');
-                            const lastAssistant = assistantMessages[assistantMessages.length - 1];
-                            if (lastAssistant) {
-                                lastAssistant.dataset.messageId = data.transcribed_message_id;
-                                displayedMessageIds.add(data.transcribed_message_id);
+                        // Plain audio file: no queue, just show transcribed message
+                        if (data.session_id && data.session_id === currentSessionId) {
+                            const assistantMsgId = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null, null,
+                                new Date().toISOString(), data.response_time, 'whisper');
+                            if (data.transcribed_message_id) {
+                                const assistantMessages = document.querySelectorAll('.assistant-message');
+                                const lastAssistant = assistantMessages[assistantMessages.length - 1];
+                                if (lastAssistant) {
+                                    lastAssistant.dataset.messageId = data.transcribed_message_id;
+                                    displayedMessageIds.add(data.transcribed_message_id);
+                                }
+                            }
+                        } else if (data.session_id) {
+                            setNewMessageIndicator(data.session_id, true);
+                        } else {
+                            const assistantMsgId = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null, null,
+                                new Date().toISOString(), data.response_time, 'whisper');
+                            if (data.transcribed_message_id) {
+                                const assistantMessages = document.querySelectorAll('.assistant-message');
+                                const lastAssistant = assistantMessages[assistantMessages.length - 1];
+                                if (lastAssistant) {
+                                    lastAssistant.dataset.messageId = data.transcribed_message_id;
+                                    displayedMessageIds.add(data.transcribed_message_id);
+                                }
                             }
                         }
                     }
-
-                    // Update user message ID for voice messages (critical to prevent duplicates)
-                    if (data.user_message_id) {
-                        const userMessages = document.querySelectorAll('.user-message');
-                        const lastUserMsg = userMessages[userMessages.length - 1];
-                        if (lastUserMsg && lastUserMsg.dataset.timestamp === timestamp) {
-                            if (lastUserMsg.dataset.tempId) {
-                                displayedMessageIds.delete(lastUserMsg.dataset.tempId);
-                                delete lastUserMsg.dataset.tempId;
-                            }
-                            lastUserMsg.dataset.messageId = data.user_message_id;
-                            displayedMessageIds.add(data.user_message_id);
-                        }
-                    }
-
                     return;
                 }
 

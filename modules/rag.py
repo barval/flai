@@ -3,15 +3,18 @@ import logging
 import requests
 import os
 import uuid
+from typing import List, Dict, Optional, Tuple, Any
 from flask import current_app
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
-from app.utils import extract_text_from_file, chunk_text, get_current_time_in_timezone, format_prompt
+from app.utils import extract_text_from_file, chunk_text, get_current_time_in_timezone, format_prompt, estimate_tokens, build_context_prompt
 from app.db import get_session_text_history, update_document_index_status
 from app.model_config import get_model_config
 
+
 class RagModule:
     """Module for Retrieval-Augmented Generation using Qdrant and Ollama embeddings."""
+
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
         self.qdrant_client = None
@@ -44,16 +47,16 @@ class RagModule:
             self.available = False
             app.logger.error(f"Failed to connect to Qdrant: {e}")
 
-    def _get_embedding_model(self):
+    def _get_embedding_model(self) -> Optional[str]:
         """Retrieve embedding model name from database."""
         config = get_model_config('embedding')
         return config.get('model_name') if config else None
 
-    def _get_collection_name(self, user_id):
+    def _get_collection_name(self, user_id: str) -> str:
         """Return collection name for a specific user."""
         return f"{self.collection_name_prefix}{user_id}"
 
-    def _ensure_collection(self, user_id):
+    def _ensure_collection(self, user_id: str):
         """
         Ensure that a collection exists for the user with the correct vector dimension.
         If the collection exists but has a different dimension, it is deleted and recreated.
@@ -90,7 +93,7 @@ class RagModule:
         )
         self.logger.info(f"Created collection {collection_name} with vector size {current_dim}")
 
-    def index_document(self, user_id, doc_id, file_path):
+    def index_document(self, user_id: str, doc_id: str, file_path: str) -> Tuple[bool, str]:
         """
         Extract text from document, chunk it, generate embeddings and store in Qdrant.
         Returns (success, message).
@@ -149,7 +152,7 @@ class RagModule:
             self.logger.error(f"Error during upsert: {e}")
             return False, f"Qdrant error: {str(e)}"
 
-    def delete_document(self, doc_id, user_id):
+    def delete_document(self, doc_id: str, user_id: str) -> bool:
         """Delete all points belonging to a document from the index."""
         if not self.available:
             return False
@@ -170,7 +173,7 @@ class RagModule:
             self.logger.error(f"Failed to delete document {doc_id} from index: {e}")
             return False
 
-    def search(self, user_id, query, top_k=None):
+    def search(self, user_id: str, query: str, top_k: Optional[int] = None) -> List[str]:
         """
         Search for relevant chunks based on query.
         Returns list of chunk texts.
@@ -198,25 +201,18 @@ class RagModule:
             self.logger.error(f"Qdrant search error: {e}")
             return []
 
-    # --- Helper: rough token estimation (copied from BaseModule) ---
-    def _estimate_tokens(self, text):
-        """Rough token estimation using configured characters per token."""
+    # --- Helper: token estimation (using centralized function) ---
+    def _estimate_tokens(self, text: str) -> int:
+        """Estimate tokens using configured characters per token."""
         token_chars = current_app.config.get('TOKEN_CHARS', 3)
-        return len(text) // token_chars + 1
+        return estimate_tokens(text, token_chars)
 
-    # --- Helper: build history string from list of messages ---
-    def _build_context_prompt(self, history, lang='ru'):
-        """Format conversation history into a string for inclusion in the prompt."""
-        if not history:
-            return ""
-        lines = []
-        for msg in history:
-            # We can use simple role names; translation is optional here
-            role = "User" if msg['role'] == 'user' else "Assistant"
-            lines.append(f"{role}: {msg['content']}")
-        return "\n".join(lines)
+    # --- Helper: build history string using centralized function ---
+    def _build_context_prompt(self, history: List[Dict[str, str]], lang: str = 'ru') -> str:
+        """Format conversation history into a string."""
+        return build_context_prompt(history, lang)
 
-    def generate_answer(self, user_id, query, session_id, lang='ru'):
+    def generate_answer(self, user_id: str, query: str, session_id: str, lang: str = 'ru') -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
         Full RAG answer: search + call reasoning model with context, history, and role information.
         Returns (answer, error_message, model_name).
@@ -281,7 +277,7 @@ class RagModule:
         model_name = reasoning_config.get('model_name', 'unknown')
         return response, None, model_name
 
-    def _get_embedding(self, text):
+    def _get_embedding(self, text: str) -> Optional[List[float]]:
         """Get embedding vector from Ollama using configured embedding model."""
         ollama_url = current_app.config.get('OLLAMA_URL')
         embedding_model = self._get_embedding_model()

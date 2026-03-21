@@ -9,6 +9,7 @@ fetchQueueStatus();
 window.updateStatusCounter();
 }, 5000);
 }
+
 function fetchQueueStatus() {
 if (window.IS_RELOADING) return;
 fetch('/api/queue/status')
@@ -31,13 +32,14 @@ updateSessionsListFromData();
 })
 .catch(err => console.error('Error fetching queue status:', err));
 }
+
 // Local transcribing status (for voice messages)
 function setLocalTranscribing(sessionId, isTranscribing) {
 if (!sessionId) return;
 console.log('setLocalTranscribing called:', sessionId, isTranscribing);
 if (isTranscribing) {
 localTranscribingSessions[sessionId] = true;
-// Immediate update to show mic - clear any pending timeout
+// FIX: Immediate update to show mic - clear any pending timeout
 if (sessionsUpdateTimeout) {
 clearTimeout(sessionsUpdateTimeout);
 sessionsUpdateTimeout = null;
@@ -69,8 +71,10 @@ updateSessionsList(sessions);
 console.log('Transcribing flag CLEARED for session:', sessionId);
 }
 }
+
 // Make function globally accessible
 window.setLocalTranscribing = setLocalTranscribing;
+
 window.updateStatusCounter = function() {
 if (window.IS_RELOADING) return;
 fetch('/api/queue/counts')

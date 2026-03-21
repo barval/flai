@@ -32,4 +32,4 @@ RUN addgroup --system --gid 1000 appuser && \
 USER appuser
 
 # Launching with Gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "2", "wsgi:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "1", "wsgi:app"]

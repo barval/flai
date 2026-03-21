@@ -4,9 +4,6 @@
 const originalLoadMessages = loadMessages;
 const originalDisplayMessage = displayMessage;
 
-// Flag to prevent double submission
-let isSending = false;
-
 function isDuplicateMessage(msg) {
     const messages = document.querySelectorAll(`.${msg.role}-message`);
     for (let el of messages) {
@@ -208,7 +205,7 @@ function startResultPolling(requestId) {
 }
 
 async function sendMessage() {
-    // Prevent double submission
+    // Prevent double submission using global isSending flag from chat-constants.js
     if (isSending) {
         console.log('Send already in progress, ignoring duplicate');
         return;
@@ -224,8 +221,6 @@ async function sendMessage() {
         alert(t('enter_message_or_file'));
         return;
     }
-    
-    const originalButtonText = sendButton.innerHTML;
     
     // Lock button immediately
     sendButton.disabled = true;

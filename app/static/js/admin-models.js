@@ -115,13 +115,10 @@ function renderModelCards() {
         cb.addEventListener('change', onLocalCheckboxChange);
     });
 
-    // Load initial model lists for each module that has a URL
+    // Do NOT automatically refresh models for each module on page load
+    // This prevents unnecessary errors when Ollama is unavailable
+    // Instead, load details for already selected models if any
     modules.forEach(mod => {
-        const urlInput = document.querySelector(`.ollama-url[data-module="${mod.id}"]`);
-        if (urlInput && urlInput.value.trim()) {
-            refreshModelsForModule(mod.id);
-        }
-        // If model name already selected, load details
         const select = document.querySelector(`.model-dropdown[data-module="${mod.id}"]`);
         if (select && select.value) {
             onModelSelect({ target: select });
@@ -155,7 +152,7 @@ async function refreshModelsForModule(module) {
     const urlInput = document.querySelector(`.ollama-url[data-module="${module}"]`);
     const ollamaUrl = urlInput.value.trim();
     if (!ollamaUrl) {
-        alert(t('Please provide Ollama URL first'));
+        showModelError(module, t('Please provide Ollama URL first'));
         return;
     }
     const select = document.querySelector(`.model-dropdown[data-module="${module}"]`);
@@ -163,14 +160,21 @@ async function refreshModelsForModule(module) {
     select.innerHTML = `<option value="">${t('-- Select model --')}</option>`;
     select.disabled = true;
 
+    // Clear previous error message
+    clearModelError(module);
+
     try {
-        // Fetch models from this Ollama instance
         const response = await fetch(`/admin/api/ollama/models?url=${encodeURIComponent(ollamaUrl)}`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+            let errorMsg = `HTTP ${response.status}`;
+            try {
+                const errorData = await response.json();
+                if (errorData.error) errorMsg = errorData.error;
+            } catch (e) {}
+            throw new Error(errorMsg);
+        }
         const models = await response.json();
-        // Cache models for this URL
         modelListCache[ollamaUrl] = models;
-        // Populate dropdown
         models.forEach(model => {
             const option = document.createElement('option');
             option.value = model;
@@ -179,7 +183,7 @@ async function refreshModelsForModule(module) {
         });
     } catch (err) {
         console.error(`Failed to fetch models for ${module}:`, err);
-        alert(t('error') + ': ' + err.message);
+        showModelError(module, t('error') + ': ' + err.message);
     } finally {
         select.disabled = false;
         // Restore previously selected model if exists
@@ -194,6 +198,23 @@ async function refreshModelsForModule(module) {
     }
 }
 
+function showModelError(module, message) {
+    const card = document.querySelector(`.model-card[data-module="${module}"]`);
+    let errorDiv = card.querySelector('.model-error');
+    if (!errorDiv) {
+        errorDiv = document.createElement('div');
+        errorDiv.className = 'model-error';
+        card.appendChild(errorDiv);
+    }
+    errorDiv.textContent = message;
+}
+
+function clearModelError(module) {
+    const card = document.querySelector(`.model-card[data-module="${module}"]`);
+    const errorDiv = card.querySelector('.model-error');
+    if (errorDiv) errorDiv.remove();
+}
+
 async function onModelSelect(event) {
     const select = event.target;
     const module = select.dataset.module;
@@ -205,8 +226,8 @@ async function onModelSelect(event) {
     }
     detailsDiv.style.display = 'block';
     detailsDiv.innerHTML = '<p>Loading...</p>';
+    clearModelError(module);
 
-    // Get URL from input
     const urlInput = document.querySelector(`.ollama-url[data-module="${module}"]`);
     const ollamaUrl = urlInput.value.trim();
     if (!ollamaUrl) {
@@ -214,20 +235,23 @@ async function onModelSelect(event) {
         return;
     }
 
-    // Check cache
     let info = modelDetails[`${ollamaUrl}:${modelName}`];
     if (!info) {
         try {
             const res = await fetch(`/admin/api/ollama/model/${encodeURIComponent(modelName)}?url=${encodeURIComponent(ollamaUrl)}`);
-            if (res.ok) {
-                info = await res.json();
-                modelDetails[`${ollamaUrl}:${modelName}`] = info;
-            } else {
-                detailsDiv.innerHTML = '<p>Error loading model info</p>';
-                return;
+            if (!res.ok) {
+                let errorMsg = `HTTP ${res.status}`;
+                try {
+                    const errorData = await res.json();
+                    if (errorData.error) errorMsg = errorData.error;
+                } catch (e) {}
+                throw new Error(errorMsg);
             }
+            info = await res.json();
+            modelDetails[`${ollamaUrl}:${modelName}`] = info;
         } catch (err) {
-            detailsDiv.innerHTML = '<p>Error loading model info</p>';
+            console.error(`Error loading model info for ${modelName}:`, err);
+            detailsDiv.innerHTML = `<p>${t('error')}: ${err.message}</p>`;
             return;
         }
     }

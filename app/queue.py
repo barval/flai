@@ -6,11 +6,13 @@ import time
 import threading
 import sqlite3
 import os
+from typing import Dict, Any, Optional, Tuple, List
 from .utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, save_uploaded_file
 from .db import save_message, CHAT_DB_PATH, update_document_index_status, \
     INDEX_STATUS_PENDING, INDEX_STATUS_INDEXING, INDEX_STATUS_INDEXED, INDEX_STATUS_FAILED, \
     get_current_time_for_db
-from .model_config import get_model_config   # <-- NEW IMPORT
+from .model_config import get_model_config
+
 
 class RedisRequestQueue:
     def __init__(self, app):
@@ -78,7 +80,8 @@ class RedisRequestQueue:
                 self.app.logger.error(f"RedisRequestQueue: error in worker loop: {str(e)}")
                 time.sleep(1)
 
-    def add_request(self, user_id, session_id, request_data, user_class, lang='ru'):
+    def add_request(self, user_id: str, session_id: str, request_data: Dict[str, Any],
+                    user_class: int, lang: str = 'ru') -> Tuple[str, Dict[str, Any]]:
         request_id = str(uuid.uuid4())
         timestamp = time.time()
         task = {
@@ -100,8 +103,7 @@ class RedisRequestQueue:
         self.app.logger.info(f"RedisRequestQueue.add_request: task added, position={queue_length}")
         return request_id, position_info
 
-    def add_index_task(self, user_id, doc_id, file_path, lang='ru'):
-        """Add a document indexing task to the queue."""
+    def add_index_task(self, user_id: str, doc_id: str, file_path: str, lang: str = 'ru') -> str:
         request_id = str(uuid.uuid4())
         timestamp = time.time()
         task = {
@@ -117,8 +119,7 @@ class RedisRequestQueue:
         self.redis.rpush(self.queue_key, pickle.dumps(task))
         return request_id
 
-    def add_reindex_all_task(self, lang='ru'):
-        """Add a task to reindex all documents for all users."""
+    def add_reindex_all_task(self, lang: str = 'ru') -> str:
         request_id = str(uuid.uuid4())
         timestamp = time.time()
         task = {
@@ -131,7 +132,7 @@ class RedisRequestQueue:
         self.redis.rpush(self.queue_key, pickle.dumps(task))
         return request_id
 
-    def get_user_queue_counts(self, user_id):
+    def get_user_queue_counts(self, user_id: str) -> Tuple[int, int]:
         total = self.redis.llen(self.queue_key)
         if total == 0:
             return 0, 0
@@ -146,7 +147,7 @@ class RedisRequestQueue:
                 continue
         return user_count, total
 
-    def _get_session_title(self, session_id, lang='ru'):
+    def _get_session_title(self, session_id: str, lang: str = 'ru') -> str:
         try:
             with sqlite3.connect(CHAT_DB_PATH) as conn:
                 c = conn.cursor()
@@ -157,33 +158,25 @@ class RedisRequestQueue:
             self.app.logger.error(f"Error getting session title: {str(e)}")
             return self.app.modules['base']._('Unknown session', lang=lang)
 
-    def _get_model_name(self, module_type):
-        """
-        Get current model name for given module type (chat, reasoning, multimodal, embedding)
-        directly from database configuration.
-        """
+    def _get_model_name(self, module_type: str) -> Optional[str]:
         config = get_model_config(module_type)
         return config.get('model_name') if config else None
 
-    def _try_rag_answer(self, query, session_id, user_id, lang):
-        """Attempt to answer using RAG. Returns answer string if successful, None otherwise."""
+    def _try_rag_answer(self, query: str, session_id: str, user_id: str, lang: str) -> Tuple[Optional[str], Optional[str]]:
         rag = self.app.modules.get('rag')
         if rag and rag.available:
             answer, error, model_name = rag.generate_answer(user_id, query, session_id, lang=lang)
-            # Return answer only if we got a valid response (not None, None, None)
             if answer is not None and error is None:
                 return answer, model_name
         return None, None
 
-    def _process_request(self, task):
+    def _process_request(self, task: Dict[str, Any]) -> Dict[str, Any]:
         self.app.logger.info(f"RedisRequestQueue._process_request: processing task {task['id']}")
-        # Handle document indexing task
         if task.get('type') == 'index_document':
             return self._process_index_task(task)
-        # Handle reindex all task
         if task.get('type') == 'reindex_all_embeddings':
             return self._process_reindex_all_task(task)
-        # Regular message processing
+
         user_id = task['user_id']
         session_id = task['session_id']
         request_data = task['data']
@@ -217,13 +210,11 @@ class RedisRequestQueue:
             process_time = 0
             message_id = None
 
-            # Try RAG first for reasoning queries
             if action_type == 'reasoning':
                 rag_start_time = time.time()
                 rag_answer, rag_model_name = self._try_rag_answer(query, session_id, user_id, lang)
                 rag_time = round(time.time() - rag_start_time, 1)
                 if rag_answer is not None:
-                    # RAG found relevant documents and generated answer
                     completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
                     model_used = rag_model_name + " (RAG)" if rag_model_name else 'unknown (RAG)'
                     message_id = save_message(session_id, 'assistant', rag_answer,
@@ -237,7 +228,6 @@ class RedisRequestQueue:
                         'is_error': False,
                         'message_id': message_id
                     }
-                # If RAG returns None, continue with normal reasoning processing (fallback)
                 self.app.logger.info(f"RAG returned no answer, falling back to reasoning model for query: {query[:50]}...")
 
             if action_type == 'image':
@@ -362,7 +352,6 @@ class RedisRequestQueue:
                                 is_error = True
                             else:
                                 is_error = False
-                            # Get actual multimodal model name
                             mm_model_name = self._get_model_name('multimodal') or 'unknown'
                             msg_id2 = save_message(
                                 session_id, 'assistant', bot_reply,
@@ -391,7 +380,6 @@ class RedisRequestQueue:
                     is_error = True
                     process_time = 0
             elif action_type == 'reasoning':
-                # This case is now only reached if RAG attempt returned None (no relevant documents)
                 if router_result.get('needs_reasoning'):
                     reasoning_start_time = time.time()
                     final_response = self.app.modules['base'].process_reasoning(query, current_time_str, lang=lang, session_id=session_id)
@@ -402,7 +390,6 @@ class RedisRequestQueue:
                     final_response = query
                 is_error = False
             elif action_type == 'rag':
-                # RAG action (explicit user request)
                 rag_module = self.app.modules.get('rag')
                 if rag_module and rag_module.available:
                     rag_start_time = time.time()
@@ -421,7 +408,7 @@ class RedisRequestQueue:
                     model_used = 'system'
                     is_error = True
                     process_time = 0
-            else:  # action_type == 'none'
+            else:
                 process_time = router_time
                 final_response = query
                 is_error = False
@@ -452,7 +439,6 @@ class RedisRequestQueue:
                         bot_reply = f"⚠️ {error}"
                         is_error = True
                     else:
-                        # bot_reply already contains the model's answer
                         is_error = False
                 else:
                     bot_reply = "⚠️ " + (error or self.app.modules['base']._('Invalid image', lang))
@@ -464,7 +450,6 @@ class RedisRequestQueue:
                 is_error = True
 
             completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
-            # Get actual multimodal model name
             mm_model_name = self._get_model_name('multimodal') or 'unknown'
             message_id = save_message(session_id, 'assistant', bot_reply, model_name=mm_model_name, response_time=str(process_time))
             return {
@@ -486,13 +471,11 @@ class RedisRequestQueue:
                 'response_time': 0
             }
 
-    def _process_index_task(self, task):
-        """Process document indexing task."""
+    def _process_index_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         doc_id = task['doc_id']
         file_path = task['file_path']
         user_id = task['user_id']
         lang = task.get('lang', 'ru')
-        # Set status to indexing and record start time
         indexing_started_at = get_current_time_for_db()
         update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=indexing_started_at)
         rag = self.app.modules.get('rag')
@@ -503,7 +486,6 @@ class RedisRequestQueue:
         try:
             success, message = rag.index_document(user_id, doc_id, file_path)
             if success:
-                # Update status to indexed with current time and embedding model
                 indexed_at = get_current_time_for_db()
                 embedding_model = self._get_model_name('embedding') or 'unknown'
                 update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at, embedding_model=embedding_model)
@@ -517,13 +499,11 @@ class RedisRequestQueue:
             update_document_index_status(doc_id, INDEX_STATUS_FAILED)
             return {'success': False, 'error': str(e), 'doc_id': doc_id}
 
-    def _process_reindex_all_task(self, task):
-        """Process reindex all documents task."""
+    def _process_reindex_all_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         self.app.logger.info("Starting reindex of all documents with new embedding model.")
         lang = task.get('lang', 'ru')
         from app.db import CHAT_DB_PATH
         import sqlite3
-        # Get all documents from the database
         conn = sqlite3.connect(CHAT_DB_PATH)
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
@@ -537,7 +517,6 @@ class RedisRequestQueue:
         total = len(documents)
         success_count = 0
         fail_count = 0
-        # Set all documents to pending status before starting
         doc_ids = [doc['id'] for doc in documents]
         if doc_ids:
             placeholders = ','.join(['?'] * len(doc_ids))
@@ -554,19 +533,14 @@ class RedisRequestQueue:
             doc_id = doc['id']
             user_id = doc['user_id']
             file_path = doc['file_path']
-            # Build absolute path
             documents_folder = self.app.config['DOCUMENTS_FOLDER']
             full_path = os.path.join(documents_folder, file_path)
             self.app.logger.info(f"Reindexing document {doc_id} for user {user_id}")
-            # Delete old vectors
             try:
                 rag.delete_document(doc_id, user_id)
             except Exception as e:
                 self.app.logger.error(f"Failed to delete old vectors for doc {doc_id}: {e}")
-            # Continue anyway, maybe collection doesn't exist
-            # Index again with new model
             try:
-                # Set status to indexing and record start time
                 indexing_started_at = get_current_time_for_db()
                 update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=indexing_started_at)
                 success, message = rag.index_document(user_id, doc_id, full_path)
@@ -588,7 +562,7 @@ class RedisRequestQueue:
         self.app.logger.info(f"Reindex all completed. Total: {total}, Success: {success_count}, Failed: {fail_count}")
         return {'success': True, 'total': total, 'success_count': success_count, 'failed_count': fail_count}
 
-    def get_user_requests_status(self, user_id, lang='ru'):
+    def get_user_requests_status(self, user_id: str, lang: str = 'ru') -> Dict[str, Any]:
         result = {'processing': None, 'queued': [], 'recent_completed': []}
         user_requests = self.redis.smembers(f"{self.user_requests_key}:{user_id}")
         user_requests = {r.decode() if isinstance(r, bytes) else r for r in user_requests}
@@ -611,7 +585,7 @@ class RedisRequestQueue:
                 position += 1
         return result
 
-    def _format_request_info(self, task, lang='ru'):
+    def _format_request_info(self, task: Dict[str, Any], lang: str = 'ru') -> Dict[str, Any]:
         type_icons = {'text': '💬', 'image': '🎨', 'camera': '📷', 'reasoning': '🧠', 'audio': '🎤', 'index_document': '📄'}
         return {
             'id': task['id'],
@@ -624,7 +598,7 @@ class RedisRequestQueue:
             'preview': task.get('data', {}).get('preview', '')
         }
 
-    def check_result(self, request_id):
+    def check_result(self, request_id: str) -> Optional[Dict[str, Any]]:
         result_data = self.redis.hget(self.results_key, request_id)
         if result_data:
             return pickle.loads(result_data)

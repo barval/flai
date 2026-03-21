@@ -1,11 +1,13 @@
+# app/routes/queue.py
 from flask import Blueprint, session, jsonify, current_app
+from flask_babel import gettext as _
 
-bp = Blueprint('queue', __name__)
+bp = Blueprint('queue', __name__, url_prefix='/api/queue')
 
-@bp.route('/api/queue/status', methods=['GET'])
+@bp.route('/status', methods=['GET'])
 def api_queue_status():
     if 'login' not in session:
-        return jsonify({'error': 'Не авторизован'}), 401
+        return jsonify({'error': _('Not authorized')}), 401
     user_id = session['login']
     lang = session.get('language', 'ru')
     status = current_app.request_queue.get_user_requests_status(user_id, lang=lang)
@@ -17,18 +19,18 @@ def api_queue_status():
     }
     return jsonify(status)
 
-@bp.route('/api/queue/counts', methods=['GET'])
+@bp.route('/counts', methods=['GET'])
 def api_queue_counts():
     if 'login' not in session:
-        return jsonify({'error': 'Не авторизован'}), 401
+        return jsonify({'error': _('Not authorized')}), 401
     user_id = session['login']
     user_queued, total_queued = current_app.request_queue.get_user_queue_counts(user_id)
     return jsonify({'user_queued': user_queued, 'total_queued': total_queued})
 
-@bp.route('/api/queue/result/<request_id>', methods=['GET'])
+@bp.route('/result/<request_id>', methods=['GET'])
 def api_check_result(request_id):
     if 'login' not in session:
-        return jsonify({'error': 'Не авторизован'}), 401
+        return jsonify({'error': _('Not authorized')}), 401
     result = current_app.request_queue.check_result(request_id)
     if result:
         return jsonify(result)

@@ -1,13 +1,11 @@
-# app/routes_admin.py
-# Admin panel routes - handles user management and statistics
-
+# app/routes/admin.py
 import json
 import logging
 import os
 import sqlite3
 import requests
-from flask import Blueprint, render_template, session, jsonify, request, current_app
 from functools import wraps
+from flask import Blueprint, render_template, session, jsonify, request, current_app
 from flask_babel import gettext as _
 from app.userdb import (
     list_users, create_user, update_user, delete_user,
@@ -23,7 +21,7 @@ bp = Blueprint('admin', __name__, url_prefix='/admin')
 logger = logging.getLogger(__name__)
 
 
-def get_file_size_bytes(path):
+def get_file_size_bytes(path: str) -> int:
     """Get file size in bytes."""
     try:
         return os.path.getsize(path)
@@ -31,7 +29,7 @@ def get_file_size_bytes(path):
         return 0
 
 
-def get_folder_size_bytes(folder_path):
+def get_folder_size_bytes(folder_path: str) -> int:
     """Get total size of all files in a folder recursively."""
     total_size = 0
     if not os.path.exists(folder_path):
@@ -63,14 +61,14 @@ def admin_panel():
     rooms = {}
     if 'cam' in current_app.modules and current_app.modules['cam'].available:
         rooms = current_app.modules['cam'].get_all_rooms()
-    
+
     chat_db_size = get_file_size_bytes(CHAT_DB_PATH)
     user_db_size = get_file_size_bytes(USER_DB_PATH)
     uploads_folder = current_app.config.get('UPLOAD_FOLDER', 'data/uploads')
     files_db_size = get_folder_size_bytes(uploads_folder)
     documents_folder = current_app.config.get('DOCUMENTS_FOLDER', 'data/documents')
     documents_db_size = get_folder_size_bytes(documents_folder)
-    
+
     return render_template('admin.html',
                           rooms=rooms,
                           chat_db_size=chat_db_size,
@@ -121,19 +119,19 @@ def add_user():
         data = request.get_json()
         if not data:
             return jsonify({'error': 'No JSON data'}), 400
-        
+
         login = data.get('login')
         password = data.get('password')
         name = data.get('name')
         service_class = data.get('service_class', 2)
         is_active = data.get('is_active', True)
         camera_permissions = data.get('camera_permissions')
-        
+
         if not login or not password or not name:
             return jsonify({'error': _('Missing fields')}), 400
         if get_user_by_login(login):
             return jsonify({'error': _('Login already exists')}), 400
-        
+
         create_user(
             login=login,
             password=password,
@@ -160,7 +158,7 @@ def update_user_data(login):
         service_class = data.get('service_class')
         is_active = data.get('is_active')
         camera_permissions = data.get('camera_permissions')
-        
+
         update_user(
             login=login,
             name=name,
@@ -213,7 +211,7 @@ def get_stats():
         files_db_size = get_folder_size_bytes(uploads_folder)
         documents_folder = current_app.config.get('DOCUMENTS_FOLDER', 'data/documents')
         documents_db_size = get_folder_size_bytes(documents_folder)
-        
+
         return jsonify({
             'chat_db_size': chat_db_size,
             'user_db_size': user_db_size,
@@ -246,12 +244,9 @@ def ollama_models():
         return jsonify({'error': str(e)}), 500
 
 
-# Known embedding architectures (family names)
 EMBEDDING_ARCHITECTURES = {
     'bert', 'bge', 'e5', 'snowflake-arctic-embed', 'minilm', 'nomic-embed', 'gte', 'qwen2embed'
 }
-
-# Known vision architectures (models that support images)
 VISION_ARCHITECTURES = {
     'llava', 'moondream', 'qwen2vl', 'phi3v'
 }
@@ -272,7 +267,6 @@ def ollama_model_info(name):
             model_info = data.get('model_info', {})
             template = data.get('template', '')
 
-            # Extract relevant fields
             context_length = None
             embedding_length = None
             is_embedding = False
@@ -285,46 +279,28 @@ def ollama_model_info(name):
                     context_length = v
                 if k.endswith('.embedding_length') or k == 'embedding_length':
                     embedding_length = v
-                # Vision indicators: keys containing "vision" or "mmproj"
                 if 'vision' in k.lower() and v:
                     is_vision = True
                 if 'mmproj' in k.lower() and v:
                     is_vision = True
-                # Tools indicators (optional)
                 if 'tools' in k.lower() and v:
                     is_tools = True
 
             architecture = details.get('family', '').lower()
             name_lower = name.lower()
 
-            # --- Vision detection (enhanced) ---
-            # 1. By architecture
             if architecture in VISION_ARCHITECTURES:
                 is_vision = True
-            # 2. By model name containing 'gemma3n'
-            #if 'gemma3n' in name_lower:
-            #    is_vision = True
-            # 3. By families list
             families = details.get('families', [])
             if any('clip' in f.lower() or 'vision' in f.lower() for f in families):
                 is_vision = True
-            # 4. By template containing image placeholders
             if template and ('{{ .Images }}' in template or '{{ .Image }}' in template):
                 is_vision = True
 
-            # --- Reasoning detection (by name) ---
-            #reasoning_keywords = ['r1', 'reasoning', 'o1', 'deepseek', 'qwq']
-            #if any(kw in name_lower for kw in reasoning_keywords):
-            #    is_reasoning = True
-
-            # --- Embedding detection ---
-            # If already vision, it's not embedding
             if is_vision:
                 is_embedding = False
             else:
-                # Heuristics for embedding models
                 if embedding_length and int(embedding_length) > 0:
-                    # Check architecture or name or empty template
                     if architecture in EMBEDDING_ARCHITECTURES:
                         is_embedding = True
                     elif 'embed' in name_lower:
@@ -408,7 +384,6 @@ def update_model_config(module):
     from app.db import get_db
     with get_db() as conn:
         c = conn.cursor()
-        # Get old model name for embedding module
         old_model = None
         if module == 'embedding':
             c.execute('SELECT model_name FROM model_configs WHERE module = ?', (module,))
@@ -424,21 +399,16 @@ def update_model_config(module):
         ''', values)
         conn.commit()
 
-    # Reload configs into app.config
     _reload_model_configs(current_app)
 
-    # If embedding model changed, start reindexing all documents
     result = {'status': 'ok'}
     if module == 'embedding':
         new_model = updates.get('model_name')
         if new_model and new_model != old_model:
             current_app.logger.info(f"Embedding model changed from {old_model} to {new_model}, starting reindex all")
-            current_app.request_queue.add_reindex_all_task(lang='ru')  # default language
-            # Include the new model name in the response so client can update its global variable
+            current_app.request_queue.add_reindex_all_task(lang='ru')
             result['model_name'] = new_model
         else:
-            current_app.logger.info(f"Embedding model unchanged ({old_model}), no reindex triggered")
-            # Still return the current model name (maybe old_model)
             result['model_name'] = old_model or new_model
 
     return jsonify(result)
@@ -446,7 +416,6 @@ def update_model_config(module):
 
 def _reload_model_configs(app):
     """Helper to reload model configs from DB into app.config."""
-    # Use direct connection without Flask's g to avoid context issues during startup
     import sqlite3
     from app.db import CHAT_DB_PATH
     conn = sqlite3.connect(CHAT_DB_PATH)

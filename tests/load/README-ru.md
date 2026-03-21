@@ -20,14 +20,14 @@
 python3 -m venv venv
 ```
 3. **Активируйте виртуальное окружение**:
-На Linux/macOS:
-```bash
-source venv/bin/activate
-```
-На Windows:
-```bash
-venv\Scripts\activate
-```
+    - На Linux/macOS:
+    ```bash
+    source venv/bin/activate
+    ```
+    - На Windows:
+    ```bash
+    venv\Scripts\activate
+    ```
 4. **Установите Locust** (и любые другие необходимые пакеты):
 ```bash
 pip install locust

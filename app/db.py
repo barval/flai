@@ -33,7 +33,7 @@ def close_db(e=None):
         db.close()
 
 def init_db():
-    """Initialize the database (create tables)."""
+    """Initialize the database (create tables) and enable WAL mode."""
     if not os.path.exists(DATA_DIR):
         os.makedirs(DATA_DIR, exist_ok=True)
     
@@ -92,6 +92,9 @@ def init_db():
         c.execute('CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_messages_session_timestamp ON messages(session_id, timestamp)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id)')
+        
+        # Enable Write-Ahead Logging for better concurrency
+        c.execute("PRAGMA journal_mode=WAL")
         
         conn.commit()
 

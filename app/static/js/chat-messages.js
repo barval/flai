@@ -126,19 +126,11 @@ function loadMessages(sessionId) {
 function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId) {
     if (window.IS_RELOADING) return;
     
-    // Prevent duplicate messages by checking if a message with same ID or timestamp+rawText already exists
+    // Prevent duplicate messages by checking message ID (if available)
     if (messageId) {
         const existing = document.querySelector(`[data-message-id="${messageId}"]`);
         if (existing) {
             console.log('Message with ID', messageId, 'already exists, skipping');
-            return;
-        }
-    } else {
-        // For temporary messages, check by timestamp and rawText
-        const rawContent = typeof content === 'string' ? content : JSON.stringify(content);
-        const existing = document.querySelector(`.${role}-message[data-timestamp="${timestamp}"][data-raw-text="${rawContent}"]`);
-        if (existing) {
-            console.log('Duplicate message by timestamp/rawText, skipping');
             return;
         }
     }

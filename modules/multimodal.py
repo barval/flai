@@ -216,12 +216,12 @@ class MultimodalModule:
         if not model:
             return self._('Multimodal model not configured', lang)
 
-        # Use the central client, but pass the messages directly
-        # The client expects a list of messages, not the images field.
-        # For multimodal, we need to include images in the message.
-        # The Ollama API accepts images in the message content.
-        # We'll construct a modified payload.
-        # Since OllamaClient doesn't handle images, we call directly.
+        # Get URL from config, fallback to default
+        ollama_url = model_config.get('ollama_url')
+        if not ollama_url:
+            ollama_url = 'http://ollama:11434'
+            self.logger.warning(f"No ollama_url for multimodal, using default {ollama_url}")
+
         timeout = model_config.get('timeout', 120)
         context = model_config.get('context_length', 32768)
         temperature = model_config.get('temperature', 0.7)
@@ -238,10 +238,10 @@ class MultimodalModule:
             }
         }
 
-        self.logger.info(f"Sending request to multimodal model: {model}, timeout: {timeout}s")
+        self.logger.info(f"Sending request to multimodal model: {model} at {ollama_url}, timeout: {timeout}s")
         try:
             response = requests.post(
-                f"{self.ollama.ollama_url}/api/chat",
+                f"{ollama_url}/api/chat",
                 json=payload,
                 timeout=timeout
             )
@@ -256,7 +256,7 @@ class MultimodalModule:
             template = self._('Timeout ({timeout}s) when calling multimodal model', lang)
             return template.format(timeout=timeout)
         except requests.exceptions.ConnectionError:
-            self.logger.error(f"Connection error to Ollama at {self.ollama.ollama_url}")
+            self.logger.error(f"Connection error to Ollama at {ollama_url}")
             return self._('Could not connect to Ollama', lang)
         except Exception as e:
             self.logger.error(f"Error calling multimodal model: {str(e)}")

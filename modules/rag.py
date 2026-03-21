@@ -52,6 +52,11 @@ class RagModule:
         config = get_model_config('embedding')
         return config.get('model_name') if config else None
 
+    def _get_embedding_url(self) -> Optional[str]:
+        """Retrieve Ollama URL for embedding from database."""
+        config = get_model_config('embedding')
+        return config.get('ollama_url') if config else None
+
     def _get_collection_name(self, user_id: str) -> str:
         """Return collection name for a specific user."""
         return f"{self.collection_name_prefix}{user_id}"
@@ -279,11 +284,19 @@ class RagModule:
 
     def _get_embedding(self, text: str) -> Optional[List[float]]:
         """Get embedding vector from Ollama using configured embedding model."""
-        ollama_url = current_app.config.get('OLLAMA_URL')
-        embedding_model = self._get_embedding_model()
+        embedding_config = get_model_config('embedding')
+        if not embedding_config:
+            self.logger.error("No embedding model configuration found")
+            return None
+        embedding_model = embedding_config.get('model_name')
         if not embedding_model:
             self.logger.error("No embedding model configured in database")
             return None
+        ollama_url = embedding_config.get('ollama_url')
+        if not ollama_url:
+            ollama_url = 'http://ollama:11434'
+            self.logger.warning(f"No ollama_url for embedding, using default {ollama_url}")
+
         try:
             response = requests.post(
                 f"{ollama_url}/api/embeddings",

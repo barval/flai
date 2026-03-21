@@ -238,6 +238,22 @@ def migrate_add_model_configs(app):
     except Exception as e:
         app.logger.error(f"Model config migration error: {str(e)}")
 
+def migrate_add_ollama_url(app):
+    """Add ollama_url column to model_configs table."""
+    try:
+        with sqlite3.connect(CHAT_DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("PRAGMA table_info(model_configs)")
+            columns = [col[1] for col in c.fetchall()]
+            if 'ollama_url' not in columns:
+                c.execute("ALTER TABLE model_configs ADD COLUMN ollama_url TEXT")
+                app.logger.info("Added column ollama_url to model_configs table")
+                # Set default value for existing rows (assume default Ollama)
+                c.execute("UPDATE model_configs SET ollama_url = 'http://ollama:11434' WHERE ollama_url IS NULL")
+                conn.commit()
+    except Exception as e:
+        app.logger.error(f"Migration add ollama_url error: {str(e)}")
+
 def get_user_sessions(user_id):
     """Get all sessions for a user."""
     with sqlite3.connect(CHAT_DB_PATH) as conn:

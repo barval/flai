@@ -591,5 +591,11 @@ msgstr "Transcribing..."
 msgid "Model returned empty response"
 msgstr "Model returned empty response"
 
+msgid "Local"
+msgstr "Local"
+
+msgid "Please provide Ollama URL first."
+msgstr "Please provide Ollama URL first."
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v7.2 (c) 2026 Valery Barsukov"

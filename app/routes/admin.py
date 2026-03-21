@@ -20,6 +20,14 @@ from app.userdb import USER_DB_PATH
 bp = Blueprint('admin', __name__, url_prefix='/admin')
 logger = logging.getLogger(__name__)
 
+# Constants for model capability detection (unchanged)
+EMBEDDING_ARCHITECTURES = {
+    'bert', 'bge', 'e5', 'snowflake-arctic-embed', 'minilm', 'nomic-embed', 'gte', 'qwen2embed'
+}
+VISION_ARCHITECTURES = {
+    'llava', 'moondream', 'qwen2vl', 'phi3v'
+}
+
 
 def get_file_size_bytes(path: str) -> int:
     """Get file size in bytes."""
@@ -228,10 +236,10 @@ def get_stats():
 @bp.route('/api/ollama/models', methods=['GET'])
 @admin_required
 def ollama_models():
-    """Return list of available models from Ollama."""
-    ollama_url = current_app.config.get('OLLAMA_URL')
+    """Return list of available models from Ollama instance specified by 'url' query param."""
+    ollama_url = request.args.get('url')
     if not ollama_url:
-        return jsonify({'error': 'OLLAMA_URL not configured'}), 500
+        return jsonify({'error': 'Missing "url" parameter'}), 400
     try:
         resp = requests.get(f"{ollama_url}/api/tags", timeout=5)
         if resp.status_code == 200:
@@ -240,25 +248,17 @@ def ollama_models():
         else:
             return jsonify({'error': f'Ollama returned {resp.status_code}'}), 500
     except Exception as e:
-        current_app.logger.error(f"Error fetching Ollama models: {e}")
+        current_app.logger.error(f"Error fetching Ollama models from {ollama_url}: {e}")
         return jsonify({'error': str(e)}), 500
-
-
-EMBEDDING_ARCHITECTURES = {
-    'bert', 'bge', 'e5', 'snowflake-arctic-embed', 'minilm', 'nomic-embed', 'gte', 'qwen2embed'
-}
-VISION_ARCHITECTURES = {
-    'llava', 'moondream', 'qwen2vl', 'phi3v'
-}
 
 
 @bp.route('/api/ollama/model/<name>', methods=['GET'])
 @admin_required
 def ollama_model_info(name):
-    """Return detailed information about a specific model via /api/show."""
-    ollama_url = current_app.config.get('OLLAMA_URL')
+    """Return detailed information about a specific model from given Ollama URL."""
+    ollama_url = request.args.get('url')
     if not ollama_url:
-        return jsonify({'error': 'OLLAMA_URL not configured'}), 500
+        return jsonify({'error': 'Missing "url" parameter'}), 400
     try:
         resp = requests.post(f"{ollama_url}/api/show", json={"model": name}, timeout=5)
         if resp.status_code == 200:
@@ -288,7 +288,6 @@ def ollama_model_info(name):
 
             architecture = details.get('family', '').lower()
             name_lower = name.lower()
-
             if architecture in VISION_ARCHITECTURES:
                 is_vision = True
             families = details.get('families', [])
@@ -332,7 +331,7 @@ def ollama_model_info(name):
         else:
             return jsonify({'error': f'Ollama returned {resp.status_code}'}), 500
     except Exception as e:
-        current_app.logger.error(f"Error fetching model info for {name}: {e}")
+        current_app.logger.error(f"Error fetching model info for {name} from {ollama_url}: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -355,7 +354,7 @@ def get_model_configs():
 def update_model_config(module):
     """Update configuration for a specific module."""
     data = request.get_json()
-    allowed_fields = ['model_name', 'context_length', 'temperature', 'top_p', 'timeout']
+    allowed_fields = ['model_name', 'ollama_url', 'context_length', 'temperature', 'top_p', 'timeout']
     updates = {k: v for k, v in data.items() if k in allowed_fields}
     if not updates:
         return jsonify({'error': 'No valid fields'}), 400

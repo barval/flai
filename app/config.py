@@ -18,7 +18,7 @@ def load_config(app):
     app.config['JSON_AS_ASCII'] = False
     app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
     app.config['TIMEZONE_STR'] = os.getenv('TIMEZONE')
-    app.config['OLLAMA_URL'] = os.getenv('OLLAMA_URL')
+    # OLLAMA_URL removed – now stored per model in DB
     app.config['REDIS_URL'] = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
     
     # Automatic1111 settings

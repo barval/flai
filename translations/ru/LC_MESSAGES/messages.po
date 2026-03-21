@@ -592,5 +592,11 @@ msgstr "Распознаётся..."
 msgid "Model returned empty response"
 msgstr "Модель вернула пустой ответ"
 
+msgid "Local"
+msgstr "Локально"
+
+msgid "Please provide Ollama URL first."
+msgstr "Сначала укажите URL Ollama."
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v7.2 (c) 2026 Барсуков Валерий"

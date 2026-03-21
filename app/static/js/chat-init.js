@@ -4,6 +4,9 @@
 const originalLoadMessages = loadMessages;
 const originalDisplayMessage = displayMessage;
 
+// Flag to prevent double submission
+let isSending = false;
+
 function isDuplicateMessage(msg) {
     const messages = document.querySelectorAll(`.${msg.role}-message`);
     for (let el of messages) {
@@ -205,17 +208,26 @@ function startResultPolling(requestId) {
 }
 
 async function sendMessage() {
+    // Prevent double submission
+    if (isSending) {
+        console.log('Send already in progress, ignoring duplicate');
+        return;
+    }
+    isSending = true;
+    
     const input = document.getElementById('message-input');
     const text = input.value.trim();
+    const sendButton = document.getElementById('send-button');
+    
     if (!text && !attachedFile) {
+        isSending = false;
         alert(t('enter_message_or_file'));
         return;
     }
     
-    const sendButton = document.getElementById('send-button');
     const originalButtonText = sendButton.innerHTML;
     
-    // FIX: Lock button immediately
+    // Lock button immediately
     sendButton.disabled = true;
     sendButton.innerHTML = '⏳ ' + t('sending');
     
@@ -270,10 +282,13 @@ async function sendMessage() {
                 sendButton.disabled = false;
                 sendButton.innerHTML = t('send');
             }
+            isSending = false;
         };
         
         const sendToServer = () => {
             if (window.IS_RELOADING) return;
+            
+            let unlockRequired = true;
             
             (async () => {
                 try {
@@ -351,7 +366,7 @@ async function sendMessage() {
                                 setNewMessageIndicator(targetSessionId, true);
                             }
                         }
-                        // FIX: Unlock button after transcription
+                        unlockRequired = false;
                         unlockSendButton();
                         return;
                     }
@@ -371,7 +386,7 @@ async function sendMessage() {
                             data.assistant_timestamp, data.response_time, data.model_used);
                     }
                     
-                    // FIX: Unlock button after successful send
+                    unlockRequired = false;
                     unlockSendButton();
                     
                 } catch (err) {
@@ -380,8 +395,11 @@ async function sendMessage() {
                     const lastMessage = document.querySelector('.user-message:last-child');
                     if (lastMessage) lastMessage.style.borderLeft = '3px solid #e74c3c';
                     setLocalTranscribing(currentSessionId, false);
-                    // FIX: Unlock button on error
-                    unlockSendButton();
+                } finally {
+                    // Guaranteed unlock if not already unlocked
+                    if (unlockRequired) {
+                        unlockSendButton();
+                    }
                 }
             })();
         };
@@ -398,10 +416,14 @@ async function sendMessage() {
                     fileName = tempAttachedFile.name;
                     console.log('File attached:', fileName, 'Type:', fileType);
                     
-                    // FIX: Set transcribing flag for audio files
+                    // Set transcribing flag for audio files BEFORE displaying message
                     if (fileType && fileType.startsWith('audio/')) {
-                        console.log('Audio file detected, setting transcribing flag');
+                        console.log('Audio file detected, setting transcribing flag for session:', currentSessionId);
                         setLocalTranscribing(currentSessionId, true);
+                        // Force update for mobile devices
+                        if (window.innerWidth <= 768) {
+                            setTimeout(() => updateSessionsListFromData(), 100);
+                        }
                     }
                     
                     displayUserMessage(fileData, fileType, fileName, null);
@@ -410,13 +432,14 @@ async function sendMessage() {
                     console.error('Error in reader.onload:', err);
                     if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
                     setLocalTranscribing(currentSessionId, false);
-                    // FIX: Unlock button on error
+                    isSending = false;
                     unlockSendButton();
                 }
             };
             reader.onerror = () => {
                 console.error('FileReader error');
                 setLocalTranscribing(currentSessionId, false);
+                isSending = false;
                 unlockSendButton();
             };
             reader.readAsDataURL(tempAttachedFile);
@@ -433,7 +456,11 @@ async function sendMessage() {
     } catch (err) {
         console.error('Unexpected error in sendMessage:', err);
         if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
-        unlockSendButton();
+        isSending = false;
+        if (sendButton) {
+            sendButton.disabled = false;
+            sendButton.innerHTML = t('send');
+        }
         setLocalTranscribing(currentSessionId, false);
     }
 }

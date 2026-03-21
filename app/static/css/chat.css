@@ -922,45 +922,40 @@ audio {
     
     /* CRITICAL FIX: Ensure transcribing icon is ALWAYS visible on mobile */
     .session-status-icon.transcribing {
-        display: inline-block !important;
+        display: inline-flex !important;
         visibility: visible !important;
         opacity: 1 !important;
         color: #e74c3c !important;
         font-size: 1.2rem !important;
         width: 1.3em !important;
-    }
-    
-    .session-item .session-title .session-status-icon.transcribing {
-        display: inline-block !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-        color: #e74c3c !important;
-    }
-    
-    .sessions-sidebar.collapsed .session-item .session-status-icon.transcribing {
-        display: inline-block !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-    }
-    
-    .session-info .session-status-icon.transcribing {
-        display: inline-block !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-    }
-    
-    .session-title .session-status-icon.transcribing {
-        display: inline-block !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-    }
-}
-
-@media (max-width: 768px) {
-    .session-status-icon.transcribing {
-        display: inline-flex !important;
+        height: 1.2em !important;
+        animation: blink-animation 1s infinite !important;
+        -webkit-animation: blink-animation 1s infinite !important;
+        z-index: 100 !important;
         align-items: center;
         justify-content: center;
+    }
+    
+    /* Ensure transcribing icon is visible even in collapsed sidebar */
+    .sessions-sidebar.collapsed .session-status-icon.transcribing {
+        display: inline-flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+    
+    /* Additional selectors for mobile visibility */
+    .session-item .session-status-icon.transcribing,
+    .session-info .session-status-icon.transcribing,
+    .session-title .session-status-icon.transcribing {
+        display: inline-flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+    
+    @keyframes blink-animation {
+        0% { opacity: 1; }
+        50% { opacity: 0.4; }
+        100% { opacity: 1; }
     }
 }
 

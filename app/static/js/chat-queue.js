@@ -36,7 +36,10 @@ function fetchQueueStatus() {
 
 // Local transcribing status (for voice messages)
 function setLocalTranscribing(sessionId, isTranscribing) {
-    if (!sessionId) return;
+    if (!sessionId) {
+        console.warn('setLocalTranscribing called with empty sessionId');
+        return;
+    }
     console.log('setLocalTranscribing called:', sessionId, isTranscribing);
     
     if (isTranscribing) {
@@ -45,7 +48,7 @@ function setLocalTranscribing(sessionId, isTranscribing) {
         delete localTranscribingSessions[sessionId];
     }
     
-    // FIX: Immediate update - clear any pending timeout
+    // Immediate update - clear any pending timeout
     if (sessionsUpdateTimeout) {
         clearTimeout(sessionsUpdateTimeout);
         sessionsUpdateTimeout = null;
@@ -58,7 +61,14 @@ function setLocalTranscribing(sessionId, isTranscribing) {
         updated_at: sessionsData[id].updated_at,
         message_count: sessionsData[id].message_count
     }));
+    
     updateSessionsList(sessions);
+    
+    // For mobile devices - force additional redraws to ensure icon visibility
+    if (isTranscribing && window.innerWidth <= 768) {
+        setTimeout(() => updateSessionsList(sessions), 300);
+        setTimeout(() => updateSessionsList(sessions), 600);
+    }
     
     console.log('Transcribing flag', isTranscribing ? 'SET' : 'CLEARED', 'for session:', sessionId);
 }

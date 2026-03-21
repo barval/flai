@@ -20,14 +20,14 @@ To avoid the "externally-managed-environment" error that occurs on modern Linux 
 python3 -m venv venv
 ```
 3. **Activate the virtual environment**:  
-On Linux/macOS:
-```bash
-source venv/bin/activate
-```
-On Windows:
-```bash
-venv\Scripts\activate
-```
+    - On Linux/macOS:
+    ```bash
+    source venv/bin/activate
+    ```
+    - On Windows:
+    ```bash
+    venv\Scripts\activate
+    ```
 4. **Install Locust** (and any other dependencies if needed):
 ```bash
 pip install locust

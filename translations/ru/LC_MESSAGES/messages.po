@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 7.1\n"
+"Project-Id-Version: FLAI 7.2\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-05 12:00+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -593,4 +593,4 @@ msgid "Model returned empty response"
 msgstr "Модель вернула пустой ответ"
 
 msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v7.1 (c) 2026 Барсуков Валерий"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v7.2 (c) 2026 Барсуков Валерий"

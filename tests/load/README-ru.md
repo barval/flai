@@ -19,7 +19,7 @@
 ```bash
 python3 -m venv venv
 ```
-3. **Активируйте виртуальное окружение**:  
+3. **Активируйте виртуальное окружение**:
 На Linux/macOS:
 ```bash
 source venv/bin/activate

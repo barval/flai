@@ -94,8 +94,6 @@ sessions.forEach(s => {
 const isActive = s.id === currentActiveId ? 'active' : '';
 const dateStr = s.updated_at ? formatFullDateTime(s.updated_at) : '';
 // Build status icons with proper priority
-// FIXED: Transcribing takes TOP priority - shows during audio transcription
-// even if task is queued (transcribing happens BEFORE queue processing)
 let statusIcons = '';
 const transcribing = localTranscribingSessions[s.id];
 const info = sessionQueueInfo[s.id];
@@ -116,6 +114,7 @@ queueStatusShown = true;
 }
 // Unread indicator (only if no other status and not active session)
 if (!queueStatusShown && newMessageIndicators[s.id] && s.id !== currentActiveId) {
+// Add blink class to make envelope flash
 statusIcons = '<span class="session-status-icon unread blink" title="' + t('new_response') + '">✉️</span>';
 }
 }

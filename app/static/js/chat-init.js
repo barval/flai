@@ -228,10 +228,6 @@ function startResultPolling(requestId) {
 }
 
 async function sendMessage() {
-    if (isSending) {
-        console.log('sendMessage already in progress, ignoring');
-        return;
-    }
     const input = document.getElementById('message-input');
     const text = input.value.trim();
     if (!text && !attachedFile) {
@@ -239,7 +235,6 @@ async function sendMessage() {
         return;
     }
     const sendButton = document.getElementById('send-button');
-    isSending = true;
     sendButton.disabled = true;
     sendButton.innerHTML = '⏳ ' + t('sending');
 
@@ -289,57 +284,92 @@ async function sendMessage() {
             document.getElementById('file-input').value = '';
         };
 
-        const sendToServer = async () => {
+        const sendToServer = () => {
             if (window.IS_RELOADING) return;
-            try {
-                let response;
-                if (tempAttachedFile) {
-                    const formData = new FormData();
-                    formData.append('message', tempText);
-                    formData.append('file', tempAttachedFile);
-                    if (isVoiceRecorded) {
-                        formData.append('voice_record', 'true');
-                        isVoiceRecorded = false;
-                    }
-                    response = await fetch('/api/send_message', { method: 'POST', body: formData });
-                } else {
-                    response = await fetch('/api/send_message', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message: tempText })
-                    });
-                }
-                if (window.IS_RELOADING) return;
-                const data = await response.json();
-                if (window.IS_RELOADING) return;
-                console.log('Server response:', data);
-
-                if (data.resize_notice) {
-                    originalDisplayMessage('assistant', data.resize_notice, null, null, null, null,
-                        new Date().toISOString(), 0, 'system');
-                }
-
-                if (data.user_message_id) {
-                    const userMessages = document.querySelectorAll('.user-message');
-                    const lastUserMsg = userMessages[userMessages.length - 1];
-                    if (lastUserMsg && lastUserMsg.dataset.timestamp === timestamp) {
-                        if (lastUserMsg.dataset.tempId) {
-                            displayedMessageIds.delete(lastUserMsg.dataset.tempId);
-                            delete lastUserMsg.dataset.tempId;
+            // Do not await this promise – it will run asynchronously
+            (async () => {
+                try {
+                    let response;
+                    if (tempAttachedFile) {
+                        const formData = new FormData();
+                        formData.append('message', tempText);
+                        formData.append('file', tempAttachedFile);
+                        if (isVoiceRecorded) {
+                            formData.append('voice_record', 'true');
+                            isVoiceRecorded = false;
                         }
-                        lastUserMsg.dataset.messageId = data.user_message_id;
-                        displayedMessageIds.add(data.user_message_id);
+                        response = await fetch('/api/send_message', { method: 'POST', body: formData });
+                    } else {
+                        response = await fetch('/api/send_message', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ message: tempText })
+                        });
                     }
-                }
+                    if (window.IS_RELOADING) return;
+                    const data = await response.json();
+                    if (window.IS_RELOADING) return;
+                    console.log('Server response:', data);
 
-                if (data.transcribed_text) {
-                    console.log('Transcription completed');
-                    
-                    // Clear transcribing flag after transcription
-                    setLocalTranscribing(currentSessionId, false);
-                    
-                    if (data.request_id) {
-                        // Voice message: task queued, show queue status immediately
+                    if (data.resize_notice) {
+                        originalDisplayMessage('assistant', data.resize_notice, null, null, null, null,
+                            new Date().toISOString(), 0, 'system');
+                    }
+
+                    if (data.user_message_id) {
+                        const userMessages = document.querySelectorAll('.user-message');
+                        const lastUserMsg = userMessages[userMessages.length - 1];
+                        if (lastUserMsg && lastUserMsg.dataset.timestamp === timestamp) {
+                            if (lastUserMsg.dataset.tempId) {
+                                displayedMessageIds.delete(lastUserMsg.dataset.tempId);
+                                delete lastUserMsg.dataset.tempId;
+                            }
+                            lastUserMsg.dataset.messageId = data.user_message_id;
+                            displayedMessageIds.add(data.user_message_id);
+                        }
+                    }
+
+                    if (data.transcribed_text) {
+                        console.log('Transcription completed');
+                        // Clear transcribing flag after transcription
+                        setLocalTranscribing(currentSessionId, false);
+                        
+                        if (data.request_id) {
+                            // Voice message: task queued, show queue status immediately
+                            if (!sessionQueueInfo[currentSessionId]) {
+                                sessionQueueInfo[currentSessionId] = { processing: false, queued: 1 };
+                            } else {
+                                sessionQueueInfo[currentSessionId].queued += 1;
+                            }
+                            updateSessionsListFromData();
+                            pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
+                            window.updateStatusCounter();
+                            startResultPolling(data.request_id);
+                            // Refresh queue status to ensure correct icons
+                            fetchQueueStatus();
+                        } else {
+                            // Plain audio file: no queue, just show transcribed message
+                            const targetSessionId = data.session_id || currentSessionId;
+                            if (targetSessionId === currentSessionId) {
+                                const assistantMsgId = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null, null,
+                                    new Date().toISOString(), data.response_time, 'whisper');
+                                if (data.transcribed_message_id) {
+                                    const assistantMessages = document.querySelectorAll('.assistant-message');
+                                    const lastAssistant = assistantMessages[assistantMessages.length - 1];
+                                    if (lastAssistant) {
+                                        lastAssistant.dataset.messageId = data.transcribed_message_id;
+                                        displayedMessageIds.add(data.transcribed_message_id);
+                                    }
+                                }
+                            } else {
+                                // Message belongs to another session -> mark as unread
+                                setNewMessageIndicator(targetSessionId, true);
+                            }
+                        }
+                        return;
+                    }
+
+                    if (data.status === 'queued') {
                         if (!sessionQueueInfo[currentSessionId]) {
                             sessionQueueInfo[currentSessionId] = { processing: false, queued: 1 };
                         } else {
@@ -349,66 +379,28 @@ async function sendMessage() {
                         pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
                         window.updateStatusCounter();
                         startResultPolling(data.request_id);
-                        // Refresh queue status to ensure correct icons
-                        fetchQueueStatus();
-                    } else {
-                        // Plain audio file: no queue, just show transcribed message
-                        if (data.session_id && data.session_id === currentSessionId) {
-                            const assistantMsgId = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null, null,
-                                new Date().toISOString(), data.response_time, 'whisper');
-                            if (data.transcribed_message_id) {
-                                const assistantMessages = document.querySelectorAll('.assistant-message');
-                                const lastAssistant = assistantMessages[assistantMessages.length - 1];
-                                if (lastAssistant) {
-                                    lastAssistant.dataset.messageId = data.transcribed_message_id;
-                                    displayedMessageIds.add(data.transcribed_message_id);
-                                }
-                            }
-                        } else if (data.session_id) {
-                            setNewMessageIndicator(data.session_id, true);
-                        } else {
-                            const assistantMsgId = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null, null,
-                                new Date().toISOString(), data.response_time, 'whisper');
-                            if (data.transcribed_message_id) {
-                                const assistantMessages = document.querySelectorAll('.assistant-message');
-                                const lastAssistant = assistantMessages[assistantMessages.length - 1];
-                                if (lastAssistant) {
-                                    lastAssistant.dataset.messageId = data.transcribed_message_id;
-                                    displayedMessageIds.add(data.transcribed_message_id);
-                                }
-                            }
-                        }
+                    } else if (data.response) {
+                        originalDisplayMessage('assistant', data.response, data.file_data, data.file_type, data.file_name, data.file_path,
+                            data.assistant_timestamp, data.response_time, data.model_used);
                     }
-                    return;
+                } catch (err) {
+                    if (window.IS_RELOADING) return;
+                    alert(t('error') + ': ' + err.message);
+                    console.error('Send message error:', err);
+                    const lastMessage = document.querySelector('.user-message:last-child');
+                    if (lastMessage) lastMessage.style.borderLeft = '3px solid #e74c3c';
+                    setLocalTranscribing(currentSessionId, false);
+                } finally {
+                    // Unlock send button after request has been sent (regardless of result)
+                    sendButton.disabled = false;
+                    sendButton.innerHTML = t('send');
                 }
-
-                if (data.status === 'queued') {
-                    if (!sessionQueueInfo[currentSessionId]) {
-                        sessionQueueInfo[currentSessionId] = { processing: false, queued: 1 };
-                    } else {
-                        sessionQueueInfo[currentSessionId].queued += 1;
-                    }
-                    updateSessionsListFromData();
-                    pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
-                    window.updateStatusCounter();
-                    startResultPolling(data.request_id);
-                } else if (data.response) {
-                    originalDisplayMessage('assistant', data.response, data.file_data, data.file_type, data.file_name, data.file_path,
-                        data.assistant_timestamp, data.response_time, data.model_used);
-                }
-            } catch (err) {
-                if (window.IS_RELOADING) return;
-                alert(t('error') + ': ' + err.message);
-                console.error('Send message error:', err);
-                const lastMessage = document.querySelector('.user-message:last-child');
-                if (lastMessage) lastMessage.style.borderLeft = '3px solid #e74c3c';
-                setLocalTranscribing(currentSessionId, false);
-            }
+            })();
         };
 
         if (tempAttachedFile) {
             const reader = new FileReader();
-            let processed = false;  // Prevent double onload on desktop
+            let processed = false;
             reader.onload = async function(e) {
                 if (processed) return;
                 processed = true;
@@ -422,29 +414,25 @@ async function sendMessage() {
                         setLocalTranscribing(currentSessionId, true);
                     }
                     displayUserMessage(fileData, fileType, fileName, null);
-                    await sendToServer();
+                    sendToServer(); // will unlock button after fetch
                 } catch (err) {
                     console.error('Error in reader.onload:', err);
                     if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
                     setLocalTranscribing(currentSessionId, false);
-                } finally {
                     sendButton.disabled = false;
                     sendButton.innerHTML = t('send');
-                    isSending = false;
                 }
             };
             reader.readAsDataURL(tempAttachedFile);
         } else {
             try {
                 displayUserMessage(null, null, null, null);
-                await sendToServer();
+                sendToServer(); // will unlock button after fetch
             } catch (err) {
                 console.error('Error in no-file branch:', err);
                 if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
-            } finally {
                 sendButton.disabled = false;
                 sendButton.innerHTML = t('send');
-                isSending = false;
             }
         }
     } catch (err) {
@@ -452,7 +440,6 @@ async function sendMessage() {
         if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
         sendButton.disabled = false;
         sendButton.innerHTML = t('send');
-        isSending = false;
         setLocalTranscribing(currentSessionId, false);
     }
 }

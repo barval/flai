@@ -9,6 +9,10 @@ Flask-Babel==2.0.0
 qdrant-client==1.9.1
 PyPDF2==3.0.1
 python-docx==1.1.0
+flask-socketio==5.3.6
+eventlet==0.33.3
+python-engineio==4.8.0
+python-socketio==5.10.0
 
 # For testing (not required in production)
 pytest==7.4.3

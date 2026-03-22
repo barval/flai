@@ -12,6 +12,8 @@ from .db import save_message, CHAT_DB_PATH, update_document_index_status, \
     INDEX_STATUS_PENDING, INDEX_STATUS_INDEXING, INDEX_STATUS_INDEXED, INDEX_STATUS_FAILED, \
     get_current_time_for_db
 from .model_config import get_model_config
+from . import socketio
+from .socket_events import emit_queue_status, emit_new_message, emit_transcribing_status
 
 
 class RedisRequestQueue:
@@ -52,9 +54,24 @@ class RedisRequestQueue:
                         'result': {'session_id': task.get('session_id')},
                         'timestamp': time.time()
                     }))
+                    # Notify user via WebSocket
+                    if 'user_id' in task:
+                        emit_queue_status(task['user_id'], {
+                            'type': 'request_cancelled',
+                            'request_id': task['id'],
+                            'session_id': task.get('session_id'),
+                            'error': error_text
+                        })
                     continue
                 self.app.logger.info(f"RedisRequestQueue: got task {task['id']} from queue for session {task.get('session_id')}, queue time: {queue_time:.1f}s")
                 self.redis.hset(self.processing_key, task['id'], task_data)
+                # Notify user that task is processing
+                if 'user_id' in task:
+                    emit_queue_status(task['user_id'], {
+                        'type': 'processing',
+                        'request_id': task['id'],
+                        'session_id': task.get('session_id')
+                    })
                 try:
                     with self.app.app_context():
                         result_data = self._process_request(task)
@@ -66,6 +83,20 @@ class RedisRequestQueue:
                             'timestamp': time.time()
                         }))
                         self.app.logger.info(f"RedisRequestQueue: task {task['id']} completed successfully for session {task.get('session_id')}")
+                        # Notify user about completed request
+                        if 'user_id' in task:
+                            emit_queue_status(task['user_id'], {
+                                'type': 'completed',
+                                'request_id': task['id'],
+                                'session_id': task.get('session_id'),
+                                'result': result_data
+                            })
+                            # If result contains a new message, emit separately for real-time display
+                            if 'response' in result_data:
+                                emit_new_message(task['user_id'], {
+                                    'session_id': task.get('session_id'),
+                                    'message': result_data
+                                })
                 except Exception as e:
                     self.app.logger.error(f"RedisRequestQueue: error processing task {task['id']}: {str(e)}")
                     self.redis.hset(self.results_key, task['id'], pickle.dumps({
@@ -74,6 +105,13 @@ class RedisRequestQueue:
                         'result': {'session_id': task.get('session_id')},
                         'timestamp': time.time()
                     }))
+                    if 'user_id' in task:
+                        emit_queue_status(task['user_id'], {
+                            'type': 'error',
+                            'request_id': task['id'],
+                            'session_id': task.get('session_id'),
+                            'error': str(e)
+                        })
                 finally:
                     self.redis.hdel(self.processing_key, task['id'])
             except Exception as e:
@@ -101,6 +139,14 @@ class RedisRequestQueue:
         estimated_wait = max(1, queue_length * 5)
         position_info = {'position': queue_length, 'estimated_seconds': estimated_wait}
         self.app.logger.info(f"RedisRequestQueue.add_request: task added, position={queue_length}")
+        # Notify user via WebSocket about queue position
+        emit_queue_status(user_id, {
+            'type': 'queued',
+            'request_id': request_id,
+            'session_id': session_id,
+            'position': queue_length,
+            'estimated_seconds': estimated_wait
+        })
         return request_id, position_info
 
     def add_index_task(self, user_id: str, doc_id: str, file_path: str, lang: str = 'ru') -> str:
@@ -117,6 +163,12 @@ class RedisRequestQueue:
         }
         self.app.logger.info(f"RedisRequestQueue.add_index_task: adding task {request_id} for document {doc_id}")
         self.redis.rpush(self.queue_key, pickle.dumps(task))
+        # Notify user about indexing task queued (optional)
+        emit_queue_status(user_id, {
+            'type': 'index_queued',
+            'request_id': request_id,
+            'doc_id': doc_id
+        })
         return request_id
 
     def add_reindex_all_task(self, lang: str = 'ru') -> str:
@@ -490,6 +542,12 @@ class RedisRequestQueue:
                 embedding_model = self._get_model_name('embedding') or 'unknown'
                 update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at, embedding_model=embedding_model)
                 self.app.logger.info(f"Set embedding_model for doc {doc_id} to {embedding_model}")
+                # Notify user about document indexed
+                emit_queue_status(user_id, {
+                    'type': 'document_indexed',
+                    'doc_id': doc_id,
+                    'status': 'indexed'
+                })
                 return {'success': True, 'message': message, 'doc_id': doc_id}
             else:
                 update_document_index_status(doc_id, INDEX_STATUS_FAILED)

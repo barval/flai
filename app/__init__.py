@@ -1,6 +1,7 @@
 # app/__init__.py
 import os
 from flask import Flask, request, session, send_file, abort, jsonify
+from flask_socketio import SocketIO, emit
 from flask_babel import Babel, gettext
 import logging
 from logging import Formatter
@@ -17,15 +18,13 @@ from modules.tts import TTSModule
 import mimetypes
 
 babel = Babel()
-
+socketio = SocketIO(cors_allowed_origins="*", logger=True, engineio_logger=True)
 
 @babel.localeselector
 def get_locale():
-    """Select language from session or Accept-Language header."""
     if 'language' in session:
         return session['language']
     return request.accept_languages.best_match(['ru', 'en']) or 'ru'
-
 
 def create_app():
     app = Flask(__name__)
@@ -47,18 +46,21 @@ def create_app():
 
     # Initialize Babel with the app
     babel.init_app(app)
-    app.jinja_env.add_extension('jinja2.ext.i18n')  # for _() in templates
+    app.jinja_env.add_extension('jinja2.ext.i18n')
     app.jinja_env.globals['_'] = gettext
+
+    # Initialize SocketIO with the app
+    socketio.init_app(app)
 
     # Initialize chat DB
     init_db()
     migrate_db_add_response_fields(app)
     migrate_db_add_session_visits(app)
-    migrate_db_add_indexes(app)  # Add indexes for performance
-    migrate_db_add_index_status(app)  # Add index_status column to documents table for RAG
-    migrate_add_model_configs(app)   # New migration for model configs
-    migrate_add_embedding_model(app) # Add embedding_model column to documents table
-    migrate_add_ollama_url(app)      # Add ollama_url column to model_configs table
+    migrate_db_add_indexes(app)
+    migrate_db_add_index_status(app)
+    migrate_add_model_configs(app)
+    migrate_add_embedding_model(app)
+    migrate_add_ollama_url(app)
 
     # Initialize user DB
     init_user_db()
@@ -66,9 +68,6 @@ def create_app():
     # Initialize modules
     modules = {}
     modules['base'] = BaseModule(app)
-
-    # Multimodal module is always created if Ollama is available (model selected via admin)
-    # No global OLLAMA_URL check needed – we rely on model configs.
     modules['multimodal'] = MultimodalModule(app)
 
     if app.config.get('AUTOMATIC1111_URL') and 'multimodal' in modules:
@@ -81,7 +80,6 @@ def create_app():
     else:
         app.logger.info("Camera module disabled (CAMERA_ENABLED=False)")
 
-    # Initialize RAG module if Qdrant URL is configured
     if app.config.get('QDRANT_URL'):
         modules['rag'] = RagModule(app)
         app.logger.info("RAG module enabled with Qdrant")
@@ -90,7 +88,6 @@ def create_app():
 
     modules['audio'] = AudioModule(app)
 
-    # TTS module
     if app.config.get('PIPER_URL'):
         modules['tts'] = TTSModule(app)
         app.logger.info("TTS module enabled")
@@ -102,7 +99,7 @@ def create_app():
     # Initialize Redis queue
     app.request_queue = RedisRequestQueue(app)
 
-    # Register blueprints (new modular structure)
+    # Register blueprints
     from .routes import auth, chat, admin, queue, tts, messages, sessions, documents
     app.register_blueprint(auth.bp)
     app.register_blueprint(chat.bp)
@@ -135,23 +132,18 @@ def create_app():
     # File serving endpoint
     @app.route('/api/files/<path:filename>')
     def serve_upload(filename):
-        """Serve uploaded files after checking user permissions."""
         if 'login' not in session:
             abort(401)
-        # Security: ensure filename is within upload folder and doesn't contain path traversal
         upload_folder = app.config['UPLOAD_FOLDER']
         safe_path = os.path.normpath(os.path.join(upload_folder, filename))
         if not safe_path.startswith(os.path.abspath(upload_folder)):
             app.logger.warning(f"Path traversal attempt: {filename}")
             abort(403)
-        # Check if file belongs to a session accessible by the user
-        # filename format: session_id/unique_filename
         parts = filename.split('/')
         if len(parts) != 2:
             app.logger.warning(f"Invalid filename format: {filename}")
             abort(400)
         session_id = parts[0]
-        # Verify that the session belongs to the current user
         from .db import get_db
         with get_db() as conn:
             c = conn.cursor()
@@ -160,15 +152,12 @@ def create_app():
             if not row or row[0] != session['login']:
                 app.logger.warning(f"User {session['login']} tried to access session {session_id}")
                 abort(403)
-        # Send file
         try:
             if not os.path.exists(safe_path):
                 app.logger.error(f"File not found: {safe_path}")
                 abort(404)
-            # Detect mimetype from filename
             mimetype, _ = mimetypes.guess_type(safe_path)
             if not mimetype:
-                # Fallback based on extension
                 ext = os.path.splitext(safe_path)[1].lower()
                 if ext in ['.webm', '.wav', '.mp3', '.ogg', '.m4a', '.aac']:
                     mimetype = 'audio/webm'
@@ -182,7 +171,6 @@ def create_app():
             app.logger.error(f"Error serving file {safe_path}: {e}")
             abort(404)
 
-    # Global error handlers for API routes
     @app.errorhandler(500)
     def internal_error(error):
         if request.path.startswith('/api/'):
@@ -194,5 +182,8 @@ def create_app():
         if request.path.startswith('/api/'):
             return jsonify({'error': 'Not found'}), 404
         return error
+
+    # Import socket events after app creation to avoid circular imports
+    from . import socket_events
 
     return app

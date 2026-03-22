@@ -4,16 +4,13 @@
     <div class="sessions-sidebar">
         <div class="sessions-header">
             <div class="header-tabs">
-                <!-- Mobile collapse toggle (visible only on mobile) -->
                 <div class="collapse-toggle-mobile" id="collapse-toggle-mobile" title="Toggle collapse">
                     <span class="collapse-icon" id="collapse-icon">➡️</span>
                 </div>
-                <!-- Documents tab -->
                 <div class="header-tab documents-tab {% if active_view == 'documents' %}active{% endif %}" data-view="documents">
                     <span class="tab-text">{{ _('Documents') }} (<span id="documents-count">{{ documents|length }}</span>)</span>
                     <button id="new-document-button" class="new-tab-button" title="{{ _('New document') }}">➕</button>
                 </div>
-                <!-- Sessions tab -->
                 <div class="header-tab sessions-tab {% if active_view == 'sessions' or not active_view %}active{% endif %}" data-view="sessions">
                     <span class="tab-text">{{ _('Sessions') }} (<span id="sessions-count">{{ sessions|length }}</span>)</span>
                     <button id="new-session-button" class="new-tab-button" title="{{ _('New session') }}">➕</button>
@@ -21,7 +18,6 @@
             </div>
         </div>
 
-        <!-- Sessions list (visible by default) -->
         <div class="sessions-list" id="sessions-list">
             {% for s in sessions %}
             <div class="session-item {% if s.id == current_session %}active{% endif %}" data-session-id="{{ s.id }}">
@@ -36,10 +32,7 @@
             {% endfor %}
         </div>
 
-        <!-- Documents list (hidden by default) -->
-        <div class="documents-list" id="documents-list" style="display: none;">
-            <!-- Documents will be loaded via JavaScript -->
-        </div>
+        <div class="documents-list" id="documents-list" style="display: none;"></div>
     </div>
 
     <div class="chat-main">
@@ -51,10 +44,8 @@
             </div>
         </div>
 
-        <!-- Chat messages area -->
         <div class="chat-messages" id="chat-messages"></div>
 
-        <!-- File preview container (shown when a file is attached) -->
         <div id="file-preview-container" style="display: none;">
             <div>
                 <span id="file-preview-name"></span>
@@ -63,14 +54,12 @@
             </div>
         </div>
 
-        <!-- Image modal for enlarging images -->
         <div id="image-modal" class="image-modal" onclick="closeImageModal()">
             <span class="image-modal-close">&times;</span>
             <img class="image-modal-content" id="modal-image">
             <div id="modal-caption"></div>
         </div>
 
-        <!-- Message input area -->
         <div class="message-input">
             <input type="text" id="message-input" placeholder="{{ _('Enter message...') }}" autocomplete="off">
             <button id="voice-record-button" class="voice-record-button" title="{{ _('Record voice message') }}">🎤</button>
@@ -81,10 +70,9 @@
     </div>
 </div>
 
-<!-- Markdown parser library -->
 <script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.js"></script>
 
-<!-- JavaScript translations and configuration -->
 <script>
 window.initialSessionId = "{{ current_session }}";
 window.CURRENT_USER_LOGIN = "{{ session.get('login', '') }}";
@@ -183,7 +171,6 @@ console.log('Chat TRANSLATIONS merged:', window.TRANSLATIONS);
 {% endif %}
 </script>
 
-<!-- Chat JavaScript modules (order matters) -->
 <script src="{{ url_for('static', filename='js/chat-constants.js') }}"></script>
 <script src="{{ url_for('static', filename='js/chat-utils.js') }}"></script>
 <script src="{{ url_for('static', filename='js/chat-sessions.js') }}"></script>
@@ -193,9 +180,9 @@ console.log('Chat TRANSLATIONS merged:', window.TRANSLATIONS);
 <script src="{{ url_for('static', filename='js/chat-recording.js') }}"></script>
 <script src="{{ url_for('static', filename='js/chat-export.js') }}"></script>
 <script src="{{ url_for('static', filename='js/chat-queue.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-socket.js') }}"></script>
 <script src="{{ url_for('static', filename='js/chat-init.js') }}"></script>
 
-<!-- Additional initialization for collapsible sidebar -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof initCollapsibleSessions === 'function') {

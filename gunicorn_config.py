@@ -17,6 +17,5 @@ errorlog = "-"
 loglevel = "info"
 access_log_format = '%(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"'
 
-# Log format configuration
-# Gunicorn uses its own formats, but can be configured via environment variables
-# or via additional parameters
+# Use eventlet worker class for WebSocket support
+worker_class = 'eventlet'

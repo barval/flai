@@ -263,6 +263,12 @@
     animation: blink-animation 1.5s infinite;
 }
 
+/* Ensure processing and unread icons blink */
+.session-status-icon.processing,
+.session-status-icon.unread {
+    animation: blink-animation 1.5s infinite;
+}
+
 @keyframes blink-animation {
     0% { opacity: 1; }
     50% { opacity: 0.4; }

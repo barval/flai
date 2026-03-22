@@ -604,5 +604,8 @@ msgstr "Ollama доступна"
 msgid "Ollama unavailable"
 msgstr "Ollama недоступна"
 
+msgid "your_requests"
+msgstr "Ваши запросы в очереди / Всего в очереди"
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v7.2 (c) 2026 Барсуков Валерий"

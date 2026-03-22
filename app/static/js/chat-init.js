@@ -1,6 +1,5 @@
 // app/static/js/chat-init.js
 // Main chat initialization and send message logic
-
 const originalLoadMessages = loadMessages;
 const originalDisplayMessage = displayMessage;
 
@@ -167,6 +166,17 @@ function startResultPolling(requestId) {
                             setLocalTranscribing(resultSessionId, false);
                         }
                     }
+                    // FIX: Clear queue status before setting new message indicator to allow envelope to show
+                    if (resultSessionId) {
+                        setLocalTranscribing(resultSessionId, false);
+                        // Clear queue info for this session so envelope icon can appear
+                        if (sessionQueueInfo[resultSessionId]) {
+                            sessionQueueInfo[resultSessionId].processing = false;
+                            sessionQueueInfo[resultSessionId].queued = 0;
+                        }
+                        // Force immediate UI update
+                        updateSessionsListFromData();
+                    }
                     if (resultSessionId) {
                         fetchQueueStatus();
                     }
@@ -205,28 +215,29 @@ function startResultPolling(requestId) {
 }
 
 async function sendMessage() {
-    // Prevent double submission using global isSending flag from chat-constants.js
+    // FIX: Always reset isSending flag at the start
     if (isSending) {
         console.log('Send already in progress, ignoring duplicate');
         return;
     }
+    
     isSending = true;
     
-    const input = document.getElementById('message-input');
-    const text = input.value.trim();
-    const sendButton = document.getElementById('send-button');
-    
-    if (!text && !attachedFile) {
-        isSending = false;
-        alert(t('enter_message_or_file'));
-        return;
-    }
-    
-    // Lock button immediately
-    sendButton.disabled = true;
-    sendButton.innerHTML = '⏳ ' + t('sending');
-    
     try {
+        const input = document.getElementById('message-input');
+        const text = input.value.trim();
+        const sendButton = document.getElementById('send-button');
+        
+        if (!text && !attachedFile) {
+            isSending = false;
+            alert(t('enter_message_or_file'));
+            return;
+        }
+        
+        // Lock button immediately
+        sendButton.disabled = true;
+        sendButton.innerHTML = '⏳ ' + t('sending');
+        
         const messageCount = document.querySelectorAll('.user-message').length;
         if (messageCount === 0) {
             let newTitle = text ? text.slice(0, 40) + (text.length > 40 ? '...' : '') : '';
@@ -282,9 +293,7 @@ async function sendMessage() {
         
         const sendToServer = () => {
             if (window.IS_RELOADING) return;
-            
             let unlockRequired = true;
-            
             (async () => {
                 try {
                     let response;
@@ -332,7 +341,6 @@ async function sendMessage() {
                     if (data.transcribed_text) {
                         console.log('Transcription completed');
                         setLocalTranscribing(currentSessionId, false);
-                        
                         if (data.request_id) {
                             if (!sessionQueueInfo[currentSessionId]) {
                                 sessionQueueInfo[currentSessionId] = { processing: false, queued: 1 };
@@ -383,7 +391,6 @@ async function sendMessage() {
                     
                     unlockRequired = false;
                     unlockSendButton();
-                    
                 } catch (err) {
                     console.error('Send message error:', err);
                     if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
@@ -391,7 +398,7 @@ async function sendMessage() {
                     if (lastMessage) lastMessage.style.borderLeft = '3px solid #e74c3c';
                     setLocalTranscribing(currentSessionId, false);
                 } finally {
-                    // Guaranteed unlock if not already unlocked
+                    // FIX: Guaranteed unlock if not already unlocked
                     if (unlockRequired) {
                         unlockSendButton();
                     }
@@ -410,17 +417,13 @@ async function sendMessage() {
                     fileType = tempAttachedFile.type;
                     fileName = tempAttachedFile.name;
                     console.log('File attached:', fileName, 'Type:', fileType);
-                    
-                    // Set transcribing flag for audio files BEFORE displaying message
+                    // FIX: Set transcribing flag for audio files BEFORE displaying message
                     if (fileType && fileType.startsWith('audio/')) {
                         console.log('Audio file detected, setting transcribing flag for session:', currentSessionId);
                         setLocalTranscribing(currentSessionId, true);
-                        // Force update for mobile devices
-                        if (window.innerWidth <= 768) {
-                            setTimeout(() => updateSessionsListFromData(), 100);
-                        }
+                        // Force update for all devices
+                        setTimeout(() => updateSessionsListFromData(), 100);
                     }
-                    
                     displayUserMessage(fileData, fileType, fileName, null);
                     sendToServer();
                 } catch (err) {
@@ -452,6 +455,7 @@ async function sendMessage() {
         console.error('Unexpected error in sendMessage:', err);
         if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
         isSending = false;
+        const sendButton = document.getElementById('send-button');
         if (sendButton) {
             sendButton.disabled = false;
             sendButton.innerHTML = t('send');
@@ -468,22 +472,22 @@ window.loadMessages = function(sessionId) {
         statusCounter.innerHTML = '⏳ ' + t('loading');
     }
     return originalLoadMessages(sessionId)
-    .then(() => {
-        console.log('loadMessages completed for session', sessionId);
-        if (window.IS_RELOADING) return;
-        setTimeout(addCopyButtonsToAllCodeBlocks, 100);
-        startMessagePolling();
-        if (statusCounter) {
-            window.updateStatusCounter();
-        }
-    })
-    .catch(err => {
-        console.error('Error in loadMessages:', err);
-        if (statusCounter) {
-            statusCounter.innerHTML = '❌';
-            setTimeout(() => window.updateStatusCounter(), 2000);
-        }
-    });
+        .then(() => {
+            console.log('loadMessages completed for session', sessionId);
+            if (window.IS_RELOADING) return;
+            setTimeout(addCopyButtonsToAllCodeBlocks, 100);
+            startMessagePolling();
+            if (statusCounter) {
+                window.updateStatusCounter();
+            }
+        })
+        .catch(err => {
+            console.error('Error in loadMessages:', err);
+            if (statusCounter) {
+                statusCounter.innerHTML = '❌';
+                setTimeout(() => window.updateStatusCounter(), 2000);
+            }
+        });
 };
 
 window.displayMessage = function(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId) {
@@ -503,6 +507,13 @@ function addCopyButtonsToAllCodeBlocks() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    // FIX: Validate currentSessionId before proceeding
+    if (!window.initialSessionId) {
+        console.error('No initial session ID! Creating new session...');
+        createNewSession();
+        return;
+    }
+    
     loadSessionsFromServer().then(() => {
         originalLoadMessages(currentSessionId).catch(err => {
             console.error('Error loading messages after language switch:', err);

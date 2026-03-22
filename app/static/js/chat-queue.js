@@ -3,7 +3,7 @@
 
 function startSyncInterval() {
     if (window.syncInterval) clearInterval(window.syncInterval);
-    // FIX: Reduced interval from 5000ms to 1000ms for more responsive status updates
+    // Sync interval for fallback polling when WebSocket is disconnected
     window.syncInterval = setInterval(() => {
         if (window.IS_RELOADING) return;
         // Only use HTTP polling as fallback if WebSocket is not connected
@@ -12,21 +12,20 @@ function startSyncInterval() {
             fetchQueueStatus();
             window.updateStatusCounter();
         } else {
-            // Still fetch sessions to keep in sync, but queue status is handled via WebSocket
+            // WebSocket is connected, minimal sync needed
             loadSessionsFromServer();
-            window.updateStatusCounter(); // This will still use HTTP counts, but we can also remove it
+            window.updateStatusCounter();
         }
-    }, 5000); // Keep longer interval as fallback
+    }, 5000);
 }
 
 function fetchQueueStatus() {
     if (window.IS_RELOADING) return;
-    // If WebSocket is connected, we don't need to poll status; but we can keep for fallback
+    // If WebSocket is connected, we don't need to poll status
     if (socketConnected) {
-        // Still update sessions list periodically (already done)
         return;
     }
-    // Fallback to HTTP
+    // Fallback to HTTP polling
     fetch('/api/queue/status')
     .then(res => res.json())
     .then(data => {
@@ -73,7 +72,7 @@ function setLocalTranscribing(sessionId, isTranscribing) {
         message_count: sessionsData[id].message_count
     }));
     updateSessionsList(sessions);
-    // FIX: Force additional redraws for all devices (not just mobile) to ensure icon visibility
+    // Force additional redraws to ensure icon visibility
     if (isTranscribing) {
         setTimeout(() => updateSessionsList(sessions), 200);
         setTimeout(() => updateSessionsList(sessions), 400);
@@ -83,14 +82,37 @@ function setLocalTranscribing(sessionId, isTranscribing) {
 
 // Make function globally accessible
 window.setLocalTranscribing = setLocalTranscribing;
+
 window.updateStatusCounter = function() {
     if (window.IS_RELOADING) return;
+    
+    // If WebSocket is connected, use data from sessionQueueInfo
+    if (socketConnected) {
+        const counter = document.getElementById('status-counter');
+        if (counter) {
+            // Count requests from sessionQueueInfo
+            let userQueued = 0;
+            let totalQueued = 0;
+            
+            for (const sessionId in sessionQueueInfo) {
+                const info = sessionQueueInfo[sessionId];
+                if (info.queued) userQueued += info.queued;
+                if (info.queued) totalQueued += info.queued;
+            }
+            
+            counter.textContent = '📊 ' + userQueued + '/' + totalQueued;
+            counter.title = t('your_requests');
+        }
+        return;
+    }
+    
+    // Fallback to HTTP polling
     fetch('/api/queue/counts')
     .then(response => response.json())
     .then(data => {
         if (window.IS_RELOADING) return;
         const counter = document.getElementById('status-counter');
-        if (counter) {
+        if (counter && data.user_queued !== undefined && data.total_queued !== undefined) {
             counter.textContent = '📊 ' + data.user_queued + '/' + data.total_queued;
             counter.title = t('your_requests');
         }

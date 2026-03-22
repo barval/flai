@@ -1,5 +1,6 @@
 // app/static/js/chat-init.js
 // Main chat initialization and send message logic
+
 const originalLoadMessages = loadMessages;
 const originalDisplayMessage = displayMessage;
 
@@ -220,20 +221,16 @@ async function sendMessage() {
         console.log('Send already in progress, ignoring duplicate');
         return;
     }
-    
     isSending = true;
-    
     try {
         const input = document.getElementById('message-input');
         const text = input.value.trim();
         const sendButton = document.getElementById('send-button');
-        
         if (!text && !attachedFile) {
             isSending = false;
             alert(t('enter_message_or_file'));
             return;
         }
-        
         // Lock button immediately
         sendButton.disabled = true;
         sendButton.innerHTML = '⏳ ' + t('sending');
@@ -258,7 +255,6 @@ async function sendMessage() {
         const timestamp = now.toISOString();
         const userContent = [];
         if (text) userContent.push({"type": "text", "text": text});
-        
         let fileData = null, fileType = null, fileName = null, filePath = null;
         const tempAttachedFile = attachedFile;
         const tempText = text;
@@ -313,18 +309,14 @@ async function sendMessage() {
                             body: JSON.stringify({ message: tempText })
                         });
                     }
-                    
                     if (window.IS_RELOADING) return;
                     const data = await response.json();
                     if (window.IS_RELOADING) return;
-                    
                     console.log('Server response:', data);
-                    
                     if (data.resize_notice) {
                         originalDisplayMessage('assistant', data.resize_notice, null, null, null, null,
                             new Date().toISOString(), 0, 'system');
                     }
-                    
                     if (data.user_message_id) {
                         const userMessages = document.querySelectorAll('.user-message');
                         const lastUserMsg = userMessages[userMessages.length - 1];
@@ -337,7 +329,6 @@ async function sendMessage() {
                             displayedMessageIds.add(data.user_message_id);
                         }
                     }
-                    
                     if (data.transcribed_text) {
                         console.log('Transcription completed');
                         setLocalTranscribing(currentSessionId, false);
@@ -373,7 +364,6 @@ async function sendMessage() {
                         unlockSendButton();
                         return;
                     }
-                    
                     if (data.status === 'queued') {
                         if (!sessionQueueInfo[currentSessionId]) {
                             sessionQueueInfo[currentSessionId] = { processing: false, queued: 1 };
@@ -388,7 +378,6 @@ async function sendMessage() {
                         originalDisplayMessage('assistant', data.response, data.file_data, data.file_type, data.file_name, data.file_path,
                             data.assistant_timestamp, data.response_time, data.model_used);
                     }
-                    
                     unlockRequired = false;
                     unlockSendButton();
                 } catch (err) {
@@ -472,22 +461,22 @@ window.loadMessages = function(sessionId) {
         statusCounter.innerHTML = '⏳ ' + t('loading');
     }
     return originalLoadMessages(sessionId)
-        .then(() => {
-            console.log('loadMessages completed for session', sessionId);
-            if (window.IS_RELOADING) return;
-            setTimeout(addCopyButtonsToAllCodeBlocks, 100);
-            startMessagePolling();
-            if (statusCounter) {
-                window.updateStatusCounter();
-            }
-        })
-        .catch(err => {
-            console.error('Error in loadMessages:', err);
-            if (statusCounter) {
-                statusCounter.innerHTML = '❌';
-                setTimeout(() => window.updateStatusCounter(), 2000);
-            }
-        });
+    .then(() => {
+        console.log('loadMessages completed for session', sessionId);
+        if (window.IS_RELOADING) return;
+        setTimeout(addCopyButtonsToAllCodeBlocks, 100);
+        startMessagePolling();
+        if (statusCounter) {
+            window.updateStatusCounter();
+        }
+    })
+    .catch(err => {
+        console.error('Error in loadMessages:', err);
+        if (statusCounter) {
+            statusCounter.innerHTML = '❌';
+            setTimeout(() => window.updateStatusCounter(), 2000);
+        }
+    });
 };
 
 window.displayMessage = function(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId) {
@@ -514,14 +503,23 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
     
-    loadSessionsFromServer().then(() => {
-        originalLoadMessages(currentSessionId).catch(err => {
-            console.error('Error loading messages after language switch:', err);
-        }).finally(() => {
-            startMessagePolling();
+    // Initialize WebSocket BEFORE other operations
+    if (typeof initSocket === 'function') {
+        initSocket();
+    }
+    
+    // Wait for WebSocket connection before loading data
+    setTimeout(() => {
+        loadSessionsFromServer().then(() => {
+            originalLoadMessages(currentSessionId).catch(err => {
+                console.error('Error loading messages after language switch:', err);
+            }).finally(() => {
+                startMessagePolling();
+                window.updateStatusCounter();
+            });
+            startSyncInterval();
         });
-        startSyncInterval();
-    });
+    }, 500);
     
     if (typeof initDocumentsView === 'function') {
         initDocumentsView();
@@ -533,7 +531,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     document.getElementById('send-button').addEventListener('click', sendMessage);
-    
     document.getElementById('message-input').addEventListener('keypress', function(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();

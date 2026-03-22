@@ -6,41 +6,42 @@ let socketConnected = false;
 
 function initSocket() {
     if (socket) return;
+    
     socket = io({
         transports: ['websocket', 'polling']
     });
-
+    
     socket.on('connect', () => {
         console.log('WebSocket connected');
         socketConnected = true;
     });
-
+    
     socket.on('disconnect', () => {
         console.log('WebSocket disconnected');
         socketConnected = false;
     });
-
+    
     socket.on('queue_status', (data) => {
         console.log('Queue status event:', data);
         handleQueueStatus(data);
     });
-
+    
     socket.on('new_message', (data) => {
         console.log('New message event:', data);
         handleNewMessage(data);
     });
-
+    
     socket.on('sessions_update', (data) => {
         console.log('Sessions update event:', data);
         // Reload sessions list from server (or update locally)
         loadSessionsFromServer();
     });
-
+    
     socket.on('transcribing_status', (data) => {
         console.log('Transcribing status event:', data);
         handleTranscribingStatus(data);
     });
-
+    
     socket.on('connect_error', (err) => {
         console.error('WebSocket connection error:', err);
         socketConnected = false;
@@ -50,6 +51,9 @@ function initSocket() {
 
 function handleQueueStatus(data) {
     const { type, request_id, session_id, position, estimated_seconds, result, error } = data;
+    
+    console.log('handleQueueStatus:', type, session_id, data);
+    
     if (type === 'queued') {
         if (!sessionQueueInfo[session_id]) {
             sessionQueueInfo[session_id] = { processing: false, queued: 1 };
@@ -58,12 +62,16 @@ function handleQueueStatus(data) {
         }
         updateSessionsListFromData();
         window.updateStatusCounter();
+        
     } else if (type === 'processing') {
         if (sessionQueueInfo[session_id]) {
             sessionQueueInfo[session_id].processing = true;
             sessionQueueInfo[session_id].queued = Math.max(0, (sessionQueueInfo[session_id].queued || 0) - 1);
+        } else {
+            sessionQueueInfo[session_id] = { processing: true, queued: 0 };
         }
         updateSessionsListFromData();
+        
     } else if (type === 'completed') {
         if (result) {
             // Process the result as if from polling
@@ -116,6 +124,7 @@ function handleQueueStatus(data) {
                     setLocalTranscribing(resultSessionId, false);
                 }
             }
+            
             if (resultSessionId) {
                 setLocalTranscribing(resultSessionId, false);
                 if (sessionQueueInfo[resultSessionId]) {
@@ -130,6 +139,7 @@ function handleQueueStatus(data) {
         window.updateStatusCounter();
         fetchQueueStatus(); // fallback sync
         setTimeout(() => loadSessionsFromServer(), 500);
+        
     } else if (type === 'error') {
         const resultSessionId = session_id;
         if (resultSessionId === currentSessionId) {

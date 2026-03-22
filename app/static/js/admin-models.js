@@ -62,12 +62,13 @@ function renderModelCards() {
                 <div class="url-input-wrapper">
                     <input type="text" class="ollama-url" data-module="${mod.id}" value="${escapeHtml(ollamaUrl)}" placeholder="http://ollama:11434">
                 </div>
+                <span class="ollama-status-icon" data-module="${mod.id}" title="">?</span>
             </div>
             <div class="model-selector">
+                <button class="refresh-models-btn" data-module="${mod.id}" title="${t('Refresh models from Ollama')}">🔄</button>
                 <select class="model-dropdown" data-module="${mod.id}">
                     <option value="">${t('-- Select model --')}</option>
                 </select>
-                <button class="refresh-models-btn" data-module="${mod.id}" title="${t('Refresh models from Ollama')}">🔄</button>
             </div>
             <div class="model-details" id="details-${mod.id}" style="display:none;"></div>`;
 
@@ -114,11 +115,16 @@ function renderModelCards() {
     document.querySelectorAll('.local-checkbox').forEach(cb => {
         cb.addEventListener('change', onLocalCheckboxChange);
     });
+    document.querySelectorAll('.ollama-url').forEach(input => {
+        input.addEventListener('input', function() {
+            const module = this.dataset.module;
+            updateOllamaStatus(module);
+        });
+    });
 
-    // Do NOT automatically refresh models for each module on page load
-    // This prevents unnecessary errors when Ollama is unavailable
-    // Instead, load details for already selected models if any
+    // Initial status check for each module
     modules.forEach(mod => {
+        updateOllamaStatus(mod.id);
         const select = document.querySelector(`.model-dropdown[data-module="${mod.id}"]`);
         if (select && select.value) {
             onModelSelect({ target: select });
@@ -133,8 +139,36 @@ function onLocalCheckboxChange(event) {
     if (cb.checked) {
         urlInput.value = 'http://ollama:11434';
         urlInput.disabled = true;
+        updateOllamaStatus(module);
     } else {
         urlInput.disabled = false;
+        updateOllamaStatus(module);
+    }
+}
+
+async function updateOllamaStatus(module) {
+    const urlInput = document.querySelector(`.ollama-url[data-module="${module}"]`);
+    const ollamaUrl = urlInput.value.trim();
+    const statusIcon = document.querySelector(`.ollama-status-icon[data-module="${module}"]`);
+    if (!ollamaUrl) {
+        statusIcon.textContent = '❓';
+        statusIcon.title = t('Please provide Ollama URL first');
+        return;
+    }
+    try {
+        const response = await fetch(`/admin/api/ollama/check?url=${encodeURIComponent(ollamaUrl)}`);
+        const data = await response.json();
+        if (data.available) {
+            statusIcon.textContent = '✅';
+            statusIcon.title = t('Ollama available');
+        } else {
+            statusIcon.textContent = '❌';
+            statusIcon.title = t('Ollama unavailable') + (data.error ? `: ${data.error}` : '');
+        }
+    } catch (err) {
+        console.error(`Failed to check Ollama status for ${module}:`, err);
+        statusIcon.textContent = '❌';
+        statusIcon.title = t('Ollama unavailable') + ': ' + err.message;
     }
 }
 

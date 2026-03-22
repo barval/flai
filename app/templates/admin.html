@@ -24,7 +24,7 @@
         <div class="users-table-wrapper">
             <table id="users-table">
                 <thead>
-                    <tr>
+                     <tr>
                         <th data-sort="is_active">{{ _('Status') }}</th>
                         <th data-sort="login">{{ _('Login') }}</th>
                         <th>{{ _('Password') }}</th>
@@ -38,7 +38,7 @@
                         <th>{{ _('Camera access') }}</th>
                         {% endif %}
                         <th>{{ _('Actions') }}</th>
-                    </tr>
+                     </tr>
                 </thead>
                 <tbody id="users-tbody">
                     <!-- Data loaded via JS -->
@@ -194,7 +194,10 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'reindex_started': {{ _('Reindexing all documents with new embedding model started. This may take a while.')|tojson }},
     // New translations for per-model URL
     'Local': {{ _('Local')|tojson }},
-    'Please provide Ollama URL first.': {{ _('Please provide Ollama URL first.')|tojson }}
+    'Please provide Ollama URL first.': {{ _('Please provide Ollama URL first.')|tojson }},
+    // New translations for Ollama status
+    'Ollama available': {{ _('Ollama available')|tojson }},
+    'Ollama unavailable': {{ _('Ollama unavailable')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}
 console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);

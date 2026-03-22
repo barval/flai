@@ -233,6 +233,24 @@ def get_stats():
 
 # ==================== ENDPOINTS FOR MODEL MANAGEMENT ====================
 
+@bp.route('/api/ollama/check', methods=['GET'])
+@admin_required
+def ollama_check():
+    """Check if Ollama is reachable at given URL."""
+    ollama_url = request.args.get('url')
+    if not ollama_url:
+        return jsonify({'available': False, 'error': 'Missing url'}), 400
+    try:
+        # Use a lightweight endpoint (tags) to check availability
+        response = requests.get(f"{ollama_url}/api/tags", timeout=5)
+        if response.status_code == 200:
+            return jsonify({'available': True})
+        else:
+            return jsonify({'available': False, 'error': f'HTTP {response.status_code}'})
+    except Exception as e:
+        return jsonify({'available': False, 'error': str(e)})
+
+
 @bp.route('/api/ollama/models', methods=['GET'])
 @admin_required
 def ollama_models():

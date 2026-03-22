@@ -597,5 +597,11 @@ msgstr "Local"
 msgid "Please provide Ollama URL first."
 msgstr "Please provide Ollama URL first."
 
+msgid "Ollama available"
+msgstr "Ollama available"
+
+msgid "Ollama unavailable"
+msgstr "Ollama unavailable"
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v7.2 (c) 2026 Valery Barsukov"

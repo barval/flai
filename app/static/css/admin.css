@@ -232,9 +232,12 @@
 }
 .model-card .model-selector {
     margin-bottom: 15px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
 }
 .model-card select {
-    width: 100%;
+    flex: 1;
     padding: 8px;
     border: 1px solid #ccc;
     border-radius: 4px;
@@ -298,6 +301,14 @@
 }
 .model-card .save-button:hover {
     background-color: #219a52;
+}
+
+/* Ollama status icon */
+.ollama-status-icon {
+    margin-left: 8px;
+    font-size: 1.2em;
+    cursor: help;
+    flex-shrink: 0;
 }
 
 /* ===== MOBILE ADAPTATIONS ===== */

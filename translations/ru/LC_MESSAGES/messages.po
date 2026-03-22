@@ -598,5 +598,11 @@ msgstr "Локально"
 msgid "Please provide Ollama URL first."
 msgstr "Сначала укажите URL Ollama."
 
+msgid "Ollama available"
+msgstr "Ollama доступна"
+
+msgid "Ollama unavailable"
+msgstr "Ollama недоступна"
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v7.2 (c) 2026 Барсуков Валерий"

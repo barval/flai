@@ -6,9 +6,15 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes
+    # FIX: Bind to all interfaces and disable protected mode for Docker networking
+    command: redis-server --appendonly yes --bind 0.0.0.0 --protected-mode no
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   web:
     build: .
@@ -16,12 +22,13 @@ services:
     ports:
       - "5000:5000"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     volumes:
       - ./data:/app/data
       - ./.env:/app/.env:ro
     env_file:
-      - .env  
+      - .env
     environment:
       FLASK_ENV: production
       OLLAMA_URL: http://host.docker.internal:11434
@@ -29,23 +36,11 @@ services:
       PYTHONUNBUFFERED: 1
       TZ: ${TIMEZONE}
       PIPER_URL: ${PIPER_URL}
-      # FIX: Disable eventlet green DNS to fix Redis connection issues
-      EVENTLET_NO_GREENDNS: 1
     extra_hosts:
       - "host.docker.internal:host-gateway"
-      - "redis:127.0.0.1"
     user: "1000:1000"
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
-    # ------------------------------------------------------------
-    # Gunicorn worker configuration for WebSocket (eventlet)
-    # ------------------------------------------------------------
-    # Option 1: All services on the same machine (single GPU, sequential tasks)
+    # Gunicorn with eventlet for WebSocket support
     command: gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 1 --worker-class eventlet --timeout 120 wsgi:app
-    # Option 2: External services on separate machines (parallel processing possible)
-    # command: gunicorn --bind 0.0.0.0:5000 --workers 2 --threads 1 --worker-class eventlet --timeout 120 wsgi:app
-    # ------------------------------------------------------------
     networks:
       - app-network
     logging:

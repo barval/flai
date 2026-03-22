@@ -3,13 +3,13 @@
 
 function startSyncInterval() {
 if (window.syncInterval) clearInterval(window.syncInterval);
-// FIX: Reduced interval from 5000ms to 1000ms for more responsive status updates
+// FIX: Reduced interval from 5000ms to 2000ms for more responsive status updates
 window.syncInterval = setInterval(() => {
 if (window.IS_RELOADING) return;
 loadSessionsFromServer();
 fetchQueueStatus();
 window.updateStatusCounter();
-}, 1000);
+}, 2000);
 }
 
 function fetchQueueStatus() {

@@ -1,7 +1,7 @@
 # app/socket_events.py
 from flask_socketio import emit, disconnect
 from flask import session, request
-from . import socketio
+from .socketio import socketio
 import logging
 
 logger = logging.getLogger(__name__)
@@ -11,7 +11,6 @@ def handle_connect():
     """Client connected, store user_id in session for namespace."""
     if 'login' in session:
         logger.info(f"WebSocket connected for user {session['login']}")
-        # Join a room named after user_id to send targeted messages
         socketio.server.enter_room(request.sid, f"user_{session['login']}")
         emit('connected', {'message': 'Connected'})
     else:

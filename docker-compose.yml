@@ -33,12 +33,12 @@ services:
       - "host.docker.internal:host-gateway"
     user: "1000:1000"
     # ------------------------------------------------------------
-    # Gunicorn worker configuration
+    # Gunicorn worker configuration for WebSocket (eventlet)
     # ------------------------------------------------------------
     # Option 1: All services on the same machine (single GPU, sequential tasks)
-    command: gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 2 --timeout 120 wsgi:app
+    command: gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 1 --worker-class eventlet --timeout 120 wsgi:app
     # Option 2: External services on separate machines (parallel processing possible)
-    # command: gunicorn --bind 0.0.0.0:5000 --workers 2 --threads 4 --timeout 120 wsgi:app
+    # command: gunicorn --bind 0.0.0.0:5000 --workers 2 --threads 1 --worker-class eventlet --timeout 120 wsgi:app
     # ------------------------------------------------------------
     networks:
       - app-network

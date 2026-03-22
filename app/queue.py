@@ -12,7 +12,7 @@ from .db import save_message, CHAT_DB_PATH, update_document_index_status, \
     INDEX_STATUS_PENDING, INDEX_STATUS_INDEXING, INDEX_STATUS_INDEXED, INDEX_STATUS_FAILED, \
     get_current_time_for_db
 from .model_config import get_model_config
-from . import socketio
+from .socketio import socketio
 from .socket_events import emit_queue_status, emit_new_message, emit_transcribing_status
 
 

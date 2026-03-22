@@ -1,7 +1,6 @@
 # app/__init__.py
 import os
 from flask import Flask, request, session, send_file, abort, jsonify
-from flask_socketio import SocketIO, emit
 from flask_babel import Babel, gettext
 import logging
 from logging import Formatter
@@ -16,9 +15,9 @@ from .userdb import init_user_db, get_user_by_login
 from modules import BaseModule, MultimodalModule, ImageModule, CamModule, RagModule, AudioModule
 from modules.tts import TTSModule
 import mimetypes
+from .socketio import socketio 
 
 babel = Babel()
-socketio = SocketIO(cors_allowed_origins="*", logger=True, engineio_logger=True)
 
 @babel.localeselector
 def get_locale():
@@ -183,7 +182,7 @@ def create_app():
             return jsonify({'error': 'Not found'}), 404
         return error
 
-    # Import socket events after app creation to avoid circular imports
+    # Import socket events after app creation
     from . import socket_events
 
     return app

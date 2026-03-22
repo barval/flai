@@ -2,7 +2,7 @@ import multiprocessing
 import logging
 from logging import Formatter
 
-# Number of worker processes
+# Number of worker processes (можно переопределить в командной строке)
 workers = multiprocessing.cpu_count() * 2 + 1
 
 # Address and port to listen on
@@ -16,6 +16,3 @@ accesslog = "-"
 errorlog = "-"
 loglevel = "info"
 access_log_format = '%(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"'
-
-# Use eventlet worker class for WebSocket support
-worker_class = 'eventlet'

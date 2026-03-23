@@ -6,6 +6,18 @@ const originalDisplayMessage = displayMessage;
 function isDuplicateMessage(msg) {
     const messages = document.querySelectorAll(`.${msg.role}-message`);
     for (let el of messages) {
+        // Check by messageId (priority)
+        if (el.dataset.messageId && msg.id && el.dataset.messageId === String(msg.id)) {
+            return true;
+        }
+        // Check by tempId
+        if (el.dataset.tempId && msg.timestamp) {
+            const tempId = `temp-${msg.timestamp}`;
+            if (el.dataset.tempId === tempId) {
+                return true;
+            }
+        }
+        // Check by content and timestamp (fallback)
         if (el.dataset.rawText === msg.content &&
             Math.abs(new Date(el.dataset.timestamp) - new Date(msg.timestamp)) < 2000) {
             return true;
@@ -28,6 +40,7 @@ function stopMessagePolling() {
 
 async function pollNewMessages() {
     if (window.IS_RELOADING || !currentSessionId) return;
+    
     const messagesContainer = document.getElementById('chat-messages');
     const lastMessageEl = messagesContainer.lastElementChild;
     if (lastMessageEl && lastMessageEl.dataset.timestamp) {
@@ -35,23 +48,29 @@ async function pollNewMessages() {
     } else {
         return;
     }
+    
     try {
         const response = await fetch(`/api/sessions/${currentSessionId}/messages?since=${encodeURIComponent(lastMessageTimestamp)}`);
         if (!response.ok) {
             console.error('Failed to fetch new messages:', response.status);
             return;
         }
+        
         const newMessages = await response.json();
         if (newMessages.length > 0) {
             for (const msg of newMessages) {
-                if (displayedMessageIds.has(msg.id)) {
+                // FIX: Check duplicate by messageId first
+                if (msg.id && displayedMessageIds.has(msg.id)) {
                     console.log('pollNewMessages: Skipping duplicate message by ID', msg.id);
                     continue;
                 }
+                
+                // FIX: Check duplicate by tempId/content/timestamp
                 if (isDuplicateMessage(msg)) {
                     console.log('pollNewMessages: Skipping duplicate message by timestamp/content', msg.id);
                     continue;
                 }
+                
                 let responseTime = null;
                 if (msg.response_time) {
                     if (typeof msg.response_time === 'object') {
@@ -60,10 +79,12 @@ async function pollNewMessages() {
                         responseTime = parseFloat(msg.response_time);
                     }
                 }
+                
                 let mmTime = msg.mm_time;
                 let genTime = msg.gen_time;
                 let mmModel = msg.mm_model;
                 let genModel = msg.gen_model;
+                
                 if (mmTime && genTime) {
                     responseTime = {
                         mm_time: parseFloat(mmTime),
@@ -72,6 +93,7 @@ async function pollNewMessages() {
                         gen_model: genModel || 'unknown'
                     };
                 }
+                
                 originalDisplayMessage(
                     msg.role,
                     msg.content,
@@ -99,6 +121,7 @@ async function pollNewMessages() {
 function startResultPolling(requestId) {
     if (window.IS_RELOADING) return;
     console.log('startResultPolling: Start polling for request:', requestId);
+    
     let pollCount = 0;
     const maxPolls = 120;
     const pollInterval = setInterval(async () => {
@@ -106,18 +129,22 @@ function startResultPolling(requestId) {
             clearInterval(pollInterval);
             return;
         }
+        
         pollCount++;
         try {
             const response = await fetch('/api/queue/result/' + requestId);
             const data = await response.json();
+            
             if (window.IS_RELOADING) {
                 clearInterval(pollInterval);
                 return;
             }
+            
             if (data.status === 'completed') {
                 clearInterval(pollInterval);
                 if (data.result) {
                     const resultSessionId = data.result.session_id || pendingRequests[requestId]?.sessionId;
+                    
                     if (data.result.error) {
                         if (resultSessionId === currentSessionId) {
                             originalDisplayMessage('assistant', '⚠️ ' + data.result.error, null, null, null, null,
@@ -146,12 +173,14 @@ function startResultPolling(requestId) {
                         } else {
                             let responseTime = data.result.response_time;
                             let modelUsed = data.result.model_used;
+                            
                             if (data.result.mm_time && data.result.gen_time) {
                                 responseTime = { mm_time: data.result.mm_time, gen_time: data.result.gen_time, mm_model: data.result.mm_model, gen_model: data.result.gen_model };
                                 modelUsed = data.result.gen_model;
                             } else if (typeof responseTime === 'string' && responseTime.startsWith('{')) {
                                 try { responseTime = JSON.parse(responseTime); } catch (e) {}
                             }
+                            
                             if (resultSessionId === currentSessionId) {
                                 originalDisplayMessage('assistant', data.result.response, data.result.file_data,
                                     data.result.file_type, data.result.file_name, data.result.file_path,
@@ -166,6 +195,7 @@ function startResultPolling(requestId) {
                             setLocalTranscribing(resultSessionId, false);
                         }
                     }
+                    
                     // FIX: Clear queue status before setting new message indicator to allow envelope to show
                     if (resultSessionId) {
                         setLocalTranscribing(resultSessionId, false);
@@ -177,6 +207,7 @@ function startResultPolling(requestId) {
                         // Force immediate UI update
                         updateSessionsListFromData();
                     }
+                    
                     if (resultSessionId) {
                         fetchQueueStatus();
                     }
@@ -200,6 +231,7 @@ function startResultPolling(requestId) {
                 window.updateStatusCounter();
                 fetchQueueStatus();
             }
+            
             if (pollCount >= maxPolls) {
                 clearInterval(pollInterval);
                 originalDisplayMessage('assistant', '⚠️ ' + t('request_timeout'),
@@ -220,7 +252,6 @@ async function sendMessage() {
         console.log('Send already in progress, ignoring duplicate');
         return;
     }
-    
     isSending = true;
     
     try {
@@ -272,8 +303,8 @@ async function sendMessage() {
                 userContent.push({ "type": type, "file_data": fileData, "file_type": fileType, "file_name": fileName, "file_path": filePath });
             }
             const msgElement = originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, filePath, timestamp);
+            // FIX: Do NOT add tempId to displayedMessageIds - rely on messageId instead
             const tempId = `temp-${timestamp}`;
-            displayedMessageIds.add(tempId);
             if (msgElement) {
                 msgElement.dataset.tempId = tempId;
             }
@@ -294,6 +325,7 @@ async function sendMessage() {
         const sendToServer = () => {
             if (window.IS_RELOADING) return;
             let unlockRequired = true;
+            
             (async () => {
                 try {
                     let response;
@@ -325,22 +357,25 @@ async function sendMessage() {
                             new Date().toISOString(), 0, 'system');
                     }
                     
+                    // FIX: Update messageId immediately when received from server
                     if (data.user_message_id) {
                         const userMessages = document.querySelectorAll('.user-message');
                         const lastUserMsg = userMessages[userMessages.length - 1];
                         if (lastUserMsg && lastUserMsg.dataset.timestamp === timestamp) {
                             if (lastUserMsg.dataset.tempId) {
-                                displayedMessageIds.delete(lastUserMsg.dataset.tempId);
+                                // Remove tempId from tracking
                                 delete lastUserMsg.dataset.tempId;
                             }
                             lastUserMsg.dataset.messageId = data.user_message_id;
                             displayedMessageIds.add(data.user_message_id);
+                            console.log('sendMessage: Updated messageId to', data.user_message_id);
                         }
                     }
                     
                     if (data.transcribed_text) {
                         console.log('Transcription completed');
                         setLocalTranscribing(currentSessionId, false);
+                        
                         if (data.request_id) {
                             if (!sessionQueueInfo[currentSessionId]) {
                                 sessionQueueInfo[currentSessionId] = { processing: false, queued: 1 };
@@ -409,14 +444,17 @@ async function sendMessage() {
         if (tempAttachedFile) {
             const reader = new FileReader();
             let processed = false;
+            
             reader.onload = async function(e) {
                 if (processed) return;
                 processed = true;
+                
                 try {
                     fileData = e.target.result.split(',')[1];
                     fileType = tempAttachedFile.type;
                     fileName = tempAttachedFile.name;
                     console.log('File attached:', fileName, 'Type:', fileType);
+                    
                     // FIX: Set transcribing flag for audio files BEFORE displaying message
                     if (fileType && fileType.startsWith('audio/')) {
                         console.log('Audio file detected, setting transcribing flag for session:', currentSessionId);
@@ -424,6 +462,7 @@ async function sendMessage() {
                         // Force update for all devices
                         setTimeout(() => updateSessionsListFromData(), 100);
                     }
+                    
                     displayUserMessage(fileData, fileType, fileName, null);
                     sendToServer();
                 } catch (err) {
@@ -434,12 +473,14 @@ async function sendMessage() {
                     unlockSendButton();
                 }
             };
+            
             reader.onerror = () => {
                 console.error('FileReader error');
                 setLocalTranscribing(currentSessionId, false);
                 isSending = false;
                 unlockSendButton();
             };
+            
             reader.readAsDataURL(tempAttachedFile);
         } else {
             try {
@@ -467,10 +508,12 @@ async function sendMessage() {
 window.loadMessages = function(sessionId) {
     console.log('loadMessages called for session', sessionId);
     stopMessagePolling();
+    
     const statusCounter = document.getElementById('status-counter');
     if (statusCounter) {
         statusCounter.innerHTML = '⏳ ' + t('loading');
     }
+    
     return originalLoadMessages(sessionId)
         .then(() => {
             console.log('loadMessages completed for session', sessionId);
@@ -533,7 +576,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     document.getElementById('send-button').addEventListener('click', sendMessage);
-    
     document.getElementById('message-input').addEventListener('keypress', function(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();

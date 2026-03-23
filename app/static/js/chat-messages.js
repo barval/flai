@@ -13,110 +13,115 @@ function loadMessages(sessionId) {
         console.error('loadMessages called with empty sessionId');
         return Promise.reject(new Error('Session ID is empty'));
     }
+    
     console.log('loadMessages: loading messages for session', sessionId);
     
     // Clear displayed IDs for new session load
     displayedMessageIds.clear();
     
     return fetch('/api/sessions/' + sessionId + '/messages')
-    .then(res => {
-        if (!res.ok) {
-            console.error('Failed to load messages:', res.status);
-            throw new Error('HTTP error ' + res.status);
-        }
-        return res.json();
-    })
-    .then(messages => {
-        if (window.IS_RELOADING) return;
-        console.log('loadMessages: received', messages.length, 'messages');
-        
-        const container = document.getElementById('chat-messages');
-        container.innerHTML = '';
-        
-        // Load model info
-        fetch('/api/sessions/' + sessionId + '/model-info')
-        .then(res => res.json())
-        .then(data => {
-            if (window.IS_RELOADING) return;
-            defaultModelName = data.model_name || 'qwen3-vl:8b-instruct-q4_K_M';
-        })
-        .catch(err => console.error('Error loading model info:', err));
-        
-        let lastUserMessage = null;
-        messages.forEach((msg) => {
-            try {
-                if (msg.role === 'user') {
-                    lastUserMessage = msg;
-                    displayMessage(
-                        msg.role,
-                        msg.content,
-                        msg.file_data,
-                        msg.file_type,
-                        msg.file_name,
-                        msg.file_path,
-                        msg.timestamp,
-                        null, null, null, null, null, null,
-                        msg.id
-                    );
-                } else if (msg.role === 'assistant') {
-                    let responseTime = null;
-                    if (lastUserMessage) {
-                        const userTime = new Date(lastUserMessage.timestamp);
-                        const assistantTime = new Date(msg.timestamp);
-                        const diffSeconds = (assistantTime - userTime) / 1000;
-                        responseTime = Math.round(diffSeconds * 10) / 10;
-                    }
-                    if (msg.response_time) {
-                        if (typeof msg.response_time === 'object') {
-                            responseTime = msg.response_time;
-                        } else if (!isNaN(parseFloat(msg.response_time))) {
-                            responseTime = parseFloat(msg.response_time);
-                        }
-                    }
-                    let mmTime = msg.mm_time;
-                    let genTime = msg.gen_time;
-                    let mmModel = msg.mm_model;
-                    let genModel = msg.gen_model;
-                    if (mmTime && genTime) {
-                        responseTime = {
-                            mm_time: parseFloat(mmTime),
-                            gen_time: parseFloat(genTime),
-                            mm_model: mmModel || 'unknown',
-                            gen_model: genModel || 'unknown'
-                        };
-                    }
-                    displayMessage(
-                        msg.role,
-                        msg.content,
-                        msg.file_data,
-                        msg.file_type,
-                        msg.file_name,
-                        msg.file_path,
-                        msg.timestamp,
-                        responseTime,
-                        msg.model_name || defaultModelName,
-                        mmTime,
-                        genTime,
-                        mmModel,
-                        genModel,
-                        msg.id
-                    );
-                    lastUserMessage = null;
-                }
-            } catch (e) {
-                console.error('Error displaying message', msg, e);
+        .then(res => {
+            if (!res.ok) {
+                console.error('Failed to load messages:', res.status);
+                throw new Error('HTTP error ' + res.status);
             }
+            return res.json();
+        })
+        .then(messages => {
+            if (window.IS_RELOADING) return;
+            console.log('loadMessages: received', messages.length, 'messages');
+            
+            const container = document.getElementById('chat-messages');
+            container.innerHTML = '';
+            
+            // Load model info
+            fetch('/api/sessions/' + sessionId + '/model-info')
+                .then(res => res.json())
+                .then(data => {
+                    if (window.IS_RELOADING) return;
+                    defaultModelName = data.model_name || 'qwen3-vl:8b-instruct-q4_K_M';
+                })
+                .catch(err => console.error('Error loading model info:', err));
+            
+            let lastUserMessage = null;
+            messages.forEach((msg) => {
+                try {
+                    if (msg.role === 'user') {
+                        lastUserMessage = msg;
+                        displayMessage(
+                            msg.role,
+                            msg.content,
+                            msg.file_data,
+                            msg.file_type,
+                            msg.file_name,
+                            msg.file_path,
+                            msg.timestamp,
+                            null, null, null, null, null, null,
+                            msg.id
+                        );
+                    } else if (msg.role === 'assistant') {
+                        let responseTime = null;
+                        if (lastUserMessage) {
+                            const userTime = new Date(lastUserMessage.timestamp);
+                            const assistantTime = new Date(msg.timestamp);
+                            const diffSeconds = (assistantTime - userTime) / 1000;
+                            responseTime = Math.round(diffSeconds * 10) / 10;
+                        }
+                        
+                        if (msg.response_time) {
+                            if (typeof msg.response_time === 'object') {
+                                responseTime = msg.response_time;
+                            } else if (!isNaN(parseFloat(msg.response_time))) {
+                                responseTime = parseFloat(msg.response_time);
+                            }
+                        }
+                        
+                        let mmTime = msg.mm_time;
+                        let genTime = msg.gen_time;
+                        let mmModel = msg.mm_model;
+                        let genModel = msg.gen_model;
+                        
+                        if (mmTime && genTime) {
+                            responseTime = {
+                                mm_time: parseFloat(mmTime),
+                                gen_time: parseFloat(genTime),
+                                mm_model: mmModel || 'unknown',
+                                gen_model: genModel || 'unknown'
+                            };
+                        }
+                        
+                        displayMessage(
+                            msg.role,
+                            msg.content,
+                            msg.file_data,
+                            msg.file_type,
+                            msg.file_name,
+                            msg.file_path,
+                            msg.timestamp,
+                            responseTime,
+                            msg.model_name || defaultModelName,
+                            mmTime,
+                            genTime,
+                            mmModel,
+                            genModel,
+                            msg.id
+                        );
+                        lastUserMessage = null;
+                    }
+                } catch (e) {
+                    console.error('Error displaying message', msg, e);
+                }
+            });
+            
+            updateMessageCount();
+            container.scrollTop = container.scrollHeight;
+            setNewMessageIndicator(sessionId, false);
+            updateLastVisit(sessionId);
+        })
+        .catch(err => {
+            console.error('Error in loadMessages:', err);
+            throw err;
         });
-        
-        updateMessageCount();
-        container.scrollTop = container.scrollHeight;
-        setNewMessageIndicator(sessionId, false);
-        updateLastVisit(sessionId);
-    })
-    .catch(err => {
-        console.error('Error in loadMessages:', err);
-        throw err;
-    });
 }
 
 function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId) {
@@ -182,6 +187,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         } else if (fileData) {
             downloadUrl = 'data:' + fileType + ';base64,' + fileData;
         }
+        
         if (downloadUrl) {
             if (fileType && fileType.startsWith('image/')) {
                 timeDisplay += ' <a href="' + downloadUrl + '" download="' + (fileName || 'image.jpg') + '" class="download-link-inline" title="' + t('download_image') + '" onclick="event.stopPropagation()">⬇️</a>';
@@ -205,6 +211,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         } else if (fileData) {
             downloadUrl = 'data:' + fileType + ';base64,' + fileData;
         }
+        
         if (downloadUrl) {
             if (fileType && fileType.startsWith('image/')) {
                 timeDisplay += ' <a href="' + downloadUrl + '" download="' + (fileName || 'generated_image.jpg') + '" class="download-link-inline" title="' + t('download_image') + '" onclick="event.stopPropagation()">⬇️</a>';
@@ -238,6 +245,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
                 duration = parseFloat(responseTime).toFixed(1);
             }
         }
+        
         if (duration) {
             const langSuffix = t('seconds_suffix');
             headerExtra += ' <span class="text-muted">⏱️ ' + duration + langSuffix + '</span>';
@@ -245,6 +253,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         
         // TTS button
         headerExtra += ' <button class="tts-button" title="' + t('speak') + '">🗣️</button>';
+        
         // Copy message button
         headerExtra += ' <button class="copy-message-button" title="' + t('copy_text') + '">📋</button>';
         
@@ -386,9 +395,12 @@ async function handleCopyClick(button, codeElement) {
     const code = codeElement.textContent || codeElement.innerText;
     const originalHTML = button.innerHTML;
     const originalClass = button.className;
+    
     button.innerHTML = '⏳';
     button.disabled = true;
+    
     const success = await copyToClipboard(code);
+    
     if (success) {
         button.innerHTML = '✓';
         button.className = originalClass + ' copied';
@@ -413,12 +425,15 @@ async function handleCopyClick(button, codeElement) {
 function addCopyButtonsToMessage(messageElement) {
     if (window.IS_RELOADING) return;
     if (!messageElement) return;
+    
     const codeBlocks = messageElement.querySelectorAll('pre code');
     codeBlocks.forEach((codeBlock) => {
         const parent = codeBlock.parentNode;
         if (parent.classList.contains('code-block-wrapper')) return;
+        
         const wrapper = document.createElement('div');
         wrapper.className = 'code-block-wrapper';
+        
         const copyButton = document.createElement('button');
         copyButton.className = 'copy-code-button';
         copyButton.innerHTML = '📋';
@@ -429,6 +444,7 @@ function addCopyButtonsToMessage(messageElement) {
             if (window.IS_RELOADING) return;
             handleCopyClick(copyButton, codeBlock);
         });
+        
         parent.parentNode.insertBefore(wrapper, parent);
         wrapper.appendChild(parent);
         wrapper.appendChild(copyButton);
@@ -438,6 +454,7 @@ function addCopyButtonsToMessage(messageElement) {
 function setupCopyButtonsObserver() {
     const chatMessages = document.getElementById('chat-messages');
     if (!chatMessages) return;
+    
     const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
             mutation.addedNodes.forEach((node) => {
@@ -452,5 +469,6 @@ function setupCopyButtonsObserver() {
             });
         });
     });
+    
     observer.observe(chatMessages, { childList: true, subtree: true });
 }

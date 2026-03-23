@@ -240,7 +240,7 @@ class RagModule:
             f"chunks_found={len(chunks)}, "
             f"chunk_sizes_chars={chunk_sizes}, "
             f"total_context_chars={len(context)}, "
-            f"estimated_context_tokens={len(context) // self.token_chars + 1}"
+            f"estimated_context_tokens={self._estimate_tokens(context)}"
         )
         # Output of previews of the first 2 chunks (200 characters each)
         for i, chunk in enumerate(chunks[:2]):

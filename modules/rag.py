@@ -233,6 +233,20 @@ class RagModule:
         # 2. Prepare context string
         context = "\n".join(chunks)
 
+        # Logging the structure of the RAG context
+        chunk_sizes = [len(c) for c in chunks]
+        self.logger.info(
+            f"RAG DEBUG: query='{query[:60]}...', "
+            f"chunks_found={len(chunks)}, "
+            f"chunk_sizes_chars={chunk_sizes}, "
+            f"total_context_chars={len(context)}, "
+            f"estimated_context_tokens={len(context) // self.token_chars + 1}"
+        )
+        # Output of previews of the first 2 chunks (200 characters each)
+        for i, chunk in enumerate(chunks[:2]):
+            preview = chunk[:200].replace('\n', ' ').strip() + '...' if len(chunk) > 200 else chunk.replace('\n', ' ')
+            self.logger.debug(f"RAG DEBUG: chunk[{i}] preview='{preview}'")
+
         # 3. Get conversation history (with token limit)
         # Estimate token count for context and query
         query_tokens = self._estimate_tokens(query)

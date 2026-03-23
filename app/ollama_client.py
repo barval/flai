@@ -9,6 +9,7 @@ from flask_babel import gettext as _
 from flask_babel import force_locale
 
 from app.model_config import get_model_config
+from app.utils import estimate_tokens  # для оценки токенов
 
 
 class OllamaClient:
@@ -17,20 +18,15 @@ class OllamaClient:
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
         self.available = False
-        # No global ollama_url anymore
         if app:
             self.init_app(app)
 
     def init_app(self, app):
         """Initialize with Flask app config."""
-        # No global URL, we'll get from model config each time
-        # But we still check availability? We'll check per call.
-        self.check_availability()  # might be removed, but keep for backward compat
+        self.check_availability()
 
     def check_availability(self) -> bool:
         """Check if Ollama service is reachable (deprecated, but kept)."""
-        # We can't check without URL, so just return True if config exists.
-        # Better to remove this method later.
         self.available = True
         return True
 
@@ -44,30 +40,90 @@ class OllamaClient:
             with force_locale(lang):
                 return _(key, **kwargs)
 
+    def _validate_prompt(
+        self,
+        messages: List[Dict[str, Any]],
+        model_type: str,
+        lang: str,
+    ) -> Optional[str]:
+        """
+        Validate that the total prompt fits into the model's context window.
+        Returns error message if validation fails, None otherwise.
+        """
+        config = self._get_model_config(model_type)
+        if not config:
+            # If config missing, we cannot validate – assume it's ok (or log warning)
+            self.logger.warning(f"Missing model config for {model_type}, skipping validation")
+            return None
+
+        max_context = config.get('context_length', 32768)
+        # Use 95% as hard limit
+        hard_limit = int(max_context * 0.95)
+
+        # Estimate total tokens from all messages
+        total_tokens = 0
+        for msg in messages:
+            content = msg.get('content', '')
+            if content:
+                # For now, estimate only text content.
+                # Images are handled in multimodal module separately.
+                total_tokens += estimate_tokens(content, model_type, lang)
+
+            # Also count system prompt if present in some messages? Not needed.
+
+        if total_tokens > hard_limit:
+            error_msg = self._translate(
+                'Request too long, please simplify your request',
+                lang
+            )
+            self.logger.error(
+                f"Prompt validation failed: {total_tokens} tokens "
+                f"(limit {hard_limit}) for {model_type}"
+            )
+            return error_msg
+
+        self.logger.info(
+            f"Prompt validation passed: {total_tokens}/{hard_limit} tokens "
+            f"({total_tokens / max_context * 100:.1f}%)"
+        )
+        return None
+
     def call(
         self,
         messages: List[Dict[str, Any]],
         model_type: str = 'chat',
         stream: bool = False,
         lang: str = 'ru',
+        validate: bool = True,
     ) -> Union[str, Dict[str, Any]]:
         """
         Call Ollama chat completion.
         Returns content string on success, error message on failure.
+        If validate=True, checks prompt size before sending.
         """
+        # Optional validation
+        if validate:
+            error = self._validate_prompt(messages, model_type, lang)
+            if error:
+                return error
+
         config = self._get_model_config(model_type)
         if not config:
             return self._translate('Model configuration missing', lang)
 
         model = config.get('model_name')
         if not model:
-            return self._translate('Model for {model_type} not configured', lang).format(model_type=model_type)
+            return self._translate(
+                'Model for {model_type} not configured',
+                lang
+            ).format(model_type=model_type)
 
-        # Get URL from config, fallback to default
         ollama_url = config.get('ollama_url')
         if not ollama_url:
-            ollama_url = 'http://ollama:11434'   # default if not set
-            self.logger.warning(f"No ollama_url for {model_type}, using default {ollama_url}")
+            ollama_url = 'http://ollama:11434'
+            self.logger.warning(
+                f"No ollama_url for {model_type}, using default {ollama_url}"
+            )
 
         timeout = config.get('timeout', 60)
         context = config.get('context_length', 32768)
@@ -86,7 +142,9 @@ class OllamaClient:
             }
         }
 
-        self.logger.info(f"Sending request to {ollama_url}, model={model}, timeout={timeout}s")
+        self.logger.info(
+            f"Sending request to {ollama_url}, model={model}, timeout={timeout}s"
+        )
         try:
             response = requests.post(
                 f"{ollama_url}/api/chat",
@@ -111,12 +169,15 @@ class OllamaClient:
 
                 return content.strip()
             else:
-                self.logger.error(f"Ollama error: {response.status_code} - {response.text}")
+                self.logger.error(
+                    f"Ollama error: {response.status_code} - {response.text}"
+                )
                 return f"{self._translate('Error', lang)}: {response.status_code}"
         except requests.exceptions.Timeout:
             self.logger.error(f"Timeout ({timeout}s) calling {model} at {ollama_url}")
             template = self._translate(
-                'Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request.',
+                'Timeout ({timeout}s) when calling the model. '
+                'Try increasing timeout in admin panel or simplify your request.',
                 lang
             )
             return template.format(timeout=timeout)
@@ -124,5 +185,7 @@ class OllamaClient:
             self.logger.error(f"Connection error to {ollama_url}")
             return self._translate('Could not connect to Ollama', lang)
         except Exception as e:
-            self.logger.error(f"Error calling Ollama: {e}\n{traceback.format_exc()}")
+            self.logger.error(
+                f"Error calling Ollama: {e}\n{traceback.format_exc()}"
+            )
             return f"{self._translate('Error', lang)}: {str(e)}"

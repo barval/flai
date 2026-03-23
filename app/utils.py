@@ -11,8 +11,26 @@ import PyPDF2
 from docx import Document
 from typing import List, Dict, Optional, Tuple, Any
 
-
 PROMPTS_DIR = 'prompts'
+
+# Token estimation coefficients for different languages and model types
+# Format: (model_type, language) -> characters per token
+TOKEN_COEFFICIENTS = {
+    ('chat', 'ru'): 2.2,
+    ('chat', 'en'): 3.5,
+    ('reasoning', 'ru'): 2.0,
+    ('reasoning', 'en'): 3.2,
+    ('multimodal', 'ru'): 2.5,
+    ('multimodal', 'en'): 3.3,
+    ('embedding', 'ru'): 2.0,
+    ('embedding', 'en'): 3.0,
+}
+
+# Safety margin to prevent context overflow (use only 85% of calculated capacity)
+SAFETY_MARGIN = 0.85
+
+# Overhead for template text and system instructions
+TEMPLATE_OVERHEAD = 800
 
 
 def get_current_time_in_timezone(app=None) -> Optional[str]:
@@ -105,21 +123,16 @@ def resize_image_if_needed(
         image_bytes = base64.b64decode(file_data)
         img = Image.open(BytesIO(image_bytes))
         original_width, original_height = img.size
-
         if original_width <= max_width and original_height <= max_height:
             return file_data, file_type, file_name, False, None, None
-
         ratio = min(max_width / original_width, max_height / original_height)
         new_width = int(original_width * ratio)
         new_height = int(original_height * ratio)
-
         img_resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-
         if img_resized.mode in ('RGBA', 'LA', 'P'):
             rgb_img = Image.new('RGB', img_resized.size, (255, 255, 255))
             rgb_img.paste(img_resized, mask=img_resized.split()[-1] if img_resized.mode == 'RGBA' else None)
             img_resized = rgb_img
-
         output = BytesIO()
         img_resized.save(output, format='JPEG', quality=quality, optimize=True)
         output_bytes = output.getvalue()
@@ -127,7 +140,6 @@ def resize_image_if_needed(
         new_file_type = 'image/jpeg'
         base, _ = os.path.splitext(file_name)
         new_file_name = base + '.jpg'
-
         return new_file_data, new_file_type, new_file_name, True, (original_width, original_height), (new_width, new_height)
     except Exception as e:
         current_app.logger.error(f"Error resizing image: {str(e)}")
@@ -143,16 +155,13 @@ def save_uploaded_file(file_data: str, filename: str, session_id: str, upload_fo
     except Exception as e:
         current_app.logger.error(f"Failed to decode base64 file data: {e}")
         return None
-
     session_folder = os.path.join(upload_folder, session_id)
     os.makedirs(session_folder, exist_ok=True)
-
     ext = os.path.splitext(filename)[1] if filename else '.bin'
     if not ext:
         ext = '.bin'
     unique_name = f"{uuid.uuid4().hex}{ext}"
     file_path = os.path.join(session_folder, unique_name)
-
     try:
         with open(file_path, 'wb') as f:
             f.write(file_bytes)
@@ -202,9 +211,31 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]
     return chunks
 
 
-def estimate_tokens(text: str, token_chars: int = 3) -> int:
-    """Estimate tokens based on characters per token."""
-    return len(text) // token_chars + 1
+def estimate_tokens(text: str, model_type: str = 'chat', lang: str = 'ru', token_chars: float = None) -> int:
+    """
+    Estimate tokens based on characters per token with language and model-specific coefficients.
+    
+    Args:
+        text: Input text to estimate
+        model_type: Type of model ('chat', 'reasoning', 'multimodal', 'embedding')
+        lang: Language code ('ru', 'en')
+        token_chars: Override coefficient (if None, uses predefined coefficients)
+    
+    Returns:
+        Estimated token count
+    """
+    if not text:
+        return 0
+    
+    # Use provided coefficient or get from predefined table
+    if token_chars is not None:
+        coeff = token_chars
+    else:
+        coeff = TOKEN_COEFFICIENTS.get((model_type, lang), 3.0)
+    
+    # Apply safety margin to estimation
+    estimated = len(text) / coeff + 1
+    return int(estimated * SAFETY_MARGIN)
 
 
 def build_context_prompt(history: List[Dict[str, str]], lang: str = 'ru') -> str:
@@ -216,3 +247,23 @@ def build_context_prompt(history: List[Dict[str, str]], lang: str = 'ru') -> str
         role = "User" if msg['role'] == 'user' else "Assistant"
         lines.append(f"{role}: {msg['content']}")
     return "\n".join(lines)
+
+
+def validate_prompt_size(prompt: str, model_config: Dict[str, Any], model_type: str = 'chat', lang: str = 'ru') -> Tuple[bool, int, int]:
+    """
+    Validate that prompt fits within model's context window with safety margin.
+    
+    Returns:
+        (is_valid, estimated_tokens, max_tokens)
+    """
+    if not model_config:
+        return True, 0, 0
+    
+    max_context = model_config.get('context_length', 32768)
+    estimated = estimate_tokens(prompt, model_type, lang)
+    
+    # Use 95% of context as hard limit
+    hard_limit = int(max_context * 0.95)
+    
+    is_valid = estimated <= hard_limit
+    return is_valid, estimated, max_context

@@ -606,5 +606,8 @@ msgstr "Ollama unavailable"
 msgid "your_requests"
 msgstr "Your requests in queue / Total in queue"
 
+msgid "Request too long, please simplify your request"
+msgstr "Request too long, please simplify your request"
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v7.2 (c) 2026 Valery Barsukov"

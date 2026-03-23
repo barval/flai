@@ -38,12 +38,21 @@ def create_app():
     app.config['BABEL_DEFAULT_LOCALE'] = 'ru'
 
     # Setup logging
+    log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
+    log_level = getattr(logging, log_level_str, logging.INFO)
+
     formatter = Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                          datefmt='%Y-%m-%d %H:%M:%S')
+    datefmt='%Y-%m-%d %H:%M:%S')
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
-    app.logger.handlers = [console_handler]
-    app.logger.setLevel(logging.DEBUG)
+
+    # Configure the root logger so that all modules inherit the level
+    logging.root.setLevel(log_level)
+    logging.root.handlers = [console_handler]
+
+    #app.logger.handlers = [console_handler]
+    #app.logger.setLevel(log_level)
+    app.logger.info(f"Logging initialized with level: {log_level_str}")
 
     # Initialize Babel with the app
     babel.init_app(app)

@@ -607,5 +607,8 @@ msgstr "Ollama недоступна"
 msgid "your_requests"
 msgstr "Ваши запросы в очереди / Всего в очереди"
 
+msgid "Request too long, please simplify your request"
+msgstr "Запрос слишком длинный, пожалуйста, упростите запрос"
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v7.2 (c) 2026 Барсуков Валерий"

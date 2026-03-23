@@ -204,7 +204,7 @@ class MultimodalModule:
             return None, self._('JSON parsing error: {error}', lang, error=str(e))
 
     def _call_multimodal(self, messages: List[Dict[str, Any]], lang: str = 'ru') -> str:
-        """Call multimodal model with configuration."""
+        """Call multimodal model with configuration and validation."""
         if not self.available:
             return self._('Multimodal model unavailable', lang)
 
@@ -216,7 +216,34 @@ class MultimodalModule:
         if not model:
             return self._('Multimodal model not configured', lang)
 
-        # Get URL from config, fallback to default
+        # --- Prompt validation ---
+        max_context = model_config.get('context_length', 32768)
+        hard_limit = int(max_context * 0.95)
+        total_tokens = 0
+        # Estimate tokens for all messages
+        for msg in messages:
+            content = msg.get('content', '')
+            if content:
+                total_tokens += estimate_tokens(content, 'multimodal', lang, self.token_chars)
+            # Approximate image tokens (rough estimate)
+            if 'images' in msg and msg['images']:
+                # Assume each image consumes ~1000 tokens (very rough)
+                total_tokens += len(msg['images']) * 1000
+
+        if total_tokens > hard_limit:
+            error_msg = self._('Request too long, please simplify your request', lang)
+            self.logger.error(
+                f"Multimodal prompt too large: {total_tokens} tokens "
+                f"(limit {hard_limit})"
+            )
+            return f"⚠️ {error_msg}"
+
+        self.logger.info(
+            f"Multimodal prompt validation passed: {total_tokens}/{hard_limit} tokens "
+            f"({total_tokens / max_context * 100:.1f}%)"
+        )
+
+        # --- Build request ---
         ollama_url = model_config.get('ollama_url')
         if not ollama_url:
             ollama_url = 'http://ollama:11434'

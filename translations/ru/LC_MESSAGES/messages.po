@@ -610,5 +610,23 @@ msgstr "Ваши запросы в очереди / Всего в очереди
 msgid "Request too long, please simplify your request"
 msgstr "Запрос слишком длинный, пожалуйста, упростите запрос"
 
+msgid "Request cancelled - too long in queue ({queue_time:.1f}s)"
+msgstr "Запрос отменён - слишком долго в очереди ({queue_time:.1f}с)"
+
+msgid "Invalid image"
+msgstr "Неверное изображение"
+
+msgid "Unknown request type"
+msgstr "Неизвестный тип запроса"
+
+msgid "Camera module unavailable"
+msgstr "Модуль камер недоступен"
+
+msgid "RAG module unavailable"
+msgstr "RAG модуль недоступен"
+
+msgid "Image generation module unavailable"
+msgstr "Модуль генерации изображений недоступен"
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v7.2 (c) 2026 Барсуков Валерий"

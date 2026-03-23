@@ -11,10 +11,8 @@ from app.utils import extract_text_from_file, chunk_text, get_current_time_in_ti
 from app.db import get_session_text_history, update_document_index_status
 from app.model_config import get_model_config
 
-
 class RagModule:
     """Module for Retrieval-Augmented Generation using Qdrant and Ollama embeddings."""
-
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
         self.qdrant_client = None
@@ -178,17 +176,17 @@ class RagModule:
             self.logger.error(f"Failed to delete document {doc_id} from index: {e}")
             return False
 
-    def search(self, user_id: str, query: str, top_k: Optional[int] = None) -> List[str]:
+    def search(self, user_id: str, query: str, top_k: Optional[int] = None) -> Tuple[List[str], List[float]]:
         """
         Search for relevant chunks based on query.
-        Returns list of chunk texts.
+        Returns tuple of (chunk_texts, scores).
         """
         if not self.available:
-            return []
+            return [], []
         top_k = top_k or self.top_k
         query_emb = self._get_embedding(query)
         if query_emb is None:
-            return []
+            return [], []
         collection_name = self._get_collection_name(user_id)
         try:
             search_result = self.qdrant_client.search(
@@ -199,12 +197,14 @@ class RagModule:
                 ),
                 limit=top_k
             )
+            # Extract text and score for each result
             chunks = [hit.payload["text"] for hit in search_result]
+            scores = [hit.score for hit in search_result]
             self.logger.info(f"search: found {len(chunks)} chunks for query '{query[:50]}...'")
-            return chunks
+            return chunks, scores
         except Exception as e:
             self.logger.error(f"Qdrant search error: {e}")
-            return []
+            return [], []
 
     # --- Helper: token estimation (using centralized function) ---
     def _estimate_tokens(self, text: str) -> int:
@@ -224,40 +224,38 @@ class RagModule:
         Returns (None, None, None) if no relevant documents found (triggers fallback).
         """
         # 1. Retrieve relevant chunks
-        chunks = self.search(user_id, query)
+        chunks, scores = self.search(user_id, query)  # Now getting scores too
         if not chunks:
             # No relevant documents - return None to trigger fallback to reasoning model
             self.logger.info(f"No relevant documents found for query: {query[:50]}...")
             return None, None, None
-
         # 2. Prepare context string
         context = "\n".join(chunks)
-
-        # Logging the structure of the RAG context
+        # Logging the structure of the RAG context WITH RELEVANCE SCORES
         chunk_sizes = [len(c) for c in chunks]
         self.logger.info(
             f"RAG DEBUG: query='{query[:60]}...', "
             f"chunks_found={len(chunks)}, "
             f"chunk_sizes_chars={chunk_sizes}, "
+            f"chunk_scores={scores}, "  # Adding scores to log
             f"total_context_chars={len(context)}, "
             f"estimated_context_tokens={self._estimate_tokens(context)}"
         )
-        # Output of previews of the first 2 chunks (200 characters each)
-        for i, chunk in enumerate(chunks[:2]):
+        # Output of previews of the first 2 chunks with relevance scores
+        for i, (chunk, score) in enumerate(zip(chunks[:2], scores[:2])):
             preview = chunk[:200].replace('\n', ' ').strip() + '...' if len(chunk) > 200 else chunk.replace('\n', ' ')
-            self.logger.debug(f"RAG DEBUG: chunk[{i}] preview='{preview}'")
-
+            self.logger.debug(
+                f"RAG DEBUG: chunk[{i}] score={score:.4f} preview='{preview}'"  # Adding score to preview
+            )
         # 3. Get conversation history (with token limit)
         # Estimate token count for context and query
         query_tokens = self._estimate_tokens(query)
         context_tokens = self._estimate_tokens(context)
         template_overhead = 800  # rough estimate for template text + instructions
-
         # Get reasoning model config from DB
         reasoning_config = get_model_config('reasoning')
         if not reasoning_config:
             return None, "Reasoning model configuration missing", None
-
         max_context_tokens = reasoning_config.get('context_length', 40960)
         history_percent = int(current_app.config.get('CONTEXT_HISTORY_PERCENT', 75))
         available_tokens = int(max_context_tokens * (history_percent / 100.0))
@@ -266,11 +264,9 @@ class RagModule:
         if remaining_for_history > 0 and session_id:
             history_msgs = get_session_text_history(session_id, remaining_for_history)
             history_str = self._build_context_prompt(history_msgs, lang)
-
         # 4. Get current time and response language
         current_time_str = get_current_time_in_timezone(current_app)
         response_language = 'Russian' if lang == 'ru' else 'English'
-
         # 5. Format prompt using template
         prompt = format_prompt('rag.template', {
             'current_time_str': current_time_str,
@@ -282,12 +278,10 @@ class RagModule:
         if not prompt:
             self.logger.error("Failed to load rag.template")
             return None, "Error loading prompt template", None
-
         # 6. Call reasoning model
         reasoning_module = current_app.modules.get('base')
         if not reasoning_module:
             return None, "Reasoning module unavailable", None
-
         response = reasoning_module.call_ollama(
             [{'role': 'user', 'content': prompt}],
             model_type='reasoning',
@@ -310,7 +304,6 @@ class RagModule:
         if not ollama_url:
             ollama_url = 'http://ollama:11434'
             self.logger.warning(f"No ollama_url for embedding, using default {ollama_url}")
-
         try:
             response = requests.post(
                 f"{ollama_url}/api/embeddings",

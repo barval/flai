@@ -609,5 +609,23 @@ msgstr "Your requests in queue / Total in queue"
 msgid "Request too long, please simplify your request"
 msgstr "Request too long, please simplify your request"
 
+msgid "Request cancelled - too long in queue ({queue_time:.1f}s)"
+msgstr "Request cancelled - too long in queue ({queue_time:.1f}s)"
+
+msgid "Invalid image"
+msgstr "Invalid image"
+
+msgid "Unknown request type"
+msgstr "Unknown request type"
+
+msgid "Camera module unavailable"
+msgstr "Camera module unavailable"
+
+msgid "RAG module unavailable"
+msgstr "RAG module unavailable"
+
+msgid "Image generation module unavailable"
+msgstr "Image generation module unavailable"
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v7.2 (c) 2026 Valery Barsukov"

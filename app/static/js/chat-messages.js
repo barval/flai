@@ -9,6 +9,7 @@ function updateMessageCount() {
 
 function loadMessages(sessionId) {
     if (window.IS_RELOADING) return Promise.resolve();
+    
     if (!sessionId) {
         console.error('loadMessages called with empty sessionId');
         return Promise.reject(new Error('Session ID is empty'));
@@ -29,6 +30,7 @@ function loadMessages(sessionId) {
         })
         .then(messages => {
             if (window.IS_RELOADING) return;
+            
             console.log('loadMessages: received', messages.length, 'messages');
             
             const container = document.getElementById('chat-messages');
@@ -44,6 +46,7 @@ function loadMessages(sessionId) {
                 .catch(err => console.error('Error loading model info:', err));
             
             let lastUserMessage = null;
+            
             messages.forEach((msg) => {
                 try {
                     if (msg.role === 'user') {
@@ -226,6 +229,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     
     if (role === 'assistant') {
         let headerExtra = '';
+        
         if (modelName) {
             const shortModel = modelName.split('/').pop() || modelName;
             headerExtra += ' <span class="text-muted">| ' + escapeHtml(shortModel) + '</span>';
@@ -263,6 +267,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     headerHTML += '</span>';
     
     let contentHTML = '<div class="message-content">';
+    
     if (typeof content === 'string') {
         if (content.startsWith('[')) {
             try {
@@ -284,6 +289,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             contentHTML += marked.parse(decodedText);
         }
     }
+    
     contentHTML += '</div>';
     
     msgDiv.innerHTML = headerHTML + contentHTML;
@@ -308,6 +314,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
                 fileHTML = '<div class="attached-file"><span class="file-icon">📄</span><a href="' + fileUrl + '" download="' + fileName + '">' + fileName + '</a></div>';
             }
         }
+        
         msgDiv.innerHTML += fileHTML;
     }
     
@@ -392,6 +399,7 @@ async function copyToClipboard(text) {
 
 async function handleCopyClick(button, codeElement) {
     if (window.IS_RELOADING) return;
+    
     const code = codeElement.textContent || codeElement.innerText;
     const originalHTML = button.innerHTML;
     const originalClass = button.className;
@@ -438,6 +446,7 @@ function addCopyButtonsToMessage(messageElement) {
         copyButton.className = 'copy-code-button';
         copyButton.innerHTML = '📋';
         copyButton.title = t('copy_code');
+        
         copyButton.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();

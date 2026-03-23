@@ -43,6 +43,8 @@ async function pollNewMessages() {
     
     const messagesContainer = document.getElementById('chat-messages');
     const lastMessageEl = messagesContainer.lastElementChild;
+    
+    // FIX: Update lastMessageTimestamp from the last message in DOM before polling
     if (lastMessageEl && lastMessageEl.dataset.timestamp) {
         lastMessageTimestamp = lastMessageEl.dataset.timestamp;
     } else {
@@ -55,8 +57,8 @@ async function pollNewMessages() {
             console.error('Failed to fetch new messages:', response.status);
             return;
         }
-        
         const newMessages = await response.json();
+        
         if (newMessages.length > 0) {
             for (const msg of newMessages) {
                 // FIX: Check duplicate by messageId first
@@ -64,7 +66,6 @@ async function pollNewMessages() {
                     console.log('pollNewMessages: Skipping duplicate message by ID', msg.id);
                     continue;
                 }
-                
                 // FIX: Check duplicate by tempId/content/timestamp
                 if (isDuplicateMessage(msg)) {
                     console.log('pollNewMessages: Skipping duplicate message by timestamp/content', msg.id);
@@ -131,6 +132,7 @@ function startResultPolling(requestId) {
         }
         
         pollCount++;
+        
         try {
             const response = await fetch('/api/queue/result/' + requestId);
             const data = await response.json();
@@ -142,6 +144,7 @@ function startResultPolling(requestId) {
             
             if (data.status === 'completed') {
                 clearInterval(pollInterval);
+                
                 if (data.result) {
                     const resultSessionId = data.result.session_id || pendingRequests[requestId]?.sessionId;
                     
@@ -212,21 +215,27 @@ function startResultPolling(requestId) {
                         fetchQueueStatus();
                     }
                 }
+                
                 delete pendingRequests[requestId];
                 window.updateStatusCounter();
                 fetchQueueStatus();
                 setTimeout(() => loadSessionsFromServer(), 500);
+                
             } else if (data.status === 'error') {
                 clearInterval(pollInterval);
+                
                 const resultSessionId = data.result?.session_id || pendingRequests[requestId]?.sessionId;
+                
                 if (resultSessionId === currentSessionId) {
                     originalDisplayMessage('assistant', '⚠️ ' + t('error') + ': ' + (data.error || t('unknown_error')), null, null, null, null,
                         data.result?.assistant_timestamp || new Date().toISOString(), data.result?.response_time, 'system',
                         null, null, null, null, null);
                 }
+                
                 if (resultSessionId) {
                     setLocalTranscribing(resultSessionId, false);
                 }
+                
                 delete pendingRequests[requestId];
                 window.updateStatusCounter();
                 fetchQueueStatus();
@@ -287,6 +296,7 @@ async function sendMessage() {
         
         const now = new Date();
         const timestamp = now.toISOString();
+        
         const userContent = [];
         if (text) userContent.push({"type": "text", "text": text});
         
@@ -296,18 +306,22 @@ async function sendMessage() {
         
         const displayUserMessage = (fileData, fileType, fileName, filePath) => {
             if (window.IS_RELOADING) return;
+            
             if (fileData || filePath) {
                 let type = "file";
                 if (fileType && fileType.startsWith('image/')) type = "image";
                 else if (fileType && fileType.startsWith('audio/')) type = "audio";
                 userContent.push({ "type": type, "file_data": fileData, "file_type": fileType, "file_name": fileName, "file_path": filePath });
             }
+            
             const msgElement = originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, filePath, timestamp);
+            
             // FIX: Do NOT add tempId to displayedMessageIds - rely on messageId instead
             const tempId = `temp-${timestamp}`;
             if (msgElement) {
                 msgElement.dataset.tempId = tempId;
             }
+            
             input.value = '';
             attachedFile = null;
             document.getElementById('file-preview-container').style.display = 'none';
@@ -324,11 +338,13 @@ async function sendMessage() {
         
         const sendToServer = () => {
             if (window.IS_RELOADING) return;
+            
             let unlockRequired = true;
             
             (async () => {
                 try {
                     let response;
+                    
                     if (tempAttachedFile) {
                         const formData = new FormData();
                         formData.append('message', tempText);
@@ -347,7 +363,9 @@ async function sendMessage() {
                     }
                     
                     if (window.IS_RELOADING) return;
+                    
                     const data = await response.json();
+                    
                     if (window.IS_RELOADING) return;
                     
                     console.log('Server response:', data);
@@ -368,7 +386,11 @@ async function sendMessage() {
                             }
                             lastUserMsg.dataset.messageId = data.user_message_id;
                             displayedMessageIds.add(data.user_message_id);
-                            console.log('sendMessage: Updated messageId to', data.user_message_id);
+                            
+                            // FIX: Update lastMessageTimestamp to prevent polling from fetching this message again
+                            lastMessageTimestamp = timestamp;
+                            
+                            console.log('sendMessage: Updated messageId to', data.user_message_id, 'and timestamp to', timestamp);
                         }
                     }
                     
@@ -404,6 +426,7 @@ async function sendMessage() {
                                 setNewMessageIndicator(targetSessionId, true);
                             }
                         }
+                        
                         unlockRequired = false;
                         unlockSendButton();
                         return;
@@ -426,6 +449,7 @@ async function sendMessage() {
                     
                     unlockRequired = false;
                     unlockSendButton();
+                    
                 } catch (err) {
                     console.error('Send message error:', err);
                     if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
@@ -453,6 +477,7 @@ async function sendMessage() {
                     fileData = e.target.result.split(',')[1];
                     fileType = tempAttachedFile.type;
                     fileName = tempAttachedFile.name;
+                    
                     console.log('File attached:', fileName, 'Type:', fileType);
                     
                     // FIX: Set transcribing flag for audio files BEFORE displaying message
@@ -465,6 +490,7 @@ async function sendMessage() {
                     
                     displayUserMessage(fileData, fileType, fileName, null);
                     sendToServer();
+                    
                 } catch (err) {
                     console.error('Error in reader.onload:', err);
                     if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
@@ -482,6 +508,7 @@ async function sendMessage() {
             };
             
             reader.readAsDataURL(tempAttachedFile);
+            
         } else {
             try {
                 displayUserMessage(null, null, null, null);
@@ -492,6 +519,7 @@ async function sendMessage() {
                 unlockSendButton();
             }
         }
+        
     } catch (err) {
         console.error('Unexpected error in sendMessage:', err);
         if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
@@ -507,6 +535,7 @@ async function sendMessage() {
 
 window.loadMessages = function(sessionId) {
     console.log('loadMessages called for session', sessionId);
+    
     stopMessagePolling();
     
     const statusCounter = document.getElementById('status-counter');
@@ -517,9 +546,12 @@ window.loadMessages = function(sessionId) {
     return originalLoadMessages(sessionId)
         .then(() => {
             console.log('loadMessages completed for session', sessionId);
+            
             if (window.IS_RELOADING) return;
+            
             setTimeout(addCopyButtonsToAllCodeBlocks, 100);
             startMessagePolling();
+            
             if (statusCounter) {
                 window.updateStatusCounter();
             }
@@ -535,12 +567,15 @@ window.loadMessages = function(sessionId) {
 
 window.displayMessage = function(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId) {
     if (window.IS_RELOADING) return;
+    
     const result = originalDisplayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId);
+    
     const messages = document.getElementById('chat-messages');
     if (messages) {
         const lastMessage = messages.lastElementChild;
         if (lastMessage) setTimeout(() => addCopyButtonsToMessage(lastMessage), 50);
     }
+    
     return result;
 };
 
@@ -576,6 +611,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     document.getElementById('send-button').addEventListener('click', sendMessage);
+    
     document.getElementById('message-input').addEventListener('keypress', function(e) {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();

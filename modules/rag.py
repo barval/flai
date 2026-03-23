@@ -241,9 +241,9 @@ class RagModule:
             f"total_context_chars={len(context)}, "
             f"estimated_context_tokens={self._estimate_tokens(context)}"
         )
-        # Output of previews of the first 2 chunks with relevance scores
-        for i, (chunk, score) in enumerate(zip(chunks[:2], scores[:2])):
-            preview = chunk[:200].replace('\n', ' ').strip() + '...' if len(chunk) > 200 else chunk.replace('\n', ' ')
+        # Output of previews of the first 3 chunks with relevance scores
+        for i, (chunk, score) in enumerate(zip(chunks[:3], scores[:3])):
+            preview = chunk[:150].replace('\n', ' ').strip() + '...' if len(chunk) > 150 else chunk.replace('\n', ' ')
             self.logger.debug(
                 f"RAG DEBUG: chunk[{i}] score={score:.4f} preview='{preview}'"  # Adding score to preview
             )

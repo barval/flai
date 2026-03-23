@@ -628,5 +628,8 @@ msgstr "RAG модуль недоступен"
 msgid "Image generation module unavailable"
 msgstr "Модуль генерации изображений недоступен"
 
+msgid "Source"
+msgstr "Источник"
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v7.2 (c) 2026 Барсуков Валерий"

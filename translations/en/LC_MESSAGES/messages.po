@@ -627,5 +627,8 @@ msgstr "RAG module unavailable"
 msgid "Image generation module unavailable"
 msgstr "Image generation module unavailable"
 
+msgid "Source"
+msgstr "Source"
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v7.2 (c) 2026 Valery Barsukov"

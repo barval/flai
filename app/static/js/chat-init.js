@@ -17,10 +17,21 @@ function isDuplicateMessage(msg) {
                 return true;
             }
         }
-        // Check by content and timestamp (fallback)
-        if (el.dataset.rawText === msg.content &&
-            Math.abs(new Date(el.dataset.timestamp) - new Date(msg.timestamp)) < 2000) {
+        // FIX: Check by filename for audio/image files (reliable duplicate detection)
+        if (msg.file_name && el.dataset.fileName === msg.file_name) {
             return true;
+        }
+        // FIX: For audio files, skip content check because client has base64 data
+        // while server returns message without base64 in content field
+        const isAudio = msg.file_type?.startsWith('audio/') || 
+                       msg.file_name?.match(/\.(webm|mp3|wav|ogg)$/);
+        
+        if (!isAudio) {
+            // Check by content and timestamp (fallback) only for text messages
+            if (el.dataset.rawText === msg.content &&
+                Math.abs(new Date(el.dataset.timestamp) - new Date(msg.timestamp)) < 2000) {
+                return true;
+            }
         }
     }
     return false;
@@ -66,9 +77,9 @@ async function pollNewMessages() {
                     console.log('pollNewMessages: Skipping duplicate message by ID', msg.id);
                     continue;
                 }
-                // FIX: Check duplicate by tempId/content/timestamp
+                // FIX: Check duplicate by filename, tempId, or content/timestamp
                 if (isDuplicateMessage(msg)) {
-                    console.log('pollNewMessages: Skipping duplicate message by timestamp/content', msg.id);
+                    console.log('pollNewMessages: Skipping duplicate message by filename/timestamp/content', msg.id);
                     continue;
                 }
                 
@@ -316,7 +327,9 @@ async function sendMessage() {
             
             const msgElement = originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, filePath, timestamp);
             
-            // FIX: Do NOT add tempId to displayedMessageIds - rely on messageId instead
+            // FIX: Update lastMessageTimestamp immediately to prevent polling from fetching this message again
+            lastMessageTimestamp = timestamp;
+            
             const tempId = `temp-${timestamp}`;
             if (msgElement) {
                 msgElement.dataset.tempId = tempId;
@@ -386,9 +399,6 @@ async function sendMessage() {
                             }
                             lastUserMsg.dataset.messageId = data.user_message_id;
                             displayedMessageIds.add(data.user_message_id);
-                            
-                            // FIX: Update lastMessageTimestamp to prevent polling from fetching this message again
-                            lastMessageTimestamp = timestamp;
                             
                             console.log('sendMessage: Updated messageId to', data.user_message_id, 'and timestamp to', timestamp);
                         }

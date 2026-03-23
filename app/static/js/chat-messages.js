@@ -157,6 +157,11 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         console.log('displayMessage: Added message ID', messageId, 'to displayed set');
     }
     
+    // FIX: Store filename for duplicate detection (audio files)
+    if (fileName) {
+        msgDiv.dataset.fileName = fileName;
+    }
+    
     if (role === 'assistant') {
         if (modelName) msgDiv.dataset.modelName = modelName;
         if (responseTime && typeof responseTime === 'object') {

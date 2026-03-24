@@ -24,7 +24,7 @@
         <div class="users-table-wrapper">
             <table id="users-table">
                 <thead>
-                    <tr>
+                     <tr>
                         <th data-sort="is_active">{{ _('Status') }}</th>
                         <th data-sort="login">{{ _('Login') }}</th>
                         <th>{{ _('Password') }}</th>
@@ -38,7 +38,7 @@
                         <th>{{ _('Camera access') }}</th>
                         {% endif %}
                         <th>{{ _('Actions') }}</th>
-                    </tr>
+                     </tr>
                 </thead>
                 <tbody id="users-tbody">
                     <!-- Data loaded via JS -->
@@ -50,9 +50,6 @@
     <!-- Models tab content -->
     <div id="models-tab" class="admin-tab-content">
         <div class="models-container">
-            <div class="models-header">
-                <button id="refresh-models" class="refresh-button">🔄 {{ _('Refresh models from Ollama') }}</button>
-            </div>
             <div id="models-list">
                 <!-- Cards will be populated by JavaScript -->
             </div>
@@ -193,10 +190,14 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'Temperature must be between 0.0 and 2.0.': {{ _('Temperature must be between 0.0 and 2.0.')|tojson }},
     'Top P must be between 0.0 and 1.0.': {{ _('Top P must be between 0.0 and 1.0.')|tojson }},
     'Timeout must be between 0 and 1200 seconds.': {{ _('Timeout must be between 0 and 1200 seconds.')|tojson }},
-    // Added missing translation for Save button
     'Save': {{ _('Save')|tojson }},
-    // Reindex notification
-    'reindex_started': {{ _('Reindexing all documents with new embedding model started. This may take a while.')|tojson }}
+    'reindex_started': {{ _('Reindexing all documents with new embedding model started. This may take a while.')|tojson }},
+    // New translations for per-model URL
+    'Local': {{ _('Local')|tojson }},
+    'Please provide Ollama URL first.': {{ _('Please provide Ollama URL first.')|tojson }},
+    // New translations for Ollama status
+    'Ollama available': {{ _('Ollama available')|tojson }},
+    'Ollama unavailable': {{ _('Ollama unavailable')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}
 console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);

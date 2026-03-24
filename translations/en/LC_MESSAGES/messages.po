@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 7.1\n"
+"Project-Id-Version: FLAI 7.2\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-05 12:00+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -591,5 +591,44 @@ msgstr "Transcribing..."
 msgid "Model returned empty response"
 msgstr "Model returned empty response"
 
+msgid "Local"
+msgstr "Local"
+
+msgid "Please provide Ollama URL first."
+msgstr "Please provide Ollama URL first."
+
+msgid "Ollama available"
+msgstr "Ollama available"
+
+msgid "Ollama unavailable"
+msgstr "Ollama unavailable"
+
+msgid "your_requests"
+msgstr "Your requests in queue / Total in queue"
+
+msgid "Request too long, please simplify your request"
+msgstr "Request too long, please simplify your request"
+
+msgid "Request cancelled - too long in queue ({queue_time:.1f}s)"
+msgstr "Request cancelled - too long in queue ({queue_time:.1f}s)"
+
+msgid "Invalid image"
+msgstr "Invalid image"
+
+msgid "Unknown request type"
+msgstr "Unknown request type"
+
+msgid "Camera module unavailable"
+msgstr "Camera module unavailable"
+
+msgid "RAG module unavailable"
+msgstr "RAG module unavailable"
+
+msgid "Image generation module unavailable"
+msgstr "Image generation module unavailable"
+
+msgid "Source"
+msgstr "Source"
+
 msgid "footer_text"
-msgstr "Fully Local AI (FLAI) v7.1 (c) 2026 Valery Barsukov"
+msgstr "Fully Local AI (FLAI) v7.2 (c) 2026 Valery Barsukov"

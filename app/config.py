@@ -1,6 +1,5 @@
 # app/config.py
 # Configuration loader for FLAI application
-
 import os
 from dotenv import load_dotenv
 import pytz
@@ -14,11 +13,9 @@ def load_config(app):
     app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
     if not app.config['SECRET_KEY']:
         raise ValueError("SECRET_KEY must be set in .env file")
-    
     app.config['JSON_AS_ASCII'] = False
     app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
     app.config['TIMEZONE_STR'] = os.getenv('TIMEZONE')
-    app.config['OLLAMA_URL'] = os.getenv('OLLAMA_URL')
     app.config['REDIS_URL'] = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
     
     # Automatic1111 settings
@@ -53,6 +50,15 @@ def load_config(app):
     # Token estimation settings
     app.config['TOKEN_CHARS'] = int(os.getenv('TOKEN_CHARS', 3))
     app.config['CONTEXT_HISTORY_PERCENT'] = int(os.getenv('CONTEXT_HISTORY_PERCENT', 75))
+    
+    # NEW: Context safety margin (use only 85% of calculated capacity)
+    app.config['CONTEXT_SAFETY_MARGIN'] = float(os.getenv('CONTEXT_SAFETY_MARGIN', 0.85))
+    
+    # NEW: Maximum messages to load from history
+    app.config['MAX_HISTORY_MESSAGES'] = int(os.getenv('MAX_HISTORY_MESSAGES', 30))
+    
+    # NEW: Enable token estimation debugging
+    app.config['DEBUG_TOKEN_ESTIMATION'] = os.getenv('DEBUG_TOKEN_ESTIMATION', 'false').lower() == 'true'
     
     # Qdrant settings for RAG
     app.config['QDRANT_URL'] = os.getenv('QDRANT_URL')

@@ -89,28 +89,331 @@ Each service can run on separate machines for load distribution:
 │  (Node 2)   │     │   Server    │
 └─────────────┘     └─────────────┘
 ```
+Set up separate Ollama URLs for each type of model in the Admin Panel (`/admin`).
 
 ---
 
 ## 📋 System Requirements
 
 ### Hardware Recommendations
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| **RAM** | 8 GB | 16–32 GB (for larger models) |
-| **CPU** | 4 cores | 8+ cores |
-| **GPU** | Optional | NVIDIA with CUDA (for acceleration) |
-| **Storage** | 20 GB | 100+ GB (for models and user data) |
+| Component | Minimum | Recommended | With GPU |
+|-----------|---------|-------------|----------|
+| **RAM** | 8 GB | 16–32 GB | 32+ GB |
+| **CPU** | 4 cores | 4+ cores | 8+ cores |
+| **GPU** | Optional | NVIDIA 8+ GB VRAM | NVIDIA 16+ GB VRAM |
+| **Storage** | 20 GB | 60+ GB SSD | 100+ GB SSD NVMe |
 
 ### Software Prerequisites
 - Linux server (or Windows/macOS with Docker Desktop)
 - Docker Engine ≥ 20.10
 - Docker Compose ≥ 2.0
 - Internet connection (only for initial model downloads)
-
 > 💡 **Note**: After downloading models, FLAI works completely offline.
 
 ---
+
+## 🔧 Configuration
+
+### All-in-One Docker Compose
+For running all services on a single machine, use `docker-compose.all.yml`:
+```yaml
+# docker-compose.all.yml
+version: '3.8'
+
+services:
+  # ============================================================
+  # WEB APPLICATION (Required)
+  # ============================================================
+  web:
+    build: .
+    container_name: flai-web
+    ports:
+      - "5000:5000"
+    depends_on:
+      - redis
+    volumes:
+      - .//app/data
+      - ./.env:/app/.env:ro
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      # Ollama URLs per model type (for distributed deployment)
+      - OLLAMA_CHAT_URL=http://ollama:11434
+      - OLLAMA_REASONING_URL=http://ollama:11434
+      - OLLAMA_MULTIMODAL_URL=http://ollama:11434
+      - OLLAMA_EMBEDDING_URL=http://ollama:11434
+    # GPU Support: Uncomment for NVIDIA GPU
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    networks:
+      - flai_network
+    restart: unless-stopped
+
+  # ============================================================
+  # REDIS (Required - Request Queue)
+  # ============================================================
+  redis:
+    image: redis:8.0.6-alpine
+    container_name: flai-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-/data
+    command: redis-server --appendonly yes
+    networks:
+      - flai_network
+    restart: unless-stopped
+    # Disable if using external Redis:
+    # Comment out this entire service block
+
+  # ============================================================
+  # OLLAMA (Required - LLM Inference)
+  # ============================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: flai-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    environment:
+      - OLLAMA_REQUEST_TIMEOUT=1200s
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_KEEP_ALIVE=0
+    # GPU Support: Uncomment for NVIDIA GPU
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    networks:
+      - flai_network
+    restart: unless-stopped
+    # Disable if using external Ollama:
+    # Comment out this entire service block
+
+  # ============================================================
+  # AUTOMATIC1111 (Optional - Image Generation)
+  # ============================================================
+  automatic1111:
+    image: siutin/stable-diffusion-webui-docker:latest-cuda
+    container_name: flai-sd
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./services/automatic1111/models:/app/stable-diffusion-webui/models
+      - ./services/automatic1111/outputs:/app/stable-diffusion-webui/outputs
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_REQUIRE_CUDA=cuda>=12.1
+    # GPU Support: Required for reasonable performance
+    # runtime: nvidia
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    networks:
+      - flai_network
+    restart: unless-stopped
+    profiles:
+      - with-image-gen
+    # Disable if not using image generation:
+    # Comment out this entire service block OR use profiles
+
+  # ============================================================
+  # WHISPER ASR (Optional - Speech Recognition)
+  # ============================================================
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    container_name: flai-whisper
+    ports:
+      - "9000:9000"
+    environment:
+      - ASR_MODEL=medium
+      - ASR_ENGINE=faster_whisper
+      - ASR_DEVICE=cpu
+    # GPU Support: Uncomment for faster transcription
+    # environment:
+    #   - ASR_DEVICE=cuda
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    networks:
+      - flai_network
+    restart: unless-stopped
+    profiles:
+      - with-voice
+    # Disable if not using voice features:
+    # Comment out this entire service block
+
+  # ============================================================
+  # PIPER TTS (Optional - Text-to-Speech)
+  # ============================================================
+  piper:
+    build:
+      context: ./services/piper
+      dockerfile: Dockerfile.piper
+    container_name: flai-piper
+    ports:
+      - "18888:8888"
+    volumes:
+      - ./services/piper/piper_models:/app/models
+    environment:
+      - PIPER_MODEL_DIR=/app/models
+    # GPU Support: Not needed (CPU-only)
+    networks:
+      - flai_network
+    restart: unless-stopped
+    profiles:
+      - with-voice
+    # Disable if not using voice features:
+    # Comment out this entire service block
+
+  # ============================================================
+  # QDRANT (Optional - RAG Vector Database)
+  # ============================================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: flai-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
+      - QDRANT__SERVICE__ENABLE_TLS=0
+    # GPU Support: Not typically needed
+    networks:
+      - flai_network
+    restart: unless-stopped
+    profiles:
+      - with-rag
+    # Disable if not using document search:
+    # Comment out this entire service block
+
+networks:
+  flai_network:
+    driver: bridge
+
+volumes:
+  redis-
+  ollama:
+  qdrant-
+```
+
+### Usage Examples
+```bash
+# Start all services
+docker-compose -f docker-compose.all.yml up -d
+
+# Start without image generation (saves GPU memory)
+docker-compose -f docker-compose.all.yml --profile with-voice --profile with-rag up -d
+
+# Start with everything
+docker-compose -f docker-compose.all.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
+
+# Stop all services
+docker-compose -f docker-compose.all.yml down
+
+# View logs
+docker-compose -f docker-compose.all.yml logs -f web
+```
+
+### Distributed Deployment (Multiple Machines)
+For load distribution across multiple Ollama nodes:
+
+1. Machine 1 (Web + Chat Models):
+```bash
+# .env on Machine 1
+OLLAMA_CHAT_URL=http://machine1:11434
+OLLAMA_REASONING_URL=http://machine2:11434
+OLLAMA_MULTIMODAL_URL=http://machine3:11434
+OLLAMA_EMBEDDING_URL=http://machine1:11434
+```
+2. Machine 2 (Reasoning Models)
+```bash
+# Run only Ollama
+docker-compose -f services/ollama/docker-compose.yml up -d
+```
+3. Machine 3 (Multimodal Models):
+```bash
+# Run only Ollama
+docker-compose -f services/ollama/docker-compose.yml up -d
+```
+Configure model URLs in Admin Panel → Models tab after first login.
+
+---
+
+## 🤖 Model Setup
+
+### Required Models (Pull After Starting Ollama)
+```bash
+# Chat/Router model (fast responses)
+docker exec flai-ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
+
+# Multimodal model (image analysis)
+docker exec flai-ollama ollama pull qwen3-vl:8b-instruct-q4_K_M
+
+# Reasoning model (complex tasks)
+docker exec flai-ollama ollama pull gpt-oss:20b
+
+# Embedding model (RAG document search)
+docker exec flai-ollama ollama pull bge-m3:latest
+```
+
+### Configure Models in Admin Panel
+1. Log in as admin and go to `/admin` → Models tab
+2. For each module (Chat, Reasoning, Multimodal, Embedding):
+   **Step 1: Specify Ollama URL**
+   - Check the "Local" checkbox if Ollama runs on the same machine (URL auto-fills to `http://ollama:11434`)
+   - Uncheck "Local" and enter custom URL for distributed deployment (e.g., `http://192.168.1.50:11434`)
+   - Status icon shows connection status (✅ available / ❌ unavailable)
+   **Step 2: Refresh Model List**
+   - Click the 🔄 Refresh button to fetch available models from Ollama
+   - Wait for the dropdown to populate with model names
+   **Step 3: Select Model & Configure**
+   - Select desired model from the dropdown
+   - Model details appear below (architecture, parameters, context length)
+   - Set parameters:
+      * **Context Length**: Maximum tokens for context (must be ≤ model's max)
+      * **Temperature**: Creativity (0.0–2.0, lower = more deterministic)
+      * **Top P**: Nucleus sampling (0.0–1.0)
+      * **Timeout**: Request timeout in seconds (0–1200)
+   - Click Save to apply configuration
+> 💡 Changing the embedding model triggers automatic re-indexing of all documents.
+
+---
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## 🚀 Quick Start
 

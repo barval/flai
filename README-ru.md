@@ -96,22 +96,320 @@
 ## 📋 Системные требования
 
 ### Рекомендуемое оборудование
-| Компонент | Минимум | Рекомендуется |
-|-----------|---------|---------------|
-| **ОЗУ** | 8 ГБ | 16–32 ГБ (для больших моделей) |
-| **ЦПУ** | 4 ядра | 8+ ядер |
-| **ГПУ** | Опционально | NVIDIA с CUDA (для ускорения) |
-| **Хранилище** | 20 ГБ | 100+ ГБ (для моделей и данных пользователей) |
+| Компонент | Минимум | Рекомендуется | с ГПУ |
+|-----------|---------|---------------|-------|
+| **ОЗУ** | 8 ГБ | 16–32 ГБ | 32 ГБ |
+| **ЦПУ** | 4 ядра | 4+ ядер | 8+ ядер |
+| **ГПУ** | Опционально | NVIDIA 8+ ГБ VRAM | NVIDIA 16+ ГБ VRAM |
+| **Хранилище** | 20 ГБ | 60+ ГБ | 100+ ГБ |
 
 ### Программные требования
 - Сервер с Linux (или Windows/macOS с Docker Desktop)
 - Docker Engine ≥ 20.10
 - Docker Compose ≥ 2.0
 - Подключение к интернету (только для первоначальной загрузки моделей)
-
 > 💡 **Примечание**: После загрузки моделей ПЛИИ работает полностью офлайн.
 
 ---
+
+## 🔧 Конфигурация
+
+### Docker Compose «всё в одном»
+Для запуска всех сервисов на одной машине используйте `docker-compose.all.yml`:
+```yaml
+# docker-compose.all.yml
+version: '3.8'
+
+services:
+  # ============================================================
+  # ВЕБ-ПРИЛОЖЕНИЕ (Обязательно)
+  # ============================================================
+  web:
+    build: .
+    container_name: flai-web
+    ports:
+      - "5000:5000"
+    depends_on:
+      - redis
+    volumes:
+      - .//app/data
+      - ./.env:/app/.env:ro
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      # URL Ollama для каждого типа моделей (для распределённого развёртывания)
+      - OLLAMA_CHAT_URL=http://ollama:11434
+      - OLLAMA_REASONING_URL=http://ollama:11434
+      - OLLAMA_MULTIMODAL_URL=http://ollama:11434
+      - OLLAMA_EMBEDDING_URL=http://ollama:11434
+    # Поддержка GPU: Раскомментируйте для NVIDIA GPU
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    networks:
+      - flai_network
+    restart: unless-stopped
+
+  # ============================================================
+  # REDIS (Обязательно - Очередь запросов)
+  # ============================================================
+  redis:
+    image: redis:8.0.6-alpine
+    container_name: flai-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-/data
+    command: redis-server --appendonly yes
+    networks:
+      - flai_network
+    restart: unless-stopped
+    # Отключить при использовании внешнего Redis:
+    # Закомментируйте весь блок этого сервиса
+
+  # ============================================================
+  # OLLAMA (Обязательно - Инференс LLM)
+  # ============================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: flai-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    environment:
+      - OLLAMA_REQUEST_TIMEOUT=1200s
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_KEEP_ALIVE=0
+    # Поддержка GPU: Раскомментируйте для NVIDIA GPU
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    networks:
+      - flai_network
+    restart: unless-stopped
+    # Отключить при использовании внешнего Ollama:
+    # Закомментируйте весь блок этого сервиса
+
+  # ============================================================
+  # AUTOMATIC1111 (Опционально - Генерация изображений)
+  # ============================================================
+  automatic1111:
+    image: siutin/stable-diffusion-webui-docker:latest-cuda
+    container_name: flai-sd
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./services/automatic1111/models:/app/stable-diffusion-webui/models
+      - ./services/automatic1111/outputs:/app/stable-diffusion-webui/outputs
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_REQUIRE_CUDA=cuda>=12.1
+    # Поддержка GPU: Требуется для разумной производительности
+    # runtime: nvidia
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    networks:
+      - flai_network
+    restart: unless-stopped
+    profiles:
+      - with-image-gen
+    # Отключить если не используется генерация изображений:
+    # Закомментируйте весь блок этого сервиса ИЛИ используйте profiles
+
+  # ============================================================
+  # WHISPER ASR (Опционально - Распознавание речи)
+  # ============================================================
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    container_name: flai-whisper
+    ports:
+      - "9000:9000"
+    environment:
+      - ASR_MODEL=medium
+      - ASR_ENGINE=faster_whisper
+      - ASR_DEVICE=cpu
+    # Поддержка GPU: Раскомментируйте для ускорения транскрибации
+    # environment:
+    #   - ASR_DEVICE=cuda
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    networks:
+      - flai_network
+    restart: unless-stopped
+    profiles:
+      - with-voice
+    # Отключить если не используются голосовые функции:
+    # Закомментируйте весь блок этого сервиса
+
+  # ============================================================
+  # PIPER TTS (Опционально - Синтез речи)
+  # ============================================================
+  piper:
+    build:
+      context: ./services/piper
+      dockerfile: Dockerfile.piper
+    container_name: flai-piper
+    ports:
+      - "18888:8888"
+    volumes:
+      - ./services/piper/piper_models:/app/models
+    environment:
+      - PIPER_MODEL_DIR=/app/models
+    # Поддержка GPU: Не требуется (только CPU)
+    networks:
+      - flai_network
+    restart: unless-stopped
+    profiles:
+      - with-voice
+    # Отключить если не используются голосовые функции:
+    # Закомментируйте весь блок этого сервиса
+
+  # ============================================================
+  # QDRANT (Опционально - Векторная база данных для RAG)
+  # ============================================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: flai-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
+      - QDRANT__SERVICE__ENABLE_TLS=0
+    # Поддержка GPU: Обычно не требуется
+    networks:
+      - flai_network
+    restart: unless-stopped
+    profiles:
+      - with-rag
+    # Отключить если не используется поиск по документам:
+    # Закомментируйте весь блок этого сервиса
+
+networks:
+  flai_network:
+    driver: bridge
+
+volumes:
+  redis-
+  ollama:
+  qdrant-
+```
+
+### Примеры использования
+```bash
+# Запустить все сервисы
+docker-compose -f docker-compose.all.yml up -d
+
+# Запустить без генерации изображений (экономия памяти GPU)
+docker-compose -f docker-compose.all.yml --profile with-voice --profile with-rag up -d
+
+# Запустить со всеми функциями
+docker-compose -f docker-compose.all.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
+
+# Остановить все сервисы
+docker-compose -f docker-compose.all.yml down
+
+# Просмотр логов
+docker-compose -f docker-compose.all.yml logs -f web
+```
+
+### Распределённое развёртывание (несколько машин)
+Для распределения нагрузки по нескольким узлам Ollama:
+
+1. Машина 1 (Web + Чат-модели):
+```bash
+# .env на Машине 1
+OLLAMA_CHAT_URL=http://machine1:11434
+OLLAMA_REASONING_URL=http://machine2:11434
+OLLAMA_MULTIMODAL_URL=http://machine3:11434
+OLLAMA_EMBEDDING_URL=http://machine1:11434
+```
+2. Машина 2 (Модели рассуждений):
+```bash
+# Запустить только Ollama
+docker-compose -f services/ollama/docker-compose.yml up -d
+```
+3. Машина 3 (Мультимодальные модели):
+```bash
+# Запустить только Ollama
+docker-compose -f services/ollama/docker-compose.yml up -d
+```
+Настройте URL моделей в Панели администратора → вкладка Модели после первого входа.
+
+---
+
+## 🤖 Настройка моделей
+
+### Необходимые модели (загрузить после запуска Ollama)
+```bash
+# Чат/Маршрутизатор (быстрые ответы)
+docker exec flai-ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
+
+# Мультимодальная модель (анализ изображений)
+docker exec flai-ollama ollama pull qwen3-vl:8b-instruct-q4_K_M
+
+# Модель рассуждений (сложные задачи)
+docker exec flai-ollama ollama pull gpt-oss:20b
+
+# Модель эмбеддингов (поиск по документам RAG)
+docker exec flai-ollama ollama pull bge-m3:latest
+```
+
+### Настройка моделей в Панели администратора
+1. Войдите как администратор и перейдите в /admin → вкладка Модели
+2. Для каждого модуля (Чат, Рассуждения, Мультимодальность, Эмбеддинги):
+   **Шаг 1: Укажите URL Ollama**
+   - Отметьте чек-бокс "Локально", если Ollama запущен на той же машине (URL автоматически заполняется http://ollama:11434)
+   - Снимите галочку "Локально" и введите пользовательский URL для распределённого развёртывания (например, http://192.168.1.50:11434)
+   - Иконка статуса показывает доступность (✅ доступна / ❌ недоступна)
+   **Шаг 2: Обновите список моделей**
+   - Нажмите кнопку 🔄 Обновить для получения списка моделей из Ollama
+   - Дождитесь заполнения выпадающего списка названиями моделей
+   **Шаг 3: Выберите модель и настройте параметры**
+   - Выберите нужную модель из выпадающего списка
+   - Ниже отобразится информация о модели (архитектура, параметры, длина контекста)
+   - Настройте параметры:
+      * **Длина контекста**: Максимальное количество токенов (должно быть ≤ максимума модели)
+      * **Температура**: Креативность (0.0–2.0, меньше = более детерминировано)
+      * **Top P**: Nucleus sampling (0.0–1.0)
+      * **Таймаут**: Таймаут запроса в секундах (0–1200)
+   - Нажмите Сохранить для применения конфигурации
+> 💡 Смена модели эмбеддингов автоматически запускает переиндексацию всех документов.
+
+---
+
+
+
+
+
+
+
+
 
 ## 🔧 Настройка зависимых сервисов
 ПЛИИ интегрируется с несколькими внешними ИИ-сервисами. Ниже приведены примеры Docker Compose для их запуска вместе с основным приложением.

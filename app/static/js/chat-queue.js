@@ -19,15 +19,28 @@ function fetchQueueStatus() {
         .then(data => {
             if (window.IS_RELOADING) return;
             const newInfo = {};
+            // Process currently processing task
             if (data.processing) {
                 const proc = data.processing;
-                newInfo[proc.session_id] = { processing: true, queued: 0 };
-            }
-            data.queued.forEach(item => {
-                if (!newInfo[item.session_id]) {
-                    newInfo[item.session_id] = { processing: false, queued: 0 };
+                const sessionId = proc.session_id;
+                if (!newInfo[sessionId]) {
+                    newInfo[sessionId] = { processing: false, queued: 0, has_transcribing: false };
                 }
-                newInfo[item.session_id].queued += 1;
+                newInfo[sessionId].processing = true;
+                if (proc.type === 'transcribe_audio') {
+                    newInfo[sessionId].has_transcribing = true;
+                }
+            }
+            // Process queued tasks
+            data.queued.forEach(item => {
+                const sessionId = item.session_id;
+                if (!newInfo[sessionId]) {
+                    newInfo[sessionId] = { processing: false, queued: 0, has_transcribing: false };
+                }
+                newInfo[sessionId].queued += 1;
+                if (item.type === 'transcribe_audio') {
+                    newInfo[sessionId].has_transcribing = true;
+                }
             });
             sessionQueueInfo = newInfo;
             updateSessionsListFromData();

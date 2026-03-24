@@ -109,6 +109,9 @@ function updateSessionsList(sessions) {
         // CRITICAL FIX: Transcribing icon has HIGHEST priority
         if (transcribing) {
             statusIcons = '<span class="session-status-icon transcribing blink" title="' + t('transcribing') + '">🎤</span>';
+        } else if (info && info.has_transcribing) {
+            // Server-side transcribing flag (for other clients)
+            statusIcons = '<span class="session-status-icon transcribing blink" title="' + t('transcribing') + '">🎤</span>';
         } else {
             // Only show queue status if NOT transcribing
             let queueStatusShown = false;

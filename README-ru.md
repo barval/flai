@@ -381,11 +381,11 @@ docker exec flai-ollama ollama pull bge-m3:latest
 ```
 
 ### Настройка моделей в Панели администратора
-1. Войдите как администратор и перейдите в /admin → вкладка Модели
+1. Войдите как администратор и перейдите в `/admin` → вкладка Модели
 2. Для каждого модуля (Чат, Рассуждения, Мультимодальность, Эмбеддинги):
    **Шаг 1: Укажите URL Ollama**
-   - Отметьте чек-бокс "Локально", если Ollama запущен на той же машине (URL автоматически заполняется http://ollama:11434)
-   - Снимите галочку "Локально" и введите пользовательский URL для распределённого развёртывания (например, http://192.168.1.50:11434)
+   - Отметьте чек-бокс "Локально", если Ollama запущен на той же машине (URL автоматически заполняется `http://ollama:11434`)
+   - Снимите галочку "Локально" и введите пользовательский URL для распределённого развёртывания (например, `http://192.168.1.50:11434`)
    - Иконка статуса показывает доступность (✅ доступна / ❌ недоступна)
    **Шаг 2: Обновите список моделей**
    - Нажмите кнопку 🔄 Обновить для получения списка моделей из Ollama
@@ -403,7 +403,142 @@ docker exec flai-ollama ollama pull bge-m3:latest
 
 ---
 
+## 🎨 Настройка генерации изображений
 
+### 1. Скачать чекпоинт Stable Diffusion
+```bash
+# Создать директорию моделей
+mkdir -p services/automatic1111/models
+
+# Скачать чекпоинт (пример: CyberRealistic)
+# Посетите https://civitai.com/ и скачайте предпочтительную модель
+# Поместите файл .safetensors в services/automatic1111/models/
+```
+
+### 2. Настроить в `.env`
+```bash
+AUTOMATIC1111_URL=http://flai-sd:7860
+AUTOMATIC1111_MODEL=cyberrealisticXL_v90.safetensors
+AUTOMATIC1111_TIMEOUT=180
+```
+
+### 3. Включить в Docker Compose
+Раскомментируйте сервис `automatic1111` или используйте profiles:
+```bash
+docker-compose -f docker-compose.all.yml --profile with-image-gen up -d
+```
+
+---
+
+## 🎤 Настройка голосовых функций
+
+### 1. Скачать голосовые модели
+```bash
+mkdir -p services/piper/piper_models
+
+# Русский мужской голос
+curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx
+
+curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx.json \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json
+
+# Русский женский голос
+curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx
+
+curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx.json \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
+```
+
+### 2. Включить в Docker Compose
+```bash
+docker-compose -f docker-compose.all.yml --profile with-voice up -d
+```
+
+---
+
+## 📚 Настройка RAG (поиск по документам)
+
+### 1. Настроить Qdrant в `.env`
+```bash
+QDRANT_URL=http://flai-qdrant:6333
+QDRANT_API_KEY=ваш_надёжный_api_ключ
+EMBEDDING_MODEL=bge-m3:latest
+RAG_CHUNK_SIZE=500
+RAG_CHUNK_OVERLAP=50
+RAG_TOP_K=5
+```
+
+### 2. Включить в Docker Compose
+```bash
+docker-compose -f docker-compose.all.yml --profile with-rag up -d
+```
+
+### 3. Загрузить документы
+  1. Войдите в веб-интерфейс
+  2. Нажмите вкладку Документы в боковой панели
+  3. Нажмите ➕ для загрузки PDF, DOC, DOCX или TXT файлов
+  4. Дождитесь завершения индексации (статус: ✅ Проиндексирован)
+
+---
+
+## 📹 Интеграция с камерами (опционально)
+Модуль работы с камерами не включён в основной docker-compose и должен быть настроен отдельно.
+
+### 1. Развёртывание сервиса камер
+Сервис камер — это отдельный проект, предоставляющий снимки с IP-камер:
+```bash
+# Клонировать репозиторий API камер
+git clone https://github.com/barval/room-snapshot-api.git
+cd room-snapshot-api
+
+# Настроить файл .env
+cp .env.example .env
+# Отредактировать .env с URL и учётными данными ваших камер
+
+# Запустить сервис камер
+docker-compose up -d
+```
+
+### 2. Настроить ПЛИИ для использования сервиса камер
+В файле `.env` ПЛИИ:
+```bash
+# Включить модуль камер
+CAMERA_ENABLED=true
+
+# Адрес API камер (настройте IP/порт по необходимости)
+CAMERA_API_URL=http://host.docker.internal:5005
+
+# Таймаут запроса снимка (секунды)
+CAMERA_API_TIMEOUT=15
+
+# Интервал проверки доступности (секунды)
+CAMERA_CHECK_INTERVAL=30
+```
+
+### 3. Настроить права доступа к камерам
+  1. Войдите в ПЛИИ как администратор
+  2. Перейдите в `/admin` → вкладка Пользователи
+  3. Отредактируйте пользователя и отметьте камеры, к которым он имеет доступ:
+    Например:
+    - `tam` — тамбур
+    - `pri` — прихожая
+    - `kor` — коридор
+    - `spa` — спальня
+    - `kab` — кабинет
+    - `det` — детская
+    - `gos` — гостиная
+    - `kuh` — кухня
+    - `bal` — балкон
+
+### 4. Использование камер в чате
+Пользователи с правами доступа могут спрашивать:
++ "Покажи кухню" → Возвращает снимок с камеры кухни
++ "Что в гостиной?" → Возвращает снимок + анализ ИИ
++ "Есть ли кто в кабинете?" → Возвращает снимок + анализ ИИ
+
+---
 
 
 

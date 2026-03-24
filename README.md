@@ -403,11 +403,142 @@ docker exec flai-ollama ollama pull bge-m3:latest
 
 ---
 
+## 🎨 Image Generation Setup
 
+### 1. Download Stable Diffusion Checkpoint
+```bash
+# Create models directory
+mkdir -p services/automatic1111/models
 
+# Download a checkpoint (example: CyberRealistic)
+# Visit https://civitai.com/ and download your preferred model
+# Place .safetensors file in services/automatic1111/models/
+```
 
+### 2. Configure in `.env`
+```bash
+AUTOMATIC1111_URL=http://flai-sd:7860
+AUTOMATIC1111_MODEL=cyberrealisticXL_v90.safetensors
+AUTOMATIC1111_TIMEOUT=180
+```
 
+### 3. Enable in Docker Compose
+Uncomment the `automatic1111` service or use profiles:
+```bash
+docker-compose -f docker-compose.all.yml --profile with-image-gen up -d
+```
 
+---
+
+## 🎤 Voice Features Setup
+
+### 1. Download Voice Models
+```bash
+mkdir -p services/piper/piper_models
+
+# Russian male voice
+curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx
+
+curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx.json \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json
+
+# Russian female voice
+curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx
+
+curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx.json \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
+```
+
+### 2. Enable in Docker Compose
+```bash
+docker-compose -f docker-compose.all.yml --profile with-voice up -d
+```
+
+---
+
+## 📚 RAG (Document Search) Setup
+
+### 1. Configure Qdrant in `.env`
+```bash
+QDRANT_URL=http://flai-qdrant:6333
+QDRANT_API_KEY=your_secure_api_key_here
+EMBEDDING_MODEL=bge-m3:latest
+RAG_CHUNK_SIZE=500
+RAG_CHUNK_OVERLAP=50
+RAG_TOP_K=5
+```
+
+### 2. Enable in Docker Compose
+```bash
+docker-compose -f docker-compose.all.yml --profile with-rag up -d
+```
+
+### 3. Upload Documents
+  1. Log in to web interface
+  2. Click Documents tab in sidebar
+  3. Click ➕ to upload PDF, DOC, DOCX, or TXT files
+  4. Wait for indexing to complete (status: ✅ Indexed)
+
+---
+
+## 📹 Camera Integration (Optional)
+The camera module is not included in the main docker-compose and must be set up separately.
+
+### 1. Deploy Camera API Service
+The camera service is a separate project that provides snapshots from IP cameras:
+```bash
+# Clone the camera API repository
+git clone https://github.com/barval/room-snapshot-api.git
+cd room-snapshot-api
+
+# Configure .env file
+cp .env.example .env
+# Edit .env with your camera URLs and credentials
+
+# Start the camera service
+docker-compose up -d
+```
+
+### 2. Configure FLAI to Use Camera Service
+In FLAI's `.env` file:
+```bash
+# Enable camera module
+CAMERA_ENABLED=true
+
+# Camera API endpoint (adjust IP/port as needed)
+CAMERA_API_URL=http://host.docker.internal:5005
+
+# Timeout for snapshot requests (seconds)
+CAMERA_API_TIMEOUT=15
+
+# Health check interval (seconds)
+CAMERA_CHECK_INTERVAL=30
+```
+
+### 3. Configure Camera Permissions
+  1. Log in to FLAI as admin
+  2. Go to /admin → Users tab
+  3. Edit a user and check the cameras they can access:
+    Example:
+    - `tam` — tambour
+    - `hal` — hallway
+    - `cor` — corridor
+    - `bed` — bedroom
+    - `off` — office
+    - `chi` — children's room
+    - `liv` — living room
+    - `kit` — kitchen
+    - `bal` — balcony
+
+### 4. Using Cameras in Chat
+Users with camera permissions can ask:
++ "Show the kitchen" → Returns snapshot from kitchen camera
++ "What's in the living room?" → Returns snapshot + AI analysis
++ "Is anyone in the office?" → Returns snapshot + AI analysis
+
+---
 
 
 

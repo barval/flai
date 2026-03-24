@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 7.1\n"
+"Project-Id-Version: FLAI 7.2\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-05 12:00+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -592,5 +592,44 @@ msgstr "Распознаётся..."
 msgid "Model returned empty response"
 msgstr "Модель вернула пустой ответ"
 
+msgid "Local"
+msgstr "Локально"
+
+msgid "Please provide Ollama URL first."
+msgstr "Сначала укажите URL Ollama."
+
+msgid "Ollama available"
+msgstr "Ollama доступна"
+
+msgid "Ollama unavailable"
+msgstr "Ollama недоступна"
+
+msgid "your_requests"
+msgstr "Ваши запросы в очереди / Всего в очереди"
+
+msgid "Request too long, please simplify your request"
+msgstr "Запрос слишком длинный, пожалуйста, упростите запрос"
+
+msgid "Request cancelled - too long in queue ({queue_time:.1f}s)"
+msgstr "Запрос отменён - слишком долго в очереди ({queue_time:.1f}с)"
+
+msgid "Invalid image"
+msgstr "Неверное изображение"
+
+msgid "Unknown request type"
+msgstr "Неизвестный тип запроса"
+
+msgid "Camera module unavailable"
+msgstr "Модуль камер недоступен"
+
+msgid "RAG module unavailable"
+msgstr "RAG модуль недоступен"
+
+msgid "Image generation module unavailable"
+msgstr "Модуль генерации изображений недоступен"
+
+msgid "Source"
+msgstr "Источник"
+
 msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v7.1 (c) 2026 Барсуков Валерий"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v7.2 (c) 2026 Барсуков Валерий"

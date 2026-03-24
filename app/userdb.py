@@ -14,7 +14,7 @@ def get_db():
     return conn
 
 def init_user_db():
-    """Initialize the user table."""
+    """Initialize the user table and enable WAL mode."""
     if not os.path.exists('data'):
         os.makedirs('data', exist_ok=True)
     with get_db() as conn:
@@ -45,6 +45,10 @@ def init_user_db():
             conn.execute("ALTER TABLE users ADD COLUMN voice_gender TEXT DEFAULT 'male'")
         if 'theme' not in columns:
             conn.execute("ALTER TABLE users ADD COLUMN theme TEXT DEFAULT 'light'")
+        
+        # Enable Write-Ahead Logging for better concurrency
+        conn.execute("PRAGMA journal_mode=WAL")
+        
         conn.commit()
 
 def get_user_by_login(login):

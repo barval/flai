@@ -2,13 +2,13 @@
 // Handles model management tab in admin panel
 
 let currentModelConfigs = {};
-let modelDetails = {}; // cache for model info
+let modelDetails = {};        // cache for model info
+let modelListCache = {};      // cache for list of models per URL
 
 document.addEventListener('DOMContentLoaded', function() {
     initAdminTabs();
     if (document.getElementById('models-tab')) {
         loadModelConfigs();
-        document.getElementById('refresh-models').addEventListener('click', refreshModels);
     }
 });
 
@@ -17,10 +17,8 @@ function initAdminTabs() {
     tabs.forEach(tab => {
         tab.addEventListener('click', function() {
             const target = this.dataset.tab;
-            // Deactivate all tabs
             document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
-            // Activate clicked tab
             this.classList.add('active');
             document.getElementById(target + '-tab').classList.add('active');
         });
@@ -32,79 +30,9 @@ function loadModelConfigs() {
         .then(res => res.json())
         .then(configs => {
             currentModelConfigs = configs;
-            // Immediately load models from Ollama
-            refreshModels();
+            renderModelCards();
         })
         .catch(err => console.error('Error loading model configs:', err));
-}
-
-async function refreshModels() {
-    const btn = document.getElementById('refresh-models');
-    btn.disabled = true;
-    btn.textContent = '⏳ ' + (t('loading') || 'Loading...');
-    try {
-        const models = await fetchModelsList();
-        window.availableModels = models; // store names
-        // Fetch details for all models
-        await fetchAllModelsDetails(models);
-        renderModelCards();
-    } catch (err) {
-        console.error('Error refreshing models:', err);
-        alert(t('error') + ': ' + err.message);
-    } finally {
-        btn.disabled = false;
-        btn.textContent = '🔄 ' + (t('Refresh models from Ollama') || 'Refresh models from Ollama');
-    }
-}
-
-async function fetchModelsList() {
-    const res = await fetch('/admin/api/ollama/models');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
-}
-
-async function fetchAllModelsDetails(models) {
-    const details = {};
-    const concurrency = 5;
-    // Split into chunks of `concurrency`
-    for (let i = 0; i < models.length; i += concurrency) {
-        const chunk = models.slice(i, i + concurrency);
-        await Promise.all(chunk.map(async (model) => {
-            try {
-                const res = await fetch(`/admin/api/ollama/model/${encodeURIComponent(model)}`);
-                if (res.ok) {
-                    const info = await res.json();
-                    details[model] = info;
-                } else {
-                    console.warn(`Failed to fetch details for ${model}`);
-                }
-            } catch (e) {
-                console.warn(`Error fetching details for ${model}:`, e);
-            }
-        }));
-    }
-    modelDetails = details;
-}
-
-// Filtering helpers based on model details from Ollama
-function isChatModel(modelName, info) {
-    // Any model that is not an embedding model is suitable for chat
-    return info && !info.is_embedding;
-}
-
-function isReasoningModel(modelName, info) {
-    // For reasoning we also allow any non-embedding model (including multimodal)
-    return info && !info.is_embedding;
-}
-
-function isMultimodalModel(modelName, info) {
-    // Only models that explicitly support vision
-    return info && info.is_vision;
-}
-
-function isEmbeddingModel(modelName, info) {
-    // Only models that are identified as embedding models
-    return info && info.is_embedding;
 }
 
 function renderModelCards() {
@@ -118,33 +46,28 @@ function renderModelCards() {
         { id: 'embedding', name: 'Embedding', config: currentModelConfigs.embedding || {} }
     ];
 
-    const allModels = window.availableModels || [];
-
     let html = '';
     modules.forEach(mod => {
-        // Filter models for this module
-        let filteredModels = [];
-        if (allModels.length) {
-            filteredModels = allModels.filter(m => {
-                const info = modelDetails[m];
-                if (mod.id === 'chat') return isChatModel(m, info);
-                if (mod.id === 'reasoning') return isReasoningModel(m, info);
-                if (mod.id === 'multimodal') return isMultimodalModel(m, info);
-                if (mod.id === 'embedding') return isEmbeddingModel(m, info);
-                return true;
-            });
-        }
+        const ollamaUrl = mod.config.ollama_url || '';
+        const isLocal = ollamaUrl === 'http://ollama:11434';   // detect default local
 
         html += `
         <div class="model-card" data-module="${mod.id}">
             <h3><span class="module-name">${t(mod.name)}</span></h3>
+            <div class="model-url-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" class="local-checkbox" data-module="${mod.id}" ${isLocal ? 'checked' : ''}>
+                    ${t('Local')}
+                </label>
+                <div class="url-input-wrapper">
+                    <input type="text" class="ollama-url" data-module="${mod.id}" value="${escapeHtml(ollamaUrl)}" placeholder="http://ollama:11434">
+                </div>
+                <span class="ollama-status-icon" data-module="${mod.id}" title="">?</span>
+            </div>
             <div class="model-selector">
+                <button class="refresh-models-btn" data-module="${mod.id}" title="${t('Refresh models from Ollama')}">🔄</button>
                 <select class="model-dropdown" data-module="${mod.id}">
                     <option value="">${t('-- Select model --')}</option>
-                    ${filteredModels.map(m => {
-                        const selected = (mod.config.model_name === m) ? 'selected' : '';
-                        return `<option value="${m}" ${selected}>${m}</option>`;
-                    }).join('')}
                 </select>
             </div>
             <div class="model-details" id="details-${mod.id}" style="display:none;"></div>`;
@@ -183,20 +106,147 @@ function renderModelCards() {
     document.querySelectorAll('.model-dropdown').forEach(select => {
         select.addEventListener('change', onModelSelect);
     });
+    document.querySelectorAll('.refresh-models-btn').forEach(btn => {
+        btn.addEventListener('click', onRefreshModels);
+    });
     document.querySelectorAll('.save-button').forEach(btn => {
         btn.addEventListener('click', onSaveConfig);
     });
+    document.querySelectorAll('.local-checkbox').forEach(cb => {
+        cb.addEventListener('change', onLocalCheckboxChange);
+    });
+    document.querySelectorAll('.ollama-url').forEach(input => {
+        input.addEventListener('input', function() {
+            const module = this.dataset.module;
+            updateOllamaStatus(module);
+        });
+    });
 
-    // After rendering, trigger info display for already selected models
-    document.querySelectorAll('.model-card').forEach(card => {
-        const module = card.dataset.module;
-        const select = card.querySelector('.model-dropdown');
-        if (select.value) {
-            // Simulate change event to load details
-            const event = new Event('change', { bubbles: true });
-            select.dispatchEvent(event);
+    // Initial status check for each module
+    modules.forEach(mod => {
+        updateOllamaStatus(mod.id);
+        const select = document.querySelector(`.model-dropdown[data-module="${mod.id}"]`);
+        if (select && select.value) {
+            onModelSelect({ target: select });
         }
     });
+}
+
+function onLocalCheckboxChange(event) {
+    const cb = event.target;
+    const module = cb.dataset.module;
+    const urlInput = document.querySelector(`.ollama-url[data-module="${module}"]`);
+    if (cb.checked) {
+        urlInput.value = 'http://ollama:11434';
+        urlInput.disabled = true;
+        updateOllamaStatus(module);
+    } else {
+        urlInput.disabled = false;
+        updateOllamaStatus(module);
+    }
+}
+
+async function updateOllamaStatus(module) {
+    const urlInput = document.querySelector(`.ollama-url[data-module="${module}"]`);
+    const ollamaUrl = urlInput.value.trim();
+    const statusIcon = document.querySelector(`.ollama-status-icon[data-module="${module}"]`);
+    if (!ollamaUrl) {
+        statusIcon.textContent = '❓';
+        statusIcon.title = t('Please provide Ollama URL first');
+        return;
+    }
+    try {
+        const response = await fetch(`/admin/api/ollama/check?url=${encodeURIComponent(ollamaUrl)}`);
+        const data = await response.json();
+        if (data.available) {
+            statusIcon.textContent = '✅';
+            statusIcon.title = t('Ollama available');
+        } else {
+            statusIcon.textContent = '❌';
+            statusIcon.title = t('Ollama unavailable') + (data.error ? `: ${data.error}` : '');
+        }
+    } catch (err) {
+        console.error(`Failed to check Ollama status for ${module}:`, err);
+        statusIcon.textContent = '❌';
+        statusIcon.title = t('Ollama unavailable') + ': ' + err.message;
+    }
+}
+
+async function onRefreshModels(event) {
+    const btn = event.target;
+    const module = btn.dataset.module;
+    btn.disabled = true;
+    btn.textContent = '⏳';
+    await refreshModelsForModule(module);
+    btn.disabled = false;
+    btn.textContent = '🔄';
+}
+
+async function refreshModelsForModule(module) {
+    const urlInput = document.querySelector(`.ollama-url[data-module="${module}"]`);
+    const ollamaUrl = urlInput.value.trim();
+    if (!ollamaUrl) {
+        showModelError(module, t('Please provide Ollama URL first'));
+        return;
+    }
+    const select = document.querySelector(`.model-dropdown[data-module="${module}"]`);
+    // Clear current options except placeholder
+    select.innerHTML = `<option value="">${t('-- Select model --')}</option>`;
+    select.disabled = true;
+
+    // Clear previous error message
+    clearModelError(module);
+
+    try {
+        const response = await fetch(`/admin/api/ollama/models?url=${encodeURIComponent(ollamaUrl)}`);
+        if (!response.ok) {
+            let errorMsg = `HTTP ${response.status}`;
+            try {
+                const errorData = await response.json();
+                if (errorData.error) errorMsg = errorData.error;
+            } catch (e) {}
+            throw new Error(errorMsg);
+        }
+        const models = await response.json();
+        modelListCache[ollamaUrl] = models;
+        models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            select.appendChild(option);
+        });
+    } catch (err) {
+        console.error(`Failed to fetch models for ${module}:`, err);
+        showModelError(module, t('error') + ': ' + err.message);
+    } finally {
+        select.disabled = false;
+        // Restore previously selected model if exists
+        const currentConfig = currentModelConfigs[module] || {};
+        if (currentConfig.model_name) {
+            select.value = currentConfig.model_name;
+        }
+        // Trigger details load if a model is selected
+        if (select.value) {
+            onModelSelect({ target: select });
+        }
+    }
+}
+
+function showModelError(module, message) {
+    const card = document.querySelector(`.model-card[data-module="${module}"]`);
+    let errorDiv = card.querySelector('.model-error');
+    if (!errorDiv) {
+        errorDiv = document.createElement('div');
+        errorDiv.className = 'model-error';
+        card.appendChild(errorDiv);
+    }
+    errorDiv.textContent = message;
+}
+
+function clearModelError(module) {
+    const card = document.querySelector(`.model-card[data-module="${module}"]`);
+    const errorDiv = card.querySelector('.model-error');
+    if (errorDiv) errorDiv.remove();
 }
 
 async function onModelSelect(event) {
@@ -210,21 +260,32 @@ async function onModelSelect(event) {
     }
     detailsDiv.style.display = 'block';
     detailsDiv.innerHTML = '<p>Loading...</p>';
+    clearModelError(module);
 
-    // Try to get info from cache first
-    let info = modelDetails[modelName];
+    const urlInput = document.querySelector(`.ollama-url[data-module="${module}"]`);
+    const ollamaUrl = urlInput.value.trim();
+    if (!ollamaUrl) {
+        detailsDiv.innerHTML = '<p>No Ollama URL provided</p>';
+        return;
+    }
+
+    let info = modelDetails[`${ollamaUrl}:${modelName}`];
     if (!info) {
         try {
-            const res = await fetch(`/admin/api/ollama/model/${encodeURIComponent(modelName)}`);
-            if (res.ok) {
-                info = await res.json();
-                modelDetails[modelName] = info;
-            } else {
-                detailsDiv.innerHTML = '<p>Error loading model info</p>';
-                return;
+            const res = await fetch(`/admin/api/ollama/model/${encodeURIComponent(modelName)}?url=${encodeURIComponent(ollamaUrl)}`);
+            if (!res.ok) {
+                let errorMsg = `HTTP ${res.status}`;
+                try {
+                    const errorData = await res.json();
+                    if (errorData.error) errorMsg = errorData.error;
+                } catch (e) {}
+                throw new Error(errorMsg);
             }
+            info = await res.json();
+            modelDetails[`${ollamaUrl}:${modelName}`] = info;
         } catch (err) {
-            detailsDiv.innerHTML = '<p>Error loading model info</p>';
+            console.error(`Error loading model info for ${modelName}:`, err);
+            detailsDiv.innerHTML = `<p>${t('error')}: ${err.message}</p>`;
             return;
         }
     }
@@ -244,7 +305,6 @@ async function onModelSelect(event) {
     }
 }
 
-// Validation function for model parameters
 function validateModelConfig(module, card) {
     const modelName = card.querySelector('.model-dropdown').value;
     if (!modelName) {
@@ -252,19 +312,22 @@ function validateModelConfig(module, card) {
         return false;
     }
 
-    // Skip validation for embedding module (no parameters)
-    if (module === 'embedding') return true;
+    const ollamaUrl = card.querySelector('.ollama-url').value.trim();
+    if (!ollamaUrl) {
+        alert(t('Please provide Ollama URL.'));
+        return false;
+    }
+
+    if (module === 'embedding') return true;   // no parameters to validate
 
     const contextLength = card.querySelector('.context-length')?.value;
     const temperature = card.querySelector('.temperature')?.value;
     const topP = card.querySelector('.top-p')?.value;
     const timeout = card.querySelector('.timeout')?.value;
 
-    // Get max context length for the selected model
-    const info = modelDetails[modelName];
+    const info = modelDetails[`${ollamaUrl}:${modelName}`];
     const maxContext = info && info.context_length ? parseInt(info.context_length) : null;
 
-    // Validate context length
     if (contextLength !== undefined && contextLength !== '') {
         const val = parseInt(contextLength);
         if (isNaN(val) || val < 512) {
@@ -277,7 +340,6 @@ function validateModelConfig(module, card) {
         }
     }
 
-    // Validate temperature
     if (temperature !== undefined && temperature !== '') {
         const val = parseFloat(temperature);
         if (isNaN(val) || val < 0.0 || val > 2.0) {
@@ -286,7 +348,6 @@ function validateModelConfig(module, card) {
         }
     }
 
-    // Validate top_p
     if (topP !== undefined && topP !== '') {
         const val = parseFloat(topP);
         if (isNaN(val) || val < 0.0 || val > 1.0) {
@@ -295,7 +356,6 @@ function validateModelConfig(module, card) {
         }
     }
 
-    // Validate timeout
     if (timeout !== undefined && timeout !== '') {
         const val = parseInt(timeout);
         if (isNaN(val) || val < 0 || val > 1200) {
@@ -312,12 +372,10 @@ function onSaveConfig(event) {
     const module = btn.dataset.module;
     const card = document.querySelector(`.model-card[data-module="${module}"]`);
 
-    // Run client-side validation
-    if (!validateModelConfig(module, card)) {
-        return;
-    }
+    if (!validateModelConfig(module, card)) return;
 
     const modelName = card.querySelector('.model-dropdown').value;
+    const ollamaUrl = card.querySelector('.ollama-url').value.trim();
     const contextLength = card.querySelector('.context-length')?.value;
     const temperature = card.querySelector('.temperature')?.value;
     const topP = card.querySelector('.top-p')?.value;
@@ -325,6 +383,7 @@ function onSaveConfig(event) {
 
     const data = {
         model_name: modelName,
+        ollama_url: ollamaUrl,
         context_length: contextLength ? parseInt(contextLength) : null,
         temperature: temperature ? parseFloat(temperature) : null,
         top_p: topP ? parseFloat(topP) : null,
@@ -338,20 +397,16 @@ function onSaveConfig(event) {
     })
     .then(res => res.json())
     .then(result => {
-        console.log('Server response:', result); // Debug: log server response
         if (result.status === 'ok') {
             btn.textContent = '✓ ' + t('Saved');
             setTimeout(() => { btn.textContent = t('Save'); }, 2000);
-            
-            // If embedding module, update global variable and notify user about reindexing
+
+            // Update global config cache
+            if (!currentModelConfigs[module]) currentModelConfigs[module] = {};
+            Object.assign(currentModelConfigs[module], data);
+
             if (module === 'embedding') {
-                // Update the global CURRENT_EMBEDDING_MODEL with the new model name
-                if (result.model_name) {
-                    window.CURRENT_EMBEDDING_MODEL = result.model_name;
-                    console.log('Updated CURRENT_EMBEDDING_MODEL to', result.model_name);
-                } else {
-                    console.warn('No model_name in response, CURRENT_EMBEDDING_MODEL not updated');
-                }
+                window.CURRENT_EMBEDDING_MODEL = result.model_name;
                 alert(t('reindex_started'));
             }
         } else {
@@ -361,5 +416,17 @@ function onSaveConfig(event) {
     .catch(err => {
         console.error('Error saving config:', err);
         alert(t('error') + ': ' + err.message);
+    });
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    }).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
+        return c;
     });
 }

@@ -383,14 +383,14 @@ docker exec flai-ollama ollama pull bge-m3:latest
 ### Configure Models in Admin Panel
 1. Log in as admin and go to `/admin` → Models tab
 2. For each module (Chat, Reasoning, Multimodal, Embedding):  
-   **Step 1: Specify Ollama URL**  
+  **Step 1: Specify Ollama URL**  
    - Check the "Local" checkbox if Ollama runs on the same machine (URL auto-fills to `http://ollama:11434`)
    - Uncheck "Local" and enter custom URL for distributed deployment (e.g., `http://192.168.1.50:11434`)
    - Status icon shows connection status (✅ available / ❌ unavailable)  
-   **Step 2: Refresh Model List**  
+  **Step 2: Refresh Model List**  
    - Click the 🔄 Refresh button to fetch available models from Ollama
    - Wait for the dropdown to populate with model names  
-   **Step 3: Select Model & Configure**  
+  **Step 3: Select Model & Configure**  
    - Select desired model from the dropdown
    - Model details appear below (architecture, parameters, context length)
    - Set parameters:

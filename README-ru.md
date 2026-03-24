@@ -540,400 +540,104 @@ CAMERA_CHECK_INTERVAL=30
 
 ---
 
-
-
-
-
-
-
-## 🔧 Настройка зависимых сервисов
-ПЛИИ интегрируется с несколькими внешними ИИ-сервисами. Ниже приведены примеры Docker Compose для их запуска вместе с основным приложением.
-Также смотрите примеры в папке `services`.
-- ⚠️ Важно: Все сервисы должны использовать одну Docker-сеть (flai_network) для корректного взаимодействия.
-
-### Создание общей сети
-```bash
-docker network create flai_network
-```
-
-### 🤖 Ollama (сервер LLM)
-```yaml
-# services/ollama/docker-compose.yml
-services:
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    networks:
-      - flai_network
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama:/root/.ollama
-    environment:
-      - OLLAMA_REQUEST_TIMEOUT=1200s
-      - OLLAMA_MAX_LOADED_MODELS=1
-      - OLLAMA_KEEP_ALIVE=0
-    # Раскомментируйте для поддержки ГПУ:
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
-
-volumes:
-  ollama:
-    external: true
-    name: ollama
-
-networks:
-  flai_network:
-    external: true
-```
-
-Загрузка необходимых моделей:
-```bash
-docker exec ollama ollama pull qwen3:4b-instruct-2507-q4_K_M      # Чат/Маршрутизатор
-docker exec ollama ollama pull qwen3-vl:8b-instruct-q4_K_M        # Мультимодальная
-docker exec ollama ollama pull gpt-oss:20b                        # Рассуждения
-docker exec ollama ollama pull bge-m3:latest                      # Эмбеддинги (RAG)
-```
-
-### 🎨 Automatic1111 (Stable Diffusion)
-```yaml
-# services/automatic1111/docker-compose.yml
-services:
-  automatic1111:
-    image: siutin/stable-diffusion-webui-docker:latest-cuda  # Используйте -cpu для CPU
-    container_name: sd-webui
-    networks:
-      - flai_network
-    ports:
-      - "7860:7860"
-    volumes:
-      - ./models:/app/stable-diffusion-webui/models
-      - ./embeddings:/app/stable-diffusion-webui/embeddings
-      - ./outputs:/app/stable-diffusion-webui/outputs
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - NVIDIA_REQUIRE_CUDA=cuda>=12.1
-      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-    runtime: nvidia
-    command:
-      - /app/stable-diffusion-webui/webui.sh
-      - --listen
-      - --port=7860
-      - --api
-      - --api-log
-      - --opt-sdp-attention
-      - --medvram
-      - --medvram-sdxl
-
-networks:
-  flai_network:
-    external: true
-```
-Поместите ваш чекпоинт Stable Diffusion (например, `cyberrealisticXL_v90.safetensors`) в каталог `./models`.
-Найти чекпоит можно тут: `https://civitai.com/`
-
-### 🎤 Whisper ASR (распознавание речи)
-```yaml
-# services/openai-whisper/docker-compose.yml
-services:
-  openai-whisper:
-    image: onerahmet/openai-whisper-asr-webservice:latest        # CPU
-    # image: onerahmet/openai-whisper-asr-webservice:latest-gpu  # GPU
-    container_name: openai-whisper
-    networks:
-      - flai_network
-    ports:
-      - "9000:9000"
-    environment:
-      ASR_MODEL: "medium"                  # Варианты: tiny, base, small, medium, large
-      ASR_ENGINE: "faster_whisper"         # Рекомендуется для производительности
-      ASR_DEVICE: "cpu"                    # Измените на "cuda" для ГПУ
-    volumes:
-      - ~/.cache/huggingface:/root/.cache/huggingface
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    restart: always
-
-networks:
-  flai_network:
-    external: true
-```
-### 🗣️ Piper TTS (синтез речи)
-```yaml
-# services/piper/docker-compose.yml
-services:
-  piper:
-    build:
-      context: ./services/piper
-      dockerfile: Dockerfile.piper
-    container_name: piper
-    networks:
-      - flai_network
-    ports:
-      - "18888:8888"
-    volumes:
-      - ./piper_models:/app/models
-    environment:
-      - PIPER_MODEL_DIR=/app/models
-    restart: unless-stopped
-
-networks:
-  flai_network:
-    external: true
-```
-
-Загрузка голосовых моделей:
-```text
-# Голоса Piper TTS для скачивания
-# Формат: HuggingFace URL
-
-# Русский мужской голос
-https://huggingface.co/rhasspy/piper-voices/blob/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx
-https://huggingface.co/rhasspy/piper-voices/blob/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json
-
-# Русский женский голос
-https://huggingface.co/rhasspy/piper-voices/blob/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx
-https://huggingface.co/rhasspy/piper-voices/blob/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
-
-# Английский мужской голос
-https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx
-https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json
-
-# Английский женский голос
-https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx
-https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json
-```
-
-### 🗄️ Qdrant (векторная база данных для RAG)
-```yaml
-# services/qdrant/docker-compose.yml
-services:
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: qdrant
-    networks:
-      - flai_network
-    ports:
-      - "6333:6333"   # HTTP API
-      - "6334:6334"   # gRPC API (опционально)
-    volumes:
-      - qdrant_data:/qdrant/storage
-    environment:
-      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
-      QDRANT__SERVICE__ENABLE_TLS: 0  # Отключить TLS для локальной разработки
-
-volumes:
-  qdrant_data:
-    external: true
-    name: qdrant_data
-
-networks:
-  flai_network:
-    external: true
-```
-
-## ⚙️ Конфигурация (.env)
-Все настройки задаются в файле `.env`. Ключевые переменные:
-
-### Основные настройки
-| Переменная | Описание | Пример |
-|------------|----------|--------|
-| `SECRET_KEY` | Секрет для сессий Flask (сгенерируйте надёжное случайное значение) | `x8#kL9$mP2@vN5!qR` |
-| `TIMEZONE` | Локальный часовой пояс для временных меток | `Europe/Moscow` |
-| `REDIS_URL` | Строка подключения к Redis | `redis://redis:6379/0` |
-
-### Модели LLM (Ollama) - начальные значения по умолчанию (переопределяются через админку после первого запуска)
-| Переменная | Описание | Пример |
-|------------|----------|--------|
-| `OLLAMA_URL` | Адрес API Ollama | `http://host.docker.internal:11434` |
-| `LLM_CHAT_MODEL` | Быстрая модель для чата/маршрутизации | `qwen3:4b-instruct-2507-q4_K_M` |
-| `LLM_MULTIMODAL_MODEL` | Модель с поддержкой зрения | `qwen3-vl:8b-instruct-q4_K_M` |
-| `LLM_REASONING_MODEL` | Мощная модель для сложных задач | `gpt-oss:20b` |
-| `LLM_*_CONTEXT_WINDOW` | Размер контекстного окна (токены) | `8192`, `16384`, `32768` |
-| `LLM_*_TEMPERATURE` | Креативность/случайность (0.0–1.0) | `0.1` (чат), `0.7` (рассуждения) |
-| `LLM_*_TOP_P` | Параметр nucleus sampling | `0.1`, `0.9` |
-| `LLM_*_TIMEOUT` | Таймаут запроса в секундах | `60`, `120`, `300` |
-
-### Генерация изображений (Automatic1111)
-| Переменная | Описание | Пример |
-|------------|----------|--------|
-| `AUTOMATIC1111_URL` | Адрес API WebUI | `http://host.docker.internal:7860` |
-| `AUTOMATIC1111_MODEL` | Имя файла чекпоинта | `cyberrealisticXL_v90.safetensors` |
-| `AUTOMATIC1111_TIMEOUT` | Таймаут генерации (секунды) | `180` |
-| `MAX_IMAGE_WIDTH` / `HEIGHT` | Максимальное разрешение вывода | `3840`, `2160` |
-| `MAX_IMAGE_SIZE_MB` | Максимальный размер загрузки | `5` |
-
-### Обработка аудио
-| Переменная | Описание | Пример |
-|------------|----------|--------|
-| `WHISPER_API_URL` | Адрес API Whisper ASR | `http://host.docker.internal:9000/asr` |
-| `WHISPER_API_TIMEOUT` | Таймаут транскрибации | `120` |
-| `PIPER_URL` | Адрес API Piper TTS | `http://piper:8888/tts` |
-| `PIPER_TIMEOUT` | Таймаут синтеза речи | `30` |
-| `MAX_VOICE_SIZE_MB` | Макс. размер голосовой записи | `5` |
-| `MAX_AUDIO_SIZE_MB` | Макс. размер загружаемого аудио | `5` |
-
-### Интеграция с камерами (опционально)
-| Переменная | Описание | Пример |
-|------------|----------|--------|
-| `CAMERA_API_URL` | Адрес сервиса камер | `http://host.docker.internal:5005` |
-| `CAMERA_ENABLED` | Включить/отключить модуль камер | `true` / `false` |
-| `CAMERA_API_TIMEOUT` | Таймаут запроса снимка (сек) | `15` |
-| `CAMERA_CHECK_INTERVAL` | Интервал проверки доступности (сек) | `30` |
-API для получения снимков с камер видеонаблюдения в различных комнатах: `https://github.com/barval/room-snapshot-api`
-
-### RAG / Qdrant
-| Переменная | Описание | Пример |
-|------------|----------|--------|
-| `QDRANT_URL` | Адрес HTTP API Qdrant | `http://host.docker.internal:6333` |
-| `QDRANT_API_KEY` | API-ключ для аутентификации | `ваш_надёжный_ключ` |
-| `EMBEDDING_MODEL` | Модель эмбеддингов Ollama | `bge-m3:latest` |
-| `RAG_CHUNK_SIZE` | Размер текстового чанка для индексации | `500` |
-| `RAG_CHUNK_OVERLAP` | Перекрытие между чанками | `50` |
-| `RAG_TOP_K` | Количество чанков для поиска | `10` |
-
-### Настройки файлов и документов
-| Переменная | Описание | Пример |
-|------------|----------|--------|
-| `MAX_DOCUMENT_SIZE_MB` | Макс. размер загружаемого документа | `25` |
-| `UPLOAD_FOLDER` | Путь для загруженных медиафайлов | `data/uploads` |
-| `DOCUMENTS_FOLDER` | Путь для загруженных документов | `data/documents` |
-
-### Продвинутые / отладочные
-| Переменная | Описание | Пример |
-|------------|----------|--------|
-| `TOKEN_CHARS` | Оцен. кол-во символов на токен для расчёта контекста | `3` |
-| `CONTEXT_HISTORY_PERCENT` | % контекстного окна под историю диалога | `75` |
-| `DEBUG_TRANSLATIONS` | Включить отладку локализации | `false` |
-
----
-
 ## 👥 Управление пользователями
 
-### Панель администратора (/admin)
-- 👤 Операции с пользователями: создание, редактирование, удаление учётных записей
-- 🔑 Управление паролями: сброс паролей для любого пользователя
-- 🔐 Права на камеры: предоставление/отзыв доступа к конкретным камерам для каждого пользователя
-- 🤖 Управление моделями: выбор и настройка моделей для чата, рассуждений, мультимодальных задач и эмбеддингов.
-Информация о моделях (архитектура, длина контекста, длина эмбеддинга) загружается из Ollama.
-Смена модели эмбеддингов автоматически запускает переиндексацию всех документов.
-- 📊 Системная статистика: мониторинг размеров баз данных (пользователи, чаты, файлы, документы)
-- 🎚️ Классы обслуживания: назначение уровней приоритета (0=высший, 2=низший) для обработки очереди
+### Возможности Панели администратора
+| Возможность | Описание |
+|-------------|----------|
+| 👤 Операции с пользователями | Создание, редактирование, удаление учётных записей |
+| 🔑 Управление паролями | Сброс паролей для любого пользователя |
+| 🔐 Права на камеры | Предоставление/отзыв доступа к камерам |
+| 🤖 Управление моделями | Настройка моделей для каждого типа модуля |
+| 📊 Системная статистика | Мониторинг размеров баз данных и хранилища |
+| 🎚️ Классы обслуживания | Приоритет очереди (0=высший, 2=низший) |
 
 ### CLI-команды
 ```bash
-# Установка или смена пароля администратора
-docker exec -it flai-web-1 flask admin-password НовыйПароль123
-```
-
-
----
-
----
-
-## 🚀 Быстрый старт
-
-### Требования
-
-- **Docker** ≥ 20.10 ([Установка Docker](https://docs.docker.com/get-docker/))
-- **Docker Compose** ≥ 2.0 (входит в Docker Desktop)
-- **8+ ГБ ОЗУ** (рекомендуется 16+ ГБ для больших моделей)
-- **20+ ГБ свободного места** на диске
-
-### Шаг 1: Клонирование репозитория
-
-```bash
-git clone https://github.com/barval/flai.git
-cd flai
-```
-
-### Шаг 2. Настройка окружения
-```bash
-# Скопировать пример конфигурации
-cp .env.example .env
-
-# Сгенерировать секретный ключ (Linux/macOS)
-openssl rand -hex 32
-
-# Отредактировать .env и вставить ключ
-nano .env  # или используйте ваш редактор
-```
-**Обязательные настройки в** `.env`:
-```text
-SECRET_KEY=ваш_сгенерированный_ключ
-TIMEZONE=Europe/Moscow
-REDIS_URL=redis://redis:6379/0
-```
-
-### Шаг 3: Запуск всех сервисов
-```bash
-# Запустить всё одной командой
-docker-compose -f docker-compose.all.yml up -d
-```
-Веб-интерфейс станет доступен по адресу `http://localhost:5000`.
-
-### Шаг 4. Создание учётной записи администратора
-```bash
-# Подождите 30 секунд для запуска веб-сервиса
-sleep 30
-
 # Установить пароль администратора
-docker exec flai-web-1 flask admin-password ВашНадёжныйПароль123
+docker exec flai-web-1 flask admin-password НовыйПароль123
+
+# Просмотр помощи
+docker exec flai-web-1 flask --help
 ```
 
-### Шаг 5: Открыть веб-интерфейс
-Перейдите на `http://localhost:5000` и войдите:
-- Логин: `admin`
-- Пароль: `указанный вами пароль`
+---
+
+## 🧪 Нагрузочное тестирование
+ПЛИИ включает скрипты нагрузочного тестирования на основе Locust.
+
+### Настройка
+```bash
+# Создать виртуальное окружение
+python3 -m venv venv
+source venv/bin/activate  # Linux/macOS
+# venv\Scripts\activate   # Windows
+
+# Установить Locust
+pip install locust
+```
+
+### Запуск тестов
+```bash
+# Веб-интерфейс
+locust -f tests/load/locustfile.py --host http://localhost:5000
+
+# Автоматический режим (headless)
+locust -f tests/load/locustfile.py --host http://localhost:5000 \
+  --headless -u 10 -r 2 --run-time 1m
+```
+
+### Тестовый пользователь
+Создайте тестового пользователя перед запуском:
+- Логин: `testuser`
+- Пароль: `testpass`
+
+> 💡 Обязательно: заблокируйте или удалите тестового пользователя после проведения тестов!
 
 ---
 
 ## 🗺️ Дорожная карта
 
 ### ✅ Завершено
-- Маршрутизация запросов по моделям (простые → быстрая модель, сложные → рассуждения)
+- Маршрутизация запросов по моделям (простые → быстрая, сложные → рассуждения)
 - Мультимодальный анализ изображений с историей диалога
 - Генерация изображений с автоматической оптимизацией промптов
 - Распознавание (Whisper) и синтез (Piper TTS) речи
 - Загрузка документов + RAG с семантическим поиском через Qdrant
-- Интеграция с камерами с системой прав доступа
 - Очередь запросов на Redis с отображением статуса в реальном времени
 - Полная поддержка i18n (RU/EN) через Flask-Babel
 - Тёмная/светлая тема с сохранением предпочтений
 - Экспорт чатов в HTML с встроенными медиафайлами
-- Админ‑панель с управлением моделями (выбор моделей для каждой роли, просмотр информации)
-- Отображение статуса индексации документов (ожидает, индексируется, готов, ошибка) и времени обработки
-- Индикатор локальной обработки (для синхронных операций, например, транскрибации)
+- Админ-панель с управлением моделями
+- Отображение статуса индексации документов с временем обработки
+- Интеграция с камерами с системой прав доступа
+- **Режим WAL для SQLite для лучшей конкурентности**
+- **Нагрузочное тестирование с Locust**
+- **Отдельные URL Ollama для каждого типа моделей (распределённое развёртывание)**
 
 ### 🔄 В работе
-- Долговременная память диалогов (сохранение контекста между сеансами)
+- Долговременная память диалогов (контекст между сеансами)
 - Продвинутые функции RAG: фильтрация по метаданным, гибридный поиск, ре-ранжирование
 - Оптимизация интерфейса для мобильных устройств
 - Улучшение производительности
 - Повышение безопасности
-- Аналитика активности пользователей и статистика использования
+- Аналитика активности пользователей
 
 ### 📅 Запланировано
 - Архитектура плагинов для пользовательских модулей
-- API для внешних интеграций (вебхуки, REST-эндпоинты)
-- Утилиты резервного копирования/восстановления пользовательских данных
+- API для внешних интеграций (вебхуки, REST)
+- Утилиты резервного копирования/восстановления
 - Функции совместной работы (общие сеансы, библиотеки документов)
-- Утилиты локальной донастройки моделей (поддержка LoRA, QLoRA)
+- Локальная донастройка моделей (LoRA, QLoRA)
 
 ---
 
 ## 🤝 Участие в разработке
-Мы приветствуем вклад в проект! Вот как вы можете помочь:
-- 🔍 Сообщить об ошибке: нашли баг? Создайте issue с шагами воспроизведения
-- 💡 Предложить функцию: есть идея? Начните обсуждение перед написанием кода
-- 🛠️ Отправить PR: форкните, создайте ветку, напишите код, протестируйте, отправьте pull request
-- 📚 Улучшить документацию: помогите уточнить документацию, примеры или переводы
+Мы приветствуем вклад в проект!
+- 🔍 **Сообщить об ошибке**: Создайте issue с шагами воспроизведения
+- 💡 **Предложить функцию**: Начните обсуждение перед написанием кода
+- 🛠️ **Отправить PR**: Форкните, создайте ветку, напишите код, протестируйте, отправьте
+- 📚 **Улучшить документацию**: Помогите уточнить документацию и переводы
 
 ---
 
@@ -941,4 +645,3 @@ docker exec flai-web-1 flask admin-password ВашНадёжныйПароль12
 Этот проект распространяется под лицензией MIT – подробности см. в файле [LICENSE-ru](LICENSE-ru).
 
 <br> <div align="center"> Сделано с ❤️ для сообщества локального ИИ </div>
-  

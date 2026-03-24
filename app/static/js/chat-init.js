@@ -159,6 +159,38 @@ function startResultPolling(requestId) {
                 if (data.result) {
                     const resultSessionId = data.result.session_id || pendingRequests[requestId]?.sessionId;
                     
+                    // Handle transcription result that may spawn a new processing request
+                    if (data.result.transcribed_text) {
+                        const resultSessionId = data.result.session_id || pendingRequests[requestId]?.sessionId;
+                        if (resultSessionId === currentSessionId) {
+                            // Display transcribed text message
+                            originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.result.transcribed_text, null, null, null, null,
+                                data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'whisper',
+                                null, null, null, null, data.result.transcribed_message_id);
+                            // If there is a new request_id for processing, start polling it
+                            if (data.result.request_id) {
+                                pendingRequests[data.result.request_id] = { sessionId: resultSessionId, processed: false };
+                                window.updateStatusCounter();
+                                startResultPolling(data.result.request_id);
+                                setLocalTranscribing(resultSessionId, false);
+                            } else {
+                                setLocalTranscribing(resultSessionId, false);
+                            }
+                        } else {
+                            setNewMessageIndicator(resultSessionId, true);
+                            if (data.result.request_id) {
+                                pendingRequests[data.result.request_id] = { sessionId: resultSessionId, processed: false };
+                                startResultPolling(data.result.request_id);
+                            }
+                            setLocalTranscribing(resultSessionId, false);
+                        }
+                        delete pendingRequests[requestId];
+                        window.updateStatusCounter();
+                        fetchQueueStatus();
+                        setTimeout(() => loadSessionsFromServer(), 500);
+                        return;
+                    }
+                    
                     if (data.result.error) {
                         if (resultSessionId === currentSessionId) {
                             originalDisplayMessage('assistant', '⚠️ ' + data.result.error, null, null, null, null,
@@ -274,175 +306,145 @@ async function sendMessage() {
     }
     isSending = true;
     
-    try {
-        const input = document.getElementById('message-input');
-        const text = input.value.trim();
-        const sendButton = document.getElementById('send-button');
+    const input = document.getElementById('message-input');
+    const text = input.value.trim();
+    const sendButton = document.getElementById('send-button');
+    
+    if (!text && !attachedFile) {
+        isSending = false;
+        alert(t('enter_message_or_file'));
+        return;
+    }
+    
+    // Lock button immediately
+    sendButton.disabled = true;
+    sendButton.innerHTML = '⏳ ' + t('sending');
+    
+    const messageCount = document.querySelectorAll('.user-message').length;
+    if (messageCount === 0) {
+        let newTitle = text ? text.slice(0, 40) + (text.length > 40 ? '...' : '') : '';
+        if (!newTitle && attachedFile) {
+            newTitle = attachedFile.name.slice(0, 40) + (attachedFile.name.length > 40 ? '...' : '');
+        }
+        if (newTitle) {
+            updateSessionTitle(currentSessionId, newTitle);
+            fetch('/api/sessions/' + currentSessionId + '/update-title', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({title: newTitle})
+            }).catch(err => console.error('Error updating title:', err));
+        }
+    }
+    
+    const now = new Date();
+    const timestamp = now.toISOString();
+    
+    const userContent = [];
+    if (text) userContent.push({"type": "text", "text": text});
+    
+    let fileData = null, fileType = null, fileName = null, filePath = null;
+    const tempAttachedFile = attachedFile;
+    const tempText = text;
+    // FIX: Determine if audio file early to control button unlock behavior
+    const isAudioFile = tempAttachedFile && tempAttachedFile.type && tempAttachedFile.type.startsWith('audio/');
+    
+    const displayUserMessage = (fileData, fileType, fileName, filePath) => {
+        if (window.IS_RELOADING) return;
         
-        if (!text && !attachedFile) {
-            isSending = false;
-            alert(t('enter_message_or_file'));
-            return;
+        if (fileData || filePath) {
+            let type = "file";
+            if (fileType && fileType.startsWith('image/')) type = "image";
+            else if (fileType && fileType.startsWith('audio/')) type = "audio";
+            userContent.push({ "type": type, "file_data": fileData, "file_type": fileType, "file_name": fileName, "file_path": filePath });
         }
         
-        // Lock button immediately
-        sendButton.disabled = true;
-        sendButton.innerHTML = '⏳ ' + t('sending');
+        const msgElement = originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, filePath, timestamp);
         
-        const messageCount = document.querySelectorAll('.user-message').length;
-        if (messageCount === 0) {
-            let newTitle = text ? text.slice(0, 40) + (text.length > 40 ? '...' : '') : '';
-            if (!newTitle && attachedFile) {
-                newTitle = attachedFile.name.slice(0, 40) + (attachedFile.name.length > 40 ? '...' : '');
-            }
-            if (newTitle) {
-                updateSessionTitle(currentSessionId, newTitle);
-                fetch('/api/sessions/' + currentSessionId + '/update-title', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({title: newTitle})
-                }).catch(err => console.error('Error updating title:', err));
-            }
+        // FIX: Update lastMessageTimestamp immediately to prevent polling from fetching this message again
+        lastMessageTimestamp = timestamp;
+        
+        const tempId = `temp-${timestamp}`;
+        if (msgElement) {
+            msgElement.dataset.tempId = tempId;
         }
         
-        const now = new Date();
-        const timestamp = now.toISOString();
+        input.value = '';
+        attachedFile = null;
+        document.getElementById('file-preview-container').style.display = 'none';
+        document.getElementById('file-input').value = '';
+    };
+    
+    const unlockSendButton = () => {
+        console.log('unlockSendButton called, isSending was:', isSending);
+        if (sendButton) {
+            sendButton.disabled = false;
+            sendButton.innerHTML = t('send');
+        }
+        isSending = false;
+        console.log('unlockSendButton finished, isSending now:', isSending);
+    };
+    
+    const sendToServer = () => {
+        if (window.IS_RELOADING) return;
         
-        const userContent = [];
-        if (text) userContent.push({"type": "text", "text": text});
+        console.log('sendToServer starting, isAudioFile:', isAudioFile);
         
-        let fileData = null, fileType = null, fileName = null, filePath = null;
-        const tempAttachedFile = attachedFile;
-        const tempText = text;
-        
-        const displayUserMessage = (fileData, fileType, fileName, filePath) => {
-            if (window.IS_RELOADING) return;
-            
-            if (fileData || filePath) {
-                let type = "file";
-                if (fileType && fileType.startsWith('image/')) type = "image";
-                else if (fileType && fileType.startsWith('audio/')) type = "audio";
-                userContent.push({ "type": type, "file_data": fileData, "file_type": fileType, "file_name": fileName, "file_path": filePath });
-            }
-            
-            const msgElement = originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, filePath, timestamp);
-            
-            // FIX: Update lastMessageTimestamp immediately to prevent polling from fetching this message again
-            lastMessageTimestamp = timestamp;
-            
-            const tempId = `temp-${timestamp}`;
-            if (msgElement) {
-                msgElement.dataset.tempId = tempId;
-            }
-            
-            input.value = '';
-            attachedFile = null;
-            document.getElementById('file-preview-container').style.display = 'none';
-            document.getElementById('file-input').value = '';
-        };
-        
-        const unlockSendButton = () => {
-            if (sendButton) {
-                sendButton.disabled = false;
-                sendButton.innerHTML = t('send');
-            }
-            isSending = false;
-        };
-        
-        const sendToServer = () => {
-            if (window.IS_RELOADING) return;
-            
-            let unlockRequired = true;
-            
-            (async () => {
-                try {
-                    let response;
-                    
-                    if (tempAttachedFile) {
-                        const formData = new FormData();
-                        formData.append('message', tempText);
-                        formData.append('file', tempAttachedFile);
-                        if (isVoiceRecorded) {
-                            formData.append('voice_record', 'true');
-                            isVoiceRecorded = false;
+        (async () => {
+            try {
+                let response;
+                
+                if (tempAttachedFile) {
+                    const formData = new FormData();
+                    formData.append('message', tempText);
+                    formData.append('file', tempAttachedFile);
+                    if (isVoiceRecorded) {
+                        formData.append('voice_record', 'true');
+                        isVoiceRecorded = false;
+                    }
+                    response = await fetch('/api/send_message', { method: 'POST', body: formData });
+                } else {
+                    response = await fetch('/api/send_message', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: tempText })
+                    });
+                }
+                
+                if (window.IS_RELOADING) return;
+                
+                const data = await response.json();
+                
+                if (window.IS_RELOADING) return;
+                
+                console.log('Server response:', data);
+                
+                if (data.resize_notice) {
+                    originalDisplayMessage('assistant', data.resize_notice, null, null, null, null,
+                        new Date().toISOString(), 0, 'system');
+                }
+                
+                // FIX: Update messageId immediately when received from server
+                if (data.user_message_id) {
+                    const userMessages = document.querySelectorAll('.user-message');
+                    const lastUserMsg = userMessages[userMessages.length - 1];
+                    if (lastUserMsg && lastUserMsg.dataset.timestamp === timestamp) {
+                        if (lastUserMsg.dataset.tempId) {
+                            // Remove tempId from tracking
+                            delete lastUserMsg.dataset.tempId;
                         }
-                        response = await fetch('/api/send_message', { method: 'POST', body: formData });
-                    } else {
-                        response = await fetch('/api/send_message', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ message: tempText })
-                        });
-                    }
-                    
-                    if (window.IS_RELOADING) return;
-                    
-                    const data = await response.json();
-                    
-                    if (window.IS_RELOADING) return;
-                    
-                    console.log('Server response:', data);
-                    
-                    if (data.resize_notice) {
-                        originalDisplayMessage('assistant', data.resize_notice, null, null, null, null,
-                            new Date().toISOString(), 0, 'system');
-                    }
-                    
-                    // FIX: Update messageId immediately when received from server
-                    if (data.user_message_id) {
-                        const userMessages = document.querySelectorAll('.user-message');
-                        const lastUserMsg = userMessages[userMessages.length - 1];
-                        if (lastUserMsg && lastUserMsg.dataset.timestamp === timestamp) {
-                            if (lastUserMsg.dataset.tempId) {
-                                // Remove tempId from tracking
-                                delete lastUserMsg.dataset.tempId;
-                            }
-                            lastUserMsg.dataset.messageId = data.user_message_id;
-                            displayedMessageIds.add(data.user_message_id);
-                            
-                            console.log('sendMessage: Updated messageId to', data.user_message_id, 'and timestamp to', timestamp);
-                        }
-                    }
-                    
-                    if (data.transcribed_text) {
-                        console.log('Transcription completed');
-                        setLocalTranscribing(currentSessionId, false);
+                        lastUserMsg.dataset.messageId = data.user_message_id;
+                        displayedMessageIds.add(data.user_message_id);
                         
-                        if (data.request_id) {
-                            if (!sessionQueueInfo[currentSessionId]) {
-                                sessionQueueInfo[currentSessionId] = { processing: false, queued: 1 };
-                            } else {
-                                sessionQueueInfo[currentSessionId].queued += 1;
-                            }
-                            updateSessionsListFromData();
-                            pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
-                            window.updateStatusCounter();
-                            startResultPolling(data.request_id);
-                            fetchQueueStatus();
-                        } else {
-                            const targetSessionId = data.session_id || currentSessionId;
-                            if (targetSessionId === currentSessionId) {
-                                const assistantMsgId = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null, null,
-                                    new Date().toISOString(), data.response_time, 'whisper');
-                                if (data.transcribed_message_id) {
-                                    const assistantMessages = document.querySelectorAll('.assistant-message');
-                                    const lastAssistant = assistantMessages[assistantMessages.length - 1];
-                                    if (lastAssistant) {
-                                        lastAssistant.dataset.messageId = data.transcribed_message_id;
-                                        displayedMessageIds.add(data.transcribed_message_id);
-                                    }
-                                }
-                            } else {
-                                setNewMessageIndicator(targetSessionId, true);
-                            }
-                        }
-                        
-                        unlockRequired = false;
-                        unlockSendButton();
-                        return;
+                        console.log('sendMessage: Updated messageId to', data.user_message_id, 'and timestamp to', timestamp);
                     }
+                }
+                
+                // Audio files are now queued for transcription, no immediate transcribed_text
+                if (data.transcribed_text) {
+                    console.log('Transcription completed');
+                    setLocalTranscribing(currentSessionId, false);
                     
-                    if (data.status === 'queued') {
+                    if (data.request_id) {
                         if (!sessionQueueInfo[currentSessionId]) {
                             sessionQueueInfo[currentSessionId] = { processing: false, queued: 1 };
                         } else {
@@ -452,94 +454,110 @@ async function sendMessage() {
                         pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
                         window.updateStatusCounter();
                         startResultPolling(data.request_id);
-                    } else if (data.response) {
-                        originalDisplayMessage('assistant', data.response, data.file_data, data.file_type, data.file_name, data.file_path,
-                            data.assistant_timestamp, data.response_time, data.model_used);
+                        fetchQueueStatus();
+                    } else {
+                        const targetSessionId = data.session_id || currentSessionId;
+                        if (targetSessionId === currentSessionId) {
+                            const assistantMsgId = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.transcribed_text, null, null, null, null,
+                                new Date().toISOString(), data.response_time, 'whisper');
+                            if (data.transcribed_message_id) {
+                                const assistantMessages = document.querySelectorAll('.assistant-message');
+                                const lastAssistant = assistantMessages[assistantMessages.length - 1];
+                                if (lastAssistant) {
+                                    lastAssistant.dataset.messageId = data.transcribed_message_id;
+                                    displayedMessageIds.add(data.transcribed_message_id);
+                                }
+                            }
+                        } else {
+                            setNewMessageIndicator(targetSessionId, true);
+                        }
                     }
-                    
-                    unlockRequired = false;
-                    unlockSendButton();
-                    
-                } catch (err) {
-                    console.error('Send message error:', err);
-                    if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
-                    const lastMessage = document.querySelector('.user-message:last-child');
-                    if (lastMessage) lastMessage.style.borderLeft = '3px solid #e74c3c';
-                    setLocalTranscribing(currentSessionId, false);
-                } finally {
-                    // FIX: Guaranteed unlock if not already unlocked
-                    if (unlockRequired) {
-                        unlockSendButton();
-                    }
+                    return;
                 }
-            })();
-        };
-        
-        if (tempAttachedFile) {
-            const reader = new FileReader();
-            let processed = false;
-            
-            reader.onload = async function(e) {
-                if (processed) return;
-                processed = true;
                 
-                try {
-                    fileData = e.target.result.split(',')[1];
-                    fileType = tempAttachedFile.type;
-                    fileName = tempAttachedFile.name;
-                    
-                    console.log('File attached:', fileName, 'Type:', fileType);
-                    
-                    // FIX: Set transcribing flag for audio files BEFORE displaying message
-                    if (fileType && fileType.startsWith('audio/')) {
-                        console.log('Audio file detected, setting transcribing flag for session:', currentSessionId);
-                        setLocalTranscribing(currentSessionId, true);
-                        // Force update for all devices
-                        setTimeout(() => updateSessionsListFromData(), 100);
+                if (data.status === 'queued') {
+                    if (!sessionQueueInfo[currentSessionId]) {
+                        sessionQueueInfo[currentSessionId] = { processing: false, queued: 1 };
+                    } else {
+                        sessionQueueInfo[currentSessionId].queued += 1;
                     }
-                    
-                    displayUserMessage(fileData, fileType, fileName, null);
-                    sendToServer();
-                    
-                } catch (err) {
-                    console.error('Error in reader.onload:', err);
-                    if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
-                    setLocalTranscribing(currentSessionId, false);
-                    isSending = false;
-                    unlockSendButton();
+                    updateSessionsListFromData();
+                    pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
+                    window.updateStatusCounter();
+                    startResultPolling(data.request_id);
+                } else if (data.response) {
+                    originalDisplayMessage('assistant', data.response, data.file_data, data.file_type, data.file_name, data.file_path,
+                        data.assistant_timestamp, data.response_time, data.model_used);
                 }
-            };
+                
+            } catch (err) {
+                console.error('Send message error:', err);
+                if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
+                const lastMessage = document.querySelector('.user-message:last-child');
+                if (lastMessage) lastMessage.style.borderLeft = '3px solid #e74c3c';
+                setLocalTranscribing(currentSessionId, false);
+            } finally {
+                // Always unlock send button after request completes (success or error)
+                unlockSendButton();
+            }
+        })();
+    };
+    
+    if (tempAttachedFile) {
+        const reader = new FileReader();
+        let processed = false;
+        
+        reader.onload = async function(e) {
+            if (processed) return;
+            processed = true;
             
-            reader.onerror = () => {
-                console.error('FileReader error');
+            try {
+                fileData = e.target.result.split(',')[1];
+                fileType = tempAttachedFile.type;
+                fileName = tempAttachedFile.name;
+                
+                console.log('File attached:', fileName, 'Type:', fileType, 'isAudioFile:', isAudioFile);
+                
+                // FIX: Set transcribing flag for audio files BEFORE displaying message
+                if (isAudioFile) {
+                    console.log('Audio file detected, setting transcribing flag for session:', currentSessionId);
+                    setLocalTranscribing(currentSessionId, true);
+                    // Force update for all devices
+                    setTimeout(() => updateSessionsListFromData(), 100);
+                }
+                
+                displayUserMessage(fileData, fileType, fileName, null);
+                sendToServer();
+                
+                // Note: unlockSendButton is now handled in finally block of sendToServer
+            } catch (err) {
+                console.error('Error in reader.onload:', err);
+                if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
                 setLocalTranscribing(currentSessionId, false);
                 isSending = false;
                 unlockSendButton();
-            };
-            
-            reader.readAsDataURL(tempAttachedFile);
-            
-        } else {
-            try {
-                displayUserMessage(null, null, null, null);
-                sendToServer();
-            } catch (err) {
-                console.error('Error in no-file branch:', err);
-                if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
-                unlockSendButton();
             }
-        }
+        };
         
-    } catch (err) {
-        console.error('Unexpected error in sendMessage:', err);
-        if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
-        isSending = false;
-        const sendButton = document.getElementById('send-button');
-        if (sendButton) {
-            sendButton.disabled = false;
-            sendButton.innerHTML = t('send');
+        reader.onerror = () => {
+            console.error('FileReader error');
+            setLocalTranscribing(currentSessionId, false);
+            isSending = false;
+            unlockSendButton();
+        };
+        
+        reader.readAsDataURL(tempAttachedFile);
+        
+    } else {
+        try {
+            displayUserMessage(null, null, null, null);
+            sendToServer();
+            // For text messages, button remains locked until response (unlocked in finally)
+        } catch (err) {
+            console.error('Error in no-file branch:', err);
+            if (!window.IS_RELOADING) alert(t('error') + ': ' + err.message);
+            unlockSendButton();
         }
-        setLocalTranscribing(currentSessionId, false);
     }
 }
 

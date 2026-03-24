@@ -133,60 +133,34 @@ def send_message():
         if is_first_message:
             db.update_session_title(session_id, message_text, file_name)
 
+    # Audio files are processed asynchronously: queue transcription task
     if request_type == 'audio':
-        current_app.logger.info("send_message: audio detected, starting transcription")
-        transcribe_start = time.time()
-        user_lang = session.get('language', 'ru')
-        transcribed_text = current_app.modules['audio'].transcribe(
-            file_data, file_type, file_name, lang=user_lang
+        current_app.logger.info("send_message: audio detected, queueing transcription task")
+        request_data = {
+            'type': 'transcribe_audio',
+            'file_data': file_data,
+            'file_type': file_type,
+            'file_name': file_name,
+            'voice_record': voice_record,
+            'preview': (message_text[:50] + '...') if message_text else (file_name or _('Voice request'))
+        }
+        request_id, position_info = current_app.request_queue.add_request(
+            user_id, session_id, request_data, user_class,
+            lang=session.get('language', 'ru')
         )
-        transcribe_time = round(time.time() - transcribe_start, 1)
+        response_data = {
+            'status': 'queued',
+            'request_id': request_id,
+            'position': position_info['position'],
+            'estimated_wait': position_info['estimated_seconds'],
+            'message': _('Request queued (position {pos})').format(pos=position_info['position']),
+            'user_message_id': user_message_id
+        }
+        if resize_notice:
+            response_data['resize_notice'] = resize_notice
+        return jsonify(response_data)
 
-        if transcribed_text is None:
-            lang = session.get('language', 'ru')
-            with force_locale(lang):
-                return jsonify({'error': _('Failed to recognize speech')}), 500
-
-        current_app.logger.info(f"send_message: transcription successful in {transcribe_time}s")
-        lang = session.get('language', 'ru')
-        with force_locale(lang):
-            system_content = '🎤 ' + _('Transcribed') + ': ' + transcribed_text
-        transcribed_message_id = db.save_message(session_id, 'assistant', system_content, model_name='whisper', response_time=transcribe_time)
-
-        if voice_record:
-            current_app.logger.info("send_message: voice message, queueing task with transcribed text")
-            request_data = {
-                'type': 'text',
-                'text': transcribed_text,
-                'preview': (transcribed_text[:50] + '...') if transcribed_text else _('Voice request')
-            }
-            request_id, position_info = current_app.request_queue.add_request(
-                user_id, session_id, request_data, user_class,
-                lang=session.get('language', 'ru')
-            )
-            return jsonify({
-                'status': 'queued',
-                'transcribed_text': transcribed_text,
-                'transcribed_message_id': transcribed_message_id,
-                'user_message_id': user_message_id,
-                'session_id': session_id,
-                'request_id': request_id,
-                'position': position_info['position'],
-                'estimated_wait': position_info['estimated_seconds'],
-                'response_time': transcribe_time,
-                'message': _('Speech recognized, request queued (position {pos})').format(pos=position_info['position'])
-            })
-        else:
-            return jsonify({
-                'status': 'success',
-                'transcribed_text': transcribed_text,
-                'transcribed_message_id': transcribed_message_id,
-                'user_message_id': user_message_id,
-                'session_id': session_id,
-                'response_time': transcribe_time,
-                'message': _('Audio transcribed')
-            })
-
+    # For text and image requests, queue the main processing task
     if request_type == 'image' and file_data:
         request_data = {
             'type': 'image',

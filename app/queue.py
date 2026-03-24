@@ -59,7 +59,7 @@ class RedisRequestQueue:
                     with self.app.app_context():
                         result_data = self._process_request(task)
                         if 'session_id' not in result_data and task.get('session_id'):
-                            result_data['session_id'] = task['session_id']
+                            result_data['session_id'] = task.get('session_id')
                         self.redis.hset(self.results_key, task['id'], pickle.dumps({
                             'status': 'completed',
                             'result': result_data,
@@ -176,6 +176,8 @@ class RedisRequestQueue:
             return self._process_index_task(task)
         if task.get('type') == 'reindex_all_embeddings':
             return self._process_reindex_all_task(task)
+        if task.get('type') == 'transcribe_audio':
+            return self._process_transcribe_task(task)
 
         user_id = task['user_id']
         session_id = task['session_id']
@@ -188,6 +190,10 @@ class RedisRequestQueue:
         file_data = request_data.get('file_data')
         file_type = request_data.get('file_type')
         file_name = request_data.get('file_name')
+
+        # Handle audio files (voice messages and audio uploads)
+        if file_type and file_type.startswith('audio/'):
+            return self._process_audio_task(task, request_data, session_id, user_id, lang)
 
         if request_type == 'text':
             router_start_time = time.time()
@@ -471,6 +477,147 @@ class RedisRequestQueue:
                 'response_time': 0
             }
 
+    def _process_audio_task(self, task: Dict[str, Any], request_data: Dict[str, Any], 
+                           session_id: str, user_id: str, lang: str) -> Dict[str, Any]:
+        """Process audio file (voice message or audio upload) via transcription."""
+        file_data = request_data.get('file_data')
+        file_type = request_data.get('file_type')
+        file_name = request_data.get('file_name')
+        voice_record = request_data.get('voice_record', False)
+        user_class = task.get('user_class', 2)
+        
+        process_start_time = time.time()
+        
+        # Check if audio module is available
+        audio_module = self.app.modules.get('audio')
+        if not audio_module or not audio_module.available:
+            process_time = round(time.time() - process_start_time, 1)
+            error_msg = "⚠️ " + self.app.modules['base']._('Audio service unavailable', lang)
+            completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
+            message_id = save_message(session_id, 'assistant', error_msg, model_name='system', response_time=str(process_time))
+            return {
+                'response': error_msg,
+                'session_id': session_id,
+                'model_used': 'system',
+                'assistant_timestamp': completion_time_for_db,
+                'response_time': process_time,
+                'is_error': True,
+                'message_id': message_id
+            }
+        
+        # Perform transcription
+        transcribed_text = audio_module.transcribe(file_data, file_type, file_name, lang=lang)
+        process_time = round(time.time() - process_start_time, 1)
+        
+        if transcribed_text is None:
+            error_msg = "⚠️ " + self.app.modules['base']._('Failed to recognize speech', lang)
+            completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
+            message_id = save_message(session_id, 'assistant', error_msg, model_name='system', response_time=str(process_time))
+            return {
+                'response': error_msg,
+                'session_id': session_id,
+                'model_used': 'system',
+                'assistant_timestamp': completion_time_for_db,
+                'response_time': process_time,
+                'is_error': True,
+                'message_id': message_id
+            }
+        
+        # Save transcribed message
+        from flask_babel import force_locale
+        with force_locale(lang):
+            system_content = '🎤 ' + self.app.modules['base']._('Transcribed') + ': ' + transcribed_text
+        
+        transcribed_message_id = save_message(
+            session_id, 'assistant', system_content,
+            model_name='whisper', response_time=str(process_time)
+        )
+        
+        # If voice record, queue text for processing
+        if voice_record:
+            text_request_data = {
+                'type': 'text',
+                'text': transcribed_text,
+                'preview': (transcribed_text[:50] + '...') if transcribed_text else self.app.modules['base']._('Voice request', lang)
+            }
+            new_request_id, _ = self.add_request(
+                user_id, session_id, text_request_data, user_class, lang=lang
+            )
+            
+            return {
+                'transcribed_text': transcribed_text,
+                'transcribed_message_id': transcribed_message_id,
+                'request_id': new_request_id,
+                'session_id': session_id,
+                'response_time': process_time
+            }
+        else:
+            # Audio file upload without further processing
+            return {
+                'transcribed_text': transcribed_text,
+                'transcribed_message_id': transcribed_message_id,
+                'session_id': session_id,
+                'response_time': process_time
+            }
+
+    def _process_transcribe_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Process audio transcription task asynchronously."""
+        user_id = task['user_id']
+        session_id = task['session_id']
+        request_data = task['data']
+        file_data = request_data.get('file_data')
+        file_type = request_data.get('file_type')
+        file_name = request_data.get('file_name')
+        voice_record = request_data.get('voice_record', False)
+        lang = task.get('lang', 'ru')
+        user_class = task.get('user_class', 2)
+
+        # Perform transcription
+        audio_module = self.app.modules.get('audio')
+        if not audio_module or not audio_module.available:
+            error_msg = self.app.modules['base']._('Audio service unavailable', lang)
+            return {'error': error_msg, 'session_id': session_id, 'is_error': True}
+
+        transcribed_text = audio_module.transcribe(file_data, file_type, file_name, lang=lang)
+        if transcribed_text is None:
+            error_msg = self.app.modules['base']._('Failed to recognize speech', lang)
+            return {'error': error_msg, 'session_id': session_id, 'is_error': True}
+
+        # Save assistant message with transcribed text
+        from flask_babel import force_locale
+        with force_locale(lang):
+            system_content = '🎤 ' + self.app.modules['base']._('Transcribed') + ': ' + transcribed_text
+        transcribed_message_id = save_message(session_id, 'assistant', system_content, model_name='whisper', response_time='0')
+
+        # If this is a voice recording, we want to process the transcribed text as a text request
+        if voice_record:
+            # Create a new text request for processing
+            text_request_data = {
+                'type': 'text',
+                'text': transcribed_text,
+                'preview': (transcribed_text[:50] + '...') if transcribed_text else self.app.modules['base']._('Voice request', lang=lang)
+            }
+            # Add to queue (this will be processed by the same worker, but as a new task)
+            new_request_id, _ = self.app.request_queue.add_request(
+                user_id, session_id, text_request_data, user_class, lang=lang
+            )
+            # Return the result indicating transcription done and the new request ID for processing
+            return {
+                'transcribed_text': transcribed_text,
+                'transcribed_message_id': transcribed_message_id,
+                'request_id': new_request_id,
+                'session_id': session_id,
+                'response_time': 0  # will be updated later
+            }
+        else:
+            # If not voice_record, just return the transcribed text (e.g., for audio file upload without immediate processing)
+            return {
+                'transcribed_text': transcribed_text,
+                'transcribed_message_id': transcribed_message_id,
+                'session_id': session_id,
+                'response_time': 0
+            }
+
     def _process_index_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         doc_id = task['doc_id']
         file_path = task['file_path']
@@ -586,7 +733,7 @@ class RedisRequestQueue:
         return result
 
     def _format_request_info(self, task: Dict[str, Any], lang: str = 'ru') -> Dict[str, Any]:
-        type_icons = {'text': '💬', 'image': '🎨', 'camera': '📷', 'reasoning': '🧠', 'audio': '🎤', 'index_document': '📄'}
+        type_icons = {'text': '💬', 'image': '🎨', 'camera': '📷', 'reasoning': '🧠', 'audio': '🎤', 'index_document': '📄', 'transcribe_audio': '🎤'}
         return {
             'id': task['id'],
             'session_id': task.get('session_id'),

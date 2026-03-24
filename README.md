@@ -383,14 +383,14 @@ docker exec flai-ollama ollama pull bge-m3:latest
 ### Configure Models in Admin Panel
 1. Log in as admin and go to `/admin` → Models tab
 2. For each module (Chat, Reasoning, Multimodal, Embedding):
-   **Step 1: Specify Ollama URL**
+   **Step 1: Specify Ollama URL**  
    - Check the "Local" checkbox if Ollama runs on the same machine (URL auto-fills to `http://ollama:11434`)
    - Uncheck "Local" and enter custom URL for distributed deployment (e.g., `http://192.168.1.50:11434`)
    - Status icon shows connection status (✅ available / ❌ unavailable)
-   **Step 2: Refresh Model List**
+   **Step 2: Refresh Model List**  
    - Click the 🔄 Refresh button to fetch available models from Ollama
    - Wait for the dropdown to populate with model names
-   **Step 3: Select Model & Configure**
+   **Step 3: Select Model & Configure**  
    - Select desired model from the dropdown
    - Model details appear below (architecture, parameters, context length)
    - Set parameters:
@@ -521,16 +521,16 @@ CAMERA_CHECK_INTERVAL=30
   1. Log in to FLAI as admin
   2. Go to /admin → Users tab
   3. Edit a user and check the cameras they can access:
-    Example:
-    - `tam` — tambour
-    - `hal` — hallway
-    - `cor` — corridor
-    - `bed` — bedroom
-    - `off` — office
-    - `chi` — children's room
-    - `liv` — living room
-    - `kit` — kitchen
-    - `bal` — balcony
+    Example:  
+    - `tam` — tambour  
+    - `hal` — hallway  
+    - `cor` — corridor  
+    - `bed` — bedroom  
+    - `off` — office  
+    - `chi` — children's room  
+    - `liv` — living room  
+    - `kit` — kitchen  
+    - `bal` — balcony  
 
 ### 4. Using Cameras in Chat
 Users with camera permissions can ask:

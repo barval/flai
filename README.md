@@ -18,21 +18,27 @@
 ## ✨ Features
 
 ### 🤖 Core AI Capabilities
-- 💬 **Intelligent Chat** – interact with local LLMs via Ollama with smart request routing (fast models for simple queries, powerful models for complex reasoning)
-- 🧠 **Advanced Reasoning** – dedicated model for complex tasks: calculations, code generation, creative writing
-- 🔍 **Multimodal Analysis** – upload images and ask questions about their content using vision-capable models
-- 🎨 **Image Generation** – create images from text descriptions using Stable Diffusion (Automatic1111) with automatic prompt optimization
-- 🎤 **Voice Transcription** – convert voice messages and audio files to text using Whisper ASR
-- 🗣️ **Text-to-Speech** – hear assistant responses spoken aloud via Piper TTS (male/female voice selection)
+- 💬 **Intelligent Chat** – smart request routing (fast models for simple queries, powerful models for complex reasoning)
+- 🧠 **Advanced Reasoning** – dedicated model for calculations, code generation, creative writing
+- 🔍 **Multimodal Analysis** – upload images and ask questions about their content
+- 🎨 **Image Generation** – create images from text using Stable Diffusion with automatic prompt optimization
+- 🎤 **Voice Transcription** – convert voice messages to text using Whisper ASR
+- 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper TTS (male/female voice)
 
 ### 📁 Document & Knowledge Management
-- 📚 **RAG with Qdrant** – upload documents (PDF, DOC, DOCX, TXT) and ask questions about their content using semantic search
-- 🗂️ **Chat Sessions** – maintain multiple independent conversations with automatic titling and unread message indicators
-- 💾 **Export Chats** – save any conversation as a self-contained HTML file with embedded media
+- 📚 **RAG with Qdrant** – upload documents (PDF, DOC, DOCX, TXT) and ask questions about their content
+- 🗂️ **Chat Sessions** – multiple independent conversations with auto-titling
+- 💾 **Export Chats** – save conversations as HTML files with embedded media
 
 ### 🏠 Home Integration (Optional)
-- 📹 **Camera Surveillance** – request snapshots from IP cameras and optionally analyze them with multimodal models
+- 📹 **Camera Surveillance** – request snapshots from IP cameras and analyze them with multimodal models
 - 🔐 **Access Control** – granular camera permissions per user via admin panel
+
+### 🔒 Privacy & Security
+- 🏠 **100% Local** – all processing happens on your hardware; no data leaves your network
+- 🔐 **Session-based Auth** – secure user authentication with password hashing
+- 🛡️ **File Access Control** – uploaded files are served only to authorized users
+- 🧹 **Data Isolation** – each user's sessions, messages, and documents are strictly separated
 
 ### 👥 User Experience
 - 🌐 **Multi-language Support** – full interface and AI responses in Russian and English
@@ -44,37 +50,45 @@
 
 ### ⚙️ Administration
 - 👤 **User Management** – add, edit, delete users; change passwords; assign service classes
-- 🔑 **Camera Permissions** – control which users can access which cameras
+- 🔑 **Camera Permissions** – control which users can access which cameras (Optional)
 - 🤖 **Model Management** – select and configure models for chat, reasoning, multimodal, and embedding directly from the admin panel  
 - 📈 **System Monitoring** – view database sizes and system statistics
 - 🔧 **CLI Tools** – manage admin password via Flask CLI command
 
-### 🔒 Privacy & Security
-- 🏠 **100% Local** – all processing happens on your hardware; no data leaves your network
-- 🔐 **Session-based Auth** – secure user authentication with password hashing
-- 🛡️ **File Access Control** – uploaded files are served only to authorized users
-- 🧹 **Data Isolation** – each user's sessions, messages, and documents are strictly separated
-
 ---
 
-## 🧱 Architecture
+## 🏗️ Architecture
 
-FLAI is a modular Flask web application that orchestrates several self-hosted AI services.
+FLAI is a modular Flask application that orchestrates several self-hosted AI services.
 
 ### Core Components
 
-| Component | Purpose | Technology |
-|-----------|---------|------------|
-| **Flask** | Web framework, routing, templating | Python |
-| **Ollama** | Local LLM inference (chat, reasoning, multimodal) | Go + llama.cpp |
-| **Automatic1111** | Stable Diffusion image generation | Python + PyTorch |
-| **Whisper ASR** | Speech-to-text transcription | OpenAI Whisper / faster-whisper |
-| **Piper TTS** | Text-to-speech synthesis | ONNX + Piper |
-| **Qdrant** | Vector database for RAG semantic search | Rust |
-| **Redis** | Request queue management for async processing | C |
-| **SQLite** | User accounts, sessions, messages, documents | Embedded SQL |
+| Component | Purpose | Technology | Default Port |
+|-----------|---------|------------|--------------|
+| **Flask Web** | Web interface, routing, API | Python | 5000 |
+| **Ollama** | LLM inference (chat, reasoning, multimodal) | Go + llama.cpp | 11434 |
+| **Automatic1111** | Stable Diffusion image generation | Python + PyTorch | 7860 |
+| **Whisper ASR** | Speech-to-text transcription | OpenAI Whisper | 9000 |
+| **Piper TTS** | Text-to-speech synthesis | ONNX + Piper | 18888 |
+| **Qdrant** | Vector database for RAG | Rust | 6333 |
+| **Redis** | Request queue management | C | 6379 |
+| **SQLite** | User accounts, sessions, messages | Embedded SQL | -- |
 
-All components can run in Docker containers with a unified network configuration.
+### Distributed Deployment
+
+Each service can run on separate machines for load distribution:
+```text
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Web App   │────▶│   Ollama    │────▶│     GPU     │
+│  (Flask)    │     │  (Node 1)   │     │   Server    │
+└─────────────┘     └─────────────┘     └─────────────┘
+       │
+       ▼
+┌─────────────┐     ┌─────────────┐
+│   Ollama    │────▶│     GPU     │
+│  (Node 2)   │     │   Server    │
+└─────────────┘     └─────────────┘
+```
 
 ---
 

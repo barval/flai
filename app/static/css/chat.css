@@ -933,7 +933,7 @@ audio {
     .session-status-icon.transcribing {
         display: inline-flex !important;
         visibility: visible !important;
-        opacity: 1 !important;
+        /* REMOVED: opacity: 1 !important; - This was preventing blink animation */
         color: #e74c3c !important;
         font-size: 1.2rem !important;
         width: 1.3em !important;
@@ -949,7 +949,7 @@ audio {
     .sessions-sidebar.collapsed .session-status-icon.transcribing {
         display: inline-flex !important;
         visibility: visible !important;
-        opacity: 1 !important;
+        /* REMOVED: opacity: 1 !important; - This was preventing blink animation */
     }
     
     /* Additional selectors for mobile visibility */
@@ -958,7 +958,7 @@ audio {
     .session-title .session-status-icon.transcribing {
         display: inline-flex !important;
         visibility: visible !important;
-        opacity: 1 !important;
+        /* REMOVED: opacity: 1 !important; - This was preventing blink animation */
     }
     
     /* Blink keyframes for mobile - single definition only */

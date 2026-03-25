@@ -165,6 +165,17 @@ https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/r
 curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx.json \
 https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
 
+# Download English voices (male and female)
+curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx \
+https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx  
+curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx.json \
+https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json  
+
+curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx \
+https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx  
+curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx.json \
+https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json
+
 # In .env file, ensure these are set:
 # PIPER_URL=http://flai-piper:18888/tts
 # WHISPER_API_URL=http://flai-whisper:9000/asr

@@ -125,8 +125,8 @@ class OllamaClient:
                 f"No ollama_url for {model_type}, using default {ollama_url}"
             )
 
-        timeout = config.get('timeout', 60)
-        context = config.get('context_length', 32768)
+        timeout = config.get('timeout', 300)
+        context = config.get('context_length', 4096)
         temperature = config.get('temperature', 0.7)
         top_p = config.get('top_p', 0.9)
 

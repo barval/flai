@@ -96,8 +96,8 @@ Set up separate Ollama URLs for each type of model in the Admin Panel (`/admin`)
 ## 📋 System Requirements
 
 ### Hardware Recommendations
-| Component | Minimum | Recommended | With GPU |
-|-----------|---------|-------------|----------|
+| Component | Minimum (very slow) | Recommended | Optimal |
+|-----------|---------------------|-------------|---------|
 | **RAM** | 8 GB | 16–32 GB | 32+ GB |
 | **CPU** | 4 cores | 4+ cores | 8+ cores |
 | **GPU** | Optional | NVIDIA 8+ GB VRAM | NVIDIA 16+ GB VRAM |

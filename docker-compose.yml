@@ -5,7 +5,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis-data:/data
+      - redis_data:/data
     command: redis-server --appendonly yes
     networks:
       - app-network
@@ -54,4 +54,4 @@ networks:
     driver: bridge
 
 volumes:
-  redis-data:
+  redis_data:

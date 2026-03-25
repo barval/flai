@@ -139,14 +139,14 @@ nano .env
 # Create models directory
 mkdir -p services/automatic1111/models
 
-# Download a Stable Diffusion checkpoint (example: CyberRealistic)
+# Download a Stable Diffusion checkpoint (example: RealVisXL_V4.0)
 # Replace with your preferred model from civitai.com or huggingface
-wget -O services/automatic1111/models/cyberrealisticXL_v90.safetensors \
-https://huggingface.co/cyberreal/cyberRealisticXL/resolve/main/cyberrealisticXL_v90.safetensors
+wget -O services/automatic1111/models/RealVisXL_V4.0.safetensors \
+  "https://huggingface.co/SG161222/RealVisXL_V4.0/resolve/main/RealVisXL_V4.0.safetensors"
 
 # In .env file, ensure these are set:
 # AUTOMATIC1111_URL=http://flai-sd:7860
-# AUTOMATIC1111_MODEL=cyberrealisticXL_v90.safetensors
+# AUTOMATIC1111_MODEL=RealVisXL_V4.0.safetensors
 ```
 
 #### 🎤 For Voice Features (Piper TTS + Whisper):

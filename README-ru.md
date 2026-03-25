@@ -139,14 +139,14 @@ nano .env
 # Создать папку для моделей
 mkdir -p services/automatic1111/models
 
-# Скачать чекпоинт Stable Diffusion (пример: CyberRealistic)
+# Скачать чекпоинт Stable Diffusion (пример: RealVisXL_V4.0)
 # Замените ссылку на нужную вам модель с civitai.com или huggingface
-wget -O services/automatic1111/models/cyberrealisticXL_v90.safetensors \
-https://huggingface.co/cyberreal/cyberRealisticXL/resolve/main/cyberrealisticXL_v90.safetensors
+wget -O services/automatic1111/models/RealVisXL_V4.0.safetensors \
+  "https://huggingface.co/SG161222/RealVisXL_V4.0/resolve/main/RealVisXL_V4.0.safetensors"
 
 # В файле .env убедитесь, что указаны:
 # AUTOMATIC1111_URL=http://flai-sd:7860
-# AUTOMATIC1111_MODEL=cyberrealisticXL_v90.safetensors
+# AUTOMATIC1111_MODEL=RealVisXL_V4.0.safetensors
 ```
 
 #### 🎤 Для голосовых функций (Piper TTS + Whisper):

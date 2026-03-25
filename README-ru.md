@@ -257,7 +257,7 @@ services:
     depends_on:
       - redis
     volumes:
-      - .//app/data
+      - ./app:/app/data
       - ./.env:/app/.env:ro
     env_file:
       - .env
@@ -289,7 +289,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis-/data
+      - redis_data:/data
     command: redis-server --appendonly yes
     networks:
       - flai_network
@@ -422,7 +422,7 @@ services:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - qdrant-/qdrant/storage
+      - qdrant_data:/qdrant/storage
     environment:
       - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
       - QDRANT__SERVICE__ENABLE_TLS=0
@@ -440,9 +440,9 @@ networks:
     driver: bridge
 
 volumes:
-  redis-
+  redis_data:
   ollama:
-  qdrant-
+  qdrant_data:
 ```
 
 ### Примеры использования

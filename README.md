@@ -125,7 +125,7 @@ cd flai
 cp .env.example .env
 
 # Generate a secure secret key
-python3 -c "import secrets; print('SECRET_KEY=' + secrets.token_hex(32))" >> .env
+sed -i "s|^SECRET_KEY=.*|SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")|" .env
 
 # Edit .env with your settings (timezone, API URLs, etc.)
 nano .env

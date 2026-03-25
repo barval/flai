@@ -112,6 +112,121 @@ Set up separate Ollama URLs for each type of model in the Admin Panel (`/admin`)
 
 ---
 
+## 🚀 Quick Start
+Get FLAI up and running in minutes with these simple steps:
+
+### 1. Clone and Configure
+```bash
+# Clone the repository
+git clone https://github.com/barval/flai.git
+cd flai
+
+# Copy environment template
+cp .env.example .env
+
+# Generate a secure secret key
+python3 -c "import secrets; print('SECRET_KEY=' + secrets.token_hex(32))" >> .env
+
+# Edit .env with your settings (timezone, API URLs, etc.)
+nano .env
+```
+
+### 2. Prepare Additional Services (Optional but Recommended)
+> 💡 Note: If you want to use image generation and voice features, complete the steps below. For chat only, skip to step 3.
+
+#### 🎨 For Image Generation (Automatic1111):
+```bash
+# Create models directory
+mkdir -p services/automatic1111/models
+
+# Download a Stable Diffusion checkpoint (example: CyberRealistic)
+# Replace with your preferred model from civitai.com or huggingface
+wget -O services/automatic1111/models/cyberrealisticXL_v90.safetensors \
+https://huggingface.co/cyberreal/cyberRealisticXL/resolve/main/cyberrealisticXL_v90.safetensors
+
+# In .env file, ensure these are set:
+# AUTOMATIC1111_URL=http://flai-sd:7860
+# AUTOMATIC1111_MODEL=cyberrealisticXL_v90.safetensors
+```
+
+#### 🎤 For Voice Features (Piper TTS + Whisper):
+```bash
+# Create directory for voice models
+mkdir -p services/piper/piper_models
+
+# Download Russian voices (male and female)
+curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx \
+https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx
+curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx.json \
+https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json
+
+curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx \
+https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx
+curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx.json \
+https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
+
+# In .env file, ensure these are set:
+# PIPER_URL=http://flai-piper:18888/tts
+# WHISPER_API_URL=http://flai-whisper:9000/asr
+```
+
+### 3. Start Services
+Choose the option based on the features you need:
+```bash
+# Option A: Full functionality (Chat + Images + Voice + RAG)
+docker-compose -f docker-compose.all.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
+
+# Option B: Chat and reasoning only (no images or voice)
+docker-compose -f docker-compose.all.yml up -d
+
+# Option C: Chat + Voice (no image generation)
+docker-compose -f docker-compose.all.yml --profile with-voice up -d
+```
+
+### 4. Pull AI Models (Ollama)
+```bash
+# Wait for Ollama to start (about 30 seconds)
+sleep 30
+
+# Download models for chat, vision, reasoning, and search
+docker exec flai-ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
+docker exec flai-ollama ollama pull qwen3-vl:8b-instruct-q4_K_M
+docker exec flai-ollama ollama pull gpt-oss:20b
+docker exec flai-ollama ollama pull bge-m3:latest
+```
+
+### 5. Set Admin Password
+```bash
+# Create admin user with password
+docker exec flai-web flask admin-password YourSecurePassword123
+```
+
+### 6. Access the Application
+Open your browser and navigate to: <http://localhost:5000>
+
+Login with:
+- Login: admin
+- Password: (the password you set in step 5)
+
+### 7. Configure Models (First Login)
+1. Go to **Admin Panel** → **Models** tab
+2. For each module (Chat, Reasoning, Multimodal, Embedding):
+    + Click 🔄 **Refresh** to load available models
+    + Select the model you downloaded from the dropdown
+    + Adjust parameters if needed (Context Length, Temperature, Top P, Timeout)
+    + Click **Save**
+3. For Image Generation: Ensure the checkpoint you downloaded is selected in the settings
+4. For Voice: Ensure PIPER_URL is correctly set in `.env`
+
+###  ✅ You're Ready!
+Now you can:
+- 💬 Have conversations with AI
+- 🎨 Generate images (if Automatic1111 is configured)
+- 🎤 Send voice messages and listen to responses (if Piper/Whisper is configured)
+- 📚 Upload documents for search (if RAG profile is enabled)
+
+---
+
 ## 🔧 Configuration
 
 ### All-in-One Docker Compose
@@ -381,7 +496,7 @@ docker exec flai-ollama ollama pull bge-m3:latest
 ```
 
 ### Configure Models in Admin Panel
-1. Log in as admin and go to `/admin` → Models tab
+1. Log in as admin and go to `/admin` → **Models** tab
 2. For each module (Chat, Reasoning, Multimodal, Embedding):  
   #### **Step 1: Specify Ollama URL**  
    - Check the "Local" checkbox if Ollama runs on the same machine (URL auto-fills to `http://ollama:11434`)

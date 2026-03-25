@@ -112,6 +112,120 @@
 
 ---
 
+## 🚀 Быстрый запуск
+Запустите ПЛИИ за несколько минут, выполнив следующие простые шаги:
+
+### 1. Клонирование и базовая настройка
+```bash
+# Клонировать репозиторий
+git clone https://github.com/barval/flai.git
+cd flai
+
+# Скопировать шаблон окружения
+cp .env.example .env
+
+# Сгенерировать безопасный секретный ключ
+python3 -c "import secrets; print('SECRET_KEY=' + secrets.token_hex(32))" >> .env
+
+# Отредактировать .env с вашими настройками (часовой пояс, URL API и т.д.)
+nano .env
+```
+
+### 2. Подготовка дополнительных сервисов (Опционально, но рекомендуется)
+> 💡 Примечание: Если вы хотите использовать генерацию изображений и голосовые функции, выполните шаги ниже. Если только чат — переходите к шагу 3.
+
+#### 🎨 Для генерации изображений (Automatic1111):
+```bash
+# Создать папку для моделей
+mkdir -p services/automatic1111/models
+
+# Скачать чекпоинт Stable Diffusion (пример: CyberRealistic)
+# Замените ссылку на нужную вам модель с civitai.com или huggingface
+wget -O services/automatic1111/models/cyberrealisticXL_v90.safetensors \
+https://huggingface.co/cyberreal/cyberRealisticXL/resolve/main/cyberrealisticXL_v90.safetensors
+
+# В файле .env убедитесь, что указаны:
+# AUTOMATIC1111_URL=http://flai-sd:7860
+# AUTOMATIC1111_MODEL=cyberrealisticXL_v90.safetensors
+```
+
+#### 🎤 Для голосовых функций (Piper TTS + Whisper):
+```bash
+# Создать папку для голосовых моделей
+mkdir -p services/piper/piper_models
+
+# Скачать русские голоса (мужской и женский)
+curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx \
+https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx
+curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx.json \
+https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json
+
+curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx \
+https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx
+curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx.json \
+https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
+
+# В файле .env убедитесь, что указаны:
+# PIPER_URL=http://flai-piper:8888/tts
+# WHISPER_API_URL=http://flai-whisper:9000/asr
+```
+
+### 3. Запуск сервисов
+Выберите вариант в зависимости от нужных функций:
+```bash
+# Вариант А: Полный функционал (Чат + Изображения + Голос + RAG)
+docker-compose -f docker-compose.all.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
+
+# Вариант Б: Только чат и рассуждения (без изображений и голоса)
+docker-compose -f docker-compose.all.yml up -d
+
+# Вариант В: Чат + Голос (без генерации изображений)
+docker-compose -f docker-compose.all.yml --profile with-voice up -d
+```
+
+### 4. Загрузка AI-моделей (Ollama)
+```bash
+# Дождаться запуска Ollama (около 30 секунд)
+sleep 30
+
+# Загрузить модели для чата, зрения, рассуждений и поиска
+docker exec flai-ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
+docker exec flai-ollama ollama pull qwen3-vl:8b-instruct-q4_K_M
+docker exec flai-ollama ollama pull gpt-oss:20b
+docker exec flai-ollama ollama pull bge-m3:latest
+```
+
+### 5. Установка пароля администратора
+```bash
+# Создать пользователя admin с паролем
+docker exec flai-web flask admin-password ВашБезопасныйПароль123
+```
+
+### 6. Доступ к приложению
+Откройте браузер и перейдите по адресу: <http://localhost:5000>
+
+Войдите с учётными данными:
+- Логин: `admin`
+- Пароль: (который вы установили в шаге 5)
+
+### 7. Настройка моделей (Первый вход)
+1. Перейдите в **Панель администратора** → вкладка **Модели**.
+2. Для каждого модуля (Чат, Рассуждения, Мультимодальность, Эмбеддинги):
+    + Нажмите 🔄 **Обновить** для загрузки доступных моделей.
+    + Выберите загруженную модель из списка.
+    + Нажмите **Сохранить**.
+3. Для генерации изображений: Убедитесь, что в настройке модели выбран чекпоинт, который вы скачали в шаге 2.
+4. Для голоса: Убедитесь, что в `.env` указан правильный путь к сервису Piper.
+
+### ✅ Готово!
+Теперь вы можете:
+- 💬 Вести диалоги с ИИ
+- 🎨 Генерировать изображения (если настроен Automatic1111)
+- 🎤 Отправлять голосовые сообщения и слушать ответы (если настроен Piper/Whisper)
+- 📚 Загружать документы для поиска (если включен профиль RAG)
+
+---
+
 ## 🔧 Конфигурация
 
 ### Docker Compose «всё в одном»
@@ -381,7 +495,7 @@ docker exec flai-ollama ollama pull bge-m3:latest
 ```
 
 ### Настройка моделей в Панели администратора
-1. Войдите как администратор и перейдите в `/admin` → вкладка Модели
+1. Войдите как администратор и перейдите в `/admin` → вкладка **Модели**
 2. Для каждого модуля (Чат, Рассуждения, Мультимодальность, Эмбеддинги):  
   #### **Шаг 1: Укажите URL Ollama**  
    - Отметьте чек-бокс "Локально", если Ollama запущен на той же машине (URL автоматически заполняется `http://ollama:11434`)

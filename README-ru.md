@@ -450,7 +450,7 @@ volumes:
 # Запустить все сервисы
 docker-compose -f docker-compose.all.yml up -d
 
-# Запустить без генерации изображений (экономия памяти GPU)
+# Запустить без генерации изображений
 docker-compose -f docker-compose.all.yml --profile with-voice --profile with-rag up -d
 
 # Запустить со всеми функциями
@@ -484,7 +484,7 @@ docker-compose -f services/ollama/docker-compose.yml up -d
 # Запустить только Ollama
 docker-compose -f services/ollama/docker-compose.yml up -d
 ```
-Настройте URL моделей в Панели администратора → вкладка Модели после первого входа.
+Настройте URL моделей в **Панели администратора** → вкладка **Модели** после первого входа.
 
 ---
 

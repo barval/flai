@@ -451,7 +451,7 @@ volumes:
 # Start all services
 docker-compose -f docker-compose.all.yml up -d
 
-# Start without image generation (saves GPU memory)
+# Start without image generation
 docker-compose -f docker-compose.all.yml --profile with-voice --profile with-rag up -d
 
 # Start with everything
@@ -485,7 +485,7 @@ docker-compose -f services/ollama/docker-compose.yml up -d
 # Run only Ollama
 docker-compose -f services/ollama/docker-compose.yml up -d
 ```
-Configure model URLs in Admin Panel → Models tab after first login.
+Configure model URLs in **Admin Panel** → **Models** tab after first login.
 
 ---
 
@@ -737,9 +737,9 @@ Create test user before running:
 - Admin panel with model management
 - Document index status display with processing time
 - Integration with cameras with access rights system
-- SQLite WAL mode for better concurrency
-- Load testing with Locust
-- Separate Ollama URLs per model type (distributed deployment)
+- **SQLite WAL mode for better concurrency**
+- **Load testing with Locust**
+- **Separate Ollama URLs per model type (distributed deployment)**
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)

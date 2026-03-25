@@ -94,9 +94,14 @@ services:
       - ./services/automatic1111/models:/app/stable-diffusion-webui/models
       - ./services/automatic1111/outputs:/app/stable-diffusion-webui/outputs
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - NVIDIA_REQUIRE_CUDA=cuda>=12.1
+      # Essential arguments for CPU-only operation
+      - COMMANDLINE_ARGS=--listen --api --skip-torch-cuda-test --precision full --no-half --medvram
+      # Essential arguments for CPU-only operation
+      #- NVIDIA_VISIBLE_DEVICES=all
+      #- NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      #- NVIDIA_REQUIRE_CUDA=cuda>=12.1
+    # Explicitly start webui.sh with the above arguments
+    command: /app/stable-diffusion-webui/webui.sh
     # GPU Support: Required for reasonable performance
     # runtime: nvidia
     # deploy:

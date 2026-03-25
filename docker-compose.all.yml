@@ -85,7 +85,8 @@ services:
   # AUTOMATIC1111 (Optional - Image Generation)
   # ============================================================
   automatic1111:
-    image: siutin/stable-diffusion-webui-docker:latest-cuda
+    image: siutin/stable-diffusion-webui-docker:latest-cpu    # CPU
+    # image: siutin/stable-diffusion-webui-docker:latest-cuda # GPU
     container_name: flai-sd
     ports:
       - "7860:7860"

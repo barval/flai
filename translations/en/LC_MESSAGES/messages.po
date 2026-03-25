@@ -363,8 +363,8 @@ msgstr "Ollama service unavailable"
 msgid "Model for {model_type} not configured"
 msgstr "Model for {model_type} not configured"
 
-msgid "Timeout ({timeout}s) when calling the model. Try increasing timeout in .env or simplify your request."
-msgstr "Timeout ({timeout}s) when calling the model. Try increasing timeout in .env or simplify your request."
+msgid "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request."
+msgstr "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request."
 
 msgid "Could not connect to Ollama"
 msgstr "Could not connect to Ollama"

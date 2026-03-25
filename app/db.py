@@ -204,20 +204,20 @@ def migrate_add_model_configs(app):
             # Insert default rows if not present (values from current app.config)
             default_modules = [
                 ('chat', app.config.get('LLM_CHAT_MODEL', ''),
-                 app.config.get('LLM_CHAT_MODEL_CONTEXT_WINDOW', 32768),
+                 app.config.get('LLM_CHAT_MODEL_CONTEXT_WINDOW', 4096),
                  app.config.get('LLM_CHAT_TEMPERATURE', 0.1),
                  app.config.get('LLM_CHAT_TOP_P', 0.1),
-                 app.config.get('LLM_CHAT_TIMEOUT', 60)),
+                 app.config.get('LLM_CHAT_TIMEOUT', 300)),
                 ('reasoning', app.config.get('LLM_REASONING_MODEL', ''),
-                 app.config.get('LLM_REASONING_MODEL_CONTEXT_WINDOW', 40960),
+                 app.config.get('LLM_REASONING_MODEL_CONTEXT_WINDOW', 4096),
                  app.config.get('LLM_REASONING_TEMPERATURE', 0.7),
                  app.config.get('LLM_REASONING_TOP_P', 0.9),
                  app.config.get('LLM_REASONING_TIMEOUT', 300)),
                 ('multimodal', app.config.get('LLM_MULTIMODAL_MODEL', ''),
-                 app.config.get('LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW', 32768),
+                 app.config.get('LLM_MULTIMODAL_MODEL_CONTEXT_WINDOW', 4096),
                  app.config.get('LLM_MULTIMODAL_TEMPERATURE', 0.7),
                  app.config.get('LLM_MULTIMODAL_TOP_P', 0.9),
-                 app.config.get('LLM_MULTIMODAL_TIMEOUT', 120)),
+                 app.config.get('LLM_MULTIMODAL_TIMEOUT', 300)),
                 ('embedding', app.config.get('EMBEDDING_MODEL', 'bge-m3:latest'),
                  0, 0.0, 0.0, 0)
             ]

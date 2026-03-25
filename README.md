@@ -330,7 +330,8 @@ services:
   # AUTOMATIC1111 (Optional - Image Generation)
   # ============================================================
   automatic1111:
-    image: siutin/stable-diffusion-webui-docker:latest-cuda
+    image: siutin/stable-diffusion-webui-docker:latest-cpu    # CPU
+    # image: siutin/stable-diffusion-webui-docker:latest-cuda # GPU
     container_name: flai-sd
     ports:
       - "7860:7860"
@@ -338,9 +339,14 @@ services:
       - ./services/automatic1111/models:/app/stable-diffusion-webui/models
       - ./services/automatic1111/outputs:/app/stable-diffusion-webui/outputs
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - NVIDIA_REQUIRE_CUDA=cuda>=12.1
+      # Essential arguments for CPU-only operation
+      - COMMANDLINE_ARGS=--listen --api --skip-torch-cuda-test --precision full --no-half --medvram
+      # Essential arguments for GPU-only operation
+      #- NVIDIA_VISIBLE_DEVICES=all
+      #- NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      #- NVIDIA_REQUIRE_CUDA=cuda>=12.1
+    # Explicitly start webui.sh with the above arguments
+    command: /app/stable-diffusion-webui/webui.sh
     # GPU Support: Required for reasonable performance
     # runtime: nvidia
     # deploy:

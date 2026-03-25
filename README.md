@@ -214,10 +214,10 @@ Login with:
 ### 7. Configure Models (First Login)
 1. Go to **Admin Panel** → **Models** tab
 2. For each module (Chat, Reasoning, Multimodal, Embedding):
-  + Click 🔄 **Refresh** to load available models
-  + Select the model you downloaded from the dropdown
-  + Adjust parameters if needed (Context Length, Temperature, Top P, Timeout)
-  + Click **Save**
+    + Click 🔄 **Refresh** to load available models
+    + Select the model you downloaded from the dropdown
+    + Adjust parameters if needed (Context Length, Temperature, Top P, Timeout)
+    + Click **Save**
 3. For Image Generation: Ensure the checkpoint you downloaded is selected in the settings
 4. For Voice: Ensure PIPER_URL is correctly set in `.env`
 

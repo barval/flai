@@ -165,6 +165,17 @@ https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/r
 curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx.json \
 https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
 
+# Скачать английские голоса (мужской и женский)
+curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx \
+https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx  
+curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx.json \
+https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json  
+
+curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx \
+https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx  
+curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx.json \
+https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json
+
 # В файле .env убедитесь, что указаны:
 # PIPER_URL=http://flai-piper:8888/tts
 # WHISPER_API_URL=http://flai-whisper:9000/asr

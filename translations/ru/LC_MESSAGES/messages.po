@@ -364,8 +364,8 @@ msgstr "Сервис Ollama недоступен"
 msgid "Model for {model_type} not configured"
 msgstr "Модель для {model_type} не настроена"
 
-msgid "Timeout ({timeout}s) when calling the model. Try increasing timeout in .env or simplify your request."
-msgstr "Превышено время ожидания ответа от модели ({timeout}с). Попробуйте увеличить таймаут в .env или упростите запрос."
+msgid "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request."
+msgstr "Превышено время ожидания ответа от модели ({timeout}с). Попробуйте увеличить таймаут в панели администратора или упростите запрос."
 
 msgid "Could not connect to Ollama"
 msgstr "Не удалось подключиться к Ollama"

@@ -203,9 +203,7 @@ docker exec flai-web flask admin-password ВашБезопасныйПароль
 
 ### 6. Доступ к приложению
 Откройте браузер и перейдите по адресу:
-```cURL
-http://localhost:5000
-```
+<http://localhost:5000>
 
 Войдите с учётными данными:
 - Логин: `admin`

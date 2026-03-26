@@ -122,6 +122,9 @@ Get FLAI up and running in minutes with these simple steps:
 git clone https://github.com/barval/flai.git
 cd flai
 
+# Create directories
+mkdir -p data data/uploads data/documents
+
 # Copy environment template
 cp .env.example .env
 
@@ -178,7 +181,7 @@ curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx.json \
 https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json
 
 # In .env file, ensure these are set:
-# PIPER_URL=http://flai-piper:18888/tts
+# PIPER_URL=http://flai-piper:8888/tts
 # WHISPER_API_URL=http://flai-whisper:9000/asr
 ```
 
@@ -217,7 +220,7 @@ docker exec flai-web flask admin-password YourSecurePassword123
 Open your browser and navigate to: <http://localhost:5000>
 
 Login with:
-- Login: admin
+- Login: `admin`
 - Password: (the password you set in step 5)
 
 ### 7. Configure Models (First Login)
@@ -261,17 +264,13 @@ services:
       - redis
     volumes:
       # Mount application data directory
-      - ./app:/app/data
+      - ./data:/app/data
       - ./.env:/app/.env:ro
     env_file:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
-      # Ollama URLs for distributed deployment (each model type can have its own endpoint)
-      - OLLAMA_CHAT_URL=http://ollama:11434
-      - OLLAMA_REASONING_URL=http://ollama:11434
-      - OLLAMA_MULTIMODAL_URL=http://ollama:11434
-      - OLLAMA_EMBEDDING_URL=http://ollama:11434
+    user: "1000:1000"
     networks:
       - flai_network
     restart: unless-stopped

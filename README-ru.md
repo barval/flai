@@ -122,6 +122,9 @@
 git clone https://github.com/barval/flai.git
 cd flai
 
+# Создать папки
+mkdir -p data data/uploads data/documents
+
 # Скопировать шаблон окружения
 cp .env.example .env
 
@@ -260,17 +263,13 @@ services:
       - redis
     volumes:
       # Монтирование директории данных приложения
-      - ./app:/app/data
+      - ./data:/app/data
       - ./.env:/app/.env:ro
     env_file:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
-      # URL-адреса Ollama для распределённого развёртывания (каждый тип модели может иметь свою конечную точку)
-      - OLLAMA_CHAT_URL=http://ollama:11434
-      - OLLAMA_REASONING_URL=http://ollama:11434
-      - OLLAMA_MULTIMODAL_URL=http://ollama:11434
-      - OLLAMA_EMBEDDING_URL=http://ollama:11434
+    user: "1000:1000"
     networks:
       - flai_network
     restart: unless-stopped

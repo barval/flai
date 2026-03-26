@@ -96,11 +96,11 @@ Set up separate Ollama URLs for each type of model in the Admin Panel (`/admin`)
 ## 📋 System Requirements
 
 ### Hardware Recommendations
-| Component | Minimum (very slow) | Recommended | Optimal |
-|-----------|---------------------|-------------|---------|
+| Component | Minimum | Recommended | Optimal |
+|-----------|---------|-------------|---------|
 | **RAM** | 8 GB | 16–32 GB | 32+ GB |
 | **CPU** | 4 cores | 4+ cores | 8+ cores |
-| **GPU** | Optional | NVIDIA 8+ GB VRAM | NVIDIA 16+ GB VRAM |
+| **GPU** | NVIDIA 8-12 GB VRAM | NVIDIA 16 GB VRAM | NVIDIA 16+ GB VRAM |
 | **Storage** | 20 GB | 60+ GB SSD | 100+ GB SSD NVMe |
 
 ### Software Prerequisites
@@ -114,12 +114,17 @@ Set up separate Ollama URLs for each type of model in the Admin Panel (`/admin`)
 
 ## 🚀 Quick Start
 Get FLAI up and running in minutes with these simple steps:
+> 💡 **Note**: You must have the **NVIDIA drivers** installed on the host machine and the **NVIDIA Container Toolkit**.
 
 ### 1. Clone and Configure
 ```bash
 # Clone the repository
 git clone https://github.com/barval/flai.git
 cd flai
+
+# Create directories and specify the owner
+mkdir -p data data/uploads data/documents
+sudo chown -R 1000:1000 data
 
 # Copy environment template
 cp .env.example .env
@@ -177,7 +182,7 @@ curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx.json \
 https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json
 
 # In .env file, ensure these are set:
-# PIPER_URL=http://flai-piper:18888/tts
+# PIPER_URL=http://flai-piper:8888/tts
 # WHISPER_API_URL=http://flai-whisper:9000/asr
 ```
 
@@ -216,7 +221,7 @@ docker exec flai-web flask admin-password YourSecurePassword123
 Open your browser and navigate to: <http://localhost:5000>
 
 Login with:
-- Login: admin
+- Login: `admin`
 - Password: (the password you set in step 5)
 
 ### 7. Configure Models (First Login)
@@ -239,6 +244,7 @@ Now you can:
 ---
 
 ## 🔧 Configuration
+> 💡 **Note**: You must have the **NVIDIA drivers** installed on the host machine and the **NVIDIA Container Toolkit**.
 
 ### All-in-One Docker Compose
 For running all services on a single machine, use `docker-compose.all.yml`:
@@ -258,25 +264,14 @@ services:
     depends_on:
       - redis
     volumes:
-      - ./app:/app/data
+      # Mount application data directory
+      - ./data:/app/data
       - ./.env:/app/.env:ro
     env_file:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
-      # Ollama URLs per model type (for distributed deployment)
-      - OLLAMA_CHAT_URL=http://ollama:11434
-      - OLLAMA_REASONING_URL=http://ollama:11434
-      - OLLAMA_MULTIMODAL_URL=http://ollama:11434
-      - OLLAMA_EMBEDDING_URL=http://ollama:11434
-    # GPU Support: Uncomment for NVIDIA GPU
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    user: "1000:1000"
     networks:
       - flai_network
     restart: unless-stopped
@@ -295,7 +290,7 @@ services:
     networks:
       - flai_network
     restart: unless-stopped
-    # Disable if using external Redis:
+    # To use an external Redis instance:
     # Comment out this entire service block
 
   # ============================================================
@@ -312,18 +307,17 @@ services:
       - OLLAMA_REQUEST_TIMEOUT=1200s
       - OLLAMA_MAX_LOADED_MODELS=1
       - OLLAMA_KEEP_ALIVE=0
-    # GPU Support: Uncomment for NVIDIA GPU
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     networks:
       - flai_network
     restart: unless-stopped
-    # Disable if using external Ollama:
+    # To use an external Ollama instance:
     # Comment out this entire service block
 
   # ============================================================
@@ -341,22 +335,32 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - NVIDIA_REQUIRE_CUDA=cuda>=12.1
-    # GPU Support: Required for reasonable performance
-    # runtime: nvidia
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command:
+      - /app/stable-diffusion-webui/webui.sh
+      - --listen
+      - --port=7860
+      - --api
+      - --api-log
+      - --opt-sdp-attention
+      - --medvram
+      - --medvram-sdxl
+      - --opt-split-attention
     networks:
       - flai_network
     restart: unless-stopped
     profiles:
       - with-image-gen
-    # Disable if not using image generation:
-    # Comment out this entire service block OR use profiles
+    # To disable image generation:
+    # Comment out this entire service block OR omit the profile when starting
 
   # ============================================================
   # WHISPER ASR (Optional - Speech Recognition)
@@ -370,7 +374,7 @@ services:
       - ASR_MODEL=medium
       - ASR_ENGINE=faster_whisper
       - ASR_DEVICE=cpu
-    # GPU Support: Uncomment for faster transcription
+    # To enable GPU acceleration for transcription, uncomment the block below:
     # environment:
     #   - ASR_DEVICE=cuda
     # deploy:
@@ -387,11 +391,11 @@ services:
     restart: unless-stopped
     profiles:
       - with-voice
-    # Disable if not using voice features:
+    # To disable voice features:
     # Comment out this entire service block
 
   # ============================================================
-  # PIPER TTS (Optional - Text-to-Speech)
+  # PIPER TTS (Optional - Speech Synthesis)
   # ============================================================
   piper:
     build:
@@ -404,17 +408,16 @@ services:
       - ./services/piper/piper_models:/app/models
     environment:
       - PIPER_MODEL_DIR=/app/models
-    # GPU Support: Not needed (CPU-only)
     networks:
       - flai_network
     restart: unless-stopped
     profiles:
       - with-voice
-    # Disable if not using voice features:
+    # To disable voice features:
     # Comment out this entire service block
 
   # ============================================================
-  # QDRANT (Optional - RAG Vector Database)
+  # QDRANT (Optional - Vector Database for RAG)
   # ============================================================
   qdrant:
     image: qdrant/qdrant:latest
@@ -427,13 +430,12 @@ services:
     environment:
       - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
       - QDRANT__SERVICE__ENABLE_TLS=0
-    # GPU Support: Not typically needed
     networks:
       - flai_network
     restart: unless-stopped
     profiles:
       - with-rag
-    # Disable if not using document search:
+    # To disable document search/RAG:
     # Comment out this entire service block
 
 networks:
@@ -469,11 +471,11 @@ For load distribution across multiple Ollama nodes:
 
 1. Machine 1 (Web + Chat Models):
 ```bash
-# .env on Machine 1
-OLLAMA_CHAT_URL=http://machine1:11434
-OLLAMA_REASONING_URL=http://machine2:11434
-OLLAMA_MULTIMODAL_URL=http://machine3:11434
-OLLAMA_EMBEDDING_URL=http://machine1:11434
+# In the admin panel on Machine 1
+OLLAMA_CHAT_URL -> http://machine1:11434
+OLLAMA_REASONING_URL -> http://machine2:11434
+OLLAMA_MULTIMODAL_URL -> http://machine3:11434
+OLLAMA_EMBEDDING_URL -> http://machine1:11434
 ```
 2. Machine 2 (Reasoning Models)
 ```bash
@@ -536,15 +538,16 @@ docker exec flai-ollama ollama pull bge-m3:latest
 # Create models directory
 mkdir -p services/automatic1111/models
 
-# Download a checkpoint (example: CyberRealistic)
-# Visit https://civitai.com/ and download your preferred model
-# Place .safetensors file in services/automatic1111/models/
+# Download a Stable Diffusion checkpoint (example: RealVisXL_V4.0)
+# Replace with your preferred model from civitai.com or huggingface
+wget -O services/automatic1111/models/RealVisXL_V4.0.safetensors \
+  "https://huggingface.co/SG161222/RealVisXL_V4.0/resolve/main/RealVisXL_V4.0.safetensors"
 ```
 
 ### 2. Configure in `.env`
 ```bash
 AUTOMATIC1111_URL=http://flai-sd:7860
-AUTOMATIC1111_MODEL=cyberrealisticXL_v90.safetensors
+AUTOMATIC1111_MODEL=RealVisXL_V4.0.safetensors
 AUTOMATIC1111_TIMEOUT=180
 ```
 

@@ -72,42 +72,42 @@ services:
   # ============================================================
   # AUTOMATIC1111 (Optional - Image Generation)
   # ============================================================
-automatic1111:
-  image: siutin/stable-diffusion-webui-docker:latest-cuda
-  container_name: flai-sd
-  ports:
-    - "7860:7860"
-  volumes:
-    - ./services/automatic1111/models:/app/stable-diffusion-webui/models
-    - ./services/automatic1111/outputs:/app/stable-diffusion-webui/outputs
-  environment:
-    - NVIDIA_VISIBLE_DEVICES=all
-    - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-    - NVIDIA_REQUIRE_CUDA=cuda>=12.1
-    - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-  runtime: nvidia
-  deploy:
-    resources:
-      reservations:
-        devices:
-          - driver: nvidia
-            count: 1
-            capabilities: [gpu]
-  command:
-    - /app/stable-diffusion-webui/webui.sh
-    - --listen
-    - --port=7860
-    - --api
-    - --api-log
-    - --opt-sdp-attention
-    - --medvram
-    - --medvram-sdxl
-    - --opt-split-attention
-  networks:
-    - flai_network
-  restart: unless-stopped
-  profiles:
-    - with-image-gen
+  automatic1111:
+    image: siutin/stable-diffusion-webui-docker:latest-cuda
+    container_name: flai-sd
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./services/automatic1111/models:/app/stable-diffusion-webui/models
+      - ./services/automatic1111/outputs:/app/stable-diffusion-webui/outputs
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_REQUIRE_CUDA=cuda>=12.1
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command:
+      - /app/stable-diffusion-webui/webui.sh
+      - --listen
+      - --port=7860
+      - --api
+      - --api-log
+      - --opt-sdp-attention
+      - --medvram
+      - --medvram-sdxl
+      - --opt-split-attention
+    networks:
+      - flai_network
+    restart: unless-stopped
+    profiles:
+      - with-image-gen
     # To disable image generation:
     # Comment out this entire service block OR omit the profile when starting
 

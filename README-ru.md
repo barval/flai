@@ -122,8 +122,9 @@
 git clone https://github.com/barval/flai.git
 cd flai
 
-# Создать папки
+# Создать папки и указать владельца
 mkdir -p data data/uploads data/documents
+sudo chown -R 1000:1000 data
 
 # Скопировать шаблон окружения
 cp .env.example .env

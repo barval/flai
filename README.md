@@ -122,8 +122,9 @@ Get FLAI up and running in minutes with these simple steps:
 git clone https://github.com/barval/flai.git
 cd flai
 
-# Create directories
+# Create directories and specify the owner
 mkdir -p data data/uploads data/documents
+sudo chown -R 1000:1000 data
 
 # Copy environment template
 cp .env.example .env

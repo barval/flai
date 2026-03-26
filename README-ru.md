@@ -96,12 +96,12 @@
 ## 📋 Системные требования
 
 ### Рекомендуемое оборудование
-| Компонент | Минимум (очень медленно) | Рекомендуется | Оптимально |
-|-----------|--------------------------|---------------|------------|
-| **ОЗУ** | 8 ГБ | 16–32 ГБ | 32 ГБ |
+| Компонент | Минимум | Рекомендуется | Оптимально |
+|-----------|---------|---------------|------------|
+| **ОЗУ** | 8 ГБ | 16–32 ГБ | 32+ ГБ |
 | **ЦПУ** | 4 ядра | 4+ ядер | 8+ ядер |
-| **ГПУ** | Опционально | NVIDIA 8+ ГБ VRAM | NVIDIA 16+ ГБ VRAM |
-| **Хранилище** | 20 ГБ | 60+ ГБ | 100+ ГБ |
+| **ГПУ** | NVIDIA 8-12 ГБ VRAM | NVIDIA 16 ГБ VRAM | NVIDIA 16+ ГБ VRAM |
+| **Хранилище** | 20 ГБ | 60+ ГБ SSD | 100+ ГБ SSD NVMe |
 
 ### Программные требования
 - Сервер с Linux (или Windows/macOS с Docker Desktop)
@@ -114,6 +114,7 @@
 
 ## 🚀 Быстрый запуск
 Запустите ПЛИИ за несколько минут, выполнив следующие простые шаги:
+> 💡 **Примечание**: У Вас должны быть установлены **драйвера NVIDIA** на хост-машине и **NVIDIA Container Toolkit**.
 
 ### 1. Клонирование и базовая настройка
 ```bash
@@ -238,6 +239,7 @@ docker exec flai-web flask admin-password ВашБезопасныйПароль
 ---
 
 ## 🔧 Конфигурация
+> 💡 **Примечание**: У Вас должны быть установлены **драйвера NVIDIA** на хост-машине и **NVIDIA Container Toolkit**.
 
 ### Docker Compose «всё в одном»
 Для запуска всех сервисов на одной машине используйте `docker-compose.all.yml`:
@@ -257,25 +259,18 @@ services:
     depends_on:
       - redis
     volumes:
+      # Монтирование директории данных приложения
       - ./app:/app/data
       - ./.env:/app/.env:ro
     env_file:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
-      # URL Ollama для каждого типа моделей (для распределённого развёртывания)
+      # URL-адреса Ollama для распределённого развёртывания (каждый тип модели может иметь свою конечную точку)
       - OLLAMA_CHAT_URL=http://ollama:11434
       - OLLAMA_REASONING_URL=http://ollama:11434
       - OLLAMA_MULTIMODAL_URL=http://ollama:11434
       - OLLAMA_EMBEDDING_URL=http://ollama:11434
-    # Поддержка GPU: Раскомментируйте для NVIDIA GPU
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
     networks:
       - flai_network
     restart: unless-stopped
@@ -294,11 +289,11 @@ services:
     networks:
       - flai_network
     restart: unless-stopped
-    # Отключить при использовании внешнего Redis:
-    # Закомментируйте весь блок этого сервиса
+    # Для использования внешнего экземпляра Redis:
+    # Закомментируйте весь этот блок сервиса
 
   # ============================================================
-  # OLLAMA (Обязательно - Инференс LLM)
+  # OLLAMA (Обязательно - Инференс больших языковых моделей)
   # ============================================================
   ollama:
     image: ollama/ollama:latest
@@ -311,26 +306,24 @@ services:
       - OLLAMA_REQUEST_TIMEOUT=1200s
       - OLLAMA_MAX_LOADED_MODELS=1
       - OLLAMA_KEEP_ALIVE=0
-    # Поддержка GPU: Раскомментируйте для NVIDIA GPU
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     networks:
       - flai_network
     restart: unless-stopped
-    # Отключить при использовании внешнего Ollama:
-    # Закомментируйте весь блок этого сервиса
+    # Для использования внешнего экземпляра Ollama:
+    # Закомментируйте весь этот блок сервиса
 
   # ============================================================
   # AUTOMATIC1111 (Опционально - Генерация изображений)
   # ============================================================
   automatic1111:
-    image: siutin/stable-diffusion-webui-docker:latest-cpu    # CPU
-    # image: siutin/stable-diffusion-webui-docker:latest-cuda # GPU
+    image: siutin/stable-diffusion-webui-docker:latest-cuda
     container_name: flai-sd
     ports:
       - "7860:7860"
@@ -338,30 +331,35 @@ services:
       - ./services/automatic1111/models:/app/stable-diffusion-webui/models
       - ./services/automatic1111/outputs:/app/stable-diffusion-webui/outputs
     environment:
-      # Основные аргументы для работы только с CPU
-      - COMMANDLINE_ARGS=--listen --api --skip-torch-cuda-test --precision full --no-half --medvram
-      # Основные аргументы для работы только с GPU
-      #- NVIDIA_VISIBLE_DEVICES=all
-      #- NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      #- NVIDIA_REQUIRE_CUDA=cuda>=12.1
-    # Явно запустите webui.sh с приведенными выше аргументами
-    command: /app/stable-diffusion-webui/webui.sh
-    # Поддержка GPU: Требуется для разумной производительности
-    # runtime: nvidia
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_REQUIRE_CUDA=cuda>=12.1
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command:
+      - /app/stable-diffusion-webui/webui.sh
+      - --listen
+      - --port=7860
+      - --api
+      - --api-log
+      - --opt-sdp-attention
+      - --medvram
+      - --medvram-sdxl
+      - --opt-split-attention
     networks:
       - flai_network
     restart: unless-stopped
     profiles:
       - with-image-gen
-    # Отключить если не используется генерация изображений:
-    # Закомментируйте весь блок этого сервиса ИЛИ используйте profiles
+    # Для отключения генерации изображений:
+    # Закомментируйте весь этот блок сервиса ИЛИ не указывайте профиль при запуске
 
   # ============================================================
   # WHISPER ASR (Опционально - Распознавание речи)
@@ -375,7 +373,7 @@ services:
       - ASR_MODEL=medium
       - ASR_ENGINE=faster_whisper
       - ASR_DEVICE=cpu
-    # Поддержка GPU: Раскомментируйте для ускорения транскрибации
+    # Для включения ускорения через GPU для транскрипции, раскомментируйте блок ниже:
     # environment:
     #   - ASR_DEVICE=cuda
     # deploy:
@@ -392,8 +390,8 @@ services:
     restart: unless-stopped
     profiles:
       - with-voice
-    # Отключить если не используются голосовые функции:
-    # Закомментируйте весь блок этого сервиса
+    # Для отключения голосовых функций:
+    # Закомментируйте весь этот блок сервиса
 
   # ============================================================
   # PIPER TTS (Опционально - Синтез речи)
@@ -409,14 +407,13 @@ services:
       - ./services/piper/piper_models:/app/models
     environment:
       - PIPER_MODEL_DIR=/app/models
-    # Поддержка GPU: Не требуется (только CPU)
     networks:
       - flai_network
     restart: unless-stopped
     profiles:
       - with-voice
-    # Отключить если не используются голосовые функции:
-    # Закомментируйте весь блок этого сервиса
+    # Для отключения голосовых функций:
+    # Закомментируйте весь этот блок сервиса
 
   # ============================================================
   # QDRANT (Опционально - Векторная база данных для RAG)
@@ -432,14 +429,13 @@ services:
     environment:
       - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
       - QDRANT__SERVICE__ENABLE_TLS=0
-    # Поддержка GPU: Обычно не требуется
     networks:
       - flai_network
     restart: unless-stopped
     profiles:
       - with-rag
-    # Отключить если не используется поиск по документам:
-    # Закомментируйте весь блок этого сервиса
+    # Для отключения поиска документов/RAG:
+    # Закомментируйте весь этот блок сервиса
 
 networks:
   flai_network:

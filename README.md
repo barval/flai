@@ -96,11 +96,11 @@ Set up separate Ollama URLs for each type of model in the Admin Panel (`/admin`)
 ## 📋 System Requirements
 
 ### Hardware Recommendations
-| Component | Minimum (very slow) | Recommended | Optimal |
-|-----------|---------------------|-------------|---------|
+| Component | Minimum | Recommended | Optimal |
+|-----------|---------|-------------|---------|
 | **RAM** | 8 GB | 16–32 GB | 32+ GB |
 | **CPU** | 4 cores | 4+ cores | 8+ cores |
-| **GPU** | Optional | NVIDIA 8+ GB VRAM | NVIDIA 16+ GB VRAM |
+| **GPU** | NVIDIA 8-12 GB VRAM | NVIDIA 16 GB VRAM | NVIDIA 16+ GB VRAM |
 | **Storage** | 20 GB | 60+ GB SSD | 100+ GB SSD NVMe |
 
 ### Software Prerequisites
@@ -114,6 +114,7 @@ Set up separate Ollama URLs for each type of model in the Admin Panel (`/admin`)
 
 ## 🚀 Quick Start
 Get FLAI up and running in minutes with these simple steps:
+> 💡 **Note**: You must have the **NVIDIA drivers** installed on the host machine and the **NVIDIA Container Toolkit**.
 
 ### 1. Clone and Configure
 ```bash
@@ -239,6 +240,7 @@ Now you can:
 ---
 
 ## 🔧 Configuration
+> 💡 **Note**: You must have the **NVIDIA drivers** installed on the host machine and the **NVIDIA Container Toolkit**.
 
 ### All-in-One Docker Compose
 For running all services on a single machine, use `docker-compose.all.yml`:
@@ -258,25 +260,18 @@ services:
     depends_on:
       - redis
     volumes:
+      # Mount application data directory
       - ./app:/app/data
       - ./.env:/app/.env:ro
     env_file:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
-      # Ollama URLs per model type (for distributed deployment)
+      # Ollama URLs for distributed deployment (each model type can have its own endpoint)
       - OLLAMA_CHAT_URL=http://ollama:11434
       - OLLAMA_REASONING_URL=http://ollama:11434
       - OLLAMA_MULTIMODAL_URL=http://ollama:11434
       - OLLAMA_EMBEDDING_URL=http://ollama:11434
-    # GPU Support: Uncomment for NVIDIA GPU
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
     networks:
       - flai_network
     restart: unless-stopped
@@ -295,7 +290,7 @@ services:
     networks:
       - flai_network
     restart: unless-stopped
-    # Disable if using external Redis:
+    # To use an external Redis instance:
     # Comment out this entire service block
 
   # ============================================================
@@ -312,57 +307,60 @@ services:
       - OLLAMA_REQUEST_TIMEOUT=1200s
       - OLLAMA_MAX_LOADED_MODELS=1
       - OLLAMA_KEEP_ALIVE=0
-    # GPU Support: Uncomment for NVIDIA GPU
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     networks:
       - flai_network
     restart: unless-stopped
-    # Disable if using external Ollama:
+    # To use an external Ollama instance:
     # Comment out this entire service block
 
   # ============================================================
   # AUTOMATIC1111 (Optional - Image Generation)
   # ============================================================
-  automatic1111:
-    image: siutin/stable-diffusion-webui-docker:latest-cpu    # CPU
-    # image: siutin/stable-diffusion-webui-docker:latest-cuda # GPU
-    container_name: flai-sd
-    ports:
-      - "7860:7860"
-    volumes:
-      - ./services/automatic1111/models:/app/stable-diffusion-webui/models
-      - ./services/automatic1111/outputs:/app/stable-diffusion-webui/outputs
-    environment:
-      # Essential arguments for CPU-only operation
-      - COMMANDLINE_ARGS=--listen --api --skip-torch-cuda-test --precision full --no-half --medvram
-      # Essential arguments for GPU-only operation
-      #- NVIDIA_VISIBLE_DEVICES=all
-      #- NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      #- NVIDIA_REQUIRE_CUDA=cuda>=12.1
-    # Explicitly start webui.sh with the above arguments
-    command: /app/stable-diffusion-webui/webui.sh
-    # GPU Support: Required for reasonable performance
-    # runtime: nvidia
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
-    networks:
-      - flai_network
-    restart: unless-stopped
-    profiles:
-      - with-image-gen
-    # Disable if not using image generation:
-    # Comment out this entire service block OR use profiles
+automatic1111:
+  image: siutin/stable-diffusion-webui-docker:latest-cuda
+  container_name: flai-sd
+  ports:
+    - "7860:7860"
+  volumes:
+    - ./services/automatic1111/models:/app/stable-diffusion-webui/models
+    - ./services/automatic1111/outputs:/app/stable-diffusion-webui/outputs
+  environment:
+    - NVIDIA_VISIBLE_DEVICES=all
+    - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    - NVIDIA_REQUIRE_CUDA=cuda>=12.1
+    - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+  runtime: nvidia
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+  command:
+    - /app/stable-diffusion-webui/webui.sh
+    - --listen
+    - --port=7860
+    - --api
+    - --api-log
+    - --opt-sdp-attention
+    - --medvram
+    - --medvram-sdxl
+    - --opt-split-attention
+  networks:
+    - flai_network
+  restart: unless-stopped
+  profiles:
+    - with-image-gen
+    # To disable image generation:
+    # Comment out this entire service block OR omit the profile when starting
 
   # ============================================================
   # WHISPER ASR (Optional - Speech Recognition)
@@ -376,7 +374,7 @@ services:
       - ASR_MODEL=medium
       - ASR_ENGINE=faster_whisper
       - ASR_DEVICE=cpu
-    # GPU Support: Uncomment for faster transcription
+    # To enable GPU acceleration for transcription, uncomment the block below:
     # environment:
     #   - ASR_DEVICE=cuda
     # deploy:
@@ -393,11 +391,11 @@ services:
     restart: unless-stopped
     profiles:
       - with-voice
-    # Disable if not using voice features:
+    # To disable voice features:
     # Comment out this entire service block
 
   # ============================================================
-  # PIPER TTS (Optional - Text-to-Speech)
+  # PIPER TTS (Optional - Speech Synthesis)
   # ============================================================
   piper:
     build:
@@ -410,17 +408,16 @@ services:
       - ./services/piper/piper_models:/app/models
     environment:
       - PIPER_MODEL_DIR=/app/models
-    # GPU Support: Not needed (CPU-only)
     networks:
       - flai_network
     restart: unless-stopped
     profiles:
       - with-voice
-    # Disable if not using voice features:
+    # To disable voice features:
     # Comment out this entire service block
 
   # ============================================================
-  # QDRANT (Optional - RAG Vector Database)
+  # QDRANT (Optional - Vector Database for RAG)
   # ============================================================
   qdrant:
     image: qdrant/qdrant:latest
@@ -433,13 +430,12 @@ services:
     environment:
       - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
       - QDRANT__SERVICE__ENABLE_TLS=0
-    # GPU Support: Not typically needed
     networks:
       - flai_network
     restart: unless-stopped
     profiles:
       - with-rag
-    # Disable if not using document search:
+    # To disable document search/RAG:
     # Comment out this entire service block
 
 networks:

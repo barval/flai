@@ -1,22 +1,14 @@
-# Uncomment the models you want to use or specify your own.
+# services/ollama/models.txt
+# Models to download (uncomment desired models)
 
-# Router model (chat model)
+# Router/Chat model
 qwen3:4b-instruct-2507-q4_K_M
-#qwen3.5:4b-q4_K_M
-#gemma3:4b-it-qat
 
-# A multimodal model (for images)
-#qwen3-vl:4b-instruct-q4_K_M
+# Multimodal model
 qwen3-vl:8b-instruct-q4_K_M
-#gemma3n:e4b
 
-# The reasoning model (for complex queries)
+# Reasoning model
 gpt-oss:20b
-#qwen3:8b-q4_K_M
-#qwen3.5:9b-q4_K_M 
-#qwen3:14b-q4_K_M
-#gemma3:12b-it-qat
 
-# Embedding models
+# Embedding model
 bge-m3:latest
-#qwen3-embedding:4b-q4_K_M

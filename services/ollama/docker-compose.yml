@@ -1,32 +1,33 @@
-# ollama
+# services/ollama/docker-compose.yml
+# Standalone Ollama deployment for distributed FLAI setup
+version: '3.8'
+
 services:
   ollama:
-    image: ollama/ollama
-    container_name: ollama
-    networks:
-      - flai_network
+    image: ollama/ollama:latest
+    container_name: flai-ollama
     ports:
-      - "11434:11434"
+      - "${OLLAMA_PORT:-11434}:11434"
     volumes:
-      - ollama:/root/.ollama
+      - ollama_data:/root/.ollama
     environment:
-      - OLLAMA_REQUEST_TIMEOUT=1200s
-      - OLLAMA_MAX_LOADED_MODELS=1
-      - OLLAMA_KEEP_ALIVE=0
-    # Uncomment for GPU support
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+      - OLLAMA_REQUEST_TIMEOUT=${OLLAMA_REQUEST_TIMEOUT:-1200s}
+      - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-1}
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-0}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 volumes:
-  ollama:
-    external: true
-    name: ollama
-
-networks:
-  flai_network:
-    external: true
+  ollama_data:

@@ -471,11 +471,11 @@ For load distribution across multiple Ollama nodes:
 
 1. Machine 1 (Web + Chat Models):
 ```bash
-# .env on Machine 1
-OLLAMA_CHAT_URL=http://machine1:11434
-OLLAMA_REASONING_URL=http://machine2:11434
-OLLAMA_MULTIMODAL_URL=http://machine3:11434
-OLLAMA_EMBEDDING_URL=http://machine1:11434
+# In the admin panel on Machine 1
+OLLAMA_CHAT_URL -> http://machine1:11434
+OLLAMA_REASONING_URL -> http://machine2:11434
+OLLAMA_MULTIMODAL_URL -> http://machine3:11434
+OLLAMA_EMBEDDING_URL -> http://machine1:11434
 ```
 2. Machine 2 (Reasoning Models)
 ```bash

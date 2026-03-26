@@ -470,11 +470,11 @@ docker-compose -f docker-compose.all.yml logs -f web
 
 1. Машина 1 (Web + Чат-модели):
 ```bash
-# .env на Машине 1
-OLLAMA_CHAT_URL=http://machine1:11434
-OLLAMA_REASONING_URL=http://machine2:11434
-OLLAMA_MULTIMODAL_URL=http://machine3:11434
-OLLAMA_EMBEDDING_URL=http://machine1:11434
+# В панели администратора на Машине 1
+OLLAMA_CHAT_URL -> http://machine1:11434
+OLLAMA_REASONING_URL -> http://machine2:11434
+OLLAMA_MULTIMODAL_URL -> http://machine3:11434
+OLLAMA_EMBEDDING_URL -> http://machine1:11434
 ```
 2. Машина 2 (Модели рассуждений):
 ```bash

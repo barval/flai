@@ -537,15 +537,16 @@ docker exec flai-ollama ollama pull bge-m3:latest
 # Создать директорию моделей
 mkdir -p services/automatic1111/models
 
-# Скачать чекпоинт (пример: CyberRealistic)
-# Посетите https://civitai.com/ и скачайте предпочтительную модель
-# Поместите файл .safetensors в services/automatic1111/models/
+# Скачать чекпоинт Stable Diffusion (пример: RealVisXL_V4.0)
+# Замените ссылку на нужную вам модель с civitai.com или huggingface
+wget -O services/automatic1111/models/RealVisXL_V4.0.safetensors \
+  "https://huggingface.co/SG161222/RealVisXL_V4.0/resolve/main/RealVisXL_V4.0.safetensors"
 ```
 
 ### 2. Настроить в `.env`
 ```bash
 AUTOMATIC1111_URL=http://flai-sd:7860
-AUTOMATIC1111_MODEL=cyberrealisticXL_v90.safetensors
+AUTOMATIC1111_MODEL=RealVisXL_V4.0.safetensors
 AUTOMATIC1111_TIMEOUT=180
 ```
 

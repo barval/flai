@@ -1,31 +1,26 @@
-# openai-whisper
-services:
-  openai-whisper:
-    image: onerahmet/openai-whisper-asr-webservice:latest         # CPU
-    # image: onerahmet/openai-whisper-asr-webservice:latest-gpu   # GPU
-    container_name: openai-whisper
-    networks:
-      - flai_network
-    ports:
-      - "9000:9000"
-    environment:
-      ASR_MODEL: "medium"                # or "small", "large"
-      ASR_ENGINE: "faster_whisper"       # faster_whisper recommended
-      ASR_DEVICE: "cpu"                  # change to "cuda" for GPU
-    volumes:
-      - ~/.cache/huggingface:/root/.cache/huggingface
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    restart: always
-    # Uncomment for GPU support
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+# services/openai-whisper/docker-compose.yml
+# Standalone Whisper ASR deployment for distributed FLAI setup
+version: '3.8'
 
-networks:
-  flai_network:
-    external: true
+services:
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    container_name: flai-whisper
+    ports:
+      - "${WHISPER_PORT:-9000}:9000"
+    environment:
+      - ASR_MODEL=${ASR_MODEL:-medium}
+      - ASR_ENGINE=${ASR_ENGINE:-faster_whisper}
+      - ASR_DEVICE=${ASR_DEVICE:-cpu}
+    volumes:
+      - whisper_cache:/root/.cache/huggingface
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  whisper_cache:

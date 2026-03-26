@@ -1,24 +1,29 @@
-# automatic1111
+# services/automatic1111/docker-compose.yml
+# Standalone Automatic1111 deployment for distributed FLAI setup
+version: '3.8'
+
 services:
   automatic1111:
-    # image: siutin/stable-diffusion-webui-docker:latest-cpu # CPU
-    image: siutin/stable-diffusion-webui-docker:latest-cuda   # GPU
-    container_name: sd-webui
-    networks:
-      - flai_network
+    image: siutin/stable-diffusion-webui-docker:latest-cuda
+    container_name: flai-sd
     ports:
-      - "7860:7860"
+      - "${SD_PORT:-7860}:7860"
     volumes:
-      - ./models:/app/stable-diffusion-webui/models
-      - ./embeddings:/app/stable-diffusion-webui/embeddings
+      - ./models:/app/stable-diffusion-webui/models/Stable-diffusion
       - ./outputs:/app/stable-diffusion-webui/outputs
     environment:
-    # GPU
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - NVIDIA_REQUIRE_CUDA=cuda>=13.1
+      - NVIDIA_REQUIRE_CUDA=cuda>=12.1
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     command:
       - /app/stable-diffusion-webui/webui.sh
       - --listen
@@ -29,7 +34,10 @@ services:
       - --medvram
       - --medvram-sdxl
       - --opt-split-attention
-
-networks:
-  flai_network:
-    external: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/sdapi/v1/progress"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

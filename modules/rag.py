@@ -5,6 +5,8 @@ import os
 import uuid
 from typing import List, Dict, Optional, Tuple, Any
 from flask import current_app
+from flask_babel import gettext as _
+from flask_babel import force_locale
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from app.utils import extract_text_from_file, chunk_text, get_current_time_in_timezone, format_prompt, estimate_tokens, build_context_prompt
@@ -20,7 +22,7 @@ class RagModule:
         self.collection_name_prefix = "user_"
         self.chunk_size = 500
         self.chunk_overlap = 50
-        self.top_k = 5
+        self.top_k = 10
         if app:
             self.init_app(app)
 
@@ -30,7 +32,10 @@ class RagModule:
         qdrant_api_key = app.config.get('QDRANT_API_KEY')
         self.chunk_size = app.config.get('RAG_CHUNK_SIZE', 500)
         self.chunk_overlap = app.config.get('RAG_CHUNK_OVERLAP', 50)
-        self.top_k = app.config.get('RAG_TOP_K', 15)
+        self.top_k = app.config.get('RAG_TOP_K', 10)
+        # Log the loaded top_k value for debugging
+        app.logger.info(f"RagModule: loaded RAG_TOP_K = {self.top_k} from config")
+
         if not qdrant_url:
             app.logger.warning("QDRANT_URL not set, RAG module disabled")
             self.available = False
@@ -40,7 +45,7 @@ class RagModule:
             # Test connection
             self.qdrant_client.get_collections()
             self.available = True
-            app.logger.info(f"RagModule initialized with Qdrant at {qdrant_url}")
+            app.logger.info(f"RagModule initialized with Qdrant at {qdrant_url}, top_k={self.top_k}")
         except Exception as e:
             self.available = False
             app.logger.error(f"Failed to connect to Qdrant: {e}")
@@ -213,7 +218,7 @@ class RagModule:
             # Return full payload with metadata, not just text
             chunks = [hit.payload for hit in search_result]
             scores = [hit.score for hit in search_result]
-            self.logger.info(f"search: found {len(chunks)} chunks for query '{query[:50]}...'")
+            self.logger.info(f"search: found {len(chunks)} chunks for query '{query[:50]}...' (top_k={top_k})")
             return chunks, scores
         except Exception as e:
             self.logger.error(f"Qdrant search error: {e}")
@@ -265,6 +270,11 @@ class RagModule:
             self.logger.info(f"RAG scores for query: {scores_str}")
             return None, None, None
 
+        # Get localized label for "Source"
+        with current_app.app_context():
+            with force_locale(lang):
+                source_label = _('Source')
+
         # 2. Prepare context string WITH filename sources
         context_parts = []
         for chunk_data, score in filtered:
@@ -272,7 +282,7 @@ class RagModule:
             filename = chunk_data.get('filename', 'unknown') if isinstance(chunk_data, dict) else 'unknown'
             text = chunk_data.get('text', chunk_data) if isinstance(chunk_data, dict) else chunk_data
             # Add source indicator to each chunk (include score for debugging)
-            context_parts.append(f"[Источник: {filename} (score: {score:.2f})]\n{text}")
+            context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
         context = "\n\n".join(context_parts)
 
         # Logging the structure of the RAG context WITH RELEVANCE SCORES

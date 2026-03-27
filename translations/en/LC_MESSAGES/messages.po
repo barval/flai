@@ -630,5 +630,8 @@ msgstr "Image generation module unavailable"
 msgid "Source"
 msgstr "Source"
 
+msgid "No relevant documents found"
+msgstr "No relevant documents found"
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v7.3 (c) 2026 Valery Barsukov"

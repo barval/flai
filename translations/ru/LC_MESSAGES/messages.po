@@ -631,5 +631,8 @@ msgstr "Модуль генерации изображений недоступ�
 msgid "Source"
 msgstr "Источник"
 
+msgid "No relevant documents found"
+msgstr "Не найдено релевантных документов"
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v7.3 (c) 2026 Барсуков Валерий"

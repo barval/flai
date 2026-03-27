@@ -67,6 +67,10 @@ def load_config(app):
     app.config['RAG_CHUNK_OVERLAP'] = int(os.getenv('RAG_CHUNK_OVERLAP', 50))
     app.config['RAG_TOP_K'] = int(os.getenv('RAG_TOP_K', 5))
     
+    # RAG relevance thresholds
+    app.config['RAG_RELEVANCE_THRESHOLD_DEFAULT'] = float(os.getenv('RAG_RELEVANCE_THRESHOLD_DEFAULT', 0.5))
+    app.config['RAG_RELEVANCE_THRESHOLD_REASONING'] = float(os.getenv('RAG_RELEVANCE_THRESHOLD_REASONING', 0.7))
+    
     # Debug translations
     app.config['DEBUG_TRANSLATIONS'] = os.getenv('DEBUG_TRANSLATIONS', 'false').lower() == 'true'
     

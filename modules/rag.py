@@ -30,7 +30,7 @@ class RagModule:
         qdrant_api_key = app.config.get('QDRANT_API_KEY')
         self.chunk_size = app.config.get('RAG_CHUNK_SIZE', 500)
         self.chunk_overlap = app.config.get('RAG_CHUNK_OVERLAP', 50)
-        self.top_k = app.config.get('RAG_TOP_K', 55)
+        self.top_k = app.config.get('RAG_TOP_K', 15)
         if not qdrant_url:
             app.logger.warning("QDRANT_URL not set, RAG module disabled")
             self.available = False

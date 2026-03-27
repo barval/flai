@@ -65,7 +65,11 @@ def load_config(app):
     app.config['QDRANT_API_KEY'] = os.getenv('QDRANT_API_KEY')
     app.config['RAG_CHUNK_SIZE'] = int(os.getenv('RAG_CHUNK_SIZE', 500))
     app.config['RAG_CHUNK_OVERLAP'] = int(os.getenv('RAG_CHUNK_OVERLAP', 50))
-    app.config['RAG_TOP_K'] = int(os.getenv('RAG_TOP_K', 5))
+    app.config['RAG_TOP_K'] = int(os.getenv('RAG_TOP_K', 15))
+    
+    # RAG relevance thresholds
+    app.config['RAG_RELEVANCE_THRESHOLD_DEFAULT'] = float(os.getenv('RAG_RELEVANCE_THRESHOLD_DEFAULT', 0.3))
+    app.config['RAG_RELEVANCE_THRESHOLD_REASONING'] = float(os.getenv('RAG_RELEVANCE_THRESHOLD_REASONING', 0.3))
     
     # Debug translations
     app.config['DEBUG_TRANSLATIONS'] = os.getenv('DEBUG_TRANSLATIONS', 'false').lower() == 'true'

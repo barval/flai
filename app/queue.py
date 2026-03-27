@@ -162,10 +162,19 @@ class RedisRequestQueue:
         config = get_model_config(module_type)
         return config.get('model_name') if config else None
 
-    def _try_rag_answer(self, query: str, session_id: str, user_id: str, lang: str) -> Tuple[Optional[str], Optional[str]]:
+    def _try_rag_answer(self, query: str, session_id: str, user_id: str, lang: str, strict: bool = False) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Attempt to answer using RAG.
+        If strict=True, use a higher relevance threshold (for implicit reasoning queries).
+        Returns (answer, model_name) or (None, None) if no relevant documents found.
+        """
         rag = self.app.modules.get('rag')
         if rag and rag.available:
-            answer, error, model_name = rag.generate_answer(user_id, query, session_id, lang=lang)
+            if strict:
+                threshold = self.app.config.get('RAG_RELEVANCE_THRESHOLD_REASONING', 0.7)
+            else:
+                threshold = self.app.config.get('RAG_RELEVANCE_THRESHOLD_DEFAULT', 0.5)
+            answer, error, model_name = rag.generate_answer(user_id, query, session_id, lang=lang, threshold=threshold)
             if answer is not None and error is None:
                 return answer, model_name
         return None, None
@@ -218,7 +227,7 @@ class RedisRequestQueue:
 
             if action_type == 'reasoning':
                 rag_start_time = time.time()
-                rag_answer, rag_model_name = self._try_rag_answer(query, session_id, user_id, lang)
+                rag_answer, rag_model_name = self._try_rag_answer(query, session_id, user_id, lang, strict=True)
                 rag_time = round(time.time() - rag_start_time, 1)
                 if rag_answer is not None:
                     completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
@@ -396,24 +405,18 @@ class RedisRequestQueue:
                     final_response = query
                 is_error = False
             elif action_type == 'rag':
-                rag_module = self.app.modules.get('rag')
-                if rag_module and rag_module.available:
-                    rag_start_time = time.time()
-                    answer, error, model_name = rag_module.generate_answer(user_id, query, session_id, lang=lang)
-                    process_time = round(time.time() - rag_start_time, 1)
-                    if error:
-                        final_response = f"⚠️ {error}"
-                        model_used = 'system'
-                        is_error = True
-                    else:
-                        final_response = answer
-                        model_used = (model_name + " (RAG)") if model_name else 'unknown (RAG)'
-                        is_error = False
+                # Explicit RAG request: use default threshold (strict=False)
+                rag_start_time = time.time()
+                rag_answer, rag_model_name = self._try_rag_answer(query, session_id, user_id, lang, strict=False)
+                process_time = round(time.time() - rag_start_time, 1)
+                if rag_answer is not None:
+                    final_response = rag_answer
+                    model_used = (rag_model_name + " (RAG)") if rag_model_name else 'unknown (RAG)'
+                    is_error = False
                 else:
-                    final_response = "⚠️ " + self.app.modules['base']._('RAG module unavailable', lang=lang)
+                    final_response = "⚠️ " + self.app.modules['base']._('No relevant documents found', lang)
                     model_used = 'system'
                     is_error = True
-                    process_time = 0
             else:
                 process_time = router_time
                 final_response = query

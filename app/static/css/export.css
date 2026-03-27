@@ -100,7 +100,8 @@ footer {
 .message-input,
 .context-info-container button,
 .copy-code-button,
-.copy-transcript-button {
+.copy-transcript-button,
+.copy-message-button {
     display: none !important;
 }
 

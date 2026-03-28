@@ -634,5 +634,8 @@ msgstr "Источник"
 msgid "No relevant documents found"
 msgstr "Не найдено релевантных документов"
 
+msgid "Audio service unavailable"
+msgstr "Сервис аудио недоступен"
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v7.3 (c) 2026 Барсуков Валерий"

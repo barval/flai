@@ -633,5 +633,8 @@ msgstr "Source"
 msgid "No relevant documents found"
 msgstr "No relevant documents found"
 
+msgid "Audio service unavailable"
+msgstr "Audio service unavailable"
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v7.3 (c) 2026 Valery Barsukov"

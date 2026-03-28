@@ -78,7 +78,7 @@ services:
     ports:
       - "7860:7860"
     volumes:
-      - ./services/automatic1111/models:/app/stable-diffusion-webui/models
+      - ./services/automatic1111/models:/app/stable-diffusion-webui/models/Stable-diffusion
       - ./services/automatic1111/outputs:/app/stable-diffusion-webui/outputs
     environment:
       - NVIDIA_VISIBLE_DEVICES=all

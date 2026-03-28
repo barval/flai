@@ -145,11 +145,12 @@ nano .env
 #### 🎨 For Image Generation (Automatic1111):
 ```bash
 # Create models directory
-mkdir -p services/automatic1111/models
+mkdir -p services/automatic1111/models services/automatic1111/models/Stable-diffusion services/automatic1111/outputs
+sudo chown -R 1000:1000 services/automatic1111
 
 # Download a Stable Diffusion checkpoint (example: RealVisXL_V4.0)
 # Replace with your preferred model from civitai.com or huggingface
-wget -O services/automatic1111/models/RealVisXL_V4.0.safetensors \
+wget -O services/automatic1111/models/Stable-diffusion/RealVisXL_V4.0.safetensors \
   "https://huggingface.co/SG161222/RealVisXL_V4.0/resolve/main/RealVisXL_V4.0.safetensors"
 
 # In .env file, ensure these are set:
@@ -332,7 +333,7 @@ services:
     ports:
       - "7860:7860"
     volumes:
-      - ./services/automatic1111/models:/app/stable-diffusion-webui/models
+      - ./services/automatic1111/models:/app/stable-diffusion-webui/models/Stable-diffusion
       - ./services/automatic1111/outputs:/app/stable-diffusion-webui/outputs
     environment:
       - NVIDIA_VISIBLE_DEVICES=all

@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 7.2\n"
+"Project-Id-Version: FLAI 7.3\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-05 12:00+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -631,5 +631,11 @@ msgstr "Модуль генерации изображений недоступ�
 msgid "Source"
 msgstr "Источник"
 
+msgid "No relevant documents found"
+msgstr "Не найдено релевантных документов"
+
+msgid "Audio service unavailable"
+msgstr "Сервис аудио недоступен"
+
 msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v7.2 (c) 2026 Барсуков Валерий"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v7.3 (c) 2026 Барсуков Валерий"

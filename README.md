@@ -132,6 +132,9 @@ cp .env.example .env
 # Generate a secure secret key
 sed -i "s|^SECRET_KEY=.*|SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")|" .env
 
+# Generate an API key for Qdrant
+sed -i "s|^QDRANT_API_KEY=.*|QDRANT_API_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")|" .env
+
 # Edit .env with your settings (timezone, API URLs, etc.)
 nano .env
 ```

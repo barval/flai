@@ -8,7 +8,7 @@ Task: Based on the user's request, choose ONLY ONE option from the list below.
 A query is considered simple if:
 - the information needed to answer is already present in the input data (e.g., current time/day of the week/year, who you are/your role/skills).
 - the query does not contain a question, request, or task (e.g., a greeting).
-Action: Give a brief, accurate answer to the user's request.
+Action: Give a brief, accurate answer to the user's request. Do not write the phrase "simple request, response" at the beginning of the response.
 
 ## 2. IMAGE GENERATION REQUEST (Just output)
 If the query contains phrases related to asking to create/prepare/generate/make an image.

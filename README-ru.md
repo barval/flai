@@ -266,6 +266,7 @@ services:
       - "5000:5000"
     depends_on:
       - redis
+      - ollama
     volumes:
       # Монтирование директории данных приложения
       - ./data:/app/data
@@ -293,6 +294,12 @@ services:
     networks:
       - flai_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     # Для использования внешнего экземпляра Redis:
     # Закомментируйте весь этот блок сервиса
 
@@ -320,6 +327,12 @@ services:
     networks:
       - flai_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     # Для использования внешнего экземпляра Ollama:
     # Закомментируйте весь этот блок сервиса
 
@@ -360,6 +373,12 @@ services:
     networks:
       - flai_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/sdapi/v1/progress"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     profiles:
       - with-image-gen
     # Для отключения генерации изображений:
@@ -392,6 +411,12 @@ services:
     networks:
       - flai_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     profiles:
       - with-voice
     # Для отключения голосовых функций:
@@ -414,6 +439,12 @@ services:
     networks:
       - flai_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8888/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     profiles:
       - with-voice
     # Для отключения голосовых функций:
@@ -436,6 +467,12 @@ services:
     networks:
       - flai_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     profiles:
       - with-rag
     # Для отключения поиска документов/RAG:

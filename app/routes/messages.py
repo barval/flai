@@ -60,7 +60,8 @@ def send_message():
             data = request.get_json()
             if data:
                 message_text = data.get('message', '')
-        except:
+        except (json.JSONDecodeError, TypeError):
+            # Fallback to form data if JSON parsing fails
             message_text = request.form.get('message', '')
 
     if not message_text and not file_data:

@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 7.3\n"
+"Project-Id-Version: FLAI 7.5\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-05 12:00+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -637,4 +637,4 @@ msgid "Audio service unavailable"
 msgstr "Audio service unavailable"
 
 msgid "footer_text"
-msgstr "Fully Local AI (FLAI) v7.3 (c) 2026 Valery Barsukov"
+msgstr "Fully Local AI (FLAI) v7.5 (c) 2026 Valery Barsukov"

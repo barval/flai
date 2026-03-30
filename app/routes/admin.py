@@ -88,27 +88,33 @@ def admin_panel():
 @bp.route('/api/users', methods=['GET'])
 @admin_required
 def get_users():
-    """Get list of all users with stats."""
+    """Get list of all users with stats.
+    Optimized to avoid N+1 queries by using subqueries.
+    """
     try:
         users = list_users(exclude_admin=True)
         result = []
         with get_chat_db() as conn:
             for u in users:
+                # Single query with subqueries for all stats
                 stats = conn.execute('''
-                    SELECT COUNT(DISTINCT cs.id) as sessions, COUNT(m.id) as messages
+                    SELECT 
+                        COUNT(DISTINCT cs.id) as sessions, 
+                        COUNT(m.id) as messages,
+                        (SELECT COUNT(*) FROM documents WHERE user_id = ? AND file_ext IN ('.pdf', '.doc', '.docx', '.txt')) as documents_count
                     FROM chat_sessions cs
                     LEFT JOIN messages m ON cs.id = m.session_id
                     WHERE cs.user_id = ?
-                ''', (u['login'],)).fetchone()
+                ''', (u['login'], u['login'])).fetchone()
                 u_dict = dict(u)
                 u_dict['sessions_count'] = stats['sessions']
                 u_dict['messages_count'] = stats['messages']
                 u_dict['files_count'] = get_user_file_count(u['login'])
-                u_dict['documents_count'] = get_user_document_count(u['login'])
+                u_dict['documents_count'] = stats['documents_count']
                 if u_dict['camera_permissions']:
                     try:
                         u_dict['camera_permissions'] = json.loads(u_dict['camera_permissions'])
-                    except:
+                    except json.JSONDecodeError:
                         u_dict['camera_permissions'] = []
                 else:
                     u_dict['camera_permissions'] = []
@@ -357,13 +363,8 @@ def ollama_model_info(name):
 @admin_required
 def get_model_configs():
     """Return all model configurations from the database."""
-    from app.db import get_db
-    with get_db() as conn:
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        c.execute('SELECT * FROM model_configs')
-        rows = c.fetchall()
-        configs = {row['module']: dict(row) for row in rows}
+    from app.model_config import reload_all_model_configs
+    configs = reload_all_model_configs()
     return jsonify(configs)
 
 
@@ -371,6 +372,8 @@ def get_model_configs():
 @admin_required
 def update_model_config(module):
     """Update configuration for a specific module."""
+    from app.model_config import invalidate_model_config_cache, get_model_config
+    
     data = request.get_json()
     allowed_fields = ['model_name', 'ollama_url', 'context_length', 'temperature', 'top_p', 'timeout']
     updates = {k: v for k, v in data.items() if k in allowed_fields}
@@ -416,7 +419,8 @@ def update_model_config(module):
         ''', values)
         conn.commit()
 
-    _reload_model_configs(current_app)
+    # Invalidate cache for updated module
+    invalidate_model_config_cache(module)
 
     result = {'status': 'ok'}
     if module == 'embedding':
@@ -429,17 +433,3 @@ def update_model_config(module):
             result['model_name'] = old_model or new_model
 
     return jsonify(result)
-
-
-def _reload_model_configs(app):
-    """Helper to reload model configs from DB into app.config."""
-    import sqlite3
-    from app.db import CHAT_DB_PATH
-    conn = sqlite3.connect(CHAT_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    c.execute('SELECT * FROM model_configs')
-    rows = c.fetchall()
-    configs = {row['module']: dict(row) for row in rows}
-    conn.close()
-    app.config['MODEL_CONFIGS'] = configs

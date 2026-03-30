@@ -88,6 +88,10 @@ def init_db():
         c.execute('CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_messages_session_timestamp ON messages(session_id, timestamp)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id)')
+        # Additional indexes for user sessions and documents
+        c.execute('CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions(user_id)')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_session_visits_session_id ON session_visits(session_id)')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_documents_index_status ON documents(index_status)')
         # Enable Write-Ahead Logging for better concurrency
         c.execute("PRAGMA journal_mode=WAL")
         conn.commit()
@@ -251,33 +255,36 @@ def migrate_add_ollama_url(app):
 
 
 def get_user_sessions(user_id):
-    """Get all sessions for a user."""
+    """Get all sessions for a user.
+    Optimized to avoid N+1 queries by using JOINs and subqueries.
+    """
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
         c.execute('''
-        SELECT id, title, model_name, created_at, updated_at
-        FROM chat_sessions
-        WHERE user_id = ?
-        ORDER BY updated_at DESC
-        ''', (user_id,))
-        sessions = [dict(row) for row in c.fetchall()]
-        for s in sessions:
-            c.execute('''
-            SELECT last_visit FROM session_visits
-            WHERE user_id = ? AND session_id = ?
-            ''', (user_id, s['id']))
-            row = c.fetchone()
-            last_visit = row[0] if row else '1970-01-01 00:00:00'
-            c.execute('''
-            SELECT COUNT(*) FROM messages
-            WHERE session_id = ? AND role = 'assistant' AND timestamp > ?
-            ''', (s['id'], last_visit))
-            count = c.fetchone()[0]
-            s['has_unread'] = count > 0
-            # Get total message count for the session
-            c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (s['id'],))
-            s['message_count'] = c.fetchone()[0]
+        SELECT 
+            cs.id, 
+            cs.title, 
+            cs.model_name, 
+            cs.created_at, 
+            cs.updated_at,
+            COALESCE(MAX(sv.last_visit), '1970-01-01 00:00:00') as last_visit,
+            (SELECT COUNT(*) FROM messages 
+             WHERE session_id = cs.id AND role = 'assistant' 
+             AND timestamp > COALESCE(MAX(sv.last_visit), '1970-01-01 00:00:00')) as unread_count,
+            (SELECT COUNT(*) FROM messages WHERE session_id = cs.id) as message_count
+        FROM chat_sessions cs
+        LEFT JOIN session_visits sv ON cs.id = sv.session_id AND sv.user_id = ?
+        WHERE cs.user_id = ?
+        GROUP BY cs.id, cs.title, cs.model_name, cs.created_at, cs.updated_at
+        ORDER BY cs.updated_at DESC
+        ''', (user_id, user_id))
+        
+        sessions = []
+        for row in c.fetchall():
+            session_dict = dict(row)
+            session_dict['has_unread'] = session_dict['unread_count'] > 0
+            sessions.append(session_dict)
         return sessions
 
 

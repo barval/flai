@@ -63,8 +63,8 @@ class AudioModule:
                 self.available = True
                 return True
             else:
-                self.available = True
-                return True
+                self.available = False
+                return False
         except requests.exceptions.ConnectionError:
             self.logger.error(f"Connection error to Whisper API: {self.whisper_api_url}")
         except Exception as e:

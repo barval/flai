@@ -147,12 +147,20 @@ def create_app():
         """Serve uploaded files after checking user permissions."""
         if 'login' not in session:
             abort(401)
-        # Security: ensure filename is within upload folder and doesn't contain path traversal
+        
+        # Security: prevent path traversal attacks
+        # Reject any filename containing path traversal sequences
+        if '..' in filename or filename.startswith('/') or filename.startswith('\\'):
+            app.logger.warning(f"Path traversal attempt blocked: {filename}")
+            abort(403)
+        
+        # Security: ensure filename is within upload folder
         upload_folder = app.config['UPLOAD_FOLDER']
         safe_path = os.path.normpath(os.path.join(upload_folder, filename))
-        if not safe_path.startswith(os.path.abspath(upload_folder)):
-            app.logger.warning(f"Path traversal attempt: {filename}")
+        if not safe_path.startswith(os.path.abspath(upload_folder) + os.sep):
+            app.logger.warning(f"Path traversal attempt blocked: {filename}")
             abort(403)
+        
         # Check if file belongs to a session accessible by the user
         # filename format: session_id/unique_filename
         parts = filename.split('/')

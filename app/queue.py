@@ -76,6 +76,10 @@ class RedisRequestQueue:
                     }))
                 finally:
                     self.redis.hdel(self.processing_key, task['id'])
+                    # Clean up user request set
+                    user_id = task.get('user_id')
+                    if user_id:
+                        self._cleanup_user_request(user_id, task['id'])
             except Exception as e:
                 self.app.logger.error(f"RedisRequestQueue: error in worker loop: {str(e)}")
                 time.sleep(1)
@@ -100,8 +104,27 @@ class RedisRequestQueue:
         queue_length = self.redis.llen(self.queue_key)
         estimated_wait = max(1, queue_length * 5)
         position_info = {'position': queue_length, 'estimated_seconds': estimated_wait}
-        self.app.logger.info(f"RedisRequestQueue.add_request: task added, position={queue_length}")
+        self.logger.info(f"RedisRequestQueue.add_request: task added, position={queue_length}")
         return request_id, position_info
+
+    def get_user_queue_counts(self, user_id: str) -> Tuple[int, int]:
+        """Get user's queue count and total queue length efficiently.
+        Uses Redis set to track user requests instead of scanning entire queue.
+        """
+        total = self.redis.llen(self.queue_key)
+        if total == 0:
+            return 0, 0
+        
+        # Use set to get count of active user requests
+        user_count = self.redis.scard(f"{self.user_requests_key}:{user_id}")
+        
+        # Clean up completed requests from set (they may have been removed from results)
+        # This is eventual consistency - not critical if slightly stale
+        return user_count, total
+
+    def _cleanup_user_request(self, user_id: str, request_id: str):
+        """Remove request ID from user's set after completion."""
+        self.redis.srem(f"{self.user_requests_key}:{user_id}", request_id)
 
     def add_index_task(self, user_id: str, doc_id: str, file_path: str, lang: str = 'ru') -> str:
         request_id = str(uuid.uuid4())

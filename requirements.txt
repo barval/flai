@@ -9,6 +9,7 @@ Flask-Babel==2.0.0
 qdrant-client==1.9.1
 PyPDF2==3.0.1
 python-docx==1.1.0
+python-magic==0.4.27
 
 # For testing (not required in production)
 pytest==7.4.3

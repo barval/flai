@@ -1,0 +1,50 @@
+# Environments and packages
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Data directories (important!)
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Model files (if they are in project root or subfolders)
+*.gguf
+*.safetensors
+*.bin
+*.onnx
+*.json
+
+# Uploads and temporary files
+uploads/
+documents/
+*.log
+*.tmp
+
+# IDE and system files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# Docker
+.dockerignore
+
+# Tests and coverage
+.pytest_cache/
+.coverage
+htmlcov/

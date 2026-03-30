@@ -27,6 +27,7 @@ data/
 # Uploads and temporary files
 uploads/
 documents/
+services/
 *.log
 *.tmp
 

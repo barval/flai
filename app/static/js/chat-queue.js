@@ -19,6 +19,7 @@ function fetchQueueStatus() {
         .then(data => {
             if (window.IS_RELOADING) return;
             const newInfo = {};
+            
             // Process currently processing task
             if (data.processing) {
                 const proc = data.processing;
@@ -27,21 +28,25 @@ function fetchQueueStatus() {
                     newInfo[sessionId] = { processing: false, queued: 0, has_transcribing: false };
                 }
                 newInfo[sessionId].processing = true;
-                if (proc.type === 'transcribe_audio') {
+                // Only set has_transcribing if currently processing audio/transcribe task
+                // This should only be true during actual transcription, not during text processing
+                if (proc.type === 'transcribe_audio' || proc.type === 'audio') {
                     newInfo[sessionId].has_transcribing = true;
                 }
             }
-            // Process queued tasks
+            
+            // Process queued tasks - count them but don't set has_transcribing for queued tasks
+            // has_transcribing should only be true when actively transcribing (processing)
             data.queued.forEach(item => {
                 const sessionId = item.session_id;
                 if (!newInfo[sessionId]) {
                     newInfo[sessionId] = { processing: false, queued: 0, has_transcribing: false };
                 }
                 newInfo[sessionId].queued += 1;
-                if (item.type === 'transcribe_audio') {
-                    newInfo[sessionId].has_transcribing = true;
-                }
+                // Note: We don't set has_transcribing for queued tasks
+                // This ensures microphone icon only shows during active transcription
             });
+            
             sessionQueueInfo = newInfo;
             updateSessionsListFromData();
         })

@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     libtiff-dev \
     libwebp-dev \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Installing Python dependencies

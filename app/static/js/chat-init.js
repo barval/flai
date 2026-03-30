@@ -163,10 +163,15 @@ function startResultPolling(requestId) {
                     if (data.result.transcribed_text) {
                         const resultSessionId = data.result.session_id || pendingRequests[requestId]?.sessionId;
                         if (resultSessionId === currentSessionId) {
-                            // Display transcribed text message
-                            originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.result.transcribed_text, null, null, null, null,
-                                data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'whisper',
-                                null, null, null, null, data.result.transcribed_message_id);
+                            // Check for duplicate by message_id
+                            if (data.result.transcribed_message_id && displayedMessageIds.has(data.result.transcribed_message_id)) {
+                                console.log('Skipping duplicate transcribed message by ID', data.result.transcribed_message_id);
+                            } else {
+                                // Display transcribed text message
+                                originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.result.transcribed_text, null, null, null, null,
+                                    data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'whisper',
+                                    null, null, null, null, data.result.transcribed_message_id);
+                            }
                             // If there is a new request_id for processing, start polling it
                             if (data.result.request_id) {
                                 pendingRequests[data.result.request_id] = { sessionId: resultSessionId, processed: false };

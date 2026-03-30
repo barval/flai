@@ -129,22 +129,37 @@ function loadMessages(sessionId) {
 
 function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId) {
     if (window.IS_RELOADING) return;
-    
+
     // FIX: Prevent duplicate messages by checking message ID
     if (messageId) {
         const existing = document.querySelector(`[data-message-id="${messageId}"]`);
         if (existing) {
-            console.log('displayMessage: Message ID', messageId, 'already exists, skipping');
+            console.log('displayMessage: Message ID', messageId, 'already exists in DOM, skipping');
+            return;
+        }
+        // Also check displayedMessageIds set
+        if (displayedMessageIds.has(messageId)) {
+            console.log('displayMessage: Message ID', messageId, 'already in displayedMessageIds set, skipping');
             return;
         }
     }
-    
+
+    // Additional fix: Check for duplicate by timestamp and role for messages without ID
+    if (!messageId && timestamp) {
+        const existing = document.querySelector(`[data-timestamp="${timestamp}"][data-role="${role}"]`);
+        if (existing) {
+            console.log('displayMessage: Message with timestamp', timestamp, 'and role', role, 'already exists, skipping');
+            return;
+        }
+    }
+
     const container = document.getElementById('chat-messages');
     const msgDiv = document.createElement('div');
     msgDiv.className = (role === 'user') ? 'user-message' : 'assistant-message bot-message';
-    
+
     if (!timestamp) timestamp = new Date().toISOString();
     msgDiv.setAttribute('data-timestamp', timestamp);
+    msgDiv.setAttribute('data-role', role);
     msgDiv.dataset.sessionId = currentSessionId;
     
     const rawContent = typeof content === 'string' ? content : JSON.stringify(content);

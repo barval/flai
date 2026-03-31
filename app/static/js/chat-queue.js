@@ -3,6 +3,7 @@
 
 function startSyncInterval() {
     if (window.syncInterval) clearInterval(window.syncInterval);
+    console.log('startSyncInterval: Starting sync interval (3 seconds)');
     // Sync interval for queue status, counter updates, and cross-client synchronization
     window.syncInterval = setInterval(() => {
         if (window.IS_RELOADING) return;
@@ -17,12 +18,16 @@ function startSyncInterval() {
  * Called periodically to keep all clients in sync
  */
 function syncSessionsAndMessages() {
-    if (window.IS_RELOADING) return;
-    
+    if (window.IS_RELOADING) {
+        console.log('syncSessionsAndMessages: Skipping - IS_RELOADING');
+        return;
+    }
+    console.log('syncSessionsAndMessages: Starting sync for session', currentSessionId);
+
     // Sync sessions list
     loadSessionsFromServer().then(sessions => {
         if (window.IS_RELOADING) return;
-        
+
         // Check if current session still exists
         if (currentSessionId && !sessions.find(s => s.id === currentSessionId)) {
             console.warn('Current session no longer exists, redirecting to first session');
@@ -31,10 +36,12 @@ function syncSessionsAndMessages() {
             }
         }
     }).catch(err => console.error('Error syncing sessions:', err));
-    
+
     // Sync messages for current session
     if (currentSessionId) {
         syncMessagesForCurrentSession();
+    } else {
+        console.log('syncSessionsAndMessages: No current session, skipping message sync');
     }
 }
 
@@ -46,11 +53,15 @@ function syncSessionsAndMessages() {
  * to prevent displaying messages multiple times across different sync mechanisms
  */
 function syncMessagesForCurrentSession() {
-    if (window.IS_RELOADING || !currentSessionId) return;
+    if (window.IS_RELOADING || !currentSessionId) {
+        console.log('syncMessages: Skipping - IS_RELOADING or no currentSessionId');
+        return;
+    }
 
     // Don't sync if there are active pending requests (own messages)
     const hasActiveRequests = Object.keys(pendingRequests).length > 0;
     if (hasActiveRequests) {
+        console.log('syncMessages: Skipping - has active pending requests');
         return;
     }
 
@@ -59,17 +70,22 @@ function syncMessagesForCurrentSession() {
     const lastMessageEl = messagesContainer.lastElementChild;
 
     if (!lastMessageEl || !lastMessageEl.dataset.timestamp) {
+        console.log('syncMessages: Skipping - no last message in DOM');
         return;
     }
 
     const lastTimestamp = lastMessageEl.dataset.timestamp;
+    console.log('syncMessages: Checking for new messages since', lastTimestamp);
 
     fetch(`/api/sessions/${currentSessionId}/messages?since=${encodeURIComponent(lastTimestamp)}`)
         .then(res => res.json())
         .then(newMessages => {
+            console.log('syncMessages: Received', newMessages.length, 'new messages');
             if (window.IS_RELOADING || !newMessages || newMessages.length === 0) return;
 
             let hasNewMessagesFromOtherClient = false;
+            let displayedCount = 0;
+            let skippedCount = 0;
 
             // Display new messages from other clients
             for (const msg of newMessages) {
@@ -79,6 +95,7 @@ function syncMessagesForCurrentSession() {
                     if (existingMsg) {
                         console.log('syncMessages: Message', msg.id, 'already in DOM, skipping');
                         displayedMessageIds.add(msg.id);
+                        skippedCount++;
                         continue;
                     }
                 }
@@ -86,20 +103,24 @@ function syncMessagesForCurrentSession() {
                 // FIX 2: Skip if already displayed (check Set)
                 if (msg.id && displayedMessageIds.has(msg.id)) {
                     console.log('syncMessages: Message', msg.id, 'already in displayedMessageIds, skipping');
+                    skippedCount++;
                     continue;
                 }
 
                 // FIX 3: Skip user's own messages (they are displayed immediately)
                 if (msg.role === 'user') {
+                    console.log('syncMessages: User message, adding to displayedMessageIds');
                     if (msg.id) displayedMessageIds.add(msg.id);
+                    skippedCount++;
                     continue;
                 }
 
                 // This is a new message from another client
                 hasNewMessagesFromOtherClient = true;
+                displayedCount++;
 
                 // Display assistant message from other client
-                console.log('syncMessages: New message from other client:', msg.id);
+                console.log('syncMessages: Displaying new message from other client:', msg.id, msg.role);
 
                 let responseTime = null;
                 if (msg.response_time) {
@@ -128,10 +149,11 @@ function syncMessagesForCurrentSession() {
                 );
             }
 
+            console.log('syncMessages: Displayed', displayedCount, 'messages, skipped', skippedCount);
+
             // Show notification if new messages from other client were received
             if (hasNewMessagesFromOtherClient) {
                 console.log('syncMessages: New messages detected from other client');
-                // Update unread indicator for current session (it's already active, so just notify)
                 showCrossClientNotification();
             }
         })

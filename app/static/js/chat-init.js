@@ -51,17 +51,17 @@ function stopMessagePolling() {
 
 async function pollNewMessages() {
     if (window.IS_RELOADING || !currentSessionId) return;
-    
+
     const messagesContainer = document.getElementById('chat-messages');
     const lastMessageEl = messagesContainer.lastElementChild;
-    
+
     // FIX: Update lastMessageTimestamp from the last message in DOM before polling
     if (lastMessageEl && lastMessageEl.dataset.timestamp) {
         lastMessageTimestamp = lastMessageEl.dataset.timestamp;
     } else {
         return;
     }
-    
+
     try {
         const response = await fetch(`/api/sessions/${currentSessionId}/messages?since=${encodeURIComponent(lastMessageTimestamp)}`);
         if (!response.ok) {
@@ -69,9 +69,17 @@ async function pollNewMessages() {
             return;
         }
         const newMessages = await response.json();
-        
+
         if (newMessages.length > 0) {
             for (const msg of newMessages) {
+                // FIX: Skip user messages - they are displayed immediately on client
+                // and will be loaded from DB on next page load
+                if (msg.role === 'user') {
+                    console.log('pollNewMessages: Skipping user message (already displayed)', msg.id);
+                    if (msg.id) displayedMessageIds.add(msg.id);
+                    continue;
+                }
+                
                 // FIX: Check duplicate by messageId first
                 if (msg.id && displayedMessageIds.has(msg.id)) {
                     console.log('pollNewMessages: Skipping duplicate message by ID', msg.id);

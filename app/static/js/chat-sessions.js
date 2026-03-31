@@ -50,15 +50,23 @@ function loadSessionsFromServer() {
                         }
                     }
                 }
-                const prevUnread = newMessageIndicators[s.id] ? true : false;
-                const newUnread = s.has_unread ? true : false;
-                if (prevUnread !== newUnread) {
-                    updated = true;
-                }
-                if (s.has_unread) {
-                    newMessageIndicators[s.id] = true;
-                } else {
+                // FIX: Don't show unread indicator for current active session
+                // If session is currently open, clear unread flag
+                if (s.id === currentSessionId) {
+                    // Current session is active - don't show unread indicator
                     delete newMessageIndicators[s.id];
+                } else {
+                    // Other sessions - use server's has_unread flag
+                    const prevUnread = newMessageIndicators[s.id] ? true : false;
+                    const newUnread = s.has_unread ? true : false;
+                    if (prevUnread !== newUnread) {
+                        updated = true;
+                    }
+                    if (s.has_unread) {
+                        newMessageIndicators[s.id] = true;
+                    } else {
+                        delete newMessageIndicators[s.id];
+                    }
                 }
             });
             Object.keys(sessionsData).forEach(id => {

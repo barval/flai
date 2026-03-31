@@ -70,18 +70,28 @@ function syncMessagesForCurrentSession() {
     }
 
     const lastTimestamp = lastMessageEl.dataset.timestamp;
-    console.log('syncMessages: Checking for new messages since', lastTimestamp);
+    console.log('syncMessages: Last message timestamp from DOM:', lastTimestamp);
+    console.log('syncMessages: Fetching messages from /api/sessions/', currentSessionId, '/messages?since=', encodeURIComponent(lastTimestamp));
 
     fetch(`/api/sessions/${currentSessionId}/messages?since=${encodeURIComponent(lastTimestamp)}`)
-        .then(res => res.json())
+        .then(res => {
+            console.log('syncMessages: Response status:', res.status);
+            return res.json();
+        })
         .then(newMessages => {
             console.log('syncMessages: Received', newMessages.length, 'new messages');
-            if (window.IS_RELOADING || !newMessages || newMessages.length === 0) return;
+            console.log('syncMessages: Messages:', newMessages.map(m => ({ id: m.id, role: m.role, timestamp: m.timestamp })));
+            if (window.IS_RELOADING || !newMessages || newMessages.length === 0) {
+                console.log('syncMessages: No new messages to display');
+                return;
+            }
 
             let displayedCount = 0;
 
             // Display new messages
             for (const msg of newMessages) {
+                console.log('syncMessages: Processing message:', msg.id, msg.role);
+                
                 // Skip if already displayed (check DOM first)
                 if (msg.id) {
                     const existingMsg = document.querySelector(`[data-message-id="${msg.id}"]`);

@@ -51,13 +51,6 @@ function stopMessagePolling() {
 
 async function pollNewMessages() {
     if (window.IS_RELOADING || !currentSessionId) return;
-    
-    // FIX: Don't poll if there are active pending requests (message will be displayed via result polling)
-    const hasActiveRequests = Object.keys(pendingRequests).some(id => !pendingRequests[id].processed);
-    if (hasActiveRequests) {
-        console.log('pollNewMessages: Skipping - has active pending requests');
-        return;
-    }
 
     const messagesContainer = document.getElementById('chat-messages');
     const lastMessageEl = messagesContainer.lastElementChild;
@@ -79,14 +72,30 @@ async function pollNewMessages() {
 
         if (newMessages.length > 0) {
             for (const msg of newMessages) {
+                // Skip user messages - they are displayed immediately on client side
+                if (msg.role === 'user') {
+                    if (msg.id) displayedMessageIds.add(msg.id);
+                    continue;
+                }
+                
                 // Check duplicate by messageId first
                 if (msg.id && displayedMessageIds.has(msg.id)) {
                     console.log('pollNewMessages: Skipping duplicate message by ID', msg.id);
                     continue;
                 }
+                // Check duplicate by tempId (for messages displayed before server response)
+                if (msg.id) {
+                    const tempId = `temp-${msg.timestamp}`;
+                    const existingWithTempId = document.querySelector(`[data-tempId="${tempId}"]`);
+                    if (existingWithTempId) {
+                        console.log('pollNewMessages: Skipping message with tempId', tempId);
+                        displayedMessageIds.add(msg.id);
+                        continue;
+                    }
+                }
                 // Check duplicate by filename, tempId, or content/timestamp
                 if (isDuplicateMessage(msg)) {
-                    console.log('pollNewMessages: Skipping duplicate message by filename/timestamp/content', msg.id);
+                    console.log('pollNewMessages: Skipping duplicate message', msg.id);
                     continue;
                 }
                 
@@ -139,19 +148,7 @@ async function pollNewMessages() {
 
 function startResultPolling(requestId) {
     if (window.IS_RELOADING) return;
-    
-    // FIX: Prevent duplicate polling for the same request
-    if (pendingRequests[requestId] && pendingRequests[requestId].polling) {
-        console.log('startResultPolling: Already polling for request:', requestId);
-        return;
-    }
-    
     console.log('startResultPolling: Start polling for request:', requestId);
-    
-    // Mark as polling in progress
-    if (pendingRequests[requestId]) {
-        pendingRequests[requestId].polling = true;
-    }
     
     let pollCount = 0;
     const maxPolls = 120;
@@ -160,7 +157,7 @@ function startResultPolling(requestId) {
             clearInterval(pollInterval);
             return;
         }
-        
+
         pollCount++;
         
         try {
@@ -207,10 +204,6 @@ function startResultPolling(requestId) {
                                 startResultPolling(data.result.request_id);
                             }
                             setLocalTranscribing(resultSessionId, false);
-                        }
-                        // Mark as processed before deleting to prevent pollNewMessages from loading duplicates
-                        if (pendingRequests[requestId]) {
-                            pendingRequests[requestId].processed = true;
                         }
                         delete pendingRequests[requestId];
                         window.updateStatusCounter();
@@ -286,10 +279,6 @@ function startResultPolling(requestId) {
                     }
                 }
 
-                // Mark as processed before deleting to prevent pollNewMessages from loading duplicates
-                if (pendingRequests[requestId]) {
-                    pendingRequests[requestId].processed = true;
-                }
                 delete pendingRequests[requestId];
                 window.updateStatusCounter();
                 fetchQueueStatus();
@@ -309,10 +298,6 @@ function startResultPolling(requestId) {
                     setLocalTranscribing(resultSessionId, false);
                 }
 
-                // Mark as processed before deleting to prevent pollNewMessages from loading duplicates
-                if (pendingRequests[requestId]) {
-                    pendingRequests[requestId].processed = true;
-                }
                 delete pendingRequests[requestId];
                 window.updateStatusCounter();
                 fetchQueueStatus();
@@ -323,10 +308,6 @@ function startResultPolling(requestId) {
                 originalDisplayMessage('assistant', '⚠️ ' + t('request_timeout'),
                     null, null, null, null, new Date().toISOString(), null, 'system',
                     null, null, null, null, null);
-                // Mark as processed before deleting
-                if (pendingRequests[requestId]) {
-                    pendingRequests[requestId].processed = true;
-                }
                 delete pendingRequests[requestId];
             }
         } catch (error) {
@@ -658,15 +639,7 @@ function addCopyButtonsToAllCodeBlocks() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    // FIX: Clear pending requests from previous page load to prevent duplicate polling
-    if (window.pendingRequests) {
-        Object.keys(window.pendingRequests).forEach(id => {
-            console.log('Clearing pending request:', id);
-        });
-        window.pendingRequests = {};
-    }
-    
-    // FIX: Validate currentSessionId before proceeding
+    // Validate currentSessionId before proceeding
     if (!window.initialSessionId) {
         console.error('No initial session ID! Creating new session...');
         createNewSession();

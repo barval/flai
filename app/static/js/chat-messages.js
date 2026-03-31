@@ -49,31 +49,36 @@ function loadMessages(sessionId) {
 
             messages.forEach((msg) => {
                 try {
+                    // Skip user messages - they are displayed immediately on client
+                    // and will be loaded from DB on next page load
+                    if (msg.role === 'user') {
+                        if (msg.id) displayedMessageIds.add(msg.id);
+                        return;
+                    }
+                    
                     // FIX: Skip if message already exists in DOM (prevents duplicates after polling)
                     if (msg.id) {
                         const existingMsg = document.querySelector(`[data-message-id="${msg.id}"]`);
                         if (existingMsg) {
                             console.log('loadMessages: Message ID', msg.id, 'already in DOM, skipping');
-                            // Still need to add to displayedMessageIds to prevent future duplicates
+                            displayedMessageIds.add(msg.id);
+                            return;
+                        }
+                        // Also check for tempId (message displayed before server response)
+                        const tempId = `temp-${msg.timestamp}`;
+                        const existingWithTempId = document.querySelector(`[data-tempId="${tempId}"]`);
+                        if (existingWithTempId) {
+                            console.log('loadMessages: Message with tempId', tempId, 'already in DOM, updating');
+                            // Update the tempId message with the real messageId
+                            existingWithTempId.dataset.messageId = msg.id;
+                            delete existingWithTempId.dataset.tempId;
                             displayedMessageIds.add(msg.id);
                             return;
                         }
                     }
                     
-                    if (msg.role === 'user') {
-                        lastUserMessage = msg;
-                        displayMessage(
-                            msg.role,
-                            msg.content,
-                            msg.file_data,
-                            msg.file_type,
-                            msg.file_name,
-                            msg.file_path,
-                            msg.timestamp,
-                            null, null, null, null, null, null,
-                            msg.id
-                        );
-                    } else if (msg.role === 'assistant') {
+                    // Process assistant messages
+                    if (msg.role === 'assistant') {
                         let responseTime = null;
                         if (lastUserMessage) {
                             const userTime = new Date(lastUserMessage.timestamp);
@@ -81,7 +86,7 @@ function loadMessages(sessionId) {
                             const diffSeconds = (assistantTime - userTime) / 1000;
                             responseTime = Math.round(diffSeconds * 10) / 10;
                         }
-                        
+
                         if (msg.response_time) {
                             if (typeof msg.response_time === 'object') {
                                 responseTime = msg.response_time;
@@ -89,12 +94,12 @@ function loadMessages(sessionId) {
                                 responseTime = parseFloat(msg.response_time);
                             }
                         }
-                        
+
                         let mmTime = msg.mm_time;
                         let genTime = msg.gen_time;
                         let mmModel = msg.mm_model;
                         let genModel = msg.gen_model;
-                        
+
                         if (mmTime && genTime) {
                             responseTime = {
                                 mm_time: parseFloat(mmTime),
@@ -103,7 +108,7 @@ function loadMessages(sessionId) {
                                 gen_model: genModel || 'unknown'
                             };
                         }
-                        
+
                         displayMessage(
                             msg.role,
                             msg.content,

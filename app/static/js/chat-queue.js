@@ -58,7 +58,7 @@ function syncMessagesForCurrentSession() {
         return;
     }
 
-    // Don't sync if there are active pending requests (own messages)
+    // Don't sync if there are active pending requests (own messages being processed)
     const hasActiveRequests = Object.keys(pendingRequests).length > 0;
     if (hasActiveRequests) {
         console.log('syncMessages: Skipping - has active pending requests');
@@ -107,19 +107,35 @@ function syncMessagesForCurrentSession() {
                     continue;
                 }
 
-                // FIX 3: Skip user's own messages (they are displayed immediately)
+                // FIX 3: Skip user messages that were sent from THIS client
+                // (they are displayed immediately and have tempId that was replaced with messageId)
+                // But DO display user messages from OTHER clients
                 if (msg.role === 'user') {
-                    console.log('syncMessages: User message, adding to displayedMessageIds');
-                    if (msg.id) displayedMessageIds.add(msg.id);
-                    skippedCount++;
-                    continue;
+                    // Check if this message was sent from current client by checking if we have it in pendingRequests
+                    // or if it was just added (within last 5 seconds)
+                    const messageTime = new Date(msg.timestamp).getTime();
+                    const now = Date.now();
+                    const isRecentMessage = (now - messageTime) < 5000;
+                    
+                    // If message is recent and we don't have it in displayedMessageIds, 
+                    // it might be from another client - display it
+                    if (isRecentMessage && msg.id && !displayedMessageIds.has(msg.id)) {
+                        console.log('syncMessages: User message from another client, displaying');
+                        hasNewMessagesFromOtherClient = true;
+                        displayedCount++;
+                    } else {
+                        // Old message or already displayed - just add to Set and skip
+                        if (msg.id) displayedMessageIds.add(msg.id);
+                        skippedCount++;
+                        continue;
+                    }
+                } else {
+                    // Assistant message - always display if not already shown
+                    hasNewMessagesFromOtherClient = true;
+                    displayedCount++;
                 }
 
-                // This is a new message from another client
-                hasNewMessagesFromOtherClient = true;
-                displayedCount++;
-
-                // Display assistant message from other client
+                // Display message from other client
                 console.log('syncMessages: Displaying new message from other client:', msg.id, msg.role);
 
                 let responseTime = null;

@@ -49,13 +49,6 @@ function loadMessages(sessionId) {
 
             messages.forEach((msg) => {
                 try {
-                    // Skip user messages - they are displayed immediately on client
-                    // and will be loaded from DB on next page load
-                    if (msg.role === 'user') {
-                        if (msg.id) displayedMessageIds.add(msg.id);
-                        return;
-                    }
-                    
                     // FIX: Skip if message already exists in DOM (prevents duplicates after polling)
                     if (msg.id) {
                         const existingMsg = document.querySelector(`[data-message-id="${msg.id}"]`);
@@ -76,7 +69,24 @@ function loadMessages(sessionId) {
                             return;
                         }
                     }
-                    
+
+                    // Display user messages from DB (for cross-client sync and page reload)
+                    if (msg.role === 'user') {
+                        lastUserMessage = msg;
+                        displayMessage(
+                            msg.role,
+                            msg.content,
+                            msg.file_data,
+                            msg.file_type,
+                            msg.file_name,
+                            msg.file_path,
+                            msg.timestamp,
+                            null, null, null, null, null, null,
+                            msg.id
+                        );
+                        return;
+                    }
+
                     // Process assistant messages
                     if (msg.role === 'assistant') {
                         let responseTime = null;

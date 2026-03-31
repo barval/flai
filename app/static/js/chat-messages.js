@@ -16,9 +16,11 @@ function loadMessages(sessionId) {
     }
     
     console.log('loadMessages: loading messages for session', sessionId);
-    
+    console.log('loadMessages: displayedMessageIds.size before clear:', displayedMessageIds.size);
+
     // Clear displayed IDs for new session load
     displayedMessageIds.clear();
+    console.log('loadMessages: displayedMessageIds cleared');
     
     return fetch('/api/sessions/' + sessionId + '/messages')
         .then(res => {
@@ -49,6 +51,8 @@ function loadMessages(sessionId) {
 
             messages.forEach((msg) => {
                 try {
+                    console.log('loadMessages: Processing message:', msg.id, msg.role, msg.timestamp);
+                    
                     // FIX: Skip if message already exists in DOM (prevents duplicates after polling)
                     if (msg.id) {
                         const existingMsg = document.querySelector(`[data-message-id="${msg.id}"]`);
@@ -72,6 +76,7 @@ function loadMessages(sessionId) {
 
                     // Display user messages from DB (for cross-client sync and page reload)
                     if (msg.role === 'user') {
+                        console.log('loadMessages: Displaying user message:', msg.id);
                         lastUserMessage = msg;
                         displayMessage(
                             msg.role,
@@ -89,6 +94,7 @@ function loadMessages(sessionId) {
 
                     // Process assistant messages
                     if (msg.role === 'assistant') {
+                        console.log('loadMessages: Displaying assistant message:', msg.id);
                         let responseTime = null;
                         if (lastUserMessage) {
                             const userTime = new Date(lastUserMessage.timestamp);
@@ -154,7 +160,12 @@ function loadMessages(sessionId) {
 }
 
 function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId) {
-    if (window.IS_RELOADING) return;
+    if (window.IS_RELOADING) {
+        console.log('displayMessage: Skipping - IS_RELOADING');
+        return;
+    }
+
+    console.log('displayMessage: Called with role=', role, 'messageId=', messageId, 'timestamp=', timestamp);
 
     // FIX: Prevent duplicate messages by checking message ID
     if (messageId) {

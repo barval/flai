@@ -123,7 +123,9 @@ git clone https://github.com/barval/flai.git
 cd flai
 
 # Create directories and specify the owner
-mkdir -p data data/uploads data/documents
+sudo mkdir -p data \
+              data/uploads \
+              data/documents
 sudo chown -R 1000:1000 data
 
 # Copy environment template
@@ -145,8 +147,10 @@ nano .env
 #### 🎨 For Image Generation (Automatic1111):
 ```bash
 # Create models directory
-mkdir -p services/automatic1111/models services/automatic1111/models/Stable-diffusion services/automatic1111/outputs
-sudo chown -R 1000:1000 services/automatic1111
+sudo mkdir -p services/automatic1111/models \
+              services/automatic1111/models/Stable-diffusion \
+              services/automatic1111/outputs
+sudo chown -R 1000:1000 services
 
 # Download a Stable Diffusion checkpoint (example: RealVisXL_V4.0)
 # Replace with your preferred model from civitai.com or huggingface

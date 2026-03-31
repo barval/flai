@@ -123,7 +123,9 @@ git clone https://github.com/barval/flai.git
 cd flai
 
 # Создать папки и указать владельца
-mkdir -p data data/uploads data/documents
+sudo mkdir -p data \
+              data/uploads \
+              data/documents
 sudo chown -R 1000:1000 data
 
 # Скопировать шаблон окружения
@@ -145,8 +147,10 @@ nano .env
 #### 🎨 Для генерации изображений (Automatic1111):
 ```bash
 # Создать папку для моделей
-mkdir -p services/automatic1111/models services/automatic1111/models/Stable-diffusion services/automatic1111/outputs
-sudo chown -R 1000:1000 services/automatic1111
+sudo mkdir -p services/automatic1111/models \
+              services/automatic1111/models/Stable-diffusion \
+              services/automatic1111/outputs
+sudo chown -R 1000:1000 services
 
 # Скачать чекпоинт Stable Diffusion (пример: RealVisXL_V4.0)
 # Замените ссылку на нужную вам модель с civitai.com или huggingface

@@ -3,10 +3,9 @@
 
 function startSyncInterval() {
     if (window.syncInterval) clearInterval(window.syncInterval);
-    // FIX: Reduced interval from 5000ms to 2000ms for more responsive status updates
+    // Sync interval for queue status and counter updates
     window.syncInterval = setInterval(() => {
         if (window.IS_RELOADING) return;
-        loadSessionsFromServer();
         fetchQueueStatus();
         window.updateStatusCounter();
     }, 2000);

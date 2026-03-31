@@ -164,8 +164,6 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         }
     }
 
-    console.log('displayMessage: Creating message with role=', role, 'messageId=', messageId, 'timestamp=', timestamp);
-
     const container = document.getElementById('chat-messages');
     const msgDiv = document.createElement('div');
     msgDiv.className = (role === 'user') ? 'user-message' : 'assistant-message bot-message';

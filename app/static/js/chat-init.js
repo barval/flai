@@ -51,11 +51,18 @@ function stopMessagePolling() {
 
 async function pollNewMessages() {
     if (window.IS_RELOADING || !currentSessionId) return;
+    
+    // FIX: Don't poll if there are active pending requests (message will be displayed via result polling)
+    const hasActiveRequests = Object.keys(pendingRequests).some(id => !pendingRequests[id].processed);
+    if (hasActiveRequests) {
+        console.log('pollNewMessages: Skipping - has active pending requests');
+        return;
+    }
 
     const messagesContainer = document.getElementById('chat-messages');
     const lastMessageEl = messagesContainer.lastElementChild;
 
-    // FIX: Update lastMessageTimestamp from the last message in DOM before polling
+    // Update lastMessageTimestamp from the last message in DOM before polling
     if (lastMessageEl && lastMessageEl.dataset.timestamp) {
         lastMessageTimestamp = lastMessageEl.dataset.timestamp;
     } else {
@@ -72,20 +79,12 @@ async function pollNewMessages() {
 
         if (newMessages.length > 0) {
             for (const msg of newMessages) {
-                // FIX: Skip user messages - they are displayed immediately on client
-                // and will be loaded from DB on next page load
-                if (msg.role === 'user') {
-                    console.log('pollNewMessages: Skipping user message (already displayed)', msg.id);
-                    if (msg.id) displayedMessageIds.add(msg.id);
-                    continue;
-                }
-                
-                // FIX: Check duplicate by messageId first
+                // Check duplicate by messageId first
                 if (msg.id && displayedMessageIds.has(msg.id)) {
                     console.log('pollNewMessages: Skipping duplicate message by ID', msg.id);
                     continue;
                 }
-                // FIX: Check duplicate by filename, tempId, or content/timestamp
+                // Check duplicate by filename, tempId, or content/timestamp
                 if (isDuplicateMessage(msg)) {
                     console.log('pollNewMessages: Skipping duplicate message by filename/timestamp/content', msg.id);
                     continue;
@@ -209,10 +208,13 @@ function startResultPolling(requestId) {
                             }
                             setLocalTranscribing(resultSessionId, false);
                         }
+                        // Mark as processed before deleting to prevent pollNewMessages from loading duplicates
+                        if (pendingRequests[requestId]) {
+                            pendingRequests[requestId].processed = true;
+                        }
                         delete pendingRequests[requestId];
                         window.updateStatusCounter();
                         fetchQueueStatus();
-                        setTimeout(() => loadSessionsFromServer(), 500);
                         return;
                     }
                     
@@ -283,27 +285,34 @@ function startResultPolling(requestId) {
                         fetchQueueStatus();
                     }
                 }
-                
+
+                // Mark as processed before deleting to prevent pollNewMessages from loading duplicates
+                if (pendingRequests[requestId]) {
+                    pendingRequests[requestId].processed = true;
+                }
                 delete pendingRequests[requestId];
                 window.updateStatusCounter();
                 fetchQueueStatus();
-                setTimeout(() => loadSessionsFromServer(), 500);
-                
+
             } else if (data.status === 'error') {
                 clearInterval(pollInterval);
-                
+
                 const resultSessionId = data.result?.session_id || pendingRequests[requestId]?.sessionId;
-                
+
                 if (resultSessionId === currentSessionId) {
                     originalDisplayMessage('assistant', '⚠️ ' + t('error') + ': ' + (data.error || t('unknown_error')), null, null, null, null,
                         data.result?.assistant_timestamp || new Date().toISOString(), data.result?.response_time, 'system',
                         null, null, null, null, null);
                 }
-                
+
                 if (resultSessionId) {
                     setLocalTranscribing(resultSessionId, false);
                 }
-                
+
+                // Mark as processed before deleting to prevent pollNewMessages from loading duplicates
+                if (pendingRequests[requestId]) {
+                    pendingRequests[requestId].processed = true;
+                }
                 delete pendingRequests[requestId];
                 window.updateStatusCounter();
                 fetchQueueStatus();
@@ -314,6 +323,10 @@ function startResultPolling(requestId) {
                 originalDisplayMessage('assistant', '⚠️ ' + t('request_timeout'),
                     null, null, null, null, new Date().toISOString(), null, 'system',
                     null, null, null, null, null);
+                // Mark as processed before deleting
+                if (pendingRequests[requestId]) {
+                    pendingRequests[requestId].processed = true;
+                }
                 delete pendingRequests[requestId];
             }
         } catch (error) {

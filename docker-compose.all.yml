@@ -21,6 +21,9 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
+      # Whisper is running in the same docker network
+      - WHISPER_API_URL=http://flai-whisper:9000/asr
+      - WHISPER_API_TIMEOUT=120
     user: "1000:1000"
     networks:
       - flai_network
@@ -74,7 +77,7 @@ services:
       - flai_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -186,7 +189,7 @@ services:
       - flai_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8888/health"]
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8888/health')\" || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -214,7 +217,7 @@ services:
       - flai_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

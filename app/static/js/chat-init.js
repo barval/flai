@@ -106,28 +106,7 @@ async function pollNewMessages() {
                     }
                 }
                 
-                // Check duplicate by filename, tempId, or content/timestamp
-                if (isDuplicateMessage(msg)) {
-                    console.log('pollNewMessages: Skipping duplicate message', msg.id);
-                    continue;
-                }
-
-                // Display user messages from other clients (for cross-client sync)
-                if (msg.role === 'user') {
-                    // Check if this is a recent message from another client
-                    const messageTime = new Date(msg.timestamp).getTime();
-                    const now = Date.now();
-                    const isRecentMessage = (now - messageTime) < 5000;
-                    
-                    if (isRecentMessage && msg.id && !displayedMessageIds.has(msg.id)) {
-                        console.log('pollNewMessages: User message from another client, displaying');
-                    } else {
-                        // Old message or already displayed - just add to Set and skip
-                        if (msg.id) displayedMessageIds.add(msg.id);
-                        continue;
-                    }
-                }
-                
+                // Display message (both user and assistant)
                 let responseTime = null;
                 if (msg.response_time) {
                     if (typeof msg.response_time === 'object') {

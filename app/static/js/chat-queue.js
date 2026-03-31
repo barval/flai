@@ -48,20 +48,10 @@ function syncSessionsAndMessages() {
 /**
  * Sync messages for current session from server
  * Checks for new messages from other clients
- * 
- * NOTE: This function has the same duplicate protection as pollNewMessages
- * to prevent displaying messages multiple times across different sync mechanisms
  */
 function syncMessagesForCurrentSession() {
     if (window.IS_RELOADING || !currentSessionId) {
         console.log('syncMessages: Skipping - IS_RELOADING or no currentSessionId');
-        return;
-    }
-
-    // Don't sync if there are active pending requests (own messages being processed)
-    const hasActiveRequests = Object.keys(pendingRequests).length > 0;
-    if (hasActiveRequests) {
-        console.log('syncMessages: Skipping - has active pending requests');
         return;
     }
 
@@ -83,60 +73,29 @@ function syncMessagesForCurrentSession() {
             console.log('syncMessages: Received', newMessages.length, 'new messages');
             if (window.IS_RELOADING || !newMessages || newMessages.length === 0) return;
 
-            let hasNewMessagesFromOtherClient = false;
             let displayedCount = 0;
-            let skippedCount = 0;
 
-            // Display new messages from other clients
+            // Display new messages
             for (const msg of newMessages) {
-                // FIX 1: Skip if already displayed (check DOM first)
+                // Skip if already displayed (check DOM first)
                 if (msg.id) {
                     const existingMsg = document.querySelector(`[data-message-id="${msg.id}"]`);
                     if (existingMsg) {
                         console.log('syncMessages: Message', msg.id, 'already in DOM, skipping');
                         displayedMessageIds.add(msg.id);
-                        skippedCount++;
                         continue;
                     }
                 }
 
-                // FIX 2: Skip if already displayed (check Set)
+                // Skip if already in displayedMessageIds Set
                 if (msg.id && displayedMessageIds.has(msg.id)) {
                     console.log('syncMessages: Message', msg.id, 'already in displayedMessageIds, skipping');
-                    skippedCount++;
                     continue;
                 }
 
-                // FIX 3: Skip user messages that were sent from THIS client
-                // (they are displayed immediately and have tempId that was replaced with messageId)
-                // But DO display user messages from OTHER clients
-                if (msg.role === 'user') {
-                    // Check if this message was sent from current client by checking if we have it in pendingRequests
-                    // or if it was just added (within last 5 seconds)
-                    const messageTime = new Date(msg.timestamp).getTime();
-                    const now = Date.now();
-                    const isRecentMessage = (now - messageTime) < 5000;
-                    
-                    // If message is recent and we don't have it in displayedMessageIds, 
-                    // it might be from another client - display it
-                    if (isRecentMessage && msg.id && !displayedMessageIds.has(msg.id)) {
-                        console.log('syncMessages: User message from another client, displaying');
-                        hasNewMessagesFromOtherClient = true;
-                        displayedCount++;
-                    } else {
-                        // Old message or already displayed - just add to Set and skip
-                        if (msg.id) displayedMessageIds.add(msg.id);
-                        skippedCount++;
-                        continue;
-                    }
-                } else {
-                    // Assistant message - always display if not already shown
-                    hasNewMessagesFromOtherClient = true;
-                    displayedCount++;
-                }
-
-                // Display message from other client
-                console.log('syncMessages: Displaying new message from other client:', msg.id, msg.role);
+                // Display message
+                displayedCount++;
+                console.log('syncMessages: Displaying message:', msg.id, msg.role);
 
                 let responseTime = null;
                 if (msg.response_time) {
@@ -165,49 +124,9 @@ function syncMessagesForCurrentSession() {
                 );
             }
 
-            console.log('syncMessages: Displayed', displayedCount, 'messages, skipped', skippedCount);
-
-            // Show notification if new messages from other client were received
-            if (hasNewMessagesFromOtherClient) {
-                console.log('syncMessages: New messages detected from other client');
-                showCrossClientNotification();
-            }
+            console.log('syncMessages: Displayed', displayedCount, 'messages');
         })
         .catch(err => console.error('Error syncing messages:', err));
-}
-
-/**
- * Show a brief notification about new messages from other clients
- */
-function showCrossClientNotification() {
-    // Show a subtle visual indicator
-    const chatContainer = document.getElementById('chat-messages');
-    if (!chatContainer) return;
-    
-    // Create notification element
-    const notification = document.createElement('div');
-    notification.className = 'cross-client-notification';
-    notification.textContent = '📢 Новые сообщения от другого клиента';
-    notification.style.cssText = `
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        background: #2ecc71;
-        color: white;
-        padding: 12px 20px;
-        border-radius: 8px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        z-index: 10000;
-        animation: slideIn 0.3s ease-out;
-    `;
-    
-    document.body.appendChild(notification);
-    
-    // Auto-remove after 3 seconds
-    setTimeout(() => {
-        notification.style.animation = 'slideOut 0.3s ease-out';
-        setTimeout(() => notification.remove(), 300);
-    }, 3000);
 }
 
 function fetchQueueStatus() {

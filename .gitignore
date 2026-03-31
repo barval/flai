@@ -11,3 +11,6 @@ htmlcov/
 venv/
 .qwen/
 docker-compose.yml
+services/automatic1111/models/
+services/automatic1111/outputs/
+services/piper/piper_models/

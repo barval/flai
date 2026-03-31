@@ -20,6 +20,8 @@ function loadSessionsFromServer() {
         })
         .then(sessions => {
             let updated = false;
+            let currentSessionMessageCountChanged = false;
+            
             sessions.forEach(s => {
                 if (!sessionsData[s.id]) {
                     sessionsData[s.id] = {
@@ -41,6 +43,11 @@ function loadSessionsFromServer() {
                     } else if (sessionsData[s.id].message_count !== s.message_count) {
                         sessionsData[s.id].message_count = s.message_count;
                         updated = true;
+                        // FIX: If message count changed for current session, reload messages
+                        if (s.id === currentSessionId) {
+                            currentSessionMessageCountChanged = true;
+                            console.log('loadSessionsFromServer: Message count changed for current session, reloading messages');
+                        }
                     }
                 }
                 const prevUnread = newMessageIndicators[s.id] ? true : false;
@@ -64,6 +71,14 @@ function loadSessionsFromServer() {
             if (updated) {
                 updateSessionsList(sessions);
             }
+            
+            // FIX: Reload messages for current session if message count changed
+            if (currentSessionMessageCountChanged && currentSessionId) {
+                loadMessages(currentSessionId).catch(err => {
+                    console.error('Error reloading messages after count change:', err);
+                });
+            }
+            
             return sessions;
         })
         .catch(err => {

@@ -46,9 +46,20 @@ function loadMessages(sessionId) {
                 .catch(err => console.error('Error loading model info:', err));
             
             let lastUserMessage = null;
-            
+
             messages.forEach((msg) => {
                 try {
+                    // FIX: Skip if message already exists in DOM (prevents duplicates after polling)
+                    if (msg.id) {
+                        const existingMsg = document.querySelector(`[data-message-id="${msg.id}"]`);
+                        if (existingMsg) {
+                            console.log('loadMessages: Message ID', msg.id, 'already in DOM, skipping');
+                            // Still need to add to displayedMessageIds to prevent future duplicates
+                            displayedMessageIds.add(msg.id);
+                            return;
+                        }
+                    }
+                    
                     if (msg.role === 'user') {
                         lastUserMessage = msg;
                         displayMessage(
@@ -152,6 +163,8 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             return;
         }
     }
+
+    console.log('displayMessage: Creating message with role=', role, 'messageId=', messageId, 'timestamp=', timestamp);
 
     const container = document.getElementById('chat-messages');
     const msgDiv = document.createElement('div');

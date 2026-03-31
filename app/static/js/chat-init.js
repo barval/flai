@@ -132,7 +132,19 @@ async function pollNewMessages() {
 
 function startResultPolling(requestId) {
     if (window.IS_RELOADING) return;
+    
+    // FIX: Prevent duplicate polling for the same request
+    if (pendingRequests[requestId] && pendingRequests[requestId].polling) {
+        console.log('startResultPolling: Already polling for request:', requestId);
+        return;
+    }
+    
     console.log('startResultPolling: Start polling for request:', requestId);
+    
+    // Mark as polling in progress
+    if (pendingRequests[requestId]) {
+        pendingRequests[requestId].polling = true;
+    }
     
     let pollCount = 0;
     const maxPolls = 120;
@@ -430,17 +442,24 @@ async function sendMessage() {
                 
                 // FIX: Update messageId immediately when received from server
                 if (data.user_message_id) {
-                    const userMessages = document.querySelectorAll('.user-message');
-                    const lastUserMsg = userMessages[userMessages.length - 1];
-                    if (lastUserMsg && lastUserMsg.dataset.timestamp === timestamp) {
-                        if (lastUserMsg.dataset.tempId) {
+                    // Find message by tempId first, then by timestamp
+                    let targetMsg = document.querySelector(`.user-message[data-tempId="temp-${timestamp}"]`);
+                    if (!targetMsg) {
+                        // Fallback: find last user message
+                        const userMessages = document.querySelectorAll('.user-message');
+                        targetMsg = userMessages[userMessages.length - 1];
+                    }
+                    
+                    if (targetMsg) {
+                        if (targetMsg.dataset.tempId) {
                             // Remove tempId from tracking
-                            delete lastUserMsg.dataset.tempId;
+                            delete targetMsg.dataset.tempId;
                         }
-                        lastUserMsg.dataset.messageId = data.user_message_id;
+                        targetMsg.dataset.messageId = data.user_message_id;
                         displayedMessageIds.add(data.user_message_id);
-                        
-                        console.log('sendMessage: Updated messageId to', data.user_message_id, 'and timestamp to', timestamp);
+                        console.log('sendMessage: Updated messageId to', data.user_message_id, 'for message with timestamp', targetMsg.dataset.timestamp);
+                    } else {
+                        console.warn('sendMessage: Could not find user message to update messageId');
                     }
                 }
                 
@@ -618,13 +637,21 @@ function addCopyButtonsToAllCodeBlocks() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    // FIX: Clear pending requests from previous page load to prevent duplicate polling
+    if (window.pendingRequests) {
+        Object.keys(window.pendingRequests).forEach(id => {
+            console.log('Clearing pending request:', id);
+        });
+        window.pendingRequests = {};
+    }
+    
     // FIX: Validate currentSessionId before proceeding
     if (!window.initialSessionId) {
         console.error('No initial session ID! Creating new session...');
         createNewSession();
         return;
     }
-    
+
     loadSessionsFromServer().then(() => {
         originalLoadMessages(currentSessionId).catch(err => {
             console.error('Error loading messages after language switch:', err);

@@ -78,6 +78,16 @@ async function pollNewMessages() {
                     continue;
                 }
                 
+                // FIX: Check if message already exists in DOM by messageId
+                if (msg.id) {
+                    const existingMsg = document.querySelector(`[data-message-id="${msg.id}"]`);
+                    if (existingMsg) {
+                        console.log('pollNewMessages: Message', msg.id, 'already in DOM, skipping');
+                        displayedMessageIds.add(msg.id);
+                        continue;
+                    }
+                }
+
                 // Check duplicate by messageId first
                 if (msg.id && displayedMessageIds.has(msg.id)) {
                     console.log('pollNewMessages: Skipping duplicate message by ID', msg.id);
@@ -451,7 +461,7 @@ async function sendMessage() {
                         const userMessages = document.querySelectorAll('.user-message');
                         targetMsg = userMessages[userMessages.length - 1];
                     }
-                    
+
                     if (targetMsg) {
                         if (targetMsg.dataset.tempId) {
                             // Remove tempId from tracking
@@ -459,7 +469,7 @@ async function sendMessage() {
                         }
                         targetMsg.dataset.messageId = data.user_message_id;
                         displayedMessageIds.add(data.user_message_id);
-                        console.log('sendMessage: Updated messageId to', data.user_message_id, 'for message with timestamp', targetMsg.dataset.timestamp);
+                        console.log('sendMessage: Updated messageId to', data.user_message_id);
                     } else {
                         console.warn('sendMessage: Could not find user message to update messageId');
                     }

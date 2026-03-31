@@ -58,7 +58,10 @@ class AudioModule:
             return False
 
         try:
-            response = requests.get(self.whisper_api_url, timeout=3)
+            # Whisper ASR Webservice returns 200 on GET / but 405 on GET /asr
+            # Extract base URL (remove /asr path if present)
+            base_url = self.whisper_api_url.replace('/asr', '')
+            response = requests.get(base_url, timeout=3)
             if response.status_code == 200:
                 self.available = True
                 return True

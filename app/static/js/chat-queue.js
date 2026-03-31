@@ -3,10 +3,14 @@
 
 function startSyncInterval() {
     if (window.syncInterval) clearInterval(window.syncInterval);
-    console.log('startSyncInterval: Starting sync interval (3 seconds)');
+    console.log('startSyncInterval: Starting sync interval (3 seconds) for session', currentSessionId);
     // Sync interval for queue status, counter updates, and cross-client synchronization
     window.syncInterval = setInterval(() => {
-        if (window.IS_RELOADING) return;
+        if (window.IS_RELOADING) {
+            console.log('sync interval: Skipping - IS_RELOADING');
+            return;
+        }
+        console.log('sync interval: Running sync for session', currentSessionId);
         fetchQueueStatus();
         window.updateStatusCounter();
         syncSessionsAndMessages();
@@ -22,7 +26,7 @@ function syncSessionsAndMessages() {
         console.log('syncSessionsAndMessages: Skipping - IS_RELOADING');
         return;
     }
-    console.log('syncSessionsAndMessages: Starting sync for session', currentSessionId);
+    console.log('syncSessionsAndMessages: Starting sync for session', currentSessionId, 'pendingRequests:', Object.keys(pendingRequests).length);
 
     // Sync sessions list
     loadSessionsFromServer().then(sessions => {
@@ -39,6 +43,7 @@ function syncSessionsAndMessages() {
 
     // Sync messages for current session
     if (currentSessionId) {
+        console.log('syncSessionsAndMessages: Calling syncMessagesForCurrentSession');
         syncMessagesForCurrentSession();
     } else {
         console.log('syncSessionsAndMessages: No current session, skipping message sync');

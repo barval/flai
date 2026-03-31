@@ -1,6 +1,9 @@
 // app/static/js/chat-sessions.js
 // Session management functions
 
+// Make functions globally accessible for cross-client sync
+window.loadSessionsFromServer = loadSessionsFromServer;
+
 function setNewMessageIndicator(sessionId, show) {
     if (show) {
         newMessageIndicators[sessionId] = true;
@@ -273,6 +276,9 @@ function deleteSession(sessionId, sessionTitle, sessionDate) {
         })
         .catch(err => alert(t('error') + ': ' + err.message));
 }
+
+// Make switchSession globally accessible
+window.switchSession = switchSession;
 
 function switchSession(sessionId) {
     if (!sessionId) {

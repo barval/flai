@@ -51,6 +51,13 @@ function stopMessagePolling() {
 
 async function pollNewMessages() {
     if (window.IS_RELOADING || !currentSessionId) return;
+    
+    // FIX: Don't poll if there are active pending requests
+    // This prevents loading messages from DB while waiting for response
+    const hasActiveRequests = Object.keys(pendingRequests).length > 0;
+    if (hasActiveRequests) {
+        return;
+    }
 
     const messagesContainer = document.getElementById('chat-messages');
     const lastMessageEl = messagesContainer.lastElementChild;

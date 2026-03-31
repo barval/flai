@@ -17,6 +17,7 @@ from .model_config import get_model_config
 class RedisRequestQueue:
     def __init__(self, app):
         self.app = app
+        self.logger = app.logger
         self.redis = redis.from_url(app.config['REDIS_URL'], decode_responses=False)
         self.queue_key = 'request_queue'
         self.processing_key = 'processing_requests'

@@ -10,3 +10,4 @@ htmlcov/
 .coverage
 venv/
 .qwen/
+docker-compose.yml

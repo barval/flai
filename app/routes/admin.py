@@ -57,7 +57,7 @@ def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get('is_admin'):
-            return jsonify({'error': 'Forbidden'}), 403
+            return jsonify({'error': _('Forbidden')}), 403
         return f(*args, **kwargs)
     return decorated
 
@@ -131,7 +131,7 @@ def get_users():
         return jsonify(result)
     except Exception as e:
         logger.error(f"Error in get_users: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'error': _('Internal server error')}), 500
 
 
 @bp.route('/api/users', methods=['POST'])
@@ -141,7 +141,7 @@ def add_user():
     try:
         data = request.get_json()
         if not data:
-            return jsonify({'error': 'No JSON data'}), 400
+            return jsonify({'error': _('No JSON data')}), 400
 
         login = data.get('login')
         password = data.get('password')
@@ -168,7 +168,7 @@ def add_user():
         return jsonify({'status': 'ok'})
     except Exception as e:
         logger.error(f"Error in add_user: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'error': _('Internal server error')}), 500
 
 
 @bp.route('/api/users/<login>', methods=['PUT'])
@@ -192,7 +192,7 @@ def update_user_data(login):
         return jsonify({'status': 'ok'})
     except Exception as e:
         logger.error(f"Error in update_user_data for {login}: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'error': _('Internal server error')}), 500
 
 
 @bp.route('/api/users/<login>/password', methods=['PUT'])
@@ -208,7 +208,7 @@ def change_password(login):
         return jsonify({'status': 'ok'})
     except Exception as e:
         logger.error(f"Error in change_password for {login}: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'error': _('Internal server error')}), 500
 
 
 @bp.route('/api/users/<login>', methods=['DELETE'])
@@ -220,7 +220,7 @@ def delete_user_account(login):
         return jsonify({'status': 'ok'})
     except Exception as e:
         logger.error(f"Error in delete_user_account for {login}: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'error': _('Internal server error')}), 500
 
 
 @bp.route('/api/stats')
@@ -243,7 +243,7 @@ def get_stats():
         })
     except Exception as e:
         logger.error(f"Error in get_stats: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'error': _('Internal server error')}), 500
 
 
 # ==================== ENDPOINTS FOR MODEL MANAGEMENT ====================
@@ -254,14 +254,14 @@ def ollama_check():
     """Check if Ollama is reachable at given URL."""
     ollama_url = request.args.get('url')
     if not ollama_url:
-        return jsonify({'available': False, 'error': 'Missing url'}), 400
+        return jsonify({'available': False, 'error': _('Missing url')}), 400
     try:
         # Use a lightweight endpoint (tags) to check availability
         response = requests.get(f"{ollama_url}/api/tags", timeout=5)
         if response.status_code == 200:
             return jsonify({'available': True})
         else:
-            return jsonify({'available': False, 'error': f'HTTP {response.status_code}'})
+            return jsonify({'available': False, 'error': _('HTTP error {status}').format(status=response.status_code)})
     except Exception as e:
         return jsonify({'available': False, 'error': str(e)})
 
@@ -272,14 +272,14 @@ def ollama_models():
     """Return list of available models from Ollama instance specified by 'url' query param."""
     ollama_url = request.args.get('url')
     if not ollama_url:
-        return jsonify({'error': 'Missing "url" parameter'}), 400
+        return jsonify({'error': _('Missing "url" parameter')}), 400
     try:
         resp = requests.get(f"{ollama_url}/api/tags", timeout=5)
         if resp.status_code == 200:
             models = [m['name'] for m in resp.json().get('models', [])]
             return jsonify(models)
         else:
-            return jsonify({'error': f'Ollama returned {resp.status_code}'}), 500
+            return jsonify({'error': _('Ollama returned {status}').format(status=resp.status_code)}), 500
     except Exception as e:
         current_app.logger.error(f"Error fetching Ollama models from {ollama_url}: {e}")
         return jsonify({'error': str(e)}), 500
@@ -291,7 +291,7 @@ def ollama_model_info(name):
     """Return detailed information about a specific model from given Ollama URL."""
     ollama_url = request.args.get('url')
     if not ollama_url:
-        return jsonify({'error': 'Missing "url" parameter'}), 400
+        return jsonify({'error': _('Missing "url" parameter')}), 400
     try:
         resp = requests.post(f"{ollama_url}/api/show", json={"model": name}, timeout=5)
         if resp.status_code == 200:
@@ -387,7 +387,7 @@ def update_model_config(module):
     allowed_fields = ['model_name', 'ollama_url', 'context_length', 'temperature', 'top_p', 'timeout']
     updates = {k: v for k, v in data.items() if k in allowed_fields}
     if not updates:
-        return jsonify({'error': 'No valid fields'}), 400
+        return jsonify({'error': _('No valid fields')}), 400
 
     # Server-side validation
     if 'context_length' in updates and updates['context_length'] is not None:

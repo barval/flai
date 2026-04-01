@@ -206,7 +206,7 @@ function deleteDocument(docId, docName) {
     });
     if (!confirm(confirmMessage)) return;
 
-    fetch(`/api/documents/${docId}`, { method: 'DELETE' })
+    fetchWithCSRF(`/api/documents/${docId}`, { method: 'DELETE' })
         .then(res => res.json())
         .then(data => {
             if (data.status === 'ok') {
@@ -226,7 +226,7 @@ function uploadDocument(file) {
     const formData = new FormData();
     formData.append('file', file);
 
-    fetch('/api/documents/upload', {
+    fetchWithCSRF('/api/documents/upload', {
         method: 'POST',
         body: formData
     })

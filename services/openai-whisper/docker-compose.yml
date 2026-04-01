@@ -1,6 +1,7 @@
-# services/openai-whisper/docker-compose.yml
-# Standalone Whisper ASR deployment for distributed FLAI setup
 version: '3.8'
+
+# Whisper ASR Standalone Service
+# Use this docker-compose for deploying Whisper on a separate server
 
 services:
   whisper:
@@ -14,9 +15,11 @@ services:
       - ASR_DEVICE=${ASR_DEVICE:-cpu}
     volumes:
       - whisper_cache:/root/.cache/huggingface
+    networks:
+      - flai_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -24,3 +27,8 @@ services:
 
 volumes:
   whisper_cache:
+    driver: local
+
+networks:
+  flai_network:
+    driver: bridge

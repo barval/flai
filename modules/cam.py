@@ -49,11 +49,27 @@ class CamModule:
         self.camera_api_url = app.config.get('CAMERA_API_URL', 'http://host.docker.internal:5005')
         self.timeout = app.config.get('CAMERA_API_TIMEOUT', 15)
         self.check_interval = app.config.get('CAMERA_CHECK_INTERVAL', 30)
-        self.check_availability()
+        
+        self.logger.info(f"Initializing CamModule with Camera API URL: {self.camera_api_url}")
+        
+        # Initial availability check with retries (camera service may start slower than web app)
+        max_retries = 5
+        retry_delay = 2  # seconds
+        
+        for attempt in range(1, max_retries + 1):
+            if self.check_availability(force=True):
+                break
+            if attempt < max_retries:
+                self.logger.warning(f"Camera API not ready (attempt {attempt}/{max_retries}), retrying in {retry_delay}s...")
+                import time
+                time.sleep(retry_delay)
+            else:
+                self.logger.warning(f"Camera API not available after {max_retries} attempts")
+        
         if self.available:
             self.logger.info(f"CamModule initialized and available (API: {self.camera_api_url}), timeout: {self.timeout}s")
         else:
-            self.logger.warning(f"CamModule initialized, but camera API unavailable ({self.camera_api_url})")
+            self.logger.warning(f"CamModule initialized, but camera API unavailable ({self.camera_api_url}). Will retry on each request.")
     
     def get_all_rooms(self):
         """Return dictionary {code: name} of all known cameras."""
@@ -318,24 +334,25 @@ class CamAPI:
     @staticmethod
     def register_routes(app, cam_module):
         from flask import session, jsonify
-        
+        from flask_babel import gettext as _
+
         @app.route('/api/cam/status', methods=['GET'])
         def cam_status():
             if 'login' not in session:
-                return jsonify({'error': 'Not authorized'}), 401
+                return jsonify({'error': _('Not authorized')}), 401
             return jsonify(cam_module.get_status())
-        
+
         @app.route('/api/cam/rooms', methods=['GET'])
         def cam_rooms():
             if 'login' not in session:
-                return jsonify({'error': 'Not authorized'}), 401
+                return jsonify({'error': _('Not authorized')}), 401
             user_login = session['login']
             return jsonify(cam_module.get_available_rooms(user_login))
-        
+
         @app.route('/api/cam/snapshot/<room>', methods=['GET'])
         def cam_snapshot(room):
             if 'login' not in session:
-                return jsonify({'error': 'Not authorized'}), 401
+                return jsonify({'error': _('Not authorized')}), 401
             user_login = session['login']
             result = cam_module.get_snapshot(user_login, room)
             if result['success']:
@@ -348,11 +365,11 @@ class CamAPI:
                 })
             else:
                 return jsonify(result), result.get('status_code', 500)
-        
+
         @app.route('/api/cam/health', methods=['GET'])
         def cam_health():
             if 'login' not in session:
-                return jsonify({'error': 'Not authorized'}), 401
+                return jsonify({'error': _('Not authorized')}), 401
             cam_module.check_availability(force=True)
             return jsonify({
                 'module': 'cam',

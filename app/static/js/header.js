@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', function() {
             switchVoiceGender(newGender);
         });
     }
-    
+
     // Theme toggle
     const themeBtn = document.getElementById('theme-toggle');
     if (themeBtn) {
@@ -28,7 +28,7 @@ function switchLanguage(lang) {
     window.IS_RELOADING = true;
     if (window.syncInterval) clearInterval(window.syncInterval);
     if (window.recordTimerInterval) clearInterval(window.recordTimerInterval);
-    fetch('/set-language/' + lang, {
+    fetchWithCSRF('/set-language/' + lang, {
         method: 'GET',
         headers: { 'Cache-Control': 'no-cache' }
     }).finally(() => {
@@ -41,8 +41,8 @@ function switchVoiceGender(gender) {
     if (window.resetTtsState) {
         window.resetTtsState();
     }
-    
-    fetch('/set-voice-gender/' + gender, {
+
+    fetchWithCSRF('/set-voice-gender/' + gender, {
         method: 'GET',
         headers: { 'Cache-Control': 'no-cache' }
     }).then(() => {
@@ -61,7 +61,7 @@ function switchVoiceGender(gender) {
 
 function switchTheme(theme) {
     // Do NOT stop TTS playback when switching theme
-    fetch('/set-theme/' + theme, {
+    fetchWithCSRF('/set-theme/' + theme, {
         method: 'GET',
         headers: { 'Cache-Control': 'no-cache' }
     }).then(() => {

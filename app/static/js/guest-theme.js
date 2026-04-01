@@ -2,6 +2,12 @@
 // Handles theme switching for unauthenticated users using localStorage
 // Also auto-detects system theme on first visit
 
+// Get CSRF token from meta tag
+function getCSRFToken() {
+    const token = document.querySelector('meta[name="csrf-token"]');
+    return token ? token.getAttribute('content') : '';
+}
+
 function applyTheme(theme) {
     if (theme === 'dark') {
         document.body.classList.add('dark-theme');
@@ -15,7 +21,7 @@ function applyTheme(theme) {
     // Optionally inform server to store in session (for consistency after login)
     fetch('/set-theme/' + theme, {
         method: 'GET',
-        headers: { 'Cache-Control': 'no-cache' }
+        headers: { 'Cache-Control': 'no-cache', 'X-CSRFToken': getCSRFToken() }
     }).catch(() => {});
 }
 

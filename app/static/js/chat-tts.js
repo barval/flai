@@ -64,7 +64,7 @@ async function playTTS(button, messageElement) {
     updateSessionsListFromData();
     
     try {
-        const response = await fetch('/api/tts/synthesize', {
+        const response = await fetchWithCSRF('/api/tts/synthesize', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: text, lang: CURRENT_LANG })

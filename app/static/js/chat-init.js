@@ -52,16 +52,23 @@ function stopMessagePolling() {
 async function pollNewMessages() {
     if (window.IS_RELOADING || !currentSessionId) return;
     
+    // FIX: Don't poll if there are active pending requests
+    // This prevents loading messages from DB while waiting for response
+    const hasActiveRequests = Object.keys(pendingRequests).length > 0;
+    if (hasActiveRequests) {
+        return;
+    }
+
     const messagesContainer = document.getElementById('chat-messages');
     const lastMessageEl = messagesContainer.lastElementChild;
-    
-    // FIX: Update lastMessageTimestamp from the last message in DOM before polling
+
+    // Update lastMessageTimestamp from the last message in DOM before polling
     if (lastMessageEl && lastMessageEl.dataset.timestamp) {
         lastMessageTimestamp = lastMessageEl.dataset.timestamp;
     } else {
         return;
     }
-    
+
     try {
         const response = await fetch(`/api/sessions/${currentSessionId}/messages?since=${encodeURIComponent(lastMessageTimestamp)}`);
         if (!response.ok) {
@@ -69,20 +76,37 @@ async function pollNewMessages() {
             return;
         }
         const newMessages = await response.json();
-        
+
         if (newMessages.length > 0) {
             for (const msg of newMessages) {
-                // FIX: Check duplicate by messageId first
+                // FIX: Check if message already exists in DOM by messageId
+                if (msg.id) {
+                    const existingMsg = document.querySelector(`[data-message-id="${msg.id}"]`);
+                    if (existingMsg) {
+                        console.log('pollNewMessages: Message', msg.id, 'already in DOM, skipping');
+                        displayedMessageIds.add(msg.id);
+                        continue;
+                    }
+                }
+
+                // Check duplicate by messageId first
                 if (msg.id && displayedMessageIds.has(msg.id)) {
                     console.log('pollNewMessages: Skipping duplicate message by ID', msg.id);
                     continue;
                 }
-                // FIX: Check duplicate by filename, tempId, or content/timestamp
-                if (isDuplicateMessage(msg)) {
-                    console.log('pollNewMessages: Skipping duplicate message by filename/timestamp/content', msg.id);
-                    continue;
+                
+                // Check duplicate by tempId (for messages displayed before server response)
+                if (msg.id) {
+                    const tempId = `temp-${msg.timestamp}`;
+                    const existingWithTempId = document.querySelector(`[data-tempId="${tempId}"]`);
+                    if (existingWithTempId) {
+                        console.log('pollNewMessages: Skipping message with tempId', tempId);
+                        displayedMessageIds.add(msg.id);
+                        continue;
+                    }
                 }
                 
+                // Display message (both user and assistant)
                 let responseTime = null;
                 if (msg.response_time) {
                     if (typeof msg.response_time === 'object') {
@@ -141,7 +165,7 @@ function startResultPolling(requestId) {
             clearInterval(pollInterval);
             return;
         }
-        
+
         pollCount++;
         
         try {
@@ -163,10 +187,15 @@ function startResultPolling(requestId) {
                     if (data.result.transcribed_text) {
                         const resultSessionId = data.result.session_id || pendingRequests[requestId]?.sessionId;
                         if (resultSessionId === currentSessionId) {
-                            // Display transcribed text message
-                            originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.result.transcribed_text, null, null, null, null,
-                                data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'whisper',
-                                null, null, null, null, data.result.transcribed_message_id);
+                            // Check for duplicate by message_id
+                            if (data.result.transcribed_message_id && displayedMessageIds.has(data.result.transcribed_message_id)) {
+                                console.log('Skipping duplicate transcribed message by ID', data.result.transcribed_message_id);
+                            } else {
+                                // Display transcribed text message
+                                originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.result.transcribed_text, null, null, null, null,
+                                    data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'whisper',
+                                    null, null, null, null, data.result.transcribed_message_id);
+                            }
                             // If there is a new request_id for processing, start polling it
                             if (data.result.request_id) {
                                 pendingRequests[data.result.request_id] = { sessionId: resultSessionId, processed: false };
@@ -187,7 +216,6 @@ function startResultPolling(requestId) {
                         delete pendingRequests[requestId];
                         window.updateStatusCounter();
                         fetchQueueStatus();
-                        setTimeout(() => loadSessionsFromServer(), 500);
                         return;
                     }
                     
@@ -258,27 +286,26 @@ function startResultPolling(requestId) {
                         fetchQueueStatus();
                     }
                 }
-                
+
                 delete pendingRequests[requestId];
                 window.updateStatusCounter();
                 fetchQueueStatus();
-                setTimeout(() => loadSessionsFromServer(), 500);
-                
+
             } else if (data.status === 'error') {
                 clearInterval(pollInterval);
-                
+
                 const resultSessionId = data.result?.session_id || pendingRequests[requestId]?.sessionId;
-                
+
                 if (resultSessionId === currentSessionId) {
                     originalDisplayMessage('assistant', '⚠️ ' + t('error') + ': ' + (data.error || t('unknown_error')), null, null, null, null,
                         data.result?.assistant_timestamp || new Date().toISOString(), data.result?.response_time, 'system',
                         null, null, null, null, null);
                 }
-                
+
                 if (resultSessionId) {
                     setLocalTranscribing(resultSessionId, false);
                 }
-                
+
                 delete pendingRequests[requestId];
                 window.updateStatusCounter();
                 fetchQueueStatus();
@@ -328,7 +355,7 @@ async function sendMessage() {
         }
         if (newTitle) {
             updateSessionTitle(currentSessionId, newTitle);
-            fetch('/api/sessions/' + currentSessionId + '/update-title', {
+            fetchWithCSRF('/api/sessions/' + currentSessionId + '/update-title', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({title: newTitle})
@@ -350,24 +377,27 @@ async function sendMessage() {
     
     const displayUserMessage = (fileData, fileType, fileName, filePath) => {
         if (window.IS_RELOADING) return;
-        
+
         if (fileData || filePath) {
             let type = "file";
             if (fileType && fileType.startsWith('image/')) type = "image";
             else if (fileType && fileType.startsWith('audio/')) type = "audio";
             userContent.push({ "type": type, "file_data": fileData, "file_type": fileType, "file_name": fileName, "file_path": filePath });
         }
-        
+
         const msgElement = originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, filePath, timestamp);
-        
+
         // FIX: Update lastMessageTimestamp immediately to prevent polling from fetching this message again
         lastMessageTimestamp = timestamp;
-        
+
         const tempId = `temp-${timestamp}`;
         if (msgElement) {
             msgElement.dataset.tempId = tempId;
+            console.log('displayUserMessage: Set tempId', tempId, 'on message element');
+        } else {
+            console.warn('displayUserMessage: msgElement is null/undefined, cannot set tempId');
         }
-        
+
         input.value = '';
         attachedFile = null;
         document.getElementById('file-preview-container').style.display = 'none';
@@ -401,9 +431,9 @@ async function sendMessage() {
                         formData.append('voice_record', 'true');
                         isVoiceRecorded = false;
                     }
-                    response = await fetch('/api/send_message', { method: 'POST', body: formData });
+                    response = await fetchWithCSRF('/api/send_message', { method: 'POST', body: formData });
                 } else {
-                    response = await fetch('/api/send_message', {
+                    response = await fetchWithCSRF('/api/send_message', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ message: tempText })
@@ -425,17 +455,36 @@ async function sendMessage() {
                 
                 // FIX: Update messageId immediately when received from server
                 if (data.user_message_id) {
-                    const userMessages = document.querySelectorAll('.user-message');
-                    const lastUserMsg = userMessages[userMessages.length - 1];
-                    if (lastUserMsg && lastUserMsg.dataset.timestamp === timestamp) {
-                        if (lastUserMsg.dataset.tempId) {
-                            // Remove tempId from tracking
-                            delete lastUserMsg.dataset.tempId;
+                    // Find message by tempId first
+                    let targetMsg = document.querySelector(`.user-message[data-tempId="temp-${timestamp}"]`);
+                    
+                    if (!targetMsg) {
+                        // Fallback: find last user message with matching timestamp
+                        const userMessages = document.querySelectorAll('.user-message[data-timestamp="' + timestamp + '"]');
+                        if (userMessages.length > 0) {
+                            targetMsg = userMessages[userMessages.length - 1];
                         }
-                        lastUserMsg.dataset.messageId = data.user_message_id;
+                    }
+                    
+                    if (!targetMsg) {
+                        // Last resort: find most recent user message
+                        const allUserMessages = document.querySelectorAll('.user-message');
+                        if (allUserMessages.length > 0) {
+                            targetMsg = allUserMessages[allUserMessages.length - 1];
+                            console.log('sendMessage: Using fallback - last user message');
+                        }
+                    }
+
+                    if (targetMsg) {
+                        if (targetMsg.dataset.tempId) {
+                            // Remove tempId from tracking
+                            delete targetMsg.dataset.tempId;
+                        }
+                        targetMsg.dataset.messageId = data.user_message_id;
                         displayedMessageIds.add(data.user_message_id);
-                        
-                        console.log('sendMessage: Updated messageId to', data.user_message_id, 'and timestamp to', timestamp);
+                        console.log('sendMessage: Updated messageId to', data.user_message_id);
+                    } else {
+                        console.warn('sendMessage: Could not find user message to update messageId. Total user messages:', document.querySelectorAll('.user-message').length);
                     }
                 }
                 
@@ -613,13 +662,13 @@ function addCopyButtonsToAllCodeBlocks() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    // FIX: Validate currentSessionId before proceeding
+    // Validate currentSessionId before proceeding
     if (!window.initialSessionId) {
         console.error('No initial session ID! Creating new session...');
         createNewSession();
         return;
     }
-    
+
     loadSessionsFromServer().then(() => {
         originalLoadMessages(currentSessionId).catch(err => {
             console.error('Error loading messages after language switch:', err);

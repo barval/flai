@@ -1,0 +1,767 @@
+openapi: 3.0.3
+info:
+  title: FLAI API
+  description: |
+    Fully Local AI (FLAI) - API Documentation
+    
+    FLAI is a fully local personal assistant powered by artificial intelligence.
+    
+    ## Authentication
+    Most endpoints require authentication via session cookie. 
+    Authenticate by POSTing to `/login` with credentials.
+    
+    ## Rate Limiting
+    Login endpoint is rate limited: 5 requests per minute, 10 per hour.
+    
+    ## Error Responses
+    All error responses return JSON with an `error` field:
+    ```json
+    {
+      "error": "Error message"
+    }
+    ```
+  version: 1.0.0
+  contact:
+    name: FLAI Support
+    url: https://github.com/barval/flai
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:5000
+    description: Local development server
+  - url: https://flai.example.com
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: User authentication endpoints
+  - name: Chat
+    description: Chat and messaging endpoints
+  - name: Sessions
+    description: Chat session management
+  - name: Documents
+    description: Document upload and RAG
+  - name: Queue
+    description: Request queue status
+  - name: TTS
+    description: Text-to-speech synthesis
+  - name: Admin
+    description: Administration endpoints
+  - name: Health
+    description: Health check and monitoring
+
+paths:
+  /login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate user and create session
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - login
+                - password
+              properties:
+                login:
+                  type: string
+                  example: admin
+                password:
+                  type: string
+                  example: password123
+                theme:
+                  type: string
+                  enum: [light, dark]
+                  default: light
+      responses:
+        200:
+          description: Login successful
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+                example: session=abc123; Path=/; HttpOnly; SameSite=Lax
+        400:
+          description: Missing fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        401:
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        429:
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /logout:
+    get:
+      tags:
+        - Authentication
+      summary: User logout
+      description: Clear session and logout
+      responses:
+        302:
+          description: Redirect to login page
+
+  /api/sessions:
+    get:
+      tags:
+        - Sessions
+      summary: Get user sessions
+      description: List all chat sessions for current user
+      security:
+        - sessionAuth: []
+      responses:
+        200:
+          description: List of sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Session'
+        401:
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/sessions/new:
+    post:
+      tags:
+        - Sessions
+      summary: Create new session
+      description: Create a new chat session
+      security:
+        - sessionAuth: []
+      responses:
+        200:
+          description: Session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  title:
+                    type: string
+        401:
+          description: Not authorized
+
+  /api/sessions/{session_id}/switch:
+    post:
+      tags:
+        - Sessions
+      summary: Switch to session
+      description: Set current active session
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Session switched
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        401:
+          description: Not authorized
+        404:
+          description: Session not found or access denied
+
+  /api/sessions/{session_id}/messages:
+    get:
+      tags:
+        - Sessions
+      summary: Get session messages
+      description: Retrieve messages from a session with pagination
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: since
+          in: query
+          description: Get messages after this timestamp
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          description: Maximum messages to return
+          schema:
+            type: integer
+            default: 100
+            maximum: 200
+        - name: offset
+          in: query
+          description: Number of messages to skip
+          schema:
+            type: integer
+            default: 0
+      responses:
+        200:
+          description: Messages retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+                  has_more:
+                    type: boolean
+        401:
+          description: Not authorized
+        404:
+          description: Session not found
+
+  /api/send_message:
+    post:
+      tags:
+        - Chat
+      summary: Send message
+      description: Send a message to the chat (text, image, or audio)
+      security:
+        - sessionAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/TextMessage'
+                - $ref: '#/components/schemas/ImageMessage'
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                file:
+                  type: string
+                  format: binary
+                voice_record:
+                  type: boolean
+      responses:
+        200:
+          description: Message queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedResponse'
+        400:
+          description: Empty message or file too large
+        401:
+          description: Not authorized
+
+  /api/documents:
+    get:
+      tags:
+        - Documents
+      summary: Get documents
+      description: List all uploaded documents for current user
+      security:
+        - sessionAuth: []
+      responses:
+        200:
+          description: List of documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Document'
+        401:
+          description: Not authorized
+
+  /api/documents/upload:
+    post:
+      tags:
+        - Documents
+      summary: Upload document
+      description: Upload a document for RAG (PDF, DOC, DOCX, TXT)
+      security:
+        - sessionAuth: []
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        200:
+          description: Document uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  document_id:
+                    type: string
+                    format: uuid
+        400:
+          description: No file or unsupported type
+        401:
+          description: Not authorized
+
+  /api/documents/{document_id}:
+    delete:
+      tags:
+        - Documents
+      summary: Delete document
+      description: Delete an uploaded document
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Document deleted
+        401:
+          description: Not authorized
+        404:
+          description: Document not found
+
+  /api/tts/synthesize:
+    post:
+      tags:
+        - TTS
+      summary: Synthesize speech
+      description: Convert text to speech using Piper TTS
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                lang:
+                  type: string
+                  enum: [ru, en]
+                  default: ru
+                gender:
+                  type: string
+                  enum: [male, female]
+                  default: male
+      responses:
+        200:
+          description: Audio file
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        400:
+          description: Missing text
+        503:
+          description: TTS service unavailable
+
+  /api/queue/status:
+    get:
+      tags:
+        - Queue
+      summary: Get queue status
+      description: Get current queue status for user
+      security:
+        - sessionAuth: []
+      responses:
+        200:
+          description: Queue status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueStatus'
+
+  /api/queue/counts:
+    get:
+      tags:
+        - Queue
+      summary: Get queue counts
+      description: Get user and total queue counts
+      security:
+        - sessionAuth: []
+      responses:
+        200:
+          description: Queue counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_queued:
+                    type: integer
+                  total_queued:
+                    type: integer
+
+  /admin/api/users:
+    get:
+      tags:
+        - Admin
+      summary: Get users
+      description: List all users (admin only)
+      security:
+        - sessionAuth: []
+      responses:
+        200:
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        401:
+          description: Not authorized
+        403:
+          description: Not admin
+
+    post:
+      tags:
+        - Admin
+      summary: Create user
+      description: Create a new user (admin only)
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - login
+                - password
+                - name
+              properties:
+                login:
+                  type: string
+                password:
+                  type: string
+                name:
+                  type: string
+                service_class:
+                  type: integer
+                  default: 2
+                is_active:
+                  type: boolean
+                  default: true
+                camera_permissions:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        200:
+          description: User created
+        400:
+          description: Missing fields or duplicate login
+        401:
+          description: Not authorized
+        403:
+          description: Not admin
+
+  /admin/api/stats:
+    get:
+      tags:
+        - Admin
+      summary: Get system stats
+      description: Get database and storage statistics (admin only)
+      security:
+        - sessionAuth: []
+      responses:
+        200:
+          description: System statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStats'
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Comprehensive health check for all services
+      responses:
+        200:
+          description: All services healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        503:
+          description: Service unhealthy
+
+  /metrics:
+    get:
+      tags:
+        - Health
+      summary: Prometheus metrics
+      description: Prometheus-compatible metrics endpoint
+      responses:
+        200:
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: session
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+
+    Session:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        model_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        message_count:
+          type: integer
+        has_unread:
+          type: boolean
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+        session_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        file_data:
+          type: string
+        file_type:
+          type: string
+        file_name:
+          type: string
+        file_path:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        model_name:
+          type: string
+        response_time:
+          oneOf:
+            - type: number
+            - type: object
+
+    TextMessage:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+
+    ImageMessage:
+      type: object
+      properties:
+        message:
+          type: string
+        file_data:
+          type: string
+        file_type:
+          type: string
+        file_name:
+          type: string
+
+    QueuedResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: queued
+        request_id:
+          type: string
+          format: uuid
+        position:
+          type: integer
+        estimated_wait:
+          type: integer
+
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        filename:
+          type: string
+        file_size:
+          type: integer
+        file_ext:
+          type: string
+        index_status:
+          type: string
+          enum: [pending, indexing, indexed, failed]
+        uploaded_at:
+          type: string
+          format: date-time
+        indexed_at:
+          type: string
+          format: date-time
+
+    QueueStatus:
+      type: object
+      properties:
+        processing:
+          type: object
+          properties:
+            session_id:
+              type: string
+            type:
+              type: string
+        queued:
+          type: array
+          items:
+            type: object
+            properties:
+              session_id:
+                type: string
+              position:
+                type: integer
+
+    User:
+      type: object
+      properties:
+        login:
+          type: string
+        name:
+          type: string
+        service_class:
+          type: integer
+        is_active:
+          type: boolean
+        is_admin:
+          type: boolean
+        sessions_count:
+          type: integer
+        messages_count:
+          type: integer
+        files_count:
+          type: integer
+        documents_count:
+          type: integer
+
+    SystemStats:
+      type: object
+      properties:
+        chat_db_size:
+          type: integer
+        user_db_size:
+          type: integer
+        files_db_size:
+          type: integer
+        documents_db_size:
+          type: integer
+
+    HealthStatus:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, error]
+        timestamp:
+          type: string
+          format: date-time
+        services:
+          type: object
+          properties:
+            web:
+              type: string
+              enum: [ok, error]
+            database:
+              type: string
+              enum: [ok, error]
+            redis:
+              type: string
+              enum: [ok, error]
+            ollama:
+              type: string
+              enum: [ok, error]

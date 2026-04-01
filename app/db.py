@@ -5,6 +5,7 @@ import os
 import json
 import uuid
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 from flask import current_app, g
 from flask_babel import gettext as _
 
@@ -18,7 +19,7 @@ INDEX_STATUS_INDEXED = 'indexed'
 INDEX_STATUS_FAILED = 'failed'
 
 
-def get_db():
+def get_db() -> sqlite3.Connection:
     """Return a database connection (for use in routes)."""
     db = getattr(g, '_database', None)
     if db is None:
@@ -27,7 +28,7 @@ def get_db():
     return db
 
 
-def close_db(e=None):
+def close_db(e: Any = None) -> None:
     """Close database connection."""
     db = g.pop('_database', None)
     if db is not None:
@@ -88,6 +89,10 @@ def init_db():
         c.execute('CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_messages_session_timestamp ON messages(session_id, timestamp)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id)')
+        # Additional indexes for user sessions and documents
+        c.execute('CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions(user_id)')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_session_visits_session_id ON session_visits(session_id)')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_documents_index_status ON documents(index_status)')
         # Enable Write-Ahead Logging for better concurrency
         c.execute("PRAGMA journal_mode=WAL")
         conn.commit()
@@ -250,39 +255,57 @@ def migrate_add_ollama_url(app):
         app.logger.error(f"Migration add ollama_url error: {str(e)}")
 
 
-def get_user_sessions(user_id):
-    """Get all sessions for a user."""
+def get_user_sessions(user_id: str) -> List[Dict[str, Any]]:
+    """Get all sessions for a user.
+    Optimized to avoid N+1 queries by using JOINs and subqueries.
+    """
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
         c.execute('''
-        SELECT id, title, model_name, created_at, updated_at
-        FROM chat_sessions
-        WHERE user_id = ?
-        ORDER BY updated_at DESC
-        ''', (user_id,))
-        sessions = [dict(row) for row in c.fetchall()]
-        for s in sessions:
-            c.execute('''
-            SELECT last_visit FROM session_visits
-            WHERE user_id = ? AND session_id = ?
-            ''', (user_id, s['id']))
-            row = c.fetchone()
-            last_visit = row[0] if row else '1970-01-01 00:00:00'
-            c.execute('''
-            SELECT COUNT(*) FROM messages
-            WHERE session_id = ? AND role = 'assistant' AND timestamp > ?
-            ''', (s['id'], last_visit))
-            count = c.fetchone()[0]
-            s['has_unread'] = count > 0
-            # Get total message count for the session
-            c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (s['id'],))
-            s['message_count'] = c.fetchone()[0]
+        SELECT 
+            cs.id, 
+            cs.title, 
+            cs.model_name, 
+            cs.created_at, 
+            cs.updated_at,
+            COALESCE(MAX(sv.last_visit), '1970-01-01 00:00:00') as last_visit,
+            (SELECT COUNT(*) FROM messages 
+             WHERE session_id = cs.id AND role = 'assistant' 
+             AND timestamp > COALESCE(MAX(sv.last_visit), '1970-01-01 00:00:00')) as unread_count,
+            (SELECT COUNT(*) FROM messages WHERE session_id = cs.id) as message_count
+        FROM chat_sessions cs
+        LEFT JOIN session_visits sv ON cs.id = sv.session_id AND sv.user_id = ?
+        WHERE cs.user_id = ?
+        GROUP BY cs.id, cs.title, cs.model_name, cs.created_at, cs.updated_at
+        ORDER BY cs.updated_at DESC
+        ''', (user_id, user_id))
+        
+        sessions = []
+        for row in c.fetchall():
+            session_dict = dict(row)
+            session_dict['has_unread'] = session_dict['unread_count'] > 0
+            sessions.append(session_dict)
         return sessions
 
 
-def get_session_messages(session_id, since=None):
-    """Get messages for a session."""
+def get_session_messages(
+    session_id: str,
+    since: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0
+) -> List[Dict[str, Any]]:
+    """Get messages for a session with pagination.
+
+    Args:
+        session_id: Session identifier
+        since: Get messages after this timestamp (ISO format)
+        limit: Maximum number of messages to return (default 100)
+        offset: Number of messages to skip (default 0)
+
+    Returns:
+        List of message dictionaries
+    """
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
@@ -296,7 +319,8 @@ def get_session_messages(session_id, since=None):
             FROM messages
             WHERE session_id = ? AND timestamp > ?
             ORDER BY timestamp ASC
-            ''', (session_id, since))
+            LIMIT ? OFFSET ?
+            ''', (session_id, since, limit, offset))
         else:
             c.execute('''
             SELECT id, role, content, file_data, file_type, file_name, file_path,
@@ -305,7 +329,8 @@ def get_session_messages(session_id, since=None):
             FROM messages
             WHERE session_id = ?
             ORDER BY timestamp ASC
-            ''', (session_id,))
+            LIMIT ? OFFSET ?
+            ''', (session_id, limit, offset))
         messages = []
         for row in c.fetchall():
             msg_dict = dict(row)
@@ -450,7 +475,9 @@ def delete_session_and_messages(session_id, user_id, upload_folder=None):
                     try:
                         os.remove(full_path)
                     except Exception as e:
-                        pass
+                        # Log error but continue with deletion of other files
+                        import logging
+                        logging.getLogger(__name__).warning(f"Failed to delete file {full_path}: {e}")
         c.execute('DELETE FROM messages WHERE session_id = ?', (session_id,))
         c.execute('DELETE FROM chat_sessions WHERE id = ?', (session_id,))
         c.execute('SELECT COUNT(*) FROM chat_sessions WHERE user_id = ?', (user_id,))
@@ -605,24 +632,39 @@ def get_document(doc_id, user_id):
 
 def update_document_index_status(doc_id, status, indexed_at=None, indexing_started_at=None, embedding_model=None):
     """Update the index status, optionally indexed_at, indexing_started_at and embedding_model for a document."""
+    # Whitelist of allowed column names to prevent SQL injection
+    ALLOWED_COLUMNS = {
+        'index_status': 'index_status',
+        'indexed_at': 'indexed_at',
+        'indexing_started_at': 'indexing_started_at',
+        'embedding_model': 'embedding_model'
+    }
+
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         updates = []
         params = []
-        if status is not None:
-            updates.append("index_status = ?")
-            params.append(status)
-        if indexed_at is not None:
-            updates.append("indexed_at = ?")
-            params.append(indexed_at)
-        if indexing_started_at is not None:
-            updates.append("indexing_started_at = ?")
-            params.append(indexing_started_at)
-        if embedding_model is not None:
-            updates.append("embedding_model = ?")
-            params.append(embedding_model)
+
+        # Dictionary of values to update
+        values_to_update = {
+            'index_status': status,
+            'indexed_at': indexed_at,
+            'indexing_started_at': indexing_started_at,
+            'embedding_model': embedding_model
+        }
+
+        for field, value in values_to_update.items():
+            if value is not None:
+                # Security: verify column name is in whitelist (defensive programming)
+                if field not in ALLOWED_COLUMNS:
+                    raise ValueError(f"Invalid field name: {field}")
+                column_name = ALLOWED_COLUMNS[field]
+                updates.append(f"{column_name} = ?")
+                params.append(value)
+
         if not updates:
             return
+
         params.append(doc_id)
         c.execute(f'UPDATE documents SET {", ".join(updates)} WHERE id = ?', params)
         conn.commit()

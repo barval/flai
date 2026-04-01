@@ -9,18 +9,21 @@ function updateMessageCount() {
 
 function loadMessages(sessionId) {
     if (window.IS_RELOADING) return Promise.resolve();
-    
+
     if (!sessionId) {
         console.error('loadMessages called with empty sessionId');
         return Promise.reject(new Error('Session ID is empty'));
     }
-    
+
     console.log('loadMessages: loading messages for session', sessionId);
-    
+    console.log('loadMessages: displayedMessageIds.size before clear:', displayedMessageIds.size);
+
     // Clear displayed IDs for new session load
     displayedMessageIds.clear();
-    
-    return fetch('/api/sessions/' + sessionId + '/messages')
+    console.log('loadMessages: displayedMessageIds cleared');
+
+    // Load messages with pagination (default: last 100 messages)
+    return fetch('/api/sessions/' + sessionId + '/messages?limit=100&offset=0')
         .then(res => {
             if (!res.ok) {
                 console.error('Failed to load messages:', res.status);
@@ -28,28 +31,55 @@ function loadMessages(sessionId) {
             }
             return res.json();
         })
-        .then(messages => {
+        .then(data => {
             if (window.IS_RELOADING) return;
-            
+
+            // Handle both old format (array) and new format (object with messages)
+            const messages = Array.isArray(data) ? data : (data.messages || []);
             console.log('loadMessages: received', messages.length, 'messages');
-            
+
             const container = document.getElementById('chat-messages');
             container.innerHTML = '';
-            
+
             // Load model info
             fetch('/api/sessions/' + sessionId + '/model-info')
                 .then(res => res.json())
-                .then(data => {
+                .then(modelData => {
                     if (window.IS_RELOADING) return;
-                    defaultModelName = data.model_name || 'qwen3-vl:8b-instruct-q4_K_M';
+                    defaultModelName = modelData.model_name || 'qwen3-vl:8b-instruct-q4_K_M';
                 })
                 .catch(err => console.error('Error loading model info:', err));
-            
+
             let lastUserMessage = null;
-            
+
             messages.forEach((msg) => {
                 try {
+                    console.log('loadMessages: Processing message:', msg.id, msg.role, msg.timestamp);
+                    
+                    // FIX: Skip if message already exists in DOM (prevents duplicates after polling)
+                    if (msg.id) {
+                        const existingMsg = document.querySelector(`[data-message-id="${msg.id}"]`);
+                        if (existingMsg) {
+                            console.log('loadMessages: Message ID', msg.id, 'already in DOM, skipping');
+                            displayedMessageIds.add(msg.id);
+                            return;
+                        }
+                        // Also check for tempId (message displayed before server response)
+                        const tempId = `temp-${msg.timestamp}`;
+                        const existingWithTempId = document.querySelector(`[data-tempId="${tempId}"]`);
+                        if (existingWithTempId) {
+                            console.log('loadMessages: Message with tempId', tempId, 'already in DOM, updating');
+                            // Update the tempId message with the real messageId
+                            existingWithTempId.dataset.messageId = msg.id;
+                            delete existingWithTempId.dataset.tempId;
+                            displayedMessageIds.add(msg.id);
+                            return;
+                        }
+                    }
+
+                    // Display user messages from DB (for cross-client sync and page reload)
                     if (msg.role === 'user') {
+                        console.log('loadMessages: Displaying user message:', msg.id);
                         lastUserMessage = msg;
                         displayMessage(
                             msg.role,
@@ -62,7 +92,12 @@ function loadMessages(sessionId) {
                             null, null, null, null, null, null,
                             msg.id
                         );
-                    } else if (msg.role === 'assistant') {
+                        return;
+                    }
+
+                    // Process assistant messages
+                    if (msg.role === 'assistant') {
+                        console.log('loadMessages: Displaying assistant message:', msg.id);
                         let responseTime = null;
                         if (lastUserMessage) {
                             const userTime = new Date(lastUserMessage.timestamp);
@@ -70,7 +105,7 @@ function loadMessages(sessionId) {
                             const diffSeconds = (assistantTime - userTime) / 1000;
                             responseTime = Math.round(diffSeconds * 10) / 10;
                         }
-                        
+
                         if (msg.response_time) {
                             if (typeof msg.response_time === 'object') {
                                 responseTime = msg.response_time;
@@ -78,12 +113,12 @@ function loadMessages(sessionId) {
                                 responseTime = parseFloat(msg.response_time);
                             }
                         }
-                        
+
                         let mmTime = msg.mm_time;
                         let genTime = msg.gen_time;
                         let mmModel = msg.mm_model;
                         let genModel = msg.gen_model;
-                        
+
                         if (mmTime && genTime) {
                             responseTime = {
                                 mm_time: parseFloat(mmTime),
@@ -92,7 +127,7 @@ function loadMessages(sessionId) {
                                 gen_model: genModel || 'unknown'
                             };
                         }
-                        
+
                         displayMessage(
                             msg.role,
                             msg.content,
@@ -128,23 +163,43 @@ function loadMessages(sessionId) {
 }
 
 function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId) {
-    if (window.IS_RELOADING) return;
-    
+    if (window.IS_RELOADING) {
+        console.log('displayMessage: Skipping - IS_RELOADING');
+        return;
+    }
+
+    console.log('displayMessage: Called with role=', role, 'messageId=', messageId, 'timestamp=', timestamp);
+
     // FIX: Prevent duplicate messages by checking message ID
     if (messageId) {
         const existing = document.querySelector(`[data-message-id="${messageId}"]`);
         if (existing) {
-            console.log('displayMessage: Message ID', messageId, 'already exists, skipping');
+            console.log('displayMessage: Message ID', messageId, 'already exists in DOM, skipping');
+            return;
+        }
+        // Also check displayedMessageIds set
+        if (displayedMessageIds.has(messageId)) {
+            console.log('displayMessage: Message ID', messageId, 'already in displayedMessageIds set, skipping');
             return;
         }
     }
-    
+
+    // Additional fix: Check for duplicate by timestamp and role for messages without ID
+    if (!messageId && timestamp) {
+        const existing = document.querySelector(`[data-timestamp="${timestamp}"][data-role="${role}"]`);
+        if (existing) {
+            console.log('displayMessage: Message with timestamp', timestamp, 'and role', role, 'already exists, skipping');
+            return;
+        }
+    }
+
     const container = document.getElementById('chat-messages');
     const msgDiv = document.createElement('div');
     msgDiv.className = (role === 'user') ? 'user-message' : 'assistant-message bot-message';
-    
+
     if (!timestamp) timestamp = new Date().toISOString();
     msgDiv.setAttribute('data-timestamp', timestamp);
+    msgDiv.setAttribute('data-role', role);
     msgDiv.dataset.sessionId = currentSessionId;
     
     const rawContent = typeof content === 'string' ? content : JSON.stringify(content);
@@ -231,15 +286,15 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     }
     
     let headerHTML = '<span class="message-header">📅 ' + timeDisplay;
-    
+
     if (role === 'assistant') {
         let headerExtra = '';
-        
+
         if (modelName) {
             const shortModel = modelName.split('/').pop() || modelName;
             headerExtra += ' <span class="text-muted">| ' + escapeHtml(shortModel) + '</span>';
         }
-        
+
         let duration = null;
         if (responseTime) {
             if (typeof responseTime === 'object') {
@@ -254,23 +309,71 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
                 duration = parseFloat(responseTime).toFixed(1);
             }
         }
-        
+
         if (duration) {
             const langSuffix = t('seconds_suffix');
             headerExtra += ' <span class="text-muted">⏱️ ' + duration + langSuffix + '</span>';
         }
-        
+
         // TTS button
         headerExtra += ' <button class="tts-button" title="' + t('speak') + '">🗣️</button>';
-        
+
         // Copy message button
         headerExtra += ' <button class="copy-message-button" title="' + t('copy_text') + '">📋</button>';
-        
+
         headerHTML += headerExtra;
     }
-    
+
     headerHTML += '</span>';
+
+    // Create header element safely using DOM methods
+    const headerDiv = document.createElement('span');
+    headerDiv.className = 'message-header';
+    headerDiv.innerHTML = '📅 ' + timeDisplay;
     
+    if (role === 'assistant') {
+        let headerExtra = '';
+
+        if (modelName) {
+            const shortModel = modelName.split('/').pop() || modelName;
+            headerExtra += ' <span class="text-muted">| ' + escapeHtml(shortModel) + '</span>';
+        }
+
+        let duration = null;
+        if (responseTime) {
+            if (typeof responseTime === 'object') {
+                if (responseTime.mm_time && responseTime.gen_time) {
+                    duration = (parseFloat(responseTime.mm_time) + parseFloat(responseTime.gen_time)).toFixed(1);
+                } else if (responseTime.mm_time) {
+                    duration = parseFloat(responseTime.mm_time).toFixed(1);
+                } else if (responseTime.gen_time) {
+                    duration = parseFloat(responseTime.gen_time).toFixed(1);
+                }
+            } else if (typeof responseTime === 'number' || !isNaN(parseFloat(responseTime))) {
+                duration = parseFloat(responseTime).toFixed(1);
+            }
+        }
+
+        if (duration) {
+            const langSuffix = t('seconds_suffix');
+            headerExtra += ' <span class="text-muted">⏱️ ' + duration + langSuffix + '</span>';
+        }
+
+        // TTS button
+        const ttsButton = document.createElement('button');
+        ttsButton.className = 'tts-button';
+        ttsButton.title = t('speak');
+        ttsButton.textContent = '🗣️';
+        headerDiv.appendChild(ttsButton);
+
+        // Copy message button
+        const copyButton = document.createElement('button');
+        copyButton.className = 'copy-message-button';
+        copyButton.title = t('copy_text');
+        copyButton.textContent = '📋';
+        headerDiv.appendChild(copyButton);
+    }
+
     let contentHTML = '<div class="message-content">';
     
     if (typeof content === 'string') {
@@ -296,33 +399,64 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     }
     
     contentHTML += '</div>';
-    
-    msgDiv.innerHTML = headerHTML + contentHTML;
-    
+
+    // Add header to message div
+    msgDiv.appendChild(headerDiv);
+
+    // Use DOM methods instead of innerHTML for security
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+    contentDiv.innerHTML = contentHTML.replace('<div class="message-content">', '').replace('</div>', '');
+    msgDiv.appendChild(contentDiv);
+
     // File display
     if (fileData || filePath) {
         let fileHTML = '';
         let fileUrl = '';
-        
+
         if (filePath) {
             fileUrl = '/api/files/' + filePath;
         } else if (fileData) {
             fileUrl = 'data:' + fileType + ';base64,' + fileData;
         }
-        
+
         if (fileUrl) {
             if (fileType && fileType.startsWith('image/')) {
-                fileHTML = '<div class="image-container"><img src="' + fileUrl + '" class="attached-image" alt="' + (fileName || 'attached image') + '" title="' + t('click_to_enlarge') + '" onclick="openImageModal(this.src, \'' + (fileName || t('image')) + '\')"></div>';
+                // Create image container safely
+                const imgContainer = document.createElement('div');
+                imgContainer.className = 'image-container';
+                const img = document.createElement('img');
+                img.src = fileUrl;
+                img.className = 'attached-image';
+                img.alt = fileName || 'attached image';
+                img.title = t('click_to_enlarge');
+                img.onclick = function() { openImageModal(this.src, fileName || t('image')); };
+                imgContainer.appendChild(img);
+                msgDiv.appendChild(imgContainer);
             } else if (fileType && fileType.startsWith('audio/')) {
-                fileHTML = '<audio controls src="' + fileUrl + '" preload="metadata"></audio>';
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.src = fileUrl;
+                audio.preload = 'metadata';
+                msgDiv.appendChild(audio);
             } else {
-                fileHTML = '<div class="attached-file"><span class="file-icon">📄</span><a href="' + fileUrl + '" download="' + fileName + '">' + fileName + '</a></div>';
+                // Create file link safely
+                const fileDiv = document.createElement('div');
+                fileDiv.className = 'attached-file';
+                const fileIcon = document.createElement('span');
+                fileIcon.className = 'file-icon';
+                fileIcon.textContent = '📄';
+                const fileLink = document.createElement('a');
+                fileLink.href = fileUrl;
+                fileLink.download = fileName || 'file';
+                fileLink.textContent = fileName || 'file';
+                fileDiv.appendChild(fileIcon);
+                fileDiv.appendChild(fileLink);
+                msgDiv.appendChild(fileDiv);
             }
         }
-        
-        msgDiv.innerHTML += fileHTML;
     }
-    
+
     container.appendChild(msgDiv);
     container.scrollTop = container.scrollHeight;
     updateMessageCount();

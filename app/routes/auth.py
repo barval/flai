@@ -1,14 +1,24 @@
 # app/routes/auth.py
 import logging
-from flask import Blueprint, render_template, request, redirect, url_for, session, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, session, current_app, jsonify
 from werkzeug.security import check_password_hash
+from flask_limiter.errors import RateLimitExceeded
+from app import limiter
 from app.userdb import get_user_by_login, update_user
 from flask_babel import gettext as _
 
 logger = logging.getLogger(__name__)
 bp = Blueprint('auth', __name__)
 
+@bp.errorhandler(RateLimitExceeded)
+def handle_rate_limit(error):
+    """Handle rate limit exceeded errors."""
+    if request.path.startswith('/api/'):
+        return jsonify({'error': _('Too many attempts. Please try again later.')}), 429
+    return render_template('login.html', error=_('Too many attempts. Please try again later.')), 429
+
 @bp.route('/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute;10 per hour", key_func=lambda: request.form.get('login') or request.remote_addr)
 def login():
     if request.method == 'POST':
         login_input = request.form.get('login')
@@ -16,10 +26,14 @@ def login():
         theme = request.form.get('theme', 'light')
 
         if not login_input or not password:
+            logger.warning(f"Login attempt with missing fields from {request.remote_addr}")
             return render_template('login.html', error=_('All fields are required'))
 
         user = get_user_by_login(login_input)
         if user and user['is_active'] and check_password_hash(user['password_hash'], password):
+            # Successful login - audit log
+            logger.info(f"Successful login: {login_input} from {request.remote_addr}")
+            
             if user['theme'] != theme:
                 update_user(login_input, theme=theme)
 
@@ -37,6 +51,8 @@ def login():
             else:
                 return redirect(url_for('chat.chat'))
         else:
+            # Failed login - audit log
+            logger.warning(f"Failed login attempt: {login_input} from {request.remote_addr}")
             return render_template('login.html', error=_('Invalid login or password'))
     return render_template('login.html')
 

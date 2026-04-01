@@ -258,24 +258,23 @@
     flex-shrink: 0;
 }
 
-/* Blink animation for both session and document icons */
-.session-status-icon.blink,
-.document-status-icon.blink {
-    animation: blink-animation 1.5s infinite !important;
+/* Blink keyframes animation - 2 second cycle (1 second visible, 1 second dim) */
+@keyframes blink-animation {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0.5; }
 }
 
-/* Ensure processing, queued, and unread icons blink - with !important */
+/* Blink animation for session and document icons */
+.session-status-icon.blink,
+.document-status-icon.blink {
+    animation: blink-animation 2s infinite !important;
+}
+
+/* Ensure processing, queued, and unread icons blink - MUST come before specific color rules */
 .session-status-icon.processing,
 .session-status-icon.queued,
 .session-status-icon.unread {
-    animation: blink-animation 1.5s infinite !important;
-}
-
-/* Blink keyframes animation */
-@keyframes blink-animation {
-    0% { opacity: 1; }
-    50% { opacity: 0.4; }
-    100% { opacity: 1; }
+    animation: blink-animation 2s infinite !important;
 }
 
 .session-status-icon.error {
@@ -284,14 +283,19 @@
 
 .session-status-icon.processing {
     color: #f39c12;
+    display: inline-block !important;
+    visibility: visible !important;
+    animation: blink-animation 2s infinite !important;
 }
 
 .session-status-icon.queued {
     color: #95a5a6;
+    animation: blink-animation 2s infinite !important;
 }
 
 .session-status-icon.unread {
     color: #3498db;
+    animation: blink-animation 2s infinite !important;
 }
 
 .session-status-icon.tts.playing {
@@ -933,39 +937,39 @@ audio {
     .session-status-icon.transcribing {
         display: inline-flex !important;
         visibility: visible !important;
-        /* REMOVED: opacity: 1 !important; - This was preventing blink animation */
         color: #e74c3c !important;
         font-size: 1.2rem !important;
         width: 1.3em !important;
         height: 1.2em !important;
-        animation: blink-animation 1s infinite !important;
-        -webkit-animation: blink-animation 1s infinite !important;
+        animation: blink-animation 2s infinite !important;
+        -webkit-animation: blink-animation 2s infinite !important;
         z-index: 100 !important;
         align-items: center;
         justify-content: center;
     }
-    
+
     /* Ensure transcribing icon is visible even in collapsed sidebar */
     .sessions-sidebar.collapsed .session-status-icon.transcribing {
         display: inline-flex !important;
         visibility: visible !important;
-        /* REMOVED: opacity: 1 !important; - This was preventing blink animation */
     }
-    
+
     /* Additional selectors for mobile visibility */
     .session-item .session-status-icon.transcribing,
     .session-info .session-status-icon.transcribing,
     .session-title .session-status-icon.transcribing {
         display: inline-flex !important;
         visibility: visible !important;
-        /* REMOVED: opacity: 1 !important; - This was preventing blink animation */
     }
     
-    /* Blink keyframes for mobile - single definition only */
-    @keyframes blink-animation {
-        0% { opacity: 1; }
-        50% { opacity: 0.4; }
-        100% { opacity: 1; }
+    /* Override animation for mobile - use same 2s cycle */
+    .session-status-icon.blink,
+    .document-status-icon.blink,
+    .session-status-icon.processing,
+    .session-status-icon.queued,
+    .session-status-icon.unread {
+        animation: blink-animation 2s infinite !important;
+        -webkit-animation: blink-animation 2s infinite !important;
     }
 }
 

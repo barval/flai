@@ -36,9 +36,14 @@
 
 ### 🔒 Privacy & Security
 - 🏠 **100% Local** – all processing happens on your hardware; no data leaves your network
-- 🔐 **Session-based Auth** – secure user authentication with password hashing
+- 🔐 **Session-based Auth** – secure user authentication with password hashing (Werkzeug)
 - 🛡️ **File Access Control** – uploaded files are served only to authorized users
 - 🧹 **Data Isolation** – each user's sessions, messages, and documents are strictly separated
+- 🔑 **CSRF Protection** – Cross-Site Request Forgery protection for all forms
+- 🚦 **Rate Limiting** – brute-force attack protection on login (5 attempts/minute)
+- 🔒 **Session Security** – HttpOnly and SameSite cookies, secure flag for HTTPS
+- 📝 **Audit Logging** – login attempts and admin actions are logged
+- 🔐 **HMAC-signed Queue** – Redis queue tasks are signed to prevent tampering
 
 ### 👥 User Experience
 - 🌐 **Multi-language Support** – full interface and AI responses in Russian and English
@@ -76,7 +81,8 @@ FLAI is a modular Flask application that orchestrates several self-hosted AI ser
 
 ### Distributed Deployment
 
-Each service can run on separate machines for load distribution:
+Each service can run on separate machines for load distribution. See [services/README.md](services/README.md) for detailed deployment guides.
+
 ```text
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │   Web App   │────▶│   Ollama    │────▶│     GPU     │
@@ -89,6 +95,11 @@ Each service can run on separate machines for load distribution:
 │  (Node 2)   │     │   Server    │
 └─────────────┘     └─────────────┘
 ```
+
+**Service Deployment Options:**
+- **Local**: Run on same server as FLAI web app (internal Docker network)
+- **Remote**: Run on separate server (requires firewall configuration)
+
 Set up separate Ollama URLs for each type of model in the Admin Panel (`/admin`).
 
 ---
@@ -276,27 +287,41 @@ docker-compose -f docker-compose.all.yml logs -f web
 ```
 
 ### Distributed Deployment (Multiple Machines)
-For load distribution across multiple Ollama nodes:
 
-1. Machine 1 (Web + Chat Models):
+For load distribution across multiple servers, use standalone docker-compose files in `services/` directory:
+
+1. **Web App + Redis** (Machine 1):
 ```bash
-# In the admin panel on Machine 1
-OLLAMA_CHAT_URL -> http://machine1:11434
-OLLAMA_REASONING_URL -> http://machine2:11434
-OLLAMA_MULTIMODAL_URL -> http://machine3:11434
-OLLAMA_EMBEDDING_URL -> http://machine1:11434
+docker-compose -f docker-compose.all.yml up -d web redis
 ```
-2. Machine 2 (Reasoning Models)
+
+2. **Ollama - Chat Models** (Machine 2):
 ```bash
-# Run only Ollama
-docker-compose -f services/ollama/docker-compose.yml up -d
+cd services/ollama
+docker-compose -f docker-compose.gpu.yml up -d
 ```
-3. Machine 3 (Multimodal Models):
+
+3. **Ollama - Reasoning Models** (Machine 3):
 ```bash
-# Run only Ollama
-docker-compose -f services/ollama/docker-compose.yml up -d
+cd services/ollama
+docker-compose -f docker-compose.gpu.yml up -d
 ```
-Configure model URLs in **Admin Panel** → **Models** tab after first login.
+
+4. **Configure Model URLs** in Admin Panel → Models tab:
+```
+Chat: http://machine2:11434
+Reasoning: http://machine3:11434
+Multimodal: http://machine4:11434
+Embedding: http://machine2:11434
+```
+
+**Firewall Configuration:**
+```bash
+# On each remote service machine
+sudo ufw allow from <web-app-ip> to any port <service-port>
+```
+
+See [services/README.md](services/README.md) for complete deployment guides for each service.
 
 ---
 
@@ -425,7 +450,16 @@ docker-compose -f docker-compose.all.yml --profile with-rag up -d
 The camera module is not included in the main docker-compose and must be set up separately.
 
 ### 1. Deploy Camera API Service
-The camera service is a separate project that provides snapshots from IP cameras:
+
+The camera service is a separate project. Two deployment options available:
+
+**Option A: Local Deployment (same server as FLAI)**
+```bash
+cd services/room-snapshot-api
+./deploy.sh local
+```
+
+**Option B: Remote Deployment (separate server)**
 ```bash
 # Clone the camera API repository
 git clone https://github.com/barval/room-snapshot-api.git
@@ -435,9 +469,14 @@ cd room-snapshot-api
 cp .env.example .env
 # Edit .env with your camera URLs and credentials
 
-# Start the camera service
-docker-compose up -d
+# Deploy remotely
+./deploy.sh remote
+
+# Configure firewall
+sudo ufw allow from <flai-server-ip> to any port 5005
 ```
+
+See [services/room-snapshot-api/README.md](services/room-snapshot-api/README.md) for detailed instructions.
 
 ### 2. Configure FLAI to Use Camera Service
 In FLAI's `.env` file:
@@ -446,7 +485,10 @@ In FLAI's `.env` file:
 CAMERA_ENABLED=true
 
 # Camera API endpoint (adjust IP/port as needed)
-CAMERA_API_URL=http://host.docker.internal:5005
+# For local deployment:
+CAMERA_API_URL=http://flai-room-snapshot-api:5005
+# For remote deployment:
+CAMERA_API_URL=http://<camera-server-ip>:5005
 
 # Timeout for snapshot requests (seconds)
 CAMERA_API_TIMEOUT=15
@@ -548,10 +590,25 @@ Create test user before running:
 - HTML chat export with embedded media
 - Admin panel with model management
 - Document index status display with processing time
-- Integration with cameras with access rights system
+- Camera integration with access rights system
 - **SQLite WAL mode for better concurrency**
 - **Load testing with Locust**
 - **Separate Ollama URLs per model type (distributed deployment)**
+- **Security enhancements:**
+  * CSRF protection for all forms
+  * Rate limiting on login (brute-force protection)
+  * Session ownership validation
+  * Path traversal protection
+  * HMAC-signed Redis queue tasks
+  * Security headers (CSP, X-Frame-Options, etc.)
+  * Audit logging for security events
+- **Standalone service deployment:**
+  * Ollama (with GPU support)
+  * Automatic1111 (Stable Diffusion)
+  * Whisper ASR
+  * Piper TTS
+  * Qdrant (vector database)
+  * Room Snapshot API (local/remote deployment)
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)

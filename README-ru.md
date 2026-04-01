@@ -36,9 +36,14 @@
 
 ### 🔒 Конфиденциальность и безопасность
 - 🏠 **100% локально** – вся обработка на вашем оборудовании
-- 🔐 **Аутентификация по сессиям** – безопасный вход с хешированием паролей
+- 🔐 **Аутентификация по сессиям** – безопасный вход с хешированием паролей (Werkzeug)
 - 🛡️ **Контроль доступа к файлам** – файлы доступны только авторизованным пользователям
 - 🧹 **Изоляция данных** – данные каждого пользователя строго разделены
+- 🔑 **CSRF-защита** – защита от подделки межсайтовых запросов для всех форм
+- 🚦 **Rate Limiting** – защита от перебора паролей (5 попыток/минуту)
+- 🔒 **Безопасность сессий** – HttpOnly и SameSite cookies, secure flag для HTTPS
+- 📝 **Audit Logging** – логирование попыток входа и действий администратора
+- 🔐 **HMAC-подпись очереди** – задачи Redis очереди подписаны для защиты от подделки
 
 ### 👥 Пользовательский опыт
 - 🌐 **Мультиязычность** – полный интерфейс и ответы ИИ на русском и английском языках
@@ -76,7 +81,8 @@
 
 ### Распределённое развёртывание
 
-Каждый сервис может работать на отдельной машине для распределения нагрузки:
+Каждый сервис может работать на отдельной машине для распределения нагрузки. См. [services/README.md](services/README.md) для подробных инструкций.
+
 ```text
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │   Web App   │────▶│   Ollama    │────▶│     GPU     │
@@ -89,6 +95,11 @@
 │  (Узел 2)   │     │   Сервер    │
 └─────────────┘     └─────────────┘
 ```
+
+**Варианты развёртывания сервисов:**
+- **Локальное**: Запуск на том же сервере что и FLAI (внутренняя сеть Docker)
+- **Удалённое**: Запуск на отдельном сервере (требует настройки firewall)
+
 Настройте отдельные URL Ollama для каждого типа моделей в Панели администратора (`/admin`).
 
 ---
@@ -275,27 +286,41 @@ docker-compose -f docker-compose.all.yml logs -f web
 ```
 
 ### Распределённое развёртывание (несколько машин)
-Для распределения нагрузки по нескольким узлам Ollama:
 
-1. Машина 1 (Web + Чат-модели):
+Для распределения нагрузки между несколькими серверами используйте автономные docker-compose файлы в директории `services/`:
+
+1. **Web App + Redis** (Сервер 1):
 ```bash
-# В панели администратора на Машине 1
-OLLAMA_CHAT_URL -> http://machine1:11434
-OLLAMA_REASONING_URL -> http://machine2:11434
-OLLAMA_MULTIMODAL_URL -> http://machine3:11434
-OLLAMA_EMBEDDING_URL -> http://machine1:11434
+docker-compose -f docker-compose.all.yml up -d web redis
 ```
-2. Машина 2 (Модели рассуждений):
+
+2. **Ollama - Chat Models** (Сервер 2):
 ```bash
-# Запустить только Ollama
-docker-compose -f services/ollama/docker-compose.yml up -d
+cd services/ollama
+docker-compose -f docker-compose.gpu.yml up -d
 ```
-3. Машина 3 (Мультимодальные модели):
+
+3. **Ollama - Reasoning Models** (Сервер 3):
 ```bash
-# Запустить только Ollama
-docker-compose -f services/ollama/docker-compose.yml up -d
+cd services/ollama
+docker-compose -f docker-compose.gpu.yml up -d
 ```
-Настройте URL моделей в **Панели администратора** → вкладка **Модели** после первого входа.
+
+4. **Настройте URL моделей** в Панели администратора → вкладка Models:
+```
+Chat: http://server2:11434
+Reasoning: http://server3:11434
+Multimodal: http://server4:11434
+Embedding: http://server2:11434
+```
+
+**Настройка Firewall:**
+```bash
+# На каждом удалённом сервере
+sudo ufw allow from <web-app-ip> to any port <service-port>
+```
+
+См. [services/README.md](services/README.md) для полных инструкций по развёртыванию каждого сервиса.
 
 ---
 
@@ -424,7 +449,16 @@ docker-compose -f docker-compose.all.yml --profile with-rag up -d
 Модуль работы с камерами не включён в основной docker-compose и должен быть настроен отдельно.
 
 ### 1. Развёртывание сервиса камер
-Сервис камер — это отдельный проект, предоставляющий снимки с IP-камер:
+
+Сервис камер — отдельный проект. Доступны два варианта развёртывания:
+
+**Вариант A: Локальное развёртывание (на том же сервере что и ПЛИИ)**
+```bash
+cd services/room-snapshot-api
+./deploy.sh local
+```
+
+**Вариант B: Удалённое развёртывание (на отдельном сервере)**
 ```bash
 # Клонировать репозиторий API камер
 git clone https://github.com/barval/room-snapshot-api.git
@@ -434,9 +468,14 @@ cd room-snapshot-api
 cp .env.example .env
 # Отредактировать .env с URL и учётными данными ваших камер
 
-# Запустить сервис камер
-docker-compose up -d
+# Развернуть удалённо
+./deploy.sh remote
+
+# Настроить firewall
+sudo ufw allow from <flai-server-ip> to any port 5005
 ```
+
+См. [services/room-snapshot-api/README.md](services/room-snapshot-api/README.md) для подробных инструкций.
 
 ### 2. Настроить ПЛИИ для использования сервиса камер
 В файле `.env` ПЛИИ:
@@ -445,7 +484,10 @@ docker-compose up -d
 CAMERA_ENABLED=true
 
 # Адрес API камер (настройте IP/порт по необходимости)
-CAMERA_API_URL=http://host.docker.internal:5005
+# Для локального развёртывания:
+CAMERA_API_URL=http://flai-room-snapshot-api:5005
+# Для удалённого развёртывания:
+CAMERA_API_URL=http://<camera-server-ip>:5005
 
 # Таймаут запроса снимка (секунды)
 CAMERA_API_TIMEOUT=15
@@ -551,6 +593,21 @@ locust -f tests/load/locustfile.py --host http://localhost:5000 \
 - **Режим WAL для SQLite для лучшей конкурентности**
 - **Нагрузочное тестирование с Locust**
 - **Отдельные URL Ollama для каждого типа моделей (распределённое развёртывание)**
+- **Улучшения безопасности:**
+  * CSRF-защита для всех форм
+  * Rate limiting для login (защита от перебора паролей)
+  * Валидация владения сессией
+  * Защита от path traversal
+  * HMAC-подпись задач Redis очереди
+  * Заголовки безопасности (CSP, X-Frame-Options и др.)
+  * Audit logging для событий безопасности
+- **Автономное развёртывание сервисов:**
+  * Ollama (с поддержкой GPU)
+  * Automatic1111 (Stable Diffusion)
+  * Whisper ASR
+  * Piper TTS
+  * Qdrant (векторная БД)
+  * Room Snapshot API (локальное/удалённое развёртывание)
 
 ### 🔄 В работе
 - Долговременная память диалогов (контекст между сеансами)

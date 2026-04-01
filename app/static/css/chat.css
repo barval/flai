@@ -270,7 +270,7 @@
     animation: blink-animation 2s infinite !important;
 }
 
-/* Ensure processing, queued, and unread icons blink */
+/* Ensure processing, queued, and unread icons blink - MUST come before specific color rules */
 .session-status-icon.processing,
 .session-status-icon.queued,
 .session-status-icon.unread {
@@ -285,14 +285,17 @@
     color: #f39c12;
     display: inline-block !important;
     visibility: visible !important;
+    animation: blink-animation 2s infinite !important;
 }
 
 .session-status-icon.queued {
     color: #95a5a6;
+    animation: blink-animation 2s infinite !important;
 }
 
 .session-status-icon.unread {
     color: #3498db;
+    animation: blink-animation 2s infinite !important;
 }
 
 .session-status-icon.tts.playing {

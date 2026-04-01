@@ -80,7 +80,9 @@ function loadSessionsFromServer() {
                     title: sessionsData[id].title,
                     updated_at: sessionsData[id].updated_at,
                     message_count: sessionsData[id].message_count,
-                    has_unread: newMessageIndicators[id] ? true : false
+                    has_unread: newMessageIndicators[id] ? true : false,
+                    // Include queue info for this session
+                    queue_info: sessionQueueInfo[id] || null
                 }));
                 updateSessionsList(sessionsList);
             }
@@ -111,7 +113,9 @@ function updateSessionsListFromData() {
             title: sessionsData[id].title,
             updated_at: sessionsData[id].updated_at,
             message_count: sessionsData[id].message_count,
-            has_unread: newMessageIndicators[id] ? true : false
+            has_unread: newMessageIndicators[id] ? true : false,
+            // Include queue info for this session
+            queue_info: sessionQueueInfo[id] || null
         }));
         updateSessionsList(sessions);
         sessionsUpdateTimeout = null;
@@ -133,7 +137,8 @@ function updateSessionsList(sessions) {
         // Build status icons with proper priority
         let statusIcons = '';
         const transcribing = localTranscribingSessions[s.id];
-        const info = sessionQueueInfo[s.id];
+        // Use queue_info from session data (synced from server) OR global sessionQueueInfo
+        const info = s.queue_info || sessionQueueInfo[s.id];
 
         // CRITICAL FIX: Transcribing icon has HIGHEST priority
         if (transcribing) {
@@ -309,9 +314,14 @@ function switchSession(sessionId) {
     // Store previous session ID to clear its unread indicator
     const previousSessionId = currentSessionId;
     
-    if (statusCounter) {
-        statusCounter.innerHTML = '⏳ ' + t('loading');
+    // Don't switch if already on this session
+    if (sessionId === currentSessionId) {
+        console.log('switchSession: Already on this session, skipping');
+        return;
     }
+    
+    console.log('switchSession: Switching from', previousSessionId, 'to', sessionId);
+    
     fetchWithCSRF('/api/sessions/' + sessionId + '/switch', { method: 'POST' })
         .then(res => res.json())
         .then(() => {
@@ -324,13 +334,11 @@ function switchSession(sessionId) {
             }
             loadMessages(sessionId).catch(err => {
                 console.error('Error loading messages in switchSession:', err);
-                if (statusCounter) {
-                    statusCounter.innerHTML = '❌';
-                    setTimeout(() => window.updateStatusCounter(), 2000);
-                }
             }).finally(() => {
+                // Update status counter after messages loaded
                 window.updateStatusCounter();
             });
+            // Update active class in DOM
             document.querySelectorAll('.session-item').forEach(el => {
                 if (el.dataset.sessionId === sessionId) {
                     el.classList.add('active');
@@ -338,14 +346,10 @@ function switchSession(sessionId) {
                     el.classList.remove('active');
                 }
             });
-            updateSessionsListFromData();
+            // Don't call updateSessionsListFromData here - it causes flickering
         })
         .catch(err => {
             console.error('Error switching session:', err);
-            if (statusCounter) {
-                statusCounter.innerHTML = '❌';
-                setTimeout(() => window.updateStatusCounter(), 2000);
-            }
         });
 }
 

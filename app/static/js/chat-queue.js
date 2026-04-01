@@ -3,7 +3,7 @@
 
 function startSyncInterval() {
     if (window.syncInterval) clearInterval(window.syncInterval);
-    console.log('startSyncInterval: Starting sync interval (500ms) for session', currentSessionId);
+    console.log('startSyncInterval: Starting sync interval (3 seconds) for session', currentSessionId);
     // Sync interval for queue status, counter updates, and cross-client synchronization
     window.syncInterval = setInterval(() => {
         if (window.IS_RELOADING) {
@@ -12,9 +12,8 @@ function startSyncInterval() {
         }
         console.log('sync interval: Running sync for session', currentSessionId);
         fetchQueueStatus();
-        window.updateStatusCounter();
         syncSessionsAndMessages();
-    }, 500);
+    }, 3000);
 }
 
 /**

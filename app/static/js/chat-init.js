@@ -377,24 +377,27 @@ async function sendMessage() {
     
     const displayUserMessage = (fileData, fileType, fileName, filePath) => {
         if (window.IS_RELOADING) return;
-        
+
         if (fileData || filePath) {
             let type = "file";
             if (fileType && fileType.startsWith('image/')) type = "image";
             else if (fileType && fileType.startsWith('audio/')) type = "audio";
             userContent.push({ "type": type, "file_data": fileData, "file_type": fileType, "file_name": fileName, "file_path": filePath });
         }
-        
+
         const msgElement = originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, filePath, timestamp);
-        
+
         // FIX: Update lastMessageTimestamp immediately to prevent polling from fetching this message again
         lastMessageTimestamp = timestamp;
-        
+
         const tempId = `temp-${timestamp}`;
         if (msgElement) {
             msgElement.dataset.tempId = tempId;
+            console.log('displayUserMessage: Set tempId', tempId, 'on message element');
+        } else {
+            console.warn('displayUserMessage: msgElement is null/undefined, cannot set tempId');
         }
-        
+
         input.value = '';
         attachedFile = null;
         document.getElementById('file-preview-container').style.display = 'none';
@@ -452,12 +455,24 @@ async function sendMessage() {
                 
                 // FIX: Update messageId immediately when received from server
                 if (data.user_message_id) {
-                    // Find message by tempId first, then by timestamp
+                    // Find message by tempId first
                     let targetMsg = document.querySelector(`.user-message[data-tempId="temp-${timestamp}"]`);
+                    
                     if (!targetMsg) {
-                        // Fallback: find last user message
-                        const userMessages = document.querySelectorAll('.user-message');
-                        targetMsg = userMessages[userMessages.length - 1];
+                        // Fallback: find last user message with matching timestamp
+                        const userMessages = document.querySelectorAll('.user-message[data-timestamp="' + timestamp + '"]');
+                        if (userMessages.length > 0) {
+                            targetMsg = userMessages[userMessages.length - 1];
+                        }
+                    }
+                    
+                    if (!targetMsg) {
+                        // Last resort: find most recent user message
+                        const allUserMessages = document.querySelectorAll('.user-message');
+                        if (allUserMessages.length > 0) {
+                            targetMsg = allUserMessages[allUserMessages.length - 1];
+                            console.log('sendMessage: Using fallback - last user message');
+                        }
                     }
 
                     if (targetMsg) {
@@ -469,7 +484,7 @@ async function sendMessage() {
                         displayedMessageIds.add(data.user_message_id);
                         console.log('sendMessage: Updated messageId to', data.user_message_id);
                     } else {
-                        console.warn('sendMessage: Could not find user message to update messageId');
+                        console.warn('sendMessage: Could not find user message to update messageId. Total user messages:', document.querySelectorAll('.user-message').length);
                     }
                 }
                 

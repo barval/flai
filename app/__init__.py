@@ -265,15 +265,135 @@ def create_app():
             return jsonify({'error': 'Not found'}), 404
         return error
 
-    # Health check endpoint for Docker and monitoring
+    # Comprehensive health check endpoint
     @app.route('/health')
     def health_check():
-        """Health check endpoint for Docker containers and load balancers."""
+        """Comprehensive health check for all services."""
         from datetime import datetime
-        return jsonify({
+        import requests
+        import sqlite3
+        from .db import CHAT_DB_PATH
+        
+        status = {
             'status': 'ok',
             'timestamp': datetime.utcnow().isoformat(),
-            'service': 'flai-web'
-        })
+            'services': {
+                'web': 'ok',
+                'database': 'unknown',
+                'redis': 'unknown',
+                'ollama': 'unknown'
+            }
+        }
+        http_status = 200
+        
+        # Check database
+        try:
+            with sqlite3.connect(CHAT_DB_PATH) as conn:
+                conn.execute('SELECT 1')
+            status['services']['database'] = 'ok'
+        except Exception as e:
+            status['services']['database'] = 'error'
+            app.logger.error(f"Health check - Database error: {e}")
+            http_status = 503
+        
+        # Check Redis
+        try:
+            app.request_queue.redis.ping()
+            status['services']['redis'] = 'ok'
+        except Exception as e:
+            status['services']['redis'] = 'error'
+            app.logger.error(f"Health check - Redis error: {e}")
+            http_status = 503
+        
+        # Check Ollama
+        try:
+            ollama_url = app.config.get('OLLAMA_URL', 'http://ollama:11434')
+            response = requests.get(f"{ollama_url}/api/tags", timeout=5)
+            if response.status_code == 200:
+                status['services']['ollama'] = 'ok'
+            else:
+                status['services']['ollama'] = 'error'
+                http_status = 503
+        except Exception as e:
+            status['services']['ollama'] = 'error'
+            app.logger.error(f"Health check - Ollama error: {e}")
+            http_status = 503
+        
+        # Determine overall status
+        services_ok = sum(1 for v in status['services'].values() if v == 'ok')
+        services_total = len(status['services'])
+        if services_ok == services_total:
+            status['status'] = 'ok'
+        elif services_ok > 0:
+            status['status'] = 'degraded'
+        else:
+            status['status'] = 'error'
+        
+        return jsonify(status), http_status
+
+    # Prometheus metrics endpoint
+    @app.route('/metrics')
+    def metrics():
+        """Prometheus-compatible metrics endpoint."""
+        import time
+        
+        # Collect metrics
+        metrics_output = []
+        
+        # System metrics
+        metrics_output.append('# HELP flai_web_info Web service information')
+        metrics_output.append('# TYPE flai_web_info gauge')
+        metrics_output.append(f'flai_web_info{{version="1.0.0"}} 1')
+        
+        # Queue metrics
+        try:
+            queue_length = app.request_queue.redis.llen(app.request_queue.queue_key)
+            processing_count = app.request_queue.redis.hlen(app.request_queue.processing_key)
+            
+            metrics_output.append('')
+            metrics_output.append('# HELP flai_queue_length Current queue length')
+            metrics_output.append('# TYPE flai_queue_length gauge')
+            metrics_output.append(f'flai_queue_length {queue_length}')
+            
+            metrics_output.append('')
+            metrics_output.append('# HELP flai_queue_processing Number of tasks being processed')
+            metrics_output.append('# TYPE flai_queue_processing gauge')
+            metrics_output.append(f'flai_queue_processing {processing_count}')
+        except Exception as e:
+            app.logger.error(f"Metrics - Queue error: {e}")
+        
+        # Database metrics
+        try:
+            import os
+            db_size = os.path.getsize(CHAT_DB_PATH) if os.path.exists(CHAT_DB_PATH) else 0
+            
+            metrics_output.append('')
+            metrics_output.append('# HELP flai_database_size_bytes Database file size in bytes')
+            metrics_output.append('# TYPE flai_database_size_bytes gauge')
+            metrics_output.append(f'flai_database_size_bytes {db_size}')
+        except Exception as e:
+            app.logger.error(f"Metrics - Database error: {e}")
+        
+        # Request metrics (in-memory counter)
+        if not hasattr(app, '_request_counter'):
+            app._request_counter = 0
+        app._request_counter += 1
+        
+        metrics_output.append('')
+        metrics_output.append('# HELP flai_requests_total Total number of requests')
+        metrics_output.append('# TYPE flai_requests_total counter')
+        metrics_output.append(f'flai_requests_total {app._request_counter}')
+        
+        # Uptime metric
+        if not hasattr(app, '_start_time'):
+            app._start_time = time.time()
+        uptime = time.time() - app._start_time
+        
+        metrics_output.append('')
+        metrics_output.append('# HELP flai_uptime_seconds Service uptime in seconds')
+        metrics_output.append('# TYPE flai_uptime_seconds counter')
+        metrics_output.append(f'flai_uptime_seconds {uptime:.0f}')
+        
+        return '\n'.join(metrics_output) + '\n', 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
     return app

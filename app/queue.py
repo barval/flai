@@ -216,21 +216,6 @@ class RedisRequestQueue:
         self.redis.rpush(self.queue_key, self._serialize(task))
         return request_id
 
-    def get_user_queue_counts(self, user_id: str) -> Tuple[int, int]:
-        """Get user's queue count and total queue length efficiently.
-        Uses Redis set to track user requests instead of scanning entire queue.
-        """
-        total = self.redis.llen(self.queue_key)
-        if total == 0:
-            return 0, 0
-
-        # Use set to get count of active user requests
-        user_count = self.redis.scard(f"{self.user_requests_key}:{user_id}")
-
-        # Clean up completed requests from set (they may have been removed from results)
-        # This is eventual consistency - not critical if slightly stale
-        return user_count, total
-
     def _get_session_title(self, session_id: str, lang: str = 'ru') -> str:
         try:
             with sqlite3.connect(CHAT_DB_PATH) as conn:

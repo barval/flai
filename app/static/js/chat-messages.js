@@ -286,15 +286,15 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     }
     
     let headerHTML = '<span class="message-header">📅 ' + timeDisplay;
-    
+
     if (role === 'assistant') {
         let headerExtra = '';
-        
+
         if (modelName) {
             const shortModel = modelName.split('/').pop() || modelName;
             headerExtra += ' <span class="text-muted">| ' + escapeHtml(shortModel) + '</span>';
         }
-        
+
         let duration = null;
         if (responseTime) {
             if (typeof responseTime === 'object') {
@@ -309,23 +309,71 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
                 duration = parseFloat(responseTime).toFixed(1);
             }
         }
-        
+
         if (duration) {
             const langSuffix = t('seconds_suffix');
             headerExtra += ' <span class="text-muted">⏱️ ' + duration + langSuffix + '</span>';
         }
-        
+
         // TTS button
         headerExtra += ' <button class="tts-button" title="' + t('speak') + '">🗣️</button>';
-        
+
         // Copy message button
         headerExtra += ' <button class="copy-message-button" title="' + t('copy_text') + '">📋</button>';
-        
+
         headerHTML += headerExtra;
     }
-    
+
     headerHTML += '</span>';
+
+    // Create header element safely using DOM methods
+    const headerDiv = document.createElement('span');
+    headerDiv.className = 'message-header';
+    headerDiv.innerHTML = '📅 ' + timeDisplay;
     
+    if (role === 'assistant') {
+        let headerExtra = '';
+
+        if (modelName) {
+            const shortModel = modelName.split('/').pop() || modelName;
+            headerExtra += ' <span class="text-muted">| ' + escapeHtml(shortModel) + '</span>';
+        }
+
+        let duration = null;
+        if (responseTime) {
+            if (typeof responseTime === 'object') {
+                if (responseTime.mm_time && responseTime.gen_time) {
+                    duration = (parseFloat(responseTime.mm_time) + parseFloat(responseTime.gen_time)).toFixed(1);
+                } else if (responseTime.mm_time) {
+                    duration = parseFloat(responseTime.mm_time).toFixed(1);
+                } else if (responseTime.gen_time) {
+                    duration = parseFloat(responseTime.gen_time).toFixed(1);
+                }
+            } else if (typeof responseTime === 'number' || !isNaN(parseFloat(responseTime))) {
+                duration = parseFloat(responseTime).toFixed(1);
+            }
+        }
+
+        if (duration) {
+            const langSuffix = t('seconds_suffix');
+            headerExtra += ' <span class="text-muted">⏱️ ' + duration + langSuffix + '</span>';
+        }
+
+        // TTS button
+        const ttsButton = document.createElement('button');
+        ttsButton.className = 'tts-button';
+        ttsButton.title = t('speak');
+        ttsButton.textContent = '🗣️';
+        headerDiv.appendChild(ttsButton);
+
+        // Copy message button
+        const copyButton = document.createElement('button');
+        copyButton.className = 'copy-message-button';
+        copyButton.title = t('copy_text');
+        copyButton.textContent = '📋';
+        headerDiv.appendChild(copyButton);
+    }
+
     let contentHTML = '<div class="message-content">';
     
     if (typeof content === 'string') {
@@ -351,33 +399,64 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     }
     
     contentHTML += '</div>';
-    
-    msgDiv.innerHTML = headerHTML + contentHTML;
-    
+
+    // Add header to message div
+    msgDiv.appendChild(headerDiv);
+
+    // Use DOM methods instead of innerHTML for security
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'message-content';
+    contentDiv.innerHTML = contentHTML.replace('<div class="message-content">', '').replace('</div>', '');
+    msgDiv.appendChild(contentDiv);
+
     // File display
     if (fileData || filePath) {
         let fileHTML = '';
         let fileUrl = '';
-        
+
         if (filePath) {
             fileUrl = '/api/files/' + filePath;
         } else if (fileData) {
             fileUrl = 'data:' + fileType + ';base64,' + fileData;
         }
-        
+
         if (fileUrl) {
             if (fileType && fileType.startsWith('image/')) {
-                fileHTML = '<div class="image-container"><img src="' + fileUrl + '" class="attached-image" alt="' + (fileName || 'attached image') + '" title="' + t('click_to_enlarge') + '" onclick="openImageModal(this.src, \'' + (fileName || t('image')) + '\')"></div>';
+                // Create image container safely
+                const imgContainer = document.createElement('div');
+                imgContainer.className = 'image-container';
+                const img = document.createElement('img');
+                img.src = fileUrl;
+                img.className = 'attached-image';
+                img.alt = fileName || 'attached image';
+                img.title = t('click_to_enlarge');
+                img.onclick = function() { openImageModal(this.src, fileName || t('image')); };
+                imgContainer.appendChild(img);
+                msgDiv.appendChild(imgContainer);
             } else if (fileType && fileType.startsWith('audio/')) {
-                fileHTML = '<audio controls src="' + fileUrl + '" preload="metadata"></audio>';
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.src = fileUrl;
+                audio.preload = 'metadata';
+                msgDiv.appendChild(audio);
             } else {
-                fileHTML = '<div class="attached-file"><span class="file-icon">📄</span><a href="' + fileUrl + '" download="' + fileName + '">' + fileName + '</a></div>';
+                // Create file link safely
+                const fileDiv = document.createElement('div');
+                fileDiv.className = 'attached-file';
+                const fileIcon = document.createElement('span');
+                fileIcon.className = 'file-icon';
+                fileIcon.textContent = '📄';
+                const fileLink = document.createElement('a');
+                fileLink.href = fileUrl;
+                fileLink.download = fileName || 'file';
+                fileLink.textContent = fileName || 'file';
+                fileDiv.appendChild(fileIcon);
+                fileDiv.appendChild(fileLink);
+                msgDiv.appendChild(fileDiv);
             }
         }
-        
-        msgDiv.innerHTML += fileHTML;
     }
-    
+
     container.appendChild(msgDiv);
     container.scrollTop = container.scrollHeight;
     updateMessageCount();

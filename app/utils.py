@@ -283,18 +283,50 @@ def build_context_prompt(history: List[Dict[str, str]], lang: str = 'ru') -> str
 def validate_prompt_size(prompt: str, model_config: Dict[str, Any], model_type: str = 'chat', lang: str = 'ru') -> Tuple[bool, int, int]:
     """
     Validate that prompt fits within model's context window with safety margin.
-    
+
     Returns:
         (is_valid, estimated_tokens, max_tokens)
     """
     if not model_config:
         return True, 0, 0
-    
+
     max_context = model_config.get('context_length', 32768)
     estimated = estimate_tokens(prompt, model_type, lang)
-    
+
     # Use 95% of context as hard limit
     hard_limit = int(max_context * 0.95)
-    
+
     is_valid = estimated <= hard_limit
     return is_valid, estimated, max_context
+
+
+def validate_session_ownership(session_id: str, user_id: str) -> bool:
+    """
+    Validate that a session belongs to the given user.
+    
+    Args:
+        session_id: UUID of the session
+        user_id: User login to validate against
+    
+    Returns:
+        True if session exists and belongs to user, False otherwise
+    """
+    import sqlite3
+    import uuid
+    from . import db
+    
+    # Validate UUID format first
+    try:
+        uuid.UUID(session_id, version=4)
+    except (ValueError, AttributeError):
+        return False
+    
+    # Check ownership
+    try:
+        with sqlite3.connect(db.CHAT_DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute('SELECT user_id FROM chat_sessions WHERE id = ?', (session_id,))
+            row = c.fetchone()
+            return row is not None and row[0] == user_id
+    except Exception:
+        return False

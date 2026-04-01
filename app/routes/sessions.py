@@ -1,31 +1,11 @@
 # app/routes/sessions.py
 import sqlite3
-import uuid
 from flask import Blueprint, request, session, jsonify, current_app
 from flask_babel import gettext as _
 from app import db
-from app.utils import get_current_time_in_timezone_for_db
+from app.utils import get_current_time_in_timezone_for_db, validate_session_ownership
 
 bp = Blueprint('sessions', __name__, url_prefix='/api')
-
-
-def validate_session_ownership(session_id, user_id):
-    """
-    Verify that a session belongs to the given user.
-    Returns True if session exists and belongs to user, False otherwise.
-    """
-    # Validate UUID format first
-    try:
-        uuid.UUID(session_id, version=4)
-    except (ValueError, AttributeError):
-        return False
-    
-    # Check ownership
-    with sqlite3.connect(db.CHAT_DB_PATH) as conn:
-        c = conn.cursor()
-        c.execute('SELECT user_id FROM chat_sessions WHERE id = ?', (session_id,))
-        row = c.fetchone()
-        return row is not None and row[0] == user_id
 
 
 @bp.route('/sessions', methods=['GET'])

@@ -1,6 +1,7 @@
 # app/config.py
 # Configuration loader for FLAI application
 import os
+from datetime import timedelta
 from dotenv import load_dotenv
 import pytz
 from pytz.exceptions import UnknownTimeZoneError
@@ -101,6 +102,10 @@ def load_config(app):
     # When behind HTTPS proxy (nginx), set HTTPS_ENABLED=true in .env
     app.config['SESSION_COOKIE_SECURE'] = os.getenv('HTTPS_ENABLED', 'false').lower() in ('true', '1', 'yes')
     
+    # Session expiry - sessions expire after 8 hours of inactivity
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
+    app.config['SESSION_REFRESH_EACH_OTHER'] = timedelta(hours=1)
+
     # CSRF configuration
     app.config['WTF_CSRF_ENABLED'] = True
     app.config['WTF_CSRF_CHECK_DEFAULT'] = True

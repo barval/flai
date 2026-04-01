@@ -1,0 +1,33 @@
+version: '3.8'
+
+# Room Snapshot API - Local Deployment
+# Use this docker-compose for deploying on the SAME server as FLAI application
+# Services communicate via internal Docker network (lower latency)
+
+services:
+  room-snapshot-api:
+    build:
+      context: ./room-snapshot-api
+      dockerfile: Dockerfile
+    container_name: flai-room-snapshot-api
+    ports:
+      - "${CAMERA_API_PORT:-5005}:5000"
+    volumes:
+      - ./room-snapshot-api/config:/app/config:ro
+    environment:
+      - FLASK_DEBUG=${FLASK_DEBUG:-false}
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  flai_network:
+    external: true
+    name: flai_flai_network

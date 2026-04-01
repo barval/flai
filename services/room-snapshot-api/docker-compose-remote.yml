@@ -1,0 +1,32 @@
+version: '3.8'
+
+# Room Snapshot API - Remote Deployment
+# Use this docker-compose for deploying on a SEPARATE server from FLAI application
+# Services communicate via external network (requires firewall configuration)
+
+services:
+  room-snapshot-api:
+    build:
+      context: ./room-snapshot-api
+      dockerfile: Dockerfile
+    container_name: room-snapshot-api
+    ports:
+      - "${CAMERA_API_PORT:-5005}:5000"
+    volumes:
+      - ./room-snapshot-api/config:/app/config:ro
+    environment:
+      - FLASK_DEBUG=${FLASK_DEBUG:-false}
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+    networks:
+      - room-snapshot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  room-snapshot-network:
+    driver: bridge

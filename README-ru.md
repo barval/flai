@@ -112,7 +112,7 @@
 | **ОЗУ** | 8 ГБ | 16–32 ГБ | 32+ ГБ |
 | **ЦПУ** | 4 ядра | 4+ ядер | 8+ ядер |
 | **ГПУ** | NVIDIA 8-12 ГБ VRAM | NVIDIA 16 ГБ VRAM | NVIDIA 16+ ГБ VRAM |
-| **Хранилище** | 20 ГБ | 60+ ГБ SSD | 100+ ГБ SSD NVMe |
+| **Хранилище** | 40 ГБ | 60+ ГБ SSD | 100+ ГБ SSD NVMe |
 
 ### Программные требования
 - Сервер с Linux (или Windows/macOS с Docker Desktop)
@@ -262,7 +262,64 @@ docker exec flai-web flask admin-password ВашБезопасныйПароль
 ---
 
 ## 🔧 Конфигурация
-> 💡 **Примечание**: У Вас должны быть установлены **драйвера NVIDIA** на хост-машине и **NVIDIA Container Toolkit**.
+
+### Переменные окружения (.env)
+
+**Обязательные:**
+```bash
+SECRET_KEY=your_secret_key_here      # Секрет Flask для сессий
+TIMEZONE=Europe/Moscow              # Ваш часовой пояс
+```
+
+**URL сервисов:**
+```bash
+OLLAMA_URL=http://flai-ollama:11434
+AUTOMATIC1111_URL=http://flai-sd:7860
+WHISPER_API_URL=http://flai-whisper:9000/asr
+PIPER_URL=http://flai-piper:8888/tts
+QDRANT_URL=http://flai-qdrant:6333
+QDRANT_API_KEY=your_qdrant_api_key
+CAMERA_API_URL=http://flai-room-snapshot-api:5005
+```
+
+**Повторные попытки подключения:**
+```bash
+SERVICE_RETRY_ATTEMPTS=15           # Количество попыток
+SERVICE_RETRY_DELAY=2               # Задержка между попытками (сек)
+```
+
+**Безопасность сессий:**
+```bash
+HTTPS_ENABLED=true                  # true для HTTPS прокси
+PERMANENT_SESSION_LIFETIME=28800    # Время жизни сессии (8 часов)
+```
+
+**Redis очередь:**
+```bash
+REDIS_RESULT_TTL=3600              # TTL результатов (1 час)
+QUEUE_MAX_WAIT_TIME=300            # Макс. ожидание в очереди (5 мин)
+```
+
+### Конфигурация Docker
+
+**Настройки Gunicorn (Dockerfile):**
+```dockerfile
+# Оптимизировано для I/O операций (ожидание ответов AI)
+CMD ["gunicorn", \
+     "--bind", "0.0.0.0:5000", \
+     "--workers", "1", \
+     "--threads", "4", \
+     "--worker-class", "gthread", \
+     "--timeout", "120", \
+     "--keep-alive", "5", \
+     "wsgi:app"]
+```
+
+**Почему 1 worker × 4 threads?**
+- Минимальное потребление RAM (+40МБ vs 1/1)
+- Обрабатывает 4 одновременных подключения
+- Оптимально для I/O bound (ожидание Ollama/SD)
+- Экономия 280МБ vs 4 workers
 
 ### Docker Compose «всё в одном»
 Для запуска всех сервисов на одной машине используйте `docker-compose.all.yml`:
@@ -534,15 +591,100 @@ CAMERA_CHECK_INTERVAL=30
 ### CLI-команды
 ```bash
 # Установить пароль администратора
-docker exec flai-web-1 flask admin-password НовыйПароль123
+docker exec flai-web flask admin-password НовыйПароль123
 
 # Просмотр помощи
-docker exec flai-web-1 flask --help
+docker exec flai-web flask --help
 ```
 
 ---
 
-## 🧪 Нагрузочное тестирование
+## 🔍 Мониторинг и здоровье
+
+### Health Check Endpoint
+
+Комплексная проверка здоровья всех сервисов:
+
+```bash
+curl http://localhost:5000/health
+```
+
+**Ответ:**
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-04-02T00:34:08.237346",
+  "services": {
+    "web": "ok",
+    "database": "ok",
+    "redis": "ok",
+    "ollama": "ok"
+  }
+}
+```
+
+**Значения статуса:**
+- `ok` — все сервисы работают
+- `degraded` — часть сервисов недоступна
+- `error` — все сервисы недоступны
+
+### Prometheus Metrics
+
+Метрики в формате Prometheus:
+
+```bash
+curl http://localhost:5000/metrics
+```
+
+**Доступные метрики:**
+- `flai_web_info` — Версия сервиса
+- `flai_queue_length` — Длина очереди
+- `flai_queue_processing` — Обрабатываемые задачи
+- `flai_database_size_bytes` — Размер БД
+- `flai_requests_total` — Счётчик запросов
+- `flai_uptime_seconds` — Время работы
+
+### API Документация
+
+Полная API документация в формате OpenAPI:
+- **Файл:** `docs/openapi.yaml`
+- **Формат:** OpenAPI 3.0
+- **Покрытие:** Все REST endpoint'ы
+
+Просмотр через Swagger UI или любой OpenAPI-совместимый просмотрщик.
+
+---
+
+## 🧪 Тестирование
+
+### Юнит и интеграционные тесты
+
+FLAI включает комплексное покрытие тестами критичных компонентов:
+
+```bash
+# Запустить все тесты
+pytest
+
+# Запустить с отчётом покрытия
+pytest --cov=app --cov=modules --cov-report=html
+
+# Запустить конкретную категорию
+pytest tests/test_admin_routes.py
+pytest tests/test_documents_routes.py
+pytest tests/test_image_module.py
+```
+
+**Покрытие тестами:**
+- `test_admin_routes.py` — Endpoint'ы админ-панели (17 тестов)
+- `test_documents_routes.py` — Загрузка документов/RAG (16 тестов)
+- `test_image_module.py` — Генерация изображений (16 тестов)
+- `test_queue.py` — Операции Redis очереди
+- `test_audio_module.py` — Аудио транскрибация
+- `test_security.py` — Функции безопасности (CSRF, rate limiting и др.)
+- `test_integration.py` — Сквозные интеграционные тесты
+
+### Нагрузочное тестирование
+
 ПЛИИ включает скрипты нагрузочного тестирования на основе Locust.
 
 ### Настройка
@@ -571,7 +713,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000 \
 - Логин: `testuser`
 - Пароль: `testpass`
 
-> 💡 Обязательно: заблокируйте или удалите тестового пользователя после проведения тестов!
+> 💡 **Обязательно:** заблокируйте или удалите тестового пользователя после проведения тестов!
 
 ---
 

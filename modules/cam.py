@@ -334,24 +334,25 @@ class CamAPI:
     @staticmethod
     def register_routes(app, cam_module):
         from flask import session, jsonify
-        
+        from flask_babel import gettext as _
+
         @app.route('/api/cam/status', methods=['GET'])
         def cam_status():
             if 'login' not in session:
-                return jsonify({'error': 'Not authorized'}), 401
+                return jsonify({'error': _('Not authorized')}), 401
             return jsonify(cam_module.get_status())
-        
+
         @app.route('/api/cam/rooms', methods=['GET'])
         def cam_rooms():
             if 'login' not in session:
-                return jsonify({'error': 'Not authorized'}), 401
+                return jsonify({'error': _('Not authorized')}), 401
             user_login = session['login']
             return jsonify(cam_module.get_available_rooms(user_login))
-        
+
         @app.route('/api/cam/snapshot/<room>', methods=['GET'])
         def cam_snapshot(room):
             if 'login' not in session:
-                return jsonify({'error': 'Not authorized'}), 401
+                return jsonify({'error': _('Not authorized')}), 401
             user_login = session['login']
             result = cam_module.get_snapshot(user_login, room)
             if result['success']:
@@ -364,11 +365,11 @@ class CamAPI:
                 })
             else:
                 return jsonify(result), result.get('status_code', 500)
-        
+
         @app.route('/api/cam/health', methods=['GET'])
         def cam_health():
             if 'login' not in session:
-                return jsonify({'error': 'Not authorized'}), 401
+                return jsonify({'error': _('Not authorized')}), 401
             cam_module.check_availability(force=True)
             return jsonify({
                 'module': 'cam',

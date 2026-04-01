@@ -112,7 +112,7 @@ Set up separate Ollama URLs for each type of model in the Admin Panel (`/admin`)
 | **RAM** | 8 GB | 16–32 GB | 32+ GB |
 | **CPU** | 4 cores | 4+ cores | 8+ cores |
 | **GPU** | NVIDIA 8-12 GB VRAM | NVIDIA 16 GB VRAM | NVIDIA 16+ GB VRAM |
-| **Storage** | 20 GB | 60+ GB SSD | 100+ GB SSD NVMe |
+| **Storage** | 40 GB | 60+ GB SSD | 100+ GB SSD NVMe |
 
 ### Software Prerequisites
 - Linux server (or Windows/macOS with Docker Desktop)
@@ -263,7 +263,64 @@ Now you can:
 ---
 
 ## 🔧 Configuration
-> 💡 **Note**: You must have the **NVIDIA drivers** installed on the host machine and the **NVIDIA Container Toolkit**.
+
+### Environment Variables (.env)
+
+**Required:**
+```bash
+SECRET_KEY=your_secret_key_here      # Flask session secret
+TIMEZONE=Europe/Moscow              # Your timezone
+```
+
+**Service URLs:**
+```bash
+OLLAMA_URL=http://flai-ollama:11434
+AUTOMATIC1111_URL=http://flai-sd:7860
+WHISPER_API_URL=http://flai-whisper:9000/asr
+PIPER_URL=http://flai-piper:8888/tts
+QDRANT_URL=http://flai-qdrant:6333
+QDRANT_API_KEY=your_qdrant_api_key
+CAMERA_API_URL=http://flai-room-snapshot-api:5005
+```
+
+**Service Retry Settings:**
+```bash
+SERVICE_RETRY_ATTEMPTS=15           # Connection retry attempts
+SERVICE_RETRY_DELAY=2               # Delay between retries (seconds)
+```
+
+**Session Security:**
+```bash
+HTTPS_ENABLED=true                  # Set true for HTTPS proxy
+PERMANENT_SESSION_LIFETIME=28800    # Session expiry (8 hours in seconds)
+```
+
+**Redis Queue:**
+```bash
+REDIS_RESULT_TTL=3600              # Result TTL (1 hour)
+QUEUE_MAX_WAIT_TIME=300            # Max queue wait (5 minutes)
+```
+
+### Docker Configuration
+
+**Gunicorn Settings (Dockerfile):**
+```dockerfile
+# Optimized for I/O bound operations
+CMD ["gunicorn", \
+     "--bind", "0.0.0.0:5000", \
+     "--workers", "1", \
+     "--threads", "4", \
+     "--worker-class", "gthread", \
+     "--timeout", "120", \
+     "--keep-alive", "5", \
+     "wsgi:app"]
+```
+
+**Why 1 worker × 4 threads?**
+- Minimal RAM usage (+40MB vs 1/1)
+- Handles 4 concurrent connections
+- Optimal for I/O bound (waiting for AI responses)
+- Saves 280MB vs 4 workers
 
 ### All-in-One Docker Compose
 For running all services on a single machine, use `docker-compose.all.yml`:
@@ -535,15 +592,100 @@ Users with camera permissions can ask:
 ### CLI Commands
 ```bash
 # Set admin password
-docker exec flai-web-1 flask admin-password NewPassword123
+docker exec flai-web flask admin-password NewPassword123
 
 # View help
-docker exec flai-web-1 flask --help
+docker exec flai-web flask --help
 ```
 
 ---
 
-## 🧪 Load Testing
+## 🔍 Monitoring & Health
+
+### Health Check Endpoint
+
+Comprehensive health check for all services:
+
+```bash
+curl http://localhost:5000/health
+```
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-04-02T00:34:08.237346",
+  "services": {
+    "web": "ok",
+    "database": "ok",
+    "redis": "ok",
+    "ollama": "ok"
+  }
+}
+```
+
+**Status values:**
+- `ok` — all services healthy
+- `degraded` — some services unavailable
+- `error` — all services unavailable
+
+### Prometheus Metrics
+
+Prometheus-compatible metrics endpoint:
+
+```bash
+curl http://localhost:5000/metrics
+```
+
+**Available metrics:**
+- `flai_web_info` — Service version
+- `flai_queue_length` — Current queue length
+- `flai_queue_processing` — Tasks being processed
+- `flai_database_size_bytes` — Database file size
+- `flai_requests_total` — Total requests counter
+- `flai_uptime_seconds` — Service uptime
+
+### API Documentation
+
+Full API documentation available in OpenAPI format:
+- **File:** `docs/openapi.yaml`
+- **Format:** OpenAPI 3.0
+- **Coverage:** All REST endpoints
+
+View with Swagger UI or any OpenAPI-compatible viewer.
+
+---
+
+## 🧪 Testing
+
+### Unit & Integration Tests
+
+FLAI includes comprehensive test coverage for critical components:
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage report
+pytest --cov=app --cov=modules --cov-report=html
+
+# Run specific test category
+pytest tests/test_admin_routes.py
+pytest tests/test_documents_routes.py
+pytest tests/test_image_module.py
+```
+
+**Test Coverage:**
+- `test_admin_routes.py` — Admin panel endpoints (17 tests)
+- `test_documents_routes.py` — Document upload/RAG (16 tests)
+- `test_image_module.py` — Image generation (16 tests)
+- `test_queue.py` — Redis queue operations
+- `test_audio_module.py` — Audio transcription
+- `test_security.py` — Security features (CSRF, rate limiting, etc.)
+- `test_integration.py` — End-to-end integration tests
+
+### Load Testing
+
 FLAI includes Locust-based load testing scripts.
 
 ### Setup
@@ -572,7 +714,7 @@ Create test user before running:
 - Login: `testuser`
 - Password: `testpass`
 
-> 💡  Required: block or delete the test user after the tests!
+> 💡  **Required:** block or delete the test user after the tests!
 
 ---
 

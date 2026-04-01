@@ -128,26 +128,23 @@ function updateSessionsList(sessions) {
         let statusIcons = '';
         const transcribing = localTranscribingSessions[s.id];
         const info = sessionQueueInfo[s.id];
-        
+
         // CRITICAL FIX: Transcribing icon has HIGHEST priority
         if (transcribing) {
             statusIcons = '<span class="session-status-icon transcribing blink" title="' + t('transcribing') + '">🎤</span>';
         } else if (info && info.has_transcribing) {
             // Server-side transcribing flag (for other clients)
             statusIcons = '<span class="session-status-icon transcribing blink" title="' + t('transcribing') + '">🎤</span>';
+        } else if (info && info.processing) {
+            // Currently being processed - show lightning (ONLY for this session)
+            statusIcons = '<span class="session-status-icon processing blink" title="' + t('processing') + '">⚡</span>';
+        } else if (info && info.queued > 0) {
+            // In queue - show hourglass with position number
+            const position = info.queue_position || info.queued;
+            statusIcons = '<span class="session-status-icon queued blink" title="' + t('queued') + ' ( #' + position + ')">⏳ ' + position + '</span>';
         } else {
-            // Only show queue status if NOT transcribing
-            let queueStatusShown = false;
-            if (info && info.processing) {
-                statusIcons = '<span class="session-status-icon processing blink" title="' + t('processing') + '">⚡</span>';
-                queueStatusShown = true;
-            } else if (info && info.queued > 0) {
-                const count = info.queued > 1 ? ' ' + info.queued : '';
-                statusIcons = '<span class="session-status-icon queued blink" title="' + t('queued') + '">⏳' + count + '</span>';
-                queueStatusShown = true;
-            }
-            // Unread indicator (only if no other status and not active session)
-            if (!queueStatusShown && newMessageIndicators[s.id] && s.id !== currentActiveId) {
+            // No queue status - show unread indicator if needed (only for non-active sessions)
+            if (newMessageIndicators[s.id] && s.id !== currentActiveId) {
                 statusIcons = '<span class="session-status-icon unread blink" title="' + t('new_response') + '">✉️</span>';
             }
         }
@@ -310,6 +307,8 @@ function switchSession(sessionId) {
         .then(res => res.json())
         .then(() => {
             currentSessionId = sessionId;
+            // Clear unread indicator for this session
+            delete newMessageIndicators[sessionId];
             loadMessages(sessionId).catch(err => {
                 console.error('Error loading messages in switchSession:', err);
                 if (statusCounter) {

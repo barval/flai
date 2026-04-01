@@ -78,10 +78,9 @@ class ImageModule:
     
     def generate_image(self, user_query, start_time=None, lang='ru'):
         """Generate image from user query"""
-        # Re-check availability on each request (service may have started after app)
-        if not self.available:
-            self.logger.info("Re-checking Automatic1111 availability before generation...")
-            self.check_availability()
+        # Always re-check availability on each request (service may have restarted)
+        self.logger.info("Checking Automatic1111 availability before generation...")
+        self.check_availability()
 
         if not self.available:
             return {

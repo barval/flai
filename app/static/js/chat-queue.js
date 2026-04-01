@@ -3,7 +3,7 @@
 
 function startSyncInterval() {
     if (window.syncInterval) clearInterval(window.syncInterval);
-    console.log('startSyncInterval: Starting sync interval (3 seconds) for session', currentSessionId);
+    console.log('startSyncInterval: Starting sync interval (500ms) for session', currentSessionId);
     // Sync interval for queue status, counter updates, and cross-client synchronization
     window.syncInterval = setInterval(() => {
         if (window.IS_RELOADING) {
@@ -14,7 +14,7 @@ function startSyncInterval() {
         fetchQueueStatus();
         window.updateStatusCounter();
         syncSessionsAndMessages();
-    }, 3000);
+    }, 500);
 }
 
 /**
@@ -91,7 +91,10 @@ function syncMessagesForCurrentSession() {
             // Display new messages
             for (const msg of newMessages) {
                 console.log('syncMessages: Processing message:', msg.id, msg.role);
-                
+
+                // Clear unread indicator when we receive new messages for current session
+                delete newMessageIndicators[currentSessionId];
+
                 // Skip if already displayed (check DOM first)
                 if (msg.id) {
                     const existingMsg = document.querySelector(`[data-message-id="${msg.id}"]`);
@@ -151,34 +154,33 @@ function fetchQueueStatus() {
         .then(data => {
             if (window.IS_RELOADING) return;
             const newInfo = {};
-            
+
             // Process currently processing task
             if (data.processing) {
                 const proc = data.processing;
                 const sessionId = proc.session_id;
                 if (!newInfo[sessionId]) {
-                    newInfo[sessionId] = { processing: false, queued: 0, has_transcribing: false };
+                    newInfo[sessionId] = { processing: false, queued: 0, has_transcribing: false, first_queued_position: 999 };
                 }
                 newInfo[sessionId].processing = true;
                 // Only set has_transcribing if currently processing audio/transcribe task
-                // This should only be true during actual transcription, not during text processing
                 if (proc.type === 'transcribe_audio' || proc.type === 'audio') {
                     newInfo[sessionId].has_transcribing = true;
                 }
             }
             
-            // Process queued tasks - count them but don't set has_transcribing for queued tasks
-            // has_transcribing should only be true when actively transcribing (processing)
+            // Process queued tasks
             data.queued.forEach(item => {
                 const sessionId = item.session_id;
+                const position = item.position_info?.position || 999;
                 if (!newInfo[sessionId]) {
-                    newInfo[sessionId] = { processing: false, queued: 0, has_transcribing: false };
+                    newInfo[sessionId] = { processing: false, queued: 0, queue_position: 999, has_transcribing: false };
                 }
                 newInfo[sessionId].queued += 1;
-                // Note: We don't set has_transcribing for queued tasks
-                // This ensures microphone icon only shows during active transcription
+                // Store the position for this session's task
+                newInfo[sessionId].queue_position = position;
             });
-            
+
             sessionQueueInfo = newInfo;
             updateSessionsListFromData();
         })

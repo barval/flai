@@ -104,8 +104,9 @@ class RedisRequestQueue:
         self.redis.sadd(f"{self.user_requests_key}:{user_id}", request_id)
         queue_length = self.redis.llen(self.queue_key)
         estimated_wait = max(1, queue_length * 5)
-        position_info = {'position': queue_length, 'estimated_seconds': estimated_wait}
-        self.logger.info(f"RedisRequestQueue.add_request: task added, position={queue_length}")
+        # Position is 1-based for display (1 = first in queue/processing)
+        position_info = {'position': queue_length + 1, 'estimated_seconds': estimated_wait}
+        self.logger.info(f"RedisRequestQueue.add_request: task added, position={position_info['position']}")
         return request_id, position_info
 
     def get_user_queue_counts(self, user_id: str) -> Tuple[int, int]:
@@ -746,6 +747,7 @@ class RedisRequestQueue:
             if req_id in user_requests:
                 task = pickle.loads(task_data)
                 task['status'] = 'processing'
+                task['position_info'] = {'position': 1, 'estimated_seconds': 0}  # Processing = first position
                 result['processing'] = self._format_request_info(task, lang)
         queue_length = self.redis.llen(self.queue_key)
         queue_tasks = self.redis.lrange(self.queue_key, 0, queue_length - 1) if queue_length > 0 else []

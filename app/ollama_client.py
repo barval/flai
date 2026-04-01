@@ -9,7 +9,7 @@ from flask_babel import gettext as _
 from flask_babel import force_locale
 
 from app.model_config import get_model_config
-from app.utils import estimate_tokens  # для оценки токенов
+from app.utils import estimate_tokens  # for token estimation
 
 
 class OllamaClient:

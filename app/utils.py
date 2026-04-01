@@ -150,18 +150,41 @@ def save_uploaded_file(file_data: str, filename: str, session_id: str, upload_fo
     """Save a base64 encoded file to disk. Returns relative path."""
     if not file_data:
         return None
+    
+    # Security: validate session_id to prevent path traversal
+    if not session_id or '..' in session_id or '/' in session_id or '\\' in session_id:
+        current_app.logger.error(f"Invalid session_id: {session_id}")
+        return None
+    
     try:
         file_bytes = base64.b64decode(file_data)
     except Exception as e:
         current_app.logger.error(f"Failed to decode base64 file data: {e}")
         return None
+    
     session_folder = os.path.join(upload_folder, session_id)
     os.makedirs(session_folder, exist_ok=True)
+    
+    # Security: sanitize filename - extract only the extension, generate unique name
     ext = os.path.splitext(filename)[1] if filename else '.bin'
     if not ext:
         ext = '.bin'
+    # Remove any potentially dangerous characters from extension
+    ext = ext[:10]  # Limit extension length
+    ext = ''.join(c for c in ext if c.isalnum() or c == '.')
+    if not ext.startswith('.'):
+        ext = '.' + ext
+    
     unique_name = f"{uuid.uuid4().hex}{ext}"
     file_path = os.path.join(session_folder, unique_name)
+    
+    # Security: verify the resolved path is within upload folder
+    abs_upload_folder = os.path.abspath(upload_folder)
+    abs_file_path = os.path.abspath(file_path)
+    if not abs_file_path.startswith(abs_upload_folder + os.sep):
+        current_app.logger.error(f"Path traversal attempt blocked: {file_path}")
+        return None
+    
     try:
         with open(file_path, 'wb') as f:
             f.write(file_bytes)

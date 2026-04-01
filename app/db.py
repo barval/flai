@@ -612,24 +612,37 @@ def get_document(doc_id, user_id):
 
 def update_document_index_status(doc_id, status, indexed_at=None, indexing_started_at=None, embedding_model=None):
     """Update the index status, optionally indexed_at, indexing_started_at and embedding_model for a document."""
+    # Whitelist of allowed column names to prevent SQL injection
+    ALLOWED_COLUMNS = {
+        'index_status': 'index_status',
+        'indexed_at': 'indexed_at',
+        'indexing_started_at': 'indexing_started_at',
+        'embedding_model': 'embedding_model'
+    }
+    
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         updates = []
         params = []
-        if status is not None:
-            updates.append("index_status = ?")
-            params.append(status)
-        if indexed_at is not None:
-            updates.append("indexed_at = ?")
-            params.append(indexed_at)
-        if indexing_started_at is not None:
-            updates.append("indexing_started_at = ?")
-            params.append(indexing_started_at)
-        if embedding_model is not None:
-            updates.append("embedding_model = ?")
-            params.append(embedding_model)
+        
+        # Dictionary of values to update
+        values_to_update = {
+            'index_status': status,
+            'indexed_at': indexed_at,
+            'indexing_started_at': indexing_started_at,
+            'embedding_model': embedding_model
+        }
+        
+        for field, value in values_to_update.items():
+            if value is not None:
+                # Use only allowed column names
+                column_name = ALLOWED_COLUMNS[field]
+                updates.append(f"{column_name} = ?")
+                params.append(value)
+        
         if not updates:
             return
+        
         params.append(doc_id)
         c.execute(f'UPDATE documents SET {", ".join(updates)} WHERE id = ?', params)
         conn.commit()

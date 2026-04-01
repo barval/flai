@@ -205,7 +205,7 @@ function attachSessionEventHandlers() {
 }
 
 function createNewSession() {
-    fetch('/api/sessions/new', { method: 'POST' })
+    fetchWithCSRF('/api/sessions/new', { method: 'POST' })
         .then(res => {
             if (!res.ok) {
                 throw new Error(`HTTP error ${res.status}`);
@@ -274,8 +274,8 @@ function deleteSession(sessionId, sessionTitle, sessionDate) {
     
     delete newMessageIndicators[sessionId];
     delete localTranscribingSessions[sessionId];
-    
-    fetch('/api/sessions/' + sessionId + '/delete', { method: 'POST' })
+
+    fetchWithCSRF('/api/sessions/' + sessionId + '/delete', { method: 'POST' })
         .then(res => res.json())
         .then(data => {
             if (data.status === 'ok') {
@@ -306,7 +306,7 @@ function switchSession(sessionId) {
     if (statusCounter) {
         statusCounter.innerHTML = '⏳ ' + t('loading');
     }
-    fetch('/api/sessions/' + sessionId + '/switch', { method: 'POST' })
+    fetchWithCSRF('/api/sessions/' + sessionId + '/switch', { method: 'POST' })
         .then(res => res.json())
         .then(() => {
             currentSessionId = sessionId;
@@ -339,7 +339,7 @@ function switchSession(sessionId) {
 
 function updateLastVisit(sessionId) {
     if (!sessionId) return;
-    fetch(`/api/sessions/${sessionId}/visit`, { method: 'POST' })
+    fetchWithCSRF(`/api/sessions/${sessionId}/visit`, { method: 'POST' })
         .catch(err => console.error('Error updating last_visit:', err));
 }
 

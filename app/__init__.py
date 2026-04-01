@@ -2,6 +2,9 @@
 import os
 from flask import Flask, request, session, send_file, abort, jsonify
 from flask_babel import Babel, gettext
+from flask_wtf.csrf import CSRFProtect
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import logging
 from logging import Formatter
 from .config import load_config
@@ -17,6 +20,8 @@ from modules.tts import TTSModule
 import mimetypes
 
 babel = Babel()
+csrf = CSRFProtect()
+limiter = Limiter()
 
 
 @babel.localeselector
@@ -58,6 +63,12 @@ def create_app():
     babel.init_app(app)
     app.jinja_env.add_extension('jinja2.ext.i18n')  # for _() in templates
     app.jinja_env.globals['_'] = gettext
+
+    # Initialize CSRF protection
+    csrf.init_app(app)
+
+    # Initialize rate limiting
+    limiter.init_app(app)
 
     # Initialize chat DB
     init_db()

@@ -1,7 +1,7 @@
 # modules/base.py
 import logging
 import traceback
-from typing import Dict, List, Optional, Any, Union, Tuple  # добавлен Tuple
+from typing import Dict, List, Optional, Any, Union, Tuple  # Tuple added
 from flask import current_app
 from flask_babel import gettext as _
 from flask_babel import force_locale

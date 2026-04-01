@@ -70,31 +70,46 @@ def create_user(login, password, name, service_class=2, is_admin=False, camera_p
 
 def update_user(login, name=None, service_class=None, is_active=None, camera_permissions=None, language=None, voice_gender=None, theme=None):
     """Update user data (except password)."""
+    # Whitelist of allowed column names to prevent SQL injection
+    ALLOWED_COLUMNS = {
+        'name': 'name',
+        'service_class': 'service_class',
+        'is_active': 'is_active',
+        'camera_permissions': 'camera_permissions',
+        'language': 'language',
+        'voice_gender': 'voice_gender',
+        'theme': 'theme'
+    }
+    
     updates = []
     params = []
-    if name is not None:
-        updates.append("name = ?")
-        params.append(name)
-    if service_class is not None:
-        updates.append("service_class = ?")
-        params.append(service_class)
-    if is_active is not None:
-        updates.append("is_active = ?")
-        params.append(int(is_active))
-    if camera_permissions is not None:
-        updates.append("camera_permissions = ?")
-        params.append(json.dumps(camera_permissions) if camera_permissions is not None else None)
-    if language is not None:
-        updates.append("language = ?")
-        params.append(language)
-    if voice_gender is not None:
-        updates.append("voice_gender = ?")
-        params.append(voice_gender)
-    if theme is not None:
-        updates.append("theme = ?")
-        params.append(theme)
+    
+    # Dictionary of values to update
+    values_to_update = {
+        'name': name,
+        'service_class': service_class,
+        'is_active': is_active,
+        'camera_permissions': camera_permissions,
+        'language': language,
+        'voice_gender': voice_gender,
+        'theme': theme
+    }
+    
+    for field, value in values_to_update.items():
+        if value is not None:
+            # Use only allowed column names
+            column_name = ALLOWED_COLUMNS[field]
+            updates.append(f"{column_name} = ?")
+            if field == 'camera_permissions':
+                params.append(json.dumps(value) if value is not None else None)
+            elif field == 'is_active':
+                params.append(int(value))
+            else:
+                params.append(value)
+    
     if not updates:
         return
+    
     params.append(login)
     with get_db() as conn:
         conn.execute(f'UPDATE users SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP WHERE login = ?', params)

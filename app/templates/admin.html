@@ -63,6 +63,8 @@
         <span class="close">&times;</span>
         <h3>{{ _('New user') }}</h3>
         <form id="add-user-form">
+            <!-- CSRF token -->
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <div class="form-group">
                 <label for="new-login">{{ _('Login') }}:</label>
                 <input type="text" id="new-login" name="login" required pattern="[a-z0-9]+" title="{{ _('Only lowercase letters and digits') }}">
@@ -112,6 +114,8 @@
         <span class="close">&times;</span>
         <h3>{{ _('Change password') }}</h3>
         <form id="password-form">
+            <!-- CSRF token -->
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" id="password-user-login">
             <div class="form-group">
                 <label for="new-user-password">{{ _('New password') }}:</label>

@@ -93,3 +93,15 @@ def load_config(app):
     else:
         app.config['TIMEZONE'] = None
         app.logger.error("TIMEZONE not found in .env file")
+
+    # Session cookie settings for CSRF and security
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    # Secure flag is set based on HTTPS_ENABLED env var (for nginx proxy)
+    app.config['SESSION_COOKIE_SECURE'] = os.getenv('HTTPS_ENABLED', 'false').lower() in ('true', '1', 'yes')
+    
+    # CSRF configuration
+    app.config['WTF_CSRF_ENABLED'] = True
+    app.config['WTF_CSRF_CHECK_DEFAULT'] = True
+    # CSRF token lifetime (1 hour)
+    app.config['WTF_CSRF_TIME_LIMIT'] = 3600

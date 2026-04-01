@@ -355,7 +355,7 @@ async function sendMessage() {
         }
         if (newTitle) {
             updateSessionTitle(currentSessionId, newTitle);
-            fetch('/api/sessions/' + currentSessionId + '/update-title', {
+            fetchWithCSRF('/api/sessions/' + currentSessionId + '/update-title', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({title: newTitle})
@@ -428,9 +428,9 @@ async function sendMessage() {
                         formData.append('voice_record', 'true');
                         isVoiceRecorded = false;
                     }
-                    response = await fetch('/api/send_message', { method: 'POST', body: formData });
+                    response = await fetchWithCSRF('/api/send_message', { method: 'POST', body: formData });
                 } else {
-                    response = await fetch('/api/send_message', {
+                    response = await fetchWithCSRF('/api/send_message', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ message: tempText })

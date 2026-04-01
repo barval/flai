@@ -5,6 +5,7 @@ import os
 import json
 import uuid
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 from flask import current_app, g
 from flask_babel import gettext as _
 
@@ -18,7 +19,7 @@ INDEX_STATUS_INDEXED = 'indexed'
 INDEX_STATUS_FAILED = 'failed'
 
 
-def get_db():
+def get_db() -> sqlite3.Connection:
     """Return a database connection (for use in routes)."""
     db = getattr(g, '_database', None)
     if db is None:
@@ -27,7 +28,7 @@ def get_db():
     return db
 
 
-def close_db(e=None):
+def close_db(e: Any = None) -> None:
     """Close database connection."""
     db = g.pop('_database', None)
     if db is not None:
@@ -254,7 +255,7 @@ def migrate_add_ollama_url(app):
         app.logger.error(f"Migration add ollama_url error: {str(e)}")
 
 
-def get_user_sessions(user_id):
+def get_user_sessions(user_id: str) -> List[Dict[str, Any]]:
     """Get all sessions for a user.
     Optimized to avoid N+1 queries by using JOINs and subqueries.
     """
@@ -288,8 +289,23 @@ def get_user_sessions(user_id):
         return sessions
 
 
-def get_session_messages(session_id, since=None):
-    """Get messages for a session."""
+def get_session_messages(
+    session_id: str,
+    since: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0
+) -> List[Dict[str, Any]]:
+    """Get messages for a session with pagination.
+
+    Args:
+        session_id: Session identifier
+        since: Get messages after this timestamp (ISO format)
+        limit: Maximum number of messages to return (default 100)
+        offset: Number of messages to skip (default 0)
+
+    Returns:
+        List of message dictionaries
+    """
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         c = conn.cursor()
@@ -303,7 +319,8 @@ def get_session_messages(session_id, since=None):
             FROM messages
             WHERE session_id = ? AND timestamp > ?
             ORDER BY timestamp ASC
-            ''', (session_id, since))
+            LIMIT ? OFFSET ?
+            ''', (session_id, since, limit, offset))
         else:
             c.execute('''
             SELECT id, role, content, file_data, file_type, file_name, file_path,
@@ -312,7 +329,8 @@ def get_session_messages(session_id, since=None):
             FROM messages
             WHERE session_id = ?
             ORDER BY timestamp ASC
-            ''', (session_id,))
+            LIMIT ? OFFSET ?
+            ''', (session_id, limit, offset))
         messages = []
         for row in c.fetchall():
             msg_dict = dict(row)

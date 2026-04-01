@@ -1,5 +1,6 @@
 # app/routes/sessions.py
 import sqlite3
+import uuid
 from flask import Blueprint, request, session, jsonify, current_app
 from flask_babel import gettext as _
 from app import db
@@ -7,17 +8,45 @@ from app.utils import get_current_time_in_timezone_for_db
 
 bp = Blueprint('sessions', __name__, url_prefix='/api')
 
+
+def validate_session_ownership(session_id, user_id):
+    """
+    Verify that a session belongs to the given user.
+    Returns True if session exists and belongs to user, False otherwise.
+    """
+    # Validate UUID format first
+    try:
+        uuid.UUID(session_id, version=4)
+    except (ValueError, AttributeError):
+        return False
+    
+    # Check ownership
+    with sqlite3.connect(db.CHAT_DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute('SELECT user_id FROM chat_sessions WHERE id = ?', (session_id,))
+        row = c.fetchone()
+        return row is not None and row[0] == user_id
+
+
 @bp.route('/sessions', methods=['GET'])
 def api_get_sessions():
     if 'login' not in session:
         return jsonify({'error': _('Not authorized')}), 401
     return jsonify(db.get_user_sessions(session['login']))
 
+
 @bp.route('/sessions/<session_id>/switch', methods=['POST'])
 def api_switch_session(session_id):
     if 'login' not in session:
         return jsonify({'error': _('Not authorized')}), 401
+    
     user_id = session['login']
+    
+    # Security: Verify session belongs to user
+    if not validate_session_ownership(session_id, user_id):
+        current_app.logger.warning(f"User {user_id} attempted to access session {session_id}")
+        return jsonify({'error': _('Session not found or access denied')}), 404
+    
     session['current_session'] = session_id
     db.set_last_session(user_id, session_id)
     db.update_session_visit(user_id, session_id)
@@ -27,6 +56,12 @@ def api_switch_session(session_id):
 def api_get_session_model(session_id):
     if 'login' not in session:
         return jsonify({'error': _('Not authorized')}), 401
+    
+    # Security: Verify session belongs to user
+    if not validate_session_ownership(session_id, session['login']):
+        current_app.logger.warning(f"User {session['login']} attempted to access session {session_id}")
+        return jsonify({'error': _('Session not found')}), 404
+    
     with sqlite3.connect(db.CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('SELECT model_name FROM chat_sessions WHERE id = ?', (session_id,))
@@ -51,6 +86,12 @@ def api_new_session():
 def api_update_session_title(session_id):
     if 'login' not in session:
         return jsonify({'error': _('Not authorized')}), 401
+    
+    # Security: Verify session belongs to user
+    if not validate_session_ownership(session_id, session['login']):
+        current_app.logger.warning(f"User {session['login']} attempted to update session {session_id}")
+        return jsonify({'error': _('Session not found')}), 404
+    
     data = request.get_json()
     new_title = data.get('title', _('New session'))
     current_time = get_current_time_in_timezone_for_db()
@@ -68,6 +109,12 @@ def api_update_session_title(session_id):
 def api_delete_session(session_id):
     if 'login' not in session:
         return jsonify({'error': _('Not authorized')}), 401
+    
+    # Security: Verify session belongs to user
+    if not validate_session_ownership(session_id, session['login']):
+        current_app.logger.warning(f"User {session['login']} attempted to delete session {session_id}")
+        return jsonify({'error': _('Session not found or access denied')}), 404
+    
     success = db.delete_session_and_messages(
         session_id,
         session['login'],
@@ -79,10 +126,16 @@ def api_delete_session(session_id):
         session.pop('current_session', None)
     return jsonify({'status': 'ok'})
 
+
 @bp.route('/sessions/<session_id>/visit', methods=['POST'])
 def api_update_session_visit(session_id):
     if 'login' not in session:
         return jsonify({'error': _('Not authorized')}), 401
+    
+    # Security: Verify session belongs to user
+    if not validate_session_ownership(session_id, session['login']):
+        return jsonify({'error': _('Session not found')}), 404
+    
     db.update_session_visit(session['login'], session_id)
     return jsonify({'status': 'ok'})
 
@@ -93,6 +146,12 @@ def clear_history():
     session_id = session.get('current_session')
     if not session_id:
         return jsonify({'error': _('No active session')}), 400
+    
+    # Security: Verify session belongs to user
+    if not validate_session_ownership(session_id, session['login']):
+        current_app.logger.warning(f"User {session['login']} attempted to clear history of session {session_id}")
+        return jsonify({'error': _('Session not found')}), 404
+    
     with sqlite3.connect(db.CHAT_DB_PATH) as conn:
         c = conn.cursor()
         c.execute('DELETE FROM messages WHERE session_id = ?', (session_id,))

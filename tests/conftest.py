@@ -1,4 +1,5 @@
 # tests/conftest.py
+"""Pytest fixtures and configuration."""
 import pytest
 import os
 import tempfile
@@ -44,9 +45,12 @@ def app():
     yield app
 
     # Cleanup
-    os.remove(db_path)
-    os.remove(user_db_path)
-    os.rmdir(temp_dir)
+    try:
+        os.remove(db_path)
+        os.remove(user_db_path)
+        os.rmdir(temp_dir)
+    except:
+        pass  # Ignore cleanup errors in tests
 
 
 @pytest.fixture

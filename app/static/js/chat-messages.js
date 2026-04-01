@@ -9,20 +9,21 @@ function updateMessageCount() {
 
 function loadMessages(sessionId) {
     if (window.IS_RELOADING) return Promise.resolve();
-    
+
     if (!sessionId) {
         console.error('loadMessages called with empty sessionId');
         return Promise.reject(new Error('Session ID is empty'));
     }
-    
+
     console.log('loadMessages: loading messages for session', sessionId);
     console.log('loadMessages: displayedMessageIds.size before clear:', displayedMessageIds.size);
 
     // Clear displayed IDs for new session load
     displayedMessageIds.clear();
     console.log('loadMessages: displayedMessageIds cleared');
-    
-    return fetch('/api/sessions/' + sessionId + '/messages')
+
+    // Load messages with pagination (default: last 100 messages)
+    return fetch('/api/sessions/' + sessionId + '/messages?limit=100&offset=0')
         .then(res => {
             if (!res.ok) {
                 console.error('Failed to load messages:', res.status);
@@ -30,23 +31,25 @@ function loadMessages(sessionId) {
             }
             return res.json();
         })
-        .then(messages => {
+        .then(data => {
             if (window.IS_RELOADING) return;
-            
+
+            // Handle both old format (array) and new format (object with messages)
+            const messages = Array.isArray(data) ? data : (data.messages || []);
             console.log('loadMessages: received', messages.length, 'messages');
-            
+
             const container = document.getElementById('chat-messages');
             container.innerHTML = '';
-            
+
             // Load model info
             fetch('/api/sessions/' + sessionId + '/model-info')
                 .then(res => res.json())
-                .then(data => {
+                .then(modelData => {
                     if (window.IS_RELOADING) return;
-                    defaultModelName = data.model_name || 'qwen3-vl:8b-instruct-q4_K_M';
+                    defaultModelName = modelData.model_name || 'qwen3-vl:8b-instruct-q4_K_M';
                 })
                 .catch(err => console.error('Error loading model info:', err));
-            
+
             let lastUserMessage = null;
 
             messages.forEach((msg) => {

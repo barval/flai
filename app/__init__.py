@@ -41,6 +41,26 @@ def create_app():
     from werkzeug.middleware.proxy_fix import ProxyFix
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_for=1)
 
+    # Security headers for all responses
+    @app.after_request
+    def set_security_headers(response):
+        """Add security headers to all responses."""
+        # Content Security Policy - restrict resource loading
+        # Allow media from self, blob:, and data: (for audio/video recordings)
+        response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob: data:; frame-ancestors 'none';"
+        # Prevent MIME type sniffing
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        # Prevent clickjacking
+        response.headers['X-Frame-Options'] = 'DENY'
+        # XSS protection (legacy, but still useful for older browsers)
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+        # Referrer policy
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+        # Permissions policy (formerly Feature-Policy)
+        # Allow microphone and camera for voice messages and TTS
+        response.headers['Permissions-Policy'] = 'geolocation=(), microphone=(self), camera=(self)'
+        return response
+
     # Explicit Babel configuration with absolute path
     translations_path = os.path.join(app.root_path, '..', 'translations')
     app.config['BABEL_TRANSLATION_DIRECTORIES'] = translations_path
@@ -49,19 +69,37 @@ def create_app():
     # Setup logging
     log_level_str = os.getenv('LOG_LEVEL', 'INFO').upper()
     log_level = getattr(logging, log_level_str, logging.INFO)
+    log_format = os.getenv('LOG_FORMAT', 'text').lower()
 
-    formatter = Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S')
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
+    if log_format == 'json':
+        # JSON structured logging for ELK, Splunk, etc.
+        try:
+            from pythonjsonlogger import jsonlogger
+            json_formatter = jsonlogger.JsonFormatter(
+                fmt='%(asctime)s %(name)s %(levelname)s %(message)s %(pathname)s %(lineno)d',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+            console_handler = logging.StreamHandler()
+            console_handler.setFormatter(json_formatter)
+            app.logger.info(f"Logging initialized with JSON format, level: {log_level_str}")
+        except ImportError:
+            # Fallback to text if python-json-logger not installed
+            formatter = Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S')
+            console_handler = logging.StreamHandler()
+            console_handler.setFormatter(formatter)
+            app.logger.info(f"Logging initialized with TEXT format (json not available), level: {log_level_str}")
+    else:
+        # Standard text logging
+        formatter = Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S')
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(formatter)
+        app.logger.info(f"Logging initialized with TEXT format, level: {log_level_str}")
 
     # Configure the root logger so that all modules inherit the level
     logging.root.setLevel(log_level)
     logging.root.handlers = [console_handler]
-
-    #app.logger.handlers = [console_handler]
-    #app.logger.setLevel(log_level)
-    app.logger.info(f"Logging initialized with level: {log_level_str}")
 
     # Initialize Babel with the app
     babel.init_app(app)

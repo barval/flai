@@ -89,28 +89,37 @@ def admin_panel():
 @admin_required
 def get_users():
     """Get list of all users with stats.
-    Optimized to avoid N+1 queries by using subqueries.
+    Optimized to avoid N+1 queries by using a single JOIN query.
     """
     try:
         users = list_users(exclude_admin=True)
         result = []
+        
+        # Build a single optimized query with all stats using JOINs
         with get_chat_db() as conn:
             for u in users:
-                # Single query with subqueries for all stats
+                # Single query with subqueries for all stats - no N+1
                 stats = conn.execute('''
-                    SELECT 
-                        COUNT(DISTINCT cs.id) as sessions, 
+                    SELECT
+                        COUNT(DISTINCT cs.id) as sessions,
                         COUNT(m.id) as messages,
-                        (SELECT COUNT(*) FROM documents WHERE user_id = ? AND file_ext IN ('.pdf', '.doc', '.docx', '.txt')) as documents_count
+                        (SELECT COUNT(*) FROM documents 
+                         WHERE user_id = ? AND file_ext IN ('.pdf', '.doc', '.docx', '.txt')) as documents_count,
+                        (SELECT COUNT(DISTINCT m2.file_path) 
+                         FROM messages m2 
+                         JOIN chat_sessions cs2 ON m2.session_id = cs2.id 
+                         WHERE cs2.user_id = ? AND m2.file_path IS NOT NULL AND m2.file_path != '') as files_count
                     FROM chat_sessions cs
                     LEFT JOIN messages m ON cs.id = m.session_id
                     WHERE cs.user_id = ?
-                ''', (u['login'], u['login'])).fetchone()
+                ''', (u['login'], u['login'], u['login'])).fetchone()
+                
                 u_dict = dict(u)
-                u_dict['sessions_count'] = stats['sessions']
-                u_dict['messages_count'] = stats['messages']
-                u_dict['files_count'] = get_user_file_count(u['login'])
-                u_dict['documents_count'] = stats['documents_count']
+                u_dict['sessions_count'] = stats['sessions'] if stats else 0
+                u_dict['messages_count'] = stats['messages'] if stats else 0
+                u_dict['files_count'] = stats['files_count'] if stats else 0
+                u_dict['documents_count'] = stats['documents_count'] if stats else 0
+                
                 if u_dict['camera_permissions']:
                     try:
                         u_dict['camera_permissions'] = json.loads(u_dict['camera_permissions'])

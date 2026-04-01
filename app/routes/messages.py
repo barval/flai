@@ -14,12 +14,56 @@ from app.utils import get_current_time_in_timezone, get_current_time_in_timezone
 
 bp = Blueprint('messages', __name__, url_prefix='/api')
 
+
+def validate_session_ownership(session_id, user_id):
+    """
+    Verify that a session belongs to the given user.
+    Returns True if session exists and belongs to user, False otherwise.
+    """
+    # Validate UUID format first
+    try:
+        uuid.UUID(session_id, version=4)
+    except (ValueError, AttributeError):
+        return False
+    
+    # Check ownership
+    with sqlite3.connect(db.CHAT_DB_PATH) as conn:
+        c = conn.cursor()
+        c.execute('SELECT user_id FROM chat_sessions WHERE id = ?', (session_id,))
+        row = c.fetchone()
+        return row is not None and row[0] == user_id
+
+
 @bp.route('/sessions/<session_id>/messages', methods=['GET'])
 def api_get_messages(session_id):
     if 'login' not in session:
         return jsonify({'error': _('Not authorized')}), 401
+
+    # Security: Verify session belongs to user
+    if not validate_session_ownership(session_id, session['login']):
+        current_app.logger.warning(f"User {session['login']} attempted to access messages in session {session_id}")
+        return jsonify({'error': _('Session not found')}), 404
+
+    # Get pagination parameters
     since = request.args.get('since')
-    return jsonify(db.get_session_messages(session_id, since=since))
+    try:
+        limit = int(request.args.get('limit', 100))
+        offset = int(request.args.get('offset', 0))
+    except (ValueError, TypeError):
+        limit = 100
+        offset = 0
+    
+    # Enforce reasonable limits
+    limit = min(limit, 200)  # Max 200 messages at once
+    offset = max(offset, 0)  # No negative offset
+    
+    messages = db.get_session_messages(session_id, since=since, limit=limit, offset=offset)
+    return jsonify({
+        'messages': messages,
+        'limit': limit,
+        'offset': offset,
+        'has_more': len(messages) >= limit
+    })
 
 @bp.route('/send_message', methods=['POST'])
 def send_message():

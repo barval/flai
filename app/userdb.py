@@ -2,18 +2,19 @@
 import sqlite3
 import json
 import os
+from typing import Any, Dict, List, Optional
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import current_app
 
 USER_DB_PATH = 'data/users.db'
 
-def get_db():
+def get_db() -> sqlite3.Connection:
     """Return a connection to the user database."""
     conn = sqlite3.connect(USER_DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
-def init_user_db():
+def init_user_db() -> None:
     """Initialize the user table and enable WAL mode."""
     if not os.path.exists('data'):
         os.makedirs('data', exist_ok=True)
@@ -51,12 +52,22 @@ def init_user_db():
         
         conn.commit()
 
-def get_user_by_login(login):
+def get_user_by_login(login: str) -> Optional[sqlite3.Row]:
     """Get a user by login."""
     with get_db() as conn:
         return conn.execute('SELECT * FROM users WHERE login = ?', (login,)).fetchone()
 
-def create_user(login, password, name, service_class=2, is_admin=False, camera_permissions=None, language='ru', voice_gender='male', theme='light'):
+def create_user(
+    login: str,
+    password: str,
+    name: str,
+    service_class: int = 2,
+    is_admin: bool = False,
+    camera_permissions: Optional[List[str]] = None,
+    language: str = 'ru',
+    voice_gender: str = 'male',
+    theme: str = 'light'
+) -> None:
     """Create a new user."""
     if camera_permissions is not None:
         camera_permissions = json.dumps(camera_permissions)

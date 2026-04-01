@@ -48,9 +48,9 @@ class AudioModule:
         self.logger.info(f"Initializing AudioModule with Whisper URL: {self.whisper_api_url}")
 
         # Initial availability check with retries (Whisper may start slower than web app)
-        max_retries = 5
-        retry_delay = 2  # seconds
-        
+        max_retries = app.config.get('SERVICE_RETRY_ATTEMPTS', 5)
+        retry_delay = app.config.get('SERVICE_RETRY_DELAY', 2)  # seconds
+
         for attempt in range(1, max_retries + 1):
             if self.check_availability():
                 break
@@ -124,9 +124,12 @@ class AudioModule:
         Returns text or None on error
         """
         # Always re-check availability on each request (service may have restarted)
-        self.logger.info("Checking Whisper API availability before transcription...")
+        self.logger.info(f"Checking Whisper API availability before transcription... (current available={self.available})")
+        was_available = self.available
         self.check_availability()
-
+        if was_available != self.available:
+            self.logger.info(f"Whisper API availability changed: {was_available} -> {self.available}")
+        
         if not self.available:
             self.logger.error("Whisper API unavailable after re-check")
             return None

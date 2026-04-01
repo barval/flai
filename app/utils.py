@@ -177,7 +177,8 @@ def save_uploaded_file(file_data: str, filename: str, session_id: str, upload_fo
     if not ext:
         ext = '.bin'
     # Remove any potentially dangerous characters from extension
-    ext = ext[:10]  # Limit extension length
+    max_ext_length = current_app.config.get('MAX_EXTENSION_LENGTH', 10)
+    ext = ext[:max_ext_length]  # Limit extension length
     ext = ''.join(c for c in ext if c.isalnum() or c == '.')
     if not ext.startswith('.'):
         ext = '.' + ext

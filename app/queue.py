@@ -62,6 +62,7 @@ class RedisRequestQueue:
         """Main worker loop - processes tasks from Redis queue."""
         self.app.logger.info("RedisRequestQueue: processing loop started")
         while True:
+            task_id = None  # Track current task ID for cleanup
             try:
                 result = self.redis.blpop(self.queue_key, timeout=5)
                 if not result:
@@ -71,50 +72,74 @@ class RedisRequestQueue:
                 if task is None:
                     self.logger.error("Failed to deserialize task - skipping")
                     continue
+                
+                task_id = task.get('id')
                 queue_time = time.time() - task.get('timestamp', time.time())
-                if queue_time > 300:
-                    self.app.logger.warning(f"Task {task['id']} waited too long in queue ({queue_time:.1f}s). Cancelling.")
+                max_wait_time = self.app.config.get('QUEUE_MAX_WAIT_TIME', 300)
+                if queue_time > max_wait_time:
+                    self.app.logger.warning(f"Task {task_id} waited too long in queue ({queue_time:.1f}s). Cancelling.")
                     template = self.app.modules['base']._(
                         'Request cancelled - too long in queue ({queue_time:.1f}s)',
                         lang=task.get('lang', 'ru')
                     )
                     error_text = template.format(queue_time=queue_time)
-                    self.redis.hset(self.results_key, task['id'], self._serialize({
+                    result_ttl = self.app.config.get('REDIS_RESULT_TTL', 3600)
+                    self.redis.hset(self.results_key, task_id, self._serialize({
                         'status': 'error',
                         'error': error_text,
                         'result': {'session_id': task.get('session_id')},
                         'timestamp': time.time()
                     }))
+                    # Set TTL on error result
+                    self.redis.expire(self.results_key, result_ttl)
+                    # Clean up user request set
+                    user_id = task.get('user_id')
+                    if user_id:
+                        self._cleanup_user_request(user_id, task_id)
                     continue
-                self.app.logger.info(f"RedisRequestQueue: got task {task['id']} from queue for session {task.get('session_id')}, queue time: {queue_time:.1f}s")
-                self.redis.hset(self.processing_key, task['id'], task_data)
+                    
+                self.app.logger.info(f"RedisRequestQueue: got task {task_id} from queue for session {task.get('session_id')}, queue time: {queue_time:.1f}s")
+                self.redis.hset(self.processing_key, task_id, task_data)
+                
+                # Get TTL from config
+                result_ttl = self.app.config.get('REDIS_RESULT_TTL', 3600)
+
                 try:
                     with self.app.app_context():
                         result_data = self._process_request(task)
                         if 'session_id' not in result_data and task.get('session_id'):
                             result_data['session_id'] = task.get('session_id')
-                        self.redis.hset(self.results_key, task['id'], self._serialize({
+                        self.redis.hset(self.results_key, task_id, self._serialize({
                             'status': 'completed',
                             'result': result_data,
                             'timestamp': time.time()
                         }))
-                        self.app.logger.info(f"RedisRequestQueue: task {task['id']} completed successfully for session {task.get('session_id')}")
+                        # Set TTL on results
+                        self.redis.expire(self.results_key, result_ttl)
+                        self.app.logger.info(f"RedisRequestQueue: task {task_id} completed successfully for session {task.get('session_id')}")
                 except Exception as e:
-                    self.app.logger.error(f"RedisRequestQueue: error processing task {task['id']}: {str(e)}")
-                    self.redis.hset(self.results_key, task['id'], self._serialize({
+                    self.app.logger.error(f"RedisRequestQueue: error processing task {task_id}: {str(e)}")
+                    self.redis.hset(self.results_key, task_id, self._serialize({
                         'status': 'error',
                         'error': str(e),
                         'result': {'session_id': task.get('session_id')},
                         'timestamp': time.time()
                     }))
+                    # Set TTL on error result
+                    self.redis.expire(self.results_key, result_ttl)
                 finally:
-                    self.redis.hdel(self.processing_key, task['id'])
-                    # Clean up user request set
+                    # Always clean up processing key
+                    self.redis.hdel(self.processing_key, task_id)
+                    # Always clean up user request set
                     user_id = task.get('user_id')
                     if user_id:
-                        self._cleanup_user_request(user_id, task['id'])
+                        self._cleanup_user_request(user_id, task_id)
+                        
             except Exception as e:
                 self.app.logger.error(f"RedisRequestQueue: error in worker loop: {str(e)}")
+                # Clean up on error if we had a task ID
+                if task_id:
+                    self.redis.hdel(self.processing_key, task_id)
                 time.sleep(1)
 
     def add_request(self, user_id: str, session_id: str, request_data: Dict[str, Any],

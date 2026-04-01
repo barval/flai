@@ -83,7 +83,9 @@ function syncMessagesForCurrentSession() {
             console.log('syncMessages: Response status:', res.status);
             return res.json();
         })
-        .then(newMessages => {
+        .then(data => {
+            // Handle both old format (array) and new format (object with messages)
+            const newMessages = Array.isArray(data) ? data : (data.messages || []);
             console.log('syncMessages: Received', newMessages.length, 'new messages');
             console.log('syncMessages: Messages:', newMessages.map(m => ({ id: m.id, role: m.role, timestamp: m.timestamp })));
             if (window.IS_RELOADING || !newMessages || newMessages.length === 0) {

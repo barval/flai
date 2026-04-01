@@ -37,6 +37,10 @@ def create_app():
     # Load configuration
     load_config(app)
 
+    # Trust proxies for proper HTTPS detection behind nginx
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_for=1)
+
     # Explicit Babel configuration with absolute path
     translations_path = os.path.join(app.root_path, '..', 'translations')
     app.config['BABEL_TRANSLATION_DIRECTORIES'] = translations_path

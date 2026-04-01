@@ -22,6 +22,16 @@ function loadSessionsFromServer() {
             let updated = false;
             let currentSessionMessageCountChanged = false;
             
+            // Clear sessionsData for sessions that no longer exist
+            const currentSessionIds = new Set(sessions.map(s => s.id));
+            Object.keys(sessionsData).forEach(id => {
+                if (!currentSessionIds.has(id)) {
+                    delete sessionsData[id];
+                    delete newMessageIndicators[id];
+                    updated = true;
+                }
+            });
+
             sessions.forEach(s => {
                 if (!sessionsData[s.id]) {
                     sessionsData[s.id] = {
@@ -50,36 +60,31 @@ function loadSessionsFromServer() {
                         }
                     }
                 }
-                // FIX: Don't show unread indicator for current active session
-                // If session is currently open, clear unread flag
+                // Update unread indicators - NEVER show for current active session
                 if (s.id === currentSessionId) {
-                    // Current session is active - don't show unread indicator
+                    // Current session is active - always clear unread indicator
                     delete newMessageIndicators[s.id];
+                } else if (s.has_unread && newMessageIndicators[s.id]) {
+                    // Only keep unread indicator if it was already set (from server)
+                    // Don't create new unread indicators, only preserve existing ones
                 } else {
-                    // Other sessions - use server's has_unread flag
-                    const prevUnread = newMessageIndicators[s.id] ? true : false;
-                    const newUnread = s.has_unread ? true : false;
-                    if (prevUnread !== newUnread) {
-                        updated = true;
-                    }
-                    if (s.has_unread) {
-                        newMessageIndicators[s.id] = true;
-                    } else {
-                        delete newMessageIndicators[s.id];
-                    }
+                    // Clear indicator for all other cases
+                    delete newMessageIndicators[s.id];
                 }
             });
-            Object.keys(sessionsData).forEach(id => {
-                if (!sessions.find(s => s.id === id)) {
-                    delete sessionsData[id];
-                    delete newMessageIndicators[id];
-                    updated = true;
-                }
-            });
-            if (updated) {
-                updateSessionsList(sessions);
-            }
             
+            if (updated) {
+                // Use sessionsData (our local state) instead of raw server data
+                const sessionsList = Object.keys(sessionsData).map(id => ({
+                    id: id,
+                    title: sessionsData[id].title,
+                    updated_at: sessionsData[id].updated_at,
+                    message_count: sessionsData[id].message_count,
+                    has_unread: newMessageIndicators[id] ? true : false
+                }));
+                updateSessionsList(sessionsList);
+            }
+
             // FIX: Reload messages for current session if message count changed
             if (currentSessionMessageCountChanged && currentSessionId) {
                 loadMessages(currentSessionId).catch(err => {
@@ -105,7 +110,8 @@ function updateSessionsListFromData() {
             id: id,
             title: sessionsData[id].title,
             updated_at: sessionsData[id].updated_at,
-            message_count: sessionsData[id].message_count
+            message_count: sessionsData[id].message_count,
+            has_unread: newMessageIndicators[id] ? true : false
         }));
         updateSessionsList(sessions);
         sessionsUpdateTimeout = null;
@@ -144,7 +150,8 @@ function updateSessionsList(sessions) {
             statusIcons = '<span class="session-status-icon queued blink" title="' + t('queued') + ' ( #' + position + ')">⏳ ' + position + '</span>';
         } else {
             // No queue status - show unread indicator if needed (only for non-active sessions)
-            if (newMessageIndicators[s.id] && s.id !== currentActiveId) {
+            // Use s.has_unread from server data OR local newMessageIndicators
+            if ((s.has_unread || newMessageIndicators[s.id]) && s.id !== currentActiveId) {
                 statusIcons = '<span class="session-status-icon unread blink" title="' + t('new_response') + '">✉️</span>';
             }
         }
@@ -299,7 +306,9 @@ function switchSession(sessionId) {
         console.error('switchSession called with empty sessionId');
         return;
     }
-    const statusCounter = document.getElementById('status-counter');
+    // Store previous session ID to clear its unread indicator
+    const previousSessionId = currentSessionId;
+    
     if (statusCounter) {
         statusCounter.innerHTML = '⏳ ' + t('loading');
     }
@@ -307,8 +316,12 @@ function switchSession(sessionId) {
         .then(res => res.json())
         .then(() => {
             currentSessionId = sessionId;
-            // Clear unread indicator for this session
+            // Clear unread indicator for NEW current session
             delete newMessageIndicators[sessionId];
+            // Also clear unread indicator for PREVIOUS session (it was read when we left it)
+            if (previousSessionId) {
+                delete newMessageIndicators[previousSessionId];
+            }
             loadMessages(sessionId).catch(err => {
                 console.error('Error loading messages in switchSession:', err);
                 if (statusCounter) {

@@ -63,9 +63,13 @@ function syncMessagesForCurrentSession() {
     // Get last message timestamp from DOM
     const messagesContainer = document.getElementById('chat-messages');
     const lastMessageEl = messagesContainer.lastElementChild;
-
+    
+    // If no messages in DOM, load all messages (not just new ones)
     if (!lastMessageEl || !lastMessageEl.dataset.timestamp) {
-        console.log('syncMessages: Skipping - no last message in DOM');
+        console.log('syncMessages: No messages in DOM, loading all messages for session', currentSessionId);
+        loadMessages(currentSessionId).catch(err => {
+            console.error('syncMessages: Error loading all messages:', err);
+        });
         return;
     }
 

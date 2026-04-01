@@ -21,7 +21,7 @@ import mimetypes
 
 babel = Babel()
 csrf = CSRFProtect()
-limiter = Limiter()
+limiter = Limiter(key_func=get_remote_address)
 
 
 @babel.localeselector

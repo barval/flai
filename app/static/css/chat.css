@@ -284,6 +284,8 @@
 
 .session-status-icon.processing {
     color: #f39c12;
+    display: inline-block !important;
+    visibility: visible !important;
 }
 
 .session-status-icon.queued {

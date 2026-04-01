@@ -34,13 +34,27 @@ class ImageModule:
         self.automatic1111_url = app.config.get('AUTOMATIC1111_URL')
         self.model_name = app.config.get('AUTOMATIC1111_MODEL')
         self.timeout = app.config.get('AUTOMATIC1111_TIMEOUT', 180)
-        
-        self.check_availability()
-        
+
+        self.logger.info(f"Initializing ImageModule with Automatic1111 URL: {self.automatic1111_url}")
+
+        # Initial availability check with retries (SD may start slower than web app)
+        max_retries = 5
+        retry_delay = 2  # seconds
+
+        for attempt in range(1, max_retries + 1):
+            if self.check_availability():
+                break
+            if attempt < max_retries:
+                self.logger.warning(f"Automatic1111 not ready (attempt {attempt}/{max_retries}), retrying in {retry_delay}s...")
+                import time
+                time.sleep(retry_delay)
+            else:
+                self.logger.warning(f"Automatic1111 not available after {max_retries} attempts")
+
         if self.available:
             self.logger.info(f"ImageModule initialized and available. Timeout: {self.timeout}s")
         else:
-            self.logger.warning("ImageModule initialized, but Automatic1111 unavailable")
+            self.logger.warning(f"ImageModule initialized, but Automatic1111 unavailable ({self.automatic1111_url}). Will retry on each request.")
     
     def set_multimodal_module(self, multimodal_module):
         """Set reference to multimodal module"""
@@ -64,6 +78,11 @@ class ImageModule:
     
     def generate_image(self, user_query, start_time=None, lang='ru'):
         """Generate image from user query"""
+        # Re-check availability on each request (service may have started after app)
+        if not self.available:
+            self.logger.info("Re-checking Automatic1111 availability before generation...")
+            self.check_availability()
+
         if not self.available:
             return {
                 'success': False,

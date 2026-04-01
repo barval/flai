@@ -49,11 +49,27 @@ class CamModule:
         self.camera_api_url = app.config.get('CAMERA_API_URL', 'http://host.docker.internal:5005')
         self.timeout = app.config.get('CAMERA_API_TIMEOUT', 15)
         self.check_interval = app.config.get('CAMERA_CHECK_INTERVAL', 30)
-        self.check_availability()
+        
+        self.logger.info(f"Initializing CamModule with Camera API URL: {self.camera_api_url}")
+        
+        # Initial availability check with retries (camera service may start slower than web app)
+        max_retries = 5
+        retry_delay = 2  # seconds
+        
+        for attempt in range(1, max_retries + 1):
+            if self.check_availability(force=True):
+                break
+            if attempt < max_retries:
+                self.logger.warning(f"Camera API not ready (attempt {attempt}/{max_retries}), retrying in {retry_delay}s...")
+                import time
+                time.sleep(retry_delay)
+            else:
+                self.logger.warning(f"Camera API not available after {max_retries} attempts")
+        
         if self.available:
             self.logger.info(f"CamModule initialized and available (API: {self.camera_api_url}), timeout: {self.timeout}s")
         else:
-            self.logger.warning(f"CamModule initialized, but camera API unavailable ({self.camera_api_url})")
+            self.logger.warning(f"CamModule initialized, but camera API unavailable ({self.camera_api_url}). Will retry on each request.")
     
     def get_all_rooms(self):
         """Return dictionary {code: name} of all known cameras."""

@@ -2,8 +2,8 @@
 import logging
 from flask import Blueprint, render_template, request, redirect, url_for, session, current_app, jsonify
 from werkzeug.security import check_password_hash
-from flask_limiter import limiter
 from flask_limiter.errors import RateLimitExceeded
+from app import limiter
 from app.userdb import get_user_by_login, update_user
 from flask_babel import gettext as _
 

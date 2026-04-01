@@ -123,11 +123,10 @@ class AudioModule:
         lang: language code (e.g., 'ru', 'en')
         Returns text or None on error
         """
-        # Re-check availability on each request (service may have started after app)
-        if not self.available:
-            self.logger.info("Re-checking Whisper API availability before transcription...")
-            self.check_availability()
-        
+        # Always re-check availability on each request (service may have restarted)
+        self.logger.info("Checking Whisper API availability before transcription...")
+        self.check_availability()
+
         if not self.available:
             self.logger.error("Whisper API unavailable after re-check")
             return None

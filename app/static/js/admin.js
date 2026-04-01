@@ -8,12 +8,34 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('Admin page loaded');
     // Add a class to body to identify admin page for CSS overrides
     document.body.classList.add('admin-page');
-    
+
     loadUsers();
     setupModals();
     setupSortableHeaders();
     setInterval(refreshStats, 30000);
 });
+
+// Get CSRF token from meta tag
+function getCSRFToken() {
+    const token = document.querySelector('meta[name="csrf-token"]');
+    return token ? token.getAttribute('content') : '';
+}
+
+// Fetch wrapper with CSRF token for POST/PUT/DELETE requests
+function fetchWithCSRF(url, options = {}) {
+    const method = (options.method || 'GET').toUpperCase();
+    
+    // Add CSRF token for state-changing requests
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+        const headers = options.headers || {};
+        if (!headers['X-CSRFToken'] && !headers['X-CSRF-TOKEN']) {
+            headers['X-CSRFToken'] = getCSRFToken();
+        }
+        options.headers = headers;
+    }
+    
+    return fetch(url, options);
+}
 
 function t(key) {
     if (!(key in window.TRANSLATIONS)) {
@@ -176,7 +198,7 @@ function loadUsers() {
 
 function updateUserField(login, field, value) {
     const data = { [field]: value };
-    fetch(`/admin/api/users/${login}`, {
+    fetchWithCSRF(`/admin/api/users/${login}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
@@ -194,7 +216,7 @@ function updateCameraPermissions(login) {
     if (!row) return;
     const checkboxes = row.querySelectorAll('.camera-checkboxes input[type=checkbox]');
     const permissions = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
-    fetch(`/admin/api/users/${login}`, {
+    fetchWithCSRF(`/admin/api/users/${login}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ camera_permissions: permissions })
@@ -207,7 +229,7 @@ function updateCameraPermissions(login) {
 
 function deleteUser(login) {
     if (confirm(t('delete_user_confirm').replace('{login}', login))) {
-        fetch(`/admin/api/users/${login}`, { method: 'DELETE' })
+        fetchWithCSRF(`/admin/api/users/${login}`, { method: 'DELETE' })
         .then(response => response.json())
         .then(result => {
             if (result.status === 'ok') {
@@ -270,7 +292,7 @@ function setupModals() {
                 is_active: formData.get('is_active') === 'on',
                 camera_permissions: cameraPermissions.length > 0 ? cameraPermissions : []
             };
-            fetch('/admin/api/users', {
+            fetchWithCSRF('/admin/api/users', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -294,7 +316,7 @@ function setupModals() {
             e.preventDefault();
             const login = document.getElementById('password-user-login').value;
             const newPassword = document.getElementById('new-user-password').value;
-            fetch(`/admin/api/users/${login}/password`, {
+            fetchWithCSRF(`/admin/api/users/${login}/password`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ new_password: newPassword })

@@ -9,3 +9,7 @@ data/
 htmlcov/
 .coverage
 venv/
+.qwen/
+services/automatic1111/models/
+services/automatic1111/outputs/
+services/piper/piper_models/

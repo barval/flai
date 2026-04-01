@@ -57,7 +57,7 @@ def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not session.get('is_admin'):
-            return jsonify({'error': 'Forbidden'}), 403
+            return jsonify({'error': _('Forbidden')}), 403
         return f(*args, **kwargs)
     return decorated
 
@@ -88,27 +88,42 @@ def admin_panel():
 @bp.route('/api/users', methods=['GET'])
 @admin_required
 def get_users():
-    """Get list of all users with stats."""
+    """Get list of all users with stats.
+    Optimized to avoid N+1 queries by using a single JOIN query.
+    """
     try:
         users = list_users(exclude_admin=True)
         result = []
+        
+        # Build a single optimized query with all stats using JOINs
         with get_chat_db() as conn:
             for u in users:
+                # Single query with subqueries for all stats - no N+1
                 stats = conn.execute('''
-                    SELECT COUNT(DISTINCT cs.id) as sessions, COUNT(m.id) as messages
+                    SELECT
+                        COUNT(DISTINCT cs.id) as sessions,
+                        COUNT(m.id) as messages,
+                        (SELECT COUNT(*) FROM documents 
+                         WHERE user_id = ? AND file_ext IN ('.pdf', '.doc', '.docx', '.txt')) as documents_count,
+                        (SELECT COUNT(DISTINCT m2.file_path) 
+                         FROM messages m2 
+                         JOIN chat_sessions cs2 ON m2.session_id = cs2.id 
+                         WHERE cs2.user_id = ? AND m2.file_path IS NOT NULL AND m2.file_path != '') as files_count
                     FROM chat_sessions cs
                     LEFT JOIN messages m ON cs.id = m.session_id
                     WHERE cs.user_id = ?
-                ''', (u['login'],)).fetchone()
+                ''', (u['login'], u['login'], u['login'])).fetchone()
+                
                 u_dict = dict(u)
-                u_dict['sessions_count'] = stats['sessions']
-                u_dict['messages_count'] = stats['messages']
-                u_dict['files_count'] = get_user_file_count(u['login'])
-                u_dict['documents_count'] = get_user_document_count(u['login'])
+                u_dict['sessions_count'] = stats['sessions'] if stats else 0
+                u_dict['messages_count'] = stats['messages'] if stats else 0
+                u_dict['files_count'] = stats['files_count'] if stats else 0
+                u_dict['documents_count'] = stats['documents_count'] if stats else 0
+                
                 if u_dict['camera_permissions']:
                     try:
                         u_dict['camera_permissions'] = json.loads(u_dict['camera_permissions'])
-                    except:
+                    except json.JSONDecodeError:
                         u_dict['camera_permissions'] = []
                 else:
                     u_dict['camera_permissions'] = []
@@ -116,7 +131,7 @@ def get_users():
         return jsonify(result)
     except Exception as e:
         logger.error(f"Error in get_users: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'error': _('Internal server error')}), 500
 
 
 @bp.route('/api/users', methods=['POST'])
@@ -126,7 +141,7 @@ def add_user():
     try:
         data = request.get_json()
         if not data:
-            return jsonify({'error': 'No JSON data'}), 400
+            return jsonify({'error': _('No JSON data')}), 400
 
         login = data.get('login')
         password = data.get('password')
@@ -153,7 +168,7 @@ def add_user():
         return jsonify({'status': 'ok'})
     except Exception as e:
         logger.error(f"Error in add_user: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'error': _('Internal server error')}), 500
 
 
 @bp.route('/api/users/<login>', methods=['PUT'])
@@ -177,7 +192,7 @@ def update_user_data(login):
         return jsonify({'status': 'ok'})
     except Exception as e:
         logger.error(f"Error in update_user_data for {login}: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'error': _('Internal server error')}), 500
 
 
 @bp.route('/api/users/<login>/password', methods=['PUT'])
@@ -193,7 +208,7 @@ def change_password(login):
         return jsonify({'status': 'ok'})
     except Exception as e:
         logger.error(f"Error in change_password for {login}: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'error': _('Internal server error')}), 500
 
 
 @bp.route('/api/users/<login>', methods=['DELETE'])
@@ -205,7 +220,7 @@ def delete_user_account(login):
         return jsonify({'status': 'ok'})
     except Exception as e:
         logger.error(f"Error in delete_user_account for {login}: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'error': _('Internal server error')}), 500
 
 
 @bp.route('/api/stats')
@@ -228,7 +243,7 @@ def get_stats():
         })
     except Exception as e:
         logger.error(f"Error in get_stats: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'error': _('Internal server error')}), 500
 
 
 # ==================== ENDPOINTS FOR MODEL MANAGEMENT ====================
@@ -239,14 +254,14 @@ def ollama_check():
     """Check if Ollama is reachable at given URL."""
     ollama_url = request.args.get('url')
     if not ollama_url:
-        return jsonify({'available': False, 'error': 'Missing url'}), 400
+        return jsonify({'available': False, 'error': _('Missing url')}), 400
     try:
         # Use a lightweight endpoint (tags) to check availability
         response = requests.get(f"{ollama_url}/api/tags", timeout=5)
         if response.status_code == 200:
             return jsonify({'available': True})
         else:
-            return jsonify({'available': False, 'error': f'HTTP {response.status_code}'})
+            return jsonify({'available': False, 'error': _('HTTP error {status}').format(status=response.status_code)})
     except Exception as e:
         return jsonify({'available': False, 'error': str(e)})
 
@@ -257,14 +272,14 @@ def ollama_models():
     """Return list of available models from Ollama instance specified by 'url' query param."""
     ollama_url = request.args.get('url')
     if not ollama_url:
-        return jsonify({'error': 'Missing "url" parameter'}), 400
+        return jsonify({'error': _('Missing "url" parameter')}), 400
     try:
         resp = requests.get(f"{ollama_url}/api/tags", timeout=5)
         if resp.status_code == 200:
             models = [m['name'] for m in resp.json().get('models', [])]
             return jsonify(models)
         else:
-            return jsonify({'error': f'Ollama returned {resp.status_code}'}), 500
+            return jsonify({'error': _('Ollama returned {status}').format(status=resp.status_code)}), 500
     except Exception as e:
         current_app.logger.error(f"Error fetching Ollama models from {ollama_url}: {e}")
         return jsonify({'error': str(e)}), 500
@@ -276,7 +291,7 @@ def ollama_model_info(name):
     """Return detailed information about a specific model from given Ollama URL."""
     ollama_url = request.args.get('url')
     if not ollama_url:
-        return jsonify({'error': 'Missing "url" parameter'}), 400
+        return jsonify({'error': _('Missing "url" parameter')}), 400
     try:
         resp = requests.post(f"{ollama_url}/api/show", json={"model": name}, timeout=5)
         if resp.status_code == 200:
@@ -357,13 +372,8 @@ def ollama_model_info(name):
 @admin_required
 def get_model_configs():
     """Return all model configurations from the database."""
-    from app.db import get_db
-    with get_db() as conn:
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        c.execute('SELECT * FROM model_configs')
-        rows = c.fetchall()
-        configs = {row['module']: dict(row) for row in rows}
+    from app.model_config import reload_all_model_configs
+    configs = reload_all_model_configs()
     return jsonify(configs)
 
 
@@ -371,11 +381,13 @@ def get_model_configs():
 @admin_required
 def update_model_config(module):
     """Update configuration for a specific module."""
+    from app.model_config import invalidate_model_config_cache, get_model_config
+    
     data = request.get_json()
     allowed_fields = ['model_name', 'ollama_url', 'context_length', 'temperature', 'top_p', 'timeout']
     updates = {k: v for k, v in data.items() if k in allowed_fields}
     if not updates:
-        return jsonify({'error': 'No valid fields'}), 400
+        return jsonify({'error': _('No valid fields')}), 400
 
     # Server-side validation
     if 'context_length' in updates and updates['context_length'] is not None:
@@ -416,7 +428,8 @@ def update_model_config(module):
         ''', values)
         conn.commit()
 
-    _reload_model_configs(current_app)
+    # Invalidate cache for updated module
+    invalidate_model_config_cache(module)
 
     result = {'status': 'ok'}
     if module == 'embedding':
@@ -429,17 +442,3 @@ def update_model_config(module):
             result['model_name'] = old_model or new_model
 
     return jsonify(result)
-
-
-def _reload_model_configs(app):
-    """Helper to reload model configs from DB into app.config."""
-    import sqlite3
-    from app.db import CHAT_DB_PATH
-    conn = sqlite3.connect(CHAT_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    c = conn.cursor()
-    c.execute('SELECT * FROM model_configs')
-    rows = c.fetchall()
-    configs = {row['module']: dict(row) for row in rows}
-    conn.close()
-    app.config['MODEL_CONFIGS'] = configs

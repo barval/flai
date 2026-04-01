@@ -2,17 +2,54 @@
 import os
 import uuid
 import mimetypes
+import magic
 from flask import Blueprint, request, session, jsonify, current_app, send_file
 from flask_babel import gettext as _
 from app import db
 
 bp = Blueprint('documents', __name__, url_prefix='/api')
 
+# Mapping of MIME types to allowed extensions
+ALLOWED_MIME_TYPES = {
+    'application/pdf': '.pdf',
+    'application/msword': '.doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+    'text/plain': '.txt'
+}
+
+
+def validate_file(file_stream, filename):
+    """Validate file by extension and magic bytes.
+    Returns (is_valid, error_message).
+    """
+    allowed_extensions = {'.pdf', '.doc', '.docx', '.txt'}
+    ext = os.path.splitext(filename)[1].lower()
+    
+    if ext not in allowed_extensions:
+        return False, _('Unsupported file type')
+    
+    # Check magic bytes
+    file_stream.seek(0)
+    mime = magic.from_buffer(file_stream.read(2048), mime=True)
+    file_stream.seek(0)
+    
+    if mime not in ALLOWED_MIME_TYPES:
+        return False, _('Unsupported file type')
+    
+    # Verify extension matches MIME type
+    expected_ext = ALLOWED_MIME_TYPES[mime]
+    if ext != expected_ext:
+        return False, _('File type does not match extension')
+    
+    return True, None
+
+
 @bp.route('/documents', methods=['GET'])
 def api_get_documents():
     if 'login' not in session:
         return jsonify({'error': _('Not authorized')}), 401
     return jsonify(db.get_user_documents(session['login']))
+
 
 @bp.route('/documents/upload', methods=['POST'])
 def api_upload_document():
@@ -24,14 +61,18 @@ def api_upload_document():
     if file.filename == '':
         return jsonify({'error': _('No file selected')}), 400
 
-    allowed_extensions = {'.pdf', '.doc', '.docx', '.txt'}
-    ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in allowed_extensions:
-        return jsonify({'error': _('Unsupported file type')}), 400
-
+    # Read file content
     file_content = file.read()
     file_size = len(file_content)
 
+    # Validate file type
+    from io import BytesIO
+    file_stream = BytesIO(file_content)
+    is_valid, error_message = validate_file(file_stream, file.filename)
+    if not is_valid:
+        return jsonify({'error': error_message}), 400
+
+    # Check file size
     max_size_mb = current_app.config['MAX_DOCUMENT_SIZE_MB']
     if file_size > max_size_mb * 1024 * 1024:
         return jsonify({'error': _('Maximum file size {max_size} MB').format(max_size=max_size_mb)}), 400
@@ -54,8 +95,8 @@ def api_upload_document():
         doc_id,
         filename,
         file_size,
-        ext,
-        relative_path
+        ext=os.path.splitext(filename)[1].lower(),
+        relative_path=relative_path
     )
 
     db.update_document_index_status(doc_id, db.INDEX_STATUS_PENDING)

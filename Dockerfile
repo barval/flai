@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     libtiff-dev \
     libwebp-dev \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Installing Python dependencies
@@ -32,4 +33,13 @@ RUN addgroup --system --gid 1000 appuser && \
 USER appuser
 
 # Launching with Gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "1", "wsgi:app"]
+# Optimized for I/O bound operations (waiting for AI responses)
+# 1 worker × 4 threads = 4 concurrent connections with minimal RAM usage
+CMD ["gunicorn", \
+     "--bind", "0.0.0.0:5000", \
+     "--workers", "1", \
+     "--threads", "4", \
+     "--worker-class", "gthread", \
+     "--timeout", "120", \
+     "--keep-alive", "5", \
+     "wsgi:app"]

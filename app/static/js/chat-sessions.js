@@ -20,6 +20,18 @@ function loadSessionsFromServer() {
         })
         .then(sessions => {
             let updated = false;
+            let currentSessionMessageCountChanged = false;
+            
+            // Clear sessionsData for sessions that no longer exist
+            const currentSessionIds = new Set(sessions.map(s => s.id));
+            Object.keys(sessionsData).forEach(id => {
+                if (!currentSessionIds.has(id)) {
+                    delete sessionsData[id];
+                    delete newMessageIndicators[id];
+                    updated = true;
+                }
+            });
+
             sessions.forEach(s => {
                 if (!sessionsData[s.id]) {
                     sessionsData[s.id] = {
@@ -41,29 +53,48 @@ function loadSessionsFromServer() {
                     } else if (sessionsData[s.id].message_count !== s.message_count) {
                         sessionsData[s.id].message_count = s.message_count;
                         updated = true;
+                        // FIX: If message count changed for current session, reload messages
+                        if (s.id === currentSessionId) {
+                            currentSessionMessageCountChanged = true;
+                            console.log('loadSessionsFromServer: Message count changed for current session, reloading messages');
+                        }
                     }
                 }
-                const prevUnread = newMessageIndicators[s.id] ? true : false;
-                const newUnread = s.has_unread ? true : false;
-                if (prevUnread !== newUnread) {
-                    updated = true;
-                }
-                if (s.has_unread) {
+                // Update unread indicators from server data
+                // NEVER show for current active session
+                if (s.id === currentSessionId) {
+                    // Current session is active - always clear unread indicator
+                    delete newMessageIndicators[s.id];
+                } else if (s.has_unread) {
+                    // Server says this session has unread messages - set indicator
                     newMessageIndicators[s.id] = true;
                 } else {
+                    // Server says no unread - clear indicator
                     delete newMessageIndicators[s.id];
                 }
             });
-            Object.keys(sessionsData).forEach(id => {
-                if (!sessions.find(s => s.id === id)) {
-                    delete sessionsData[id];
-                    delete newMessageIndicators[id];
-                    updated = true;
-                }
-            });
+            
             if (updated) {
-                updateSessionsList(sessions);
+                // Use sessionsData (our local state) instead of raw server data
+                const sessionsList = Object.keys(sessionsData).map(id => ({
+                    id: id,
+                    title: sessionsData[id].title,
+                    updated_at: sessionsData[id].updated_at,
+                    message_count: sessionsData[id].message_count,
+                    has_unread: newMessageIndicators[id] ? true : false,
+                    // Include queue info for this session
+                    queue_info: sessionQueueInfo[id] || null
+                }));
+                updateSessionsList(sessionsList);
             }
+
+            // FIX: Reload messages for current session if message count changed
+            if (currentSessionMessageCountChanged && currentSessionId) {
+                loadMessages(currentSessionId).catch(err => {
+                    console.error('Error reloading messages after count change:', err);
+                });
+            }
+            
             return sessions;
         })
         .catch(err => {
@@ -82,7 +113,10 @@ function updateSessionsListFromData() {
             id: id,
             title: sessionsData[id].title,
             updated_at: sessionsData[id].updated_at,
-            message_count: sessionsData[id].message_count
+            message_count: sessionsData[id].message_count,
+            has_unread: newMessageIndicators[id] ? true : false,
+            // Include queue info for this session
+            queue_info: sessionQueueInfo[id] || null
         }));
         updateSessionsList(sessions);
         sessionsUpdateTimeout = null;
@@ -104,27 +138,26 @@ function updateSessionsList(sessions) {
         // Build status icons with proper priority
         let statusIcons = '';
         const transcribing = localTranscribingSessions[s.id];
-        const info = sessionQueueInfo[s.id];
-        
+        // Use queue_info from session data (synced from server) OR global sessionQueueInfo
+        const info = s.queue_info || sessionQueueInfo[s.id];
+
         // CRITICAL FIX: Transcribing icon has HIGHEST priority
         if (transcribing) {
             statusIcons = '<span class="session-status-icon transcribing blink" title="' + t('transcribing') + '">🎤</span>';
         } else if (info && info.has_transcribing) {
             // Server-side transcribing flag (for other clients)
             statusIcons = '<span class="session-status-icon transcribing blink" title="' + t('transcribing') + '">🎤</span>';
+        } else if (info && info.processing) {
+            // Currently being processed - show lightning (ONLY for this session)
+            statusIcons = '<span class="session-status-icon processing blink" title="' + t('processing') + '">⚡</span>';
+        } else if (info && info.queued > 0) {
+            // In queue - show hourglass with position number
+            const position = info.queue_position || info.queued;
+            statusIcons = '<span class="session-status-icon queued blink" title="' + t('queued') + ' ( #' + position + ')">⏳ ' + position + '</span>';
         } else {
-            // Only show queue status if NOT transcribing
-            let queueStatusShown = false;
-            if (info && info.processing) {
-                statusIcons = '<span class="session-status-icon processing blink" title="' + t('processing') + '">⚡</span>';
-                queueStatusShown = true;
-            } else if (info && info.queued > 0) {
-                const count = info.queued > 1 ? ' ' + info.queued : '';
-                statusIcons = '<span class="session-status-icon queued blink" title="' + t('queued') + '">⏳' + count + '</span>';
-                queueStatusShown = true;
-            }
-            // Unread indicator (only if no other status and not active session)
-            if (!queueStatusShown && newMessageIndicators[s.id] && s.id !== currentActiveId) {
+            // No queue status - show unread indicator if needed (only for non-active sessions)
+            // Use s.has_unread from server data OR local newMessageIndicators
+            if ((s.has_unread || newMessageIndicators[s.id]) && s.id !== currentActiveId) {
                 statusIcons = '<span class="session-status-icon unread blink" title="' + t('new_response') + '">✉️</span>';
             }
         }
@@ -182,7 +215,7 @@ function attachSessionEventHandlers() {
 }
 
 function createNewSession() {
-    fetch('/api/sessions/new', { method: 'POST' })
+    fetchWithCSRF('/api/sessions/new', { method: 'POST' })
         .then(res => {
             if (!res.ok) {
                 throw new Error(`HTTP error ${res.status}`);
@@ -251,8 +284,8 @@ function deleteSession(sessionId, sessionTitle, sessionDate) {
     
     delete newMessageIndicators[sessionId];
     delete localTranscribingSessions[sessionId];
-    
-    fetch('/api/sessions/' + sessionId + '/delete', { method: 'POST' })
+
+    fetchWithCSRF('/api/sessions/' + sessionId + '/delete', { method: 'POST' })
         .then(res => res.json())
         .then(data => {
             if (data.status === 'ok') {
@@ -279,23 +312,34 @@ function switchSession(sessionId) {
         console.error('switchSession called with empty sessionId');
         return;
     }
-    const statusCounter = document.getElementById('status-counter');
-    if (statusCounter) {
-        statusCounter.innerHTML = '⏳ ' + t('loading');
+    // Store previous session ID to clear its unread indicator
+    const previousSessionId = currentSessionId;
+    
+    // Don't switch if already on this session
+    if (sessionId === currentSessionId) {
+        console.log('switchSession: Already on this session, skipping');
+        return;
     }
-    fetch('/api/sessions/' + sessionId + '/switch', { method: 'POST' })
+    
+    console.log('switchSession: Switching from', previousSessionId, 'to', sessionId);
+    
+    fetchWithCSRF('/api/sessions/' + sessionId + '/switch', { method: 'POST' })
         .then(res => res.json())
         .then(() => {
             currentSessionId = sessionId;
+            // Clear unread indicator for NEW current session
+            delete newMessageIndicators[sessionId];
+            // Also clear unread indicator for PREVIOUS session (it was read when we left it)
+            if (previousSessionId) {
+                delete newMessageIndicators[previousSessionId];
+            }
             loadMessages(sessionId).catch(err => {
                 console.error('Error loading messages in switchSession:', err);
-                if (statusCounter) {
-                    statusCounter.innerHTML = '❌';
-                    setTimeout(() => window.updateStatusCounter(), 2000);
-                }
             }).finally(() => {
+                // Update status counter after messages loaded
                 window.updateStatusCounter();
             });
+            // Update active class in DOM
             document.querySelectorAll('.session-item').forEach(el => {
                 if (el.dataset.sessionId === sessionId) {
                     el.classList.add('active');
@@ -303,20 +347,16 @@ function switchSession(sessionId) {
                     el.classList.remove('active');
                 }
             });
-            updateSessionsListFromData();
+            // Don't call updateSessionsListFromData here - it causes flickering
         })
         .catch(err => {
             console.error('Error switching session:', err);
-            if (statusCounter) {
-                statusCounter.innerHTML = '❌';
-                setTimeout(() => window.updateStatusCounter(), 2000);
-            }
         });
 }
 
 function updateLastVisit(sessionId) {
     if (!sessionId) return;
-    fetch(`/api/sessions/${sessionId}/visit`, { method: 'POST' })
+    fetchWithCSRF(`/api/sessions/${sessionId}/visit`, { method: 'POST' })
         .catch(err => console.error('Error updating last_visit:', err));
 }
 
@@ -380,3 +420,7 @@ function updateCollapseIcon() {
         }
     }
 }
+
+// Make functions globally accessible for cross-client sync
+window.loadSessionsFromServer = loadSessionsFromServer;
+window.switchSession = switchSession;

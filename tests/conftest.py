@@ -1,4 +1,5 @@
 # tests/conftest.py
+"""Pytest fixtures and configuration."""
 import pytest
 import os
 import tempfile
@@ -22,6 +23,7 @@ def app():
         'CHAT_DB_PATH': db_path,
         'USER_DB_PATH': user_db_path,
         'WTF_CSRF_ENABLED': False,
+        'RATELIMIT_ENABLED': False,  # Disable rate limiting for tests
         'SECRET_KEY': 'test-secret',
         'UPLOAD_FOLDER': temp_dir,
         'DOCUMENTS_FOLDER': temp_dir,
@@ -43,9 +45,12 @@ def app():
     yield app
 
     # Cleanup
-    os.remove(db_path)
-    os.remove(user_db_path)
-    os.rmdir(temp_dir)
+    try:
+        os.remove(db_path)
+        os.remove(user_db_path)
+        os.rmdir(temp_dir)
+    except:
+        pass  # Ignore cleanup errors in tests
 
 
 @pytest.fixture

@@ -1,6 +1,7 @@
 # app/config.py
 # Configuration loader for FLAI application
 import os
+from datetime import timedelta
 from dotenv import load_dotenv
 import pytz
 from pytz.exceptions import UnknownTimeZoneError
@@ -93,3 +94,43 @@ def load_config(app):
     else:
         app.config['TIMEZONE'] = None
         app.logger.error("TIMEZONE not found in .env file")
+
+    # Session cookie settings for CSRF and security
+    app.config['SESSION_COOKIE_HTTPONLY'] = True
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+    # Secure flag: True for HTTPS (production), False for HTTP (local development)
+    # When behind HTTPS proxy (nginx), set HTTPS_ENABLED=true in .env
+    app.config['SESSION_COOKIE_SECURE'] = os.getenv('HTTPS_ENABLED', 'false').lower() in ('true', '1', 'yes')
+    
+    # Session expiry - sessions expire after 8 hours of inactivity
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
+    app.config['SESSION_REFRESH_EACH_OTHER'] = timedelta(hours=1)
+
+    # CSRF configuration
+    app.config['WTF_CSRF_ENABLED'] = True
+    app.config['WTF_CSRF_CHECK_DEFAULT'] = True
+    # CSRF token lifetime (1 hour)
+    app.config['WTF_CSRF_TIME_LIMIT'] = 3600
+
+    # Service retry settings
+    app.config['SERVICE_RETRY_ATTEMPTS'] = int(os.getenv('SERVICE_RETRY_ATTEMPTS', 5))
+    app.config['SERVICE_RETRY_DELAY'] = int(os.getenv('SERVICE_RETRY_DELAY', 2))
+
+    # Redis queue settings
+    app.config['REDIS_RESULT_TTL'] = int(os.getenv('REDIS_RESULT_TTL', 3600))
+    app.config['QUEUE_MAX_WAIT_TIME'] = int(os.getenv('QUEUE_MAX_WAIT_TIME', 300))
+
+    # Message pagination settings
+    app.config['MESSAGES_DEFAULT_LIMIT'] = int(os.getenv('MESSAGES_DEFAULT_LIMIT', 100))
+    app.config['MESSAGES_MAX_LIMIT'] = int(os.getenv('MESSAGES_MAX_LIMIT', 200))
+
+    # Session and context settings
+    app.config['MAX_HISTORY_MESSAGES'] = int(os.getenv('MAX_HISTORY_MESSAGES', 30))
+    app.config['CONTEXT_SAFETY_MARGIN'] = float(os.getenv('CONTEXT_SAFETY_MARGIN', 0.85))
+    app.config['TEMPLATE_OVERHEAD_TOKENS'] = int(os.getenv('TEMPLATE_OVERHEAD_TOKENS', 800))
+
+    # Image token estimation
+    app.config['IMAGE_TOKENS_PER_IMAGE'] = int(os.getenv('IMAGE_TOKENS_PER_IMAGE', 1000))
+
+    # File validation settings
+    app.config['MAX_EXTENSION_LENGTH'] = int(os.getenv('MAX_EXTENSION_LENGTH', 10))

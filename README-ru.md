@@ -36,9 +36,14 @@
 
 ### 🔒 Конфиденциальность и безопасность
 - 🏠 **100% локально** – вся обработка на вашем оборудовании
-- 🔐 **Аутентификация по сессиям** – безопасный вход с хешированием паролей
+- 🔐 **Аутентификация по сессиям** – безопасный вход с хешированием паролей (Werkzeug)
 - 🛡️ **Контроль доступа к файлам** – файлы доступны только авторизованным пользователям
 - 🧹 **Изоляция данных** – данные каждого пользователя строго разделены
+- 🔑 **CSRF-защита** – защита от подделки межсайтовых запросов для всех форм
+- 🚦 **Rate Limiting** – защита от перебора паролей (5 попыток/минуту)
+- 🔒 **Безопасность сессий** – HttpOnly и SameSite cookies, secure flag для HTTPS
+- 📝 **Audit Logging** – логирование попыток входа и действий администратора
+- 🔐 **HMAC-подпись очереди** – задачи Redis очереди подписаны для защиты от подделки
 
 ### 👥 Пользовательский опыт
 - 🌐 **Мультиязычность** – полный интерфейс и ответы ИИ на русском и английском языках
@@ -76,7 +81,8 @@
 
 ### Распределённое развёртывание
 
-Каждый сервис может работать на отдельной машине для распределения нагрузки:
+Каждый сервис может работать на отдельной машине для распределения нагрузки. См. [services/README.md](services/README.md) для подробных инструкций.
+
 ```text
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │   Web App   │────▶│   Ollama    │────▶│     GPU     │
@@ -89,6 +95,11 @@
 │  (Узел 2)   │     │   Сервер    │
 └─────────────┘     └─────────────┘
 ```
+
+**Варианты развёртывания сервисов:**
+- **Локальное**: Запуск на том же сервере что и FLAI (внутренняя сеть Docker)
+- **Удалённое**: Запуск на отдельном сервере (требует настройки firewall)
+
 Настройте отдельные URL Ollama для каждого типа моделей в Панели администратора (`/admin`).
 
 ---
@@ -101,7 +112,7 @@
 | **ОЗУ** | 8 ГБ | 16–32 ГБ | 32+ ГБ |
 | **ЦПУ** | 4 ядра | 4+ ядер | 8+ ядер |
 | **ГПУ** | NVIDIA 8-12 ГБ VRAM | NVIDIA 16 ГБ VRAM | NVIDIA 16+ ГБ VRAM |
-| **Хранилище** | 20 ГБ | 60+ ГБ SSD | 100+ ГБ SSD NVMe |
+| **Хранилище** | 40 ГБ | 60+ ГБ SSD | 100+ ГБ SSD NVMe |
 
 ### Программные требования
 - Сервер с Linux (или Windows/macOS с Docker Desktop)
@@ -123,7 +134,9 @@ git clone https://github.com/barval/flai.git
 cd flai
 
 # Создать папки и указать владельца
-mkdir -p data data/uploads data/documents
+sudo mkdir -p data \
+              data/uploads \
+              data/documents
 sudo chown -R 1000:1000 data
 
 # Скопировать шаблон окружения
@@ -145,8 +158,10 @@ nano .env
 #### 🎨 Для генерации изображений (Automatic1111):
 ```bash
 # Создать папку для моделей
-mkdir -p services/automatic1111/models services/automatic1111/models/Stable-diffusion services/automatic1111/outputs
-sudo chown -R 1000:1000 services/automatic1111
+sudo mkdir -p services/automatic1111/models \
+              services/automatic1111/models/Stable-diffusion \
+              services/automatic1111/outputs
+sudo chown -R 1000:1000 services
 
 # Скачать чекпоинт Stable Diffusion (пример: RealVisXL_V4.0)
 # Замените ссылку на нужную вам модель с civitai.com или huggingface
@@ -247,246 +262,67 @@ docker exec flai-web flask admin-password ВашБезопасныйПароль
 ---
 
 ## 🔧 Конфигурация
-> 💡 **Примечание**: У Вас должны быть установлены **драйвера NVIDIA** на хост-машине и **NVIDIA Container Toolkit**.
+
+### Переменные окружения (.env)
+
+**Обязательные:**
+```bash
+SECRET_KEY=your_secret_key_here      # Секрет Flask для сессий
+TIMEZONE=Europe/Moscow              # Ваш часовой пояс
+```
+
+**URL сервисов:**
+```bash
+OLLAMA_URL=http://flai-ollama:11434
+AUTOMATIC1111_URL=http://flai-sd:7860
+WHISPER_API_URL=http://flai-whisper:9000/asr
+PIPER_URL=http://flai-piper:8888/tts
+QDRANT_URL=http://flai-qdrant:6333
+QDRANT_API_KEY=your_qdrant_api_key
+CAMERA_API_URL=http://flai-room-snapshot-api:5005
+```
+
+**Повторные попытки подключения:**
+```bash
+SERVICE_RETRY_ATTEMPTS=15           # Количество попыток
+SERVICE_RETRY_DELAY=2               # Задержка между попытками (сек)
+```
+
+**Безопасность сессий:**
+```bash
+HTTPS_ENABLED=true                  # true для HTTPS прокси
+PERMANENT_SESSION_LIFETIME=28800    # Время жизни сессии (8 часов)
+```
+
+**Redis очередь:**
+```bash
+REDIS_RESULT_TTL=3600              # TTL результатов (1 час)
+QUEUE_MAX_WAIT_TIME=300            # Макс. ожидание в очереди (5 мин)
+```
+
+### Конфигурация Docker
+
+**Настройки Gunicorn (Dockerfile):**
+```dockerfile
+# Оптимизировано для I/O операций (ожидание ответов AI)
+CMD ["gunicorn", \
+     "--bind", "0.0.0.0:5000", \
+     "--workers", "1", \
+     "--threads", "4", \
+     "--worker-class", "gthread", \
+     "--timeout", "120", \
+     "--keep-alive", "5", \
+     "wsgi:app"]
+```
+
+**Почему 1 worker × 4 threads?**
+- Минимальное потребление RAM (+40МБ vs 1/1)
+- Обрабатывает 4 одновременных подключения
+- Оптимально для I/O bound (ожидание Ollama/SD)
+- Экономия 280МБ vs 4 workers
 
 ### Docker Compose «всё в одном»
 Для запуска всех сервисов на одной машине используйте `docker-compose.all.yml`:
-```yaml
-# docker-compose.all.yml
-version: '3.8'
-
-services:
-  # ============================================================
-  # ВЕБ-ПРИЛОЖЕНИЕ (Обязательно)
-  # ============================================================
-  web:
-    build: .
-    container_name: flai-web
-    ports:
-      - "5000:5000"
-    depends_on:
-      - redis
-      - ollama
-    volumes:
-      # Монтирование директории данных приложения
-      - ./data:/app/data
-      - ./.env:/app/.env:ro
-    env_file:
-      - .env
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-    user: "1000:1000"
-    networks:
-      - flai_network
-    restart: unless-stopped
-
-  # ============================================================
-  # REDIS (Обязательно - Очередь запросов)
-  # ============================================================
-  redis:
-    image: redis:8.0.6-alpine
-    container_name: flai-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    networks:
-      - flai_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    # Для использования внешнего экземпляра Redis:
-    # Закомментируйте весь этот блок сервиса
-
-  # ============================================================
-  # OLLAMA (Обязательно - Инференс больших языковых моделей)
-  # ============================================================
-  ollama:
-    image: ollama/ollama:latest
-    container_name: flai-ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama:/root/.ollama
-    environment:
-      - OLLAMA_REQUEST_TIMEOUT=1200s
-      - OLLAMA_MAX_LOADED_MODELS=1
-      - OLLAMA_KEEP_ALIVE=0
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    networks:
-      - flai_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    # Для использования внешнего экземпляра Ollama:
-    # Закомментируйте весь этот блок сервиса
-
-  # ============================================================
-  # AUTOMATIC1111 (Опционально - Генерация изображений)
-  # ============================================================
-  automatic1111:
-    image: siutin/stable-diffusion-webui-docker:latest-cuda
-    container_name: flai-sd
-    ports:
-      - "7860:7860"
-    volumes:
-      - ./services/automatic1111/models:/app/stable-diffusion-webui/models/Stable-diffusion
-      - ./services/automatic1111/outputs:/app/stable-diffusion-webui/outputs
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - NVIDIA_REQUIRE_CUDA=cuda>=12.1
-      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-    runtime: nvidia
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    command:
-      - /app/stable-diffusion-webui/webui.sh
-      - --listen
-      - --port=7860
-      - --api
-      - --api-log
-      - --opt-sdp-attention
-      - --medvram
-      - --medvram-sdxl
-      - --opt-split-attention
-    networks:
-      - flai_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7860/sdapi/v1/progress"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    profiles:
-      - with-image-gen
-    # Для отключения генерации изображений:
-    # Закомментируйте весь этот блок сервиса ИЛИ не указывайте профиль при запуске
-
-  # ============================================================
-  # WHISPER ASR (Опционально - Распознавание речи)
-  # ============================================================
-  whisper:
-    image: onerahmet/openai-whisper-asr-webservice:latest
-    container_name: flai-whisper
-    ports:
-      - "9000:9000"
-    environment:
-      - ASR_MODEL=medium
-      - ASR_ENGINE=faster_whisper
-      - ASR_DEVICE=cpu
-    # Для включения ускорения через GPU для транскрипции, раскомментируйте блок ниже:
-    # environment:
-    #   - ASR_DEVICE=cuda
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
-    volumes:
-      - ~/.cache/huggingface:/root/.cache/huggingface
-    networks:
-      - flai_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    profiles:
-      - with-voice
-    # Для отключения голосовых функций:
-    # Закомментируйте весь этот блок сервиса
-
-  # ============================================================
-  # PIPER TTS (Опционально - Синтез речи)
-  # ============================================================
-  piper:
-    build:
-      context: ./services/piper
-      dockerfile: Dockerfile.piper
-    container_name: flai-piper
-    ports:
-      - "18888:8888"
-    volumes:
-      - ./services/piper/piper_models:/app/models
-    environment:
-      - PIPER_MODEL_DIR=/app/models
-    networks:
-      - flai_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8888/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    profiles:
-      - with-voice
-    # Для отключения голосовых функций:
-    # Закомментируйте весь этот блок сервиса
-
-  # ============================================================
-  # QDRANT (Опционально - Векторная база данных для RAG)
-  # ============================================================
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: flai-qdrant
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant_data:/qdrant/storage
-    environment:
-      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
-      - QDRANT__SERVICE__ENABLE_TLS=0
-    networks:
-      - flai_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    profiles:
-      - with-rag
-    # Для отключения поиска документов/RAG:
-    # Закомментируйте весь этот блок сервиса
-
-networks:
-  flai_network:
-    driver: bridge
-
-volumes:
-  redis_data:
-  ollama:
-  qdrant_data:
-```
 
 ### Примеры использования
 ```bash
@@ -507,27 +343,41 @@ docker-compose -f docker-compose.all.yml logs -f web
 ```
 
 ### Распределённое развёртывание (несколько машин)
-Для распределения нагрузки по нескольким узлам Ollama:
 
-1. Машина 1 (Web + Чат-модели):
+Для распределения нагрузки между несколькими серверами используйте автономные docker-compose файлы в директории `services/`:
+
+1. **Web App + Redis** (Сервер 1):
 ```bash
-# В панели администратора на Машине 1
-OLLAMA_CHAT_URL -> http://machine1:11434
-OLLAMA_REASONING_URL -> http://machine2:11434
-OLLAMA_MULTIMODAL_URL -> http://machine3:11434
-OLLAMA_EMBEDDING_URL -> http://machine1:11434
+docker-compose -f docker-compose.all.yml up -d web redis
 ```
-2. Машина 2 (Модели рассуждений):
+
+2. **Ollama - Chat Models** (Сервер 2):
 ```bash
-# Запустить только Ollama
-docker-compose -f services/ollama/docker-compose.yml up -d
+cd services/ollama
+docker-compose -f docker-compose.gpu.yml up -d
 ```
-3. Машина 3 (Мультимодальные модели):
+
+3. **Ollama - Reasoning Models** (Сервер 3):
 ```bash
-# Запустить только Ollama
-docker-compose -f services/ollama/docker-compose.yml up -d
+cd services/ollama
+docker-compose -f docker-compose.gpu.yml up -d
 ```
-Настройте URL моделей в **Панели администратора** → вкладка **Модели** после первого входа.
+
+4. **Настройте URL моделей** в Панели администратора → вкладка Models:
+```
+Chat: http://server2:11434
+Reasoning: http://server3:11434
+Multimodal: http://server4:11434
+Embedding: http://server2:11434
+```
+
+**Настройка Firewall:**
+```bash
+# На каждом удалённом сервере
+sudo ufw allow from <web-app-ip> to any port <service-port>
+```
+
+См. [services/README.md](services/README.md) для полных инструкций по развёртыванию каждого сервиса.
 
 ---
 
@@ -656,7 +506,16 @@ docker-compose -f docker-compose.all.yml --profile with-rag up -d
 Модуль работы с камерами не включён в основной docker-compose и должен быть настроен отдельно.
 
 ### 1. Развёртывание сервиса камер
-Сервис камер — это отдельный проект, предоставляющий снимки с IP-камер:
+
+Сервис камер — отдельный проект. Доступны два варианта развёртывания:
+
+**Вариант A: Локальное развёртывание (на том же сервере что и ПЛИИ)**
+```bash
+cd services/room-snapshot-api
+./deploy.sh local
+```
+
+**Вариант B: Удалённое развёртывание (на отдельном сервере)**
 ```bash
 # Клонировать репозиторий API камер
 git clone https://github.com/barval/room-snapshot-api.git
@@ -666,9 +525,14 @@ cd room-snapshot-api
 cp .env.example .env
 # Отредактировать .env с URL и учётными данными ваших камер
 
-# Запустить сервис камер
-docker-compose up -d
+# Развернуть удалённо
+./deploy.sh remote
+
+# Настроить firewall
+sudo ufw allow from <flai-server-ip> to any port 5005
 ```
+
+См. [services/room-snapshot-api/README.md](services/room-snapshot-api/README.md) для подробных инструкций.
 
 ### 2. Настроить ПЛИИ для использования сервиса камер
 В файле `.env` ПЛИИ:
@@ -677,7 +541,10 @@ docker-compose up -d
 CAMERA_ENABLED=true
 
 # Адрес API камер (настройте IP/порт по необходимости)
-CAMERA_API_URL=http://host.docker.internal:5005
+# Для локального развёртывания:
+CAMERA_API_URL=http://flai-room-snapshot-api:5005
+# Для удалённого развёртывания:
+CAMERA_API_URL=http://<camera-server-ip>:5005
 
 # Таймаут запроса снимка (секунды)
 CAMERA_API_TIMEOUT=15
@@ -724,15 +591,100 @@ CAMERA_CHECK_INTERVAL=30
 ### CLI-команды
 ```bash
 # Установить пароль администратора
-docker exec flai-web-1 flask admin-password НовыйПароль123
+docker exec flai-web flask admin-password НовыйПароль123
 
 # Просмотр помощи
-docker exec flai-web-1 flask --help
+docker exec flai-web flask --help
 ```
 
 ---
 
-## 🧪 Нагрузочное тестирование
+## 🔍 Мониторинг и здоровье
+
+### Health Check Endpoint
+
+Комплексная проверка здоровья всех сервисов:
+
+```bash
+curl http://localhost:5000/health
+```
+
+**Ответ:**
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-04-02T00:34:08.237346",
+  "services": {
+    "web": "ok",
+    "database": "ok",
+    "redis": "ok",
+    "ollama": "ok"
+  }
+}
+```
+
+**Значения статуса:**
+- `ok` — все сервисы работают
+- `degraded` — часть сервисов недоступна
+- `error` — все сервисы недоступны
+
+### Prometheus Metrics
+
+Метрики в формате Prometheus:
+
+```bash
+curl http://localhost:5000/metrics
+```
+
+**Доступные метрики:**
+- `flai_web_info` — Версия сервиса
+- `flai_queue_length` — Длина очереди
+- `flai_queue_processing` — Обрабатываемые задачи
+- `flai_database_size_bytes` — Размер БД
+- `flai_requests_total` — Счётчик запросов
+- `flai_uptime_seconds` — Время работы
+
+### API Документация
+
+Полная API документация в формате OpenAPI:
+- **Файл:** `docs/openapi.yaml`
+- **Формат:** OpenAPI 3.0
+- **Покрытие:** Все REST endpoint'ы
+
+Просмотр через Swagger UI или любой OpenAPI-совместимый просмотрщик.
+
+---
+
+## 🧪 Тестирование
+
+### Юнит и интеграционные тесты
+
+FLAI включает комплексное покрытие тестами критичных компонентов:
+
+```bash
+# Запустить все тесты
+pytest
+
+# Запустить с отчётом покрытия
+pytest --cov=app --cov=modules --cov-report=html
+
+# Запустить конкретную категорию
+pytest tests/test_admin_routes.py
+pytest tests/test_documents_routes.py
+pytest tests/test_image_module.py
+```
+
+**Покрытие тестами:**
+- `test_admin_routes.py` — Endpoint'ы админ-панели (17 тестов)
+- `test_documents_routes.py` — Загрузка документов/RAG (16 тестов)
+- `test_image_module.py` — Генерация изображений (16 тестов)
+- `test_queue.py` — Операции Redis очереди
+- `test_audio_module.py` — Аудио транскрибация
+- `test_security.py` — Функции безопасности (CSRF, rate limiting и др.)
+- `test_integration.py` — Сквозные интеграционные тесты
+
+### Нагрузочное тестирование
+
 ПЛИИ включает скрипты нагрузочного тестирования на основе Locust.
 
 ### Настройка
@@ -761,7 +713,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000 \
 - Логин: `testuser`
 - Пароль: `testpass`
 
-> 💡 Обязательно: заблокируйте или удалите тестового пользователя после проведения тестов!
+> 💡 **Обязательно:** заблокируйте или удалите тестового пользователя после проведения тестов!
 
 ---
 
@@ -783,6 +735,21 @@ locust -f tests/load/locustfile.py --host http://localhost:5000 \
 - **Режим WAL для SQLite для лучшей конкурентности**
 - **Нагрузочное тестирование с Locust**
 - **Отдельные URL Ollama для каждого типа моделей (распределённое развёртывание)**
+- **Улучшения безопасности:**
+  * CSRF-защита для всех форм
+  * Rate limiting для login (защита от перебора паролей)
+  * Валидация владения сессией
+  * Защита от path traversal
+  * HMAC-подпись задач Redis очереди
+  * Заголовки безопасности (CSP, X-Frame-Options и др.)
+  * Audit logging для событий безопасности
+- **Автономное развёртывание сервисов:**
+  * Ollama (с поддержкой GPU)
+  * Automatic1111 (Stable Diffusion)
+  * Whisper ASR
+  * Piper TTS
+  * Qdrant (векторная БД)
+  * Room Snapshot API (локальное/удалённое развёртывание)
 
 ### 🔄 В работе
 - Долговременная память диалогов (контекст между сеансами)

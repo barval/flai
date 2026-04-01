@@ -1,19 +1,22 @@
-# services/qdrant/docker-compose.yml
-# Standalone Qdrant deployment for distributed FLAI setup
 version: '3.8'
+
+# Qdrant Vector Database Standalone Service
+# Use this docker-compose for deploying Qdrant on a separate server
 
 services:
   qdrant:
     image: qdrant/qdrant:latest
     container_name: flai-qdrant
     ports:
-      - "${QDRANT_HTTP_PORT:-6333}:6333"
+      - "${QDRANT_PORT:-6333}:6333"
       - "${QDRANT_GRPC_PORT:-6334}:6334"
-    volumes:
-      - qdrant_data:/qdrant/storage
     environment:
       - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
-      - QDRANT__SERVICE__ENABLE_TLS=0
+      - QDRANT__SERVICE__GRPC_PORT=${QDRANT_GRPC_PORT:-6334}
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+    networks:
+      - flai_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:6333/"]
@@ -22,5 +25,6 @@ services:
       retries: 3
       start_period: 30s
 
-volumes:
-  qdrant_data:
+networks:
+  flai_network:
+    driver: bridge

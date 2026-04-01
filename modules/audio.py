@@ -44,12 +44,27 @@ class AudioModule:
         self.app = app
         self.whisper_api_url = app.config.get('WHISPER_API_URL', 'http://host.docker.internal:9000/asr')
         self.timeout = app.config.get('WHISPER_API_TIMEOUT', 120)
-        self.check_availability()
+
+        self.logger.info(f"Initializing AudioModule with Whisper URL: {self.whisper_api_url}")
+
+        # Initial availability check with retries (Whisper may start slower than web app)
+        max_retries = app.config.get('SERVICE_RETRY_ATTEMPTS', 5)
+        retry_delay = app.config.get('SERVICE_RETRY_DELAY', 2)  # seconds
+
+        for attempt in range(1, max_retries + 1):
+            if self.check_availability():
+                break
+            if attempt < max_retries:
+                self.logger.warning(f"Whisper API not ready (attempt {attempt}/{max_retries}), retrying in {retry_delay}s...")
+                import time
+                time.sleep(retry_delay)
+            else:
+                self.logger.warning(f"Whisper API not available after {max_retries} attempts")
 
         if self.available:
             self.logger.info(f"AudioModule initialized and available (Whisper API: {self.whisper_api_url}), timeout: {self.timeout}s")
         else:
-            self.logger.warning(f"AudioModule initialized, but Whisper API unavailable ({self.whisper_api_url})")
+            self.logger.warning(f"AudioModule initialized, but Whisper API unavailable ({self.whisper_api_url}). Will retry on each request.")
 
     def check_availability(self):
         """Check Whisper API availability"""
@@ -58,17 +73,43 @@ class AudioModule:
             return False
 
         try:
-            response = requests.get(self.whisper_api_url, timeout=3)
-            if response.status_code == 200:
+            # Whisper ASR Webservice: try multiple endpoints
+            base_url = self.whisper_api_url.replace('/asr', '').rstrip('/')
+            
+            # Try health endpoint first (faster)
+            health_url = f"{base_url}/health"
+            try:
+                response = requests.get(health_url, timeout=3, allow_redirects=True)
+                if response.status_code == 200:
+                    self.logger.info(f"Whisper API health check passed: {health_url}")
+                    self.available = True
+                    return True
+            except:
+                pass  # Health endpoint may not exist
+            
+            # Try root endpoint - may return 307 redirect which is OK
+            response = requests.get(base_url, timeout=5, allow_redirects=True)
+            # 200, 307, 404, 405 all indicate service is running
+            if response.status_code in [200, 307, 404, 405]:
+                self.logger.info(f"Whisper API is reachable at {base_url} (status: {response.status_code})")
+                self.available = True
+                return True
+            # Check if we got redirected successfully
+            elif response.history and response.history[-1].status_code == 307:
+                self.logger.info(f"Whisper API redirected (service is running): {base_url}")
                 self.available = True
                 return True
             else:
-                self.available = True
-                return True
+                self.logger.warning(f"Whisper API returned unexpected status: {response.status_code}")
+                self.available = False
+                return False
+                
         except requests.exceptions.ConnectionError:
-            self.logger.error(f"Connection error to Whisper API: {self.whisper_api_url}")
+            self.logger.error(f"Cannot connect to Whisper API at {self.whisper_api_url} - service may not be running")
+        except requests.exceptions.Timeout:
+            self.logger.error(f"Timeout connecting to Whisper API at {self.whisper_api_url}")
         except Exception as e:
-            self.logger.error(f"Error checking Whisper API: {str(e)}")
+            self.logger.error(f"Error checking Whisper API at {self.whisper_api_url}: {str(e)}")
 
         self.available = False
         return False
@@ -82,8 +123,15 @@ class AudioModule:
         lang: language code (e.g., 'ru', 'en')
         Returns text or None on error
         """
+        # Always re-check availability on each request (service may have restarted)
+        self.logger.info(f"Checking Whisper API availability before transcription... (current available={self.available})")
+        was_available = self.available
+        self.check_availability()
+        if was_available != self.available:
+            self.logger.info(f"Whisper API availability changed: {was_available} -> {self.available}")
+        
         if not self.available:
-            self.logger.error("Whisper API unavailable")
+            self.logger.error("Whisper API unavailable after re-check")
             return None
 
         try:

@@ -1,6 +1,7 @@
-# services/piper/docker-compose.yml
-# Standalone Piper TTS deployment for distributed FLAI setup
 version: '3.8'
+
+# Piper TTS Standalone Service
+# Use this docker-compose for deploying Piper TTS on a separate server
 
 services:
   piper:
@@ -11,13 +12,22 @@ services:
     ports:
       - "${PIPER_PORT:-8888}:8888"
     volumes:
-      - ./piper_models:/app/models
-    environment:
-      - PIPER_MODEL_DIR=/app/models
+      # Voice models directory (DO NOT DELETE - contains trained voice models)
+      - ./piper_models:/app/piper_models:ro
+    networks:
+      - flai_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8888/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 10s
+
+volumes:
+  piper_models_volume:
+    driver: local
+
+networks:
+  flai_network:
+    driver: bridge

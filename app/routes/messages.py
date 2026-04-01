@@ -10,16 +10,41 @@ from datetime import datetime
 from flask import Blueprint, request, session, jsonify, current_app
 from flask_babel import gettext as _, force_locale
 from app import db
-from app.utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, resize_image_if_needed, save_uploaded_file
+from app.utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, resize_image_if_needed, save_uploaded_file, validate_session_ownership
 
 bp = Blueprint('messages', __name__, url_prefix='/api')
+
 
 @bp.route('/sessions/<session_id>/messages', methods=['GET'])
 def api_get_messages(session_id):
     if 'login' not in session:
         return jsonify({'error': _('Not authorized')}), 401
+
+    # Security: Verify session belongs to user
+    if not validate_session_ownership(session_id, session['login']):
+        current_app.logger.warning(f"User {session['login']} attempted to access messages in session {session_id}")
+        return jsonify({'error': _('Session not found')}), 404
+
+    # Get pagination parameters
     since = request.args.get('since')
-    return jsonify(db.get_session_messages(session_id, since=since))
+    try:
+        limit = int(request.args.get('limit', 100))
+        offset = int(request.args.get('offset', 0))
+    except (ValueError, TypeError):
+        limit = 100
+        offset = 0
+    
+    # Enforce reasonable limits
+    limit = min(limit, 200)  # Max 200 messages at once
+    offset = max(offset, 0)  # No negative offset
+    
+    messages = db.get_session_messages(session_id, since=since, limit=limit, offset=offset)
+    return jsonify({
+        'messages': messages,
+        'limit': limit,
+        'offset': offset,
+        'has_more': len(messages) >= limit
+    })
 
 @bp.route('/send_message', methods=['POST'])
 def send_message():
@@ -60,7 +85,8 @@ def send_message():
             data = request.get_json()
             if data:
                 message_text = data.get('message', '')
-        except:
+        except (json.JSONDecodeError, TypeError):
+            # Fallback to form data if JSON parsing fails
             message_text = request.form.get('message', '')
 
     if not message_text and not file_data:

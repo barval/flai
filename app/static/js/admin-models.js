@@ -5,6 +5,28 @@ let currentModelConfigs = {};
 let modelDetails = {};        // cache for model info
 let modelListCache = {};      // cache for list of models per URL
 
+// Get CSRF token from meta tag
+function getCSRFToken() {
+    const token = document.querySelector('meta[name="csrf-token"]');
+    return token ? token.getAttribute('content') : '';
+}
+
+// Fetch wrapper with CSRF token for POST/PUT/DELETE requests
+function fetchWithCSRF(url, options = {}) {
+    const method = (options.method || 'GET').toUpperCase();
+    
+    // Add CSRF token for state-changing requests
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+        const headers = options.headers || {};
+        if (!headers['X-CSRFToken'] && !headers['X-CSRF-TOKEN']) {
+            headers['X-CSRFToken'] = getCSRFToken();
+        }
+        options.headers = headers;
+    }
+    
+    return fetch(url, options);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     initAdminTabs();
     if (document.getElementById('models-tab')) {
@@ -390,7 +412,7 @@ function onSaveConfig(event) {
         timeout: timeout ? parseInt(timeout) : null
     };
 
-    fetch(`/admin/api/model_configs/${module}`, {
+    fetchWithCSRF(`/admin/api/model_configs/${module}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)

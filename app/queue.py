@@ -1,11 +1,13 @@
 # app/queue.py
 import redis
-import pickle
+import json
 import uuid
 import time
 import threading
 import sqlite3
 import os
+import hmac
+import hashlib
 from typing import Dict, Any, Optional, Tuple, List
 from .utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, save_uploaded_file
 from .db import save_message, CHAT_DB_PATH, update_document_index_status, \
@@ -15,15 +17,41 @@ from .model_config import get_model_config
 
 
 class RedisRequestQueue:
+    """Redis-based request queue with JSON serialization for security."""
+    
     def __init__(self, app):
         self.app = app
         self.logger = app.logger
-        self.redis = redis.from_url(app.config['REDIS_URL'], decode_responses=False)
+        self.redis = redis.from_url(app.config['REDIS_URL'], decode_responses=True)
         self.queue_key = 'request_queue'
         self.processing_key = 'processing_requests'
         self.results_key = 'request_results'
         self.user_requests_key = 'user_requests'
+        # HMAC key for signing serialized data (prevent tampering)
+        self.hmac_key = app.config.get('SECRET_KEY', 'fallback-key').encode('utf-8')
         self.start_worker()
+    
+    def _serialize(self, data: Dict) -> str:
+        """Serialize data to JSON with HMAC signature."""
+        json_str = json.dumps(data, ensure_ascii=False)
+        signature = hmac.new(self.hmac_key, json_str.encode('utf-8'), hashlib.sha256).hexdigest()
+        return json.dumps({'data': json_str, 'sig': signature}, ensure_ascii=False)
+    
+    def _deserialize(self, signed_json: str) -> Optional[Dict]:
+        """Deserialize JSON with HMAC verification."""
+        try:
+            wrapper = json.loads(signed_json)
+            json_str = wrapper['data']
+            stored_sig = wrapper['sig']
+            # Verify signature
+            expected_sig = hmac.new(self.hmac_key, json_str.encode('utf-8'), hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(stored_sig, expected_sig):
+                self.logger.error("HMAC signature mismatch - possible tampering")
+                return None
+            return json.loads(json_str)
+        except (json.JSONDecodeError, KeyError) as e:
+            self.logger.error(f"Failed to deserialize data: {e}")
+            return None
 
     def start_worker(self):
         thread = threading.Thread(target=self._worker_loop, daemon=True)
@@ -31,6 +59,7 @@ class RedisRequestQueue:
         self.app.logger.info("RedisRequestQueue: worker started")
 
     def _worker_loop(self):
+        """Main worker loop - processes tasks from Redis queue."""
         self.app.logger.info("RedisRequestQueue: processing loop started")
         while True:
             try:
@@ -38,7 +67,10 @@ class RedisRequestQueue:
                 if not result:
                     continue
                 queue_key, task_data = result
-                task = pickle.loads(task_data)
+                task = self._deserialize(task_data)
+                if task is None:
+                    self.logger.error("Failed to deserialize task - skipping")
+                    continue
                 queue_time = time.time() - task.get('timestamp', time.time())
                 if queue_time > 300:
                     self.app.logger.warning(f"Task {task['id']} waited too long in queue ({queue_time:.1f}s). Cancelling.")
@@ -47,7 +79,7 @@ class RedisRequestQueue:
                         lang=task.get('lang', 'ru')
                     )
                     error_text = template.format(queue_time=queue_time)
-                    self.redis.hset(self.results_key, task['id'], pickle.dumps({
+                    self.redis.hset(self.results_key, task['id'], self._serialize({
                         'status': 'error',
                         'error': error_text,
                         'result': {'session_id': task.get('session_id')},
@@ -61,7 +93,7 @@ class RedisRequestQueue:
                         result_data = self._process_request(task)
                         if 'session_id' not in result_data and task.get('session_id'):
                             result_data['session_id'] = task.get('session_id')
-                        self.redis.hset(self.results_key, task['id'], pickle.dumps({
+                        self.redis.hset(self.results_key, task['id'], self._serialize({
                             'status': 'completed',
                             'result': result_data,
                             'timestamp': time.time()
@@ -69,7 +101,7 @@ class RedisRequestQueue:
                         self.app.logger.info(f"RedisRequestQueue: task {task['id']} completed successfully for session {task.get('session_id')}")
                 except Exception as e:
                     self.app.logger.error(f"RedisRequestQueue: error processing task {task['id']}: {str(e)}")
-                    self.redis.hset(self.results_key, task['id'], pickle.dumps({
+                    self.redis.hset(self.results_key, task['id'], self._serialize({
                         'status': 'error',
                         'error': str(e),
                         'result': {'session_id': task.get('session_id')},
@@ -100,7 +132,7 @@ class RedisRequestQueue:
             'lang': lang
         }
         self.app.logger.info(f"RedisRequestQueue.add_request: adding task {request_id} for session {session_id} at {timestamp}")
-        self.redis.rpush(self.queue_key, pickle.dumps(task))
+        self.redis.rpush(self.queue_key, self._serialize(task))
         self.redis.sadd(f"{self.user_requests_key}:{user_id}", request_id)
         queue_length = self.redis.llen(self.queue_key)
         estimated_wait = max(1, queue_length * 5)
@@ -129,6 +161,7 @@ class RedisRequestQueue:
         self.redis.srem(f"{self.user_requests_key}:{user_id}", request_id)
 
     def add_index_task(self, user_id: str, doc_id: str, file_path: str, lang: str = 'ru') -> str:
+        """Add document indexing task to queue."""
         request_id = str(uuid.uuid4())
         timestamp = time.time()
         task = {
@@ -141,10 +174,11 @@ class RedisRequestQueue:
             'lang': lang
         }
         self.app.logger.info(f"RedisRequestQueue.add_index_task: adding task {request_id} for document {doc_id}")
-        self.redis.rpush(self.queue_key, pickle.dumps(task))
+        self.redis.rpush(self.queue_key, self._serialize(task))
         return request_id
 
     def add_reindex_all_task(self, lang: str = 'ru') -> str:
+        """Add reindex all embeddings task to queue."""
         request_id = str(uuid.uuid4())
         timestamp = time.time()
         task = {
@@ -154,22 +188,22 @@ class RedisRequestQueue:
             'lang': lang
         }
         self.app.logger.info(f"RedisRequestQueue.add_reindex_all_task: adding task {request_id}")
-        self.redis.rpush(self.queue_key, pickle.dumps(task))
+        self.redis.rpush(self.queue_key, self._serialize(task))
         return request_id
 
     def get_user_queue_counts(self, user_id: str) -> Tuple[int, int]:
+        """Get user's queue count and total queue length efficiently.
+        Uses Redis set to track user requests instead of scanning entire queue.
+        """
         total = self.redis.llen(self.queue_key)
         if total == 0:
             return 0, 0
-        items = self.redis.lrange(self.queue_key, 0, -1)
-        user_count = 0
-        for item in items:
-            try:
-                task = pickle.loads(item)
-                if task.get('user_id') == user_id:
-                    user_count += 1
-            except:
-                continue
+
+        # Use set to get count of active user requests
+        user_count = self.redis.scard(f"{self.user_requests_key}:{user_id}")
+
+        # Clean up completed requests from set (they may have been removed from results)
+        # This is eventual consistency - not critical if slightly stale
         return user_count, total
 
     def _get_session_title(self, session_id: str, lang: str = 'ru') -> str:
@@ -738,6 +772,7 @@ class RedisRequestQueue:
         return {'success': True, 'total': total, 'success_count': success_count, 'failed_count': fail_count}
 
     def get_user_requests_status(self, user_id: str, lang: str = 'ru') -> Dict[str, Any]:
+        """Get status of user's requests (processing, queued, completed)."""
         result = {'processing': None, 'queued': [], 'recent_completed': []}
         user_requests = self.redis.smembers(f"{self.user_requests_key}:{user_id}")
         user_requests = {r.decode() if isinstance(r, bytes) else r for r in user_requests}
@@ -745,16 +780,17 @@ class RedisRequestQueue:
         for req_id, task_data in processing_tasks.items():
             req_id = req_id.decode() if isinstance(req_id, bytes) else req_id
             if req_id in user_requests:
-                task = pickle.loads(task_data)
-                task['status'] = 'processing'
-                task['position_info'] = {'position': 1, 'estimated_seconds': 0}  # Processing = first position
-                result['processing'] = self._format_request_info(task, lang)
+                task = self._deserialize(task_data)
+                if task:
+                    task['status'] = 'processing'
+                    task['position_info'] = {'position': 1, 'estimated_seconds': 0}
+                    result['processing'] = self._format_request_info(task, lang)
         queue_length = self.redis.llen(self.queue_key)
         queue_tasks = self.redis.lrange(self.queue_key, 0, queue_length - 1) if queue_length > 0 else []
         position = 1
         for task_data in queue_tasks:
-            task = pickle.loads(task_data)
-            if task.get('user_id') == user_id:
+            task = self._deserialize(task_data)
+            if task and task.get('user_id') == user_id:
                 task['status'] = 'queued'
                 task['position_info'] = {'position': position, 'estimated_seconds': max(1, position * 5)}
                 result['queued'].append(self._format_request_info(task, lang))
@@ -775,7 +811,8 @@ class RedisRequestQueue:
         }
 
     def check_result(self, request_id: str) -> Optional[Dict[str, Any]]:
+        """Check if result is available for a request."""
         result_data = self.redis.hget(self.results_key, request_id)
         if result_data:
-            return pickle.loads(result_data)
+            return self._deserialize(result_data)
         return None

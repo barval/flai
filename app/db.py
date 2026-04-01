@@ -457,7 +457,9 @@ def delete_session_and_messages(session_id, user_id, upload_folder=None):
                     try:
                         os.remove(full_path)
                     except Exception as e:
-                        pass
+                        # Log error but continue with deletion of other files
+                        import logging
+                        logging.getLogger(__name__).warning(f"Failed to delete file {full_path}: {e}")
         c.execute('DELETE FROM messages WHERE session_id = ?', (session_id,))
         c.execute('DELETE FROM chat_sessions WHERE id = ?', (session_id,))
         c.execute('SELECT COUNT(*) FROM chat_sessions WHERE user_id = ?', (user_id,))
@@ -619,12 +621,12 @@ def update_document_index_status(doc_id, status, indexed_at=None, indexing_start
         'indexing_started_at': 'indexing_started_at',
         'embedding_model': 'embedding_model'
     }
-    
+
     with sqlite3.connect(CHAT_DB_PATH) as conn:
         c = conn.cursor()
         updates = []
         params = []
-        
+
         # Dictionary of values to update
         values_to_update = {
             'index_status': status,
@@ -632,17 +634,19 @@ def update_document_index_status(doc_id, status, indexed_at=None, indexing_start
             'indexing_started_at': indexing_started_at,
             'embedding_model': embedding_model
         }
-        
+
         for field, value in values_to_update.items():
             if value is not None:
-                # Use only allowed column names
+                # Security: verify column name is in whitelist (defensive programming)
+                if field not in ALLOWED_COLUMNS:
+                    raise ValueError(f"Invalid field name: {field}")
                 column_name = ALLOWED_COLUMNS[field]
                 updates.append(f"{column_name} = ?")
                 params.append(value)
-        
+
         if not updates:
             return
-        
+
         params.append(doc_id)
         c.execute(f'UPDATE documents SET {", ".join(updates)} WHERE id = ?', params)
         conn.commit()

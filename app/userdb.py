@@ -80,10 +80,10 @@ def update_user(login, name=None, service_class=None, is_active=None, camera_per
         'voice_gender': 'voice_gender',
         'theme': 'theme'
     }
-    
+
     updates = []
     params = []
-    
+
     # Dictionary of values to update
     values_to_update = {
         'name': name,
@@ -94,10 +94,12 @@ def update_user(login, name=None, service_class=None, is_active=None, camera_per
         'voice_gender': voice_gender,
         'theme': theme
     }
-    
+
     for field, value in values_to_update.items():
         if value is not None:
-            # Use only allowed column names
+            # Security: verify column name is in whitelist (defensive programming)
+            if field not in ALLOWED_COLUMNS:
+                raise ValueError(f"Invalid field name: {field}")
             column_name = ALLOWED_COLUMNS[field]
             updates.append(f"{column_name} = ?")
             if field == 'camera_permissions':
@@ -106,10 +108,10 @@ def update_user(login, name=None, service_class=None, is_active=None, camera_per
                 params.append(int(value))
             else:
                 params.append(value)
-    
+
     if not updates:
         return
-    
+
     params.append(login)
     with get_db() as conn:
         conn.execute(f'UPDATE users SET {", ".join(updates)}, updated_at = CURRENT_TIMESTAMP WHERE login = ?', params)

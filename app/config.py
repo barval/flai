@@ -97,8 +97,8 @@ def load_config(app):
     # Session cookie settings for CSRF and security
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-    # Secure flag is set based on HTTPS_ENABLED env var (for nginx proxy)
-    app.config['SESSION_COOKIE_SECURE'] = os.getenv('HTTPS_ENABLED', 'false').lower() in ('true', '1', 'yes')
+    # Secure flag defaults to True for production (set False only for local HTTP development)
+    app.config['SESSION_COOKIE_SECURE'] = os.getenv('HTTPS_ENABLED', 'true').lower() in ('true', '1', 'yes')
     
     # CSRF configuration
     app.config['WTF_CSRF_ENABLED'] = True

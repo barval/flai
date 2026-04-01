@@ -223,4 +223,15 @@ def create_app():
             return jsonify({'error': 'Not found'}), 404
         return error
 
+    # Health check endpoint for Docker and monitoring
+    @app.route('/health')
+    def health_check():
+        """Health check endpoint for Docker containers and load balancers."""
+        from datetime import datetime
+        return jsonify({
+            'status': 'ok',
+            'timestamp': datetime.utcnow().isoformat(),
+            'service': 'flai-web'
+        })
+
     return app

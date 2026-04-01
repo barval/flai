@@ -150,18 +150,25 @@ def save_uploaded_file(file_data: str, filename: str, session_id: str, upload_fo
     """Save a base64 encoded file to disk. Returns relative path."""
     if not file_data:
         return None
-    
+
     # Security: validate session_id to prevent path traversal
     if not session_id or '..' in session_id or '/' in session_id or '\\' in session_id:
         current_app.logger.error(f"Invalid session_id: {session_id}")
         return None
     
+    # Security: validate session_id is a valid UUID format
+    try:
+        uuid.UUID(session_id, version=4)
+    except ValueError:
+        current_app.logger.error(f"Invalid UUID format for session_id: {session_id}")
+        return None
+
     try:
         file_bytes = base64.b64decode(file_data)
     except Exception as e:
         current_app.logger.error(f"Failed to decode base64 file data: {e}")
         return None
-    
+
     session_folder = os.path.join(upload_folder, session_id)
     os.makedirs(session_folder, exist_ok=True)
     

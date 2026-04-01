@@ -3,7 +3,7 @@
 
 function startSyncInterval() {
     if (window.syncInterval) clearInterval(window.syncInterval);
-    console.log('startSyncInterval: Starting sync interval (3 seconds) for session', currentSessionId);
+    console.log('startSyncInterval: Starting sync interval (2 seconds) for session', currentSessionId);
     // Sync interval for queue status, counter updates, and cross-client synchronization
     window.syncInterval = setInterval(() => {
         if (window.IS_RELOADING) {
@@ -11,9 +11,11 @@ function startSyncInterval() {
             return;
         }
         console.log('sync interval: Running sync for session', currentSessionId);
+        // Always fetch queue status first to get latest data from server
         fetchQueueStatus();
+        // Then sync sessions and messages
         syncSessionsAndMessages();
-    }, 3000);
+    }, 2000);
 }
 
 /**
@@ -163,15 +165,16 @@ function fetchQueueStatus() {
                 const proc = data.processing;
                 const sessionId = proc.session_id;
                 if (!newInfo[sessionId]) {
-                    newInfo[sessionId] = { processing: false, queued: 0, has_transcribing: false, first_queued_position: 999 };
+                    newInfo[sessionId] = { processing: false, queued: 0, has_transcribing: false };
                 }
                 newInfo[sessionId].processing = true;
                 // Only set has_transcribing if currently processing audio/transcribe task
                 if (proc.type === 'transcribe_audio' || proc.type === 'audio') {
                     newInfo[sessionId].has_transcribing = true;
                 }
+                console.log('fetchQueueStatus: processing task for session', sessionId, 'type:', proc.type);
             }
-            
+
             // Process queued tasks
             data.queued.forEach(item => {
                 const sessionId = item.session_id;
@@ -184,8 +187,15 @@ function fetchQueueStatus() {
                 newInfo[sessionId].queue_position = position;
             });
 
+            // Update global sessionQueueInfo
             sessionQueueInfo = newInfo;
+            console.log('fetchQueueStatus: sessionQueueInfo updated', sessionQueueInfo);
+            
+            // Update sessions list with new queue info
             updateSessionsListFromData();
+            
+            // Update status counter
+            window.updateStatusCounter();
         })
         .catch(err => console.error('Error fetching queue status:', err));
 }
@@ -242,6 +252,7 @@ window.updateStatusCounter = function() {
             if (counter) {
                 counter.textContent = '📊 ' + data.user_queued + '/' + data.total_queued;
                 counter.title = t('your_requests');
+                console.log('updateStatusCounter:', data.user_queued + '/' + data.total_queued);
             }
         })
         .catch(err => console.error('Error updating counter:', err));

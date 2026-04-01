@@ -60,15 +60,16 @@ function loadSessionsFromServer() {
                         }
                     }
                 }
-                // Update unread indicators - NEVER show for current active session
+                // Update unread indicators from server data
+                // NEVER show for current active session
                 if (s.id === currentSessionId) {
                     // Current session is active - always clear unread indicator
                     delete newMessageIndicators[s.id];
-                } else if (s.has_unread && newMessageIndicators[s.id]) {
-                    // Only keep unread indicator if it was already set (from server)
-                    // Don't create new unread indicators, only preserve existing ones
+                } else if (s.has_unread) {
+                    // Server says this session has unread messages - set indicator
+                    newMessageIndicators[s.id] = true;
                 } else {
-                    // Clear indicator for all other cases
+                    // Server says no unread - clear indicator
                     delete newMessageIndicators[s.id];
                 }
             });

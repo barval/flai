@@ -1,12 +1,10 @@
 # tests/test_documents_routes.py
-"""Tests for documents routes."""
+"""Integration tests for documents routes."""
 import pytest
 import io
-import tempfile
-import os
-from unittest.mock import patch, MagicMock
 
 
+@pytest.mark.integration
 class TestDocumentsAuth:
     """Test documents authentication."""
 
@@ -26,20 +24,22 @@ class TestDocumentsAuth:
         assert response.status_code == 401
 
 
+@pytest.mark.integration
 class TestDocumentsCRUD:
     """Test documents CRUD operations."""
 
     @pytest.fixture
-    def authenticated_client(self, client, app):
+    def authenticated_client(self, client, test_app):
         """Create authenticated client."""
-        with app.app_context():
+        with test_app.app_context():
             from app.userdb import create_user, get_user_by_login
             if not get_user_by_login('doctest'):
                 create_user('doctest', 'pass123', 'Doc Test User')
-        
+
         client.post('/login', data={'login': 'doctest', 'password': 'pass123'})
         return client
 
+    @pytest.mark.integration
     def test_get_documents_empty(self, authenticated_client):
         """Test getting documents when none exist."""
         response = authenticated_client.get('/api/documents')
@@ -47,15 +47,16 @@ class TestDocumentsCRUD:
         data = response.get_json()
         assert isinstance(data, list)
 
+    @pytest.mark.integration
     @patch('app.routes.documents.magic.from_buffer')
-    def test_upload_document_pdf(self, mock_magic, authenticated_client, app):
+    def test_upload_document_pdf(self, mock_magic, authenticated_client):
         """Test uploading a PDF document."""
         mock_magic.return_value = 'application/pdf'
-        
+
         # Create test PDF file
         test_file = io.BytesIO(b'%PDF-1.4 test pdf content')
         test_file.name = 'test.pdf'
-        
+
         response = authenticated_client.post('/api/documents/upload',
             data={'file': (test_file, 'test.pdf')},
             content_type='multipart/form-data'
@@ -65,28 +66,30 @@ class TestDocumentsCRUD:
         assert data['status'] == 'ok'
         assert 'document_id' in data
 
+    @pytest.mark.integration
     @patch('app.routes.documents.magic.from_buffer')
     def test_upload_document_docx(self, mock_magic, authenticated_client):
         """Test uploading a DOCX document."""
         mock_magic.return_value = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        
+
         test_file = io.BytesIO(b'test docx content')
         test_file.name = 'test.docx'
-        
+
         response = authenticated_client.post('/api/documents/upload',
             data={'file': (test_file, 'test.docx')},
             content_type='multipart/form-data'
         )
         assert response.status_code == 200
 
+    @pytest.mark.integration
     @patch('app.routes.documents.magic.from_buffer')
     def test_upload_document_txt(self, mock_magic, authenticated_client):
         """Test uploading a TXT document."""
         mock_magic.return_value = 'text/plain'
-        
+
         test_file = io.BytesIO(b'test txt content')
         test_file.name = 'test.txt'
-        
+
         response = authenticated_client.post('/api/documents/upload',
             data={'file': (test_file, 'test.txt')},
             content_type='multipart/form-data'
@@ -101,51 +104,54 @@ class TestDocumentsCRUD:
         )
         assert response.status_code == 400
 
+    @pytest.mark.integration
     @patch('app.routes.documents.magic.from_buffer')
     def test_upload_document_unsupported_type(self, mock_magic, authenticated_client):
         """Test uploading unsupported file type."""
         mock_magic.return_value = 'application/exe'
-        
+
         test_file = io.BytesIO(b'exe content')
         test_file.name = 'test.exe'
-        
+
         response = authenticated_client.post('/api/documents/upload',
             data={'file': (test_file, 'test.exe')},
             content_type='multipart/form-data'
         )
         assert response.status_code == 400
 
+    @pytest.mark.integration
     @patch('app.routes.documents.magic.from_buffer')
     def test_upload_document_wrong_extension(self, mock_magic, authenticated_client):
         """Test uploading file with wrong extension."""
         mock_magic.return_value = 'application/pdf'
-        
+
         # PDF content but .txt extension
         test_file = io.BytesIO(b'%PDF-1.4 test')
         test_file.name = 'test.txt'
-        
+
         response = authenticated_client.post('/api/documents/upload',
             data={'file': (test_file, 'test.txt')},
             content_type='multipart/form-data'
         )
         assert response.status_code == 400
 
+    @pytest.mark.integration
     @patch('app.routes.documents.magic.from_buffer')
-    def test_delete_document(self, mock_magic, authenticated_client, app):
+    def test_delete_document(self, mock_magic, authenticated_client, test_app):
         """Test deleting a document."""
         mock_magic.return_value = 'text/plain'
-        
+
         # First upload a document
         test_file = io.BytesIO(b'test content')
         test_file.name = 'test.txt'
-        
+
         upload_response = authenticated_client.post('/api/documents/upload',
             data={'file': (test_file, 'test.txt')},
             content_type='multipart/form-data'
         )
         assert upload_response.status_code == 200
         document_id = upload_response.get_json()['document_id']
-        
+
         # Then delete it
         delete_response = authenticated_client.delete(f'/api/documents/{document_id}')
         assert delete_response.status_code == 200
@@ -156,30 +162,32 @@ class TestDocumentsCRUD:
         assert response.status_code == 404
 
 
+@pytest.mark.integration
 class TestDocumentValidation:
     """Test document validation logic."""
 
     @pytest.fixture
-    def authenticated_client(self, client, app):
+    def authenticated_client(self, client, test_app):
         """Create authenticated client."""
-        with app.app_context():
+        with test_app.app_context():
             from app.userdb import create_user, get_user_by_login
             if not get_user_by_login('valtest'):
                 create_user('valtest', 'pass123', 'Validation Test')
-        
+
         client.post('/login', data={'login': 'valtest', 'password': 'pass123'})
         return client
 
+    @pytest.mark.integration
     @patch('app.routes.documents.magic.from_buffer')
-    def test_file_size_limit(self, mock_magic, authenticated_client, app):
+    def test_file_size_limit(self, mock_magic, authenticated_client):
         """Test file size limit enforcement."""
         mock_magic.return_value = 'text/plain'
-        
+
         # Create file larger than limit (assuming 5MB limit)
         large_content = b'x' * (6 * 1024 * 1024)  # 6MB
         test_file = io.BytesIO(large_content)
         test_file.name = 'large.txt'
-        
+
         response = authenticated_client.post('/api/documents/upload',
             data={'file': (test_file, 'large.txt')},
             content_type='multipart/form-data'
@@ -192,7 +200,7 @@ class TestDocumentValidation:
         # Try path traversal in filename
         test_file = io.BytesIO(b'test')
         test_file.name = '../../../etc/passwd'
-        
+
         response = authenticated_client.post('/api/documents/upload',
             data={'file': (test_file, '../../../etc/passwd')},
             content_type='multipart/form-data'

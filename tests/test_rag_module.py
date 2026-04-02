@@ -4,6 +4,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 
 
+@pytest.mark.unit
 class TestRagModule:
     """Test cases for RagModule class."""
 

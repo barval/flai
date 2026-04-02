@@ -7,6 +7,7 @@ import hmac
 import hashlib
 
 
+@pytest.mark.unit
 class TestRedisRequestQueue:
     """Test cases for RedisRequestQueue class."""
 

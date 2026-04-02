@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch, MagicMock
 import base64
 
 
+@pytest.mark.unit
 class TestAudioModule:
     """Test cases for AudioModule class."""
 

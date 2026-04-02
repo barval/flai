@@ -5,6 +5,7 @@ from unittest.mock import patch, MagicMock
 import base64
 
 
+@pytest.mark.unit
 class TestImageModuleInit:
     """Test ImageModule initialization."""
 
@@ -62,6 +63,7 @@ class TestImageModuleInit:
         assert module.available is False
 
 
+@pytest.mark.unit
 class TestImageModuleAvailability:
     """Test ImageModule availability checks."""
 
@@ -132,6 +134,7 @@ class TestImageModuleAvailability:
         assert result is False
 
 
+@pytest.mark.unit
 class TestImageModuleGenerate:
     """Test image generation."""
 

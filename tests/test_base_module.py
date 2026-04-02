@@ -1,63 +1,91 @@
 # tests/test_base_module.py
+"""Unit tests for base module."""
 import pytest
-from modules.base import BaseModule
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 
 
-@pytest.fixture
-def base_module(app):
-    module = BaseModule(app)
-    # Override call_ollama to avoid real network calls
-    module.call_ollama = Mock(return_value="[-REASONING-] test query")
-    return module
+@pytest.mark.unit
+class TestBaseModule:
+    """Test base module functionality."""
 
+    @pytest.fixture
+    def mock_app(self):
+        """Create mock Flask app."""
+        app = MagicMock()
+        app.config = {
+            'OLLAMA_URL': 'http://test:11434',
+            'LLM_CHAT_MODEL': 'test-model',
+            'LLM_CHAT_TEMPERATURE': 0.7,
+            'LLM_CHAT_TOP_P': 0.9,
+            'LLM_CHAT_TIMEOUT': 300
+        }
+        app.logger = MagicMock()
+        return app
 
-def test_parse_router_response_no_marker(base_module):
-    """Test parsing when no special marker present."""
-    response = "Some plain text"
-    result = base_module._parse_router_response(response, "original", "time")
-    assert result['action'] == 'none'
-    assert result['query'] == "Some plain text"
-    assert not result['needs_reasoning']
+    @pytest.fixture
+    def base_module(self, mock_app):
+        """Create base module instance."""
+        from modules.base import BaseModule
+        with patch('modules.base.OllamaClient'):
+            module = BaseModule(mock_app)
+            return module
 
+    @pytest.mark.unit
+    def test_parse_router_response_no_marker(self, base_module):
+        """Test parsing response without markers."""
+        response = "This is a normal response"
+        action, query = base_module._parse_router_response(response)
+        assert action == 'none'
+        assert query == response
 
-def test_parse_router_response_image_marker(base_module):
-    response = "Some text [-IMAGE-] draw cat"
-    result = base_module._parse_router_response(response, "draw cat", "time")
-    assert result['action'] == 'image'
-    assert result['query'] == "draw cat"
-    assert not result['needs_reasoning']
+    @pytest.mark.unit
+    def test_parse_router_response_image_marker(self, base_module):
+        """Test parsing response with image marker."""
+        response = "[-IMAGE-] draw a cat"
+        action, query = base_module._parse_router_response(response)
+        assert action == 'image'
+        assert query == 'draw a cat'
 
+    @pytest.mark.unit
+    def test_parse_router_response_reasoning_marker(self, base_module):
+        """Test parsing response with reasoning marker."""
+        response = "[-REASONING-] solve this problem"
+        action, query = base_module._parse_router_response(response)
+        assert action == 'reasoning'
+        assert query == 'solve this problem'
 
-def test_parse_router_response_reasoning_marker(base_module):
-    response = "[-REASONING-] compute 2+2"
-    result = base_module._parse_router_response(response, "2+2", "time")
-    assert result['action'] == 'reasoning'
-    assert result['query'] == "compute 2+2"
-    assert result['needs_reasoning'] is True
+    @pytest.mark.unit
+    def test_parse_router_response_camera_marker(self, base_module):
+        """Test parsing response with camera marker."""
+        response = "[-CAMERA-] show kitchen"
+        action, query = base_module._parse_router_response(response)
+        assert action == 'camera'
+        assert query == 'show kitchen'
 
+    @pytest.mark.unit
+    def test_parse_router_response_rag_marker(self, base_module):
+        """Test parsing response with RAG marker."""
+        response = "[-RAG-] search documents"
+        action, query = base_module._parse_router_response(response)
+        assert action == 'rag'
+        assert query == 'search documents'
 
-def test_parse_router_response_camera_marker(base_module):
-    response = "[-CAMERA-] show kitchen"
-    result = base_module._parse_router_response(response, "show kitchen", "time")
-    assert result['action'] == 'camera'
-    assert result['query'] == "show kitchen"
+    @pytest.mark.unit
+    def test_parse_router_response_none(self, base_module):
+        """Test parsing None response."""
+        action, query = base_module._parse_router_response(None)
+        assert action == 'none'
+        assert query == ''
 
+    @pytest.mark.integration
+    def test_get_model_config_returns_config(self, test_app):
+        """Test getting model configuration."""
+        with test_app.app_context():
+            from modules.base import BaseModule
+            from app.model_config import get_model_config
 
-def test_parse_router_response_rag_marker(base_module):
-    response = "[-RAG-] find in my documents about AI"
-    result = base_module._parse_router_response(response, "find in my documents about AI", "time")
-    assert result['action'] == 'rag'
-    assert result['query'] == "find in my documents about AI"
+            module = BaseModule(test_app)
+            config = module._get_model_config('chat')
 
-
-def test_parse_router_response_none(base_module):
-    result = base_module._parse_router_response(None, "query", "time")
-    assert result['error'] is not None
-
-
-@patch('modules.base.get_model_config')
-def test_get_model_config_returns_config(mock_get_config, base_module):
-    mock_get_config.return_value = {'model_name': 'test', 'context_length': 4096}
-    config = base_module._get_model_config('chat')
-    assert config['model_name'] == 'test'
+            assert config is not None
+            assert 'model_name' in config

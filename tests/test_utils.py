@@ -1,4 +1,5 @@
 # tests/test_utils.py
+"""Unit tests for utility functions."""
 import pytest
 from app.utils import (
     format_prompt, load_prompt_template, chunk_text,
@@ -12,6 +13,7 @@ from PIL import Image
 import io
 
 
+@pytest.mark.unit
 def test_format_prompt(tmp_path):
     """Test prompt template formatting."""
     prompts_dir = tmp_path / 'prompts' / 'ru'
@@ -31,6 +33,7 @@ def test_format_prompt(tmp_path):
         app.utils.PROMPTS_DIR = original_dir
 
 
+@pytest.mark.unit
 def test_chunk_text():
     """Test text chunking with overlap."""
     text = " ".join([f"word{i}" for i in range(100)])
@@ -45,6 +48,7 @@ def test_chunk_text():
         assert first_words_chunk1 == first_words_chunk2
 
 
+@pytest.mark.unit
 def test_resize_image_if_needed_small():
     """Test that image not resized if dimensions OK."""
     # Create small image
@@ -59,6 +63,7 @@ def test_resize_image_if_needed_small():
     assert new_data == img_data
 
 
+@pytest.mark.unit
 def test_resize_image_if_needed_large():
     """Test that image is resized when too large."""
     # Create large image
@@ -79,6 +84,7 @@ def test_resize_image_if_needed_large():
     assert new_img.height <= 1080
 
 
+@pytest.mark.unit
 def test_extract_text_from_file(tmp_path):
     """Test text extraction from .txt file."""
     file = tmp_path / 'test.txt'

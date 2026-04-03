@@ -269,14 +269,14 @@ def create_app():
     @app.route('/health')
     def health_check():
         """Comprehensive health check for all services."""
-        from datetime import datetime
+        from datetime import datetime, timezone
         import requests
         import sqlite3
         from .db import CHAT_DB_PATH
-        
+
         status = {
             'status': 'ok',
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'services': {
                 'web': 'ok',
                 'database': 'unknown',

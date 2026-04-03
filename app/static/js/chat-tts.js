@@ -155,7 +155,7 @@ async function playTTS(button, messageElement) {
         const t0 = performance.now();
         const response = await fetchPromise;
         const fetchTime = performance.now() - t0;
-        console.log(`TTS fetch completed in ${fetchTime.toFixed(0)}ms`);
+        console.debug(`TTS fetch completed in ${fetchTime.toFixed(0)}ms`);
         if (!response.ok) {
             const error = await response.json();
             alert(t('error') + ': ' + (error.error || t('unknown_error')));

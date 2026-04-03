@@ -13,6 +13,13 @@ from typing import List, Dict, Optional, Tuple, Any
 
 PROMPTS_DIR = 'prompts'
 
+
+def estimate_base64_decoded_size(base64_data: str) -> int:
+    """Estimate the decoded size of a base64-encoded string in bytes.
+    Base64 encodes 3 bytes into 4 characters, so decoded size ≈ (len * 3) / 4.
+    """
+    return int((len(base64_data) * 3) / 4)
+
 # Token estimation coefficients for different languages and model types
 # Format: (model_type, language) -> characters per token
 TOKEN_COEFFICIENTS = {

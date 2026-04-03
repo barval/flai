@@ -56,7 +56,7 @@ function loadSessionsFromServer() {
                         // FIX: If message count changed for current session, reload messages
                         if (s.id === currentSessionId) {
                             currentSessionMessageCountChanged = true;
-                            console.log('loadSessionsFromServer: Message count changed for current session, reloading messages');
+                            console.debug('loadSessionsFromServer: Message count changed for current session, reloading messages');
                         }
                     }
                 }
@@ -334,11 +334,11 @@ function switchSession(sessionId) {
     
     // Don't switch if already on this session
     if (sessionId === currentSessionId) {
-        console.log('switchSession: Already on this session, skipping');
+        console.debug('switchSession: Already on this session, skipping');
         return;
     }
     
-    console.log('switchSession: Switching from', previousSessionId, 'to', sessionId);
+    console.debug('switchSession: Switching from', previousSessionId, 'to', sessionId);
     
     fetchWithCSRF('/api/sessions/' + sessionId + '/switch', { method: 'POST' })
         .then(res => res.json())

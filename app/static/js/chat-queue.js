@@ -3,15 +3,15 @@
 
 function startSyncInterval() {
     if (window.syncInterval) clearInterval(window.syncInterval);
-    console.log('startSyncInterval: Starting sync interval (2000ms) for session', currentSessionId);
+    console.debug('startSyncInterval: Starting sync interval (2000ms) for session', currentSessionId);
     // Sync interval for queue status, counter updates, and cross-client synchronization
     // Using 2000ms to allow CSS animations to run smoothly between updates
     window.syncInterval = setInterval(() => {
         if (window.IS_RELOADING) {
-            console.log('sync interval: Skipping - IS_RELOADING');
+            console.debug('sync interval: Skipping - IS_RELOADING');
             return;
         }
-        console.log('sync interval: Running sync for session', currentSessionId);
+        console.debug('sync interval: Running sync for session', currentSessionId);
         // Always fetch queue status first to get latest data from server
         fetchQueueStatus();
         // Then sync sessions and messages
@@ -25,10 +25,10 @@ function startSyncInterval() {
  */
 function syncSessionsAndMessages() {
     if (window.IS_RELOADING) {
-        console.log('syncSessionsAndMessages: Skipping - IS_RELOADING');
+        console.debug('syncSessionsAndMessages: Skipping - IS_RELOADING');
         return;
     }
-    console.log('syncSessionsAndMessages: Starting sync for session', currentSessionId, 'pendingRequests:', Object.keys(pendingRequests).length);
+    console.debug('syncSessionsAndMessages: Starting sync for session', currentSessionId, 'pendingRequests:', Object.keys(pendingRequests).length);
 
     // Sync sessions list
     loadSessionsFromServer().then(sessions => {
@@ -45,10 +45,10 @@ function syncSessionsAndMessages() {
 
     // Sync messages for current session
     if (currentSessionId) {
-        console.log('syncSessionsAndMessages: Calling syncMessagesForCurrentSession');
+        console.debug('syncSessionsAndMessages: Calling syncMessagesForCurrentSession');
         syncMessagesForCurrentSession();
     } else {
-        console.log('syncSessionsAndMessages: No current session, skipping message sync');
+        console.debug('syncSessionsAndMessages: No current session, skipping message sync');
     }
 }
 
@@ -58,7 +58,7 @@ function syncSessionsAndMessages() {
  */
 function syncMessagesForCurrentSession() {
     if (window.IS_RELOADING || !currentSessionId) {
-        console.log('syncMessages: Skipping - IS_RELOADING or no currentSessionId');
+        console.debug('syncMessages: Skipping - IS_RELOADING or no currentSessionId');
         return;
     }
 
@@ -68,7 +68,7 @@ function syncMessagesForCurrentSession() {
     
     // If no messages in DOM, load all messages (not just new ones)
     if (!lastMessageEl || !lastMessageEl.dataset.timestamp) {
-        console.log('syncMessages: No messages in DOM, loading all messages for session', currentSessionId);
+        console.debug('syncMessages: No messages in DOM, loading all messages for session', currentSessionId);
         loadMessages(currentSessionId).catch(err => {
             console.error('syncMessages: Error loading all messages:', err);
         });
@@ -76,21 +76,21 @@ function syncMessagesForCurrentSession() {
     }
 
     const lastTimestamp = lastMessageEl.dataset.timestamp;
-    console.log('syncMessages: Last message timestamp from DOM:', lastTimestamp);
-    console.log('syncMessages: Fetching messages from /api/sessions/', currentSessionId, '/messages?since=', encodeURIComponent(lastTimestamp));
+    console.debug('syncMessages: Last message timestamp from DOM:', lastTimestamp);
+    console.debug('syncMessages: Fetching messages from /api/sessions/', currentSessionId, '/messages?since=', encodeURIComponent(lastTimestamp));
 
     fetch(`/api/sessions/${currentSessionId}/messages?since=${encodeURIComponent(lastTimestamp)}`)
         .then(res => {
-            console.log('syncMessages: Response status:', res.status);
+            console.debug('syncMessages: Response status:', res.status);
             return res.json();
         })
         .then(data => {
             // Handle both old format (array) and new format (object with messages)
             const newMessages = Array.isArray(data) ? data : (data.messages || []);
-            console.log('syncMessages: Received', newMessages.length, 'new messages');
-            console.log('syncMessages: Messages:', newMessages.map(m => ({ id: m.id, role: m.role, timestamp: m.timestamp })));
+            console.debug('syncMessages: Received', newMessages.length, 'new messages');
+            console.debug('syncMessages: Messages:', newMessages.map(m => ({ id: m.id, role: m.role, timestamp: m.timestamp })));
             if (window.IS_RELOADING || !newMessages || newMessages.length === 0) {
-                console.log('syncMessages: No new messages to display');
+                console.debug('syncMessages: No new messages to display');
                 return;
             }
 
@@ -98,7 +98,7 @@ function syncMessagesForCurrentSession() {
 
             // Display new messages
             for (const msg of newMessages) {
-                console.log('syncMessages: Processing message:', msg.id, msg.role);
+                console.debug('syncMessages: Processing message:', msg.id, msg.role);
 
                 // Clear unread indicator when we receive new messages for current session
                 delete newMessageIndicators[currentSessionId];
@@ -107,7 +107,7 @@ function syncMessagesForCurrentSession() {
                 if (msg.id) {
                     const existingMsg = document.querySelector(`[data-message-id="${msg.id}"]`);
                     if (existingMsg) {
-                        console.log('syncMessages: Message', msg.id, 'already in DOM, skipping');
+                        console.debug('syncMessages: Message', msg.id, 'already in DOM, skipping');
                         displayedMessageIds.add(msg.id);
                         continue;
                     }
@@ -115,13 +115,13 @@ function syncMessagesForCurrentSession() {
 
                 // Skip if already in displayedMessageIds Set
                 if (msg.id && displayedMessageIds.has(msg.id)) {
-                    console.log('syncMessages: Message', msg.id, 'already in displayedMessageIds, skipping');
+                    console.debug('syncMessages: Message', msg.id, 'already in displayedMessageIds, skipping');
                     continue;
                 }
 
                 // Display message
                 displayedCount++;
-                console.log('syncMessages: Displaying message:', msg.id, msg.role);
+                console.debug('syncMessages: Displaying message:', msg.id, msg.role);
 
                 let responseTime = null;
                 if (msg.response_time) {
@@ -150,7 +150,7 @@ function syncMessagesForCurrentSession() {
                 );
             }
 
-            console.log('syncMessages: Displayed', displayedCount, 'messages');
+            console.debug('syncMessages: Displayed', displayedCount, 'messages');
         })
         .catch(err => console.error('Error syncing messages:', err));
 }
@@ -164,9 +164,24 @@ function fetchQueueStatus() {
             const newInfo = {};
 
             // Initialize all known sessions with default values
-            // This ensures stale flags (processing, has_transcribing) are cleared
+            // IMPORTANT: Don't reset processing=false for sessions with pending requests
+            // They might be between server-side processing state transitions
             Object.keys(sessionsData).forEach(sessionId => {
-                newInfo[sessionId] = { processing: false, queued: 0, queue_position: 0, has_transcribing: false };
+                const hasPendingRequest = Object.values(pendingRequests).some(
+                    pr => pr.sessionId === sessionId
+                );
+                const existingInfo = sessionQueueInfo[sessionId] || {};
+
+                // If this session has a pending request, preserve its processing state
+                // unless the server explicitly says it's not processing
+                newInfo[sessionId] = {
+                    processing: hasPendingRequest ? (existingInfo.processing || false) : false,
+                    queued: hasPendingRequest ? (existingInfo.queued || 0) : 0,
+                    queue_position: hasPendingRequest ? (existingInfo.queue_position || 0) : 0,
+                    // has_transcribing should ONLY persist if the server confirms it
+                    // Don't carry it over from existing state — it will be set below if needed
+                    has_transcribing: false
+                };
             });
 
             // Process currently processing task (ONLY ONE session can have this)
@@ -185,7 +200,7 @@ function fetchQueueStatus() {
                 if (proc.type === 'transcribe_audio' || proc.type === 'audio') {
                     newInfo[processingSessionId].has_transcribing = true;
                 }
-                console.log('fetchQueueStatus: processing task for session', processingSessionId, 'type:', proc.type);
+                console.debug('fetchQueueStatus: processing task for session', processingSessionId, 'type:', proc.type);
             }
 
             // Process queued tasks (EXCLUDE the session that's currently processing)
@@ -202,11 +217,34 @@ function fetchQueueStatus() {
                 newInfo[sessionId].queued += 1;
                 // Store the position for this session's task
                 newInfo[sessionId].queue_position = position;
+                // If server says this is queued (not processing), clear the processing flag
+                // This overrides the "preserve for pending" logic above
+                newInfo[sessionId].processing = false;
+            });
+
+            // Clear processing flag for sessions that were processing but are no longer
+            // (server has moved on to a different session or completed)
+            Object.keys(newInfo).forEach(sessionId => {
+                // If this session is not the current processing session and has no queued tasks,
+                // and it was previously marked as processing - clear it
+                if (sessionId !== processingSessionId &&
+                    newInfo[sessionId].queued === 0 &&
+                    newInfo[sessionId].processing) {
+                    // Check if there's still a pending request for this session
+                    const hasPending = Object.values(pendingRequests).some(
+                        pr => pr.sessionId === sessionId
+                    );
+                    if (!hasPending) {
+                        newInfo[sessionId].processing = false;
+                    }
+                    // If there IS a pending request, keep processing=true - the server
+                    // may have just cleared the processing key before we polled
+                }
             });
 
             // Update global sessionQueueInfo
             sessionQueueInfo = newInfo;
-            console.log('fetchQueueStatus: sessionQueueInfo updated', sessionQueueInfo);
+            console.debug('fetchQueueStatus: sessionQueueInfo updated', sessionQueueInfo);
 
             // Sync localTranscribingSessions with server status
             // This ensures mobile clients show microphone icon for transcribing sessions
@@ -254,7 +292,7 @@ function setLocalTranscribing(sessionId, isTranscribing) {
         return;
     }
 
-    console.log('setLocalTranscribing called:', sessionId, isTranscribing);
+    console.debug('setLocalTranscribing called:', sessionId, isTranscribing);
 
     if (isTranscribing) {
         localTranscribingSessions[sessionId] = true;
@@ -279,7 +317,7 @@ function setLocalTranscribing(sessionId, isTranscribing) {
     }));
     updateSessionsList(sessions);
 
-    console.log('Transcribing flag', isTranscribing ? 'SET' : 'CLEARED', 'for session:', sessionId);
+    console.debug('Transcribing flag', isTranscribing ? 'SET' : 'CLEARED', 'for session:', sessionId);
 }
 
 // Make function globally accessible
@@ -303,7 +341,7 @@ window.updateStatusCounter = function() {
             if (counter) {
                 counter.textContent = '📊 ' + data.user_queued + '/' + data.total_queued;
                 counter.title = t('your_requests');
-                console.log('updateStatusCounter:', data.user_queued + '/' + data.total_queued);
+                console.debug('updateStatusCounter:', data.user_queued + '/' + data.total_queued);
             }
         })
         .catch(err => console.error('Error updating counter:', err));
@@ -312,7 +350,7 @@ window.updateStatusCounter = function() {
 // Force sync when tab becomes visible again (fixes mobile "stuck" status)
 document.addEventListener('visibilitychange', function() {
     if (!document.hidden) {
-        console.log('Tab became visible, forcing immediate sync');
+        console.debug('Tab became visible, forcing immediate sync');
         fetchQueueStatus();
         syncSessionsAndMessages();
     }

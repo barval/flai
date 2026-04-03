@@ -83,7 +83,7 @@ async function pollNewMessages() {
                 if (msg.id) {
                     const existingMsg = document.querySelector(`[data-message-id="${msg.id}"]`);
                     if (existingMsg) {
-                        console.log('pollNewMessages: Message', msg.id, 'already in DOM, skipping');
+                        console.debug('pollNewMessages: Message', msg.id, 'already in DOM, skipping');
                         displayedMessageIds.add(msg.id);
                         continue;
                     }
@@ -91,7 +91,7 @@ async function pollNewMessages() {
 
                 // Check duplicate by messageId first
                 if (msg.id && displayedMessageIds.has(msg.id)) {
-                    console.log('pollNewMessages: Skipping duplicate message by ID', msg.id);
+                    console.debug('pollNewMessages: Skipping duplicate message by ID', msg.id);
                     continue;
                 }
                 
@@ -100,7 +100,7 @@ async function pollNewMessages() {
                     const tempId = `temp-${msg.timestamp}`;
                     const existingWithTempId = document.querySelector(`[data-tempId="${tempId}"]`);
                     if (existingWithTempId) {
-                        console.log('pollNewMessages: Skipping message with tempId', tempId);
+                        console.debug('pollNewMessages: Skipping message with tempId', tempId);
                         displayedMessageIds.add(msg.id);
                         continue;
                     }
@@ -156,10 +156,10 @@ async function pollNewMessages() {
 
 function startResultPolling(requestId) {
     if (window.IS_RELOADING) return;
-    console.log('startResultPolling: Start polling for request:', requestId);
-    
+    console.debug('startResultPolling: Start polling for request:', requestId);
+
     let pollCount = 0;
-    const maxPolls = 120;
+    const maxPolls = 240; // 12 minutes at 3s interval (was 120 = 6 min)
     const pollInterval = setInterval(async () => {
         if (window.IS_RELOADING) {
             clearInterval(pollInterval);
@@ -167,29 +167,29 @@ function startResultPolling(requestId) {
         }
 
         pollCount++;
-        
+
         try {
             const response = await fetch('/api/queue/result/' + requestId);
             const data = await response.json();
-            
+
             if (window.IS_RELOADING) {
                 clearInterval(pollInterval);
                 return;
             }
-            
+
             if (data.status === 'completed') {
                 clearInterval(pollInterval);
-                
+
                 if (data.result) {
                     const resultSessionId = data.result.session_id || pendingRequests[requestId]?.sessionId;
-                    
+
                     // Handle transcription result that may spawn a new processing request
                     if (data.result.transcribed_text) {
                         const resultSessionId = data.result.session_id || pendingRequests[requestId]?.sessionId;
                         if (resultSessionId === currentSessionId) {
                             // Check for duplicate by message_id
                             if (data.result.transcribed_message_id && displayedMessageIds.has(data.result.transcribed_message_id)) {
-                                console.log('Skipping duplicate transcribed message by ID', data.result.transcribed_message_id);
+                                console.debug('Skipping duplicate transcribed message by ID', data.result.transcribed_message_id);
                             } else {
                                 // Display transcribed text message
                                 originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.result.transcribed_text, null, null, null, null,
@@ -199,25 +199,65 @@ function startResultPolling(requestId) {
                             // If there is a new request_id for processing, start polling it
                             if (data.result.request_id) {
                                 pendingRequests[data.result.request_id] = { sessionId: resultSessionId, processed: false };
+
+                                // Immediately set processing state for the chained task
+                                sessionQueueInfo[resultSessionId] = {
+                                    processing: true,
+                                    queued: 0,
+                                    queue_position: 0,
+                                    has_transcribing: false
+                                };
+
+                                // Force-clear local transcribing flag (microphone icon)
+                                if (localTranscribingSessions[resultSessionId]) {
+                                    delete localTranscribingSessions[resultSessionId];
+                                }
+
                                 window.updateStatusCounter();
                                 startResultPolling(data.result.request_id);
+
+                                // Now clear transcribing - the chained task is now processing (lightning will show)
                                 setLocalTranscribing(resultSessionId, false);
                             } else {
                                 setLocalTranscribing(resultSessionId, false);
                             }
                         } else {
-                            // Only show unread indicator if there's NO further processing
-                            // (i.e., no request_id means transcription was the final step)
-                            if (!data.result.request_id) {
-                                setNewMessageIndicator(resultSessionId, true);
-                            }
+                            // Result is for a different session (user switched sessions)
                             if (data.result.request_id) {
+                                // There's a chained processing task - set it up
                                 pendingRequests[data.result.request_id] = { sessionId: resultSessionId, processed: false };
                                 startResultPolling(data.result.request_id);
+
+                                // Set processing state immediately
+                                sessionQueueInfo[resultSessionId] = {
+                                    processing: true,
+                                    queued: 0,
+                                    queue_position: 0,
+                                    has_transcribing: false
+                                };
+
+                                // Force-clear local transcribing flag (microphone icon)
+                                if (localTranscribingSessions[resultSessionId]) {
+                                    delete localTranscribingSessions[resultSessionId];
+                                }
+                            } else {
+                                // No chained task - show unread indicator
+                                setNewMessageIndicator(resultSessionId, true);
                             }
                             setLocalTranscribing(resultSessionId, false);
                         }
                         delete pendingRequests[requestId];
+
+                        // Clear queue info for the completed transcription task
+                        if (resultSessionId) {
+                            sessionQueueInfo[resultSessionId] = {
+                                processing: false,
+                                queued: 0,
+                                queue_position: 0,
+                                has_transcribing: false
+                            };
+                        }
+
                         window.updateStatusCounter();
                         fetchQueueStatus();
                         return;
@@ -235,7 +275,7 @@ function startResultPolling(requestId) {
                     } else if (data.result.messages) {
                         for (const msg of data.result.messages) {
                             if (msg.message_id && displayedMessageIds.has(msg.message_id)) {
-                                console.log('Skipping duplicate camera message by ID', msg.message_id);
+                                console.debug('Skipping duplicate camera message by ID', msg.message_id);
                                 continue;
                             }
                             originalDisplayMessage('assistant', msg.response, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
@@ -247,7 +287,7 @@ function startResultPolling(requestId) {
                         }
                     } else if (data.result.response) {
                         if (data.result.message_id && displayedMessageIds.has(data.result.message_id)) {
-                            console.log('Skipping duplicate response message by ID', data.result.message_id);
+                            console.debug('Skipping duplicate response message by ID', data.result.message_id);
                         } else {
                             let responseTime = data.result.response_time;
                             let modelUsed = data.result.model_used;
@@ -273,21 +313,37 @@ function startResultPolling(requestId) {
                             setLocalTranscribing(resultSessionId, false);
                         }
                     }
-                    
-                    // FIX: Clear queue status before setting new message indicator to allow envelope to show
+
+                    // FIX: Delete the completed request BEFORE checking hasPendingForSession,
+                    // otherwise the current request is counted as "still pending" and
+                    // processing: false is never set (lightning stays forever).
+                    delete pendingRequests[requestId];
+
+                    // Now check if there are STILL other pending requests for this session
+                    // (excluding the one we just deleted above)
                     if (resultSessionId) {
-                        setLocalTranscribing(resultSessionId, false);
-                        // Clear queue info for this session so envelope icon can appear
-                        sessionQueueInfo[resultSessionId] = {
-                            processing: false,
-                            queued: 0,
-                            queue_position: 0,
-                            has_transcribing: false
-                        };
-                        // Also clear in sessionsData for server sync
-                        if (sessionsData[resultSessionId]) {
-                            sessionsData[resultSessionId].queue_info = null;
+                        const hasPendingForSession = Object.values(pendingRequests).some(
+                            pr => pr.sessionId === resultSessionId
+                        );
+
+                        if (!hasPendingForSession) {
+                            // No more pending tasks — clear ALL queue info
+                            sessionQueueInfo[resultSessionId] = {
+                                processing: false,
+                                queued: 0,
+                                queue_position: 0,
+                                has_transcribing: false
+                            };
+                            if (sessionsData[resultSessionId]) {
+                                sessionsData[resultSessionId].queue_info = null;
+                            }
+                        } else {
+                            // Still has pending chained tasks — only clear completed task's queued state
+                            sessionQueueInfo[resultSessionId].queued = 0;
+                            sessionQueueInfo[resultSessionId].queue_position = 0;
+                            // Don't clear processing — fetchQueueStatus will update it
                         }
+
                         // Force immediate UI update without debounce
                         const sessions = Object.keys(sessionsData).map(id => ({
                             id: id,
@@ -301,7 +357,7 @@ function startResultPolling(requestId) {
                             updateSessionsList(sessions);
                         }
                     }
-                    
+
                     if (resultSessionId) {
                         // Small delay to let server clean up processing/queued data
                         setTimeout(() => {
@@ -310,45 +366,90 @@ function startResultPolling(requestId) {
                     }
                 }
 
-                delete pendingRequests[requestId];
                 window.updateStatusCounter();
-                // Small delay to let server clean up processing/queued data
-                setTimeout(() => {
-                    fetchQueueStatus();
-                }, 100);
-                
-                // Also clear local transcribing flag for this session
-                if (pendingRequests[requestId]?.sessionId) {
-                    const sid = pendingRequests[requestId].sessionId;
-                    setLocalTranscribing(sid, false);
-                }
 
+                // If we got here WITHOUT data.result (edge case), still clean up
+                if (!data.result) {
+                    const orphanedSessionId = pendingRequests[requestId]?.sessionId;
+                    delete pendingRequests[requestId];
+                    if (orphanedSessionId) {
+                        setLocalTranscribing(orphanedSessionId, false);
+                        sessionQueueInfo[orphanedSessionId] = {
+                            processing: false,
+                            queued: 0,
+                            queue_position: 0,
+                            has_transcribing: false
+                        };
+                        updateSessionsListFromData();
+                    }
+                    fetchQueueStatus();
+                }
             } else if (data.status === 'error') {
                 clearInterval(pollInterval);
 
-                const resultSessionId = data.result?.session_id || pendingRequests[requestId]?.sessionId;
+                const errorSessionId = data.result?.session_id || pendingRequests[requestId]?.sessionId;
 
-                if (resultSessionId === currentSessionId) {
+                if (errorSessionId === currentSessionId) {
                     originalDisplayMessage('assistant', '⚠️ ' + t('error') + ': ' + (data.error || t('unknown_error')), null, null, null, null,
                         data.result?.assistant_timestamp || new Date().toISOString(), data.result?.response_time, 'system',
                         null, null, null, null, null);
                 }
 
-                if (resultSessionId) {
-                    setLocalTranscribing(resultSessionId, false);
+                if (errorSessionId) {
+                    setLocalTranscribing(errorSessionId, false);
+                    sessionQueueInfo[errorSessionId] = {
+                        processing: false,
+                        queued: 0,
+                        queue_position: 0,
+                        has_transcribing: false
+                    };
+                    updateSessionsListFromData();
                 }
 
                 delete pendingRequests[requestId];
                 window.updateStatusCounter();
                 fetchQueueStatus();
             }
-            
+
+            // Timeout check - verify with server before showing warning
             if (pollCount >= maxPolls) {
                 clearInterval(pollInterval);
+
+                // First check if the task is still processing on the server
+                try {
+                    const statusResponse = await fetch('/api/queue/status');
+                    const statusData = await statusResponse.json();
+                    const stillProcessing = statusData.processing && statusData.processing.session_id === pendingRequests[requestId]?.sessionId;
+
+                    if (stillProcessing) {
+                        // Task is still processing on server - extend polling
+                        console.debug('Server still processing task, extending poll timeout');
+                        pollCount = 0; // Reset counter
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('Could not check server status before timeout:', e);
+                }
+
+                // Task is not on server - show timeout warning
                 originalDisplayMessage('assistant', '⚠️ ' + t('request_timeout'),
                     null, null, null, null, new Date().toISOString(), null, 'system',
                     null, null, null, null, null);
+
+                const timeoutSessionId = pendingRequests[requestId]?.sessionId;
                 delete pendingRequests[requestId];
+                if (timeoutSessionId) {
+                    setLocalTranscribing(timeoutSessionId, false);
+                    sessionQueueInfo[timeoutSessionId] = {
+                        processing: false,
+                        queued: 0,
+                        queue_position: 0,
+                        has_transcribing: false
+                    };
+                    updateSessionsListFromData();
+                }
+                window.updateStatusCounter();
+                fetchQueueStatus();
             }
         } catch (error) {
             console.error('Error polling result:', error);
@@ -360,7 +461,7 @@ function startResultPolling(requestId) {
 async function sendMessage() {
     // FIX: Always reset isSending flag at the start
     if (isSending) {
-        console.log('Send already in progress, ignoring duplicate');
+        console.debug('Send already in progress, ignoring duplicate');
         return;
     }
     isSending = true;
@@ -425,7 +526,7 @@ async function sendMessage() {
         const tempId = `temp-${timestamp}`;
         if (msgElement) {
             msgElement.dataset.tempId = tempId;
-            console.log('displayUserMessage: Set tempId', tempId, 'on message element');
+            console.debug('displayUserMessage: Set tempId', tempId, 'on message element');
         } else {
             console.warn('displayUserMessage: msgElement is null/undefined, cannot set tempId');
         }
@@ -437,19 +538,19 @@ async function sendMessage() {
     };
     
     const unlockSendButton = () => {
-        console.log('unlockSendButton called, isSending was:', isSending);
+        console.debug('unlockSendButton called, isSending was:', isSending);
         if (sendButton) {
             sendButton.disabled = false;
             sendButton.innerHTML = t('send');
         }
         isSending = false;
-        console.log('unlockSendButton finished, isSending now:', isSending);
+        console.debug('unlockSendButton finished, isSending now:', isSending);
     };
     
     const sendToServer = () => {
         if (window.IS_RELOADING) return;
         
-        console.log('sendToServer starting, isAudioFile:', isAudioFile);
+        console.debug('sendToServer starting, isAudioFile:', isAudioFile);
         
         (async () => {
             try {
@@ -490,7 +591,7 @@ async function sendMessage() {
 
                 if (window.IS_RELOADING) return;
                 
-                console.log('Server response:', data);
+                console.debug('Server response:', data);
                 
                 if (data.resize_notice) {
                     originalDisplayMessage('assistant', data.resize_notice, null, null, null, null,
@@ -515,7 +616,7 @@ async function sendMessage() {
                         const allUserMessages = document.querySelectorAll('.user-message');
                         if (allUserMessages.length > 0) {
                             targetMsg = allUserMessages[allUserMessages.length - 1];
-                            console.log('sendMessage: Using fallback - last user message');
+                            console.debug('sendMessage: Using fallback - last user message');
                         }
                     }
 
@@ -526,7 +627,7 @@ async function sendMessage() {
                         }
                         targetMsg.dataset.messageId = data.user_message_id;
                         displayedMessageIds.add(data.user_message_id);
-                        console.log('sendMessage: Updated messageId to', data.user_message_id);
+                        console.debug('sendMessage: Updated messageId to', data.user_message_id);
                     } else {
                         console.warn('sendMessage: Could not find user message to update messageId. Total user messages:', document.querySelectorAll('.user-message').length);
                     }
@@ -534,7 +635,7 @@ async function sendMessage() {
                 
                 // Audio files are now queued for transcription, no immediate transcribed_text
                 if (data.transcribed_text) {
-                    console.log('Transcription completed');
+                    console.debug('Transcription completed');
                     setLocalTranscribing(currentSessionId, false);
                     
                     if (data.request_id) {
@@ -622,11 +723,11 @@ async function sendMessage() {
                 fileType = tempAttachedFile.type;
                 fileName = tempAttachedFile.name;
                 
-                console.log('File attached:', fileName, 'Type:', fileType, 'isAudioFile:', isAudioFile);
+                console.debug('File attached:', fileName, 'Type:', fileType, 'isAudioFile:', isAudioFile);
                 
                 // FIX: Set transcribing flag for audio files BEFORE displaying message
                 if (isAudioFile) {
-                    console.log('Audio file detected, setting transcribing flag for session:', currentSessionId);
+                    console.debug('Audio file detected, setting transcribing flag for session:', currentSessionId);
                     setLocalTranscribing(currentSessionId, true);
                     // Force update for all devices
                     setTimeout(() => updateSessionsListFromData(), 100);
@@ -668,7 +769,7 @@ async function sendMessage() {
 }
 
 window.loadMessages = function(sessionId) {
-    console.log('loadMessages called for session', sessionId);
+    console.debug('loadMessages called for session', sessionId);
 
     // Only show "loading" if switching to a DIFFERENT session
     const isSessionSwitch = sessionId !== currentSessionId;
@@ -684,7 +785,7 @@ window.loadMessages = function(sessionId) {
 
     return originalLoadMessages(sessionId)
         .then(() => {
-            console.log('loadMessages completed for session', sessionId);
+            console.debug('loadMessages completed for session', sessionId);
 
             if (window.IS_RELOADING) return;
 

@@ -141,7 +141,11 @@ class RagModule:
             if emb is None:
                 self.logger.error(f"index_document: failed to get embedding for chunk {idx}")
                 return False, "Failed to get embedding for a chunk"
-        
+            # Check for empty embeddings (vector dimension 0)
+            if len(emb) == 0:
+                self.logger.error(f"index_document: empty embedding vector for chunk {idx}")
+                return False, "Empty embedding vector for a chunk"
+
         self.logger.info(f"index_document: obtained embeddings for all {len(chunks)} chunks")
 
         # 4. Prepare points with valid UUIDs as IDs and filename in payload
@@ -370,14 +374,19 @@ class RagModule:
             self.logger.warning(f"No ollama_url for embedding, using default {ollama_url}")
         try:
             response = requests.post(
-                f"{ollama_url}/api/embeddings",
-                json={"model": embedding_model, "prompt": text},
+                f"{ollama_url}/api/embed",
+                json={"model": embedding_model, "input": [text]},
                 timeout=30
             )
             if response.status_code == 200:
-                emb = response.json()["embedding"]
-                self.logger.debug(f"_get_embedding: got embedding of length {len(emb)}")
-                return emb
+                result = response.json()
+                if 'embeddings' in result and len(result['embeddings']) > 0:
+                    emb = result['embeddings'][0]
+                    self.logger.debug(f"_get_embedding: got embedding of length {len(emb)}")
+                    return emb
+                else:
+                    self.logger.warning(f"_get_embedding: unexpected response format")
+                    return None
             else:
                 self.logger.error(f"Ollama embeddings API returned status {response.status_code}")
                 return None
@@ -405,28 +414,35 @@ class RagModule:
             ollama_url = 'http://ollama:11434'
         
         all_embeddings = []
-        
-        # Process in batches
+
+        # Process in batches using the newer /api/embed endpoint (supports multiple inputs)
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
             try:
                 response = requests.post(
-                    f"{ollama_url}/api/embeddings",
-                    json={"model": embedding_model, "prompts": batch},
-                    timeout=60
+                    f"{ollama_url}/api/embed",
+                    json={"model": embedding_model, "input": batch},
+                    timeout=120
                 )
                 if response.status_code == 200:
                     result = response.json()
-                    # Ollama may return single embedding or list of embeddings
+                    # New API returns {"embeddings": [[...], [...], ...]}
                     if 'embeddings' in result:
-                        all_embeddings.extend(result['embeddings'])
-                    elif 'embedding' in result:
-                        all_embeddings.append(result['embedding'])
+                        emb_list = result['embeddings']
+                        # Validate each embedding
+                        valid_embeddings = []
+                        for emb in emb_list:
+                            if emb and len(emb) > 0:
+                                valid_embeddings.append(emb)
+                            else:
+                                self.logger.warning("Empty embedding in batch response")
+                                valid_embeddings.append(None)
+                        all_embeddings.extend(valid_embeddings)
                     else:
-                        self.logger.warning(f"Unexpected embedding response format")
+                        self.logger.warning(f"Unexpected embedding response format: {list(result.keys())}")
                         all_embeddings.extend([None] * len(batch))
                 else:
-                    self.logger.error(f"Ollama batch embeddings API returned status {response.status_code}")
+                    self.logger.error(f"Ollama embeddings API returned status {response.status_code}: {response.text[:200]}")
                     all_embeddings.extend([None] * len(batch))
             except Exception as e:
                 self.logger.error(f"Error getting batch embeddings: {e}")

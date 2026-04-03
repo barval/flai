@@ -1,7 +1,29 @@
 // static/js/header.js
 // Handles language, voice gender, and theme switching in the header
 
+// CSRF token helper
+function getCSRFToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.content : '';
+}
+
+function fetchWithCSRF(url, options = {}) {
+    const csrfToken = getCSRFToken();
+    if (!options.headers) options.headers = {};
+    options.headers['X-CSRFToken'] = csrfToken;
+    options.credentials = 'same-origin';
+    return fetch(url, options);
+}
+
 document.addEventListener('DOMContentLoaded', function() {
+    // Language switcher
+    const langSelect = document.getElementById('language-select');
+    if (langSelect) {
+        langSelect.addEventListener('change', function() {
+            switchLanguage(this.value);
+        });
+    }
+
     // Voice gender toggle
     const voiceBtn = document.getElementById('voice-gender-toggle');
     if (voiceBtn) {
@@ -13,7 +35,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Theme toggle
-    const themeBtn = document.getElementById('theme-toggle');
+    const themeBtn = document.getElementById('theme-toggle') || document.getElementById('theme-toggle-guest');
     if (themeBtn) {
         themeBtn.addEventListener('click', function() {
             const currentTheme = document.body.classList.contains('dark-theme') ? 'dark' : 'light';
@@ -24,17 +46,24 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function switchLanguage(lang) {
-    // Set reloading flag and clear intervals
-    window.IS_RELOADING = true;
-    if (window.syncInterval) clearInterval(window.syncInterval);
-    if (window.recordTimerInterval) clearInterval(window.recordTimerInterval);
-    fetchWithCSRF('/set-language/' + lang, {
-        method: 'GET',
-        headers: { 'Cache-Control': 'no-cache' }
-    }).finally(() => {
-        window.location.reload();
-    });
+    // Simple redirect - no need for fetch
+    window.location.href = '/set-language/' + lang;
 }
+
+// Login page theme setup
+function setupLoginTheme() {
+    const themeInput = document.getElementById('login-theme');
+    if (themeInput) {
+        themeInput.value = localStorage.getItem('guest_theme') || 'light';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    setupLoginTheme();
+    
+    // Initialize global flags
+    window.IS_RELOADING = false;
+});
 
 function switchVoiceGender(gender) {
     // Stop current TTS playback if any (will restart with new voice)

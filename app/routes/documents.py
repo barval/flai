@@ -95,8 +95,8 @@ def api_upload_document():
         doc_id,
         filename,
         file_size,
-        ext=os.path.splitext(filename)[1].lower(),
-        relative_path=relative_path
+        file_ext=os.path.splitext(filename)[1].lower(),
+        file_path=relative_path
     )
 
     db.update_document_index_status(doc_id, db.INDEX_STATUS_PENDING)
@@ -120,6 +120,15 @@ def api_get_document(doc_id):
 
     documents_folder = current_app.config['DOCUMENTS_FOLDER']
     file_path = os.path.join(documents_folder, doc['file_path'])
+
+    # Security: prevent path traversal attacks
+    # Normalize the path and verify it's still within documents_folder
+    real_file_path = os.path.realpath(file_path)
+    real_documents_folder = os.path.realpath(documents_folder)
+    if not real_file_path.startswith(real_documents_folder + os.sep) and real_file_path != real_documents_folder:
+        current_app.logger.warning(f"Path traversal attempt blocked: {doc['file_path']}")
+        return jsonify({'error': _('Permission denied')}), 403
+
     if not os.path.exists(file_path):
         current_app.logger.error(f"Document file not found: {file_path}")
         return jsonify({'error': _('File not found')}), 404
@@ -147,6 +156,14 @@ def api_delete_document(doc_id):
 
     documents_folder = current_app.config['DOCUMENTS_FOLDER']
     file_path = os.path.join(documents_folder, doc['file_path'])
+
+    # Security: prevent path traversal attacks
+    real_file_path = os.path.realpath(file_path)
+    real_documents_folder = os.path.realpath(documents_folder)
+    if not real_file_path.startswith(real_documents_folder + os.sep) and real_file_path != real_documents_folder:
+        current_app.logger.warning(f"Path traversal attempt blocked: {doc['file_path']}")
+        return jsonify({'error': _('Permission denied')}), 403
+
     if os.path.exists(file_path):
         try:
             os.remove(file_path)

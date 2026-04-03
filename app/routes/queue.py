@@ -31,8 +31,18 @@ def api_queue_counts():
 def api_check_result(request_id):
     if 'login' not in session:
         return jsonify({'error': _('Not authorized')}), 401
+    user_id = session['login']
+
+    # First check if the result already exists
     result = current_app.request_queue.check_result(request_id)
-    if result:
+    if result and result.get('status') in ('completed', 'error'):
         return jsonify(result)
-    else:
-        return jsonify({'status': 'pending'})
+
+    # No result yet — verify this request belongs to the current user
+    # (ownership is removed from the set when the task completes, so we only
+    # check ownership while the task is still pending)
+    user_requests_key = current_app.request_queue.user_requests_key
+    if not current_app.request_queue.redis.sismember(f"{user_requests_key}:{user_id}", request_id):
+        return jsonify({'error': _('Not found')}), 404
+
+    return jsonify({'status': 'pending'})

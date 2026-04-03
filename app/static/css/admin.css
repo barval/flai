@@ -66,13 +66,7 @@
     min-height: 0; /* required for flex child to shrink properly */
 }
 
-/* Users table */
-.users-table-wrapper {
-    overflow-x: auto;
-    margin-top: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-}
+/* Users table — basic styles (overflow/max-height defined later in FIXED HEADER section) */
 #users-table {
     width: 100%;
     border-collapse: collapse;
@@ -364,13 +358,24 @@ body.admin-page .voice-gender-switcher {
 }
 
 /* ===== FIXED HEADER FOR USERS TABLE ===== */
+/* Tab header (button + db info) — stays fixed, doesn't scroll */
+.users-tab-header {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    margin-bottom: 10px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
 .users-table-wrapper {
     position: relative;
     overflow-y: auto;
-    max-height: calc(100vh - 280px); /* Adjust as needed */
-    margin-top: 20px;
+    max-height: calc(100vh - 340px); /* header(50) + title(30) + tabs(50) + tab-header(60) + padding(40) + footer(50) + margins(60) */
     border-radius: 8px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    flex: 1;
+    min-height: 0;
 }
 
 #users-table {

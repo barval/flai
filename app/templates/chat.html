@@ -194,13 +194,4 @@ console.log('Chat TRANSLATIONS merged:', window.TRANSLATIONS);
 <script src="{{ url_for('static', filename='js/chat-export.js') }}"></script>
 <script src="{{ url_for('static', filename='js/chat-queue.js') }}"></script>
 <script src="{{ url_for('static', filename='js/chat-init.js') }}"></script>
-
-<!-- Additional initialization for collapsible sidebar -->
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    if (typeof initCollapsibleSessions === 'function') {
-        initCollapsibleSessions();
-    }
-});
-</script>
 {% endblock %}

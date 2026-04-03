@@ -636,5 +636,8 @@ msgstr "No relevant documents found"
 msgid "Audio service unavailable"
 msgstr "Audio service unavailable"
 
+msgid "Too many attempts. Please try again later."
+msgstr "Too many attempts. Please try again later."
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v7.5 (c) 2026 Valery Barsukov"

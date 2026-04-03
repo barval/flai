@@ -114,24 +114,6 @@ class BaseModule:
         
         self.logger.info(f"Prompt validation passed: {estimated}/{max_tokens} tokens ({estimated/max_tokens*100:.1f}%)")
         return True, prompt
-    
-        # Logging of the detailed industrial structure for debugging context consumption
-        if self.logger.isEnabledFor(logging.DEBUG):
-            # We break down the prompt by template markers to see what takes up space.
-            sections = {}
-            for marker in ['{conversation_history}', '{user_query}', '{reasoning_query}', '{context}', '{current_time_str}']:
-                if marker in prompt:
-                    start = prompt.find(marker)
-                    # Rough estimate: we take ~500 characters around the marker
-                    section_start = max(0, start - 200)
-                    section_end = min(len(prompt), start + 700)
-                    sections[marker] = len(prompt[section_start:section_end])
-            
-            self.logger.debug(
-                f"Prompt debug: total_chars={len(prompt)}, estimated_tokens={estimated}, "
-                f"token_chars_ratio={len(prompt)/estimated if estimated > 0 else 0:.2f}, "
-                f"sections_sizes={sections}"
-            )
 
     # --- Existing methods with context added ---
     def process_message(self, message_text: str, current_time_str: str, lang: str = 'ru',

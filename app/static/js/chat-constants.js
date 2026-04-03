@@ -23,6 +23,7 @@ let isVoiceRecorded = false;
 let currentAudio = null;
 let currentTTSButton = null;
 let currentPlayingSessionId = null;
+let currentTTSMessageText = null;  // Store text of message being played to find it later
 // Message polling
 let messagePollingInterval = null;
 let lastMessageTimestamp = null;

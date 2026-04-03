@@ -26,9 +26,36 @@ class OllamaClient:
         self.check_availability()
 
     def check_availability(self) -> bool:
-        """Check if Ollama service is reachable (deprecated, but kept)."""
-        self.available = True
-        return True
+        """Check if Ollama service is reachable by calling /api/tags."""
+        config = self._get_model_config('chat')
+        if not config or not config.get('ollama_url'):
+            self.logger.warning("No Ollama URL configured, assuming available")
+            self.available = True
+            return True
+
+        ollama_url = config['ollama_url']
+        try:
+            response = requests.get(f"{ollama_url}/api/tags", timeout=5)
+            if response.status_code == 200:
+                self.available = True
+                self.logger.info(f"Ollama is available at {ollama_url}")
+                return True
+            else:
+                self.logger.warning(f"Ollama returned status {response.status_code} at {ollama_url}")
+                self.available = False
+                return False
+        except requests.exceptions.ConnectionError:
+            self.logger.error(f"Cannot connect to Ollama at {ollama_url} - service may not be running")
+            self.available = False
+            return False
+        except requests.exceptions.Timeout:
+            self.logger.error(f"Timeout connecting to Ollama at {ollama_url}")
+            self.available = False
+            return False
+        except Exception as e:
+            self.logger.error(f"Error checking Ollama availability: {e}")
+            self.available = False
+            return False
 
     def _get_model_config(self, model_type: str) -> Optional[Dict[str, Any]]:
         """Retrieve model configuration from database."""

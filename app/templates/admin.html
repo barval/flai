@@ -12,9 +12,10 @@
 
     <!-- Users tab content -->
     <div id="users-tab" class="admin-tab-content active">
-        <div style="display: flex; align-items: center; gap: 30px; margin-bottom: 20px;">
+        <!-- Fixed header: button + db info (don't scroll with table) -->
+        <div class="users-tab-header">
             <button id="add-user-button" class="add-user-button">➕ {{ _('Add user') }}</button>
-            <div class="db-info" style="display: flex; gap: 20px;">
+            <div class="db-info">
                 <span>{{ _('User DB') }}: <span id="user-db-size" class="db-value">{{ (user_db_size / (1024*1024))|round(2) }} {{ _('MB') }}</span></span>
                 <span>{{ _('Chat DB') }}: <span id="chat-db-size" class="db-value">{{ (chat_db_size / (1024*1024))|round(2) }} {{ _('MB') }}</span></span>
                 <span>{{ _('Files DB') }}: <span id="files-db-size" class="db-value">{{ (files_db_size / (1024*1024))|round(2) }} {{ _('MB') }}</span></span>

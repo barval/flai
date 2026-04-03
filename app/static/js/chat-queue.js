@@ -3,8 +3,9 @@
 
 function startSyncInterval() {
     if (window.syncInterval) clearInterval(window.syncInterval);
-    console.log('startSyncInterval: Starting sync interval (2 seconds) for session', currentSessionId);
+    console.log('startSyncInterval: Starting sync interval (2000ms) for session', currentSessionId);
     // Sync interval for queue status, counter updates, and cross-client synchronization
+    // Using 2000ms to allow CSS animations to run smoothly between updates
     window.syncInterval = setInterval(() => {
         if (window.IS_RELOADING) {
             console.log('sync interval: Skipping - IS_RELOADING');
@@ -162,24 +163,38 @@ function fetchQueueStatus() {
             if (window.IS_RELOADING) return;
             const newInfo = {};
 
-            // Process currently processing task
+            // Initialize all known sessions with default values
+            // This ensures stale flags (processing, has_transcribing) are cleared
+            Object.keys(sessionsData).forEach(sessionId => {
+                newInfo[sessionId] = { processing: false, queued: 0, queue_position: 0, has_transcribing: false };
+            });
+
+            // Process currently processing task (ONLY ONE session can have this)
+            let processingSessionId = null;
             if (data.processing) {
                 const proc = data.processing;
-                const sessionId = proc.session_id;
-                if (!newInfo[sessionId]) {
-                    newInfo[sessionId] = { processing: false, queued: 0, has_transcribing: false };
+                processingSessionId = proc.session_id;
+                // Ensure the session exists in newInfo before setting properties
+                if (!newInfo[processingSessionId]) {
+                    newInfo[processingSessionId] = { processing: false, queued: 0, queue_position: 0, has_transcribing: false };
                 }
-                newInfo[sessionId].processing = true;
+                newInfo[processingSessionId].processing = true;
+                newInfo[processingSessionId].queued = 0;
+                newInfo[processingSessionId].queue_position = 0;
                 // Only set has_transcribing if currently processing audio/transcribe task
                 if (proc.type === 'transcribe_audio' || proc.type === 'audio') {
-                    newInfo[sessionId].has_transcribing = true;
+                    newInfo[processingSessionId].has_transcribing = true;
                 }
-                console.log('fetchQueueStatus: processing task for session', sessionId, 'type:', proc.type);
+                console.log('fetchQueueStatus: processing task for session', processingSessionId, 'type:', proc.type);
             }
 
-            // Process queued tasks
+            // Process queued tasks (EXCLUDE the session that's currently processing)
             data.queued.forEach(item => {
                 const sessionId = item.session_id;
+                // Skip if this session is already processing
+                if (sessionId === processingSessionId) {
+                    return;
+                }
                 const position = item.position_info?.position || 999;
                 if (!newInfo[sessionId]) {
                     newInfo[sessionId] = { processing: false, queued: 0, queue_position: 999, has_transcribing: false };
@@ -192,10 +207,40 @@ function fetchQueueStatus() {
             // Update global sessionQueueInfo
             sessionQueueInfo = newInfo;
             console.log('fetchQueueStatus: sessionQueueInfo updated', sessionQueueInfo);
+
+            // Sync localTranscribingSessions with server status
+            // This ensures mobile clients show microphone icon for transcribing sessions
+            Object.keys(newInfo).forEach(sessionId => {
+                if (newInfo[sessionId].has_transcribing) {
+                    localTranscribingSessions[sessionId] = true;
+                } else if (localTranscribingSessions[sessionId]) {
+                    // Server says no longer transcribing, clear local flag
+                    delete localTranscribingSessions[sessionId];
+                }
+            });
+
+            // CRITICAL: Also update sessionsData with queue_info for immediate display
+            Object.keys(newInfo).forEach(sessionId => {
+                if (sessionsData[sessionId]) {
+                    sessionsData[sessionId].queue_info = { ...newInfo[sessionId] };
+                }
+            });
+
+            // CRITICAL: Update sessions list IMMEDIATELY (no debounce)
+            // This ensures status icons update immediately after task completion
+            const sessions = Object.keys(sessionsData).map(id => ({
+                id: id,
+                title: sessionsData[id].title,
+                updated_at: sessionsData[id].updated_at,
+                message_count: sessionsData[id].message_count,
+                has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
+                queue_info: sessionQueueInfo[id] || null
+            }));
             
-            // Update sessions list with new queue info
-            updateSessionsListFromData();
-            
+            if (typeof updateSessionsList === 'function') {
+                updateSessionsList(sessions);
+            }
+
             // Update status counter
             window.updateStatusCounter();
         })
@@ -208,36 +253,32 @@ function setLocalTranscribing(sessionId, isTranscribing) {
         console.warn('setLocalTranscribing called with empty sessionId');
         return;
     }
-    
+
     console.log('setLocalTranscribing called:', sessionId, isTranscribing);
-    
+
     if (isTranscribing) {
         localTranscribingSessions[sessionId] = true;
     } else {
         delete localTranscribingSessions[sessionId];
     }
-    
+
     // Immediate update - clear any pending timeout
     if (sessionsUpdateTimeout) {
         clearTimeout(sessionsUpdateTimeout);
         sessionsUpdateTimeout = null;
     }
-    
-    // Force immediate update with current data
+
+    // Force immediate update with full session data
     const sessions = Object.keys(sessionsData).map(id => ({
         id: id,
         title: sessionsData[id].title,
         updated_at: sessionsData[id].updated_at,
-        message_count: sessionsData[id].message_count
+        message_count: sessionsData[id].message_count,
+        has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
+        queue_info: sessionQueueInfo[id] || null
     }));
     updateSessionsList(sessions);
-    
-    // FIX: Force additional redraws for all devices (not just mobile) to ensure icon visibility
-    if (isTranscribing) {
-        setTimeout(() => updateSessionsList(sessions), 200);
-        setTimeout(() => updateSessionsList(sessions), 400);
-    }
-    
+
     console.log('Transcribing flag', isTranscribing ? 'SET' : 'CLEARED', 'for session:', sessionId);
 }
 
@@ -247,9 +288,17 @@ window.setLocalTranscribing = setLocalTranscribing;
 window.updateStatusCounter = function() {
     if (window.IS_RELOADING) return;
     fetch('/api/queue/counts')
-        .then(response => response.json())
+        .then(response => {
+            // Check if response is JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                console.error('Queue counter returned non-JSON response:', response.status);
+                return null;
+            }
+            return response.json();
+        })
         .then(data => {
-            if (window.IS_RELOADING) return;
+            if (window.IS_RELOADING || !data) return;
             const counter = document.getElementById('status-counter');
             if (counter) {
                 counter.textContent = '📊 ' + data.user_queued + '/' + data.total_queued;
@@ -259,3 +308,12 @@ window.updateStatusCounter = function() {
         })
         .catch(err => console.error('Error updating counter:', err));
 };
+
+// Force sync when tab becomes visible again (fixes mobile "stuck" status)
+document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) {
+        console.log('Tab became visible, forcing immediate sync');
+        fetchQueueStatus();
+        syncSessionsAndMessages();
+    }
+});

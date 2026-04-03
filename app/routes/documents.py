@@ -95,8 +95,8 @@ def api_upload_document():
         doc_id,
         filename,
         file_size,
-        ext=os.path.splitext(filename)[1].lower(),
-        relative_path=relative_path
+        file_ext=os.path.splitext(filename)[1].lower(),
+        file_path=relative_path
     )
 
     db.update_document_index_status(doc_id, db.INDEX_STATUS_PENDING)

@@ -206,7 +206,11 @@ function startResultPolling(requestId) {
                                 setLocalTranscribing(resultSessionId, false);
                             }
                         } else {
-                            setNewMessageIndicator(resultSessionId, true);
+                            // Only show unread indicator if there's NO further processing
+                            // (i.e., no request_id means transcription was the final step)
+                            if (!data.result.request_id) {
+                                setNewMessageIndicator(resultSessionId, true);
+                            }
                             if (data.result.request_id) {
                                 pendingRequests[data.result.request_id] = { sessionId: resultSessionId, processed: false };
                                 startResultPolling(data.result.request_id);
@@ -274,22 +278,50 @@ function startResultPolling(requestId) {
                     if (resultSessionId) {
                         setLocalTranscribing(resultSessionId, false);
                         // Clear queue info for this session so envelope icon can appear
-                        if (sessionQueueInfo[resultSessionId]) {
-                            sessionQueueInfo[resultSessionId].processing = false;
-                            sessionQueueInfo[resultSessionId].queued = 0;
+                        sessionQueueInfo[resultSessionId] = {
+                            processing: false,
+                            queued: 0,
+                            queue_position: 0,
+                            has_transcribing: false
+                        };
+                        // Also clear in sessionsData for server sync
+                        if (sessionsData[resultSessionId]) {
+                            sessionsData[resultSessionId].queue_info = null;
                         }
-                        // Force immediate UI update
-                        updateSessionsListFromData();
+                        // Force immediate UI update without debounce
+                        const sessions = Object.keys(sessionsData).map(id => ({
+                            id: id,
+                            title: sessionsData[id].title,
+                            updated_at: sessionsData[id].updated_at,
+                            message_count: sessionsData[id].message_count,
+                            has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
+                            queue_info: sessionQueueInfo[id] || null
+                        }));
+                        if (typeof updateSessionsList === 'function') {
+                            updateSessionsList(sessions);
+                        }
                     }
                     
                     if (resultSessionId) {
-                        fetchQueueStatus();
+                        // Small delay to let server clean up processing/queued data
+                        setTimeout(() => {
+                            fetchQueueStatus();
+                        }, 100);
                     }
                 }
 
                 delete pendingRequests[requestId];
                 window.updateStatusCounter();
-                fetchQueueStatus();
+                // Small delay to let server clean up processing/queued data
+                setTimeout(() => {
+                    fetchQueueStatus();
+                }, 100);
+                
+                // Also clear local transcribing flag for this session
+                if (pendingRequests[requestId]?.sessionId) {
+                    const sid = pendingRequests[requestId].sessionId;
+                    setLocalTranscribing(sid, false);
+                }
 
             } else if (data.status === 'error') {
                 clearInterval(pollInterval);
@@ -441,9 +473,21 @@ async function sendMessage() {
                 }
                 
                 if (window.IS_RELOADING) return;
-                
+
+                // Check if response is JSON before parsing
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    console.error('Server returned non-JSON response:', response.status);
+                    const text = await response.text();
+                    console.error('Response content:', text.substring(0, 200));
+                    originalDisplayMessage('assistant', 'Ошибка сервера: получен некорректный ответ', null, null, null, null,
+                        new Date().toISOString(), 0, 'system');
+                    unlockSendButton();
+                    return;
+                }
+
                 const data = await response.json();
-                
+
                 if (window.IS_RELOADING) return;
                 
                 console.log('Server response:', data);
@@ -518,18 +562,31 @@ async function sendMessage() {
                                 }
                             }
                         } else {
-                            setNewMessageIndicator(targetSessionId, true);
+                            // Only show unread if there's no further processing
+                            if (!data.request_id) {
+                                setNewMessageIndicator(targetSessionId, true);
+                            }
                         }
                     }
                     return;
                 }
                 
                 if (data.status === 'queued') {
+                    // Worker picks up tasks via blpop almost instantly.
+                    // By the time this response reaches the frontend, the task is already processing.
+                    // Show processing icon immediately - fetchQueueStatus will confirm/update.
                     if (!sessionQueueInfo[currentSessionId]) {
-                        sessionQueueInfo[currentSessionId] = { processing: false, queued: 1 };
+                        sessionQueueInfo[currentSessionId] = {
+                            processing: true,  // Worker already has it
+                            queued: 0,
+                            queue_position: 0
+                        };
                     } else {
-                        sessionQueueInfo[currentSessionId].queued += 1;
+                        sessionQueueInfo[currentSessionId].processing = true;
+                        sessionQueueInfo[currentSessionId].queued = 0;
+                        sessionQueueInfo[currentSessionId].queue_position = 0;
                     }
+
                     updateSessionsListFromData();
                     pendingRequests[data.request_id] = { sessionId: currentSessionId, processed: false };
                     window.updateStatusCounter();
@@ -612,30 +669,35 @@ async function sendMessage() {
 
 window.loadMessages = function(sessionId) {
     console.log('loadMessages called for session', sessionId);
+
+    // Only show "loading" if switching to a DIFFERENT session
+    const isSessionSwitch = sessionId !== currentSessionId;
     
-    stopMessagePolling();
-    
-    const statusCounter = document.getElementById('status-counter');
-    if (statusCounter) {
-        statusCounter.innerHTML = '⏳ ' + t('loading');
+    if (isSessionSwitch) {
+        stopMessagePolling();
+
+        const statusCounter = document.getElementById('status-counter');
+        if (statusCounter) {
+            statusCounter.innerHTML = '⏳ ' + t('loading');
+        }
     }
-    
+
     return originalLoadMessages(sessionId)
         .then(() => {
             console.log('loadMessages completed for session', sessionId);
-            
+
             if (window.IS_RELOADING) return;
-            
+
             setTimeout(addCopyButtonsToAllCodeBlocks, 100);
             startMessagePolling();
-            
-            if (statusCounter) {
+
+            if (isSessionSwitch && statusCounter) {
                 window.updateStatusCounter();
             }
         })
         .catch(err => {
             console.error('Error in loadMessages:', err);
-            if (statusCounter) {
+            if (isSessionSwitch && statusCounter) {
                 statusCounter.innerHTML = '❌';
                 setTimeout(() => window.updateStatusCounter(), 2000);
             }
@@ -674,6 +736,10 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error loading messages after language switch:', err);
         }).finally(() => {
             startMessagePolling();
+            // Restore TTS button state if TTS is playing
+            if (typeof restoreTTSButtonState === 'function') {
+                restoreTTSButtonState();
+            }
         });
         startSyncInterval();
     });
@@ -737,5 +803,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     if (typeof resetTtsState === 'function') {
         window.resetTtsState = resetTtsState;
+    }
+    if (typeof restoreTTSButtonState === 'function') {
+        window.restoreTTSButtonState = restoreTTSButtonState;
+    }
+});
+
+// Initialize collapsible sessions sidebar
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof initCollapsibleSessions === 'function') {
+        initCollapsibleSessions();
     }
 });

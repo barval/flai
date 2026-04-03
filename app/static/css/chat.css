@@ -264,17 +264,17 @@
     50%, 100% { opacity: 0.5; }
 }
 
-/* Blink animation for session and document icons */
+/* Blink animation for session and document icons - COMBINED SELECTORS */
 .session-status-icon.blink,
-.document-status-icon.blink {
-    animation: blink-animation 2s infinite !important;
-}
-
-/* Ensure processing, queued, and unread icons blink - MUST come before specific color rules */
+.document-status-icon.blink,
 .session-status-icon.processing,
 .session-status-icon.queued,
-.session-status-icon.unread {
+.session-status-icon.unread,
+.session-status-icon.transcribing {
     animation: blink-animation 2s infinite !important;
+    -webkit-animation: blink-animation 2s infinite !important;
+    animation-play-state: running !important;
+    -webkit-animation-play-state: running !important;
 }
 
 .session-status-icon.error {
@@ -285,17 +285,18 @@
     color: #f39c12;
     display: inline-block !important;
     visibility: visible !important;
-    animation: blink-animation 2s infinite !important;
 }
 
 .session-status-icon.queued {
     color: #95a5a6;
-    animation: blink-animation 2s infinite !important;
 }
 
 .session-status-icon.unread {
     color: #3498db;
-    animation: blink-animation 2s infinite !important;
+}
+
+.session-status-icon.transcribing {
+    color: #e74c3c;
 }
 
 .session-status-icon.tts.playing {

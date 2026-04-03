@@ -1,12 +1,14 @@
 # app/routes/tts.py
 from flask import Blueprint, request, jsonify, session, current_app, send_file
 import io
+import time
 from flask_babel import gettext as _
 
 bp = Blueprint('tts', __name__, url_prefix='/api/tts')
 
 @bp.route('/synthesize', methods=['POST'])
 def synthesize():
+    start_time = time.time()
     if 'login' not in session:
         return jsonify({'error': _('Not authorized')}), 401
 
@@ -23,6 +25,8 @@ def synthesize():
         return jsonify({'error': _('TTS service unavailable')}), 503
 
     audio_bytes = tts_module.synthesize(text, lang, gender)
+    elapsed = time.time() - start_time
+    current_app.logger.info(f"TTS synthesis completed in {elapsed:.2f}s for text len={len(text)}")
     if audio_bytes is None:
         return jsonify({'error': _('TTS synthesis failed')}), 500
 

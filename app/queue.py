@@ -64,6 +64,7 @@ class RedisRequestQueue:
         while True:
             task_id = None  # Track current task ID for cleanup
             try:
+                # First, check if there are tasks in queue
                 result = self.redis.blpop(self.queue_key, timeout=5)
                 if not result:
                     continue
@@ -72,8 +73,13 @@ class RedisRequestQueue:
                 if task is None:
                     self.logger.error("Failed to deserialize task - skipping")
                     continue
-                
+
                 task_id = task.get('id')
+                
+                # IMMEDIATELY move to processing BEFORE any work
+                # This ensures UI shows "processing" (⚡) not "queued" (⏳)
+                self.redis.hset(self.processing_key, task_id, task_data)
+                
                 queue_time = time.time() - task.get('timestamp', time.time())
                 max_wait_time = self.app.config.get('QUEUE_MAX_WAIT_TIME', 300)
                 if queue_time > max_wait_time:
@@ -92,15 +98,16 @@ class RedisRequestQueue:
                     }))
                     # Set TTL on error result
                     self.redis.expire(self.results_key, result_ttl)
+                    # Clean up processing key
+                    self.redis.hdel(self.processing_key, task_id)
                     # Clean up user request set
                     user_id = task.get('user_id')
                     if user_id:
                         self._cleanup_user_request(user_id, task_id)
                     continue
-                    
+
                 self.app.logger.info(f"RedisRequestQueue: got task {task_id} from queue for session {task.get('session_id')}, queue time: {queue_time:.1f}s")
-                self.redis.hset(self.processing_key, task_id, task_data)
-                
+
                 # Get TTL from config
                 result_ttl = self.app.config.get('REDIS_RESULT_TTL', 3600)
 
@@ -167,18 +174,26 @@ class RedisRequestQueue:
         return request_id, position_info
 
     def get_user_queue_counts(self, user_id: str) -> Tuple[int, int]:
-        """Get user's queue count and total queue length efficiently.
-        Uses Redis set to track user requests instead of scanning entire queue.
+        """Get user's queue count and total queue length.
+        Counts actual requests in queue for accuracy.
         """
         total = self.redis.llen(self.queue_key)
         if total == 0:
             return 0, 0
-        
-        # Use set to get count of active user requests
-        user_count = self.redis.scard(f"{self.user_requests_key}:{user_id}")
-        
-        # Clean up completed requests from set (they may have been removed from results)
-        # This is eventual consistency - not critical if slightly stale
+
+        # Count actual user requests in queue (need to deserialize signed data)
+        user_count = 0
+        queue_items = self.redis.lrange(self.queue_key, 0, -1)
+        for item in queue_items:
+            try:
+                # Deserialize signed data
+                task = self._deserialize(item.decode('utf-8') if isinstance(item, bytes) else item)
+                if task and task.get('user_id') == user_id:
+                    user_count += 1
+            except Exception as e:
+                self.logger.debug(f"Error counting queue item: {e}")
+                continue
+
         return user_count, total
 
     def _cleanup_user_request(self, user_id: str, request_id: str):
@@ -784,27 +799,39 @@ class RedisRequestQueue:
     def get_user_requests_status(self, user_id: str, lang: str = 'ru') -> Dict[str, Any]:
         """Get status of user's requests (processing, queued, completed)."""
         result = {'processing': None, 'queued': [], 'recent_completed': []}
-        user_requests = self.redis.smembers(f"{self.user_requests_key}:{user_id}")
-        user_requests = {r.decode() if isinstance(r, bytes) else r for r in user_requests}
+        
+        # Track which sessions are already processing (to avoid duplicates in queued)
+        processing_session_ids = set()
+
+        # Check currently processing tasks (check user_id in task, not in set)
         processing_tasks = self.redis.hgetall(self.processing_key)
         for req_id, task_data in processing_tasks.items():
             req_id = req_id.decode() if isinstance(req_id, bytes) else req_id
-            if req_id in user_requests:
-                task = self._deserialize(task_data)
-                if task:
-                    task['status'] = 'processing'
-                    task['position_info'] = {'position': 1, 'estimated_seconds': 0}
-                    result['processing'] = self._format_request_info(task, lang)
+            task = self._deserialize(task_data)
+            if task and task.get('user_id') == user_id:
+                task['status'] = 'processing'
+                task['position_info'] = {'position': 1, 'estimated_seconds': 0}
+                result['processing'] = self._format_request_info(task, lang)
+                # Track this session as processing
+                if task.get('session_id'):
+                    processing_session_ids.add(task.get('session_id'))
+                break  # Only one processing task per user
+
+        # Check queued tasks (EXCLUDE sessions that are already processing)
         queue_length = self.redis.llen(self.queue_key)
         queue_tasks = self.redis.lrange(self.queue_key, 0, queue_length - 1) if queue_length > 0 else []
         position = 1
         for task_data in queue_tasks:
             task = self._deserialize(task_data)
             if task and task.get('user_id') == user_id:
+                # Skip if this session is already processing
+                if task.get('session_id') in processing_session_ids:
+                    continue
                 task['status'] = 'queued'
                 task['position_info'] = {'position': position, 'estimated_seconds': max(1, position * 5)}
                 result['queued'].append(self._format_request_info(task, lang))
                 position += 1
+
         return result
 
     def _format_request_info(self, task: Dict[str, Any], lang: str = 'ru') -> Dict[str, Any]:

@@ -1,6 +1,6 @@
 # app/routes/auth.py
 import logging
-from flask import Blueprint, render_template, request, redirect, url_for, session, current_app, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, session, current_app, jsonify, make_response
 from werkzeug.security import check_password_hash
 from flask_limiter.errors import RateLimitExceeded
 from app import limiter
@@ -15,10 +15,14 @@ def handle_rate_limit(error):
     """Handle rate limit exceeded errors."""
     if request.path.startswith('/api/'):
         return jsonify({'error': _('Too many attempts. Please try again later.')}), 429
-    return render_template('login.html', error=_('Too many attempts. Please try again later.')), 429
+    response = make_response(render_template('login.html', error=_('Too many attempts. Please try again later.')))
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response, 429
 
 @bp.route('/login', methods=['GET', 'POST'])
-@limiter.limit("5 per minute;10 per hour", key_func=lambda: request.form.get('login') or request.remote_addr)
+@limiter.limit("5 per minute;10 per hour", key_func=lambda: request.form.get('login') or request.remote_addr, methods=['POST'])
 def login():
     if request.method == 'POST':
         login_input = request.form.get('login')
@@ -27,7 +31,9 @@ def login():
 
         if not login_input or not password:
             logger.warning(f"Login attempt with missing fields from {request.remote_addr}")
-            return render_template('login.html', error=_('All fields are required'))
+            response = make_response(render_template('login.html', error=_('All fields are required')))
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            return response
 
         user = get_user_by_login(login_input)
         if user and user['is_active'] and check_password_hash(user['password_hash'], password):
@@ -53,8 +59,12 @@ def login():
         else:
             # Failed login - audit log
             logger.warning(f"Failed login attempt: {login_input} from {request.remote_addr}")
-            return render_template('login.html', error=_('Invalid login or password'))
-    return render_template('login.html')
+            response = make_response(render_template('login.html', error=_('Invalid login or password')))
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            return response
+    response = make_response(render_template('login.html'))
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return response
 
 @bp.route('/logout')
 def logout():

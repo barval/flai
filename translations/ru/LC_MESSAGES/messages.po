@@ -637,5 +637,9 @@ msgstr "Не найдено релевантных документов"
 msgid "Audio service unavailable"
 msgstr "Сервис аудио недоступен"
 
+msgid "Too many attempts. Please try again later."
+msgstr "Слишком много попыток. Попробуйте позже."
+
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v7.5 (c) 2026 Барсуков Валерий"
+

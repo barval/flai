@@ -34,6 +34,21 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    # Resource limits for production
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ============================================================
   # REDIS (Required - Request Queue)
@@ -55,6 +70,21 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     # To use an external Redis instance:
     # Comment out this entire service block
 
@@ -74,7 +104,12 @@ services:
       - OLLAMA_KEEP_ALIVE=0
     deploy:
       resources:
+        limits:
+          cpus: '4.0'
+          memory: 16G
         reservations:
+          cpus: '2.0'
+          memory: 8G
           devices:
             - driver: nvidia
               count: 1
@@ -88,6 +123,12 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     # To use an external Ollama instance:
     # Comment out this entire service block
 
@@ -110,11 +151,22 @@ services:
     runtime: nvidia
     deploy:
       resources:
+        limits:
+          cpus: '8.0'
+          memory: 24G
         reservations:
+          cpus: '4.0'
+          memory: 16G
           devices:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     command:
       - /app/stable-diffusion-webui/webui.sh
       - --listen
@@ -172,6 +224,21 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     profiles:
       - with-voice
     # To disable voice features:
@@ -200,6 +267,21 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    # Resource limits - Piper TTS is CPU-intensive, needs more cores for real-time synthesis
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 1G
+        reservations:
+          cpus: '1.0'
+          memory: 512M
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     profiles:
       - with-voice
     # To disable voice features:
@@ -228,6 +310,21 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     profiles:
       - with-rag
     # To disable document search/RAG:

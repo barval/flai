@@ -22,7 +22,15 @@ class RedisRequestQueue:
     def __init__(self, app):
         self.app = app
         self.logger = app.logger
-        self.redis = redis.from_url(app.config['REDIS_URL'], decode_responses=True)
+        self.redis = redis.from_url(
+            app.config['REDIS_URL'],
+            decode_responses=True,
+            # socket_timeout must be LONGER than blpop timeout (5s) to avoid
+            # "Timeout reading from socket" errors during blocking operations
+            socket_timeout=30,
+            socket_connect_timeout=3,
+            retry_on_timeout=True
+        )
         self.queue_key = 'request_queue'
         self.processing_key = 'processing_requests'
         self.results_key = 'request_results'
@@ -64,6 +72,7 @@ class RedisRequestQueue:
         while True:
             task_id = None  # Track current task ID for cleanup
             try:
+                # First, check if there are tasks in queue
                 result = self.redis.blpop(self.queue_key, timeout=5)
                 if not result:
                     continue
@@ -72,8 +81,16 @@ class RedisRequestQueue:
                 if task is None:
                     self.logger.error("Failed to deserialize task - skipping")
                     continue
-                
+
                 task_id = task.get('id')
+
+                # IMMEDIATELY move to processing BEFORE any work
+                # This ensures UI shows "processing" (⚡) not "queued" (⏳)
+                # Set a TTL on the processing key so stale tasks are cleaned up if worker crashes
+                processing_ttl = self.app.config.get('QUEUE_MAX_WAIT_TIME', 300) + 60  # Extra 60s buffer
+                self.redis.hset(self.processing_key, task_id, task_data)
+                self.redis.expire(self.processing_key, processing_ttl)
+
                 queue_time = time.time() - task.get('timestamp', time.time())
                 max_wait_time = self.app.config.get('QUEUE_MAX_WAIT_TIME', 300)
                 if queue_time > max_wait_time:
@@ -92,15 +109,17 @@ class RedisRequestQueue:
                     }))
                     # Set TTL on error result
                     self.redis.expire(self.results_key, result_ttl)
+                    # Clean up processing key
+                    self.redis.hdel(self.processing_key, task_id)
                     # Clean up user request set
                     user_id = task.get('user_id')
                     if user_id:
                         self._cleanup_user_request(user_id, task_id)
+                        self._decrement_user_queue_count(user_id)
                     continue
-                    
+
                 self.app.logger.info(f"RedisRequestQueue: got task {task_id} from queue for session {task.get('session_id')}, queue time: {queue_time:.1f}s")
-                self.redis.hset(self.processing_key, task_id, task_data)
-                
+
                 # Get TTL from config
                 result_ttl = self.app.config.get('REDIS_RESULT_TTL', 3600)
 
@@ -134,6 +153,7 @@ class RedisRequestQueue:
                     user_id = task.get('user_id')
                     if user_id:
                         self._cleanup_user_request(user_id, task_id)
+                        self._decrement_user_queue_count(user_id)
                         
             except Exception as e:
                 self.app.logger.error(f"RedisRequestQueue: error in worker loop: {str(e)}")
@@ -159,6 +179,7 @@ class RedisRequestQueue:
         self.app.logger.info(f"RedisRequestQueue.add_request: adding task {request_id} for session {session_id} at {timestamp}")
         self.redis.rpush(self.queue_key, self._serialize(task))
         self.redis.sadd(f"{self.user_requests_key}:{user_id}", request_id)
+        self._increment_user_queue_count(user_id)
         queue_length = self.redis.llen(self.queue_key)
         estimated_wait = max(1, queue_length * 5)
         # Position is 1-based for display (1 = first in queue/processing)
@@ -167,19 +188,35 @@ class RedisRequestQueue:
         return request_id, position_info
 
     def get_user_queue_counts(self, user_id: str) -> Tuple[int, int]:
-        """Get user's queue count and total queue length efficiently.
-        Uses Redis set to track user requests instead of scanning entire queue.
+        """Get user's queue count and total queue length.
+        Uses LLEN for total (O(1)) and a Redis hash for user counts (O(1)).
         """
         total = self.redis.llen(self.queue_key)
         if total == 0:
             return 0, 0
-        
-        # Use set to get count of active user requests
-        user_count = self.redis.scard(f"{self.user_requests_key}:{user_id}")
-        
-        # Clean up completed requests from set (they may have been removed from results)
-        # This is eventual consistency - not critical if slightly stale
+
+        # Use a Redis hash to track user queue counts (O(1) lookup)
+        user_count_key = f"{self.queue_key}:user_counts"
+        user_count = self.redis.hget(user_count_key, user_id)
+        user_count = int(user_count) if user_count else 0
+
         return user_count, total
+
+    def _increment_user_queue_count(self, user_id: str):
+        """Increment user's queue count (O(1))."""
+        user_count_key = f"{self.queue_key}:user_counts"
+        self.redis.hincrby(user_count_key, user_id, 1)
+
+    def _decrement_user_queue_count(self, user_id: str):
+        """Decrement user's queue count (O(1))."""
+        user_count_key = f"{self.queue_key}:user_counts"
+        count = self.redis.hget(user_count_key, user_id)
+        if count:
+            count = int(count)
+            if count > 0:
+                self.redis.hincrby(user_count_key, user_id, -1)
+            else:
+                self.redis.hdel(user_count_key, user_id)
 
     def _cleanup_user_request(self, user_id: str, request_id: str):
         """Remove request ID from user's set after completion."""
@@ -557,12 +594,14 @@ class RedisRequestQueue:
         file_name = request_data.get('file_name')
         voice_record = request_data.get('voice_record', False)
         user_class = task.get('user_class', 2)
-        
+
         process_start_time = time.time()
-        
-        # Check if audio module is available
+
+        # Don't pre-check availability here — audio_module.transcribe() re-checks
+        # availability on each call, so a service that was unavailable at startup
+        # but is now ready will still work.
         audio_module = self.app.modules.get('audio')
-        if not audio_module or not audio_module.available:
+        if not audio_module:
             process_time = round(time.time() - process_start_time, 1)
             error_msg = "⚠️ " + self.app.modules['base']._('Audio service unavailable', lang)
             completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
@@ -576,8 +615,8 @@ class RedisRequestQueue:
                 'is_error': True,
                 'message_id': message_id
             }
-        
-        # Perform transcription
+
+        # Perform transcription (transcribe() re-checks availability internally)
         transcribed_text = audio_module.transcribe(file_data, file_type, file_name, lang=lang)
         process_time = round(time.time() - process_start_time, 1)
         
@@ -721,23 +760,38 @@ class RedisRequestQueue:
     def _process_reindex_all_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         self.app.logger.info("Starting reindex of all documents with new embedding model.")
         lang = task.get('lang', 'ru')
-        from app.db import CHAT_DB_PATH
+        from app.db import CHAT_DB_PATH, get_current_time_for_db
         import sqlite3
-        conn = sqlite3.connect(CHAT_DB_PATH)
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        c.execute('SELECT id, user_id, file_path FROM documents')
-        documents = c.fetchall()
-        conn.close()
+
         rag = self.app.modules.get('rag')
         if not rag or not rag.available:
             self.app.logger.error("RAG module not available for reindexing")
             return {'success': False, 'error': 'RAG module unavailable'}
-        total = len(documents)
+
+        # Process documents in batches to avoid loading all into memory
+        batch_size = 50
+        offset = 0
+        total = 0
         success_count = 0
         fail_count = 0
-        doc_ids = [doc['id'] for doc in documents]
-        if doc_ids:
+        all_doc_ids = []
+
+        while True:
+            conn = sqlite3.connect(CHAT_DB_PATH)
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute('SELECT id, user_id, file_path FROM documents LIMIT ? OFFSET ?', (batch_size, offset))
+            documents = c.fetchall()
+            conn.close()
+
+            if not documents:
+                break
+
+            total += len(documents)
+            doc_ids = [doc['id'] for doc in documents]
+            all_doc_ids.extend(doc_ids)
+
+            # Set status to pending for this batch
             placeholders = ','.join(['?'] * len(doc_ids))
             with sqlite3.connect(CHAT_DB_PATH) as conn:
                 c = conn.cursor()
@@ -747,64 +801,87 @@ class RedisRequestQueue:
                     WHERE id IN ({placeholders})
                 ''', [INDEX_STATUS_PENDING] + doc_ids)
                 conn.commit()
-            self.app.logger.info(f"Set {len(doc_ids)} documents to pending status")
-        for doc in documents:
-            doc_id = doc['id']
-            user_id = doc['user_id']
-            file_path = doc['file_path']
-            documents_folder = self.app.config['DOCUMENTS_FOLDER']
-            full_path = os.path.join(documents_folder, file_path)
-            self.app.logger.info(f"Reindexing document {doc_id} for user {user_id}")
-            try:
-                rag.delete_document(doc_id, user_id)
-            except Exception as e:
-                self.app.logger.error(f"Failed to delete old vectors for doc {doc_id}: {e}")
-            try:
-                indexing_started_at = get_current_time_for_db()
-                update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=indexing_started_at)
-                success, message = rag.index_document(user_id, doc_id, full_path)
-                if success:
-                    indexed_at = get_current_time_for_db()
-                    embedding_model = self._get_model_name('embedding') or 'unknown'
-                    update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at, embedding_model=embedding_model)
-                    self.app.logger.info(f"Set embedding_model for doc {doc_id} to {embedding_model}")
-                    success_count += 1
-                    self.app.logger.info(f"Reindexed doc {doc_id}: {message}")
-                else:
+
+            self.app.logger.info(f"Reindexing batch of {len(documents)} documents (offset={offset})")
+
+            for doc in documents:
+                doc_id = doc['id']
+                user_id = doc['user_id']
+                file_path = doc['file_path']
+                documents_folder = self.app.config['DOCUMENTS_FOLDER']
+                full_path = os.path.join(documents_folder, file_path)
+
+                # Check if file exists before attempting reindex
+                if not os.path.exists(full_path):
+                    self.app.logger.warning(f"Document file not found: {full_path}, skipping")
                     update_document_index_status(doc_id, INDEX_STATUS_FAILED)
                     fail_count += 1
-                    self.app.logger.error(f"Failed to reindex doc {doc_id}: {message}")
-            except Exception as e:
-                update_document_index_status(doc_id, INDEX_STATUS_FAILED)
-                fail_count += 1
-                self.app.logger.error(f"Exception reindexing doc {doc_id}: {e}")
-        self.app.logger.info(f"Reindex all completed. Total: {total}, Success: {success_count}, Failed: {fail_count}")
+                    continue
+
+                try:
+                    rag.delete_document(doc_id, user_id)
+                except Exception as e:
+                    self.app.logger.error(f"Failed to delete old vectors for doc {doc_id}: {e}")
+
+                try:
+                    indexing_started_at = get_current_time_for_db()
+                    update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=indexing_started_at)
+                    success, message = rag.index_document(user_id, doc_id, full_path)
+                    if success:
+                        indexed_at = get_current_time_for_db()
+                        embedding_model = self._get_model_name('embedding') or 'unknown'
+                        update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at, embedding_model=embedding_model)
+                        success_count += 1
+                    else:
+                        update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+                        fail_count += 1
+                        self.app.logger.error(f"Reindex failed for doc {doc_id}: {message}")
+                except Exception as e:
+                    self.app.logger.error(f"Reindex error for doc {doc_id}: {e}")
+                    update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+                    fail_count += 1
+
+            offset += batch_size
+
+        self.app.logger.info(f"Reindex complete: total={total}, success={success_count}, failed={fail_count}")
         return {'success': True, 'total': total, 'success_count': success_count, 'failed_count': fail_count}
 
     def get_user_requests_status(self, user_id: str, lang: str = 'ru') -> Dict[str, Any]:
         """Get status of user's requests (processing, queued, completed)."""
         result = {'processing': None, 'queued': [], 'recent_completed': []}
-        user_requests = self.redis.smembers(f"{self.user_requests_key}:{user_id}")
-        user_requests = {r.decode() if isinstance(r, bytes) else r for r in user_requests}
+        
+        # Track which sessions are already processing (to avoid duplicates in queued)
+        processing_session_ids = set()
+
+        # Check currently processing tasks (check user_id in task, not in set)
         processing_tasks = self.redis.hgetall(self.processing_key)
         for req_id, task_data in processing_tasks.items():
             req_id = req_id.decode() if isinstance(req_id, bytes) else req_id
-            if req_id in user_requests:
-                task = self._deserialize(task_data)
-                if task:
-                    task['status'] = 'processing'
-                    task['position_info'] = {'position': 1, 'estimated_seconds': 0}
-                    result['processing'] = self._format_request_info(task, lang)
+            task = self._deserialize(task_data)
+            if task and task.get('user_id') == user_id:
+                task['status'] = 'processing'
+                task['position_info'] = {'position': 1, 'estimated_seconds': 0}
+                result['processing'] = self._format_request_info(task, lang)
+                # Track this session as processing
+                if task.get('session_id'):
+                    processing_session_ids.add(task.get('session_id'))
+                break  # Only one processing task per user
+
+        # Check queued tasks (EXCLUDE sessions that are already processing)
         queue_length = self.redis.llen(self.queue_key)
         queue_tasks = self.redis.lrange(self.queue_key, 0, queue_length - 1) if queue_length > 0 else []
         position = 1
         for task_data in queue_tasks:
             task = self._deserialize(task_data)
             if task and task.get('user_id') == user_id:
+                # Skip if this session is already processing
+                if task.get('session_id') in processing_session_ids:
+                    continue
                 task['status'] = 'queued'
                 task['position_info'] = {'position': position, 'estimated_seconds': max(1, position * 5)}
                 result['queued'].append(self._format_request_info(task, lang))
                 position += 1
+
         return result
 
     def _format_request_info(self, task: Dict[str, Any], lang: str = 'ru') -> Dict[str, Any]:

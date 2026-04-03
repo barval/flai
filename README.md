@@ -733,7 +733,7 @@ Create test user before running:
 - Admin panel with model management
 - Document index status display with processing time
 - Camera integration with access rights system
-- **SQLite WAL mode for better concurrency**
+- SQLite WAL mode for better concurrency
 - **Load testing with Locust**
 - **Separate Ollama URLs per model type (distributed deployment)**
 - **Security enhancements:**

@@ -15,7 +15,7 @@ def load_config(app):
     if not app.config['SECRET_KEY']:
         raise ValueError("SECRET_KEY must be set in .env file")
     app.config['JSON_AS_ASCII'] = False
-    app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+    app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH_MB', '50')) * 1024 * 1024
     app.config['TIMEZONE_STR'] = os.getenv('TIMEZONE')
     app.config['REDIS_URL'] = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
     

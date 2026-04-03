@@ -56,7 +56,7 @@ function loadSessionsFromServer() {
                         // FIX: If message count changed for current session, reload messages
                         if (s.id === currentSessionId) {
                             currentSessionMessageCountChanged = true;
-                            console.log('loadSessionsFromServer: Message count changed for current session, reloading messages');
+                            console.debug('loadSessionsFromServer: Message count changed for current session, reloading messages');
                         }
                     }
                 }
@@ -81,7 +81,7 @@ function loadSessionsFromServer() {
                     title: sessionsData[id].title,
                     updated_at: sessionsData[id].updated_at,
                     message_count: sessionsData[id].message_count,
-                    has_unread: newMessageIndicators[id] ? true : false,
+                    has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
                     // Include queue info for this session
                     queue_info: sessionQueueInfo[id] || null
                 }));
@@ -114,10 +114,19 @@ function updateSessionsListFromData() {
             title: sessionsData[id].title,
             updated_at: sessionsData[id].updated_at,
             message_count: sessionsData[id].message_count,
-            has_unread: newMessageIndicators[id] ? true : false,
+            has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
             // Include queue info for this session
             queue_info: sessionQueueInfo[id] || null
         }));
+        
+        // Only update if queue info or session data changed
+        const sessionsJson = JSON.stringify(sessions);
+        if (window._lastSessionsJson === sessionsJson) {
+            sessionsUpdateTimeout = null;
+            return;
+        }
+        window._lastSessionsJson = sessionsJson;
+        
         updateSessionsList(sessions);
         sessionsUpdateTimeout = null;
     }, 300);
@@ -148,7 +157,7 @@ function updateSessionsList(sessions) {
             // Server-side transcribing flag (for other clients)
             statusIcons = '<span class="session-status-icon transcribing blink" title="' + t('transcribing') + '">🎤</span>';
         } else if (info && info.processing) {
-            // Currently being processed - show lightning (ONLY for this session)
+            // Currently being processed - show lightning (ONLY ONE session can have this)
             statusIcons = '<span class="session-status-icon processing blink" title="' + t('processing') + '">⚡</span>';
         } else if (info && info.queued > 0) {
             // In queue - show hourglass with position number
@@ -223,6 +232,8 @@ function createNewSession() {
             return res.json();
         })
         .then(data => {
+            const oldSessionId = currentSessionId;
+            
             sessionsData[data.id] = {
                 title: data.title,
                 updated_at: new Date().toISOString(),
@@ -230,6 +241,12 @@ function createNewSession() {
             };
             document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
             currentSessionId = data.id;
+            
+            // Clear unread indicator for OLD session (we're leaving it)
+            if (oldSessionId) {
+                delete newMessageIndicators[oldSessionId];
+            }
+            
             loadSessionsFromServer().then(() => {
                 document.getElementById('chat-messages').innerHTML = '';
                 updateMessageCount();
@@ -317,11 +334,11 @@ function switchSession(sessionId) {
     
     // Don't switch if already on this session
     if (sessionId === currentSessionId) {
-        console.log('switchSession: Already on this session, skipping');
+        console.debug('switchSession: Already on this session, skipping');
         return;
     }
     
-    console.log('switchSession: Switching from', previousSessionId, 'to', sessionId);
+    console.debug('switchSession: Switching from', previousSessionId, 'to', sessionId);
     
     fetchWithCSRF('/api/sessions/' + sessionId + '/switch', { method: 'POST' })
         .then(res => res.json())
@@ -338,6 +355,14 @@ function switchSession(sessionId) {
             }).finally(() => {
                 // Update status counter after messages loaded
                 window.updateStatusCounter();
+                // Fetch queue status to update session statuses
+                if (typeof fetchQueueStatus === 'function') {
+                    fetchQueueStatus();
+                }
+                // Restore TTS button state if TTS is playing
+                if (typeof restoreTTSButtonState === 'function') {
+                    restoreTTSButtonState();
+                }
             });
             // Update active class in DOM
             document.querySelectorAll('.session-item').forEach(el => {

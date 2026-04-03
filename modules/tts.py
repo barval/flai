@@ -59,8 +59,11 @@ class TTSModule:
                 'language': lang,
                 'gender': gender
             }
+            t0 = __import__('time').time()
             self.logger.info(f"Sending TTS request for text (len={len(text)}) in {lang}, gender={gender}")
             response = requests.post(self.tts_url, json=payload, timeout=self.timeout)
+            elapsed = __import__('time').time() - t0
+            self.logger.info(f"Piper responded in {elapsed:.2f}s with status {response.status_code}")
             if response.status_code == 200:
                 content_type = response.headers.get('content-type', '')
                 if 'audio' in content_type:

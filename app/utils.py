@@ -13,6 +13,13 @@ from typing import List, Dict, Optional, Tuple, Any
 
 PROMPTS_DIR = 'prompts'
 
+
+def estimate_base64_decoded_size(base64_data: str) -> int:
+    """Estimate the decoded size of a base64-encoded string in bytes.
+    Base64 encodes 3 bytes into 4 characters, so decoded size ≈ (len * 3) / 4.
+    """
+    return int((len(base64_data) * 3) / 4)
+
 # Token estimation coefficients for different languages and model types
 # Format: (model_type, language) -> characters per token
 TOKEN_COEFFICIENTS = {
@@ -44,17 +51,30 @@ def get_current_time_in_timezone(app=None) -> Optional[str]:
     try:
         utc_now = datetime.now(pytz.UTC)
         local_time = utc_now.astimezone(tz)
-        weekdays_en = {0: 'Monday', 1: 'Tuesday', 2: 'Wednesday',
-                       3: 'Thursday', 4: 'Friday', 5: 'Saturday', 6: 'Sunday'}
+        # Get language from session, fallback to 'ru'
+        lang = 'ru'
+        try:
+            from flask import session
+            lang = session.get('language', 'ru')
+        except:
+            pass
+        # Localized weekday names
+        weekdays = {
+            'ru': {0: 'Понедельник', 1: 'Вторник', 2: 'Среда',
+                   3: 'Четверг', 4: 'Пятница', 5: 'Суббота', 6: 'Воскресенье'},
+            'en': {0: 'Monday', 1: 'Tuesday', 2: 'Wednesday',
+                   3: 'Thursday', 4: 'Friday', 5: 'Saturday', 6: 'Sunday'}
+        }
+        weekday_names = weekdays.get(lang, weekdays['ru'])
         formatted_date = local_time.strftime('%d.%m.%Y')
         formatted_time = local_time.strftime('%H:%M:%S')
-        weekday_en = weekdays_en[local_time.weekday()]
+        weekday_name = weekday_names[local_time.weekday()]
         tz_abbr = local_time.strftime('%z')
         if tz_abbr:
             tz_abbr = f"(+{int(tz_abbr[1:3])})" if tz_abbr.startswith('+') else f"({tz_abbr})"
         else:
             tz_abbr = ""
-        return f"{formatted_date} {formatted_time} {weekday_en} {tz_abbr}"
+        return f"{formatted_date} {formatted_time} {weekday_name} {tz_abbr}"
     except Exception as e:
         app.logger.error(f"Error getting time: {str(e)}")
         return None

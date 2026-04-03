@@ -552,7 +552,12 @@ def get_user_documents(user_id):
         ORDER BY uploaded_at DESC
         ''', (user_id,))
         documents = [dict(row) for row in c.fetchall()]
-        now = datetime.now()
+        # Use configured timezone for "now" calculation, or UTC as fallback
+        tz = current_app.config.get('TIMEZONE')
+        if tz:
+            now = datetime.now(tz).replace(tzinfo=None)
+        else:
+            now = datetime.utcnow()
         for doc in documents:
             uploaded_dt = None
             indexed_dt = None
@@ -586,6 +591,9 @@ def get_user_documents(user_id):
             elif status == INDEX_STATUS_INDEXING and uploaded_dt:
                 delta = now - uploaded_dt
                 processing_time = delta.total_seconds() / 60.0
+            # Ensure positive values (fallback for edge cases)
+            if processing_time is not None and processing_time < 0:
+                processing_time = abs(processing_time)
             doc['processing_time'] = processing_time
             if uploaded_dt:
                 if current_app.config.get('TIMEZONE'):

@@ -32,22 +32,16 @@ Services are distributed across multiple servers based on resource requirements.
 
 **Example Architecture:**
 
-```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  FLAI Web App   │     │   GPU Server 1  │     │   GPU Server 2  │
-│  (CPU only)     │────▶│   (Ollama)      │     │ (Automatic1111) │
-│  - Redis        │     │   - LLM models  │     │   - SD models   │
-│  - Frontend     │     └─────────────────┘     └─────────────────┘
-└────────┬────────┘
-         │
-         ├─────────────────┐     ┌─────────────────┐
-         │                 │     │  Storage Server │
-         ▼                 ▼     │  - Qdrant       │
-┌─────────────────┐ ┌─────────────────┐ │  - Piper        │
-│  Whisper ASR    │ │  Camera API     │ │  - Backups      │
-│  (CPU/GPU)      │ │  (room-snapshot)│ └─────────────────┘
-└─────────────────┘ └─────────────────┘
-```
+| Server | Role | Components | GPU |
+|--------|------|-----------|-----|
+| Server 1 | Web App | FLAI, Redis | No |
+| Server 2 | LLM | Ollama | Recommended |
+| Server 3 | Images | Automatic1111 | NVIDIA |
+| Server 4 | Storage | Qdrant, Piper | No |
+| Server 5 | Voice | Whisper ASR | Optional |
+| Server 6 | Camera | Room Snapshot API | No |
+
+All services connect to the FLAI Web App via REST API over the local network.
 
 **Best for:**
 - Production deployments

@@ -33,20 +33,20 @@ Services are distributed across multiple servers based on resource requirements.
 **Example Architecture:**
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  FLAI Web App   │     │   GPU Server 1  │     │   GPU Server 2  │
-│  (CPU only)     │────▶│   (Ollama)      │     │ (Automatic1111) │
-│  - Redis        │     │   - LLM models  │     │   - SD models   │
-│  - Frontend     │     └─────────────────┘     └─────────────────┘
-└────────┬────────┘
-         │
-         ├─────────────────┐     ┌─────────────────┐
-         │                 │     │  Storage Server │
-         ▼                 ▼     │  - Qdrant       │
-┌─────────────────┐ ┌─────────────────┐ │  - Piper        │
-│  Whisper ASR    │ │  Camera API     │ │  - Backups      │
-│  (CPU/GPU)      │ │  (room-snapshot)│ └─────────────────┘
-└─────────────────┘ └─────────────────┘
++-------------------+     +-------------------+     +-------------------+
+|  FLAI Web App     |     |   GPU Server 1    |     |   GPU Server 2    |
+|  (CPU only)       |---->|   (Ollama)        |     | (Automatic1111)   |
+|  - Redis          |     |   - LLM models    |     |   - SD models     |
+|  - Frontend       |     +-------------------+     +-------------------+
++--------+----------+
+         |
+         +-------------------+     +-------------------+
+         |                   |     |  Storage Server   |
+         v                   v     |  - Qdrant         |
++-------------------+ +-------------------+ |  - Piper          |
+|  Whisper ASR      | |  Camera API       | |  - Backups        |
+|  (CPU/GPU)        | |  (room-snapshot)  | +-------------------+
++-------------------+ +-------------------+
 ```
 
 **Best for:**

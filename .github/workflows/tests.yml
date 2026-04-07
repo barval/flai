@@ -7,6 +7,9 @@ on:
     branches: [main]
 
 jobs:
+  # ============================================================
+  # UNIT TESTS — mock all external services, run on multiple Python versions
+  # ============================================================
   unit-tests:
     runs-on: ubuntu-latest
     strategy:
@@ -34,7 +37,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Run unit tests
+    - name: Run unit tests (mocked external services)
       run: |
         pytest -m unit --cov=app --cov=modules --cov-report=xml --cov-report=term-missing -v
 
@@ -45,9 +48,12 @@ jobs:
         flags: unittests
         name: codecov-umbrella
 
+  # ============================================================
+  # INTEGRATION TESTS — require Redis, but mock Ollama/Qdrant/Whisper
+  # ============================================================
   integration-tests:
     runs-on: ubuntu-latest
-    
+
     services:
       redis:
         image: redis:alpine
@@ -91,48 +97,17 @@ jobs:
         flags: integration
         name: codecov-integration
 
-  e2e-tests:
-    runs-on: ubuntu-latest
+  # NOTE: E2E tests are intentionally disabled on GitHub Actions.
+  # They require Docker Compose with GPU services (Ollama, Automatic1111, Whisper)
+  # which are not available on GitHub-hosted runners.
+  # Run E2E tests locally: docker exec flai-web pytest -m e2e -v --tb=short
 
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Generate .env file
-      run: |
-        # Generate .env from .env.example with test values
-        cp .env.example .env
-        # Override with test-specific values
-        sed -i 's/SECRET_KEY=.*/SECRET_KEY=test-e2e-secret-key-for-ci-testing/' .env
-        sed -i 's/TIMEZONE=.*/TIMEZONE=UTC/' .env
-
-    - name: Set up Docker Compose
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y docker-compose
-
-    - name: Start services
-      run: |
-        docker-compose -f docker-compose.all.yml up -d
-        echo "Waiting for services to start..."
-        sleep 60
-
-    - name: Run E2E tests
-      run: |
-        docker exec flai-web pytest -m e2e -v --tb=short
-
-    - name: Show logs on failure
-      if: failure()
-      run: |
-        docker-compose -f docker-compose.all.yml logs
-
-    - name: Stop services
-      if: always()
-      run: |
-        docker-compose -f docker-compose.all.yml down
-
+  # ============================================================
+  # CODE QUALITY — linting and formatting checks
+  # ============================================================
   code-quality:
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
 
@@ -158,9 +133,12 @@ jobs:
       run: |
         isort --check-only app/ modules/ tests/
 
+  # ============================================================
+  # SECURITY SCAN — static analysis, no external services needed
+  # ============================================================
   security-scan:
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
 
@@ -187,3 +165,4 @@ jobs:
         name: security-reports
         path: |
           bandit-report.json
+

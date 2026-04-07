@@ -104,10 +104,13 @@ class TestRedisRequestQueue:
     def test_add_request_creates_task(self, mock_app, mock_redis):
         """Test that add_request creates and queues a task."""
         from app.queue import RedisRequestQueue
-        
+
         with patch('app.queue.redis.from_url', return_value=mock_redis):
             queue = RedisRequestQueue(mock_app)
-            
+
+            # Mock _get_session_title to avoid DB calls
+            queue._get_session_title = Mock(return_value='Test Session')
+
             request_id, position = queue.add_request(
                 user_id='test_user',
                 session_id='test-session-id',
@@ -115,7 +118,7 @@ class TestRedisRequestQueue:
                 user_class=2,
                 lang='ru'
             )
-            
+
             # Should have called rpush
             assert mock_redis.rpush.called
             # Should have added to user set

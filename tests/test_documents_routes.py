@@ -2,6 +2,7 @@
 """Integration tests for documents routes."""
 import pytest
 import io
+from unittest.mock import patch
 
 
 @pytest.mark.integration

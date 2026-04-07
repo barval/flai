@@ -59,7 +59,7 @@ def create_mock_qdrant():
 def test_app():
     """
     Create Flask app with test configuration.
-    
+
     Each test gets its own isolated app instance with temporary databases.
     External services (Redis, Ollama, Qdrant) are mocked.
     """
@@ -67,18 +67,28 @@ def test_app():
     temp_dir = tempfile.mkdtemp()
     db_path = os.path.join(temp_dir, 'test_chats.db')
     user_db_path = os.path.join(temp_dir, 'test_users.db')
-    
+
+    # Set environment variables BEFORE create_app() is called
+    # (load_config reads from os.getenv, and SECRET_KEY is required)
+    os.environ['SECRET_KEY'] = 'test-secret-key-for-testing-only'
+    os.environ['REDIS_URL'] = 'redis://localhost:6379/0'
+    os.environ['OLLAMA_URL'] = 'http://localhost:11434'
+    os.environ['WHISPER_API_URL'] = 'http://localhost:9000/asr'
+    os.environ['AUTOMATIC1111_URL'] = 'http://localhost:7860'
+    os.environ['PIPER_URL'] = 'http://localhost:8888/tts'
+    os.environ['QDRANT_URL'] = 'http://localhost:6333'
+
     # Create mocks for external services
     mock_redis = create_mock_redis()
     mock_ollama = create_mock_ollama()
     mock_qdrant = create_mock_qdrant()
-    
+
     # Patch external services before creating app
     with patch('redis.from_url', return_value=mock_redis):
         with patch('modules.base.OllamaClient', return_value=mock_ollama):
             with patch('modules.rag.QdrantClient', return_value=mock_qdrant):
                 flask_app = create_app()
-                
+
                 # Configure test app
                 flask_app.config.update({
                     'TESTING': True,
@@ -86,15 +96,8 @@ def test_app():
                     'USER_DB_PATH': user_db_path,
                     'WTF_CSRF_ENABLED': False,
                     'RATELIMIT_ENABLED': False,
-                    'SECRET_KEY': 'test-secret-key-for-testing-only',
                     'UPLOAD_FOLDER': os.path.join(temp_dir, 'uploads'),
                     'DOCUMENTS_FOLDER': os.path.join(temp_dir, 'documents'),
-                    'REDIS_URL': 'redis://localhost:6379/0',
-                    'OLLAMA_URL': 'http://localhost:11434',
-                    'WHISPER_API_URL': 'http://localhost:9000/asr',
-                    'AUTOMATIC1111_URL': 'http://localhost:7860',
-                    'PIPER_URL': 'http://localhost:8888/tts',
-                    'QDRANT_URL': 'http://localhost:6333',
                 })
                 
                 # Create upload and documents folders

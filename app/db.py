@@ -91,7 +91,7 @@ def init_db():
         c.execute('CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id)')
         # Additional indexes for user sessions and documents
         c.execute('CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON chat_sessions(user_id)')
-        c.execute('CREATE INDEX IF NOT EXISTS idx_session_visits_session_id ON session_visits(session_id)')
+        # session_visits index is created by migration — skip here to avoid error on fresh DB
         c.execute('CREATE INDEX IF NOT EXISTS idx_documents_index_status ON documents(index_status)')
         # Enable Write-Ahead Logging for better concurrency
         c.execute("PRAGMA journal_mode=WAL")

@@ -1,50 +1,86 @@
 # tests/load/locustfile.py
+"""Load testing script for FLAI application using Locust.
+Tests performance of various API endpoints without authentication
+to measure raw server capacity.
+"""
 from locust import HttpUser, task, between
 import random
-import json
 
 
-class ChatUser(HttpUser):
+class APILoadUser(HttpUser):
+    """Simulates users hitting various API endpoints."""
     wait_time = between(1, 3)
 
-    def on_start(self):
-        """Login and create a session before starting the test."""
-        # Login using the test user (must exist in the system)
-        response = self.client.post("/login", data={
-            "login": "testuser",
-            "password": "testpass"
-        })
-        if response.status_code != 200:
-            print(f"Login failed: {response.status_code}")
-            self.interrupt()
-        
-        # Create a new session to use for message retrieval
-        create_response = self.client.post("/api/sessions/new")
-        if create_response.status_code == 200:
-            data = create_response.json()
-            self.session_id = data.get("id")
-            print(f"Created new session: {self.session_id}")
-        else:
-            print("Failed to create session")
-            self.interrupt()
+    @task(5)
+    def health_check(self):
+        """Check health endpoint - very fast."""
+        self.client.get("/health")
 
     @task(3)
-    def send_message(self):
-        """Send a text message to the chat."""
-        self.client.post("/api/send_message", json={
-            "message": "Hello, this is a test message"
-        })
+    def login_page(self):
+        """Load login page - tests template rendering."""
+        self.client.get("/login")
 
-    @task(1)
+    @task(2)
+    def static_files(self):
+        """Load static files - tests static file serving."""
+        files = [
+            "/static/css/main.css",
+            "/static/js/chat-init.js",
+            "/static/js/chat-queue.js",
+            "/static/js/chat-sessions.js",
+        ]
+        self.client.get(random.choice(files))
+
+
+class AuthenticatedChatUser(HttpUser):
+    """Simulates authenticated users with full workflow."""
+    wait_time = between(2, 5)
+
+    def on_start(self):
+        """Login and create a session."""
+        import re
+
+        # Each user gets a random test account
+        user_num = random.randint(1, 5)
+        self.username = f"loaduser{user_num}"
+        self.password = f"loadpass{user_num}"
+        self.session_id = None
+        self.csrf_token = ""
+
+        # Step 1: Get login page and extract CSRF
+        login_page = self.client.get("/login")
+        match = re.search(r'name="csrf_token"[^>]*value="([^"]+)"', login_page.text)
+        if match:
+            self.csrf_token = match.group(1)
+
+        # Step 2: Login
+        self.client.post("/login", data={
+            "login": self.username,
+            "password": self.password,
+            "csrf_token": self.csrf_token
+        }, allow_redirects=True)
+
+        # Step 3: Get chat page CSRF
+        chat_page = self.client.get("/chat")
+        match = re.search(r'name="csrf_token"[^>]*value="([^"]+)"', chat_page.text)
+        if match:
+            self.csrf_token = match.group(1)
+
+        # Step 4: Create session
+        resp = self.client.post("/api/sessions/new", json={}, headers={
+            "X-CSRFToken": self.csrf_token
+        })
+        if resp.status_code == 200:
+            self.session_id = resp.json().get("id")
+
+    @task(3)
     def get_sessions(self):
-        """Fetch the list of sessions."""
+        """Fetch sessions list."""
         self.client.get("/api/sessions")
 
-    @task(1)
+    @task(2)
     def get_messages(self):
-        """Get messages for the session created in on_start."""
-        if hasattr(self, 'session_id'):
+        """Get messages for session."""
+        if self.session_id:
             self.client.get(f"/api/sessions/{self.session_id}/messages")
-        else:
-            # Fallback to a dummy ID if session creation failed
-            self.client.get("/api/sessions/dummy/messages")

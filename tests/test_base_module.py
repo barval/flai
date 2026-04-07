@@ -34,48 +34,48 @@ class TestBaseModule:
     def test_parse_router_response_no_marker(self, base_module):
         """Test parsing response without markers."""
         response = "This is a normal response"
-        action, query = base_module._parse_router_response(response, '', '')
-        assert action == 'none'
-        assert query == response
+        result = base_module._parse_router_response(response, '', '')
+        assert result['action'] == 'none'
+        assert result['query'] == response
 
     @pytest.mark.unit
     def test_parse_router_response_image_marker(self, base_module):
         """Test parsing response with image marker."""
         response = "[-IMAGE-] draw a cat"
-        action, query = base_module._parse_router_response(response, '', '')
-        assert action == 'image'
-        assert query == 'draw a cat'
+        result = base_module._parse_router_response(response, '', '')
+        assert result['action'] == 'image'
+        assert result['query'] == 'draw a cat'
 
     @pytest.mark.unit
     def test_parse_router_response_reasoning_marker(self, base_module):
         """Test parsing response with reasoning marker."""
         response = "[-REASONING-] solve this problem"
-        action, query = base_module._parse_router_response(response, '', '')
-        assert action == 'reasoning'
-        assert query == 'solve this problem'
+        result = base_module._parse_router_response(response, '', '')
+        assert result['action'] == 'reasoning'
+        assert result['query'] == 'solve this problem'
 
     @pytest.mark.unit
     def test_parse_router_response_camera_marker(self, base_module):
         """Test parsing response with camera marker."""
         response = "[-CAMERA-] show kitchen"
-        action, query = base_module._parse_router_response(response, '', '')
-        assert action == 'camera'
-        assert query == 'show kitchen'
+        result = base_module._parse_router_response(response, '', '')
+        assert result['action'] == 'camera'
+        assert result['query'] == 'show kitchen'
 
     @pytest.mark.unit
     def test_parse_router_response_rag_marker(self, base_module):
         """Test parsing response with RAG marker."""
         response = "[-RAG-] search documents"
-        action, query = base_module._parse_router_response(response, '', '')
-        assert action == 'rag'
-        assert query == 'search documents'
+        result = base_module._parse_router_response(response, '', '')
+        assert result['action'] == 'rag'
+        assert result['query'] == 'search documents'
 
     @pytest.mark.unit
     def test_parse_router_response_none(self, base_module):
         """Test parsing None response."""
-        action, query = base_module._parse_router_response(None, '', '')
-        assert action == 'none'
-        assert query == ''
+        result = base_module._parse_router_response(None, '', '')
+        assert result['action'] == 'none'
+        assert result['query'] == ''
 
     @pytest.mark.integration
     def test_get_model_config_returns_config(self, test_app):

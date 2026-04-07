@@ -93,9 +93,17 @@ jobs:
 
   e2e-tests:
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
+
+    - name: Generate .env file
+      run: |
+        # Generate .env from .env.example with test values
+        cp .env.example .env
+        # Override with test-specific values
+        sed -i 's/SECRET_KEY=.*/SECRET_KEY=test-e2e-secret-key-for-ci-testing/' .env
+        sed -i 's/TIMEZONE=.*/TIMEZONE=UTC/' .env
 
     - name: Set up Docker Compose
       run: |

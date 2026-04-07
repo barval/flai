@@ -34,7 +34,7 @@ class TestBaseModule:
     def test_parse_router_response_no_marker(self, base_module):
         """Test parsing response without markers."""
         response = "This is a normal response"
-        action, query = base_module._parse_router_response(response)
+        action, query = base_module._parse_router_response(response, '', '')
         assert action == 'none'
         assert query == response
 
@@ -42,7 +42,7 @@ class TestBaseModule:
     def test_parse_router_response_image_marker(self, base_module):
         """Test parsing response with image marker."""
         response = "[-IMAGE-] draw a cat"
-        action, query = base_module._parse_router_response(response)
+        action, query = base_module._parse_router_response(response, '', '')
         assert action == 'image'
         assert query == 'draw a cat'
 
@@ -50,7 +50,7 @@ class TestBaseModule:
     def test_parse_router_response_reasoning_marker(self, base_module):
         """Test parsing response with reasoning marker."""
         response = "[-REASONING-] solve this problem"
-        action, query = base_module._parse_router_response(response)
+        action, query = base_module._parse_router_response(response, '', '')
         assert action == 'reasoning'
         assert query == 'solve this problem'
 
@@ -58,7 +58,7 @@ class TestBaseModule:
     def test_parse_router_response_camera_marker(self, base_module):
         """Test parsing response with camera marker."""
         response = "[-CAMERA-] show kitchen"
-        action, query = base_module._parse_router_response(response)
+        action, query = base_module._parse_router_response(response, '', '')
         assert action == 'camera'
         assert query == 'show kitchen'
 
@@ -66,14 +66,14 @@ class TestBaseModule:
     def test_parse_router_response_rag_marker(self, base_module):
         """Test parsing response with RAG marker."""
         response = "[-RAG-] search documents"
-        action, query = base_module._parse_router_response(response)
+        action, query = base_module._parse_router_response(response, '', '')
         assert action == 'rag'
         assert query == 'search documents'
 
     @pytest.mark.unit
     def test_parse_router_response_none(self, base_module):
         """Test parsing None response."""
-        action, query = base_module._parse_router_response(None)
+        action, query = base_module._parse_router_response(None, '', '')
         assert action == 'none'
         assert query == ''
 

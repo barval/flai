@@ -370,6 +370,21 @@ msgstr "Превышено время ожидания ответа от мод�
 msgid "Could not connect to Ollama"
 msgstr "Не удалось подключиться к Ollama"
 
+msgid "Could not connect to llama-server"
+msgstr "Не удалось подключиться к llama-server"
+
+msgid "llama-server available"
+msgstr "llama-server доступен"
+
+msgid "llama-server unavailable"
+msgstr "llama-server недоступен"
+
+msgid "Please provide llama-server URL first."
+msgstr "Сначала укажите URL llama-server."
+
+msgid "Refresh models from llama-server"
+msgstr "Обновить модели из llama-server"
+
 msgid "Error"
 msgstr "Ошибка"
 

@@ -73,7 +73,7 @@ function renderModelCards() {
     modules.forEach(mod => {
         // Support both service_url (new) and ollama_url (legacy)
         const serviceUrl = mod.config.service_url || mod.config.ollama_url || '';
-        const isLocal = serviceUrl === 'http://llamacpp:8080' || serviceUrl === 'http://ollama:11434';
+        const isLocal = serviceUrl === 'http://llamacpp:8033' || serviceUrl === 'http://ollama:11434';
 
         html += `
         <div class="model-card" data-module="${mod.id}">
@@ -84,7 +84,7 @@ function renderModelCards() {
                     ${t('Local')}
                 </label>
                 <div class="url-input-wrapper">
-                    <input type="text" class="service-url" data-module="${mod.id}" value="${escapeHtml(serviceUrl)}" placeholder="http://llamacpp:8080">
+                    <input type="text" class="service-url" data-module="${mod.id}" value="${escapeHtml(serviceUrl)}" placeholder="http://llamacpp:8033">
                 </div>
                 <span class="service-status-icon" data-module="${mod.id}" title="">?</span>
             </div>
@@ -161,7 +161,7 @@ function onLocalCheckboxChange(event) {
     const module = cb.dataset.module;
     const urlInput = document.querySelector(`.service-url[data-module="${module}"]`);
     if (cb.checked) {
-        urlInput.value = 'http://llamacpp:8080';
+        urlInput.value = 'http://llamacpp:8033';
         urlInput.disabled = true;
         updateServiceStatus(module);
     } else {

@@ -1,6 +1,4 @@
 # docker-compose.all.yml
-version: '3.8'
-
 services:
   # ============================================================
   # WEB APPLICATION (Required)
@@ -86,13 +84,15 @@ services:
   # ============================================================
   # LLAMA.CPP SERVER (Required - LLM Inference, router mode)
   # ============================================================
+  # Router mode: handles chat, reasoning, embedding, and multimodal.
+  # Multimodal models must be in subdirectories with mmproj file named mmproj*.gguf
   llamacpp:
-    image: ghcr.io/ggerganov/llama.cpp:server-cuda
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
     container_name: flai-llamacpp
     ports:
-      - "8080:8080"
+      - "8080:8033"
     volumes:
-      - ./services/llamacpp/models:/app/models
+      - ./services/llamacpp/models:/models
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
@@ -112,16 +112,18 @@ services:
     networks:
       - flai_network
     restart: unless-stopped
-    # Run in router mode (--model-dir) to support dynamic model switching
+    # Router mode: --models-dir allows dynamic model switching
+    # --models-max 1: only keep one model in VRAM at a time (avoid OOM on 16GB GPU)
     command: >
-      --model-dir /app/models
+      --models-dir /models/
+      --models-preset /models/models-preset.ini
+      --models-max 1
+      --ctx-size 8192
       --host 0.0.0.0
-      --port 8080
+      --port 8033
       --n-gpu-layers -1
-      --ctx-size 32768
-      --cache-type-k q8_0
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/v1/models || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8033/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -135,47 +137,52 @@ services:
   # ============================================================
   # STABLE-DIFFUSION.CPP (Optional - Image Generation)
   # ============================================================
-  sd_cpp:
-    build:
-      context: ./services/sd_cpp
-      dockerfile: Dockerfile.sd_cpp
-    container_name: flai-sd
-    ports:
-      - "7860:7860"
-    volumes:
-      - ./services/sd_cpp/models:/app/models
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-    runtime: nvidia
-    deploy:
-      resources:
-        limits:
-          cpus: '8.0'
-          memory: 24G
-        reservations:
-          cpus: '4.0'
-          memory: 16G
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    networks:
-      - flai_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7860/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    profiles:
-      - with-image-gen
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+  # NOTE: stable-diffusion.cpp doesn't publish official Docker images.
+  # Uncomment the build section once you have a working Dockerfile.
+  # sd_cpp:
+  #   build:
+  #     context: ./services/sd_cpp
+  #     dockerfile: Dockerfile.sd_cpp
+  #   container_name: flai-sd
+  #   ports:
+  #     - "7860:7860"
+  #   volumes:
+  #     - ./services/sd_cpp/models/diffusion_models:/app/models/diffusion_models
+  #     - ./services/sd_cpp/models/vae:/app/models/vae
+  #     - ./services/sd_cpp/models/text_encoders:/app/models/text_encoders
+  #     - ./services/sd_cpp/outputs:/app/outputs
+  #   environment:
+  #     - NVIDIA_VISIBLE_DEVICES=all
+  #     - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+  #   runtime: nvidia
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '8.0'
+  #         memory: 24G
+  #       reservations:
+  #         cpus: '4.0'
+  #         memory: 16G
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+  #   networks:
+  #     - flai_network
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:7860/"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 60s
+  #   profiles:
+  #     - with-image-gen
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
 
   # ============================================================
   # WHISPER ASR (Optional - Speech Recognition)

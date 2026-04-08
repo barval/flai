@@ -1,13 +1,42 @@
 # Dockerfile for stable-diffusion.cpp server
+# Supports Z_image_turbo, Qwen_image and classic SD models
+
 FROM ghcr.io/leejet/stable-diffusion.cpp:cuda
 
 WORKDIR /app
 
-# Create models directory
-RUN mkdir -p /app/models
+# Create directories for different model components
+RUN mkdir -p /app/models/diffusion_models \
+             /app/models/vae \
+             /app/models/text_encoders \
+             /app/outputs
 
 # Expose default sd.cpp server port
 EXPOSE 7860
 
+# Environment variables for model paths (can be overridden at runtime)
+ENV DIFFUSION_MODEL=/app/models/diffusion_models/model.gguf
+ENV VAE_PATH=/app/models/vae/ae.safetensors
+ENV LLM_PATH=/app/models/text_encoders/llm.gguf
+ENV CFG_SCALE=1.0
+ENV STEPS=10
+ENV IMAGE_WIDTH=1024
+ENV IMAGE_HEIGHT=1024
+
 # Run sd.cpp server in OpenAI-compatible mode
-CMD ["--host", "0.0.0.0", "--port", "7860", "--model", "/app/models/model.gguf"]
+# For Z_image_turbo / Qwen_image: uses LLM as text encoder, no negative prompt, cfg_scale=1.0
+# For classic SD: uses CLIP/T5XXL encoders, supports negative prompt, cfg_scale=7.0
+CMD [ \
+    "sdserver", \
+    "--host", "0.0.0.0", \
+    "--port", "7860", \
+    "--diffusion-model", "/app/models/diffusion_models/model.gguf", \
+    "--vae", "/app/models/vae/ae.safetensors", \
+    "--llm", "/app/models/text_encoders/llm.gguf", \
+    "--cfg-scale", "1.0", \
+    "--steps", "10", \
+    "--width", "1024", \
+    "--height", "1024", \
+    "--threads", "4", \
+    "--log-verbosity", "2" \
+]

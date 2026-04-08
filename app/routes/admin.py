@@ -289,34 +289,101 @@ def llamacpp_models():
 @bp.route('/api/llamacpp/model/<path:name>', methods=['GET'])
 @admin_required
 def llamacpp_model_info(name):
-    """Return detailed information about a specific model from llama-server."""
+    """Return information about a specific model from llama-server.
+    The llama.cpp router doesn't support /v1/models/{name}, so we parse
+    what we can from the model list response and the filename.
+    """
     service_url = request.args.get('url')
     if not service_url:
         return jsonify({'error': _('Missing "url" parameter')}), 400
     try:
-        resp = requests.get(f"{service_url.rstrip('/')}/v1/models/{name}", timeout=10)
+        resp = requests.get(f"{service_url.rstrip('/')}/v1/models", timeout=10)
         if resp.status_code == 200:
             data = resp.json()
-            model_info = {
-                'id': data.get('id', name),
-                'architecture': 'N/A',
-                'parameters': 'N/A',
-                'quantization': 'N/A',
+            model_data = None
+            for m in data.get('data', []):
+                if m.get('id') == name:
+                    model_data = m
+                    break
+
+            # Parse quantization from filename
+            quantization = _extract_quantization(name)
+
+            # Determine if it's likely an embedding model
+            is_embedding = 'embed' in name.lower() or 'bge' in name.lower()
+            # Determine if it's likely a vision model
+            is_vision = 'vl' in name.lower() or 'vision' in name.lower()
+
+            # Determine architecture family from name
+            arch = 'N/A'
+            name_lower = name.lower()
+            if 'qwen3' in name_lower and 'vl' in name_lower:
+                arch = 'qwen3-vl'
+            elif 'qwen3' in name_lower:
+                arch = 'qwen3'
+            elif 'qwen2.5' in name_lower or 'qwen2' in name_lower:
+                arch = 'qwen2.5'
+            elif 'gemma' in name_lower:
+                arch = 'gemma'
+            elif 'gpt-oss' in name_lower:
+                arch = 'gpt-oss'
+            elif 'bge' in name_lower:
+                arch = 'bge'
+            elif 'llama' in name_lower:
+                arch = 'llama'
+            elif 'mistral' in name_lower:
+                arch = 'mistral'
+
+            # Estimate parameter count from filename
+            params = 'N/A'
+            for hint in ['70b', '70B']:
+                if hint in name:
+                    params = '~70B'
+            for hint in ['27b', '27B']:
+                if hint in name:
+                    params = '~27B'
+            for hint in ['20b', '20B']:
+                if hint in name:
+                    params = '~20B'
+            for hint in ['26b', '26B', 'a4b']:
+                if hint in name_lower:
+                    params = '~26B (MoE)'
+            for hint in ['14b', '14B']:
+                if hint in name:
+                    params = '~14B'
+            for hint in ['9b', '9B']:
+                if hint in name:
+                    params = '~9B'
+            for hint in ['8b', '8B']:
+                if hint in name:
+                    params = '~8B'
+            for hint in ['7b', '7B']:
+                if hint in name:
+                    params = '~7B'
+            for hint in ['4b', '4B']:
+                if hint in name:
+                    params = '~4B'
+            for hint in ['3b', '3B']:
+                if hint in name:
+                    params = '~3B'
+            for hint in ['1b', '1B']:
+                if hint in name:
+                    params = '~1B'
+
+            status = 'unknown'
+            if model_data:
+                status = model_data.get('status', {}).get('value', 'unknown')
+
+            return jsonify({
+                'id': name,
+                'architecture': arch,
+                'parameters': params,
+                'quantization': quantization,
                 'context_length': 'N/A',
-                'embedding_length': 'N/A'
-            }
-            # Extract metadata if available
-            metadata = data.get('metadata', {})
-            if metadata:
-                model_info['architecture'] = metadata.get('architecture', 'N/A')
-                model_info['parameters'] = metadata.get('parameters', 'N/A')
-                model_info['quantization'] = metadata.get('quantization', 'N/A')
-                model_info['context_length'] = metadata.get('context_length', 'N/A')
-                model_info['embedding_length'] = metadata.get('embedding_length', 'N/A')
-            else:
-                # Fallback: parse from filename
-                model_info['quantization'] = _extract_quantization(name)
-            return jsonify(model_info)
+                'embedding_length': 'N/A',
+                'status': status,
+                'type': 'embedding' if is_embedding else ('vision' if is_vision else 'text'),
+            })
         else:
             return jsonify({'error': _('llama-server returned {status}').format(status=resp.status_code)}), 500
     except Exception as e:

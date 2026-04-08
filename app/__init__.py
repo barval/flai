@@ -15,8 +15,6 @@ from .db import (
 )
 from .queue import RedisRequestQueue
 from .userdb import init_user_db, get_user_by_login
-from modules import BaseModule, MultimodalModule, ImageModule, CamModule, RagModule, AudioModule, SdCppModule
-from modules.tts import TTSModule
 import mimetypes
 
 babel = Babel()
@@ -29,6 +27,10 @@ def get_locale():
     if 'language' in session:
         return session['language']
     return request.accept_languages.best_match(['ru', 'en']) or 'ru'
+
+
+# Register locale selector for Flask-Babel 2.x compatibility
+babel.localeselector_func = get_locale
 
 
 def create_app():
@@ -101,7 +103,7 @@ def create_app():
     logging.root.handlers = [console_handler]
 
     # Initialize Babel with the app
-    babel.init_app(app, locale_selector=get_locale)
+    babel.init_app(app)
     app.jinja_env.add_extension('jinja2.ext.i18n')  # for _() in templates
     app.jinja_env.globals['_'] = gettext
 
@@ -125,34 +127,38 @@ def create_app():
     # Initialize user DB
     init_user_db()
 
-    # Initialize modules
+    # Initialize modules (lazy imports to avoid circular dependency)
     modules = {}
+
+    from modules.base import BaseModule
     modules['base'] = BaseModule(app)
 
-    # Multimodal module is always created if Ollama is available (model selected via admin)
-    # No global OLLAMA_URL check needed – we rely on model configs.
+    from modules.multimodal import MultimodalModule
     modules['multimodal'] = MultimodalModule(app)
 
-    if app.config.get('SD_CPP_URL') and 'multimodal' in modules:
+    if app.config.get('SD_CPP_URL'):
+        from modules.sd_cpp import SdCppModule
         modules['image'] = SdCppModule(app)
         modules['image'].set_multimodal_module(modules['multimodal'])
 
     if app.config.get('CAMERA_ENABLED'):
+        from modules.cam import CamModule
         modules['cam'] = CamModule(app)
         app.logger.info("Camera module enabled")
     else:
         app.logger.info("Camera module disabled (CAMERA_ENABLED=False)")
 
-    # Initialize RAG module if Qdrant URL is configured
     if app.config.get('QDRANT_URL'):
+        from modules.rag import RagModule
         modules['rag'] = RagModule(app)
         app.logger.info("RAG module enabled with Qdrant")
     else:
         app.logger.info("RAG module disabled (QDRANT_URL not set)")
 
+    from modules.audio import AudioModule
     modules['audio'] = AudioModule(app)
 
-    # TTS module
+    from modules.tts import TTSModule
     if app.config.get('PIPER_URL'):
         modules['tts'] = TTSModule(app)
         app.logger.info("TTS module enabled")
@@ -281,7 +287,7 @@ def create_app():
                 'web': 'ok',
                 'database': 'unknown',
                 'redis': 'unknown',
-                'ollama': 'unknown'
+                'llamacpp': 'unknown',
             }
         }
         http_status = 200
@@ -307,13 +313,17 @@ def create_app():
         
         # Check llama-server
         try:
-            from app.model_config import get_model_config
-            llamacpp_config = get_model_config('chat')
-            if llamacpp_config and llamacpp_config.get('service_url'):
-                service_url = llamacpp_config['service_url'].rstrip('/')
-            else:
-                service_url = 'http://llamacpp:8080'
-            response = requests.get(f"{service_url}/v1/models", timeout=5)
+            # Prefer LLAMACPP_URL from config (global setting)
+            service_url = app.config.get('LLAMACPP_URL')
+            if not service_url:
+                # Fallback to DB config
+                from app.model_config import get_model_config
+                llamacpp_config = get_model_config('chat')
+                if llamacpp_config:
+                    service_url = llamacpp_config.get('service_url') or llamacpp_config.get('ollama_url')
+            if not service_url:
+                service_url = 'http://flai-llamacpp:8033'
+            response = requests.get(f"{service_url.rstrip('/')}/v1/models", timeout=5)
             if response.status_code == 200:
                 status['services']['llamacpp'] = 'ok'
             else:

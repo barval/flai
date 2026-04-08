@@ -19,9 +19,16 @@ def load_config(app):
     app.config['TIMEZONE_STR'] = os.getenv('TIMEZONE')
     app.config['REDIS_URL'] = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
     
-    # stable-diffusion.cpp settings (replaces Automatic1111)
+    # llama.cpp server settings (replaces Ollama)
+    app.config['LLAMACPP_URL'] = os.getenv('LLAMACPP_URL')
+    # For Z_image_turbo / Qwen_image: cfg_scale=1.0, steps=10, 1024x1024, no negative_prompt
+    # For classic SD: cfg_scale=7.0, steps=30, 512x512, negative_prompt supported
     app.config['SD_CPP_URL'] = os.getenv('SD_CPP_URL')
     app.config['SD_CPP_MODEL'] = os.getenv('SD_CPP_MODEL')
+    app.config['SD_CPP_DEFAULT_WIDTH'] = int(os.getenv('SD_CPP_DEFAULT_WIDTH', 1024))
+    app.config['SD_CPP_DEFAULT_HEIGHT'] = int(os.getenv('SD_CPP_DEFAULT_HEIGHT', 1024))
+    app.config['SD_CPP_DEFAULT_CFG_SCALE'] = float(os.getenv('SD_CPP_DEFAULT_CFG_SCALE', 1.0))
+    app.config['SD_CPP_DEFAULT_STEPS'] = int(os.getenv('SD_CPP_DEFAULT_STEPS', 10))
     app.config['SD_CPP_TIMEOUT'] = int(os.getenv('SD_CPP_TIMEOUT', 180))
 
     # Image validation settings (shared)

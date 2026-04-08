@@ -31,6 +31,7 @@ class LlamaCppClient:
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
         self.available = False
+        self.app = app
         if app:
             self.init_app(app)
 
@@ -39,14 +40,29 @@ class LlamaCppClient:
         self.check_availability()
 
     def _get_service_url(self, module_type: str) -> Optional[str]:
-        """Get the service URL for a given module type from model config."""
+        """Get the service URL for a given module type.
+        Priority: 1) service_url from DB (if not legacy Ollama),
+                  2) LLAMACPP_URL from config (global fallback),
+                  3) ollama_url from DB (legacy compatibility).
+        """
         config = get_model_config(module_type)
-        if config and config.get('service_url'):
-            return config['service_url'].rstrip('/')
-        # Fallback: try ollama_url for backward compatibility during migration
+        if config:
+            service_url = config.get('service_url')
+            # If service_url is set and is not the old Ollama default, use it
+            if service_url and service_url != 'http://ollama:11434':
+                return service_url.rstrip('/')
+        # Global fallback from .env (preferred over legacy DB values)
+        if self.app and self.app.config.get('LLAMACPP_URL'):
+            return self.app.config['LLAMACPP_URL'].rstrip('/')
+        # Legacy DB fallback
         if config and config.get('ollama_url'):
-            return config['ollama_url'].rstrip('/')
-        return None
+            ollama_url = config['ollama_url']
+            # Convert old Ollama port to llama-server port
+            if '11434' in ollama_url:
+                return ollama_url.replace('11434', '8033').replace('ollama', 'flai-llamacpp')
+            return ollama_url.rstrip('/')
+        # Last resort default
+        return 'http://flai-llamacpp:8033'
 
     def check_availability(self) -> bool:
         """Check if llama-server is reachable via /v1/models endpoint."""
@@ -356,12 +372,8 @@ class LlamaCppClient:
         """
         Call llama-server with image + text (multimodal).
         Uses OpenAI-compatible format with image_url in messages.
-
-        Args:
-            text: Text query
-            image_base64: Base64-encoded image
-            model_type: Module type (usually 'multimodal')
-            lang: Language for error messages
+        The llama.cpp router automatically handles mmproj files
+        when models are placed in subdirectories with mmproj*.gguf.
         """
         # Detect mime type from base64 header or default to jpeg
         if image_base64.startswith('data:'):

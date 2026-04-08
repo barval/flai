@@ -48,7 +48,21 @@ class SdCppModule:
         self.model_name = app.config.get('SD_CPP_MODEL')
         self.timeout = app.config.get('SD_CPP_TIMEOUT', 180)
 
-        self.logger.info(f"Initializing SdCppModule with SD URL: {self.sd_cpp_url}")
+        # Default generation parameters from config
+        self.default_width = app.config.get('SD_CPP_DEFAULT_WIDTH', 1024)
+        self.default_height = app.config.get('SD_CPP_DEFAULT_HEIGHT', 1024)
+        self.default_cfg_scale = app.config.get('SD_CPP_DEFAULT_CFG_SCALE', 1.0)
+        self.default_steps = app.config.get('SD_CPP_DEFAULT_STEPS', 10)
+
+        # For Z_image_turbo/Qwen_image: cfg_scale=1.0 means no negative prompt
+        self.use_negative_prompt = self.default_cfg_scale > 1.0
+
+        self.logger.info(
+            f"Initializing SdCppModule with SD URL: {self.sd_cpp_url}, "
+            f"cfg_scale={self.default_cfg_scale}, steps={self.default_steps}, "
+            f"{self.default_width}x{self.default_height}, "
+            f"negative_prompt={'yes' if self.use_negative_prompt else 'no'}"
+        )
 
         # Initial availability check with retries
         max_retries = app.config.get('SERVICE_RETRY_ATTEMPTS', 5)
@@ -154,26 +168,55 @@ class SdCppModule:
         return self._call_sd_cpp(prompt_data, lang)
 
     def _call_sd_cpp(self, prompt_data, lang='ru'):
-        """Call sd.cpp server with image generation parameters."""
+        """Call sd.cpp server with image generation parameters.
+
+        Supports two model types:
+        1. Z_image_turbo / Qwen_image (flow matching):
+           - cfg_scale=1.0, no negative_prompt, steps=10-30, 1024x1024
+           - sampling_method: euler (Qwen) or default (Z_image_turbo)
+           - flow_shift: 2-3
+        2. Classic SD (traditional diffusion):
+           - cfg_scale~7, negative_prompt supported, steps~30, 512x512
+
+        The model type is determined by cfg_scale value in config.
+        """
         try:
-            # sd.cpp OpenAI-compatible format
+            # Use defaults from config, override with prompt_data if present
+            cfg_scale = float(prompt_data.get("cfg_scale", self.default_cfg_scale))
+            steps = int(prompt_data.get("steps", self.default_steps))
+            width = int(prompt_data.get("width", self.default_width))
+            height = int(prompt_data.get("height", self.default_height))
+
             payload = {
                 "prompt": prompt_data.get("prompt", ""),
-                "negative_prompt": prompt_data.get("negative_prompt", ""),
-                "steps": int(prompt_data.get("steps", 30)),
-                "width": int(prompt_data.get("width", 512)),
-                "height": int(prompt_data.get("height", 512)),
-                "cfg_scale": float(prompt_data.get("cfg_scale", 7.0)),
+                "steps": steps,
+                "width": width,
+                "height": height,
+                "cfg_scale": cfg_scale,
                 "seed": int(prompt_data.get("seed", -1)),  # -1 = random
-                "sample_method": prompt_data.get("sample_method", "euler_a"),
             }
+
+            # Flow-matching specific parameters (Z_image_turbo, Qwen_image)
+            if cfg_scale <= 1.0:
+                if prompt_data.get("sampling_method"):
+                    payload["sampling_method"] = prompt_data["sampling_method"]
+                if prompt_data.get("flow_shift") is not None:
+                    payload["flow_shift"] = float(prompt_data["flow_shift"])
+            # Classic SD parameters
+            elif prompt_data.get("sample_method"):
+                payload["sample_method"] = prompt_data["sample_method"]
+
+            # Only include negative_prompt for classic SD models (cfg_scale > 1.0)
+            if self.use_negative_prompt and prompt_data.get("negative_prompt"):
+                payload["negative_prompt"] = prompt_data["negative_prompt"]
 
             # Optional model override
             if self.model_name:
                 payload["model"] = self.model_name
 
             self.logger.info(
-                f"Sending request to sd.cpp server, timeout: {self.timeout}s"
+                f"Sending request to sd.cpp server, cfg_scale={payload['cfg_scale']}, "
+                f"steps={payload['steps']}, timeout: {self.timeout}s"
             )
 
             response = requests.post(

@@ -171,7 +171,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'documents_db': {{ _('Documents DB')|tojson }},
     'mb': {{ _('MB')|tojson }},
     // New translations for models tab
-    'Refresh models from Ollama': {{ _('Refresh models from Ollama')|tojson }},
+    'Refresh models from llama-server': {{ _('Refresh models from llama-server')|tojson }},
     'Saved': {{ _('Saved')|tojson }},
     // Model tab translations
     'Chat': {{ _('Chat')|tojson }},
@@ -199,10 +199,10 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'reindex_started': {{ _('Reindexing all documents with new embedding model started. This may take a while.')|tojson }},
     // New translations for per-model URL
     'Local': {{ _('Local')|tojson }},
-    'Please provide Ollama URL first.': {{ _('Please provide Ollama URL first.')|tojson }},
-    // New translations for Ollama status
-    'Ollama available': {{ _('Ollama available')|tojson }},
-    'Ollama unavailable': {{ _('Ollama unavailable')|tojson }}
+    'Please provide llama-server URL first.': {{ _('Please provide llama-server URL first.')|tojson }},
+    // New translations for llama-server status
+    'llama-server available': {{ _('llama-server available')|tojson }},
+    'llama-server unavailable': {{ _('llama-server unavailable')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}
 console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);

@@ -48,36 +48,81 @@ To run llama-server on a remote machine:
 docker run -d \
   --name flai-llamacpp \
   --gpus all \
-  -p 8080:8080 \
-  -v /path/to/models:/app/models \
-  ghcr.io/ggerganov/llama.cpp:server-cuda \
-  --model-dir /app/models --host 0.0.0.0 --port 8080 --n-gpu-layers -1
+  -p 8033:8033 \
+  -v /path/to/models:/models \
+  ghcr.io/ggml-org/llama.cpp:server-cuda \
+  --models-dir /models/ --host 0.0.0.0 --port 8033 --n-gpu-layers -1
 ```
 
-Then set `LLAMACPP_URL=http://remote-ip:8080` in FLAI's `.env`.
+Then set `LLAMACPP_URL=http://remote-ip:8033` in FLAI's `.env`.
 
 ## stable-diffusion.cpp (Optional)
 
-Replaces Automatic1111. Provides basic text-to-image generation.
+Replaces Automatic1111. Provides text-to-image generation.
 
-### Setup
+### Supported model types
 
-1. **Download SD GGUF checkpoint** to `services/sd_cpp/models/`:
+#### Z_image_turbo (fast generation)
+```bash
+mkdir -p services/sd_cpp/models/{diffusion_models,vae,text_encoders}
 
-   ```bash
-   mkdir -p services/sd_cpp/models
+# Diffusion model
+wget -O services/sd_cpp/models/diffusion_models/z_image_turbo-Q8_0.gguf \
+  "https://huggingface.co/.../z_image_turbo-Q8_0.gguf"
 
-   # Example: RealVisXL v4 in GGUF format
-   # Find available GGUF models on HuggingFace or CivitAI
-   wget -O services/sd_cpp/models/realvisxl-v4.gguf \
-     "https://huggingface.co/..."
-   ```
+# VAE
+wget -O services/sd_cpp/models/vae/ae.safetensors \
+  "https://huggingface.co/.../ae.safetensors"
 
-2. **Configure in `.env`:**
-   ```bash
-   SD_CPP_URL=http://flai-sd:7860
-   SD_CPP_MODEL=realvisxl-v4.gguf
-   ```
+# Text encoder (LLM)
+wget -O services/sd_cpp/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
+  "https://huggingface.co/.../Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+```
+**Params:** cfg_scale=1.0, steps=10, flow_shift=2, 1024x1024, no negative_prompt.
+
+#### Qwen_image
+```bash
+mkdir -p services/sd_cpp/models/{diffusion_models,vae,text_encoders}
+
+# Diffusion model
+wget -O services/sd_cpp/models/diffusion_models/Qwen_Image-Q4_K_M.gguf \
+  "https://huggingface.co/.../Qwen_Image-Q4_K_M.gguf"
+
+# VAE
+wget -O services/sd_cpp/models/vae/qwen_image_vae.safetensors \
+  "https://huggingface.co/.../qwen_image_vae.safetensors"
+
+# Text encoder (LLM)
+wget -O services/sd_cpp/models/text_encoders/Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf \
+  "https://huggingface.co/.../Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf"
+```
+**Params:** cfg_scale=1.0, steps=30, flow_shift=3, sampling_method=euler, 1024x1024, no negative_prompt.
+
+#### Classic SD (SDXL, SD 1.5)
+Traditional diffusion models with CLIP/T5XXL text encoders.
+**Params:** cfg_scale=7.0, steps=30, negative_prompt supported.
+
+### Configuration in `.env`
+
+```bash
+SD_CPP_URL=http://flai-sd:7860
+SD_CPP_MODEL=z_image_turbo-Q8_0.gguf   # or Qwen_Image-Q4_K_M.gguf
+
+# Z_image_turbo defaults:
+SD_CPP_DEFAULT_CFG_SCALE=1.0
+SD_CPP_DEFAULT_STEPS=10
+SD_CPP_DEFAULT_WIDTH=1024
+SD_CPP_DEFAULT_HEIGHT=1024
+
+# Qwen_image defaults (uncomment if using):
+# SD_CPP_DEFAULT_STEPS=30
+
+# Classic SD defaults (uncomment if using SDXL):
+# SD_CPP_DEFAULT_CFG_SCALE=7.0
+# SD_CPP_DEFAULT_STEPS=30
+# SD_CPP_DEFAULT_WIDTH=512
+# SD_CPP_DEFAULT_HEIGHT=512
+```
 
 ## Whisper ASR (Optional, unchanged)
 

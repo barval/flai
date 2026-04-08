@@ -369,6 +369,21 @@ msgstr "Timeout ({timeout}s) when calling the model. Try increasing timeout in a
 msgid "Could not connect to Ollama"
 msgstr "Could not connect to Ollama"
 
+msgid "Could not connect to llama-server"
+msgstr "Could not connect to llama-server"
+
+msgid "llama-server available"
+msgstr "llama-server available"
+
+msgid "llama-server unavailable"
+msgstr "llama-server unavailable"
+
+msgid "Please provide llama-server URL first."
+msgstr "Please provide llama-server URL first."
+
+msgid "Refresh models from llama-server"
+msgstr "Refresh models from llama-server"
+
 msgid "Error"
 msgstr "Error"
 

@@ -363,14 +363,14 @@ class RedisRequestQueue:
                         process_time = mm_time
                     else:
                         gen_start_time = time.time()
-                        image_result = self.app.modules['image']._call_automatic1111(prompt_data, lang=lang)
+                        image_result = self.app.modules['image']._call_sd_cpp(prompt_data, lang=lang)
                         gen_time = round(time.time() - gen_start_time, 1)
                         if image_result['success']:
                             completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
                             image_result['mm_time'] = mm_time
                             image_result['gen_time'] = gen_time
                             image_result['mm_model'] = self._get_model_name('multimodal') or 'unknown'
-                            image_result['gen_model'] = self.app.config['AUTOMATIC1111_MODEL']
+                            image_result['gen_model'] = self.app.config.get('SD_CPP_MODEL', 'Stable Diffusion (sd.cpp)')
                             template = self.app.modules['base']._('Image generated from request: {query}', lang=lang)
                             message_text = template.format(query=query)
                             file_path = None
@@ -387,7 +387,7 @@ class RedisRequestQueue:
                                 file_type=image_result['file_type'],
                                 file_name=image_result['file_name'],
                                 file_path=file_path,
-                                model_name=self.app.config['AUTOMATIC1111_MODEL'],
+                                model_name=self.app.config.get('SD_CPP_MODEL', 'Stable Diffusion (sd.cpp)'),
                                 response_time={'mm_time': mm_time, 'gen_time': gen_time},
                                 mm_time=str(mm_time), gen_time=str(gen_time),
                                 mm_model=image_result['mm_model'],
@@ -396,7 +396,7 @@ class RedisRequestQueue:
                             return {
                                 'response': message_text,
                                 'session_id': session_id,
-                                'model_used': self.app.config['AUTOMATIC1111_MODEL'],
+                                'model_used': self.app.config.get('SD_CPP_MODEL', 'Stable Diffusion (sd.cpp)'),
                                 'assistant_timestamp': completion_time_for_db,
                                 'file_path': file_path,
                                 'file_name': image_result['file_name'],

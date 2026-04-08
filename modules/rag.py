@@ -12,12 +12,14 @@ from qdrant_client.http import models
 from app.utils import extract_text_from_file, chunk_text, get_current_time_in_timezone, format_prompt, estimate_tokens, build_context_prompt
 from app.db import get_session_text_history, update_document_index_status, get_document
 from app.model_config import get_model_config
+from app.llamacpp_client import LlamaCppClient
 
 class RagModule:
-    """Module for Retrieval-Augmented Generation using Qdrant and Ollama embeddings."""
+    """Module for Retrieval-Augmented Generation using Qdrant and llama.cpp embeddings."""
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
         self.qdrant_client = None
+        self.llamacpp = LlamaCppClient()
         self.available = False
         self.collection_name_prefix = "user_"
         self.chunk_size = 500
@@ -56,9 +58,9 @@ class RagModule:
         return config.get('model_name') if config else None
 
     def _get_embedding_url(self) -> Optional[str]:
-        """Retrieve Ollama URL for embedding from database."""
+        """Retrieve service URL for embedding from database."""
         config = get_model_config('embedding')
-        return config.get('ollama_url') if config else None
+        return config.get('service_url') if config else config.get('ollama_url') if config else None
 
     def _get_collection_name(self, user_id: str) -> str:
         """Return collection name for a specific user."""
@@ -350,7 +352,7 @@ class RagModule:
         reasoning_module = current_app.modules.get('base')
         if not reasoning_module:
             return None, "Reasoning module unavailable", None
-        response = reasoning_module.call_ollama(
+        response = reasoning_module.call_llamacpp(
             [{'role': 'user', 'content': prompt}],
             model_type='reasoning',
             lang=lang
@@ -359,93 +361,31 @@ class RagModule:
         return response, None, model_name
 
     def _get_embedding(self, text: str) -> Optional[List[float]]:
-        """Get embedding vector from Ollama using configured embedding model."""
-        embedding_config = get_model_config('embedding')
-        if not embedding_config:
-            self.logger.error("No embedding model configuration found")
-            return None
-        embedding_model = embedding_config.get('model_name')
-        if not embedding_model:
-            self.logger.error("No embedding model configured in database")
-            return None
-        ollama_url = embedding_config.get('ollama_url')
-        if not ollama_url:
-            ollama_url = 'http://ollama:11434'
-            self.logger.warning(f"No ollama_url for embedding, using default {ollama_url}")
-        try:
-            response = requests.post(
-                f"{ollama_url}/api/embed",
-                json={"model": embedding_model, "input": [text]},
-                timeout=30
-            )
-            if response.status_code == 200:
-                result = response.json()
-                if 'embeddings' in result and len(result['embeddings']) > 0:
-                    emb = result['embeddings'][0]
-                    self.logger.debug(f"_get_embedding: got embedding of length {len(emb)}")
-                    return emb
-                else:
-                    self.logger.warning(f"_get_embedding: unexpected response format")
-                    return None
-            else:
-                self.logger.error(f"Ollama embeddings API returned status {response.status_code}")
-                return None
-        except Exception as e:
-            self.logger.error(f"Error getting embedding: {e}")
-            return None
+        """Get embedding vector from llama-server via OpenAI-compatible /v1/embeddings."""
+        embeddings = self.llamacpp.get_embeddings([text], model_type='embedding')
+        if embeddings and len(embeddings) > 0 and embeddings[0] is not None:
+            emb = embeddings[0]
+            self.logger.debug(f"_get_embedding: got embedding of length {len(emb)}")
+            return emb
+        self.logger.warning("_get_embedding: no embedding returned")
+        return None
 
     def _get_batch_embeddings(self, texts: List[str], batch_size: int = 10) -> List[Optional[List[float]]]:
-        """Get embeddings for multiple texts using batched API calls.
-        This is more efficient than calling _get_embedding for each text.
+        """Get embeddings for multiple texts using llama.cpp batch API.
         Returns list of embeddings (None for failed requests).
         """
-        embedding_config = get_model_config('embedding')
-        if not embedding_config:
-            self.logger.error("No embedding model configuration found")
+        embeddings = self.llamacpp.get_embeddings(texts, model_type='embedding')
+        if embeddings is None:
+            self.logger.error("Failed to get embeddings from llama-server")
             return [None] * len(texts)
-        
-        embedding_model = embedding_config.get('model_name')
-        if not embedding_model:
-            self.logger.error("No embedding model configured in database")
-            return [None] * len(texts)
-        
-        ollama_url = embedding_config.get('ollama_url')
-        if not ollama_url:
-            ollama_url = 'http://ollama:11434'
-        
-        all_embeddings = []
 
-        # Process in batches using the newer /api/embed endpoint (supports multiple inputs)
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
-            try:
-                response = requests.post(
-                    f"{ollama_url}/api/embed",
-                    json={"model": embedding_model, "input": batch},
-                    timeout=120
-                )
-                if response.status_code == 200:
-                    result = response.json()
-                    # New API returns {"embeddings": [[...], [...], ...]}
-                    if 'embeddings' in result:
-                        emb_list = result['embeddings']
-                        # Validate each embedding
-                        valid_embeddings = []
-                        for emb in emb_list:
-                            if emb and len(emb) > 0:
-                                valid_embeddings.append(emb)
-                            else:
-                                self.logger.warning("Empty embedding in batch response")
-                                valid_embeddings.append(None)
-                        all_embeddings.extend(valid_embeddings)
-                    else:
-                        self.logger.warning(f"Unexpected embedding response format: {list(result.keys())}")
-                        all_embeddings.extend([None] * len(batch))
-                else:
-                    self.logger.error(f"Ollama embeddings API returned status {response.status_code}: {response.text[:200]}")
-                    all_embeddings.extend([None] * len(batch))
-            except Exception as e:
-                self.logger.error(f"Error getting batch embeddings: {e}")
-                all_embeddings.extend([None] * len(batch))
+        # Ensure we have the same number of embeddings as input texts
+        if len(embeddings) != len(texts):
+            self.logger.warning(
+                f"Embedding count mismatch: expected {len(texts)}, got {len(embeddings)}"
+            )
+            # Pad with None if needed
+            while len(embeddings) < len(texts):
+                embeddings.append(None)
 
-        return all_embeddings
+        return embeddings[:len(texts)]

@@ -19,9 +19,12 @@ def load_config(app):
     app.config['TIMEZONE_STR'] = os.getenv('TIMEZONE')
     app.config['REDIS_URL'] = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
     
-    # Automatic1111 settings
-    app.config['AUTOMATIC1111_URL'] = os.getenv('AUTOMATIC1111_URL')
-    app.config['AUTOMATIC1111_MODEL'] = os.getenv('AUTOMATIC1111_MODEL')
+    # stable-diffusion.cpp settings (replaces Automatic1111)
+    app.config['SD_CPP_URL'] = os.getenv('SD_CPP_URL')
+    app.config['SD_CPP_MODEL'] = os.getenv('SD_CPP_MODEL')
+    app.config['SD_CPP_TIMEOUT'] = int(os.getenv('SD_CPP_TIMEOUT', 180))
+
+    # Image validation settings (shared)
     app.config['MAX_IMAGE_WIDTH'] = int(os.getenv('MAX_IMAGE_WIDTH', 3840))
     app.config['MAX_IMAGE_HEIGHT'] = int(os.getenv('MAX_IMAGE_HEIGHT', 2160))
     app.config['MAX_IMAGE_SIZE_MB'] = int(os.getenv('MAX_IMAGE_SIZE_MB', 5))

@@ -255,6 +255,26 @@ def migrate_add_ollama_url(app):
         app.logger.error(f"Migration add ollama_url error: {str(e)}")
 
 
+def migrate_add_service_url(app):
+    """Add service_url column to model_configs table (llama.cpp migration).
+    Copies ollama_url values to service_url for backward compatibility.
+    """
+    try:
+        with sqlite3.connect(CHAT_DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("PRAGMA table_info(model_configs)")
+            columns = [col[1] for col in c.fetchall()]
+            if 'service_url' not in columns:
+                c.execute("ALTER TABLE model_configs ADD COLUMN service_url TEXT")
+                app.logger.info("Added column service_url to model_configs table")
+                # Copy existing ollama_url values to service_url
+                c.execute("UPDATE model_configs SET service_url = ollama_url WHERE service_url IS NULL AND ollama_url IS NOT NULL")
+                conn.commit()
+                app.logger.info("Copied ollama_url values to service_url")
+    except Exception as e:
+        app.logger.error(f"Migration add service_url error: {str(e)}")
+
+
 def get_user_sessions(user_id: str) -> List[Dict[str, Any]]:
     """Get all sessions for a user.
     Optimized to avoid N+1 queries by using JOINs and subqueries.

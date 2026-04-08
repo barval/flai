@@ -1,5 +1,6 @@
 // app/static/js/admin-models.js
 // Handles model management tab in admin panel
+// Updated for llama.cpp (llama-server OpenAI-compatible API)
 
 let currentModelConfigs = {};
 let modelDetails = {};        // cache for model info
@@ -14,7 +15,7 @@ function getCSRFToken() {
 // Fetch wrapper with CSRF token for POST/PUT/DELETE requests
 function fetchWithCSRF(url, options = {}) {
     const method = (options.method || 'GET').toUpperCase();
-    
+
     // Add CSRF token for state-changing requests
     if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
         const headers = options.headers || {};
@@ -23,7 +24,7 @@ function fetchWithCSRF(url, options = {}) {
         }
         options.headers = headers;
     }
-    
+
     return fetch(url, options);
 }
 
@@ -70,8 +71,9 @@ function renderModelCards() {
 
     let html = '';
     modules.forEach(mod => {
-        const ollamaUrl = mod.config.ollama_url || '';
-        const isLocal = ollamaUrl === 'http://ollama:11434';   // detect default local
+        // Support both service_url (new) and ollama_url (legacy)
+        const serviceUrl = mod.config.service_url || mod.config.ollama_url || '';
+        const isLocal = serviceUrl === 'http://llamacpp:8080' || serviceUrl === 'http://ollama:11434';
 
         html += `
         <div class="model-card" data-module="${mod.id}">
@@ -82,12 +84,12 @@ function renderModelCards() {
                     ${t('Local')}
                 </label>
                 <div class="url-input-wrapper">
-                    <input type="text" class="ollama-url" data-module="${mod.id}" value="${escapeHtml(ollamaUrl)}" placeholder="http://ollama:11434">
+                    <input type="text" class="service-url" data-module="${mod.id}" value="${escapeHtml(serviceUrl)}" placeholder="http://llamacpp:8080">
                 </div>
-                <span class="ollama-status-icon" data-module="${mod.id}" title="">?</span>
+                <span class="service-status-icon" data-module="${mod.id}" title="">?</span>
             </div>
             <div class="model-selector">
-                <button class="refresh-models-btn" data-module="${mod.id}" title="${t('Refresh models from Ollama')}">🔄</button>
+                <button class="refresh-models-btn" data-module="${mod.id}" title="${t('Refresh models from llama-server')}">🔄</button>
                 <select class="model-dropdown" data-module="${mod.id}">
                     <option value="">${t('-- Select model --')}</option>
                 </select>
@@ -137,16 +139,16 @@ function renderModelCards() {
     document.querySelectorAll('.local-checkbox').forEach(cb => {
         cb.addEventListener('change', onLocalCheckboxChange);
     });
-    document.querySelectorAll('.ollama-url').forEach(input => {
+    document.querySelectorAll('.service-url').forEach(input => {
         input.addEventListener('input', function() {
             const module = this.dataset.module;
-            updateOllamaStatus(module);
+            updateServiceStatus(module);
         });
     });
 
     // Initial status check for each module
     modules.forEach(mod => {
-        updateOllamaStatus(mod.id);
+        updateServiceStatus(mod.id);
         const select = document.querySelector(`.model-dropdown[data-module="${mod.id}"]`);
         if (select && select.value) {
             onModelSelect({ target: select });
@@ -157,40 +159,40 @@ function renderModelCards() {
 function onLocalCheckboxChange(event) {
     const cb = event.target;
     const module = cb.dataset.module;
-    const urlInput = document.querySelector(`.ollama-url[data-module="${module}"]`);
+    const urlInput = document.querySelector(`.service-url[data-module="${module}"]`);
     if (cb.checked) {
-        urlInput.value = 'http://ollama:11434';
+        urlInput.value = 'http://llamacpp:8080';
         urlInput.disabled = true;
-        updateOllamaStatus(module);
+        updateServiceStatus(module);
     } else {
         urlInput.disabled = false;
-        updateOllamaStatus(module);
+        updateServiceStatus(module);
     }
 }
 
-async function updateOllamaStatus(module) {
-    const urlInput = document.querySelector(`.ollama-url[data-module="${module}"]`);
-    const ollamaUrl = urlInput.value.trim();
-    const statusIcon = document.querySelector(`.ollama-status-icon[data-module="${module}"]`);
-    if (!ollamaUrl) {
+async function updateServiceStatus(module) {
+    const urlInput = document.querySelector(`.service-url[data-module="${module}"]`);
+    const serviceUrl = urlInput.value.trim();
+    const statusIcon = document.querySelector(`.service-status-icon[data-module="${module}"]`);
+    if (!serviceUrl) {
         statusIcon.textContent = '❓';
-        statusIcon.title = t('Please provide Ollama URL first');
+        statusIcon.title = t('Please provide llama-server URL first');
         return;
     }
     try {
-        const response = await fetch(`/admin/api/ollama/check?url=${encodeURIComponent(ollamaUrl)}`);
+        const response = await fetch(`/admin/api/llamacpp/check?url=${encodeURIComponent(serviceUrl)}`);
         const data = await response.json();
         if (data.available) {
             statusIcon.textContent = '✅';
-            statusIcon.title = t('Ollama available');
+            statusIcon.title = t('llama-server available');
         } else {
             statusIcon.textContent = '❌';
-            statusIcon.title = t('Ollama unavailable') + (data.error ? `: ${data.error}` : '');
+            statusIcon.title = t('llama-server unavailable') + (data.error ? `: ${data.error}` : '');
         }
     } catch (err) {
-        console.error(`Failed to check Ollama status for ${module}:`, err);
+        console.error(`Failed to check llama-server status for ${module}:`, err);
         statusIcon.textContent = '❌';
-        statusIcon.title = t('Ollama unavailable') + ': ' + err.message;
+        statusIcon.title = t('llama-server unavailable') + ': ' + err.message;
     }
 }
 
@@ -205,10 +207,10 @@ async function onRefreshModels(event) {
 }
 
 async function refreshModelsForModule(module) {
-    const urlInput = document.querySelector(`.ollama-url[data-module="${module}"]`);
-    const ollamaUrl = urlInput.value.trim();
-    if (!ollamaUrl) {
-        showModelError(module, t('Please provide Ollama URL first'));
+    const urlInput = document.querySelector(`.service-url[data-module="${module}"]`);
+    const serviceUrl = urlInput.value.trim();
+    if (!serviceUrl) {
+        showModelError(module, t('Please provide llama-server URL first'));
         return;
     }
     const select = document.querySelector(`.model-dropdown[data-module="${module}"]`);
@@ -220,7 +222,7 @@ async function refreshModelsForModule(module) {
     clearModelError(module);
 
     try {
-        const response = await fetch(`/admin/api/ollama/models?url=${encodeURIComponent(ollamaUrl)}`);
+        const response = await fetch(`/admin/api/llamacpp/models?url=${encodeURIComponent(serviceUrl)}`);
         if (!response.ok) {
             let errorMsg = `HTTP ${response.status}`;
             try {
@@ -230,7 +232,7 @@ async function refreshModelsForModule(module) {
             throw new Error(errorMsg);
         }
         const models = await response.json();
-        modelListCache[ollamaUrl] = models;
+        modelListCache[serviceUrl] = models;
         models.forEach(model => {
             const option = document.createElement('option');
             option.value = model;
@@ -275,26 +277,26 @@ async function onModelSelect(event) {
     const select = event.target;
     const module = select.dataset.module;
     const modelName = select.value;
-    const detailsDiv = document.getElementById(`details-${module}`);
+    const detailsGrid = document.getElementById(`details-${module}`);
     if (!modelName) {
-        detailsDiv.style.display = 'none';
+        detailsGrid.style.display = 'none';
         return;
     }
-    detailsDiv.style.display = 'block';
-    detailsDiv.innerHTML = '<p>Loading...</p>';
+    detailsGrid.style.display = 'block';
+    detailsGrid.innerHTML = '<p>Loading...</p>';
     clearModelError(module);
 
-    const urlInput = document.querySelector(`.ollama-url[data-module="${module}"]`);
-    const ollamaUrl = urlInput.value.trim();
-    if (!ollamaUrl) {
-        detailsDiv.innerHTML = '<p>No Ollama URL provided</p>';
+    const urlInput = document.querySelector(`.service-url[data-module="${module}"]`);
+    const serviceUrl = urlInput.value.trim();
+    if (!serviceUrl) {
+        detailsGrid.innerHTML = '<p>No llama-server URL provided</p>';
         return;
     }
 
-    let info = modelDetails[`${ollamaUrl}:${modelName}`];
+    let info = modelDetails[`${serviceUrl}:${modelName}`];
     if (!info) {
         try {
-            const res = await fetch(`/admin/api/ollama/model/${encodeURIComponent(modelName)}?url=${encodeURIComponent(ollamaUrl)}`);
+            const res = await fetch(`/admin/api/llamacpp/model/${encodeURIComponent(modelName)}?url=${encodeURIComponent(serviceUrl)}`);
             if (!res.ok) {
                 let errorMsg = `HTTP ${res.status}`;
                 try {
@@ -304,15 +306,15 @@ async function onModelSelect(event) {
                 throw new Error(errorMsg);
             }
             info = await res.json();
-            modelDetails[`${ollamaUrl}:${modelName}`] = info;
+            modelDetails[`${serviceUrl}:${modelName}`] = info;
         } catch (err) {
             console.error(`Error loading model info for ${modelName}:`, err);
-            detailsDiv.innerHTML = `<p>${t('error')}: ${err.message}</p>`;
+            detailsGrid.innerHTML = `<p>${t('error')}: ${err.message}</p>`;
             return;
         }
     }
 
-    detailsDiv.innerHTML = `
+    detailsGrid.innerHTML = `
         <p><strong>${t('Architecture:')}</strong> ${info.architecture || 'N/A'}</p>
         <p><strong>${t('Parameters:')}</strong> ${info.parameters || 'N/A'}</p>
         <p><strong>${t('Quantization:')}</strong> ${info.quantization || 'N/A'}</p>
@@ -322,7 +324,7 @@ async function onModelSelect(event) {
 
     // Set max attribute for context length input
     const ctxInput = document.querySelector(`.context-length[data-module="${module}"]`);
-    if (ctxInput && info.context_length) {
+    if (ctxInput && info.context_length && info.context_length !== 'N/A') {
         ctxInput.max = info.context_length;
     }
 }
@@ -334,9 +336,9 @@ function validateModelConfig(module, card) {
         return false;
     }
 
-    const ollamaUrl = card.querySelector('.ollama-url').value.trim();
-    if (!ollamaUrl) {
-        alert(t('Please provide Ollama URL.'));
+    const serviceUrl = card.querySelector('.service-url').value.trim();
+    if (!serviceUrl) {
+        alert(t('Please provide llama-server URL.'));
         return false;
     }
 
@@ -347,8 +349,8 @@ function validateModelConfig(module, card) {
     const topP = card.querySelector('.top-p')?.value;
     const timeout = card.querySelector('.timeout')?.value;
 
-    const info = modelDetails[`${ollamaUrl}:${modelName}`];
-    const maxContext = info && info.context_length ? parseInt(info.context_length) : null;
+    const info = modelDetails[`${serviceUrl}:${modelName}`];
+    const maxContext = info && info.context_length && info.context_length !== 'N/A' ? parseInt(info.context_length) : null;
 
     if (contextLength !== undefined && contextLength !== '') {
         const val = parseInt(contextLength);
@@ -397,7 +399,7 @@ function onSaveConfig(event) {
     if (!validateModelConfig(module, card)) return;
 
     const modelName = card.querySelector('.model-dropdown').value;
-    const ollamaUrl = card.querySelector('.ollama-url').value.trim();
+    const serviceUrl = card.querySelector('.service-url').value.trim();
     const contextLength = card.querySelector('.context-length')?.value;
     const temperature = card.querySelector('.temperature')?.value;
     const topP = card.querySelector('.top-p')?.value;
@@ -405,7 +407,7 @@ function onSaveConfig(event) {
 
     const data = {
         model_name: modelName,
-        ollama_url: ollamaUrl,
+        service_url: serviceUrl,
         context_length: contextLength ? parseInt(contextLength) : null,
         temperature: temperature ? parseFloat(temperature) : null,
         top_p: topP ? parseFloat(topP) : null,

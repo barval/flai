@@ -12,7 +12,7 @@ services:
       - "5000:5000"
     depends_on:
       - redis
-      - ollama
+      - llamacpp
     volumes:
       # Mount application data directory
       - ./data:/app/data
@@ -21,7 +21,6 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
-      # Whisper is running in the same docker network
       - WHISPER_API_URL=http://flai-whisper:9000/asr
       - WHISPER_API_TIMEOUT=120
     user: "1000:1000"
@@ -70,7 +69,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-    # Resource limits
     deploy:
       resources:
         limits:
@@ -79,29 +77,26 @@ services:
         reservations:
           cpus: '0.25'
           memory: 128M
-    # Logging configuration
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    # To use an external Redis instance:
-    # Comment out this entire service block
 
   # ============================================================
-  # OLLAMA (Required - LLM Inference)
+  # LLAMA.CPP SERVER (Required - LLM Inference, router mode)
   # ============================================================
-  ollama:
-    image: ollama/ollama:latest
-    container_name: flai-ollama
+  llamacpp:
+    image: ghcr.io/ggerganov/llama.cpp:server-cuda
+    container_name: flai-llamacpp
     ports:
-      - "11434:11434"
+      - "8080:8080"
     volumes:
-      - ollama:/root/.ollama
+      - ./services/llamacpp/models:/app/models
     environment:
-      - OLLAMA_REQUEST_TIMEOUT=1200s
-      - OLLAMA_MAX_LOADED_MODELS=1
-      - OLLAMA_KEEP_ALIVE=0
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    runtime: nvidia
     deploy:
       resources:
         limits:
@@ -117,37 +112,41 @@ services:
     networks:
       - flai_network
     restart: unless-stopped
+    # Run in router mode (--model-dir) to support dynamic model switching
+    command: >
+      --model-dir /app/models
+      --host 0.0.0.0
+      --port 8080
+      --n-gpu-layers -1
+      --ctx-size 32768
+      --cache-type-k q8_0
     healthcheck:
-      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/v1/models || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    # Logging configuration
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    # To use an external Ollama instance:
-    # Comment out this entire service block
 
   # ============================================================
-  # AUTOMATIC1111 (Optional - Image Generation)
+  # STABLE-DIFFUSION.CPP (Optional - Image Generation)
   # ============================================================
-  automatic1111:
-    image: siutin/stable-diffusion-webui-docker:latest-cuda
+  sd_cpp:
+    build:
+      context: ./services/sd_cpp
+      dockerfile: Dockerfile.sd_cpp
     container_name: flai-sd
     ports:
       - "7860:7860"
     volumes:
-      - ./services/automatic1111/models/Stable-diffusion:/app/stable-diffusion-webui/models/Stable-diffusion
-      - ./services/automatic1111/outputs:/app/stable-diffusion-webui/outputs
+      - ./services/sd_cpp/models:/app/models
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - NVIDIA_REQUIRE_CUDA=cuda>=12.1
-      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     runtime: nvidia
     deploy:
       resources:
@@ -161,35 +160,22 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    # Logging configuration
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    command:
-      - /app/stable-diffusion-webui/webui.sh
-      - --listen
-      - --port=7860
-      - --api
-      - --api-log
-      - --opt-sdp-attention
-      - --medvram
-      - --medvram-sdxl
-      - --opt-split-attention
     networks:
       - flai_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7860/sdapi/v1/progress"]
+      test: ["CMD", "curl", "-f", "http://localhost:7860/"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
     profiles:
       - with-image-gen
-    # To disable image generation:
-    # Comment out this entire service block OR omit the profile when starting
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ============================================================
   # WHISPER ASR (Optional - Speech Recognition)
@@ -224,7 +210,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-    # Resource limits
     deploy:
       resources:
         limits:
@@ -233,7 +218,6 @@ services:
         reservations:
           cpus: '1.0'
           memory: 2G
-    # Logging configuration
     logging:
       driver: "json-file"
       options:
@@ -241,8 +225,6 @@ services:
         max-file: "3"
     profiles:
       - with-voice
-    # To disable voice features:
-    # Comment out this entire service block
 
   # ============================================================
   # PIPER TTS (Optional - Speech Synthesis)
@@ -267,7 +249,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    # Resource limits - Piper TTS is CPU-intensive, needs more cores for real-time synthesis
     deploy:
       resources:
         limits:
@@ -276,7 +257,6 @@ services:
         reservations:
           cpus: '1.0'
           memory: 512M
-    # Logging configuration
     logging:
       driver: "json-file"
       options:
@@ -284,8 +264,6 @@ services:
         max-file: "3"
     profiles:
       - with-voice
-    # To disable voice features:
-    # Comment out this entire service block
 
   # ============================================================
   # QDRANT (Optional - Vector Database for RAG)
@@ -310,7 +288,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    # Resource limits
     deploy:
       resources:
         limits:
@@ -319,7 +296,6 @@ services:
         reservations:
           cpus: '1.0'
           memory: 2G
-    # Logging configuration
     logging:
       driver: "json-file"
       options:
@@ -327,8 +303,6 @@ services:
         max-file: "3"
     profiles:
       - with-rag
-    # To disable document search/RAG:
-    # Comment out this entire service block
 
 networks:
   flai_network:
@@ -336,5 +310,4 @@ networks:
 
 volumes:
   redis_data:
-  ollama:
   qdrant_data:

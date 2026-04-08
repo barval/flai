@@ -11,11 +11,11 @@ from .config import load_config
 from .db import (
     init_db, migrate_db_add_response_fields, migrate_db_add_session_visits,
     migrate_db_add_indexes, migrate_db_add_index_status, migrate_add_model_configs,
-    migrate_add_embedding_model, migrate_add_ollama_url
+    migrate_add_embedding_model, migrate_add_ollama_url, migrate_add_service_url
 )
 from .queue import RedisRequestQueue
 from .userdb import init_user_db, get_user_by_login
-from modules import BaseModule, MultimodalModule, ImageModule, CamModule, RagModule, AudioModule
+from modules import BaseModule, MultimodalModule, ImageModule, CamModule, RagModule, AudioModule, SdCppModule
 from modules.tts import TTSModule
 import mimetypes
 
@@ -24,7 +24,6 @@ csrf = CSRFProtect()
 limiter = Limiter(key_func=get_remote_address)
 
 
-@babel.localeselector
 def get_locale():
     """Select language from session or Accept-Language header."""
     if 'language' in session:
@@ -102,7 +101,7 @@ def create_app():
     logging.root.handlers = [console_handler]
 
     # Initialize Babel with the app
-    babel.init_app(app)
+    babel.init_app(app, locale_selector=get_locale)
     app.jinja_env.add_extension('jinja2.ext.i18n')  # for _() in templates
     app.jinja_env.globals['_'] = gettext
 
@@ -121,6 +120,7 @@ def create_app():
     migrate_add_model_configs(app)   # New migration for model configs
     migrate_add_embedding_model(app) # Add embedding_model column to documents table
     migrate_add_ollama_url(app)      # Add ollama_url column to model_configs table
+    migrate_add_service_url(app)     # Add service_url column (llama.cpp migration)
 
     # Initialize user DB
     init_user_db()
@@ -133,8 +133,8 @@ def create_app():
     # No global OLLAMA_URL check needed – we rely on model configs.
     modules['multimodal'] = MultimodalModule(app)
 
-    if app.config.get('AUTOMATIC1111_URL') and 'multimodal' in modules:
-        modules['image'] = ImageModule(app)
+    if app.config.get('SD_CPP_URL') and 'multimodal' in modules:
+        modules['image'] = SdCppModule(app)
         modules['image'].set_multimodal_module(modules['multimodal'])
 
     if app.config.get('CAMERA_ENABLED'):
@@ -305,18 +305,23 @@ def create_app():
             app.logger.error(f"Health check - Redis error: {e}")
             http_status = 503
         
-        # Check Ollama
+        # Check llama-server
         try:
-            ollama_url = app.config.get('OLLAMA_URL', 'http://ollama:11434')
-            response = requests.get(f"{ollama_url}/api/tags", timeout=5)
-            if response.status_code == 200:
-                status['services']['ollama'] = 'ok'
+            from app.model_config import get_model_config
+            llamacpp_config = get_model_config('chat')
+            if llamacpp_config and llamacpp_config.get('service_url'):
+                service_url = llamacpp_config['service_url'].rstrip('/')
             else:
-                status['services']['ollama'] = 'error'
+                service_url = 'http://llamacpp:8080'
+            response = requests.get(f"{service_url}/v1/models", timeout=5)
+            if response.status_code == 200:
+                status['services']['llamacpp'] = 'ok'
+            else:
+                status['services']['llamacpp'] = 'error'
                 http_status = 503
         except Exception as e:
-            status['services']['ollama'] = 'error'
-            app.logger.error(f"Health check - Ollama error: {e}")
+            status['services']['llamacpp'] = 'error'
+            app.logger.error(f"Health check - llama-server error: {e}")
             http_status = 503
         
         # Determine overall status

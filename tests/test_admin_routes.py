@@ -233,39 +233,39 @@ class TestAdminModelManagement:
         return client
 
     @pytest.mark.integration
-    def test_ollama_check_missing_url(self, admin_client):
-        """Test Ollama check without URL parameter."""
-        response = admin_client.get('/admin/api/ollama/check')
+    def test_llamacpp_check_missing_url(self, admin_client):
+        """Test llama-server check without URL parameter."""
+        response = admin_client.get('/admin/api/llamacpp/check')
         assert response.status_code == 400
 
     @pytest.mark.integration
-    def test_ollama_models_missing_url(self, admin_client):
-        """Test Ollama models without URL parameter."""
-        response = admin_client.get('/admin/api/ollama/models')
+    def test_llamacpp_models_missing_url(self, admin_client):
+        """Test llama-server models without URL parameter."""
+        response = admin_client.get('/admin/api/llamacpp/models')
         assert response.status_code == 400
 
     @pytest.mark.integration
     @patch('app.routes.admin.requests.get')
-    def test_ollama_check_success(self, mock_get, admin_client):
-        """Test Ollama check with successful response."""
+    def test_llamacpp_check_success(self, mock_get, admin_client):
+        """Test llama-server check with successful response."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_get.return_value = mock_response
 
-        response = admin_client.get('/admin/api/ollama/check?url=http://test:11434')
+        response = admin_client.get('/admin/api/llamacpp/check?url=http://test:8080')
         assert response.status_code == 200
         data = response.get_json()
         assert data['available'] is True
 
     @pytest.mark.integration
     @patch('app.routes.admin.requests.get')
-    def test_ollama_check_failure(self, mock_get, admin_client):
-        """Test Ollama check with failed response."""
+    def test_llamacpp_check_failure(self, mock_get, admin_client):
+        """Test llama-server check with failed response."""
         mock_response = MagicMock()
         mock_response.status_code = 503
         mock_get.return_value = mock_response
 
-        response = admin_client.get('/admin/api/ollama/check?url=http://test:11434')
+        response = admin_client.get('/admin/api/llamacpp/check?url=http://test:8080')
         assert response.status_code == 200
         data = response.get_json()
         assert data['available'] is False

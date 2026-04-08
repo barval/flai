@@ -13,7 +13,7 @@ from flask_babel import force_locale
 
 from app.utils import format_prompt, estimate_tokens, build_context_prompt
 from app.db import get_session_text_history
-from app.ollama_client import OllamaClient
+from app.llamacpp_client import LlamaCppClient
 
 
 class MultimodalModule:
@@ -21,8 +21,8 @@ class MultimodalModule:
 
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
-        self.ollama = OllamaClient(app)
-        self.available = self.ollama.available
+        self.llamacpp = LlamaCppClient(app)
+        self.available = self.llamacpp.available
         self.image_settings = {}
         self.token_chars = 3
         self.context_history_percent = 75
@@ -37,8 +37,8 @@ class MultimodalModule:
     def init_app(self, app):
         """Initialize module with Flask app."""
         self.app = app
-        self.ollama.init_app(app)
-        self.available = self.ollama.available
+        self.llamacpp.init_app(app)
+        self.available = self.llamacpp.available
 
         self.image_settings = {
             'max_width': app.config.get('MAX_IMAGE_WIDTH', 3840),
@@ -66,7 +66,8 @@ class MultimodalModule:
 
     def _get_model_config(self) -> Optional[Dict[str, Any]]:
         """Retrieve multimodal model configuration."""
-        return self.ollama._get_model_config('multimodal')
+        from app.model_config import get_model_config
+        return get_model_config('multimodal')
 
     def validate_image(self, file_data: str, file_type: str, file_name: str,
                        file_size: int, lang: str = 'ru') -> Tuple[bool, Optional[str]]:
@@ -149,13 +150,13 @@ class MultimodalModule:
         if not prompt:
             return None, self._('Error loading prompt template', lang)
 
-        messages = [{
-            'role': 'user',
-            'content': prompt,
-            'images': [image_data]
-        }]
-
-        response = self._call_multimodal(messages, lang=lang)
+        # Use llama.cpp OpenAI-compatible format with image_url
+        response = self.llamacpp.chat_with_image(
+            text=prompt,
+            image_base64=image_data,
+            model_type='multimodal',
+            lang=lang
+        )
         return response, None
 
     def generate_image_params(self, user_query: str, lang: str = 'ru') -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
@@ -204,91 +205,10 @@ class MultimodalModule:
             return None, self._('JSON parsing error: {error}', lang, error=str(e))
 
     def _call_multimodal(self, messages: List[Dict[str, Any]], lang: str = 'ru') -> str:
-        """Call multimodal model with configuration and validation."""
-        if not self.available:
-            return self._('Multimodal model unavailable', lang)
-
-        model_config = self._get_model_config()
-        if not model_config:
-            return self._('Multimodal model not configured', lang)
-
-        model = model_config.get('model_name')
-        if not model:
-            return self._('Multimodal model not configured', lang)
-
-        # --- Prompt validation ---
-        max_context = model_config.get('context_length', 32768)
-        hard_limit = int(max_context * 0.95)
-        total_tokens = 0
-        # Estimate tokens for all messages
-        for msg in messages:
-            content = msg.get('content', '')
-            if content:
-                total_tokens += estimate_tokens(content, 'multimodal', lang, self.token_chars)
-            # Approximate image tokens (rough estimate)
-            if 'images' in msg and msg['images']:
-                # Assume each image consumes ~1000 tokens (very rough)
-                total_tokens += len(msg['images']) * 1000
-
-        if total_tokens > hard_limit:
-            error_msg = self._('Request too long, please simplify your request', lang)
-            self.logger.error(
-                f"Multimodal prompt too large: {total_tokens} tokens "
-                f"(limit {hard_limit})"
-            )
-            return f"⚠️ {error_msg}"
-
-        self.logger.info(
-            f"Multimodal prompt validation passed: {total_tokens}/{hard_limit} tokens "
-            f"({total_tokens / max_context * 100:.1f}%)"
-        )
-
-        # --- Build request ---
-        ollama_url = model_config.get('ollama_url')
-        if not ollama_url:
-            ollama_url = 'http://ollama:11434'
-            self.logger.warning(f"No ollama_url for multimodal, using default {ollama_url}")
-
-        timeout = model_config.get('timeout', 120)
-        context = model_config.get('context_length', 32768)
-        temperature = model_config.get('temperature', 0.7)
-        top_p = model_config.get('top_p', 0.9)
-
-        payload = {
-            'model': model,
-            'messages': messages,
-            'stream': False,
-            'options': {
-                'num_ctx': context,
-                'temperature': temperature,
-                'top_p': top_p,
-            }
-        }
-
-        self.logger.info(f"Sending request to multimodal model: {model} at {ollama_url}, timeout: {timeout}s")
-        try:
-            response = requests.post(
-                f"{ollama_url}/api/chat",
-                json=payload,
-                timeout=timeout
-            )
-            if response.status_code == 200:
-                result = response.json()
-                return result['message']['content'].strip()
-            else:
-                self.logger.error(f"Multimodal model error: {response.status_code}")
-                return f"{self._('Error', lang)}: {response.status_code}"
-        except requests.exceptions.Timeout:
-            self.logger.error(f"Timeout ({timeout}s) for multimodal model")
-            template = self._('Timeout ({timeout}s) when calling multimodal model', lang)
-            return template.format(timeout=timeout)
-        except requests.exceptions.ConnectionError:
-            self.logger.error(f"Connection error to Ollama at {ollama_url}")
-            return self._('Could not connect to Ollama', lang)
-        except Exception as e:
-            self.logger.error(f"Error calling multimodal model: {str(e)}")
-            return f"{self._('Error', lang)}: {str(e)}"
+        """Call multimodal model via llama.cpp client (delegates to LlamaCppClient)."""
+        # LlamaCppClient handles validation and configuration internally
+        return self.llamacpp.chat(messages, model_type='multimodal', lang=lang)
 
     def check_availability(self) -> bool:
         """Check module availability."""
-        return self.ollama.check_availability()
+        return self.llamacpp.check_availability()

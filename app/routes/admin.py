@@ -248,6 +248,102 @@ def get_stats():
 
 # ==================== ENDPOINTS FOR MODEL MANAGEMENT ====================
 
+@bp.route('/api/llamacpp/check', methods=['GET'])
+@admin_required
+def llamacpp_check():
+    """Check if llama-server is reachable at given URL via /v1/models."""
+    service_url = request.args.get('url')
+    if not service_url:
+        return jsonify({'available': False, 'error': _('Missing url')}), 400
+    try:
+        response = requests.get(f"{service_url.rstrip('/')}/v1/models", timeout=5)
+        if response.status_code == 200:
+            return jsonify({'available': True})
+        else:
+            return jsonify({'available': False, 'error': _('HTTP error {status}').format(status=response.status_code)})
+    except Exception as e:
+        return jsonify({'available': False, 'error': str(e)})
+
+
+@bp.route('/api/llamacpp/models', methods=['GET'])
+@admin_required
+def llamacpp_models():
+    """Return list of available models from llama-server via /v1/models."""
+    service_url = request.args.get('url')
+    if not service_url:
+        return jsonify({'error': _('Missing "url" parameter')}), 400
+    try:
+        resp = requests.get(f"{service_url.rstrip('/')}/v1/models", timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            # OpenAI format: {"data": [{"id": "model1", ...}, ...]}
+            models = [m['id'] for m in data.get('data', [])]
+            return jsonify(models)
+        else:
+            return jsonify({'error': _('llama-server returned {status}').format(status=resp.status_code)}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error fetching llama.cpp models from {service_url}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/llamacpp/model/<path:name>', methods=['GET'])
+@admin_required
+def llamacpp_model_info(name):
+    """Return detailed information about a specific model from llama-server."""
+    service_url = request.args.get('url')
+    if not service_url:
+        return jsonify({'error': _('Missing "url" parameter')}), 400
+    try:
+        resp = requests.get(f"{service_url.rstrip('/')}/v1/models/{name}", timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            model_info = {
+                'id': data.get('id', name),
+                'architecture': 'N/A',
+                'parameters': 'N/A',
+                'quantization': 'N/A',
+                'context_length': 'N/A',
+                'embedding_length': 'N/A'
+            }
+            # Extract metadata if available
+            metadata = data.get('metadata', {})
+            if metadata:
+                model_info['architecture'] = metadata.get('architecture', 'N/A')
+                model_info['parameters'] = metadata.get('parameters', 'N/A')
+                model_info['quantization'] = metadata.get('quantization', 'N/A')
+                model_info['context_length'] = metadata.get('context_length', 'N/A')
+                model_info['embedding_length'] = metadata.get('embedding_length', 'N/A')
+            else:
+                # Fallback: parse from filename
+                model_info['quantization'] = _extract_quantization(name)
+            return jsonify(model_info)
+        else:
+            return jsonify({'error': _('llama-server returned {status}').format(status=resp.status_code)}), 500
+    except Exception as e:
+        current_app.logger.error(f"Error fetching llama.cpp model info for {name}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+def _extract_quantization(filename: str) -> str:
+    """Extract quantization type from GGUF filename."""
+    qtypes = [
+        'Q2_K', 'Q3_K_S', 'Q3_K_M', 'Q3_K_L',
+        'Q4_0', 'Q4_K_S', 'Q4_K_M',
+        'Q5_0', 'Q5_K_S', 'Q5_K_M',
+        'Q6_K', 'Q8_0',
+        'IQ2_XXS', 'IQ2_XS', 'IQ2_S', 'IQ2_M',
+        'IQ3_XXS', 'IQ3_S', 'IQ3_M',
+        'IQ4_XS', 'IQ4_NL',
+        'F16', 'F32', 'BF16'
+    ]
+    fname_upper = filename.upper()
+    for qt in qtypes:
+        if qt in fname_upper:
+            return qt
+    return 'Unknown'
+
+
+# Keep old Ollama endpoints for reference (will be removed in cleanup phase)
 @bp.route('/api/ollama/check', methods=['GET'])
 @admin_required
 def ollama_check():
@@ -256,7 +352,6 @@ def ollama_check():
     if not ollama_url:
         return jsonify({'available': False, 'error': _('Missing url')}), 400
     try:
-        # Use a lightweight endpoint (tags) to check availability
         response = requests.get(f"{ollama_url}/api/tags", timeout=5)
         if response.status_code == 200:
             return jsonify({'available': True})
@@ -384,7 +479,7 @@ def update_model_config(module):
     from app.model_config import invalidate_model_config_cache, get_model_config
     
     data = request.get_json()
-    allowed_fields = ['model_name', 'ollama_url', 'context_length', 'temperature', 'top_p', 'timeout']
+    allowed_fields = ['model_name', 'service_url', 'ollama_url', 'context_length', 'temperature', 'top_p', 'timeout']
     updates = {k: v for k, v in data.items() if k in allowed_fields}
     if not updates:
         return jsonify({'error': _('No valid fields')}), 400

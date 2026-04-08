@@ -581,7 +581,7 @@ async function sendMessage() {
                     console.error('Server returned non-JSON response:', response.status);
                     const text = await response.text();
                     console.error('Response content:', text.substring(0, 200));
-                    originalDisplayMessage('assistant', 'Ошибка сервера: получен некорректный ответ', null, null, null, null,
+                    originalDisplayMessage('assistant', t('server_error_invalid_response'), null, null, null, null,
                         new Date().toISOString(), 0, 'system');
                     unlockSendButton();
                     return;

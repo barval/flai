@@ -656,3 +656,48 @@ msgstr "Too many attempts. Please try again later."
 
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v8.0 (c) 2026 Valery Barsukov"
+
+msgid "server_error_invalid_response"
+msgstr "Server error: received invalid response"
+
+msgid "recording"
+msgstr "Recording"
+
+msgid "llama-server available"
+msgstr "llama-server available"
+
+msgid "llama-server unavailable"
+msgstr "llama-server unavailable"
+
+msgid "Please provide llama-server URL first."
+msgstr "Please provide llama-server URL first."
+
+msgid "Refresh models from llama-server"
+msgstr "Refresh models from llama-server"
+
+msgid "room_tambour"
+msgstr "tambour"
+
+msgid "room_hallway"
+msgstr "hallway"
+
+msgid "room_corridor"
+msgstr "corridor"
+
+msgid "room_bedroom"
+msgstr "bedroom"
+
+msgid "room_office"
+msgstr "office"
+
+msgid "room_children"
+msgstr "children's room"
+
+msgid "room_living"
+msgstr "living room"
+
+msgid "room_kitchen"
+msgstr "kitchen"
+
+msgid "room_balcony"
+msgstr "balcony"

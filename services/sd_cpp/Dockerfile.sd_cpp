@@ -1,42 +1,46 @@
-# Dockerfile for stable-diffusion.cpp server
-# Supports Z_image_turbo, Qwen_image and classic SD models
+# Dockerfile for stable-diffusion.cpp with CUDA 13 support
+# Clones leejet/stable-diffusion.cpp and builds from source
 
-FROM ghcr.io/leejet/stable-diffusion.cpp:cuda
+ARG CUDA_VERSION=12.8.1
+ARG UBUNTU_VERSION=24.04
 
-WORKDIR /app
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION} AS build
 
-# Create directories for different model components
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    git \
+    ccache \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /sd.cpp
+
+# Clone the official repository at runtime
+RUN git clone --depth 1 https://github.com/leejet/stable-diffusion.cpp.git . && \
+    git submodule update --init --recursive
+
+ARG CUDACXX=/usr/local/cuda/bin/nvcc
+RUN cmake . -B ./build -DSD_CUDA=ON
+RUN cmake --build ./build --config Release -j$(nproc)
+
+FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu${UBUNTU_VERSION} AS runtime
+
+RUN apt-get update && \
+    apt-get install --yes --no-install-recommends libgomp1 curl && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /sd.cpp/build/bin/sd-cli /usr/local/bin/sd-cli
+COPY --from=build /sd.cpp/build/bin/sd-server /usr/local/bin/sd-server
+
+# Create directories for models
 RUN mkdir -p /app/models/diffusion_models \
              /app/models/vae \
              /app/models/text_encoders \
              /app/outputs
 
-# Expose default sd.cpp server port
+WORKDIR /app
+
 EXPOSE 7860
 
-# Environment variables for model paths (can be overridden at runtime)
-ENV DIFFUSION_MODEL=/app/models/diffusion_models/model.gguf
-ENV VAE_PATH=/app/models/vae/ae.safetensors
-ENV LLM_PATH=/app/models/text_encoders/llm.gguf
-ENV CFG_SCALE=1.0
-ENV STEPS=10
-ENV IMAGE_WIDTH=1024
-ENV IMAGE_HEIGHT=1024
-
-# Run sd.cpp server in OpenAI-compatible mode
-# For Z_image_turbo / Qwen_image: uses LLM as text encoder, no negative prompt, cfg_scale=1.0
-# For classic SD: uses CLIP/T5XXL encoders, supports negative prompt, cfg_scale=7.0
-CMD [ \
-    "sdserver", \
-    "--host", "0.0.0.0", \
-    "--port", "7860", \
-    "--diffusion-model", "/app/models/diffusion_models/model.gguf", \
-    "--vae", "/app/models/vae/ae.safetensors", \
-    "--llm", "/app/models/text_encoders/llm.gguf", \
-    "--cfg-scale", "1.0", \
-    "--steps", "10", \
-    "--width", "1024", \
-    "--height", "1024", \
-    "--threads", "4", \
-    "--log-verbosity", "2" \
-]
+ENTRYPOINT [ "/usr/local/bin/sd-server" ]
+CMD ["--help"]

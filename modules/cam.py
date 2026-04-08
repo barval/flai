@@ -33,6 +33,19 @@ class CamModule:
             'kuh': 'кухня',
             'bal': 'балкон'
         }
+
+        # Translation keys for room names
+        self.room_name_keys = {
+            'tam': 'room_tambour',
+            'pri': 'room_hallway',
+            'kor': 'room_corridor',
+            'spa': 'room_bedroom',
+            'kab': 'room_office',
+            'det': 'room_children',
+            'gos': 'room_living',
+            'kuh': 'room_kitchen',
+            'bal': 'room_balcony'
+        }
         
         self.room_codes = {v: k for k, v in self.room_names.items()}
         

@@ -658,3 +658,48 @@ msgstr "Слишком много попыток. Попробуйте позж�
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v8.0 (c) 2026 Барсуков Валерий"
 
+msgid "server_error_invalid_response"
+msgstr "Ошибка сервера: получен некорректный ответ"
+
+msgid "recording"
+msgstr "Запись"
+
+msgid "llama-server available"
+msgstr "llama-server доступен"
+
+msgid "llama-server unavailable"
+msgstr "llama-server недоступен"
+
+msgid "Please provide llama-server URL first."
+msgstr "Сначала укажите URL llama-server."
+
+msgid "Refresh models from llama-server"
+msgstr "Обновить модели из llama-server"
+
+
+msgid "room_tambour"
+msgstr "тамбур"
+
+msgid "room_hallway"
+msgstr "прихожая"
+
+msgid "room_corridor"
+msgstr "коридор"
+
+msgid "room_bedroom"
+msgstr "спальня"
+
+msgid "room_office"
+msgstr "кабинет"
+
+msgid "room_children"
+msgstr "детская"
+
+msgid "room_living"
+msgstr "гостиная"
+
+msgid "room_kitchen"
+msgstr "кухня"
+
+msgid "room_balcony"
+msgstr "балкон"

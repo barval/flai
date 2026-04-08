@@ -314,61 +314,71 @@ def llamacpp_model_info(name):
             # Determine if it's likely a vision model
             is_vision = 'vl' in name.lower() or 'vision' in name.lower()
 
-            # Determine architecture family from name
-            arch = 'N/A'
-            name_lower = name.lower()
-            if 'qwen3' in name_lower and 'vl' in name_lower:
-                arch = 'qwen3-vl'
-            elif 'qwen3' in name_lower:
-                arch = 'qwen3'
-            elif 'qwen2.5' in name_lower or 'qwen2' in name_lower:
-                arch = 'qwen2.5'
-            elif 'gemma' in name_lower:
-                arch = 'gemma'
-            elif 'gpt-oss' in name_lower:
-                arch = 'gpt-oss'
-            elif 'bge' in name_lower:
-                arch = 'bge'
-            elif 'llama' in name_lower:
-                arch = 'llama'
-            elif 'mistral' in name_lower:
-                arch = 'mistral'
+            # Known model metadata (architecture, parameters, context, embedding)
+            # This is a fallback when router doesn't return detailed metadata
+            KNOWN_MODELS = {
+                'Qwen3-4B-Instruct-2507-Q4_K_M': {
+                    'arch': 'qwen3', 'params': '~4B', 'ctx': 32768, 'emb': 2560
+                },
+                'gemma-4-26B-A4B-it-MXFP4_MOE': {
+                    'arch': 'gemma', 'params': '~26B (MoE)', 'ctx': 32768, 'emb': 4608
+                },
+                'gpt-oss-20b-mxfp4': {
+                    'arch': 'gpt-oss', 'params': '~20B', 'ctx': 32768, 'emb': 5120
+                },
+                'Qwen3VL-8B-Instruct-Q4_K_M': {
+                    'arch': 'qwen3-vl', 'params': '~8B', 'ctx': 32768, 'emb': 4096
+                },
+                'bge-m3-Q8_0': {
+                    'arch': 'bge', 'params': '~567M', 'ctx': 8192, 'emb': 1024
+                },
+            }
 
-            # Estimate parameter count from filename
-            params = 'N/A'
-            for hint in ['70b', '70B']:
-                if hint in name:
-                    params = '~70B'
-            for hint in ['27b', '27B']:
-                if hint in name:
-                    params = '~27B'
-            for hint in ['20b', '20B']:
-                if hint in name:
-                    params = '~20B'
-            for hint in ['26b', '26B', 'a4b']:
-                if hint in name_lower:
-                    params = '~26B (MoE)'
-            for hint in ['14b', '14B']:
-                if hint in name:
-                    params = '~14B'
-            for hint in ['9b', '9B']:
-                if hint in name:
-                    params = '~9B'
-            for hint in ['8b', '8B']:
-                if hint in name:
-                    params = '~8B'
-            for hint in ['7b', '7B']:
-                if hint in name:
-                    params = '~7B'
-            for hint in ['4b', '4B']:
-                if hint in name:
-                    params = '~4B'
-            for hint in ['3b', '3B']:
-                if hint in name:
-                    params = '~3B'
-            for hint in ['1b', '1B']:
-                if hint in name:
-                    params = '~1B'
+            known = KNOWN_MODELS.get(name, {})
+
+            # Determine architecture family from name (override if not known)
+            if not known.get('arch'):
+                name_lower = name.lower()
+                if 'qwen3' in name_lower and 'vl' in name_lower:
+                    arch = 'qwen3-vl'
+                elif 'qwen3' in name_lower:
+                    arch = 'qwen3'
+                elif 'qwen2.5' in name_lower or 'qwen2' in name_lower:
+                    arch = 'qwen2.5'
+                elif 'gemma' in name_lower:
+                    arch = 'gemma'
+                elif 'gpt-oss' in name_lower:
+                    arch = 'gpt-oss'
+                elif 'bge' in name_lower:
+                    arch = 'bge'
+                elif 'llama' in name_lower:
+                    arch = 'llama'
+                elif 'mistral' in name_lower:
+                    arch = 'mistral'
+                else:
+                    arch = 'N/A'
+            else:
+                arch = known['arch']
+
+            # Determine parameter count (use known or parse from filename)
+            if known.get('params'):
+                params = known['params']
+            else:
+                params = 'N/A'
+                for hint, label in [
+                    ('70b', '~70B'), ('27b', '~27B'), ('20b', '~20B'),
+                    ('26b', '~26B (MoE)'), ('a4b', '~26B (MoE)'),
+                    ('14b', '~14B'), ('9b', '~9B'), ('8b', '~8B'),
+                    ('7b', '~7B'), ('4b', '~4B'), ('3b', '~3B'),
+                    ('1b', '~1B')
+                ]:
+                    if hint in name.lower():
+                        params = label
+                        break
+
+            # Context length and embedding (from known or N/A)
+            ctx_length = known.get('ctx', 'N/A')
+            emb_length = known.get('emb', 'N/A')
 
             status = 'unknown'
             if model_data:
@@ -379,8 +389,8 @@ def llamacpp_model_info(name):
                 'architecture': arch,
                 'parameters': params,
                 'quantization': quantization,
-                'context_length': 'N/A',
-                'embedding_length': 'N/A',
+                'context_length': ctx_length,
+                'embedding_length': emb_length,
                 'status': status,
                 'type': 'embedding' if is_embedding else ('vision' if is_vision else 'text'),
             })
@@ -401,7 +411,9 @@ def _extract_quantization(filename: str) -> str:
         'IQ2_XXS', 'IQ2_XS', 'IQ2_S', 'IQ2_M',
         'IQ3_XXS', 'IQ3_S', 'IQ3_M',
         'IQ4_XS', 'IQ4_NL',
-        'F16', 'F32', 'BF16'
+        'F16', 'F32', 'BF16',
+        'MXFP4', 'MXFP6', 'MXFP8',
+        'A4B', 'A2B'
     ]
     fname_upper = filename.upper()
     for qt in qtypes:

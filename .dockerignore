@@ -17,17 +17,17 @@ data/
 *.sqlite
 *.sqlite3
 
-# Model files (if they are in project root or subfolders)
-*.gguf
-*.safetensors
-*.bin
-*.onnx
-*.json
-
 # Uploads and temporary files
 uploads/
 documents/
-services/
+
+# Model files — exclude from ALL services EXCEPT sd_cpp build context
+services/automatic1111/
+services/piper/piper_models/
+services/llamacpp/models/
+services/sd_cpp/models/
+
+# Log and temp files
 *.log
 *.tmp
 

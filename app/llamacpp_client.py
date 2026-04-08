@@ -186,7 +186,9 @@ class LlamaCppClient:
             'IQ2_XXS', 'IQ2_XS', 'IQ2_S', 'IQ2_M',
             'IQ3_XXS', 'IQ3_S', 'IQ3_M',
             'IQ4_XS', 'IQ4_NL',
-            'F16', 'F32', 'BF16'
+            'F16', 'F32', 'BF16',
+            'MXFP4', 'MXFP6', 'MXFP8',
+            'A4B', 'A2B'
         ]
         fname_upper = filename.upper()
         for qt in qtypes:

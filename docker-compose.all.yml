@@ -137,52 +137,66 @@ services:
   # ============================================================
   # STABLE-DIFFUSION.CPP (Optional - Image Generation)
   # ============================================================
-  # NOTE: stable-diffusion.cpp doesn't publish official Docker images.
-  # Uncomment the build section once you have a working Dockerfile.
-  # sd_cpp:
-  #   build:
-  #     context: ./services/sd_cpp
-  #     dockerfile: Dockerfile.sd_cpp
-  #   container_name: flai-sd
-  #   ports:
-  #     - "7860:7860"
-  #   volumes:
-  #     - ./services/sd_cpp/models/diffusion_models:/app/models/diffusion_models
-  #     - ./services/sd_cpp/models/vae:/app/models/vae
-  #     - ./services/sd_cpp/models/text_encoders:/app/models/text_encoders
-  #     - ./services/sd_cpp/outputs:/app/outputs
-  #   environment:
-  #     - NVIDIA_VISIBLE_DEVICES=all
-  #     - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-  #   runtime: nvidia
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         cpus: '8.0'
-  #         memory: 24G
-  #       reservations:
-  #         cpus: '4.0'
-  #         memory: 16G
-  #         devices:
-  #           - driver: nvidia
-  #             count: 1
-  #             capabilities: [gpu]
-  #   networks:
-  #     - flai_network
-  #   restart: unless-stopped
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:7860/"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 60s
-  #   profiles:
-  #     - with-image-gen
-  #   logging:
-  #     driver: "json-file"
-  #     options:
-  #       max-size: "10m"
-  #       max-file: "3"
+  sd_cpp:
+    build:
+      context: ./services/sd_cpp
+      dockerfile: Dockerfile.sd_cpp
+    container_name: flai-sd
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./services/sd_cpp/models/diffusion_models:/app/models/diffusion_models
+      - ./services/sd_cpp/models/vae:/app/models/vae
+      - ./services/sd_cpp/models/text_encoders:/app/models/text_encoders
+      - ./services/sd_cpp/outputs:/app/outputs
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    runtime: nvidia
+    deploy:
+      resources:
+        limits:
+          cpus: '8.0'
+          memory: 24G
+        reservations:
+          cpus: '4.0'
+          memory: 16G
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - flai_network
+    restart: unless-stopped
+    # Command arguments for sd-server (Z_image_turbo)
+    # Uses --offload-to-cpu to fit 16GB VRAM GPU
+    command: >
+      -l 0.0.0.0
+      --listen-port 7860
+      --diffusion-model /app/models/diffusion_models/z_image_turbo-Q8_0.gguf
+      --vae /app/models/vae/ae.safetensors
+      --llm /app/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+      --cfg-scale 1.0
+      --steps 10
+      --width 1024
+      --height 1024
+      --offload-to-cpu
+      --rng cuda
+      --diffusion-fa
+      --flow-shift 2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    profiles:
+      - with-image-gen
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ============================================================
   # WHISPER ASR (Optional - Speech Recognition)

@@ -32,12 +32,11 @@
 
 {{{{
   "prompt": "полный промпт здесь",
-  "steps": 30,
+  "steps": 10,
   "width": 1024,
   "height": 1024,
   "cfg_scale": 1.0,
-  "sampling_method": "euler",
-  "flow_shift": 3.0
+  "flow_shift": 2.0
 }}}}
 
 # ВХОДНЫЕ ДАННЫЕ

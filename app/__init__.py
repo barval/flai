@@ -136,10 +136,13 @@ def create_app():
     from modules.multimodal import MultimodalModule
     modules['multimodal'] = MultimodalModule(app)
 
-    if app.config.get('SD_CPP_URL'):
+    if app.config.get('SD_WRAPPER_URL'):
         from modules.sd_cpp import SdCppModule
         modules['image'] = SdCppModule(app)
         modules['image'].set_multimodal_module(modules['multimodal'])
+        app.logger.info("Image generation module enabled (sd-wrapper)")
+    else:
+        app.logger.info("Image generation module disabled (SD_WRAPPER_URL not set)")
 
     if app.config.get('CAMERA_ENABLED'):
         from modules.cam import CamModule

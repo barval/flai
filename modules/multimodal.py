@@ -183,7 +183,7 @@ class MultimodalModule:
 
         response = self._call_multimodal(messages, lang=lang)
 
-        self.logger.info(f"Multimodal model response for parameter generation: {response}")
+        self.logger.info(f"Multimodal model response for parameter generation: {response[:500]}")
 
         try:
             import re
@@ -191,9 +191,11 @@ class MultimodalModule:
             if json_match:
                 json_str = json_match.group()
                 prompt_data = json.loads(json_str)
+                self.logger.info(f"Parsed prompt_data: {prompt_data}")
 
-                if 'prompt' not in prompt_data:
+                if 'prompt' not in prompt_data or not prompt_data['prompt'].strip():
                     prompt_data['prompt'] = user_query
+                    self.logger.warning(f"No prompt in response, using original query: {user_query}")
                 if 'negative_prompt' not in prompt_data:
                     prompt_data['negative_prompt'] = ""
 

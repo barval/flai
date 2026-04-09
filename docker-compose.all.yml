@@ -15,12 +15,11 @@ services:
       # Mount application data directory
       - ./data:/app/data
       - ./.env:/app/.env:ro
-    env_file:
-      - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
       - WHISPER_API_URL=http://flai-whisper:9000/asr
       - WHISPER_API_TIMEOUT=120
+      - SD_WRAPPER_URL=http://flai-sd:7861
     user: "1000:1000"
     networks:
       - flai_network
@@ -137,18 +136,21 @@ services:
   # ============================================================
   # STABLE-DIFFUSION.CPP (Optional - Image Generation)
   # ============================================================
+  # Uses sd-cli directly via a Python HTTP wrapper (sd_wrapper.py)
+  # The sd-server's /v1/images/generations endpoint doesn't work properly.
   sd_cpp:
     build:
       context: ./services/sd_cpp
       dockerfile: Dockerfile.sd_cpp
     container_name: flai-sd
     ports:
-      - "7860:7860"
+      - "7861:7861"
     volumes:
       - ./services/sd_cpp/models/diffusion_models:/app/models/diffusion_models
       - ./services/sd_cpp/models/vae:/app/models/vae
       - ./services/sd_cpp/models/text_encoders:/app/models/text_encoders
       - ./services/sd_cpp/outputs:/app/outputs
+      - ./services/sd_cpp/sd_wrapper.py:/app/sd_wrapper.py:ro
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
@@ -168,28 +170,14 @@ services:
     networks:
       - flai_network
     restart: unless-stopped
-    # Command arguments for sd-server (Z_image_turbo)
-    # Uses --offload-to-cpu to fit 16GB VRAM GPU
-    command: >
-      -l 0.0.0.0
-      --listen-port 7860
-      --diffusion-model /app/models/diffusion_models/z_image_turbo-Q8_0.gguf
-      --vae /app/models/vae/ae.safetensors
-      --llm /app/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
-      --cfg-scale 1.0
-      --steps 10
-      --width 1024
-      --height 1024
-      --offload-to-cpu
-      --rng cuda
-      --diffusion-fa
-      --flow-shift 2
+    # Run sd-wrapper HTTP API on port 7861 (calls sd-cli internally)
+    entrypoint: ["python3", "/app/sd_wrapper.py"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7860/"]
+      test: ["CMD", "curl", "-f", "http://localhost:7861/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 10s
     profiles:
       - with-image-gen
     logging:

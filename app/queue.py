@@ -363,7 +363,7 @@ class RedisRequestQueue:
                         process_time = mm_time
                     else:
                         gen_start_time = time.time()
-                        image_result = self.app.modules['image']._call_sd_cpp(prompt_data, lang=lang)
+                        image_result = self.app.modules['image']._call_wrapper(prompt_data, lang=lang)
                         gen_time = round(time.time() - gen_start_time, 1)
                         if image_result['success']:
                             completion_time_for_db = get_current_time_in_timezone_for_db(self.app)

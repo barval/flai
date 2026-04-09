@@ -21,15 +21,13 @@ def load_config(app):
     
     # llama.cpp server settings (replaces Ollama)
     app.config['LLAMACPP_URL'] = os.getenv('LLAMACPP_URL')
-    # For Z_image_turbo / Qwen_image: cfg_scale=1.0, steps=10, 1024x1024, no negative_prompt
-    # For classic SD: cfg_scale=7.0, steps=30, 512x512, negative_prompt supported
-    app.config['SD_CPP_URL'] = os.getenv('SD_CPP_URL')
-    app.config['SD_CPP_MODEL'] = os.getenv('SD_CPP_MODEL')
+    # stable-diffusion.cpp settings (uses sd-wrapper HTTP API)
+    app.config['SD_WRAPPER_URL'] = os.getenv('SD_WRAPPER_URL', 'http://flai-sd:7861')
     app.config['SD_CPP_DEFAULT_WIDTH'] = int(os.getenv('SD_CPP_DEFAULT_WIDTH', 1024))
     app.config['SD_CPP_DEFAULT_HEIGHT'] = int(os.getenv('SD_CPP_DEFAULT_HEIGHT', 1024))
     app.config['SD_CPP_DEFAULT_CFG_SCALE'] = float(os.getenv('SD_CPP_DEFAULT_CFG_SCALE', 1.0))
     app.config['SD_CPP_DEFAULT_STEPS'] = int(os.getenv('SD_CPP_DEFAULT_STEPS', 10))
-    app.config['SD_CPP_TIMEOUT'] = int(os.getenv('SD_CPP_TIMEOUT', 180))
+    app.config['SD_CPP_TIMEOUT'] = int(os.getenv('SD_CPP_TIMEOUT', 300))
 
     # Image validation settings (shared)
     app.config['MAX_IMAGE_WIDTH'] = int(os.getenv('MAX_IMAGE_WIDTH', 3840))

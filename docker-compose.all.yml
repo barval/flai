@@ -83,6 +83,22 @@ services:
         max-file: "3"
 
   # ============================================================
+  # LLAMACPP PRESET GENERATOR (init container)
+  # Generates models-preset.ini from model_configs DB before llama.cpp starts
+  # ============================================================
+  llamacpp-presets:
+    image: python:3.9-slim
+    container_name: flai-llamacpp-presets
+    volumes:
+      - ./data:/app/data
+      - ./services/llamacpp/models:/models
+      - ./services/llamacpp/generate_presets.py:/generate_presets.py:ro
+    command: ["python3", "/generate_presets.py"]
+    restart: "no"
+    networks:
+      - flai_network
+
+  # ============================================================
   # LLAMA.CPP SERVER (Required - LLM Inference, router mode)
   # ============================================================
   # Router mode: handles chat, reasoning, embedding, and multimodal.
@@ -94,6 +110,9 @@ services:
       - "8080:8033"
     volumes:
       - ./services/llamacpp/models:/models
+    depends_on:
+      llamacpp-presets:
+        condition: service_completed_successfully
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility

@@ -56,7 +56,8 @@ else:  # z_image_turbo (default)
     DEFAULT_SAMPLER = None  # auto for z_image_turbo
 
 # Edit model paths (Qwen Image Edit) — separate from generation models
-EDIT_DIFFUSION_MODEL = '/app/models/diffusion_models/qwen-image-edit-2511-Q4_K_M.gguf'
+# Q2_K chosen for 16GB VRAM compatibility (~4.8GB VRAM vs ~7.2GB for Q4_K_M)
+EDIT_DIFFUSION_MODEL = '/app/models/diffusion_models/qwen-image-edit-2511-Q2_K.gguf'
 EDIT_VAE = '/app/models/vae/qwen_image_vae.safetensors'
 EDIT_LLM = '/app/models/text_encoders/Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf'
 EDIT_DEFAULT_STRENGTH = 0.7
@@ -155,8 +156,6 @@ def generate_image(data):
         '--diffusion-fa',
         '--flow-shift', str(flow_shift),
         '--offload-to-cpu',
-        '--vae-on-cpu',
-        '--llm-on-cpu',
     ]
 
     # Add sampler if specified (required for qwen_image)

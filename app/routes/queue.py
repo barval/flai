@@ -33,16 +33,34 @@ def api_check_result(request_id):
         return jsonify({'error': _('Not authorized')}), 401
     user_id = session['login']
 
-    # First check if the result already exists
+    # First check if the result already exists — return it regardless of ownership
+    # (ownership is removed when task completes, but the result should still be accessible)
     result = current_app.request_queue.check_result(request_id)
     if result and result.get('status') in ('completed', 'error'):
         return jsonify(result)
 
-    # No result yet — verify this request belongs to the current user
-    # (ownership is removed from the set when the task completes, so we only
-    # check ownership while the task is still pending)
+    # No deserialized result — check raw data and ownership
     user_requests_key = current_app.request_queue.user_requests_key
-    if not current_app.request_queue.redis.sismember(f"{user_requests_key}:{user_id}", request_id):
+    is_owner = current_app.request_queue.redis.sismember(f"{user_requests_key}:{user_id}", request_id)
+
+    # Check if raw result data exists even if deserialization failed
+    raw = current_app.request_queue.redis.hget(current_app.request_queue.results_key, request_id)
+    if raw and not is_owner:
+        # Result exists but we can't deserialize it — return a generic completed status
+        # so the client stops polling instead of getting stuck on 404
+        current_app.logger.warning(
+            f"Raw result exists for {request_id} but deserialization failed. "
+            f"Returning placeholder to stop polling."
+        )
+        return jsonify({
+            'status': 'completed',
+            'result': {
+                'session_id': None,
+                'error': 'Result data corrupted'
+            }
+        })
+
+    if not is_owner:
         return jsonify({'error': _('Not found')}), 404
 
     return jsonify({'status': 'pending'})

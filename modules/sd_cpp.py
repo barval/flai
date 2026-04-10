@@ -145,33 +145,42 @@ class SdCppModule:
 
     def _call_wrapper(self, prompt_data, lang='ru'):
         """Call sd-wrapper HTTP API to generate image.
-        Parameters (steps, cfg_scale, flow_shift, sampling_method) come from
-        the prompt template which is model-specific (z_image_turbo vs qwen_image).
+        Before starting, unloads llama.cpp model from VRAM to avoid OOM.
         """
-        self.logger.info(
-            f"Sending request to sd-wrapper ({self.model_type}), "
-            f"cfg_scale={prompt_data.get('cfg_scale', 'auto')}, "
-            f"steps={prompt_data.get('steps', 'auto')}, "
-            f"timeout: {self.timeout}s"
-        )
-        self.logger.info(
-            f"sd.cpp prompt: '{prompt_data.get('prompt', '')[:100]}...'"
-        )
+        # Signal Resource Manager that sd-cli is using GPU
+        from app.resource_manager import get_resource_manager
+        rm = get_resource_manager()
 
-        # Parameters from template — each model type has its own defaults
-        payload = {
-            'prompt': prompt_data.get('prompt', ''),
-            'steps': prompt_data.get('steps', 10),
-            'width': prompt_data.get('width', 1024),
-            'height': prompt_data.get('height', 1024),
-            'cfg_scale': prompt_data.get('cfg_scale', 1.0),
-            'flow_shift': prompt_data.get('flow_shift', 2.0),
-        }
-        # Optional sampler (required for qwen_image)
-        if prompt_data.get('sampling_method'):
-            payload['sampling_method'] = prompt_data['sampling_method']
+        # Unload llama.cpp model to free ALL VRAM for sd-cli
+        llamacpp_url = self.app.config.get('LLAMACPP_URL', 'http://flai-llamacpp:8033')
+        rm.unload_llamacpp_model(llamacpp_url)
+
+        rm.mark_sd_busy()
 
         try:
+            self.logger.info(
+                f"Sending request to sd-wrapper ({self.model_type}), "
+                f"cfg_scale={prompt_data.get('cfg_scale', 'auto')}, "
+                f"steps={prompt_data.get('steps', 'auto')}, "
+                f"timeout: {self.timeout}s"
+            )
+            self.logger.info(
+                f"sd.cpp prompt: '{prompt_data.get('prompt', '')[:100]}...'"
+            )
+
+            # Parameters from template — each model type has its own defaults
+            payload = {
+                'prompt': prompt_data.get('prompt', ''),
+                'steps': prompt_data.get('steps', 10),
+                'width': prompt_data.get('width', 1024),
+                'height': prompt_data.get('height', 1024),
+                'cfg_scale': prompt_data.get('cfg_scale', 1.0),
+                'flow_shift': prompt_data.get('flow_shift', 2.0),
+            }
+            # Optional sampler (required for qwen_image)
+            if prompt_data.get('sampling_method'):
+                payload['sampling_method'] = prompt_data['sampling_method']
+
             response = requests.post(
                 f"{self.wrapper_url.rstrip('/')}/v1/images/generations",
                 json=payload,
@@ -246,83 +255,21 @@ class SdCppModule:
                 'success': False,
                 'error': f"{self._('Error', lang)}: {str(e)}"
             }
-
-    def _unload_llamacpp_model(self, lang: str = 'ru'):
-        """Unload the llama.cpp model from VRAM before editing.
-        llama.cpp router mode keeps models cached in VRAM (~7.6GB).
-        We use POST /models/unload API to free VRAM.
-        """
-        from app.model_config import get_model_config
-        config = get_model_config('multimodal')
-        if not config:
-            url = None
-        else:
-            url = config.get('service_url') or config.get('ollama_url')
-
-        if not url:
-            url = self.app.config.get('LLAMACPP_URL', 'http://flai-llamacpp:8033')
-
-        base_url = url.rstrip('/')
-        self.logger.info(f"Attempting to unload llama.cpp model from {base_url}")
-
-        try:
-            import requests as req
-
-            # Step 1: GET /v1/models to find loaded model
-            models_url = f"{base_url}/v1/models"
-            self.logger.info(f"Querying {models_url}")
-            models_resp = req.get(models_url, timeout=10)
-
-            model_to_unload = None
-            if models_resp.status_code == 200:
-                data = models_resp.json()
-                models_list = data.get('data', [])
-                for m in models_list:
-                    mid = m.get('id', '')
-                    status = m.get('status', {}).get('value', '')
-                    self.logger.info(f"Model: {mid}, status: {status}")
-
-                    # Skip embedding models
-                    if 'bge' in mid.lower() or 'embedding' in mid.lower():
-                        continue
-                    # Only unload models that are actually loaded (running)
-                    if status == 'loaded':
-                        model_to_unload = mid
-                        break
-
-            # Step 2: POST /models/unload
-            if model_to_unload:
-                unload_url = f"{base_url}/models/unload"
-                self.logger.info(f"Unloading model '{model_to_unload}' via {unload_url}")
-                unload_resp = req.post(
-                    unload_url,
-                    json={'model': model_to_unload},
-                    timeout=60
-                )
-                if unload_resp.status_code == 200:
-                    self.logger.info(f"Model '{model_to_unload}' unloaded successfully")
-                    # Wait for VRAM to be actually freed
-                    import time
-                    time.sleep(3)
-                    return
-                else:
-                    self.logger.warning(
-                        f"POST /models/unload returned {unload_resp.status_code}: "
-                        f"{unload_resp.text[:200]}"
-                    )
-            else:
-                self.logger.info("No loaded model found, VRAM should be free")
-
-        except Exception as e:
-            self.logger.warning(f"Could not unload llama.cpp model: {e}")
+        finally:
+            rm.mark_sd_idle()
 
     def edit_image(self, edit_prompt_data: Dict[str, Any], image_base64: str, lang: str = 'ru') -> Dict[str, Any]:
         """Edit an existing image using Qwen Image Edit model.
-        Uses /v1/images/edits endpoint on sd-wrapper.
-        Before editing, unloads the llama.cpp model from VRAM to avoid OOM.
+        Before starting, unloads llama.cpp model from VRAM to avoid OOM.
         """
-        # Free VRAM by unloading the llama.cpp model before editing
-        self._unload_llamacpp_model(lang)
+        from app.resource_manager import get_resource_manager
+        rm = get_resource_manager()
+
+        # Unload llama.cpp model to free ALL VRAM for sd-cli
+        llamacpp_url = self.app.config.get('LLAMACPP_URL', 'http://flai-llamacpp:8033')
+        rm.unload_llamacpp_model(llamacpp_url)
+
+        rm.mark_sd_busy()
 
         self.logger.info(
             f"Sending edit request to sd-wrapper, "
@@ -417,3 +364,5 @@ class SdCppModule:
                 'success': False,
                 'error': f"{self._('Error', lang)}: {str(e)}"
             }
+        finally:
+            rm.mark_sd_idle()

@@ -12,6 +12,7 @@ dynamic model switching without restart.
 """
 
 import logging
+import threading
 import requests
 import traceback
 import base64
@@ -24,6 +25,13 @@ from flask_babel import force_locale
 from app.model_config import get_model_config
 from app.utils import estimate_tokens
 from app.circuit_breaker import CircuitBreaker, CircuitBreakerOpen
+
+# llama.cpp runs with --models-max 1, so only one model can be in VRAM at a time.
+# When different model types are requested concurrently (embedding vs multimodal),
+# we serialize them to avoid constant model reloading thrashing.
+# Chat/reasoning use the same model so they don't conflict with each other.
+
+_model_switch_lock = threading.Lock()
 
 
 class LlamaCppClient:
@@ -421,14 +429,6 @@ class LlamaCppClient:
     ) -> Optional[List[List[float]]]:
         """
         Get embeddings via OpenAI-compatible /v1/embeddings endpoint.
-
-        Args:
-            texts: List of text strings to embed
-            model_type: Module type (usually 'embedding')
-            lang: Language for error messages
-
-        Returns:
-            List of embedding vectors, or None on error
         """
         config = get_model_config(model_type)
         if not config:

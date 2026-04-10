@@ -24,6 +24,14 @@ function loadMessages(sessionId) {
     return fetch('/api/sessions/' + sessionId + '/messages?limit=100&offset=0')
         .then(res => {
             if (!res.ok) {
+                // If session is gone (404), don't spam error, just trigger session reload
+                if (res.status === 404) {
+                    console.warn('loadMessages: Session not found (404). Reloading sessions...');
+                    if (typeof window.loadSessionsFromServer === 'function') {
+                        window.loadSessionsFromServer();
+                    }
+                    return [];
+                }
                 console.error('Failed to load messages:', res.status);
                 throw new Error('HTTP error ' + res.status);
             }
@@ -35,6 +43,16 @@ function loadMessages(sessionId) {
             // Handle both old format (array) and new format (object with messages)
             const messages = Array.isArray(data) ? data : (data.messages || []);
             console.debug('loadMessages: received', messages.length, 'messages');
+
+            // Update sessionsData count to match server state
+            // This prevents the background sync from flagging this session as "Unread"
+            if (sessionsData[sessionId]) {
+                sessionsData[sessionId].message_count = messages.length;
+                // Also update from the latest message timestamp
+                if (messages.length > 0) {
+                    sessionsData[sessionId].updated_at = messages[messages.length - 1].timestamp || new Date().toISOString();
+                }
+            }
 
             const container = document.getElementById('chat-messages');
             container.innerHTML = '';

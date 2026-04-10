@@ -19,14 +19,22 @@ def api_get_sessions():
 def api_switch_session(session_id):
     if 'login' not in session:
         return jsonify({'error': _('Not authorized')}), 401
-    
+
     user_id = session['login']
-    
+
     # Security: Verify session belongs to user
     if not validate_session_ownership(session_id, user_id):
         current_app.logger.warning(f"User {user_id} attempted to access session {session_id}")
         return jsonify({'error': _('Session not found or access denied')}), 404
-    
+
+    # Update last_visit for the PREVIOUS session — this tells the server the user
+    # has seen all messages up to this point, preventing false "unread" indicators
+    # when new messages arrive after switching. Server is the single source of truth
+    # for all clients (desktop, mobile, etc.).
+    prev_session = session.get('current_session')
+    if prev_session and prev_session != session_id:
+        db.update_session_visit(user_id, prev_session)
+
     session['current_session'] = session_id
     db.set_last_session(user_id, session_id)
     db.update_session_visit(user_id, session_id)

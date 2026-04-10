@@ -24,10 +24,14 @@ function startSyncInterval() {
  * Called periodically to keep all clients in sync
  */
 function syncSessionsAndMessages() {
-    if (window.IS_RELOADING) {
-        console.debug('syncSessionsAndMessages: Skipping - IS_RELOADING');
-        return;
+    if (window.IS_RELOADING) return;
+
+    // Update queue status icons (fixes stuck lightning bolts)
+    // This ensures status updates even if polling was cancelled
+    if (typeof fetchQueueStatus === 'function') {
+        fetchQueueStatus();
     }
+
     console.debug('syncSessionsAndMessages: Starting sync for session', currentSessionId, 'pendingRequests:', Object.keys(pendingRequests).length);
 
     // Sync sessions list
@@ -81,12 +85,20 @@ function syncMessagesForCurrentSession() {
 
     fetch(`/api/sessions/${currentSessionId}/messages?since=${encodeURIComponent(lastTimestamp)}`)
         .then(res => {
-            console.debug('syncMessages: Response status:', res.status);
+            // Handle 404 silently — session was deleted or user lost access
+            if (!res.ok) {
+                if (res.status === 404) {
+                    if (typeof window.loadSessionsFromServer === 'function') window.loadSessionsFromServer();
+                }
+                return null;
+            }
             return res.json();
         })
         .then(data => {
+            if (!data) return;
             // Handle both old format (array) and new format (object with messages)
-            const newMessages = Array.isArray(data) ? data : (data.messages || []);
+            // Safety check: if data is not an object, treat as empty
+            const newMessages = Array.isArray(data) ? data : (data && data.messages ? data.messages : []);
             console.debug('syncMessages: Received', newMessages.length, 'new messages');
             console.debug('syncMessages: Messages:', newMessages.map(m => ({ id: m.id, role: m.role, timestamp: m.timestamp })));
             if (window.IS_RELOADING || !newMessages || newMessages.length === 0) {
@@ -102,6 +114,13 @@ function syncMessagesForCurrentSession() {
 
                 // Clear unread indicator when we receive new messages for current session
                 delete newMessageIndicators[currentSessionId];
+
+                // Update sessionsData count to keep sidebar in sync with DOM
+                // This MUST happen before any 'continue' to ensure the counter matches the server
+                if (sessionsData[currentSessionId]) {
+                    sessionsData[currentSessionId].message_count = (sessionsData[currentSessionId].message_count || 0) + 1;
+                    sessionsData[currentSessionId].updated_at = msg.timestamp || new Date().toISOString();
+                }
 
                 // Skip if already displayed (check DOM first)
                 if (msg.id) {
@@ -158,134 +177,116 @@ function syncMessagesForCurrentSession() {
 function fetchQueueStatus() {
     if (window.IS_RELOADING) return;
     fetch('/api/queue/status')
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) {
+                // Server unavailable — clear all status icons
+                Object.keys(sessionQueueInfo).forEach(sid => {
+                    sessionQueueInfo[sid] = { processing: false, queued: 0, queue_position: 0, has_transcribing: false };
+                });
+                updateUIFromQueueStatus();
+                return;
+            }
+            return res.json();
+        })
         .then(data => {
             if (window.IS_RELOADING) return;
+            if (!data) return;
+
+            // COMPLETELY rebuild sessionQueueInfo from server data only
+            // Do NOT use pendingRequests to determine status icons
             const newInfo = {};
 
-            // Initialize all known sessions with default values
-            // IMPORTANT: Don't reset processing=false for sessions with pending requests
-            // They might be between server-side processing state transitions
+            // Start with all known sessions as idle
             Object.keys(sessionsData).forEach(sessionId => {
-                const hasPendingRequest = Object.values(pendingRequests).some(
-                    pr => pr.sessionId === sessionId
-                );
-                const existingInfo = sessionQueueInfo[sessionId] || {};
-
-                // If this session has a pending request, preserve its processing state
-                // unless the server explicitly says it's not processing
                 newInfo[sessionId] = {
-                    processing: hasPendingRequest ? (existingInfo.processing || false) : false,
-                    queued: hasPendingRequest ? (existingInfo.queued || 0) : 0,
-                    queue_position: hasPendingRequest ? (existingInfo.queue_position || 0) : 0,
-                    // has_transcribing should ONLY persist if the server confirms it
-                    // Don't carry it over from existing state — it will be set below if needed
+                    processing: false,
+                    queued: 0,
+                    queue_position: 0,
                     has_transcribing: false
                 };
             });
 
-            // Process currently processing task (ONLY ONE session can have this)
+            // Mark the session that is currently being processed by server (lightning bolt)
             let processingSessionId = null;
             if (data.processing) {
-                const proc = data.processing;
-                processingSessionId = proc.session_id;
-                // Ensure the session exists in newInfo before setting properties
+                processingSessionId = data.processing.session_id;
                 if (!newInfo[processingSessionId]) {
                     newInfo[processingSessionId] = { processing: false, queued: 0, queue_position: 0, has_transcribing: false };
                 }
                 newInfo[processingSessionId].processing = true;
-                newInfo[processingSessionId].queued = 0;
-                newInfo[processingSessionId].queue_position = 0;
-                // Only set has_transcribing if currently processing audio/transcribe task
-                if (proc.type === 'transcribe_audio' || proc.type === 'audio') {
+                if (data.processing.type === 'transcribe_audio' || data.processing.type === 'audio') {
                     newInfo[processingSessionId].has_transcribing = true;
                 }
-                console.debug('fetchQueueStatus: processing task for session', processingSessionId, 'type:', proc.type);
+                console.debug('fetchQueueStatus: processing session', processingSessionId);
             }
 
-            // Process queued tasks (EXCLUDE the session that's currently processing)
-            data.queued.forEach(item => {
-                const sessionId = item.session_id;
-                // Skip if this session is already processing
-                if (sessionId === processingSessionId) {
-                    return;
-                }
-                const position = item.position_info?.position || 999;
-                if (!newInfo[sessionId]) {
-                    newInfo[sessionId] = { processing: false, queued: 0, queue_position: 999, has_transcribing: false };
-                }
-                newInfo[sessionId].queued += 1;
-                // Store the position for this session's task
-                newInfo[sessionId].queue_position = position;
-                // If server says this is queued (not processing), clear the processing flag
-                // This overrides the "preserve for pending" logic above
-                newInfo[sessionId].processing = false;
-            });
-
-            // Clear processing flag for sessions that were processing but are no longer
-            // (server has moved on to a different session or completed)
-            Object.keys(newInfo).forEach(sessionId => {
-                // If this session is not the current processing session and has no queued tasks,
-                // and it was previously marked as processing - clear it
-                if (sessionId !== processingSessionId &&
-                    newInfo[sessionId].queued === 0 &&
-                    newInfo[sessionId].processing) {
-                    // Check if there's still a pending request for this session
-                    const hasPending = Object.values(pendingRequests).some(
-                        pr => pr.sessionId === sessionId
-                    );
-                    if (!hasPending) {
-                        newInfo[sessionId].processing = false;
+            // Mark queued sessions (hourglass)
+            if (data.queued && data.queued.length > 0) {
+                data.queued.forEach(item => {
+                    const sessionId = item.session_id;
+                    if (sessionId === processingSessionId) return;
+                    if (!newInfo[sessionId]) {
+                        newInfo[sessionId] = { processing: false, queued: 0, queue_position: 0, has_transcribing: false };
                     }
-                    // If there IS a pending request, keep processing=true - the server
-                    // may have just cleared the processing key before we polled
-                }
-            });
+                    newInfo[sessionId].queued += 1;
+                    newInfo[sessionId].queue_position = item.position_info?.position || 999;
+                });
+            }
+
+            // SAFETY VALVE: If server reports idle (no processing, no queued), clear pendingRequests
+            // This fixes stuck lightning bolts when polling was cancelled
+            if (!processingSessionId && (!data.queued || data.queued.length === 0)) {
+                Object.keys(pendingRequests).forEach(reqId => {
+                    delete pendingRequests[reqId];
+                });
+            }
 
             // Update global sessionQueueInfo
             sessionQueueInfo = newInfo;
-            console.debug('fetchQueueStatus: sessionQueueInfo updated', sessionQueueInfo);
 
             // Sync localTranscribingSessions with server status
-            // This ensures mobile clients show microphone icon for transcribing sessions
             Object.keys(newInfo).forEach(sessionId => {
                 if (newInfo[sessionId].has_transcribing) {
                     localTranscribingSessions[sessionId] = true;
                 } else if (localTranscribingSessions[sessionId]) {
-                    // Server says no longer transcribing, clear local flag
                     delete localTranscribingSessions[sessionId];
                 }
             });
 
-            // CRITICAL: Also update sessionsData with queue_info for immediate display
+            // Update sessionsData with queue_info for display
             Object.keys(newInfo).forEach(sessionId => {
                 if (sessionsData[sessionId]) {
                     sessionsData[sessionId].queue_info = { ...newInfo[sessionId] };
                 }
             });
 
-            // CRITICAL: Update sessions list IMMEDIATELY (no debounce)
-            // This ensures status icons update immediately after task completion
-            const sessions = Object.keys(sessionsData).map(id => ({
-                id: id,
-                title: sessionsData[id].title,
-                updated_at: sessionsData[id].updated_at,
-                message_count: sessionsData[id].message_count,
-                has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
-                queue_info: sessionQueueInfo[id] || null
-            }));
-            
-            if (typeof updateSessionsList === 'function') {
-                updateSessionsList(sessions);
-            }
-
-            // Update status counter
-            window.updateStatusCounter();
+            updateUIFromQueueStatus();
         })
         .catch(err => console.error('Error fetching queue status:', err));
 }
 
-// Local transcribing status (for voice messages)
+/**
+ * Update the sessions list UI based on current sessionQueueInfo
+ * Called after fetchQueueStatus or status changes
+ */
+function updateUIFromQueueStatus() {
+    const sessions = Object.keys(sessionsData).map(id => ({
+        id: id,
+        title: sessionsData[id].title,
+        updated_at: sessionsData[id].updated_at,
+        message_count: sessionsData[id].message_count,
+        has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
+        queue_info: sessionQueueInfo[id] || null
+    }));
+
+    if (typeof updateSessionsList === 'function') {
+        updateSessionsList(sessions);
+    }
+
+    // Update status counter
+    window.updateStatusCounter();
+}
+
 function setLocalTranscribing(sessionId, isTranscribing) {
     if (!sessionId) {
         console.warn('setLocalTranscribing called with empty sessionId');

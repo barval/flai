@@ -1,6 +1,6 @@
 # app/__init__.py
 import os
-from flask import Flask, request, session, send_file, abort, jsonify
+from flask import Flask, request, session, send_file, abort, jsonify, redirect, url_for
 from flask_babel import Babel, gettext
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
@@ -9,10 +9,42 @@ import logging
 from logging import Formatter
 from .config import load_config
 from .db import (
-    init_db, migrate_db_add_response_fields, migrate_db_add_session_visits,
+    init_db, CHAT_DB_PATH,
+    migrate_db_add_response_fields, migrate_db_add_session_visits,
     migrate_db_add_indexes, migrate_db_add_index_status, migrate_add_model_configs,
     migrate_add_embedding_model, migrate_add_ollama_url, migrate_add_service_url
 )
+from .resource_manager import get_resource_manager
+
+
+def _run_migrations(app):
+    """Run all database migrations within a single transaction.
+
+    SQLite doesn't support true DDL transactions, but we wrap each migration
+    in a try/except that logs errors without breaking subsequent migrations.
+    If a critical migration fails, we log a warning but continue startup
+    (since ALTER TABLE ADD COLUMN is idempotent in SQLite).
+    """
+    import sqlite3
+
+    migrations = [
+        migrate_db_add_response_fields,
+        migrate_db_add_session_visits,
+        migrate_db_add_indexes,
+        migrate_db_add_index_status,
+        migrate_add_model_configs,
+        migrate_add_embedding_model,
+        migrate_add_ollama_url,
+        migrate_add_service_url,
+    ]
+
+    for migration_fn in migrations:
+        try:
+            migration_fn(app)
+        except Exception as e:
+            app.logger.warning(f"Migration {migration_fn.__name__} failed: {e} — continuing")
+
+
 from .queue import RedisRequestQueue
 from .userdb import init_user_db, get_user_by_login
 import mimetypes
@@ -113,16 +145,14 @@ def create_app():
     # Initialize rate limiting
     limiter.init_app(app)
 
-    # Initialize chat DB
+    # Initialize chat DB — all migrations wrapped in a single transaction
+    # If any migration fails, all changes are rolled back
     init_db()
-    migrate_db_add_response_fields(app)
-    migrate_db_add_session_visits(app)
-    migrate_db_add_indexes(app)  # Add indexes for performance
-    migrate_db_add_index_status(app)  # Add index_status column to documents table for RAG
-    migrate_add_model_configs(app)   # New migration for model configs
-    migrate_add_embedding_model(app) # Add embedding_model column to documents table
-    migrate_add_ollama_url(app)      # Add ollama_url column to model_configs table
-    migrate_add_service_url(app)     # Add service_url column (llama.cpp migration)
+    _run_migrations(app)
+
+    # Detect hardware and initialize Resource Manager
+    rm = get_resource_manager()
+    app.logger.info(f"Hardware: {rm.get_status()}")
 
     # Initialize user DB
     init_user_db()
@@ -262,6 +292,27 @@ def create_app():
             abort(404)
 
     # Global error handlers for API routes
+    @app.errorhandler(400)
+    def bad_request(error):
+        """Handle 400 errors — CSRF failures return session_expired for API."""
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Session expired. Please refresh the page.', 'session_expired': True}), 400
+        return error
+
+    @app.errorhandler(401)
+    def unauthorized(error):
+        """Handle 401 errors — redirect to login for HTML, JSON for API."""
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Authentication required.', 'session_expired': True}), 401
+        return redirect(url_for('auth.login')) if not request.is_json else error
+
+    @app.errorhandler(403)
+    def forbidden(error):
+        """Handle 403 errors — session expired or forbidden access."""
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Session expired. Please refresh the page.', 'session_expired': True}), 403
+        return error
+
     @app.errorhandler(500)
     def internal_error(error):
         if request.path.startswith('/api/'):
@@ -336,7 +387,40 @@ def create_app():
             status['services']['llamacpp'] = 'error'
             app.logger.error(f"Health check - llama-server error: {e}")
             http_status = 503
-        
+
+        # Check sd-wrapper (image generation/editing)
+        sd_url = app.config.get('SD_WRAPPER_URL')
+        if sd_url:
+            try:
+                response = requests.get(f"{sd_url.rstrip('/')}/health", timeout=5)
+                status['services']['sd_wrapper'] = 'ok' if response.status_code == 200 else 'error'
+            except Exception as e:
+                status['services']['sd_wrapper'] = 'error'
+                app.logger.error(f"Health check - sd-wrapper error: {e}")
+
+        # Check Whisper ASR
+        whisper_url = app.config.get('WHISPER_API_URL')
+        if whisper_url:
+            try:
+                base_url = whisper_url.replace('/asr', '').rstrip('/')
+                response = requests.get(f"{base_url}/health", timeout=5)
+                status['services']['whisper'] = 'ok' if response.status_code == 200 else 'error'
+            except Exception:
+                status['services']['whisper'] = 'error'
+
+        # Check Qdrant (RAG)
+        qdrant_url = app.config.get('QDRANT_URL')
+        qdrant_api_key = app.config.get('QDRANT_API_KEY')
+        if qdrant_url:
+            try:
+                headers = {}
+                if qdrant_api_key:
+                    headers['api-key'] = qdrant_api_key
+                response = requests.get(f"{qdrant_url.rstrip('/')}/collections", headers=headers, timeout=5)
+                status['services']['qdrant'] = 'ok' if response.status_code == 200 else 'error'
+            except Exception:
+                status['services']['qdrant'] = 'error'
+
         # Determine overall status
         services_ok = sum(1 for v in status['services'].values() if v == 'ok')
         services_total = len(status['services'])

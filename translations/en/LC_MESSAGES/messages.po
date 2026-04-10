@@ -701,3 +701,42 @@ msgstr "kitchen"
 
 msgid "room_balcony"
 msgstr "balcony"
+
+msgid "Image generation failed. Try again later."
+msgstr "Image generation failed. Try again later."
+
+msgid "Image generation produced empty output."
+msgstr "Image generation produced empty output."
+
+msgid "Image generation error. Check logs for details."
+msgstr "Image generation error. Check logs for details."
+
+msgid "Image editing failed. Try again later."
+msgstr "Image editing failed. Try again later."
+
+msgid "Image editing produced empty output."
+msgstr "Image editing produced empty output."
+
+msgid "No editing instructions provided."
+msgstr "No editing instructions provided."
+
+msgid "No source image provided."
+msgstr "No source image provided."
+
+msgid "Image editing error."
+msgstr "Image editing error."
+
+msgid "Edit result has no image data."
+msgstr "Edit result has no image data."
+
+msgid "Edit returned no image."
+msgstr "Edit returned no image."
+
+msgid "Editing timeout ({timeout}s)"
+msgstr "Editing timeout ({timeout}s)"
+
+msgid "Could not connect to editor."
+msgstr "Could not connect to editor."
+
+msgid "Image edited from request: {query}"
+msgstr "Image edited from request: {query}"

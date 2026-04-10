@@ -310,6 +310,97 @@ class RedisRequestQueue:
         if file_type and file_type.startswith('audio/'):
             return self._process_audio_task(task, request_data, session_id, user_id, lang)
 
+        # Check if this is an image edit request (user uploaded an image with edit request)
+        # Must be checked BEFORE routing to bypass the router
+        # request_type is 'image' when user attaches an image
+        is_image_edit = (request_type == 'image' and
+                       file_data and file_type and
+                       'image' in self.app.modules and
+                       self.app.modules['image'].available and
+                       'multimodal' in self.app.modules and
+                       self.app.modules['multimodal'].available)
+
+        if is_image_edit:
+            # Direct image editing - skip router
+            mm_start_time = time.time()
+            edit_data, error = self.app.modules['multimodal'].generate_edit_params(
+                message_text, file_data, lang=lang
+            )
+            mm_time = round(time.time() - mm_start_time, 1)
+            if error:
+                completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
+                return {
+                    'error': error,
+                    'session_id': session_id,
+                    'assistant_timestamp': completion_time_for_db,
+                    'is_error': True,
+                    'response_time': mm_time
+                }
+
+            edit_start_time = time.time()
+            image_result = self.app.modules['image'].edit_image(
+                edit_data, file_data, lang=lang
+            )
+            edit_time = round(time.time() - edit_start_time, 1)
+            if image_result['success']:
+                completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
+                image_result['mm_time'] = mm_time
+                image_result['gen_time'] = edit_time
+                image_result['mm_model'] = self._get_model_name('multimodal') or 'unknown'
+                image_result['gen_model'] = 'qwen_image_edit'
+                template = self.app.modules['base']._('Image edited from request: {query}', lang=lang)
+                message_text_out = template.format(query=message_text)
+                file_path = None
+                if image_result.get('image_data'):
+                    self.app.logger.info(f"Edit: saving image, data length={len(image_result['image_data'])}")
+                    file_path = save_uploaded_file(
+                        file_data=image_result['image_data'],
+                        filename=image_result['file_name'],
+                        session_id=session_id,
+                        upload_folder=self.app.config['UPLOAD_FOLDER']
+                    )
+                    self.app.logger.info(f"Edit: saved to file_path={file_path}")
+                else:
+                    self.app.logger.warning("Edit: no image_data in result")
+                msg_id = save_message(
+                    session_id, 'assistant', message_text_out,
+                    file_data=None,
+                    file_type=image_result['file_type'],
+                    file_name=image_result['file_name'],
+                    file_path=file_path,
+                    model_name='qwen_image_edit',
+                    response_time={'mm_time': mm_time, 'gen_time': edit_time},
+                    mm_time=str(mm_time), gen_time=str(edit_time),
+                    mm_model=image_result['mm_model'],
+                    gen_model=image_result['gen_model']
+                )
+                return {
+                    'response': message_text_out,
+                    'session_id': session_id,
+                    'model_used': 'qwen_image_edit',
+                    'assistant_timestamp': completion_time_for_db,
+                    'file_path': file_path,
+                    'file_name': image_result['file_name'],
+                    'file_size': image_result['file_size'],
+                    'file_type': image_result['file_type'],
+                    'mm_time': mm_time,
+                    'gen_time': edit_time,
+                    'mm_model': image_result['mm_model'],
+                    'gen_model': image_result['gen_model'],
+                    'response_time': {'mm_time': mm_time, 'gen_time': edit_time, 'mm_model': image_result['mm_model'], 'gen_model': image_result['gen_model']},
+                    'is_error': False,
+                    'message_id': msg_id
+                }
+            else:
+                completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
+                return {
+                    'error': image_result.get('error', 'Image editing failed'),
+                    'session_id': session_id,
+                    'assistant_timestamp': completion_time_for_db,
+                    'is_error': True,
+                    'response_time': mm_time + edit_time
+                }
+
         if request_type == 'text':
             router_start_time = time.time()
             router_result = self.app.modules['base'].process_message(message_text, current_time_str, lang=lang, session_id=session_id)

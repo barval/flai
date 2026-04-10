@@ -703,3 +703,42 @@ msgstr "кухня"
 
 msgid "room_balcony"
 msgstr "балкон"
+
+msgid "Image generation failed. Try again later."
+msgstr "Генерация изображения не удалась. Попробуйте позже."
+
+msgid "Image generation produced empty output."
+msgstr "Генерация изображения дала пустой результат."
+
+msgid "Image generation error. Check logs for details."
+msgstr "Ошибка генерации изображения. Подробности в логах."
+
+msgid "Image editing failed. Try again later."
+msgstr "Редактирование изображения не удалось. Попробуйте позже."
+
+msgid "Image editing produced empty output."
+msgstr "Редактирование дало пустой результат."
+
+msgid "No editing instructions provided."
+msgstr "Не указаны инструкции для редактирования."
+
+msgid "No source image provided."
+msgstr "Не предоставлено исходное изображение."
+
+msgid "Image editing error."
+msgstr "Ошибка редактирования изображения."
+
+msgid "Edit result has no image data."
+msgstr "Результат редактирования не содержит изображения."
+
+msgid "Edit returned no image."
+msgstr "Редактирование не вернуло изображение."
+
+msgid "Editing timeout ({timeout}s)"
+msgstr "Превышено время редактирования ({timeout}с)"
+
+msgid "Could not connect to editor."
+msgstr "Не удалось подключиться к редактору."
+
+msgid "Image edited from request: {query}"
+msgstr "Изображение отредактировано по запросу: {query}"

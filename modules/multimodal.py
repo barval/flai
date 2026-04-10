@@ -160,14 +160,18 @@ class MultimodalModule:
         return response, None
 
     def generate_image_params(self, user_query: str, lang: str = 'ru') -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-        """Generate parameters for image creation."""
+        """Generate parameters for image creation.
+        Chooses the prompt template based on SD_MODEL_TYPE config.
+        """
         if not self.check_availability():
             return None, self._('Multimodal model unavailable', lang)
 
-        response_language = 'English'
-        create_prompt = format_prompt('create_image.template', {
+        # Select template based on SD_MODEL_TYPE
+        sd_model_type = self.app.config.get('SD_MODEL_TYPE', 'z_image_turbo')
+        template_name = f'create_image_{sd_model_type}.template'
+
+        create_prompt = format_prompt(template_name, {
             'image_query': user_query,
-            'response_language': response_language
         }, lang=lang)
 
         if not create_prompt:
@@ -193,6 +197,7 @@ class MultimodalModule:
                 prompt_data = json.loads(json_str)
                 self.logger.info(f"Parsed prompt_data: {prompt_data}")
 
+                # Ensure prompt exists
                 if 'prompt' not in prompt_data or not prompt_data['prompt'].strip():
                     prompt_data['prompt'] = user_query
                     self.logger.warning(f"No prompt in response, using original query: {user_query}")
@@ -210,6 +215,63 @@ class MultimodalModule:
         """Call multimodal model via llama.cpp client (delegates to LlamaCppClient)."""
         # LlamaCppClient handles validation and configuration internally
         return self.llamacpp.chat(messages, model_type='multimodal', lang=lang)
+
+    def generate_edit_params(self, user_query: str, image_base64: str, lang: str = 'ru') -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        """Generate editing parameters for an existing image.
+        Uses multimodal model to analyze the image + edit request.
+        """
+        # Re-check availability with logging
+        avail = self.check_availability()
+        self.logger.info(f"generate_edit_params: check_availability={avail}, "
+                        f"llamacpp.available={self.llamacpp.available}")
+        if not avail:
+            self.logger.warning("Multimodal model unavailable for edit request")
+            return None, self._('Multimodal model unavailable', lang)
+
+        edit_prompt = format_prompt('create_image_edit.template', {
+            'edit_query': user_query,
+        }, lang=lang)
+
+        if not edit_prompt:
+            return None, self._('Error loading prompt template', lang)
+
+        messages = [{
+            'role': 'user',
+            'content': [
+                {'type': 'text', 'text': edit_prompt},
+                {'type': 'image_url', 'image_url': {'url': f'data:image/png;base64,{image_base64}'}}
+            ]
+        }]
+
+        response = self.llamacpp.chat_with_image(
+            text=edit_prompt,
+            image_base64=image_base64,
+            model_type='multimodal',
+            lang=lang
+        )
+
+        self.logger.info(f"Multimodal model edit response: {response[:500]}")
+
+        try:
+            import re
+            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response, re.DOTALL)
+            if json_match:
+                json_str = json_match.group()
+                edit_data = json.loads(json_str)
+
+                result = {
+                    'edit_prompt': edit_data.get('edit_prompt', user_query),
+                    'strength': float(edit_data.get('strength', 0.7)),
+                    'mask': edit_data.get('mask', ''),
+                    'preserve': edit_data.get('preserve', ''),
+                }
+                self.logger.info(f"Parsed edit params: {result}")
+                return result, None
+            else:
+                return None, self._('Could not find JSON in model response', lang)
+        except Exception as e:
+            self.logger.error(f"JSON parsing error: {str(e)}")
+            return None, self._('JSON parsing error: {error}', lang, error=str(e))
 
     def check_availability(self) -> bool:
         """Check module availability."""

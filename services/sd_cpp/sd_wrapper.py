@@ -11,13 +11,33 @@ import os
 import base64
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from socketserver import ThreadingMixIn
 from urllib.parse import urlparse
 
-# Default model paths (match docker-compose volumes)
-DEFAULT_DIFFUSION_MODEL = '/app/models/diffusion_models/z_image_turbo-Q8_0.gguf'
-DEFAULT_VAE = '/app/models/vae/ae.safetensors'
-DEFAULT_LLM = '/app/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf'
+# Model type from environment (z_image_turbo or qwen_image)
+MODEL_TYPE = os.environ.get('SD_MODEL_TYPE', 'z_image_turbo')
+
+# Default model paths — change based on SD_MODEL_TYPE
+if MODEL_TYPE == 'qwen_image':
+    DEFAULT_DIFFUSION_MODEL = '/app/models/diffusion_models/Qwen_Image-Q4_K_M.gguf'
+    DEFAULT_VAE = '/app/models/vae/qwen_image_vae.safetensors'
+    DEFAULT_LLM = '/app/models/text_encoders/Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf'
+    DEFAULT_STEPS = 30
+    DEFAULT_FLOW_SHIFT = 3.0
+    DEFAULT_SAMPLER = 'euler'
+else:  # z_image_turbo (default)
+    DEFAULT_DIFFUSION_MODEL = '/app/models/diffusion_models/z_image_turbo-Q8_0.gguf'
+    DEFAULT_VAE = '/app/models/vae/ae.safetensors'
+    DEFAULT_LLM = '/app/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf'
+    DEFAULT_STEPS = 10
+    DEFAULT_FLOW_SHIFT = 2.0
+    DEFAULT_SAMPLER = None  # auto for z_image_turbo
+
+# Edit model paths (Qwen Image Edit) — separate from generation models
+EDIT_DIFFUSION_MODEL = '/app/models/diffusion_models/qwen-image-edit-2511-Q4_K_M.gguf'
+EDIT_VAE = '/app/models/vae/qwen_image_vae.safetensors'
+EDIT_LLM = '/app/models/text_encoders/Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf'
+EDIT_DEFAULT_STRENGTH = 0.7
+
 SD_CLI = '/usr/local/bin/sd-cli'
 
 # Lock to serialize generation (one at a time)
@@ -36,10 +56,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        if path != '/v1/images/generations':
+        if path == '/v1/images/generations':
+            self._handle_generation()
+        elif path == '/v1/images/edits':
+            self._handle_edit()
+        else:
             self.send_error(404, 'Not found')
-            return
 
+    def _handle_generation(self):
         content_length = int(self.headers.get('Content-Length', 0))
         body = self.rfile.read(content_length)
         try:
@@ -49,6 +73,21 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         result = generate_image(data)
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps(result).encode())
+
+    def _handle_edit(self):
+        content_length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(content_length)
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self.send_error(400, 'Invalid JSON')
+            return
+
+        result = edit_image(data)
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.end_headers()
@@ -70,12 +109,13 @@ class Handler(BaseHTTPRequestHandler):
 
 def generate_image(data):
     prompt = data.get('prompt', '')
-    steps = int(data.get('steps', 10))
+    steps = int(data.get('steps', DEFAULT_STEPS))
     width = int(data.get('width', 1024))
     height = int(data.get('height', 1024))
     cfg_scale = float(data.get('cfg_scale', 1.0))
     seed = int(data.get('seed', -1))
-    flow_shift = float(data.get('flow_shift', 2.0))
+    flow_shift = float(data.get('flow_shift', DEFAULT_FLOW_SHIFT))
+    sampler = data.get('sampling_method', DEFAULT_SAMPLER)
 
     cmd = [
         SD_CLI,
@@ -92,7 +132,13 @@ def generate_image(data):
         '--diffusion-fa',
         '--flow-shift', str(flow_shift),
         '--offload-to-cpu',
+        '--vae-on-cpu',
+        '--llm-on-cpu',
     ]
+
+    # Add sampler if specified (required for qwen_image)
+    if sampler:
+        cmd.extend(['--sampler', sampler])
 
     with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
         output_path = tmp.name
@@ -110,17 +156,18 @@ def generate_image(data):
                 timeout=300
             )
         if result.returncode != 0:
-            # Read last 500 chars of log for error details
+            # Log full error for debugging
             try:
                 with open('/tmp/sd_cli_output.log', 'r') as f:
-                    f.seek(max(0, f.tell() - 50000))
-                    log_tail = f.read()[-500:]
+                    log_tail = f.read()[-2000:]
             except Exception:
                 log_tail = '(no log available)'
-            return {'error': f'sd-cli failed (rc={result.returncode}): {log_tail}'}
+            print(f"[sd-wrapper] sd-cli failed (rc={result.returncode}): {log_tail[:500]}")
+            # Return user-friendly message only
+            return {'error': 'Image generation failed'}
 
         if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
-            return {'error': 'sd-cli produced empty output'}
+            return {'error': 'Image generation produced empty output'}
 
         with open(output_path, 'rb') as f:
             image_bytes = f.read()
@@ -141,12 +188,109 @@ def generate_image(data):
                 pass
 
 
-class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
-    """Handle requests in separate threads."""
-    daemon_threads = True
+def edit_image(data):
+    """Edit an existing image using Qwen Image Edit model."""
+    with _lock:
+        return _edit_image_impl(data)
+
+
+def _edit_image_impl(data):
+    edit_prompt = data.get('edit_prompt', '')
+    image_data = data.get('image_data', '')  # base64 encoded source image
+
+    if not edit_prompt:
+        return {'error': 'No edit prompt provided'}
+    if not image_data:
+        return {'error': 'No source image provided'}
+
+    # Save source image to temp file
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as src_tmp:
+        src_tmp.write(base64.b64decode(image_data))
+        src_path = src_tmp.name
+
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as out_tmp:
+        output_path = out_tmp.name
+
+    # Qwen Image Edit requires significant VRAM (~19GB for full GPU).
+    # With llama-server running (~7.6GB), we have ~8.2GB left.
+    # The diffusion model alone is ~12.6GB, LLM text encoder ~5.8GB.
+    # Strategy: keep diffusion on GPU, move LLM+VAE to RAM.
+    cmd = [
+        SD_CLI,
+        '--diffusion-model', EDIT_DIFFUSION_MODEL,
+        '--vae', EDIT_VAE,
+        '--llm', EDIT_LLM,
+        '-p', edit_prompt,
+        '--cfg-scale', '2.5',
+        '--sampling-method', 'euler',
+        '--flow-shift', '3.0',
+        '-r', src_path,
+        '--seed', '-1',
+        '--rng', 'cuda',
+        '--diffusion-fa',
+        '--offload-to-cpu',
+        '--qwen-image-zero-cond-t',
+        # Force VAE and LLM text encoder to RAM (saves ~13.5GB VRAM)
+        '--vae-on-cpu',
+        '--clip-on-cpu',
+        # Use unified cache for better memory management
+        '--cache-mode', 'ucache',
+        '-o', output_path,
+    ]
+
+    print(f"[sd-wrapper] Running edit: {' '.join(cmd[:12])}...")
+
+    try:
+        with open('/tmp/sd_cli_edit_output.log', 'a') as log_file:
+            result = subprocess.run(
+                cmd,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                timeout=900  # 15 minutes for edit operations
+            )
+        if result.returncode != 0:
+            try:
+                with open('/tmp/sd_cli_edit_output.log', 'r') as f:
+                    log_tail = f.read()[-2000:]
+            except Exception:
+                log_tail = '(no log available)'
+            print(f"[sd-wrapper] sd-cli edit failed (rc={result.returncode}): {log_tail[:500]}")
+            return {'error': 'Image editing failed'}
+
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            return {'error': 'Image editing produced empty output'}
+
+        with open(output_path, 'rb') as f:
+            image_bytes = f.read()
+
+        print(f"[sd-wrapper] Edit completed: {len(image_bytes)} bytes")
+        return {
+            'created': 0,
+            'data': [{'b64_json': base64.b64encode(image_bytes).decode()}]
+        }
+    except subprocess.TimeoutExpired:
+        return {'error': 'sd-cli edit timeout'}
+    except Exception as e:
+        return {'error': str(e)}
+    finally:
+        if os.path.exists(output_path):
+            try:
+                os.remove(output_path)
+            except Exception:
+                pass
+        if os.path.exists(src_path):
+            try:
+                os.remove(src_path)
+            except Exception:
+                pass
+
+
+class BlockingHTTPServer(HTTPServer):
+    """Handle requests sequentially (no threading) to avoid GPU conflicts."""
+    allow_reuse_address = True
 
 
 if __name__ == '__main__':
-    server = ThreadedHTTPServer(('0.0.0.0', 7861), Handler)
+    server = BlockingHTTPServer(('0.0.0.0', 7861), Handler)
     print(f"[sd-wrapper] Listening on :7861")
     server.serve_forever()

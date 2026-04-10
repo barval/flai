@@ -11,6 +11,8 @@ services:
     depends_on:
       - redis
       - llamacpp
+    env_file:
+      - .env
     volumes:
       # Mount application data directory
       - ./data:/app/data
@@ -154,6 +156,7 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - SD_MODEL_TYPE=z_image_turbo
     runtime: nvidia
     deploy:
       resources:

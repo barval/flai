@@ -77,6 +77,12 @@ def api_upload_document():
     if file_size > max_size_mb * 1024 * 1024:
         return jsonify({'error': _('Maximum file size {max_size} MB').format(max_size=max_size_mb)}), 400
 
+    # Check document quota
+    from app.utils import check_document_quota
+    quota_error = check_document_quota(session['login'])
+    if quota_error:
+        return jsonify({'error': quota_error}), 413
+
     doc_id = str(uuid.uuid4())
     filename = file.filename
 

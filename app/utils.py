@@ -13,6 +13,63 @@ from typing import List, Dict, Optional, Tuple, Any
 
 PROMPTS_DIR = 'prompts'
 
+# ── Shared error translations for sd.cpp module ──
+SD_ERROR_TRANSLATIONS = {
+    'Image generation failed': 'Image generation failed. Try again later.',
+    'Image generation produced empty output': 'Image generation produced empty output.',
+    'sd-wrapper returned no image data': 'sd-wrapper returned no image data.',
+    'sd-wrapper returned no image': 'sd-wrapper returned no image.',
+    'sd-cli timeout': 'Image generation timeout ({timeout}s)',
+    'Image editing failed': 'Image editing failed. Try again later.',
+    'Image editing produced empty output': 'Image editing produced empty output.',
+    'No edit prompt provided': 'No editing instructions provided.',
+    'No source image provided': 'No source image provided.',
+    'sd-cli edit timeout': 'Image editing timeout ({timeout}s)',
+}
+
+
+def translate_sd_error(error_key: str, translate_func, lang: str = 'ru', **kwargs) -> str:
+    """Translate sd.cpp error messages using Flask-Babel.
+
+    Args:
+        error_key: The English error message key
+        translate_func: The module's self._() translation function
+        lang: Language code
+        **kwargs: Format arguments for the message
+    """
+    template = SD_ERROR_TRANSLATIONS.get(error_key)
+    if template:
+        return translate_func(template, lang, **kwargs)
+    return translate_func('Image generation error. Check logs for details.', lang)
+
+
+def extract_quantization(filename: str) -> str:
+    """Extract quantization type from GGUF filename.
+
+    Args:
+        filename: Model filename like 'model-Q4_K_M.gguf'
+
+    Returns:
+        Quantization type like 'Q4_K_M' or 'Unknown'
+    """
+    qtypes = [
+        'Q2_K', 'Q3_K_S', 'Q3_K_M', 'Q3_K_L',
+        'Q4_0', 'Q4_K_S', 'Q4_K_M',
+        'Q5_0', 'Q5_K_S', 'Q5_K_M',
+        'Q6_K', 'Q8_0',
+        'IQ2_XXS', 'IQ2_XS', 'IQ2_S', 'IQ2_M',
+        'IQ3_XXS', 'IQ3_S', 'IQ3_M',
+        'IQ4_XS', 'IQ4_NL',
+        'F16', 'F32', 'BF16',
+        'MXFP4', 'MXFP6', 'MXFP8',
+        'A4B', 'A2B'
+    ]
+    fname_upper = filename.upper()
+    for qt in qtypes:
+        if qt in fname_upper:
+            return qt
+    return 'Unknown'
+
 
 def estimate_base64_decoded_size(base64_data: str) -> int:
     """Estimate the decoded size of a base64-encoded string in bytes.
@@ -56,7 +113,7 @@ def get_current_time_in_timezone(app=None) -> Optional[str]:
         try:
             from flask import session
             lang = session.get('language', 'ru')
-        except:
+        except Exception:
             pass
         # Localized weekday names
         weekdays = {
@@ -350,3 +407,75 @@ def validate_session_ownership(session_id: str, user_id: str) -> bool:
             return row is not None and row[0] == user_id
     except Exception:
         return False
+
+
+def check_upload_quota(user_id: str, additional_bytes: int) -> Optional[str]:
+    """Check if user has exceeded upload storage quota.
+
+    Args:
+        user_id: User login
+        additional_bytes: Size of the new upload in bytes
+
+    Returns:
+        Error message if quota exceeded, None if OK
+    """
+    import os
+    max_mb = current_app.config.get('MAX_UPLOAD_STORAGE_MB', 500)
+    max_bytes = max_mb * 1024 * 1024
+
+    # Calculate current usage
+    upload_dir = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'data/uploads'))
+    user_dirs = [
+        os.path.join(upload_dir, d)
+        for d in os.listdir(upload_dir)
+        if os.path.isdir(os.path.join(upload_dir, d))
+    ]
+
+    total_used = 0
+    for d in user_dirs:
+        for root, dirs, files in os.walk(d):
+            for f in files:
+                fp = os.path.join(root, f)
+                try:
+                    total_used += os.path.getsize(fp)
+                except OSError:
+                    pass
+
+    if total_used + additional_bytes > max_bytes:
+        used_mb = total_used / (1024 * 1024)
+        max_mb_display = max_mb
+        return f"Storage quota exceeded: {used_mb:.0f}MB / {max_mb_display}MB used. Delete some files to free space."
+    return None
+
+
+def check_document_quota(user_id: str) -> Optional[str]:
+    """Check if user has exceeded document quota.
+
+    Args:
+        user_id: User login
+
+    Returns:
+        Error message if quota exceeded, None if OK
+    """
+    import sqlite3
+    from . import db
+
+    max_docs = current_app.config.get('MAX_DOCUMENTS_PER_USER', 50)
+    max_mb = current_app.config.get('MAX_DOCUMENTS_STORAGE_MB', 50)
+
+    try:
+        with sqlite3.connect(db.CHAT_DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute('SELECT COUNT(*), COALESCE(SUM(file_size), 0) FROM documents WHERE user_id = ?', (user_id,))
+            row = c.fetchone()
+            count, total_bytes = row[0], row[1]
+
+            if count >= max_docs:
+                return f"Document quota exceeded: {count} / {max_docs} documents. Delete some to upload more."
+            if total_bytes + 1 > max_mb * 1024 * 1024:
+                used_mb = total_bytes / (1024 * 1024)
+                return f"Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used."
+    except Exception:
+        pass  # Don't block upload on DB errors
+
+    return None

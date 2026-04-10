@@ -84,7 +84,7 @@ class AudioModule:
                     self.logger.info(f"Whisper API health check passed: {health_url}")
                     self.available = True
                     return True
-            except:
+            except Exception:
                 pass  # Health endpoint may not exist
             
             # Try root endpoint - may return 307 redirect which is OK

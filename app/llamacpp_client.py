@@ -23,6 +23,7 @@ from flask_babel import force_locale
 
 from app.model_config import get_model_config
 from app.utils import estimate_tokens
+from app.circuit_breaker import CircuitBreaker, CircuitBreakerOpen
 
 
 class LlamaCppClient:
@@ -32,6 +33,8 @@ class LlamaCppClient:
         self.logger = logging.getLogger(__name__)
         self.available = False
         self.app = app
+        # Circuit breaker: 3 failures → open for 60s
+        self.circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
         if app:
             self.init_app(app)
 
@@ -312,6 +315,19 @@ class LlamaCppClient:
         self.logger.info(
             f"Sending request to {service_url}, model={model}, timeout={timeout}s"
         )
+
+        # Circuit breaker check — fail fast if service is down
+        if not self.circuit_breaker.can_execute():
+            cb_state = self.circuit_breaker.get_state()
+            self.logger.warning(
+                f"Circuit breaker OPEN for llama-server: "
+                f"failures={cb_state['failure_count']}/{cb_state['failure_threshold']}"
+            )
+            return self._translate(
+                'Service temporarily unavailable. Circuit breaker is open after repeated failures.',
+                lang
+            )
+
         try:
             response = requests.post(
                 f"{service_url}/v1/chat/completions",
@@ -339,13 +355,16 @@ class LlamaCppClient:
                 if model_type == 'chat' and temperature < 0.3:
                     content = content.split('\n')[0].strip()
 
+                self.circuit_breaker.record_success()
                 return content.strip()
             else:
+                self.circuit_breaker.record_failure()
                 self.logger.error(
                     f"llama-server error: {response.status_code} - {response.text}"
                 )
                 return f"{self._translate('Error', lang)}: {response.status_code}"
         except requests.exceptions.Timeout:
+            self.circuit_breaker.record_failure()
             self.logger.error(
                 f"Timeout ({timeout}s) calling {model} at {service_url}"
             )
@@ -356,6 +375,7 @@ class LlamaCppClient:
             )
             return template.format(timeout=timeout)
         except requests.exceptions.ConnectionError:
+            self.circuit_breaker.record_failure()
             self.logger.error(f"Connection error to llama-server at {service_url}")
             return self._translate('Could not connect to llama-server', lang)
         except Exception as e:

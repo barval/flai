@@ -307,7 +307,7 @@ def llamacpp_model_info(name):
                     break
 
             # Parse quantization from filename
-            quantization = _extract_quantization(name)
+            from app.utils import extract_quantization; quantization = extract_quantization(name)
 
             # Determine if it's likely an embedding model
             is_embedding = 'embed' in name.lower() or 'bge' in name.lower()
@@ -399,27 +399,6 @@ def llamacpp_model_info(name):
     except Exception as e:
         current_app.logger.error(f"Error fetching llama.cpp model info for {name}: {e}")
         return jsonify({'error': str(e)}), 500
-
-
-def _extract_quantization(filename: str) -> str:
-    """Extract quantization type from GGUF filename."""
-    qtypes = [
-        'Q2_K', 'Q3_K_S', 'Q3_K_M', 'Q3_K_L',
-        'Q4_0', 'Q4_K_S', 'Q4_K_M',
-        'Q5_0', 'Q5_K_S', 'Q5_K_M',
-        'Q6_K', 'Q8_0',
-        'IQ2_XXS', 'IQ2_XS', 'IQ2_S', 'IQ2_M',
-        'IQ3_XXS', 'IQ3_S', 'IQ3_M',
-        'IQ4_XS', 'IQ4_NL',
-        'F16', 'F32', 'BF16',
-        'MXFP4', 'MXFP6', 'MXFP8',
-        'A4B', 'A2B'
-    ]
-    fname_upper = filename.upper()
-    for qt in qtypes:
-        if qt in fname_upper:
-            return qt
-    return 'Unknown'
 
 
 # Keep old Ollama endpoints for reference (will be removed in cleanup phase)

@@ -10,8 +10,31 @@ import tempfile
 import os
 import base64
 import threading
+import logging
+from logging.handlers import RotatingFileHandler
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
+
+# ── Logging with rotation (max 10MB, 5 files) ──
+LOG_DIR = os.environ.get('SD_LOG_DIR', '/app/logs')
+os.makedirs(LOG_DIR, exist_ok=True)
+
+logger = logging.getLogger('sd-wrapper')
+logger.setLevel(logging.INFO)
+
+for log_name in ['sd_generation.log', 'sd_edit.log']:
+    handler = RotatingFileHandler(
+        os.path.join(LOG_DIR, log_name),
+        maxBytes=10 * 1024 * 1024,  # 10MB
+        backupCount=5
+    )
+    handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+    logger.addHandler(handler)
+
+# Also log to stdout
+stdout_handler = logging.StreamHandler()
+stdout_handler.setFormatter(logging.Formatter('[sd-wrapper] %(message)s'))
+logger.addHandler(stdout_handler)
 
 # Model type from environment (z_image_turbo or qwen_image)
 MODEL_TYPE = os.environ.get('SD_MODEL_TYPE', 'z_image_turbo')
@@ -46,7 +69,7 @@ _lock = threading.Lock()
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        print(f"[sd-wrapper] {format % args}")
+        logger.info(format % args)
 
     def handle(self):
         try:
@@ -145,7 +168,7 @@ def generate_image(data):
 
     cmd.extend(['-o', output_path])
 
-    print(f"[sd-wrapper] Running: {' '.join(cmd[:12])}...")
+    logger.info(f" Running: {' '.join(cmd[:12])}...")
 
     try:
         with open('/tmp/sd_cli_output.log', 'a') as log_file:
@@ -162,7 +185,7 @@ def generate_image(data):
                     log_tail = f.read()[-2000:]
             except Exception:
                 log_tail = '(no log available)'
-            print(f"[sd-wrapper] sd-cli failed (rc={result.returncode}): {log_tail[:500]}")
+            logger.info(f" sd-cli failed (rc={result.returncode}): {log_tail[:500]}")
             # Return user-friendly message only
             return {'error': 'Image generation failed'}
 
@@ -238,7 +261,7 @@ def _edit_image_impl(data):
         '-o', output_path,
     ]
 
-    print(f"[sd-wrapper] Running edit: {' '.join(cmd[:12])}...")
+    logger.info(f" Running edit: {' '.join(cmd[:12])}...")
 
     try:
         with open('/tmp/sd_cli_edit_output.log', 'a') as log_file:
@@ -254,7 +277,7 @@ def _edit_image_impl(data):
                     log_tail = f.read()[-2000:]
             except Exception:
                 log_tail = '(no log available)'
-            print(f"[sd-wrapper] sd-cli edit failed (rc={result.returncode}): {log_tail[:500]}")
+            logger.info(f" sd-cli edit failed (rc={result.returncode}): {log_tail[:500]}")
             return {'error': 'Image editing failed'}
 
         if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
@@ -263,7 +286,7 @@ def _edit_image_impl(data):
         with open(output_path, 'rb') as f:
             image_bytes = f.read()
 
-        print(f"[sd-wrapper] Edit completed: {len(image_bytes)} bytes")
+        logger.info(f" Edit completed: {len(image_bytes)} bytes")
         return {
             'created': 0,
             'data': [{'b64_json': base64.b64encode(image_bytes).decode()}]
@@ -292,5 +315,5 @@ class BlockingHTTPServer(HTTPServer):
 
 if __name__ == '__main__':
     server = BlockingHTTPServer(('0.0.0.0', 7861), Handler)
-    print(f"[sd-wrapper] Listening on :7861")
+    logger.info(f" Listening on :7861")
     server.serve_forever()

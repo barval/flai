@@ -22,6 +22,7 @@
 - 🧠 **Advanced Reasoning** – dedicated model for calculations, code generation, creative writing
 - 🔍 **Multimodal Analysis** – upload images and ask questions about their content (llama.cpp + mmproj)
 - 🎨 **Image Generation** – create images from text using stable-diffusion.cpp with automatic prompt optimization
+- ✏️ **Image Editing** – upload an image and ask to edit it (Qwen Image Edit model: change colors, remove objects, stylize)
 - 🎤 **Voice Transcription** – convert voice messages to text using Whisper ASR (faster_whisper)
 - 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper TTS (male/female voice)
 
@@ -133,6 +134,34 @@ All services run on one machine with GPU sharing:
 ## 🚀 Quick Start
 
 > 💡 **Note**: You must have the **NVIDIA drivers** and **NVIDIA Container Toolkit** installed.
+
+### Option A: Automated Deployment (Recommended)
+
+A single deployment script handles everything: environment setup, model downloads, building, and launching.
+
+```bash
+git clone https://github.com/barval/flai.git
+cd flai
+
+# Core chat + llama.cpp only
+./deploy.sh --download-models
+
+# + Image generation/editing
+./deploy.sh --download-models --with-image-gen
+
+# + Voice (Whisper ASR + Piper TTS)
+./deploy.sh --download-models --with-image-gen --with-voice
+
+# Everything including RAG (Qdrant)
+./deploy.sh --download-models --with-image-gen --with-voice --with-rag
+
+# Run tests after deployment
+./deploy.sh --download-models --with-image-gen --run-tests
+```
+
+### Option B: Manual Deployment
+
+If you prefer step-by-step control:
 
 ### 1. Clone and Configure
 
@@ -380,14 +409,28 @@ services/llamacpp/models/
 
 ---
 
-## 🎨 Image Generation
+## 🎨 Image Generation & Editing
 
-### Supported Models
+### Generation Models
 
 | Model | Steps | CFG Scale | Resolution | Notes |
 |-------|-------|-----------|------------|-------|
 | **Z_image_turbo** | 10 | 1.0 | 1024×1024 | Fast, flow-matching |
 | **Qwen_image** | 30 | 1.0 | 1024×1024 | High quality, Euler sampler |
+
+Switch between generation models via `SD_MODEL_TYPE` in `.env`:
+```bash
+SD_MODEL_TYPE=z_image_turbo   # or qwen_image
+```
+
+### Image Editing (Qwen Image Edit)
+
+Upload an image and ask to edit it (e.g., *"change the pupils to green"*, *"remove the second sun"*). The system uses:
+1. **Multimodal model** (Qwen3VL) to analyze the image and generate an edit prompt
+2. **Qwen Image Edit** model via stable-diffusion.cpp to perform the edit
+3. The original image is preserved except for the requested changes
+
+Editing uses separate model files and runs independently from generation — no conflict between the two.
 
 ### stable-diffusion.cpp Build
 
@@ -402,13 +445,12 @@ The `sd_cpp` service is **built from source** during first `docker compose up`:
 ### Configuration
 
 ```bash
-SD_CPP_URL=http://flai-sd:7860
-SD_CPP_MODEL=z_image_turbo-Q8_0.gguf
-SD_CPP_DEFAULT_WIDTH=1024
-SD_CPP_DEFAULT_HEIGHT=1024
-SD_CPP_DEFAULT_CFG_SCALE=1.0
-SD_CPP_DEFAULT_STEPS=10
-SD_CPP_TIMEOUT=300
+# Generation model selection
+SD_MODEL_TYPE=z_image_turbo        # z_image_turbo or qwen_image
+
+# sd-wrapper HTTP API (port 7861)
+SD_WRAPPER_URL=http://flai-sd:7861
+SD_CPP_TIMEOUT=900                  # Timeout for gen/edit operations (seconds)
 ```
 
 ---

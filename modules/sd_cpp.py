@@ -184,14 +184,8 @@ class SdCppModule:
                 if 'error' in result:
                     err_msg = result['error']
                     self.logger.error(f"sd-wrapper error: {err_msg}")
-                    # Translate generic errors for the user
-                    error_translations = {
-                        'Image generation failed': self._('Image generation failed. Try again later.', lang),
-                        'Image generation produced empty output': self._('Image generation produced empty output.', lang),
-                        'sd-wrapper returned no image data': self._('sd-wrapper returned no image data.', lang),
-                        'sd-wrapper returned no image': self._('sd-wrapper returned no image.', lang),
-                    }
-                    user_error = error_translations.get(err_msg, self._('Image generation error. Check logs for details.', lang))
+                    from app.utils import translate_sd_error
+                    user_error = translate_sd_error(err_msg, self._, lang, timeout=self.timeout)
                     return {
                         'success': False,
                         'error': user_error
@@ -362,13 +356,8 @@ class SdCppModule:
                 if 'error' in result:
                     err_msg = result['error']
                     self.logger.error(f"sd-wrapper edit error: {err_msg}")
-                    error_translations = {
-                        'Image editing failed': self._('Image editing failed. Try again later.', lang),
-                        'Image editing produced empty output': self._('Image editing produced empty output.', lang),
-                        'No edit prompt provided': self._('No editing instructions provided.', lang),
-                        'No source image provided': self._('No source image provided.', lang),
-                    }
-                    user_error = error_translations.get(err_msg, self._('Image editing error.', lang))
+                    from app.utils import translate_sd_error
+                    user_error = translate_sd_error(err_msg, self._, lang, timeout=self.timeout)
                     return {
                         'success': False,
                         'error': user_error

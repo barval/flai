@@ -740,3 +740,12 @@ msgstr "Could not connect to editor."
 
 msgid "Image edited from request: {query}"
 msgstr "Image edited from request: {query}"
+
+msgid "Image generation timeout ({timeout}s)"
+msgstr "Image generation timeout ({timeout}s)"
+
+msgid "Image editing timeout ({timeout}s)"
+msgstr "Image editing timeout ({timeout}s)"
+
+msgid "Service temporarily unavailable. Circuit breaker is open after repeated failures."
+msgstr "Service temporarily unavailable. Circuit breaker is open after repeated failures."

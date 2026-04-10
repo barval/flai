@@ -159,5 +159,5 @@ def check_camera_permission(login, room_code):
     try:
         allowed = json.loads(user['camera_permissions'])
         return room_code in allowed
-    except:
+    except Exception:
         return False

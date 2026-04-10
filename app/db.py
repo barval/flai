@@ -357,7 +357,7 @@ def get_session_messages(
             if msg_dict.get('response_time'):
                 try:
                     msg_dict['response_time'] = json.loads(msg_dict['response_time'])
-                except:
+                except Exception:
                     pass
             if msg_dict.get('timestamp'):
                 try:
@@ -365,7 +365,7 @@ def get_session_messages(
                     if current_app.config.get('TIMEZONE'):
                         dt = current_app.config['TIMEZONE'].localize(dt)
                     msg_dict['timestamp'] = dt.isoformat()
-                except:
+                except Exception:
                     pass
             messages.append(msg_dict)
         return messages
@@ -585,17 +585,17 @@ def get_user_documents(user_id):
             if doc.get('uploaded_at'):
                 try:
                     uploaded_dt = datetime.strptime(doc['uploaded_at'], '%Y-%m-%d %H:%M:%S')
-                except:
+                except Exception:
                     pass
             if doc.get('indexed_at'):
                 try:
                     indexed_dt = datetime.strptime(doc['indexed_at'], '%Y-%m-%d %H:%M:%S')
-                except:
+                except Exception:
                     pass
             if doc.get('indexing_started_at'):
                 try:
                     indexing_started_dt = datetime.strptime(doc['indexing_started_at'], '%Y-%m-%d %H:%M:%S')
-                except:
+                except Exception:
                     pass
             processing_time = None
             status = doc.get('index_status')

@@ -102,7 +102,7 @@ class TestSdCppModuleGenerate:
                     json=lambda: {'data': [{'b64_json': mock_b64}]}
                 )
 
-                result = module._call_sd_cpp({
+                result = module._call_wrapper({
                     'prompt': 'test prompt', 'negative_prompt': '',
                     'steps': 30, 'width': 512, 'height': 512, 'cfg_scale': 7.0
                 })
@@ -133,7 +133,7 @@ class TestSdCppModuleGenerate:
 
             with patch('modules.sd_cpp.requests.post') as mock_post:
                 mock_post.return_value = MagicMock(status_code=500)
-                result = module._call_sd_cpp({
+                result = module._call_wrapper({
                     'prompt': 'test', 'negative_prompt': '',
                     'steps': 30, 'width': 512, 'height': 512
                 })
@@ -153,7 +153,7 @@ class TestSdCppModuleGenerate:
                     status_code=200,
                     json=lambda: {'data': []}
                 )
-                result = module._call_sd_cpp({
+                result = module._call_wrapper({
                     'prompt': 'test', 'negative_prompt': '',
                     'steps': 30, 'width': 512, 'height': 512
                 })

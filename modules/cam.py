@@ -102,7 +102,7 @@ class CamModule:
             try:
                 allowed_codes = json.loads(user['camera_permissions'])
                 return {code: name for code, name in all_rooms.items() if code in allowed_codes}
-            except:
+            except Exception:
                 return {}
         return all_rooms
     
@@ -133,7 +133,7 @@ class CamModule:
                             self.last_check = current_time
                             self.logger.info(f"Camera API available (via {endpoint})")
                             return True
-                    except:
+                    except Exception:
                         self.available = True
                         self.last_check = current_time
                         self.logger.info(f"Camera API available (via {endpoint})")
@@ -155,7 +155,7 @@ class CamModule:
                 self.last_check = current_time
                 self.logger.info(f"Camera API available (via /rooms)")
                 return True
-        except:
+        except Exception:
             pass
         
         self.available = False
@@ -182,7 +182,7 @@ class CamModule:
                     api_rooms = response.json()
                     if isinstance(api_rooms, list):
                         status['available_rooms'] = api_rooms
-            except:
+            except Exception:
                 pass
         return status
     
@@ -273,7 +273,7 @@ class CamModule:
                                     file_type = data.get('content_type', data.get('mime_type', 'image/jpeg'))
                                 else:
                                     continue
-                            except:
+                            except Exception:
                                 continue
                         
                         file_size_bytes = int((len(image_data) * 3) / 4)

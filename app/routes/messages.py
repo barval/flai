@@ -79,6 +79,12 @@ def send_message():
                 file_data = base64.b64encode(file_bytes).decode('utf-8')
                 file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
                 file_name = file.filename
+
+                # Check upload quota
+                from app.utils import check_upload_quota
+                quota_error = check_upload_quota(user_id, file_size_bytes)
+                if quota_error:
+                    return jsonify({'error': quota_error}), 413
         voice_record = request.form.get('voice_record') == 'true'
     else:
         try:

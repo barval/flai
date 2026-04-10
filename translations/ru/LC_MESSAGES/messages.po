@@ -742,3 +742,12 @@ msgstr "Не удалось подключиться к редактору."
 
 msgid "Image edited from request: {query}"
 msgstr "Изображение отредактировано по запросу: {query}"
+
+msgid "Image generation timeout ({timeout}s)"
+msgstr "Превышено время генерации изображения ({timeout}с)"
+
+msgid "Image editing timeout ({timeout}s)"
+msgstr "Превышено время редактирования ({timeout}с)"
+
+msgid "Service temporarily unavailable. Circuit breaker is open after repeated failures."
+msgstr "Сервис временно недоступен. Сработал защитный механизм после неоднократных сбоев."

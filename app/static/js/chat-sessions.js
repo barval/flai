@@ -382,7 +382,11 @@ function switchSession(sessionId) {
 function updateLastVisit(sessionId) {
     if (!sessionId) return;
     fetchWithCSRF(`/api/sessions/${sessionId}/visit`, { method: 'POST' })
-        .catch(err => console.error('Error updating last_visit:', err));
+        .then(res => {
+            if (!res.ok && res.status === 404) return; // Session deleted — silently ignore
+            return res.json().catch(() => {});
+        })
+        .catch(() => {});
 }
 
 // ===== Collapsible sidebar for mobile =====

@@ -672,12 +672,15 @@ class RedisRequestQueue:
         """
         self.app.logger.info(f"RedisRequestQueue._process_request: processing task {task['id']}")
 
+        # Check task type — it can be at top level or inside 'data' (from add_request)
+        task_type = task.get('type') or task.get('data', {}).get('type')
+
         # Index / reindex / transcription tasks — handled separately
-        if task.get('type') == 'index_document':
+        if task_type == 'index_document':
             return self._process_index_task(task)
-        if task.get('type') == 'reindex_all_embeddings':
+        if task_type == 'reindex_all_embeddings':
             return self._process_reindex_all_task(task)
-        if task.get('type') == 'transcribe_audio':
+        if task_type == 'transcribe_audio':
             return self._process_transcribe_task(task)
 
         user_id = task['user_id']
@@ -867,8 +870,10 @@ class RedisRequestQueue:
             }
 
     def _process_index_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        doc_id = task['doc_id']
-        file_path = task['file_path']
+        # Data can be at top level or inside 'data' (from add_request)
+        data = task.get('data', {})
+        doc_id = task.get('doc_id') or data.get('doc_id')
+        file_path = task.get('file_path') or data.get('file_path')
         user_id = task['user_id']
         lang = task.get('lang', 'ru')
         indexing_started_at = get_current_time_for_db()

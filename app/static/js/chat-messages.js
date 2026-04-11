@@ -24,13 +24,13 @@ function loadMessages(sessionId) {
     return fetch('/api/sessions/' + sessionId + '/messages?limit=100&offset=0')
         .then(res => {
             if (!res.ok) {
-                // If session is gone (404), don't spam error, just trigger session reload
+                // Session is gone — stop trying and reload sessions list
                 if (res.status === 404) {
                     console.warn('loadMessages: Session not found (404). Reloading sessions...');
                     if (typeof window.loadSessionsFromServer === 'function') {
                         window.loadSessionsFromServer();
                     }
-                    return [];
+                    return null; // Signal to skip further processing
                 }
                 console.error('Failed to load messages:', res.status);
                 throw new Error('HTTP error ' + res.status);
@@ -39,16 +39,16 @@ function loadMessages(sessionId) {
         })
         .then(data => {
             if (window.IS_RELOADING) return;
+            // null means session was not found — skip rest of processing
+            if (data === null) return;
 
             // Handle both old format (array) and new format (object with messages)
             const messages = Array.isArray(data) ? data : (data.messages || []);
             console.debug('loadMessages: received', messages.length, 'messages');
 
             // Update sessionsData count to match server state
-            // This prevents the background sync from flagging this session as "Unread"
             if (sessionsData[sessionId]) {
                 sessionsData[sessionId].message_count = messages.length;
-                // Also update from the latest message timestamp
                 if (messages.length > 0) {
                     sessionsData[sessionId].updated_at = messages[messages.length - 1].timestamp || new Date().toISOString();
                 }
@@ -57,14 +57,18 @@ function loadMessages(sessionId) {
             const container = document.getElementById('chat-messages');
             container.innerHTML = '';
 
-            // Load model info
+            // Load model info — only if session exists
             fetch('/api/sessions/' + sessionId + '/model-info')
-                .then(res => res.json())
+                .then(res => {
+                    if (!res.ok) return null;
+                    return res.json();
+                })
                 .then(modelData => {
                     if (window.IS_RELOADING) return;
+                    if (!modelData) return;
                     defaultModelName = modelData.model_name || 'qwen3-vl:8b-instruct-q4_K_M';
                 })
-                .catch(err => console.error('Error loading model info:', err));
+                .catch(() => {});
 
             let lastUserMessage = null;
 

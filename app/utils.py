@@ -122,16 +122,30 @@ def get_current_time_in_timezone(app=None) -> Optional[str]:
             'en': {0: 'Monday', 1: 'Tuesday', 2: 'Wednesday',
                    3: 'Thursday', 4: 'Friday', 5: 'Saturday', 6: 'Sunday'}
         }
+        # Localized month names to prevent model from confusing date with time (e.g. 11.04 -> 11:04)
+        months = {
+            'ru': {1: 'января', 2: 'февраля', 3: 'марта', 4: 'апреля', 5: 'мая', 6: 'июня',
+                   7: 'июля', 8: 'августа', 9: 'сентября', 10: 'октября', 11: 'ноября', 12: 'декабря'},
+            'en': {1: 'January', 2: 'February', 3: 'March', 4: 'April', 5: 'May', 6: 'June',
+                   7: 'July', 8: 'August', 9: 'September', 10: 'October', 11: 'November', 12: 'December'}
+        }
         weekday_names = weekdays.get(lang, weekdays['ru'])
-        formatted_date = local_time.strftime('%d.%m.%Y')
+        month_names = months.get(lang, months['ru'])
+
+        # Format: "11 апреля 2026, время 01:30:41 Суббота (UTC+3)"
+        # Text month prevents model from confusing 11.04 with time 11:04.
+        formatted_date = f"{local_time.day} {month_names[local_time.month]} {local_time.year}"
         formatted_time = local_time.strftime('%H:%M:%S')
         weekday_name = weekday_names[local_time.weekday()]
-        tz_abbr = local_time.strftime('%z')
-        if tz_abbr:
-            tz_abbr = f"(+{int(tz_abbr[1:3])})" if tz_abbr.startswith('+') else f"({tz_abbr})"
+
+        tz_offset = local_time.strftime('%z')
+        if tz_offset:
+            sign = '+' if tz_offset.startswith('+') else ''
+            hours = int(tz_offset[1:3])
+            tz_abbr = f"(UTC{sign}{hours})"
         else:
             tz_abbr = ""
-        return f"{formatted_date} {formatted_time} {weekday_name} {tz_abbr}"
+        return f"{formatted_date}, время {formatted_time} {weekday_name} {tz_abbr}"
     except Exception as e:
         app.logger.error(f"Error getting time: {str(e)}")
         return None

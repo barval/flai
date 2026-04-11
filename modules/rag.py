@@ -318,6 +318,31 @@ class RagModule:
         # Estimate token count for context and query
         query_tokens = self._estimate_tokens(query)
         context_tokens = self._estimate_tokens(context)
+
+        # Hard limit: ensure context fits within server's actual context size
+        # Server ctx-size is 16384, leave room for system prompt + history
+        MAX_CONTEXT_TOKENS = 10000
+        if context_tokens > MAX_CONTEXT_TOKENS:
+            # Trim chunks from the end (lowest relevance) until under limit
+            original_count = len(filtered)
+            while context_tokens > MAX_CONTEXT_TOKENS and len(filtered) > 1:
+                filtered.pop()  # Remove lowest-relevance chunk
+                # Rebuild context
+                with current_app.app_context():
+                    with force_locale(lang):
+                        source_label = _('Source')
+                context_parts = []
+                for chunk_data, score in filtered:
+                    filename = chunk_data.get('filename', 'unknown') if isinstance(chunk_data, dict) else 'unknown'
+                    text = chunk_data.get('text', chunk_data) if isinstance(chunk_data, dict) else chunk_data
+                    context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
+                context = "\n\n".join(context_parts)
+                context_tokens = self._estimate_tokens(context)
+            self.logger.info(
+                f"RAG: trimmed context from {original_count} to {len(filtered)} chunks "
+                f"({context_tokens} tokens) to fit within server context size"
+            )
+
         template_overhead = 800  # rough estimate for template text + instructions
         # Get reasoning model config from DB
         reasoning_config = get_model_config('reasoning')

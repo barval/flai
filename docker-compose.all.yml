@@ -138,10 +138,13 @@ services:
       --models-dir /models/
       --models-preset /models/models-preset.ini
       --models-max 1
-      --ctx-size 8192
+      --ctx-size 16384
       --host 0.0.0.0
       --port 8033
       --n-gpu-layers -1
+      --embeddings
+      --batch-size 2048
+      --ubatch-size 2048
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8033/health || exit 1"]
       interval: 30s

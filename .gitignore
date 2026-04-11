@@ -14,3 +14,4 @@ services/piper/piper_models/
 services/llamacpp/models/
 services/sd_cpp/models/
 services/sd_cpp/src/
+services/room-snapshot-api/room-snapshot-api/

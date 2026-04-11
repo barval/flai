@@ -59,7 +59,7 @@ class CamModule:
     
     def init_app(self, app):
         self.app = app
-        self.camera_api_url = app.config.get('CAMERA_API_URL', 'http://host.docker.internal:5005')
+        self.camera_api_url = app.config.get('CAMERA_API_URL', 'http://flai-room-snapshot-api:5000')
         self.timeout = app.config.get('CAMERA_API_TIMEOUT', 15)
         self.check_interval = app.config.get('CAMERA_CHECK_INTERVAL', 30)
         self.max_init_retries = app.config.get('CAMERA_MAX_INIT_RETRIES', 5)

@@ -132,3 +132,36 @@ Uses `faster_whisper` via Docker. No changes from previous setup.
 ## Piper TTS (Optional, unchanged)
 
 Uses ONNX Piper models. No changes from previous setup.
+
+## Room Snapshot API (Optional)
+
+Provides HTTP access to IP camera snapshots for the FLAI camera module.
+
+### Setup
+
+1. **Clone the service repository:**
+   ```bash
+   cd services/room-snapshot-api
+   git clone https://github.com/barval/room-snapshot-api.git room-snapshot-api
+   ```
+
+2. **Configure cameras** in `room-snapshot-api/config/cameras.conf`:
+   ```conf
+   # Format: code=ip:port:name
+   spa=192.168.1.101:554:Спальня
+   gos=192.168.1.102:554:Гостиная
+   ```
+
+3. **Set RTSP credentials** in `room-snapshot-api/.env`:
+   ```bash
+   cp room-snapshot-api/.env.example room-snapshot-api/.env
+   # Edit .env and set RTSP_AUTH="username:password"
+   ```
+
+4. **Deploy:**
+   ```bash
+   ./deploy.sh local    # Same server as FLAI
+   ./deploy.sh remote   # Separate server
+   ```
+
+See [room-snapshot-api/README.md](room-snapshot-api/README.md) for the full deployment guide.

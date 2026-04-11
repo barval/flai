@@ -299,7 +299,7 @@ WHISPER_API_URL=http://flai-whisper:9000/asr
 PIPER_URL=http://flai-piper:8888/tts
 QDRANT_URL=http://flai-qdrant:6333
 QDRANT_API_KEY=your_qdrant_api_key
-CAMERA_API_URL=http://flai-room-snapshot-api:5005
+CAMERA_API_URL=http://flai-room-snapshot-api:5000
 ```
 
 **Image Generation Defaults:**
@@ -521,11 +521,11 @@ docker compose -f docker-compose.all.yml --profile with-rag up -d
 
 ## 📹 Camera Integration (Optional)
 
-The camera module connects to a separate `room-snapshot-api` service. See [services/README.md](services/README.md) for deployment guides.
+The camera module connects to a separate `room-snapshot-api` service. See [services/README.md](services/README.md) and [services/room-snapshot-api/README.md](services/room-snapshot-api/README.md) for deployment guides.
 
 ### Configuration
 ```bash
-CAMERA_API_URL=http://flai-room-snapshot-api:5005
+CAMERA_API_URL=http://flai-room-snapshot-api:5000
 CAMERA_ENABLED=true
 CAMERA_API_TIMEOUT=15
 CAMERA_CHECK_INTERVAL=30

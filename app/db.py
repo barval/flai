@@ -239,7 +239,12 @@ def migrate_add_model_configs(app):
 
 
 def migrate_add_ollama_url(app):
-    """Add ollama_url column to model_configs table."""
+    """Add ollama_url column to model_configs table.
+
+    Note: This column is legacy (replaced by service_url for llama.cpp).
+    We no longer set a hardcoded default URL since the project migrated
+    from Ollama to llama.cpp.
+    """
     try:
         with sqlite3.connect(CHAT_DB_PATH) as conn:
             c = conn.cursor()
@@ -248,8 +253,8 @@ def migrate_add_ollama_url(app):
             if 'ollama_url' not in columns:
                 c.execute("ALTER TABLE model_configs ADD COLUMN ollama_url TEXT")
                 app.logger.info("Added column ollama_url to model_configs table")
-            # Set default value for existing rows (assume default Ollama)
-            c.execute("UPDATE model_configs SET ollama_url = 'http://ollama:11434' WHERE ollama_url IS NULL")
+            # No default URL set — the project no longer uses Ollama.
+            # The service_url column (added by the next migration) is the authoritative source.
             conn.commit()
     except Exception as e:
         app.logger.error(f"Migration add ollama_url error: {str(e)}")

@@ -150,12 +150,16 @@ def list_users(exclude_admin=True):
             return conn.execute('SELECT * FROM users ORDER BY login').fetchall()
 
 def check_camera_permission(login, room_code):
-    """Check if a user has permission to access a specific camera."""
+    """Check if a user has permission to access a specific camera.
+
+    Deny-by-default: if camera_permissions is NULL/None, access is denied.
+    An explicit list of room codes must be set to grant access.
+    """
     user = get_user_by_login(login)
     if not user or not user['is_active']:
         return False
     if user['camera_permissions'] is None:
-        return True
+        return False  # Deny by default — no explicit permissions = no access
     try:
         allowed = json.loads(user['camera_permissions'])
         return room_code in allowed

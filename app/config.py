@@ -43,14 +43,13 @@ def load_config(app):
     app.config['MAX_AUDIO_SIZE_MB'] = int(os.getenv('MAX_AUDIO_SIZE_MB', 4))
     
     # Whisper ASR settings
-    app.config['WHISPER_API_URL'] = os.getenv('WHISPER_API_URL', 'http://host.docker.internal:9000/asr')
+    app.config['WHISPER_API_URL'] = os.getenv('WHISPER_API_URL', 'http://flai-whisper:9000/asr')
     
     # Timeouts for services (not model-specific, used for HTTP requests)
-    app.config['AUTOMATIC1111_TIMEOUT'] = int(os.getenv('AUTOMATIC1111_TIMEOUT', 180))
     app.config['WHISPER_API_TIMEOUT'] = int(os.getenv('WHISPER_API_TIMEOUT', 120))
     
     # Camera settings
-    app.config['CAMERA_API_URL'] = os.getenv('CAMERA_API_URL', 'http://host.docker.internal:5005')
+    app.config['CAMERA_API_URL'] = os.getenv('CAMERA_API_URL', 'http://flai-room-snapshot-api:5000')
     app.config['CAMERA_ENABLED'] = os.getenv('CAMERA_ENABLED', 'true').lower() in ('true', '1', 'yes')
     app.config['CAMERA_API_TIMEOUT'] = int(os.getenv('CAMERA_API_TIMEOUT', 15))
     app.config['CAMERA_CHECK_INTERVAL'] = int(os.getenv('CAMERA_CHECK_INTERVAL', 30))
@@ -136,8 +135,6 @@ def load_config(app):
     app.config['MESSAGES_MAX_LIMIT'] = int(os.getenv('MESSAGES_MAX_LIMIT', 200))
 
     # Session and context settings
-    app.config['MAX_HISTORY_MESSAGES'] = int(os.getenv('MAX_HISTORY_MESSAGES', 30))
-    app.config['CONTEXT_SAFETY_MARGIN'] = float(os.getenv('CONTEXT_SAFETY_MARGIN', 0.85))
     app.config['TEMPLATE_OVERHEAD_TOKENS'] = int(os.getenv('TEMPLATE_OVERHEAD_TOKENS', 800))
 
     # Image token estimation

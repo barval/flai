@@ -73,7 +73,14 @@ function loadSessionsFromServer() {
                     delete newMessageIndicators[s.id];
                 }
             });
-            
+
+            // If current session was deleted on server, switch to first available
+            if (currentSessionId && !sessionsData[currentSessionId] && sessions.length > 0) {
+                console.debug('loadSessionsFromServer: current session deleted, switching to', sessions[0].id);
+                currentSessionId = sessions[0].id;
+                delete newMessageIndicators[currentSessionId];
+            }
+
             if (updated) {
                 // Use sessionsData (our local state) instead of raw server data
                 const sessionsList = Object.keys(sessionsData).map(id => ({

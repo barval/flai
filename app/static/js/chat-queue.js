@@ -66,6 +66,11 @@ function syncMessagesForCurrentSession() {
         return;
     }
 
+    // Skip if current session is no longer in sessionsData (likely deleted on server)
+    if (!sessionsData[currentSessionId]) {
+        return;
+    }
+
     // Get last message timestamp from DOM
     const messagesContainer = document.getElementById('chat-messages');
     const lastMessageEl = messagesContainer.lastElementChild;

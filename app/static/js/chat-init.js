@@ -51,7 +51,12 @@ function stopMessagePolling() {
 
 async function pollNewMessages() {
     if (window.IS_RELOADING || !currentSessionId) return;
-    
+
+    // Skip polling if current session is no longer in sessionsData (likely deleted on server)
+    if (!sessionsData[currentSessionId]) {
+        return;
+    }
+
     // FIX: Don't poll if there are active pending requests
     // This prevents loading messages from DB while waiting for response
     const hasActiveRequests = Object.keys(pendingRequests).length > 0;

@@ -274,6 +274,7 @@ function startResultPolling(requestId) {
                 clearInterval(pollInterval);
 
                 if (data.result) {
+                    console.debug('[POLL] Received result for request:', requestId, 'result keys:', Object.keys(data.result));
                     const resultSessionId = data.result.session_id || pendingRequests[requestId]?.sessionId;
                     const expectedSessionId = pendingRequests[requestId]?.sessionId;
 
@@ -295,17 +296,23 @@ function startResultPolling(requestId) {
                     }
 
                     // Handle transcription result that may spawn a new processing request
-                    if (data.result.transcribed_text) {
+                    if (data.result.transcribed_text !== undefined && data.result.transcribed_text !== null) {
                         const resultSessionId = data.result.session_id || pendingRequests[requestId]?.sessionId;
                         if (resultSessionId === currentSessionId) {
                             // Check for duplicate by message_id
                             if (data.result.transcribed_message_id && displayedMessageIds.has(data.result.transcribed_message_id)) {
                                 console.debug('Skipping duplicate transcribed message by ID', data.result.transcribed_message_id);
                             } else {
+                                const transcribedText = data.result.transcribed_text || '(пустая транскрибация)';
                                 // Display transcribed text message
-                                originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.result.transcribed_text, null, null, null, null,
+                                const msgElement = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + transcribedText, null, null, null, null,
                                     data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'whisper',
                                     null, null, null, null, data.result.transcribed_message_id);
+                                // Explicitly add to displayedMessageIds to prevent sync duplicates
+                                if (data.result.transcribed_message_id) {
+                                    displayedMessageIds.add(data.result.transcribed_message_id);
+                                }
+                                console.debug('[TRANSCRIBE] Displayed transcribed message:', data.result.transcribed_message_id, 'text length:', transcribedText.length);
                                 // Update session metadata
                                 if (sessionsData[resultSessionId]) {
                                     sessionsData[resultSessionId].message_count = (sessionsData[resultSessionId].message_count || 0) + 1;

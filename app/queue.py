@@ -151,15 +151,28 @@ class RedisRequestQueue:
             return position * 3
 
     def get_user_queue_counts(self, user_id: str) -> Tuple[int, int]:
-        """Get user's queue count and total queue length across both queues."""
+        """Get user's queue count and total queue length across both queues.
+
+        Counts actual tasks in both queues belonging to the user by scanning
+        queue contents, rather than relying on a potentially stale counter.
+        """
         fast_total = self.redis.llen(self.queue_key)
         slow_total = self.redis.llen(self.slow_queue_key)
         total = fast_total + slow_total
         if total == 0:
             return 0, 0
-        user_count_key = f"{self.queue_key}:user_counts"
-        user_count = self.redis.hget(user_count_key, user_id)
-        user_count = int(user_count) if user_count else 0
+
+        # Count actual user tasks in both queues (reliable, self-healing)
+        user_count = 0
+        for q_key in [self.queue_key, self.slow_queue_key]:
+            queue_len = self.redis.llen(q_key)
+            if queue_len > 0:
+                tasks = self.redis.lrange(q_key, 0, -1)
+                for task_data in tasks:
+                    task = self._deserialize(task_data)
+                    if task and task.get('user_id') == user_id:
+                        user_count += 1
+
         return user_count, total
 
     def _increment_user_queue_count(self, user_id: str):
@@ -218,6 +231,174 @@ class RedisRequestQueue:
                     self.app.logger.info(f"Queue recovery ({queue_key}): re-queued {recovered} stale task(s)")
             except Exception as e:
                 self.logger.warning(f"Queue recovery failed for {queue_key}: {e}")
+
+    def _get_model_for_task(self, task: Dict[str, Any]) -> str:
+        """Determine which llama.cpp model a task will need.
+
+        Returns one of: 'chat', 'reasoning', 'multimodal', 'embedding', 'none'.
+        'none' means the task doesn't use llama.cpp (e.g. pure audio, index).
+        """
+        task_type = task.get('type', '')
+        data = task.get('data', {})
+        req_type = data.get('type', '')
+        file_type = data.get('file_type', '')
+
+        # Tasks that don't use llama.cpp
+        if task_type in ('index_document', 'reindex_all_embeddings'):
+            return 'none'
+        if task_type == 'transcribe_audio':
+            return 'none'
+
+        # Audio file tasks — transcription then text, starts with chat (router)
+        if file_type and file_type.startswith('audio/'):
+            return 'chat'
+
+        # Image edit — uses multimodal for analysis
+        if req_type == 'image' and file_type and file_type.startswith('image/'):
+            # _process_image_edit_task: multimodal + sd.cpp
+            return 'multimodal'
+
+        # Image chat — multimodal
+        if req_type == 'image' and file_type and file_type.startswith('image/'):
+            return 'multimodal'
+
+        # Text tasks go through router (chat model)
+        if req_type == 'text':
+            return 'chat'
+
+        # Default: assume chat (router) for unknown tasks
+        return 'chat'
+
+    def _peek_next_task_model(self) -> Tuple[str, bool]:
+        """Peek at the next task in both queues and determine what model it needs.
+
+        Returns: (model_type, has_tasks)
+            model_type: 'chat', 'reasoning', 'multimodal', 'embedding', 'none'
+            has_tasks: True if there are tasks in any queue
+        """
+        # Check both queues — fast has priority
+        for q_key in [self.queue_key, self.slow_queue_key]:
+            queue_len = self.redis.llen(q_key)
+            if queue_len > 0:
+                task_data = self.redis.lindex(q_key, 0)
+                if task_data:
+                    task = self._deserialize(task_data)
+                    if task:
+                        return self._get_model_for_task(task), True
+        return 'none', False
+
+    def _get_current_loaded_model(self) -> Optional[str]:
+        """Query llama.cpp to find which model is currently loaded in VRAM.
+
+        Returns model type: 'chat', 'reasoning', 'multimodal', 'embedding', or None.
+        """
+        llamacpp_url = self.app.config.get('LLAMACPP_URL')
+        if not llamacpp_url:
+            return None
+
+        try:
+            import requests as req
+            resp = req.get(f"{llamacpp_url.rstrip('/')}/v1/models", timeout=5)
+            if resp.status_code != 200:
+                return None
+
+            data = resp.json()
+            for model in data.get('data', []):
+                if model.get('status', {}).get('value') == 'loaded':
+                    model_id = model.get('id', '')
+                    # Map model ID to model type using known model configs
+                    from .model_config import get_model_config
+                    for module_type in ('chat', 'reasoning', 'multimodal', 'embedding'):
+                        config = get_model_config(module_type)
+                        if config and config.get('model_name') in model_id:
+                            return module_type
+                    # Fallback: guess from name
+                    if any(x in model_id.lower() for x in ('vl', 'vision', 'multimodal')):
+                        return 'multimodal'
+                    if any(x in model_id.lower() for x in ('oss', 'reason', 'gemma-4')):
+                        return 'reasoning'
+                    if any(x in model_id.lower() for x in ('bge', 'embed')):
+                        return 'embedding'
+                    return 'chat'
+            return None
+        except Exception as e:
+            self.app.logger.debug(f"Failed to query current model: {e}")
+            return None
+
+    def _predictive_unload(self, current_model: str) -> None:
+        """After task completion, check next queued task and decide whether to unload.
+
+        Uses the ACTUAL model currently in VRAM (from llama.cpp API), not the
+        theoretical model for the completed task.
+
+        Model categories:
+          - 'hot' (entry-point):  chat, multimodal  — can be needed for ANY new request
+          - 'cold' (intermediate): reasoning, embedding — only used after router dispatch
+          - 'none': task doesn't use llama.cpp (transcription, indexing)
+
+        Logic:
+          - Current model is 'none' → nothing loaded, skip
+          - Next task needs SAME model → keep loaded (no switch needed)
+          - Queue is EMPTY + current model is 'hot' → keep loaded (may be needed)
+          - Queue is EMPTY + current model is 'cold' → unload (never an entry point)
+          - Next task needs DIFFERENT model → unload current to free VRAM
+        """
+        HOT_MODELS = {'chat', 'multimodal'}
+        COLD_MODELS = {'reasoning', 'embedding'}
+
+        if current_model == 'none':
+            return  # Task didn't use llama.cpp, nothing to unload
+
+        # Get the ACTUAL model currently loaded in VRAM
+        actual_model = self._get_current_loaded_model()
+        if actual_model is None:
+            self.app.logger.debug("Predictive unload: cannot determine current model, skipping")
+            return
+
+        next_model, has_tasks = self._peek_next_task_model()
+
+        if actual_model == next_model:
+            self.app.logger.info(
+                f"Predictive unload: keeping '{actual_model}' in VRAM — "
+                f"next task also needs '{next_model}'"
+            )
+            return
+
+        if not has_tasks:
+            if actual_model in COLD_MODELS:
+                self.app.logger.info(
+                    f"Predictive unload: queue empty, '{actual_model}' is cold — "
+                    f"unloading to free VRAM"
+                )
+            else:
+                self.app.logger.info(
+                    f"Predictive unload: queue empty, '{actual_model}' is hot — "
+                    f"keeping loaded (may be needed for new request)"
+                )
+                return
+
+        self.app.logger.info(
+            f"Predictive unload: current='{actual_model}', "
+            f"next='{next_model}' — unloading '{actual_model}'"
+        )
+
+        # Unload current model
+        llamacpp_url = self.app.config.get('LLAMACPP_URL')
+        if not llamacpp_url:
+            return
+
+        from .resource_manager import get_resource_manager
+        rm = get_resource_manager()
+        if rm:
+            rm.unload_llamacpp_model(llamacpp_url)
+            # In router mode, llama.cpp auto-loads the needed model on the next
+            # /v1/chat/completions request. No explicit preload needed.
+            if has_tasks:
+                self.app.logger.info(
+                    f"VRAM freed — llama.cpp will auto-load '{next_model}' for next task"
+                )
+        else:
+            self.app.logger.debug("Resource manager not available, skipping unload")
 
     def _process_single_task(self, task: Dict[str, Any], processing_key: str) -> None:
         """Process a single task: move to processing, execute, store result, cleanup."""
@@ -281,6 +462,10 @@ class RedisRequestQueue:
             if user_id:
                 self._cleanup_user_request(user_id, task_id)
                 self._decrement_user_queue_count(user_id)
+
+        # Predictive VRAM management: check next task and decide whether to unload
+        current_model = self._get_model_for_task(task)
+        self._predictive_unload(current_model)
 
     def _worker_loop_fast(self):
         """Worker for fast queue (text, audio, RAG, camera, image chat)."""
@@ -823,15 +1008,21 @@ class RedisRequestQueue:
         lang = task.get('lang', 'ru')
         user_class = task.get('user_class', 2)
 
-        # Perform transcription
+        # Don't pre-check availability — audio_module.transcribe() re-checks
+        # availability on each call, so a service that was unavailable at startup
+        # but is now ready will still work.
         audio_module = self.app.modules.get('audio')
-        if not audio_module or not audio_module.available:
+        if not audio_module:
             error_msg = self.app.modules['base']._('Audio service unavailable', lang)
+            completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
+            save_message(session_id, 'assistant', '⚠️ ' + error_msg, model_name='system', response_time='0')
             return {'error': error_msg, 'session_id': session_id, 'is_error': True}
 
         transcribed_text = audio_module.transcribe(file_data, file_type, file_name, lang=lang)
         if transcribed_text is None:
             error_msg = self.app.modules['base']._('Failed to recognize speech', lang)
+            completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
+            save_message(session_id, 'assistant', '⚠️ ' + error_msg, model_name='system', response_time='0')
             return {'error': error_msg, 'session_id': session_id, 'is_error': True}
 
         # Save assistant message with transcribed text

@@ -96,42 +96,58 @@ download_sd_cpp_models() {
     local VAE_DIR="services/sd_cpp/models/vae"
     local TXT_DIR="services/sd_cpp/models/text_encoders"
 
-    # Z-Image Turbo (default generation model)
+    # Z-Image Turbo (image generation)
     if [[ ! -f "$DIFF_DIR/z_image_turbo-Q8_0.gguf" ]]; then
         info "Downloading z_image_turbo-Q8_0.gguf..."
         HF_DOWNLOAD "bartowski/Z-Image-Turbo-GGUF" \
             "z_image_turbo-Q8_0.gguf" "$DIFF_DIR"
+    else
+        warn "z_image_turbo-Q8_0.gguf already exists — skipping."
     fi
 
-    # Qwen Image Edit model
-    if [[ ! -f "$DIFF_DIR/qwen-image-edit-2511-Q4_K_M.gguf" ]]; then
-        info "Downloading qwen-image-edit-2511-Q4_K_M.gguf..."
+    # Qwen Image Edit (image editing)
+    if [[ ! -f "$DIFF_DIR/qwen-image-edit-2511-Q2_K.gguf" ]]; then
+        info "Downloading qwen-image-edit-2511-Q2_K.gguf (editing)..."
         HF_DOWNLOAD "bartowski/Qwen-Image-Edit-2511-GGUF" \
-            "qwen-image-edit-2511-Q4_K_M.gguf" "$DIFF_DIR"
+            "qwen-image-edit-2511-Q2_K.gguf" "$DIFF_DIR"
+    else
+        warn "qwen-image-edit-2511-Q2_K.gguf already exists — skipping."
     fi
 
-    # VAE
+    # VAE (for Z-Image Turbo generation)
     if [[ ! -f "$VAE_DIR/ae.safetensors" ]]; then
         info "Downloading ae.safetensors (VAE)..."
         HF_DOWNLOAD "bartowski/Z-Image-Turbo-GGUF" \
             "ae.safetensors" "$VAE_DIR"
+    else
+        warn "ae.safetensors already exists — skipping."
     fi
+
+    # VAE (for Qwen Image Edit)
     if [[ ! -f "$VAE_DIR/qwen_image_vae.safetensors" ]]; then
         info "Downloading qwen_image_vae.safetensors..."
         HF_DOWNLOAD "bartowski/Qwen-Image-GGUF" \
             "qwen_image_vae.safetensors" "$VAE_DIR"
+    else
+        warn "qwen_image_vae.safetensors already exists — skipping."
     fi
 
-    # Text encoder
+    # Text encoder (for Z-Image Turbo)
     if [[ ! -f "$TXT_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
         info "Downloading Qwen3-4B-Instruct-2507-Q4_K_M.gguf (text encoder)..."
         HF_DOWNLOAD "bartowski/Qwen3-4B-Instruct-2507-GGUF" \
             "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" "$TXT_DIR"
+    else
+        warn "Qwen3-4B-Instruct-2507-Q4_K_M.gguf already exists — skipping."
     fi
+
+    # Text encoder (for Qwen Image Edit)
     if [[ ! -f "$TXT_DIR/Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf" ]]; then
         info "Downloading Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf (edit text encoder)..."
         HF_DOWNLOAD "bartowski/Qwen2.5-VL-7B-Instruct-GGUF" \
             "Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf" "$TXT_DIR"
+    else
+        warn "Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf already exists — skipping."
     fi
 }
 
@@ -192,23 +208,50 @@ run_tests() {
 # ── Usage ──
 usage() {
     cat <<'USAGE'
-FLAI v8.0 Deployment Script
+FLAI v8.0 — Deployment Script
 
 Usage: ./deploy.sh [OPTIONS]
 
 Options:
-  --with-voice      Deploy Whisper ASR + Piper TTS
-  --with-rag        Deploy Qdrant for RAG (document search)
-  --with-image-gen  Deploy stable-diffusion.cpp for image generation/editing (default)
-  --download-models Download GGUF/safetensors models from HuggingFace
-  --run-tests       Run unit tests after deployment
-  --help            Show this help message
+  --with-voice        Deploy Whisper ASR + Piper TTS
+  --with-rag          Deploy Qdrant for RAG (document search)
+  --with-image-gen    Deploy stable-diffusion.cpp for image generation/editing
+  --download-models   Download GGUF/safetensors models from HuggingFace
+  --run-tests         Run unit tests after deployment
+  --help, -h          Show this help message
+
+Deployment Scenarios:
+  ./deploy.sh                              Core chat + llama.cpp only (~2.5 GB)
+  ./deploy.sh --with-voice                 + voice recognition & TTS (~3 GB)
+  ./deploy.sh --with-rag                   + document search with Qdrant (~5 GB)
+  ./deploy.sh --with-image-gen             + image generation & editing (~23 GB)
+  ./deploy.sh --download-models --with-image-gen  All models (~35 GB total)
+
+Model Download Sizes (approximate):
+  llama.cpp models:
+    Qwen3-4B-Instruct (chat)         ~2.5 GB
+    Qwen3VL-8B-Instruct (multimodal) ~5.5 GB
+    bge-m3 (embeddings for RAG)      ~2.2 GB
+
+  Image generation (Z-Image Turbo):
+    z_image_turbo (diffusion)        ~6.2 GB
+    ae.safetensors (VAE)             ~0.3 GB
+    Qwen3-4B-Instruct (text encoder) ~2.5 GB  (shared with chat)
+
+  Image editing (Qwen Image Edit):
+    qwen-image-edit-2511-Q2_K         ~4.8 GB
+    qwen_image_vae.safetensors        ~0.3 GB
+    Qwen2.5-VL-7B-Instruct (encoder)  ~5.0 GB
+
+  TTS (Piper):
+    en_US-lessac-medium              ~0.1 GB
+    ru_RU-ruslan-medium              ~0.1 GB
 
 Examples:
   ./deploy.sh                              # Core chat + llama.cpp only
   ./deploy.sh --with-image-gen             # + image generation/editing
   ./deploy.sh --with-voice --with-image-gen # + voice + images
-  ./deploy.sh --download-models --with-image-gen  # Download models too
+  ./deploy.sh --download-models --with-image-gen  # Download all models too
 USAGE
 }
 

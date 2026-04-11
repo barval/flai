@@ -36,26 +36,15 @@ stdout_handler = logging.StreamHandler()
 stdout_handler.setFormatter(logging.Formatter('[sd-wrapper] %(message)s'))
 logger.addHandler(stdout_handler)
 
-# Model type from environment (z_image_turbo or qwen_image)
-MODEL_TYPE = os.environ.get('SD_MODEL_TYPE', 'z_image_turbo')
+# ── Generation model — Z-Image Turbo (only supported model) ──
+DEFAULT_DIFFUSION_MODEL = '/app/models/diffusion_models/z_image_turbo-Q8_0.gguf'
+DEFAULT_VAE = '/app/models/vae/ae.safetensors'
+DEFAULT_LLM = '/app/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf'
+DEFAULT_STEPS = 10
+DEFAULT_FLOW_SHIFT = 2.0
+DEFAULT_SAMPLER = None  # auto for z_image_turbo
 
-# Default model paths — change based on SD_MODEL_TYPE
-if MODEL_TYPE == 'qwen_image':
-    DEFAULT_DIFFUSION_MODEL = '/app/models/diffusion_models/Qwen_Image-Q4_K_M.gguf'
-    DEFAULT_VAE = '/app/models/vae/qwen_image_vae.safetensors'
-    DEFAULT_LLM = '/app/models/text_encoders/Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf'
-    DEFAULT_STEPS = 30
-    DEFAULT_FLOW_SHIFT = 3.0
-    DEFAULT_SAMPLER = 'euler'
-else:  # z_image_turbo (default)
-    DEFAULT_DIFFUSION_MODEL = '/app/models/diffusion_models/z_image_turbo-Q8_0.gguf'
-    DEFAULT_VAE = '/app/models/vae/ae.safetensors'
-    DEFAULT_LLM = '/app/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf'
-    DEFAULT_STEPS = 10
-    DEFAULT_FLOW_SHIFT = 2.0
-    DEFAULT_SAMPLER = None  # auto for z_image_turbo
-
-# Edit model paths (Qwen Image Edit) — separate from generation models
+# ── Edit model — Qwen Image Edit (separate from generation) ──
 # Q2_K chosen for 16GB VRAM compatibility (~4.8GB VRAM vs ~7.2GB for Q4_K_M)
 EDIT_DIFFUSION_MODEL = '/app/models/diffusion_models/qwen-image-edit-2511-Q2_K.gguf'
 EDIT_VAE = '/app/models/vae/qwen_image_vae.safetensors'
@@ -158,7 +147,7 @@ def generate_image(data):
         '--offload-to-cpu',
     ]
 
-    # Add sampler if specified (required for qwen_image)
+    # Add sampler if specified
     if sampler:
         cmd.extend(['--sampler', sampler])
 

@@ -303,7 +303,7 @@ function startResultPolling(requestId) {
                             if (data.result.transcribed_message_id && displayedMessageIds.has(data.result.transcribed_message_id)) {
                                 console.debug('Skipping duplicate transcribed message by ID', data.result.transcribed_message_id);
                             } else {
-                                const transcribedText = data.result.transcribed_text || '(пустая транскрибация)';
+                                const transcribedText = data.result.transcribed_text || '(empty transcription)';
                                 // Display transcribed text message
                                 const msgElement = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + transcribedText, null, null, null, null,
                                     data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'whisper',

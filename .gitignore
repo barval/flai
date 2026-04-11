@@ -10,8 +10,7 @@ htmlcov/
 .coverage
 venv/
 .qwen/
-services/automatic1111/
 services/piper/piper_models/
-services/llamacpp/
+services/llamacpp/models/
 services/sd_cpp/models/
 services/sd_cpp/src/

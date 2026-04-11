@@ -46,14 +46,14 @@
             </div>
         </div>
         {% else %}
-        <div class="language-switcher" style="margin-left: auto;">
+        <div class="language-switcher ml-auto">
             <select id="language-select" onchange="switchLanguage(this.value)">
                 <option value="ru" {% if session.get('language', 'ru') == 'ru' %}selected{% endif %}>Русский</option>
                 <option value="en" {% if session.get('language', 'ru') == 'en' %}selected{% endif %}>English</option>
             </select>
         </div>
         <!-- Theme toggle for unauthenticated users -->
-        <div class="theme-switcher" style="margin-left: 10px;">
+        <div class="theme-switcher ml-10px">
             <button id="theme-toggle-guest" class="theme-toggle-button" title="{{ _('Toggle theme') }}">
                 🌙
             </button>

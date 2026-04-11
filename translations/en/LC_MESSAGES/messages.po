@@ -51,9 +51,6 @@ msgstr "Document not found"
 msgid "Documents DB"
 msgstr "Documents DB"
 
-msgid "Documents"
-msgstr "Documents"
-
 msgid "FLAI"
 msgstr "FLAI"
 
@@ -228,15 +225,6 @@ msgstr "Chat"
 msgid "saved_chat"
 msgstr "Saved chat"
 
-msgid "session"
-msgstr "Session"
-
-msgid "saved_on"
-msgstr "Saved on"
-
-msgid "total_messages"
-msgstr "Total messages"
-
 msgid "no_messages_to_save"
 msgstr "No messages to save"
 
@@ -275,12 +263,6 @@ msgstr "Name"
 
 msgid "Class"
 msgstr "Class"
-
-msgid "Sessions"
-msgstr "Sessions"
-
-msgid "Messages"
-msgstr "Messages"
 
 msgid "Files"
 msgstr "Files"
@@ -663,18 +645,6 @@ msgstr "Server error: received invalid response"
 msgid "recording"
 msgstr "Recording"
 
-msgid "llama-server available"
-msgstr "llama-server available"
-
-msgid "llama-server unavailable"
-msgstr "llama-server unavailable"
-
-msgid "Please provide llama-server URL first."
-msgstr "Please provide llama-server URL first."
-
-msgid "Refresh models from llama-server"
-msgstr "Refresh models from llama-server"
-
 msgid "room_tambour"
 msgstr "tambour"
 
@@ -740,9 +710,6 @@ msgstr "Could not connect to editor."
 
 msgid "Image edited from request: {query}"
 msgstr "Image edited from request: {query}"
-
-msgid "Image generation timeout ({timeout}s)"
-msgstr "Image generation timeout ({timeout}s)"
 
 msgid "Image editing timeout ({timeout}s)"
 msgstr "Image editing timeout ({timeout}s)"

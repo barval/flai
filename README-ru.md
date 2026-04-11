@@ -72,7 +72,7 @@
 | v7.5 (Старое) | v8.0 (Новое) | Примечания |
 |---------------|--------------|------------|
 | Ollama | **llama.cpp** (режим роутера) | Один сервер, динамическое переключение моделей через `--models-dir` |
-| Automatic1111 | **stable-diffusion.cpp** | Z_image_turbo / Qwen_image, flow-matching модели |
+| Automatic1111 | **stable-diffusion.cpp** | Z_image_turbo (генерация), Qwen Image Edit (редактирование) |
 | Ollama `/api/chat` | OpenAI-совместимый `/v1/chat/completions` | Стандартный формат API |
 | Ollama `/api/embed` | OpenAI-совместимый `/v1/embeddings` | Стандартный формат API |
 
@@ -82,7 +82,7 @@
 |-----------|------------|------------|------|
 | **Flask Web** | Веб-интерфейс, маршрутизация, API | Python | 5000 |
 | **llama.cpp** | LLM-инференс (чат, рассуждения, мультимодальность, эмбеддинг) | C++ + CUDA | 8033 |
-| **stable-diffusion.cpp** | Генерация изображений (Z_image_turbo, Qwen_image) | C++ + CUDA | 7860 |
+| **stable-diffusion.cpp** | Генерация изображений (Z_image_turbo) и редактирование (Qwen Image Edit) | C++ + CUDA | 7860 |
 | **Whisper ASR** | Распознавание речи | faster_whisper | 9000 |
 | **Piper TTS** | Синтез речи | ONNX + Piper | 18888 |
 | **Qdrant** | Векторная база данных для RAG | Rust | 6333 |
@@ -280,7 +280,7 @@ CAMERA_API_URL=http://flai-room-snapshot-api:5005
 SD_CPP_DEFAULT_WIDTH=1024
 SD_CPP_DEFAULT_HEIGHT=1024
 SD_CPP_DEFAULT_CFG_SCALE=1.0    # 1.0 для flow-matching моделей (Z_image_turbo)
-SD_CPP_DEFAULT_STEPS=10         # 10 для Z_image_turbo, 30 для Qwen_image
+SD_CPP_DEFAULT_STEPS=10         # 10 для Z_image_turbo
 SD_CPP_TIMEOUT=300
 ```
 
@@ -382,14 +382,24 @@ services/llamacpp/models/
 
 ---
 
-## 🎨 Генерация изображений
+## 🎨 Генерация и редактирование изображений
 
-### Поддерживаемые модели
+### Модель генерации
+
+Проект использует **Z_image_turbo** как единственную модель генерации:
 
 | Модель | Шаги | CFG Scale | Разрешение | Примечания |
 |--------|------|-----------|------------|------------|
 | **Z_image_turbo** | 10 | 1.0 | 1024×1024 | Быстрая, flow-matching |
-| **Qwen_image** | 30 | 1.0 | 1024×1024 | Высокое качество, сэмплер Euler |
+
+### Редактирование изображений (Qwen Image Edit)
+
+Загрузите изображение и попросите его изменить (например, «сделай зрачки зелёными», «убери второе солнце»). Система использует:
+1. **Мультимодальную модель** (Qwen3VL) для анализа изображения и создания промпта редактирования
+2. **Модель Qwen Image Edit** через stable-diffusion.cpp для выполнения редактирования
+3. Оригинальное изображение сохраняется, за исключением запрошенных изменений
+
+Редактирование использует отдельные файлы моделей и работает независимо от генерации — конфликтов между ними нет.
 
 ### Сборка stable-diffusion.cpp
 
@@ -405,7 +415,6 @@ services/llamacpp/models/
 
 ```bash
 SD_CPP_URL=http://flai-sd:7860
-SD_CPP_MODEL=z_image_turbo-Q8_0.gguf
 SD_CPP_DEFAULT_WIDTH=1024
 SD_CPP_DEFAULT_HEIGHT=1024
 SD_CPP_DEFAULT_CFG_SCALE=1.0

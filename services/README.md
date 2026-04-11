@@ -80,13 +80,16 @@ wget -O services/sd_cpp/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf 
 ```
 **Params:** cfg_scale=1.0, steps=10, flow_shift=2, 1024x1024, no negative_prompt.
 
-#### Qwen_image
+### Image Editing (Qwen Image Edit)
+
+Requires separate model files for editing. Editing runs independently from generation.
+
 ```bash
 mkdir -p services/sd_cpp/models/{diffusion_models,vae,text_encoders}
 
 # Diffusion model
-wget -O services/sd_cpp/models/diffusion_models/Qwen_Image-Q4_K_M.gguf \
-  "https://huggingface.co/.../Qwen_Image-Q4_K_M.gguf"
+wget -O services/sd_cpp/models/diffusion_models/qwen-image-edit-2511-Q2_K.gguf \
+  "https://huggingface.co/.../qwen-image-edit-2511-Q2_K.gguf"
 
 # VAE
 wget -O services/sd_cpp/models/vae/qwen_image_vae.safetensors \
@@ -96,9 +99,9 @@ wget -O services/sd_cpp/models/vae/qwen_image_vae.safetensors \
 wget -O services/sd_cpp/models/text_encoders/Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf \
   "https://huggingface.co/.../Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf"
 ```
-**Params:** cfg_scale=1.0, steps=30, flow_shift=3, sampling_method=euler, 1024x1024, no negative_prompt.
+**Params:** cfg_scale=1.0, steps=30, strength=0.7, 1024x1024.
 
-#### Classic SD (SDXL, SD 1.5)
+### Classic SD (SDXL, SD 1.5)
 Traditional diffusion models with CLIP/T5XXL text encoders.
 **Params:** cfg_scale=7.0, steps=30, negative_prompt supported.
 
@@ -106,16 +109,14 @@ Traditional diffusion models with CLIP/T5XXL text encoders.
 
 ```bash
 SD_CPP_URL=http://flai-sd:7860
-SD_CPP_MODEL=z_image_turbo-Q8_0.gguf   # or Qwen_Image-Q4_K_M.gguf
 
 # Z_image_turbo defaults:
 SD_CPP_DEFAULT_CFG_SCALE=1.0
 SD_CPP_DEFAULT_STEPS=10
 SD_CPP_DEFAULT_WIDTH=1024
 SD_CPP_DEFAULT_HEIGHT=1024
-
-# Qwen_image defaults (uncomment if using):
-# SD_CPP_DEFAULT_STEPS=30
+SD_CPP_TIMEOUT=300
+```
 
 # Classic SD defaults (uncomment if using SDXL):
 # SD_CPP_DEFAULT_CFG_SCALE=7.0

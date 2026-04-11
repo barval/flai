@@ -37,7 +37,7 @@
         </div>
 
         <!-- Documents list (hidden by default) -->
-        <div class="documents-list" id="documents-list" style="display: none;">
+        <div class="documents-list hidden" id="documents-list">
             <!-- Documents will be loaded via JavaScript -->
         </div>
     </div>
@@ -55,7 +55,7 @@
         <div class="chat-messages" id="chat-messages"></div>
 
         <!-- File preview container (shown when a file is attached) -->
-        <div id="file-preview-container" style="display: none;">
+        <div id="file-preview-container" class="hidden">
             <div>
                 <span id="file-preview-name"></span>
                 <span id="file-preview-size"></span>
@@ -74,7 +74,7 @@
         <div class="message-input">
             <input type="text" id="message-input" placeholder="{{ _('Enter message...') }}" autocomplete="off">
             <button id="voice-record-button" class="voice-record-button" title="{{ _('Record voice message') }}">🎤</button>
-            <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt" style="display: none;">
+            <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt" class="hidden">
             <button id="attach-file-button">📎</button>
             <button id="send-button">{{ _('Send') }}</button>
         </div>

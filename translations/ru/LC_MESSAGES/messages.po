@@ -52,9 +52,6 @@ msgstr "Документ не найден"
 msgid "Documents DB"
 msgstr "База документов"
 
-msgid "Documents"
-msgstr "Документов"
-
 msgid "FLAI"
 msgstr "ПЛИИ"
 
@@ -229,15 +226,6 @@ msgstr "Чат"
 msgid "saved_chat"
 msgstr "Сохраненный чат"
 
-msgid "session"
-msgstr "Сеанс"
-
-msgid "saved_on"
-msgstr "Сохранено"
-
-msgid "total_messages"
-msgstr "Всего сообщений"
-
 msgid "no_messages_to_save"
 msgstr "Нет сообщений для сохранения"
 
@@ -276,12 +264,6 @@ msgstr "Имя"
 
 msgid "Class"
 msgstr "Класс"
-
-msgid "Sessions"
-msgstr "Сеансов"
-
-msgid "Messages"
-msgstr "Сообщений"
 
 msgid "Files"
 msgstr "Файлы"
@@ -664,19 +646,6 @@ msgstr "Ошибка сервера: получен некорректный о�
 msgid "recording"
 msgstr "Запись"
 
-msgid "llama-server available"
-msgstr "llama-server доступен"
-
-msgid "llama-server unavailable"
-msgstr "llama-server недоступен"
-
-msgid "Please provide llama-server URL first."
-msgstr "Сначала укажите URL llama-server."
-
-msgid "Refresh models from llama-server"
-msgstr "Обновить модели из llama-server"
-
-
 msgid "room_tambour"
 msgstr "тамбур"
 
@@ -742,9 +711,6 @@ msgstr "Не удалось подключиться к редактору."
 
 msgid "Image edited from request: {query}"
 msgstr "Изображение отредактировано по запросу: {query}"
-
-msgid "Image generation timeout ({timeout}s)"
-msgstr "Превышено время генерации изображения ({timeout}с)"
 
 msgid "Image editing timeout ({timeout}s)"
 msgstr "Превышено время редактирования ({timeout}с)"

@@ -72,7 +72,7 @@ FLAI v8.0 is a modular Flask application that orchestrates self-hosted AI servic
 | v7.5 (Old) | v8.0 (New) | Notes |
 |------------|------------|-------|
 | Ollama | **llama.cpp** (router mode) | Single server, dynamic model switching via `--models-dir` |
-| Automatic1111 | **stable-diffusion.cpp** | Z_image_turbo / Qwen_image, flow-matching models |
+| Automatic1111 | **stable-diffusion.cpp** | Z_image_turbo (generation), Qwen Image Edit (editing) |
 | Ollama `/api/chat` | OpenAI-compatible `/v1/chat/completions` | Standard API format |
 | Ollama `/api/embed` | OpenAI-compatible `/v1/embeddings` | Standard API format |
 
@@ -82,7 +82,7 @@ FLAI v8.0 is a modular Flask application that orchestrates self-hosted AI servic
 |-----------|---------|------------|--------------|
 | **Flask Web** | Web interface, routing, API | Python | 5000 |
 | **llama.cpp** | LLM inference (chat, reasoning, multimodal, embedding) | C++ + CUDA | 8033 |
-| **stable-diffusion.cpp** | Image generation (Z_image_turbo, Qwen_image) | C++ + CUDA | 7860 |
+| **stable-diffusion.cpp** | Image generation (Z_image_turbo) and editing (Qwen Image Edit) | C++ + CUDA | 7860 |
 | **Whisper ASR** | Speech-to-text transcription | faster_whisper | 9000 |
 | **Piper TTS** | Text-to-speech synthesis | ONNX + Piper | 18888 |
 | **Qdrant** | Vector database for RAG | Rust | 6333 |
@@ -307,7 +307,7 @@ CAMERA_API_URL=http://flai-room-snapshot-api:5005
 SD_CPP_DEFAULT_WIDTH=1024
 SD_CPP_DEFAULT_HEIGHT=1024
 SD_CPP_DEFAULT_CFG_SCALE=1.0    # 1.0 for flow-matching models (Z_image_turbo)
-SD_CPP_DEFAULT_STEPS=10         # 10 for Z_image_turbo, 30 for Qwen_image
+SD_CPP_DEFAULT_STEPS=10         # 10 for Z_image_turbo
 SD_CPP_TIMEOUT=300
 ```
 
@@ -411,16 +411,17 @@ services/llamacpp/models/
 
 ## 🎨 Image Generation & Editing
 
-### Generation Models
+### Generation Model
+
+The project uses **Z_image_turbo** as the only image generation model:
 
 | Model | Steps | CFG Scale | Resolution | Notes |
 |-------|-------|-----------|------------|-------|
 | **Z_image_turbo** | 10 | 1.0 | 1024×1024 | Fast, flow-matching |
-| **Qwen_image** | 30 | 1.0 | 1024×1024 | High quality, Euler sampler |
 
-Switch between generation models via `SD_MODEL_TYPE` in `.env`:
+Configure via `SD_MODEL_TYPE` in `.env`:
 ```bash
-SD_MODEL_TYPE=z_image_turbo   # or qwen_image
+SD_MODEL_TYPE=z_image_turbo
 ```
 
 ### Image Editing (Qwen Image Edit)
@@ -445,9 +446,6 @@ The `sd_cpp` service is **built from source** during first `docker compose up`:
 ### Configuration
 
 ```bash
-# Generation model selection
-SD_MODEL_TYPE=z_image_turbo        # z_image_turbo or qwen_image
-
 # sd-wrapper HTTP API (port 7861)
 SD_WRAPPER_URL=http://flai-sd:7861
 SD_CPP_TIMEOUT=900                  # Timeout for gen/edit operations (seconds)

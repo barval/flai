@@ -106,6 +106,7 @@ def send_message():
             request_type = 'audio'
 
     resize_notice = None
+    resize_notice_id = None
     file_path = None
     if request_type == 'image':
         max_width = current_app.config.get('MAX_IMAGE_WIDTH', 3840)
@@ -121,8 +122,9 @@ def send_message():
                 )
                 reduced_msg = _('The image has been reduced.')
                 notice_text = f'⚠️ {resolution_msg}. {reduced_msg}'
-                db.save_message(session_id, 'assistant', notice_text, model_name='system', response_time='0')
+                notice_id = db.save_message(session_id, 'assistant', notice_text, model_name='system', response_time='0')
                 resize_notice = notice_text
+                resize_notice_id = notice_id
             file_data = new_file_data
             file_type = new_file_type
             file_name = new_file_name
@@ -190,6 +192,7 @@ def send_message():
         }
         if resize_notice:
             response_data['resize_notice'] = resize_notice
+            response_data['resize_notice_id'] = resize_notice_id
         return jsonify(response_data)
 
     # For text and image requests, queue the main processing task
@@ -224,4 +227,5 @@ def send_message():
     }
     if resize_notice:
         response_data['resize_notice'] = resize_notice
+        response_data['resize_notice_id'] = resize_notice_id
     return jsonify(response_data)

@@ -117,8 +117,32 @@ function loadMessages(sessionId) {
 
                     // Process assistant messages
                     if (msg.role === 'assistant') {
-                        console.debug('loadMessages: Displaying assistant message:', msg.id);
-                        let responseTime = null;
+                        // System messages (resize notices) — only show if not already in DOM
+                        if (msg.model_name === 'system') {
+                            if (msg.id && displayedMessageIds.has(msg.id)) {
+                                // Already displayed — skip
+                            } else {
+                                const existing = document.querySelector(`[data-message-id="${msg.id}"]`);
+                                if (existing) {
+                                    displayedMessageIds.add(msg.id);
+                                } else {
+                                    // Show it once and mark as displayed
+                                    displayMessage(
+                                        msg.role,
+                                        msg.content,
+                                        null, null, null, null,
+                                        msg.timestamp,
+                                        null, 'system',
+                                        null, null, null, null,
+                                        msg.id
+                                    );
+                                    if (msg.id) displayedMessageIds.add(msg.id);
+                                }
+                            }
+                            // Skip normal processing for system messages
+                        } else {
+                            console.debug('loadMessages: Displaying assistant message:', msg.id);
+                            let responseTime = null;
                         if (lastUserMessage) {
                             const userTime = new Date(lastUserMessage.timestamp);
                             const assistantTime = new Date(msg.timestamp);
@@ -165,6 +189,7 @@ function loadMessages(sessionId) {
                             msg.id
                         );
                         lastUserMessage = null;
+                        }
                     }
                 } catch (e) {
                     console.error('Error displaying message', msg, e);

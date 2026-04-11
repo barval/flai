@@ -728,8 +728,10 @@ async function sendMessage() {
                 console.debug('Server response:', data);
                 
                 if (data.resize_notice) {
+                    const noticeMsgId = data.resize_notice_id || ('resize-' + timestamp);
                     originalDisplayMessage('assistant', data.resize_notice, null, null, null, null,
-                        new Date().toISOString(), 0, 'system');
+                        new Date().toISOString(), 0, 'system', null, null, null, null, noticeMsgId);
+                    if (data.resize_notice_id) displayedMessageIds.add(data.resize_notice_id);
                 }
                 
                 // FIX: Update messageId immediately when received from server

@@ -994,8 +994,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if (typeof restoreTTSButtonState === 'function') {
                 restoreTTSButtonState();
             }
+            // Start sync interval AFTER initial load to prevent race conditions
+            startSyncInterval();
         });
-        startSyncInterval();
     });
     
     if (typeof initDocumentsView === 'function') {

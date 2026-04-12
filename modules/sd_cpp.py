@@ -265,8 +265,12 @@ class SdCppModule:
     def edit_image(self, edit_prompt_data: Dict[str, Any], image_base64: str, lang: str = 'ru') -> Dict[str, Any]:
         """Edit an existing image using Qwen Image Edit model.
         Before starting, unloads llama.cpp model from VRAM to avoid OOM.
+        Resizes large images to max 1024px to fit 16GB VRAM.
         """
         from app.resource_manager import get_resource_manager
+        from PIL import Image
+        from io import BytesIO
+
         rm = get_resource_manager()
 
         # Unload llama.cpp model to free ALL VRAM for sd-cli
@@ -276,6 +280,27 @@ class SdCppModule:
             self.logger.warning(
                 "Failed to unload llama.cpp model before editing — OOM risk"
             )
+
+        # Resize large images to avoid OOM on 16GB VRAM
+        max_edit_size = 1024
+        try:
+            img_bytes = base64.b64decode(image_base64)
+            img = Image.open(BytesIO(img_bytes))
+            w, h = img.size
+            if w > max_edit_size or h > max_edit_size:
+                ratio = max_edit_size / max(w, h)
+                new_w, new_h = int(w * ratio), int(h * ratio)
+                img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                    rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                    img = rgb_img
+                buf = BytesIO()
+                img.save(buf, format='JPEG', quality=90)
+                image_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+                self.logger.info(f"Edit: resized image from {w}x{h} to {new_w}x{new_h}")
+        except Exception as e:
+            self.logger.warning(f"Edit: failed to resize image: {e}")
 
         rm.mark_sd_busy()
 

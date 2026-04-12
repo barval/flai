@@ -712,6 +712,9 @@ msgstr "Не удалось подключиться к редактору."
 msgid "Image edited from request: {query}"
 msgstr "Изображение отредактировано по запросу: {query}"
 
+msgid "Maximum resolution for editing is {max_w}×{max_h}. The image has been resized from {orig_w}×{orig_h} to {new_w}×{new_h}."
+msgstr "Максимальное разрешение для редактирования — {max_w}×{max_h}. Изображение уменьшено с {orig_w}×{orig_h} до {new_w}×{new_h}."
+
 msgid "Image editing timeout ({timeout}s)"
 msgstr "Превышено время редактирования ({timeout}с)"
 

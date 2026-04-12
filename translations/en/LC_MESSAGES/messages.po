@@ -711,6 +711,9 @@ msgstr "Could not connect to editor."
 msgid "Image edited from request: {query}"
 msgstr "Image edited from request: {query}"
 
+msgid "Maximum resolution for editing is {max_w}×{max_h}. The image has been resized from {orig_w}×{orig_h} to {new_w}×{new_h}."
+msgstr "Maximum resolution for editing is {max_w}×{max_h}. The image has been resized from {orig_w}×{orig_h} to {new_w}×{new_h}."
+
 msgid "Image editing timeout ({timeout}s)"
 msgstr "Image editing timeout ({timeout}s)"
 

@@ -266,6 +266,7 @@ class SdCppModule:
         """Edit an existing image using Qwen Image Edit model.
         Before starting, unloads llama.cpp model from VRAM to avoid OOM.
         Resizes large images to max 1024px to fit 16GB VRAM.
+        Returns dict with 'resized', 'original_size', 'new_size' if resize occurred.
         """
         from app.resource_manager import get_resource_manager
         from PIL import Image
@@ -283,6 +284,7 @@ class SdCppModule:
 
         # Resize large images to avoid OOM on 16GB VRAM
         max_edit_size = 1024
+        resized_info = {'resized': False, 'original_size': None, 'new_size': None}
         try:
             img_bytes = base64.b64decode(image_base64)
             img = Image.open(BytesIO(img_bytes))
@@ -298,6 +300,7 @@ class SdCppModule:
                 buf = BytesIO()
                 img.save(buf, format='JPEG', quality=90)
                 image_base64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+                resized_info = {'resized': True, 'original_size': (w, h), 'new_size': (new_w, new_h)}
                 self.logger.info(f"Edit: resized image from {w}x{h} to {new_w}x{new_h}")
         except Exception as e:
             self.logger.warning(f"Edit: failed to resize image: {e}")
@@ -364,7 +367,10 @@ class SdCppModule:
                         'mm_time': None,
                         'gen_time': None,
                         'mm_model': None,
-                        'gen_model': 'qwen_image_edit'
+                        'gen_model': 'flux-2-klein-4b',
+                        'resized': resized_info['resized'],
+                        'original_size': resized_info['original_size'],
+                        'new_size': resized_info['new_size'],
                     }
                 else:
                     return {

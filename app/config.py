@@ -23,7 +23,7 @@ def load_config(app):
     app.config['LLAMACPP_URL'] = os.getenv('LLAMACPP_URL')
     # stable-diffusion.cpp settings (uses sd-wrapper HTTP API)
     app.config['SD_MODEL_TYPE'] = os.getenv('SD_MODEL_TYPE', 'z_image_turbo')
-    app.config['SD_EDIT_MODEL_TYPE'] = os.getenv('SD_EDIT_MODEL_TYPE', 'qwen_image_edit')
+    app.config['SD_EDIT_MODEL_TYPE'] = os.getenv('SD_EDIT_MODEL_TYPE', 'flux-2-klein-4b')
     app.config['SD_WRAPPER_URL'] = os.getenv('SD_WRAPPER_URL', 'http://flai-sd:7861')
     app.config['SD_CPP_TIMEOUT'] = int(os.getenv('SD_CPP_TIMEOUT', 900))  # 15 min for editing
 

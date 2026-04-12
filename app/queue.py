@@ -612,6 +612,22 @@ class RedisRequestQueue:
                 session_id, image_result.get('error', 'Image editing failed'), mm_time + edit_time, lang
             )
 
+        # Show resize notice if image was downscaled for editing
+        resize_notice = None
+        resize_notice_id = None
+        if image_result.get('resized') and image_result.get('original_size') and image_result.get('new_size'):
+            orig_w, orig_h = image_result['original_size']
+            new_w, new_h = image_result['new_size']
+            lang_for_msg = lang
+            with force_locale(lang_for_msg):
+                resize_text = self.app.modules['base']._(
+                    'Maximum resolution for editing is {max_w}×{max_h}. '
+                    'The image has been resized from {orig_w}×{orig_h} to {new_w}×{new_h}.',
+                    lang=lang_for_msg
+                ).format(max_w=1024, max_h=1024, orig_w=orig_w, orig_h=orig_h, new_w=new_w, new_h=new_h)
+            resize_notice_id = save_message(session_id, 'assistant', resize_text, model_name='system', response_time='0')
+            resize_notice = resize_text
+
         template = self.app.modules['base']._('Image edited from request: {query}', lang=lang)
         message_text_out = template.format(query=message_text)
         file_path = None
@@ -635,12 +651,14 @@ class RedisRequestQueue:
             'mm_time': mm_time,
             'gen_time': edit_time,
             'mm_model': image_result.get('mm_model'),
-            'gen_model': 'qwen_image_edit',
+            'gen_model': 'flux-2-klein-4b',
             'response_time': {'mm_time': mm_time, 'gen_time': edit_time,
-                            'mm_model': image_result.get('mm_model'), 'gen_model': 'qwen_image_edit'},
+                            'mm_model': image_result.get('mm_model'), 'gen_model': 'flux-2-klein-4b'},
+            'resize_notice': resize_notice,
+            'resize_notice_id': resize_notice_id,
         }
         return self._save_and_respond(
-            session_id, message_text_out, 'qwen_image_edit',
+            session_id, message_text_out, 'flux-2-klein-4b',
             {'mm_time': mm_time, 'gen_time': edit_time},
             file_data=None, file_type=image_result['file_type'],
             file_name=image_result['file_name'], file_path=file_path,

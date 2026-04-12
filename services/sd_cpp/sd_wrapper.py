@@ -44,12 +44,18 @@ DEFAULT_STEPS = 10
 DEFAULT_FLOW_SHIFT = 2.0
 DEFAULT_SAMPLER = None  # auto for z_image_turbo
 
-# ── Edit model — Qwen Image Edit (separate from generation) ──
-# Q2_K chosen for 16GB VRAM compatibility (~4.8GB VRAM vs ~7.2GB for Q4_K_M)
-EDIT_DIFFUSION_MODEL = '/app/models/diffusion_models/qwen-image-edit-2511-Q2_K.gguf'
-EDIT_VAE = '/app/models/vae/qwen_image_vae.safetensors'
-EDIT_LLM = '/app/models/text_encoders/Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf'
+# ── Edit model — Flux.2 Klein 4B (temporary replacement for Qwen Image Edit) ──
+# Ref: https://github.com/leejet/stable-diffusion.cpp/blob/master/docs/flux2.md
+EDIT_DIFFUSION_MODEL = '/app/models/diffusion_models/flux-2-klein-4b-Q8_0.gguf'
+EDIT_VAE = '/app/models/vae/flux2_ae.safetensors'
+EDIT_LLM = '/app/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf'
 EDIT_DEFAULT_STRENGTH = 0.7
+
+# ── Edit model — Qwen Image Edit (old, commented out) ──
+# EDIT_DIFFUSION_MODEL = '/app/models/diffusion_models/qwen-image-edit-2511-Q2_K.gguf'
+# EDIT_VAE = '/app/models/vae/qwen_image_vae.safetensors'
+# EDIT_LLM = '/app/models/text_encoders/Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf'
+# EDIT_DEFAULT_STRENGTH = 0.7
 
 SD_CLI = '/usr/local/bin/sd-cli'
 
@@ -222,30 +228,54 @@ def _edit_image_impl(data):
     with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as out_tmp:
         output_path = out_tmp.name
 
-    # Qwen Image Edit requires significant VRAM (~19GB for full GPU).
-    # On 16GB cards (RTX 5060 Ti), move VAE + CLIP to CPU to save VRAM.
+    # Flux.2 Klein 4B edit parameters
+    # Ref: https://github.com/leejet/stable-diffusion.cpp/blob/master/docs/flux2.md
+    # Flux Kontext mode: --cfg-scale 1.0, --steps 4, -r for reference image
     cmd = [
         SD_CLI,
         '--diffusion-model', EDIT_DIFFUSION_MODEL,
         '--vae', EDIT_VAE,
         '--llm', EDIT_LLM,
         '-p', edit_prompt,
-        '--cfg-scale', '2.5',
+        '--cfg-scale', '1.0',
+        '--steps', '4',
         '--sampling-method', 'euler',
-        '--flow-shift', '3.0',
         '-r', src_path,
         '--seed', '-1',
         '--rng', 'cuda',
         '--diffusion-fa',
         '--offload-to-cpu',
-        '--qwen-image-zero-cond-t',
-        # Force VAE and LLM text encoder to RAM (saves ~13.5GB VRAM)
+        # Force VAE and CLIP to RAM (saves VRAM)
         '--vae-on-cpu',
         '--clip-on-cpu',
         # Use unified cache for better memory management
         '--cache-mode', 'ucache',
         '-o', output_path,
     ]
+
+    # Qwen Image Edit edit parameters (commented out)
+    # cmd = [
+    #     SD_CLI,
+    #     '--diffusion-model', EDIT_DIFFUSION_MODEL,
+    #     '--vae', EDIT_VAE,
+    #     '--llm', EDIT_LLM,
+    #     '-p', edit_prompt,
+    #     '--cfg-scale', '2.5',
+    #     '--sampling-method', 'euler',
+    #     '--flow-shift', '3.0',
+    #     '-r', src_path,
+    #     '--seed', '-1',
+    #     '--rng', 'cuda',
+    #     '--diffusion-fa',
+    #     '--offload-to-cpu',
+    #     '--qwen-image-zero-cond-t',
+    #     # Force VAE and LLM text encoder to RAM (saves ~13.5GB VRAM)
+    #     '--vae-on-cpu',
+    #     '--clip-on-cpu',
+    #     # Use unified cache for better memory management
+    #     '--cache-mode', 'ucache',
+    #     '-o', output_path,
+    # ]
 
     logger.info(f" Running edit: {' '.join(cmd[:12])}...")
 

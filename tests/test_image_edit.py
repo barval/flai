@@ -46,7 +46,7 @@ class TestSdCppEditImage(unittest.TestCase):
         result = module.edit_image(edit_data, self.test_image_b64, lang='en')
 
         self.assertTrue(result['success'])
-        self.assertEqual(result['gen_model'], 'qwen_image_edit')
+        self.assertEqual(result['gen_model'], 'flux-2-klein-4b')
         self.assertIsNotNone(result['image_data'])
 
     @patch('modules.sd_cpp.requests.post')

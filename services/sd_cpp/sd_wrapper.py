@@ -223,8 +223,7 @@ def _edit_image_impl(data):
         output_path = out_tmp.name
 
     # Qwen Image Edit requires significant VRAM (~19GB for full GPU).
-    # On 16GB cards (RTX 5060 Ti), the diffusion model alone needs ~8.2GB VRAM
-    # which conflicts with llama.cpp. Solution: move diffusion to CPU entirely.
+    # On 16GB cards (RTX 5060 Ti), move VAE + CLIP to CPU to save VRAM.
     cmd = [
         SD_CLI,
         '--diffusion-model', EDIT_DIFFUSION_MODEL,
@@ -238,11 +237,11 @@ def _edit_image_impl(data):
         '--seed', '-1',
         '--rng', 'cuda',
         '--diffusion-fa',
+        '--offload-to-cpu',
         '--qwen-image-zero-cond-t',
-        # Force ALL heavy components to RAM (saves ~15GB VRAM)
+        # Force VAE and LLM text encoder to RAM (saves ~13.5GB VRAM)
         '--vae-on-cpu',
         '--clip-on-cpu',
-        '--diffusion-on-cpu',
         # Use unified cache for better memory management
         '--cache-mode', 'ucache',
         '-o', output_path,

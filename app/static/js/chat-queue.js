@@ -120,13 +120,6 @@ function syncMessagesForCurrentSession() {
                 // Clear unread indicator when we receive new messages for current session
                 delete newMessageIndicators[currentSessionId];
 
-                // Update sessionsData count to keep sidebar in sync with DOM
-                // This MUST happen before any 'continue' to ensure the counter matches the server
-                if (sessionsData[currentSessionId]) {
-                    sessionsData[currentSessionId].message_count = (sessionsData[currentSessionId].message_count || 0) + 1;
-                    sessionsData[currentSessionId].updated_at = msg.timestamp || new Date().toISOString();
-                }
-
                 // Skip if already displayed (check DOM first)
                 if (msg.id) {
                     const existingMsg = document.querySelector(`[data-message-id="${msg.id}"]`);
@@ -272,7 +265,9 @@ function fetchQueueStatus() {
 
 /**
  * Update the sessions list UI based on current sessionQueueInfo
- * Called after fetchQueueStatus or status changes
+ * Called after fetchQueueStatus or status changes.
+ * Uses JSON-based deduplication to avoid full DOM rebuild when
+ * nothing meaningful changed (prevents flickering on slow/mobile connections).
  */
 function updateUIFromQueueStatus() {
     const sessions = Object.keys(sessionsData).map(id => ({
@@ -283,6 +278,15 @@ function updateUIFromQueueStatus() {
         has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
         queue_info: sessionQueueInfo[id] || null
     }));
+
+    // Skip full DOM rebuild if sessions data hasn't changed
+    const sessionsJson = JSON.stringify(sessions);
+    if (window._lastSessionsJson === sessionsJson) {
+        // Only update the status counter — sessions list is unchanged
+        window.updateStatusCounter();
+        return;
+    }
+    window._lastSessionsJson = sessionsJson;
 
     if (typeof updateSessionsList === 'function') {
         updateSessionsList(sessions);
@@ -306,22 +310,10 @@ function setLocalTranscribing(sessionId, isTranscribing) {
         delete localTranscribingSessions[sessionId];
     }
 
-    // Immediate update - clear any pending timeout
-    if (sessionsUpdateTimeout) {
-        clearTimeout(sessionsUpdateTimeout);
-        sessionsUpdateTimeout = null;
+    // Use the standard debounced update instead of immediate full rebuild
+    if (typeof updateUIFromQueueStatus === 'function') {
+        updateUIFromQueueStatus();
     }
-
-    // Force immediate update with full session data
-    const sessions = Object.keys(sessionsData).map(id => ({
-        id: id,
-        title: sessionsData[id].title,
-        updated_at: sessionsData[id].updated_at,
-        message_count: sessionsData[id].message_count,
-        has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
-        queue_info: sessionQueueInfo[id] || null
-    }));
-    updateSessionsList(sessions);
 
     console.debug('Transcribing flag', isTranscribing ? 'SET' : 'CLEARED', 'for session:', sessionId);
 }

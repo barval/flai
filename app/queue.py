@@ -86,13 +86,17 @@ class RedisRequestQueue:
         request_data = task.get('data', {})
         req_type = request_data.get('type', 'text')
         file_type = request_data.get('file_type', '')
+        message_text = request_data.get('text', '')
 
         # Audio is fast
         if file_type and file_type.startswith('audio/'):
             return 'fast'
-        # Image + text chat is fast (multimodal analysis)
+        # Image with text comment → image editing (slow, 60-900s)
+        # Image without text → image chat/question (fast, multimodal analysis)
         if req_type == 'image' and file_type and file_type.startswith('image/'):
-            return 'fast'
+            if message_text and message_text.strip():
+                return 'slow'  # Image editing takes 1-15 minutes
+            return 'fast'      # Image chat/analysis is fast
         # Text tasks are fast
         if req_type == 'text':
             return 'fast'
@@ -536,13 +540,21 @@ class RedisRequestQueue:
         return None, None
 
     def _build_error_response(self, session_id: str, error: str, process_time: float, lang: str) -> Dict[str, Any]:
-        """Build a standardized error response dict."""
+        """Build a standardized error response dict and save to DB."""
+        # Save error message to database so it persists and is visible in chat
+        from .db import save_message
+        completion_time = get_current_time_in_timezone_for_db(self.app)
+        msg_id = save_message(
+            session_id, 'assistant', '⚠️ ' + error,
+            model_name='system', response_time=str(process_time)
+        )
         return {
             'error': error,
             'session_id': session_id,
-            'assistant_timestamp': get_current_time_in_timezone_for_db(self.app),
+            'assistant_timestamp': completion_time,
             'is_error': True,
             'response_time': process_time,
+            'message_id': msg_id,
         }
 
     def _build_success_response(self, session_id: str, response: str, model_used: str,

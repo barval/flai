@@ -387,10 +387,15 @@ function startResultPolling(requestId) {
                     }
                     
                     if (data.result.error) {
-                        if (resultSessionId === currentSessionId) {
+                        if (data.result.message_id && displayedMessageIds.has(data.result.message_id)) {
+                            console.debug('Skipping duplicate error message by ID', data.result.message_id);
+                        } else if (resultSessionId === currentSessionId) {
                             originalDisplayMessage('assistant', '⚠️ ' + data.result.error, null, null, null, null,
                                 data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'system',
-                                null, null, null, null, null);
+                                null, null, null, null, data.result.message_id);
+                            if (data.result.message_id) {
+                                displayedMessageIds.add(data.result.message_id);
+                            }
                         }
                         if (resultSessionId) {
                             setLocalTranscribing(resultSessionId, false);
@@ -665,7 +670,7 @@ async function sendMessage() {
 
         input.value = '';
         attachedFile = null;
-        document.getElementById('file-preview-container').style.display = 'none';
+        document.getElementById('file-preview-container').classList.add('hidden');
         document.getElementById('file-input').value = '';
     };
     
@@ -1023,14 +1028,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const fileSize = formatFileSize(attachedFile.size);
             const sizeSpan = document.getElementById('file-preview-size');
             if (sizeSpan) sizeSpan.textContent = ' (' + fileSize + ')';
-            preview.style.display = 'block';
+            // FIX: Remove 'hidden' class instead of setting display (CSS has !important)
+            preview.classList.remove('hidden');
         }
     });
     
     document.getElementById('remove-file-button').addEventListener('click', function() {
         attachedFile = null;
         document.getElementById('file-input').value = '';
-        document.getElementById('file-preview-container').style.display = 'none';
+        // FIX: Add 'hidden' class back instead of setting display
+        document.getElementById('file-preview-container').classList.add('hidden');
     });
     
     document.getElementById('save-chat-button').addEventListener('click', saveChatAsHTML);

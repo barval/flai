@@ -223,9 +223,8 @@ def _edit_image_impl(data):
         output_path = out_tmp.name
 
     # Qwen Image Edit requires significant VRAM (~19GB for full GPU).
-    # With llama-server running (~7.6GB), we have ~8.2GB left.
-    # The diffusion model alone is ~12.6GB, LLM text encoder ~5.8GB.
-    # Strategy: keep diffusion on GPU, move LLM+VAE to RAM.
+    # On 16GB cards (RTX 5060 Ti), the diffusion model alone needs ~8.2GB VRAM
+    # which conflicts with llama.cpp. Solution: move diffusion to CPU entirely.
     cmd = [
         SD_CLI,
         '--diffusion-model', EDIT_DIFFUSION_MODEL,
@@ -239,11 +238,11 @@ def _edit_image_impl(data):
         '--seed', '-1',
         '--rng', 'cuda',
         '--diffusion-fa',
-        '--offload-to-cpu',
         '--qwen-image-zero-cond-t',
-        # Force VAE and LLM text encoder to RAM (saves ~13.5GB VRAM)
+        # Force ALL heavy components to RAM (saves ~15GB VRAM)
         '--vae-on-cpu',
         '--clip-on-cpu',
+        '--diffusion-on-cpu',
         # Use unified cache for better memory management
         '--cache-mode', 'ucache',
         '-o', output_path,
@@ -266,7 +265,13 @@ def _edit_image_impl(data):
             except Exception:
                 log_tail = '(no log available)'
             logger.info(f" sd-cli edit failed (rc={result.returncode}): {log_tail[:500]}")
-            return {'error': 'Image editing failed'}
+            # Return detailed error to caller
+            if 'out of memory' in log_tail.lower() or 'cudaMalloc failed' in log_tail:
+                return {'error': 'Недостаточно видеопамяти (VRAM) для редактирования изображения. Попробуйте уменьшить размер изображения или закрыть другие GPU-задачи.'}
+            elif 'timeout' in log_tail.lower():
+                return {'error': 'Превышено время ожидания редактирования изображения'}
+            else:
+                return {'error': 'Image editing failed'}
 
         if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
             return {'error': 'Image editing produced empty output'}

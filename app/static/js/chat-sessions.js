@@ -19,16 +19,17 @@ function loadSessionsFromServer() {
             return res.json();
         })
         .then(sessions => {
-            let updated = false;
+            let titleChanged = false;
+            let countChanged = false;
             let currentSessionMessageCountChanged = false;
-            
+
             // Clear sessionsData for sessions that no longer exist
             const currentSessionIds = new Set(sessions.map(s => s.id));
             Object.keys(sessionsData).forEach(id => {
                 if (!currentSessionIds.has(id)) {
                     delete sessionsData[id];
                     delete newMessageIndicators[id];
-                    updated = true;
+                    titleChanged = true;
                 }
             });
 
@@ -39,37 +40,32 @@ function loadSessionsFromServer() {
                         updated_at: s.updated_at,
                         message_count: s.message_count
                     };
-                    updated = true;
+                    titleChanged = true;
                 } else {
                     if (sessionsData[s.id].title !== s.title) {
                         sessionsData[s.id].title = s.title;
                         sessionsData[s.id].updated_at = s.updated_at;
                         sessionsData[s.id].message_count = s.message_count;
-                        updated = true;
-                    } else if (sessionsData[s.id].updated_at !== s.updated_at) {
+                        titleChanged = true;
+                    }
+                    // Only update message_count if it actually differs — don't use
+                    // updated_at as a trigger since it changes constantly during processing
+                    if (sessionsData[s.id].message_count !== s.message_count) {
+                        sessionsData[s.id].message_count = s.message_count;
                         sessionsData[s.id].updated_at = s.updated_at;
-                        sessionsData[s.id].message_count = s.message_count;
-                        updated = true;
-                    } else if (sessionsData[s.id].message_count !== s.message_count) {
-                        sessionsData[s.id].message_count = s.message_count;
-                        updated = true;
-                        // FIX: If message count changed for current session, reload messages
+                        countChanged = true;
                         if (s.id === currentSessionId) {
                             currentSessionMessageCountChanged = true;
-                            console.debug('loadSessionsFromServer: Message count changed for current session, reloading messages');
                         }
                     }
                 }
                 // Update unread indicators from server data
                 // NEVER show for current active session
                 if (s.id === currentSessionId) {
-                    // Current session is active - always clear unread indicator
                     delete newMessageIndicators[s.id];
                 } else if (s.has_unread) {
-                    // Server says this session has unread messages - set indicator
                     newMessageIndicators[s.id] = true;
                 } else {
-                    // Server says no unread - clear indicator
                     delete newMessageIndicators[s.id];
                 }
             });
@@ -81,27 +77,26 @@ function loadSessionsFromServer() {
                 delete newMessageIndicators[currentSessionId];
             }
 
-            if (updated) {
-                // Use sessionsData (our local state) instead of raw server data
+            // Only rebuild sessions list HTML if something VISIBLE changed
+            // (title or count — not just updated_at which changes constantly during processing)
+            if (titleChanged || countChanged) {
                 const sessionsList = Object.keys(sessionsData).map(id => ({
                     id: id,
                     title: sessionsData[id].title,
                     updated_at: sessionsData[id].updated_at,
                     message_count: sessionsData[id].message_count,
                     has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
-                    // Include queue info for this session
                     queue_info: sessionQueueInfo[id] || null
                 }));
                 updateSessionsList(sessionsList);
+                // Update dedup cache so updateUIFromQueueStatus doesn't rebuild again
+                window._lastSessionsJson = JSON.stringify(sessionsList);
             }
 
-            // FIX: Reload messages for current session if message count changed
-            if (currentSessionMessageCountChanged && currentSessionId) {
-                loadMessages(currentSessionId).catch(err => {
-                    console.error('Error reloading messages after count change:', err);
-                });
-            }
-            
+            // Don't call loadMessages here — syncMessagesForCurrentSession already
+            // appends new messages incrementally. loadMessages does innerHTML=''
+            // which causes full chat redraw and flickering on mobile/slow connections.
+
             return sessions;
         })
         .catch(err => {

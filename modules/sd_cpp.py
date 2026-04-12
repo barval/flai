@@ -153,7 +153,11 @@ class SdCppModule:
 
         # Unload llama.cpp model to free ALL VRAM for sd-cli
         llamacpp_url = self.app.config.get('LLAMACPP_URL', 'http://flai-llamacpp:8033')
-        rm.unload_llamacpp_model(llamacpp_url)
+        unload_success = rm.unload_llamacpp_model(llamacpp_url)
+        if not unload_success:
+            self.logger.warning(
+                "Failed to unload llama.cpp model before generation — OOM risk"
+            )
 
         rm.mark_sd_busy()
 
@@ -267,7 +271,11 @@ class SdCppModule:
 
         # Unload llama.cpp model to free ALL VRAM for sd-cli
         llamacpp_url = self.app.config.get('LLAMACPP_URL', 'http://flai-llamacpp:8033')
-        rm.unload_llamacpp_model(llamacpp_url)
+        unload_success = rm.unload_llamacpp_model(llamacpp_url)
+        if not unload_success:
+            self.logger.warning(
+                "Failed to unload llama.cpp model before editing — OOM risk"
+            )
 
         rm.mark_sd_busy()
 

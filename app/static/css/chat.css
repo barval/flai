@@ -576,7 +576,6 @@ audio {
 
 /* ===== INPUT FIELD AND BUTTONS ===== */
 #file-preview-container {
-    display: none;
     margin: 10px 0;
 }
 

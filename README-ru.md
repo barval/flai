@@ -186,16 +186,30 @@ mkdir -p services/sd_cpp/models/{diffusion_models,vae,text_encoders}
 
 # Диффузионная модель
 wget -O services/sd_cpp/models/diffusion_models/z_image_turbo-Q8_0.gguf \
-  "https://huggingface.co/.../z_image_turbo-Q8_0.gguf"
+  "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf"
 
 # VAE
 wget -O services/sd_cpp/models/vae/ae.safetensors \
-  "https://huggingface.co/.../ae.safetensors"
+  "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/ae.safetensors"
 
-# Текстовый кодировщик LLM
+# Текстовый кодировщик LLM (общий с чатом)
 wget -O services/sd_cpp/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
   "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF/resolve/main/qwen3-4b-instruct-2507-q4_k_m.gguf"
 ```
+
+#### Модели редактирования изображений (Flux.2 Klein 4B)
+
+```bash
+# Диффузионная модель для редактирования
+wget -O services/sd_cpp/models/diffusion_models/flux-2-klein-4b-Q8_0.gguf \
+  "https://huggingface.co/bartowski/FLUX.2-Klein-dev-GGUF/resolve/main/flux-2-klein-4b-Q8_0.gguf"
+
+# VAE для редактирования
+wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
+  "https://huggingface.co/bartowski/FLUX.2-dev-GGUF/resolve/main/flux2_ae.safetensors"
+```
+
+> Текстовый кодировщик `Qwen3-4B-Instruct-2507-Q4_K_M.gguf` используется **общий** и для генерации, и для редактирования. Скачайте его один раз.
 
 > ⚠️ **Важно**: Мультимодальные модели **обязательно** должны лежать в поддиректории с именем модели, а файл проектора `mmproj-*.gguf` — внутри неё. Роутер llama.cpp автоматически обнаружит и загрузит проектор.
 
@@ -426,7 +440,7 @@ SD_CPP_TIMEOUT=300
 docker compose -f docker-compose.all.yml --profile with-voice up -d
 ```
 
-### Piper TTS (без изменений с v7.5)
+### Piper TTS
 
 Использует ONNX-модели Piper для синтеза речи.
 
@@ -582,12 +596,6 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 ### ✅ Завершено (v8.0)
 - **Режим роутера llama.cpp** (`--models-dir`) вместо Ollama — один сервер с динамическим переключением моделей
 - **stable-diffusion.cpp** вместо Automatic1111 — Z-Image-Turbo для генерации, Flux.2 Klein 4B для редактирования
-- OpenAI-совместимый API (`/v1/chat/completions`, `/v1/embeddings`)
-- Мультимодальная поддержка через mmproj в поддиректориях
-- Динамическое переключение моделей с `--models-max 1`
-- Индивидуальные параметры моделей через `models-preset.ini`
-- Управление GGUF-моделями через админ-панель
-- Все переводы обновлены терминологией llama.cpp
 - **Оптимизация Piper TTS** для синтеза больших текстов — порционная обработка с плавными аудиопереходами
 
 ### 🔄 В работе

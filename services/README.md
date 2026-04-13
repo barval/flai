@@ -68,15 +68,15 @@ mkdir -p services/sd_cpp/models/{diffusion_models,vae,text_encoders}
 
 # Diffusion model
 wget -O services/sd_cpp/models/diffusion_models/z_image_turbo-Q8_0.gguf \
-  "https://huggingface.co/.../z_image_turbo-Q8_0.gguf"
+  "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf"
 
 # VAE
 wget -O services/sd_cpp/models/vae/ae.safetensors \
-  "https://huggingface.co/.../ae.safetensors"
+  "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/ae.safetensors"
 
-# Text encoder (LLM)
+# Text encoder (LLM) — shared with editing
 wget -O services/sd_cpp/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
-  "https://huggingface.co/.../Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+  "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF/resolve/main/qwen3-4b-instruct-2507-q4_k_m.gguf"
 ```
 **Params:** cfg_scale=1.0, steps=10, flow_shift=2, 1024x1024, no negative_prompt.
 

@@ -108,9 +108,6 @@ class TestRedisRequestQueue:
         with patch('app.queue.redis.from_url', return_value=mock_redis):
             queue = RedisRequestQueue(mock_app)
 
-            # Mock _get_session_title to avoid DB calls
-            queue._get_session_title = Mock(return_value='Test Session')
-
             request_id, position = queue.add_request(
                 user_id='test_user',
                 session_id='test-session-id',

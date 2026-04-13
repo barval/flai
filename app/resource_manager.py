@@ -196,48 +196,6 @@ class ResourceManager:
 
         return result
 
-    def compute_sd_cli_config(self, mode: str = 'generate') -> Dict[str, Any]:
-        """Compute optimal sd-cli parameters.
-
-        mode: 'generate' or 'edit'
-        """
-        hw = self.hardware
-        vram = hw.available_vram_mb
-        ram = hw.available_ram_mb
-
-        base = {
-            'offload_to_cpu': True,
-            'vae_on_cpu': True,
-            'diffusion_fa': True,  # flash attention
-            'cache_mode': None,
-            'warning': None,
-        }
-
-        if mode == 'edit':
-            # Qwen Image Edit needs ~19GB total
-            # With 16GB VRAM, we MUST offload heavily
-            if hw.total_vram_mb < 20000:
-                base['vae_on_cpu'] = True
-                base['offload_to_cpu'] = True
-                base['cache_mode'] = 'ucache'
-                base['diffusion_fa'] = False  # FA uses extra VRAM
-                if ram < 8000:
-                    base['warning'] = (
-                        f'Low RAM ({ram}MB). Image editing may be slow or fail. '
-                        f'Need at least 8GB free RAM + 16GB VRAM.'
-                    )
-            else:
-                base['diffusion_fa'] = True
-        else:
-            # Generation (Z_image_turbo) is lighter
-            if hw.total_vram_mb < 12000:
-                base['vae_on_cpu'] = True
-                base['diffusion_fa'] = False
-                if ram < 4000:
-                    base['warning'] = f'Low RAM ({ram}MB). Generation may be slow.'
-
-        return base
-
     # ── Runtime gating ──
 
     def mark_sd_busy(self):
@@ -296,40 +254,6 @@ class ResourceManager:
         except Exception as e:
             logger.warning(f"Error unloading llama.cpp model: {e}")
             return False
-
-    def can_run_llamacpp_request(self, llamacpp_url: str = None) -> bool:
-        """Check if llama-server can process a request.
-
-        In flickering mode:
-        - If sd-cli is NOT busy → always OK (llama.cpp model is loaded or will load)
-        - If sd-cli IS busy → llama.cpp model has been unloaded, requests will
-          wait for model reload. We return True because the request WILL succeed,
-          just with a reload delay.
-        """
-        return True  # Flickering mode handles this automatically
-
-    def _check_llamacpp_health(self, url: str) -> bool:
-        """Check if llama-server is responding (model may or may not be loaded)."""
-        try:
-            import requests as req
-            resp = req.get(f"{url.rstrip('/')}/health", timeout=3)
-            return resp.status_code == 200
-        except Exception:
-            return False
-
-    def _query_available_vram_mb(self) -> int:
-        """Query current available VRAM via nvidia-smi."""
-        try:
-            result = subprocess.run(
-                ['nvidia-smi', '--query-gpu=memory.free',
-                 '--format=csv,noheader,nounits'],
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                return int(result.stdout.strip().split('\n')[0])
-        except Exception:
-            pass
-        return 0
 
     def get_status(self) -> Dict[str, Any]:
         """Get current resource status for debugging/health check."""

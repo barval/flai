@@ -589,26 +589,121 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 ## 🗺️ Дорожная карта
 
 ### ✅ Завершено (v8.0)
-- Режим роутера llama.cpp (`--models-dir`) вместо Ollama
-- stable-diffusion.cpp вместо Automatic1111
+- **Режим роутера llama.cpp** (`--models-dir`) вместо Ollama — один сервер с динамическим переключением моделей
+- **stable-diffusion.cpp** вместо Automatic1111 — Z-Image-Turbo для генерации, Qwen Image Edit для редактирования
 - OpenAI-совместимый API (`/v1/chat/completions`, `/v1/embeddings`)
 - Мультимодальная поддержка через mmproj в поддиректориях
 - Динамическое переключение моделей с `--models-max 1`
 - Индивидуальные параметры моделей через `models-preset.ini`
 - Управление GGUF-моделями через админ-панель
 - Все переводы обновлены терминологией llama.cpp
+- **Оптимизация Piper TTS** для синтеза больших текстов — порционная обработка с плавными аудиопереходами
 
 ### 🔄 В работе
 - Долгосрочная память диалогов (кросс-сессийный контекст)
 - Продвинутый RAG: фильтрация по метаданным, гибридный поиск, реранжирование
 - Оптимизация мобильного интерфейса
-- Улучшение производительности
 
 ### 📅 Планируется
 - Архитектура плагинов для пользовательских модулей
 - Поддержка нескольких GPU
 - Расширенная приоритизация очереди
 - Аналитика активности пользователей
+
+---
+
+## 📦 Модели, лицензии и размеры
+
+### LLM-модели (llama.cpp)
+
+| Модель | Назначение | Лицензия | Примерный размер |
+|--------|------------|----------|-----------------|
+| **Qwen3-4B-Instruct-2507-Q4_K_M** | Чат (быстрые ответы) | [Qwen License](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF) | ~2,5 ГБ |
+| **gpt-oss-20b-mxfp4** | Рассуждения (сложные задачи) | [OpenAI License](https://huggingface.co/openai/gpt-oss-20b-GGUF) | ~12 ГБ |
+| **Qwen3VL-8B-Instruct-Q4_K_M** | Мультимодальность (анализ изображений) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5,5 ГБ + mmproj ~200 МБ |
+| **bge-m3-Q8_0** | Эмбеддинги (RAG) | [MIT License](https://huggingface.co/BAAI/bge-m3-gguf) | ~2,2 ГБ |
+
+### Модели генерации изображений (stable-diffusion.cpp)
+
+| Модель | Назначение | Лицензия | Примерный размер |
+|--------|------------|----------|-----------------|
+| **Z-Image-Turbo (z_image_turbo-Q8_0)** | Генерация изображений | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~6,2 ГБ |
+| **ae.safetensors** (VAE) | Вариационный автоэнкодер для Z-Image | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~0,3 ГБ |
+| **Qwen3-4B-Instruct-2507-Q4_K_M** | Текстовый кодировщик для Z-Image | [Qwen License](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF) | ~2,5 ГБ *(общая с чатом)* |
+
+### Модели редактирования изображений (stable-diffusion.cpp)
+
+| Модель | Назначение | Лицензия | Примерный размер |
+|--------|------------|----------|-----------------|
+| **Qwen-Image-Edit-2511-Q2_K** | Редактирование (смена цветов, удаление объектов, стилизация) | [Qwen License](https://huggingface.co/bartowski/Qwen-Image-Edit-2511-GGUF) | ~4,8 ГБ |
+| **qwen_image_vae.safetensors** | VAE для Qwen Image Edit | [Qwen License](https://huggingface.co/bartowski/Qwen-Image-GGUF) | ~0,3 ГБ |
+| **Qwen2.5-VL-7B-Instruct.Q4_K_M** | Текстовый кодировщик для редактирования | [Qwen License](https://huggingface.co/bartowski/Qwen2.5-VL-7B-Instruct-GGUF) | ~5,0 ГБ |
+
+### Голосовые модели
+
+| Модель | Назначение | Лицензия | Примерный размер |
+|--------|------------|----------|-----------------|
+| **en_US-lessac-medium** | Английский TTS (женский) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~75 МБ |
+| **ru_RU-ruslan-medium** | Русский TTS (мужской) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~75 МБ |
+| **Whisper medium** | Распознавание речи | [MIT (OpenAI)](https://github.com/openai/whisper) | ~1,5 ГБ |
+
+### Общий размер загружаемых данных
+
+| Конфигурация | Примерный объём |
+|--------------|-----------------|
+| Только чат (Qwen3-4B) | ~2,5 ГБ |
+| Чат + Рассуждения | ~14,5 ГБ |
+| Чат + Мультимодальность | ~8 ГБ |
+| Полный LLM-стек | ~22 ГБ |
+| + Генерация изображений | ~28 ГБ |
+| + Редактирование изображений | ~33 ГБ |
+| + Голос (TTS + Whisper) | ~35 ГБ |
+
+> **Примечание**: После загрузки моделей ПЛИИ работает полностью офлайн. Внешние скрипты и модули не загружаются во время работы.
+
+---
+
+## 🧪 Тестирование
+
+ПЛИИ включает комплексное тестирование всех ключевых компонентов и нагрузочное тестирование веб-интерфейса.
+
+### Модульные тесты
+
+```bash
+# Запустить все тесты
+pytest
+
+# С отчётом покрытия
+pytest --cov=app --cov=modules --cov-report=html
+
+# Отдельные категории
+pytest tests/test_admin_routes.py
+pytest tests/test_image_module.py
+pytest tests/test_sd_cpp_module.py
+pytest tests/test_queue.py
+pytest tests/test_security.py
+pytest tests/test_integration.py
+```
+
+### Нагрузочное тестирование
+
+Нагрузочные тесты используют [Locust](https://locust.io/) для эмуляции одновременных пользователей.
+
+```bash
+# Установить Locust (если ещё не установлен)
+pip install locust
+
+# Веб-интерфейс — открыть http://localhost:8089
+locust -f tests/load/locustfile.py --host http://localhost:5000
+
+# Автоматический режим — 10 пользователей, запуск 2/с, 1 минута
+locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
+
+# Через вспомогательный скрипт
+./tests/load/run_load_test.sh --host http://localhost:5000 --users 10 --spawn-rate 2 --run-time 1m
+```
+
+Подробная инструкция — в [tests/load/README-ru.md](tests/load/README-ru.md).
 
 ---
 

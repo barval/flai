@@ -186,8 +186,12 @@ class CamModule:
                 pass
         return status
     
-    def get_room_name(self, room_code):
-        return self.room_names.get(room_code, f"room '{room_code}'")
+    def get_room_name(self, room_code, lang='ru'):
+        """Get translated room name for the given code."""
+        key = self.room_name_keys.get(room_code)
+        if key:
+            return self._(key, lang)
+        return f"room '{room_code}'"
     
     def get_room_code(self, room_name):
         room_name_lower = room_name.lower().strip()
@@ -228,7 +232,7 @@ class CamModule:
                     'available_rooms': list(self.room_names.keys())
                 }
         
-        room_name = self.get_room_name(room_code)
+        room_name = self.get_room_name(room_code, lang)
         
         try:
             endpoints = [
@@ -366,7 +370,8 @@ class CamAPI:
             if 'login' not in session:
                 return jsonify({'error': _('Not authorized')}), 401
             user_login = session['login']
-            result = cam_module.get_snapshot(user_login, room)
+            lang = session.get('language', 'ru')
+            result = cam_module.get_snapshot(user_login, room, lang=lang)
             if result['success']:
                 return jsonify({
                     'success': True,

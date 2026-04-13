@@ -296,9 +296,9 @@ def _edit_image_impl(data):
             logger.info(f" sd-cli edit failed (rc={result.returncode}): {log_tail[:500]}")
             # Return detailed error to caller
             if 'out of memory' in log_tail.lower() or 'cudaMalloc failed' in log_tail:
-                return {'error': 'Недостаточно видеопамяти (VRAM) для редактирования изображения. Попробуйте уменьшить размер изображения или закрыть другие GPU-задачи.'}
+                return {'error': 'Insufficient VRAM (VRAM) for image editing. Try reducing the image size or closing other GPU tasks.'}
             elif 'timeout' in log_tail.lower():
-                return {'error': 'Превышено время ожидания редактирования изображения'}
+                return {'error': 'Image editing timeout'}
             else:
                 return {'error': 'Image editing failed'}
 

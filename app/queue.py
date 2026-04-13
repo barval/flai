@@ -507,16 +507,6 @@ class RedisRequestQueue:
             except Exception as e:
                 self.logger.error(f"Slow worker error: {e}")
                 time.sleep(1)
-    def _get_session_title(self, session_id: str, lang: str = 'ru') -> str:
-        try:
-            with sqlite3.connect(CHAT_DB_PATH) as conn:
-                c = conn.cursor()
-                c.execute('SELECT title FROM chat_sessions WHERE id = ?', (session_id,))
-                row = c.fetchone()
-                return row[0] if row else self.app.modules['base']._('Unknown session', lang=lang)
-        except Exception as e:
-            self.app.logger.error(f"Error getting session title: {str(e)}")
-            return self.app.modules['base']._('Unknown session', lang=lang)
 
     def _get_model_name(self, module_type: str) -> Optional[str]:
         config = get_model_config(module_type)

@@ -618,26 +618,121 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 ## 🗺️ Roadmap
 
 ### ✅ Completed (v8.0)
-- llama.cpp router mode (`--models-dir`) replaces Ollama
-- stable-diffusion.cpp replaces Automatic1111
+- **llama.cpp router mode** (`--models-dir`) replaces Ollama — single server with dynamic model switching
+- **stable-diffusion.cpp** replaces Automatic1111 — Z-Image-Turbo for generation, Qwen Image Edit for editing
 - OpenAI-compatible API (`/v1/chat/completions`, `/v1/embeddings`)
 - Multimodal support via mmproj in subdirectories
 - Dynamic model switching with `--models-max 1`
 - Individual model parameters via `models-preset.ini`
 - GGUF model management via admin panel
 - All translations updated for llama.cpp terminology
+- **Piper TTS optimization** for large text synthesis — chunked processing with seamless audio transitions
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)
 - Advanced RAG: metadata filtering, hybrid search, re-ranking
 - Mobile-responsive UI optimizations
-- Performance improvements
 
 ### 📅 Planned
 - Plugin architecture for custom modules
 - Multi-GPU support
 - Advanced queue prioritization
 - User activity analytics
+
+---
+
+## 📦 Models, Licenses and Sizes
+
+### LLM Models (llama.cpp)
+
+| Model | Purpose | License | Approx. Size |
+|-------|---------|---------|-------------|
+| **Qwen3-4B-Instruct-2507-Q4_K_M** | Chat (fast responses) | [Qwen License](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF) | ~2.5 GB |
+| **gpt-oss-20b-mxfp4** | Reasoning (complex tasks) | [OpenAI License](https://huggingface.co/openai/gpt-oss-20b-GGUF) | ~12 GB |
+| **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (image analysis) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5.5 GB + mmproj ~200 MB |
+| **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/BAAI/bge-m3-gguf) | ~2.2 GB |
+
+### Image Generation Models (stable-diffusion.cpp)
+
+| Model | Purpose | License | Approx. Size |
+|-------|---------|---------|-------------|
+| **Z-Image-Turbo (z_image_turbo-Q8_0)** | Image generation | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~6.2 GB |
+| **ae.safetensors** (VAE) | Variational autoencoder for Z-Image | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~0.3 GB |
+| **Qwen3-4B-Instruct-2507-Q4_K_M** | Text encoder for Z-Image | [Qwen License](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF) | ~2.5 GB *(shared with chat)* |
+
+### Image Editing Models (stable-diffusion.cpp)
+
+| Model | Purpose | License | Approx. Size |
+|-------|---------|---------|-------------|
+| **Qwen-Image-Edit-2511-Q2_K** | Image editing (change colors, remove objects, stylize) | [Qwen License](https://huggingface.co/bartowski/Qwen-Image-Edit-2511-GGUF) | ~4.8 GB |
+| **qwen_image_vae.safetensors** | VAE for Qwen Image Edit | [Qwen License](https://huggingface.co/bartowski/Qwen-Image-GGUF) | ~0.3 GB |
+| **Qwen2.5-VL-7B-Instruct.Q4_K_M** | Text encoder for editing | [Qwen License](https://huggingface.co/bartowski/Qwen2.5-VL-7B-Instruct-GGUF) | ~5.0 GB |
+
+### Voice Models
+
+| Model | Purpose | License | Approx. Size |
+|-------|---------|---------|-------------|
+| **en_US-lessac-medium** | English TTS (female) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~75 MB |
+| **ru_RU-ruslan-medium** | Russian TTS (male) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~75 MB |
+| **Whisper medium** | Speech recognition | [MIT (OpenAI)](https://github.com/openai/whisper) | ~1.5 GB |
+
+### Total Download Sizes (Approximate)
+
+| Configuration | Approx. Download |
+|---------------|-----------------|
+| Chat only (Qwen3-4B) | ~2.5 GB |
+| Chat + Reasoning | ~14.5 GB |
+| Chat + Multimodal | ~8 GB |
+| Full LLM stack | ~22 GB |
+| + Image generation | ~28 GB |
+| + Image editing | ~33 GB |
+| + Voice (TTS + Whisper) | ~35 GB |
+
+> **Note**: After downloading models, FLAI works completely offline. No external scripts or modules are loaded at runtime.
+
+---
+
+## 🧪 Testing
+
+FLAI includes comprehensive testing for all key components and load testing for the web interface.
+
+### Unit Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage report
+pytest --cov=app --cov=modules --cov-report=html
+
+# Run specific test category
+pytest tests/test_admin_routes.py
+pytest tests/test_image_module.py
+pytest tests/test_sd_cpp_module.py
+pytest tests/test_queue.py
+pytest tests/test_security.py
+pytest tests/test_integration.py
+```
+
+### Load Testing
+
+Load tests use [Locust](https://locust.io/) to simulate concurrent users.
+
+```bash
+# Install Locust (if not already installed)
+pip install locust
+
+# Web interface — open http://localhost:8089
+locust -f tests/load/locustfile.py --host http://localhost:5000
+
+# Headless mode — 10 users, spawn 2/sec, run 1 minute
+locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
+
+# Using the convenience script
+./tests/load/run_load_test.sh --host http://localhost:5000 --users 10 --spawn-rate 2 --run-time 1m
+```
+
+See [tests/load/README.md](tests/load/README.md) for detailed load testing instructions.
 
 ---
 

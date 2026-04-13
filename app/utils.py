@@ -71,12 +71,6 @@ def extract_quantization(filename: str) -> str:
     return 'Unknown'
 
 
-def estimate_base64_decoded_size(base64_data: str) -> int:
-    """Estimate the decoded size of a base64-encoded string in bytes.
-    Base64 encodes 3 bytes into 4 characters, so decoded size ≈ (len * 3) / 4.
-    """
-    return int((len(base64_data) * 3) / 4)
-
 # Token estimation coefficients for different languages and model types
 # Format: (model_type, language) -> characters per token
 TOKEN_COEFFICIENTS = {
@@ -132,7 +126,7 @@ def get_current_time_in_timezone(app=None) -> Optional[str]:
         weekday_names = weekdays.get(lang, weekdays['ru'])
         month_names = months.get(lang, months['ru'])
 
-        # Format: "11 апреля 2026, время 01:30:41 Суббота (UTC+3)"
+        # Format: "11 April 2026, time 01:30:41 Saturday (UTC+3)"
         # Text month prevents model from confusing 11.04 with time 11:04.
         formatted_date = f"{local_time.day} {month_names[local_time.month]} {local_time.year}"
         formatted_time = local_time.strftime('%H:%M:%S')
@@ -145,7 +139,8 @@ def get_current_time_in_timezone(app=None) -> Optional[str]:
             tz_abbr = f"(UTC{sign}{hours})"
         else:
             tz_abbr = ""
-        return f"{formatted_date}, время {formatted_time} {weekday_name} {tz_abbr}"
+        time_word = "время" if lang == 'ru' else "time"
+        return f"{formatted_date}, {time_word} {formatted_time} {weekday_name} {tz_abbr}"
     except Exception as e:
         app.logger.error(f"Error getting time: {str(e)}")
         return None

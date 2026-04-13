@@ -50,7 +50,7 @@ function stopMessagePolling() {
 }
 
 async function pollNewMessages() {
-    if (window.IS_RELOADING || !currentSessionId) return;
+    if (window.IS_RELOADING || window.isSwitchingSession || !currentSessionId) return;
 
     // Skip polling if current session is no longer in sessionsData (likely deleted on server)
     if (!sessionsData[currentSessionId]) {
@@ -924,18 +924,6 @@ async function sendMessage() {
 window.loadMessages = function(sessionId) {
     console.debug('loadMessages called for session', sessionId);
 
-    // Only show "loading" if switching to a DIFFERENT session
-    const isSessionSwitch = sessionId !== currentSessionId;
-    
-    if (isSessionSwitch) {
-        stopMessagePolling();
-
-        const statusCounter = document.getElementById('status-counter');
-        if (statusCounter) {
-            statusCounter.innerHTML = '⏳ ' + t('loading');
-        }
-    }
-
     return originalLoadMessages(sessionId)
         .then(() => {
             console.debug('loadMessages completed for session', sessionId);
@@ -944,17 +932,10 @@ window.loadMessages = function(sessionId) {
 
             setTimeout(addCopyButtonsToAllCodeBlocks, 100);
             startMessagePolling();
-
-            if (isSessionSwitch && statusCounter) {
-                window.updateStatusCounter();
-            }
         })
         .catch(err => {
             console.error('Error in loadMessages:', err);
-            if (isSessionSwitch && statusCounter) {
-                statusCounter.innerHTML = '❌';
-                setTimeout(() => window.updateStatusCounter(), 2000);
-            }
+            throw err;
         });
 };
 
@@ -985,10 +966,19 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
 
+    // Show loading indicator immediately
+    const statusCounter = document.getElementById('status-counter');
+    if (statusCounter) {
+        statusCounter.innerHTML = '⏳ ' + t('loading');
+    }
+    showMessagesLoadingIndicator();
+
     loadSessionsFromServer().then(() => {
-        originalLoadMessages(currentSessionId).catch(err => {
+        // Use the wrapped loadMessages to ensure proper loading indicator handling
+        window.loadMessages(currentSessionId).catch(err => {
             console.error('Error loading messages after language switch:', err);
         }).finally(() => {
+            hideMessagesLoadingIndicator();
             startMessagePolling();
             // Restore TTS button state if TTS is playing
             if (typeof restoreTTSButtonState === 'function') {

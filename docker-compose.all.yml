@@ -238,7 +238,7 @@ services:
       - flai_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/docs"]
       interval: 30s
       timeout: 10s
       retries: 3

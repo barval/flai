@@ -4,39 +4,28 @@
 function startSyncInterval() {
     if (window.syncInterval) clearInterval(window.syncInterval);
     console.debug('startSyncInterval: Starting sync interval (2000ms) for session', currentSessionId);
-    // Sync interval for queue status, counter updates, and cross-client synchronization
-    // Using 2000ms to allow CSS animations to run smoothly between updates
     window.syncInterval = setInterval(() => {
-        if (window.IS_RELOADING) {
-            console.debug('sync interval: Skipping - IS_RELOADING');
+        if (window.IS_RELOADING || window.isSwitchingSession) {
+            console.debug('sync interval: Skipping - IS_RELOADING or switching session');
             return;
         }
         console.debug('sync interval: Running sync for session', currentSessionId);
-        // Always fetch queue status first to get latest data from server
-        fetchQueueStatus();
-        // Then sync sessions and messages
         syncSessionsAndMessages();
     }, 2000);
 }
 
 /**
- * Synchronize sessions and messages across multiple clients
- * Called periodically to keep all clients in sync
+ * Synchronize sessions and messages across multiple clients.
+ * Called periodically to keep all clients in sync.
  */
 function syncSessionsAndMessages() {
-    if (window.IS_RELOADING) return;
-
-    // Update queue status icons (fixes stuck lightning bolts)
-    // This ensures status updates even if polling was cancelled
-    if (typeof fetchQueueStatus === 'function') {
-        fetchQueueStatus();
-    }
+    if (window.IS_RELOADING || window.isSwitchingSession) return;
 
     console.debug('syncSessionsAndMessages: Starting sync for session', currentSessionId, 'pendingRequests:', Object.keys(pendingRequests).length);
 
     // Sync sessions list
     loadSessionsFromServer().then(sessions => {
-        if (window.IS_RELOADING) return;
+        if (window.IS_RELOADING || window.isSwitchingSession) return;
 
         // Check if current session still exists
         if (currentSessionId && !sessions.find(s => s.id === currentSessionId)) {
@@ -73,14 +62,10 @@ function syncMessagesForCurrentSession() {
 
     // Get last message timestamp from DOM
     const messagesContainer = document.getElementById('chat-messages');
-    const lastMessageEl = messagesContainer.lastElementChild;
-    
-    // If no messages in DOM, load all messages (not just new ones)
+    const lastMessageEl = messagesContainer ? messagesContainer.lastElementChild : null;
+
+    // If no messages in DOM, skip — loadMessages will handle it when ready
     if (!lastMessageEl || !lastMessageEl.dataset.timestamp) {
-        console.debug('syncMessages: No messages in DOM, loading all messages for session', currentSessionId);
-        loadMessages(currentSessionId).catch(err => {
-            console.error('syncMessages: Error loading all messages:', err);
-        });
         return;
     }
 

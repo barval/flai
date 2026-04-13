@@ -1,6 +1,43 @@
 // app/static/js/chat-messages.js
 // Message display and loading functions
 
+/**
+ * Show a loading indicator overlay on top of the chat area.
+ * This is placed outside the messages container so it's not cleared by innerHTML = ''.
+ */
+function showMessagesLoadingIndicator() {
+    // Remove existing indicator if present
+    hideMessagesLoadingIndicator();
+
+    // Find the chat area to overlay on
+    const chatArea = document.getElementById('chat-messages');
+    if (!chatArea) return;
+
+    const isDark = document.body.classList.contains('dark-theme');
+    const bgColor = isDark ? 'rgba(30,30,30,0.85)' : 'rgba(255,255,255,0.85)';
+
+    const wrapper = document.createElement('div');
+    wrapper.id = 'messages-loading-indicator';
+    wrapper.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:' + bgColor + ';z-index:100;gap:12px;';
+    wrapper.innerHTML = '<div class="loading-spinner"></div><div class="loading-text">' + t('loading') + '</div>';
+
+    // Make the messages container position:relative so the overlay is relative to it
+    chatArea.style.position = 'relative';
+    chatArea.appendChild(wrapper);
+}
+
+/**
+ * Hide the loading indicator overlay.
+ */
+function hideMessagesLoadingIndicator() {
+    const existing = document.getElementById('messages-loading-indicator');
+    if (existing) existing.remove();
+}
+
+// Make functions available globally
+window.showMessagesLoadingIndicator = showMessagesLoadingIndicator;
+window.hideMessagesLoadingIndicator = hideMessagesLoadingIndicator;
+
 function updateMessageCount() {
     if (window.IS_RELOADING) return;
     const count = document.querySelectorAll('.user-message, .assistant-message, .bot-message').length;
@@ -17,6 +54,9 @@ function loadMessages(sessionId) {
 
     console.debug('loadMessages: loading messages for session', sessionId);
 
+    // Show loading indicator BEFORE fetch starts
+    showMessagesLoadingIndicator();
+
     // Clear displayed IDs for new session load
     displayedMessageIds.clear();
 
@@ -30,9 +70,11 @@ function loadMessages(sessionId) {
                     if (typeof window.loadSessionsFromServer === 'function') {
                         window.loadSessionsFromServer();
                     }
+                    hideMessagesLoadingIndicator();
                     return null; // Signal to skip further processing
                 }
                 console.error('Failed to load messages:', res.status);
+                hideMessagesLoadingIndicator();
                 throw new Error('HTTP error ' + res.status);
             }
             return res.json();
@@ -57,18 +99,13 @@ function loadMessages(sessionId) {
             const container = document.getElementById('chat-messages');
             container.innerHTML = '';
 
-            // Load model info — only if session exists
-            fetch('/api/sessions/' + sessionId + '/model-info')
-                .then(res => {
-                    if (!res.ok) return null;
-                    return res.json();
-                })
-                .then(modelData => {
-                    if (window.IS_RELOADING) return;
-                    if (!modelData) return;
-                    defaultModelName = modelData.model_name || 'qwen3-vl:8b-instruct-q4_K_M';
-                })
-                .catch(() => {});
+            // Extract model name from the last assistant message (no extra API call needed)
+            for (let i = messages.length - 1; i >= 0; i--) {
+                if (messages[i].role === 'assistant' && messages[i].model_name) {
+                    defaultModelName = messages[i].model_name;
+                    break;
+                }
+            }
 
             let lastUserMessage = null;
 
@@ -195,7 +232,10 @@ function loadMessages(sessionId) {
                     console.error('Error displaying message', msg, e);
                 }
             });
-            
+
+            // All messages rendered — hide loading indicator
+            hideMessagesLoadingIndicator();
+
             updateMessageCount();
             container.scrollTop = container.scrollHeight;
             setNewMessageIndicator(sessionId, false);

@@ -331,31 +331,58 @@ function switchSession(sessionId) {
         console.error('switchSession called with empty sessionId');
         return;
     }
-    // Store previous session ID to clear its unread indicator
-    const previousSessionId = currentSessionId;
-    
+
     // Don't switch if already on this session
     if (sessionId === currentSessionId) {
         console.debug('switchSession: Already on this session, skipping');
         return;
     }
-    
-    console.debug('switchSession: Switching from', previousSessionId, 'to', sessionId);
-    
+
+    console.debug('switchSession: Switching from', currentSessionId, 'to', sessionId);
+
+    // Block all sync operations during session switch
+    isSwitchingSession = true;
+
+    // Stop ALL polling (message polling AND sync interval)
+    stopMessagePolling();
+    if (syncInterval) {
+        clearInterval(syncInterval);
+        syncInterval = null;
+    }
+
+    const previousSessionId = currentSessionId;
+
+    // Clear chat area immediately to show loading state
+    const container = document.getElementById('chat-messages');
+    if (container) {
+        container.innerHTML = '';
+        if (typeof showMessagesLoadingIndicator === 'function') {
+            showMessagesLoadingIndicator();
+        }
+    }
+
     fetchWithCSRF('/api/sessions/' + sessionId + '/switch', { method: 'POST' })
         .then(res => res.json())
         .then(() => {
             currentSessionId = sessionId;
             // Clear unread indicator for NEW current session
             delete newMessageIndicators[sessionId];
-            // Also clear unread indicator for PREVIOUS session (it was read when we left it)
+            // Also clear unread indicator for PREVIOUS session
             if (previousSessionId) {
                 delete newMessageIndicators[previousSessionId];
             }
+
+            // Load messages for new session
             loadMessages(sessionId).catch(err => {
                 console.error('Error loading messages in switchSession:', err);
             }).finally(() => {
-                // Update status counter after messages loaded
+                // Unblock sync and restart intervals
+                isSwitchingSession = false;
+                startMessagePolling();
+                if (typeof startSyncInterval === 'function') {
+                    startSyncInterval();
+                }
+                // Update status counter
                 window.updateStatusCounter();
                 // Fetch queue status to update session statuses
                 if (typeof fetchQueueStatus === 'function') {

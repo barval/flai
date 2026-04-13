@@ -24,7 +24,7 @@ class RagModule:
         self.collection_name_prefix = "user_"
         self.chunk_size = 500
         self.chunk_overlap = 50
-        self.top_k = 10
+        self.top_k = 20
         if app:
             self.init_app(app)
 
@@ -34,7 +34,7 @@ class RagModule:
         qdrant_api_key = app.config.get('QDRANT_API_KEY')
         self.chunk_size = app.config.get('RAG_CHUNK_SIZE', 500)
         self.chunk_overlap = app.config.get('RAG_CHUNK_OVERLAP', 50)
-        self.top_k = app.config.get('RAG_TOP_K', 10)
+        self.top_k = app.config.get('RAG_TOP_K', 20)
         # Log the loaded top_k value for debugging
         app.logger.info(f"RagModule: loaded RAG_TOP_K = {self.top_k} from config")
 

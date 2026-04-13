@@ -16,6 +16,7 @@ from app.db import (
     get_user_file_count, get_user_document_count, get_documents_total_size
 )
 from app.userdb import USER_DB_PATH
+from app.validators import validate_user_input, validate_model_config_update, ValidationError
 
 bp = Blueprint('admin', __name__, url_prefix='/admin')
 logger = logging.getLogger(__name__)
@@ -132,8 +133,10 @@ def add_user():
     """Create a new user."""
     try:
         data = request.get_json()
-        if not data:
-            return jsonify({'error': _('No JSON data')}), 400
+        try:
+            data = validate_user_input(data)
+        except ValidationError as e:
+            return jsonify({'error': str(e)}), 400
 
         login = data.get('login')
         password = data.get('password')
@@ -158,6 +161,8 @@ def add_user():
         if not is_active:
             update_user(login, is_active=False)
         return jsonify({'status': 'ok'})
+    except ValidationError:
+        raise
     except Exception as e:
         logger.error(f"Error in add_user: {str(e)}", exc_info=True)
         return jsonify({'error': _('Internal server error')}), 500
@@ -407,33 +412,12 @@ def get_model_configs():
 def update_model_config(module):
     """Update configuration for a specific module."""
     from app.model_config import invalidate_model_config_cache, get_model_config
-    
+
     data = request.get_json()
-    allowed_fields = ['model_name', 'service_url', 'ollama_url', 'context_length', 'temperature', 'top_p', 'timeout']
-    updates = {k: v for k, v in data.items() if k in allowed_fields}
-    if not updates:
-        return jsonify({'error': _('No valid fields')}), 400
-
-    # Server-side validation
-    if 'context_length' in updates and updates['context_length'] is not None:
-        val = updates['context_length']
-        if not isinstance(val, int) or val < 512:
-            return jsonify({'error': _('Context length must be at least 512.')}), 400
-
-    if 'temperature' in updates and updates['temperature'] is not None:
-        val = updates['temperature']
-        if not isinstance(val, (int, float)) or val < 0.0 or val > 2.0:
-            return jsonify({'error': _('Temperature must be between 0.0 and 2.0.')}), 400
-
-    if 'top_p' in updates and updates['top_p'] is not None:
-        val = updates['top_p']
-        if not isinstance(val, (int, float)) or val < 0.0 or val > 1.0:
-            return jsonify({'error': _('Top P must be between 0.0 and 1.0.')}), 400
-
-    if 'timeout' in updates and updates['timeout'] is not None:
-        val = updates['timeout']
-        if not isinstance(val, int) or val < 0 or val > 1200:
-            return jsonify({'error': _('Timeout must be between 0 and 1200 seconds.')}), 400
+    try:
+        updates = validate_model_config_update(data, module)
+    except ValidationError as e:
+        return jsonify({'error': str(e)}), 400
 
     from app.db import get_db
     with get_db() as conn:
@@ -459,11 +443,20 @@ def update_model_config(module):
     result = {'status': 'ok'}
     if module == 'embedding':
         new_model = updates.get('model_name')
+        # Only trigger reindex if the model actually CHANGED
         if new_model and new_model != old_model:
-            current_app.logger.info(f"Embedding model changed from {old_model} to {new_model}, starting reindex all")
+            current_app.logger.info(f"Embedding model changed from '{old_model}' to '{new_model}', starting reindex all")
             current_app.request_queue.add_reindex_all_task(lang='ru')
             result['model_name'] = new_model
+            result['reindex_triggered'] = True
+        elif new_model == old_model:
+            current_app.logger.info(f"Embedding model '{new_model}' saved but unchanged — skipping reindex")
+            result['model_name'] = new_model
+            result['reindex_triggered'] = False
         else:
-            result['model_name'] = old_model or new_model
+            result['model_name'] = old_model
+            result['reindex_triggered'] = False
+    else:
+        result['model_name'] = updates.get('model_name')
 
     return jsonify(result)

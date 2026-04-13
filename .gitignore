@@ -47,6 +47,7 @@ build/
 .pytest_cache/
 htmlcov/
 .coverage
+coverage.xml
 
 # OS and IDE files
 .DS_Store

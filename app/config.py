@@ -18,6 +18,9 @@ def load_config(app):
     app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH_MB', '50')) * 1024 * 1024
     app.config['TIMEZONE_STR'] = os.getenv('TIMEZONE')
     app.config['REDIS_URL'] = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+
+    # Database configuration (supports SQLite or PostgreSQL)
+    app.config['DATABASE_URL'] = os.getenv('DATABASE_URL')
     
     # llama.cpp server settings (replaces Ollama)
     app.config['LLAMACPP_URL'] = os.getenv('LLAMACPP_URL')
@@ -76,7 +79,7 @@ def load_config(app):
     app.config['QDRANT_API_KEY'] = os.getenv('QDRANT_API_KEY')
     app.config['RAG_CHUNK_SIZE'] = int(os.getenv('RAG_CHUNK_SIZE', 500))
     app.config['RAG_CHUNK_OVERLAP'] = int(os.getenv('RAG_CHUNK_OVERLAP', 50))
-    app.config['RAG_TOP_K'] = int(os.getenv('RAG_TOP_K', 15))
+    app.config['RAG_TOP_K'] = int(os.getenv('RAG_TOP_K', 20))
     
     # RAG relevance thresholds
     app.config['RAG_RELEVANCE_THRESHOLD_DEFAULT'] = float(os.getenv('RAG_RELEVANCE_THRESHOLD_DEFAULT', 0.3))

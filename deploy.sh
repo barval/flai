@@ -35,7 +35,7 @@ setup_env() {
     cp .env.example .env
     # Generate a random Flask secret key
     SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || openssl rand -hex 32)
-    sed -i "s/FLASK_SECRET_KEY=.*/FLASK_SECRET_KEY=$SECRET/" .env
+    sed -i "s/SECRET_KEY=.*/SECRET_KEY=$SECRET/" .env
     info ".env created. Edit it to set models, URLs, and preferences."
 }
 

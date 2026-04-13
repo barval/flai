@@ -59,7 +59,7 @@ class RedisRequestQueue:
                 self.logger.error("HMAC signature mismatch - possible tampering")
                 return None
             return json.loads(json_str)
-        except (json.JSONDecodeError, KeyError) as e:
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
             self.logger.error(f"Failed to deserialize data: {e}")
             return None
 
@@ -70,13 +70,30 @@ class RedisRequestQueue:
         Slow queue: image generation/editing (~10 seconds - 15 minutes)
         """
         self.app.logger.info("RedisRequestQueue: starting fast and slow workers")
+        # Shutdown event for graceful termination
+        self._shutdown_event = threading.Event()
         # Fast worker — text, audio, RAG, camera
-        fast_thread = threading.Thread(target=self._worker_loop_fast, name='fast-worker', daemon=True)
+        fast_thread = threading.Thread(target=self._worker_loop_fast, name='fast-worker', daemon=False)
         fast_thread.start()
+        self._fast_worker_thread = fast_thread
         # Slow worker — image generation/editing
-        slow_thread = threading.Thread(target=self._worker_loop_slow, name='slow-worker', daemon=True)
+        slow_thread = threading.Thread(target=self._worker_loop_slow, name='slow-worker', daemon=False)
         slow_thread.start()
+        self._slow_worker_thread = slow_thread
         self.app.logger.info("RedisRequestQueue: workers started (fast + slow)")
+
+    def stop_workers(self, timeout=30):
+        """Signal workers to stop and wait for them to finish.
+
+        This ensures that in-flight tasks are completed before shutdown.
+        """
+        self.app.logger.info("RedisRequestQueue: signaling workers to stop")
+        self._shutdown_event.set()
+        if hasattr(self, '_fast_worker_thread'):
+            self._fast_worker_thread.join(timeout=timeout)
+        if hasattr(self, '_slow_worker_thread'):
+            self._slow_worker_thread.join(timeout=timeout)
+        self.app.logger.info("RedisRequestQueue: workers stopped")
 
     def _classify_task(self, task: Dict[str, Any]) -> str:
         """Classify task as 'fast' or 'slow' for queue routing."""
@@ -144,6 +161,27 @@ class RedisRequestQueue:
             'estimated_seconds': self._estimate_wait(queue_type, position),
             'queue_type': queue_type,
         }
+
+    def add_reindex_all_task(self, lang: str = 'ru') -> str:
+        """Add a reindex-all task to the slow queue.
+
+        Returns the task_id for tracking.
+        """
+        task_id = str(uuid.uuid4())
+        task = {
+            'id': task_id,
+            'user_id': 'system',
+            'session_id': 'system',
+            'type': 'reindex_all_embeddings',
+            'data': {},
+            'user_class': 0,  # Highest priority
+            'lang': lang,
+            'timestamp': time.time(),
+        }
+        serialized = self._serialize(task)
+        self.redis.rpush(self.slow_queue_key, serialized)
+        self.app.logger.info(f"Reindex task added: {task_id}")
+        return task_id
 
     def _estimate_wait(self, queue_type: str, position: int) -> int:
         """Estimate wait time in seconds based on queue type and position."""
@@ -458,7 +496,7 @@ class RedisRequestQueue:
                 self.redis.expire(self.results_key, self.app.config.get('REDIS_RESULT_TTL', 3600))
                 self.app.logger.info(f"Task {task_id} completed successfully for session {task.get('session_id')}")
         except Exception as e:
-            self.app.logger.error(f"Error processing task {task_id}: {str(e)}")
+            self.app.logger.error(f"Error processing task {task_id}: {e}", exc_info=True)
             self.redis.hset(self.results_key, task_id, self._serialize({
                 'status': 'error',
                 'error': str(e),
@@ -480,7 +518,7 @@ class RedisRequestQueue:
     def _worker_loop_fast(self):
         """Worker for fast queue (text, audio, RAG, camera, image chat)."""
         self.app.logger.info("Fast worker started")
-        while True:
+        while not self._shutdown_event.is_set():
             try:
                 result = self.redis.blpop(self.queue_key, timeout=5)
                 if not result:
@@ -495,11 +533,12 @@ class RedisRequestQueue:
             except Exception as e:
                 self.logger.error(f"Fast worker error: {e}")
                 time.sleep(1)
+        self.app.logger.info("Fast worker stopped gracefully")
 
     def _worker_loop_slow(self):
         """Worker for slow queue (image generation/editing)."""
         self.app.logger.info("Slow worker started")
-        while True:
+        while not self._shutdown_event.is_set():
             try:
                 result = self.redis.blpop(self.slow_queue_key, timeout=5)
                 if not result:
@@ -513,6 +552,7 @@ class RedisRequestQueue:
             except Exception as e:
                 self.logger.error(f"Slow worker error: {e}")
                 time.sleep(1)
+        self.app.logger.info("Slow worker stopped gracefully")
 
     def _get_model_name(self, module_type: str) -> Optional[str]:
         config = get_model_config(module_type)

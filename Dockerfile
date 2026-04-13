@@ -10,11 +10,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libtiff-dev \
     libwebp-dev \
     libmagic1 \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Installing Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install PostgreSQL driver (optional)
+RUN pip install --no-cache-dir psycopg2-binary==2.9.9 || echo "Warning: psycopg2 failed to install"
 
 # Copying the code
 COPY . .

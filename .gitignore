@@ -1,17 +1,69 @@
+# Environment and secrets
 .env
+.env.*
+!.env.example
+*.key
+*.secret
+
+# Python cache and compiled
 __pycache__/
 __pycache__
 *.pyc
+*.pyo
+*.pyd
+*.so
+
+# Database files
 *.db
+*.sqlite
+*.sqlite3
+
+# Data directories (user data, uploads, documents)
 data/
-.DS_Store
-.pytest_cache/
-htmlcov/
-.coverage
-venv/
-.qwen/
+uploads/
+documents/
+
+# Model files (stored outside git)
 services/piper/piper_models/
 services/llamacpp/models/
 services/sd_cpp/models/
+*.gguf
+*.safetensors
+*.onnx
+*.onnx.json
+
+# Python virtual environments
+venv/
+env/
+.venv/
+
+# Build and distribution
+dist/
+build/
+*.egg/
+*.egg-info/
+
+# Testing and coverage
+.pytest_cache/
+htmlcov/
+.coverage
+
+# OS and IDE files
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+
+# Qwen Code
+.qwen/
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Service-specific
 services/sd_cpp/src/
+services/sd_cpp/outputs/
 services/room-snapshot-api/room-snapshot-api/

@@ -107,49 +107,40 @@ download_sd_cpp_models() {
         warn "z_image_turbo-Q8_0.gguf уже есть — пропускаю."
     fi
 
-    # Qwen Image Edit (редактирование изображений)
-    if [[ ! -f "$DIFF_DIR/qwen-image-edit-2511-Q2_K.gguf" ]]; then
-        info "Скачиваю qwen-image-edit-2511-Q2_K.gguf (редактирование)..."
-        HF_DOWNLOAD "bartowski/Qwen-Image-Edit-2511-GGUF" \
-            "qwen-image-edit-2511-Q2_K.gguf" "$DIFF_DIR"
+    # Flux.2 Klein 4B (редактирование изображений)
+    if [[ ! -f "$DIFF_DIR/flux-2-klein-4b-Q8_0.gguf" ]]; then
+        info "Скачиваю flux-2-klein-4b-Q8_0.gguf (редактирование)..."
+        HF_DOWNLOAD "bartowski/FLUX.2-Klein-dev-GGUF" \
+            "flux-2-klein-4b-Q8_0.gguf" "$DIFF_DIR"
     else
-        warn "qwen-image-edit-2511-Q2_K.gguf уже есть — пропускаю."
+        warn "flux-2-klein-4b-Q8_0.gguf уже есть — пропускаю."
     fi
 
     # VAE (для генерации Z-Image Turbo)
     if [[ ! -f "$VAE_DIR/ae.safetensors" ]]; then
-        info "Скачиваю ae.safetensors (VAE)..."
+        info "Скачиваю ae.safetensors (VAE для генерации)..."
         HF_DOWNLOAD "bartowski/Z-Image-Turbo-GGUF" \
             "ae.safetensors" "$VAE_DIR"
     else
         warn "ae.safetensors уже есть — пропускаю."
     fi
 
-    # VAE (для редактирования Qwen Image Edit)
-    if [[ ! -f "$VAE_DIR/qwen_image_vae.safetensors" ]]; then
-        info "Скачиваю qwen_image_vae.safetensors..."
-        HF_DOWNLOAD "bartowski/Qwen-Image-GGUF" \
-            "qwen_image_vae.safetensors" "$VAE_DIR"
+    # VAE (для редактирования Flux.2 Klein 4B)
+    if [[ ! -f "$VAE_DIR/flux2_ae.safetensors" ]]; then
+        info "Скачиваю flux2_ae.safetensors (VAE для редактирования)..."
+        HF_DOWNLOAD "bartowski/FLUX.2-dev-GGUF" \
+            "flux2_ae.safetensors" "$VAE_DIR"
     else
-        warn "qwen_image_vae.safetensors уже есть — пропускаю."
+        warn "flux2_ae.safetensors уже есть — пропускаю."
     fi
 
-    # Кодировщик текста (для Z-Image Turbo)
+    # Кодировщик текста (общий для Z-Image Turbo и Flux.2 Klein 4B)
     if [[ ! -f "$TXT_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
         info "Скачиваю Qwen3-4B-Instruct-2507-Q4_K_M.gguf (кодировщик текста)..."
         HF_DOWNLOAD "bartowski/Qwen3-4B-Instruct-2507-GGUF" \
             "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" "$TXT_DIR"
     else
         warn "Qwen3-4B-Instruct-2507-Q4_K_M.gguf уже есть — пропускаю."
-    fi
-
-    # Кодировщик текста (для редактирования Qwen Image Edit)
-    if [[ ! -f "$TXT_DIR/Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf" ]]; then
-        info "Скачиваю Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf (кодировщик для редактирования)..."
-        HF_DOWNLOAD "bartowski/Qwen2.5-VL-7B-Instruct-GGUF" \
-            "Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf" "$TXT_DIR"
-    else
-        warn "Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf уже есть — пропускаю."
     fi
 }
 
@@ -241,10 +232,9 @@ FLAI v8.0 — Скрипт развёртывания
     ae.safetensors (VAE)               ~0,3 ГБ
     Qwen3-4B-Instruct (кодировщик)     ~2,5 ГБ  (общая с чатом)
 
-  Редактирование изображений (Qwen Image Edit):
-    qwen-image-edit-2511-Q2_K           ~4,8 ГБ
-    qwen_image_vae.safetensors          ~0,3 ГБ
-    Qwen2.5-VL-7B-Instruct (кодировщ.)  ~5,0 ГБ
+  Редактирование изображений (Flux.2 Klein 4B):
+    flux-2-klein-4b-Q8_0 (диффузия)  ~4,5 ГБ
+    flux2_ae.safetensors (VAE)       ~0,3 ГБ
 
   TTS (Piper):
     en_US-lessac-medium                ~0,1 ГБ

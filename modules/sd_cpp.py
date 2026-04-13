@@ -263,7 +263,7 @@ class SdCppModule:
             rm.mark_sd_idle()
 
     def edit_image(self, edit_prompt_data: Dict[str, Any], image_base64: str, lang: str = 'ru') -> Dict[str, Any]:
-        """Edit an existing image using Qwen Image Edit model.
+        """Edit an existing image using Flux.2 Klein 4B model.
         Before starting, unloads llama.cpp model from VRAM to avoid OOM.
         Resizes large images to max 1024px to fit 16GB VRAM.
         Returns dict with 'resized', 'original_size', 'new_size' if resize occurred.

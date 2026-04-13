@@ -22,7 +22,7 @@
 - 🧠 **Advanced Reasoning** – dedicated model for calculations, code generation, creative writing
 - 🔍 **Multimodal Analysis** – upload images and ask questions about their content (llama.cpp + mmproj)
 - 🎨 **Image Generation** – create images from text using stable-diffusion.cpp with automatic prompt optimization
-- ✏️ **Image Editing** – upload an image and ask to edit it (Qwen Image Edit model: change colors, remove objects, stylize)
+- ✏️ **Image Editing** – upload an image and ask to edit it (Flux.2 Klein 4B model: change colors, remove objects, stylize)
 - 🎤 **Voice Transcription** – convert voice messages to text using Whisper ASR (faster_whisper)
 - 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper TTS (male/female voice)
 
@@ -72,7 +72,7 @@ FLAI v8.0 is a modular Flask application that orchestrates self-hosted AI servic
 | v7.5 (Old) | v8.0 (New) | Notes |
 |------------|------------|-------|
 | Ollama | **llama.cpp** (router mode) | Single server, dynamic model switching via `--models-dir` |
-| Automatic1111 | **stable-diffusion.cpp** | Z_image_turbo (generation), Qwen Image Edit (editing) |
+| Automatic1111 | **stable-diffusion.cpp** | Z_image_turbo (generation), Flux.2 Klein 4B (editing) |
 | Ollama `/api/chat` | OpenAI-compatible `/v1/chat/completions` | Standard API format |
 | Ollama `/api/embed` | OpenAI-compatible `/v1/embeddings` | Standard API format |
 
@@ -82,7 +82,7 @@ FLAI v8.0 is a modular Flask application that orchestrates self-hosted AI servic
 |-----------|---------|------------|--------------|
 | **Flask Web** | Web interface, routing, API | Python | 5000 |
 | **llama.cpp** | LLM inference (chat, reasoning, multimodal, embedding) | C++ + CUDA | 8033 |
-| **stable-diffusion.cpp** | Image generation (Z_image_turbo) and editing (Qwen Image Edit) | C++ + CUDA | 7860 |
+| **stable-diffusion.cpp** | Image generation (Z_image_turbo) and editing (Flux.2 Klein 4B) | C++ + CUDA | 7860 |
 | **Whisper ASR** | Speech-to-text transcription | faster_whisper | 9000 |
 | **Piper TTS** | Text-to-speech synthesis | ONNX + Piper | 18888 |
 | **Qdrant** | Vector database for RAG | Rust | 6333 |
@@ -424,11 +424,11 @@ Configure via `SD_MODEL_TYPE` in `.env`:
 SD_MODEL_TYPE=z_image_turbo
 ```
 
-### Image Editing (Qwen Image Edit)
+### Image Editing (Flux.2 Klein 4B)
 
 Upload an image and ask to edit it (e.g., *"change the pupils to green"*, *"remove the second sun"*). The system uses:
 1. **Multimodal model** (Qwen3VL) to analyze the image and generate an edit prompt
-2. **Qwen Image Edit** model via stable-diffusion.cpp to perform the edit
+2. **Flux.2 Klein 4B** model via stable-diffusion.cpp to perform the edit
 3. The original image is preserved except for the requested changes
 
 Editing uses separate model files and runs independently from generation — no conflict between the two.
@@ -619,7 +619,7 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 
 ### ✅ Completed (v8.0)
 - **llama.cpp router mode** (`--models-dir`) replaces Ollama — single server with dynamic model switching
-- **stable-diffusion.cpp** replaces Automatic1111 — Z-Image-Turbo for generation, Qwen Image Edit for editing
+- **stable-diffusion.cpp** replaces Automatic1111 — Z-Image-Turbo for generation, Flux.2 Klein 4B for editing
 - OpenAI-compatible API (`/v1/chat/completions`, `/v1/embeddings`)
 - Multimodal support via mmproj in subdirectories
 - Dynamic model switching with `--models-max 1`
@@ -664,9 +664,8 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 
 | Model | Purpose | License | Approx. Size |
 |-------|---------|---------|-------------|
-| **Qwen-Image-Edit-2511-Q2_K** | Image editing (change colors, remove objects, stylize) | [Qwen License](https://huggingface.co/bartowski/Qwen-Image-Edit-2511-GGUF) | ~4.8 GB |
-| **qwen_image_vae.safetensors** | VAE for Qwen Image Edit | [Qwen License](https://huggingface.co/bartowski/Qwen-Image-GGUF) | ~0.3 GB |
-| **Qwen2.5-VL-7B-Instruct.Q4_K_M** | Text encoder for editing | [Qwen License](https://huggingface.co/bartowski/Qwen2.5-VL-7B-Instruct-GGUF) | ~5.0 GB |
+| **Flux.2 Klein 4B (flux-2-klein-4b-Q8_0)** | Image editing (change colors, remove objects, stylize) | [Flux License](https://huggingface.co/black-forest-labs/FLUX.2-Klein-dev) | ~4.5 GB |
+| **flux2_ae.safetensors** | VAE for Flux.2 editing | [Flux License](https://huggingface.co/black-forest-labs/FLUX.2-dev) | ~0.3 GB |
 
 ### Voice Models
 
@@ -685,7 +684,7 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 | Chat + Multimodal | ~8 GB |
 | Full LLM stack | ~22 GB |
 | + Image generation | ~28 GB |
-| + Image editing | ~33 GB |
+| + Image editing | ~31 GB |
 | + Voice (TTS + Whisper) | ~35 GB |
 
 > **Note**: After downloading models, FLAI works completely offline. No external scripts or modules are loaded at runtime.

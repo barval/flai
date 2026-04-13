@@ -105,49 +105,40 @@ download_sd_cpp_models() {
         warn "z_image_turbo-Q8_0.gguf already exists — skipping."
     fi
 
-    # Qwen Image Edit (image editing)
-    if [[ ! -f "$DIFF_DIR/qwen-image-edit-2511-Q2_K.gguf" ]]; then
-        info "Downloading qwen-image-edit-2511-Q2_K.gguf (editing)..."
-        HF_DOWNLOAD "bartowski/Qwen-Image-Edit-2511-GGUF" \
-            "qwen-image-edit-2511-Q2_K.gguf" "$DIFF_DIR"
+    # Flux.2 Klein 4B (image editing)
+    if [[ ! -f "$DIFF_DIR/flux-2-klein-4b-Q8_0.gguf" ]]; then
+        info "Downloading flux-2-klein-4b-Q8_0.gguf (editing)..."
+        HF_DOWNLOAD "bartowski/FLUX.2-Klein-dev-GGUF" \
+            "flux-2-klein-4b-Q8_0.gguf" "$DIFF_DIR"
     else
-        warn "qwen-image-edit-2511-Q2_K.gguf already exists — skipping."
+        warn "flux-2-klein-4b-Q8_0.gguf already exists — skipping."
     fi
 
     # VAE (for Z-Image Turbo generation)
     if [[ ! -f "$VAE_DIR/ae.safetensors" ]]; then
-        info "Downloading ae.safetensors (VAE)..."
+        info "Downloading ae.safetensors (VAE for generation)..."
         HF_DOWNLOAD "bartowski/Z-Image-Turbo-GGUF" \
             "ae.safetensors" "$VAE_DIR"
     else
         warn "ae.safetensors already exists — skipping."
     fi
 
-    # VAE (for Qwen Image Edit)
-    if [[ ! -f "$VAE_DIR/qwen_image_vae.safetensors" ]]; then
-        info "Downloading qwen_image_vae.safetensors..."
-        HF_DOWNLOAD "bartowski/Qwen-Image-GGUF" \
-            "qwen_image_vae.safetensors" "$VAE_DIR"
+    # VAE (for Flux.2 Klein 4B editing)
+    if [[ ! -f "$VAE_DIR/flux2_ae.safetensors" ]]; then
+        info "Downloading flux2_ae.safetensors (VAE for editing)..."
+        HF_DOWNLOAD "bartowski/FLUX.2-dev-GGUF" \
+            "flux2_ae.safetensors" "$VAE_DIR"
     else
-        warn "qwen_image_vae.safetensors already exists — skipping."
+        warn "flux2_ae.safetensors already exists — skipping."
     fi
 
-    # Text encoder (for Z-Image Turbo)
+    # Text encoder (shared for Z-Image Turbo and Flux.2 Klein 4B)
     if [[ ! -f "$TXT_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
         info "Downloading Qwen3-4B-Instruct-2507-Q4_K_M.gguf (text encoder)..."
         HF_DOWNLOAD "bartowski/Qwen3-4B-Instruct-2507-GGUF" \
             "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" "$TXT_DIR"
     else
         warn "Qwen3-4B-Instruct-2507-Q4_K_M.gguf already exists — skipping."
-    fi
-
-    # Text encoder (for Qwen Image Edit)
-    if [[ ! -f "$TXT_DIR/Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf" ]]; then
-        info "Downloading Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf (edit text encoder)..."
-        HF_DOWNLOAD "bartowski/Qwen2.5-VL-7B-Instruct-GGUF" \
-            "Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf" "$TXT_DIR"
-    else
-        warn "Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf already exists — skipping."
     fi
 }
 
@@ -238,10 +229,9 @@ Model Download Sizes (approximate):
     ae.safetensors (VAE)             ~0.3 GB
     Qwen3-4B-Instruct (text encoder) ~2.5 GB  (shared with chat)
 
-  Image editing (Qwen Image Edit):
-    qwen-image-edit-2511-Q2_K         ~4.8 GB
-    qwen_image_vae.safetensors        ~0.3 GB
-    Qwen2.5-VL-7B-Instruct (encoder)  ~5.0 GB
+  Image editing (Flux.2 Klein 4B):
+    flux-2-klein-4b-Q8_0 (diffusion) ~4.5 GB
+    flux2_ae.safetensors (VAE)       ~0.3 GB
 
   TTS (Piper):
     en_US-lessac-medium              ~0.1 GB

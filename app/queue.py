@@ -657,7 +657,13 @@ class RedisRequestQueue:
 
     def _process_image_gen_task(self, query: str, session_id: str, lang: str) -> Dict[str, Any]:
         """Handle image generation from text (router action_type='image')."""
-        if 'image' not in self.app.modules or not self.app.modules['image'].available:
+        if 'image' not in self.app.modules:
+            return self._build_error_response(
+                session_id, "⚠️ " + self.app.modules['base']._('Image generation module unavailable', lang=lang), 0, lang
+            )
+        # Re-check availability at request time (sd-wrapper may have started since init)
+        self.app.modules['image'].check_availability()
+        if not self.app.modules['image'].available:
             return self._build_error_response(
                 session_id, "⚠️ " + self.app.modules['base']._('Image generation module unavailable', lang=lang), 0, lang
             )
@@ -907,6 +913,12 @@ class RedisRequestQueue:
         # Image editing (image uploaded + edit comment) — bypasses router
         # Only treat as edit if there's text (user wants changes)
         # If no text, treat as image description/chat
+        # Re-check availability at request time
+        if 'image' in self.app.modules:
+            self.app.modules['image'].check_availability()
+        if 'multimodal' in self.app.modules:
+            self.app.modules['multimodal'].check_availability()
+
         is_image_edit = (request_type == 'image' and file_data and file_type and
                 message_text and  # Must have text comment
                 'image' in self.app.modules and self.app.modules['image'].available and

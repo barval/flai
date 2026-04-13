@@ -1,4 +1,4 @@
-"""Tests for image editing functionality (Qwen Image Edit)."""
+"""Tests for image editing functionality (Flux.2 Klein 4B)."""
 import unittest
 from unittest.mock import patch, MagicMock
 import base64

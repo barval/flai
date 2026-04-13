@@ -80,7 +80,7 @@ wget -O services/sd_cpp/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf 
 ```
 **Params:** cfg_scale=1.0, steps=10, flow_shift=2, 1024x1024, no negative_prompt.
 
-### Image Editing (Qwen Image Edit)
+### Image Editing (Flux.2 Klein 4B)
 
 Requires separate model files for editing. Editing runs independently from generation.
 
@@ -88,18 +88,17 @@ Requires separate model files for editing. Editing runs independently from gener
 mkdir -p services/sd_cpp/models/{diffusion_models,vae,text_encoders}
 
 # Diffusion model
-wget -O services/sd_cpp/models/diffusion_models/qwen-image-edit-2511-Q2_K.gguf \
-  "https://huggingface.co/.../qwen-image-edit-2511-Q2_K.gguf"
+wget -O services/sd_cpp/models/diffusion_models/flux-2-klein-4b-Q8_0.gguf \
+  "https://huggingface.co/bartowski/FLUX.2-Klein-dev-GGUF/resolve/main/flux-2-klein-4b-Q8_0.gguf"
 
 # VAE
-wget -O services/sd_cpp/models/vae/qwen_image_vae.safetensors \
-  "https://huggingface.co/.../qwen_image_vae.safetensors"
+wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
+  "https://huggingface.co/bartowski/FLUX.2-dev-GGUF/resolve/main/flux2_ae.safetensors"
 
-# Text encoder (LLM)
-wget -O services/sd_cpp/models/text_encoders/Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf \
-  "https://huggingface.co/.../Qwen2.5-VL-7B-Instruct.Q4_K_M.gguf"
+# Text encoder (LLM) — shared with Z-Image Turbo
+# Qwen3-4B-Instruct-2507-Q4_K_M.gguf (already downloaded for generation)
 ```
-**Params:** cfg_scale=1.0, steps=30, strength=0.7, 1024x1024.
+**Params:** cfg_scale=1.0, steps=4, sampling_method=euler, 1024x1024, uses reference image mode (`-r`).
 
 ### Classic SD (SDXL, SD 1.5)
 Traditional diffusion models with CLIP/T5XXL text encoders.

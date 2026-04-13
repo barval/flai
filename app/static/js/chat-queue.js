@@ -23,6 +23,11 @@ function syncSessionsAndMessages() {
 
     console.debug('syncSessionsAndMessages: Starting sync for session', currentSessionId, 'pendingRequests:', Object.keys(pendingRequests).length);
 
+    // Fetch queue status first — this updates lightning bolt indicators
+    if (typeof fetchQueueStatus === 'function') {
+        fetchQueueStatus();
+    }
+
     // Sync sessions list
     loadSessionsFromServer().then(sessions => {
         if (window.IS_RELOADING || window.isSwitchingSession) return;

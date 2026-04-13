@@ -9,10 +9,11 @@ import logging
 from logging import Formatter
 from .config import load_config
 from .db import (
-    init_db, CHAT_DB_PATH,
+    init_db, CHAT_DB_PATH, close_db,
     migrate_db_add_response_fields, migrate_db_add_session_visits,
     migrate_db_add_indexes, migrate_db_add_index_status, migrate_add_model_configs,
-    migrate_add_embedding_model, migrate_add_ollama_url, migrate_add_service_url
+    migrate_add_embedding_model, migrate_add_ollama_url, migrate_add_service_url,
+    migrate_add_user_storage
 )
 from .resource_manager import get_resource_manager
 
@@ -36,6 +37,7 @@ def _run_migrations(app):
         migrate_add_embedding_model,
         migrate_add_ollama_url,
         migrate_add_service_url,
+        migrate_add_user_storage,
     ]
 
     for migration_fn in migrations:
@@ -69,6 +71,9 @@ def create_app():
     app = Flask(__name__)
     # Load configuration
     load_config(app)
+
+    # Close SQLite connection after each request to prevent file descriptor leaks
+    app.teardown_appcontext(close_db)
 
     # Trust proxies for proper HTTPS detection behind nginx
     from werkzeug.middleware.proxy_fix import ProxyFix

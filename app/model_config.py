@@ -1,35 +1,43 @@
 # app/model_config.py
 import sqlite3
+import time
 import logging
 from functools import lru_cache
 from flask import current_app
 from app.db import CHAT_DB_PATH
 
 logger = logging.getLogger(__name__)
+
+# Cache with TTL: {module: {'data': dict, 'time': float}}
 _MODEL_CONFIG_CACHE = {}
+_CACHE_TTL = 60  # seconds — auto-refresh config after this time
 
 
 def get_model_config(module):
     """
-    Retrieve model configuration for a specific module directly from the database.
+    Retrieve model configuration for a specific module from the database.
     Returns a dictionary with keys: model_name, context_length, temperature, top_p, timeout.
     Returns None if module not found or on error.
-    Uses in-memory caching to avoid repeated database queries.
+    Uses TTL-based caching: entries are automatically refreshed after _CACHE_TTL seconds.
     """
-    # Check cache first
-    if module in _MODEL_CONFIG_CACHE:
-        return _MODEL_CONFIG_CACHE[module]
-    
+    now = time.time()
+    entry = _MODEL_CONFIG_CACHE.get(module)
+
+    # Return cached entry if still valid
+    if entry and (now - entry['time']) < _CACHE_TTL:
+        return entry['data']
+
+    # Load from database
     try:
         with sqlite3.connect(CHAT_DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
             c.execute('SELECT * FROM model_configs WHERE module = ?', (module,))
             row = c.fetchone()
-            
+
             if row:
                 result = dict(row)
-                _MODEL_CONFIG_CACHE[module] = result
+                _MODEL_CONFIG_CACHE[module] = {'data': result, 'time': now}
                 return result
             else:
                 if current_app:
@@ -63,18 +71,19 @@ def reload_all_model_configs():
     """
     global _MODEL_CONFIG_CACHE
     _MODEL_CONFIG_CACHE.clear()
-    
+    now = time.time()
+
     try:
         with sqlite3.connect(CHAT_DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
             c = conn.cursor()
             c.execute('SELECT * FROM model_configs')
             rows = c.fetchall()
-            
+
             for row in rows:
-                _MODEL_CONFIG_CACHE[row['module']] = dict(row)
-            
-            return _MODEL_CONFIG_CACHE
+                _MODEL_CONFIG_CACHE[row['module']] = {'data': dict(row), 'time': now}
+
+            return {k: v['data'] for k, v in _MODEL_CONFIG_CACHE.items()}
     except Exception as e:
         logger.error(f"Error reloading model configs from DB: {e}")
         return {}

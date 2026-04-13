@@ -155,10 +155,10 @@ class RedisRequestQueue:
             return position * 3
 
     def get_user_queue_counts(self, user_id: str) -> Tuple[int, int]:
-        """Get user's queue count and total queue length across both queues.
+        """Get user's queue count and total queue length in O(1).
 
-        Counts actual tasks in both queues belonging to the user by scanning
-        queue contents, rather than relying on a potentially stale counter.
+        Uses Redis hash counters maintained by _increment/decrement methods.
+        Falls back to queue length if counters are stale (self-healing).
         """
         fast_total = self.redis.llen(self.queue_key)
         slow_total = self.redis.llen(self.slow_queue_key)
@@ -166,34 +166,40 @@ class RedisRequestQueue:
         if total == 0:
             return 0, 0
 
-        # Count actual user tasks in both queues (reliable, self-healing)
-        user_count = 0
-        for q_key in [self.queue_key, self.slow_queue_key]:
-            queue_len = self.redis.llen(q_key)
-            if queue_len > 0:
-                tasks = self.redis.lrange(q_key, 0, -1)
-                for task_data in tasks:
-                    task = self._deserialize(task_data)
-                    if task and task.get('user_id') == user_id:
-                        user_count += 1
+        # O(1): read from Redis hash counter
+        user_count_key = f"{self.queue_key}:user_counts"
+        user_count = self.redis.hget(user_count_key, user_id)
+        user_count = int(user_count) if user_count else 0
+
+        # Self-healing: if total doesn't match, reset counter
+        total_count = self.redis.hget(user_count_key, "__total__")
+        total_count = int(total_count) if total_count else 0
+        if total_count != total:
+            # Counter is stale — reset it
+            self.redis.delete(user_count_key)
+            user_count = 0
 
         return user_count, total
 
     def _increment_user_queue_count(self, user_id: str):
         """Increment user's queue count (O(1))."""
         user_count_key = f"{self.queue_key}:user_counts"
-        self.redis.hincrby(user_count_key, user_id, 1)
+        pipe = self.redis.pipeline()
+        pipe.hincrby(user_count_key, user_id, 1)
+        pipe.hincrby(user_count_key, "__total__", 1)
+        pipe.execute()
 
     def _decrement_user_queue_count(self, user_id: str):
         """Decrement user's queue count (O(1))."""
         user_count_key = f"{self.queue_key}:user_counts"
+        pipe = self.redis.pipeline()
         count = self.redis.hget(user_count_key, user_id)
-        if count:
-            count = int(count)
-            if count > 0:
-                self.redis.hincrby(user_count_key, user_id, -1)
-            else:
-                self.redis.hdel(user_count_key, user_id)
+        if count and int(count) > 0:
+            pipe.hincrby(user_count_key, user_id, -1)
+        else:
+            pipe.hdel(user_count_key, user_id)
+        pipe.hincrby(user_count_key, "__total__", -1)
+        pipe.execute()
 
     def _cleanup_user_request(self, user_id: str, request_id: str):
         """Remove request ID from user's set after completion."""
@@ -583,7 +589,7 @@ class RedisRequestQueue:
     # ── Task handlers extracted from _process_request ──
 
     def _process_image_edit_task(self, message_text: str, file_data: str, file_type: str,
-                                 session_id: str, lang: str) -> Dict[str, Any]:
+                                 session_id: str, user_id: str, lang: str) -> Dict[str, Any]:
         """Handle image editing request (image uploaded + edit comment)."""
         mm_start = time.time()
         edit_data, error = self.app.modules['multimodal'].generate_edit_params(
@@ -627,7 +633,8 @@ class RedisRequestQueue:
                 file_data=image_result['image_data'],
                 filename=image_result['file_name'],
                 session_id=session_id,
-                upload_folder=self.app.config['UPLOAD_FOLDER']
+                upload_folder=self.app.config['UPLOAD_FOLDER'],
+                user_id=user_id
             )
             self.app.logger.info(f"Edit: saved to file_path={file_path}")
         else:
@@ -655,7 +662,7 @@ class RedisRequestQueue:
             extra=extra
         )
 
-    def _process_image_gen_task(self, query: str, session_id: str, lang: str) -> Dict[str, Any]:
+    def _process_image_gen_task(self, query: str, session_id: str, user_id: str, lang: str) -> Dict[str, Any]:
         """Handle image generation from text (router action_type='image')."""
         if 'image' not in self.app.modules:
             return self._build_error_response(
@@ -690,7 +697,8 @@ class RedisRequestQueue:
                 file_data=image_result['image_data'],
                 filename=image_result['file_name'],
                 session_id=session_id,
-                upload_folder=self.app.config['UPLOAD_FOLDER']
+                upload_folder=self.app.config['UPLOAD_FOLDER'],
+                user_id=user_id
             )
 
         mm_model = self._get_model_name('multimodal') or 'unknown'
@@ -737,7 +745,8 @@ class RedisRequestQueue:
                 file_data=camera_result['image_data'],
                 filename=camera_result['file_name'],
                 session_id=session_id,
-                upload_folder=self.app.config['UPLOAD_FOLDER']
+                upload_folder=self.app.config['UPLOAD_FOLDER'],
+                user_id=user_id
             )
 
         first_message = self._save_and_respond(
@@ -812,7 +821,7 @@ class RedisRequestQueue:
             process_time = router_time
 
         if action_type == 'image':
-            return self._process_image_gen_task(query, session_id, lang)
+            return self._process_image_gen_task(query, session_id, user_id, lang)
         elif action_type == 'camera':
             return self._process_camera_task(query, session_id, user_id, message_text, current_time_str, lang)
         elif action_type == 'rag':
@@ -925,7 +934,7 @@ class RedisRequestQueue:
                 'multimodal' in self.app.modules and self.app.modules['multimodal'].available)
 
         if is_image_edit:
-            return self._process_image_edit_task(message_text, file_data, file_type, session_id, lang)
+            return self._process_image_edit_task(message_text, file_data, file_type, session_id, user_id, lang)
 
         # Text request → router
         if request_type == 'text':

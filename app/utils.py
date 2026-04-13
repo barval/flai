@@ -232,8 +232,12 @@ def resize_image_if_needed(
         return file_data, file_type, file_name, False, None, None
 
 
-def save_uploaded_file(file_data: str, filename: str, session_id: str, upload_folder: str) -> Optional[str]:
-    """Save a base64 encoded file to disk. Returns relative path."""
+def save_uploaded_file(file_data: str, filename: str, session_id: str, upload_folder: str,
+                       user_id: str = None) -> Optional[str]:
+    """Save a base64 encoded file to disk. Returns relative path.
+    
+    If user_id is provided, also updates the user's storage counter (O(1)).
+    """
     if not file_data:
         return None
 
@@ -283,6 +287,13 @@ def save_uploaded_file(file_data: str, filename: str, session_id: str, upload_fo
         with open(file_path, 'wb') as f:
             f.write(file_bytes)
         current_app.logger.info(f"Saved uploaded file to {file_path}")
+
+        # Update user's storage counter (O(1)) if user_id is provided
+        if user_id:
+            from . import db
+            file_size = len(file_bytes)
+            db.update_user_storage(user_id, file_size)
+
         return os.path.join(session_id, unique_name)
     except Exception as e:
         current_app.logger.error(f"Failed to save file {file_path}: {e}")
@@ -419,7 +430,7 @@ def validate_session_ownership(session_id: str, user_id: str) -> bool:
 
 
 def check_upload_quota(user_id: str, additional_bytes: int) -> Optional[str]:
-    """Check if user has exceeded upload storage quota.
+    """Check if user has exceeded upload storage quota. O(1) lookup.
 
     Args:
         user_id: User login
@@ -428,32 +439,17 @@ def check_upload_quota(user_id: str, additional_bytes: int) -> Optional[str]:
     Returns:
         Error message if quota exceeded, None if OK
     """
-    import os
+    from . import db
+
     max_mb = current_app.config.get('MAX_UPLOAD_STORAGE_MB', 500)
     max_bytes = max_mb * 1024 * 1024
 
-    # Calculate current usage
-    upload_dir = os.path.join(current_app.config.get('UPLOAD_FOLDER', 'data/uploads'))
-    user_dirs = [
-        os.path.join(upload_dir, d)
-        for d in os.listdir(upload_dir)
-        if os.path.isdir(os.path.join(upload_dir, d))
-    ]
-
-    total_used = 0
-    for d in user_dirs:
-        for root, dirs, files in os.walk(d):
-            for f in files:
-                fp = os.path.join(root, f)
-                try:
-                    total_used += os.path.getsize(fp)
-                except OSError:
-                    pass
+    # O(1): read from SQLite counter instead of walking directory tree
+    total_used = db.get_user_storage_usage(user_id)
 
     if total_used + additional_bytes > max_bytes:
         used_mb = total_used / (1024 * 1024)
-        max_mb_display = max_mb
-        return f"Storage quota exceeded: {used_mb:.0f}MB / {max_mb_display}MB used. Delete some files to free space."
+        return f"Storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used. Delete some files to free space."
     return None
 
 

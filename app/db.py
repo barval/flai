@@ -147,8 +147,11 @@ def migrate_db_add_indexes(app):
             c = conn.cursor()
             c.execute('CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)')
             c.execute('CREATE INDEX IF NOT EXISTS idx_messages_session_timestamp ON messages(session_id, timestamp)')
+            c.execute('CREATE INDEX IF NOT EXISTS idx_messages_role ON messages(role)')
+            c.execute('CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id)')
+            c.execute('CREATE INDEX IF NOT EXISTS idx_session_visits_user_session ON session_visits(user_id, session_id)')
             conn.commit()
-            app.logger.info("Indexes on messages table created/verified.")
+            app.logger.info("Indexes created/verified.")
     except Exception as e:
         app.logger.error(f"Index migration error: {str(e)}")
 
@@ -280,6 +283,50 @@ def migrate_add_service_url(app):
         app.logger.error(f"Migration add service_url error: {str(e)}")
 
 
+def migrate_add_user_storage(app):
+    """Create user_storage table for tracking upload storage per user (O(1) quota check)."""
+    try:
+        with sqlite3.connect(CHAT_DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute('''
+            CREATE TABLE IF NOT EXISTS user_storage (
+                user_id TEXT PRIMARY KEY,
+                used_bytes INTEGER DEFAULT 0
+            )
+            ''')
+            conn.commit()
+            app.logger.info("user_storage table created/verified")
+    except Exception as e:
+        app.logger.error(f"Migration add user_storage error: {str(e)}")
+
+
+def get_user_storage_usage(user_id: str) -> int:
+    """Get user's current upload storage usage in bytes. O(1) lookup."""
+    try:
+        with sqlite3.connect(CHAT_DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute('SELECT used_bytes FROM user_storage WHERE user_id = ?', (user_id,))
+            row = c.fetchone()
+            return row[0] if row else 0
+    except Exception:
+        return 0
+
+
+def update_user_storage(user_id: str, delta_bytes: int) -> None:
+    """Update user's storage counter. delta_bytes can be positive (upload) or negative (delete)."""
+    try:
+        with sqlite3.connect(CHAT_DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute('''
+                INSERT INTO user_storage (user_id, used_bytes)
+                VALUES (?, MAX(0, ?))
+                ON CONFLICT(user_id) DO UPDATE SET used_bytes = MAX(0, used_bytes + ?)
+            ''', (user_id, delta_bytes if delta_bytes > 0 else 0, delta_bytes))
+            conn.commit()
+    except Exception:
+        pass  # Don't block uploads on storage counter errors
+
+
 def get_user_sessions(user_id: str) -> List[Dict[str, Any]]:
     """Get all sessions for a user.
     Optimized to avoid N+1 queries by using JOINs and subqueries.
@@ -338,7 +385,7 @@ def get_session_messages(
             if 'T' in since:
                 since = since.replace('T', ' ')[:19]
             c.execute('''
-            SELECT id, role, content, file_data, file_type, file_name, file_path,
+            SELECT id, role, content, file_type, file_name, file_path,
                    timestamp, model_name, response_time, mm_time, gen_time,
                    mm_model, gen_model
             FROM messages
@@ -348,7 +395,7 @@ def get_session_messages(
             ''', (session_id, since, limit, offset))
         else:
             c.execute('''
-            SELECT id, role, content, file_data, file_type, file_name, file_path,
+            SELECT id, role, content, file_type, file_name, file_path,
                    timestamp, model_name, response_time, mm_time, gen_time,
                    mm_model, gen_model
             FROM messages

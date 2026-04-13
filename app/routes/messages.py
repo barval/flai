@@ -133,7 +133,8 @@ def send_message():
             file_data=file_data,
             filename=file_name,
             session_id=session_id,
-            upload_folder=current_app.config['UPLOAD_FOLDER']
+            upload_folder=current_app.config['UPLOAD_FOLDER'],
+            user_id=user_id
         )
 
     if request_type == 'audio':

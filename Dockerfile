@@ -32,14 +32,5 @@ RUN addgroup --system --gid 1000 appuser && \
 # Switching to an unprivileged user
 USER appuser
 
-# Launching with Gunicorn
-# Optimized for I/O bound operations (waiting for AI responses)
-# 1 worker × 4 threads = 4 concurrent connections with minimal RAM usage
-CMD ["gunicorn", \
-     "--bind", "0.0.0.0:5000", \
-     "--workers", "1", \
-     "--threads", "4", \
-     "--worker-class", "gthread", \
-     "--timeout", "120", \
-     "--keep-alive", "5", \
-     "wsgi:app"]
+# Launching with Gunicorn (configuration from gunicorn_config.py)
+CMD ["gunicorn", "-c", "gunicorn_config.py", "wsgi:app"]

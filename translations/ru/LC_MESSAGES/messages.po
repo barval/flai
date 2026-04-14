@@ -364,6 +364,12 @@ msgstr "llama-server недоступен"
 msgid "Please provide llama-server URL first."
 msgstr "Сначала укажите URL llama-server."
 
+msgid "Please provide llama-server URL first"
+msgstr "Сначала укажите URL llama-server"
+
+msgid "Please provide llama-server URL."
+msgstr "Укажите URL llama-server."
+
 msgid "Refresh models from llama-server"
 msgstr "Обновить модели из llama-server"
 
@@ -525,6 +531,15 @@ msgstr "Мультимодальная"
 
 msgid "Embedding"
 msgstr "Эмбеддинги"
+
+msgid "Reranker"
+msgstr "Реранкинг"
+
+msgid "Cross-encoder model — reranks search results by relevance"
+msgstr "Кросс-энкодер — переранжирует результаты поиска по релевантности"
+
+msgid "BGE Cross-Encoder"
+msgstr "BGE Cross-Encoder"
 
 msgid "-- Select model --"
 msgstr "-- Выберите модель --"

@@ -1,5 +1,4 @@
 # app/routes/messages.py
-import sqlite3
 import json
 import base64
 import time
@@ -9,6 +8,7 @@ import uuid
 from datetime import datetime
 from flask import Blueprint, request, session, jsonify, current_app
 from flask_babel import gettext as _, force_locale
+from app.database import get_db
 from app import db
 from app.utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, resize_image_if_needed, save_uploaded_file, validate_session_ownership
 
@@ -160,10 +160,10 @@ def send_message():
     user_content_json = json.dumps(user_content, ensure_ascii=False)
     user_message_id = db.save_message(session_id, 'user', user_content_json, file_data, file_type, file_name, None)
 
-    with sqlite3.connect(db.CHAT_DB_PATH) as conn:
+    with get_db() as conn:
         c = conn.cursor()
-        c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (session_id,))
-        message_count = c.fetchone()[0]
+        c.execute('SELECT COUNT(*) as cnt FROM messages WHERE session_id = %s', (session_id,))
+        message_count = c.fetchone()['cnt']
         is_first_message = message_count == 1
         if is_first_message:
             db.update_session_title(session_id, message_text, file_name)

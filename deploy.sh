@@ -88,6 +88,15 @@ download_llamacpp_models() {
     else
         warn "bge-m3-Q8_0.gguf already exists — skipping."
     fi
+
+    # Reranker model (for RAG re-ranking)
+    if [[ ! -f "$MODEL_DIR/bge-reranker-v2-m3-Q4_K_M.gguf" ]]; then
+        info "Downloading bge-reranker-v2-m3-Q4_K_M.gguf (reranking)..."
+        HF_DOWNLOAD "gpustack/bge-reranker-v2-m3-GGUF" \
+            "bge-reranker-v2-m3-Q4_K_M.gguf" "$MODEL_DIR"
+    else
+        warn "bge-reranker-v2-m3-Q4_K_M.gguf already exists — skipping."
+    fi
 }
 
 download_sd_cpp_models() {
@@ -223,6 +232,7 @@ Model Download Sizes (approximate):
     Qwen3-4B-Instruct (chat)         ~2.5 GB
     Qwen3VL-8B-Instruct (multimodal) ~5.5 GB
     bge-m3 (embeddings for RAG)      ~2.2 GB
+    bge-reranker-v2-m3 (reranking)   ~0.4 GB
 
   Image generation (Z-Image Turbo):
     z_image_turbo (diffusion)        ~6.2 GB

@@ -1,5 +1,5 @@
 # app/routes/backups.py
-"""Backup and restore routes for admin panel.
+"""Backup and restore routes for admin panel (PostgreSQL only).
 
 Two backup types:
   1. 'users'     — users table only
@@ -12,15 +12,15 @@ import glob
 import shutil
 import tarfile
 import tempfile
-import sqlite3
 import logging
+import subprocess
 from datetime import datetime
 from functools import wraps
 
 from flask import Blueprint, jsonify, request, current_app, send_file, abort
 from flask_babel import gettext as _
 
-from app.database import get_db, is_postgresql, get_db_connection, DB_PATH as SQLITE_DB_PATH
+from app.database import get_db, DATABASE_URL
 
 bp = Blueprint('backups', __name__, url_prefix='/admin/api/backups')
 logger = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ def admin_required(f):
 
 
 def _get_project_root():
-    """Get project root directory (parent of 'app' directory)."""
+    """Get project root directory."""
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
@@ -58,13 +58,6 @@ def _ensure_backup_dir():
     base = os.path.join(_get_project_root(), 'data', 'db_backups')
     os.makedirs(base, exist_ok=True)
     return base
-
-
-def _get_db_connections():
-    """Return (pg_flag, sqlite_conn_or_none, pg_conn_or_none)."""
-    if is_postgresql():
-        return True, None, get_db_connection()
-    return False, sqlite3.connect(SQLITE_DB_PATH), None
 
 
 # ============================================================
@@ -124,13 +117,11 @@ def create_backup():
     backup_dir = _ensure_backup_dir()
     archive_path = os.path.join(backup_dir, filename)
 
-    is_pg, sqlite_conn, pg_conn = _get_db_connections()
-
     try:
         with tarfile.open(archive_path, 'w:gz') as tar:
-            # 1. SQL dump
+            # 1. SQL dump using pg_dump
             tables = USERS_TABLES if backup_type == 'users' else FULL_TABLES
-            dump = _export_sql(is_pg, sqlite_conn, pg_conn, tables)
+            dump = _export_pg_dump(tables)
 
             with tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False, encoding='utf-8') as tmp:
                 tmp.write(dump)
@@ -201,8 +192,6 @@ def restore_backup():
     if not os.path.exists(archive_path):
         return jsonify({'error': 'Backup file not found'}), 404
 
-    is_pg, sqlite_conn, pg_conn = _get_db_connections()
-
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             with tarfile.open(archive_path, 'r:gz') as tar:
@@ -221,7 +210,7 @@ def restore_backup():
             # 1. Restore SQL dump
             dump_path = os.path.join(tmpdir, 'db_dump.sql')
             if os.path.exists(dump_path):
-                _import_sql(is_pg, sqlite_conn, pg_conn, dump_path, backup_type)
+                _import_sql(dump_path, backup_type)
 
             # 2. For 'full' backup: restore files
             if backup_type == 'full':
@@ -299,29 +288,26 @@ def download_backup(filename):
 # Helpers
 # ============================================================
 
-def _export_sql(is_pg, sqlite_conn, pg_conn, tables):
-    """Export specified tables as SQL statements."""
+def _export_pg_dump(tables):
+    """Export specified tables as SQL INSERT statements from PostgreSQL."""
     lines = []
     lines.append('-- FLAI Backup')
     lines.append(f'-- Date: {datetime.now().isoformat()}')
-    lines.append(f'-- Source: {"PostgreSQL" if is_pg else "SQLite"}')
+    lines.append('-- Source: PostgreSQL')
     lines.append('')
 
-    for table in tables:
-        try:
-            if is_pg:
-                c = pg_conn.cursor()
+    with get_db() as conn:
+        c = conn.cursor()
+        for table in tables:
+            try:
                 c.execute(f"SELECT * FROM {table}")
                 rows = c.fetchall()
                 if rows:
-                    # Get column names
                     col_names = [desc[0] for desc in c.description]
-                    # Generate DELETE + INSERT
                     lines.append(f"DELETE FROM {table};")
                     for row in rows:
                         values = []
                         for i, val in enumerate(row):
-                            col = col_names[i]
                             if val is None:
                                 values.append('NULL')
                             elif isinstance(val, bool):
@@ -337,64 +323,21 @@ def _export_sql(is_pg, sqlite_conn, pg_conn, tables):
                         vals_str = ', '.join(values)
                         lines.append(f"INSERT INTO {table} ({cols_str}) VALUES ({vals_str});")
                     lines.append('')
-            else:
-                c = sqlite_conn.cursor()
-                c.execute(f"SELECT * FROM {table}")
-                rows = c.fetchall()
-                if rows:
-                    col_names = [desc[0] for desc in c.description]
-                    lines.append(f"DELETE FROM {table};")
-                    placeholders = ', '.join(['?' for _ in col_names])
-                    # For SQLite export, generate readable SQL
-                    for row in rows:
-                        values = []
-                        for val in row:
-                            if val is None:
-                                values.append('NULL')
-                            elif isinstance(val, bool):
-                                values.append('1' if val else '0')
-                            elif isinstance(val, (int, float)):
-                                values.append(str(val))
-                            else:
-                                escaped = str(val).replace("'", "''")
-                                values.append(f"'{escaped}'")
-                        cols_str = ', '.join(col_names)
-                        vals_str = ', '.join(values)
-                        lines.append(f"INSERT INTO {table} ({cols_str}) VALUES ({vals_str});")
-                    lines.append('')
-        except Exception as e:
-            lines.append(f'-- Error exporting {table}: {e}')
+            except Exception as e:
+                lines.append(f'-- Error exporting table {table}: {e}')
+                lines.append('')
 
     return '\n'.join(lines)
 
 
-def _import_sql(is_pg, sqlite_conn, pg_conn, dump_path, backup_type):
-    """Import SQL dump into the database."""
-    if not is_pg:
-        # For SQLite: just run the SQL
-        with open(dump_path, 'r') as f:
-            sql = f.read()
-
-        with get_db() as conn:
-            c = conn.cursor()
-            # Execute statements one by one
-            for statement in sql.split(';'):
-                statement = statement.strip()
-                if statement and not statement.startswith('--'):
-                    try:
-                        c.execute(statement)
-                    except Exception as e:
-                        logger.warning(f"SQL error during restore: {e}")
-            conn.commit()
-        logger.info("SQLite restore from dump completed")
-        return
-
-    # For PostgreSQL
+def _import_sql(dump_path, backup_type):
+    """Import SQL dump into PostgreSQL."""
     with open(dump_path, 'r') as f:
         sql = f.read()
 
-    c = pg_conn.cursor()
-    try:
+    with get_db() as conn:
+        c = conn.cursor()
+        # Execute statements one by one
         for statement in sql.split(';'):
             statement = statement.strip()
             if statement and not statement.startswith('--'):
@@ -402,17 +345,15 @@ def _import_sql(is_pg, sqlite_conn, pg_conn, dump_path, backup_type):
                     c.execute(statement)
                 except Exception as e:
                     logger.warning(f"SQL error during restore: {e}")
-        pg_conn.commit()
-        # Reset sequences
+
+    # Reset sequences
+    with get_db() as conn:
+        c = conn.cursor()
         for table in ['users', 'messages']:
             try:
                 c.execute(f"SELECT setval('{table}_id_seq', (SELECT COALESCE(MAX(id),1) FROM {table}))")
             except Exception:
                 pass
-        pg_conn.commit()
-        logger.info("PostgreSQL restore from dump completed")
-    finally:
-        c.close()
 
 
 def _read_archive_metadata(archive_path):

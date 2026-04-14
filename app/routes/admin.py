@@ -2,7 +2,6 @@
 import json
 import logging
 import os
-import sqlite3
 import requests
 from functools import wraps
 from flask import Blueprint, render_template, session, jsonify, request, current_app
@@ -12,10 +11,9 @@ from app.userdb import (
     get_user_by_login, update_password
 )
 from app.db import (
-    get_db as get_chat_db, CHAT_DB_PATH,
-    get_user_file_count, get_user_document_count, get_documents_total_size
+    get_user_file_count, get_user_document_count
 )
-from app.database import get_database_type, is_postgresql, DB_PATH as SQLITE_DB_PATH
+from app.database import get_db
 from app.validators import validate_user_input, validate_model_config_update, ValidationError
 
 bp = Blueprint('admin', __name__, url_prefix='/admin')
@@ -63,12 +61,8 @@ def admin_panel():
     if 'cam' in current_app.modules and current_app.modules['cam'].available:
         rooms = current_app.modules['cam'].get_all_rooms()
 
-    chat_db_size = get_file_size_bytes(CHAT_DB_PATH)
-    # User DB: file size for SQLite, 0 for PostgreSQL (data is in PG server)
-    if is_postgresql() or SQLITE_DB_PATH is None:
-        user_db_size = 0
-    else:
-        user_db_size = get_file_size_bytes(SQLITE_DB_PATH)
+    # PostgreSQL size is tracked on the server, not accessible from app container
+    user_db_size = 0
     uploads_folder = current_app.config.get('UPLOAD_FOLDER', 'data/uploads')
     files_db_size = get_folder_size_bytes(uploads_folder)
     documents_folder = current_app.config.get('DOCUMENTS_FOLDER', 'data/documents')
@@ -76,7 +70,7 @@ def admin_panel():
 
     return render_template('admin.html',
                           rooms=rooms,
-                          chat_db_size=chat_db_size,
+                          chat_db_size=0,
                           user_db_size=user_db_size,
                           files_db_size=files_db_size,
                           documents_db_size=documents_db_size)
@@ -91,25 +85,27 @@ def get_users():
     try:
         users = list_users(exclude_admin=True)
         result = []
-        
+
         # Build a single optimized query with all stats using JOINs
-        with get_chat_db() as conn:
+        with get_db() as conn:
             for u in users:
                 # Single query with subqueries for all stats - no N+1
-                stats = conn.execute('''
+                c = conn.cursor()
+                c.execute('''
                     SELECT
                         COUNT(DISTINCT cs.id) as sessions,
                         COUNT(m.id) as messages,
-                        (SELECT COUNT(*) FROM documents 
-                         WHERE user_id = ? AND file_ext IN ('.pdf', '.doc', '.docx', '.txt')) as documents_count,
-                        (SELECT COUNT(DISTINCT m2.file_path) 
-                         FROM messages m2 
-                         JOIN chat_sessions cs2 ON m2.session_id = cs2.id 
-                         WHERE cs2.user_id = ? AND m2.file_path IS NOT NULL AND m2.file_path != '') as files_count
+                        (SELECT COUNT(*) FROM documents
+                         WHERE user_id = %s AND file_ext IN ('.pdf', '.doc', '.docx', '.txt')) as documents_count,
+                        (SELECT COUNT(DISTINCT m2.file_path)
+                         FROM messages m2
+                         JOIN chat_sessions cs2 ON m2.session_id = cs2.id
+                         WHERE cs2.user_id = %s AND m2.file_path IS NOT NULL AND m2.file_path != '') as files_count
                     FROM chat_sessions cs
                     LEFT JOIN messages m ON cs.id = m.session_id
-                    WHERE cs.user_id = ?
-                ''', (u['login'], u['login'], u['login'])).fetchone()
+                    WHERE cs.user_id = %s
+                ''', (u['login'], u['login'], u['login']))
+                stats = c.fetchone()
                 
                 u_dict = dict(u)
                 u_dict['sessions_count'] = stats['sessions'] if stats else 0
@@ -229,11 +225,9 @@ def delete_user_account(login):
 def get_stats():
     """Return current sizes of databases and folders in bytes."""
     try:
-        chat_db_size = get_file_size_bytes(CHAT_DB_PATH)
-        if is_postgresql() or SQLITE_DB_PATH is None:
-            user_db_size = 0
-        else:
-            user_db_size = get_file_size_bytes(SQLITE_DB_PATH)
+        # PostgreSQL size is tracked on the server, not accessible from app container
+        chat_db_size = 0
+        user_db_size = 0
         uploads_folder = current_app.config.get('UPLOAD_FOLDER', 'data/uploads')
         files_db_size = get_folder_size_bytes(uploads_folder)
         documents_folder = current_app.config.get('DOCUMENTS_FOLDER', 'data/documents')
@@ -336,6 +330,11 @@ def llamacpp_model_info(name):
                 'bge-m3-Q8_0': {
                     'arch': 'bge', 'params': '~567M', 'ctx': 8192, 'emb': 1024
                 },
+                'bge-reranker-v2-m3-Q4_K_M': {
+                    'arch': 'bge-reranker', 'params': '~560M', 'ctx': 8192,
+                    'emb': None,  # Reranker doesn't have embeddings
+                    'type': 'reranker'
+                },
             }
 
             known = KNOWN_MODELS.get(name, {})
@@ -353,6 +352,8 @@ def llamacpp_model_info(name):
                     arch = 'gemma'
                 elif 'gpt-oss' in name_lower:
                     arch = 'gpt-oss'
+                elif 'reranker' in name_lower:
+                    arch = 'bge-reranker'
                 elif 'bge' in name_lower:
                     arch = 'bge'
                 elif 'llama' in name_lower:
@@ -419,7 +420,7 @@ def get_model_configs():
 def update_model_config(module):
     """Update configuration for a specific module."""
     from app.model_config import invalidate_model_config_cache, get_model_config
-    from app.database import get_db, is_postgresql
+    from app.database import get_db
 
     data = request.get_json()
     try:
@@ -436,22 +437,13 @@ def update_model_config(module):
 
     with get_db() as conn:
         c = conn.cursor()
-        if is_postgresql():
-            set_clause = ', '.join([f"{k} = %s" for k in updates.keys()])
-            values = list(updates.values()) + [module]
-            c.execute(f'''
-                UPDATE model_configs
-                SET {set_clause}, updated_at = CURRENT_TIMESTAMP
-                WHERE module = %s
-            ''', values)
-        else:
-            set_clause = ', '.join([f"{k}=?" for k in updates.keys()])
-            values = list(updates.values()) + [module]
-            c.execute(f'''
-                UPDATE model_configs
-                SET {set_clause}, updated_at = CURRENT_TIMESTAMP
-                WHERE module = ?
-            ''', values)
+        set_clause = ', '.join([f"{k} = %s" for k in updates.keys()])
+        values = list(updates.values()) + [module]
+        c.execute(f'''
+            UPDATE model_configs
+            SET {set_clause}, updated_at = CURRENT_TIMESTAMP
+            WHERE module = %s
+        ''', values)
         conn.commit()
 
     # Invalidate cache for updated module

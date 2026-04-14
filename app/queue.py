@@ -11,7 +11,7 @@ import hmac
 import hashlib
 from typing import Dict, Any, Optional, Tuple, List
 from .utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, save_uploaded_file
-from .db import save_message, CHAT_DB_PATH, update_document_index_status, \
+from .db import save_message, update_document_index_status, \
     INDEX_STATUS_PENDING, INDEX_STATUS_INDEXING, INDEX_STATUS_INDEXED, INDEX_STATUS_FAILED, \
     get_current_time_for_db
 from .model_config import get_model_config
@@ -1161,7 +1161,7 @@ class RedisRequestQueue:
             if success:
                 indexed_at = get_current_time_for_db()
                 embedding_model = self._get_model_name('embedding') or 'unknown'
-                update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at, embedding_model=embedding_model)
+                update_document_index_status(doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at, indexing_started_at=indexing_started_at, embedding_model=embedding_model)
                 self.app.logger.info(f"Set embedding_model for doc {doc_id} to {embedding_model}")
                 return {'success': True, 'message': message, 'doc_id': doc_id}
             else:
@@ -1175,15 +1175,15 @@ class RedisRequestQueue:
     def _process_reindex_all_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         self.app.logger.info("Starting reindex of all documents with new embedding model.")
         lang = task.get('lang', 'ru')
-        from app.db import CHAT_DB_PATH, get_current_time_for_db
-        import sqlite3
+        from app.database import get_db
+        from .db import get_current_time_for_db
 
         rag = self.app.modules.get('rag')
         if not rag or not rag.available:
             self.app.logger.error("RAG module not available for reindexing")
             return {'success': False, 'error': 'RAG module unavailable'}
 
-        # Process documents in batches to avoid loading all into memory
+        # Process documents in batches
         batch_size = 50
         offset = 0
         total = 0
@@ -1192,12 +1192,10 @@ class RedisRequestQueue:
         all_doc_ids = []
 
         while True:
-            conn = sqlite3.connect(CHAT_DB_PATH)
-            conn.row_factory = sqlite3.Row
-            c = conn.cursor()
-            c.execute('SELECT id, user_id, file_path FROM documents LIMIT ? OFFSET ?', (batch_size, offset))
-            documents = c.fetchall()
-            conn.close()
+            with get_db() as conn:
+                c = conn.cursor()
+                c.execute('SELECT id, user_id, file_path FROM documents LIMIT %s OFFSET %s', (batch_size, offset))
+                documents = c.fetchall()
 
             if not documents:
                 break
@@ -1207,15 +1205,14 @@ class RedisRequestQueue:
             all_doc_ids.extend(doc_ids)
 
             # Set status to pending for this batch
-            placeholders = ','.join(['?'] * len(doc_ids))
-            with sqlite3.connect(CHAT_DB_PATH) as conn:
+            placeholders = ','.join(['%s'] * len(doc_ids))
+            with get_db() as conn:
                 c = conn.cursor()
                 c.execute(f'''
                     UPDATE documents
-                    SET index_status = ?, indexed_at = NULL, indexing_started_at = NULL, embedding_model = NULL
+                    SET index_status = %s, indexed_at = NULL, indexing_started_at = NULL, embedding_model = NULL
                     WHERE id IN ({placeholders})
                 ''', [INDEX_STATUS_PENDING] + doc_ids)
-                conn.commit()
 
             self.app.logger.info(f"Reindexing batch of {len(documents)} documents (offset={offset})")
 

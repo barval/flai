@@ -1,21 +1,20 @@
 #!/usr/bin/env python3
 """
-Generate llama.cpp models-preset.ini from SQLite model_configs table.
+Generate llama.cpp models-preset.ini from PostgreSQL model_configs table.
 
 This script runs before llama-server starts. It reads custom model parameters
 from the chat database and generates /models/models-preset.ini so that
-llama.cpp router mode uses the admin-configured values (ctx-size, n-gpu-layers,
-temperature, top-p).
+llama.cpp router mode uses the admin-configured values.
 
 If no custom configs exist in DB, falls back to hardcoded defaults.
 """
 
-import sqlite3
 import os
 import sys
-import configparser
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
-DB_PATH = '/app/data/chat.db'
+DB_URL = os.getenv('DATABASE_URL', 'postgresql://flai:flai_password@flai-postgres:5432/flai')
 PRESET_PATH = '/models/models-preset.ini'
 
 # Fallback defaults if nothing in DB
@@ -40,7 +39,14 @@ DEFAULTS = {
     'bge-m3-Q8_0': {
         'model': '/models/bge-m3-Q8_0.gguf',
         'n-gpu-layers': '-1',
-        'ctx-size': '512',
+        'ctx-size': '8192',
+    },
+    'bge-reranker-v2-m3-Q4_K_M': {
+        'model': '/models/bge-reranker-v2-m3-Q4_K_M.gguf',
+        'n-gpu-layers': '-1',
+        'ctx-size': '8192',
+        'reranking': 'true',
+        'pooling': 'rank',
     },
     'gemma-4-26B-A4B-it-MXFP4_MOE': {
         'model': '/models/gemma-4-26B-A4B-it-MXFP4_MOE.gguf',
@@ -60,36 +66,27 @@ DEFAULTS = {
 
 
 def read_db() -> dict:
-    """Read model_configs from SQLite DB."""
+    """Read model_configs from PostgreSQL DB."""
     configs = {}
-    if not os.path.exists(DB_PATH):
-        print(f"[generate_presets] DB not found at {DB_PATH}, using defaults")
-        return configs
-
     try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
-            c = conn.cursor()
-            # Check if table exists
-            c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='model_configs'")
-            if not c.fetchone():
-                print("[generate_presets] model_configs table not found, using defaults")
-                return configs
-
-            c.execute('SELECT * FROM model_configs')
-            for row in c.fetchall():
-                module = dict(row)
-                module_name = module.get('module', '')
-                # Map module name to preset section name
-                section_map = {
-                    'chat': 'Qwen3-4B-Instruct-2507-Q4_K_M',
-                    'multimodal': 'Qwen3VL-8B-Instruct-Q4_K_M',
-                    'embedding': 'bge-m3-Q8_0',
-                    'reasoning': 'gemma-4-26B-A4B-it-MXFP4_MOE',
-                }
-                section = section_map.get(module_name)
-                if section:
-                    configs[section] = module
+        conn = psycopg2.connect(DB_URL)
+        conn.cursor_factory = RealDictCursor
+        c = conn.cursor()
+        c.execute('SELECT * FROM model_configs')
+        for row in c.fetchall():
+            module = dict(row)
+            module_name = module.get('module', '')
+            section_map = {
+                'chat': 'Qwen3-4B-Instruct-2507-Q4_K_M',
+                'multimodal': 'Qwen3VL-8B-Instruct-Q4_K_M',
+                'embedding': 'bge-m3-Q8_0',
+                'reranker': 'bge-reranker-v2-m3-Q4_K_M',
+                'reasoning': 'gpt-oss-20b-mxfp4',
+            }
+            section = section_map.get(module_name)
+            if section:
+                configs[section] = module
+        conn.close()
     except Exception as e:
         print(f"[generate_presets] Error reading DB: {e}")
 
@@ -105,11 +102,18 @@ def generate_ini(db_configs: dict) -> str:
         '',
     ]
 
+    # Modules that need embeddings enabled
+    EMBEDDING_MODULES = {'embedding', 'reranker'}
+
     for section_name, defaults in DEFAULTS.items():
         lines.append(f'[{section_name}]')
 
         # Start with defaults
         params = dict(defaults)
+
+        # Add embeddings=1 only for embedding/reranker models
+        if section_name in EMBEDDING_MODULES:
+            params['embeddings'] = 'true'
 
         # Override with DB values if present
         db_cfg = db_configs.get(section_name, {})
@@ -119,11 +123,28 @@ def generate_ini(db_configs: dict) -> str:
             'temperature': 'temperature',
             'top-p': 'top_p',
             'model': 'model_name',
+            'reranking': 'reranking',
+            'pooling': 'pooling',
+            'embedding': 'embedding',
         }
         for ini_key, db_key in overrides.items():
             val = db_cfg.get(db_key)
             if val is not None and val != '':
                 params[ini_key] = str(val)
+
+        # Ensure model path is absolute with .gguf extension
+        model_val = params.get('model', '')
+        if model_val and not model_val.startswith('/') and not model_val.startswith('.'):
+            if not model_val.endswith('.gguf'):
+                model_val = model_val + '.gguf'
+            params['model'] = f'/models/{model_val}'
+
+        # Same for mmproj
+        mmproj_val = params.get('mmproj', '')
+        if mmproj_val and not mmproj_val.startswith('/') and not mmproj_val.startswith('.'):
+            if not mmproj_val.endswith('.gguf'):
+                mmproj_val = mmproj_val + '.gguf'
+            params['mmproj'] = f'/models/{mmproj_val}'
 
         for key, val in params.items():
             lines.append(f'{key} = {val}')

@@ -10,6 +10,7 @@ services:
       - "5000:5000"
     depends_on:
       - redis
+      - postgres
       - llamacpp
     env_file:
       - .env
@@ -93,7 +94,9 @@ services:
       - ./data:/app/data
       - ./services/llamacpp/models:/models
       - ./services/llamacpp/generate_presets.py:/generate_presets.py:ro
-    command: ["python3", "/generate_presets.py"]
+    command: ["sh", "-c", "pip install --no-cache-dir psycopg2-binary 2>/dev/null && python3 /generate_presets.py"]
+    depends_on:
+      - postgres
     restart: "no"
     networks:
       - flai_network
@@ -338,10 +341,8 @@ services:
       - with-rag
 
   # ============================================================
-  # POSTGRESQL (Optional - Alternative to SQLite)
+  # POSTGRESQL (Required)
   # ============================================================
-  # Uncomment to use PostgreSQL instead of SQLite
-  # Set DATABASE_URL=postgresql://flai:flai_password@flai-postgres:5432/flai in .env
   postgres:
     image: postgres:16.4-alpine
     container_name: flai-postgres
@@ -375,8 +376,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    profiles:
-      - with-postgres
 
 networks:
   flai_network:

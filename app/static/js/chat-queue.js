@@ -110,6 +110,15 @@ function syncMessagesForCurrentSession() {
                 // Clear unread indicator when we receive new messages for current session
                 delete newMessageIndicators[currentSessionId];
 
+                // Skip user messages — they are displayed optimistically by displayUserMessage
+                // and will be updated with messageId when server responds.
+                // Syncing them would cause duplicates.
+                if (msg.role === 'user') {
+                    console.debug('syncMessages: Skipping user message', msg.id, '(optimistic display)');
+                    if (msg.id) displayedMessageIds.add(msg.id);
+                    continue;
+                }
+
                 // Skip if already displayed (check DOM first)
                 if (msg.id) {
                     const existingMsg = document.querySelector(`[data-message-id="${msg.id}"]`);

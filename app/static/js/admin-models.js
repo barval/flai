@@ -66,7 +66,8 @@ function renderModelCards() {
         { id: 'chat', name: 'Chat', config: currentModelConfigs.chat || {} },
         { id: 'reasoning', name: 'Reasoning', config: currentModelConfigs.reasoning || {} },
         { id: 'multimodal', name: 'Multimodal', config: currentModelConfigs.multimodal || {} },
-        { id: 'embedding', name: 'Embedding', config: currentModelConfigs.embedding || {} }
+        { id: 'embedding', name: 'Embedding', config: currentModelConfigs.embedding || {} },
+        { id: 'reranker', name: 'Reranker', config: currentModelConfigs.reranker || {} }
     ];
 
     let html = '';
@@ -96,8 +97,8 @@ function renderModelCards() {
             </div>
             <div class="model-details" id="details-${mod.id}" style="display:none;"></div>`;
 
-        // Show parameters only for non-embedding modules
-        if (mod.id !== 'embedding') {
+        // Show parameters only for non-embedding and non-reranker modules
+        if (mod.id !== 'embedding' && mod.id !== 'reranker') {
             html += `
             <div class="parameters">
                 <div class="param">
@@ -283,6 +284,26 @@ async function onModelSelect(event) {
         return;
     }
     detailsGrid.style.display = 'block';
+
+    // For reranker module, show static info (llama.cpp doesn't provide details for reranker models)
+    if (module === 'reranker') {
+        const rerankerInfo = {
+            architecture: 'BGE Cross-Encoder',
+            parameters: '~560M',
+            quantization: 'Q4_K_M',
+            context_length: '8192',
+            type: 'reranker'
+        };
+        detailsGrid.innerHTML = `
+            <p><strong>${t('Architecture:')}</strong> ${rerankerInfo.architecture}</p>
+            <p><strong>${t('Parameters:')}</strong> ${rerankerInfo.parameters}</p>
+            <p><strong>${t('Quantization:')}</strong> ${rerankerInfo.quantization}</p>
+            <p><strong>${t('Max context length:')}</strong> ${rerankerInfo.context_length}</p>
+            <p style="color:#888;font-style:italic;">${t('Cross-encoder model — reranks search results by relevance')}</p>
+        `;
+        return;
+    }
+
     detailsGrid.innerHTML = '<p>Loading...</p>';
     clearModelError(module);
 
@@ -314,13 +335,23 @@ async function onModelSelect(event) {
         }
     }
 
-    detailsGrid.innerHTML = `
+    // Build details HTML — skip embedding length for non-embedding models
+    let detailsHtml = `
         <p><strong>${t('Architecture:')}</strong> ${info.architecture || 'N/A'}</p>
         <p><strong>${t('Parameters:')}</strong> ${info.parameters || 'N/A'}</p>
         <p><strong>${t('Quantization:')}</strong> ${info.quantization || 'N/A'}</p>
-        <p><strong>${t('Max context length:')}</strong> ${info.context_length || 'N/A'}</p>
-        <p><strong>${t('Embedding length:')}</strong> ${info.embedding_length || 'N/A'}</p>
     `;
+
+    if (info.context_length && info.context_length !== 'N/A') {
+        detailsHtml += `<p><strong>${t('Max context length:')}</strong> ${info.context_length}</p>`;
+    }
+
+    // Only show embedding length for embedding module
+    if (module === 'embedding' && info.embedding_length && info.embedding_length !== 'N/A') {
+        detailsHtml += `<p><strong>${t('Embedding length:')}</strong> ${info.embedding_length}</p>`;
+    }
+
+    detailsGrid.innerHTML = detailsHtml;
 
     // Set max attribute for context length input
     const ctxInput = document.querySelector(`.context-length[data-module="${module}"]`);

@@ -89,6 +89,15 @@ download_llamacpp_models() {
     else
         warn "bge-m3-Q8_0.gguf уже есть — пропускаю."
     fi
+
+    # Модель реранкинга (для улучшения поиска в RAG)
+    if [[ ! -f "$MODEL_DIR/bge-reranker-v2-m3-Q4_K_M.gguf" ]]; then
+        info "Скачиваю bge-reranker-v2-m3-Q4_K_M.gguf (реранкинг)..."
+        HF_DOWNLOAD "gpustack/bge-reranker-v2-m3-GGUF" \
+            "bge-reranker-v2-m3-Q4_K_M.gguf" "$MODEL_DIR"
+    else
+        warn "bge-reranker-v2-m3-Q4_K_M.gguf уже есть — пропускаю."
+    fi
 }
 
 # ── Модели Stable Diffusion ──
@@ -226,6 +235,7 @@ FLAI v8.0 — Скрипт развёртывания
     Qwen3-4B-Instruct (чат)            ~2,5 ГБ
     Qwen3VL-8B-Instruct (мультимода)   ~5,5 ГБ
     bge-m3 (эмбеддинги для RAG)        ~2,2 ГБ
+    bge-reranker-v2-m3 (реранкинг)     ~0,4 ГБ
 
   Генерация изображений (Z-Image Turbo):
     z_image_turbo (диффузия)           ~6,2 ГБ

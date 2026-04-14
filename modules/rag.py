@@ -3,6 +3,7 @@ import logging
 import requests
 import os
 import uuid
+import time
 from typing import List, Dict, Optional, Tuple, Any
 from flask import current_app
 from flask_babel import gettext as _
@@ -25,6 +26,8 @@ class RagModule:
         self.chunk_size = 500
         self.chunk_overlap = 50
         self.top_k = 20
+        self.rerank_top_k = 10
+        self.reranker_enabled = False
         if app:
             self.init_app(app)
 
@@ -35,8 +38,12 @@ class RagModule:
         self.chunk_size = app.config.get('RAG_CHUNK_SIZE', 500)
         self.chunk_overlap = app.config.get('RAG_CHUNK_OVERLAP', 50)
         self.top_k = app.config.get('RAG_TOP_K', 20)
+        self.rerank_top_k = app.config.get('RERANK_TOP_K', 10)
+        self.reranker_enabled = app.config.get('RERANKER_ENABLED', True)
         # Log the loaded top_k value for debugging
         app.logger.info(f"RagModule: loaded RAG_TOP_K = {self.top_k} from config")
+        app.logger.info(f"RagModule: loaded RERANK_TOP_K = {self.rerank_top_k} from config")
+        app.logger.info(f"RagModule: RERANKER_ENABLED = {self.reranker_enabled}")
 
         if not qdrant_url:
             app.logger.warning("QDRANT_URL not set, RAG module disabled")
@@ -208,6 +215,7 @@ class RagModule:
     def search(self, user_id: str, query: str, top_k: Optional[int] = None) -> Tuple[List[Dict], List[float]]:
         """
         Search for relevant chunks based on query.
+        If reranking is enabled, chunks are re-scored by the cross-encoder reranker via llama.cpp.
         Returns tuple of (chunk_dicts with metadata, scores).
         """
         if not self.available:
@@ -230,10 +238,71 @@ class RagModule:
             chunks = [hit.payload for hit in search_result]
             scores = [hit.score for hit in search_result]
             self.logger.info(f"search: found {len(chunks)} chunks for query '{query[:50]}...' (top_k={top_k})")
+
+            # --- Reranking step (if enabled) ---
+            if chunks and self.reranker_enabled:
+                chunks, scores = self._rerank_results(query, chunks, scores)
+
             return chunks, scores
         except Exception as e:
             self.logger.error(f"Qdrant search error: {e}")
             return [], []
+
+    def _rerank_results(
+        self,
+        query: str,
+        chunks: List[Dict],
+        original_scores: List[float],
+    ) -> Tuple[List[Dict], List[float]]:
+        """
+        Re-rank chunks using llama.cpp cross-encoder reranker (/v1/rerank).
+
+        Takes the top-k results from vector search, re-scores them with the
+        reranker model, and returns the top RERANK_TOP_K results sorted by
+        the new scores.
+
+        Returns (reranked_chunks, reranked_scores).
+        Falls back to original results on error.
+        """
+        start_time = time.time()
+
+        # Extract text from each chunk for reranking
+        texts = [chunk.get('text', '') for chunk in chunks]
+
+        # Call reranker via llama.cpp
+        rerank_results = self.llamacpp.rerank(query, texts, top_n=self.rerank_top_k)
+
+        if rerank_results is None:
+            self.logger.warning("Reranker returned None, keeping original order")
+            return chunks, original_scores
+
+        if not rerank_results:
+            self.logger.warning("Reranker returned no results, keeping original order")
+            return chunks, original_scores
+
+        # rerank_results: [{"index": N, "relevance_score": 0.95, "document": "..."}, ...]
+        # Sorted by relevance_score descending
+        # Take top RERANK_TOP_K (already limited by top_n in rerank call)
+        top_results = rerank_results[:self.rerank_top_k]
+
+        # Build new ordered lists
+        reranked_chunks = []
+        reranked_scores = []
+        for item in top_results:
+            orig_idx = item.get('index', 0)
+            score = item.get('relevance_score', 0)
+            if orig_idx < len(chunks):
+                reranked_chunks.append(chunks[orig_idx])
+                reranked_scores.append(score)
+
+        elapsed = time.time() - start_time
+        self.logger.info(
+            f"Reranked {len(chunks)} -> {len(reranked_chunks)} chunks in {elapsed:.2f}s, "
+            f"original top score={max(original_scores):.4f}, "
+            f"new top score={reranked_scores[0] if reranked_scores else 0:.4f}"
+        )
+
+        return reranked_chunks, reranked_scores
 
     # --- Helper: token estimation (using centralized function) ---
     def _estimate_tokens(self, text: str) -> int:
@@ -315,13 +384,28 @@ class RagModule:
             )
 
         # 3. Get conversation history (with token limit)
-        # Estimate token count for context and query
+        # Estimate actual token counts for query and context
         query_tokens = self._estimate_tokens(query)
         context_tokens = self._estimate_tokens(context)
 
-        # Hard limit: ensure context fits within server's actual context size
-        # Server ctx-size is 16384, leave room for system prompt + history
-        MAX_CONTEXT_TOKENS = 10000
+        # Get reasoning model config
+        reasoning_config = get_model_config('reasoning')
+        if not reasoning_config:
+            return None, "Reasoning model configuration missing", None
+        max_context_tokens = reasoning_config.get('context_length', 40960)
+
+        # Dynamic context limit: percentage of model's context window
+        rag_context_percent = current_app.config.get('RAG_CONTEXT_PERCENT', 30)
+        MAX_CONTEXT_TOKENS = int(max_context_tokens * rag_context_percent / 100.0)
+
+        # Measure actual template overhead (already filled with variables)
+        # We know: total_prompt = template + context + query + history
+        # So: template_tokens = total_tokens_of_filled_template - context - query
+        # But we don't have the filled template yet. Instead, estimate from loaded template.
+        from app.utils import load_prompt_template
+        template_text = load_prompt_template('rag.template', lang) or ''
+        template_overhead = self._estimate_tokens(template_text)
+
         if context_tokens > MAX_CONTEXT_TOKENS:
             # Trim chunks from the end (lowest relevance) until under limit
             original_count = len(filtered)
@@ -340,15 +424,16 @@ class RagModule:
                 context_tokens = self._estimate_tokens(context)
             self.logger.info(
                 f"RAG: trimmed context from {original_count} to {len(filtered)} chunks "
-                f"({context_tokens} tokens) to fit within server context size"
+                f"({context_tokens}/{MAX_CONTEXT_TOKENS} tokens, "
+                f"{rag_context_percent}% of {max_context_tokens}) to fit within model context"
             )
 
-        template_overhead = 800  # rough estimate for template text + instructions
-        # Get reasoning model config from DB
-        reasoning_config = get_model_config('reasoning')
-        if not reasoning_config:
-            return None, "Reasoning model configuration missing", None
-        max_context_tokens = reasoning_config.get('context_length', 40960)
+        # Calculate actual template overhead from the raw template file
+        # (placeholders like {context}, {user_query} contribute 0 tokens,
+        #  so we measure the template as-is)
+        template_overhead = self._estimate_tokens(template_text)
+
+        # Calculate available space for history
         history_percent = int(current_app.config.get('CONTEXT_HISTORY_PERCENT', 75))
         available_tokens = int(max_context_tokens * (history_percent / 100.0))
         remaining_for_history = available_tokens - query_tokens - context_tokens - template_overhead

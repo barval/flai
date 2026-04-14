@@ -8,43 +8,8 @@ from flask_limiter.util import get_remote_address
 import logging
 from logging import Formatter
 from .config import load_config
-from .db import (
-    init_db, CHAT_DB_PATH, close_db,
-    migrate_db_add_response_fields, migrate_db_add_session_visits,
-    migrate_db_add_indexes, migrate_db_add_index_status, migrate_add_model_configs,
-    migrate_add_embedding_model, migrate_add_ollama_url, migrate_add_service_url,
-    migrate_add_user_storage
-)
+from .database import init_db
 from .resource_manager import get_resource_manager
-
-
-def _run_migrations(app):
-    """Run all database migrations within a single transaction.
-
-    SQLite doesn't support true DDL transactions, but we wrap each migration
-    in a try/except that logs errors without breaking subsequent migrations.
-    If a critical migration fails, we log a warning but continue startup
-    (since ALTER TABLE ADD COLUMN is idempotent in SQLite).
-    """
-    import sqlite3
-
-    migrations = [
-        migrate_db_add_response_fields,
-        migrate_db_add_session_visits,
-        migrate_db_add_indexes,
-        migrate_db_add_index_status,
-        migrate_add_model_configs,
-        migrate_add_embedding_model,
-        migrate_add_ollama_url,
-        migrate_add_service_url,
-        migrate_add_user_storage,
-    ]
-
-    for migration_fn in migrations:
-        try:
-            migration_fn(app)
-        except Exception as e:
-            app.logger.warning(f"Migration {migration_fn.__name__} failed: {e} — continuing")
 
 
 from .queue import RedisRequestQueue
@@ -70,9 +35,6 @@ def create_app():
     app = Flask(__name__)
     # Load configuration
     load_config(app)
-
-    # Close SQLite connection after each request to prevent file descriptor leaks
-    app.teardown_appcontext(close_db)
 
     # Trust proxies for proper HTTPS detection behind nginx
     from werkzeug.middleware.proxy_fix import ProxyFix
@@ -150,10 +112,8 @@ def create_app():
     # Initialize rate limiting
     limiter.init_app(app)
 
-    # Initialize chat DB — all migrations wrapped in a single transaction
-    # If any migration fails, all changes are rolled back
+    # Initialize chat DB
     init_db()
-    _run_migrations(app)
 
     # Detect hardware and initialize Resource Manager
     rm = get_resource_manager()
@@ -267,12 +227,12 @@ def create_app():
             abort(400)
         session_id = parts[0]
         # Verify that the session belongs to the current user
-        from .db import get_db
+        from .database import get_db
         with get_db() as conn:
             c = conn.cursor()
-            c.execute('SELECT user_id FROM chat_sessions WHERE id = ?', (session_id,))
+            c.execute('SELECT user_id FROM chat_sessions WHERE id = %s', (session_id,))
             row = c.fetchone()
-            if not row or row[0] != session['login']:
+            if not row or row['user_id'] != session['login']:
                 app.logger.warning(f"User {session['login']} tried to access session {session_id}")
                 abort(403)
         # Send file
@@ -337,9 +297,7 @@ def create_app():
         """Comprehensive health check for all services."""
         from datetime import datetime, timezone
         import requests
-        import sqlite3
-        from .db import CHAT_DB_PATH
-        from .database import is_postgresql, get_db
+        from .database import get_db
 
         status = {
             'status': 'ok',
@@ -353,15 +311,11 @@ def create_app():
         }
         http_status = 200
 
-        # Check database — works with both SQLite and PostgreSQL
+        # Check database
         try:
-            if is_postgresql():
-                with get_db() as conn:
-                    c = conn.cursor()
-                    c.execute('SELECT 1')
-            else:
-                with sqlite3.connect(CHAT_DB_PATH) as conn:
-                    conn.execute('SELECT 1')
+            with get_db() as conn:
+                c = conn.cursor()
+                c.execute('SELECT 1')
             status['services']['database'] = 'ok'
         except Exception as e:
             status['services']['database'] = 'error'
@@ -415,7 +369,7 @@ def create_app():
         if whisper_url:
             try:
                 base_url = whisper_url.replace('/asr', '').rstrip('/')
-                response = requests.get(f"{base_url}/health", timeout=5)
+                response = requests.get(f"{base_url}/docs", timeout=5)
                 status['services']['whisper'] = 'ok' if response.status_code == 200 else 'error'
             except Exception:
                 status['services']['whisper'] = 'error'
@@ -478,16 +432,10 @@ def create_app():
         
         # Database metrics
         try:
-            import os
-            from .database import is_postgresql as _is_pg
-            if _is_pg():
-                # PostgreSQL: use PG volume size estimate or 0
-                db_size = 0  # Cannot easily determine PG size from container
-            else:
-                db_size = os.path.getsize(CHAT_DB_PATH) if os.path.exists(CHAT_DB_PATH) else 0
-
+            # PostgreSQL: cannot easily determine size from app container
+            db_size = 0
             metrics_output.append('')
-            metrics_output.append('# HELP flai_database_size_bytes Database file size in bytes')
+            metrics_output.append('# HELP flai_database_size_bytes Database size (0 for PostgreSQL)')
             metrics_output.append('# TYPE flai_database_size_bytes gauge')
             metrics_output.append(f'flai_database_size_bytes {db_size}')
         except Exception as e:

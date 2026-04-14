@@ -408,23 +408,22 @@ def validate_session_ownership(session_id: str, user_id: str) -> bool:
     Returns:
         True if session exists and belongs to user, False otherwise
     """
-    import sqlite3
     import uuid
-    from . import db
-    
+    from .database import get_db
+
     # Validate UUID format first
     try:
         uuid.UUID(session_id, version=4)
     except (ValueError, AttributeError):
         return False
-    
+
     # Check ownership
     try:
-        with sqlite3.connect(db.CHAT_DB_PATH) as conn:
+        with get_db() as conn:
             c = conn.cursor()
-            c.execute('SELECT user_id FROM chat_sessions WHERE id = ?', (session_id,))
+            c.execute('SELECT user_id FROM chat_sessions WHERE id = %s', (session_id,))
             row = c.fetchone()
-            return row is not None and row[0] == user_id
+            return row is not None and row['user_id'] == user_id
     except Exception:
         return False
 
@@ -462,18 +461,17 @@ def check_document_quota(user_id: str) -> Optional[str]:
     Returns:
         Error message if quota exceeded, None if OK
     """
-    import sqlite3
-    from . import db
+    from .database import get_db
 
     max_docs = current_app.config.get('MAX_DOCUMENTS_PER_USER', 50)
     max_mb = current_app.config.get('MAX_DOCUMENTS_STORAGE_MB', 50)
 
     try:
-        with sqlite3.connect(db.CHAT_DB_PATH) as conn:
+        with get_db() as conn:
             c = conn.cursor()
-            c.execute('SELECT COUNT(*), COALESCE(SUM(file_size), 0) FROM documents WHERE user_id = ?', (user_id,))
+            c.execute('SELECT COUNT(*), COALESCE(SUM(file_size), 0) FROM documents WHERE user_id = %s', (user_id,))
             row = c.fetchone()
-            count, total_bytes = row[0], row[1]
+            count, total_bytes = row['count'], row['coalesce']
 
             if count >= max_docs:
                 return f"Document quota exceeded: {count} / {max_docs} documents. Delete some to upload more."

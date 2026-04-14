@@ -19,7 +19,7 @@ def load_config(app):
     app.config['TIMEZONE_STR'] = os.getenv('TIMEZONE')
     app.config['REDIS_URL'] = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
-    # Database configuration (supports SQLite or PostgreSQL)
+    # Database configuration (PostgreSQL required)
     app.config['DATABASE_URL'] = os.getenv('DATABASE_URL')
     
     # llama.cpp server settings (replaces Ollama)
@@ -80,10 +80,17 @@ def load_config(app):
     app.config['RAG_CHUNK_SIZE'] = int(os.getenv('RAG_CHUNK_SIZE', 500))
     app.config['RAG_CHUNK_OVERLAP'] = int(os.getenv('RAG_CHUNK_OVERLAP', 50))
     app.config['RAG_TOP_K'] = int(os.getenv('RAG_TOP_K', 20))
-    
+    # Percentage of model's context window to use for RAG document chunks
+    # 30% means: for 32K model → ~9600 tokens for docs, for 128K → ~38K
+    app.config['RAG_CONTEXT_PERCENT'] = int(os.getenv('RAG_CONTEXT_PERCENT', 30))
+
     # RAG relevance thresholds
     app.config['RAG_RELEVANCE_THRESHOLD_DEFAULT'] = float(os.getenv('RAG_RELEVANCE_THRESHOLD_DEFAULT', 0.3))
     app.config['RAG_RELEVANCE_THRESHOLD_REASONING'] = float(os.getenv('RAG_RELEVANCE_THRESHOLD_REASONING', 0.3))
+
+    # RAG reranker settings (cross-encoder reranking via llama.cpp /v1/rerank)
+    app.config['RERANKER_ENABLED'] = os.getenv('RERANKER_ENABLED', 'true').lower() in ('true', '1', 'yes')
+    app.config['RERANK_TOP_K'] = int(os.getenv('RERANK_TOP_K', 10))
     
     # Debug translations
     app.config['DEBUG_TRANSLATIONS'] = os.getenv('DEBUG_TRANSLATIONS', 'false').lower() == 'true'

@@ -359,6 +359,7 @@ services/llamacpp/models/
 ├── Qwen3-4B-Instruct-2507-Q4_K_M.gguf     # Чат
 ├── gpt-oss-20b-mxfp4.gguf                  # Рассуждения
 ├── bge-m3-Q8_0.gguf                        # Эмбеддинг
+├── bge-reranker-v2-m3-Q4_K_M.gguf          # Реранкинг (RAG)
 └── Qwen3VL-8B-Instruct-Q4_K_M/             # Мультимодальность (поддиректория!)
     ├── Qwen3VL-8B-Instruct-Q4_K_M.gguf
     └── mmproj-F16.gguf                     # Визион-проектор
@@ -621,6 +622,7 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 | **gpt-oss-20b-mxfp4** | Рассуждения (сложные задачи) | [OpenAI License](https://huggingface.co/openai/gpt-oss-20b-GGUF) | ~12 ГБ |
 | **Qwen3VL-8B-Instruct-Q4_K_M** | Мультимодальность (анализ изображений) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5,5 ГБ + mmproj ~200 МБ |
 | **bge-m3-Q8_0** | Эмбеддинги (RAG) | [MIT License](https://huggingface.co/BAAI/bge-m3-gguf) | ~2,2 ГБ |
+| **bge-reranker-v2-m3-Q4_K_M** | Реранкинг (релевантность RAG) | [MIT License](https://huggingface.co/BAAI/bge-reranker-v2-m3) | ~0,4 ГБ |
 
 ### Модели генерации изображений (stable-diffusion.cpp)
 

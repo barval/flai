@@ -20,12 +20,16 @@ function applyCurrentView() {
     const sessionsList = document.getElementById('sessions-list');
     const documentsList = document.getElementById('documents-list');
     if (view === 'sessions') {
+        sessionsList.classList.add('active');
         sessionsList.style.display = 'block';
-        documentsList.style.display = 'none';
+        documentsList.classList.remove('active');
+        documentsList.classList.add('hidden');
         stopDocumentsPolling();
     } else {
+        sessionsList.classList.remove('active');
         sessionsList.style.display = 'none';
-        documentsList.style.display = 'block';
+        documentsList.classList.remove('hidden');
+        documentsList.classList.add('active');
         loadDocuments(); // immediate load
         startDocumentsPolling();
     }

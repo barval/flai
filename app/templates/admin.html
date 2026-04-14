@@ -8,6 +8,7 @@
     <div class="admin-tabs">
         <button class="admin-tab active" data-tab="users">{{ _('Users') }}</button>
         <button class="admin-tab" data-tab="models">{{ _('Models') }}</button>
+        <button class="admin-tab" data-tab="backups">{{ _('Backups') }}</button>
     </div>
 
     <!-- Users tab content -->
@@ -53,6 +54,40 @@
         <div class="models-container">
             <div id="models-list">
                 <!-- Cards will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Backups tab content -->
+    <div id="backups-tab" class="admin-tab-content">
+        <div class="backups-container">
+            <div class="backups-header">
+                <div class="backup-create">
+                    <label for="backup-type">{{ _('Backup type') }}:</label>
+                    <select id="backup-type">
+                        <option value="users">{{ _('Users only') }}</option>
+                        <option value="full">{{ _('Full (users + chats + files)') }}</option>
+                    </select>
+                    <button id="create-backup-btn" class="btn-primary">{{ _('Create backup') }}</button>
+                    <button id="refresh-backups-btn" class="refresh-models-btn" title="{{ _('Refresh backup list') }}">🔄</button>
+                </div>
+            </div>
+            <table id="backups-table" class="backups-table">
+                <thead>
+                    <tr>
+                        <th>{{ _('Filename') }}</th>
+                        <th>{{ _('Type') }}</th>
+                        <th>{{ _('Size') }}</th>
+                        <th>{{ _('Created') }}</th>
+                        <th class="th-actions">{{ _('Actions') }}</th>
+                    </tr>
+                </thead>
+                <tbody id="backups-tbody">
+                    <!-- Data loaded via JS -->
+                </tbody>
+            </table>
+            <div id="no-backups-msg" class="no-backups" style="display:none;">
+                {{ _('No backups found') }}
             </div>
         </div>
     </div>
@@ -202,7 +237,36 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'Please provide llama-server URL first.': {{ _('Please provide llama-server URL first.')|tojson }},
     // New translations for llama-server status
     'llama-server available': {{ _('llama-server available')|tojson }},
-    'llama-server unavailable': {{ _('llama-server unavailable')|tojson }}
+    'llama-server unavailable': {{ _('llama-server unavailable')|tojson }},
+    // Backup translations
+    'Backups': {{ _('Backups')|tojson }},
+    'Backup type': {{ _('Backup type')|tojson }},
+    'Users only': {{ _('Users only')|tojson }},
+    'Full (users + chats + files)': {{ _('Full (users + chats + files)')|tojson }},
+    'Create backup': {{ _('Create backup')|tojson }},
+    'restore': {{ _('Restore')|tojson }},
+    'delete': {{ _('Delete')|tojson }},
+    'download': {{ _('Download')|tojson }},
+    'No backups found': {{ _('No backups found')|tojson }},
+    'restore_confirm_users': {{ _('Restore users database from {filename}? Current data will be replaced.')|tojson }},
+    'restore_confirm_full': {{ _('Restore full backup from {filename}? All data (users, chats, documents, files) will be replaced.')|tojson }},
+    'delete_confirm': {{ _('Delete file {filename}? This action cannot be undone.')|tojson }},
+    'backup_created': {{ _('Backup created: {filename}')|tojson }},
+    'backup_restored': {{ _('Data restored from: {filename}')|tojson }},
+    'backup_deleted': {{ _('File deleted: {filename}')|tojson }},
+    'backup_error': {{ _('Error creating backup')|tojson }},
+    'restore_error': {{ _('Error restoring backup')|tojson }},
+    'delete_error': {{ _('Error deleting backup')|tojson }},
+    'refresh': {{ _('Refresh list')|tojson }},
+    'backup_success': {{ _('Success')|tojson }},
+    'creating': {{ _('Creating...')|tojson }},
+    'restoring': {{ _('Restoring...')|tojson }},
+    'Filename': {{ _('Filename')|tojson }},
+    'Type': {{ _('Type')|tojson }},
+    'Size': {{ _('Size')|tojson }},
+    'Created': {{ _('Created')|tojson }},
+    'Actions': {{ _('Actions')|tojson }},
+    'Refresh backup list': {{ _('Refresh backup list')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}
 console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);
@@ -210,4 +274,5 @@ console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);
 </script>
 <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
 <script src="{{ url_for('static', filename='js/admin-models.js') }}"></script>
+<script src="{{ url_for('static', filename='js/admin-backups.js') }}"></script>
 {% endblock %}

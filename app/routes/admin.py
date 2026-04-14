@@ -15,7 +15,7 @@ from app.db import (
     get_db as get_chat_db, CHAT_DB_PATH,
     get_user_file_count, get_user_document_count, get_documents_total_size
 )
-from app.userdb import USER_DB_PATH
+from app.database import get_database_type, is_postgresql, DB_PATH as SQLITE_DB_PATH
 from app.validators import validate_user_input, validate_model_config_update, ValidationError
 
 bp = Blueprint('admin', __name__, url_prefix='/admin')
@@ -64,7 +64,11 @@ def admin_panel():
         rooms = current_app.modules['cam'].get_all_rooms()
 
     chat_db_size = get_file_size_bytes(CHAT_DB_PATH)
-    user_db_size = get_file_size_bytes(USER_DB_PATH)
+    # User DB: file size for SQLite, 0 for PostgreSQL (data is in PG server)
+    if is_postgresql() or SQLITE_DB_PATH is None:
+        user_db_size = 0
+    else:
+        user_db_size = get_file_size_bytes(SQLITE_DB_PATH)
     uploads_folder = current_app.config.get('UPLOAD_FOLDER', 'data/uploads')
     files_db_size = get_folder_size_bytes(uploads_folder)
     documents_folder = current_app.config.get('DOCUMENTS_FOLDER', 'data/documents')
@@ -226,7 +230,10 @@ def get_stats():
     """Return current sizes of databases and folders in bytes."""
     try:
         chat_db_size = get_file_size_bytes(CHAT_DB_PATH)
-        user_db_size = get_file_size_bytes(USER_DB_PATH)
+        if is_postgresql() or SQLITE_DB_PATH is None:
+            user_db_size = 0
+        else:
+            user_db_size = get_file_size_bytes(SQLITE_DB_PATH)
         uploads_folder = current_app.config.get('UPLOAD_FOLDER', 'data/uploads')
         files_db_size = get_folder_size_bytes(uploads_folder)
         documents_folder = current_app.config.get('DOCUMENTS_FOLDER', 'data/documents')
@@ -412,6 +419,7 @@ def get_model_configs():
 def update_model_config(module):
     """Update configuration for a specific module."""
     from app.model_config import invalidate_model_config_cache, get_model_config
+    from app.database import get_db, is_postgresql
 
     data = request.get_json()
     try:
@@ -419,22 +427,31 @@ def update_model_config(module):
     except ValidationError as e:
         return jsonify({'error': str(e)}), 400
 
-    from app.db import get_db
+    # Get old model_name BEFORE update (for embedding change detection)
+    old_model = None
+    if module == 'embedding':
+        old_config = get_model_config('embedding')
+        old_model = old_config.get('model_name') if old_config else None
+        current_app.logger.info(f"Embedding old_model from config: '{old_model}'")
+
     with get_db() as conn:
         c = conn.cursor()
-        old_model = None
-        if module == 'embedding':
-            c.execute('SELECT model_name FROM model_configs WHERE module = ?', (module,))
-            row = c.fetchone()
-            old_model = row[0] if row else None
-
-        set_clause = ', '.join([f"{k}=?" for k in updates.keys()])
-        values = list(updates.values()) + [module]
-        c.execute(f'''
-            UPDATE model_configs
-            SET {set_clause}, updated_at = CURRENT_TIMESTAMP
-            WHERE module = ?
-        ''', values)
+        if is_postgresql():
+            set_clause = ', '.join([f"{k} = %s" for k in updates.keys()])
+            values = list(updates.values()) + [module]
+            c.execute(f'''
+                UPDATE model_configs
+                SET {set_clause}, updated_at = CURRENT_TIMESTAMP
+                WHERE module = %s
+            ''', values)
+        else:
+            set_clause = ', '.join([f"{k}=?" for k in updates.keys()])
+            values = list(updates.values()) + [module]
+            c.execute(f'''
+                UPDATE model_configs
+                SET {set_clause}, updated_at = CURRENT_TIMESTAMP
+                WHERE module = ?
+            ''', values)
         conn.commit()
 
     # Invalidate cache for updated module
@@ -443,8 +460,9 @@ def update_model_config(module):
     result = {'status': 'ok'}
     if module == 'embedding':
         new_model = updates.get('model_name')
+        current_app.logger.info(f"Embedding new_model: '{new_model}', old_model: '{old_model}'")
         # Only trigger reindex if the model actually CHANGED
-        if new_model and new_model != old_model:
+        if new_model and old_model is not None and new_model != old_model:
             current_app.logger.info(f"Embedding model changed from '{old_model}' to '{new_model}', starting reindex all")
             current_app.request_queue.add_reindex_all_task(lang='ru')
             result['model_name'] = new_model
@@ -454,8 +472,9 @@ def update_model_config(module):
             result['model_name'] = new_model
             result['reindex_triggered'] = False
         else:
-            result['model_name'] = old_model
+            result['model_name'] = new_model or old_model
             result['reindex_triggered'] = False
+            current_app.logger.info(f"Embedding model save: new='{new_model}', old='{old_model}' — no reindex")
     else:
         result['model_name'] = updates.get('model_name')
 

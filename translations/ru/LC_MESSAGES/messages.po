@@ -718,5 +718,87 @@ msgstr "Максимальное разрешение для редактиро�
 msgid "Image editing timeout ({timeout}s)"
 msgstr "Превышено время редактирования ({timeout}с)"
 
+# Backup/restore translations
+msgid "Backups"
+msgstr "Резервные копии"
+
+msgid "Backup type"
+msgstr "Тип резервной копии"
+
+msgid "Users only"
+msgstr "Только пользователи"
+
+msgid "Full (users + chats + files)"
+msgstr "Полная (пользователи + чаты + файлы)"
+
+msgid "Create backup"
+msgstr "Создать резервную копию"
+
+msgid "Restore"
+msgstr "Восстановить"
+
+msgid "Delete"
+msgstr "Удалить"
+
+msgid "Download"
+msgstr "Скачать"
+
+msgid "No backups found"
+msgstr "Резервные копии не найдены"
+
+msgid "Restore users database from {filename}? Current data will be replaced."
+msgstr "Восстановить базу пользователей из {filename}? Текущие данные будут заменены."
+
+msgid "Restore full backup from {filename}? All data (users, chats, documents, files) will be replaced."
+msgstr "Восстановить полную резервную копию из {filename}? Все данные (пользователи, чаты, документы, файлы) будут заменены."
+
+msgid "Delete file {filename}? This action cannot be undone."
+msgstr "Удалить файл {filename}? Это действие необратимо."
+
+msgid "Backup created: {filename}"
+msgstr "Резервная копия создана: {filename}"
+
+msgid "Data restored from: {filename}"
+msgstr "Данные восстановлены из: {filename}"
+
+msgid "File deleted: {filename}"
+msgstr "Файл удалён: {filename}"
+
+msgid "Error creating backup"
+msgstr "Ошибка при создании резервной копии"
+
+msgid "Error restoring backup"
+msgstr "Ошибка при восстановлении"
+
+msgid "Error deleting backup"
+msgstr "Ошибка при удалении"
+
+msgid "Refresh list"
+msgstr "Обновить список"
+
+msgid "Success"
+msgstr "Успешно"
+
+msgid "Creating..."
+msgstr "Создание..."
+
+msgid "Restoring..."
+msgstr "Восстановление..."
+
+msgid "Filename"
+msgstr "Имя файла"
+
+msgid "Type"
+msgstr "Тип"
+
+msgid "Size"
+msgstr "Размер"
+
+msgid "Created"
+msgstr "Создана"
+
+msgid "Refresh backup list"
+msgstr "Обновить список резервных копий"
+
 msgid "Service temporarily unavailable. Circuit breaker is open after repeated failures."
 msgstr "Сервис временно недоступен. Сработал защитный механизм после неоднократных сбоев."

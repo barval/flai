@@ -708,6 +708,76 @@ msgstr "Editing timeout ({timeout}s)"
 msgid "Could not connect to editor."
 msgstr "Could not connect to editor."
 
+# Backup/restore translations
+msgid "Backups"
+msgstr "Backups"
+
+msgid "Backup type"
+msgstr "Backup type"
+
+msgid "Users only"
+msgstr "Users only"
+
+msgid "Full (users + chats + files)"
+msgstr "Full (users + chats + files)"
+
+msgid "Create backup"
+msgstr "Create backup"
+
+msgid "Restore"
+msgstr "Restore"
+
+msgid "Delete"
+msgstr "Delete"
+
+msgid "Download"
+msgstr "Download"
+
+msgid "No backups found"
+msgstr "No backups found"
+
+msgid "Restore users database from {filename}? Current data will be replaced."
+msgstr "Restore users database from {filename}? Current data will be replaced."
+
+msgid "Restore full backup from {filename}? All data (users, chats, documents, files) will be replaced."
+msgstr "Restore full backup from {filename}? All data (users, chats, documents, files) will be replaced."
+
+msgid "Delete file {filename}? This action cannot be undone."
+msgstr "Delete file {filename}? This action cannot be undone."
+
+msgid "Backup created: {filename}"
+msgstr "Backup created: {filename}"
+
+msgid "Data restored from: {filename}"
+msgstr "Data restored from: {filename}"
+
+msgid "File deleted: {filename}"
+msgstr "File deleted: {filename}"
+
+msgid "Error creating backup"
+msgstr "Error creating backup"
+
+msgid "Error restoring backup"
+msgstr "Error restoring backup"
+
+msgid "Error deleting backup"
+msgstr "Error deleting backup"
+
+msgid "Refresh list"
+msgstr "Refresh list"
+
+msgid "Success"
+msgstr "Success"
+
+msgid "Creating..."
+msgstr "Creating..."
+
+msgid "Restoring..."
+msgstr "Restoring..."
+
+msgid "Refresh backup list"
+msgstr "Refresh backup list"
+
 msgid "Image edited from request: {query}"
 msgstr "Image edited from request: {query}"
 

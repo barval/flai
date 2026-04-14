@@ -5,6 +5,7 @@ import logging
 from functools import lru_cache
 from flask import current_app
 from app.db import CHAT_DB_PATH
+from app.database import is_postgresql, get_db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ def get_model_config(module):
     Returns a dictionary with keys: model_name, context_length, temperature, top_p, timeout.
     Returns None if module not found or on error.
     Uses TTL-based caching: entries are automatically refreshed after _CACHE_TTL seconds.
+    Works with both SQLite and PostgreSQL.
     """
     now = time.time()
     entry = _MODEL_CONFIG_CACHE.get(module)
@@ -27,22 +29,36 @@ def get_model_config(module):
     if entry and (now - entry['time']) < _CACHE_TTL:
         return entry['data']
 
-    # Load from database
+    # Load from database — works with both SQLite and PostgreSQL
     try:
-        with sqlite3.connect(CHAT_DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
-            c = conn.cursor()
-            c.execute('SELECT * FROM model_configs WHERE module = ?', (module,))
-            row = c.fetchone()
-
-            if row:
-                result = dict(row)
-                _MODEL_CONFIG_CACHE[module] = {'data': result, 'time': now}
-                return result
-            else:
-                if current_app:
-                    current_app.logger.error(f"No configuration found for module '{module}' in DB")
+        if is_postgresql():
+            conn = get_db_connection()
+            try:
+                c = conn.cursor()
+                c.execute('SELECT * FROM model_configs WHERE module = %s', (module,))
+                row = c.fetchone()
+                if row:
+                    result = dict(row)
+                    _MODEL_CONFIG_CACHE[module] = {'data': result, 'time': now}
+                    return result
                 return None
+            finally:
+                conn.close()
+        else:
+            with sqlite3.connect(CHAT_DB_PATH) as conn:
+                conn.row_factory = sqlite3.Row
+                c = conn.cursor()
+                c.execute('SELECT * FROM model_configs WHERE module = ?', (module,))
+                row = c.fetchone()
+
+                if row:
+                    result = dict(row)
+                    _MODEL_CONFIG_CACHE[module] = {'data': result, 'time': now}
+                    return result
+                else:
+                    if current_app:
+                        current_app.logger.error(f"No configuration found for module '{module}' in DB")
+                    return None
     except Exception as e:
         if current_app:
             current_app.logger.error(f"Error reading model config from DB: {e}")

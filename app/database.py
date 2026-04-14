@@ -36,6 +36,10 @@ else:
     DB_PATH = os.getenv('DB_PATH', 'data/chats.db')
     logger.info(f"Using default SQLite database: {DB_PATH}")
 
+# Always define DB_PATH (may be None for PostgreSQL)
+if DATABASE_TYPE != 'sqlite':
+    DB_PATH = None
+
 
 def get_db_connection():
     """Get a database connection based on DATABASE_TYPE.
@@ -60,6 +64,8 @@ def get_db_connection():
         conn = psycopg2.connect(url)
         # Set isolation level for better concurrency
         conn.set_session(autocommit=False)
+        # Use RealDictCursor so fetchone/fetchall return dict-like objects
+        conn.cursor_factory = RealDictCursor
         return conn
 
 
@@ -69,7 +75,9 @@ def get_db():
 
     Usage:
         with get_db() as conn:
-            conn.execute('SELECT 1')
+            c = conn.cursor()
+            c.execute('SELECT 1')
+            row = c.fetchone()  # dict-like for both SQLite and PostgreSQL
     """
     conn = None
     try:

@@ -431,7 +431,9 @@ function onSaveConfig(event) {
 
             if (module === 'embedding') {
                 window.CURRENT_EMBEDDING_MODEL = result.model_name;
-                alert(t('reindex_started'));
+                if (result.reindex_triggered) {
+                    alert(t('reindex_started'));
+                }
             }
         } else {
             alert(t('error') + ': ' + (result.error || t('unknown_error')));

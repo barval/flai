@@ -56,15 +56,14 @@ csrf = CSRFProtect()
 limiter = Limiter(key_func=get_remote_address)
 
 
-def get_locale():
-    """Select language from session or Accept-Language header."""
-    if 'language' in session:
-        return session['language']
-    return request.accept_languages.best_match(['ru', 'en']) or 'ru'
-
-
-# Register locale selector for Flask-Babel 2.x compatibility
-babel.localeselector_func = get_locale
+def register_babel(app):
+    """Register Babel locale selector after app is initialized."""
+    @babel.localeselector
+    def get_locale():
+        """Select language from session or Accept-Language header."""
+        if 'language' in session:
+            return session['language']
+        return request.accept_languages.best_match(['ru', 'en']) or 'ru'
 
 
 def create_app():
@@ -140,6 +139,7 @@ def create_app():
     logging.root.handlers = [console_handler]
 
     # Initialize Babel with the app
+    register_babel(app)
     babel.init_app(app)
     app.jinja_env.add_extension('jinja2.ext.i18n')  # for _() in templates
     app.jinja_env.globals['_'] = gettext
@@ -209,7 +209,7 @@ def create_app():
     app.request_queue = RedisRequestQueue(app)
 
     # Register blueprints (new modular structure)
-    from .routes import auth, chat, admin, queue, tts, messages, sessions, documents
+    from .routes import auth, chat, admin, queue, tts, messages, sessions, documents, backups
     app.register_blueprint(auth.bp)
     app.register_blueprint(chat.bp)
     app.register_blueprint(admin.bp)
@@ -218,6 +218,7 @@ def create_app():
     app.register_blueprint(messages.bp)
     app.register_blueprint(sessions.bp)
     app.register_blueprint(documents.bp)
+    app.register_blueprint(backups.bp)
 
     # Register CLI commands
     from . import cli
@@ -338,6 +339,7 @@ def create_app():
         import requests
         import sqlite3
         from .db import CHAT_DB_PATH
+        from .database import is_postgresql, get_db
 
         status = {
             'status': 'ok',
@@ -350,11 +352,16 @@ def create_app():
             }
         }
         http_status = 200
-        
-        # Check database
+
+        # Check database — works with both SQLite and PostgreSQL
         try:
-            with sqlite3.connect(CHAT_DB_PATH) as conn:
-                conn.execute('SELECT 1')
+            if is_postgresql():
+                with get_db() as conn:
+                    c = conn.cursor()
+                    c.execute('SELECT 1')
+            else:
+                with sqlite3.connect(CHAT_DB_PATH) as conn:
+                    conn.execute('SELECT 1')
             status['services']['database'] = 'ok'
         except Exception as e:
             status['services']['database'] = 'error'
@@ -472,8 +479,13 @@ def create_app():
         # Database metrics
         try:
             import os
-            db_size = os.path.getsize(CHAT_DB_PATH) if os.path.exists(CHAT_DB_PATH) else 0
-            
+            from .database import is_postgresql as _is_pg
+            if _is_pg():
+                # PostgreSQL: use PG volume size estimate or 0
+                db_size = 0  # Cannot easily determine PG size from container
+            else:
+                db_size = os.path.getsize(CHAT_DB_PATH) if os.path.exists(CHAT_DB_PATH) else 0
+
             metrics_output.append('')
             metrics_output.append('# HELP flai_database_size_bytes Database file size in bytes')
             metrics_output.append('# TYPE flai_database_size_bytes gauge')

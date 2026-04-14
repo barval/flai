@@ -1,5 +1,6 @@
 # app/queue.py
 import redis
+from flask_babel import force_locale
 import json
 import uuid
 import time

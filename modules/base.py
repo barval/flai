@@ -102,7 +102,7 @@ class BaseModule:
     
     def _validate_final_prompt(self, prompt: str, model_type: str = 'chat', lang: str = 'ru') -> Tuple[bool, str]:
         """
-        Validate final prompt before sending to Ollama.
+        Validate final prompt before sending to llama-server.
         Returns (is_valid, error_message or prompt)
         """
         model_config = self._get_model_config(model_type)

@@ -57,7 +57,7 @@ def create_mock_llamacpp():
 
 
 def create_mock_ollama():
-    """Create a mock Ollama client (kept for backward compat)."""
+    """Create a mock llama-server client (alias for backward compatibility)."""
     return create_mock_llamacpp()
 
 
@@ -75,7 +75,7 @@ def test_app():
     Create Flask app with test configuration.
 
     Each test gets its own isolated app instance with temporary databases.
-    External services (Redis, Ollama, Qdrant) are mocked.
+    External services (Redis, llama-server, Qdrant) are mocked.
     """
     # Create temporary directory for test databases
     temp_dir = tempfile.mkdtemp()

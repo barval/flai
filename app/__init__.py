@@ -340,7 +340,7 @@ def create_app():
                 from app.model_config import get_model_config
                 llamacpp_config = get_model_config('chat')
                 if llamacpp_config:
-                    service_url = llamacpp_config.get('service_url') or llamacpp_config.get('ollama_url')
+                    service_url = llamacpp_config.get('service_url')
             if not service_url:
                 service_url = 'http://flai-llamacpp:8033'
             response = requests.get(f"{service_url.rstrip('/')}/v1/models", timeout=5)

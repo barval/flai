@@ -67,7 +67,7 @@ class RagModule:
     def _get_embedding_url(self) -> Optional[str]:
         """Retrieve service URL for embedding from database."""
         config = get_model_config('embedding')
-        return config.get('service_url') if config else config.get('ollama_url') if config else None
+        return config.get('service_url') if config else None
 
     def _get_collection_name(self, user_id: str) -> str:
         """Return collection name for a specific user."""

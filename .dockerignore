@@ -30,9 +30,6 @@ services/sd_cpp/models/
 *.safetensors
 *.onnx
 
-# Old/unused service directories
-services/automatic1111/
-
 # Tests and coverage (not needed in production)
 tests/
 .pytest_cache/

@@ -145,7 +145,6 @@ def _init_postgresql():
             top_p REAL,
             timeout INTEGER,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            ollama_url TEXT,
             service_url TEXT
         )
     ''')

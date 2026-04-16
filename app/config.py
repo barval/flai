@@ -22,7 +22,7 @@ def load_config(app):
     # Database configuration (PostgreSQL required)
     app.config['DATABASE_URL'] = os.getenv('DATABASE_URL')
     
-    # llama.cpp server settings (replaces Ollama)
+    # llama.cpp server settings
     app.config['LLAMACPP_URL'] = os.getenv('LLAMACPP_URL')
     # stable-diffusion.cpp settings (uses sd-wrapper HTTP API)
     app.config['SD_MODEL_TYPE'] = os.getenv('SD_MODEL_TYPE', 'z_image_turbo')

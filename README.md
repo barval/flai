@@ -87,7 +87,7 @@ FLAI v8.0 is a modular Flask application that orchestrates self-hosted AI servic
 | **Piper TTS** | Text-to-speech synthesis | ONNX + Piper | 18888 |
 | **Qdrant** | Vector database for RAG | Rust | 6333 |
 | **Redis** | Request queue management | C | 6379 |
-| **SQLite** | User accounts, sessions, messages | Embedded SQL | -- |
+| **PostgreSQL** | User accounts, sessions, messages | SQL | 5432 |
 
 ### Single-Server Architecture
 

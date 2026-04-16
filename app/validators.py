@@ -90,7 +90,7 @@ def validate_model_config_update(data: Optional[Dict[str, Any]], module: str) ->
     if module not in MODULE_TYPES:
         raise ValidationError(f"Invalid module type: {module}. Must be one of {MODULE_TYPES}")
 
-    allowed_fields = {'model_name', 'service_url', 'ollama_url', 'context_length', 'temperature', 'top_p', 'timeout'}
+    allowed_fields = {'model_name', 'service_url', 'context_length', 'temperature', 'top_p', 'timeout'}
     updates = {k: v for k, v in data.items() if k in allowed_fields}
 
     if not updates:

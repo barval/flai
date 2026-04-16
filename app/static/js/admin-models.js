@@ -299,7 +299,6 @@ async function onModelSelect(event) {
             <p><strong>${t('Parameters:')}</strong> ${rerankerInfo.parameters}</p>
             <p><strong>${t('Quantization:')}</strong> ${rerankerInfo.quantization}</p>
             <p><strong>${t('Max context length:')}</strong> ${rerankerInfo.context_length}</p>
-            <p style="color:#888;font-style:italic;">${t('Cross-encoder model — reranks search results by relevance')}</p>
         `;
         return;
     }

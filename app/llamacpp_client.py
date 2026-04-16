@@ -2,7 +2,7 @@
 """
 Client for llama-server (llama.cpp) OpenAI-compatible API.
 
-Replaces OllamaClient. Communicates via OpenAI-compatible endpoints:
+Communicates via OpenAI-compatible endpoints:
   - POST /v1/chat/completions  (chat, reasoning, multimodal)
   - POST /v1/embeddings        (embedding)
   - GET  /v1/models             (list available models)
@@ -52,26 +52,17 @@ class LlamaCppClient:
 
     def _get_service_url(self, module_type: str) -> Optional[str]:
         """Get the service URL for a given module type.
-        Priority: 1) service_url from DB (if not legacy Ollama),
-                  2) LLAMACPP_URL from config (global fallback),
-                  3) ollama_url from DB (legacy compatibility).
+        Priority: 1) service_url from DB,
+                  2) LLAMACPP_URL from config (global fallback).
         """
         config = get_model_config(module_type)
         if config:
             service_url = config.get('service_url')
-            # If service_url is set and is not the old Ollama default, use it
-            if service_url and service_url != 'http://ollama:11434':
+            if service_url:
                 return service_url.rstrip('/')
-        # Global fallback from .env (preferred over legacy DB values)
+        # Global fallback from .env
         if self.app and self.app.config.get('LLAMACPP_URL'):
             return self.app.config['LLAMACPP_URL'].rstrip('/')
-        # Legacy DB fallback
-        if config and config.get('ollama_url'):
-            ollama_url = config['ollama_url']
-            # Convert old Ollama port to llama-server port
-            if '11434' in ollama_url:
-                return ollama_url.replace('11434', '8033').replace('ollama', 'flai-llamacpp')
-            return ollama_url.rstrip('/')
         # Last resort default
         return 'http://flai-llamacpp:8033'
 
@@ -79,7 +70,7 @@ class LlamaCppClient:
         """Check if llama-server is reachable via /v1/models endpoint."""
         url = self._get_service_url('chat')
         if not url:
-            # No URL configured — assume available (same as old OllamaClient behavior)
+            # No URL configured — assume available
             self.logger.warning("No llama-server URL configured, assuming available")
             self.available = True
             return True
@@ -492,10 +483,7 @@ class LlamaCppClient:
         validate: bool = True,
     ) -> Union[str, Dict[str, Any]]:
         """
-        Compatibility wrapper matching the old OllamaClient.call() signature.
-        This allows a smooth transition — modules can swap OllamaClient
-        for LlamaCppClient with minimal changes.
-
+        Compatibility wrapper matching the LlamaCppClient.call() signature.
         Note: stream is ignored — llama-server streaming would require
         a separate implementation with SSE parsing.
         """

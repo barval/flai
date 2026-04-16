@@ -191,7 +191,8 @@ class MultimodalModule:
 
         try:
             import re
-            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response, re.DOTALL)
+            # Try triple braces first, then plain JSON
+            json_match = re.search(r'\{\{\{[\s\S]*?\}\}\}|\{[\s\S]*\}', response)
             if json_match:
                 json_str = json_match.group()
                 prompt_data = json.loads(json_str)
@@ -254,7 +255,8 @@ class MultimodalModule:
 
         try:
             import re
-            json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response, re.DOTALL)
+            # Try triple braces first, then plain JSON
+            json_match = re.search(r'\{\{\{[\s\S]*?\}\}\}|\{[\s\S]*\}', response)
             if json_match:
                 json_str = json_match.group()
                 edit_data = json.loads(json_str)

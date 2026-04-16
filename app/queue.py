@@ -284,13 +284,14 @@ class RedisRequestQueue:
     def _get_model_for_task(self, task: Dict[str, Any]) -> str:
         """Determine which llama.cpp model a task will need.
 
-        Returns one of: 'chat', 'reasoning', 'multimodal', 'embedding', 'none'.
+        Returns one of: 'chat', 'reasoning', 'multimodal', 'embedding', 'reranker', 'none'.
         'none' means the task doesn't use llama.cpp (e.g. pure audio, index).
         """
         task_type = task.get('type', '')
         data = task.get('data', {})
         req_type = data.get('type', '')
         file_type = data.get('file_type', '')
+        action_type = data.get('action_type', '')
 
         # Tasks that don't use llama.cpp
         if task_type in ('index_document', 'reindex_all_embeddings'):
@@ -298,13 +299,17 @@ class RedisRequestQueue:
         if task_type == 'transcribe_audio':
             return 'none'
 
+        # RAG tasks: uses embedding + reasoning (optional reranker)
+        # After completion, reasoning model stays in VRAM
+        if action_type == 'rag':
+            return 'reasoning'
+
         # Audio file tasks — transcription then text, starts with chat (router)
         if file_type and file_type.startswith('audio/'):
             return 'chat'
 
         # Image edit — uses multimodal for analysis
         if req_type == 'image' and file_type and file_type.startswith('image/'):
-            # _process_image_edit_task: multimodal + sd.cpp
             return 'multimodal'
 
         # Image chat — multimodal
@@ -357,7 +362,7 @@ class RedisRequestQueue:
                     model_id = model.get('id', '')
                     # Map model ID to model type using known model configs
                     from .model_config import get_model_config
-                    for module_type in ('chat', 'reasoning', 'multimodal', 'embedding'):
+                    for module_type in ('chat', 'reasoning', 'multimodal', 'embedding', 'reranker'):
                         config = get_model_config(module_type)
                         if config and config.get('model_name') in model_id:
                             return module_type
@@ -368,6 +373,8 @@ class RedisRequestQueue:
                         return 'reasoning'
                     if any(x in model_id.lower() for x in ('bge', 'embed')):
                         return 'embedding'
+                    if any(x in model_id.lower() for x in ('rerank',)):
+                        return 'reranker'
                     return 'chat'
             return None
         except Exception as e:
@@ -393,7 +400,7 @@ class RedisRequestQueue:
           - Next task needs DIFFERENT model → unload current to free VRAM
         """
         HOT_MODELS = {'chat', 'multimodal'}
-        COLD_MODELS = {'reasoning', 'embedding'}
+        COLD_MODELS = {'reasoning', 'embedding', 'reranker'}
 
         if current_model == 'none':
             return  # Task didn't use llama.cpp, nothing to unload

@@ -418,6 +418,8 @@ class LlamaCppClient:
             self.logger.error(f"No model name configured for {model_type}")
             return None
 
+        self.logger.info(f"Reranker using model_name='{model}'")
+
         service_url = self._get_service_url(model_type)
         if not service_url:
             service_url = 'http://llamacpp:8080'
@@ -431,6 +433,7 @@ class LlamaCppClient:
             'query': query,
             'documents': documents,
             'return_documents': True,
+            'model': model,
         }
         if top_n is not None:
             payload['top_n'] = top_n

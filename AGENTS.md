@@ -595,6 +595,26 @@ docker exec flai-postgres psql -U flai -c "SELECT 1"
 docker exec flai-web python -c "from app.database import get_db; print('OK')"
 ```
 
+### Circuit Breaker
+
+The project uses a Circuit Breaker pattern to prevent cascading failures when llama.cpp is unavailable.
+
+**Configuration** (in `app/llamacpp_client.py`):
+```python
+self.circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
+```
+
+**States**:
+- **CLOSED**: Normal operation, requests pass through
+- **OPEN**: Service is failing, requests are blocked (fail fast for 60s)
+- **HALF_OPEN**: Testing if service recovered, allows one test request
+
+**Behavior**:
+- After 3 consecutive failures, circuit opens
+- While open, all requests fail immediately (no timeout waiting)
+- After 60s, allows one test request to check recovery
+- If successful, closes circuit; if fails, opens again
+
 ---
 
 ## 12. Security Considerations

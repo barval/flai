@@ -160,6 +160,9 @@ def send_message():
     user_content_json = json.dumps(user_content, ensure_ascii=False)
     user_message_id = db.save_message(session_id, 'user', user_content_json, file_data, file_type, file_name, None)
 
+    # Mark session as visited when user sends a message (prevents "unread" bug)
+    db.update_session_visit(user_id, session_id)
+
     with get_db() as conn:
         c = conn.cursor()
         c.execute('SELECT COUNT(*) as cnt FROM messages WHERE session_id = %s', (session_id,))

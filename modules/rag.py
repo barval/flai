@@ -338,6 +338,7 @@ class RagModule:
         if not reasoning_config:
             return None, "Reasoning model configuration missing", None
         max_context_tokens = reasoning_config.get('context_length', 40960)
+        self.logger.info(f"RAG: reasoning context_length from config: {max_context_tokens}")
 
         # Dynamic context limit: percentage of model's context window
         rag_context_percent = current_app.config.get('RAG_CONTEXT_PERCENT', 30)

@@ -312,7 +312,11 @@ def llamacpp_models():
         if resp.status_code == 200:
             data = resp.json()
             # OpenAI format: {"data": [{"id": "model1", ...}, ...]}
-            models = [m['id'] for m in data.get('data', [])]
+            # Filter: only actual model files (with .gguf extension or proper model names)
+            all_items = [m['id'] for m in data.get('data', [])]
+            # Filter out section names and non-model entries
+            exclude_keys = {'chat', 'embedding', 'multimodal', 'reasoning', 'chatgguf', 'embeddinggguf', 'multimodalgguf', 'reasoninggguf'}
+            models = [m for m in all_items if m.lower() not in exclude_keys and ('.gguf' in m.lower() or any(c.isdigit() for c in m))]
             return jsonify(models)
         else:
             return jsonify({'error': _('llama-server returned {status}').format(status=resp.status_code)}), 500

@@ -25,8 +25,7 @@ services:
       - SD_WRAPPER_URL=http://flai-sd:7861
     user: "1000:1000"
     networks:
-      flai_network:
-        name: flai_flai_network
+      - flai_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
@@ -62,8 +61,7 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes
     networks:
-      flai_network:
-        name: flai_flai_network
+      - flai_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -101,8 +99,7 @@ services:
       - postgres
     restart: "no"
     networks:
-      flai_network:
-        name: flai_flai_network
+      - flai_network
 
   # ============================================================
   # LLAMA.CPP SERVER (Required - LLM Inference, router mode)
@@ -136,8 +133,7 @@ services:
               count: 1
               capabilities: [gpu]
     networks:
-      flai_network:
-        name: flai_flai_network
+      - flai_network
     restart: unless-stopped
     # Router mode: --models-dir allows dynamic model switching
     # --models-max 1: only keep one model in VRAM at a time (avoid OOM on 16GB GPU)
@@ -199,8 +195,7 @@ services:
               count: 1
               capabilities: [gpu]
     networks:
-      flai_network:
-        name: flai_flai_network
+      - flai_network
     restart: unless-stopped
     # Run sd-wrapper HTTP API on port 7861 (calls sd-cli internally)
     entrypoint: ["python3", "/app/sd_wrapper.py"]
@@ -243,8 +238,7 @@ services:
     volumes:
       - ~/.cache/huggingface:/root/.cache/huggingface
     networks:
-      flai_network:
-        name: flai_flai_network
+      - flai_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/docs"]
@@ -283,8 +277,7 @@ services:
     environment:
       - PIPER_MODEL_DIR=/app/models
     networks:
-      flai_network:
-        name: flai_flai_network
+      - flai_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8888/health')\" || exit 1"]
@@ -323,8 +316,7 @@ services:
       - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
       - QDRANT__SERVICE__ENABLE_TLS=0
     networks:
-      flai_network:
-        name: flai_flai_network
+      - flai_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' || exit 1"]
@@ -363,8 +355,7 @@ services:
       - POSTGRES_USER=flai
       - POSTGRES_PASSWORD=flai_password
     networks:
-      flai_network:
-        name: flai_flai_network
+      - flai_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U flai"]
@@ -388,6 +379,7 @@ services:
 
 networks:
   flai_network:
+    name: flai_flai_network
     driver: bridge
 
 volumes:

@@ -68,12 +68,25 @@ def admin_panel():
     documents_folder = current_app.config.get('DOCUMENTS_FOLDER', 'data/documents')
     documents_db_size = get_folder_size_bytes(documents_folder)
 
+    # Get chunk configuration from RAG module
+    chunk_size = 500
+    chunk_overlap = 50
+    chunk_strategy = 'fixed'
+    if 'rag' in current_app.modules and current_app.modules['rag']:
+        rag = current_app.modules['rag']
+        chunk_size = rag.chunk_size
+        chunk_overlap = rag.chunk_overlap
+        chunk_strategy = rag.chunk_strategy
+
     return render_template('admin.html',
                           rooms=rooms,
                           chat_db_size=0,
                           user_db_size=user_db_size,
                           files_db_size=files_db_size,
-                          documents_db_size=documents_db_size)
+                          documents_db_size=documents_db_size,
+                          chunk_size=chunk_size,
+                          chunk_overlap=chunk_overlap,
+                          chunk_strategy=chunk_strategy)
 
 
 @bp.route('/api/users', methods=['GET'])
@@ -330,11 +343,6 @@ def llamacpp_model_info(name):
                 'bge-m3-Q8_0': {
                     'arch': 'bge', 'params': '~567M', 'ctx': 8192, 'emb': 1024
                 },
-                'bge-reranker-v2-m3-Q4_K_M': {
-                    'arch': 'bge-reranker', 'params': '~560M', 'ctx': 8192,
-                    'emb': None,  # Reranker doesn't have embeddings
-                    'type': 'reranker'
-                },
             }
 
             known = KNOWN_MODELS.get(name, {})
@@ -352,8 +360,6 @@ def llamacpp_model_info(name):
                     arch = 'gemma'
                 elif 'gpt-oss' in name_lower:
                     arch = 'gpt-oss'
-                elif 'reranker' in name_lower:
-                    arch = 'bge-reranker'
                 elif 'bge' in name_lower:
                     arch = 'bge'
                 elif 'llama' in name_lower:
@@ -471,3 +477,79 @@ def update_model_config(module):
         result['model_name'] = updates.get('model_name')
 
     return jsonify(result)
+
+
+@bp.route('/api/admin/reindex-all', methods=['POST'])
+@admin_required
+def api_admin_reindex_all():
+    """Manually trigger reindex of all documents."""
+    current_app.logger.info(f"Reindex API called, is_admin={session.get('is_admin')}")
+    try:
+        if not hasattr(current_app, 'request_queue') or not current_app.request_queue:
+            return jsonify({'ok': False, 'error': 'Request queue not available'}), 500
+        lang = request.json.get('lang', 'ru') if request.is_json else 'ru'
+        current_app.request_queue.add_reindex_all_task(lang=lang)
+        current_app.logger.info("Manual reindex all documents triggered via admin")
+        return jsonify({'ok': True, 'message': 'Reindex started'})
+    except Exception as e:
+        current_app.logger.error(f"Error triggering reindex: {e}")
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@bp.route('/api/admin/chunks', methods=['PUT'])
+@admin_required
+def api_save_chunks_config():
+    """Save chunk configuration and trigger reindex if changed."""
+    from app.database import get_db
+    
+    data = request.get_json()
+    new_chunk_size = data.get('chunk_size', 500)
+    new_chunk_overlap = data.get('chunk_overlap', 50)
+    new_chunk_strategy = data.get('chunk_strategy', 'fixed')
+
+    # Get original config
+    rag = current_app.modules.get('rag')
+    if not rag:
+        return jsonify({'ok': False, 'error': 'RAG module not available'}), 500
+
+    old_chunk_size = rag.chunk_size
+    old_chunk_overlap = rag.chunk_overlap
+    old_chunk_strategy = rag.chunk_strategy
+
+    # Check if anything changed
+    config_changed = (new_chunk_size != old_chunk_size or 
+                   new_chunk_overlap != old_chunk_overlap or 
+                   new_chunk_strategy != old_chunk_strategy)
+
+    if config_changed:
+        # Save to config table
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute('''
+                INSERT INTO model_configs (module, chunk_size, chunk_overlap, chunk_strategy, updated_at)
+                VALUES ('chunks', %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (module) DO UPDATE SET
+                    chunk_size = EXCLUDED.chunk_size,
+                    chunk_overlap = EXCLUDED.chunk_overlap,
+                    chunk_strategy = EXCLUDED.chunk_strategy,
+                    updated_at = CURRENT_TIMESTAMP
+            ''', (new_chunk_size, new_chunk_overlap, new_chunk_strategy))
+            conn.commit()
+
+        # Update RAG module values
+        rag.chunk_size = new_chunk_size
+        rag.chunk_overlap = new_chunk_overlap
+        rag.chunk_strategy = new_chunk_strategy
+
+        current_app.logger.info(f"Chunk config changed: size={old_chunk_size}->{new_chunk_size}, overlap={old_chunk_overlap}->{new_chunk_overlap}, strategy={old_chunk_strategy}->{new_chunk_strategy}")
+
+        # Trigger reindex
+        if hasattr(current_app, 'request_queue') and current_app.request_queue:
+            current_app.request_queue.add_reindex_all_task(lang='ru')
+            current_app.logger.info("Reindex triggered due to chunk config change")
+            return jsonify({'ok': True, 'reindex_triggered': True})
+        else:
+            return jsonify({'ok': True, 'reindex_triggered': False, 'error': 'Queue not available'})
+    else:
+        current_app.logger.info("Chunk config unchanged")
+        return jsonify({'ok': True, 'reindex_triggered': False})

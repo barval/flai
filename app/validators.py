@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 # Whitelist patterns
 LOGIN_PATTERN = re.compile(r'^[a-zA-Z0-9_\-]{3,50}$')
 NAME_PATTERN = re.compile(r'^[a-zA-Zа-яА-ЯёЁ0-9_\s\-]{2,100}$')
-MODULE_TYPES = {'chat', 'reasoning', 'multimodal', 'embedding', 'reranker'}
+MODULE_TYPES = {'chat', 'reasoning', 'multimodal', 'embedding'}
 
 
 class ValidationError(Exception):

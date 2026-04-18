@@ -665,7 +665,6 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 | **gpt-oss-20b-mxfp4** | Reasoning (complex tasks) | [OpenAI License](https://huggingface.co/openai/gpt-oss-20b-GGUF) | ~12 GB |
 | **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (image analysis) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5.5 GB + mmproj ~200 MB |
 | **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/BAAI/bge-m3-gguf) | ~2.2 GB |
-| **bge-reranker-v2-m3-Q4_K_M** | Reranking (RAG relevance) | [MIT License](https://huggingface.co/BAAI/bge-reranker-v2-m3) | ~0.4 GB |
 
 ### Image Generation Models (stable-diffusion.cpp)
 

@@ -179,6 +179,14 @@ def create_app():
     app.register_blueprint(sessions.bp)
     app.register_blueprint(documents.bp)
     app.register_blueprint(backups.bp)
+    
+    # Debug API endpoints (only when DEBUG_API_ENABLED=true)
+    if app.config.get('DEBUG_API_ENABLED'):
+        from .routes import debug
+        # Exempt debug blueprint from CSRF
+        csrf.exempt(debug.bp)
+        app.register_blueprint(debug.bp)
+        app.logger.info("Debug API enabled")
 
     # Register CLI commands
     from . import cli

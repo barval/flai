@@ -51,6 +51,30 @@ msgstr "Document not found"
 msgid "Documents DB"
 msgstr "Documents DB"
 
+msgid "Documents Reindexing"
+msgstr "Documents Reindexing"
+
+msgid "Reindex All Documents"
+msgstr "Reindex All Documents"
+
+msgid "Rebuild all document embeddings with current chunking strategy"
+msgstr "Rebuild all document embeddings with current chunking strategy"
+
+msgid "Current strategy"
+msgstr "Current strategy"
+
+msgid "Reindex all documents"
+msgstr "Reindex all documents"
+
+msgid "Reindex All"
+msgstr "Reindex All"
+
+msgid "Reindexing all documents with new embedding model started. This may take a while."
+msgstr "Reindexing all documents with new embedding model started. This may take a while."
+
+msgid "Reindex all documents? This will rebuild all document embeddings."
+msgstr "Reindex all documents? This will rebuild all document embeddings."
+
 msgid "FLAI"
 msgstr "FLAI"
 
@@ -596,6 +620,15 @@ msgstr "Timeout must be between 0 and 1200 seconds."
 
 msgid "Reindexing all documents with new embedding model started. This may take a while."
 msgstr "Reindexing all documents with new embedding model started. This may take a while."
+
+msgid "Reindexing in progress"
+msgstr "Reindexing in progress"
+
+msgid "Reindexing complete"
+msgstr "Reindexing complete"
+
+msgid "Reindexing failed"
+msgstr "Reindexing failed"
 
 msgid "transcribing"
 msgstr "Transcribing..."

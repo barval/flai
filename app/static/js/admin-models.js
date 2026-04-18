@@ -3,20 +3,16 @@
 // Updated for llama.cpp (llama-server OpenAI-compatible API)
 
 let currentModelConfigs = {};
-let modelDetails = {};        // cache for model info
-let modelListCache = {};      // cache for list of models per URL
+let modelDetails = {};
+let modelListCache = {};
 
-// Get CSRF token from meta tag
 function getCSRFToken() {
     const token = document.querySelector('meta[name="csrf-token"]');
     return token ? token.getAttribute('content') : '';
 }
 
-// Fetch wrapper with CSRF token for POST/PUT/DELETE requests
 function fetchWithCSRF(url, options = {}) {
     const method = (options.method || 'GET').toUpperCase();
-
-    // Add CSRF token for state-changing requests
     if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
         const headers = options.headers || {};
         if (!headers['X-CSRFToken'] && !headers['X-CSRF-TOKEN']) {
@@ -24,16 +20,16 @@ function fetchWithCSRF(url, options = {}) {
         }
         options.headers = headers;
     }
-
     return fetch(url, options);
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    initAdminTabs();
-    if (document.getElementById('models-tab')) {
-        loadModelConfigs();
+function t(key) {
+    if (!(key in window.TRANSLATIONS)) {
+        console.warn('Missing translation key:', key);
+        return key;
     }
-});
+    return window.TRANSLATIONS[key];
+}
 
 function initAdminTabs() {
     const tabs = document.querySelectorAll('.admin-tab');
@@ -66,13 +62,11 @@ function renderModelCards() {
         { id: 'chat', name: 'Chat', config: currentModelConfigs.chat || {} },
         { id: 'reasoning', name: 'Reasoning', config: currentModelConfigs.reasoning || {} },
         { id: 'multimodal', name: 'Multimodal', config: currentModelConfigs.multimodal || {} },
-        { id: 'embedding', name: 'Embedding', config: currentModelConfigs.embedding || {} },
-        { id: 'reranker', name: 'Reranker', config: currentModelConfigs.reranker || {} }
+        { id: 'embedding', name: 'Embedding', config: currentModelConfigs.embedding || {} }
     ];
 
     let html = '';
     modules.forEach(mod => {
-        // Support both service_url (new) and ollama_url (legacy)
         const serviceUrl = mod.config.service_url || mod.config.ollama_url || '';
         const isLocal = serviceUrl === 'http://llamacpp:8033' || serviceUrl === 'http://ollama:11434';
 
@@ -97,7 +91,6 @@ function renderModelCards() {
             </div>
             <div class="model-details" id="details-${mod.id}" style="display:none;"></div>`;
 
-        // Show parameters only for non-embedding and non-reranker modules
         if (mod.id !== 'embedding' && mod.id !== 'reranker') {
             html += `
             <div class="parameters">
@@ -127,7 +120,6 @@ function renderModelCards() {
     });
     container.innerHTML = html;
 
-    // Attach event listeners
     document.querySelectorAll('.model-dropdown').forEach(select => {
         select.addEventListener('change', onModelSelect);
     });
@@ -147,7 +139,6 @@ function renderModelCards() {
         });
     });
 
-    // Initial status check for each module
     modules.forEach(mod => {
         updateServiceStatus(mod.id);
         const select = document.querySelector(`.model-dropdown[data-module="${mod.id}"]`);
@@ -191,7 +182,6 @@ async function updateServiceStatus(module) {
             statusIcon.title = t('llama-server unavailable') + (data.error ? `: ${data.error}` : '');
         }
     } catch (err) {
-        console.error(`Failed to check llama-server status for ${module}:`, err);
         statusIcon.textContent = '❌';
         statusIcon.title = t('llama-server unavailable') + ': ' + err.message;
     }
@@ -215,11 +205,8 @@ async function refreshModelsForModule(module) {
         return;
     }
     const select = document.querySelector(`.model-dropdown[data-module="${module}"]`);
-    // Clear current options except placeholder
     select.innerHTML = `<option value="">${t('-- Select model --')}</option>`;
     select.disabled = true;
-
-    // Clear previous error message
     clearModelError(module);
 
     try {
@@ -241,16 +228,13 @@ async function refreshModelsForModule(module) {
             select.appendChild(option);
         });
     } catch (err) {
-        console.error(`Failed to fetch models for ${module}:`, err);
         showModelError(module, t('error') + ': ' + err.message);
     } finally {
         select.disabled = false;
-        // Restore previously selected model if exists
         const currentConfig = currentModelConfigs[module] || {};
         if (currentConfig.model_name) {
             select.value = currentConfig.model_name;
         }
-        // Trigger details load if a model is selected
         if (select.value) {
             onModelSelect({ target: select });
         }
@@ -285,14 +269,12 @@ async function onModelSelect(event) {
     }
     detailsGrid.style.display = 'block';
 
-    // For reranker module, show static info (llama.cpp doesn't provide details for reranker models)
     if (module === 'reranker') {
         const rerankerInfo = {
             architecture: 'BGE Cross-Encoder',
             parameters: '~560M',
             quantization: 'Q4_K_M',
-            context_length: '8192',
-            type: 'reranker'
+            context_length: '8192'
         };
         detailsGrid.innerHTML = `
             <p><strong>${t('Architecture:')}</strong> ${rerankerInfo.architecture}</p>
@@ -328,13 +310,11 @@ async function onModelSelect(event) {
             info = await res.json();
             modelDetails[`${serviceUrl}:${modelName}`] = info;
         } catch (err) {
-            console.error(`Error loading model info for ${modelName}:`, err);
             detailsGrid.innerHTML = `<p>${t('error')}: ${err.message}</p>`;
             return;
         }
     }
 
-    // Build details HTML — skip embedding length for non-embedding models
     let detailsHtml = `
         <p><strong>${t('Architecture:')}</strong> ${info.architecture || 'N/A'}</p>
         <p><strong>${t('Parameters:')}</strong> ${info.parameters || 'N/A'}</p>
@@ -345,14 +325,12 @@ async function onModelSelect(event) {
         detailsHtml += `<p><strong>${t('Max context length:')}</strong> ${info.context_length}</p>`;
     }
 
-    // Only show embedding length for embedding module
     if (module === 'embedding' && info.embedding_length && info.embedding_length !== 'N/A') {
         detailsHtml += `<p><strong>${t('Embedding length:')}</strong> ${info.embedding_length}</p>`;
     }
 
     detailsGrid.innerHTML = detailsHtml;
 
-    // Set max attribute for context length input
     const ctxInput = document.querySelector(`.context-length[data-module="${module}"]`);
     if (ctxInput && info.context_length && info.context_length !== 'N/A') {
         ctxInput.max = info.context_length;
@@ -372,7 +350,7 @@ function validateModelConfig(module, card) {
         return false;
     }
 
-    if (module === 'embedding') return true;   // no parameters to validate
+    if (module === 'embedding') return true;
 
     const contextLength = card.querySelector('.context-length')?.value;
     const temperature = card.querySelector('.temperature')?.value;
@@ -455,7 +433,6 @@ function onSaveConfig(event) {
             btn.textContent = '✓ ' + t('Saved');
             setTimeout(() => { btn.textContent = t('Save'); }, 2000);
 
-            // Update global config cache
             if (!currentModelConfigs[module]) currentModelConfigs[module] = {};
             Object.assign(currentModelConfigs[module], data);
 
@@ -482,7 +459,60 @@ function escapeHtml(str) {
         if (m === '<') return '&lt;';
         if (m === '>') return '&gt;';
         return m;
-    }).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
-        return c;
     });
 }
+
+function initChunksSection() {
+    const saveChunksBtn = document.getElementById('save-chunks-btn');
+    if (!saveChunksBtn) return;
+
+    saveChunksBtn.addEventListener('click', async function() {
+        const chunkSize = parseInt(document.getElementById('chunk-size').value) || 500;
+        const chunkOverlap = parseInt(document.getElementById('chunk-overlap').value) || 50;
+        const chunkStrategy = document.getElementById('chunk-strategy').value || 'fixed';
+
+        const statusEl = document.getElementById('chunks-status');
+        statusEl.textContent = '⏳';
+
+        try {
+            const response = await fetchWithCSRF('/admin/api/admin/chunks', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chunk_size: chunkSize,
+                    chunk_overlap: chunkOverlap,
+                    chunk_strategy: chunkStrategy
+                })
+            });
+            const result = await response.json();
+            if (result.ok) {
+                if (result.reindex_triggered) {
+                    alert(t('chunks_saved'));
+                } else {
+                    alert(t('chunks_unchanged'));
+                }
+                statusEl.textContent = '✅';
+            } else {
+                alert(t('Error') + ': ' + (result.error || t('unknown_error')));
+                statusEl.textContent = '❌';
+            }
+        } catch (err) {
+            console.error('Save chunks error:', err);
+            statusEl.textContent = '❌';
+            alert(t('error'));
+        }
+    });
+
+    const strategySelect = document.getElementById('chunk-strategy');
+    if (strategySelect && typeof currentChunkStrategy !== 'undefined') {
+        strategySelect.value = currentChunkStrategy;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    initAdminTabs();
+    if (document.getElementById('models-tab')) {
+        loadModelConfigs();
+    }
+    initChunksSection();
+});

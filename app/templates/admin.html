@@ -56,6 +56,31 @@
                 <!-- Cards will be populated by JavaScript -->
             </div>
         </div>
+        
+        <!-- Chunks Section -->
+        <div class="model-card" id="chunks-card">
+            <h3><span class="module-name">{{ _('Chunks') }}</span> <span id="chunks-status" class="service-status-icon" title=""></span></h3>
+            <div class="chunks-config">
+                <div class="param">
+                    <label>{{ _('Chunk Size') }}</label>
+                    <input type="number" id="chunk-size" min="100" step="10" value="{{ chunk_size }}">
+                </div>
+                <div class="param">
+                    <label>{{ _('Chunk Overlap') }}</label>
+                    <input type="number" id="chunk-overlap" min="0" step="10" value="{{ chunk_overlap }}">
+                </div>
+                <div class="param">
+                    <label>{{ _('Chunk Strategy') }}</label>
+                    <select id="chunk-strategy">
+                        <option value="fixed">{{ _('Fixed (by size)') }}</option>
+                        <option value="recursive">{{ _('Structural (by headings)') }}</option>
+                    </select>
+                </div>
+            </div>
+            <div class="model-actions">
+                <button id="save-chunks-btn" class="btn-primary">{{ _('Save') }}</button>
+            </div>
+        </div>
     </div>
 
     <!-- Backups tab content -->
@@ -213,8 +238,6 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'Reasoning': {{ _('Reasoning')|tojson }},
     'Multimodal': {{ _('Multimodal')|tojson }},
     'Embedding': {{ _('Embedding')|tojson }},
-    'Reranker': {{ _('Reranker')|tojson }},
-    'BGE Cross-Encoder': {{ _('BGE Cross-Encoder')|tojson }},
     '-- Select model --': {{ _('-- Select model --')|tojson }},
     'Context Length': {{ _('Context Length')|tojson }},
     'Temperature': {{ _('Temperature')|tojson }},
@@ -233,7 +256,16 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'Top P must be between 0.0 and 1.0.': {{ _('Top P must be between 0.0 and 1.0.')|tojson }},
     'Timeout must be between 0 and 1200 seconds.': {{ _('Timeout must be between 0 and 1200 seconds.')|tojson }},
     'Save': {{ _('Save')|tojson }},
+    'Chunks': {{ _('Chunks')|tojson }},
+    'Chunk Size': {{ _('Chunk Size')|tojson }},
+    'Chunk Overlap': {{ _('Chunk Overlap')|tojson }},
+    'Chunk Strategy': {{ _('Chunk Strategy')|tojson }},
+    'Fixed (by size)': {{ _('Fixed (by size)')|tojson }},
+    'Structural (by headings)': {{ _('Structural (by headings)')|tojson }},
+    'chunks_saved': {{ _('Chunk configuration saved. Reindexing started.')|tojson }},
+    'chunks_unchanged': {{ _('Chunk configuration saved.')|tojson }},
     'reindex_started': {{ _('Reindexing all documents with new embedding model started. This may take a while.')|tojson }},
+    'reindex_all_confirm': {{ _('Reindex all documents? This will rebuild all document embeddings.')|tojson }},
     // New translations for per-model URL
     'Local': {{ _('Local')|tojson }},
     'Please provide llama-server URL first': {{ _('Please provide llama-server URL first')|tojson }},

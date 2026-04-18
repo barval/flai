@@ -284,7 +284,7 @@ class RedisRequestQueue:
     def _get_model_for_task(self, task: Dict[str, Any]) -> str:
         """Determine which llama.cpp model a task will need.
 
-        Returns one of: 'chat', 'reasoning', 'multimodal', 'embedding', 'reranker', 'none'.
+        Returns one of: 'chat', 'reasoning', 'multimodal', 'embedding', 'none'.
         'none' means the task doesn't use llama.cpp (e.g. pure audio, index).
         """
         task_type = task.get('type', '')
@@ -299,7 +299,7 @@ class RedisRequestQueue:
         if task_type == 'transcribe_audio':
             return 'none'
 
-        # RAG tasks: uses embedding + reasoning (optional reranker)
+        # RAG tasks: uses embedding + reasoning
         # After completion, reasoning model stays in VRAM
         if action_type == 'rag':
             return 'reasoning'
@@ -362,7 +362,7 @@ class RedisRequestQueue:
                     model_id = model.get('id', '')
                     # Map model ID to model type using known model configs
                     from .model_config import get_model_config
-                    for module_type in ('chat', 'reasoning', 'multimodal', 'embedding', 'reranker'):
+                    for module_type in ('chat', 'reasoning', 'multimodal', 'embedding'):
                         config = get_model_config(module_type)
                         if config and config.get('model_name') in model_id:
                             return module_type
@@ -373,8 +373,6 @@ class RedisRequestQueue:
                         return 'reasoning'
                     if any(x in model_id.lower() for x in ('bge', 'embed')):
                         return 'embedding'
-                    if any(x in model_id.lower() for x in ('rerank',)):
-                        return 'reranker'
                     return 'chat'
             return None
         except Exception as e:
@@ -400,7 +398,7 @@ class RedisRequestQueue:
           - Next task needs DIFFERENT model → unload current to free VRAM
         """
         HOT_MODELS = {'chat', 'multimodal'}
-        COLD_MODELS = {'reasoning', 'embedding', 'reranker'}
+        COLD_MODELS = {'reasoning', 'embedding'}
 
         if current_model == 'none':
             return  # Task didn't use llama.cpp, nothing to unload

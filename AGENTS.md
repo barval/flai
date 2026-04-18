@@ -58,7 +58,6 @@ psycopg2-binary==2.9.9
 | **gpt-oss-20b-mxfp4** | Complex reasoning, code generation | 12 GB | Apache 2.0 | HuggingFace |
 | **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (image analysis) | 4.7 GB + 1.1 GB mmproj | Apache 2.0 | HuggingFace |
 | **bge-m3-Q8_0** | Text embedding for RAG | 606 MB | MIT | HuggingFace |
-| **bge-reranker-v2-m3-Q4_K_M** | RAG result reranking | 419 MB | MIT | HuggingFace |
 
 ### 3.2 Image Generation Models
 
@@ -105,10 +104,6 @@ wget -O services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf \
 # bge-m3-Q8_0 embedding model (~606 MB)
 wget -O services/llamacpp/models/bge-m3-Q8_0.gguf \
   "https://huggingface.co/BAAI/bge-m3-gguf/resolve/main/bge-m3-Q8_0.gguf"
-
-# bge-reranker-v2-m3-Q4_K_M (~419 MB)
-wget -O services/llamacpp/models/bge-reranker-v2-m3-Q4_K_M.gguf \
-  "https://huggingface.co/BAAI/bge-reranker-v2-m3-GGUF/resolve/main/bge-reranker-v2-m3-Q4_K_M.gguf"
 
 # Download Piper voices (see services/piper/download-voices.sh)
 ```
@@ -306,7 +301,6 @@ docker exec -it flai-web flask cli set-admin-password new_password
    - Reasoning: gpt-oss-20b-mxfp4
    - Multimodal: Qwen3VL-8B-Instruct-Q4_K_M
    - Embedding: bge-m3-Q8_0
-   - Reranker: bge-reranker-v2-m3-Q4_K_M
 4. Save configuration
 
 ### 6.3 Verify Services
@@ -514,11 +508,11 @@ project/
 - Smart history truncation
 - Configurable safety margins
 
-### 9.6 RAG Reranking
+### 9.6 RAG Chunking
 
-- Cross-encoder reranker via llama.cpp `/v1/rerank`
-- Relevance threshold configuration
-- Improved search accuracy
+- Fixed and recursive chunking strategies
+- Configurable chunk size and overlap
+- Document metadata in chunks (filename, chunk_index)
 
 ---
 
@@ -669,7 +663,6 @@ Required models for documentation:
 | gpt-oss-20b-mxfp4 | Reasoning | 12 GB | Apache 2.0 |
 | Qwen3VL-8B-Instruct-Q4_K_M | Multimodal | 4.7 GB + 1.1 GB mmproj | Apache 2.0 |
 | bge-m3-Q8_0 | Embedding | 606 MB | MIT |
-| bge-reranker-v2-m3-Q4_K_M | Reranking | 419 MB | MIT |
 
 ---
 

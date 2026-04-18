@@ -212,4 +212,4 @@ class TestPatterns:
 
     def test_module_types(self):
         """MODULE_TYPES should contain all types."""
-        assert MODULE_TYPES == {'chat', 'reasoning', 'multimodal', 'embedding', 'reranker'}
+        assert MODULE_TYPES == {'chat', 'reasoning', 'multimodal', 'embedding'}

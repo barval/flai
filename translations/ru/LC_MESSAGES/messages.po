@@ -52,6 +52,39 @@ msgstr "Документ не найден"
 msgid "Documents DB"
 msgstr "База документов"
 
+msgid "Documents Reindexing"
+msgstr "Переиндексация документов"
+
+msgid "Reindex All Documents"
+msgstr "Переиндексировать все документы"
+
+msgid "Rebuild all document embeddings with current chunking strategy"
+msgstr "Перестроить все эмбеддинги документов с текущей стратегией чанкинга"
+
+msgid "Current strategy"
+msgstr "Текущая стратегия"
+
+msgid "Reindex all documents"
+msgstr "Переиндексировать все документы"
+
+msgid "Reindex All"
+msgstr "Переиндексировать"
+
+msgid "Reindexing all documents with new embedding model started. This may take a while."
+msgstr "Началась переиндексация всех документов с новой моделью эмбеддингов. Это может занять некоторое время."
+
+msgid "Reindexing in progress"
+msgstr "Переиндексация в процессе"
+
+msgid "Reindexing complete"
+msgstr "Переиндексация завершена"
+
+msgid "Reindexing failed"
+msgstr "Переиндексация не удалась"
+
+msgid "Reindex all documents? This will rebuild all document embeddings."
+msgstr "Переиндексировать все документы? Это перестроит все эмбеддинги документов."
+
 msgid "FLAI"
 msgstr "ПЛИИ"
 

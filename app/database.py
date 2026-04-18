@@ -174,8 +174,7 @@ def _init_postgresql():
                 ('chat', 'Qwen3-4B-Instruct-2507-Q4_K_M', 8192, 0.1, 0.1, 120, 'http://llamacpp:8033'),
                 ('reasoning', 'gpt-oss-20b-mxfp4', 8192, 0.7, 0.9, 120, 'http://llamacpp:8033'),
                 ('multimodal', 'Qwen3VL-8B-Instruct-Q4_K_M', 8192, 0.7, 0.9, 120, 'http://llamacpp:8033'),
-                ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://llamacpp:8033'),
-                ('reranker', 'bge-reranker-v2-m3-Q4_K_M', 512, NULL, NULL, 120, 'http://llamacpp:8033')
+                ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://llamacpp:8033')
         ''')
 
     conn.commit()

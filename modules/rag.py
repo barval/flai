@@ -10,7 +10,7 @@ from flask_babel import gettext as _
 from flask_babel import force_locale
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
-from app.utils import extract_text_from_file, chunk_text, get_current_time_in_timezone, format_prompt, estimate_tokens, build_context_prompt
+from app.utils import extract_text_from_file, chunk_text, chunk_text_recursive, get_current_time_in_timezone, format_prompt, estimate_tokens, build_context_prompt
 from app.db import get_session_text_history, update_document_index_status, get_document
 from app.model_config import get_model_config
 from app.llamacpp_client import LlamaCppClient
@@ -25,9 +25,8 @@ class RagModule:
         self.collection_name_prefix = "user_"
         self.chunk_size = 500
         self.chunk_overlap = 50
+        self.chunk_strategy = 'fixed'
         self.top_k = 20
-        self.rerank_top_k = 10
-        self.reranker_enabled = False
         if app:
             self.init_app(app)
 
@@ -37,13 +36,12 @@ class RagModule:
         qdrant_api_key = app.config.get('QDRANT_API_KEY')
         self.chunk_size = app.config.get('RAG_CHUNK_SIZE', 500)
         self.chunk_overlap = app.config.get('RAG_CHUNK_OVERLAP', 50)
-        self.top_k = app.config.get('RAG_TOP_K', 20)
-        self.rerank_top_k = app.config.get('RERANK_TOP_K', 10)
-        self.reranker_enabled = app.config.get('RERANKER_ENABLED', True)
+        self.chunk_strategy = app.config.get('RAG_CHUNK_STRATEGY', 'fixed')
+        self.top_k = app.config.get('RAG_TOP_K', 80)
         # Log the loaded top_k value for debugging
         app.logger.info(f"RagModule: loaded RAG_TOP_K = {self.top_k} from config")
-        app.logger.info(f"RagModule: loaded RERANK_TOP_K = {self.rerank_top_k} from config")
-        app.logger.info(f"RagModule: RERANKER_ENABLED = {self.reranker_enabled}")
+        app.logger.info(f"RagModule: loaded RAG_CHUNK_SIZE = {self.chunk_size} from config")
+        app.logger.info(f"RagModule: loaded RAG_CHUNK_STRATEGY = {self.chunk_strategy} from config")
 
         if not qdrant_url:
             app.logger.warning("QDRANT_URL not set, RAG module disabled")
@@ -135,8 +133,11 @@ class RagModule:
             return False, "Failed to extract text from document"
         self.logger.info(f"index_document: extracted {len(text)} characters from {file_path}")
 
-        # 2. Chunk text
-        chunks = chunk_text(text, self.chunk_size, self.chunk_overlap)
+        # 2. Chunk text based on strategy
+        if self.chunk_strategy == 'recursive':
+            chunks = chunk_text_recursive(text, self.chunk_size, self.chunk_overlap)
+        else:
+            chunks = chunk_text(text, self.chunk_size, self.chunk_overlap)
         if not chunks:
             self.logger.error(f"index_document: no text chunks generated from {file_path}")
             return False, "No text chunks generated"
@@ -215,114 +216,74 @@ class RagModule:
     def search(self, user_id: str, query: str, top_k: Optional[int] = None) -> Tuple[List[Dict], List[float]]:
         """
         Search for relevant chunks based on query.
-        If reranking is enabled, chunks are re-scored by the cross-encoder reranker via llama.cpp.
         Returns tuple of (chunk_dicts with metadata, scores).
         """
         if not self.available:
             return [], []
         top_k = top_k or self.top_k
-        query_emb = self._get_embedding(query)
-        if query_emb is None:
+        
+        # Split complex query into simple sub-queries for better matching
+        sub_queries = self._split_query_for_search(query)
+        
+        # Collect chunks from all sub-queries
+        all_chunks = []
+        all_scores = []
+        
+        for sq in sub_queries:
+            query_emb = self._get_embedding(sq)
+            if query_emb is None:
+                continue
+            collection_name = self._get_collection_name(user_id)
+            try:
+                search_result = self.qdrant_client.search(
+                    collection_name=collection_name,
+                    query_vector=query_emb,
+                    query_filter=models.Filter(
+                        must=[models.FieldCondition(key="user_id", match=models.MatchValue(value=user_id))]
+                    ),
+                    limit=10  # Small limit per sub-query
+                )
+                for hit in search_result:
+                    all_chunks.append(hit.payload)
+                    all_scores.append(hit.score)
+            except Exception as e:
+                self.logger.warning(f"Search failed for sub-query '{sq[:30]}...': {e}")
+        
+        if not all_chunks:
             return [], []
-        collection_name = self._get_collection_name(user_id)
-        try:
-            search_result = self.qdrant_client.search(
-                collection_name=collection_name,
-                query_vector=query_emb,
-                query_filter=models.Filter(
-                    must=[models.FieldCondition(key="user_id", match=models.MatchValue(value=user_id))]
-                ),
-                limit=top_k
-            )
-            # Return full payload with metadata, not just text
-            chunks = [hit.payload for hit in search_result]
-            scores = [hit.score for hit in search_result]
-            self.logger.info(f"search: found {len(chunks)} chunks for query '{query[:50]}...' (top_k={top_k})")
+        
+        # Deduplicate by doc_id, keep highest scoring chunk per doc_id
+        seen = {}
+        chunks = []
+        scores = []
+        for chunk, score in zip(all_chunks, all_scores):
+            doc_id = chunk.get('doc_id', '')
+            if doc_id not in seen:
+                seen[doc_id] = True
+                chunks.append(chunk)
+                scores.append(score)
 
-            # --- Reranking step (if enabled) ---
-            if chunks and self.reranker_enabled:
-                chunks, scores = self._rerank_results(query, chunks, scores)
+        self.logger.info(f"search: found {len(chunks)} unique chunks for query '{query[:50]}...' (top_k={top_k})")
+        
+        # Debug: log chunk details
+        for i, chunk in enumerate(chunks):
+            text_preview = chunk.get('text', '')[:100].replace('\n', ' ')
+            self.logger.info(f"  chunk[{i}]: doc_id={chunk.get('doc_id', '?')}, score={scores[i]:.4f}, text='{text_preview}...'")
 
-            return chunks, scores
-        except Exception as e:
-            self.logger.error(f"Qdrant search error: {e}")
-            return [], []
+        return chunks, scores
 
-    def _rerank_results(
-        self,
-        query: str,
-        chunks: List[Dict],
-        original_scores: List[float],
-    ) -> Tuple[List[Dict], List[float]]:
-        """
-        Re-rank chunks using llama.cpp cross-encoder reranker (/v1/rerank).
-
-        Takes the top-k results from vector search, re-scores them with the
-        reranker model, and returns the top RERANK_TOP_K results sorted by
-        the new scores.
-
-        Returns (reranked_chunks, reranked_scores).
-        Falls back to original results on error.
-        """
-        start_time = time.time()
-
-        # Extract text from each chunk for reranking
-        texts = [chunk.get('text', '') for chunk in chunks]
-
-        # Call reranker via llama.cpp
-        rerank_results = self.llamacpp.rerank(query, texts, top_n=self.rerank_top_k)
-
-        if rerank_results is None:
-            self.logger.warning("Reranker returned None, keeping original order")
-            return chunks, original_scores
-
-        if not rerank_results:
-            self.logger.warning("Reranker returned no results, keeping original order")
-            return chunks, original_scores
-
-        # rerank_results: [{"index": N, "relevance_score": 0.95, "document": "..."}, ...]
-        # Sorted by relevance_score descending
-        # Take top RERANK_TOP_K (already limited by top_n in rerank call)
-        top_results = rerank_results[:self.rerank_top_k]
-
-        # Build new ordered lists
-        reranked_chunks = []
-        reranked_scores = []
-        for item in top_results:
-            orig_idx = item.get('index', 0)
-            score = item.get('relevance_score', 0)
-            if orig_idx < len(chunks):
-                reranked_chunks.append(chunks[orig_idx])
-                reranked_scores.append(score)
-
-        elapsed = time.time() - start_time
-        self.logger.info(
-            f"Reranked {len(chunks)} -> {len(reranked_chunks)} chunks in {elapsed:.2f}s, "
-            f"original top score={max(original_scores):.4f}, "
-            f"new top score={reranked_scores[0] if reranked_scores else 0:.4f}"
-        )
-
-        return reranked_chunks, reranked_scores
-
-    # --- Helper: token estimation (using centralized function) ---
     def _estimate_tokens(self, text: str) -> int:
         """Estimate tokens using configured characters per token."""
         token_chars = current_app.config.get('TOKEN_CHARS', 3)
         return estimate_tokens(text, token_chars)
 
-    # --- Helper: build history string using centralized function ---
     def _build_context_prompt(self, history: List[Dict[str, str]], lang: str = 'ru') -> str:
         """Format conversation history into a string."""
         return build_context_prompt(history, lang)
 
     def generate_answer(self, user_id: str, query: str, session_id: str, lang: str = 'ru',
                         threshold: float = None) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-        """
-        Full RAG answer: search + call reasoning model with context, history, and role information.
-        If threshold is provided, only chunks with score >= threshold are used.
-        Returns (answer, error_message, model_name).
-        Returns (None, None, None) if no relevant documents found.
-        """
+        """Full RAG answer: search + call reasoning model with context."""
         # 1. Retrieve relevant chunks
         chunks, scores = self.search(user_id, query)
         if not chunks:
@@ -337,9 +298,9 @@ class RagModule:
                 preview = text[:200].replace('\n', ' ').strip() + '...' if len(text) > 200 else text.replace('\n', ' ')
                 self.logger.debug(f"RAG chunk[{i}] score={score:.4f} preview='{preview}'")
 
-        # Determine threshold
+        # Determine threshold for cosine similarity filtering
         if threshold is None:
-            threshold = current_app.config.get('RAG_RELEVANCE_THRESHOLD_DEFAULT', 0.5)
+            threshold = 0.1  # Use threshold for raw cosine similarity
 
         # Filter chunks by score
         filtered = [(chunk, score) for chunk, score in zip(chunks, scores) if score >= threshold]
@@ -499,3 +460,44 @@ class RagModule:
                 embeddings.append(None)
 
         return embeddings[:len(texts)]
+
+    def _split_query_for_search(self, query: str) -> List[str]:
+        """Split complex query into simple sub-queries using LLM.
+        
+        This helps with better vector matching for complex questions.
+        
+        Args:
+            query: Original user query
+            
+        Returns:
+            List of simple sub-queries (1-5 items)
+        """
+        # If query is already simple, return as-is
+        if len(query) < 50:
+            return [query]
+        
+        prompt = f"""Разбей вопрос на 3–5 простых поисковых запросов для векторной БД.
+Каждый запрос должен содержать не более 2–3 ключевых сущностей.
+Вопрос: {query}
+Формат: список строк, каждая на новой строке."""
+        
+        try:
+            response = self.llamacpp.chat(
+                messages=[{'role': 'user', 'content': prompt}],
+                model_type='chat',
+                max_tokens=500,
+                temperature=0.3
+            )
+            if response and 'content' in response:
+                # Parse response - split by newlines
+                sub_queries = [line.strip() for line in response['content'].split('\n') if line.strip()]
+                # Filter to 3-5 items
+                sub_queries = [q for q in sub_queries if q and len(q) > 3][:5]
+                if sub_queries:
+                    self.logger.info(f"Split query '{query[:30]}...' into {len(sub_queries)} sub-queries")
+                    return sub_queries
+        except Exception as e:
+            self.logger.warning(f"Failed to split query: {e}")
+        
+        # Fallback: return original
+        return [query]

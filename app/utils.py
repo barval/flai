@@ -3,6 +3,7 @@ from flask import current_app
 import pytz
 from datetime import datetime
 import os
+import re
 import base64
 from io import BytesIO
 from PIL import Image
@@ -301,12 +302,17 @@ def save_uploaded_file(file_data: str, filename: str, session_id: str, upload_fo
 
 
 def extract_text_from_file(file_path: str) -> Optional[str]:
-    """Extract text from a file (PDF, DOCX, TXT)."""
+    """Extract text from a file (PDF, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB) and convert to Markdown."""
     ext = os.path.splitext(file_path)[1].lower()
     try:
         if ext == '.txt':
             with open(file_path, 'r', encoding='utf-8') as f:
                 return f.read()
+        elif ext == '.md':
+            # Markdown - already structured, convert to enhanced markdown
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                return _enhance_markdown(content)
         elif ext == '.pdf':
             text = ''
             with open(file_path, 'rb') as f:
@@ -315,15 +321,209 @@ def extract_text_from_file(file_path: str) -> Optional[str]:
                     page_text = page.extract_text()
                     if page_text:
                         text += page_text + '\n'
-            return text.strip()
+            return _pdf_to_markdown(text.strip())
         elif ext == '.docx':
             doc = Document(file_path)
-            return '\n'.join([para.text for para in doc.paragraphs])
+            return _docx_to_markdown(doc)
+        elif ext == '.odt':
+            return _extract_odt(file_path)
+        elif ext == '.rtf':
+            return _extract_rtf(file_path)
+        elif ext == '.csv':
+            return _extract_csv(file_path)
+        elif ext == '.json':
+            return _extract_json(file_path)
+        elif ext == '.epub':
+            return _extract_epub(file_path)
         else:
             return None
     except Exception as e:
         current_app.logger.error(f"Error extracting text from {file_path}: {e}")
         return None
+
+
+def _pdf_to_markdown(text: str) -> str:
+    """Convert PDF extracted text to Markdown with structure."""
+    lines = text.split('\n')
+    md_lines = []
+    current_heading = ""
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Detect year patterns (job periods) - convert to heading
+        if re.search(r'(19|20)\d{2}', line) and ('–' in line or '-' in line):
+            md_lines.append(f"\n## {line}\n")
+        # Detect company names (capitalized)
+        elif line and line[0].isupper() and len(line) > 10:
+            md_lines.append(f"### {line}")
+        else:
+            md_lines.append(line)
+    
+    return '\n'.join(md_lines)
+
+
+def _docx_to_markdown(doc: Document) -> str:
+    """Convert DOCX paragraphs to Markdown."""
+    md_parts = []
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if not text:
+            continue
+        
+        # Check for heading style
+        if para.style.name.startswith('Heading'):
+            level = para.style.name.replace('Heading ', '')
+            try:
+                level = int(level)
+                md_parts.append(f"{'#' * min(level, 6)} {text}")
+            except:
+                md_parts.append(f"## {text}")
+        else:
+            md_parts.append(text)
+    
+    return '\n'.join(md_parts)
+
+
+def _extract_odt(file_path: str) -> str:
+    """Extract text from ODT and convert to Markdown."""
+    try:
+        from odf.opendocument import load
+        from odf.text import P
+        
+        doc = load(file_path)
+        paragraphs = doc.getElementsByType(P)
+        
+        md_lines = []
+        for para in paragraphs:
+            text = ''.join([str(c) for c in para.childNodes]).strip()
+            if text:
+                md_lines.append(text)
+        
+        return _pdf_to_markdown('\n'.join(md_lines))
+    except ImportError:
+        current_app.logger.warning("odfpy not installed, using plain text for ODT")
+        return _extract_plain_text(file_path)
+
+
+def _extract_rtf(file_path: str) -> str:
+    """Extract text from RTF and convert to Markdown."""
+    try:
+        import striprtf
+        with open(file_path, 'rb') as f:
+            content = f.read()
+        text = striprtf.parse_rtf(content)
+        return _pdf_to_markdown(text)
+    except ImportError:
+        current_app.logger.warning("striprtf not installed, using plain text for RTF")
+        return _extract_plain_text(file_path)
+
+
+def _extract_csv(file_path: str) -> str:
+    """Convert CSV to Markdown table."""
+    import csv
+    md_lines = ["# Data\n"]
+    
+    with open(file_path, 'r', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        headers = next(reader, [])
+        
+        if headers:
+            md_lines.append("| " + " | ".join(headers) + " |")
+            md_lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
+            
+            for row in reader:
+                md_lines.append("| " + " | ".join(row) + " |")
+    
+    return '\n'.join(md_lines)
+
+
+def _extract_json(file_path: str) -> str:
+    """Convert JSON to Markdown with structure."""
+    import json
+    
+    with open(file_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    md_lines = ["# JSON Data\n"]
+    
+    if isinstance(data, dict):
+        for key, value in data.items():
+            md_lines.append(f"\n## {key}\n")
+            md_lines.append(_json_value_to_markdown(value))
+    elif isinstance(data, list):
+        md_lines.append("\n## Items\n")
+        for i, item in enumerate(data):
+            md_lines.append(f"\n### Item {i+1}\n")
+            md_lines.append(_json_value_to_markdown(item))
+    
+    return '\n'.join(md_lines)
+
+
+def _json_value_to_markdown(value, indent=0) -> str:
+    """Recursively convert JSON value to Markdown."""
+    if isinstance(value, dict):
+        lines = []
+        for k, v in value.items():
+            lines.append(f"**{k}**: {_json_value_to_markdown(v, indent+1)}")
+        return '\n'.join(lines)
+    elif isinstance(value, list):
+        return '\n'.join([f"- {item}" for item in value])
+    else:
+        return str(value)
+
+
+def _extract_epub(file_path: str) -> str:
+    """Extract text from EPUB and convert to Markdown."""
+    try:
+        import epub
+        md_lines = ["# Book\n"]
+        
+        book = epub.read_epub(file_path)
+        
+        for item in book.get_items():
+            if item.get_type() == 9:  # Epub HTML
+                content = item.get_content()
+                # Simple HTML to text conversion
+                text = re.sub(r'<[^>]+>', '', content)
+                text = text.strip()
+                if text:
+                    md_lines.append(text)
+        
+        return _pdf_to_markdown('\n'.join(md_lines))
+    except ImportError:
+        current_app.logger.warning("epub not installed, using plain text for EPUB")
+        return _extract_plain_text(file_path)
+
+
+def _extract_plain_text(file_path: str) -> str:
+    """Fallback: extract plain text from file."""
+    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+        return f.read()
+
+
+def _enhance_markdown(content: str) -> str:
+    """Enhance existing Markdown with structure."""
+    lines = content.split('\n')
+    enhanced = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Detect headers
+        if line.isupper() and len(line) < 100:
+            enhanced.append(f"## {line}")
+        # Detect year patterns
+        elif re.search(r'(19|20)\d{2}', line):
+            enhanced.append(f"\n### {line}\n")
+        else:
+            enhanced.append(line)
+    
+    return '\n'.join(enhanced)
 
 
 def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
@@ -336,6 +536,148 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]
         if chunk:
             chunks.append(chunk)
         i += chunk_size - overlap
+    return chunks
+
+
+def chunk_text_recursive(
+    text: str,
+    chunk_size: int = 500,
+    overlap: int = 50,
+    separators: List[str] = None
+) -> List[str]:
+    """Split text using recursive splitting strategy.
+    
+    Args:
+        text: Input text to split
+        chunk_size: Maximum chunk size in characters
+        overlap: Overlap between chunks in characters
+        separators: List of separators to try in order of priority
+                   (default: paragraphs, sentences, words)
+    
+    Returns:
+        List of text chunks
+    """
+    if separators is None:
+        separators = [
+            '\n\n',    # Double newline = paragraph break
+            '\n',      # Single newline = line break
+            '. ',      # Sentence boundary
+            '; ',      # Semicolon clause
+            ', ',      # Comma clause
+            ' ',       # Word boundary (fallback)
+        ]
+    
+    def split_by_separator(text: str, sep: str) -> List[str]:
+        if sep == ' ':
+            return text.split(sep)
+        parts = text.split(sep)
+        # Re-add separator to all parts except last
+        return [parts[i] + sep if i < len(parts) - 1 else parts[i] for i in range(len(parts)) if parts[i]]
+    
+    def recursive_split(text: str, sep_index: int) -> List[str]:
+        """Recursively split text until chunks are small enough."""
+        if sep_index >= len(separators):
+            # Final fallback: split by words
+            words = text.split()
+            chunks = []
+            i = 0
+            while i < len(words):
+                chunk = ' '.join(words[i:i + chunk_size])
+                if chunk:
+                    chunks.append(chunk)
+                i += max(1, chunk_size - overlap)
+            return chunks
+        
+        parts = split_by_separator(text, separators[sep_index])
+        
+        # If splitting produced too few parts, try next separator
+        if len(parts) <= 1:
+            return recursive_split(text, sep_index + 1)
+        
+        # If parts are small enough, use them
+        small_enough = [p for p in parts if len(p) <= chunk_size]
+        if len(small_enough) == len(parts):
+            return parts
+        
+        # Otherwise, recursively split large parts
+        chunks = []
+        for part in parts:
+            if len(part) <= chunk_size:
+                chunks.append(part)
+            else:
+                chunks.extend(recursive_split(part, sep_index + 1))
+        
+        return chunks
+    
+    # Normalize text: normalize whitespace
+    text = ' '.join(text.split())
+    
+    # Handle empty or very short text
+    if not text or len(text) <= chunk_size:
+        return [text] if text else []
+    
+    chunks = recursive_split(text, 0)
+    
+    # Final pass: merge small chunks with neighbors and apply overlap
+    merged = []
+    for i, chunk in enumerate(chunks):
+        # Skip duplicates
+        if merged and merged[-1] == chunk:
+            continue
+        
+        # Merge with previous if both are small
+        if merged and len(merged[-1]) + len(chunk) <= chunk_size:
+            merged[-1] = merged[-1] + ' ' + chunk
+        else:
+            merged.append(chunk)
+    
+    return merged
+
+
+def chunk_text_by_sentences(
+    text: str,
+    chunk_size: int = 500,
+    overlap: int = 50,
+    min_sentences: int = 1
+) -> List[str]:
+    """Split text into chunks by sentences, with optional size limit.
+    
+    Args:
+        text: Input text
+        chunk_size: Max characters per chunk
+        overlap: Character overlap between chunks
+        min_sentences: Minimum sentences per chunk
+    
+    Returns:
+        List of text chunks
+    """
+    # Simple sentence splitting (works for Russian and English)
+    import re
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+    
+    if not sentences:
+        return []
+    
+    chunks = []
+    current_chunk = ""
+    
+    for sentence in sentences:
+        # If adding this sentence exceeds limit, save current and start new
+        if current_chunk and len(current_chunk) + len(sentence) > chunk_size:
+            chunks.append(current_chunk)
+            # Keep overlap (last part of current chunk)
+            if overlap > 0 and len(current_chunk) > overlap:
+                current_chunk = current_chunk[-(overlap):] + " " + sentence
+            else:
+                current_chunk = sentence
+        else:
+            current_chunk = (current_chunk + " " + sentence).strip() if current_chunk else sentence
+    
+    # Don't forget last chunk
+    if current_chunk:
+        chunks.append(current_chunk)
+    
     return chunks
 
 

@@ -59,6 +59,7 @@ coverage.xml
 
 # OpenCode
 .opencode/
+AGENTS.md
 
 # Logs and temp files
 *.log

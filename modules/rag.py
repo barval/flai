@@ -34,14 +34,26 @@ class RagModule:
         """Initialize module with Flask app configuration."""
         qdrant_url = app.config.get('QDRANT_URL')
         qdrant_api_key = app.config.get('QDRANT_API_KEY')
-        self.chunk_size = app.config.get('RAG_CHUNK_SIZE', 500)
-        self.chunk_overlap = app.config.get('RAG_CHUNK_OVERLAP', 50)
-        self.chunk_strategy = app.config.get('RAG_CHUNK_STRATEGY', 'fixed')
-        self.top_k = app.config.get('RAG_TOP_K', 80)
-        # Log the loaded top_k value for debugging
-        app.logger.info(f"RagModule: loaded RAG_TOP_K = {self.top_k} from config")
-        app.logger.info(f"RagModule: loaded RAG_CHUNK_SIZE = {self.chunk_size} from config")
-        app.logger.info(f"RagModule: loaded RAG_CHUNK_STRATEGY = {self.chunk_strategy} from config")
+        
+        # Try to load from DB first, fallback to config
+        from app.model_config import get_model_config
+        chunks_config = get_model_config('chunks')
+        
+        if chunks_config:
+            self.chunk_size = chunks_config.get('chunk_size', 500)
+            self.chunk_overlap = chunks_config.get('chunk_overlap', 50)
+            self.chunk_strategy = chunks_config.get('chunk_strategy', 'fixed')
+            self.top_k = chunks_config.get('top_k', 80)
+        else:
+            self.chunk_size = app.config.get('RAG_CHUNK_SIZE', 500)
+            self.chunk_overlap = app.config.get('RAG_CHUNK_OVERLAP', 50)
+            self.chunk_strategy = app.config.get('RAG_CHUNK_STRATEGY', 'fixed')
+            self.top_k = app.config.get('RAG_TOP_K', 80)
+        
+        app.logger.info(f"RagModule: loaded chunk_size = {self.chunk_size}")
+        app.logger.info(f"RagModule: loaded chunk_overlap = {self.chunk_overlap}")
+        app.logger.info(f"RagModule: loaded chunk_strategy = {self.chunk_strategy}")
+        app.logger.info(f"RagModule: loaded top_k = {self.top_k}")
 
         if not qdrant_url:
             app.logger.warning("QDRANT_URL not set, RAG module disabled")

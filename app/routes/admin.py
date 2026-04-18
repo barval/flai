@@ -570,19 +570,29 @@ def api_save_chunks_config():
                                       WHERE table_name = 'model_configs' AND column_name = 'top_k') THEN
                             ALTER TABLE model_configs ADD COLUMN top_k INTEGER;
                         END IF;
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                                      WHERE table_name = 'model_configs' AND column_name = 'rag_threshold_default') THEN
+                            ALTER TABLE model_configs ADD COLUMN rag_threshold_default FLOAT DEFAULT 0.3;
+                        END IF;
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                                      WHERE table_name = 'model_configs' AND column_name = 'rag_threshold_reasoning') THEN
+                            ALTER TABLE model_configs ADD COLUMN rag_threshold_reasoning FLOAT DEFAULT 0.2;
+                        END IF;
                     END
                     $$
                 ''')
                 c.execute('''
-                    INSERT INTO model_configs (module, chunk_size, chunk_overlap, chunk_strategy, top_k, updated_at)
-                    VALUES ('chunks', %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    INSERT INTO model_configs (module, chunk_size, chunk_overlap, chunk_strategy, top_k, rag_threshold_default, rag_threshold_reasoning, updated_at)
+                    VALUES ('chunks', %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                     ON CONFLICT (module) DO UPDATE SET
                         chunk_size = EXCLUDED.chunk_size,
                         chunk_overlap = EXCLUDED.chunk_overlap,
                         chunk_strategy = EXCLUDED.chunk_strategy,
                         top_k = EXCLUDED.top_k,
+                        rag_threshold_default = EXCLUDED.rag_threshold_default,
+                        rag_threshold_reasoning = EXCLUDED.rag_threshold_reasoning,
                         updated_at = CURRENT_TIMESTAMP
-                ''', (new_chunk_size, new_chunk_overlap, new_chunk_strategy, new_rag_top_k))
+                ''', (new_chunk_size, new_chunk_overlap, new_chunk_strategy, new_rag_top_k, new_threshold_default, new_threshold_reasoning))
                 conn.commit()
 
             # Update RAG module values

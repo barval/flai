@@ -114,6 +114,16 @@ def create_app():
 
     # Initialize chat DB
     init_db()
+    
+    # Load RAG thresholds from DB if available
+    from app.model_config import get_model_config
+    chunks_cfg = get_model_config('chunks')
+    if chunks_cfg:
+        threshold_default = chunks_cfg.get('rag_threshold_default', 0.3)
+        threshold_reasoning = chunks_cfg.get('rag_threshold_reasoning', 0.2)
+        app.config['RAG_RELEVANCE_THRESHOLD_DEFAULT'] = threshold_default
+        app.config['RAG_RELEVANCE_THRESHOLD_REASONING'] = threshold_reasoning
+        app.logger.info(f"Loaded RAG thresholds from DB: default={threshold_default}, reasoning={threshold_reasoning}")
 
     # Detect hardware and initialize Resource Manager
     rm = get_resource_manager()

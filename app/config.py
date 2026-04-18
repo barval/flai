@@ -78,17 +78,16 @@ def load_config(app):
     # Qdrant settings for RAG
     app.config['QDRANT_URL'] = os.getenv('QDRANT_URL')
     app.config['QDRANT_API_KEY'] = os.getenv('QDRANT_API_KEY')
+    # RAG settings - defaults only, actual values come from DB
     app.config['RAG_CHUNK_SIZE'] = int(os.getenv('RAG_CHUNK_SIZE', 500))
     app.config['RAG_CHUNK_OVERLAP'] = int(os.getenv('RAG_CHUNK_OVERLAP', 50))
-    app.config['RAG_CHUNK_STRATEGY'] = os.getenv('RAG_CHUNK_STRATEGY', 'fixed')  # fixed, recursive, sentences
-    app.config['RAG_TOP_K'] = int(os.getenv('RAG_TOP_K', 20))
-    # Percentage of model's context window to use for RAG document chunks
-    # 30% means: for 32K model → ~9600 tokens for docs, for 128K → ~38K
+    app.config['RAG_CHUNK_STRATEGY'] = os.getenv('RAG_CHUNK_STRATEGY', 'fixed')
+    app.config['RAG_TOP_K'] = int(os.getenv('RAG_TOP_K', 80))
     app.config['RAG_CONTEXT_PERCENT'] = int(os.getenv('RAG_CONTEXT_PERCENT', 30))
 
-    # RAG relevance thresholds
-    app.config['RAG_RELEVANCE_THRESHOLD_DEFAULT'] = float(os.getenv('RAG_RELEVANCE_THRESHOLD_DEFAULT', 0.3))
-    app.config['RAG_RELEVANCE_THRESHOLD_REASONING'] = float(os.getenv('RAG_RELEVANCE_THRESHOLD_REASONING', 0.3))
+    # RAG relevance thresholds (used only if DB doesn't have values)
+    app.config['RAG_RELEVANCE_THRESHOLD_DEFAULT'] = 0.3
+    app.config['RAG_RELEVANCE_THRESHOLD_REASONING'] = 0.2
 
     # Debug translations
     app.config['DEBUG_TRANSLATIONS'] = os.getenv('DEBUG_TRANSLATIONS', 'false').lower() == 'true'

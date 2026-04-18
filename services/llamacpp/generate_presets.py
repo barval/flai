@@ -20,6 +20,7 @@ PRESET_PATH = '/models/models-preset.ini'
 # Fallback defaults if nothing in DB
 # n-gpu-layers = -1 means ALL layers on GPU (maximum speed)
 # Models are loaded/unloaded on-demand (flickering mode)
+# Only active models used in FLAI v8.0
 DEFAULTS = {
     'Qwen3-4B-Instruct-2507-Q4_K_M': {
         'model': '/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf',
@@ -41,20 +42,6 @@ DEFAULTS = {
         'n-gpu-layers': '-1',
         'ctx-size': '8192',
     },
-    'bge-reranker-v2-m3-Q4_K_M': {
-        'model': '/models/bge-reranker-v2-m3-Q4_K_M.gguf',
-        'n-gpu-layers': '-1',
-        'ctx-size': '8192',
-        'reranking': 'true',
-        'pooling': 'rank',
-    },
-    'gemma-4-26B-A4B-it-MXFP4_MOE': {
-        'model': '/models/gemma-4-26B-A4B-it-MXFP4_MOE.gguf',
-        'n-gpu-layers': '-1',
-        'ctx-size': '8192',
-        'temperature': '0.7',
-        'top-p': '0.9',
-    },
     'gpt-oss-20b-mxfp4': {
         'model': '/models/gpt-oss-20b-mxfp4.gguf',
         'n-gpu-layers': '-1',
@@ -72,20 +59,13 @@ def read_db() -> dict:
         conn = psycopg2.connect(DB_URL)
         conn.cursor_factory = RealDictCursor
         c = conn.cursor()
-        c.execute('SELECT * FROM model_configs')
+        c.execute("SELECT * FROM model_configs WHERE module IS NOT NULL AND module != '' AND module != 'chunks' AND module != 'reranker'")
         for row in c.fetchall():
             module = dict(row)
             module_name = module.get('module', '')
-            section_map = {
-                'chat': 'Qwen3-4B-Instruct-2507-Q4_K_M',
-                'multimodal': 'Qwen3VL-8B-Instruct-Q4_K_M',
-                'embedding': 'bge-m3-Q8_0',
-                'reranker': 'bge-reranker-v2-m3-Q4_K_M',
-                'reasoning': 'gpt-oss-20b-mxfp4',
-            }
-            section = section_map.get(module_name)
-            if section:
-                configs[section] = module
+            # Use module name directly as section name (chat, reasoning, multimodal, embedding)
+            if module_name:
+                configs[module_name] = module
         conn.close()
     except Exception as e:
         print(f"[generate_presets] Error reading DB: {e}")
@@ -102,42 +82,53 @@ def generate_ini(db_configs: dict) -> str:
         '',
     ]
 
-    # Modules that need embeddings enabled
-    EMBEDDING_MODULES = {'embedding', 'reranker'}
+    # Modules that need embeddings enabled (reranker disabled in v8.0)
+    EMBEDDING_MODULES = {'embedding'}
 
-    for section_name, defaults in DEFAULTS.items():
+    # First add all modules from DB (or their selected models)
+    processed = set()
+    for section_name in db_configs:
+        # Get defaults for this section if exists, otherwise start empty
+        defaults = DEFAULTS.get(section_name, {})
         lines.append(f'[{section_name}]')
-
-        # Start with defaults
         params = dict(defaults)
+        processed.add(section_name)
 
-        # Add embeddings=1 only for embedding/reranker models
+        # Add embeddings=1 only for embedding models
         if section_name in EMBEDDING_MODULES:
             params['embeddings'] = 'true'
 
-        # Override with DB values if present
-        db_cfg = db_configs.get(section_name, {})
+        # Override with DB values
+        db_cfg = db_configs[section_name]
         overrides = {
             'ctx-size': 'ctx_size',
             'n-gpu-layers': 'n_gpu_layers',
             'temperature': 'temperature',
             'top-p': 'top_p',
             'model': 'model_name',
-            'reranking': 'reranking',
-            'pooling': 'pooling',
-            'embedding': 'embedding',
         }
         for ini_key, db_key in overrides.items():
             val = db_cfg.get(db_key)
             if val is not None and val != '':
                 params[ini_key] = str(val)
 
-        # Ensure model path is absolute with .gguf extension
+        # Ensure model path is absolute - handle both single files and subdirectory paths
         model_val = params.get('model', '')
         if model_val and not model_val.startswith('/') and not model_val.startswith('.'):
-            if not model_val.endswith('.gguf'):
-                model_val = model_val + '.gguf'
-            params['model'] = f'/models/{model_val}'
+            import os
+            if '/' in model_val:
+                # Has subdirectory path like "model.gguf" - just add /models/ prefix
+                if not model_val.endswith('.gguf'):
+                    model_val = model_val + '.gguf'
+                params['model'] = f'/models/{model_val}'
+            else:
+                # Single filename - check if file exists
+                if not model_val.endswith('.gguf'):
+                    model_val = model_val + '.gguf'
+                if os.path.exists(f'/models/{model_val}'):
+                    params['model'] = f'/models/{model_val}'
+                else:
+                    params['model'] = f'/models/{model_val}'
 
         # Same for mmproj
         mmproj_val = params.get('mmproj', '')

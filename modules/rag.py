@@ -217,55 +217,38 @@ class RagModule:
         """
         Search for relevant chunks based on query.
         Returns tuple of (chunk_dicts with metadata, scores).
+        
+        Simplified: single direct query to Qdrant.
         """
         if not self.available:
             return [], []
         top_k = top_k or self.top_k
         
-        # Split complex query into simple sub-queries for better matching
-        sub_queries = self._split_query_for_search(query)
-        
-        # Collect chunks from all sub-queries
-        all_chunks = []
-        all_scores = []
-        
-        for sq in sub_queries:
-            query_emb = self._get_embedding(sq)
-            if query_emb is None:
-                continue
-            collection_name = self._get_collection_name(user_id)
-            try:
-                search_result = self.qdrant_client.search(
-                    collection_name=collection_name,
-                    query_vector=query_emb,
-                    query_filter=models.Filter(
-                        must=[models.FieldCondition(key="user_id", match=models.MatchValue(value=user_id))]
-                    ),
-                    limit=10  # Small limit per sub-query
-                )
-                for hit in search_result:
-                    all_chunks.append(hit.payload)
-                    all_scores.append(hit.score)
-            except Exception as e:
-                self.logger.warning(f"Search failed for sub-query '{sq[:30]}...': {e}")
-        
-        if not all_chunks:
+        # Get embedding directly from query
+        query_emb = self._get_embedding(query)
+        if query_emb is None:
+            self.logger.warning(f"Failed to get embedding for query: {query[:50]}...")
             return [], []
         
-        # Deduplicate by doc_id, keep highest scoring chunk per doc_id
-        seen = {}
-        chunks = []
-        scores = []
-        for chunk, score in zip(all_chunks, all_scores):
-            doc_id = chunk.get('doc_id', '')
-            if doc_id not in seen:
-                seen[doc_id] = True
-                chunks.append(chunk)
-                scores.append(score)
-
-        self.logger.info(f"search: found {len(chunks)} unique chunks for query '{query[:50]}...' (top_k={top_k})")
+        collection_name = self._get_collection_name(user_id)
+        try:
+            search_result = self.qdrant_client.search(
+                collection_name=collection_name,
+                query_vector=query_emb,
+                query_filter=models.Filter(
+                    must=[models.FieldCondition(key="user_id", match=models.MatchValue(value=user_id))]
+                ),
+                limit=top_k
+            )
+        except Exception as e:
+            self.logger.warning(f"Search failed for query '{query[:30]}...': {e}")
+            return [], []
         
-        # Debug: log chunk details
+        chunks = [hit.payload for hit in search_result]
+        scores = [hit.score for hit in search_result]
+        
+        self.logger.info(f"search: found {len(chunks)} chunks for query '{query[:50]}...' (top_k={top_k})")
+        
         for i, chunk in enumerate(chunks):
             text_preview = chunk.get('text', '')[:100].replace('\n', ' ')
             self.logger.info(f"  chunk[{i}]: doc_id={chunk.get('doc_id', '?')}, score={scores[i]:.4f}, text='{text_preview}...'")
@@ -299,8 +282,9 @@ class RagModule:
                 self.logger.debug(f"RAG chunk[{i}] score={score:.4f} preview='{preview}'")
 
         # Determine threshold for cosine similarity filtering
+        # Default to RAG_RELEVANCE_THRESHOLD_REASONING (0.2) if not specified
         if threshold is None:
-            threshold = 0.1  # Use threshold for raw cosine similarity
+            threshold = current_app.config.get('RAG_RELEVANCE_THRESHOLD_REASONING', 0.2)
 
         # Filter chunks by score
         filtered = [(chunk, score) for chunk, score in zip(chunks, scores) if score >= threshold]

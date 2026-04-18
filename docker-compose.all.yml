@@ -91,7 +91,6 @@ services:
     image: python:3.9-slim
     container_name: flai-llamacpp-presets
     volumes:
-      - ./data:/app/data
       - ./services/llamacpp/models:/models
       - ./services/llamacpp/generate_presets.py:/generate_presets.py:ro
     command: ["sh", "-c", "pip install --no-cache-dir psycopg2-binary 2>/dev/null && python3 /generate_presets.py"]
@@ -114,8 +113,7 @@ services:
     volumes:
       - ./services/llamacpp/models:/models
     depends_on:
-      llamacpp-presets:
-        condition: service_completed_successfully
+      - llamacpp-presets
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility

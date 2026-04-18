@@ -837,3 +837,36 @@ msgstr "Image editing timeout ({timeout}s)"
 
 msgid "Service temporarily unavailable. Circuit breaker is open after repeated failures."
 msgstr "Service temporarily unavailable. Circuit breaker is open after repeated failures."
+
+msgid "Chunks"
+msgstr "Chunks"
+
+msgid "Chunk Size"
+msgstr "Chunk Size"
+
+msgid "Chunk Overlap"
+msgstr "Chunk Overlap"
+
+msgid "Chunk Strategy"
+msgstr "Chunk Strategy"
+
+msgid "Fixed (by size)"
+msgstr "Fixed (by size)"
+
+msgid "Structural (by headings)"
+msgstr "Structural (by headings)"
+
+msgid "Chunk configuration saved. Reindexing started."
+msgstr "Chunk configuration saved. Reindexing started."
+
+msgid "Chunk configuration saved."
+msgstr "Chunk configuration saved."
+
+msgid "Number of chunks"
+msgstr "Number of chunks"
+
+msgid "Threshold (documents)"
+msgstr "Threshold (documents)"
+
+msgid "Threshold (reasoning)"
+msgstr "Threshold (reasoning)"

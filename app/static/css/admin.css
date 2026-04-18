@@ -499,6 +499,75 @@ body.admin-page .voice-gender-switcher {
     border-radius: 4px;
 }
 
+/* ===== CHUNKS SECTION (in Models tab) ===== */
+#chunks-card {
+    background-color: #f8f9fa;
+    border: 1px solid #ddd;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 20px;
+}
+
+#chunks-card h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+}
+
+.chunks-config {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.chunks-config .param {
+    flex: 1;
+    min-width: 150px;
+}
+
+.chunks-config .param label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+}
+
+.chunks-config .param input,
+.chunks-config .param select {
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.chunks-config .param {
+    position: relative;
+}
+
+.chunks-config .param > small {
+    display: block;
+    margin-top: 3px;
+    font-size: 0.85em;
+    color: #666;
+}
+
+.chunks-config .param input[type="number"] + small {
+    position: absolute;
+    bottom: -18px;
+    left: 0;
+    font-size: 0.75em;
+    color: #888;
+    margin-top: 0;
+}
+
+#chunks-status {
+    margin-left: 10px;
+    font-size: 1.2em;
+}
+
+.model-actions {
+    margin-top: 15px;
+}
+
 /* ===== BACKUPS TAB ===== */
 .backups-container {
     /* Inherits overflow from parent */
@@ -529,7 +598,7 @@ body.admin-page .voice-gender-switcher {
 }
 
 .btn-primary {
-    background-color: #3498db;
+    background-color: #27ae60;
     color: white;
     border: none;
     padding: 8px 16px;
@@ -537,6 +606,7 @@ body.admin-page .voice-gender-switcher {
     cursor: pointer;
     font-size: 14px;
     transition: background-color 0.2s;
+    margin-top: 10px;
 }
 .btn-primary:hover {
     background-color: #2980b9;

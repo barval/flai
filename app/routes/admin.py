@@ -14,6 +14,7 @@ from app.db import (
     get_user_file_count, get_user_document_count
 )
 from app.database import get_db
+from app.model_config import get_model_config
 from app.validators import validate_user_input, validate_model_config_update, ValidationError
 
 bp = Blueprint('admin', __name__, url_prefix='/admin')
@@ -72,11 +73,30 @@ def admin_panel():
     chunk_size = 500
     chunk_overlap = 50
     chunk_strategy = 'fixed'
+    rag_top_k = 20
+    max_top_k = 100
+    rag_threshold_default = 0.3
+    rag_threshold_reasoning = 0.3
     if 'rag' in current_app.modules and current_app.modules['rag']:
         rag = current_app.modules['rag']
         chunk_size = rag.chunk_size
         chunk_overlap = rag.chunk_overlap
         chunk_strategy = rag.chunk_strategy
+        rag_top_k = rag.top_k
+
+    # Calculate max_top_k: 30% of reasoning model context / chunk_size (in tokens)
+    # chunk_size is in characters, need to convert to tokens (TOKEN_CHARS ~3 chars/token)
+    reasoning_config = get_model_config('reasoning')
+    if reasoning_config:
+        ctx_length = reasoning_config.get('context_length', 8192)
+        max_context_tokens = int(ctx_length * 0.30)
+        token_chars = current_app.config.get('TOKEN_CHARS', 3)
+        chunk_size_tokens = chunk_size / token_chars
+        max_top_k = max(1, int(max_context_tokens / chunk_size_tokens))
+
+    # Get RAG thresholds from config
+    rag_threshold_default = current_app.config.get('RAG_RELEVANCE_THRESHOLD_DEFAULT', 0.3)
+    rag_threshold_reasoning = current_app.config.get('RAG_RELEVANCE_THRESHOLD_REASONING', 0.3)
 
     return render_template('admin.html',
                           rooms=rooms,
@@ -86,7 +106,11 @@ def admin_panel():
                           documents_db_size=documents_db_size,
                           chunk_size=chunk_size,
                           chunk_overlap=chunk_overlap,
-                          chunk_strategy=chunk_strategy)
+                          chunk_strategy=chunk_strategy,
+                          rag_top_k=rag_top_k,
+                          max_top_k=max_top_k,
+                          rag_threshold_default=rag_threshold_default,
+                          rag_threshold_reasoning=rag_threshold_reasoning)
 
 
 @bp.route('/api/users', methods=['GET'])
@@ -425,7 +449,7 @@ def get_model_configs():
 @admin_required
 def update_model_config(module):
     """Update configuration for a specific module."""
-    from app.model_config import invalidate_model_config_cache, get_model_config
+    from app.model_config import invalidate_model_config_cache
     from app.database import get_db
 
     data = request.get_json()
@@ -500,56 +524,91 @@ def api_admin_reindex_all():
 @admin_required
 def api_save_chunks_config():
     """Save chunk configuration and trigger reindex if changed."""
-    from app.database import get_db
-    
-    data = request.get_json()
-    new_chunk_size = data.get('chunk_size', 500)
-    new_chunk_overlap = data.get('chunk_overlap', 50)
-    new_chunk_strategy = data.get('chunk_strategy', 'fixed')
+    try:
+        from app.database import get_db
+        from app.model_config import get_model_config
 
-    # Get original config
-    rag = current_app.modules.get('rag')
-    if not rag:
-        return jsonify({'ok': False, 'error': 'RAG module not available'}), 500
+        data = request.get_json()
+        new_chunk_size = data.get('chunk_size', 500)
+        new_chunk_overlap = data.get('chunk_overlap', 50)
+        new_chunk_strategy = data.get('chunk_strategy', 'fixed')
+        new_rag_top_k = data.get('rag_top_k', 20)
+        new_threshold_default = data.get('rag_threshold_default', 0.3)
+        new_threshold_reasoning = data.get('rag_threshold_reasoning', 0.3)
 
-    old_chunk_size = rag.chunk_size
-    old_chunk_overlap = rag.chunk_overlap
-    old_chunk_strategy = rag.chunk_strategy
+        # Get original config
+        rag = current_app.modules.get('rag')
+        if not rag:
+            return jsonify({'ok': False, 'error': 'RAG module not available'}), 500
+
+        old_chunk_size = rag.chunk_size
+        old_chunk_overlap = rag.chunk_overlap
+        old_chunk_strategy = rag.chunk_strategy
+        old_rag_top_k = rag.top_k
+
+        # Get old thresholds from config
+        old_threshold_default = current_app.config.get('RAG_RELEVANCE_THRESHOLD_DEFAULT', 0.3)
+        old_threshold_reasoning = current_app.config.get('RAG_RELEVANCE_THRESHOLD_REASONING', 0.3)
 
     # Check if anything changed
-    config_changed = (new_chunk_size != old_chunk_size or 
-                   new_chunk_overlap != old_chunk_overlap or 
-                   new_chunk_strategy != old_chunk_strategy)
+        config_changed = (new_chunk_size != old_chunk_size or
+                       new_chunk_overlap != old_chunk_overlap or
+                       new_chunk_strategy != old_chunk_strategy or
+                       new_rag_top_k != old_rag_top_k or
+                       new_threshold_default != old_threshold_default or
+                       new_threshold_reasoning != old_threshold_reasoning)
 
-    if config_changed:
-        # Save to config table
-        with get_db() as conn:
-            c = conn.cursor()
-            c.execute('''
-                INSERT INTO model_configs (module, chunk_size, chunk_overlap, chunk_strategy, updated_at)
-                VALUES ('chunks', %s, %s, %s, CURRENT_TIMESTAMP)
-                ON CONFLICT (module) DO UPDATE SET
-                    chunk_size = EXCLUDED.chunk_size,
-                    chunk_overlap = EXCLUDED.chunk_overlap,
-                    chunk_strategy = EXCLUDED.chunk_strategy,
-                    updated_at = CURRENT_TIMESTAMP
-            ''', (new_chunk_size, new_chunk_overlap, new_chunk_strategy))
-            conn.commit()
+        if config_changed:
+            # Save chunk config to config table
+            with get_db() as conn:
+                c = conn.cursor()
+                # Add top_k column if not exists
+                c.execute('''
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                                      WHERE table_name = 'model_configs' AND column_name = 'top_k') THEN
+                            ALTER TABLE model_configs ADD COLUMN top_k INTEGER;
+                        END IF;
+                    END
+                    $$
+                ''')
+                c.execute('''
+                    INSERT INTO model_configs (module, chunk_size, chunk_overlap, chunk_strategy, top_k, updated_at)
+                    VALUES ('chunks', %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (module) DO UPDATE SET
+                        chunk_size = EXCLUDED.chunk_size,
+                        chunk_overlap = EXCLUDED.chunk_overlap,
+                        chunk_strategy = EXCLUDED.chunk_strategy,
+                        top_k = EXCLUDED.top_k,
+                        updated_at = CURRENT_TIMESTAMP
+                ''', (new_chunk_size, new_chunk_overlap, new_chunk_strategy, new_rag_top_k))
+                conn.commit()
 
-        # Update RAG module values
-        rag.chunk_size = new_chunk_size
-        rag.chunk_overlap = new_chunk_overlap
-        rag.chunk_strategy = new_chunk_strategy
+            # Update RAG module values
+            rag.chunk_size = new_chunk_size
+            rag.chunk_overlap = new_chunk_overlap
+            rag.chunk_strategy = new_chunk_strategy
+            rag.top_k = new_rag_top_k
 
-        current_app.logger.info(f"Chunk config changed: size={old_chunk_size}->{new_chunk_size}, overlap={old_chunk_overlap}->{new_chunk_overlap}, strategy={old_chunk_strategy}->{new_chunk_strategy}")
+            # Update thresholds in app config
+            current_app.config['RAG_RELEVANCE_THRESHOLD_DEFAULT'] = new_threshold_default
+            current_app.config['RAG_RELEVANCE_THRESHOLD_REASONING'] = new_threshold_reasoning
 
-        # Trigger reindex
-        if hasattr(current_app, 'request_queue') and current_app.request_queue:
-            current_app.request_queue.add_reindex_all_task(lang='ru')
-            current_app.logger.info("Reindex triggered due to chunk config change")
-            return jsonify({'ok': True, 'reindex_triggered': True})
+            current_app.logger.info(f"Chunk config changed: size={old_chunk_size}->{new_chunk_size}, overlap={old_chunk_overlap}->{new_chunk_overlap}, strategy={old_chunk_strategy}->{new_chunk_strategy}, top_k={old_rag_top_k}->{new_rag_top_k}, threshold_default={old_threshold_default}->{new_threshold_default}, threshold_reasoning={old_threshold_reasoning}->{new_threshold_reasoning}")
+
+            # Trigger reindex only if chunking params changed
+            reindex_triggered = False
+            if new_chunk_size != old_chunk_size or new_chunk_strategy != old_chunk_strategy:
+                if hasattr(current_app, 'request_queue') and current_app.request_queue:
+                    current_app.request_queue.add_reindex_all_task(lang='ru')
+                    current_app.logger.info("Reindex triggered due to chunk config change")
+                    reindex_triggered = True
+
+            return jsonify({'ok': True, 'reindex_triggered': reindex_triggered})
         else:
-            return jsonify({'ok': True, 'reindex_triggered': False, 'error': 'Queue not available'})
-    else:
-        current_app.logger.info("Chunk config unchanged")
-        return jsonify({'ok': True, 'reindex_triggered': False})
+            current_app.logger.info("Chunk config unchanged")
+            return jsonify({'ok': True, 'reindex_triggered': False})
+    except Exception as e:
+        current_app.logger.error(f"Error saving chunks config: {e}")
+        return jsonify({'ok': False, 'error': str(e)}), 500

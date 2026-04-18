@@ -850,3 +850,36 @@ msgstr "Обновить список резервных копий"
 
 msgid "Service temporarily unavailable. Circuit breaker is open after repeated failures."
 msgstr "Сервис временно недоступен. Сработал защитный механизм после неоднократных сбоев."
+
+msgid "Chunks"
+msgstr "Чанки"
+
+msgid "Chunk Size"
+msgstr "Размер чанка"
+
+msgid "Chunk Overlap"
+msgstr "Перекрытие чанков"
+
+msgid "Chunk Strategy"
+msgstr "Стратегия чанкинга"
+
+msgid "Fixed (by size)"
+msgstr "Фиксированный (по размеру)"
+
+msgid "Structural (by headings)"
+msgstr "Структурный (по заголовкам)"
+
+msgid "Chunk configuration saved. Reindexing started."
+msgstr "Конфигурация чанков сохранена. Переиндексация запущена."
+
+msgid "Chunk configuration saved."
+msgstr "Конфигурация чанков сохранена."
+
+msgid "Number of chunks"
+msgstr "Число чанков"
+
+msgid "Threshold (documents)"
+msgstr "Порог (документы)"
+
+msgid "Threshold (reasoning)"
+msgstr "Порог (рассуждения)"

@@ -470,6 +470,9 @@ function initChunksSection() {
         const chunkSize = parseInt(document.getElementById('chunk-size').value) || 500;
         const chunkOverlap = parseInt(document.getElementById('chunk-overlap').value) || 50;
         const chunkStrategy = document.getElementById('chunk-strategy').value || 'fixed';
+        const ragTopK = parseInt(document.getElementById('rag-top-k').value) || 20;
+        const thresholdDefault = parseFloat(document.getElementById('rag-threshold-default').value) || 0.3;
+        const thresholdReasoning = parseFloat(document.getElementById('rag-threshold-reasoning').value) || 0.3;
 
         const statusEl = document.getElementById('chunks-status');
         statusEl.textContent = '⏳';
@@ -481,7 +484,10 @@ function initChunksSection() {
                 body: JSON.stringify({
                     chunk_size: chunkSize,
                     chunk_overlap: chunkOverlap,
-                    chunk_strategy: chunkStrategy
+                    chunk_strategy: chunkStrategy,
+                    rag_top_k: ragTopK,
+                    rag_threshold_default: thresholdDefault,
+                    rag_threshold_reasoning: thresholdReasoning
                 })
             });
             const result = await response.json();

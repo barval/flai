@@ -329,12 +329,15 @@ def llamacpp_models():
 @admin_required
 def llamacpp_model_info(name):
     """Return information about a specific model from llama-server.
-    The llama.cpp router doesn't support /v1/models/{name}, so we parse
-    what we can from the model list response and the filename.
+    Reads context length directly from GGUF file metadata.
+    Falls back to KNOWN_MODELS if GGUF reading fails.
     """
     service_url = request.args.get('url')
+    use_gguf = request.args.get('gguf', 'true').lower() == 'true'
+
     if not service_url:
         return jsonify({'error': _('Missing "url" parameter')}), 400
+
     try:
         resp = requests.get(f"{service_url.rstrip('/')}/v1/models", timeout=10)
         if resp.status_code == 200:
@@ -345,16 +348,11 @@ def llamacpp_model_info(name):
                     model_data = m
                     break
 
-            # Parse quantization from filename
             from app.utils import extract_quantization; quantization = extract_quantization(name)
 
-            # Determine if it's likely an embedding model
             is_embedding = 'embed' in name.lower() or 'bge' in name.lower()
-            # Determine if it's likely a vision model
             is_vision = 'vl' in name.lower() or 'vision' in name.lower()
 
-            # Known model metadata (architecture, parameters, context, embedding)
-            # This is a fallback when router doesn't return detailed metadata
             KNOWN_MODELS = {
                 'Qwen3-4B-Instruct-2507-Q4_K_M': {
                     'arch': 'qwen3', 'params': '~4B', 'ctx': 32768, 'emb': 2560
@@ -375,7 +373,6 @@ def llamacpp_model_info(name):
 
             known = KNOWN_MODELS.get(name, {})
 
-            # Determine architecture family from name (override if not known)
             if not known.get('arch'):
                 name_lower = name.lower()
                 if 'qwen3' in name_lower and 'vl' in name_lower:
@@ -399,7 +396,6 @@ def llamacpp_model_info(name):
             else:
                 arch = known['arch']
 
-            # Determine parameter count (use known or parse from filename)
             if known.get('params'):
                 params = known['params']
             else:
@@ -415,9 +411,35 @@ def llamacpp_model_info(name):
                         params = label
                         break
 
-            # Context length and embedding (from known or N/A)
-            ctx_length = known.get('ctx', 'N/A')
-            emb_length = known.get('emb', 'N/A')
+            ctx_length = None
+            emb_length = None
+            ctx_source = 'unknown'
+            emb_source = 'unknown'
+
+            if use_gguf:
+                gguf_info = _get_gguf_metadata(name, service_url)
+                if gguf_info.get('context_length'):
+                    ctx_length = gguf_info['context_length']
+                    ctx_source = 'gguf'
+                if gguf_info.get('embedding_length'):
+                    emb_length = gguf_info['embedding_length']
+                    emb_source = 'gguf'
+
+            if not ctx_length:
+                if known.get('ctx'):
+                    ctx_length = known['ctx']
+                    ctx_source = 'known'
+                else:
+                    ctx_length = 'N/A'
+                    ctx_source = 'none'
+
+            if not emb_length:
+                if known.get('emb'):
+                    emb_length = known['emb']
+                    emb_source = 'known'
+                else:
+                    emb_length = 'N/A'
+                    emb_source = 'none'
 
             status = 'unknown'
             if model_data:
@@ -430,6 +452,8 @@ def llamacpp_model_info(name):
                 'quantization': quantization,
                 'context_length': ctx_length,
                 'embedding_length': emb_length,
+                'context_source': ctx_source,
+                'embedding_source': emb_source,
                 'status': status,
                 'type': 'embedding' if is_embedding else ('vision' if is_vision else 'text'),
             })
@@ -438,6 +462,48 @@ def llamacpp_model_info(name):
     except Exception as e:
         current_app.logger.error(f"Error fetching llama.cpp model info for {name}: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+def _get_gguf_metadata(model_name: str, service_url: str) -> dict:
+    """Get cached GGUF metadata for a model.
+
+    Args:
+        model_name: Name of the model file
+        service_url: URL of llama.cpp service (unused, kept for compatibility)
+
+    Returns:
+        Dict with context_length, embedding_length, etc.
+    """
+    info = {}
+
+    try:
+        from app.utils import get_gguf_models_cached
+
+        models_dir = '/models'
+        gguf_cache = get_gguf_models_cached(models_dir)
+
+        model_key = model_name
+        if model_key.endswith('.gguf'):
+            model_key = model_key[:-5]
+
+        if model_key in gguf_cache:
+            cached = gguf_cache[model_key]
+            if cached.get('context_length'):
+                info['context_length'] = cached['context_length']
+            if cached.get('embedding_length'):
+                info['embedding_length'] = cached['embedding_length']
+            if cached.get('architecture'):
+                info['architecture'] = cached['architecture']
+            current_app.logger.debug(f"GGUF metadata from cache: {info}")
+        else:
+            current_app.logger.debug(f"Model not in GGUF cache: {model_key}")
+
+    except ImportError:
+        current_app.logger.debug("gguf library not installed")
+    except Exception as e:
+        current_app.logger.warning(f"Error reading GGUF metadata: {e}")
+
+    return info
 
 
 @bp.route('/api/model_configs', methods=['GET'])
@@ -503,6 +569,18 @@ def update_model_config(module):
             current_app.logger.info(f"Embedding model save: new='{new_model}', old='{old_model}' — no reindex")
     else:
         result['model_name'] = updates.get('model_name')
+
+    if module == 'reasoning':
+        from app.model_config import get_model_config
+        reasoning_config = get_model_config('reasoning')
+        if reasoning_config:
+            ctx_length = reasoning_config.get('context_length', 8192)
+            chunk_config = get_model_config('chunks')
+            chunk_size = chunk_config.get('chunk_size', 500) if chunk_config else 500
+            token_chars = current_app.config.get('TOKEN_CHARS', 3)
+            max_context_tokens = int(ctx_length * 0.30)
+            chunk_size_tokens = chunk_size / token_chars
+            result['max_top_k'] = max(1, int(max_context_tokens / chunk_size_tokens))
 
     return jsonify(result)
 

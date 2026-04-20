@@ -18,6 +18,8 @@ services:
       # Mount application data directory
       - ./data:/app/data
       - ./.env:/app/.env:ro
+      # Mount models directory for GGUF metadata reading
+      - ./services/llamacpp/models:/models:ro
     environment:
       - REDIS_URL=redis://redis:6379/0
       - WHISPER_API_URL=http://flai-whisper:9000/asr
@@ -93,7 +95,10 @@ services:
     volumes:
       - ./services/llamacpp/models:/models
       - ./services/llamacpp/generate_presets.py:/generate_presets.py:ro
-    command: ["sh", "-c", "pip install --no-cache-dir psycopg2-binary 2>/dev/null && python3 /generate_presets.py"]
+    environment:
+      - DATABASE_URL=postgresql://flai:flai_password@postgres:5432/flai
+    command: >
+      sh -c "pip install --no-cache-dir psycopg2-binary==2.9.9 && python3 /generate_presets.py"
     depends_on:
       - postgres
     restart: "no"

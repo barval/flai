@@ -310,6 +310,15 @@ body.dark-theme .models-list .section-header span {
     color: #666;
     margin-bottom: 2px;
 }
+.model-card .param {
+    display: flex;
+    flex-direction: column;
+}
+.model-card .param-hint {
+    font-size: 0.75em;
+    color: #888;
+    margin-top: 2px;
+}
 .model-card .param input {
     padding: 6px;
     border: 1px solid #ccc;

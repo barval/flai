@@ -337,9 +337,188 @@ def extract_text_from_file(file_path: str) -> Optional[str]:
             return _extract_epub(file_path)
         else:
             return None
-    except Exception as e:
-        current_app.logger.error(f"Error extracting text from {file_path}: {e}")
+    except Exception:
         return None
+
+
+def scan_gguf_models(models_dir: str = '/models') -> Dict[str, Any]:
+    """Scan all GGUF files in directory and extract metadata.
+
+    Args:
+        models_dir: Directory containing GGUF model files
+
+    Returns:
+        Dict mapping model_name -> metadata dict
+    """
+    import glob
+
+    result = {}
+
+    try:
+        from gguf import GGUFReader
+    except ImportError:
+        return result
+
+    if not os.path.exists(models_dir):
+        return result
+
+    gguf_patterns = [
+        os.path.join(models_dir, '*.gguf'),
+        os.path.join(models_dir, '*', '*.gguf'),
+    ]
+
+    gguf_files = set()
+    for pattern in gguf_patterns:
+        gguf_files.update(glob.glob(pattern, recursive=True))
+
+    for gguf_path in sorted(gguf_files):
+        try:
+            model_name = os.path.basename(gguf_path)
+            if model_name.endswith('.gguf'):
+                model_name = model_name[:-5]
+
+            reader = GGUFReader(gguf_path)
+            fields = reader.fields
+
+            info = {'context_length': None, 'embedding_length': None, 'architecture': None}
+
+            for key in fields.keys():
+                if key.endswith('.context_length') and info['context_length'] is None:
+                    val = fields[key].parts[-1]
+                    if hasattr(val, 'tolist'):
+                        arr = val.tolist()
+                        if isinstance(arr, list) and len(arr) == 1:
+                            val = arr[0]
+                    if val is not None:
+                        info['context_length'] = int(val)
+                        break
+
+            for key in fields.keys():
+                if key.endswith('.embedding_length') and info['embedding_length'] is None:
+                    val = fields[key].parts[-1]
+                    if hasattr(val, 'tolist'):
+                        arr = val.tolist()
+                        if isinstance(arr, list) and len(arr) == 1:
+                            val = arr[0]
+                    if val is not None:
+                        info['embedding_length'] = int(val)
+                        break
+
+            if 'general.architecture' in fields:
+                val = fields['general.architecture'].parts[-1]
+                if hasattr(val, 'tolist'):
+                    info['architecture'] = bytes(val.tolist()).decode('utf-8', errors='replace')
+                else:
+                    info['architecture'] = str(val)
+
+            if info['context_length'] or info['embedding_length'] or info['architecture']:
+                result[model_name] = info
+
+        except Exception:
+            continue
+
+    return result
+
+
+_gguf_models_cache = None
+
+
+def get_gguf_models_cached(models_dir: str = '/models') -> Dict[str, Any]:
+    """Get cached GGUF models metadata (scanned once at startup).
+
+    Args:
+        models_dir: Directory containing GGUF model files
+
+    Returns:
+        Dict mapping model_name -> metadata dict
+    """
+    global _gguf_models_cache
+    if _gguf_models_cache is None:
+        _gguf_models_cache = scan_gguf_models(models_dir)
+    return _gguf_models_cache
+
+
+def get_gguf_model_info(model_path: str) -> Dict[str, Any]:
+    """Read metadata from GGUF model file.
+
+    Args:
+        model_path: Full path to GGUF file
+
+    Returns:
+        Dict with keys: context_length, embedding_length, architecture, params, quantization
+    """
+    result = {
+        'context_length': None,
+        'embedding_length': None,
+        'architecture': None,
+    }
+
+    try:
+        from gguf import GGUFReader
+    except ImportError:
+        result['error'] = 'gguf library not installed'
+        return result
+
+    try:
+        reader = GGUFReader(model_path)
+        fields = reader.fields
+
+        for key in fields.keys():
+            if key.endswith('.context_length') and result['context_length'] is None:
+                val = fields[key].parts[-1]
+                if hasattr(val, 'tolist'):
+                    arr = val.tolist()
+                    if isinstance(arr, list) and len(arr) == 1:
+                        val = arr[0]
+                if val is not None:
+                    result['context_length'] = int(val)
+                    break
+
+        for key in fields.keys():
+            if key.endswith('.embedding_length') and result['embedding_length'] is None:
+                val = fields[key].parts[-1]
+                if hasattr(val, 'tolist'):
+                    arr = val.tolist()
+                    if isinstance(arr, list) and len(arr) == 1:
+                        val = arr[0]
+                if val is not None:
+                    result['embedding_length'] = int(val)
+                    break
+
+        if 'general.architecture' in fields:
+            val = fields['general.architecture'].parts[-1]
+            if hasattr(val, 'tolist'):
+                result['architecture'] = bytes(val.tolist()).decode('utf-8', errors='replace')
+            else:
+                result['architecture'] = str(val)
+
+    except Exception as e:
+        result['error'] = str(e)
+
+    return result
+
+
+def find_gguf_file(model_name: str, models_dir: str = '/models') -> Optional[str]:
+    """Find GGUF file path for a given model name."""
+    import glob
+
+    model_basename = os.path.basename(model_name)
+    if not model_basename.endswith('.gguf'):
+        model_basename += '.gguf'
+
+    patterns = [
+        os.path.join(models_dir, model_basename),
+        os.path.join(models_dir, model_name, '*.gguf'),
+        os.path.join(models_dir, model_name.replace(' ', '_'), '*.gguf'),
+        os.path.join(models_dir, '**', model_basename),
+    ]
+
+    for pattern in patterns:
+        matches = glob.glob(pattern, recursive=True)
+        if matches:
+            return matches[0]
+
+    return None
 
 
 def _pdf_to_markdown(text: str) -> str:

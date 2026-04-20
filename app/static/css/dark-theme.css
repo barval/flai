@@ -437,7 +437,9 @@
 .dark-theme .model-card .param label {
     color: #b0b0b0;
 }
-
+.dark-theme .model-card .param-hint {
+    color: #888;
+}
 .dark-theme .model-card .capability {
     background-color: #3a3a3a;
     color: #e0e0e0;

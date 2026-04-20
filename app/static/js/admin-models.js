@@ -67,29 +67,16 @@ function renderModelCards() {
 
     let html = '';
     modules.forEach(mod => {
-        const serviceUrl = mod.config.service_url || mod.config.ollama_url || '';
-        const isLocal = serviceUrl === 'http://llamacpp:8033' || serviceUrl === 'http://ollama:11434';
-
         html += `
         <div class="model-card" data-module="${mod.id}">
             <h3><span class="module-name">${t(mod.name)}</span></h3>
-            <div class="model-url-group">
-                <label class="checkbox-label">
-                    <input type="checkbox" class="local-checkbox" data-module="${mod.id}" ${isLocal ? 'checked' : ''}>
-                    ${t('Local')}
-                </label>
-                <div class="url-input-wrapper">
-                    <input type="text" class="service-url" data-module="${mod.id}" value="${escapeHtml(serviceUrl)}" placeholder="http://llamacpp:8033">
-                </div>
-                <span class="service-status-icon" data-module="${mod.id}" title="">?</span>
-            </div>
+            <input type="hidden" class="service-url" data-module="${mod.id}" value="http://llamacpp:8033">
             <div class="model-selector">
-                <button class="refresh-models-btn" data-module="${mod.id}" title="${t('Refresh models from llama-server')}">🔄</button>
                 <select class="model-dropdown" data-module="${mod.id}">
                     <option value="">${t('-- Select model --')}</option>
                 </select>
             </div>
-            <div class="model-details" id="details-${mod.id}" style="display:none;"></div>`;
+            <div class="model-details" id="details-${mod.id}"></div>`;
 
         if (mod.id !== 'embedding' && mod.id !== 'reranker') {
             html += `
@@ -97,14 +84,17 @@ function renderModelCards() {
                 <div class="param">
                     <label>${t('Context Length')}</label>
                     <input type="number" class="context-length" data-module="${mod.id}" value="${mod.config.context_length || ''}" min="1" step="1">
+                    <small class="param-hint">&lt; <span class="max-ctx-hint" data-module="${mod.id}">32768</span></small>
                 </div>
                 <div class="param">
                     <label>${t('Temperature')}</label>
                     <input type="number" class="temperature" data-module="${mod.id}" value="${mod.config.temperature || ''}" min="0" max="2" step="0.01">
+                    <small class="param-hint">0.1 ... 1.0</small>
                 </div>
                 <div class="param">
                     <label>${t('Top P')}</label>
                     <input type="number" class="top-p" data-module="${mod.id}" value="${mod.config.top_p || ''}" min="0" max="1" step="0.01">
+                    <small class="param-hint">0.1 ... 1.0</small>
                 </div>
                 <div class="param">
                     <label>${t('Timeout (s)')}</label>
@@ -123,88 +113,22 @@ function renderModelCards() {
     document.querySelectorAll('.model-dropdown').forEach(select => {
         select.addEventListener('change', onModelSelect);
     });
-    document.querySelectorAll('.refresh-models-btn').forEach(btn => {
-        btn.addEventListener('click', onRefreshModels);
-    });
     document.querySelectorAll('.save-button').forEach(btn => {
         btn.addEventListener('click', onSaveConfig);
     });
-    document.querySelectorAll('.local-checkbox').forEach(cb => {
-        cb.addEventListener('change', onLocalCheckboxChange);
-    });
-    document.querySelectorAll('.service-url').forEach(input => {
-        input.addEventListener('input', function() {
-            const module = this.dataset.module;
-            updateServiceStatus(module);
-        });
-    });
 
     modules.forEach(mod => {
-        updateServiceStatus(mod.id);
-        const select = document.querySelector(`.model-dropdown[data-module="${mod.id}"]`);
-        if (select && select.value) {
-            onModelSelect({ target: select });
-        }
+        refreshModelsForModule(mod.id, true);
     });
 }
 
-function onLocalCheckboxChange(event) {
-    const cb = event.target;
-    const module = cb.dataset.module;
-    const urlInput = document.querySelector(`.service-url[data-module="${module}"]`);
-    if (cb.checked) {
-        urlInput.value = 'http://llamacpp:8033';
-        urlInput.disabled = true;
-        updateServiceStatus(module);
-    } else {
-        urlInput.disabled = false;
-        updateServiceStatus(module);
-    }
-}
-
-async function updateServiceStatus(module) {
+async function refreshModelsForModule(module, silent = false) {
     const urlInput = document.querySelector(`.service-url[data-module="${module}"]`);
     const serviceUrl = urlInput.value.trim();
-    const statusIcon = document.querySelector(`.service-status-icon[data-module="${module}"]`);
-    if (!serviceUrl) {
-        statusIcon.textContent = '❓';
-        statusIcon.title = t('Please provide llama-server URL first');
-        return;
-    }
-    try {
-        const response = await fetch(`/admin/api/llamacpp/check?url=${encodeURIComponent(serviceUrl)}`);
-        const data = await response.json();
-        if (data.available) {
-            statusIcon.textContent = '✅';
-            statusIcon.title = t('llama-server available');
-        } else {
-            statusIcon.textContent = '❌';
-            statusIcon.title = t('llama-server unavailable') + (data.error ? `: ${data.error}` : '');
-        }
-    } catch (err) {
-        statusIcon.textContent = '❌';
-        statusIcon.title = t('llama-server unavailable') + ': ' + err.message;
-    }
-}
-
-async function onRefreshModels(event) {
-    const btn = event.target;
-    const module = btn.dataset.module;
-    btn.disabled = true;
-    btn.textContent = '⏳';
-    await refreshModelsForModule(module);
-    btn.disabled = false;
-    btn.textContent = '🔄';
-}
-
-async function refreshModelsForModule(module) {
-    const urlInput = document.querySelector(`.service-url[data-module="${module}"]`);
-    const serviceUrl = urlInput.value.trim();
-    if (!serviceUrl) {
-        showModelError(module, t('Please provide llama-server URL first'));
-        return;
-    }
     const select = document.querySelector(`.model-dropdown[data-module="${module}"]`);
+    const currentConfig = currentModelConfigs[module] || {};
+    const currentModelName = currentConfig.model_name || '';
+
     select.innerHTML = `<option value="">${t('-- Select model --')}</option>`;
     select.disabled = true;
     clearModelError(module);
@@ -212,12 +136,15 @@ async function refreshModelsForModule(module) {
     try {
         const response = await fetch(`/admin/api/llamacpp/models?url=${encodeURIComponent(serviceUrl)}`);
         if (!response.ok) {
-            let errorMsg = `HTTP ${response.status}`;
-            try {
-                const errorData = await response.json();
-                if (errorData.error) errorMsg = errorData.error;
-            } catch (e) {}
-            throw new Error(errorMsg);
+            if (!silent) {
+                let errorMsg = `HTTP ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    if (errorData.error) errorMsg = errorData.error;
+                } catch (e) {}
+                showModelError(module, t('error') + ': ' + errorMsg);
+            }
+            return;
         }
         const models = await response.json();
         modelListCache[serviceUrl] = models;
@@ -228,12 +155,13 @@ async function refreshModelsForModule(module) {
             select.appendChild(option);
         });
     } catch (err) {
-        showModelError(module, t('error') + ': ' + err.message);
+        if (!silent) {
+            showModelError(module, t('error') + ': ' + err.message);
+        }
     } finally {
         select.disabled = false;
-        const currentConfig = currentModelConfigs[module] || {};
-        if (currentConfig.model_name) {
-            select.value = currentConfig.model_name;
+        if (currentModelName) {
+            select.value = currentModelName;
         }
         if (select.value) {
             onModelSelect({ target: select });
@@ -264,10 +192,9 @@ async function onModelSelect(event) {
     const modelName = select.value;
     const detailsGrid = document.getElementById(`details-${module}`);
     if (!modelName) {
-        detailsGrid.style.display = 'none';
+        detailsGrid.innerHTML = '';
         return;
     }
-    detailsGrid.style.display = 'block';
 
     if (module === 'reranker') {
         const rerankerInfo = {
@@ -285,13 +212,13 @@ async function onModelSelect(event) {
         return;
     }
 
-    detailsGrid.innerHTML = '<p>Loading...</p>';
+    detailsGrid.innerHTML = `<p>${t('Loading...')}</p>`;
     clearModelError(module);
 
     const urlInput = document.querySelector(`.service-url[data-module="${module}"]`);
     const serviceUrl = urlInput.value.trim();
     if (!serviceUrl) {
-        detailsGrid.innerHTML = '<p>No llama-server URL provided</p>';
+        detailsGrid.innerHTML = `<p>${t('No llama-server URL provided')}</p>`;
         return;
     }
 
@@ -322,7 +249,13 @@ async function onModelSelect(event) {
     `;
 
     if (info.context_length && info.context_length !== 'N/A') {
-        detailsHtml += `<p><strong>${t('Max context length:')}</strong> ${info.context_length}</p>`;
+        let sourceLabel = '';
+        if (info.context_source === 'gguf') {
+            sourceLabel = ' (GGUF)';
+        } else if (info.context_source === 'known') {
+            sourceLabel = ' (known)';
+        }
+        detailsHtml += `<p><strong>${t('Max context length:')}</strong> ${info.context_length}${sourceLabel}</p>`;
     }
 
     if (module === 'embedding' && info.embedding_length && info.embedding_length !== 'N/A') {
@@ -334,6 +267,11 @@ async function onModelSelect(event) {
     const ctxInput = document.querySelector(`.context-length[data-module="${module}"]`);
     if (ctxInput && info.context_length && info.context_length !== 'N/A') {
         ctxInput.max = info.context_length;
+        ctxInput.placeholder = `max: ${info.context_length}`;
+        const hintSpan = document.querySelector(`.max-ctx-hint[data-module="${module}"]`);
+        if (hintSpan) {
+            hintSpan.textContent = info.context_length + 1;
+        }
     }
 }
 
@@ -344,12 +282,6 @@ function validateModelConfig(module, card) {
         return false;
     }
 
-    const serviceUrl = card.querySelector('.service-url').value.trim();
-    if (!serviceUrl) {
-        alert(t('Please provide llama-server URL.'));
-        return false;
-    }
-
     if (module === 'embedding') return true;
 
     const contextLength = card.querySelector('.context-length')?.value;
@@ -357,6 +289,7 @@ function validateModelConfig(module, card) {
     const topP = card.querySelector('.top-p')?.value;
     const timeout = card.querySelector('.timeout')?.value;
 
+    const serviceUrl = 'http://llamacpp:8033';
     const info = modelDetails[`${serviceUrl}:${modelName}`];
     const maxContext = info && info.context_length && info.context_length !== 'N/A' ? parseInt(info.context_length) : null;
 
@@ -436,6 +369,10 @@ function onSaveConfig(event) {
             if (!currentModelConfigs[module]) currentModelConfigs[module] = {};
             Object.assign(currentModelConfigs[module], data);
 
+            if (module === 'reasoning' && result.max_top_k) {
+                updateChunksLimits(result.max_top_k);
+            }
+
             if (module === 'embedding') {
                 window.CURRENT_EMBEDDING_MODEL = result.model_name;
                 if (result.reindex_triggered) {
@@ -460,6 +397,20 @@ function escapeHtml(str) {
         if (m === '>') return '&gt;';
         return m;
     });
+}
+
+function updateChunksLimits(maxTopK) {
+    const ragTopKInput = document.getElementById('rag-top-k');
+    const ragTopKInputContainer = ragTopKInput ? ragTopKInput.parentElement : null;
+    if (ragTopKInput) {
+        ragTopKInput.max = maxTopK;
+    }
+    if (ragTopKInputContainer) {
+        const hintSmall = ragTopKInputContainer.querySelector('small');
+        if (hintSmall) {
+            hintSmall.textContent = '< ' + maxTopK;
+        }
+    }
 }
 
 function initChunksSection() {

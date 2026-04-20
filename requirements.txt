@@ -15,6 +15,8 @@ python-magic==0.4.27
 odfpy>=1.4.0
 striprtf>=0.0.26
 epub
+gguf>=0.10.0
+psycopg2-binary==2.9.9
 
 # For testing (not required in production)
 pytest==7.4.3

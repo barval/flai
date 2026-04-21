@@ -359,8 +359,8 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
 
 if (hasGPU && totalVRAM > 0) {
             if (!modelSizeMB) {
-                hintDiv.style.backgroundColor = '#17a2b8';
-                hintDiv.style.color = '#fff';
+                hintDiv.style.color = '#1CC8E3';
+                hintDiv.style.fontWeight = 'bold';
                 hintDiv.textContent = 'GPU: ' + totalVRAM + 'MB';
             } else {
                 const vramPercent = Math.round((modelSizeMB * multiplier / totalVRAM) * 100);
@@ -368,25 +368,25 @@ if (hasGPU && totalVRAM > 0) {
                 console.log('VRAM calc:', {modelSizeMB, multiplier, totalVRAM, vramPercent});
 
                 if (vramPercent <= 100) {
-                    hintDiv.style.backgroundColor = '#d4edda';
-                    hintDiv.style.color = '#155724';
+                    hintDiv.style.color = '#29A847';
+                    hintDiv.style.fontWeight = 'bold';
                     const msg = t('vram_optimal_dynamic').replace('%1%', vramPercent);
                     hintDiv.textContent = msg;
                 } else {
                     const offloadPercent = vramPercent - 100;
                     if (offloadPercent <= 20) {
-                        hintDiv.style.backgroundColor = '#fff3cd';
-                        hintDiv.style.color = '#856404';
+                        hintDiv.style.color = '#FFD700';
+                        hintDiv.style.fontWeight = 'bold';
                         const msg = t('vram_partial_high');
                         hintDiv.textContent = msg.replace('%2%', offloadPercent);
                     } else if (offloadPercent <= 40) {
-                        hintDiv.style.backgroundColor = '#fd7e14';
-                        hintDiv.style.color = '#fff';
+                        hintDiv.style.color = '#fd7e14';
+                        hintDiv.style.fontWeight = 'bold';
                         const msg = t('vram_partial_med');
                         hintDiv.textContent = msg.replace('%2%', offloadPercent);
                     } else {
-                        hintDiv.style.backgroundColor = '#dc3545';
-                        hintDiv.style.color = '#fff';
+                        hintDiv.style.color = '#E01F1F';
+                        hintDiv.style.fontWeight = 'bold';
                         const msg = t('vram_partial_low');
                         hintDiv.textContent = msg.replace('%2%', offloadPercent);
                     }
@@ -395,13 +395,13 @@ if (hasGPU && totalVRAM > 0) {
         } else {
             const ramPercent = totalRAM > 0 ? Math.round((modelSizeMB * multiplier / totalRAM) * 100) : 0;
             if (ramPercent < 50) {
-                hintDiv.style.backgroundColor = '#fd7e14';
-                hintDiv.style.color = '#fff';
+                hintDiv.style.color = '#fd7e14';
+                hintDiv.style.fontWeight = 'bold';
                 const msg = t('no_gpu_low');
                 hintDiv.textContent = msg.replace('%1%', ramPercent);
             } else {
-                hintDiv.style.backgroundColor = '#dc3545';
-                hintDiv.style.color = '#fff';
+                hintDiv.style.color = '#E01F1F';
+                hintDiv.style.fontWeight = 'bold';
                 const msg = t('no_gpu_full');
                 hintDiv.textContent = msg.replace('%1%', ramPercent);
             }

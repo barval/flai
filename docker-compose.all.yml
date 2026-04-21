@@ -20,12 +20,14 @@ services:
       - ./.env:/app/.env:ro
       # Mount models directory for GGUF metadata reading
       - ./services/llamacpp/models:/models:ro
+      # Mount docker socket for GPU detection
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - REDIS_URL=redis://redis:6379/0
       - WHISPER_API_URL=http://flai-whisper:9000/asr
       - WHISPER_API_TIMEOUT=120
       - SD_WRAPPER_URL=http://flai-sd:7861
-    user: "1000:1000"
+    user: "0:988"
     networks:
       - flai_network
     restart: unless-stopped

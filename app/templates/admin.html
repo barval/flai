@@ -62,11 +62,11 @@
             <h3><span class="module-name">{{ _('Chunks') }}</span> <span id="chunks-status" class="service-status-icon" title=""></span></h3>
             <div class="chunks-config">
                 <div class="param">
-                    <label>{{ _('Chunk Size') }}</label>
+                    <label>{{ _('Chunk Size (characters)') }}</label>
                     <input type="number" id="chunk-size" min="100" step="10" value="{{ chunk_size }}">
                 </div>
                 <div class="param">
-                    <label>{{ _('Chunk Overlap') }}</label>
+                    <label>{{ _('Chunk Overlap (characters)') }}</label>
                     <input type="number" id="chunk-overlap" min="0" step="10" value="{{ chunk_overlap }}">
                 </div>
                 <div class="param">
@@ -274,13 +274,20 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'Timeout must be between 0 and 1200 seconds.': {{ _('Timeout must be between 0 and 1200 seconds.')|tojson }},
     'Save': {{ _('Save')|tojson }},
     'Chunks': {{ _('Chunks')|tojson }},
-    'Chunk Size': {{ _('Chunk Size')|tojson }},
-    'Chunk Overlap': {{ _('Chunk Overlap')|tojson }},
+    'Chunk Size': {{ _('Chunk Size (characters)')|tojson }},
+    'Chunk Overlap': {{ _('Chunk Overlap (characters)')|tojson }},
     'Chunk Strategy': {{ _('Chunk Strategy')|tojson }},
     'Fixed (by size)': {{ _('Fixed (by size)')|tojson }},
     'Structural (by headings)': {{ _('Structural (by headings)')|tojson }},
     'chunks_saved': {{ _('Chunk configuration saved. Reindexing started.')|tojson }},
     'chunks_unchanged': {{ _('Chunk configuration saved.')|tojson }},
+    'vram_optimal': {{ _('vram_optimal')|tojson }},
+    'vram_optimal_dynamic': {{ _('vram_optimal_dynamic')|tojson }},
+    'vram_partial_high': {{ _('vram_partial_high')|tojson }},
+    'vram_partial_med': {{ _('vram_partial_med')|tojson }},
+    'vram_partial_low': {{ _('vram_partial_low')|tojson }},
+    'no_gpu_full': {{ _('no_gpu_full')|tojson }},
+    'no_gpu_low': {{ _('no_gpu_low')|tojson }},
     'reindex_started': {{ _('Reindexing all documents with new embedding model started. This may take a while.')|tojson }},
     'reindex_all_confirm': {{ _('Reindex all documents? This will rebuild all document embeddings.')|tojson }},
     // New translations for per-model URL

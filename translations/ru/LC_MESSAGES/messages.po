@@ -854,11 +854,11 @@ msgstr "Сервис временно недоступен. Сработал з�
 msgid "Chunks"
 msgstr "Чанки"
 
-msgid "Chunk Size"
-msgstr "Размер чанка"
+msgid "Chunk Size (characters)"
+msgstr "Размер чанка (символов)"
 
-msgid "Chunk Overlap"
-msgstr "Перекрытие чанков"
+msgid "Chunk Overlap (characters)"
+msgstr "Перекрытие чанков (символов)"
 
 msgid "Chunk Strategy"
 msgstr "Стратегия чанкинга"
@@ -883,3 +883,24 @@ msgstr "Порог (документы)"
 
 msgid "Threshold (reasoning)"
 msgstr "Порог (рассуждения)"
+
+msgid "vram_optimal"
+msgstr "Использовано VRAM: 100%, RAM: 0% - оптимально"
+
+msgid "vram_optimal_dynamic"
+msgstr "Использовано VRAM: %1%%, RAM: 0% - оптимально"
+
+msgid "vram_partial_high"
+msgstr "Использовано VRAM: 100%, RAM: %2%% - хорошо"
+
+msgid "vram_partial_med"
+msgstr "Использовано VRAM: 100%, RAM: %2%% - умеренно"
+
+msgid "vram_partial_low"
+msgstr "Использовано VRAM: 100%, RAM: %2%% - медленно, задержки"
+
+msgid "no_gpu_low"
+msgstr "Нет GPU. Использовано %1% RAM - очень медленно"
+
+msgid "no_gpu_full"
+msgstr "Нет GPU. Использовано %1% RAM - медленно"

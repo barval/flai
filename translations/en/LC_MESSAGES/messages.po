@@ -841,11 +841,11 @@ msgstr "Service temporarily unavailable. Circuit breaker is open after repeated 
 msgid "Chunks"
 msgstr "Chunks"
 
-msgid "Chunk Size"
-msgstr "Chunk Size"
+msgid "Chunk Size (characters)"
+msgstr "Chunk Size (characters)"
 
-msgid "Chunk Overlap"
-msgstr "Chunk Overlap"
+msgid "Chunk Overlap (characters)"
+msgstr "Chunk Overlap (characters)"
 
 msgid "Chunk Strategy"
 msgstr "Chunk Strategy"
@@ -870,3 +870,24 @@ msgstr "Threshold (documents)"
 
 msgid "Threshold (reasoning)"
 msgstr "Threshold (reasoning)"
+
+msgid "vram_optimal"
+msgstr "Used VRAM: 100%, RAM: 0% - optimal"
+
+msgid "vram_optimal_dynamic"
+msgstr "Used VRAM: %1%%, RAM: 0% - optimal"
+
+msgid "vram_partial_high"
+msgstr "Used VRAM: 100%, RAM: %2%% - good"
+
+msgid "vram_partial_med"
+msgstr "Used VRAM: 100%, RAM: %2%% - moderate"
+
+msgid "vram_partial_low"
+msgstr "Used VRAM: 100%, RAM: %2%% - slow, delays"
+
+msgid "no_gpu_low"
+msgstr "No GPU. Used %1% RAM - very slow"
+
+msgid "no_gpu_full"
+msgstr "No GPU. Used %1% RAM - slow"

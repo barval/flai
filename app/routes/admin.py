@@ -262,7 +262,6 @@ def delete_user_account(login):
 def get_stats():
     """Return current sizes of databases and folders in bytes."""
     try:
-        # PostgreSQL size is tracked on the server, not accessible from app container
         chat_db_size = 0
         user_db_size = 0
         uploads_folder = current_app.config.get('UPLOAD_FOLDER', 'data/uploads')
@@ -278,6 +277,80 @@ def get_stats():
         })
     except Exception as e:
         logger.error(f"Error in get_stats: {str(e)}", exc_info=True)
+        return jsonify({'error': _('Internal server error')}), 500
+
+
+@bp.route('/api/hardware')
+@admin_required
+def get_hardware():
+    """Return hardware information for memory estimation.
+
+    Gets GPU info from llamacpp container logs or via nvidia-smi.
+    """
+    try:
+        import subprocess
+        import re
+
+        hw = {
+            'gpu_name': None,
+            'cuda_detected': False,
+            'total_vram_mb': 0,
+            'available_vram_mb': 0,
+            'total_ram_mb': 0,
+            'available_ram_mb': 0,
+        }
+
+        # Get RAM info from resource manager
+        from app.resource_manager import get_resource_manager
+        rm = get_resource_manager()
+        rm_hw = rm.get_status()
+        hw['total_ram_mb'] = rm_hw.get('total_ram_mb', 0)
+        hw['available_ram_mb'] = rm_hw.get('available_ram_mb', 0)
+
+        # Always try to parse from llamacpp logs first (most reliable)
+        try:
+            result = subprocess.run(
+                ['docker', 'logs', 'flai-llamacpp'],
+                timeout=5, capture_output=True, text=True
+            )
+            output = result.stdout + result.stderr
+            # Parse GPU name: "Device 0: NVIDIA GeForce RTX 5060 Ti, ..."
+            match = re.search(r'Device\s+0:\s+(.+?),', output)
+            if match:
+                hw['gpu_name'] = match.group(1).strip()
+            # Parse VRAM: "Total VRAM: 15844 MiB"
+            match = re.search(r'Total VRAM:\s*(\d+)\s*MiB', output)
+            if match:
+                hw['cuda_detected'] = True
+                hw['total_vram_mb'] = int(match.group(1))
+                hw['available_vram_mb'] = hw['total_vram_mb']
+                logger.info(f"GPU from logs: {hw.get('gpu_name', 'GPU')}, {hw['total_vram_mb']}MB")
+        except Exception as e:
+            logger.warning(f"logs parse error: {e}")
+
+        # Method 2: Try docker exec with nvidia-smi for more accurate available VRAM
+        if hw['cuda_detected']:
+            try:
+                result = subprocess.run(
+                    ['docker', 'exec', 'flai-llamacpp', 'nvidia-smi',
+                     '--query-gpu=name,memory.total,memory.free',
+                     '--format=csv,noheader,nounits'],
+                    timeout=5, capture_output=True, text=True
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    parts = result.stdout.strip().split(',')
+                    if len(parts) >= 3:
+                        # Update with more accurate info
+                        hw['gpu_name'] = parts[0].strip()
+                        hw['total_vram_mb'] = int(parts[1].strip())
+                        hw['available_vram_mb'] = int(parts[2].strip())
+                        logger.info(f"GPU from nvidia-smi: {hw['gpu_name']}, {hw['total_vram_mb']}MB free: {hw['available_vram_mb']}MB")
+            except Exception as e:
+                logger.warning(f"nvidia-smi exception: {e}")
+
+        return jsonify(hw)
+    except Exception as e:
+        logger.error(f"Error in get_hardware: {str(e)}", exc_info=True)
         return jsonify({'error': _('Internal server error')}), 500
 
 
@@ -401,9 +474,9 @@ def llamacpp_model_info(name):
             else:
                 params = 'N/A'
                 for hint, label in [
-                    ('70b', '~70B'), ('27b', '~27B'), ('20b', '~20B'),
+                    ('70b', '~70B'), ('32b', '~32B'), ('27b', '~27B'), ('20b', '~20B'),
                     ('26b', '~26B (MoE)'), ('a4b', '~26B (MoE)'),
-                    ('14b', '~14B'), ('9b', '~9B'), ('8b', '~8B'),
+                    ('14b', '~14B'), ('12b', '~12B'), ('9b', '~9B'), ('8b', '~8B'),
                     ('7b', '~7B'), ('4b', '~4B'), ('3b', '~3B'),
                     ('1b', '~1B')
                 ]:
@@ -456,6 +529,8 @@ def llamacpp_model_info(name):
                 'embedding_source': emb_source,
                 'status': status,
                 'type': 'embedding' if is_embedding else ('vision' if is_vision else 'text'),
+                'block_count': gguf_info.get('block_count'),
+                'file_size_mb': gguf_info.get('file_size_mb'),
             })
         else:
             return jsonify({'error': _('llama-server returned {status}').format(status=resp.status_code)}), 500
@@ -494,6 +569,12 @@ def _get_gguf_metadata(model_name: str, service_url: str) -> dict:
                 info['embedding_length'] = cached['embedding_length']
             if cached.get('architecture'):
                 info['architecture'] = cached['architecture']
+            if cached.get('block_count'):
+                info['block_count'] = cached['block_count']
+            if cached.get('file_size_mb'):
+                info['file_size_mb'] = cached['file_size_mb']
+            if cached.get('size_label'):
+                info['parameters'] = cached['size_label']
             current_app.logger.debug(f"GGUF metadata from cache: {info}")
         else:
             current_app.logger.debug(f"Model not in GGUF cache: {model_key}")

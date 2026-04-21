@@ -380,7 +380,7 @@ def scan_gguf_models(models_dir: str = '/models') -> Dict[str, Any]:
             reader = GGUFReader(gguf_path)
             fields = reader.fields
 
-            info = {'context_length': None, 'embedding_length': None, 'architecture': None}
+            info = {'context_length': None, 'embedding_length': None, 'architecture': None, 'block_count': None, 'file_size_mb': None}
 
             for key in fields.keys():
                 if key.endswith('.context_length') and info['context_length'] is None:
@@ -391,6 +391,17 @@ def scan_gguf_models(models_dir: str = '/models') -> Dict[str, Any]:
                             val = arr[0]
                     if val is not None:
                         info['context_length'] = int(val)
+                        break
+
+            for key in fields.keys():
+                if key.endswith('.block_count') and info['block_count'] is None:
+                    val = fields[key].parts[-1]
+                    if hasattr(val, 'tolist'):
+                        arr = val.tolist()
+                        if isinstance(arr, list) and len(arr) == 1:
+                            val = arr[0]
+                    if val is not None:
+                        info['block_count'] = int(val)
                         break
 
             for key in fields.keys():
@@ -410,6 +421,16 @@ def scan_gguf_models(models_dir: str = '/models') -> Dict[str, Any]:
                     info['architecture'] = bytes(val.tolist()).decode('utf-8', errors='replace')
                 else:
                     info['architecture'] = str(val)
+
+            if 'general.size_label' in fields:
+                val = fields['general.size_label'].parts[-1]
+                if hasattr(val, 'tolist'):
+                    info['size_label'] = bytes(val.tolist()).decode('utf-8', errors='replace')
+                else:
+                    info['size_label'] = str(val)
+
+            if gguf_path and os.path.exists(gguf_path):
+                info['file_size_mb'] = os.path.getsize(gguf_path) / (1024 * 1024)
 
             if info['context_length'] or info['embedding_length'] or info['architecture']:
                 result[model_name] = info
@@ -451,6 +472,8 @@ def get_gguf_model_info(model_path: str) -> Dict[str, Any]:
         'context_length': None,
         'embedding_length': None,
         'architecture': None,
+        'block_count': None,
+        'file_size_mb': None,
     }
 
     try:
@@ -475,14 +498,14 @@ def get_gguf_model_info(model_path: str) -> Dict[str, Any]:
                     break
 
         for key in fields.keys():
-            if key.endswith('.embedding_length') and result['embedding_length'] is None:
+            if key.endswith('.block_count') and result['block_count'] is None:
                 val = fields[key].parts[-1]
                 if hasattr(val, 'tolist'):
                     arr = val.tolist()
                     if isinstance(arr, list) and len(arr) == 1:
                         val = arr[0]
                 if val is not None:
-                    result['embedding_length'] = int(val)
+                    result['block_count'] = int(val)
                     break
 
         if 'general.architecture' in fields:
@@ -491,6 +514,16 @@ def get_gguf_model_info(model_path: str) -> Dict[str, Any]:
                 result['architecture'] = bytes(val.tolist()).decode('utf-8', errors='replace')
             else:
                 result['architecture'] = str(val)
+
+        if 'general.size_label' in fields:
+            val = fields['general.size_label'].parts[-1]
+            if hasattr(val, 'tolist'):
+                result['size_label'] = bytes(val.tolist()).decode('utf-8', errors='replace')
+            else:
+                result['size_label'] = str(val)
+
+        if model_path and os.path.exists(model_path):
+            result['file_size_mb'] = os.path.getsize(model_path) / (1024 * 1024)
 
     except Exception as e:
         result['error'] = str(e)

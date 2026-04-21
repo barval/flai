@@ -142,7 +142,7 @@ def create_backup():
             meta = {
                 'type': backup_type,
                 'created_at': datetime.now().isoformat(),
-                'database_type': 'postgresql' if is_pg else 'sqlite',
+                'database_type': 'postgresql',
                 'tables': tables,
                 'version': '8.0'
             }
@@ -166,12 +166,6 @@ def create_backup():
         if os.path.exists(archive_path):
             os.unlink(archive_path)
         return jsonify({'error': str(e)}), 500
-
-    finally:
-        if sqlite_conn:
-            sqlite_conn.close()
-        if pg_conn:
-            pg_conn.close()
 
 
 # ============================================================
@@ -235,12 +229,6 @@ def restore_backup():
     except Exception as e:
         logger.error(f"Backup restore failed: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
-
-    finally:
-        if sqlite_conn:
-            sqlite_conn.close()
-        if pg_conn:
-            pg_conn.close()
 
 
 # ============================================================

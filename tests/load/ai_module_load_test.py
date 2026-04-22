@@ -85,7 +85,7 @@ def get_session():
     print(f"Response text: {response.text[:500] if response.text else 'Empty'}")
     raise Exception(f"Login failed: {response.status_code}")
 
-def test_chat(session, prompt="Привет! Как дела?"):
+def test_chat(session, prompt="Hello! How are you?"):
     """Test chat module - fast model"""
     times = []
     for i in range(ITERATIONS):
@@ -101,7 +101,7 @@ def test_chat(session, prompt="Привет! Как дела?"):
 
 def test_reasoning(session):
     """Test reasoning module - slow model"""
-    prompt = "Вычисли факториал числа 7 и объясни каждый шаг"
+    prompt = "Calculate the factorial of 7 and explain each step"
     times = []
     for i in range(ITERATIONS):
         start = time.time()
@@ -115,7 +115,7 @@ def test_reasoning(session):
         print(f"    Iteration {i+1}: {elapsed:.2f}s - Status: {resp.status_code}")
     return times
 
-def test_image_generation(session, prompt="кот сидит на подоконнике"):
+def test_image_generation(session, prompt="a cat sitting on a windowsill"):
     """Test image generation module"""
     times = []
     for i in range(ITERATIONS):
@@ -139,7 +139,7 @@ def test_image_analysis(session):
         start = time.time()
         resp = session.post(f"{BASE_URL}/api/multimodal", json={
             "image": png_data,
-            "message": "Что изображено на этой картинке?"
+            "message": "What is shown in this picture?"
         }, timeout=120)
         elapsed = time.time() - start
         times.append(elapsed)
@@ -156,14 +156,14 @@ def test_image_editing(session):
         start = time.time()
         resp = session.post(f"{BASE_URL}/api/image/edit", json={
             "image": png_data,
-            "prompt": "сделай фон ярче"
+            "prompt": "make the background brighter"
         }, timeout=900)
         elapsed = time.time() - start
         times.append(elapsed)
         print(f"    Iteration {i+1}: {elapsed:.2f}s - Status: {resp.status_code}")
     return times
 
-def test_tts(session, text="Привет! Это тест синтеза речи."):
+def test_tts(session, text="Hello! This is a text-to-speech test."):
     """Test TTS (text-to-speech)"""
     times = []
     for i in range(ITERATIONS):
@@ -200,7 +200,7 @@ def test_rag(session):
     for i in range(ITERATIONS):
         start = time.time()
         resp = session.post(f"{BASE_URL}/api/rag", json={
-            "query": "тест",
+            "query": "test",
             "session_id": None
         }, timeout=30)
         elapsed = time.time() - start
@@ -229,7 +229,7 @@ def main():
     # Test 1: Chat (Fast)
     print_header("Testing Chat (Qwen3-4B)...")
     try:
-        results['chat'] = test_chat(session, "Привет! Как дела?")
+        results['chat'] = test_chat(session, "Hello! How are you?")
     except Exception as e:
         print(f"  {RED}✗ Failed: {e}{RESET}")
     

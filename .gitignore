@@ -12,6 +12,7 @@ __pycache__
 *.pyo
 *.pyd
 *.so
+.ruff_cache/
 
 # Database files
 *.db

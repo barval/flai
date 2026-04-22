@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 # FLAI v8.0 — Single-Server Deployment Script
-# This script sets up, downloads models, builds, and launches the project.
-# Usage: ./deploy.sh [--with-voice] [--with-rag] [--with-image-gen]
-# Without flags, deploys only core chat + llama.cpp.
 
 set -euo pipefail
 
@@ -33,16 +30,12 @@ setup_env() {
     fi
     info "Creating .env from .env.example..."
     cp .env.example .env
-    # Generate a random Flask secret key
     SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || openssl rand -hex 32)
     sed -i "s/SECRET_KEY=.*/SECRET_KEY=$SECRET/" .env
     info ".env created. Edit it to set models, URLs, and preferences."
 }
 
 # ── Model download helpers ──
-# Models are stored in services/llamacpp/models/ and services/sd_cpp/models/
-# Uses huggingface-cli if available, otherwise curl/wget.
-
 HF_DOWNLOAD() {
     local repo="$1" file="$2" dest="$3"
     if command -v huggingface-cli &>/dev/null; then
@@ -61,11 +54,20 @@ download_llamacpp_models() {
 
     # Chat model
     if [[ ! -f "$MODEL_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
-        info "Downloading Qwen3-4B-Instruct-2507-Q4_K_M.gguf..."
+        info "Downloading Qwen3-4B-Instruct-2507-Q4_K_M.gguf (chat)..."
         HF_DOWNLOAD "bartowski/Qwen3-4B-Instruct-2507-GGUF" \
             "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" "$MODEL_DIR"
     else
         warn "Qwen3-4B-Instruct-2507-Q4_K_M.gguf already exists — skipping."
+    fi
+
+    # Reasoning model (complex tasks)
+    if [[ ! -f "$MODEL_DIR/gpt-oss-20b-mxfp4.gguf" ]]; then
+        info "Downloading gpt-oss-20b-mxfp4.gguf (reasoning)..."
+        HF_DOWNLOAD "openai/gpt-oss-20b-GGUF" \
+            "gpt-oss-20b-mxfp4.gguf" "$MODEL_DIR"
+    else
+        warn "gpt-oss-20b-mxfp4.gguf already exists — skipping."
     fi
 
     # Multimodal model (with mmproj)
@@ -89,14 +91,7 @@ download_llamacpp_models() {
         warn "bge-m3-Q8_0.gguf already exists — skipping."
     fi
 
-    # Reranker model (for RAG re-ranking)
-    if [[ ! -f "$MODEL_DIR/bge-reranker-v2-m3-Q4_K_M.gguf" ]]; then
-        info "Downloading bge-reranker-v2-m3-Q4_K_M.gguf (reranking)..."
-        HF_DOWNLOAD "gpustack/bge-reranker-v2-m3-GGUF" \
-            "bge-reranker-v2-m3-Q4_K_M.gguf" "$MODEL_DIR"
-    else
-        warn "bge-reranker-v2-m3-Q4_K_M.gguf already exists — skipping."
-    fi
+    # Note: reranker model removed (no longer used)
 }
 
 download_sd_cpp_models() {
@@ -123,7 +118,7 @@ download_sd_cpp_models() {
         warn "flux-2-klein-4b-Q8_0.gguf already exists — skipping."
     fi
 
-    # VAE (for Z-Image Turbo generation)
+    # VAE (for generation)
     if [[ ! -f "$VAE_DIR/ae.safetensors" ]]; then
         info "Downloading ae.safetensors (VAE for generation)..."
         HF_DOWNLOAD "bartowski/Z-Image-Turbo-GGUF" \
@@ -132,7 +127,7 @@ download_sd_cpp_models() {
         warn "ae.safetensors already exists — skipping."
     fi
 
-    # VAE (for Flux.2 Klein 4B editing)
+    # VAE (for editing)
     if [[ ! -f "$VAE_DIR/flux2_ae.safetensors" ]]; then
         info "Downloading flux2_ae.safetensors (VAE for editing)..."
         HF_DOWNLOAD "bartowski/FLUX.2-dev-GGUF" \
@@ -141,7 +136,7 @@ download_sd_cpp_models() {
         warn "flux2_ae.safetensors already exists — skipping."
     fi
 
-    # Text encoder (shared for Z-Image Turbo and Flux.2 Klein 4B)
+    # Text encoder (shared)
     if [[ ! -f "$TXT_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
         info "Downloading Qwen3-4B-Instruct-2507-Q4_K_M.gguf (text encoder)..."
         HF_DOWNLOAD "bartowski/Qwen3-4B-Instruct-2507-GGUF" \
@@ -167,7 +162,7 @@ download_tts_models() {
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "ru/ru_RU/ruslan/medium/ru_RU-ruslan-medium.onnx" "$TTS_DIR"
     fi
-    # Download config.json for Piper
+    # Config
     if [[ ! -f "$TTS_DIR/config.json" ]]; then
         HF_DOWNLOAD "rhasspy/piper-voices" "config.json" "$TTS_DIR"
     fi
@@ -188,7 +183,6 @@ build_and_launch() {
     info "Waiting for services to start..."
     sleep 10
 
-    # Health check
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "unreachable")
     if [[ "$STATUS" == "ok" ]]; then
@@ -220,38 +214,15 @@ Options:
   --run-tests         Run unit tests after deployment
   --help, -h          Show this help message
 
-Deployment Scenarios:
-  ./deploy.sh                              Core chat + llama.cpp only (~2.5 GB)
-  ./deploy.sh --with-voice                 + voice recognition & TTS (~3 GB)
-  ./deploy.sh --with-rag                   + document search with Qdrant (~5 GB)
-  ./deploy.sh --with-image-gen             + image generation & editing (~23 GB)
-  ./deploy.sh --download-models --with-image-gen  All models (~35 GB total)
-
 Model Download Sizes (approximate):
-  llama.cpp models:
+  llama.cpp:
     Qwen3-4B-Instruct (chat)         ~2.5 GB
-    Qwen3VL-8B-Instruct (multimodal) ~5.5 GB
-    bge-m3 (embeddings for RAG)      ~2.2 GB
-    bge-reranker-v2-m3 (reranking)   ~0.4 GB
-
-  Image generation (Z-Image Turbo):
-    z_image_turbo (diffusion)        ~6.2 GB
-    ae.safetensors (VAE)             ~0.3 GB
-    Qwen3-4B-Instruct (text encoder) ~2.5 GB  (shared with chat)
-
-  Image editing (Flux.2 Klein 4B):
-    flux-2-klein-4b-Q8_0 (diffusion) ~4.5 GB
-    flux2_ae.safetensors (VAE)       ~0.3 GB
-
-  TTS (Piper):
-    en_US-lessac-medium              ~0.1 GB
-    ru_RU-ruslan-medium              ~0.1 GB
-
-Examples:
-  ./deploy.sh                              # Core chat + llama.cpp only
-  ./deploy.sh --with-image-gen             # + image generation/editing
-  ./deploy.sh --with-voice --with-image-gen # + voice + images
-  ./deploy.sh --download-models --with-image-gen  # Download all models too
+    gpt-oss-20b (reasoning)          ~12 GB
+    Qwen3VL-8B (multimodal)          ~5.5 GB
+    bge-m3 (embeddings)              ~2.2 GB
+  Image generation (Z-Image Turbo)   ~6.5 GB
+  Image editing (Flux.2 Klein 4B)    ~5 GB
+  TTS (Piper)                        ~0.2 GB
 USAGE
 }
 

@@ -188,6 +188,14 @@ def mock_llamacpp_client():
 
 
 @pytest.fixture
+def mock_ollama_client():
+    """
+    Alias for mock_llamacpp_client for backward compatibility.
+    """
+    return mock_llamacpp_client()
+
+
+@pytest.fixture
 def mock_qdrant_client():
     """
     Provide access to the mock Qdrant client for configuration.

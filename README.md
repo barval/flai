@@ -45,6 +45,7 @@
 - 🔒 **Session Security** – HttpOnly and SameSite cookies, secure flag for HTTPS
 - 📝 **Audit Logging** – login attempts and admin actions are logged
 - 🔐 **HMAC-signed Queue** – Redis queue tasks are signed to prevent tampering
+- 🛡️ **Input Validation** - Strict validation of user inputs (logins, passwords, model parameters) to prevent injection attacks and malformed data.
 
 ### 👥 User Experience
 - 🌐 **Multi-language Support** – full interface and AI responses in Russian and English
@@ -58,6 +59,7 @@
 - 👤 **User Management** – add, edit, delete users; change passwords; assign service classes
 - 🔑 **Camera Permissions** – control which users can access which cameras (Optional)
 - 🤖 **Model Management** – select and configure GGUF models for chat, reasoning, multimodal, and embedding directly from the admin panel
+- 💾 **Backup & Restore** – create and restore full or user-only backups directly from the admin interface
 - 📈 **System Monitoring** – view database sizes and system statistics
 - 🔧 **CLI Tools** – manage admin password via Flask CLI command
 
@@ -88,6 +90,8 @@ FLAI v8.0 is a modular Flask application that orchestrates self-hosted AI servic
 | **Qdrant** | Vector database for RAG | Rust | 6333 |
 | **Redis** | Request queue management | C | 6379 |
 | **PostgreSQL** | User accounts, sessions, messages | SQL | 5432 |
+| **Resource Manager** | Adaptive GPU/CPU/RAM management, prevents OOM errors, coordinates GPU access | Python |
+| **Circuit Breaker** | Prevents cascading failures by blocking calls to failing services (llama.cpp, sd.cpp, Whisper) after repeated errors | Python |
 
 ### Single-Server Architecture
 
@@ -343,6 +347,11 @@ REDIS_RESULT_TTL=3600
 QUEUE_MAX_WAIT_TIME=300
 ```
 
+**Debug:**
+```bash
+DEBUG_API_ENABLED=false   # Set to 'true' only for development/testing
+```
+
 ### Docker Configuration
 
 **Gunicorn Settings (Dockerfile):**
@@ -511,14 +520,20 @@ curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx.json \
 
 ## 📚 RAG (Document Search) Setup
 
-### 1. Configure Qdrant in `.env`
-```bash
-QDRANT_URL=http://flai-qdrant:6333
-QDRANT_API_KEY=your_secure_api_key_here
-RAG_CHUNK_SIZE=500
-RAG_CHUNK_OVERLAP=50
-RAG_TOP_K=20
-```
+### 1. Configure RAG in Admin Panel
+
+After starting the services, log in as admin and go to **Admin Panel → Models** tab. Scroll down to the **Chunks** section. Here you can fine-tune RAG behavior:
+
+- **Chunk Size (characters):** How documents are split into pieces for indexing.
+- **Chunk Overlap (characters):** Number of overlapping characters between consecutive chunks.
+- **Chunk Strategy:** `fixed` (by character count) or `recursive` (by headings/paragraphs).
+- **Number of chunks (top_k):** Maximum number of chunks to retrieve from Qdrant per query.
+- **Threshold (documents):** Minimum similarity score for general document queries.
+- **Threshold (reasoning):** Minimum similarity score when RAG is triggered from a reasoning request.
+
+Click **Save** to apply changes. If chunking parameters (size or strategy) are modified, a background reindex of all documents is triggered automatically.
+
+> **Note:** Environment variables like `RAG_CHUNK_SIZE` in `.env` are only used as initial defaults before the first configuration save. The primary configuration is stored in the database.
 
 ### 2. Enable in Docker Compose
 ```bash
@@ -572,6 +587,24 @@ docker exec flai-web flask admin-password NewPassword123
 # View help
 docker exec flai-web flask --help
 ```
+
+---
+
+### 💾 Backup & Restore
+
+FLAI includes a built-in backup system accessible from the Admin Panel → **Backups** tab.
+
+**Backup Types:**
+- **Users only:** Backs up the `users` table only (user accounts, permissions, settings).
+- **Full:** Backs up all data: users, chat sessions, messages, documents, uploaded files, and model configurations.
+
+**Operations:**
+- **Create:** Select the backup type and click «Create backup». The archive is saved to `data/db_backups/`.
+- **Restore:** Click «Restore» on a backup file to replace the current database and files with the backup content. *Warning: This overwrites existing data.*
+- **Download:** Download the backup archive to your local machine.
+- **Delete:** Remove old backup files.
+
+Backup files are stored as `.tar.gz` archives containing SQL dumps and file directories. Restoration requires confirmation and is logged for audit purposes.
 
 ---
 

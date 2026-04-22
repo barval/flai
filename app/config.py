@@ -126,6 +126,7 @@ def load_config(app):
     # CSRF configuration
     app.config['WTF_CSRF_ENABLED'] = True
     app.config['WTF_CSRF_CHECK_DEFAULT'] = True
+    app.config['WTF_CSRF_IGNORE_LOCALHOST'] = False
     # CSRF token lifetime (1 hour)
     app.config['WTF_CSRF_TIME_LIMIT'] = 3600
 

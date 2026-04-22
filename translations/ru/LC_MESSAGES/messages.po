@@ -373,8 +373,8 @@ msgstr "Сменить"
 msgid "delete"
 msgstr "Удалить"
 
-msgid "Ollama service unavailable"
-msgstr "Сервис Ollama недоступен"
+msgid "llama.cpp service unavailable"
+msgstr "Сервис llama.cpp недоступен"
 
 msgid "Model for {model_type} not configured"
 msgstr "Модель для {model_type} не настроена"
@@ -382,8 +382,8 @@ msgstr "Модель для {model_type} не настроена"
 msgid "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request."
 msgstr "Превышено время ожидания ответа от модели ({timeout}с). Попробуйте увеличить таймаут в панели администратора или упростите запрос."
 
-msgid "Could not connect to Ollama"
-msgstr "Не удалось подключиться к Ollama"
+msgid "Could not connect to llama.cpp"
+msgstr "Не удалось подключиться к llama.cpp"
 
 msgid "Could not connect to llama-server"
 msgstr "Не удалось подключиться к llama-server"
@@ -475,11 +475,11 @@ msgstr "Превышено время ожидания генерации изо
 msgid "Image generated from request: {query}"
 msgstr "Изображение сгенерировано по запросу: {query}"
 
-msgid "Could not connect to Automatic1111"
-msgstr "Не удалось подключиться к Automatic1111"
+msgid "Could not connect to image generation service"
+msgstr "Не удалось подключиться к сервису генерации изображений"
 
-msgid "Automatic1111 returned no image"
-msgstr "Automatic1111 не вернул изображение"
+msgid "Image generation returned no image"
+msgstr "Генерация изображений не вернула изображение"
 
 msgid "MB"
 msgstr "МБ"
@@ -550,8 +550,8 @@ msgstr "Ошибка индексации"
 msgid "status_unknown"
 msgstr "Не индексирован"
 
-msgid "Refresh models from Ollama"
-msgstr "Обновить модели из Ollama"
+msgid "Refresh models from llama.cpp"
+msgstr "Обновить модели из llama.cpp"
 
 msgid "Saved"
 msgstr "Сохранено"
@@ -640,14 +640,14 @@ msgstr "Модель вернула пустой ответ"
 msgid "Local"
 msgstr "Локально"
 
-msgid "Please provide Ollama URL first."
-msgstr "Сначала укажите URL Ollama."
+msgid "Please provide llama.cpp URL first."
+msgstr "Сначала укажите URL llama.cpp."
 
-msgid "Ollama available"
-msgstr "Ollama доступна"
+msgid "llama.cpp available"
+msgstr "llama.cpp доступен"
 
-msgid "Ollama unavailable"
-msgstr "Ollama недоступна"
+msgid "llama.cpp unavailable"
+msgstr "llama.cpp недоступен"
 
 msgid "your_requests"
 msgstr "Ваши запросы в очереди / Всего в очереди"

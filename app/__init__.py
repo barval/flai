@@ -108,6 +108,9 @@ def create_app():
 
     # Initialize CSRF protection
     csrf.init_app(app)
+    app.config['CSRF_COOKIE_SAMESITE'] = 'Lax'
+    app.config['WTF_CSRF_FORM_URL'] = False
+    app.config['WTF_I18N_ENABLED'] = False
 
     # Initialize rate limiting
     limiter.init_app(app)

@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
 # FLAI v8.0 — Скрипт развёртывания на одном сервере
-# Этот скрипт настраивает окружение, скачивает модели и запускает проект.
-# Использование: ./deploy-ru.sh [ОПЦИИ]
-# Без флагов разворачивается только текстовый чат + llama.cpp.
 
 set -euo pipefail
 
@@ -33,16 +30,12 @@ setup_env() {
     fi
     info "Создаю .env из .env.example..."
     cp .env.example .env
-    # Генерирую случайный секретный ключ Flask
     SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || openssl rand -hex 32)
-    sed -i "s/FLASK_SECRET_KEY=.*/FLASK_SECRET_KEY=$SECRET/" .env
+    sed -i "s/SECRET_KEY=.*/SECRET_KEY=$SECRET/" .env
     info ".env создан. Отредактируйте его для настройки моделей, URL и параметров."
 }
 
 # ── Вспомогательная функция скачивания моделей ──
-# Модели хранятся в services/llamacpp/models/ и services/sd_cpp/models/
-# Используется huggingface-cli если доступен, иначе curl.
-
 HF_DOWNLOAD() {
     local repo="$1" file="$2" dest="$3"
     if command -v huggingface-cli &>/dev/null; then
@@ -62,11 +55,20 @@ download_llamacpp_models() {
 
     # Чат-модель
     if [[ ! -f "$MODEL_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
-        info "Скачиваю Qwen3-4B-Instruct-2507-Q4_K_M.gguf..."
+        info "Скачиваю Qwen3-4B-Instruct-2507-Q4_K_M.gguf (чат)..."
         HF_DOWNLOAD "bartowski/Qwen3-4B-Instruct-2507-GGUF" \
             "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" "$MODEL_DIR"
     else
         warn "Qwen3-4B-Instruct-2507-Q4_K_M.gguf уже есть — пропускаю."
+    fi
+
+    # Модель рассуждений (сложные задачи)
+    if [[ ! -f "$MODEL_DIR/gpt-oss-20b-mxfp4.gguf" ]]; then
+        info "Скачиваю gpt-oss-20b-mxfp4.gguf (рассуждения)..."
+        HF_DOWNLOAD "openai/gpt-oss-20b-GGUF" \
+            "gpt-oss-20b-mxfp4.gguf" "$MODEL_DIR"
+    else
+        warn "gpt-oss-20b-mxfp4.gguf уже есть — пропускаю."
     fi
 
     # Мультимодальная модель (с mmproj)
@@ -90,14 +92,7 @@ download_llamacpp_models() {
         warn "bge-m3-Q8_0.gguf уже есть — пропускаю."
     fi
 
-    # Модель реранкинга (для улучшения поиска в RAG)
-    if [[ ! -f "$MODEL_DIR/bge-reranker-v2-m3-Q4_K_M.gguf" ]]; then
-        info "Скачиваю bge-reranker-v2-m3-Q4_K_M.gguf (реранкинг)..."
-        HF_DOWNLOAD "gpustack/bge-reranker-v2-m3-GGUF" \
-            "bge-reranker-v2-m3-Q4_K_M.gguf" "$MODEL_DIR"
-    else
-        warn "bge-reranker-v2-m3-Q4_K_M.gguf уже есть — пропускаю."
-    fi
+    # Примечание: модель реранкера удалена (больше не используется)
 }
 
 # ── Модели Stable Diffusion ──
@@ -125,7 +120,7 @@ download_sd_cpp_models() {
         warn "flux-2-klein-4b-Q8_0.gguf уже есть — пропускаю."
     fi
 
-    # VAE (для генерации Z-Image Turbo)
+    # VAE (для генерации)
     if [[ ! -f "$VAE_DIR/ae.safetensors" ]]; then
         info "Скачиваю ae.safetensors (VAE для генерации)..."
         HF_DOWNLOAD "bartowski/Z-Image-Turbo-GGUF" \
@@ -134,7 +129,7 @@ download_sd_cpp_models() {
         warn "ae.safetensors уже есть — пропускаю."
     fi
 
-    # VAE (для редактирования Flux.2 Klein 4B)
+    # VAE (для редактирования)
     if [[ ! -f "$VAE_DIR/flux2_ae.safetensors" ]]; then
         info "Скачиваю flux2_ae.safetensors (VAE для редактирования)..."
         HF_DOWNLOAD "bartowski/FLUX.2-dev-GGUF" \
@@ -143,7 +138,7 @@ download_sd_cpp_models() {
         warn "flux2_ae.safetensors уже есть — пропускаю."
     fi
 
-    # Кодировщик текста (общий для Z-Image Turbo и Flux.2 Klein 4B)
+    # Кодировщик текста (общий)
     if [[ ! -f "$TXT_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
         info "Скачиваю Qwen3-4B-Instruct-2507-Q4_K_M.gguf (кодировщик текста)..."
         HF_DOWNLOAD "bartowski/Qwen3-4B-Instruct-2507-GGUF" \
@@ -170,7 +165,7 @@ download_tts_models() {
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "ru/ru_RU/ruslan/medium/ru_RU-ruslan-medium.onnx" "$TTS_DIR"
     fi
-    # Конфигурация Piper
+    # Конфигурация
     if [[ ! -f "$TTS_DIR/config.json" ]]; then
         HF_DOWNLOAD "rhasspy/piper-voices" "config.json" "$TTS_DIR"
     fi
@@ -191,7 +186,6 @@ build_and_launch() {
     info "Ожидаю запуск сервисов..."
     sleep 10
 
-    # Проверка здоровья
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "недоступен")
     if [[ "$STATUS" == "ok" ]]; then
@@ -223,38 +217,15 @@ FLAI v8.0 — Скрипт развёртывания
   --run-tests         Запустить тесты после развёртывания
   --help, -h          Показать эту справку
 
-Сценарии развёртывания:
-  ./deploy-ru.sh                            Чат + llama.cpp (~2,5 ГБ)
-  ./deploy-ru.sh --with-voice               + голос + TTS (~3 ГБ)
-  ./deploy-ru.sh --with-rag                 + поиск по документам (~5 ГБ)
-  ./deploy-ru.sh --with-image-gen           + генерация/редактирование (~23 ГБ)
-  ./deploy-ru.sh --download-models --with-image-gen  Все модели (~35 ГБ)
-
 Размеры скачиваемых моделей (примерно):
-  Модели llama.cpp:
+  llama.cpp:
     Qwen3-4B-Instruct (чат)            ~2,5 ГБ
-    Qwen3VL-8B-Instruct (мультимода)   ~5,5 ГБ
-    bge-m3 (эмбеддинги для RAG)        ~2,2 ГБ
-    bge-reranker-v2-m3 (реранкинг)     ~0,4 ГБ
-
-  Генерация изображений (Z-Image Turbo):
-    z_image_turbo (диффузия)           ~6,2 ГБ
-    ae.safetensors (VAE)               ~0,3 ГБ
-    Qwen3-4B-Instruct (кодировщик)     ~2,5 ГБ  (общая с чатом)
-
-  Редактирование изображений (Flux.2 Klein 4B):
-    flux-2-klein-4b-Q8_0 (диффузия)  ~4,5 ГБ
-    flux2_ae.safetensors (VAE)       ~0,3 ГБ
-
-  TTS (Piper):
-    en_US-lessac-medium                ~0,1 ГБ
-    ru_RU-ruslan-medium                ~0,1 ГБ
-
-Примеры:
-  ./deploy-ru.sh                                # Только чат + llama.cpp
-  ./deploy-ru.sh --with-image-gen               # + генерация/редактирование
-  ./deploy-ru.sh --with-voice --with-image-gen  # + голос + изображения
-  ./deploy-ru.sh --download-models --with-image-gen  # Скачать все модели
+    gpt-oss-20b (рассуждения)          ~12 ГБ
+    Qwen3VL-8B (мультимодальная)       ~5,5 ГБ
+    bge-m3 (эмбеддинги)                ~2,2 ГБ
+  Генерация изображений (Z-Image Turbo) ~6,5 ГБ
+  Редактирование (Flux.2 Klein 4B)    ~5 ГБ
+  TTS (Piper)                         ~0,2 ГБ
 USAGE
 }
 

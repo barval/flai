@@ -202,7 +202,7 @@ mkdir -p services/llamacpp/models
 
 # Chat model (fast responses)
 wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
-  "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF/resolve/main/qwen3-4b-instruct-2507-q4_k_m.gguf"
+  "https://huggingface.co/bartowski/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 
 # Reasoning model (complex tasks)
 wget -O services/llamacpp/models/gpt-oss-20b-mxfp4.gguf \
@@ -211,13 +211,13 @@ wget -O services/llamacpp/models/gpt-oss-20b-mxfp4.gguf \
 # Multimodal model (image analysis) — must be in subdirectory with mmproj
 mkdir -p services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M
 wget -O services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf \
-  "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/qwen3-vl-8b-instruct-q4_k_m.gguf"
+  "https://huggingface.co/bartowski/Qwen3VL-8B-Instruct-GGUF/resolve/main/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
 wget -O services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf \
-  "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/mmproj-qwen3vl-8b-instruct-f16.gguf"
+  "https://huggingface.co/bartowski/Qwen3VL-8B-Instruct-GGUF/resolve/main/mmproj-F16.gguf"
 
 # Embedding model (RAG)
 wget -O services/llamacpp/models/bge-m3-Q8_0.gguf \
-  "https://huggingface.co/BAAI/bge-m3-gguf/resolve/main/bge-m3-q8_0.gguf"
+  "https://huggingface.co/bartowski/bge-m3-GGUF/resolve/main/bge-m3-Q8_0.gguf"
 ```
 
 #### Image Generation Models (Z_image_turbo)
@@ -234,8 +234,8 @@ wget -O services/sd_cpp/models/vae/ae.safetensors \
   "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/ae.safetensors"
 
 # LLM text encoder (shared with chat)
-wget -O services/sd_cpp/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
-  "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF/resolve/main/qwen3-4b-instruct-2507-q4_k_m.gguf"
+wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
+  "https://huggingface.co/bartowski/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 ```
 
 #### Image Editing Models (Flux.2 Klein 4B)

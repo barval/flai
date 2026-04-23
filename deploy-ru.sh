@@ -45,7 +45,7 @@ generate_cpu_override() {
 services:
   llamacpp:
     image: ghcr.io/ggml-org/llama.cpp:server
-    runtime: ""
+    runtime: ~
     environment: {}
     deploy:
       resources:
@@ -71,7 +71,7 @@ services:
     build:
       context: ./services/sd_cpp
       dockerfile: Dockerfile.sd_cpp-cpu
-    runtime: ""
+    runtime: ~
     environment: {}
     deploy:
       resources:
@@ -234,6 +234,10 @@ build_and_launch() {
     else
         info "GPU обнаружен — используются стандартные образы."
     fi
+
+    # Удаляем старые контейнеры во избежание конфликтов
+    info "Останавливаю старые контейнеры (если есть)..."
+    docker compose -f docker-compose.all.yml $PROFILE down --remove-orphans 2>/dev/null || true
 
     info "Собираю Docker-образы..."
     docker compose -f docker-compose.all.yml $PROFILE build

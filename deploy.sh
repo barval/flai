@@ -45,7 +45,7 @@ generate_cpu_override() {
 services:
   llamacpp:
     image: ghcr.io/ggml-org/llama.cpp:server
-    runtime: ""
+    runtime: ~
     environment: {}
     deploy:
       resources:
@@ -71,7 +71,7 @@ services:
     build:
       context: ./services/sd_cpp
       dockerfile: Dockerfile.sd_cpp-cpu
-    runtime: ""
+    runtime: ~
     environment: {}
     deploy:
       resources:
@@ -98,6 +98,7 @@ HF_DOWNLOAD() {
     fi
 }
 
+# ── llama.cpp models ──
 download_llamacpp_models() {
     info "Downloading llama.cpp models..."
     local MODEL_DIR="services/llamacpp/models"
@@ -142,6 +143,7 @@ download_llamacpp_models() {
     fi
 }
 
+# ── Stable Diffusion models ──
 download_sd_cpp_models() {
     info "Downloading stable-diffusion.cpp models..."
     local DIFF_DIR="services/sd_cpp/models/diffusion_models"
@@ -194,6 +196,7 @@ download_sd_cpp_models() {
     fi
 }
 
+# ── TTS (Speech Synthesis) models ──
 download_tts_models() {
     info "Downloading TTS (Piper) models..."
     local TTS_DIR="services/piper/models"
@@ -231,6 +234,10 @@ build_and_launch() {
     else
         info "GPU detected — using default GPU images."
     fi
+
+    # Clean up old containers to avoid runtime conflicts
+    info "Stopping old containers (if any)..."
+    docker compose -f docker-compose.all.yml $PROFILE down --remove-orphans 2>/dev/null || true
 
     info "Building Docker images..."
     docker compose -f docker-compose.all.yml $PROFILE build

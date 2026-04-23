@@ -234,9 +234,6 @@ build_and_launch() {
     if ! command -v nvidia-smi &>/dev/null || ! nvidia-smi -L &>/dev/null; then
         warn "No GPU detected — generating CPU override."
         generate_cpu_override
-        # Force rebuild of sd_cpp with CPU Dockerfile (clear cache)
-        info "Rebuilding sd_cpp for CPU (without cache)..."
-        docker compose -f docker-compose.all.yml build --no-cache sd_cpp
     else
         info "GPU detected — using default GPU images."
     fi
@@ -245,11 +242,17 @@ build_and_launch() {
     info "Stopping old containers (if any)..."
     docker compose -f docker-compose.all.yml $PROFILE down --remove-orphans 2>/dev/null || true
 
+    # Build compose file list including override if present
+    COMPOSE_FILES=("-f" "docker-compose.all.yml")
+    if [[ -f docker-compose.override.yml ]]; then
+        COMPOSE_FILES+=("-f" "docker-compose.override.yml")
+    fi
+
     info "Building Docker images..."
-    docker compose -f docker-compose.all.yml $PROFILE build
+    docker compose "${COMPOSE_FILES[@]}" $PROFILE build
 
     info "Starting services..."
-    docker compose -f docker-compose.all.yml $PROFILE up -d
+    docker compose "${COMPOSE_FILES[@]}" $PROFILE up -d
 
     info "Waiting for services to start..."
     sleep 10

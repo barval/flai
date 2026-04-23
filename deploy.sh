@@ -37,40 +37,7 @@ setup_env() {
     info ".env created. Edit it to set models, URLs, and preferences."
 }
 
-# ── Generate docker-compose.override.yml for CPU mode ──
-generate_cpu_override() {
-    cat > docker-compose.override.yml <<'EOF'
-# Auto-generated override for CPU-only deployment.
-# Replaces GPU-accelerated services with CPU-optimised images.
-services:
-  llamacpp:
-    image: ghcr.io/ggml-org/llama.cpp:server
-    runtime: "runc"
-    environment: []
-    deploy: {}
-    command: >
-      --models-dir /models/
-      --models-preset /models/models-preset.ini
-      --models-max 1
-      --ctx-size 16384
-      --host 0.0.0.0
-      --port 8033
-      --n-gpu-layers 0
-      --embeddings
-      --batch-size 2048
-      --ubatch-size 2048
 
-  sd_cpp:
-    build:
-      context: ./services/sd_cpp
-      dockerfile: Dockerfile.sd_cpp-cpu
-    runtime: "runc"
-    environment: []
-    deploy: {}
-    entrypoint: ["python3", "/app/sd_wrapper.py"]
-EOF
-    info "Created docker-compose.override.yml for CPU-only mode."
-}
 
 # ── Model download helpers ──
 HF_DOWNLOAD() {
@@ -212,31 +179,28 @@ build_and_launch() {
     [[ "$WITH_VOICE" == "true" ]] && PROFILE="$PROFILE --profile with-voice"
     [[ "$WITH_RAG" == "true" ]]    && PROFILE="$PROFILE --profile with-rag"
 
-    # Remove any previous CPU override so it doesn't interfere
-    rm -f docker-compose.override.yml
+    local HAS_GPU=false
+    if command -v nvidia-smi &>/dev/null && nvidia-smi -L 2>/dev/null | grep -q GPU; then
+        HAS_GPU=true
+    fi
 
-    if ! command -v nvidia-smi &>/dev/null || ! nvidia-smi -L &>/dev/null; then
-        warn "No GPU detected — generating CPU override."
-        generate_cpu_override
+    if [[ "$HAS_GPU" == "true" ]]; then
+        COMPOSE_FILE="docker-compose.gpu.yml"
+        info "GPU detected — using GPU compose file."
     else
-        info "GPU detected — using default GPU images."
+        COMPOSE_FILE="docker-compose.cpu.yml"
+        warn "No GPU detected — using CPU compose file."
     fi
 
     # Clean up old containers to avoid runtime conflicts
     info "Stopping old containers (if any)..."
-    docker compose -f docker-compose.all.yml $PROFILE down --remove-orphans 2>/dev/null || true
-
-    # Build compose file list including override if present
-    COMPOSE_FILES=("-f" "docker-compose.all.yml")
-    if [[ -f docker-compose.override.yml ]]; then
-        COMPOSE_FILES+=("-f" "docker-compose.override.yml")
-    fi
+    docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
 
     info "Building Docker images..."
-    docker compose "${COMPOSE_FILES[@]}" $PROFILE build
+    docker compose -f "$COMPOSE_FILE" $PROFILE build
 
     info "Starting services..."
-    docker compose "${COMPOSE_FILES[@]}" $PROFILE up -d
+    docker compose -f "$COMPOSE_FILE" $PROFILE up -d
 
     info "Waiting for services to start..."
     sleep 10
@@ -328,8 +292,8 @@ main() {
     echo "============================================"
     echo "  Web UI:   http://localhost:5000"
     echo "  Health:   http://localhost:5000/health"
-    echo "  Logs:     docker compose -f docker-compose.all.yml logs -f"
-    echo "  Stop:     docker compose -f docker-compose.all.yml --profile with-image-gen down"
+    echo "  Logs:     docker compose -f docker-compose.gpu.yml logs -f"
+    echo "  Stop:     docker compose -f docker-compose.gpu.yml --profile with-image-gen down"
     echo "============================================"
 }
 

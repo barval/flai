@@ -1,4 +1,5 @@
-# docker-compose.all.yml
+# docker-compose.cpu.yml
+# CPU-only version - no GPU required
 services:
   # ============================================================
   # WEB APPLICATION (Required)
@@ -15,12 +16,9 @@ services:
     env_file:
       - .env
     volumes:
-      # Mount application data directory
       - ./data:/app/data
       - ./.env:/app/.env:ro
-      # Mount models directory for GGUF metadata reading
       - ./services/llamacpp/models:/models:ro
-      # Mount docker socket for GPU detection
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - REDIS_URL=redis://redis:6379/0
@@ -37,7 +35,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-    # Resource limits for production
     deploy:
       resources:
         limits:
@@ -46,7 +43,6 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
-    # Logging configuration
     logging:
       driver: "json-file"
       options:
@@ -89,7 +85,6 @@ services:
 
   # ============================================================
   # LLAMACPP PRESET GENERATOR (init container)
-  # Generates models-preset.ini from model_configs DB before llama.cpp starts
   # ============================================================
   llamacpp-presets:
     image: python:3.9-slim
@@ -110,10 +105,8 @@ services:
   # ============================================================
   # LLAMA.CPP SERVER (Required - LLM Inference, router mode)
   # ============================================================
-  # Router mode: handles chat, reasoning, embedding, and multimodal.
-  # Multimodal models must be in subdirectories with mmproj file named mmproj*.gguf
   llamacpp:
-    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    image: ghcr.io/ggml-org/llama.cpp:server
     container_name: flai-llamacpp
     ports:
       - "8080:8033"
@@ -121,27 +114,9 @@ services:
       - ./services/llamacpp/models:/models
     depends_on:
       - llamacpp-presets
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-    runtime: nvidia
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 16G
-        reservations:
-          cpus: '2.0'
-          memory: 8G
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     networks:
       - flai_network
     restart: unless-stopped
-    # Router mode: --models-dir allows dynamic model switching
-    # --models-max 1: only keep one model in VRAM at a time (avoid OOM on 16GB GPU)
     command: >
       --models-dir /models/
       --models-preset /models/models-preset.ini
@@ -149,7 +124,7 @@ services:
       --ctx-size 16384
       --host 0.0.0.0
       --port 8033
-      --n-gpu-layers -1
+      --n-gpu-layers 0
       --embeddings
       --batch-size 2048
       --ubatch-size 2048
@@ -168,12 +143,10 @@ services:
   # ============================================================
   # STABLE-DIFFUSION.CPP (Optional - Image Generation)
   # ============================================================
-  # Uses sd-cli directly via a Python HTTP wrapper (sd_wrapper.py)
-  # The sd-server's /v1/images/generations endpoint doesn't work properly.
   sd_cpp:
     build:
       context: ./services/sd_cpp
-      dockerfile: Dockerfile.sd_cpp
+      dockerfile: Dockerfile.sd_cpp-cpu
     container_name: flai-sd
     ports:
       - "7861:7861"
@@ -183,26 +156,9 @@ services:
       - ./services/sd_cpp/models/text_encoders:/app/models/text_encoders
       - ./services/sd_cpp/outputs:/app/outputs
       - ./services/sd_cpp/sd_wrapper.py:/app/sd_wrapper.py:ro
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-    runtime: nvidia
-    deploy:
-      resources:
-        limits:
-          cpus: '8.0'
-          memory: 24G
-        reservations:
-          cpus: '4.0'
-          memory: 16G
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     networks:
       - flai_network
     restart: unless-stopped
-    # Run sd-wrapper HTTP API on port 7861 (calls sd-cli internally)
     entrypoint: ["python3", "/app/sd_wrapper.py"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7861/health"]
@@ -230,16 +186,6 @@ services:
       - ASR_MODEL=medium
       - ASR_ENGINE=faster_whisper
       - ASR_DEVICE=cpu
-    # To enable GPU acceleration for transcription, uncomment the block below:
-    # environment:
-    #   - ASR_DEVICE=cuda
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
     volumes:
       - ~/.cache/huggingface:/root/.cache/huggingface
     networks:

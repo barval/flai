@@ -37,40 +37,7 @@ setup_env() {
     info ".env создан. Отредактируйте его для настройки моделей, URL и параметров."
 }
 
-# ── Генерация docker-compose.override.yml для режима CPU ──
-generate_cpu_override() {
-    cat > docker-compose.override.yml <<'EOF'
-# Автоматически сгенерированный override для режима CPU.
-# Заменяет GPU-сервисы на образы, оптимизированные для процессора.
-services:
-llamacpp:
-    image: ghcr.io/ggml-org/llama.cpp:server
-    runtime: "runc"
-    environment: []
-    deploy: {}
-    command: >
-      --models-dir /models/
-      --models-preset /models/models-preset.ini
-      --models-max 1
-      --ctx-size 16384
-      --host 0.0.0.0
-      --port 8033
-      --n-gpu-layers 0
-      --embeddings
-      --batch-size 2048
-      --ubatch-size 2048
 
-  sd_cpp:
-    build:
-      context: ./services/sd_cpp
-      dockerfile: Dockerfile.sd_cpp-cpu
-    runtime: "runc"
-    environment: []
-    deploy: {}
-    entrypoint: ["python3", "/app/sd_wrapper.py"]
-EOF
-    info "Создан docker-compose.override.yml для режима CPU."
-}
 
 # ── Вспомогательная функция скачивания моделей ──
 HF_DOWNLOAD() {
@@ -212,31 +179,28 @@ build_and_launch() {
     [[ "$WITH_VOICE" == "true" ]] && PROFILE="$PROFILE --profile with-voice"
     [[ "$WITH_RAG" == "true" ]]    && PROFILE="$PROFILE --profile with-rag"
 
-    # Удаляем предыдущий override, чтобы не мешал
-    rm -f docker-compose.override.yml
+    local HAS_GPU=false
+    if command -v nvidia-smi &>/dev/null && nvidia-smi -L 2>/dev/null | grep -q GPU; then
+        HAS_GPU=true
+    fi
 
-    if ! command -v nvidia-smi &>/dev/null || ! nvidia-smi -L &>/dev/null; then
-        warn "GPU не обнаружен — создаю override для CPU."
-        generate_cpu_override
+    if [[ "$HAS_GPU" == "true" ]]; then
+        COMPOSE_FILE="docker-compose.gpu.yml"
+        info "GPU обнаружен — используется GPU compose файл."
     else
-        info "GPU обнаружен — используются стандартные образы."
+        COMPOSE_FILE="docker-compose.cpu.yml"
+        warn "GPU не обнаружен — используется CPU compose файл."
     fi
 
     # Удаляем старые контейнеры во избежание конфликтов
     info "Останавливаю старые контейнеры (если есть)..."
-    docker compose -f docker-compose.all.yml $PROFILE down --remove-orphans 2>/dev/null || true
-
-    # Формируем список файлов композиции
-    COMPOSE_FILES=("-f" "docker-compose.all.yml")
-    if [[ -f docker-compose.override.yml ]]; then
-        COMPOSE_FILES+=("-f" "docker-compose.override.yml")
-    fi
+    docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
 
     info "Собираю Docker-образы..."
-    docker compose "${COMPOSE_FILES[@]}" $PROFILE build
+    docker compose -f "$COMPOSE_FILE" $PROFILE build
 
     info "Запускаю сервисы..."
-    docker compose "${COMPOSE_FILES[@]}" $PROFILE up -d
+    docker compose -f "$COMPOSE_FILE" $PROFILE up -d
 
     info "Ожидаю запуск сервисов..."
     sleep 10
@@ -328,8 +292,8 @@ main() {
     echo "============================================"
     echo "  Веб-интерфейс: http://localhost:5000"
     echo "  Здоровье:      http://localhost:5000/health"
-    echo "  Логи:          docker compose -f docker-compose.all.yml logs -f"
-    echo "  Остановка:     docker compose -f docker-compose.all.yml --profile with-image-gen down"
+    echo "  Логи:          docker compose -f docker-compose.gpu.yml logs -f"
+    echo "  Остановка:     docker compose -f docker-compose.gpu.yml --profile with-image-gen down"
     echo "============================================"
 }
 

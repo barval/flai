@@ -145,7 +145,7 @@
 
 Для принудительного запуска в режиме CPU даже при наличии GPU выполните:
 ```bash
-docker compose -f docker-compose.all.yml --profile cpu --profile cpu-image-gen --profile with-voice --profile with-rag up -d
+docker compose -f docker-compose.cpu.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
 ```
 
 ---
@@ -245,16 +245,16 @@ wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
 
 ```bash
 # Только чат и рассуждения (без генерации изображений)
-docker compose -f docker-compose.all.yml up -d
+docker compose -f docker-compose.gpu.yml up -d
 
 # С генерацией изображений
-docker compose -f docker-compose.all.yml --profile with-image-gen up -d
+docker compose -f docker-compose.gpu.yml --profile with-image-gen up -d
 
 # С голосовыми функциями
-docker compose -f docker-compose.all.yml --profile with-voice up -d
+docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 
 # Полный стек: чат + изображения + голос + RAG
-docker compose -f docker-compose.all.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
 ```
 
 > ⏱️ **Первая сборка занимает время**: stable-diffusion.cpp компилируется из исходников (~5-10 минут). Последующие сборки используют кеш Docker.
@@ -364,19 +364,19 @@ CMD ["gunicorn", \
 
 ```bash
 # Запуск всех сервисов
-docker compose -f docker-compose.all.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
 
 # Чат + голос (без изображений)
-docker compose -f docker-compose.all.yml --profile with-voice up -d
+docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 
 # Только чат (без изображений и голоса)
-docker compose -f docker-compose.all.yml up -d
+docker compose -f docker-compose.gpu.yml up -d
 
 # Остановка всех сервисов
-docker compose -f docker-compose.all.yml down --remove-orphans
+docker compose -f docker-compose.gpu.yml down --remove-orphans
 
 # Просмотр логов
-docker compose -f docker-compose.all.yml logs -f web
+docker compose -f docker-compose.gpu.yml logs -f web
 ```
 
 ---
@@ -470,7 +470,7 @@ SD_CPP_TIMEOUT=300
 
 ```bash
 # Включить голосовые функции
-docker compose -f docker-compose.all.yml --profile with-voice up -d
+docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 ```
 
 ### Piper TTS
@@ -523,7 +523,7 @@ curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx.json \
 
 ### 2. Включение в Docker Compose
 ```bash
-docker compose -f docker-compose.all.yml --profile with-rag up -d
+docker compose -f docker-compose.gpu.yml --profile with-rag up -d
 ```
 
 ### 3. Загрузка документов

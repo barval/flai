@@ -135,6 +135,21 @@ All services run on one machine with GPU sharing:
 
 ---
 
+### 💻 Running without GPU (CPU-only mode)
+
+FLAI can operate on CPU-only servers using automatic detection in the deployment script. When no NVIDIA GPU is found, the script will use CPU-optimized images for llama.cpp and stable-diffusion.cpp. Performance will be significantly slower, but all features remain functional.
+
+- Chat and reasoning: works, but may be 3-10x slower.
+- Image generation: works, but generation time can be 10-30 minutes per image.
+- Voice processing (Whisper, Piper) and document search (RAG) are unaffected.
+
+To force CPU mode even if a GPU is present, you can manually run:
+```bash
+docker compose -f docker-compose.all.yml --profile cpu --profile cpu-image-gen --profile with-voice --profile with-rag up -d
+```
+
+---
+
 ## 🚀 Quick Start
 
 > 💡 **Note**: You must have the **NVIDIA drivers** and **NVIDIA Container Toolkit** installed.

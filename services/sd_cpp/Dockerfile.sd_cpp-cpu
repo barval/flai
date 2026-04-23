@@ -1,0 +1,50 @@
+# services/sd_cpp/Dockerfile.sd_cpp-cpu
+# Builds stable-diffusion.cpp without CUDA for CPU-only deployments.
+
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    git \
+    python3 \
+    python3-pip \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Clone stable-diffusion.cpp
+RUN git clone https://github.com/leejet/stable-diffusion.cpp.git /tmp/sd
+
+WORKDIR /tmp/sd
+RUN git submodule update --init --recursive
+
+# Build without CUDA
+RUN mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DSD_CUDA=OFF && \
+    cmake --build . --config Release -j$(nproc)
+
+# Install sd-cli binary
+RUN cp build/bin/sd-cli /usr/local/bin/
+
+# Install Python dependencies for the wrapper
+RUN pip3 install --no-cache-dir flask requests pillow
+
+WORKDIR /app
+
+# Create directories for model volumes (same as in GPU Dockerfile)
+RUN mkdir -p /app/models/diffusion_models \
+             /app/models/vae \
+             /app/models/text_encoders \
+             /app/outputs
+
+# Expose the wrapper port (informational)
+EXPOSE 7861
+
+# Default entrypoint – may be overridden in docker-compose
+ENTRYPOINT ["python3", "/app/sd_wrapper.py"]

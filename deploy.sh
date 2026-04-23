@@ -18,7 +18,9 @@ check_prereqs() {
     command -v docker &>/dev/null     || error "Docker is not installed. Install Docker first."
     command -v docker compose &>/dev/null || error "Docker Compose plugin is not installed."
     command -v git &>/dev/null        || error "Git is not installed."
-    command -v nvidia-smi &>/dev/null || warn "No NVIDIA GPU detected — GPU acceleration will not be available."
+    if ! command -v nvidia-smi &>/dev/null; then
+        warn "No NVIDIA GPU detected — GPU acceleration will not be available."
+    fi
     info "Prerequisites OK."
 }
 
@@ -33,6 +35,54 @@ setup_env() {
     SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || openssl rand -hex 32)
     sed -i "s/SECRET_KEY=.*/SECRET_KEY=$SECRET/" .env
     info ".env created. Edit it to set models, URLs, and preferences."
+}
+
+# ── Generate docker-compose.override.yml for CPU mode ──
+generate_cpu_override() {
+    cat > docker-compose.override.yml <<'EOF'
+# Auto-generated override for CPU-only deployment.
+# Replaces GPU-accelerated services with CPU-optimised images.
+services:
+  llamacpp:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    runtime: ""
+    environment: {}
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 16G
+        reservations:
+          cpus: '2.0'
+          memory: 8G
+    command: >
+      --models-dir /models/
+      --models-preset /models/models-preset.ini
+      --models-max 1
+      --ctx-size 16384
+      --host 0.0.0.0
+      --port 8033
+      --n-gpu-layers 0
+      --embeddings
+      --batch-size 2048
+      --ubatch-size 2048
+
+  sd_cpp:
+    build:
+      context: ./services/sd_cpp
+      dockerfile: Dockerfile.sd_cpp-cpu
+    runtime: ""
+    environment: {}
+    deploy:
+      resources:
+        limits:
+          cpus: '8.0'
+          memory: 24G
+        reservations:
+          cpus: '4.0'
+          memory: 16G
+EOF
+    info "Created docker-compose.override.yml for CPU-only mode."
 }
 
 # ── Model download helpers ──
@@ -90,8 +140,6 @@ download_llamacpp_models() {
     else
         warn "bge-m3-Q8_0.gguf already exists — skipping."
     fi
-
-    # Note: reranker model removed (no longer used)
 }
 
 download_sd_cpp_models() {
@@ -173,6 +221,16 @@ build_and_launch() {
     local PROFILE="--profile with-image-gen"
     [[ "$WITH_VOICE" == "true" ]] && PROFILE="$PROFILE --profile with-voice"
     [[ "$WITH_RAG" == "true" ]]    && PROFILE="$PROFILE --profile with-rag"
+
+    # Remove any previous CPU override so it doesn't interfere
+    rm -f docker-compose.override.yml
+
+    if ! command -v nvidia-smi &>/dev/null || ! nvidia-smi -L &>/dev/null; then
+        warn "No GPU detected — generating CPU override."
+        generate_cpu_override
+    else
+        info "GPU detected — using default GPU images."
+    fi
 
     info "Building Docker images..."
     docker compose -f docker-compose.all.yml $PROFILE build

@@ -1,284 +1,166 @@
-# FLAI Services - Distributed Deployment Guide
+# FLAI Services
 
-## Overview
+This directory contains deployment configurations for AI backend services.
 
-This directory contains configuration and deployment scripts for running FLAI services separately across multiple servers. This allows for distributed load balancing and scaling of individual components.
+## llama.cpp (Required)
 
-## Available Services
+Replaces Ollama. Runs `llama-server` in router mode (`--model-dir`) to support dynamic model switching.
 
-| Service | Port | Description | GPU Required |
-|---------|------|-------------|--------------|
-| [Ollama](ollama/) | 11434 | LLM inference | Optional (recommended) |
-| [Automatic1111](automatic1111/) | 7860 | Image generation | Yes (NVIDIA) |
-| [Whisper](openai-whisper/) | 9000 | Speech transcription | Optional |
-| [Piper](piper/) | 8888 | Text-to-speech | No |
-| [Qdrant](qdrant/) | 6333/6334 | Vector database | No |
-| [Room Snapshot API](room-snapshot-api/) | 5005 | Camera integration | No |
+### Setup
 
-## Deployment Scenarios
+1. **Download GGUF models** and place them in `services/llamacpp/models/`:
 
-### Scenario 1: All-in-One (Default)
-
-All services run on a single server using `docker-compose.all.yml` in the project root.
-
-**Best for:**
-- Development/testing
-- Small deployments
-- Limited hardware
-
-### Scenario 2: Distributed Deployment
-
-Services are distributed across multiple servers based on resource requirements.
-
-**Example Architecture:**
-
-| Server | Role | Components | GPU |
-|--------|------|-----------|-----|
-| Server 1 | Web App | FLAI, Redis | No |
-| Server 2 | LLM | Ollama | Recommended |
-| Server 3 | Images | Automatic1111 | NVIDIA |
-| Server 4 | Storage | Qdrant, Piper | No |
-| Server 5 | Voice | Whisper ASR | Optional |
-| Server 6 | Camera | Room Snapshot API | No |
-
-All services connect to the FLAI Web App via REST API over the local network.
-
-**Best for:**
-- Production deployments
-- High load environments
-- Resource optimization
-
-## Quick Start
-
-### Step 1: Choose Deployment Mode
-
-For each service, decide:
-- **Local**: Run on same server as FLAI web app
-- **Remote**: Run on separate server
-
-### Step 2: Deploy Services
-
-```bash
-# Example: Deploy Ollama on separate server
-cd services/ollama
-docker-compose up -d
-
-# Pull required models
-docker exec flai-ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
-```
-
-### Step 3: Configure FLAI Application
-
-Update `.env` in the main FLAI directory:
-
-```bash
-# Ollama (remote server at 192.168.1.100)
-OLLAMA_URL=http://192.168.1.100:11434
-
-# Automatic1111 (remote server at 192.168.1.101)
-AUTOMATIC1111_URL=http://192.168.1.101:7860
-
-# Whisper (local deployment)
-WHISPER_API_URL=http://flai-whisper:9000/asr
-
-# Piper (local deployment)
-PIPER_URL=http://flai-piper:8888/tts
-
-# Qdrant (remote server at 192.168.1.102)
-QDRANT_URL=http://192.168.1.102:6333
-QDRANT_API_KEY=your-secret-key
-
-# Camera API (local deployment)
-CAMERA_API_URL=http://flai-room-snapshot-api:5005
-```
-
-### Step 4: Restart FLAI Application
-
-```bash
-cd /path/to/flai
-docker-compose -f docker-compose.all.yml up -d web
-```
-
-## Network Configuration
-
-### Firewall Rules
-
-For each remote service, configure firewall to allow access only from FLAI server:
-
-```bash
-# On remote server
-sudo ufw allow from <flai-server-ip> to any port <service-port>
-```
-
-### Required Ports
-
-| Service | Port | Protocol | Direction |
-|---------|------|----------|-----------|
-| Ollama | 11434 | TCP | FLAI → Ollama |
-| Automatic1111 | 7860 | TCP | FLAI → SD |
-| Whisper | 9000 | TCP | FLAI → Whisper |
-| Piper | 8888 | TCP | FLAI → Piper |
-| Qdrant REST | 6333 | TCP | FLAI → Qdrant |
-| Qdrant gRPC | 6334 | TCP | FLAI → Qdrant |
-| Camera API | 5005 | TCP | FLAI → Camera |
-
-## Security Considerations
-
-### Production Checklist
-
-- [ ] Set strong API keys for all services
-- [ ] Configure firewall rules (whitelist only FLAI server IP)
-- [ ] Use HTTPS via reverse proxy for external access
-- [ ] Enable service health checks
-- [ ] Set up monitoring and alerting
-- [ ] Regular security updates
-- [ ] Backup configurations and data
-
-### API Keys
-
-Generate secure API keys:
-
-```bash
-openssl rand -hex 32
-```
-
-Update service `.env` files with generated keys.
-
-### Network Isolation
-
-Use separate Docker networks for service isolation:
-
-```bash
-# Create network on each server
-docker network create flai_network
-```
-
-## Monitoring
-
-### Health Check Endpoints
-
-| Service | Endpoint |
-|---------|----------|
-| Ollama | `http://<host>:11434/api/tags` |
-| Automatic1111 | `http://<host>:7860/sdapi/v1/progress` |
-| Whisper | `http://<host>:9000/` |
-| Piper | `http://<host>:8888/health` |
-| Qdrant | `http://<host>:6333/` |
-| Camera API | `http://<host>:5005/health` |
-
-### Monitoring Script
-
-```bash
-#!/bin/bash
-# check-services.sh
-
-services=(
-    "http://ollama-server:11434/api/tags"
-    "http://sd-server:7860/sdapi/v1/progress"
-    "http://whisper-server:9000/"
-    "http://piper-server:8888/health"
-    "http://qdrant-server:6333/"
-    "http://camera-server:5005/health"
-)
-
-for url in "${services[@]}"; do
-    if curl -f -s "$url" > /dev/null; then
-        echo "✅ $url"
-    else
-        echo "❌ $url"
-    fi
-done
-```
-
-## Backup and Recovery
-
-### Backup Scripts
-
-```bash
-#!/bin/bash
-# backup-all.sh
-
-BACKUP_DIR="./backups/$(date +%Y%m%d)"
-mkdir -p "$BACKUP_DIR"
-
-# Backup Ollama models
-tar -czf "$BACKUP_DIR/ollama-models.tar.gz" ollama/models
-
-# Backup SD models
-tar -czf "$BACKUP_DIR/sd-models.tar.gz" automatic1111/models
-
-# Backup Piper voices
-tar -czf "$BACKUP_DIR/piper-models.tar.gz" piper/piper_models
-
-# Backup Qdrant data
-tar -czf "$BACKUP_DIR/qdrant-storage.tar.gz" qdrant/qdrant_storage
-
-# Backup configurations
-tar -czf "$BACKUP_DIR/configs.tar.gz" */.env
-
-echo "Backup completed: $BACKUP_DIR"
-```
-
-### Recovery
-
-```bash
-# Stop services
-docker-compose down
-
-# Restore from backup
-tar -xzf backups/20260401/ollama-models.tar.gz
-tar -xzf backups/20260401/sd-models.tar.gz
-tar -xzf backups/20260401/piper-models.tar.gz
-tar -xzf backups/20260401/qdrant-storage.tar.gz
-
-# Restart services
-docker-compose up -d
-```
-
-## Troubleshooting
-
-### Connection Issues
-
-1. **Check service status:**
    ```bash
-   docker-compose ps
+   mkdir -p services/llamacpp/models
+
+   # Chat model (fast responses)
+   wget -O services/llamacpp/models/qwen3-4b-instruct.Q4_K_M.gguf \
+     "https://huggingface.co/Qwen/Qwen3-4B-Instruct-GGUF/resolve/main/qwen3-4b-instruct.Q4_K_M.gguf"
+
+   # Reasoning model (complex tasks)
+   wget -O services/llamacpp/models/gpt-oss-20b.Q4_K_M.gguf \
+     "https://huggingface.co/openai/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b.Q4_K_M.gguf"
+
+   # Multimodal model (image analysis)
+   wget -O services/llamacpp/models/qwen3-vl-8b-instruct.Q4_K_M.gguf \
+     "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/qwen3-vl-8b-instruct.Q4_K_M.gguf"
+
+   # Embedding model (RAG)
+   wget -O services/llamacpp/models/bge-m3.Q4_K_M.gguf \
+     "https://huggingface.co/BAAI/bge-m3-gguf/resolve/main/bge-m3.Q4_K_M.gguf"
    ```
 
-2. **Test connectivity:**
+2. **Configure in `.env`:**
    ```bash
-   curl http://<service-host>:<port>/health
+   LLAMACPP_URL=http://flai-llamacpp:8080
    ```
 
-3. **Check firewall:**
+3. **Set models in Admin Panel** (`/admin` → Models tab):
+   - Select the GGUF filename for each module (Chat, Reasoning, Multimodal, Embedding)
+   - The server will dynamically load/unload models as needed
+
+### Distributed Deployment
+
+To run llama-server on a remote machine:
+
+```bash
+# On the remote GPU server
+docker run -d \
+  --name flai-llamacpp \
+  --gpus all \
+  -p 8033:8033 \
+  -v /path/to/models:/models \
+  ghcr.io/ggml-org/llama.cpp:server-cuda \
+  --models-dir /models/ --host 0.0.0.0 --port 8033 --n-gpu-layers -1
+```
+
+Then set `LLAMACPP_URL=http://remote-ip:8033` in FLAI's `.env`.
+
+## stable-diffusion.cpp (Optional)
+
+Replaces Automatic1111. Provides text-to-image generation.
+
+### Supported model types
+
+#### Z_image_turbo (fast generation)
+```bash
+mkdir -p services/sd_cpp/models/{diffusion_models,vae,text_encoders}
+
+# Diffusion model
+wget -O services/sd_cpp/models/diffusion_models/z_image_turbo-Q8_0.gguf \
+  "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf"
+
+# VAE
+wget -O services/sd_cpp/models/vae/ae.safetensors \
+  "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/ae.safetensors"
+
+# Text encoder (LLM) — shared with editing
+wget -O services/sd_cpp/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
+  "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF/resolve/main/qwen3-4b-instruct-2507-q4_k_m.gguf"
+```
+**Params:** cfg_scale=1.0, steps=10, flow_shift=2, 1024x1024, no negative_prompt.
+
+### Image Editing (Flux.2 Klein 4B)
+
+Requires separate model files for editing. Editing runs independently from generation.
+
+```bash
+mkdir -p services/sd_cpp/models/{diffusion_models,vae,text_encoders}
+
+# Diffusion model
+wget -O services/sd_cpp/models/diffusion_models/flux-2-klein-4b-Q8_0.gguf \
+  "https://huggingface.co/bartowski/FLUX.2-Klein-dev-GGUF/resolve/main/flux-2-klein-4b-Q8_0.gguf"
+
+# VAE
+wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
+  "https://huggingface.co/bartowski/FLUX.2-dev-GGUF/resolve/main/flux2_ae.safetensors"
+
+# Text encoder (LLM) — shared with Z-Image Turbo
+# Qwen3-4B-Instruct-2507-Q4_K_M.gguf (already downloaded for generation)
+```
+**Params:** cfg_scale=1.0, steps=4, sampling_method=euler, 1024x1024, uses reference image mode (`-r`).
+
+### Classic SD (SDXL, SD 1.5)
+Traditional diffusion models with CLIP/T5XXL text encoders.
+**Params:** cfg_scale=7.0, steps=30, negative_prompt supported.
+
+### Configuration in `.env`
+
+```bash
+SD_CPP_URL=http://flai-sd:7860
+
+# Z_image_turbo defaults:
+SD_CPP_DEFAULT_CFG_SCALE=1.0
+SD_CPP_DEFAULT_STEPS=10
+SD_CPP_DEFAULT_WIDTH=1024
+SD_CPP_DEFAULT_HEIGHT=1024
+SD_CPP_TIMEOUT=300
+```
+
+# Classic SD defaults (uncomment if using SDXL):
+# SD_CPP_DEFAULT_CFG_SCALE=7.0
+# SD_CPP_DEFAULT_STEPS=30
+# SD_CPP_DEFAULT_WIDTH=512
+# SD_CPP_DEFAULT_HEIGHT=512
+```
+
+## Whisper ASR (Optional, unchanged)
+
+Uses `faster_whisper` via Docker. No changes from previous setup.
+
+## Piper TTS (Optional, unchanged)
+
+Uses ONNX Piper models. No changes from previous setup.
+
+## Room Snapshot API (Optional)
+
+Provides HTTP access to IP camera snapshots for the FLAI camera module.
+
+### Setup
+
+1. **Clone the service repository:**
    ```bash
-   sudo ufw status
+   cd services/room-snapshot-api
+   git clone https://github.com/barval/room-snapshot-api.git room-snapshot-api
    ```
 
-4. **View logs:**
-   ```bash
-   docker-compose logs -f <service-name>
+2. **Configure cameras** in `room-snapshot-api/config/cameras.conf`:
+   ```conf
+   # Format: code=ip:port:name
+   spa=192.168.1.101:554:Спальня
+   gos=192.168.1.102:554:Гостиная
    ```
 
-### Performance Issues
-
-1. **Check resource usage:**
+3. **Set RTSP credentials** in `room-snapshot-api/.env`:
    ```bash
-   docker stats
+   cp room-snapshot-api/.env.example room-snapshot-api/.env
+   # Edit .env and set RTSP_AUTH="username:password"
    ```
 
-2. **Monitor GPU usage:**
+4. **Deploy:**
    ```bash
-   nvidia-smi
+   ./deploy.sh local    # Same server as FLAI
+   ./deploy.sh remote   # Separate server
    ```
 
-3. **Check network latency:**
-   ```bash
-   ping <service-host>
-   ```
-
-## Support
-
-For issues and questions:
-- Check individual service README files
-- Review FLAI main documentation
-- Check Docker logs for errors
+See [room-snapshot-api/README.md](room-snapshot-api/README.md) for the full deployment guide.

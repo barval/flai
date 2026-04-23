@@ -37,7 +37,7 @@
         </div>
 
         <!-- Documents list (hidden by default) -->
-        <div class="documents-list" id="documents-list" style="display: none;">
+        <div class="documents-list hidden" id="documents-list">
             <!-- Documents will be loaded via JavaScript -->
         </div>
     </div>
@@ -55,7 +55,7 @@
         <div class="chat-messages" id="chat-messages"></div>
 
         <!-- File preview container (shown when a file is attached) -->
-        <div id="file-preview-container" style="display: none;">
+        <div id="file-preview-container" class="hidden">
             <div>
                 <span id="file-preview-name"></span>
                 <span id="file-preview-size"></span>
@@ -74,7 +74,7 @@
         <div class="message-input">
             <input type="text" id="message-input" placeholder="{{ _('Enter message...') }}" autocomplete="off">
             <button id="voice-record-button" class="voice-record-button" title="{{ _('Record voice message') }}">🎤</button>
-            <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt" style="display: none;">
+            <input type="file" id="file-input" accept="image/*,audio/*,.pdf,.doc,.docx,.txt" class="hidden">
             <button id="attach-file-button">📎</button>
             <button id="send-button">{{ _('Send') }}</button>
         </div>
@@ -86,8 +86,8 @@
 
 <!-- JavaScript translations and configuration -->
 <script>
-window.initialSessionId = "{{ current_session }}";
-window.CURRENT_USER_LOGIN = "{{ session.get('login', '') }}";
+window.initialSessionId = {{ current_session|tojson }};
+window.CURRENT_USER_LOGIN = {{ session.get('login', '')|tojson }};
 window.CURRENT_EMBEDDING_MODEL = {{ embedding_model|tojson }};
 window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'send': {{ _("Send")|tojson }},
@@ -161,7 +161,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'upload_document': {{ _('Upload document')|tojson }},
     'document_uploaded': {{ _('Document uploaded')|tojson }},
     'document_upload_failed': {{ _('Document upload failed')|tojson }},
-    'supported_formats': {{ _('Supported formats: PDF, DOC, DOCX, TXT')|tojson }},
+    'supported_formats': {{ _('Supported formats: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB')|tojson }},
     'minutes_abbr': {{ _('minutes_abbr')|tojson }},
     'status_pending': {{ _('status_pending')|tojson }},
     'status_indexing': {{ _('status_indexing')|tojson }},

@@ -20,7 +20,7 @@ function applyTheme(theme) {
     localStorage.setItem('guest_theme', theme);
     // Optionally inform server to store in session (for consistency after login)
     fetch('/set-theme/' + theme, {
-        method: 'GET',
+        method: 'POST',
         headers: { 'Cache-Control': 'no-cache', 'X-CSRFToken': getCSRFToken() }
     }).catch(() => {});
 }

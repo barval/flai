@@ -42,7 +42,7 @@ class AudioModule:
     def init_app(self, app):
         """Initialize module with Flask app"""
         self.app = app
-        self.whisper_api_url = app.config.get('WHISPER_API_URL', 'http://host.docker.internal:9000/asr')
+        self.whisper_api_url = app.config.get('WHISPER_API_URL', 'http://flai-whisper:9000/asr')
         self.timeout = app.config.get('WHISPER_API_TIMEOUT', 120)
 
         self.logger.info(f"Initializing AudioModule with Whisper URL: {self.whisper_api_url}")
@@ -84,7 +84,7 @@ class AudioModule:
                     self.logger.info(f"Whisper API health check passed: {health_url}")
                     self.available = True
                     return True
-            except:
+            except Exception:
                 pass  # Health endpoint may not exist
             
             # Try root endpoint - may return 307 redirect which is OK

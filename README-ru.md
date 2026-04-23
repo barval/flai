@@ -1,11 +1,11 @@
 <div align="center">
   <img src="docs/logo.png" alt="Полностью Локальный ИИ (ПЛИИ)" width="200">
 
-  # Полностью Локальный ИИ (ПЛИИ)
-  
-  **ПЛИИ - полностью локальный персональный ассистент на основе искусственного интеллекта.**  
-  **Запустите свой собственный стек ИИ полностью на собственном оборудовании без привязки к облаку.**  
-  
+  # Полностью Локальный ИИ (ПЛИИ) v8.0
+
+  **ПЛИИ — полностью локальный персональный ассистент на основе искусственного интеллекта.**
+  **Запустите свой собственный стек ИИ полностью на собственном оборудовании без привязки к облаку.**
+
   [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
   [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
   [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white)](https://www.docker.com/)
@@ -20,9 +20,10 @@
 ### 🤖 Основные возможности ИИ
 - 💬 **Интеллектуальный чат** – умная маршрутизация запросов (быстрые модели для простых, мощные для сложных)
 - 🧠 **Продвинутое рассуждение** – выделенная модель для вычислений, генерации кода, творчества
-- 🔍 **Мультимодальный анализ** – загрузка изображений и вопросы по их содержанию
-- 🎨 **Генерация изображений** – создание картинок по тексту через Stable Diffusion с оптимизацией промптов
-- 🎤 **Распознавание речи** – преобразование голосовых сообщений в текст через Whisper ASR
+- 🔍 **Мультимодальный анализ** – загрузка изображений и вопросы по их содержанию (llama.cpp + mmproj)
+- 🎨 **Генерация изображений** – создание изображений из текста с автоматической оптимизацией промптов (модель Z-Image-Turbo)
+- ✏️ **Редактирование изображений** – загрузите изображение и попросите изменить его (модель Flux.2 Klein 4B)
+- 🎤 **Распознавание речи** – преобразование голосовых сообщений в текст через Whisper ASR (faster_whisper)
 - 🗣️ **Синтез речи** – озвучивание ответов через Piper TTS (мужской/женский голос)
 
 ### 📁 Управление документами и знаниями
@@ -44,96 +45,108 @@
 - 🔒 **Безопасность сессий** – HttpOnly и SameSite cookies, secure flag для HTTPS
 - 📝 **Audit Logging** – логирование попыток входа и действий администратора
 - 🔐 **HMAC-подпись очереди** – задачи Redis очереди подписаны для защиты от подделки
+- 🛡️ **Валидация ввода** - строгая проверка пользовательского ввода (логины, пароли, параметры моделей) для предотвращения инъекций и некорректных данных.
 
 ### 👥 Пользовательский опыт
 - 🌐 **Мультиязычность** – полный интерфейс и ответы ИИ на русском и английском языках
 - 🌓 **Тёмная/светлая тема** – переключение тем с сохранением предпочтений
-- 🎚️ **Выбор голоса** – мужской или женский голос для ответов через TTS
-- 📊 **Очередь запросов** – отслеживание статуса в реальном времени с индикацией позиции в очереди
-- 📎 **Вложения файлов** – поддержка изображений, аудиофайлов и документов в диалогах
-- 🔔 **Уведомления** – индикаторы непрочитанных сообщений и мигающие иконки для запросов в обработке/очереди
+- 🎚️ **Выбор голоса** – мужской или женский голос для TTS
+- 📊 **Очередь запросов** – отслеживание статуса в реальном времени
+- 📎 **Вложения** – изображения, аудио и документы в диалогах
+- 🔔 **Уведомления** – индикаторы непрочитанных сообщений
 
 ### ⚙️ Администрирование
-- 👤 **Управление пользователями** – добавление, редактирование, удаление пользователей; смена паролей; назначение классов обслуживания
-- 🔑 **Права на камеры** – контроль доступа пользователей к конкретным камерам (опционально)
-- 🤖 **Управление моделями** – выбор и настройка моделей для чата, рассуждений, мультимодальных задач и эмбеддингов прямо из админ‑панели
-- 📈 **Мониторинг системы** – просмотр размеров баз данных и системной статистики
-- 🔧 **CLI-инструменты** – управление паролем администратора через Flask CLI
+- 👤 **Управление пользователями** – создание, редактирование, удаление, смена паролей
+- 🔑 **Права камер** – контроль доступа к камерам
+- 🤖 **Управление моделями** – выбор и настройка GGUF моделей для чата, рассуждений, мультимодальности и эмбеддинга
+- 💾 **Резервное копирование и восстановление** – создание и восстановление полных или только пользователей резервных копий прямо из панели администратора
+- 📈 **Мониторинг** – размеры баз данных и статистика
+- 🔧 **CLI** – управление паролем администратора
 
 ---
 
 ## 🏗️ Архитектура
 
-ПЛИИ — модульное веб-приложение на Flask, координирующее несколько самостоятельно размещённых ИИ-сервисов.
+ПЛИИ v8.0 — модульное Flask-приложение, оркестрирующее сервисы на экосистеме llama.cpp.
+
+### Что нового в v8.0
+
+| v7.5 (Старое) | v8.0 (Новое) | Примечания |
+|---------------|--------------|------------|
+| Ollama | **llama.cpp** (режим роутера) | Единый сервер, динамическое переключение через `--models-dir` |
+| Automatic1111 | **stable-diffusion.cpp** | Z_image_turbo (генерация), Flux.2 Klein 4B (редактирование) |
+| Ollama `/api/chat` | OpenAI-совместимый `/v1/chat/completions` | Стандартный формат API |
+| Ollama `/api/embed` | OpenAI-совместимый `/v1/embeddings` | Стандартный формат API |
 
 ### Основные компоненты
 
-| Компонент | Назначение | Технология | Порт по умолчанию |
-|-----------|------------|------------|-------------------|
+| Компонент | Назначение | Технология | Порт |
+|-----------|------------|------------|------|
 | **Flask Web** | Веб-интерфейс, маршрутизация, API | Python | 5000 |
-| **Ollama** | Инференс LLM (чат, рассуждения, мультимодальность) | Go + llama.cpp | 11434 |
-| **Automatic1111** | Генерация изображений Stable Diffusion | Python + PyTorch | 7860 |
-| **Whisper ASR** | Распознавание речи (транскрибация) | OpenAI Whisper | 9000 |
-| **Piper TTS** | Синтез речи (текст в голос) | ONNX + Piper | 18888 |
+| **llama.cpp** | LLM-инференс (чат, рассуждения, мультимодальность, эмбеддинг) | C++ + CUDA | 8033 |
+| **stable-diffusion.cpp** | Генерация изображений (Z_image_turbo) и редактирование (Flux.2 Klein 4B) | C++ + CUDA | 7860 |
+| **Whisper ASR** | Распознавание речи | faster_whisper | 9000 |
+| **Piper TTS** | Синтез речи | ONNX + Piper | 18888 |
 | **Qdrant** | Векторная база данных для RAG | Rust | 6333 |
 | **Redis** | Управление очередью запросов | C | 6379 |
-| **SQLite** | Учётные записи, сеансы, сообщения | Встраиваемая СУБД | -- |
+| **PostgreSQL** | Учётные записи, сессии, сообщения | SQL | 5432 |
+| **Менеджер ресурсов** | Адаптивное управление GPU/CPU/RAM, предотвращает ошибки нехватки памяти, координирует доступ к GPU | Python |
+| **Circuit Breaker** | Предотвращает каскадные сбои, временно блокируя вызовы к проблемным сервисам (llama.cpp, sd.cpp, Whisper) после повторяющихся ошибок | Python |
 
-### Распределённое развёртывание
+### Архитектура одиночного сервера
 
-Каждый сервис может работать на отдельной машине для распределения нагрузки. См. [services/README.md](services/README.md) для подробных инструкций.
+Все сервисы работают на одной машине с разделением GPU:
 
 ```text
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Web App   │────▶│   Ollama    │────▶│     GPU     │
-│  (Flask)    │     │  (Узел 1)   │     │   Сервер    │
-└─────────────┘     └─────────────┘     └─────────────┘
-       │
-       ▼
-┌─────────────┐     ┌─────────────┐
-│   Ollama    │────▶│     GPU     │
-│  (Узел 2)   │     │   Сервер    │
-└─────────────┘     └─────────────┘
+┌──────────────────────────────────────────────────────┐
+│              FLAI Web (Flask)                        │
+│   Очередь Redis → Маршрутизатор → Ответ              │
+└──────┬──────────┬────────────┬───────────────────────┘
+       │          │            │
+       ▼          ▼            ▼
+  llama.cpp   sd.cpp      Whisper/Piper/Qdrant
+  :8033       :7860       (отдельные контейнеры)
+  (режим роутера: динамическое переключение)
 ```
 
-**Варианты развёртывания сервисов:**
-- **Локальное**: Запуск на том же сервере что и FLAI (внутренняя сеть Docker)
-- **Удалённое**: Запуск на отдельном сервере (требует настройки firewall)
-
-Настройте отдельные URL Ollama для каждого типа моделей в Панели администратора (`/admin`).
+**Режим роутера**: llama.cpp работает в режиме `--models-dir`, динамически загружая/выгружая GGUF-модели из общей директории. В VRAM одновременно находится только одна модель, переключение происходит автоматически по запросу.
 
 ---
 
 ## 📋 Системные требования
 
-### Рекомендуемое оборудование
-| Компонент | Минимум | Рекомендуется | Оптимально |
-|-----------|---------|---------------|------------|
+### Рекомендации по оборудованию
+| Компонент | Минимум (работает не всё)| Рекомендуемое | Оптимальное |
+|-----------|---------|---------------|-------------|
 | **ОЗУ** | 16 ГБ | 32 ГБ | 32+ ГБ |
 | **ЦПУ** | 4 ядра | 4+ ядер | 8+ ядер |
-| **ГПУ** | NVIDIA 8-12 ГБ VRAM | NVIDIA 16 ГБ VRAM | NVIDIA 16+ ГБ VRAM |
-| **Хранилище** | 40 ГБ | 60+ ГБ SSD | 100+ ГБ SSD NVMe |
+| **GPU** | NVIDIA 8-12 ГБ VRAM | NVIDIA 16 ГБ VRAM | NVIDIA 24+ ГБ VRAM |
+| **Диск** | 40 ГБ | 60+ ГБ SSD | 100+ ГБ SSD NVMe |
 
-### Программные требования
-- Сервер с Linux (или Windows/macOS с Docker Desktop)
+### Программное обеспечение
+- Linux-сервер с **NVIDIA GPU** (требуется поддержка CUDA)
+- Установлены **драйверы NVIDIA** на хосте
+- Установлен **NVIDIA Container Toolkit**
 - Docker Engine ≥ 20.10
 - Docker Compose ≥ 2.0
-- Подключение к интернету (только для первоначальной загрузки моделей)
-> 💡 **Примечание**: После загрузки моделей ПЛИИ работает полностью офлайн.
+- Интернет (только для первоначальной загрузки моделей)
+
+> 💡 **Примечание**: После загрузки GGUF-моделей ПЛИИ работает полностью офлайн.
 
 ---
 
-## 🚀 Быстрый запуск
-Запустите ПЛИИ за несколько минут, выполнив следующие простые шаги:
-> 💡 **Примечание**: У Вас должны быть установлены **драйвера NVIDIA** на хост-машине и **NVIDIA Container Toolkit**.
+## 🚀 Быстрый старт
 
-### 1. Клонирование и базовая настройка
+> 💡 **Примечание**: На хосте должны быть установлены **драйверы NVIDIA** и **NVIDIA Container Toolkit**.
+
+### 1. Клонирование и настройка
+
 ```bash
 # Клонировать репозиторий
 git clone https://github.com/barval/flai.git
 cd flai
 
-# Создать папки и указать владельца
+# Создать директории и назначить владельца
 sudo mkdir -p data \
               data/uploads \
               data/documents
@@ -142,169 +155,180 @@ sudo chown -R 1000:1000 data
 # Скопировать шаблон окружения
 cp .env.example .env
 
-# Сгенерировать безопасный секретный ключ
+# Сгенерировать секретный ключ
 sed -i "s|^SECRET_KEY=.*|SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")|" .env
 
-# Сгенерировать API-ключ для Qdrant
+# Сгенерировать ключ API для Qdrant
 sed -i "s|^QDRANT_API_KEY=.*|QDRANT_API_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")|" .env
 
-# Отредактировать .env с вашими настройками (часовой пояс, URL API и т.д.)
+# Отредактировать .env (часовой пояс, URL сервисов и т.д.)
 nano .env
 ```
 
-### 2. Подготовка дополнительных сервисов (Опционально, но рекомендуется)
-> 💡 Примечание: Если вы хотите использовать генерацию изображений и голосовые функции, выполните шаги ниже. Если только чат — переходите к шагу 3.
+### 2. Загрузка GGUF-моделей
 
-#### 🎨 Для генерации изображений (Automatic1111):
+#### LLM-модели (чат, рассуждения, мультимодальность, эмбеддинг)
+
 ```bash
-# Создать папку для моделей
-sudo mkdir -p services/automatic1111/models \
-              services/automatic1111/models/Stable-diffusion \
-              services/automatic1111/outputs
-sudo chown -R 1000:1000 services
+mkdir -p services/llamacpp/models
 
-# Скачать чекпоинт Stable Diffusion (пример: RealVisXL_V4.0)
-# Замените ссылку на нужную вам модель с civitai.com или huggingface
-wget -O services/automatic1111/models/Stable-diffusion/RealVisXL_V4.0.safetensors \
-  "https://huggingface.co/SG161222/RealVisXL_V4.0/resolve/main/RealVisXL_V4.0.safetensors"
+# Модель чата (быстрые ответы)
+wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
+  "https://huggingface.co/bartowski/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 
-# В файле .env убедитесь, что указаны:
-# AUTOMATIC1111_URL=http://flai-sd:7860
-# AUTOMATIC1111_MODEL=RealVisXL_V4.0.safetensors
+# Модель рассуждений (сложные задачи)
+wget -O services/llamacpp/models/gpt-oss-20b-mxfp4.gguf \
+  "https://huggingface.co/openai/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-mxfp4.gguf"
+
+# Мультимодальная модель (анализ изображений) — ОБЯЗАТЕЛЬНО в поддиректории с mmproj!
+mkdir -p services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M
+wget -O services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf \
+  "https://huggingface.co/bartowski/Qwen3VL-8B-Instruct-GGUF/resolve/main/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
+wget -O services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf \
+  "https://huggingface.co/bartowski/Qwen3VL-8B-Instruct-GGUF/resolve/main/mmproj-F16.gguf"
+
+# Модель эмбеддинга (RAG)
+wget -O services/llamacpp/models/bge-m3-Q8_0.gguf \
+  "https://huggingface.co/bartowski/bge-m3-GGUF/resolve/main/bge-m3-Q8_0.gguf"
 ```
 
-#### 🎤 Для голосовых функций (Piper TTS + Whisper):
+#### Модели генерации изображений (Z_image_turbo)
+
 ```bash
-# Создать папку для голосовых моделей
-mkdir -p services/piper/piper_models
+mkdir -p services/sd_cpp/models/{diffusion_models,vae,text_encoders}
 
-# Скачать русские голоса (мужской и женский)
-curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx \
-https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx
-curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx.json \
-https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json
+# Диффузионная модель
+wget -O services/sd_cpp/models/diffusion_models/z_image_turbo-Q8_0.gguf \
+  "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf"
 
-curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx \
-https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx
-curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx.json \
-https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
+# VAE
+wget -O services/sd_cpp/models/vae/ae.safetensors \
+  "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/ae.safetensors"
 
-# Скачать английские голоса (мужской и женский)
-curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx \
-https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx  
-curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx.json \
-https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json  
-
-curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx \
-https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx  
-curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx.json \
-https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json
-
-# В файле .env убедитесь, что указаны:
-# PIPER_URL=http://flai-piper:8888/tts
-# WHISPER_API_URL=http://flai-whisper:9000/asr
+# Текстовый кодировщик LLM (общий с чатом)
+wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
+  "https://huggingface.co/bartowski/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 ```
 
-### 3. Запуск сервисов
-Выберите вариант в зависимости от нужных функций:
+#### Модели редактирования изображений (Flux.2 Klein 4B)
+
 ```bash
-# Вариант А: Полный функционал (Чат + Изображения + Голос + RAG)
-docker-compose -f docker-compose.all.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
+# Диффузионная модель для редактирования
+wget -O services/sd_cpp/models/diffusion_models/flux-2-klein-4b-Q8_0.gguf \
+  "https://huggingface.co/bartowski/FLUX.2-Klein-dev-GGUF/resolve/main/flux-2-klein-4b-Q8_0.gguf"
 
-# Вариант Б: Только чат и рассуждения (без изображений и голоса)
-docker-compose -f docker-compose.all.yml up -d
-
-# Вариант В: Чат + Голос (без генерации изображений)
-docker-compose -f docker-compose.all.yml --profile with-voice up -d
+# VAE для редактирования
+wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
+  "https://huggingface.co/bartowski/FLUX.2-dev-GGUF/resolve/main/flux2_ae.safetensors"
 ```
 
-### 4. Загрузка AI-моделей (Ollama)
-```bash
-# Дождаться запуска Ollama (около 30 секунд)
-sleep 30
+> Текстовый кодировщик `Qwen3-4B-Instruct-2507-Q4_K_M.gguf` используется **общий** и для генерации, и для редактирования. Скачайте его один раз.
 
-# Загрузить модели для чата, зрения, рассуждений и поиска
-docker exec flai-ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
-docker exec flai-ollama ollama pull qwen3-vl:8b-instruct-q4_K_M
-docker exec flai-ollama ollama pull gpt-oss:20b
-docker exec flai-ollama ollama pull bge-m3:latest
+> ⚠️ **Важно**: Мультимодальные модели **обязательно** должны лежать в поддиректории с именем модели, а файл проектора `mmproj-*.gguf` — внутри неё. Роутер llama.cpp автоматически обнаружит и загрузит проектор.
+
+### 3. Сборка и запуск сервисов
+
+```bash
+# Только чат и рассуждения (без генерации изображений)
+docker compose -f docker-compose.all.yml up -d
+
+# С генерацией изображений
+docker compose -f docker-compose.all.yml --profile with-image-gen up -d
+
+# С голосовыми функциями
+docker compose -f docker-compose.all.yml --profile with-voice up -d
+
+# Полный стек: чат + изображения + голос + RAG
+docker compose -f docker-compose.all.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
 ```
 
-### 5. Установка пароля администратора
+> ⏱️ **Первая сборка занимает время**: stable-diffusion.cpp компилируется из исходников (~5-10 минут). Последующие сборки используют кеш Docker.
+
+### 4. Установка пароля администратора
+
 ```bash
-# Создать пользователя admin с паролем
-docker exec flai-web flask admin-password ВашБезопасныйПароль123
+docker exec flai-web flask admin-password ВашНадёжныйПароль123
 ```
 
-### 6. Доступ к приложению
-Откройте браузер и перейдите по адресу: <http://localhost:5000>
+### 5. Настройка моделей в админ-панели
 
-Войдите с учётными данными:
-- Логин: `admin`
-- Пароль: (который вы установили в шаге 5)
+1. Откройте `http://localhost:5000` и войдите как `admin`
+2. Перейдите в **Админ-панель** → вкладка **Модели**
+3. Для каждого модуля (Чат, Рассуждения, Мультимодальность, Эмбеддинг):
+   - Поставьте галочку **Local** (URL заполнится автоматически: `http://flai-llamacpp:8033`)
+   - Нажмите 🔄 **Обновить** для загрузки списка моделей из роутера llama.cpp
+   - Выберите GGUF-модель из выпадающего списка
+   - При необходимости настройте параметры (длина контекста, температура, Top P, таймаут)
+   - Нажмите **Сохранить**
+4. Для генерации изображений: убедитесь, что `SD_CPP_URL=http://flai-sd:7860` указано в `.env`
 
-### 7. Настройка моделей (Первый вход)
-1. Перейдите в **Панель администратора** → вкладка **Модели**.
-2. Для каждого модуля (Чат, Рассуждения, Мультимодальность, Эмбеддинги):
-    + Нажмите 🔄 **Обновить** для загрузки доступных моделей.
-    + Выберите загруженную модель из списка.
-    + Нажмите **Сохранить**.
-3. Для генерации изображений: Убедитесь, что в настройке модели выбран чекпоинт, который вы скачали в шаге 2.
-4. Для голоса: Убедитесь, что в `.env` указан правильный путь к сервису Piper.
+### 6. Готово!
 
-### ✅ Готово!
 Теперь вы можете:
 - 💬 Вести диалоги с ИИ
-- 🎨 Генерировать изображения (если настроен Automatic1111)
-- 🎤 Отправлять голосовые сообщения и слушать ответы (если настроен Piper/Whisper)
-- 📚 Загружать документы для поиска (если включен профиль RAG)
+- 🎨 Генерировать изображения (если настроен stable-diffusion.cpp)
+- 🎤 Отправлять голосовые сообщения и слушать ответы (если настроены Piper/Whisper)
+- 📚 Загружать документы для поиска (если включён RAG)
 
 ---
 
-## 🔧 Конфигурация
+## 🔧 Настройка
 
 ### Переменные окружения (.env)
 
 **Обязательные:**
 ```bash
-SECRET_KEY=your_secret_key_here      # Секрет Flask для сессий
-TIMEZONE=Europe/Moscow              # Ваш часовой пояс
+SECRET_KEY=ваш_секретный_ключ        # Секретный ключ сессий Flask
+TIMEZONE=Europe/Moscow               # Ваш часовой пояс
 ```
 
 **URL сервисов:**
 ```bash
-OLLAMA_URL=http://flai-ollama:11434
-AUTOMATIC1111_URL=http://flai-sd:7860
+LLAMACPP_URL=http://flai-llamacpp:8033   # Роутер llama.cpp (замена Ollama)
+SD_CPP_URL=http://flai-sd:7860           # Сервер stable-diffusion.cpp
 WHISPER_API_URL=http://flai-whisper:9000/asr
 PIPER_URL=http://flai-piper:8888/tts
 QDRANT_URL=http://flai-qdrant:6333
-QDRANT_API_KEY=your_qdrant_api_key
-CAMERA_API_URL=http://flai-room-snapshot-api:5005
+QDRANT_API_KEY=ваш_ключ_qdrant
+CAMERA_API_URL=http://flai-room-snapshot-api:5000
+```
+
+**Параметры генерации изображений по умолчанию:**
+```bash
+SD_CPP_DEFAULT_WIDTH=1024
+SD_CPP_DEFAULT_HEIGHT=1024
+SD_CPP_DEFAULT_CFG_SCALE=1.0    # 1.0 для flow-matching моделей (Z_image_turbo)
+SD_CPP_DEFAULT_STEPS=10         # 10 для Z_image_turbo
+SD_CPP_TIMEOUT=300
 ```
 
 **Повторные попытки подключения:**
 ```bash
-SERVICE_RETRY_ATTEMPTS=15           # Количество попыток
-SERVICE_RETRY_DELAY=2               # Задержка между попытками (сек)
+SERVICE_RETRY_ATTEMPTS=15
+SERVICE_RETRY_DELAY=2
 ```
 
 **Безопасность сессий:**
 ```bash
-HTTPS_ENABLED=true                  # true для HTTPS прокси
-PERMANENT_SESSION_LIFETIME=28800    # Время жизни сессии (8 часов)
+HTTPS_ENABLED=true
+PERMANENT_SESSION_LIFETIME=28800    # 8 часов
 ```
 
-**Redis очередь:**
+**Очередь Redis:**
 ```bash
-REDIS_RESULT_TTL=3600              # TTL результатов (1 час)
-QUEUE_MAX_WAIT_TIME=300            # Макс. ожидание в очереди (5 мин)
+REDIS_RESULT_TTL=3600
+QUEUE_MAX_WAIT_TIME=300
+```
+
+**Отладка:**
+```bash
+DEBUG_API_ENABLED=false   # Установите 'true' только для разработки/тестирования
 ```
 
 ### Конфигурация Docker
 
 **Настройки Gunicorn (Dockerfile):**
 ```dockerfile
-# Оптимизировано для I/O операций (ожидание ответов AI)
 CMD ["gunicorn", \
      "--bind", "0.0.0.0:5000", \
      "--workers", "1", \
@@ -315,296 +339,249 @@ CMD ["gunicorn", \
      "wsgi:app"]
 ```
 
-**Почему 1 worker × 4 threads?**
-- Минимальное потребление RAM (+40МБ vs 1/1)
-- Обрабатывает 4 одновременных подключения
-- Оптимально для I/O bound (ожидание Ollama/SD)
-- Экономия 280МБ vs 4 workers
+**Почему 1 воркер × 4 потока?**
+- Минимальное потребление ОЗУ (+40 МБ по сравнению с 1/1)
+- Обработка 4 одновременных подключений
+- Оптимально для операций ввода/вывода (ожидание ответов ИИ)
+- Экономия 280 МБ по сравнению с 4 воркерами
 
-### Docker Compose «всё в одном»
-Для запуска всех сервисов на одной машине используйте `docker-compose.all.yml`:
+### Профили Docker Compose
 
-### Примеры использования
 ```bash
-# Запустить все сервисы
-docker-compose -f docker-compose.all.yml up -d
+# Запуск всех сервисов
+docker compose -f docker-compose.all.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
 
-# Запустить без генерации изображений
-docker-compose -f docker-compose.all.yml --profile with-voice --profile with-rag up -d
+# Чат + голос (без изображений)
+docker compose -f docker-compose.all.yml --profile with-voice up -d
 
-# Запустить со всеми функциями
-docker-compose -f docker-compose.all.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
+# Только чат (без изображений и голоса)
+docker compose -f docker-compose.all.yml up -d
 
-# Остановить все сервисы
-docker-compose -f docker-compose.all.yml down
+# Остановка всех сервисов
+docker compose -f docker-compose.all.yml down --remove-orphans
 
 # Просмотр логов
-docker-compose -f docker-compose.all.yml logs -f web
+docker compose -f docker-compose.all.yml logs -f web
 ```
-
-### Распределённое развёртывание (несколько машин)
-
-Для распределения нагрузки между несколькими серверами используйте автономные docker-compose файлы в директории `services/`:
-
-1. **Web App + Redis** (Сервер 1):
-```bash
-docker-compose -f docker-compose.all.yml up -d web redis
-```
-
-2. **Ollama - Chat Models** (Сервер 2):
-```bash
-cd services/ollama
-docker-compose -f docker-compose.gpu.yml up -d
-```
-
-3. **Ollama - Reasoning Models** (Сервер 3):
-```bash
-cd services/ollama
-docker-compose -f docker-compose.gpu.yml up -d
-```
-
-4. **Настройте URL моделей** в Панели администратора → вкладка Models:
-```
-Chat: http://server2:11434
-Reasoning: http://server3:11434
-Multimodal: http://server4:11434
-Embedding: http://server2:11434
-```
-
-**Настройка Firewall:**
-```bash
-# На каждом удалённом сервере
-sudo ufw allow from <web-app-ip> to any port <service-port>
-```
-
-См. [services/README.md](services/README.md) для полных инструкций по развёртыванию каждого сервиса.
 
 ---
 
 ## 🤖 Настройка моделей
 
-### Необходимые модели (загрузить после запуска Ollama)
-```bash
-# Чат/Маршрутизатор (быстрые ответы)
-docker exec flai-ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
+### Структура GGUF-моделей
 
-# Мультимодальная модель (анализ изображений)
-docker exec flai-ollama ollama pull qwen3-vl:8b-instruct-q4_K_M
+llama.cpp работает в **режиме роутера** (`--models-dir`), динамически загружая модели из общей директории:
 
-# Модель рассуждений (сложные задачи)
-docker exec flai-ollama ollama pull gpt-oss:20b
-
-# Модель эмбеддингов (поиск по документам RAG)
-docker exec flai-ollama ollama pull bge-m3:latest
+```
+services/llamacpp/models/
+├── Qwen3-4B-Instruct-2507-Q4_K_M.gguf     # Чат
+├── gpt-oss-20b-mxfp4.gguf                  # Рассуждения
+├── bge-m3-Q8_0.gguf                        # Эмбеддинг
+└── Qwen3VL-8B-Instruct-Q4_K_M/             # Мультимодальность (поддиректория!)
+    ├── Qwen3VL-8B-Instruct-Q4_K_M.gguf
+    └── mmproj-F16.gguf                     # Визион-проектор
 ```
 
-### Настройка моделей в Панели администратора
-1. Войдите как администратор и перейдите в `/admin` → вкладка **Модели**
-2. Для каждого модуля (Чат, Рассуждения, Мультимодальность, Эмбеддинги):  
-  #### **Шаг 1: Укажите URL Ollama**  
-   - Отметьте чек-бокс "Локально", если Ollama запущен на той же машине (URL автоматически заполняется `http://ollama:11434`)
-   - Снимите галочку "Локально" и введите пользовательский URL для распределённого развёртывания (например, `http://192.168.1.50:11434`)
-   - Иконка статуса показывает доступность (✅ доступна / ❌ недоступна)  
-  #### **Шаг 2: Обновите список моделей**  
-   - Нажмите кнопку 🔄 Обновить для получения списка моделей из Ollama
-   - Дождитесь заполнения выпадающего списка названиями моделей  
-  #### **Шаг 3: Выберите модель и настройте параметры**  
-   - Выберите нужную модель из выпадающего списка
-   - Ниже отобразится информация о модели (архитектура, параметры, длина контекста)
-   - Настройте параметры:
-      * **Длина контекста**: Максимальное количество токенов (должно быть ≤ максимума модели)
-      * **Температура**: Креативность (0.0–2.0, меньше = более детерминировано)
-      * **Top P**: Nucleus sampling (0.0–1.0)
-      * **Таймаут**: Таймаут запроса в секундах (0–1200)
-   - Нажмите Сохранить для применения конфигурации
-> 💡 Смена модели эмбеддингов автоматически запускает переиндексацию всех документов.
+> ⚠️ **Мультимодальные модели требуют поддиректорию** с файлом проектора `mmproj-*.gguf` внутри. Роутер автоматически обнаруживает и загружает его.
+
+### Настройка моделей в админ-панели
+
+1. Войдите как администратор, перейдите в `/admin` → вкладка **Модели**
+2. Для каждого модуля (Чат, Рассуждения, Мультимодальность, Эмбеддинг):
+   - **Шаг 1**: Поставьте галочку **Local** (URL → `http://flai-llamacpp:8033`)
+   - **Шаг 2**: Нажмите 🔄 **Обновить** для получения списка моделей
+   - **Шаг 3**: Выберите модель, настройте параметры, нажмите **Сохранить**
+
+> 💡 **Смена модели эмбеддинга запускает автоматическую переиндексацию** всех документов.
+
+### Параметры моделей
+
+| Параметр | Чат | Рассуждения | Мультимодальность | Эмбеддинг |
+|----------|-----|-------------|-------------------|-----------|
+| Длина контекста | 8192 | 32768 | 8192 | 512 |
+| Температура | 0.1 | 0.7 | 0.7 | – |
+| Top P | 0.1 | 0.9 | 0.9 | – |
+| Таймаут (с) | 60 | 300 | 120 | 30 |
 
 ---
 
-## 🎨 Настройка генерации изображений
+## 🎨 Генерация и редактирование изображений
 
-### 1. Скачать чекпоинт Stable Diffusion
+### Модель генерации
+
+Проект использует **Z_image_turbo** как единственную модель генерации:
+
+| Модель | Шаги | CFG Scale | Разрешение | Примечания |
+|--------|------|-----------|------------|------------|
+| **Z_image_turbo** | 10 | 1.0 | 1024×1024 | Быстрая, flow-matching |
+
+### Редактирование изображений (Flux.2 Klein 4B)
+
+Загрузите изображение и попросите его изменить (например, «сделай зрачки зелёными», «убери второе солнце»). Система использует:
+1. **Мультимодальную модель** (Qwen3VL) для анализа изображения и создания промпта редактирования
+2. **Модель Flux.2 Klein 4B** через stable-diffusion.cpp для выполнения редактирования
+3. Оригинальное изображение сохраняется, за исключением запрошенных изменений
+
+Редактирование использует отдельные файлы моделей и работает независимо от генерации — конфликтов между ними нет.
+
+### Сборка stable-diffusion.cpp
+
+Сервис `sd_cpp` **собирается из исходников** при первом запуске:
+1. Клонирует `https://github.com/leejet/stable-diffusion.cpp`
+2. Инициализирует git-подмодули (`ggml`, `thirdparty/*`)
+3. Компилирует с CUDA 12.8.1 (`cmake -DSD_CUDA=ON`)
+4. Создаёт бинарные файлы `sd-server` и `sd-cli`
+
+> ⏱️ **Первая сборка**: ~5-10 минут в зависимости от ЦПУ. Последующие сборки используют кеш Docker.
+
+### Конфигурация
+
 ```bash
-# Создать директорию моделей
-mkdir -p services/automatic1111/models
-
-# Скачать чекпоинт Stable Diffusion (пример: RealVisXL_V4.0)
-# Замените ссылку на нужную вам модель с civitai.com или huggingface
-wget -O services/automatic1111/models/RealVisXL_V4.0.safetensors \
-  "https://huggingface.co/SG161222/RealVisXL_V4.0/resolve/main/RealVisXL_V4.0.safetensors"
-```
-
-### 2. Настроить в `.env`
-```bash
-AUTOMATIC1111_URL=http://flai-sd:7860
-AUTOMATIC1111_MODEL=RealVisXL_V4.0.safetensors
-AUTOMATIC1111_TIMEOUT=180
-```
-
-### 3. Включить в Docker Compose
-Раскомментируйте сервис `automatic1111` или используйте profiles:
-```bash
-docker-compose -f docker-compose.all.yml --profile with-image-gen up -d
+SD_CPP_URL=http://flai-sd:7860
+SD_CPP_DEFAULT_WIDTH=1024
+SD_CPP_DEFAULT_HEIGHT=1024
+SD_CPP_DEFAULT_CFG_SCALE=1.0
+SD_CPP_DEFAULT_STEPS=10
+SD_CPP_TIMEOUT=300
 ```
 
 ---
 
-## 🎤 Настройка голосовых функций
+## 🎤 Голосовые функции
 
-### 1. Скачать голосовые модели
+### Whisper ASR (без изменений с v7.5)
+
+Использует `onerahmet/openai-whisper-asr-webservice` (движок faster_whisper).
+
 ```bash
+# Включить голосовые функции
+docker compose -f docker-compose.all.yml --profile with-voice up -d
+```
+
+### Piper TTS
+
+Использует ONNX-модели Piper для синтеза речи.
+
+```bash
+# Скачать голосовые модели
 mkdir -p services/piper/piper_models
 
-# Русский мужской голос
+# Русские голоса (мужской + женский)
 curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx
-
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx"
 curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx.json \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json
-
-# Русский женский голос
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json"
 curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx
-
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx"
 curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx.json \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
-```
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json"
 
-### 2. Включить в Docker Compose
-```bash
-docker-compose -f docker-compose.all.yml --profile with-voice up -d
+# Английские голоса
+curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx"
+curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx.json \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json"
+curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx"
+curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx.json \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json"
 ```
 
 ---
 
-## 📚 Настройка RAG (поиск по документам)
+## 📚 RAG (поиск по документам)
 
-### 1. Настроить Qdrant в `.env`
+### 1. Настройка RAG в Админ-панели
+
+После запуска сервисов войдите как администратор и перейдите в **Админ-панель → вкладка Модели**. Прокрутите вниз до секции **Чанки**. Здесь можно точно настроить поведение RAG:
+
+- **Размер чанка (символов):** На сколько частей разбиваются документы при индексации.
+- **Перекрытие чанков (символов):** Количество перекрывающихся символов между соседними чанками.
+- **Стратегия чанкинга:** `fixed` (фиксированный размер) или `recursive` (рекурсивное разбиение по заголовкам/абзацам).
+- **Число чанков (top_k):** Максимальное количество чанков, извлекаемых из Qdrant на один запрос.
+- **Порог (документы):** Минимальная оценка схожести для обычных запросов к документам.
+- **Порог (рассуждения):** Минимальная оценка схожести, когда RAG активируется из запроса на рассуждение.
+
+Нажмите **Сохранить**, чтобы применить изменения. При изменении параметров чанкинга (размер или стратегия) автоматически запускается фоновая переиндексация всех документов.
+
+> **Примечание:** Переменные окружения вроде `RAG_CHUNK_SIZE` в `.env` используются только как начальные значения до первого сохранения в админ-панели. Основная конфигурация хранится в базе данных.
+
+### 2. Включение в Docker Compose
 ```bash
-QDRANT_URL=http://flai-qdrant:6333
-QDRANT_API_KEY=ваш_надёжный_api_ключ
-EMBEDDING_MODEL=bge-m3:latest
-RAG_CHUNK_SIZE=500
-RAG_CHUNK_OVERLAP=50
-RAG_TOP_K=5
+docker compose -f docker-compose.all.yml --profile with-rag up -d
 ```
 
-### 2. Включить в Docker Compose
-```bash
-docker-compose -f docker-compose.all.yml --profile with-rag up -d
-```
-
-### 3. Загрузить документы
-  1. Войдите в веб-интерфейс
-  2. Нажмите вкладку Документы в боковой панели
-  3. Нажмите ➕ для загрузки PDF, DOC, DOCX или TXT файлов
-  4. Дождитесь завершения индексации (статус: ✅ Проиндексирован)
+### 3. Загрузка документов
+1. Войдите в веб-интерфейс
+2. Перейдите на вкладку **Документы** в боковой панели
+3. Нажмите ➕ для загрузки PDF, DOC, DOCX или TXT
+4. Дождитесь завершения индексации (статус: ✅ Проиндексирован)
 
 ---
 
 ## 📹 Интеграция с камерами (опционально)
-Модуль работы с камерами не включён в основной docker-compose и должен быть настроен отдельно.
 
-### 1. Развёртывание сервиса камер
+Модуль камер подключается к отдельному сервису `room-snapshot-api`. См. [services/README.md](services/README.md) и [services/room-snapshot-api/README.md](services/room-snapshot-api/README.md) для инструкций.
 
-Сервис камер — отдельный проект. Доступны два варианта развёртывания:
-
-**Вариант A: Локальное развёртывание (на том же сервере что и ПЛИИ)**
+### Настройка
 ```bash
-cd services/room-snapshot-api
-./deploy.sh local
-```
-
-**Вариант B: Удалённое развёртывание (на отдельном сервере)**
-```bash
-# Клонировать репозиторий API камер
-git clone https://github.com/barval/room-snapshot-api.git
-cd room-snapshot-api
-
-# Настроить файл .env
-cp .env.example .env
-# Отредактировать .env с URL и учётными данными ваших камер
-
-# Развернуть удалённо
-./deploy.sh remote
-
-# Настроить firewall
-sudo ufw allow from <flai-server-ip> to any port 5005
-```
-
-См. [services/room-snapshot-api/README.md](services/room-snapshot-api/README.md) для подробных инструкций.
-
-### 2. Настроить ПЛИИ для использования сервиса камер
-В файле `.env` ПЛИИ:
-```bash
-# Включить модуль камер
+CAMERA_API_URL=http://flai-room-snapshot-api:5000
 CAMERA_ENABLED=true
-
-# Адрес API камер (настройте IP/порт по необходимости)
-# Для локального развёртывания:
-CAMERA_API_URL=http://flai-room-snapshot-api:5005
-# Для удалённого развёртывания:
-CAMERA_API_URL=http://<camera-server-ip>:5005
-
-# Таймаут запроса снимка (секунды)
 CAMERA_API_TIMEOUT=15
-
-# Интервал проверки доступности (секунды)
 CAMERA_CHECK_INTERVAL=30
 ```
 
-### 3. Настроить права доступа к камерам
-  1. Войдите в ПЛИИ как администратор
-  2. Перейдите в `/admin` → вкладка Пользователи
-  3. Отредактируйте пользователя и отметьте камеры, к которым он имеет доступ:
-    Например:
-    - `tam` — тамбур  
-    - `pri` — прихожая  
-    - `kor` — коридор  
-    - `spa` — спальня  
-    - `kab` — кабинет  
-    - `det` — детская  
-    - `gos` — гостиная  
-    - `kuh` — кухня  
-    - `bal` — балкон  
-
-### 4. Использование камер в чате
-Пользователи с правами доступа могут спрашивать:
-+ "Покажи кухню" → Возвращает снимок с камеры кухни
-+ "Что в гостиной?" → Возвращает снимок + анализ ИИ
-+ "Есть ли кто в кабинете?" → Возвращает снимок + анализ ИИ
+### Права доступа к камерам
+В Админ-панели → вкладка Пользователи назначьте коды камер:
+`tam` (тамбур), `pri` (прихожая), `kor` (коридор), `spa` (спальня),
+`kab` (кабинет), `det` (детская), `gos` (гостиная), `kuh` (кухня), `bal` (балкон)
 
 ---
 
 ## 👥 Управление пользователями
 
-### Возможности Панели администратора
-| Возможность | Описание |
-|-------------|----------|
-| 👤 Операции с пользователями | Создание, редактирование, удаление учётных записей |
+### Возможности админ-панели
+| Функция | Описание |
+|---------|----------|
+| 👤 Операции с пользователями | Создание, редактирование, удаление аккаунтов |
 | 🔑 Управление паролями | Сброс паролей для любого пользователя |
-| 🔐 Права на камеры | Предоставление/отзыв доступа к камерам |
-| 🤖 Управление моделями | Настройка моделей для каждого типа модуля |
-| 📊 Системная статистика | Мониторинг размеров баз данных и хранилища |
-| 🎚️ Классы обслуживания | Приоритет очереди (0=высший, 2=низший) |
+| 🔐 Права камер | Предоставление/отзыв доступа к камерам |
+| 🤖 Управление моделями | Настройка GGUF-моделей для каждого модуля |
+| 📊 Статистика системы | Размеры баз данных и хранилища |
+| 🎚️ Классы обслуживания | Приоритет очереди (0=наивысший, 2=наинизший) |
 
 ### CLI-команды
 ```bash
 # Установить пароль администратора
 docker exec flai-web flask admin-password НовыйПароль123
 
-# Просмотр помощи
+# Справка
 docker exec flai-web flask --help
 ```
 
 ---
 
+### 💾 Резервное копирование и восстановление
+
+В FLAI встроена система резервного копирования, доступная в Админ-панели на вкладке **Backups**.
+
+**Типы резервных копий:**
+- **Только пользователи:** Резервная копия таблицы `users` (учётные записи, права, настройки).
+- **Полная:** Все данные: пользователи, сеансы чатов, сообщения, документы, загруженные файлы и конфигурации моделей.
+
+**Операции:**
+- **Создать:** Выберите тип и нажмите «Создать резервную копию». Архив сохраняется в `data/db_backups/`.
+- **Восстановить:** Нажмите «Восстановить» на файле резервной копии, чтобы заменить текущие данные. *Внимание: существующие данные будут перезаписаны.*
+- **Скачать:** Загрузить архив на локальный компьютер.
+- **Удалить:** Удалить старые файлы резервных копий.
+
+Резервные копии хранятся в виде `.tar.gz` архивов, содержащих SQL-дампы и каталоги с файлами. Восстановление требует подтверждения и записывается в журнал аудита.
+
+---
+
 ## 🔍 Мониторинг и здоровье
 
-### Health Check Endpoint
-
-Комплексная проверка здоровья всех сервисов:
-
+### Эндпоинт проверки здоровья
 ```bash
 curl http://localhost:5000/health
 ```
@@ -613,171 +590,180 @@ curl http://localhost:5000/health
 ```json
 {
   "status": "ok",
-  "timestamp": "2026-04-02T00:34:08.237346",
+  "timestamp": "2026-04-08T23:00:00.000000+00:00",
   "services": {
     "web": "ok",
     "database": "ok",
     "redis": "ok",
-    "ollama": "ok"
+    "llamacpp": "ok"
   }
 }
 ```
 
-**Значения статуса:**
-- `ok` — все сервисы работают
-- `degraded` — часть сервисов недоступна
-- `error` — все сервисы недоступны
-
-### Prometheus Metrics
-
-Метрики в формате Prometheus:
-
+### Метрики Prometheus
 ```bash
 curl http://localhost:5000/metrics
 ```
-
-**Доступные метрики:**
-- `flai_web_info` — Версия сервиса
-- `flai_queue_length` — Длина очереди
-- `flai_queue_processing` — Обрабатываемые задачи
-- `flai_database_size_bytes` — Размер БД
-- `flai_requests_total` — Счётчик запросов
-- `flai_uptime_seconds` — Время работы
-
-### API Документация
-
-Полная API документация в формате OpenAPI:
-- **Файл:** `docs/openapi.yaml`
-- **Формат:** OpenAPI 3.0
-- **Покрытие:** Все REST endpoint'ы
-
-Просмотр через Swagger UI или любой OpenAPI-совместимый просмотрщик.
 
 ---
 
 ## 🧪 Тестирование
 
-### Юнит и интеграционные тесты
-
-FLAI включает комплексное покрытие тестами критичных компонентов:
-
 ```bash
 # Запустить все тесты
 pytest
 
-# Запустить с отчётом покрытия
+# С отчётом покрытия
 pytest --cov=app --cov=modules --cov-report=html
 
-# Запустить конкретную категорию
+# Отдельные категории
 pytest tests/test_admin_routes.py
-pytest tests/test_documents_routes.py
 pytest tests/test_image_module.py
+pytest tests/test_sd_cpp_module.py
 ```
-
-**Покрытие тестами:**
-- `test_admin_routes.py` — Endpoint'ы админ-панели (17 тестов)
-- `test_documents_routes.py` — Загрузка документов/RAG (16 тестов)
-- `test_image_module.py` — Генерация изображений (16 тестов)
-- `test_queue.py` — Операции Redis очереди
-- `test_audio_module.py` — Аудио транскрибация
-- `test_security.py` — Функции безопасности (CSRF, rate limiting и др.)
-- `test_integration.py` — Сквозные интеграционные тесты
 
 ### Нагрузочное тестирование
-
-ПЛИИ включает скрипты нагрузочного тестирования на основе Locust.
-
-### Настройка
-```bash
-# Создать виртуальное окружение
-python3 -m venv venv
-source venv/bin/activate  # Linux/macOS
-# venv\Scripts\activate   # Windows
-
-# Установить Locust
-pip install locust
-```
-
-### Запуск тестов
 ```bash
 # Веб-интерфейс
 locust -f tests/load/locustfile.py --host http://localhost:5000
 
-# Автоматический режим (headless)
-locust -f tests/load/locustfile.py --host http://localhost:5000 \
-  --headless -u 10 -r 2 --run-time 1m
+# Автоматический режим
+locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 ```
-
-### Тестовый пользователь
-Создайте тестового пользователя перед запуском:
-- Логин: `testuser`
-- Пароль: `testpass`
-
-> 💡 **Обязательно:** заблокируйте или удалите тестового пользователя после проведения тестов!
 
 ---
 
 ## 🗺️ Дорожная карта
 
-### ✅ Завершено
-- Маршрутизация запросов по моделям (простые → быстрая, сложные → рассуждения)
-- Мультимодальный анализ изображений с историей диалога
-- Генерация изображений с автоматической оптимизацией промптов
-- Распознавание (Whisper) и синтез (Piper TTS) речи
-- Загрузка документов + RAG с семантическим поиском через Qdrant
-- Очередь запросов на Redis с отображением статуса в реальном времени
-- Полная поддержка i18n (RU/EN) через Flask-Babel
-- Тёмная/светлая тема с сохранением предпочтений
-- Экспорт чатов в HTML с встроенными медиафайлами
-- Админ-панель с управлением моделями
-- Отображение статуса индексации документов с временем обработки
-- Интеграция с камерами с системой прав доступа
-- Режим WAL для SQLite для лучшей конкурентности
-- **Нагрузочное тестирование с Locust**
-- **Отдельные URL Ollama для каждого типа моделей (распределённое развёртывание)**
-- **Улучшения безопасности:**
-  * CSRF-защита для всех форм
-  * Rate limiting для login (защита от перебора паролей)
-  * Валидация владения сессией
-  * Защита от path traversal
-  * HMAC-подпись задач Redis очереди
-  * Заголовки безопасности (CSP, X-Frame-Options и др.)
-  * Audit logging для событий безопасности
-- **Автономное развёртывание сервисов:**
-  * Ollama (с поддержкой GPU)
-  * Automatic1111 (Stable Diffusion)
-  * Whisper ASR
-  * Piper TTS
-  * Qdrant (векторная БД)
-  * Room Snapshot API (локальное/удалённое развёртывание)
+### ✅ Завершено (v8.0)
+- **Режим роутера llama.cpp** (`--models-dir`) вместо Ollama — один сервер с динамическим переключением моделей
+- **stable-diffusion.cpp** вместо Automatic1111 — Z-Image-Turbo для генерации, Flux.2 Klein 4B для редактирования
+- **Оптимизация Piper TTS** для синтеза больших текстов — порционная обработка с плавными аудиопереходами
 
 ### 🔄 В работе
-- Долговременная память диалогов (контекст между сеансами)
-- Продвинутые функции RAG: фильтрация по метаданным, гибридный поиск, ре-ранжирование
-- Оптимизация интерфейса для мобильных устройств
-- Улучшение производительности
-- Повышение безопасности
+- Долгосрочная память диалогов (кросс-сессийный контекст)
+- Продвинутый RAG: фильтрация по метаданным, гибридный поиск, реранжирование
+- Оптимизация мобильного интерфейса
+
+### 📅 Планируется
+- Архитектура плагинов для пользовательских модулей
+- Поддержка нескольких GPU
+- Расширенная приоритизация очереди
 - Аналитика активности пользователей
 
-### 📅 Запланировано
-- Архитектура плагинов для пользовательских модулей
-- API для внешних интеграций (вебхуки, REST)
-- Утилиты резервного копирования/восстановления
-- Функции совместной работы (общие сеансы, библиотеки документов)
-- Локальная донастройка моделей (LoRA, QLoRA)
+---
+
+## 📦 Модели, лицензии и размеры
+
+### LLM-модели (llama.cpp)
+
+| Модель | Назначение | Лицензия | Примерный размер |
+|--------|------------|----------|-----------------|
+| **Qwen3-4B-Instruct-2507-Q4_K_M** | Чат (быстрые ответы) | [Qwen License](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF) | ~2,5 ГБ |
+| **gpt-oss-20b-mxfp4** | Рассуждения (сложные задачи) | [OpenAI License](https://huggingface.co/openai/gpt-oss-20b-GGUF) | ~12 ГБ |
+| **Qwen3VL-8B-Instruct-Q4_K_M** | Мультимодальность (анализ изображений) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5,5 ГБ + mmproj ~200 МБ |
+| **bge-m3-Q8_0** | Эмбеддинги (RAG) | [MIT License](https://huggingface.co/BAAI/bge-m3-gguf) | ~2,2 ГБ |
+
+### Модели генерации изображений (stable-diffusion.cpp)
+
+| Модель | Назначение | Лицензия | Примерный размер |
+|--------|------------|----------|-----------------|
+| **Z-Image-Turbo (z_image_turbo-Q8_0)** | Генерация изображений | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~6,2 ГБ |
+| **ae.safetensors** (VAE) | Вариационный автоэнкодер для Z-Image | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~0,3 ГБ |
+| **Qwen3-4B-Instruct-2507-Q4_K_M** | Текстовый кодировщик для Z-Image | [Qwen License](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF) | ~2,5 ГБ *(общая с чатом)* |
+
+### Модели редактирования изображений (stable-diffusion.cpp)
+
+| Модель | Назначение | Лицензия | Примерный размер |
+|--------|------------|----------|-----------------|
+| **Flux.2 Klein 4B (flux-2-klein-4b-Q8_0)** | Редактирование (смена цветов, удаление объектов, стилизация) | [Flux License](https://huggingface.co/black-forest-labs/FLUX.2-Klein-dev) | ~4,5 ГБ |
+| **flux2_ae.safetensors** | VAE для Flux.2 редактирования | [Flux License](https://huggingface.co/black-forest-labs/FLUX.2-dev) | ~0,3 ГБ |
+
+### Голосовые модели
+
+| Модель | Назначение | Лицензия | Примерный размер |
+|--------|------------|----------|-----------------|
+| **en_US-lessac-medium** | Английский TTS (женский) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~75 МБ |
+| **ru_RU-ruslan-medium** | Русский TTS (мужской) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~75 МБ |
+| **Whisper medium** | Распознавание речи | [MIT (OpenAI)](https://github.com/openai/whisper) | ~1,5 ГБ |
+
+### Общий размер загружаемых данных
+
+| Конфигурация | Примерный объём |
+|--------------|-----------------|
+| Только чат (Qwen3-4B) | ~2,5 ГБ |
+| Чат + Рассуждения | ~14,5 ГБ |
+| Чат + Мультимодальность | ~8 ГБ |
+| Полный LLM-стек | ~22 ГБ |
+| + Генерация изображений | ~28 ГБ |
+| + Редактирование изображений | ~31 ГБ |
+| + Голос (TTS + Whisper) | ~35 ГБ |
+
+> **Примечание**: После загрузки моделей ПЛИИ работает полностью офлайн. Внешние скрипты и модули не загружаются во время работы.
+
+---
+
+## 🧪 Тестирование
+
+ПЛИИ включает комплексное тестирование всех ключевых компонентов и нагрузочное тестирование веб-интерфейса.
+
+### Модульные тесты
+
+```bash
+# Запустить все тесты
+pytest
+
+# С отчётом покрытия
+pytest --cov=app --cov=modules --cov-report=html
+
+# Отдельные категории
+pytest tests/test_admin_routes.py
+pytest tests/test_image_module.py
+pytest tests/test_sd_cpp_module.py
+pytest tests/test_queue.py
+pytest tests/test_security.py
+pytest tests/test_integration.py
+```
+
+### Нагрузочное тестирование
+
+Нагрузочные тесты используют [Locust](https://locust.io/) для эмуляции одновременных пользователей.
+
+```bash
+# Установить Locust (если ещё не установлен)
+pip install locust
+
+# Веб-интерфейс — открыть http://localhost:8089
+locust -f tests/load/locustfile.py --host http://localhost:5000
+
+# Автоматический режим — 10 пользователей, запуск 2/с, 1 минута
+locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
+
+# Через вспомогательный скрипт
+./tests/load/run_load_test.sh --host http://localhost:5000 --users 10 --spawn-rate 2 --run-time 1m
+```
+
+Подробная инструкция — в [tests/load/README-ru.md](tests/load/README-ru.md).
 
 ---
 
 ## 🤝 Участие в разработке
-Мы приветствуем вклад в проект!
-- 🔍 **Сообщить об ошибке**: Создайте issue с шагами воспроизведения
-- 💡 **Предложить функцию**: Начните обсуждение перед написанием кода
-- 🛠️ **Отправить PR**: Форкните, создайте ветку, напишите код, протестируйте, отправьте
-- 📚 **Улучшить документацию**: Помогите уточнить документацию и переводы
+
+Вклад в проект приветствуется! Пожалуйста, создайте Pull Request.
+
+1. Форкните репозиторий
+2. Создайте ветку для новой функции (`git checkout -b feature/amazing-feature`)
+3. Зафиксируйте изменения (`git commit -m 'Добавить amazing feature'`)
+4. Отправьте в ветку (`git push origin feature/amazing-feature`)
+5. Откройте Pull Request
 
 ---
 
 ## 📄 Лицензия
-Этот проект распространяется под лицензией MIT – подробности см. в файле [LICENSE-ru](LICENSE-ru).
 
-<br> <div align="center"> Сделано с ❤️ для сообщества локального ИИ </div>
+Лицензия MIT. Подробности в [LICENSE](LICENSE).
+
+---
+
+<br>
+<div align="center"> Сделано с ❤️ для сообщества локального ИИ</div>

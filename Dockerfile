@@ -10,11 +10,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libtiff-dev \
     libwebp-dev \
     libmagic1 \
+    libpq-dev \
+    docker-cli \
     && rm -rf /var/lib/apt/lists/*
 
 # Installing Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install PostgreSQL driver (optional)
+RUN pip install --no-cache-dir psycopg2-binary==2.9.9 || echo "Warning: psycopg2 failed to install"
 
 # Copying the code
 COPY . .
@@ -32,14 +37,5 @@ RUN addgroup --system --gid 1000 appuser && \
 # Switching to an unprivileged user
 USER appuser
 
-# Launching with Gunicorn
-# Optimized for I/O bound operations (waiting for AI responses)
-# 1 worker × 4 threads = 4 concurrent connections with minimal RAM usage
-CMD ["gunicorn", \
-     "--bind", "0.0.0.0:5000", \
-     "--workers", "1", \
-     "--threads", "4", \
-     "--worker-class", "gthread", \
-     "--timeout", "120", \
-     "--keep-alive", "5", \
-     "wsgi:app"]
+# Launching with Gunicorn (configuration from gunicorn_config.py)
+CMD ["gunicorn", "-c", "gunicorn_config.py", "wsgi:app"]

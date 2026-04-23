@@ -20,12 +20,16 @@ function applyCurrentView() {
     const sessionsList = document.getElementById('sessions-list');
     const documentsList = document.getElementById('documents-list');
     if (view === 'sessions') {
+        sessionsList.classList.add('active');
         sessionsList.style.display = 'block';
-        documentsList.style.display = 'none';
+        documentsList.classList.remove('active');
+        documentsList.classList.add('hidden');
         stopDocumentsPolling();
     } else {
+        sessionsList.classList.remove('active');
         sessionsList.style.display = 'none';
-        documentsList.style.display = 'block';
+        documentsList.classList.remove('hidden');
+        documentsList.classList.add('active');
         loadDocuments(); // immediate load
         startDocumentsPolling();
     }
@@ -59,7 +63,7 @@ function switchView(view) {
 
 function startDocumentsPolling() {
     if (documentsPollingInterval) clearInterval(documentsPollingInterval);
-    // Poll every 10 seconds
+    // Poll server every 10 seconds
     documentsPollingInterval = setInterval(() => {
         if (currentView === 'documents') {
             loadDocuments(false); // silent update
@@ -67,12 +71,47 @@ function startDocumentsPolling() {
             stopDocumentsPolling();
         }
     }, 10000);
+
+    // Start live timer for elapsed time display (updates every second)
+    startLiveDocumentTimer();
 }
 
 function stopDocumentsPolling() {
     if (documentsPollingInterval) {
         clearInterval(documentsPollingInterval);
         documentsPollingInterval = null;
+    }
+    stopLiveDocumentTimer();
+}
+
+// Live timer — updates elapsed time display every second without server requests
+let documentLiveTimer = null;
+function startLiveDocumentTimer() {
+    stopLiveDocumentTimer();
+    documentLiveTimer = setInterval(() => {
+        const indexingDocs = document.querySelectorAll('.document-item[data-indexing-start]');
+        indexingDocs.forEach(el => {
+            const startVal = el.dataset.indexingStart;
+            if (!startVal || startVal === '') return;
+            const startTime = parseInt(startVal, 10);
+            if (isNaN(startTime) || startTime <= 0) return;
+            const elapsed = Math.floor((Date.now() - startTime * 1000) / 1000);
+            if (isNaN(elapsed) || elapsed < 0) return;
+            const mins = Math.floor(elapsed / 60);
+            const secs = elapsed % 60;
+            const timeStr = mins > 0 ? `${mins}м ${secs}с` : `${secs}с`;
+            const timerEl = el.querySelector('.doc-live-timer');
+            if (timerEl) {
+                timerEl.textContent = ` ⏱️ ${timeStr}`;
+            }
+        });
+    }, 1000);
+}
+
+function stopLiveDocumentTimer() {
+    if (documentLiveTimer) {
+        clearInterval(documentLiveTimer);
+        documentLiveTimer = null;
     }
 }
 
@@ -144,13 +183,32 @@ function updateDocumentsList(documents) {
         const statusIcon = getStatusIcon(doc.index_status);
         const statusTitle = getStatusTitle(doc.index_status);
         const isIndexing = doc.index_status === 'indexing';
+        const isPending = doc.index_status === 'pending';
         // Add blink class if indexing for the main status icon
         const iconClass = isIndexing ? 'document-status-icon blink' : 'document-status-icon';
 
-        // Format processing time if available
+        // Show live elapsed time for documents being indexed
+        // Show hourglass indicator for queued documents
+        let statusIndicator = '';
+        let indexingStartTimestamp = '';
+        if (isIndexing && doc.indexing_started_at) {
+            // Calculate elapsed time since indexing started
+            const startTime = new Date(doc.indexing_started_at.replace(' ', 'T') + 'Z');
+            if (!isNaN(startTime.getTime())) {
+                indexingStartTimestamp = Math.floor(startTime.getTime() / 1000).toString();
+                const elapsed = Math.floor((Date.now() - startTime.getTime()) / 1000);
+                const mins = Math.floor(elapsed / 60);
+                const secs = elapsed % 60;
+                const timeStr = mins > 0 ? `${mins}м ${secs}с` : `${secs}с`;
+                statusIndicator = ` ⏱️ ${timeStr}`;
+            }
+        } else if (isPending) {
+            statusIndicator = ' ⏳';
+        }
+
+        // Show processing_time for completed documents
         let processingTimeStr = '';
         if (doc.processing_time !== null && doc.processing_time !== undefined) {
-            // Show with one decimal place, in minutes, using localized abbreviation
             const minAbbr = t('minutes_abbr');
             processingTimeStr = ` ⏱️ ${doc.processing_time.toFixed(1)}${minAbbr}`;
         }
@@ -164,14 +222,14 @@ function updateDocumentsList(documents) {
         }
 
         html += `
-        <div class="document-item" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}">
+        <div class="document-item" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}" data-indexing-start="${indexingStartTimestamp}">
             <div class="document-content">
                 <div class="document-info">
                     <div class="document-title">
                         <span class="${iconClass}" title="${statusTitle}">${statusIcon}</span>
                         📄 ${escapeHtml(doc.filename)}
                     </div>
-                    <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}${processingTimeStr}</div>
+                    <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}<span class="doc-live-timer">${statusIndicator}</span>${processingTimeStr}</div>
                     ${embeddingLine}
                 </div>
                 <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>

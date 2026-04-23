@@ -26,9 +26,8 @@ class TestBaseModule:
     def base_module(self, mock_app):
         """Create base module instance."""
         from modules.base import BaseModule
-        with patch('modules.base.OllamaClient'):
-            module = BaseModule(mock_app)
-            return module
+        module = BaseModule(mock_app)
+        return module
 
     @pytest.mark.unit
     def test_parse_router_response_no_marker(self, base_module):

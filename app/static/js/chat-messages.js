@@ -1,6 +1,43 @@
 // app/static/js/chat-messages.js
 // Message display and loading functions
 
+/**
+ * Show a loading indicator overlay on top of the chat area.
+ * This is placed outside the messages container so it's not cleared by innerHTML = ''.
+ */
+function showMessagesLoadingIndicator() {
+    // Remove existing indicator if present
+    hideMessagesLoadingIndicator();
+
+    // Find the chat area to overlay on
+    const chatArea = document.getElementById('chat-messages');
+    if (!chatArea) return;
+
+    const isDark = document.body.classList.contains('dark-theme');
+    const bgColor = isDark ? 'rgba(30,30,30,0.85)' : 'rgba(255,255,255,0.85)';
+
+    const wrapper = document.createElement('div');
+    wrapper.id = 'messages-loading-indicator';
+    wrapper.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:' + bgColor + ';z-index:100;gap:12px;';
+    wrapper.innerHTML = '<div class="loading-spinner"></div><div class="loading-text">' + t('loading') + '</div>';
+
+    // Make the messages container position:relative so the overlay is relative to it
+    chatArea.style.position = 'relative';
+    chatArea.appendChild(wrapper);
+}
+
+/**
+ * Hide the loading indicator overlay.
+ */
+function hideMessagesLoadingIndicator() {
+    const existing = document.getElementById('messages-loading-indicator');
+    if (existing) existing.remove();
+}
+
+// Make functions available globally
+window.showMessagesLoadingIndicator = showMessagesLoadingIndicator;
+window.hideMessagesLoadingIndicator = hideMessagesLoadingIndicator;
+
 function updateMessageCount() {
     if (window.IS_RELOADING) return;
     const count = document.querySelectorAll('.user-message, .assistant-message, .bot-message').length;
@@ -17,6 +54,9 @@ function loadMessages(sessionId) {
 
     console.debug('loadMessages: loading messages for session', sessionId);
 
+    // Show loading indicator BEFORE fetch starts
+    showMessagesLoadingIndicator();
+
     // Clear displayed IDs for new session load
     displayedMessageIds.clear();
 
@@ -24,29 +64,48 @@ function loadMessages(sessionId) {
     return fetch('/api/sessions/' + sessionId + '/messages?limit=100&offset=0')
         .then(res => {
             if (!res.ok) {
+                // Session is gone — stop trying and reload sessions list
+                if (res.status === 404) {
+                    console.warn('loadMessages: Session not found (404). Reloading sessions...');
+                    if (typeof window.loadSessionsFromServer === 'function') {
+                        window.loadSessionsFromServer();
+                    }
+                    hideMessagesLoadingIndicator();
+                    return null; // Signal to skip further processing
+                }
                 console.error('Failed to load messages:', res.status);
+                hideMessagesLoadingIndicator();
                 throw new Error('HTTP error ' + res.status);
             }
             return res.json();
         })
         .then(data => {
             if (window.IS_RELOADING) return;
+            // null means session was not found — skip rest of processing
+            if (data === null) return;
 
             // Handle both old format (array) and new format (object with messages)
             const messages = Array.isArray(data) ? data : (data.messages || []);
             console.debug('loadMessages: received', messages.length, 'messages');
 
+            // Update sessionsData count to match server state
+            if (sessionsData[sessionId]) {
+                sessionsData[sessionId].message_count = messages.length;
+                if (messages.length > 0) {
+                    sessionsData[sessionId].updated_at = messages[messages.length - 1].timestamp || new Date().toISOString();
+                }
+            }
+
             const container = document.getElementById('chat-messages');
             container.innerHTML = '';
 
-            // Load model info
-            fetch('/api/sessions/' + sessionId + '/model-info')
-                .then(res => res.json())
-                .then(modelData => {
-                    if (window.IS_RELOADING) return;
-                    defaultModelName = modelData.model_name || 'qwen3-vl:8b-instruct-q4_K_M';
-                })
-                .catch(err => console.error('Error loading model info:', err));
+            // Extract model name from the last assistant message (no extra API call needed)
+            for (let i = messages.length - 1; i >= 0; i--) {
+                if (messages[i].role === 'assistant' && messages[i].model_name) {
+                    defaultModelName = messages[i].model_name;
+                    break;
+                }
+            }
 
             let lastUserMessage = null;
 
@@ -95,8 +154,32 @@ function loadMessages(sessionId) {
 
                     // Process assistant messages
                     if (msg.role === 'assistant') {
-                        console.debug('loadMessages: Displaying assistant message:', msg.id);
-                        let responseTime = null;
+                        // System messages (resize notices) — only show if not already in DOM
+                        if (msg.model_name === 'system') {
+                            if (msg.id && displayedMessageIds.has(msg.id)) {
+                                // Already displayed — skip
+                            } else {
+                                const existing = document.querySelector(`[data-message-id="${msg.id}"]`);
+                                if (existing) {
+                                    displayedMessageIds.add(msg.id);
+                                } else {
+                                    // Show it once and mark as displayed
+                                    displayMessage(
+                                        msg.role,
+                                        msg.content,
+                                        null, null, null, null,
+                                        msg.timestamp,
+                                        null, 'system',
+                                        null, null, null, null,
+                                        msg.id
+                                    );
+                                    if (msg.id) displayedMessageIds.add(msg.id);
+                                }
+                            }
+                            // Skip normal processing for system messages
+                        } else {
+                            console.debug('loadMessages: Displaying assistant message:', msg.id);
+                            let responseTime = null;
                         if (lastUserMessage) {
                             const userTime = new Date(lastUserMessage.timestamp);
                             const assistantTime = new Date(msg.timestamp);
@@ -143,12 +226,16 @@ function loadMessages(sessionId) {
                             msg.id
                         );
                         lastUserMessage = null;
+                        }
                     }
                 } catch (e) {
                     console.error('Error displaying message', msg, e);
                 }
             });
-            
+
+            // All messages rendered — hide loading indicator
+            hideMessagesLoadingIndicator();
+
             updateMessageCount();
             container.scrollTop = container.scrollHeight;
             setNewMessageIndicator(sessionId, false);

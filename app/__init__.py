@@ -1,6 +1,6 @@
 # app/__init__.py
 import os
-from flask import Flask, request, session, send_file, abort, jsonify
+from flask import Flask, request, session, send_file, abort, jsonify, redirect, url_for
 from flask_babel import Babel, gettext
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
@@ -8,15 +8,12 @@ from flask_limiter.util import get_remote_address
 import logging
 from logging import Formatter
 from .config import load_config
-from .db import (
-    init_db, migrate_db_add_response_fields, migrate_db_add_session_visits,
-    migrate_db_add_indexes, migrate_db_add_index_status, migrate_add_model_configs,
-    migrate_add_embedding_model, migrate_add_ollama_url
-)
+from .database import init_db
+from .resource_manager import get_resource_manager
+
+
 from .queue import RedisRequestQueue
 from .userdb import init_user_db, get_user_by_login
-from modules import BaseModule, MultimodalModule, ImageModule, CamModule, RagModule, AudioModule
-from modules.tts import TTSModule
 import mimetypes
 
 babel = Babel()
@@ -24,12 +21,14 @@ csrf = CSRFProtect()
 limiter = Limiter(key_func=get_remote_address)
 
 
-@babel.localeselector
-def get_locale():
-    """Select language from session or Accept-Language header."""
-    if 'language' in session:
-        return session['language']
-    return request.accept_languages.best_match(['ru', 'en']) or 'ru'
+def register_babel(app):
+    """Register Babel locale selector after app is initialized."""
+    @babel.localeselector
+    def get_locale():
+        """Select language from session or Accept-Language header."""
+        if 'language' in session:
+            return session['language']
+        return request.accept_languages.best_match(['ru', 'en']) or 'ru'
 
 
 def create_app():
@@ -102,57 +101,83 @@ def create_app():
     logging.root.handlers = [console_handler]
 
     # Initialize Babel with the app
+    register_babel(app)
     babel.init_app(app)
     app.jinja_env.add_extension('jinja2.ext.i18n')  # for _() in templates
     app.jinja_env.globals['_'] = gettext
 
     # Initialize CSRF protection
     csrf.init_app(app)
+    app.config['CSRF_COOKIE_SAMESITE'] = 'Lax'
+    app.config['WTF_CSRF_FORM_URL'] = False
+    app.config['WTF_I18N_ENABLED'] = False
 
     # Initialize rate limiting
     limiter.init_app(app)
 
     # Initialize chat DB
     init_db()
-    migrate_db_add_response_fields(app)
-    migrate_db_add_session_visits(app)
-    migrate_db_add_indexes(app)  # Add indexes for performance
-    migrate_db_add_index_status(app)  # Add index_status column to documents table for RAG
-    migrate_add_model_configs(app)   # New migration for model configs
-    migrate_add_embedding_model(app) # Add embedding_model column to documents table
-    migrate_add_ollama_url(app)      # Add ollama_url column to model_configs table
+    
+    # Load RAG thresholds from DB if available
+    from app.model_config import get_model_config
+    chunks_cfg = get_model_config('chunks')
+    if chunks_cfg:
+        threshold_default = chunks_cfg.get('rag_threshold_default', 0.3)
+        threshold_reasoning = chunks_cfg.get('rag_threshold_reasoning', 0.2)
+        app.config['RAG_RELEVANCE_THRESHOLD_DEFAULT'] = threshold_default
+        app.config['RAG_RELEVANCE_THRESHOLD_REASONING'] = threshold_reasoning
+        app.logger.info(f"Loaded RAG thresholds from DB: default={threshold_default}, reasoning={threshold_reasoning}")
+
+    # Detect hardware and initialize Resource Manager
+    rm = get_resource_manager()
+    app.logger.info(f"Hardware: {rm.get_status()}")
+
+    # Pre-load GGUF models metadata for fast admin panel access
+    try:
+        from app.utils import get_gguf_models_cached
+        gguf_models = get_gguf_models_cached('/models')
+        app.logger.info(f"Preloaded GGUF metadata for {len(gguf_models)} models")
+    except Exception as e:
+        app.logger.warning(f"Could not preload GGUF metadata: {e}")
 
     # Initialize user DB
     init_user_db()
 
-    # Initialize modules
+    # Initialize modules (lazy imports to avoid circular dependency)
     modules = {}
+
+    from modules.base import BaseModule
     modules['base'] = BaseModule(app)
 
-    # Multimodal module is always created if Ollama is available (model selected via admin)
-    # No global OLLAMA_URL check needed – we rely on model configs.
+    from modules.multimodal import MultimodalModule
     modules['multimodal'] = MultimodalModule(app)
 
-    if app.config.get('AUTOMATIC1111_URL') and 'multimodal' in modules:
-        modules['image'] = ImageModule(app)
+    if app.config.get('SD_WRAPPER_URL'):
+        from modules.sd_cpp import SdCppModule
+        modules['image'] = SdCppModule(app)
         modules['image'].set_multimodal_module(modules['multimodal'])
+        app.logger.info("Image generation module enabled (sd-wrapper)")
+    else:
+        app.logger.info("Image generation module disabled (SD_WRAPPER_URL not set)")
 
     if app.config.get('CAMERA_ENABLED'):
+        from modules.cam import CamModule
         modules['cam'] = CamModule(app)
         app.logger.info("Camera module enabled")
     else:
         app.logger.info("Camera module disabled (CAMERA_ENABLED=False)")
 
-    # Initialize RAG module if Qdrant URL is configured
     if app.config.get('QDRANT_URL'):
+        from modules.rag import RagModule
         modules['rag'] = RagModule(app)
         app.logger.info("RAG module enabled with Qdrant")
     else:
         app.logger.info("RAG module disabled (QDRANT_URL not set)")
 
+    from modules.audio import AudioModule
     modules['audio'] = AudioModule(app)
 
-    # TTS module
+    from modules.tts import TTSModule
     if app.config.get('PIPER_URL'):
         modules['tts'] = TTSModule(app)
         app.logger.info("TTS module enabled")
@@ -165,7 +190,7 @@ def create_app():
     app.request_queue = RedisRequestQueue(app)
 
     # Register blueprints (new modular structure)
-    from .routes import auth, chat, admin, queue, tts, messages, sessions, documents
+    from .routes import auth, chat, admin, queue, tts, messages, sessions, documents, backups
     app.register_blueprint(auth.bp)
     app.register_blueprint(chat.bp)
     app.register_blueprint(admin.bp)
@@ -174,6 +199,15 @@ def create_app():
     app.register_blueprint(messages.bp)
     app.register_blueprint(sessions.bp)
     app.register_blueprint(documents.bp)
+    app.register_blueprint(backups.bp)
+    
+    # Debug API endpoints (only when DEBUG_API_ENABLED=true)
+    if app.config.get('DEBUG_API_ENABLED'):
+        from .routes import debug
+        # Exempt debug blueprint from CSRF
+        csrf.exempt(debug.bp)
+        app.register_blueprint(debug.bp)
+        app.logger.info("Debug API enabled")
 
     # Register CLI commands
     from . import cli
@@ -222,12 +256,12 @@ def create_app():
             abort(400)
         session_id = parts[0]
         # Verify that the session belongs to the current user
-        from .db import get_db
+        from .database import get_db
         with get_db() as conn:
             c = conn.cursor()
-            c.execute('SELECT user_id FROM chat_sessions WHERE id = ?', (session_id,))
+            c.execute('SELECT user_id FROM chat_sessions WHERE id = %s', (session_id,))
             row = c.fetchone()
-            if not row or row[0] != session['login']:
+            if not row or row['user_id'] != session['login']:
                 app.logger.warning(f"User {session['login']} tried to access session {session_id}")
                 abort(403)
         # Send file
@@ -253,6 +287,27 @@ def create_app():
             abort(404)
 
     # Global error handlers for API routes
+    @app.errorhandler(400)
+    def bad_request(error):
+        """Handle 400 errors — CSRF failures return session_expired for API."""
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Session expired. Please refresh the page.', 'session_expired': True}), 400
+        return error
+
+    @app.errorhandler(401)
+    def unauthorized(error):
+        """Handle 401 errors — redirect to login for HTML, JSON for API."""
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Authentication required.', 'session_expired': True}), 401
+        return redirect(url_for('auth.login')) if not request.is_json else error
+
+    @app.errorhandler(403)
+    def forbidden(error):
+        """Handle 403 errors — session expired or forbidden access."""
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Session expired. Please refresh the page.', 'session_expired': True}), 403
+        return error
+
     @app.errorhandler(500)
     def internal_error(error):
         if request.path.startswith('/api/'):
@@ -271,8 +326,7 @@ def create_app():
         """Comprehensive health check for all services."""
         from datetime import datetime, timezone
         import requests
-        import sqlite3
-        from .db import CHAT_DB_PATH
+        from .database import get_db
 
         status = {
             'status': 'ok',
@@ -281,15 +335,16 @@ def create_app():
                 'web': 'ok',
                 'database': 'unknown',
                 'redis': 'unknown',
-                'ollama': 'unknown'
+                'llamacpp': 'unknown',
             }
         }
         http_status = 200
-        
+
         # Check database
         try:
-            with sqlite3.connect(CHAT_DB_PATH) as conn:
-                conn.execute('SELECT 1')
+            with get_db() as conn:
+                c = conn.cursor()
+                c.execute('SELECT 1')
             status['services']['database'] = 'ok'
         except Exception as e:
             status['services']['database'] = 'error'
@@ -305,20 +360,62 @@ def create_app():
             app.logger.error(f"Health check - Redis error: {e}")
             http_status = 503
         
-        # Check Ollama
+        # Check llama-server
         try:
-            ollama_url = app.config.get('OLLAMA_URL', 'http://ollama:11434')
-            response = requests.get(f"{ollama_url}/api/tags", timeout=5)
+            # Prefer LLAMACPP_URL from config (global setting)
+            service_url = app.config.get('LLAMACPP_URL')
+            if not service_url:
+                # Fallback to DB config
+                from app.model_config import get_model_config
+                llamacpp_config = get_model_config('chat')
+                if llamacpp_config:
+                    service_url = llamacpp_config.get('service_url')
+            if not service_url:
+                service_url = 'http://flai-llamacpp:8033'
+            response = requests.get(f"{service_url.rstrip('/')}/v1/models", timeout=5)
             if response.status_code == 200:
-                status['services']['ollama'] = 'ok'
+                status['services']['llamacpp'] = 'ok'
             else:
-                status['services']['ollama'] = 'error'
+                status['services']['llamacpp'] = 'error'
                 http_status = 503
         except Exception as e:
-            status['services']['ollama'] = 'error'
-            app.logger.error(f"Health check - Ollama error: {e}")
+            status['services']['llamacpp'] = 'error'
+            app.logger.error(f"Health check - llama-server error: {e}")
             http_status = 503
-        
+
+        # Check sd-wrapper (image generation/editing)
+        sd_url = app.config.get('SD_WRAPPER_URL')
+        if sd_url:
+            try:
+                response = requests.get(f"{sd_url.rstrip('/')}/health", timeout=5)
+                status['services']['sd_wrapper'] = 'ok' if response.status_code == 200 else 'error'
+            except Exception as e:
+                status['services']['sd_wrapper'] = 'error'
+                app.logger.error(f"Health check - sd-wrapper error: {e}")
+
+        # Check Whisper ASR
+        whisper_url = app.config.get('WHISPER_API_URL')
+        if whisper_url:
+            try:
+                base_url = whisper_url.replace('/asr', '').rstrip('/')
+                response = requests.get(f"{base_url}/docs", timeout=5)
+                status['services']['whisper'] = 'ok' if response.status_code == 200 else 'error'
+            except Exception:
+                status['services']['whisper'] = 'error'
+
+        # Check Qdrant (RAG)
+        qdrant_url = app.config.get('QDRANT_URL')
+        qdrant_api_key = app.config.get('QDRANT_API_KEY')
+        if qdrant_url:
+            try:
+                headers = {}
+                if qdrant_api_key:
+                    headers['api-key'] = qdrant_api_key
+                response = requests.get(f"{qdrant_url.rstrip('/')}/collections", headers=headers, timeout=5)
+                status['services']['qdrant'] = 'ok' if response.status_code == 200 else 'error'
+            except Exception:
+                status['services']['qdrant'] = 'error'
+
         # Determine overall status
         services_ok = sum(1 for v in status['services'].values() if v == 'ok')
         services_total = len(status['services'])
@@ -364,11 +461,10 @@ def create_app():
         
         # Database metrics
         try:
-            import os
-            db_size = os.path.getsize(CHAT_DB_PATH) if os.path.exists(CHAT_DB_PATH) else 0
-            
+            # PostgreSQL: cannot easily determine size from app container
+            db_size = 0
             metrics_output.append('')
-            metrics_output.append('# HELP flai_database_size_bytes Database file size in bytes')
+            metrics_output.append('# HELP flai_database_size_bytes Database size (0 for PostgreSQL)')
             metrics_output.append('# TYPE flai_database_size_bytes gauge')
             metrics_output.append(f'flai_database_size_bytes {db_size}')
         except Exception as e:

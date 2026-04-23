@@ -1,5 +1,6 @@
 # tests/test_routes.py
 """Integration tests for main routes."""
+import json
 import pytest
 
 
@@ -93,7 +94,7 @@ class TestChatRoutes:
 
         # Create a session first
         response = client.post('/api/sessions/new')
-        session_id = response.get_json()['id']
+        response.get_json()['id']  # session_id - used to create the session
 
         # Send message
         response = client.post('/api/send_message',

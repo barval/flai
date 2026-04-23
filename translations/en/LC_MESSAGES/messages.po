@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 7.5\n"
+"Project-Id-Version: FLAI 8.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-05 12:00+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -51,8 +51,29 @@ msgstr "Document not found"
 msgid "Documents DB"
 msgstr "Documents DB"
 
-msgid "Documents"
-msgstr "Documents"
+msgid "Documents Reindexing"
+msgstr "Documents Reindexing"
+
+msgid "Reindex All Documents"
+msgstr "Reindex All Documents"
+
+msgid "Rebuild all document embeddings with current chunking strategy"
+msgstr "Rebuild all document embeddings with current chunking strategy"
+
+msgid "Current strategy"
+msgstr "Current strategy"
+
+msgid "Reindex all documents"
+msgstr "Reindex all documents"
+
+msgid "Reindex All"
+msgstr "Reindex All"
+
+msgid "Reindexing all documents with new embedding model started. This may take a while."
+msgstr "Reindexing all documents with new embedding model started. This may take a while."
+
+msgid "Reindex all documents? This will rebuild all document embeddings."
+msgstr "Reindex all documents? This will rebuild all document embeddings."
 
 msgid "FLAI"
 msgstr "FLAI"
@@ -228,15 +249,6 @@ msgstr "Chat"
 msgid "saved_chat"
 msgstr "Saved chat"
 
-msgid "session"
-msgstr "Session"
-
-msgid "saved_on"
-msgstr "Saved on"
-
-msgid "total_messages"
-msgstr "Total messages"
-
 msgid "no_messages_to_save"
 msgstr "No messages to save"
 
@@ -275,12 +287,6 @@ msgstr "Name"
 
 msgid "Class"
 msgstr "Class"
-
-msgid "Sessions"
-msgstr "Sessions"
-
-msgid "Messages"
-msgstr "Messages"
 
 msgid "Files"
 msgstr "Files"
@@ -357,8 +363,8 @@ msgstr "Change"
 msgid "delete"
 msgstr "Delete"
 
-msgid "Ollama service unavailable"
-msgstr "Ollama service unavailable"
+msgid "llama.cpp service unavailable"
+msgstr "llama.cpp service unavailable"
 
 msgid "Model for {model_type} not configured"
 msgstr "Model for {model_type} not configured"
@@ -366,8 +372,29 @@ msgstr "Model for {model_type} not configured"
 msgid "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request."
 msgstr "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request."
 
-msgid "Could not connect to Ollama"
-msgstr "Could not connect to Ollama"
+msgid "Could not connect to llama.cpp"
+msgstr "Could not connect to llama.cpp"
+
+msgid "Could not connect to llama-server"
+msgstr "Could not connect to llama-server"
+
+msgid "llama-server available"
+msgstr "llama-server available"
+
+msgid "llama-server unavailable"
+msgstr "llama-server unavailable"
+
+msgid "Please provide llama-server URL first."
+msgstr "Please provide llama-server URL first."
+
+msgid "Please provide llama-server URL first"
+msgstr "Please provide llama-server URL first"
+
+msgid "Please provide llama-server URL."
+msgstr "Please provide llama-server URL."
+
+msgid "Refresh models from llama-server"
+msgstr "Refresh models from llama-server"
 
 msgid "Error"
 msgstr "Error"
@@ -438,11 +465,11 @@ msgstr "Image generation timeout ({timeout}s)"
 msgid "Image generated from request: {query}"
 msgstr "Image generated from request: {query}"
 
-msgid "Could not connect to Automatic1111"
-msgstr "Could not connect to Automatic1111"
+msgid "Could not connect to image generation service"
+msgstr "Could not connect to image generation service"
 
-msgid "Automatic1111 returned no image"
-msgstr "Automatic1111 returned no image"
+msgid "Image generation returned no image"
+msgstr "Image generation returned no image"
 
 msgid "MB"
 msgstr "MB"
@@ -513,8 +540,8 @@ msgstr "Indexing failed"
 msgid "status_unknown"
 msgstr "Not indexed"
 
-msgid "Refresh models from Ollama"
-msgstr "Refresh models from Ollama"
+msgid "Refresh models from llama.cpp"
+msgstr "Refresh models from llama.cpp"
 
 msgid "Saved"
 msgstr "Saved"
@@ -527,6 +554,15 @@ msgstr "Multimodal"
 
 msgid "Embedding"
 msgstr "Embedding"
+
+msgid "Reranker"
+msgstr "Reranker"
+
+msgid "Cross-encoder model — reranks search results by relevance"
+msgstr "Cross-encoder model — reranks search results by relevance"
+
+msgid "BGE Cross-Encoder"
+msgstr "BGE Cross-Encoder"
 
 msgid "-- Select model --"
 msgstr "-- Select model --"
@@ -585,6 +621,15 @@ msgstr "Timeout must be between 0 and 1200 seconds."
 msgid "Reindexing all documents with new embedding model started. This may take a while."
 msgstr "Reindexing all documents with new embedding model started. This may take a while."
 
+msgid "Reindexing in progress"
+msgstr "Reindexing in progress"
+
+msgid "Reindexing complete"
+msgstr "Reindexing complete"
+
+msgid "Reindexing failed"
+msgstr "Reindexing failed"
+
 msgid "transcribing"
 msgstr "Transcribing..."
 
@@ -594,14 +639,14 @@ msgstr "Model returned empty response"
 msgid "Local"
 msgstr "Local"
 
-msgid "Please provide Ollama URL first."
-msgstr "Please provide Ollama URL first."
+msgid "Please provide llama.cpp URL first."
+msgstr "Please provide llama.cpp URL first."
 
-msgid "Ollama available"
-msgstr "Ollama available"
+msgid "llama.cpp available"
+msgstr "llama.cpp available"
 
-msgid "Ollama unavailable"
-msgstr "Ollama unavailable"
+msgid "llama.cpp unavailable"
+msgstr "llama.cpp unavailable"
 
 msgid "your_requests"
 msgstr "Your requests in queue / Total in queue"
@@ -640,4 +685,209 @@ msgid "Too many attempts. Please try again later."
 msgstr "Too many attempts. Please try again later."
 
 msgid "footer_text"
-msgstr "Fully Local AI (FLAI) v7.5 (c) 2026 Valery Barsukov"
+msgstr "Fully Local AI (FLAI) v8.0 (c) 2026 Valery Barsukov"
+
+msgid "server_error_invalid_response"
+msgstr "Server error: received invalid response"
+
+msgid "recording"
+msgstr "Recording"
+
+msgid "room_tambour"
+msgstr "tambour"
+
+msgid "room_hallway"
+msgstr "hallway"
+
+msgid "room_corridor"
+msgstr "corridor"
+
+msgid "room_bedroom"
+msgstr "bedroom"
+
+msgid "room_office"
+msgstr "office"
+
+msgid "room_children"
+msgstr "children's room"
+
+msgid "room_living"
+msgstr "living room"
+
+msgid "room_kitchen"
+msgstr "kitchen"
+
+msgid "room_balcony"
+msgstr "balcony"
+
+msgid "Image generation failed. Try again later."
+msgstr "Image generation failed. Try again later."
+
+msgid "Image generation produced empty output."
+msgstr "Image generation produced empty output."
+
+msgid "Image generation error. Check logs for details."
+msgstr "Image generation error. Check logs for details."
+
+msgid "Image editing failed. Try again later."
+msgstr "Image editing failed. Try again later."
+
+msgid "Image editing produced empty output."
+msgstr "Image editing produced empty output."
+
+msgid "No editing instructions provided."
+msgstr "No editing instructions provided."
+
+msgid "No source image provided."
+msgstr "No source image provided."
+
+msgid "Image editing error."
+msgstr "Image editing error."
+
+msgid "Edit result has no image data."
+msgstr "Edit result has no image data."
+
+msgid "Edit returned no image."
+msgstr "Edit returned no image."
+
+msgid "Editing timeout ({timeout}s)"
+msgstr "Editing timeout ({timeout}s)"
+
+msgid "Could not connect to editor."
+msgstr "Could not connect to editor."
+
+# Backup/restore translations
+msgid "Backups"
+msgstr "Backups"
+
+msgid "Backup type"
+msgstr "Backup type"
+
+msgid "Users only"
+msgstr "Users only"
+
+msgid "Full (users + chats + files)"
+msgstr "Full (users + chats + files)"
+
+msgid "Create backup"
+msgstr "Create backup"
+
+msgid "Restore"
+msgstr "Restore"
+
+msgid "Delete"
+msgstr "Delete"
+
+msgid "Download"
+msgstr "Download"
+
+msgid "No backups found"
+msgstr "No backups found"
+
+msgid "Restore users database from {filename}? Current data will be replaced."
+msgstr "Restore users database from {filename}? Current data will be replaced."
+
+msgid "Restore full backup from {filename}? All data (users, chats, documents, files) will be replaced."
+msgstr "Restore full backup from {filename}? All data (users, chats, documents, files) will be replaced."
+
+msgid "Delete file {filename}? This action cannot be undone."
+msgstr "Delete file {filename}? This action cannot be undone."
+
+msgid "Backup created: {filename}"
+msgstr "Backup created: {filename}"
+
+msgid "Data restored from: {filename}"
+msgstr "Data restored from: {filename}"
+
+msgid "File deleted: {filename}"
+msgstr "File deleted: {filename}"
+
+msgid "Error creating backup"
+msgstr "Error creating backup"
+
+msgid "Error restoring backup"
+msgstr "Error restoring backup"
+
+msgid "Error deleting backup"
+msgstr "Error deleting backup"
+
+msgid "Refresh list"
+msgstr "Refresh list"
+
+msgid "Success"
+msgstr "Success"
+
+msgid "Creating..."
+msgstr "Creating..."
+
+msgid "Restoring..."
+msgstr "Restoring..."
+
+msgid "Refresh backup list"
+msgstr "Refresh backup list"
+
+msgid "Image edited from request: {query}"
+msgstr "Image edited from request: {query}"
+
+msgid "Maximum resolution for editing is {max_w}×{max_h}. The image has been resized from {orig_w}×{orig_h} to {new_w}×{new_h}."
+msgstr "Maximum resolution for editing is {max_w}×{max_h}. The image has been resized from {orig_w}×{orig_h} to {new_w}×{new_h}."
+
+msgid "Image editing timeout ({timeout}s)"
+msgstr "Image editing timeout ({timeout}s)"
+
+msgid "Service temporarily unavailable. Circuit breaker is open after repeated failures."
+msgstr "Service temporarily unavailable. Circuit breaker is open after repeated failures."
+
+msgid "Chunks"
+msgstr "Chunks"
+
+msgid "Chunk Size (characters)"
+msgstr "Chunk Size (characters)"
+
+msgid "Chunk Overlap (characters)"
+msgstr "Chunk Overlap (characters)"
+
+msgid "Chunk Strategy"
+msgstr "Chunk Strategy"
+
+msgid "Fixed (by size)"
+msgstr "Fixed (by size)"
+
+msgid "Structural (by headings)"
+msgstr "Structural (by headings)"
+
+msgid "Chunk configuration saved. Reindexing started."
+msgstr "Chunk configuration saved. Reindexing started."
+
+msgid "Chunk configuration saved."
+msgstr "Chunk configuration saved."
+
+msgid "Number of chunks"
+msgstr "Number of chunks"
+
+msgid "Threshold (documents)"
+msgstr "Threshold (documents)"
+
+msgid "Threshold (reasoning)"
+msgstr "Threshold (reasoning)"
+
+msgid "vram_optimal"
+msgstr "Used VRAM: 100%, RAM: 0% - optimal"
+
+msgid "vram_optimal_dynamic"
+msgstr "Used VRAM: %1%%, RAM: 0% - optimal"
+
+msgid "vram_partial_high"
+msgstr "Used VRAM: 100%, RAM: %2%% - good"
+
+msgid "vram_partial_med"
+msgstr "Used VRAM: 100%, RAM: %2%% - moderate"
+
+msgid "vram_partial_low"
+msgstr "Used VRAM: 100%, RAM: %2%% - slow, delays"
+
+msgid "no_gpu_low"
+msgstr "No GPU. Used %1% RAM - very slow"
+
+msgid "no_gpu_full"
+msgstr "No GPU. Used %1% RAM - slow"

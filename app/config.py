@@ -18,10 +18,25 @@ def load_config(app):
     app.config['MAX_CONTENT_LENGTH'] = int(os.getenv('MAX_CONTENT_LENGTH_MB', '50')) * 1024 * 1024
     app.config['TIMEZONE_STR'] = os.getenv('TIMEZONE')
     app.config['REDIS_URL'] = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+    app.config['DEBUG_API_ENABLED'] = os.getenv('DEBUG_API_ENABLED', 'false').lower() == 'true'
+
+    # Database configuration (PostgreSQL required)
+    app.config['DATABASE_URL'] = os.getenv('DATABASE_URL')
     
-    # Automatic1111 settings
-    app.config['AUTOMATIC1111_URL'] = os.getenv('AUTOMATIC1111_URL')
-    app.config['AUTOMATIC1111_MODEL'] = os.getenv('AUTOMATIC1111_MODEL')
+    # llama.cpp server settings
+    app.config['LLAMACPP_URL'] = os.getenv('LLAMACPP_URL')
+    # stable-diffusion.cpp settings (uses sd-wrapper HTTP API)
+    app.config['SD_MODEL_TYPE'] = os.getenv('SD_MODEL_TYPE', 'z_image_turbo')
+    app.config['SD_EDIT_MODEL_TYPE'] = os.getenv('SD_EDIT_MODEL_TYPE', 'flux-2-klein-4b')
+    app.config['SD_WRAPPER_URL'] = os.getenv('SD_WRAPPER_URL', 'http://flai-sd:7861')
+    app.config['SD_CPP_TIMEOUT'] = int(os.getenv('SD_CPP_TIMEOUT', 900))  # 15 min for editing
+
+    # Storage quotas (per user)
+    app.config['MAX_UPLOAD_STORAGE_MB'] = int(os.getenv('MAX_UPLOAD_STORAGE_MB', 500))
+    app.config['MAX_DOCUMENTS_STORAGE_MB'] = int(os.getenv('MAX_DOCUMENTS_STORAGE_MB', 50))
+    app.config['MAX_DOCUMENTS_PER_USER'] = int(os.getenv('MAX_DOCUMENTS_PER_USER', 50))
+
+    # Image validation settings (shared)
     app.config['MAX_IMAGE_WIDTH'] = int(os.getenv('MAX_IMAGE_WIDTH', 3840))
     app.config['MAX_IMAGE_HEIGHT'] = int(os.getenv('MAX_IMAGE_HEIGHT', 2160))
     app.config['MAX_IMAGE_SIZE_MB'] = int(os.getenv('MAX_IMAGE_SIZE_MB', 5))
@@ -32,14 +47,13 @@ def load_config(app):
     app.config['MAX_AUDIO_SIZE_MB'] = int(os.getenv('MAX_AUDIO_SIZE_MB', 4))
     
     # Whisper ASR settings
-    app.config['WHISPER_API_URL'] = os.getenv('WHISPER_API_URL', 'http://host.docker.internal:9000/asr')
+    app.config['WHISPER_API_URL'] = os.getenv('WHISPER_API_URL', 'http://flai-whisper:9000/asr')
     
     # Timeouts for services (not model-specific, used for HTTP requests)
-    app.config['AUTOMATIC1111_TIMEOUT'] = int(os.getenv('AUTOMATIC1111_TIMEOUT', 180))
     app.config['WHISPER_API_TIMEOUT'] = int(os.getenv('WHISPER_API_TIMEOUT', 120))
     
     # Camera settings
-    app.config['CAMERA_API_URL'] = os.getenv('CAMERA_API_URL', 'http://host.docker.internal:5005')
+    app.config['CAMERA_API_URL'] = os.getenv('CAMERA_API_URL', 'http://flai-room-snapshot-api:5000')
     app.config['CAMERA_ENABLED'] = os.getenv('CAMERA_ENABLED', 'true').lower() in ('true', '1', 'yes')
     app.config['CAMERA_API_TIMEOUT'] = int(os.getenv('CAMERA_API_TIMEOUT', 15))
     app.config['CAMERA_CHECK_INTERVAL'] = int(os.getenv('CAMERA_CHECK_INTERVAL', 30))
@@ -64,14 +78,17 @@ def load_config(app):
     # Qdrant settings for RAG
     app.config['QDRANT_URL'] = os.getenv('QDRANT_URL')
     app.config['QDRANT_API_KEY'] = os.getenv('QDRANT_API_KEY')
+    # RAG settings - defaults only, actual values come from DB
     app.config['RAG_CHUNK_SIZE'] = int(os.getenv('RAG_CHUNK_SIZE', 500))
     app.config['RAG_CHUNK_OVERLAP'] = int(os.getenv('RAG_CHUNK_OVERLAP', 50))
-    app.config['RAG_TOP_K'] = int(os.getenv('RAG_TOP_K', 15))
-    
-    # RAG relevance thresholds
-    app.config['RAG_RELEVANCE_THRESHOLD_DEFAULT'] = float(os.getenv('RAG_RELEVANCE_THRESHOLD_DEFAULT', 0.3))
-    app.config['RAG_RELEVANCE_THRESHOLD_REASONING'] = float(os.getenv('RAG_RELEVANCE_THRESHOLD_REASONING', 0.3))
-    
+    app.config['RAG_CHUNK_STRATEGY'] = os.getenv('RAG_CHUNK_STRATEGY', 'fixed')
+    app.config['RAG_TOP_K'] = int(os.getenv('RAG_TOP_K', 80))
+    app.config['RAG_CONTEXT_PERCENT'] = int(os.getenv('RAG_CONTEXT_PERCENT', 30))
+
+    # RAG relevance thresholds (used only if DB doesn't have values)
+    app.config['RAG_RELEVANCE_THRESHOLD_DEFAULT'] = 0.3
+    app.config['RAG_RELEVANCE_THRESHOLD_REASONING'] = 0.2
+
     # Debug translations
     app.config['DEBUG_TRANSLATIONS'] = os.getenv('DEBUG_TRANSLATIONS', 'false').lower() == 'true'
     
@@ -109,6 +126,7 @@ def load_config(app):
     # CSRF configuration
     app.config['WTF_CSRF_ENABLED'] = True
     app.config['WTF_CSRF_CHECK_DEFAULT'] = True
+    app.config['WTF_CSRF_IGNORE_LOCALHOST'] = False
     # CSRF token lifetime (1 hour)
     app.config['WTF_CSRF_TIME_LIMIT'] = 3600
 
@@ -125,8 +143,6 @@ def load_config(app):
     app.config['MESSAGES_MAX_LIMIT'] = int(os.getenv('MESSAGES_MAX_LIMIT', 200))
 
     # Session and context settings
-    app.config['MAX_HISTORY_MESSAGES'] = int(os.getenv('MAX_HISTORY_MESSAGES', 30))
-    app.config['CONTEXT_SAFETY_MARGIN'] = float(os.getenv('CONTEXT_SAFETY_MARGIN', 0.85))
     app.config['TEMPLATE_OVERHEAD_TOKENS'] = int(os.getenv('TEMPLATE_OVERHEAD_TOKENS', 800))
 
     # Image token estimation

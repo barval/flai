@@ -19,16 +19,17 @@ function loadSessionsFromServer() {
             return res.json();
         })
         .then(sessions => {
-            let updated = false;
+            let titleChanged = false;
+            let countChanged = false;
             let currentSessionMessageCountChanged = false;
-            
+
             // Clear sessionsData for sessions that no longer exist
             const currentSessionIds = new Set(sessions.map(s => s.id));
             Object.keys(sessionsData).forEach(id => {
                 if (!currentSessionIds.has(id)) {
                     delete sessionsData[id];
                     delete newMessageIndicators[id];
-                    updated = true;
+                    titleChanged = true;
                 }
             });
 
@@ -39,62 +40,63 @@ function loadSessionsFromServer() {
                         updated_at: s.updated_at,
                         message_count: s.message_count
                     };
-                    updated = true;
+                    titleChanged = true;
                 } else {
                     if (sessionsData[s.id].title !== s.title) {
                         sessionsData[s.id].title = s.title;
                         sessionsData[s.id].updated_at = s.updated_at;
                         sessionsData[s.id].message_count = s.message_count;
-                        updated = true;
-                    } else if (sessionsData[s.id].updated_at !== s.updated_at) {
+                        titleChanged = true;
+                    }
+                    // Only update message_count if it actually differs — don't use
+                    // updated_at as a trigger since it changes constantly during processing
+                    if (sessionsData[s.id].message_count !== s.message_count) {
+                        sessionsData[s.id].message_count = s.message_count;
                         sessionsData[s.id].updated_at = s.updated_at;
-                        sessionsData[s.id].message_count = s.message_count;
-                        updated = true;
-                    } else if (sessionsData[s.id].message_count !== s.message_count) {
-                        sessionsData[s.id].message_count = s.message_count;
-                        updated = true;
-                        // FIX: If message count changed for current session, reload messages
+                        countChanged = true;
                         if (s.id === currentSessionId) {
                             currentSessionMessageCountChanged = true;
-                            console.debug('loadSessionsFromServer: Message count changed for current session, reloading messages');
                         }
                     }
                 }
                 // Update unread indicators from server data
                 // NEVER show for current active session
                 if (s.id === currentSessionId) {
-                    // Current session is active - always clear unread indicator
                     delete newMessageIndicators[s.id];
                 } else if (s.has_unread) {
-                    // Server says this session has unread messages - set indicator
                     newMessageIndicators[s.id] = true;
                 } else {
-                    // Server says no unread - clear indicator
                     delete newMessageIndicators[s.id];
                 }
             });
-            
-            if (updated) {
-                // Use sessionsData (our local state) instead of raw server data
+
+            // If current session was deleted on server, switch to first available
+            if (currentSessionId && !sessionsData[currentSessionId] && sessions.length > 0) {
+                console.debug('loadSessionsFromServer: current session deleted, switching to', sessions[0].id);
+                currentSessionId = sessions[0].id;
+                delete newMessageIndicators[currentSessionId];
+            }
+
+            // Only rebuild sessions list HTML if something VISIBLE changed
+            // (title or count — not just updated_at which changes constantly during processing)
+            if (titleChanged || countChanged) {
                 const sessionsList = Object.keys(sessionsData).map(id => ({
                     id: id,
                     title: sessionsData[id].title,
                     updated_at: sessionsData[id].updated_at,
                     message_count: sessionsData[id].message_count,
                     has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
-                    // Include queue info for this session
                     queue_info: sessionQueueInfo[id] || null
                 }));
                 updateSessionsList(sessionsList);
+                // Update dedup cache so updateUIFromQueueStatus doesn't rebuild again
+                window._lastSessionsJson = JSON.stringify(sessionsList);
             }
 
-            // FIX: Reload messages for current session if message count changed
-            if (currentSessionMessageCountChanged && currentSessionId) {
-                loadMessages(currentSessionId).catch(err => {
-                    console.error('Error reloading messages after count change:', err);
-                });
-            }
-            
+            // Don't call loadMessages here — syncMessagesForCurrentSession already
+            // appends new messages incrementally. loadMessages does innerHTML=''
+            // which causes full chat redraw and flickering on mobile/slow connections.
+
             return sessions;
         })
         .catch(err => {
@@ -329,31 +331,58 @@ function switchSession(sessionId) {
         console.error('switchSession called with empty sessionId');
         return;
     }
-    // Store previous session ID to clear its unread indicator
-    const previousSessionId = currentSessionId;
-    
+
     // Don't switch if already on this session
     if (sessionId === currentSessionId) {
         console.debug('switchSession: Already on this session, skipping');
         return;
     }
-    
-    console.debug('switchSession: Switching from', previousSessionId, 'to', sessionId);
-    
+
+    console.debug('switchSession: Switching from', currentSessionId, 'to', sessionId);
+
+    // Block all sync operations during session switch
+    isSwitchingSession = true;
+
+    // Stop ALL polling (message polling AND sync interval)
+    stopMessagePolling();
+    if (syncInterval) {
+        clearInterval(syncInterval);
+        syncInterval = null;
+    }
+
+    const previousSessionId = currentSessionId;
+
+    // Clear chat area immediately to show loading state
+    const container = document.getElementById('chat-messages');
+    if (container) {
+        container.innerHTML = '';
+        if (typeof showMessagesLoadingIndicator === 'function') {
+            showMessagesLoadingIndicator();
+        }
+    }
+
     fetchWithCSRF('/api/sessions/' + sessionId + '/switch', { method: 'POST' })
         .then(res => res.json())
         .then(() => {
             currentSessionId = sessionId;
             // Clear unread indicator for NEW current session
             delete newMessageIndicators[sessionId];
-            // Also clear unread indicator for PREVIOUS session (it was read when we left it)
+            // Also clear unread indicator for PREVIOUS session
             if (previousSessionId) {
                 delete newMessageIndicators[previousSessionId];
             }
+
+            // Load messages for new session
             loadMessages(sessionId).catch(err => {
                 console.error('Error loading messages in switchSession:', err);
             }).finally(() => {
-                // Update status counter after messages loaded
+                // Unblock sync and restart intervals
+                isSwitchingSession = false;
+                startMessagePolling();
+                if (typeof startSyncInterval === 'function') {
+                    startSyncInterval();
+                }
+                // Update status counter
                 window.updateStatusCounter();
                 // Fetch queue status to update session statuses
                 if (typeof fetchQueueStatus === 'function') {
@@ -382,7 +411,11 @@ function switchSession(sessionId) {
 function updateLastVisit(sessionId) {
     if (!sessionId) return;
     fetchWithCSRF(`/api/sessions/${sessionId}/visit`, { method: 'POST' })
-        .catch(err => console.error('Error updating last_visit:', err));
+        .then(res => {
+            if (!res.ok && res.status === 404) return; // Session deleted — silently ignore
+            return res.json().catch(() => {});
+        })
+        .catch(() => {});
 }
 
 // ===== Collapsible sidebar for mobile =====

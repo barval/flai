@@ -1,6 +1,4 @@
-# Environments and packages
-venv/
-env/
+# Python cache and compiled
 __pycache__/
 *.pyc
 *.pyo
@@ -11,25 +9,32 @@ __pycache__/
 dist/
 build/
 
+# Virtual environments
+venv/
+env/
+.venv/
+
 # Data directories (important!)
 data/
+uploads/
+documents/
 *.db
 *.sqlite
 *.sqlite3
 
-# Model files (if they are in project root or subfolders)
+# Model files — excluded from all build contexts
+services/piper/piper_models/
+services/llamacpp/models/
+services/sd_cpp/models/
 *.gguf
 *.safetensors
-*.bin
 *.onnx
-*.json
 
-# Uploads and temporary files
-uploads/
-documents/
-services/
-*.log
-*.tmp
+# Tests and coverage (not needed in production)
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
 
 # IDE and system files
 .vscode/
@@ -42,10 +47,9 @@ services/
 .git/
 .gitignore
 
-# Docker
-.dockerignore
+# Qwen Code
+.qwen/
 
-# Tests and coverage
-.pytest_cache/
-.coverage
-htmlcov/
+# Log and temp files
+*.log
+*.tmp

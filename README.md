@@ -1,11 +1,11 @@
 <div align="center">
   <img src="docs/logo.png" alt="Fully Local AI (FLAI)" width="200">
 
-  # Fully Local AI (FLAI)
-  
-  **FLAI — a fully local personal assistant powered by artificial intelligence.**  
-  **Run your own AI stack entirely on-premises with no cloud dependencies.**  
-  
+  # Fully Local AI (FLAI) v8.0
+
+  **FLAI — a fully local personal assistant powered by artificial intelligence.**
+  **Run your own AI stack entirely on-premises with no cloud dependencies.**
+
   [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
   [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
   [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white)](https://www.docker.com/)
@@ -20,9 +20,10 @@
 ### 🤖 Core AI Capabilities
 - 💬 **Intelligent Chat** – smart request routing (fast models for simple queries, powerful models for complex reasoning)
 - 🧠 **Advanced Reasoning** – dedicated model for calculations, code generation, creative writing
-- 🔍 **Multimodal Analysis** – upload images and ask questions about their content
-- 🎨 **Image Generation** – create images from text using Stable Diffusion with automatic prompt optimization
-- 🎤 **Voice Transcription** – convert voice messages to text using Whisper ASR
+- 🔍 **Multimodal Analysis** – upload images and ask questions about their content (llama.cpp + mmproj)
+- 🎨 **Image Generation** – create images from text using stable-diffusion.cpp with automatic prompt optimization
+- ✏️ **Image Editing** – upload an image and ask to edit it (Flux.2 Klein 4B model: change colors, remove objects, stylize)
+- 🎤 **Voice Transcription** – convert voice messages to text using Whisper ASR (faster_whisper)
 - 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper TTS (male/female voice)
 
 ### 📁 Document & Knowledge Management
@@ -44,6 +45,7 @@
 - 🔒 **Session Security** – HttpOnly and SameSite cookies, secure flag for HTTPS
 - 📝 **Audit Logging** – login attempts and admin actions are logged
 - 🔐 **HMAC-signed Queue** – Redis queue tasks are signed to prevent tampering
+- 🛡️ **Input Validation** - Strict validation of user inputs (logins, passwords, model parameters) to prevent injection attacks and malformed data.
 
 ### 👥 User Experience
 - 🌐 **Multi-language Support** – full interface and AI responses in Russian and English
@@ -56,7 +58,8 @@
 ### ⚙️ Administration
 - 👤 **User Management** – add, edit, delete users; change passwords; assign service classes
 - 🔑 **Camera Permissions** – control which users can access which cameras (Optional)
-- 🤖 **Model Management** – select and configure models for chat, reasoning, multimodal, and embedding directly from the admin panel  
+- 🤖 **Model Management** – select and configure GGUF models for chat, reasoning, multimodal, and embedding directly from the admin panel
+- 💾 **Backup & Restore** – create and restore full or user-only backups directly from the admin interface
 - 📈 **System Monitoring** – view database sizes and system statistics
 - 🔧 **CLI Tools** – manage admin password via Flask CLI command
 
@@ -64,43 +67,49 @@
 
 ## 🏗️ Architecture
 
-FLAI is a modular Flask application that orchestrates several self-hosted AI services.
+FLAI v8.0 is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
+
+### What's New in v8.0
+
+| v7.5 (Old) | v8.0 (New) | Notes |
+|------------|------------|-------|
+| Ollama | **llama.cpp** (router mode) | Single server, dynamic model switching via `--models-dir` |
+| Automatic1111 | **stable-diffusion.cpp** | Z_image_turbo (generation), Flux.2 Klein 4B (editing) |
+| Ollama `/api/chat` | OpenAI-compatible `/v1/chat/completions` | Standard API format |
+| Ollama `/api/embed` | OpenAI-compatible `/v1/embeddings` | Standard API format |
 
 ### Core Components
 
 | Component | Purpose | Technology | Default Port |
 |-----------|---------|------------|--------------|
 | **Flask Web** | Web interface, routing, API | Python | 5000 |
-| **Ollama** | LLM inference (chat, reasoning, multimodal) | Go + llama.cpp | 11434 |
-| **Automatic1111** | Stable Diffusion image generation | Python + PyTorch | 7860 |
-| **Whisper ASR** | Speech-to-text transcription | OpenAI Whisper | 9000 |
+| **llama.cpp** | LLM inference (chat, reasoning, multimodal, embedding) | C++ + CUDA | 8033 |
+| **stable-diffusion.cpp** | Image generation (Z_image_turbo) and editing (Flux.2 Klein 4B) | C++ + CUDA | 7860 |
+| **Whisper ASR** | Speech-to-text transcription | faster_whisper | 9000 |
 | **Piper TTS** | Text-to-speech synthesis | ONNX + Piper | 18888 |
 | **Qdrant** | Vector database for RAG | Rust | 6333 |
 | **Redis** | Request queue management | C | 6379 |
-| **SQLite** | User accounts, sessions, messages | Embedded SQL | -- |
+| **PostgreSQL** | User accounts, sessions, messages | SQL | 5432 |
+| **Resource Manager** | Adaptive GPU/CPU/RAM management, prevents OOM errors, coordinates GPU access | Python |
+| **Circuit Breaker** | Prevents cascading failures by blocking calls to failing services (llama.cpp, sd.cpp, Whisper) after repeated errors | Python |
 
-### Distributed Deployment
+### Single-Server Architecture
 
-Each service can run on separate machines for load distribution. See [services/README.md](services/README.md) for detailed deployment guides.
+All services run on one machine with GPU sharing:
 
 ```text
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Web App   │────▶│   Ollama    │────▶│     GPU     │
-│  (Flask)    │     │  (Node 1)   │     │   Server    │
-└─────────────┘     └─────────────┘     └─────────────┘
-       │
-       ▼
-┌─────────────┐     ┌─────────────┐
-│   Ollama    │────▶│     GPU     │
-│  (Node 2)   │     │   Server    │
-└─────────────┘     └─────────────┘
+┌──────────────────────────────────────────────────────┐
+│                 FLAI Web (Flask)                     │
+│   Redis Queue → Model Router → Response              │
+└──────┬──────────┬────────────┬───────────────────────┘
+       │          │            │
+       ▼          ▼            ▼
+  llama.cpp   sd.cpp      Whisper/Piper/Qdrant
+  :8033       :7860       (separate containers)
+  (router mode: dynamic model switching)
 ```
 
-**Service Deployment Options:**
-- **Local**: Run on same server as FLAI web app (internal Docker network)
-- **Remote**: Run on separate server (requires firewall configuration)
-
-Set up separate Ollama URLs for each type of model in the Admin Panel (`/admin`).
+**Router Mode**: llama.cpp runs in `--models-dir` mode, dynamically loading/unloading GGUF models from a shared directory. Only one model occupies VRAM at a time, with automatic switching on demand.
 
 ---
 
@@ -111,23 +120,55 @@ Set up separate Ollama URLs for each type of model in the Admin Panel (`/admin`)
 |-----------|---------|-------------|---------|
 | **RAM** | 16 GB | 32 GB | 32+ GB |
 | **CPU** | 4 cores | 4+ cores | 8+ cores |
-| **GPU** | NVIDIA 8-12 GB VRAM | NVIDIA 16 GB VRAM | NVIDIA 16+ GB VRAM |
+| **GPU** | NVIDIA 8-12 GB VRAM | NVIDIA 16 GB VRAM | NVIDIA 24+ GB VRAM |
 | **Storage** | 40 GB | 60+ GB SSD | 100+ GB SSD NVMe |
 
 ### Software Prerequisites
-- Linux server (or Windows/macOS with Docker Desktop)
+- Linux server with **NVIDIA GPU** (CUDA support required)
+- **NVIDIA drivers** installed on host
+- **NVIDIA Container Toolkit** installed
 - Docker Engine ≥ 20.10
 - Docker Compose ≥ 2.0
 - Internet connection (only for initial model downloads)
-> 💡 **Note**: After downloading models, FLAI works completely offline.
+
+> 💡 **Note**: After downloading GGUF models, FLAI works completely offline.
 
 ---
 
 ## 🚀 Quick Start
-Get FLAI up and running in minutes with these simple steps:
-> 💡 **Note**: You must have the **NVIDIA drivers** installed on the host machine and the **NVIDIA Container Toolkit**.
+
+> 💡 **Note**: You must have the **NVIDIA drivers** and **NVIDIA Container Toolkit** installed.
+
+### Option A: Automated Deployment (Recommended)
+
+A single deployment script handles everything: environment setup, model downloads, building, and launching.
+
+```bash
+git clone https://github.com/barval/flai.git
+cd flai
+
+# Core chat + llama.cpp only
+./deploy.sh --download-models
+
+# + Image generation/editing
+./deploy.sh --download-models --with-image-gen
+
+# + Voice (Whisper ASR + Piper TTS)
+./deploy.sh --download-models --with-image-gen --with-voice
+
+# Everything including RAG (Qdrant)
+./deploy.sh --download-models --with-image-gen --with-voice --with-rag
+
+# Run tests after deployment
+./deploy.sh --download-models --with-image-gen --run-tests
+```
+
+### Option B: Manual Deployment
+
+If you prefer step-by-step control:
 
 ### 1. Clone and Configure
+
 ```bash
 # Clone the repository
 git clone https://github.com/barval/flai.git
@@ -152,111 +193,107 @@ sed -i "s|^QDRANT_API_KEY=.*|QDRANT_API_KEY=$(python3 -c "import secrets; print(
 nano .env
 ```
 
-### 2. Prepare Additional Services (Optional but Recommended)
-> 💡 Note: If you want to use image generation and voice features, complete the steps below. For chat only, skip to step 3.
+### 2. Download GGUF Models
 
-#### 🎨 For Image Generation (Automatic1111):
+#### LLM Models (chat, reasoning, multimodal, embedding)
+
 ```bash
-# Create models directory
-sudo mkdir -p services/automatic1111/models \
-              services/automatic1111/models/Stable-diffusion \
-              services/automatic1111/outputs
-sudo chown -R 1000:1000 services
+mkdir -p services/llamacpp/models
 
-# Download a Stable Diffusion checkpoint (example: RealVisXL_V4.0)
-# Replace with your preferred model from civitai.com or huggingface
-wget -O services/automatic1111/models/Stable-diffusion/RealVisXL_V4.0.safetensors \
-  "https://huggingface.co/SG161222/RealVisXL_V4.0/resolve/main/RealVisXL_V4.0.safetensors"
+# Chat model (fast responses)
+wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
+  "https://huggingface.co/bartowski/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 
-# In .env file, ensure these are set:
-# AUTOMATIC1111_URL=http://flai-sd:7860
-# AUTOMATIC1111_MODEL=RealVisXL_V4.0.safetensors
+# Reasoning model (complex tasks)
+wget -O services/llamacpp/models/gpt-oss-20b-mxfp4.gguf \
+  "https://huggingface.co/openai/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-mxfp4.gguf"
+
+# Multimodal model (image analysis) — must be in subdirectory with mmproj
+mkdir -p services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M
+wget -O services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf \
+  "https://huggingface.co/bartowski/Qwen3VL-8B-Instruct-GGUF/resolve/main/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
+wget -O services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf \
+  "https://huggingface.co/bartowski/Qwen3VL-8B-Instruct-GGUF/resolve/main/mmproj-F16.gguf"
+
+# Embedding model (RAG)
+wget -O services/llamacpp/models/bge-m3-Q8_0.gguf \
+  "https://huggingface.co/bartowski/bge-m3-GGUF/resolve/main/bge-m3-Q8_0.gguf"
 ```
 
-#### 🎤 For Voice Features (Piper TTS + Whisper):
+#### Image Generation Models (Z_image_turbo)
+
 ```bash
-# Create directory for voice models
-mkdir -p services/piper/piper_models
+mkdir -p services/sd_cpp/models/{diffusion_models,vae,text_encoders}
 
-# Download Russian voices (male and female)
-curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx \
-https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx
-curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx.json \
-https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json
+# Diffusion model
+wget -O services/sd_cpp/models/diffusion_models/z_image_turbo-Q8_0.gguf \
+  "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf"
 
-curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx \
-https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx
-curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx.json \
-https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
+# VAE
+wget -O services/sd_cpp/models/vae/ae.safetensors \
+  "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/ae.safetensors"
 
-# Download English voices (male and female)
-curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx \
-https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx  
-curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx.json \
-https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json  
-
-curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx \
-https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx  
-curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx.json \
-https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json
-
-# In .env file, ensure these are set:
-# PIPER_URL=http://flai-piper:8888/tts
-# WHISPER_API_URL=http://flai-whisper:9000/asr
+# LLM text encoder (shared with chat)
+wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
+  "https://huggingface.co/bartowski/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 ```
 
-### 3. Start Services
-Choose the option based on the features you need:
+#### Image Editing Models (Flux.2 Klein 4B)
+
 ```bash
-# Option A: Full functionality (Chat + Images + Voice + RAG)
-docker-compose -f docker-compose.all.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
+# Diffusion model for editing
+wget -O services/sd_cpp/models/diffusion_models/flux-2-klein-4b-Q8_0.gguf \
+  "https://huggingface.co/bartowski/FLUX.2-Klein-dev-GGUF/resolve/main/flux-2-klein-4b-Q8_0.gguf"
 
-# Option B: Chat and reasoning only (no images or voice)
-docker-compose -f docker-compose.all.yml up -d
-
-# Option C: Chat + Voice (no image generation)
-docker-compose -f docker-compose.all.yml --profile with-voice up -d
+# VAE for editing
+wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
+  "https://huggingface.co/bartowski/FLUX.2-dev-GGUF/resolve/main/flux2_ae.safetensors"
 ```
 
-### 4. Pull AI Models (Ollama)
-```bash
-# Wait for Ollama to start (about 30 seconds)
-sleep 30
+> The text encoder `Qwen3-4B-Instruct-2507-Q4_K_M.gguf` is **shared** between generation and editing. Download it once.
 
-# Download models for chat, vision, reasoning, and search
-docker exec flai-ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
-docker exec flai-ollama ollama pull qwen3-vl:8b-instruct-q4_K_M
-docker exec flai-ollama ollama pull gpt-oss:20b
-docker exec flai-ollama ollama pull bge-m3:latest
+> ⚠️ **Important**: Multimodal models **must** be placed in a subdirectory named after the model, with the `mmproj-*.gguf` file inside. The llama.cpp router automatically discovers and loads the projector.
+
+### 3. Build and Start Services
+
+```bash
+# Chat and reasoning only (no image generation)
+docker compose -f docker-compose.all.yml up -d
+
+# With image generation
+docker compose -f docker-compose.all.yml --profile with-image-gen up -d
+
+# With voice features
+docker compose -f docker-compose.all.yml --profile with-voice up -d
+
+# Full stack: chat + images + voice + RAG
+docker compose -f docker-compose.all.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
 ```
 
-### 5. Set Admin Password
+> ⏱️ **First build takes time**: stable-diffusion.cpp is compiled from source (~5-10 minutes). Subsequent builds use the cache.
+
+### 4. Set Admin Password
+
 ```bash
-# Create admin user with password
 docker exec flai-web flask admin-password YourSecurePassword123
 ```
 
-### 6. Access the Application
-Open your browser and navigate to: <http://localhost:5000>
+### 5. Configure Models in Admin Panel
 
-Login with:
-- Login: `admin`
-- Password: (the password you set in step 5)
+1. Open `http://localhost:5000` and log in as `admin`
+2. Go to **Admin Panel** → **Models** tab
+3. For each module (Chat, Reasoning, Multimodal, Embedding):
+   - Check the **Local** checkbox (URL auto-fills to `http://flai-llamacpp:8033`)
+   - Click 🔄 **Refresh** to load available models from llama.cpp router
+   - Select the GGUF model from the dropdown
+   - Adjust parameters if needed (Context Length, Temperature, Top P, Timeout)
+   - Click **Save**
+4. For Image Generation: Ensure `SD_CPP_URL=http://flai-sd:7860` is set in `.env`
 
-### 7. Configure Models (First Login)
-1. Go to **Admin Panel** → **Models** tab
-2. For each module (Chat, Reasoning, Multimodal, Embedding):
-    + Click 🔄 **Refresh** to load available models
-    + Select the model you downloaded from the dropdown
-    + Adjust parameters if needed (Context Length, Temperature, Top P, Timeout)
-    + Click **Save**
-3. For Image Generation: Ensure the checkpoint you downloaded is selected in the settings
-4. For Voice: Ensure PIPER_URL is correctly set in `.env`
+### 6. You're Ready!
 
-###  ✅ You're Ready!
-Now you can:
 - 💬 Have conversations with AI
-- 🎨 Generate images (if Automatic1111 is configured)
+- 🎨 Generate images (if stable-diffusion.cpp is configured)
 - 🎤 Send voice messages and listen to responses (if Piper/Whisper is configured)
 - 📚 Upload documents for search (if RAG profile is enabled)
 
@@ -274,38 +311,51 @@ TIMEZONE=Europe/Moscow              # Your timezone
 
 **Service URLs:**
 ```bash
-OLLAMA_URL=http://flai-ollama:11434
-AUTOMATIC1111_URL=http://flai-sd:7860
+LLAMACPP_URL=http://flai-llamacpp:8033   # llama.cpp router (replaces Ollama)
+SD_CPP_URL=http://flai-sd:7860           # stable-diffusion.cpp server
 WHISPER_API_URL=http://flai-whisper:9000/asr
 PIPER_URL=http://flai-piper:8888/tts
 QDRANT_URL=http://flai-qdrant:6333
 QDRANT_API_KEY=your_qdrant_api_key
-CAMERA_API_URL=http://flai-room-snapshot-api:5005
+CAMERA_API_URL=http://flai-room-snapshot-api:5000
+```
+
+**Image Generation Defaults:**
+```bash
+SD_CPP_DEFAULT_WIDTH=1024
+SD_CPP_DEFAULT_HEIGHT=1024
+SD_CPP_DEFAULT_CFG_SCALE=1.0    # 1.0 for flow-matching models (Z_image_turbo)
+SD_CPP_DEFAULT_STEPS=10         # 10 for Z_image_turbo
+SD_CPP_TIMEOUT=300
 ```
 
 **Service Retry Settings:**
 ```bash
-SERVICE_RETRY_ATTEMPTS=15           # Connection retry attempts
-SERVICE_RETRY_DELAY=2               # Delay between retries (seconds)
+SERVICE_RETRY_ATTEMPTS=15
+SERVICE_RETRY_DELAY=2
 ```
 
 **Session Security:**
 ```bash
-HTTPS_ENABLED=true                  # Set true for HTTPS proxy
-PERMANENT_SESSION_LIFETIME=28800    # Session expiry (8 hours in seconds)
+HTTPS_ENABLED=true
+PERMANENT_SESSION_LIFETIME=28800    # 8 hours
 ```
 
 **Redis Queue:**
 ```bash
-REDIS_RESULT_TTL=3600              # Result TTL (1 hour)
-QUEUE_MAX_WAIT_TIME=300            # Max queue wait (5 minutes)
+REDIS_RESULT_TTL=3600
+QUEUE_MAX_WAIT_TIME=300
+```
+
+**Debug:**
+```bash
+DEBUG_API_ENABLED=false   # Set to 'true' only for development/testing
 ```
 
 ### Docker Configuration
 
 **Gunicorn Settings (Dockerfile):**
 ```dockerfile
-# Optimized for I/O bound operations
 CMD ["gunicorn", \
      "--bind", "0.0.0.0:5000", \
      "--workers", "1", \
@@ -322,258 +372,198 @@ CMD ["gunicorn", \
 - Optimal for I/O bound (waiting for AI responses)
 - Saves 280MB vs 4 workers
 
-### All-in-One Docker Compose
-For running all services on a single machine, use `docker-compose.all.yml`:
+### Docker Compose Profiles
 
-### Usage Examples
 ```bash
 # Start all services
-docker-compose -f docker-compose.all.yml up -d
+docker compose -f docker-compose.all.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
 
-# Start without image generation
-docker-compose -f docker-compose.all.yml --profile with-voice --profile with-rag up -d
+# Chat + voice only
+docker compose -f docker-compose.all.yml --profile with-voice up -d
 
-# Start with everything
-docker-compose -f docker-compose.all.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
+# Chat only (no images, no voice)
+docker compose -f docker-compose.all.yml up -d
 
 # Stop all services
-docker-compose -f docker-compose.all.yml down
+docker compose -f docker-compose.all.yml down --remove-orphans
 
 # View logs
-docker-compose -f docker-compose.all.yml logs -f web
+docker compose -f docker-compose.all.yml logs -f web
 ```
-
-### Distributed Deployment (Multiple Machines)
-
-For load distribution across multiple servers, use standalone docker-compose files in `services/` directory:
-
-1. **Web App + Redis** (Machine 1):
-```bash
-docker-compose -f docker-compose.all.yml up -d web redis
-```
-
-2. **Ollama - Chat Models** (Machine 2):
-```bash
-cd services/ollama
-docker-compose -f docker-compose.gpu.yml up -d
-```
-
-3. **Ollama - Reasoning Models** (Machine 3):
-```bash
-cd services/ollama
-docker-compose -f docker-compose.gpu.yml up -d
-```
-
-4. **Configure Model URLs** in Admin Panel → Models tab:
-```
-Chat: http://machine2:11434
-Reasoning: http://machine3:11434
-Multimodal: http://machine4:11434
-Embedding: http://machine2:11434
-```
-
-**Firewall Configuration:**
-```bash
-# On each remote service machine
-sudo ufw allow from <web-app-ip> to any port <service-port>
-```
-
-See [services/README.md](services/README.md) for complete deployment guides for each service.
 
 ---
 
 ## 🤖 Model Setup
 
-### Required Models (Pull After Starting Ollama)
-```bash
-# Chat/Router model (fast responses)
-docker exec flai-ollama ollama pull qwen3:4b-instruct-2507-q4_K_M
+### GGUF Model Structure
 
-# Multimodal model (image analysis)
-docker exec flai-ollama ollama pull qwen3-vl:8b-instruct-q4_K_M
+llama.cpp runs in **router mode** (`--models-dir`), dynamically loading models from a shared directory:
 
-# Reasoning model (complex tasks)
-docker exec flai-ollama ollama pull gpt-oss:20b
-
-# Embedding model (RAG document search)
-docker exec flai-ollama ollama pull bge-m3:latest
+```
+services/llamacpp/models/
+├── Qwen3-4B-Instruct-2507-Q4_K_M.gguf     # Chat
+├── gpt-oss-20b-mxfp4.gguf                  # Reasoning
+├── bge-m3-Q8_0.gguf                        # Embedding
+└── Qwen3VL-8B-Instruct-Q4_K_M/             # Multimodal (subdirectory!)
+    ├── Qwen3VL-8B-Instruct-Q4_K_M.gguf
+    └── mmproj-F16.gguf                     # Vision projector
 ```
 
+> ⚠️ **Multimodal models require a subdirectory** with the projector file named `mmproj-*.gguf` inside. The router auto-discovers and loads it.
+
 ### Configure Models in Admin Panel
+
 1. Log in as admin and go to `/admin` → **Models** tab
-2. For each module (Chat, Reasoning, Multimodal, Embedding):  
-  #### **Step 1: Specify Ollama URL**  
-   - Check the "Local" checkbox if Ollama runs on the same machine (URL auto-fills to `http://ollama:11434`)
-   - Uncheck "Local" and enter custom URL for distributed deployment (e.g., `http://192.168.1.50:11434`)
-   - Status icon shows connection status (✅ available / ❌ unavailable)  
-  #### **Step 2: Refresh Model List**  
-   - Click the 🔄 Refresh button to fetch available models from Ollama
-   - Wait for the dropdown to populate with model names  
-  #### **Step 3: Select Model & Configure**  
-   - Select desired model from the dropdown
-   - Model details appear below (architecture, parameters, context length)
-   - Set parameters:
-      * **Context Length**: Maximum tokens for context (must be ≤ model's max)
-      * **Temperature**: Creativity (0.0–2.0, lower = more deterministic)
-      * **Top P**: Nucleus sampling (0.0–1.0)
-      * **Timeout**: Request timeout in seconds (0–1200)
-   - Click Save to apply configuration
-> 💡 Changing the embedding model triggers automatic re-indexing of all documents.
+2. For each module (Chat, Reasoning, Multimodal, Embedding):
+   - **Step 1**: Check **Local** (URL auto-fills to `http://flai-llamacpp:8033`)
+   - **Step 2**: Click 🔄 **Refresh** to fetch models from the router
+   - **Step 3**: Select model, set parameters, click **Save**
+
+> 💡 **Changing the embedding model triggers automatic re-indexing** of all documents.
+
+### Model Parameters
+
+| Parameter | Chat | Reasoning | Multimodal | Embedding |
+|-----------|------|-----------|------------|-----------|
+| Context Length | 8192 | 32768 | 8192 | 512 |
+| Temperature | 0.1 | 0.7 | 0.7 | – |
+| Top P | 0.1 | 0.9 | 0.9 | – |
+| Timeout (s) | 60 | 300 | 120 | 30 |
 
 ---
 
-## 🎨 Image Generation Setup
+## 🎨 Image Generation & Editing
 
-### 1. Download Stable Diffusion Checkpoint
+### Generation Model
+
+The project uses **Z_image_turbo** as the only image generation model:
+
+| Model | Steps | CFG Scale | Resolution | Notes |
+|-------|-------|-----------|------------|-------|
+| **Z_image_turbo** | 10 | 1.0 | 1024×1024 | Fast, flow-matching |
+
+Configure via `SD_MODEL_TYPE` in `.env`:
 ```bash
-# Create models directory
-mkdir -p services/automatic1111/models
-
-# Download a Stable Diffusion checkpoint (example: RealVisXL_V4.0)
-# Replace with your preferred model from civitai.com or huggingface
-wget -O services/automatic1111/models/RealVisXL_V4.0.safetensors \
-  "https://huggingface.co/SG161222/RealVisXL_V4.0/resolve/main/RealVisXL_V4.0.safetensors"
+SD_MODEL_TYPE=z_image_turbo
 ```
 
-### 2. Configure in `.env`
-```bash
-AUTOMATIC1111_URL=http://flai-sd:7860
-AUTOMATIC1111_MODEL=RealVisXL_V4.0.safetensors
-AUTOMATIC1111_TIMEOUT=180
-```
+### Image Editing (Flux.2 Klein 4B)
 
-### 3. Enable in Docker Compose
-Uncomment the `automatic1111` service or use profiles:
+Upload an image and ask to edit it (e.g., *"change the pupils to green"*, *"remove the second sun"*). The system uses:
+1. **Multimodal model** (Qwen3VL) to analyze the image and generate an edit prompt
+2. **Flux.2 Klein 4B** model via stable-diffusion.cpp to perform the edit
+3. The original image is preserved except for the requested changes
+
+Editing uses separate model files and runs independently from generation — no conflict between the two.
+
+### stable-diffusion.cpp Build
+
+The `sd_cpp` service is **built from source** during first `docker compose up`:
+1. Clones `https://github.com/leejet/stable-diffusion.cpp`
+2. Initializes git submodules (`ggml`, `thirdparty/*`)
+3. Compiles with CUDA 12.8.1 (`cmake -DSD_CUDA=ON`)
+4. Produces `sd-server` and `sd-cli` binaries
+
+> ⏱️ **First build**: ~5-10 minutes depending on CPU. Subsequent builds use Docker cache.
+
+### Configuration
+
 ```bash
-docker-compose -f docker-compose.all.yml --profile with-image-gen up -d
+# sd-wrapper HTTP API (port 7861)
+SD_WRAPPER_URL=http://flai-sd:7861
+SD_CPP_TIMEOUT=900                  # Timeout for gen/edit operations (seconds)
 ```
 
 ---
 
 ## 🎤 Voice Features Setup
 
-### 1. Download Voice Models
+### Whisper ASR (Unchanged from v7.5)
+
+Uses `onerahmet/openai-whisper-asr-webservice` (faster_whisper engine).
+
 ```bash
-mkdir -p services/piper/piper_models
-
-# Russian male voice
-curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx
-
-curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx.json \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json
-
-# Russian female voice
-curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx
-
-curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx.json \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
+# Enable voice features
+docker compose -f docker-compose.all.yml --profile with-voice up -d
 ```
 
-### 2. Enable in Docker Compose
+### Piper TTS (Unchanged from v7.5)
+
+Uses ONNX Piper models for text-to-speech.
+
 ```bash
-docker-compose -f docker-compose.all.yml --profile with-voice up -d
+# Download voice models
+mkdir -p services/piper/piper_models
+
+# Russian voices (male + female)
+curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx"
+curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx.json \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json"
+curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx"
+curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx.json \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json"
+
+# English voices
+curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx"
+curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx.json \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json"
+curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx"
+curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx.json \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json"
 ```
 
 ---
 
 ## 📚 RAG (Document Search) Setup
 
-### 1. Configure Qdrant in `.env`
-```bash
-QDRANT_URL=http://flai-qdrant:6333
-QDRANT_API_KEY=your_secure_api_key_here
-EMBEDDING_MODEL=bge-m3:latest
-RAG_CHUNK_SIZE=500
-RAG_CHUNK_OVERLAP=50
-RAG_TOP_K=5
-```
+### 1. Configure RAG in Admin Panel
+
+After starting the services, log in as admin and go to **Admin Panel → Models** tab. Scroll down to the **Chunks** section. Here you can fine-tune RAG behavior:
+
+- **Chunk Size (characters):** How documents are split into pieces for indexing.
+- **Chunk Overlap (characters):** Number of overlapping characters between consecutive chunks.
+- **Chunk Strategy:** `fixed` (by character count) or `recursive` (by headings/paragraphs).
+- **Number of chunks (top_k):** Maximum number of chunks to retrieve from Qdrant per query.
+- **Threshold (documents):** Minimum similarity score for general document queries.
+- **Threshold (reasoning):** Minimum similarity score when RAG is triggered from a reasoning request.
+
+Click **Save** to apply changes. If chunking parameters (size or strategy) are modified, a background reindex of all documents is triggered automatically.
+
+> **Note:** Environment variables like `RAG_CHUNK_SIZE` in `.env` are only used as initial defaults before the first configuration save. The primary configuration is stored in the database.
 
 ### 2. Enable in Docker Compose
 ```bash
-docker-compose -f docker-compose.all.yml --profile with-rag up -d
+docker compose -f docker-compose.all.yml --profile with-rag up -d
 ```
 
 ### 3. Upload Documents
-  1. Log in to web interface
-  2. Click Documents tab in sidebar
-  3. Click ➕ to upload PDF, DOC, DOCX, or TXT files
-  4. Wait for indexing to complete (status: ✅ Indexed)
+1. Log in to web interface
+2. Click **Documents** tab in sidebar
+3. Click ➕ to upload PDF, DOC, DOCX, or TXT files
+4. Wait for indexing to complete (status: ✅ Indexed)
 
 ---
 
 ## 📹 Camera Integration (Optional)
-The camera module is not included in the main docker-compose and must be set up separately.
 
-### 1. Deploy Camera API Service
+The camera module connects to a separate `room-snapshot-api` service. See [services/README.md](services/README.md) and [services/room-snapshot-api/README.md](services/room-snapshot-api/README.md) for deployment guides.
 
-The camera service is a separate project. Two deployment options available:
-
-**Option A: Local Deployment (same server as FLAI)**
+### Configuration
 ```bash
-cd services/room-snapshot-api
-./deploy.sh local
-```
-
-**Option B: Remote Deployment (separate server)**
-```bash
-# Clone the camera API repository
-git clone https://github.com/barval/room-snapshot-api.git
-cd room-snapshot-api
-
-# Configure .env file
-cp .env.example .env
-# Edit .env with your camera URLs and credentials
-
-# Deploy remotely
-./deploy.sh remote
-
-# Configure firewall
-sudo ufw allow from <flai-server-ip> to any port 5005
-```
-
-See [services/room-snapshot-api/README.md](services/room-snapshot-api/README.md) for detailed instructions.
-
-### 2. Configure FLAI to Use Camera Service
-In FLAI's `.env` file:
-```bash
-# Enable camera module
+CAMERA_API_URL=http://flai-room-snapshot-api:5000
 CAMERA_ENABLED=true
-
-# Camera API endpoint (adjust IP/port as needed)
-# For local deployment:
-CAMERA_API_URL=http://flai-room-snapshot-api:5005
-# For remote deployment:
-CAMERA_API_URL=http://<camera-server-ip>:5005
-
-# Timeout for snapshot requests (seconds)
 CAMERA_API_TIMEOUT=15
-
-# Health check interval (seconds)
 CAMERA_CHECK_INTERVAL=30
 ```
 
-### 3. Configure Camera Permissions
-  1. Log in to FLAI as admin
-  2. Go to /admin → Users tab
-  3. Edit a user and check the cameras they can access:
-    Example:  
-    - `tam` — tambour  
-    - `hal` — hallway  
-    - `cor` — corridor  
-    - `bed` — bedroom  
-    - `off` — office  
-    - `chi` — children's room  
-    - `liv` — living room  
-    - `kit` — kitchen  
-    - `bal` — balcony  
-
-### 4. Using Cameras in Chat
-Users with camera permissions can ask:
-+ "Show the kitchen" → Returns snapshot from kitchen camera
-+ "What's in the living room?" → Returns snapshot + AI analysis
-+ "Is anyone in the office?" → Returns snapshot + AI analysis
+### Camera Permissions
+In Admin Panel → Users tab, assign camera codes:
+`tam` (tambour), `hal` (hallway), `cor` (corridor), `spa` (bedroom),
+`off` (office), `chi` (children's), `liv` (living room), `kit` (kitchen), `bal` (balcony)
 
 ---
 
@@ -585,7 +575,7 @@ Users with camera permissions can ask:
 | 👤 User Operations | Create, edit, delete user accounts |
 | 🔑 Password Management | Reset passwords for any user |
 | 🔐 Camera Permissions | Grant/revoke camera access per user |
-| 🤖 Model Management | Configure models per module type |
+| 🤖 Model Management | Configure GGUF models per module type |
 | 📊 System Stats | Monitor database and storage sizes |
 | 🎚️ Service Classes | Set queue priority (0=highest, 2=lowest) |
 
@@ -600,12 +590,27 @@ docker exec flai-web flask --help
 
 ---
 
+### 💾 Backup & Restore
+
+FLAI includes a built-in backup system accessible from the Admin Panel → **Backups** tab.
+
+**Backup Types:**
+- **Users only:** Backs up the `users` table only (user accounts, permissions, settings).
+- **Full:** Backs up all data: users, chat sessions, messages, documents, uploaded files, and model configurations.
+
+**Operations:**
+- **Create:** Select the backup type and click «Create backup». The archive is saved to `data/db_backups/`.
+- **Restore:** Click «Restore» on a backup file to replace the current database and files with the backup content. *Warning: This overwrites existing data.*
+- **Download:** Download the backup archive to your local machine.
+- **Delete:** Remove old backup files.
+
+Backup files are stored as `.tar.gz` archives containing SQL dumps and file directories. Restoration requires confirmation and is logged for audit purposes.
+
+---
+
 ## 🔍 Monitoring & Health
 
 ### Health Check Endpoint
-
-Comprehensive health check for all services:
-
 ```bash
 curl http://localhost:5000/health
 ```
@@ -614,53 +619,24 @@ curl http://localhost:5000/health
 ```json
 {
   "status": "ok",
-  "timestamp": "2026-04-02T00:34:08.237346",
+  "timestamp": "2026-04-08T23:00:00.000000+00:00",
   "services": {
     "web": "ok",
     "database": "ok",
     "redis": "ok",
-    "ollama": "ok"
+    "llamacpp": "ok"
   }
 }
 ```
 
-**Status values:**
-- `ok` — all services healthy
-- `degraded` — some services unavailable
-- `error` — all services unavailable
-
 ### Prometheus Metrics
-
-Prometheus-compatible metrics endpoint:
-
 ```bash
 curl http://localhost:5000/metrics
 ```
 
-**Available metrics:**
-- `flai_web_info` — Service version
-- `flai_queue_length` — Current queue length
-- `flai_queue_processing` — Tasks being processed
-- `flai_database_size_bytes` — Database file size
-- `flai_requests_total` — Total requests counter
-- `flai_uptime_seconds` — Service uptime
-
-### API Documentation
-
-Full API documentation available in OpenAPI format:
-- **File:** `docs/openapi.yaml`
-- **Format:** OpenAPI 3.0
-- **Coverage:** All REST endpoints
-
-View with Swagger UI or any OpenAPI-compatible viewer.
-
 ---
 
 ## 🧪 Testing
-
-### Unit & Integration Tests
-
-FLAI includes comprehensive test coverage for critical components:
 
 ```bash
 # Run all tests
@@ -671,114 +647,158 @@ pytest --cov=app --cov=modules --cov-report=html
 
 # Run specific test category
 pytest tests/test_admin_routes.py
-pytest tests/test_documents_routes.py
 pytest tests/test_image_module.py
+pytest tests/test_sd_cpp_module.py
 ```
-
-**Test Coverage:**
-- `test_admin_routes.py` — Admin panel endpoints (17 tests)
-- `test_documents_routes.py` — Document upload/RAG (16 tests)
-- `test_image_module.py` — Image generation (16 tests)
-- `test_queue.py` — Redis queue operations
-- `test_audio_module.py` — Audio transcription
-- `test_security.py` — Security features (CSRF, rate limiting, etc.)
-- `test_integration.py` — End-to-end integration tests
 
 ### Load Testing
-
-FLAI includes Locust-based load testing scripts.
-
-### Setup
-```bash
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # Linux/macOS
-# venv\Scripts\activate   # Windows
-
-# Install Locust
-pip install locust
-```
-
-### Run Tests
 ```bash
 # Web interface
 locust -f tests/load/locustfile.py --host http://localhost:5000
 
-# Headless mode (automated)
-locust -f tests/load/locustfile.py --host http://localhost:5000 \
-  --headless -u 10 -r 2 --run-time 1m
+# Headless mode
+locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 ```
-
-### Test User
-Create test user before running:
-- Login: `testuser`
-- Password: `testpass`
-
-> 💡  **Required:** block or delete the test user after the tests!
 
 ---
 
 ## 🗺️ Roadmap
 
-### ✅ Completed
-- Multi-model request routing (simple → fast, complex → reasoning)
-- Multimodal image analysis with conversation history
-- Image generation with automatic prompt optimization
-- Voice transcription (Whisper) and synthesis (Piper TTS)
-- Document upload + RAG with Qdrant semantic search
-- Redis-backed request queue with real-time status
-- Full i18n support (RU/EN) with Flask-Babel
-- Dark/light theme with persistent preferences
-- HTML chat export with embedded media
-- Admin panel with model management
-- Document index status display with processing time
-- Camera integration with access rights system
-- SQLite WAL mode for better concurrency
-- **Load testing with Locust**
-- **Separate Ollama URLs per model type (distributed deployment)**
-- **Security enhancements:**
-  * CSRF protection for all forms
-  * Rate limiting on login (brute-force protection)
-  * Session ownership validation
-  * Path traversal protection
-  * HMAC-signed Redis queue tasks
-  * Security headers (CSP, X-Frame-Options, etc.)
-  * Audit logging for security events
-- **Standalone service deployment:**
-  * Ollama (with GPU support)
-  * Automatic1111 (Stable Diffusion)
-  * Whisper ASR
-  * Piper TTS
-  * Qdrant (vector database)
-  * Room Snapshot API (local/remote deployment)
+### ✅ Completed (v8.0)
+- **llama.cpp router mode** (`--models-dir`) replaces Ollama — single server with dynamic model switching
+- **stable-diffusion.cpp** replaces Automatic1111 — Z-Image-Turbo for generation, Flux.2 Klein 4B for editing
+- OpenAI-compatible API (`/v1/chat/completions`, `/v1/embeddings`)
+- Multimodal support via mmproj in subdirectories
+- Dynamic model switching with `--models-max 1`
+- Individual model parameters via `models-preset.ini`
+- GGUF model management via admin panel
+- All translations updated for llama.cpp terminology
+- **Piper TTS optimization** for large text synthesis — chunked processing with seamless audio transitions
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)
-- Advanced RAG: metadata filtering, hybrid search, re-ranking
+- Advanced RAG: metadata filtering, hybrid search
 - Mobile-responsive UI optimizations
-- Performance improvements
-- Security enhancements
-- User activity analytics
 
 ### 📅 Planned
 - Plugin architecture for custom modules
-- API for external integrations (webhooks, REST)
-- Backup/restore utilities
-- Multi-user collaboration features
-- Local model fine-tuning (LoRA, QLoRA)
+- Multi-GPU support
+- Advanced queue prioritization
+- User activity analytics
+
+---
+
+## 📦 Models, Licenses and Sizes
+
+### LLM Models (llama.cpp)
+
+| Model | Purpose | License | Approx. Size |
+|-------|---------|---------|-------------|
+| **Qwen3-4B-Instruct-2507-Q4_K_M** | Chat (fast responses) | [Qwen License](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF) | ~2.5 GB |
+| **gpt-oss-20b-mxfp4** | Reasoning (complex tasks) | [OpenAI License](https://huggingface.co/openai/gpt-oss-20b-GGUF) | ~12 GB |
+| **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (image analysis) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5.5 GB + mmproj ~200 MB |
+| **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/BAAI/bge-m3-gguf) | ~2.2 GB |
+
+### Image Generation Models (stable-diffusion.cpp)
+
+| Model | Purpose | License | Approx. Size |
+|-------|---------|---------|-------------|
+| **Z-Image-Turbo (z_image_turbo-Q8_0)** | Image generation | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~6.2 GB |
+| **ae.safetensors** (VAE) | Variational autoencoder for Z-Image | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~0.3 GB |
+| **Qwen3-4B-Instruct-2507-Q4_K_M** | Text encoder for Z-Image | [Qwen License](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF) | ~2.5 GB *(shared with chat)* |
+
+### Image Editing Models (stable-diffusion.cpp)
+
+| Model | Purpose | License | Approx. Size |
+|-------|---------|---------|-------------|
+| **Flux.2 Klein 4B (flux-2-klein-4b-Q8_0)** | Image editing (change colors, remove objects, stylize) | [Flux License](https://huggingface.co/black-forest-labs/FLUX.2-Klein-dev) | ~4.5 GB |
+| **flux2_ae.safetensors** | VAE for Flux.2 editing | [Flux License](https://huggingface.co/black-forest-labs/FLUX.2-dev) | ~0.3 GB |
+
+### Voice Models
+
+| Model | Purpose | License | Approx. Size |
+|-------|---------|---------|-------------|
+| **en_US-lessac-medium** | English TTS (female) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~75 MB |
+| **ru_RU-ruslan-medium** | Russian TTS (male) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~75 MB |
+| **Whisper medium** | Speech recognition | [MIT (OpenAI)](https://github.com/openai/whisper) | ~1.5 GB |
+
+### Total Download Sizes (Approximate)
+
+| Configuration | Approx. Download |
+|---------------|-----------------|
+| Chat only (Qwen3-4B) | ~2.5 GB |
+| Chat + Reasoning | ~14.5 GB |
+| Chat + Multimodal | ~8 GB |
+| Full LLM stack | ~22 GB |
+| + Image generation | ~28 GB |
+| + Image editing | ~31 GB |
+| + Voice (TTS + Whisper) | ~35 GB |
+
+> **Note**: After downloading models, FLAI works completely offline. No external scripts or modules are loaded at runtime.
+
+---
+
+## 🧪 Testing
+
+FLAI includes comprehensive testing for all key components and load testing for the web interface.
+
+### Unit Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage report
+pytest --cov=app --cov=modules --cov-report=html
+
+# Run specific test category
+pytest tests/test_admin_routes.py
+pytest tests/test_image_module.py
+pytest tests/test_sd_cpp_module.py
+pytest tests/test_queue.py
+pytest tests/test_security.py
+pytest tests/test_integration.py
+```
+
+### Load Testing
+
+Load tests use [Locust](https://locust.io/) to simulate concurrent users.
+
+```bash
+# Install Locust (if not already installed)
+pip install locust
+
+# Web interface — open http://localhost:8089
+locust -f tests/load/locustfile.py --host http://localhost:5000
+
+# Headless mode — 10 users, spawn 2/sec, run 1 minute
+locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
+
+# Using the convenience script
+./tests/load/run_load_test.sh --host http://localhost:5000 --users 10 --spawn-rate 2 --run-time 1m
+```
+
+See [tests/load/README.md](tests/load/README.md) for detailed load testing instructions.
 
 ---
 
 ## 🤝 Contributing
-Contributions are welcome!
-- 🔍 Report Issues: Open an issue with reproduction steps
-- 💡 Suggest Features: Start a discussion before coding
-- 🛠️ Submit PRs: Fork, branch, code, test, submit
-- 📚 Improve Docs: Help refine documentation and translations
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ---
 
 ## 📄 License
-This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
 
-<br> <div align="center"> Made with ❤️ for the local AI community </div>
+MIT License. See [LICENSE](LICENSE) for details.
+
+---
+
+<br>
+<div align="center"> Made with ❤️ for the local AI community</div>

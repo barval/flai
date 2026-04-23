@@ -101,7 +101,7 @@ CAMERA_CHECK_INTERVAL=30
 Перезапустите FLAI:
 
 ```bash
-docker compose -f docker-compose.all.yml restart web
+docker compose -f docker-compose.gpu.yml restart web
 ```
 
 ## Порты

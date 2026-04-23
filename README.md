@@ -145,7 +145,7 @@ FLAI can operate on CPU-only servers using automatic detection in the deployment
 
 To force CPU mode even if a GPU is present, you can manually run:
 ```bash
-docker compose -f docker-compose.all.yml --profile cpu --profile cpu-image-gen --profile with-voice --profile with-rag up -d
+docker compose -f docker-compose.cpu.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
 ```
 
 ---
@@ -273,16 +273,16 @@ wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
 
 ```bash
 # Chat and reasoning only (no image generation)
-docker compose -f docker-compose.all.yml up -d
+docker compose -f docker-compose.gpu.yml up -d
 
 # With image generation
-docker compose -f docker-compose.all.yml --profile with-image-gen up -d
+docker compose -f docker-compose.gpu.yml --profile with-image-gen up -d
 
 # With voice features
-docker compose -f docker-compose.all.yml --profile with-voice up -d
+docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 
 # Full stack: chat + images + voice + RAG
-docker compose -f docker-compose.all.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
 ```
 
 > ⏱️ **First build takes time**: stable-diffusion.cpp is compiled from source (~5-10 minutes). Subsequent builds use the cache.
@@ -391,19 +391,19 @@ CMD ["gunicorn", \
 
 ```bash
 # Start all services
-docker compose -f docker-compose.all.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
 
 # Chat + voice only
-docker compose -f docker-compose.all.yml --profile with-voice up -d
+docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 
 # Chat only (no images, no voice)
-docker compose -f docker-compose.all.yml up -d
+docker compose -f docker-compose.gpu.yml up -d
 
 # Stop all services
-docker compose -f docker-compose.all.yml down --remove-orphans
+docker compose -f docker-compose.gpu.yml down --remove-orphans
 
 # View logs
-docker compose -f docker-compose.all.yml logs -f web
+docker compose -f docker-compose.gpu.yml logs -f web
 ```
 
 ---
@@ -499,7 +499,7 @@ Uses `onerahmet/openai-whisper-asr-webservice` (faster_whisper engine).
 
 ```bash
 # Enable voice features
-docker compose -f docker-compose.all.yml --profile with-voice up -d
+docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 ```
 
 ### Piper TTS (Unchanged from v7.5)
@@ -552,7 +552,7 @@ Click **Save** to apply changes. If chunking parameters (size or strategy) are m
 
 ### 2. Enable in Docker Compose
 ```bash
-docker compose -f docker-compose.all.yml --profile with-rag up -d
+docker compose -f docker-compose.gpu.yml --profile with-rag up -d
 ```
 
 ### 3. Upload Documents

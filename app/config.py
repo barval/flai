@@ -115,9 +115,11 @@ def load_config(app):
     # Session cookie settings for CSRF and security
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-    # Secure flag: True for HTTPS (production), False for HTTP (local development)
+    # Secure flag: True only when HTTPS is explicitly enabled
     # When behind HTTPS proxy (nginx), set HTTPS_ENABLED=true in .env
     app.config['SESSION_COOKIE_SECURE'] = os.getenv('HTTPS_ENABLED', 'false').lower() in ('true', '1', 'yes')
+    # Allow sessions across different hostnames/IPs in local network
+    app.config['SESSION_COOKIE_DOMAIN'] = None  # None = allow all domains, or set specific domain
     
     # Session expiry - sessions expire after 8 hours of inactivity
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)

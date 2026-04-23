@@ -37,68 +37,32 @@ setup_env() {
     info ".env created. Edit it to set models, URLs, and preferences."
 }
 
-# ── Generate docker-compose.override.yml for CPU mode ──
-generate_cpu_override() {
-    cat > docker-compose.override.yml <<'EOF'
-# Auto-generated override for CPU-only deployment.
-# Replaces GPU-accelerated services with CPU-optimised images.
-services:
-  llamacpp:
-    image: ghcr.io/ggml-org/llama.cpp:server
-    # Explicitly set default runtime (runc) to override nvidia
-    runtime: "runc"
-    environment: {}
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 16G
-        reservations:
-          cpus: '2.0'
-          memory: 8G
-    command: >
-      --models-dir /models/
-      --models-preset /models/models-preset.ini
-      --models-max 1
-      --ctx-size 16384
-      --host 0.0.0.0
-      --port 8033
-      --n-gpu-layers 0
-      --embeddings
-      --batch-size 2048
-      --ubatch-size 2048
 
-  sd_cpp:
-    build:
-      context: ./services/sd_cpp
-      # Force CPU-only Dockerfile
-      dockerfile: Dockerfile.sd_cpp-cpu
-    runtime: "runc"
-    environment: {}
-    deploy:
-      resources:
-        limits:
-          cpus: '8.0'
-          memory: 24G
-        reservations:
-          cpus: '4.0'
-          memory: 16G
-    entrypoint: ["python3", "/app/sd_wrapper.py"]
-EOF
-    info "Created docker-compose.override.yml for CPU-only mode."
-}
 
 # ── Model download helpers ──
 HF_DOWNLOAD() {
     local repo="$1" file="$2" dest="$3"
-    if command -v huggingface-cli &>/dev/null; then
-        huggingface-cli download "$repo" "$file" --local-dir "$dest" 2>&1
-    else
-        local url="https://huggingface.co/$repo/resolve/main/$file"
-        info "Downloading $file from HuggingFace..."
-        mkdir -p "$dest"
-        curl -L -o "$dest/$file" "$url"
-    fi
+    local url="https://huggingface.co/$repo/resolve/main/$file"
+    info "Downloading $file from HuggingFace..."
+    local dir="$(dirname "$dest")"
+    mkdir -p "$dir"
+    
+    # Retry download up to 3 times
+    for attempt in 1 2 3; do
+        curl -L --progress-bar -o "$dest" "$url"
+        
+        # Check if file is valid (more than 1KB)
+        local size=$(stat -c%s "$dest" 2>/dev/null || echo "0")
+        if [[ "$size" -gt 1024 ]]; then
+            info "Successfully downloaded: $file ($size bytes)"
+            return 0
+        else
+            warn "Attempt $attempt failed, retrying..."
+            rm -f "$dest"
+            sleep 2
+        fi
+    done
+    error "Failed to download $file after 3 attempts"
 }
 
 # ── llama.cpp models ──
@@ -106,41 +70,47 @@ download_llamacpp_models() {
     info "Downloading llama.cpp models..."
     local MODEL_DIR="services/llamacpp/models"
 
-    # Chat model
+    # Chat model (public repository - Instruct)
     if [[ ! -f "$MODEL_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
         info "Downloading Qwen3-4B-Instruct-2507-Q4_K_M.gguf (chat)..."
-        HF_DOWNLOAD "bartowski/Qwen3-4B-Instruct-2507-GGUF" \
-            "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" "$MODEL_DIR"
+        HF_DOWNLOAD "unsloth/Qwen3-4B-Instruct-2507-GGUF" \
+            "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" \
+            "$MODEL_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
     else
         warn "Qwen3-4B-Instruct-2507-Q4_K_M.gguf already exists — skipping."
     fi
 
-    # Reasoning model (complex tasks)
-    if [[ ! -f "$MODEL_DIR/gpt-oss-20b-mxfp4.gguf" ]]; then
-        info "Downloading gpt-oss-20b-mxfp4.gguf (reasoning)..."
-        HF_DOWNLOAD "openai/gpt-oss-20b-GGUF" \
-            "gpt-oss-20b-mxfp4.gguf" "$MODEL_DIR"
+    # Reasoning model (DeepSeek R1)
+    if [[ ! -d "$MODEL_DIR/DeepSeek-R1-Q4_K_M" ]]; then
+        info "Downloading DeepSeek-R1-Q4_K_M (reasoning)..."
+        mkdir -p "$MODEL_DIR/DeepSeek-R1-Q4_K_M"
+        HF_DOWNLOAD "unsloth/DeepSeek-R1-GGUF" \
+            "DeepSeek-R1-Q4_K_M/DeepSeek-R1-Q4_K_M-00001-of-00009.gguf" \
+            "$MODEL_DIR/DeepSeek-R1-Q4_K_M/DeepSeek-R1-Q4_K_M-00001-of-00009.gguf"
     else
-        warn "gpt-oss-20b-mxfp4.gguf already exists — skipping."
+        warn "DeepSeek-R1-Q4_K_M already exists — skipping."
     fi
 
-    # Multimodal model (with mmproj)
-    if [[ ! -d "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M" ]]; then
-        info "Downloading Qwen3VL-8B-Instruct-Q4_K_M (multimodal)..."
-        mkdir -p "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M"
-        HF_DOWNLOAD "bartowski/Qwen3VL-8B-Instruct-GGUF" \
-            "Qwen3VL-8B-Instruct-Q4_K_M.gguf" "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M"
-        HF_DOWNLOAD "bartowski/Qwen3VL-8B-Instruct-GGUF" \
-            "mmproj-F16.gguf" "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M"
+    # Multimodal model (public repository)
+    if [[ ! -d "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M" ]]; then
+        info "Downloading Qwen3VL-4B-Instruct-Q4_K_M (multimodal)..."
+        mkdir -p "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M"
+        HF_DOWNLOAD "Qwen/Qwen3-VL-4B-Instruct-GGUF" \
+            "Qwen3-VL-4B-Instruct-Q4_K_M.gguf" \
+            "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M/Qwen3-VL-4B-Instruct-Q4_K_M.gguf"
+        HF_DOWNLOAD "Qwen/Qwen3-VL-4B-Instruct-GGUF" \
+            "mmproj-Qwen3VL-4B-Instruct-F16.gguf" \
+            "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M/mmproj-F16.gguf"
     else
-        warn "Qwen3VL-8B-Instruct-Q4_K_M already exists — skipping."
+        warn "Qwen3VL-4B-Instruct-Q4_K_M already exists — skipping."
     fi
 
-    # Embedding model (for RAG)
+    # Embedding model (public repository)
     if [[ ! -f "$MODEL_DIR/bge-m3-Q8_0.gguf" ]]; then
         info "Downloading bge-m3-Q8_0.gguf (embeddings)..."
-        HF_DOWNLOAD "bartowski/bge-m3-GGUF" \
-            "bge-m3-Q8_0.gguf" "$MODEL_DIR"
+        HF_DOWNLOAD "gpustack/bge-m3-GGUF" \
+            "bge-m3-Q8_0.gguf" \
+            "$MODEL_DIR/bge-m3-Q8_0.gguf"
     else
         warn "bge-m3-Q8_0.gguf already exists — skipping."
     fi
@@ -228,31 +198,28 @@ build_and_launch() {
     [[ "$WITH_VOICE" == "true" ]] && PROFILE="$PROFILE --profile with-voice"
     [[ "$WITH_RAG" == "true" ]]    && PROFILE="$PROFILE --profile with-rag"
 
-    # Remove any previous CPU override so it doesn't interfere
-    rm -f docker-compose.override.yml
+    local HAS_GPU=false
+    if command -v nvidia-smi &>/dev/null && nvidia-smi -L 2>/dev/null | grep -q GPU; then
+        HAS_GPU=true
+    fi
 
-    if ! command -v nvidia-smi &>/dev/null || ! nvidia-smi -L &>/dev/null; then
-        warn "No GPU detected — generating CPU override."
-        generate_cpu_override
+    if [[ "$HAS_GPU" == "true" ]]; then
+        COMPOSE_FILE="docker-compose.gpu.yml"
+        info "GPU detected — using GPU compose file."
     else
-        info "GPU detected — using default GPU images."
+        COMPOSE_FILE="docker-compose.cpu.yml"
+        warn "No GPU detected — using CPU compose file."
     fi
 
     # Clean up old containers to avoid runtime conflicts
     info "Stopping old containers (if any)..."
-    docker compose -f docker-compose.all.yml $PROFILE down --remove-orphans 2>/dev/null || true
-
-    # Build compose file list including override if present
-    COMPOSE_FILES=("-f" "docker-compose.all.yml")
-    if [[ -f docker-compose.override.yml ]]; then
-        COMPOSE_FILES+=("-f" "docker-compose.override.yml")
-    fi
+    docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
 
     info "Building Docker images..."
-    docker compose "${COMPOSE_FILES[@]}" $PROFILE build
+    docker compose -f "$COMPOSE_FILE" $PROFILE build
 
     info "Starting services..."
-    docker compose "${COMPOSE_FILES[@]}" $PROFILE up -d
+    docker compose -f "$COMPOSE_FILE" $PROFILE up -d
 
     info "Waiting for services to start..."
     sleep 10
@@ -344,8 +311,8 @@ main() {
     echo "============================================"
     echo "  Web UI:   http://localhost:5000"
     echo "  Health:   http://localhost:5000/health"
-    echo "  Logs:     docker compose -f docker-compose.all.yml logs -f"
-    echo "  Stop:     docker compose -f docker-compose.all.yml --profile with-image-gen down"
+    echo "  Logs:     docker compose -f docker-compose.gpu.yml logs -f"
+    echo "  Stop:     docker compose -f docker-compose.gpu.yml --profile with-image-gen down"
     echo "============================================"
 }
 

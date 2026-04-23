@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 7.5\n"
+"Project-Id-Version: FLAI 8.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-05 12:00+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -52,8 +52,38 @@ msgstr "Документ не найден"
 msgid "Documents DB"
 msgstr "База документов"
 
-msgid "Documents"
-msgstr "Документов"
+msgid "Documents Reindexing"
+msgstr "Переиндексация документов"
+
+msgid "Reindex All Documents"
+msgstr "Переиндексировать все документы"
+
+msgid "Rebuild all document embeddings with current chunking strategy"
+msgstr "Перестроить все эмбеддинги документов с текущей стратегией чанкинга"
+
+msgid "Current strategy"
+msgstr "Текущая стратегия"
+
+msgid "Reindex all documents"
+msgstr "Переиндексировать все документы"
+
+msgid "Reindex All"
+msgstr "Переиндексировать"
+
+msgid "Reindexing all documents with new embedding model started. This may take a while."
+msgstr "Началась переиндексация всех документов с новой моделью эмбеддингов. Это может занять некоторое время."
+
+msgid "Reindexing in progress"
+msgstr "Переиндексация в процессе"
+
+msgid "Reindexing complete"
+msgstr "Переиндексация завершена"
+
+msgid "Reindexing failed"
+msgstr "Переиндексация не удалась"
+
+msgid "Reindex all documents? This will rebuild all document embeddings."
+msgstr "Переиндексировать все документы? Это перестроит все эмбеддинги документов."
 
 msgid "FLAI"
 msgstr "ПЛИИ"
@@ -229,15 +259,6 @@ msgstr "Чат"
 msgid "saved_chat"
 msgstr "Сохраненный чат"
 
-msgid "session"
-msgstr "Сеанс"
-
-msgid "saved_on"
-msgstr "Сохранено"
-
-msgid "total_messages"
-msgstr "Всего сообщений"
-
 msgid "no_messages_to_save"
 msgstr "Нет сообщений для сохранения"
 
@@ -276,12 +297,6 @@ msgstr "Имя"
 
 msgid "Class"
 msgstr "Класс"
-
-msgid "Sessions"
-msgstr "Сеансов"
-
-msgid "Messages"
-msgstr "Сообщений"
 
 msgid "Files"
 msgstr "Файлы"
@@ -358,8 +373,8 @@ msgstr "Сменить"
 msgid "delete"
 msgstr "Удалить"
 
-msgid "Ollama service unavailable"
-msgstr "Сервис Ollama недоступен"
+msgid "llama.cpp service unavailable"
+msgstr "Сервис llama.cpp недоступен"
 
 msgid "Model for {model_type} not configured"
 msgstr "Модель для {model_type} не настроена"
@@ -367,8 +382,29 @@ msgstr "Модель для {model_type} не настроена"
 msgid "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request."
 msgstr "Превышено время ожидания ответа от модели ({timeout}с). Попробуйте увеличить таймаут в панели администратора или упростите запрос."
 
-msgid "Could not connect to Ollama"
-msgstr "Не удалось подключиться к Ollama"
+msgid "Could not connect to llama.cpp"
+msgstr "Не удалось подключиться к llama.cpp"
+
+msgid "Could not connect to llama-server"
+msgstr "Не удалось подключиться к llama-server"
+
+msgid "llama-server available"
+msgstr "llama-server доступен"
+
+msgid "llama-server unavailable"
+msgstr "llama-server недоступен"
+
+msgid "Please provide llama-server URL first."
+msgstr "Сначала укажите URL llama-server."
+
+msgid "Please provide llama-server URL first"
+msgstr "Сначала укажите URL llama-server"
+
+msgid "Please provide llama-server URL."
+msgstr "Укажите URL llama-server."
+
+msgid "Refresh models from llama-server"
+msgstr "Обновить модели из llama-server"
 
 msgid "Error"
 msgstr "Ошибка"
@@ -439,11 +475,11 @@ msgstr "Превышено время ожидания генерации изо
 msgid "Image generated from request: {query}"
 msgstr "Изображение сгенерировано по запросу: {query}"
 
-msgid "Could not connect to Automatic1111"
-msgstr "Не удалось подключиться к Automatic1111"
+msgid "Could not connect to image generation service"
+msgstr "Не удалось подключиться к сервису генерации изображений"
 
-msgid "Automatic1111 returned no image"
-msgstr "Automatic1111 не вернул изображение"
+msgid "Image generation returned no image"
+msgstr "Генерация изображений не вернула изображение"
 
 msgid "MB"
 msgstr "МБ"
@@ -514,8 +550,8 @@ msgstr "Ошибка индексации"
 msgid "status_unknown"
 msgstr "Не индексирован"
 
-msgid "Refresh models from Ollama"
-msgstr "Обновить модели из Ollama"
+msgid "Refresh models from llama.cpp"
+msgstr "Обновить модели из llama.cpp"
 
 msgid "Saved"
 msgstr "Сохранено"
@@ -528,6 +564,15 @@ msgstr "Мультимодальная"
 
 msgid "Embedding"
 msgstr "Эмбеддинги"
+
+msgid "Reranker"
+msgstr "Реранкинг"
+
+msgid "Cross-encoder model — reranks search results by relevance"
+msgstr "Кросс-энкодер — переранжирует результаты поиска по релевантности"
+
+msgid "BGE Cross-Encoder"
+msgstr "BGE Cross-Encoder"
 
 msgid "-- Select model --"
 msgstr "-- Выберите модель --"
@@ -595,14 +640,14 @@ msgstr "Модель вернула пустой ответ"
 msgid "Local"
 msgstr "Локально"
 
-msgid "Please provide Ollama URL first."
-msgstr "Сначала укажите URL Ollama."
+msgid "Please provide llama.cpp URL first."
+msgstr "Сначала укажите URL llama.cpp."
 
-msgid "Ollama available"
-msgstr "Ollama доступна"
+msgid "llama.cpp available"
+msgstr "llama.cpp доступен"
 
-msgid "Ollama unavailable"
-msgstr "Ollama недоступна"
+msgid "llama.cpp unavailable"
+msgstr "llama.cpp недоступен"
 
 msgid "your_requests"
 msgstr "Ваши запросы в очереди / Всего в очереди"
@@ -641,5 +686,221 @@ msgid "Too many attempts. Please try again later."
 msgstr "Слишком много попыток. Попробуйте позже."
 
 msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v7.5 (c) 2026 Барсуков Валерий"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v8.0 (c) 2026 Барсуков Валерий"
 
+msgid "server_error_invalid_response"
+msgstr "Ошибка сервера: получен некорректный ответ"
+
+msgid "recording"
+msgstr "Запись"
+
+msgid "room_tambour"
+msgstr "тамбур"
+
+msgid "room_hallway"
+msgstr "прихожая"
+
+msgid "room_corridor"
+msgstr "коридор"
+
+msgid "room_bedroom"
+msgstr "спальня"
+
+msgid "room_office"
+msgstr "кабинет"
+
+msgid "room_children"
+msgstr "детская"
+
+msgid "room_living"
+msgstr "гостиная"
+
+msgid "room_kitchen"
+msgstr "кухня"
+
+msgid "room_balcony"
+msgstr "балкон"
+
+msgid "Image generation failed. Try again later."
+msgstr "Генерация изображения не удалась. Попробуйте позже."
+
+msgid "Image generation produced empty output."
+msgstr "Генерация изображения дала пустой результат."
+
+msgid "Image generation error. Check logs for details."
+msgstr "Ошибка генерации изображения. Подробности в логах."
+
+msgid "Image editing failed. Try again later."
+msgstr "Редактирование изображения не удалось. Попробуйте позже."
+
+msgid "Image editing produced empty output."
+msgstr "Редактирование дало пустой результат."
+
+msgid "No editing instructions provided."
+msgstr "Не указаны инструкции для редактирования."
+
+msgid "No source image provided."
+msgstr "Не предоставлено исходное изображение."
+
+msgid "Image editing error."
+msgstr "Ошибка редактирования изображения."
+
+msgid "Edit result has no image data."
+msgstr "Результат редактирования не содержит изображения."
+
+msgid "Edit returned no image."
+msgstr "Редактирование не вернуло изображение."
+
+msgid "Editing timeout ({timeout}s)"
+msgstr "Превышено время редактирования ({timeout}с)"
+
+msgid "Could not connect to editor."
+msgstr "Не удалось подключиться к редактору."
+
+msgid "Image edited from request: {query}"
+msgstr "Изображение отредактировано по запросу: {query}"
+
+msgid "Maximum resolution for editing is {max_w}×{max_h}. The image has been resized from {orig_w}×{orig_h} to {new_w}×{new_h}."
+msgstr "Максимальное разрешение для редактирования — {max_w}×{max_h}. Изображение уменьшено с {orig_w}×{orig_h} до {new_w}×{new_h}."
+
+msgid "Image editing timeout ({timeout}s)"
+msgstr "Превышено время редактирования ({timeout}с)"
+
+# Backup/restore translations
+msgid "Backups"
+msgstr "Резервные копии"
+
+msgid "Backup type"
+msgstr "Тип резервной копии"
+
+msgid "Users only"
+msgstr "Только пользователи"
+
+msgid "Full (users + chats + files)"
+msgstr "Полная (пользователи + чаты + файлы)"
+
+msgid "Create backup"
+msgstr "Создать резервную копию"
+
+msgid "Restore"
+msgstr "Восстановить"
+
+msgid "Delete"
+msgstr "Удалить"
+
+msgid "Download"
+msgstr "Скачать"
+
+msgid "No backups found"
+msgstr "Резервные копии не найдены"
+
+msgid "Restore users database from {filename}? Current data will be replaced."
+msgstr "Восстановить базу пользователей из {filename}? Текущие данные будут заменены."
+
+msgid "Restore full backup from {filename}? All data (users, chats, documents, files) will be replaced."
+msgstr "Восстановить полную резервную копию из {filename}? Все данные (пользователи, чаты, документы, файлы) будут заменены."
+
+msgid "Delete file {filename}? This action cannot be undone."
+msgstr "Удалить файл {filename}? Это действие необратимо."
+
+msgid "Backup created: {filename}"
+msgstr "Резервная копия создана: {filename}"
+
+msgid "Data restored from: {filename}"
+msgstr "Данные восстановлены из: {filename}"
+
+msgid "File deleted: {filename}"
+msgstr "Файл удалён: {filename}"
+
+msgid "Error creating backup"
+msgstr "Ошибка при создании резервной копии"
+
+msgid "Error restoring backup"
+msgstr "Ошибка при восстановлении"
+
+msgid "Error deleting backup"
+msgstr "Ошибка при удалении"
+
+msgid "Refresh list"
+msgstr "Обновить список"
+
+msgid "Success"
+msgstr "Успешно"
+
+msgid "Creating..."
+msgstr "Создание..."
+
+msgid "Restoring..."
+msgstr "Восстановление..."
+
+msgid "Filename"
+msgstr "Имя файла"
+
+msgid "Type"
+msgstr "Тип"
+
+msgid "Size"
+msgstr "Размер"
+
+msgid "Created"
+msgstr "Создана"
+
+msgid "Refresh backup list"
+msgstr "Обновить список резервных копий"
+
+msgid "Service temporarily unavailable. Circuit breaker is open after repeated failures."
+msgstr "Сервис временно недоступен. Сработал защитный механизм после неоднократных сбоев."
+
+msgid "Chunks"
+msgstr "Чанки"
+
+msgid "Chunk Size (characters)"
+msgstr "Размер чанка (символов)"
+
+msgid "Chunk Overlap (characters)"
+msgstr "Перекрытие чанков (символов)"
+
+msgid "Chunk Strategy"
+msgstr "Стратегия чанкинга"
+
+msgid "Fixed (by size)"
+msgstr "Фиксированный (по размеру)"
+
+msgid "Structural (by headings)"
+msgstr "Структурный (по заголовкам)"
+
+msgid "Chunk configuration saved. Reindexing started."
+msgstr "Конфигурация чанков сохранена. Переиндексация запущена."
+
+msgid "Chunk configuration saved."
+msgstr "Конфигурация чанков сохранена."
+
+msgid "Number of chunks"
+msgstr "Число чанков"
+
+msgid "Threshold (documents)"
+msgstr "Порог (документы)"
+
+msgid "Threshold (reasoning)"
+msgstr "Порог (рассуждения)"
+
+msgid "vram_optimal"
+msgstr "Использовано VRAM: 100%, RAM: 0% - оптимально"
+
+msgid "vram_optimal_dynamic"
+msgstr "Использовано VRAM: %1%%, RAM: 0% - оптимально"
+
+msgid "vram_partial_high"
+msgstr "Использовано VRAM: 100%, RAM: %2%% - хорошо"
+
+msgid "vram_partial_med"
+msgstr "Использовано VRAM: 100%, RAM: %2%% - умеренно"
+
+msgid "vram_partial_low"
+msgstr "Использовано VRAM: 100%, RAM: %2%% - медленно, задержки"
+
+msgid "no_gpu_low"
+msgstr "Нет GPU. Использовано %1% RAM - очень медленно"
+
+msgid "no_gpu_full"
+msgstr "Нет GPU. Использовано %1% RAM - медленно"

@@ -1,0 +1,47 @@
+# Dockerfile for stable-diffusion.cpp with CUDA 13 support
+# Clones leejet/stable-diffusion.cpp and builds from source
+
+ARG CUDA_VERSION=13.0.1
+ARG UBUNTU_VERSION=24.04
+
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION} AS build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    git \
+    ccache \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /sd.cpp
+
+# Clone the official repository at runtime
+RUN git clone --depth 1 https://github.com/leejet/stable-diffusion.cpp.git . && \
+    git submodule update --init --recursive
+
+ARG CUDACXX=/usr/local/cuda/bin/nvcc
+RUN cmake . -B ./build -DSD_CUDA=ON
+RUN cmake --build ./build --config Release -j$(nproc)
+
+FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu${UBUNTU_VERSION} AS runtime
+
+RUN apt-get update && \
+    apt-get install --yes --no-install-recommends libgomp1 curl python3 && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Copy sd-cli built in the build stage (linked against same CUDA version)
+COPY --from=build /sd.cpp/build/bin/sd-cli /usr/local/bin/sd-cli
+COPY --from=build /sd.cpp/build/bin/sd-server /usr/local/bin/sd-server
+
+# Create directories for models
+RUN mkdir -p /app/models/diffusion_models \
+             /app/models/vae \
+             /app/models/text_encoders \
+             /app/outputs
+
+WORKDIR /app
+
+EXPOSE 7860
+
+ENTRYPOINT [ "/usr/local/bin/sd-server" ]
+CMD ["--help"]

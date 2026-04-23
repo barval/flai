@@ -6,14 +6,14 @@ let currentSortDirection = 'asc';
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Admin page loaded');
-    // Add a class to body to identify admin page for CSS overrides
     document.body.classList.add('admin-page');
 
     loadUsers();
     setupModals();
     setupSortableHeaders();
     setInterval(refreshStats, 30000);
-});
+    
+    });
 
 // Get CSRF token from meta tag
 function getCSRFToken() {

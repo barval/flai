@@ -46,8 +46,14 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function switchLanguage(lang) {
-    // Simple redirect - no need for fetch
-    window.location.href = '/set-language/' + lang;
+    fetchWithCSRF('/set-language/' + lang, {
+        method: 'POST',
+        headers: { 'Cache-Control': 'no-cache' }
+    }).then(() => {
+        window.location.reload();
+    }).catch(() => {
+        window.location.reload();
+    });
 }
 
 // Login page theme setup
@@ -72,7 +78,7 @@ function switchVoiceGender(gender) {
     }
 
     fetchWithCSRF('/set-voice-gender/' + gender, {
-        method: 'GET',
+        method: 'POST',
         headers: { 'Cache-Control': 'no-cache' }
     }).then(() => {
         const icon = document.getElementById('voice-gender-icon');
@@ -91,7 +97,7 @@ function switchVoiceGender(gender) {
 function switchTheme(theme) {
     // Do NOT stop TTS playback when switching theme
     fetchWithCSRF('/set-theme/' + theme, {
-        method: 'GET',
+        method: 'POST',
         headers: { 'Cache-Control': 'no-cache' }
     }).then(() => {
         // Update body class

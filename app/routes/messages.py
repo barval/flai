@@ -1,5 +1,4 @@
 # app/routes/messages.py
-import sqlite3
 import json
 import base64
 import time
@@ -9,6 +8,7 @@ import uuid
 from datetime import datetime
 from flask import Blueprint, request, session, jsonify, current_app
 from flask_babel import gettext as _, force_locale
+from app.database import get_db
 from app import db
 from app.utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, resize_image_if_needed, save_uploaded_file, validate_session_ownership
 
@@ -79,6 +79,12 @@ def send_message():
                 file_data = base64.b64encode(file_bytes).decode('utf-8')
                 file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'application/octet-stream'
                 file_name = file.filename
+
+                # Check upload quota
+                from app.utils import check_upload_quota
+                quota_error = check_upload_quota(user_id, file_size_bytes)
+                if quota_error:
+                    return jsonify({'error': quota_error}), 413
         voice_record = request.form.get('voice_record') == 'true'
     else:
         try:
@@ -100,6 +106,7 @@ def send_message():
             request_type = 'audio'
 
     resize_notice = None
+    resize_notice_id = None
     file_path = None
     if request_type == 'image':
         max_width = current_app.config.get('MAX_IMAGE_WIDTH', 3840)
@@ -115,8 +122,9 @@ def send_message():
                 )
                 reduced_msg = _('The image has been reduced.')
                 notice_text = f'⚠️ {resolution_msg}. {reduced_msg}'
-                db.save_message(session_id, 'assistant', notice_text, model_name='system', response_time='0')
+                notice_id = db.save_message(session_id, 'assistant', notice_text, model_name='system', response_time='0')
                 resize_notice = notice_text
+                resize_notice_id = notice_id
             file_data = new_file_data
             file_type = new_file_type
             file_name = new_file_name
@@ -125,7 +133,8 @@ def send_message():
             file_data=file_data,
             filename=file_name,
             session_id=session_id,
-            upload_folder=current_app.config['UPLOAD_FOLDER']
+            upload_folder=current_app.config['UPLOAD_FOLDER'],
+            user_id=user_id
         )
 
     if request_type == 'audio':
@@ -151,10 +160,13 @@ def send_message():
     user_content_json = json.dumps(user_content, ensure_ascii=False)
     user_message_id = db.save_message(session_id, 'user', user_content_json, file_data, file_type, file_name, None)
 
-    with sqlite3.connect(db.CHAT_DB_PATH) as conn:
+    # Mark session as visited when user sends a message (prevents "unread" bug)
+    db.update_session_visit(user_id, session_id)
+
+    with get_db() as conn:
         c = conn.cursor()
-        c.execute('SELECT COUNT(*) FROM messages WHERE session_id = ?', (session_id,))
-        message_count = c.fetchone()[0]
+        c.execute('SELECT COUNT(*) as cnt FROM messages WHERE session_id = %s', (session_id,))
+        message_count = c.fetchone()['cnt']
         is_first_message = message_count == 1
         if is_first_message:
             db.update_session_title(session_id, message_text, file_name)
@@ -184,6 +196,7 @@ def send_message():
         }
         if resize_notice:
             response_data['resize_notice'] = resize_notice
+            response_data['resize_notice_id'] = resize_notice_id
         return jsonify(response_data)
 
     # For text and image requests, queue the main processing task
@@ -218,4 +231,5 @@ def send_message():
     }
     if resize_notice:
         response_data['resize_notice'] = resize_notice
+        response_data['resize_notice_id'] = resize_notice_id
     return jsonify(response_data)

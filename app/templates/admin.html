@@ -8,6 +8,7 @@
     <div class="admin-tabs">
         <button class="admin-tab active" data-tab="users">{{ _('Users') }}</button>
         <button class="admin-tab" data-tab="models">{{ _('Models') }}</button>
+        <button class="admin-tab" data-tab="backups">{{ _('Backups') }}</button>
     </div>
 
     <!-- Users tab content -->
@@ -53,6 +54,78 @@
         <div class="models-container">
             <div id="models-list">
                 <!-- Cards will be populated by JavaScript -->
+            </div>
+        </div>
+        
+        <!-- Chunks Section -->
+        <div class="model-card" id="chunks-card">
+            <h3><span class="module-name">{{ _('Chunks') }}</span> <span id="chunks-status" class="service-status-icon" title=""></span></h3>
+            <div class="chunks-config">
+                <div class="param">
+                    <label>{{ _('Chunk Size (characters)') }}</label>
+                    <input type="number" id="chunk-size" min="100" step="10" value="{{ chunk_size }}">
+                </div>
+                <div class="param">
+                    <label>{{ _('Chunk Overlap (characters)') }}</label>
+                    <input type="number" id="chunk-overlap" min="0" step="10" value="{{ chunk_overlap }}">
+                </div>
+                <div class="param">
+                    <label>{{ _('Chunk Strategy') }}</label>
+                    <select id="chunk-strategy">
+                        <option value="fixed">{{ _('Fixed (by size)') }}</option>
+                        <option value="recursive">{{ _('Structural (by headings)') }}</option>
+                    </select>
+                </div>
+                <div class="param">
+                    <label>{{ _('Number of chunks') }}</label>
+                    <input type="number" id="rag-top-k" min="1" max="{{ max_top_k + 1 }}" value="{{ rag_top_k }}">
+                    <small>&lt; {{ max_top_k + 1 }}</small>
+                </div>
+                <div class="param">
+                    <label>{{ _('Threshold (documents)') }}</label>
+                    <input type="number" id="rag-threshold-default" min="0.1" max="1.0" step="0.1" value="{{ rag_threshold_default }}">
+                </div>
+                <div class="param">
+                    <label>{{ _('Threshold (reasoning)') }}</label>
+                    <input type="number" id="rag-threshold-reasoning" min="0.1" max="1.0" step="0.1" value="{{ rag_threshold_reasoning }}">
+                </div>
+            </div>
+            <div class="model-actions">
+                <button id="save-chunks-btn" class="btn-primary">{{ _('Save') }}</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Backups tab content -->
+    <div id="backups-tab" class="admin-tab-content">
+        <div class="backups-container">
+            <div class="backups-header">
+                <div class="backup-create">
+                    <label for="backup-type">{{ _('Backup type') }}:</label>
+                    <select id="backup-type">
+                        <option value="users">{{ _('Users only') }}</option>
+                        <option value="full">{{ _('Full (users + chats + files)') }}</option>
+                    </select>
+                    <button id="create-backup-btn" class="btn-primary">{{ _('Create backup') }}</button>
+                    <button id="refresh-backups-btn" class="refresh-models-btn" title="{{ _('Refresh backup list') }}">🔄</button>
+                </div>
+            </div>
+            <table id="backups-table" class="backups-table">
+                <thead>
+                    <tr>
+                        <th>{{ _('Filename') }}</th>
+                        <th>{{ _('Type') }}</th>
+                        <th>{{ _('Size') }}</th>
+                        <th>{{ _('Created') }}</th>
+                        <th class="th-actions">{{ _('Actions') }}</th>
+                    </tr>
+                </thead>
+                <tbody id="backups-tbody">
+                    <!-- Data loaded via JS -->
+                </tbody>
+            </table>
+            <div id="no-backups-msg" class="no-backups" style="display:none;">
+                {{ _('No backups found') }}
             </div>
         </div>
     </div>
@@ -171,7 +244,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'documents_db': {{ _('Documents DB')|tojson }},
     'mb': {{ _('MB')|tojson }},
     // New translations for models tab
-    'Refresh models from Ollama': {{ _('Refresh models from Ollama')|tojson }},
+    'Refresh models from llama-server': {{ _('Refresh models from llama-server')|tojson }},
     'Saved': {{ _('Saved')|tojson }},
     // Model tab translations
     'Chat': {{ _('Chat')|tojson }},
@@ -179,6 +252,8 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'Multimodal': {{ _('Multimodal')|tojson }},
     'Embedding': {{ _('Embedding')|tojson }},
     '-- Select model --': {{ _('-- Select model --')|tojson }},
+    'Loading...': {{ _('Loading...')|tojson }},
+    'No llama-server URL provided': {{ _('No llama-server URL provided')|tojson }},
     'Context Length': {{ _('Context Length')|tojson }},
     'Temperature': {{ _('Temperature')|tojson }},
     'Top P': {{ _('Top P')|tojson }},
@@ -187,6 +262,8 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'Parameters:': {{ _('Parameters:')|tojson }},
     'Quantization:': {{ _('Quantization:')|tojson }},
     'Max context length:': {{ _('Max context length:')|tojson }},
+    'from GGUF file': {{ _('from GGUF file')|tojson }},
+    'from known models': {{ _('from known models')|tojson }},
     'Embedding length:': {{ _('Embedding length:')|tojson }},
     // Validation messages
     'Please select a model first.': {{ _('Please select a model first.')|tojson }},
@@ -196,13 +273,60 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'Top P must be between 0.0 and 1.0.': {{ _('Top P must be between 0.0 and 1.0.')|tojson }},
     'Timeout must be between 0 and 1200 seconds.': {{ _('Timeout must be between 0 and 1200 seconds.')|tojson }},
     'Save': {{ _('Save')|tojson }},
+    'Chunks': {{ _('Chunks')|tojson }},
+    'Chunk Size': {{ _('Chunk Size (characters)')|tojson }},
+    'Chunk Overlap': {{ _('Chunk Overlap (characters)')|tojson }},
+    'Chunk Strategy': {{ _('Chunk Strategy')|tojson }},
+    'Fixed (by size)': {{ _('Fixed (by size)')|tojson }},
+    'Structural (by headings)': {{ _('Structural (by headings)')|tojson }},
+    'chunks_saved': {{ _('Chunk configuration saved. Reindexing started.')|tojson }},
+    'chunks_unchanged': {{ _('Chunk configuration saved.')|tojson }},
+    'vram_optimal': {{ _('vram_optimal')|tojson }},
+    'vram_optimal_dynamic': {{ _('vram_optimal_dynamic')|tojson }},
+    'vram_partial_high': {{ _('vram_partial_high')|tojson }},
+    'vram_partial_med': {{ _('vram_partial_med')|tojson }},
+    'vram_partial_low': {{ _('vram_partial_low')|tojson }},
+    'no_gpu_full': {{ _('no_gpu_full')|tojson }},
+    'no_gpu_low': {{ _('no_gpu_low')|tojson }},
     'reindex_started': {{ _('Reindexing all documents with new embedding model started. This may take a while.')|tojson }},
+    'reindex_all_confirm': {{ _('Reindex all documents? This will rebuild all document embeddings.')|tojson }},
     // New translations for per-model URL
     'Local': {{ _('Local')|tojson }},
-    'Please provide Ollama URL first.': {{ _('Please provide Ollama URL first.')|tojson }},
-    // New translations for Ollama status
-    'Ollama available': {{ _('Ollama available')|tojson }},
-    'Ollama unavailable': {{ _('Ollama unavailable')|tojson }}
+    'Please provide llama-server URL first': {{ _('Please provide llama-server URL first')|tojson }},
+    'Please provide llama-server URL first.': {{ _('Please provide llama-server URL first.')|tojson }},
+    'Please provide llama-server URL.': {{ _('Please provide llama-server URL.')|tojson }},
+    // New translations for llama-server status
+    'llama-server available': {{ _('llama-server available')|tojson }},
+    'llama-server unavailable': {{ _('llama-server unavailable')|tojson }},
+    // Backup translations
+    'Backups': {{ _('Backups')|tojson }},
+    'Backup type': {{ _('Backup type')|tojson }},
+    'Users only': {{ _('Users only')|tojson }},
+    'Full (users + chats + files)': {{ _('Full (users + chats + files)')|tojson }},
+    'Create backup': {{ _('Create backup')|tojson }},
+    'restore': {{ _('Restore')|tojson }},
+    'delete': {{ _('Delete')|tojson }},
+    'download': {{ _('Download')|tojson }},
+    'No backups found': {{ _('No backups found')|tojson }},
+    'restore_confirm_users': {{ _('Restore users database from {filename}? Current data will be replaced.')|tojson }},
+    'restore_confirm_full': {{ _('Restore full backup from {filename}? All data (users, chats, documents, files) will be replaced.')|tojson }},
+    'delete_confirm': {{ _('Delete file {filename}? This action cannot be undone.')|tojson }},
+    'backup_created': {{ _('Backup created: {filename}')|tojson }},
+    'backup_restored': {{ _('Data restored from: {filename}')|tojson }},
+    'backup_deleted': {{ _('File deleted: {filename}')|tojson }},
+    'backup_error': {{ _('Error creating backup')|tojson }},
+    'restore_error': {{ _('Error restoring backup')|tojson }},
+    'delete_error': {{ _('Error deleting backup')|tojson }},
+    'refresh': {{ _('Refresh list')|tojson }},
+    'backup_success': {{ _('Success')|tojson }},
+    'creating': {{ _('Creating...')|tojson }},
+    'restoring': {{ _('Restoring...')|tojson }},
+    'Filename': {{ _('Filename')|tojson }},
+    'Type': {{ _('Type')|tojson }},
+    'Size': {{ _('Size')|tojson }},
+    'Created': {{ _('Created')|tojson }},
+    'Actions': {{ _('Actions')|tojson }},
+    'Refresh backup list': {{ _('Refresh backup list')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}
 console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);
@@ -210,4 +334,5 @@ console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);
 </script>
 <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
 <script src="{{ url_for('static', filename='js/admin-models.js') }}"></script>
+<script src="{{ url_for('static', filename='js/admin-backups.js') }}"></script>
 {% endblock %}

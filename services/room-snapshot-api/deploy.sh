@@ -7,20 +7,26 @@
 #   - remote: Deploy on a separate server
 # ==============================================================================
 
-set -e  # Exit immediately if a command exits with a non-zero status
+set -euo pipefail  # Exit on error, undefined vars, pipe failures
 
 # Configuration
-REPO_DIR="room-snapshot-api"
-ENV_EXAMPLE=".env.example"
-ENV_FILE=".env"
+ENV_FILE="room-snapshot-api/.env"
+ENV_EXAMPLE="room-snapshot-api/.env.example"
+SERVICE_DIR="room-snapshot-api"
+MAX_HEALTH_RETRIES=15
+HEALTH_RETRY_DELAY=2
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-# Function to print colored messages
+# ==============================================================================
+# Utility functions
+# ==============================================================================
+
 print_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
 }
@@ -33,114 +39,304 @@ print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Function to generate a secure random SECRET_KEY
+print_step() {
+    echo -e "\n${CYAN}━━━ $1 ━━━${NC}"
+}
+
+# Detect docker compose command (v2 plugin vs standalone)
+detect_compose() {
+    if command -v docker &>/dev/null && docker compose version &>/dev/null; then
+        COMPOSE_CMD="docker compose"
+    elif command -v docker-compose &>/dev/null; then
+        COMPOSE_CMD="docker-compose"
+    else
+        print_error "Neither 'docker compose' nor 'docker-compose' found. Install Docker Compose."
+        exit 1
+    fi
+    print_info "Using: ${COMPOSE_CMD}"
+}
+
+# ==============================================================================
+# .env management
+# ==============================================================================
+
 generate_secret_key() {
     openssl rand -hex 32 2>/dev/null || \
     python3 -c "import secrets; print(secrets.token_hex(32))" || \
     cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 64
 }
 
-# Function to update or add SECRET_KEY in .env file
-update_env_secret() {
-    local secret="$1"
-    local env_file="$2"
+init_env() {
+    local compose_file="$1"
 
-    if grep -q "^SECRET_KEY=" "$env_file"; then
-        sed -i "s|^SECRET_KEY=.*|SECRET_KEY=\"${secret}\"|" "$env_file"
-        print_info "Updated SECRET_KEY in ${env_file}"
-    else
-        echo "SECRET_KEY=\"${secret}\"" >> "$env_file"
-        print_info "Added SECRET_KEY to ${env_file}"
+    if [ ! -f "$ENV_FILE" ]; then
+        print_warn "${ENV_FILE} not found. Creating from ${ENV_EXAMPLE}..."
+        if [ -f "$ENV_EXAMPLE" ]; then
+            cp "$ENV_EXAMPLE" "$ENV_FILE"
+        else
+            touch "$ENV_FILE"
+        fi
+    fi
+
+    # Generate SECRET_KEY if missing or still default
+    local has_secret=false
+    if grep -q "^SECRET_KEY=" "$ENV_FILE" 2>/dev/null; then
+        local current_key
+        current_key=$(grep "^SECRET_KEY=" "$ENV_FILE" | sed 's/^SECRET_KEY=//' | tr -d '"' | tr -d "'")
+        if [ -n "$current_key" ] && [ "$current_key" != "change-me-in-production" ] && [ "$current_key" != "dev-secret-key-change-in-production" ] && [ "$current_key" != "change-this-secret-key-in-production" ]; then
+            has_secret=true
+        fi
+    fi
+
+    if [ "$has_secret" = false ]; then
+        local new_key
+        new_key=$(generate_secret_key)
+        if grep -q "^SECRET_KEY=" "$ENV_FILE" 2>/dev/null; then
+            sed -i "s|^SECRET_KEY=.*|SECRET_KEY=${new_key}|" "$ENV_FILE"
+        else
+            echo "SECRET_KEY=${new_key}" >> "$ENV_FILE"
+        fi
+        print_info "Generated new SECRET_KEY"
     fi
 }
 
-# Function to deploy locally (same server as FLAI)
+# ==============================================================================
+# Health checking
+# ==============================================================================
+
+wait_for_healthy() {
+    local compose_file="$1"
+    local container_name
+    local api_url
+
+    case "$compose_file" in
+        *local*)
+            container_name="flai-room-snapshot-api"
+            api_url="http://localhost:5005/health"
+            ;;
+        *remote*)
+            container_name="room-snapshot-api"
+            api_url="http://localhost:5005/health"
+            ;;
+        *)
+            container_name=""
+            api_url="http://localhost:5005/health"
+            ;;
+    esac
+
+    print_info "Waiting for service to become healthy..."
+
+    for i in $(seq 1 $MAX_HEALTH_RETRIES); do
+        # Check container status
+        local container_state
+        container_state=$($COMPOSE_CMD -f "$compose_file" ps --format '{{.State}}' 2>/dev/null | head -1)
+
+        if [ "$container_state" = "running" ]; then
+            # Container is running, try health endpoint
+            local http_code
+            http_code=$(curl -s -o /dev/null -w '%{http_code}' "$api_url" 2>/dev/null || echo "000")
+
+            if [ "$http_code" = "200" ]; then
+                local health_response
+                health_response=$(curl -s "$api_url" 2>/dev/null)
+                print_info "Service is healthy!"
+                if command -v python3 &>/dev/null; then
+                    echo "$health_response" | python3 -m json.tool 2>/dev/null || echo "$health_response"
+                else
+                    echo "$health_response"
+                fi
+                return 0
+            fi
+            print_info "  Container running, waiting for health endpoint (attempt ${i}/${MAX_HEALTH_RETRIES}, HTTP ${http_code})..."
+        else
+            print_info "  Container starting... (${i}/${MAX_HEALTH_RETRIES})"
+        fi
+
+        sleep $HEALTH_RETRY_DELAY
+    done
+
+    print_error "Service did not become healthy within $((MAX_HEALTH_RETRIES * HEALTH_RETRY_DELAY)) seconds."
+    print_error "Check logs:"
+    print_error "  ${COMPOSE_CMD} -f ${compose_file} logs --tail=50"
+    return 1
+}
+
+# ==============================================================================
+# Deployment functions
+# ==============================================================================
+
 deploy_local() {
-    print_info "Starting LOCAL deployment (same server as FLAI)..."
-    
-    # Check if flai_flai_network exists
-    if ! docker network ls | grep -q "flai_flai_network"; then
-        print_warn "flai_flai_network not found. Creating network..."
+    print_step "Starting LOCAL deployment (same server as FLAI)"
+
+    detect_compose
+    init_env "docker-compose-local.yml"
+
+    # Check/create Docker network
+    if ! docker network ls --format '{{.Name}}' | grep -q "^flai_flai_network$"; then
+        print_warn "Docker network 'flai_flai_network' not found. Creating..."
         docker network create flai_flai_network
-    fi
-    
-    # Build and start services
-    print_info "Building Docker images..."
-    docker-compose -f docker-compose-local.yml build
-    
-    print_info "Starting services in detached mode..."
-    docker-compose -f docker-compose-local.yml up -d
-    
-    # Wait and check service health
-    print_info "Waiting for service to start..."
-    sleep 5
-    
-    if docker-compose -f docker-compose-local.yml ps | grep -q "Up"; then
-        print_info "✅ Service is running!"
-        print_info "API available at: http://localhost:5005"
-        print_info "Health endpoint: http://localhost:5005/health"
-        print_info "Check logs with: docker-compose -f docker-compose-local.yml logs -f"
+        print_info "Network created."
     else
-        print_error "❌ Service may not have started correctly. Check logs."
+        print_info "Docker network 'flai_flai_network' exists."
+    fi
+
+    # Build
+    print_step "Building Docker image"
+    $COMPOSE_CMD -f docker-compose-local.yml build
+
+    # Start
+    print_step "Starting service"
+    $COMPOSE_CMD -f docker-compose-local.yml up -d
+
+    # Health check
+    if wait_for_healthy "docker-compose-local.yml"; then
+        print_step "✅ Deployment successful!"
+        echo ""
+        echo "  API:            http://localhost:5005"
+        echo "  Health:         http://localhost:5005/health"
+        echo "  Rooms list:     http://localhost:5005/rooms"
+        echo "  Logs:           ${COMPOSE_CMD} -f docker-compose-local.yml logs -f"
+        echo ""
+        echo "  Next step: Configure cameras in ${SERVICE_DIR}/config/cameras.conf"
+        echo "  Then restart:  ${COMPOSE_CMD} -f docker-compose-local.yml restart"
+    else
+        print_step "❌ Deployment may have issues"
+        print_info "Recent logs:"
+        $COMPOSE_CMD -f docker-compose-local.yml logs --tail=20 || true
         exit 1
     fi
 }
 
-# Function to deploy remotely (separate server)
 deploy_remote() {
-    print_info "Starting REMOTE deployment (separate server)..."
-    
-    # Build and start services
-    print_info "Building Docker images..."
-    docker-compose -f docker-compose-remote.yml build
-    
-    print_info "Starting services in detached mode..."
-    docker-compose -f docker-compose-remote.yml up -d
-    
-    # Wait and check service health
-    print_info "Waiting for service to start..."
-    sleep 5
-    
-    if docker-compose -f docker-compose-remote.yml ps | grep -q "Up"; then
-        print_info "✅ Service is running!"
-        print_info "API available at: http://<server-ip>:5005"
-        print_info "Health endpoint: http://<server-ip>:5005/health"
-        print_info ""
-        print_info "IMPORTANT: Configure firewall to allow access from FLAI server:"
-        print_info "  sudo ufw allow from <flai-server-ip> to any port 5005"
-        print_info ""
-        print_info "Update FLAI .env with:"
-        print_info "  CAMERA_API_URL=http://<this-server-ip>:5005"
-        print_info ""
-        print_info "Check logs with: docker-compose -f docker-compose-remote.yml logs -f"
+    print_step "Starting REMOTE deployment (separate server)"
+
+    detect_compose
+    init_env "docker-compose-remote.yml"
+
+    # Build
+    print_step "Building Docker image"
+    $COMPOSE_CMD -f docker-compose-remote.yml build
+
+    # Start
+    print_step "Starting service"
+    $COMPOSE_CMD -f docker-compose-remote.yml up -d
+
+    # Health check
+    if wait_for_healthy "docker-compose-remote.yml"; then
+        print_step "✅ Deployment successful!"
+        echo ""
+        echo "  API:            http://<this-server-ip>:5005"
+        echo "  Health:         http://<this-server-ip>:5005/health"
+        echo "  Rooms list:     http://<this-server-ip>:5005/rooms"
+        echo "  Logs:           ${COMPOSE_CMD} -f docker-compose-remote.yml logs -f"
+        echo ""
+        echo "  IMPORTANT:"
+        echo "  1. Open firewall for FLAI server access:"
+        echo "     sudo ufw allow from <flai-server-ip> to any port 5005"
+        echo ""
+        echo "  2. Update FLAI .env:"
+        echo "     CAMERA_API_URL=http://<this-server-ip>:5005"
+        echo ""
+        echo "  3. Configure cameras in ${SERVICE_DIR}/config/cameras.conf"
+        echo "  4. Restart: ${COMPOSE_CMD} -f docker-compose-remote.yml restart"
     else
-        print_error "❌ Service may not have started correctly. Check logs."
+        print_step "❌ Deployment may have issues"
+        print_info "Recent logs:"
+        $COMPOSE_CMD -f docker-compose-remote.yml logs --tail=20 || true
         exit 1
     fi
 }
 
-# Show usage information
+# ==============================================================================
+# Usage
+# ==============================================================================
+
 show_usage() {
-    echo "Usage: $0 {local|remote}"
+    echo "Usage: $0 {local|remote|status|logs|stop|restart}"
     echo ""
-    echo "Deployment options:"
-    echo "  local   - Deploy on the SAME server as FLAI application"
-    echo "  remote  - Deploy on a SEPARATE server"
+    echo "Commands:"
+    echo "  local    Deploy on the SAME server as FLAI application"
+    echo "  remote   Deploy on a SEPARATE server"
+    echo "  status   Show service status"
+    echo "  logs     Show recent logs"
+    echo "  stop     Stop the service"
+    echo "  restart  Restart the service"
     echo ""
     echo "Examples:"
-    echo "  $0 local   # Deploy locally"
-    echo "  $0 remote  # Deploy remotely"
+    echo "  $0 local          # Deploy locally"
+    echo "  $0 remote         # Deploy remotely"
+    echo "  $0 status         # Check status"
+    echo "  $0 logs           # View logs"
     echo ""
 }
 
-# Main execution
+show_status() {
+    detect_compose
+
+    echo ""
+    echo "━━━ Local Mode ━━━"
+    if [ -f "docker-compose-local.yml" ]; then
+        $COMPOSE_CMD -f docker-compose-local.yml ps 2>/dev/null || echo "  Not deployed locally"
+    else
+        echo "  docker-compose-local.yml not found"
+    fi
+
+    echo ""
+    echo "━━━ Remote Mode ━━━"
+    if [ -f "docker-compose-remote.yml" ]; then
+        $COMPOSE_CMD -f docker-compose-remote.yml ps 2>/dev/null || echo "  Not deployed remotely"
+    else
+        echo "  docker-compose-remote.yml not found"
+    fi
+
+    echo ""
+    echo "━━━ Health Check ━━━"
+    local http_code
+    http_code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:5005/health 2>/dev/null || echo "000")
+    if [ "$http_code" = "200" ]; then
+        curl -s http://localhost:5005/health | python3 -m json.tool 2>/dev/null || curl -s http://localhost:5005/health
+    else
+        echo "  Service not reachable on localhost:5005 (HTTP ${http_code})"
+    fi
+    echo ""
+}
+
+show_logs() {
+    detect_compose
+    $COMPOSE_CMD -f docker-compose-local.yml logs --tail=50 -f 2>/dev/null || \
+    $COMPOSE_CMD -f docker-compose-remote.yml logs --tail=50 -f 2>/dev/null || \
+    print_error "No running service found."
+}
+
+stop_service() {
+    detect_compose
+    print_info "Stopping service..."
+    $COMPOSE_CMD -f docker-compose-local.yml down 2>/dev/null || \
+    $COMPOSE_CMD -f docker-compose-remote.yml down 2>/dev/null || true
+    print_info "Service stopped."
+}
+
+restart_service() {
+    detect_compose
+    print_info "Restarting service..."
+    $COMPOSE_CMD -f docker-compose-local.yml restart 2>/dev/null || \
+    $COMPOSE_CMD -f docker-compose-remote.yml restart 2>/dev/null || \
+    print_error "No running service found."
+}
+
+# ==============================================================================
+# Main
+# ==============================================================================
+
 main() {
+    # Script must be run from the room-snapshot-api deployment directory
+    # (where docker-compose-*.yml files live)
     if [ $# -eq 0 ]; then
-        print_error "No deployment mode specified!"
+        print_error "No command specified!"
         show_usage
         exit 1
     fi
-    
+
     case "$1" in
         local)
             deploy_local
@@ -148,19 +344,28 @@ main() {
         remote)
             deploy_remote
             ;;
+        status)
+            show_status
+            ;;
+        logs)
+            show_logs
+            ;;
+        stop)
+            stop_service
+            ;;
+        restart)
+            restart_service
+            ;;
         -h|--help|help)
             show_usage
             exit 0
             ;;
         *)
-            print_error "Unknown deployment mode: $1"
+            print_error "Unknown command: $1"
             show_usage
             exit 1
             ;;
     esac
-    
-    print_info "Deployment completed successfully!"
 }
 
-# Run main function
 main "$@"

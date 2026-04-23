@@ -50,8 +50,13 @@ function stopMessagePolling() {
 }
 
 async function pollNewMessages() {
-    if (window.IS_RELOADING || !currentSessionId) return;
-    
+    if (window.IS_RELOADING || window.isSwitchingSession || !currentSessionId) return;
+
+    // Skip polling if current session is no longer in sessionsData (likely deleted on server)
+    if (!sessionsData[currentSessionId]) {
+        return;
+    }
+
     // FIX: Don't poll if there are active pending requests
     // This prevents loading messages from DB while waiting for response
     const hasActiveRequests = Object.keys(pendingRequests).length > 0;
@@ -72,7 +77,10 @@ async function pollNewMessages() {
     try {
         const response = await fetch(`/api/sessions/${currentSessionId}/messages?since=${encodeURIComponent(lastMessageTimestamp)}`);
         if (!response.ok) {
-            console.error('Failed to fetch new messages:', response.status);
+            // Silently handle 404 (session deleted or inaccessible) — don't spam console
+            if (response.status !== 404) {
+                console.error('Failed to fetch new messages:', response.status);
+            }
             return;
         }
         const newMessages = await response.json();
@@ -115,11 +123,18 @@ async function pollNewMessages() {
                         responseTime = parseFloat(msg.response_time);
                     }
                 }
-                
+
                 let mmTime = msg.mm_time;
                 let genTime = msg.gen_time;
                 let mmModel = msg.mm_model;
                 let genModel = msg.gen_model;
+
+                // Update sessionsData count to keep sidebar in sync with DOM
+                // This prevents the background sync loop from flagging this session as "Unread" later
+                if (sessionsData[currentSessionId]) {
+                    sessionsData[currentSessionId].message_count = (sessionsData[currentSessionId].message_count || 0) + 1;
+                    sessionsData[currentSessionId].updated_at = msg.timestamp || new Date().toISOString();
+                }
                 
                 if (mmTime && genTime) {
                     responseTime = {
@@ -154,23 +169,101 @@ async function pollNewMessages() {
     }
 }
 
+let activePolls = {}; // requestId -> { intervalId, abortController }: prevents zombie polling after session switch
+
 function startResultPolling(requestId) {
     if (window.IS_RELOADING) return;
+
+    // Clear existing poll if any (e.g. user clicked send twice)
+    if (activePolls[requestId]) {
+        // Abort any in-flight fetch request
+        if (activePolls[requestId].abortController) {
+            activePolls[requestId].abortController.abort();
+        }
+        clearInterval(activePolls[requestId].intervalId);
+    }
+
     console.debug('startResultPolling: Start polling for request:', requestId);
 
+    // Create an AbortController to cancel in-flight fetch requests
+    const abortController = new AbortController();
     let pollCount = 0;
     const maxPolls = 240; // 12 minutes at 3s interval (was 120 = 6 min)
+    let isCancelled = false; // Flag to silently drop responses after cancellation
+
     const pollInterval = setInterval(async () => {
-        if (window.IS_RELOADING) {
+        // If polling was cancelled externally (e.g. session switch), exit immediately
+        if (window.IS_RELOADING || isCancelled || !activePolls[requestId]) {
             clearInterval(pollInterval);
+            delete activePolls[requestId];
             return;
         }
 
         pollCount++;
 
+        // Store reference for external cancellation
+        activePolls[requestId] = {
+            intervalId: pollInterval,
+            abortController,
+            cancel: () => { isCancelled = true; }
+        };
+
         try {
-            const response = await fetch('/api/queue/result/' + requestId);
+            const response = await fetch('/api/queue/result/' + requestId, {
+                signal: abortController.signal
+            });
+
+            // Check if response is JSON (session may have expired)
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                console.warn('Poll returned non-JSON — session likely expired');
+                clearInterval(pollInterval);
+                window.location.href = '/login';
+                return;
+            }
+
+            // Handle 404 (task expired or not found) — just stop polling silently
+            if (response.status === 404) {
+                clearInterval(pollInterval);
+                delete activePolls[requestId];
+                if (isCancelled) return; // Silently drop if already cancelled
+                // Clean up pending request and session queue state
+                const pendingSessionId = pendingRequests[requestId]?.sessionId;
+                delete pendingRequests[requestId];
+
+                // Only update status if this session is still tracked
+                // (if user already switched, don't interfere with new session's status)
+                if (pendingSessionId && sessionQueueInfo[pendingSessionId]) {
+                    sessionQueueInfo[pendingSessionId] = {
+                        processing: false,
+                        queued: 0,
+                        queue_position: 0,
+                        has_transcribing: false
+                    };
+                    // Only refresh status if user is still on this session
+                    if (pendingSessionId === currentSessionId) {
+                        window.updateStatusCounter();
+                        fetchQueueStatus();
+                    }
+                }
+                return;
+            }
+
             const data = await response.json();
+
+            // Handle session expiry
+            if (data.session_expired) {
+                console.warn('Session expired during polling — redirecting to login');
+                clearInterval(pollInterval);
+                window.location.href = '/login';
+                return;
+            }
+
+            if (data.status === 'error' && data.error) {
+                clearInterval(pollInterval);
+                if (window.IS_RELOADING) return;
+                return;
+            }
 
             if (window.IS_RELOADING) {
                 clearInterval(pollInterval);
@@ -181,20 +274,50 @@ function startResultPolling(requestId) {
                 clearInterval(pollInterval);
 
                 if (data.result) {
+                    console.debug('[POLL] Received result for request:', requestId, 'result keys:', Object.keys(data.result));
                     const resultSessionId = data.result.session_id || pendingRequests[requestId]?.sessionId;
+                    const expectedSessionId = pendingRequests[requestId]?.sessionId;
+
+                    // Safety check: if result's session_id doesn't match what we expected,
+                    // this might be a stale result from a different session — ignore it
+                    if (resultSessionId && expectedSessionId && resultSessionId !== expectedSessionId) {
+                        console.debug('Result session_id mismatch: expected=' + expectedSessionId + ', got=' + resultSessionId + ' — ignoring');
+                        delete pendingRequests[requestId];
+                        return;
+                    }
+
+                    // Update sessionsData count to keep sidebar in sync with DOM
+                    // This prevents the background sync loop from flagging this session as "Unread" later
+                    if (resultSessionId && sessionsData[resultSessionId]) {
+                        sessionsData[resultSessionId].message_count = (sessionsData[resultSessionId].message_count || 0) + 1;
+                        sessionsData[resultSessionId].updated_at = new Date().toISOString();
+                        // Explicitly clear unread indicator if it was set by a race condition
+                        delete newMessageIndicators[resultSessionId];
+                    }
 
                     // Handle transcription result that may spawn a new processing request
-                    if (data.result.transcribed_text) {
+                    if (data.result.transcribed_text !== undefined && data.result.transcribed_text !== null) {
                         const resultSessionId = data.result.session_id || pendingRequests[requestId]?.sessionId;
                         if (resultSessionId === currentSessionId) {
                             // Check for duplicate by message_id
                             if (data.result.transcribed_message_id && displayedMessageIds.has(data.result.transcribed_message_id)) {
                                 console.debug('Skipping duplicate transcribed message by ID', data.result.transcribed_message_id);
                             } else {
+                                const transcribedText = data.result.transcribed_text || '(empty transcription)';
                                 // Display transcribed text message
-                                originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + data.result.transcribed_text, null, null, null, null,
+                                const msgElement = originalDisplayMessage('assistant', '🎤 ' + t('transcribed') + ': ' + transcribedText, null, null, null, null,
                                     data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'whisper',
                                     null, null, null, null, data.result.transcribed_message_id);
+                                // Explicitly add to displayedMessageIds to prevent sync duplicates
+                                if (data.result.transcribed_message_id) {
+                                    displayedMessageIds.add(data.result.transcribed_message_id);
+                                }
+                                console.debug('[TRANSCRIBE] Displayed transcribed message:', data.result.transcribed_message_id, 'text length:', transcribedText.length);
+                                // Update session metadata
+                                if (sessionsData[resultSessionId]) {
+                                    sessionsData[resultSessionId].message_count = (sessionsData[resultSessionId].message_count || 0) + 1;
+                                    sessionsData[resultSessionId].updated_at = new Date().toISOString();
+                                }
                             }
                             // If there is a new request_id for processing, start polling it
                             if (data.result.request_id) {
@@ -264,23 +387,37 @@ function startResultPolling(requestId) {
                     }
                     
                     if (data.result.error) {
-                        if (resultSessionId === currentSessionId) {
+                        if (data.result.message_id && displayedMessageIds.has(data.result.message_id)) {
+                            console.debug('Skipping duplicate error message by ID', data.result.message_id);
+                        } else if (resultSessionId === currentSessionId) {
                             originalDisplayMessage('assistant', '⚠️ ' + data.result.error, null, null, null, null,
                                 data.result.assistant_timestamp || new Date().toISOString(), data.result.response_time, 'system',
-                                null, null, null, null, null);
+                                null, null, null, null, data.result.message_id);
+                            if (data.result.message_id) {
+                                displayedMessageIds.add(data.result.message_id);
+                            }
                         }
                         if (resultSessionId) {
                             setLocalTranscribing(resultSessionId, false);
                         }
                     } else if (data.result.messages) {
-                        for (const msg of data.result.messages) {
-                            if (msg.message_id && displayedMessageIds.has(msg.message_id)) {
-                                console.debug('Skipping duplicate camera message by ID', msg.message_id);
-                                continue;
+                        // Camera tasks return multiple messages — only display in the originating session
+                        const cameraSessionId = data.result.session_id || resultSessionId;
+                        console.debug('Camera result: resultSessionId=' + resultSessionId + ', cameraSessionId=' + cameraSessionId + ', currentSessionId=' + currentSessionId);
+                        if (cameraSessionId === currentSessionId) {
+                            for (const msg of data.result.messages) {
+                                if (msg.message_id && displayedMessageIds.has(msg.message_id)) {
+                                    console.debug('Skipping duplicate camera message by ID', msg.message_id);
+                                    continue;
+                                }
+                                originalDisplayMessage('assistant', msg.response, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
+                                    msg.assistant_timestamp, msg.response_time, msg.model_used,
+                                    null, null, null, null, msg.message_id);
                             }
-                            originalDisplayMessage('assistant', msg.response, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
-                                msg.assistant_timestamp, msg.response_time, msg.model_used,
-                                null, null, null, null, msg.message_id);
+                            updateLastVisit(currentSessionId);
+                        } else if (cameraSessionId) {
+                            // Camera result arrived but user is in a different session
+                            setNewMessageIndicator(cameraSessionId, true);
                         }
                         if (resultSessionId) {
                             setLocalTranscribing(resultSessionId, false);
@@ -533,7 +670,7 @@ async function sendMessage() {
 
         input.value = '';
         attachedFile = null;
-        document.getElementById('file-preview-container').style.display = 'none';
+        document.getElementById('file-preview-container').classList.add('hidden');
         document.getElementById('file-input').value = '';
     };
     
@@ -581,7 +718,14 @@ async function sendMessage() {
                     console.error('Server returned non-JSON response:', response.status);
                     const text = await response.text();
                     console.error('Response content:', text.substring(0, 200));
-                    originalDisplayMessage('assistant', 'Ошибка сервера: получен некорректный ответ', null, null, null, null,
+
+                    // Check if this is a session/auth issue (HTML login page returned)
+                    if (text.includes('login') || text.includes('Login') || response.status === 401 || response.status === 403) {
+                        window.location.href = '/login';
+                        return;
+                    }
+
+                    originalDisplayMessage('assistant', t('server_error_invalid_response'), null, null, null, null,
                         new Date().toISOString(), 0, 'system');
                     unlockSendButton();
                     return;
@@ -589,13 +733,22 @@ async function sendMessage() {
 
                 const data = await response.json();
 
+                // Handle session expiry
+                if (data.session_expired) {
+                    console.warn('Session expired — redirecting to login');
+                    window.location.href = '/login';
+                    return;
+                }
+
                 if (window.IS_RELOADING) return;
                 
                 console.debug('Server response:', data);
                 
                 if (data.resize_notice) {
+                    const noticeMsgId = data.resize_notice_id || ('resize-' + timestamp);
                     originalDisplayMessage('assistant', data.resize_notice, null, null, null, null,
-                        new Date().toISOString(), 0, 'system');
+                        new Date().toISOString(), 0, 'system', null, null, null, null, noticeMsgId);
+                    if (data.resize_notice_id) displayedMessageIds.add(data.resize_notice_id);
                 }
                 
                 // FIX: Update messageId immediately when received from server
@@ -771,18 +924,6 @@ async function sendMessage() {
 window.loadMessages = function(sessionId) {
     console.debug('loadMessages called for session', sessionId);
 
-    // Only show "loading" if switching to a DIFFERENT session
-    const isSessionSwitch = sessionId !== currentSessionId;
-    
-    if (isSessionSwitch) {
-        stopMessagePolling();
-
-        const statusCounter = document.getElementById('status-counter');
-        if (statusCounter) {
-            statusCounter.innerHTML = '⏳ ' + t('loading');
-        }
-    }
-
     return originalLoadMessages(sessionId)
         .then(() => {
             console.debug('loadMessages completed for session', sessionId);
@@ -791,17 +932,10 @@ window.loadMessages = function(sessionId) {
 
             setTimeout(addCopyButtonsToAllCodeBlocks, 100);
             startMessagePolling();
-
-            if (isSessionSwitch && statusCounter) {
-                window.updateStatusCounter();
-            }
         })
         .catch(err => {
             console.error('Error in loadMessages:', err);
-            if (isSessionSwitch && statusCounter) {
-                statusCounter.innerHTML = '❌';
-                setTimeout(() => window.updateStatusCounter(), 2000);
-            }
+            throw err;
         });
 };
 
@@ -832,17 +966,27 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
 
+    // Show loading indicator immediately
+    const statusCounter = document.getElementById('status-counter');
+    if (statusCounter) {
+        statusCounter.innerHTML = '⏳ ' + t('loading');
+    }
+    showMessagesLoadingIndicator();
+
     loadSessionsFromServer().then(() => {
-        originalLoadMessages(currentSessionId).catch(err => {
+        // Use the wrapped loadMessages to ensure proper loading indicator handling
+        window.loadMessages(currentSessionId).catch(err => {
             console.error('Error loading messages after language switch:', err);
         }).finally(() => {
+            hideMessagesLoadingIndicator();
             startMessagePolling();
             // Restore TTS button state if TTS is playing
             if (typeof restoreTTSButtonState === 'function') {
                 restoreTTSButtonState();
             }
+            // Start sync interval AFTER initial load to prevent race conditions
+            startSyncInterval();
         });
-        startSyncInterval();
     });
     
     if (typeof initDocumentsView === 'function') {
@@ -875,14 +1019,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const fileSize = formatFileSize(attachedFile.size);
             const sizeSpan = document.getElementById('file-preview-size');
             if (sizeSpan) sizeSpan.textContent = ' (' + fileSize + ')';
-            preview.style.display = 'block';
+            // FIX: Remove 'hidden' class instead of setting display (CSS has !important)
+            preview.classList.remove('hidden');
         }
     });
     
     document.getElementById('remove-file-button').addEventListener('click', function() {
         attachedFile = null;
         document.getElementById('file-input').value = '';
-        document.getElementById('file-preview-container').style.display = 'none';
+        // FIX: Add 'hidden' class back instead of setting display
+        document.getElementById('file-preview-container').classList.add('hidden');
     });
     
     document.getElementById('save-chat-button').addEventListener('click', saveChatAsHTML);

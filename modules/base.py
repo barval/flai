@@ -7,16 +7,16 @@ from flask_babel import gettext as _
 from flask_babel import force_locale
 from app.utils import format_prompt, estimate_tokens, build_context_prompt, validate_prompt_size, SAFETY_MARGIN, TEMPLATE_OVERHEAD
 from app.db import get_session_text_history
-from app.ollama_client import OllamaClient
+from app.llamacpp_client import LlamaCppClient
 
 
 class BaseModule:
     """Base module for chat and reasoning model interactions."""
-    
+
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
-        self.ollama = OllamaClient(app)
-        self.available = self.ollama.available
+        self.llamacpp = LlamaCppClient(app)
+        self.available = self.llamacpp.available
         self.token_chars = 3
         self.context_history_percent = 75
         self.safety_margin = SAFETY_MARGIN
@@ -33,8 +33,8 @@ class BaseModule:
     def init_app(self, app):
         """Initialize module with Flask app."""
         self.app = app
-        self.ollama.init_app(app)
-        self.available = self.ollama.available
+        self.llamacpp.init_app(app)
+        self.available = self.llamacpp.available
         self.token_chars = app.config.get('TOKEN_CHARS', 3)
         self.context_history_percent = app.config.get('CONTEXT_HISTORY_PERCENT', 75)
         self.safety_margin = app.config.get('CONTEXT_SAFETY_MARGIN', SAFETY_MARGIN)
@@ -42,16 +42,17 @@ class BaseModule:
         if self.available:
             self.logger.info("BaseModule initialized and available.")
         else:
-            self.logger.warning("BaseModule initialized, but Ollama is unavailable")
+            self.logger.warning("BaseModule initialized, but llama-server is unavailable")
     
     def _get_model_config(self, model_type: str = 'chat') -> Optional[Dict[str, Any]]:
         """Retrieve model configuration from database."""
-        return self.ollama._get_model_config(model_type)
-    
-    def call_ollama(self, messages: List[Dict[str, Any]], model_type: str = 'chat',
-                    stream: bool = False, lang: str = 'ru') -> Union[str, Dict[str, Any]]:
-        """Call Ollama with configuration."""
-        return self.ollama.call(messages, model_type, stream, lang)
+        from app.model_config import get_model_config
+        return get_model_config(model_type)
+
+    def call_llamacpp(self, messages: List[Dict[str, Any]], model_type: str = 'chat',
+                      lang: str = 'ru') -> Union[str, Dict[str, Any]]:
+        """Call llama-server with configuration."""
+        return self.llamacpp.call(messages, model_type, False, lang)
     
     # --- Context handling methods ---
     def _estimate_tokens(self, text: str, model_type: str = 'chat', lang: str = 'ru') -> int:
@@ -101,7 +102,7 @@ class BaseModule:
     
     def _validate_final_prompt(self, prompt: str, model_type: str = 'chat', lang: str = 'ru') -> Tuple[bool, str]:
         """
-        Validate final prompt before sending to Ollama.
+        Validate final prompt before sending to llama-server.
         Returns (is_valid, error_message or prompt)
         """
         model_config = self._get_model_config(model_type)
@@ -144,7 +145,7 @@ class BaseModule:
         ]
         
         self.logger.info(f"Sending request to router: {message_text[:100]}...")
-        router_response = self.call_ollama(router_messages, model_type='chat', lang=lang)
+        router_response = self.call_llamacpp(router_messages, model_type='chat', lang=lang)
         self.logger.info(f"Router response: {router_response}")
         
         if router_response is None:
@@ -203,7 +204,7 @@ class BaseModule:
             return "⚠️ " + result
         
         self.logger.info(f"Sending request to reasoning model: {query[:100]}...")
-        response = self.call_ollama([{'role': 'user', 'content': result}],
-                                    model_type='reasoning', lang=lang)
+        response = self.call_llamacpp([{'role': 'user', 'content': result}],
+                                      model_type='reasoning', lang=lang)
         self.logger.info(f"Reasoning model response: {response[:100]}...")
         return response

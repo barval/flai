@@ -3,26 +3,30 @@ import logging
 import requests
 import os
 import uuid
+import time
 from typing import List, Dict, Optional, Tuple, Any
 from flask import current_app
 from flask_babel import gettext as _
 from flask_babel import force_locale
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
-from app.utils import extract_text_from_file, chunk_text, get_current_time_in_timezone, format_prompt, estimate_tokens, build_context_prompt
+from app.utils import extract_text_from_file, chunk_text, chunk_text_recursive, get_current_time_in_timezone, format_prompt, estimate_tokens, build_context_prompt
 from app.db import get_session_text_history, update_document_index_status, get_document
 from app.model_config import get_model_config
+from app.llamacpp_client import LlamaCppClient
 
 class RagModule:
-    """Module for Retrieval-Augmented Generation using Qdrant and Ollama embeddings."""
+    """Module for Retrieval-Augmented Generation using Qdrant and llama.cpp embeddings."""
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
         self.qdrant_client = None
+        self.llamacpp = LlamaCppClient()
         self.available = False
         self.collection_name_prefix = "user_"
         self.chunk_size = 500
         self.chunk_overlap = 50
-        self.top_k = 10
+        self.chunk_strategy = 'fixed'
+        self.top_k = 20
         if app:
             self.init_app(app)
 
@@ -30,11 +34,26 @@ class RagModule:
         """Initialize module with Flask app configuration."""
         qdrant_url = app.config.get('QDRANT_URL')
         qdrant_api_key = app.config.get('QDRANT_API_KEY')
-        self.chunk_size = app.config.get('RAG_CHUNK_SIZE', 500)
-        self.chunk_overlap = app.config.get('RAG_CHUNK_OVERLAP', 50)
-        self.top_k = app.config.get('RAG_TOP_K', 10)
-        # Log the loaded top_k value for debugging
-        app.logger.info(f"RagModule: loaded RAG_TOP_K = {self.top_k} from config")
+        
+        # Try to load from DB first, fallback to config
+        from app.model_config import get_model_config
+        chunks_config = get_model_config('chunks')
+        
+        if chunks_config:
+            self.chunk_size = chunks_config.get('chunk_size', 500)
+            self.chunk_overlap = chunks_config.get('chunk_overlap', 50)
+            self.chunk_strategy = chunks_config.get('chunk_strategy', 'fixed')
+            self.top_k = chunks_config.get('top_k', 80)
+        else:
+            self.chunk_size = app.config.get('RAG_CHUNK_SIZE', 500)
+            self.chunk_overlap = app.config.get('RAG_CHUNK_OVERLAP', 50)
+            self.chunk_strategy = app.config.get('RAG_CHUNK_STRATEGY', 'fixed')
+            self.top_k = app.config.get('RAG_TOP_K', 80)
+        
+        app.logger.info(f"RagModule: loaded chunk_size = {self.chunk_size}")
+        app.logger.info(f"RagModule: loaded chunk_overlap = {self.chunk_overlap}")
+        app.logger.info(f"RagModule: loaded chunk_strategy = {self.chunk_strategy}")
+        app.logger.info(f"RagModule: loaded top_k = {self.top_k}")
 
         if not qdrant_url:
             app.logger.warning("QDRANT_URL not set, RAG module disabled")
@@ -56,9 +75,9 @@ class RagModule:
         return config.get('model_name') if config else None
 
     def _get_embedding_url(self) -> Optional[str]:
-        """Retrieve Ollama URL for embedding from database."""
+        """Retrieve service URL for embedding from database."""
         config = get_model_config('embedding')
-        return config.get('ollama_url') if config else None
+        return config.get('service_url') if config else None
 
     def _get_collection_name(self, user_id: str) -> str:
         """Return collection name for a specific user."""
@@ -126,8 +145,11 @@ class RagModule:
             return False, "Failed to extract text from document"
         self.logger.info(f"index_document: extracted {len(text)} characters from {file_path}")
 
-        # 2. Chunk text
-        chunks = chunk_text(text, self.chunk_size, self.chunk_overlap)
+        # 2. Chunk text based on strategy
+        if self.chunk_strategy == 'recursive':
+            chunks = chunk_text_recursive(text, self.chunk_size, self.chunk_overlap)
+        else:
+            chunks = chunk_text(text, self.chunk_size, self.chunk_overlap)
         if not chunks:
             self.logger.error(f"index_document: no text chunks generated from {file_path}")
             return False, "No text chunks generated"
@@ -207,13 +229,19 @@ class RagModule:
         """
         Search for relevant chunks based on query.
         Returns tuple of (chunk_dicts with metadata, scores).
+        
+        Simplified: single direct query to Qdrant.
         """
         if not self.available:
             return [], []
         top_k = top_k or self.top_k
+        
+        # Get embedding directly from query
         query_emb = self._get_embedding(query)
         if query_emb is None:
+            self.logger.warning(f"Failed to get embedding for query: {query[:50]}...")
             return [], []
+        
         collection_name = self._get_collection_name(user_id)
         try:
             search_result = self.qdrant_client.search(
@@ -224,34 +252,33 @@ class RagModule:
                 ),
                 limit=top_k
             )
-            # Return full payload with metadata, not just text
-            chunks = [hit.payload for hit in search_result]
-            scores = [hit.score for hit in search_result]
-            self.logger.info(f"search: found {len(chunks)} chunks for query '{query[:50]}...' (top_k={top_k})")
-            return chunks, scores
         except Exception as e:
-            self.logger.error(f"Qdrant search error: {e}")
+            self.logger.warning(f"Search failed for query '{query[:30]}...': {e}")
             return [], []
+        
+        chunks = [hit.payload for hit in search_result]
+        scores = [hit.score for hit in search_result]
+        
+        self.logger.info(f"search: found {len(chunks)} chunks for query '{query[:50]}...' (top_k={top_k})")
+        
+        for i, chunk in enumerate(chunks):
+            text_preview = chunk.get('text', '')[:100].replace('\n', ' ')
+            self.logger.info(f"  chunk[{i}]: doc_id={chunk.get('doc_id', '?')}, score={scores[i]:.4f}, text='{text_preview}...'")
 
-    # --- Helper: token estimation (using centralized function) ---
+        return chunks, scores
+
     def _estimate_tokens(self, text: str) -> int:
         """Estimate tokens using configured characters per token."""
         token_chars = current_app.config.get('TOKEN_CHARS', 3)
         return estimate_tokens(text, token_chars)
 
-    # --- Helper: build history string using centralized function ---
     def _build_context_prompt(self, history: List[Dict[str, str]], lang: str = 'ru') -> str:
         """Format conversation history into a string."""
         return build_context_prompt(history, lang)
 
     def generate_answer(self, user_id: str, query: str, session_id: str, lang: str = 'ru',
                         threshold: float = None) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-        """
-        Full RAG answer: search + call reasoning model with context, history, and role information.
-        If threshold is provided, only chunks with score >= threshold are used.
-        Returns (answer, error_message, model_name).
-        Returns (None, None, None) if no relevant documents found.
-        """
+        """Full RAG answer: search + call reasoning model with context."""
         # 1. Retrieve relevant chunks
         chunks, scores = self.search(user_id, query)
         if not chunks:
@@ -266,9 +293,10 @@ class RagModule:
                 preview = text[:200].replace('\n', ' ').strip() + '...' if len(text) > 200 else text.replace('\n', ' ')
                 self.logger.debug(f"RAG chunk[{i}] score={score:.4f} preview='{preview}'")
 
-        # Determine threshold
+        # Determine threshold for cosine similarity filtering
+        # Default to RAG_RELEVANCE_THRESHOLD_REASONING (0.2) if not specified
         if threshold is None:
-            threshold = current_app.config.get('RAG_RELEVANCE_THRESHOLD_DEFAULT', 0.5)
+            threshold = current_app.config.get('RAG_RELEVANCE_THRESHOLD_REASONING', 0.2)
 
         # Filter chunks by score
         filtered = [(chunk, score) for chunk, score in zip(chunks, scores) if score >= threshold]
@@ -313,15 +341,57 @@ class RagModule:
             )
 
         # 3. Get conversation history (with token limit)
-        # Estimate token count for context and query
+        # Estimate actual token counts for query and context
         query_tokens = self._estimate_tokens(query)
         context_tokens = self._estimate_tokens(context)
-        template_overhead = 800  # rough estimate for template text + instructions
-        # Get reasoning model config from DB
+
+        # Get reasoning model config
         reasoning_config = get_model_config('reasoning')
         if not reasoning_config:
             return None, "Reasoning model configuration missing", None
         max_context_tokens = reasoning_config.get('context_length', 40960)
+        self.logger.info(f"RAG: reasoning context_length from config: {max_context_tokens}")
+
+        # Dynamic context limit: percentage of model's context window
+        rag_context_percent = current_app.config.get('RAG_CONTEXT_PERCENT', 30)
+        MAX_CONTEXT_TOKENS = int(max_context_tokens * rag_context_percent / 100.0)
+
+        # Measure actual template overhead (already filled with variables)
+        # We know: total_prompt = template + context + query + history
+        # So: template_tokens = total_tokens_of_filled_template - context - query
+        # But we don't have the filled template yet. Instead, estimate from loaded template.
+        from app.utils import load_prompt_template
+        template_text = load_prompt_template('rag.template', lang) or ''
+        template_overhead = self._estimate_tokens(template_text)
+
+        if context_tokens > MAX_CONTEXT_TOKENS:
+            # Trim chunks from the end (lowest relevance) until under limit
+            original_count = len(filtered)
+            while context_tokens > MAX_CONTEXT_TOKENS and len(filtered) > 1:
+                filtered.pop()  # Remove lowest-relevance chunk
+                # Rebuild context
+                with current_app.app_context():
+                    with force_locale(lang):
+                        source_label = _('Source')
+                context_parts = []
+                for chunk_data, score in filtered:
+                    filename = chunk_data.get('filename', 'unknown') if isinstance(chunk_data, dict) else 'unknown'
+                    text = chunk_data.get('text', chunk_data) if isinstance(chunk_data, dict) else chunk_data
+                    context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
+                context = "\n\n".join(context_parts)
+                context_tokens = self._estimate_tokens(context)
+            self.logger.info(
+                f"RAG: trimmed context from {original_count} to {len(filtered)} chunks "
+                f"({context_tokens}/{MAX_CONTEXT_TOKENS} tokens, "
+                f"{rag_context_percent}% of {max_context_tokens}) to fit within model context"
+            )
+
+        # Calculate actual template overhead from the raw template file
+        # (placeholders like {context}, {user_query} contribute 0 tokens,
+        #  so we measure the template as-is)
+        template_overhead = self._estimate_tokens(template_text)
+
+        # Calculate available space for history
         history_percent = int(current_app.config.get('CONTEXT_HISTORY_PERCENT', 75))
         available_tokens = int(max_context_tokens * (history_percent / 100.0))
         remaining_for_history = available_tokens - query_tokens - context_tokens - template_overhead
@@ -350,7 +420,7 @@ class RagModule:
         reasoning_module = current_app.modules.get('base')
         if not reasoning_module:
             return None, "Reasoning module unavailable", None
-        response = reasoning_module.call_ollama(
+        response = reasoning_module.call_llamacpp(
             [{'role': 'user', 'content': prompt}],
             model_type='reasoning',
             lang=lang
@@ -359,93 +429,72 @@ class RagModule:
         return response, None, model_name
 
     def _get_embedding(self, text: str) -> Optional[List[float]]:
-        """Get embedding vector from Ollama using configured embedding model."""
-        embedding_config = get_model_config('embedding')
-        if not embedding_config:
-            self.logger.error("No embedding model configuration found")
-            return None
-        embedding_model = embedding_config.get('model_name')
-        if not embedding_model:
-            self.logger.error("No embedding model configured in database")
-            return None
-        ollama_url = embedding_config.get('ollama_url')
-        if not ollama_url:
-            ollama_url = 'http://ollama:11434'
-            self.logger.warning(f"No ollama_url for embedding, using default {ollama_url}")
-        try:
-            response = requests.post(
-                f"{ollama_url}/api/embed",
-                json={"model": embedding_model, "input": [text]},
-                timeout=30
-            )
-            if response.status_code == 200:
-                result = response.json()
-                if 'embeddings' in result and len(result['embeddings']) > 0:
-                    emb = result['embeddings'][0]
-                    self.logger.debug(f"_get_embedding: got embedding of length {len(emb)}")
-                    return emb
-                else:
-                    self.logger.warning(f"_get_embedding: unexpected response format")
-                    return None
-            else:
-                self.logger.error(f"Ollama embeddings API returned status {response.status_code}")
-                return None
-        except Exception as e:
-            self.logger.error(f"Error getting embedding: {e}")
-            return None
+        """Get embedding vector from llama-server via OpenAI-compatible /v1/embeddings."""
+        embeddings = self.llamacpp.get_embeddings([text], model_type='embedding')
+        if embeddings and len(embeddings) > 0 and embeddings[0] is not None:
+            emb = embeddings[0]
+            self.logger.debug(f"_get_embedding: got embedding of length {len(emb)}")
+            return emb
+        self.logger.warning("_get_embedding: no embedding returned")
+        return None
 
     def _get_batch_embeddings(self, texts: List[str], batch_size: int = 10) -> List[Optional[List[float]]]:
-        """Get embeddings for multiple texts using batched API calls.
-        This is more efficient than calling _get_embedding for each text.
+        """Get embeddings for multiple texts using llama.cpp batch API.
         Returns list of embeddings (None for failed requests).
         """
-        embedding_config = get_model_config('embedding')
-        if not embedding_config:
-            self.logger.error("No embedding model configuration found")
+        embeddings = self.llamacpp.get_embeddings(texts, model_type='embedding')
+        if embeddings is None:
+            self.logger.error("Failed to get embeddings from llama-server")
             return [None] * len(texts)
-        
-        embedding_model = embedding_config.get('model_name')
-        if not embedding_model:
-            self.logger.error("No embedding model configured in database")
-            return [None] * len(texts)
-        
-        ollama_url = embedding_config.get('ollama_url')
-        if not ollama_url:
-            ollama_url = 'http://ollama:11434'
-        
-        all_embeddings = []
 
-        # Process in batches using the newer /api/embed endpoint (supports multiple inputs)
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i:i + batch_size]
-            try:
-                response = requests.post(
-                    f"{ollama_url}/api/embed",
-                    json={"model": embedding_model, "input": batch},
-                    timeout=120
-                )
-                if response.status_code == 200:
-                    result = response.json()
-                    # New API returns {"embeddings": [[...], [...], ...]}
-                    if 'embeddings' in result:
-                        emb_list = result['embeddings']
-                        # Validate each embedding
-                        valid_embeddings = []
-                        for emb in emb_list:
-                            if emb and len(emb) > 0:
-                                valid_embeddings.append(emb)
-                            else:
-                                self.logger.warning("Empty embedding in batch response")
-                                valid_embeddings.append(None)
-                        all_embeddings.extend(valid_embeddings)
-                    else:
-                        self.logger.warning(f"Unexpected embedding response format: {list(result.keys())}")
-                        all_embeddings.extend([None] * len(batch))
-                else:
-                    self.logger.error(f"Ollama embeddings API returned status {response.status_code}: {response.text[:200]}")
-                    all_embeddings.extend([None] * len(batch))
-            except Exception as e:
-                self.logger.error(f"Error getting batch embeddings: {e}")
-                all_embeddings.extend([None] * len(batch))
+        # Ensure we have the same number of embeddings as input texts
+        if len(embeddings) != len(texts):
+            self.logger.warning(
+                f"Embedding count mismatch: expected {len(texts)}, got {len(embeddings)}"
+            )
+            # Pad with None if needed
+            while len(embeddings) < len(texts):
+                embeddings.append(None)
 
-        return all_embeddings
+        return embeddings[:len(texts)]
+
+    def _split_query_for_search(self, query: str) -> List[str]:
+        """Split complex query into simple sub-queries using LLM.
+        
+        This helps with better vector matching for complex questions.
+        
+        Args:
+            query: Original user query
+            
+        Returns:
+            List of simple sub-queries (1-5 items)
+        """
+        # If query is already simple, return as-is
+        if len(query) < 50:
+            return [query]
+        
+        prompt = f"""Разбей вопрос на 3–5 простых поисковых запросов для векторной БД.
+Каждый запрос должен содержать не более 2–3 ключевых сущностей.
+Вопрос: {query}
+Формат: список строк, каждая на новой строке."""
+        
+        try:
+            response = self.llamacpp.chat(
+                messages=[{'role': 'user', 'content': prompt}],
+                model_type='chat',
+                max_tokens=500,
+                temperature=0.3
+            )
+            if response and 'content' in response:
+                # Parse response - split by newlines
+                sub_queries = [line.strip() for line in response['content'].split('\n') if line.strip()]
+                # Filter to 3-5 items
+                sub_queries = [q for q in sub_queries if q and len(q) > 3][:5]
+                if sub_queries:
+                    self.logger.info(f"Split query '{query[:30]}...' into {len(sub_queries)} sub-queries")
+                    return sub_queries
+        except Exception as e:
+            self.logger.warning(f"Failed to split query: {e}")
+        
+        # Fallback: return original
+        return [query]

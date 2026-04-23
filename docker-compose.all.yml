@@ -1,6 +1,4 @@
 # docker-compose.all.yml
-version: '3.8'
-
 services:
   # ============================================================
   # WEB APPLICATION (Required)
@@ -12,19 +10,24 @@ services:
       - "5000:5000"
     depends_on:
       - redis
-      - ollama
+      - postgres
+      - llamacpp
+    env_file:
+      - .env
     volumes:
       # Mount application data directory
       - ./data:/app/data
       - ./.env:/app/.env:ro
-    env_file:
-      - .env
+      # Mount models directory for GGUF metadata reading
+      - ./services/llamacpp/models:/models:ro
+      # Mount docker socket for GPU detection
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - REDIS_URL=redis://redis:6379/0
-      # Whisper is running in the same docker network
       - WHISPER_API_URL=http://flai-whisper:9000/asr
       - WHISPER_API_TIMEOUT=120
-    user: "1000:1000"
+      - SD_WRAPPER_URL=http://flai-sd:7861
+    user: "0:988"
     networks:
       - flai_network
     restart: unless-stopped
@@ -54,7 +57,7 @@ services:
   # REDIS (Required - Request Queue)
   # ============================================================
   redis:
-    image: redis:8.0.6-alpine
+    image: redis:8.4.2-alpine
     container_name: flai-redis
     ports:
       - "6379:6379"
@@ -70,7 +73,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-    # Resource limits
     deploy:
       resources:
         limits:
@@ -79,29 +81,50 @@ services:
         reservations:
           cpus: '0.25'
           memory: 128M
-    # Logging configuration
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    # To use an external Redis instance:
-    # Comment out this entire service block
 
   # ============================================================
-  # OLLAMA (Required - LLM Inference)
+  # LLAMACPP PRESET GENERATOR (init container)
+  # Generates models-preset.ini from model_configs DB before llama.cpp starts
   # ============================================================
-  ollama:
-    image: ollama/ollama:latest
-    container_name: flai-ollama
-    ports:
-      - "11434:11434"
+  llamacpp-presets:
+    image: python:3.9-slim
+    container_name: flai-llamacpp-presets
     volumes:
-      - ollama:/root/.ollama
+      - ./services/llamacpp/models:/models
+      - ./services/llamacpp/generate_presets.py:/generate_presets.py:ro
     environment:
-      - OLLAMA_REQUEST_TIMEOUT=1200s
-      - OLLAMA_MAX_LOADED_MODELS=1
-      - OLLAMA_KEEP_ALIVE=0
+      - DATABASE_URL=postgresql://flai:flai_password@postgres:5432/flai
+    command: >
+      sh -c "pip install --no-cache-dir psycopg2-binary==2.9.9 && python3 /generate_presets.py"
+    depends_on:
+      - postgres
+    restart: "no"
+    networks:
+      - flai_network
+
+  # ============================================================
+  # LLAMA.CPP SERVER (Required - LLM Inference, router mode)
+  # ============================================================
+  # Router mode: handles chat, reasoning, embedding, and multimodal.
+  # Multimodal models must be in subdirectories with mmproj file named mmproj*.gguf
+  llamacpp:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    container_name: flai-llamacpp
+    ports:
+      - "8080:8033"
+    volumes:
+      - ./services/llamacpp/models:/models
+    depends_on:
+      - llamacpp-presets
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    runtime: nvidia
     deploy:
       resources:
         limits:
@@ -117,37 +140,52 @@ services:
     networks:
       - flai_network
     restart: unless-stopped
+    # Router mode: --models-dir allows dynamic model switching
+    # --models-max 1: only keep one model in VRAM at a time (avoid OOM on 16GB GPU)
+    command: >
+      --models-dir /models/
+      --models-preset /models/models-preset.ini
+      --models-max 1
+      --ctx-size 16384
+      --host 0.0.0.0
+      --port 8033
+      --n-gpu-layers -1
+      --embeddings
+      --batch-size 2048
+      --ubatch-size 2048
     healthcheck:
-      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8033/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    # Logging configuration
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    # To use an external Ollama instance:
-    # Comment out this entire service block
 
   # ============================================================
-  # AUTOMATIC1111 (Optional - Image Generation)
+  # STABLE-DIFFUSION.CPP (Optional - Image Generation)
   # ============================================================
-  automatic1111:
-    image: siutin/stable-diffusion-webui-docker:latest-cuda
+  # Uses sd-cli directly via a Python HTTP wrapper (sd_wrapper.py)
+  # The sd-server's /v1/images/generations endpoint doesn't work properly.
+  sd_cpp:
+    build:
+      context: ./services/sd_cpp
+      dockerfile: Dockerfile.sd_cpp
     container_name: flai-sd
     ports:
-      - "7860:7860"
+      - "7861:7861"
     volumes:
-      - ./services/automatic1111/models/Stable-diffusion:/app/stable-diffusion-webui/models/Stable-diffusion
-      - ./services/automatic1111/outputs:/app/stable-diffusion-webui/outputs
+      - ./services/sd_cpp/models/diffusion_models:/app/models/diffusion_models
+      - ./services/sd_cpp/models/vae:/app/models/vae
+      - ./services/sd_cpp/models/text_encoders:/app/models/text_encoders
+      - ./services/sd_cpp/outputs:/app/outputs
+      - ./services/sd_cpp/sd_wrapper.py:/app/sd_wrapper.py:ro
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - NVIDIA_REQUIRE_CUDA=cuda>=12.1
-      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     runtime: nvidia
     deploy:
       resources:
@@ -161,41 +199,30 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    # Logging configuration
+    networks:
+      - flai_network
+    restart: unless-stopped
+    # Run sd-wrapper HTTP API on port 7861 (calls sd-cli internally)
+    entrypoint: ["python3", "/app/sd_wrapper.py"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7861/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    profiles:
+      - with-image-gen
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    command:
-      - /app/stable-diffusion-webui/webui.sh
-      - --listen
-      - --port=7860
-      - --api
-      - --api-log
-      - --opt-sdp-attention
-      - --medvram
-      - --medvram-sdxl
-      - --opt-split-attention
-    networks:
-      - flai_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7860/sdapi/v1/progress"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    profiles:
-      - with-image-gen
-    # To disable image generation:
-    # Comment out this entire service block OR omit the profile when starting
 
   # ============================================================
   # WHISPER ASR (Optional - Speech Recognition)
   # ============================================================
   whisper:
-    image: onerahmet/openai-whisper-asr-webservice:latest
+    image: onerahmet/openai-whisper-asr-webservice:v1.9.1
     container_name: flai-whisper
     ports:
       - "9000:9000"
@@ -219,12 +246,11 @@ services:
       - flai_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/docs"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-    # Resource limits
     deploy:
       resources:
         limits:
@@ -233,7 +259,6 @@ services:
         reservations:
           cpus: '1.0'
           memory: 2G
-    # Logging configuration
     logging:
       driver: "json-file"
       options:
@@ -241,8 +266,6 @@ services:
         max-file: "3"
     profiles:
       - with-voice
-    # To disable voice features:
-    # Comment out this entire service block
 
   # ============================================================
   # PIPER TTS (Optional - Speech Synthesis)
@@ -267,7 +290,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    # Resource limits - Piper TTS is CPU-intensive, needs more cores for real-time synthesis
     deploy:
       resources:
         limits:
@@ -276,7 +298,6 @@ services:
         reservations:
           cpus: '1.0'
           memory: 512M
-    # Logging configuration
     logging:
       driver: "json-file"
       options:
@@ -284,14 +305,12 @@ services:
         max-file: "3"
     profiles:
       - with-voice
-    # To disable voice features:
-    # Comment out this entire service block
 
   # ============================================================
   # QDRANT (Optional - Vector Database for RAG)
   # ============================================================
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.12.1
     container_name: flai-qdrant
     ports:
       - "6333:6333"
@@ -310,7 +329,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    # Resource limits
     deploy:
       resources:
         limits:
@@ -319,7 +337,6 @@ services:
         reservations:
           cpus: '1.0'
           memory: 2G
-    # Logging configuration
     logging:
       driver: "json-file"
       options:
@@ -327,14 +344,50 @@ services:
         max-file: "3"
     profiles:
       - with-rag
-    # To disable document search/RAG:
-    # Comment out this entire service block
+
+  # ============================================================
+  # POSTGRESQL (Required)
+  # ============================================================
+  postgres:
+    image: postgres:16.4-alpine
+    container_name: flai-postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=flai
+      - POSTGRES_USER=flai
+      - POSTGRES_PASSWORD=flai_password
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flai"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   flai_network:
+    name: flai_flai_network
     driver: bridge
 
 volumes:
   redis_data:
-  ollama:
   qdrant_data:
+  postgres_data:

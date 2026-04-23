@@ -26,6 +26,11 @@ main {
     min-height: 0; /* allows main to shrink inside flex container */
 }
 
+/* ===== UTILITY CLASSES ===== */
+.ml-auto { margin-left: auto; }
+.ml-10px { margin-left: 10px; }
+.hidden { display: none !important; }
+
 /* ===== SCROLLBAR ===== */
 ::-webkit-scrollbar {
     width: 8px;

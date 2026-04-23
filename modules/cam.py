@@ -33,6 +33,19 @@ class CamModule:
             'kuh': 'кухня',
             'bal': 'балкон'
         }
+
+        # Translation keys for room names
+        self.room_name_keys = {
+            'tam': 'room_tambour',
+            'pri': 'room_hallway',
+            'kor': 'room_corridor',
+            'spa': 'room_bedroom',
+            'kab': 'room_office',
+            'det': 'room_children',
+            'gos': 'room_living',
+            'kuh': 'room_kitchen',
+            'bal': 'room_balcony'
+        }
         
         self.room_codes = {v: k for k, v in self.room_names.items()}
         
@@ -46,7 +59,7 @@ class CamModule:
     
     def init_app(self, app):
         self.app = app
-        self.camera_api_url = app.config.get('CAMERA_API_URL', 'http://host.docker.internal:5005')
+        self.camera_api_url = app.config.get('CAMERA_API_URL', 'http://flai-room-snapshot-api:5000')
         self.timeout = app.config.get('CAMERA_API_TIMEOUT', 15)
         self.check_interval = app.config.get('CAMERA_CHECK_INTERVAL', 30)
         self.max_init_retries = app.config.get('CAMERA_MAX_INIT_RETRIES', 5)
@@ -89,7 +102,7 @@ class CamModule:
             try:
                 allowed_codes = json.loads(user['camera_permissions'])
                 return {code: name for code, name in all_rooms.items() if code in allowed_codes}
-            except:
+            except Exception:
                 return {}
         return all_rooms
     
@@ -120,7 +133,7 @@ class CamModule:
                             self.last_check = current_time
                             self.logger.info(f"Camera API available (via {endpoint})")
                             return True
-                    except:
+                    except Exception:
                         self.available = True
                         self.last_check = current_time
                         self.logger.info(f"Camera API available (via {endpoint})")
@@ -142,7 +155,7 @@ class CamModule:
                 self.last_check = current_time
                 self.logger.info(f"Camera API available (via /rooms)")
                 return True
-        except:
+        except Exception:
             pass
         
         self.available = False
@@ -169,12 +182,16 @@ class CamModule:
                     api_rooms = response.json()
                     if isinstance(api_rooms, list):
                         status['available_rooms'] = api_rooms
-            except:
+            except Exception:
                 pass
         return status
     
-    def get_room_name(self, room_code):
-        return self.room_names.get(room_code, f"room '{room_code}'")
+    def get_room_name(self, room_code, lang='ru'):
+        """Get translated room name for the given code."""
+        key = self.room_name_keys.get(room_code)
+        if key:
+            return self._(key, lang)
+        return f"room '{room_code}'"
     
     def get_room_code(self, room_name):
         room_name_lower = room_name.lower().strip()
@@ -215,7 +232,7 @@ class CamModule:
                     'available_rooms': list(self.room_names.keys())
                 }
         
-        room_name = self.get_room_name(room_code)
+        room_name = self.get_room_name(room_code, lang)
         
         try:
             endpoints = [
@@ -260,7 +277,7 @@ class CamModule:
                                     file_type = data.get('content_type', data.get('mime_type', 'image/jpeg'))
                                 else:
                                     continue
-                            except:
+                            except Exception:
                                 continue
                         
                         file_size_bytes = int((len(image_data) * 3) / 4)
@@ -353,7 +370,8 @@ class CamAPI:
             if 'login' not in session:
                 return jsonify({'error': _('Not authorized')}), 401
             user_login = session['login']
-            result = cam_module.get_snapshot(user_login, room)
+            lang = session.get('language', 'ru')
+            result = cam_module.get_snapshot(user_login, room, lang=lang)
             if result['success']:
                 return jsonify({
                     'success': True,

@@ -77,6 +77,12 @@ def api_upload_document():
     if file_size > max_size_mb * 1024 * 1024:
         return jsonify({'error': _('Maximum file size {max_size} MB').format(max_size=max_size_mb)}), 400
 
+    # Check document quota
+    from app.utils import check_document_quota
+    quota_error = check_document_quota(session['login'])
+    if quota_error:
+        return jsonify({'error': quota_error}), 413
+
     doc_id = str(uuid.uuid4())
     filename = file.filename
 
@@ -101,10 +107,16 @@ def api_upload_document():
 
     db.update_document_index_status(doc_id, db.INDEX_STATUS_PENDING)
 
-    current_app.request_queue.add_index_task(
+    # Add indexing task to the queue
+    current_app.request_queue.add_request(
         user_id=session['login'],
-        doc_id=doc_id,
-        file_path=file_path,
+        session_id='',  # Document indexing doesn't belong to a chat session
+        request_data={
+            'type': 'index_document',
+            'doc_id': doc_id,
+            'file_path': file_path,
+        },
+        user_class=session.get('user_class', 100),
         lang=session.get('language', 'ru')
     )
 

@@ -37,14 +37,28 @@ def create_mock_redis():
     return mock_redis
 
 
-def create_mock_ollama():
-    """Create a mock Ollama client."""
+def create_mock_llamacpp():
+    """Create a mock llama-server client (LlamaCppClient)."""
     mock_client = MagicMock()
-    mock_client.chat.return_value = {
-        'message': {'content': 'Test response from Ollama'}
+    mock_client.chat.return_value = 'Test response from llama-server'
+    mock_client.call.return_value = 'Test response from llama-server'
+    mock_client.check_availability.return_value = True
+    mock_client.list_models.return_value = ['model1.gguf', 'model2.gguf']
+    mock_client.get_model_info.return_value = {
+        'architecture': 'qwen3',
+        'parameters': '4B',
+        'quantization': 'Q4_K_M',
+        'context_length': 32768,
+        'embedding_length': 4096
     }
-    mock_client.validate_model.return_value = True
+    mock_client.get_embeddings.return_value = [[0.1] * 1024]
+    mock_client.available = True
     return mock_client
+
+
+def create_mock_ollama():
+    """Create a mock llama-server client (alias for backward compatibility)."""
+    return create_mock_llamacpp()
 
 
 def create_mock_qdrant():
@@ -61,7 +75,7 @@ def test_app():
     Create Flask app with test configuration.
 
     Each test gets its own isolated app instance with temporary databases.
-    External services (Redis, Ollama, Qdrant) are mocked.
+    External services (Redis, llama-server, Qdrant) are mocked.
     """
     # Create temporary directory for test databases
     temp_dir = tempfile.mkdtemp()
@@ -69,23 +83,22 @@ def test_app():
     user_db_path = os.path.join(temp_dir, 'test_users.db')
 
     # Set environment variables BEFORE create_app() is called
-    # (load_config reads from os.getenv, and SECRET_KEY is required)
     os.environ['SECRET_KEY'] = 'test-secret-key-for-testing-only'
     os.environ['REDIS_URL'] = 'redis://localhost:6379/0'
-    os.environ['OLLAMA_URL'] = 'http://localhost:11434'
+    os.environ['LLAMACPP_URL'] = 'http://localhost:8080'
     os.environ['WHISPER_API_URL'] = 'http://localhost:9000/asr'
-    os.environ['AUTOMATIC1111_URL'] = 'http://localhost:7860'
+    os.environ['SD_CPP_URL'] = 'http://localhost:7860'
     os.environ['PIPER_URL'] = 'http://localhost:8888/tts'
     os.environ['QDRANT_URL'] = 'http://localhost:6333'
 
     # Create mocks for external services
     mock_redis = create_mock_redis()
-    mock_ollama = create_mock_ollama()
+    mock_llamacpp = create_mock_llamacpp()
     mock_qdrant = create_mock_qdrant()
 
     # Patch external services before creating app
     with patch('redis.from_url', return_value=mock_redis):
-        with patch('modules.base.OllamaClient', return_value=mock_ollama):
+        with patch('app.llamacpp_client.LlamaCppClient', return_value=mock_llamacpp):
             with patch('modules.rag.QdrantClient', return_value=mock_qdrant):
                 flask_app = create_app()
 
@@ -160,18 +173,26 @@ def mock_redis_client():
 
 
 @pytest.fixture
-def mock_ollama_client():
+def mock_llamacpp_client():
     """
-    Provide access to the mock Ollama client for configuration.
-    
+    Provide access to the mock LlamaCppClient for configuration.
+
     Usage:
-        def test_ollama_call(client, mock_ollama_client):
-            mock_ollama_client.chat.return_value = {'message': {'content': 'Custom response'}}
+        def test_llamacpp_call(client, mock_llamacpp_client):
+            mock_llamacpp_client.chat.return_value = 'Custom response'
             response = client.post('/api/send_message', json={'message': 'Hello'})
     """
-    with patch('modules.base.OllamaClient') as mock_ollama:
-        mock_ollama.return_value = create_mock_ollama()
-        yield mock_ollama.return_value
+    with patch('app.llamacpp_client.LlamaCppClient') as mock_llamacpp:
+        mock_llamacpp.return_value = create_mock_llamacpp()
+        yield mock_llamacpp.return_value
+
+
+@pytest.fixture
+def mock_ollama_client():
+    """
+    Alias for mock_llamacpp_client for backward compatibility.
+    """
+    return mock_llamacpp_client()
 
 
 @pytest.fixture

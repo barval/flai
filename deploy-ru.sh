@@ -42,14 +42,27 @@ setup_env() {
 # ── Вспомогательная функция скачивания моделей ──
 HF_DOWNLOAD() {
     local repo="$1" file="$2" dest="$3"
-    if command -v huggingface-cli &>/dev/null; then
-        huggingface-cli download "$repo" "$file" --local-dir "$dest" 2>&1
-    else
-        local url="https://huggingface.co/$repo/resolve/main/$file"
-        info "Скачиваю $file из HuggingFace..."
-        mkdir -p "$dest"
-        curl -L -o "$dest/$file" "$url"
-    fi
+    local url="https://huggingface.co/$repo/resolve/main/$file"
+    info "Скачиваю $file из HuggingFace..."
+    local dir="$(dirname "$dest")"
+    mkdir -p "$dir"
+    
+    # Retry download up to 3 times
+    for attempt in 1 2 3; do
+        curl -L --progress-bar -o "$dest" "$url"
+        
+        # Check if file is valid (more than 1KB)
+        local size=$(stat -c%s "$dest" 2>/dev/null || echo "0")
+        if [[ "$size" -gt 1024 ]]; then
+            info "Успешно скачано: $file ($size bytes)"
+            return 0
+        else
+            warn "Попытка $attempt не удалась, повторяю..."
+            rm -f "$dest"
+            sleep 2
+        fi
+    done
+    error "Не удалось скачать $file после 3 попыток"
 }
 
 # ── Модели llama.cpp ──
@@ -57,41 +70,47 @@ download_llamacpp_models() {
     info "Скачиваю модели llama.cpp..."
     local MODEL_DIR="services/llamacpp/models"
 
-    # Чат-модель
+    # Чат-модель (публичный репозиторий - Instruct)
     if [[ ! -f "$MODEL_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
         info "Скачиваю Qwen3-4B-Instruct-2507-Q4_K_M.gguf (чат)..."
-        HF_DOWNLOAD "bartowski/Qwen3-4B-Instruct-2507-GGUF" \
-            "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" "$MODEL_DIR"
+        HF_DOWNLOAD "unsloth/Qwen3-4B-Instruct-2507-GGUF" \
+            "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" \
+            "$MODEL_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
     else
         warn "Qwen3-4B-Instruct-2507-Q4_K_M.gguf уже есть — пропускаю."
     fi
 
-    # Модель рассуждений (сложные задачи)
-    if [[ ! -f "$MODEL_DIR/gpt-oss-20b-mxfp4.gguf" ]]; then
-        info "Скачиваю gpt-oss-20b-mxfp4.gguf (рассуждения)..."
-        HF_DOWNLOAD "openai/gpt-oss-20b-GGUF" \
-            "gpt-oss-20b-mxfp4.gguf" "$MODEL_DIR"
+    # Модель рассуждений (DeepSeek R1)
+    if [[ ! -d "$MODEL_DIR/DeepSeek-R1-Q4_K_M" ]]; then
+        info "Скачиваю DeepSeek-R1-Q4_K_M (рассуждения)..."
+        mkdir -p "$MODEL_DIR/DeepSeek-R1-Q4_K_M"
+        HF_DOWNLOAD "unsloth/DeepSeek-R1-GGUF" \
+            "DeepSeek-R1-Q4_K_M/DeepSeek-R1-Q4_K_M-00001-of-00009.gguf" \
+            "$MODEL_DIR/DeepSeek-R1-Q4_K_M/DeepSeek-R1-Q4_K_M-00001-of-00009.gguf"
     else
-        warn "gpt-oss-20b-mxfp4.gguf уже есть — пропускаю."
+        warn "DeepSeek-R1-Q4_K_M уже есть — пропускаю."
     fi
 
-    # Мультимодальная модель (с mmproj)
-    if [[ ! -d "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M" ]]; then
-        info "Скачиваю Qwen3VL-8B-Instruct-Q4_K_M (мультимодальная)..."
-        mkdir -p "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M"
-        HF_DOWNLOAD "bartowski/Qwen3VL-8B-Instruct-GGUF" \
-            "Qwen3VL-8B-Instruct-Q4_K_M.gguf" "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M"
-        HF_DOWNLOAD "bartowski/Qwen3VL-8B-Instruct-GGUF" \
-            "mmproj-F16.gguf" "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M"
+    # Мультимодальная модель (публичный репозиторий)
+    if [[ ! -d "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M" ]]; then
+        info "Скачиваю Qwen3VL-4B-Instruct-Q4_K_M (мультимодальная)..."
+        mkdir -p "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M"
+        HF_DOWNLOAD "Qwen/Qwen3-VL-4B-Instruct-GGUF" \
+            "Qwen3-VL-4B-Instruct-Q4_K_M.gguf" \
+            "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M/Qwen3-VL-4B-Instruct-Q4_K_M.gguf"
+        HF_DOWNLOAD "Qwen/Qwen3-VL-4B-Instruct-GGUF" \
+            "mmproj-Qwen3VL-4B-Instruct-F16.gguf" \
+            "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M/mmproj-F16.gguf"
     else
-        warn "Qwen3VL-8B-Instruct-Q4_K_M уже есть — пропускаю."
+        warn "Qwen3VL-4B-Instruct-Q4_K_M уже есть — пропускаю."
     fi
 
-    # Модель эмбеддингов (для RAG)
+    # Модель эмбеддингов (публичный репозиторий)
     if [[ ! -f "$MODEL_DIR/bge-m3-Q8_0.gguf" ]]; then
         info "Скачиваю bge-m3-Q8_0.gguf (эмбеддинги)..."
-        HF_DOWNLOAD "bartowski/bge-m3-GGUF" \
-            "bge-m3-Q8_0.gguf" "$MODEL_DIR"
+        HF_DOWNLOAD "gpustack/bge-m3-GGUF" \
+            "bge-m3-Q8_0.gguf" \
+            "$MODEL_DIR/bge-m3-Q8_0.gguf"
     else
         warn "bge-m3-Q8_0.gguf уже есть — пропускаю."
     fi

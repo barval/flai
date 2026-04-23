@@ -18,7 +18,9 @@ check_prereqs() {
     command -v docker &>/dev/null     || error "Docker не установлен. Установите Docker."
     command -v docker compose &>/dev/null || error "Плагин Docker Compose не установлен."
     command -v git &>/dev/null        || error "Git не установлен."
-    command -v nvidia-smi &>/dev/null || warn "Видеокарта NVIDIA не обнаружена — ускорение на GPU будет недоступно."
+    if ! command -v nvidia-smi &>/dev/null; then
+        warn "Видеокарта NVIDIA не обнаружена — ускорение на GPU будет недоступно."
+    fi
     info "Зависимости проверены."
 }
 
@@ -33,6 +35,54 @@ setup_env() {
     SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || openssl rand -hex 32)
     sed -i "s/SECRET_KEY=.*/SECRET_KEY=$SECRET/" .env
     info ".env создан. Отредактируйте его для настройки моделей, URL и параметров."
+}
+
+# ── Генерация docker-compose.override.yml для режима CPU ──
+generate_cpu_override() {
+    cat > docker-compose.override.yml <<'EOF'
+# Автоматически сгенерированный override для режима CPU.
+# Заменяет GPU-сервисы на образы, оптимизированные для процессора.
+services:
+  llamacpp:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    runtime: ""
+    environment: {}
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 16G
+        reservations:
+          cpus: '2.0'
+          memory: 8G
+    command: >
+      --models-dir /models/
+      --models-preset /models/models-preset.ini
+      --models-max 1
+      --ctx-size 16384
+      --host 0.0.0.0
+      --port 8033
+      --n-gpu-layers 0
+      --embeddings
+      --batch-size 2048
+      --ubatch-size 2048
+
+  sd_cpp:
+    build:
+      context: ./services/sd_cpp
+      dockerfile: Dockerfile.sd_cpp-cpu
+    runtime: ""
+    environment: {}
+    deploy:
+      resources:
+        limits:
+          cpus: '8.0'
+          memory: 24G
+        reservations:
+          cpus: '4.0'
+          memory: 16G
+EOF
+    info "Создан docker-compose.override.yml для режима CPU."
 }
 
 # ── Вспомогательная функция скачивания моделей ──
@@ -91,8 +141,6 @@ download_llamacpp_models() {
     else
         warn "bge-m3-Q8_0.gguf уже есть — пропускаю."
     fi
-
-    # Примечание: модель реранкера удалена (больше не используется)
 }
 
 # ── Модели Stable Diffusion ──
@@ -176,6 +224,16 @@ build_and_launch() {
     local PROFILE="--profile with-image-gen"
     [[ "$WITH_VOICE" == "true" ]] && PROFILE="$PROFILE --profile with-voice"
     [[ "$WITH_RAG" == "true" ]]    && PROFILE="$PROFILE --profile with-rag"
+
+    # Удаляем предыдущий override, чтобы не мешал
+    rm -f docker-compose.override.yml
+
+    if ! command -v nvidia-smi &>/dev/null || ! nvidia-smi -L &>/dev/null; then
+        warn "GPU не обнаружен — создаю override для CPU."
+        generate_cpu_override
+    else
+        info "GPU обнаружен — используются стандартные образы."
+    fi
 
     info "Собираю Docker-образы..."
     docker compose -f docker-compose.all.yml $PROFILE build

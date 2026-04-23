@@ -234,9 +234,6 @@ build_and_launch() {
     if ! command -v nvidia-smi &>/dev/null || ! nvidia-smi -L &>/dev/null; then
         warn "GPU не обнаружен — создаю override для CPU."
         generate_cpu_override
-        # Принудительная пересборка sd_cpp с CPU Dockerfile (сброс кэша)
-        info "Пересобираю sd_cpp для CPU (без кэша)..."
-        docker compose -f docker-compose.all.yml build --no-cache sd_cpp
     else
         info "GPU обнаружен — используются стандартные образы."
     fi
@@ -245,11 +242,17 @@ build_and_launch() {
     info "Останавливаю старые контейнеры (если есть)..."
     docker compose -f docker-compose.all.yml $PROFILE down --remove-orphans 2>/dev/null || true
 
+    # Формируем список файлов композиции
+    COMPOSE_FILES=("-f" "docker-compose.all.yml")
+    if [[ -f docker-compose.override.yml ]]; then
+        COMPOSE_FILES+=("-f" "docker-compose.override.yml")
+    fi
+
     info "Собираю Docker-образы..."
-    docker compose -f docker-compose.all.yml $PROFILE build
+    docker compose "${COMPOSE_FILES[@]}" $PROFILE build
 
     info "Запускаю сервисы..."
-    docker compose -f docker-compose.all.yml $PROFILE up -d
+    docker compose "${COMPOSE_FILES[@]}" $PROFILE up -d
 
     info "Ожидаю запуск сервисов..."
     sleep 10

@@ -45,7 +45,8 @@ generate_cpu_override() {
 services:
   llamacpp:
     image: ghcr.io/ggml-org/llama.cpp:server
-    runtime: ~
+    # Explicitly set default runtime (runc) to override nvidia
+    runtime: "runc"
     environment: {}
     deploy:
       resources:
@@ -70,8 +71,9 @@ services:
   sd_cpp:
     build:
       context: ./services/sd_cpp
+      # Force CPU-only Dockerfile
       dockerfile: Dockerfile.sd_cpp-cpu
-    runtime: ~
+    runtime: "runc"
     environment: {}
     deploy:
       resources:
@@ -81,6 +83,7 @@ services:
         reservations:
           cpus: '4.0'
           memory: 16G
+    entrypoint: ["python3", "/app/sd_wrapper.py"]
 EOF
     info "Created docker-compose.override.yml for CPU-only mode."
 }
@@ -231,6 +234,9 @@ build_and_launch() {
     if ! command -v nvidia-smi &>/dev/null || ! nvidia-smi -L &>/dev/null; then
         warn "No GPU detected — generating CPU override."
         generate_cpu_override
+        # Force rebuild of sd_cpp with CPU Dockerfile (clear cache)
+        info "Rebuilding sd_cpp for CPU (without cache)..."
+        docker compose -f docker-compose.all.yml build --no-cache sd_cpp
     else
         info "GPU detected — using default GPU images."
     fi

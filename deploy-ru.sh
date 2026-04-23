@@ -45,7 +45,8 @@ generate_cpu_override() {
 services:
   llamacpp:
     image: ghcr.io/ggml-org/llama.cpp:server
-    runtime: ~
+    # Явно указываем стандартный рантайм (runc) вместо nvidia
+    runtime: "runc"
     environment: {}
     deploy:
       resources:
@@ -70,8 +71,9 @@ services:
   sd_cpp:
     build:
       context: ./services/sd_cpp
+      # Принудительно используем CPU Dockerfile
       dockerfile: Dockerfile.sd_cpp-cpu
-    runtime: ~
+    runtime: "runc"
     environment: {}
     deploy:
       resources:
@@ -81,6 +83,7 @@ services:
         reservations:
           cpus: '4.0'
           memory: 16G
+    entrypoint: ["python3", "/app/sd_wrapper.py"]
 EOF
     info "Создан docker-compose.override.yml для режима CPU."
 }
@@ -231,6 +234,9 @@ build_and_launch() {
     if ! command -v nvidia-smi &>/dev/null || ! nvidia-smi -L &>/dev/null; then
         warn "GPU не обнаружен — создаю override для CPU."
         generate_cpu_override
+        # Принудительная пересборка sd_cpp с CPU Dockerfile (сброс кэша)
+        info "Пересобираю sd_cpp для CPU (без кэша)..."
+        docker compose -f docker-compose.all.yml build --no-cache sd_cpp
     else
         info "GPU обнаружен — используются стандартные образы."
     fi

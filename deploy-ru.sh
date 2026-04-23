@@ -43,19 +43,11 @@ generate_cpu_override() {
 # Автоматически сгенерированный override для режима CPU.
 # Заменяет GPU-сервисы на образы, оптимизированные для процессора.
 services:
-  llamacpp:
+llamacpp:
     image: ghcr.io/ggml-org/llama.cpp:server
-    # Явно указываем стандартный рантайм (runc) вместо nvidia
     runtime: "runc"
-    environment: {}
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 16G
-        reservations:
-          cpus: '2.0'
-          memory: 8G
+    environment: []
+    deploy: {}
     command: >
       --models-dir /models/
       --models-preset /models/models-preset.ini
@@ -71,18 +63,10 @@ services:
   sd_cpp:
     build:
       context: ./services/sd_cpp
-      # Принудительно используем CPU Dockerfile
       dockerfile: Dockerfile.sd_cpp-cpu
     runtime: "runc"
-    environment: {}
-    deploy:
-      resources:
-        limits:
-          cpus: '8.0'
-          memory: 24G
-        reservations:
-          cpus: '4.0'
-          memory: 16G
+    environment: []
+    deploy: {}
     entrypoint: ["python3", "/app/sd_wrapper.py"]
 EOF
     info "Создан docker-compose.override.yml для режима CPU."

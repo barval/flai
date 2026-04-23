@@ -70,7 +70,7 @@ download_llamacpp_models() {
     info "Скачиваю модели llama.cpp..."
     local MODEL_DIR="services/llamacpp/models"
 
-    # Чат-модель (публичный репозиторий - Instruct)
+    # Чат-модель (публичный репозиторий - Qwen3-4B-Instruct)
     if [[ ! -f "$MODEL_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
         info "Скачиваю Qwen3-4B-Instruct-2507-Q4_K_M.gguf (чат)..."
         HF_DOWNLOAD "unsloth/Qwen3-4B-Instruct-2507-GGUF" \
@@ -80,15 +80,14 @@ download_llamacpp_models() {
         warn "Qwen3-4B-Instruct-2507-Q4_K_M.gguf уже есть — пропускаю."
     fi
 
-    # Модель рассуждений (DeepSeek R1)
-    if [[ ! -d "$MODEL_DIR/DeepSeek-R1-Q4_K_M" ]]; then
-        info "Скачиваю DeepSeek-R1-Q4_K_M (рассуждения)..."
-        mkdir -p "$MODEL_DIR/DeepSeek-R1-Q4_K_M"
-        HF_DOWNLOAD "unsloth/DeepSeek-R1-GGUF" \
-            "DeepSeek-R1-Q4_K_M/DeepSeek-R1-Q4_K_M-00001-of-00009.gguf" \
-            "$MODEL_DIR/DeepSeek-R1-Q4_K_M/DeepSeek-R1-Q4_K_M-00001-of-00009.gguf"
+    # Модель рассуждений (GPT-Oss 20B)
+    if [[ ! -f "$MODEL_DIR/gpt-oss-20b-Q4_K_M.gguf" ]]; then
+        info "Скачиваю gpt-oss-20b-Q4_K_M.gguf (рассуждения)..."
+        HF_DOWNLOAD "unsloth/gpt-oss-20b-GGUF" \
+            "gpt-oss-20b-Q4_K_M.gguf" \
+            "$MODEL_DIR/gpt-oss-20b-Q4_K_M.gguf"
     else
-        warn "DeepSeek-R1-Q4_K_M уже есть — пропускаю."
+        warn "gpt-oss-20b-Q4_K_M.gguf уже есть — пропускаю."
     fi
 
     # Мультимодальная модель (публичный репозиторий)

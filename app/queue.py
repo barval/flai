@@ -891,23 +891,17 @@ class RedisRequestQueue:
                             # Marker present but no query, treat as error
                             bot_reply = "⚠️ " + self.app.modules['base']._('Image editing request was empty', lang)
                             is_error = True
-                    # Safety net: if model returned JSON with edit_prompt despite missing marker
-                    elif isinstance(bot_reply, str) and ('edit_prompt' in bot_reply or '"prompt"' in bot_reply):
+                    # Safety net: if model returned edit-like content without the required marker,
+                    # treat as a model error, NOT an edit request.
+                    elif isinstance(bot_reply, str) and 'edit_prompt' in bot_reply:
                         self.app.logger.warning(
-                            f"Multimodal model returned edit-like JSON without marker: {bot_reply[:100]}..."
+                            f"Multimodal model returned 'edit_prompt' without [-IMAGE-EDIT-] marker. "
+                            f"Treating as classification error. Response prefix: {bot_reply[:100]}..."
                         )
-                        import re
-                        json_match = re.search(r'\{[^{}]*"edit_prompt"\s*:\s*"([^"]+)"[^{}]*\}', bot_reply)
-                        if json_match:
-                            edit_query = json_match.group(1)
-                            return self._process_image_edit_task(
-                                edit_query, file_data, file_type, session_id, user_id, lang
-                            )
-                        else:
-                            bot_reply = "⚠️ " + self.app.modules['base']._(
-                                'Failed to process image request. Please try again.', lang
-                            )
-                            is_error = True
+                        bot_reply = "⚠️ " + self.app.modules['base']._(
+                            'Failed to process image request. Please try again.', lang
+                        )
+                        is_error = True
             else:
                 bot_reply = "⚠️ " + (error or self.app.modules['base']._('Invalid image', lang))
                 process_time = round(time.time() - process_start, 1)

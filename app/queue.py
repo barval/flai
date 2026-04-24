@@ -19,15 +19,13 @@ from .model_config import get_model_config
 
 class RedisRequestQueue:
     """Redis-based request queue with JSON serialization for security."""
-    
+
     def __init__(self, app):
         self.app = app
         self.logger = app.logger
         self.redis = redis.from_url(
             app.config['REDIS_URL'],
             decode_responses=True,
-            # socket_timeout must be LONGER than blpop timeout (5s) to avoid
-            # "Timeout reading from socket" errors during blocking operations
             socket_timeout=30,
             socket_connect_timeout=3,
             retry_on_timeout=True
@@ -41,13 +39,13 @@ class RedisRequestQueue:
         # HMAC key for signing serialized data (prevent tampering)
         self.hmac_key = app.config.get('SECRET_KEY', 'fallback-key').encode('utf-8')
         self.start_worker()
-    
+
     def _serialize(self, data: Dict) -> str:
         """Serialize data to JSON with HMAC signature."""
         json_str = json.dumps(data, ensure_ascii=False)
         signature = hmac.new(self.hmac_key, json_str.encode('utf-8'), hashlib.sha256).hexdigest()
         return json.dumps({'data': json_str, 'sig': signature}, ensure_ascii=False)
-    
+
     def _deserialize(self, signed_json: str) -> Optional[Dict]:
         """Deserialize JSON with HMAC verification."""
         try:
@@ -65,11 +63,7 @@ class RedisRequestQueue:
             return None
 
     def start_worker(self):
-        """Start worker threads for fast and slow task queues.
-
-        Fast queue: text, audio transcription (~1-10 seconds)
-        Slow queue: image generation/editing (~10 seconds - 15 minutes)
-        """
+        """Start worker threads for fast and slow task queues."""
         self.app.logger.info("RedisRequestQueue: starting fast and slow workers")
         # Shutdown event for graceful termination
         self._shutdown_event = threading.Event()
@@ -84,10 +78,7 @@ class RedisRequestQueue:
         self.app.logger.info("RedisRequestQueue: workers started (fast + slow)")
 
     def stop_workers(self, timeout=30):
-        """Signal workers to stop and wait for them to finish.
-
-        This ensures that in-flight tasks are completed before shutdown.
-        """
+        """Signal workers to stop and wait for them to finish."""
         self.app.logger.info("RedisRequestQueue: signaling workers to stop")
         self._shutdown_event.set()
         if hasattr(self, '_fast_worker_thread'):
@@ -109,21 +100,18 @@ class RedisRequestQueue:
         # Audio is fast
         if file_type and file_type.startswith('audio/'):
             return 'fast'
-        # Image with text comment → image editing (slow, 60-900s)
-        # Image without text → image chat/question (fast, multimodal analysis)
+        # Image with text comment — could be editing (slow) or analysis (fast)
+        # We'll classify as slow initially — the multimodal model will decide later
         if req_type == 'image' and file_type and file_type.startswith('image/'):
             if message_text and message_text.strip():
-                return 'slow'  # Image editing takes 1-15 minutes
-            return 'fast'      # Image chat/analysis is fast
+                return 'slow'
+            return 'fast'
         # Text tasks are fast
         if req_type == 'text':
             return 'fast'
         # Transcription is medium — use fast queue
         if task_type == 'transcribe_audio':
             return 'fast'
-        # Image generation/editing is slow
-        if req_type == 'image':
-            return 'slow'
         # Default to slow for safety
         return 'slow'
 
@@ -164,10 +152,7 @@ class RedisRequestQueue:
         }
 
     def add_reindex_all_task(self, lang: str = 'ru') -> str:
-        """Add a reindex-all task to the slow queue.
-
-        Returns the task_id for tracking.
-        """
+        """Add a reindex-all task to the slow queue."""
         task_id = str(uuid.uuid4())
         task = {
             'id': task_id,
@@ -187,34 +172,25 @@ class RedisRequestQueue:
     def _estimate_wait(self, queue_type: str, position: int) -> int:
         """Estimate wait time in seconds based on queue type and position."""
         if queue_type == 'slow':
-            # Image tasks: ~5 minutes each
             return position * 300
         else:
-            # Text/audio tasks: ~3 seconds each
             return position * 3
 
     def get_user_queue_counts(self, user_id: str) -> Tuple[int, int]:
-        """Get user's queue count and total queue length in O(1).
-
-        Uses Redis hash counters maintained by _increment/decrement methods.
-        Falls back to queue length if counters are stale (self-healing).
-        """
+        """Get user's queue count and total queue length in O(1)."""
         fast_total = self.redis.llen(self.queue_key)
         slow_total = self.redis.llen(self.slow_queue_key)
         total = fast_total + slow_total
         if total == 0:
             return 0, 0
 
-        # O(1): read from Redis hash counter
         user_count_key = f"{self.queue_key}:user_counts"
         user_count = self.redis.hget(user_count_key, user_id)
         user_count = int(user_count) if user_count else 0
 
-        # Self-healing: if total doesn't match, reset counter
         total_count = self.redis.hget(user_count_key, "__total__")
         total_count = int(total_count) if total_count else 0
         if total_count != total:
-            # Counter is stale — reset it
             self.redis.delete(user_count_key)
             user_count = 0
 
@@ -245,11 +221,7 @@ class RedisRequestQueue:
         self.redis.srem(f"{self.user_requests_key}:{user_id}", request_id)
 
     def _recover_stale_tasks(self):
-        """Recover tasks stuck in 'processing' state from a previous crash.
-
-        When the worker crashes, tasks in the processing hash are never moved
-        to results. On restart, we re-queue them so users get their results.
-        """
+        """Recover tasks stuck in 'processing' state from a previous crash."""
         for queue_key, processing_key in [
             (self.queue_key, self.processing_key),
             (self.slow_queue_key, self.slow_processing_key),
@@ -270,7 +242,6 @@ class RedisRequestQueue:
                         self.redis.hdel(processing_key, task_id)
                         continue
 
-                    # Re-queue the task
                     self.redis.rpush(queue_key, task_data)
                     self.redis.hdel(processing_key, task_id)
                     recovered += 1
@@ -282,55 +253,37 @@ class RedisRequestQueue:
                 self.logger.warning(f"Queue recovery failed for {queue_key}: {e}")
 
     def _get_model_for_task(self, task: Dict[str, Any]) -> str:
-        """Determine which llama.cpp model a task will need.
-
-        Returns one of: 'chat', 'reasoning', 'multimodal', 'embedding', 'none'.
-        'none' means the task doesn't use llama.cpp (e.g. pure audio, index).
-        """
+        """Determine which llama.cpp model a task will need."""
         task_type = task.get('type', '')
         data = task.get('data', {})
         req_type = data.get('type', '')
         file_type = data.get('file_type', '')
         action_type = data.get('action_type', '')
 
-        # Tasks that don't use llama.cpp
         if task_type in ('index_document', 'reindex_all_embeddings'):
             return 'none'
         if task_type == 'transcribe_audio':
             return 'none'
 
-        # RAG tasks: uses embedding + reasoning
-        # After completion, reasoning model stays in VRAM
         if action_type == 'rag':
             return 'reasoning'
 
-        # Audio file tasks — transcription then text, starts with chat (router)
         if file_type and file_type.startswith('audio/'):
             return 'chat'
 
-        # Image edit — uses multimodal for analysis
         if req_type == 'image' and file_type and file_type.startswith('image/'):
             return 'multimodal'
 
-        # Image chat — multimodal
         if req_type == 'image' and file_type and file_type.startswith('image/'):
             return 'multimodal'
 
-        # Text tasks go through router (chat model)
         if req_type == 'text':
             return 'chat'
 
-        # Default: assume chat (router) for unknown tasks
         return 'chat'
 
     def _peek_next_task_model(self) -> Tuple[str, bool]:
-        """Peek at the next task in both queues and determine what model it needs.
-
-        Returns: (model_type, has_tasks)
-            model_type: 'chat', 'reasoning', 'multimodal', 'embedding', 'none'
-            has_tasks: True if there are tasks in any queue
-        """
-        # Check both queues — fast has priority
+        """Peek at the next task in both queues and determine what model it needs."""
         for q_key in [self.queue_key, self.slow_queue_key]:
             queue_len = self.redis.llen(q_key)
             if queue_len > 0:
@@ -342,10 +295,7 @@ class RedisRequestQueue:
         return 'none', False
 
     def _get_current_loaded_model(self) -> Optional[str]:
-        """Query llama.cpp to find which model is currently loaded in VRAM.
-
-        Returns model type: 'chat', 'reasoning', 'multimodal', 'embedding', or None.
-        """
+        """Query llama.cpp to find which model is currently loaded in VRAM."""
         llamacpp_url = self.app.config.get('LLAMACPP_URL')
         if not llamacpp_url:
             return None
@@ -360,13 +310,11 @@ class RedisRequestQueue:
             for model in data.get('data', []):
                 if model.get('status', {}).get('value') == 'loaded':
                     model_id = model.get('id', '')
-                    # Map model ID to model type using known model configs
                     from .model_config import get_model_config
                     for module_type in ('chat', 'reasoning', 'multimodal', 'embedding'):
                         config = get_model_config(module_type)
                         if config and config.get('model_name') in model_id:
                             return module_type
-                    # Fallback: guess from name
                     if any(x in model_id.lower() for x in ('vl', 'vision', 'multimodal')):
                         return 'multimodal'
                     if any(x in model_id.lower() for x in ('oss', 'reason', 'gemma-4')):
@@ -380,30 +328,13 @@ class RedisRequestQueue:
             return None
 
     def _predictive_unload(self, current_model: str) -> None:
-        """After task completion, check next queued task and decide whether to unload.
-
-        Uses the ACTUAL model currently in VRAM (from llama.cpp API), not the
-        theoretical model for the completed task.
-
-        Model categories:
-          - 'hot' (entry-point):  chat, multimodal  — can be needed for ANY new request
-          - 'cold' (intermediate): reasoning, embedding — only used after router dispatch
-          - 'none': task doesn't use llama.cpp (transcription, indexing)
-
-        Logic:
-          - Current model is 'none' → nothing loaded, skip
-          - Next task needs SAME model → keep loaded (no switch needed)
-          - Queue is EMPTY + current model is 'hot' → keep loaded (may be needed)
-          - Queue is EMPTY + current model is 'cold' → unload (never an entry point)
-          - Next task needs DIFFERENT model → unload current to free VRAM
-        """
+        """After task completion, check next queued task and decide whether to unload."""
         HOT_MODELS = {'chat', 'multimodal'}
         COLD_MODELS = {'reasoning', 'embedding'}
 
         if current_model == 'none':
-            return  # Task didn't use llama.cpp, nothing to unload
+            return
 
-        # Get the ACTUAL model currently loaded in VRAM
         actual_model = self._get_current_loaded_model()
         if actual_model is None:
             self.app.logger.debug("Predictive unload: cannot determine current model, skipping")
@@ -436,7 +367,6 @@ class RedisRequestQueue:
             f"next='{next_model}' — unloading '{actual_model}'"
         )
 
-        # Unload current model
         llamacpp_url = self.app.config.get('LLAMACPP_URL')
         if not llamacpp_url:
             return
@@ -445,8 +375,6 @@ class RedisRequestQueue:
         rm = get_resource_manager()
         if rm:
             rm.unload_llamacpp_model(llamacpp_url)
-            # In router mode, llama.cpp auto-loads the needed model on the next
-            # /v1/chat/completions request. No explicit preload needed.
             if has_tasks:
                 self.app.logger.info(
                     f"VRAM freed — llama.cpp will auto-load '{next_model}' for next task"
@@ -460,7 +388,6 @@ class RedisRequestQueue:
         if not task_id:
             return
 
-        # Move to processing
         processing_ttl = self.app.config.get('QUEUE_MAX_WAIT_TIME', 300) + 60
         self.redis.hset(processing_key, task_id, self._serialize({**task, 'moved_at': time.time()}))
         self.redis.expire(processing_key, processing_ttl)
@@ -517,7 +444,6 @@ class RedisRequestQueue:
                 self._cleanup_user_request(user_id, task_id)
                 self._decrement_user_queue_count(user_id)
 
-        # Predictive VRAM management: check next task and decide whether to unload
         current_model = self._get_model_for_task(task)
         self._predictive_unload(current_model)
 
@@ -565,11 +491,7 @@ class RedisRequestQueue:
         return config.get('model_name') if config else None
 
     def _try_rag_answer(self, query: str, session_id: str, user_id: str, lang: str, strict: bool = False) -> Tuple[Optional[str], Optional[str]]:
-        """
-        Attempt to answer using RAG.
-        If strict=True, use a higher relevance threshold (for implicit reasoning queries).
-        Returns (answer, model_name) or (None, None) if no relevant documents found.
-        """
+        """Attempt to answer using RAG."""
         rag = self.app.modules.get('rag')
         if rag and rag.available:
             if strict:
@@ -583,7 +505,6 @@ class RedisRequestQueue:
 
     def _build_error_response(self, session_id: str, error: str, process_time: float, lang: str) -> Dict[str, Any]:
         """Build a standardized error response dict and save to DB."""
-        # Save error message to database so it persists and is visible in chat
         from .db import save_message
         completion_time = get_current_time_in_timezone_for_db(self.app)
         msg_id = save_message(
@@ -714,7 +635,6 @@ class RedisRequestQueue:
             return self._build_error_response(
                 session_id, "⚠️ " + self.app.modules['base']._('Image generation module unavailable', lang=lang), 0, lang
             )
-        # Re-check availability at request time (sd-wrapper may have started since init)
         self.app.modules['image'].check_availability()
         if not self.app.modules['image'].available:
             return self._build_error_response(
@@ -805,7 +725,6 @@ class RedisRequestQueue:
         )
 
         messages = [first_message]
-        # Optional multimodal analysis of camera snapshot
         if message_text and 'multimodal' in self.app.modules and self.app.modules['multimodal'].available:
             mm_start = time.time()
             bot_reply, error = self.app.modules['multimodal'].process_image_with_text(
@@ -852,7 +771,6 @@ class RedisRequestQueue:
         action_type = router_result['action']
         query = router_result['query']
 
-        # Reasoning action: try RAG first (strict), then reasoning model
         if action_type == 'reasoning':
             rag_start = time.time()
             rag_answer, rag_model = self._try_rag_answer(query, session_id, user_id, lang, strict=True)
@@ -861,9 +779,7 @@ class RedisRequestQueue:
                 model_used = rag_model + " (RAG)" if rag_model else 'unknown (RAG)'
                 return self._save_and_respond(session_id, rag_answer, model_used, rag_time)
             self.app.logger.info(f"RAG returned no answer, falling back to reasoning model for query: {query[:50]}...")
-            # Fall through to reasoning model below
             action_type = 'reasoning'
-            # Re-use router_time for the total
             process_time = router_time
 
         if action_type == 'image':
@@ -873,7 +789,6 @@ class RedisRequestQueue:
         elif action_type == 'rag':
             return self._process_rag_task(query, session_id, user_id, lang)
         elif action_type == 'reasoning':
-            # Reasoning model (RAG already tried above and returned None)
             if router_result.get('needs_reasoning'):
                 reasoning_start = time.time()
                 final_response = self.app.modules['base'].process_reasoning(
@@ -886,62 +801,17 @@ class RedisRequestQueue:
             model_used = self._get_model_name('reasoning') or 'unknown'
             return self._save_and_respond(session_id, final_response, model_used, process_time)
         else:
-            # Default: echo query
             return self._save_and_respond(
                 session_id, query, self._get_model_name('chat') or 'unknown', router_time
             )
 
-    def _process_image_chat_task(self, file_data: str, file_type: str, file_name: str,
-                                 message_text: str, session_id: str, current_time_str: str,
-                                 lang: str) -> Dict[str, Any]:
-        """Handle image + text chat (user uploads image and asks question)."""
-        process_start = time.time()
-        is_error = False
-
-        if 'multimodal' not in self.app.modules or not self.app.modules['multimodal'].available:
-            bot_reply = "⚠️ " + self.app.modules['base']._('Multimodal model unavailable', lang)
-            process_time = round(time.time() - process_start, 1)
-            is_error = True
-        else:
-            file_size = int((len(file_data) * 3) / 4) if file_data else 0
-            is_valid, error = self.app.modules['multimodal'].validate_image(
-                file_data, file_type, file_name, file_size
-            )
-            if is_valid:
-                bot_reply, error = self.app.modules['multimodal'].process_image_with_text(
-                    file_data, message_text, current_time_str, lang=lang, session_id=session_id
-                )
-                process_time = round(time.time() - process_start, 1)
-                if error:
-                    bot_reply = f"⚠️ {error}"
-                    is_error = True
-            else:
-                bot_reply = "⚠️ " + (error or self.app.modules['base']._('Invalid image', lang))
-                process_time = round(time.time() - process_start, 1)
-                is_error = True
-
-        mm_model = self._get_model_name('multimodal') or 'unknown'
-        return self._save_and_respond(session_id, bot_reply, mm_model, process_time, is_error=is_error)
-
+    # Modified: removed hardcoded is_image_edit block; all image+text now go through _process_image_chat_task
     def _process_request(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Main entry point — delegates to specialized task handlers.
-
-        Routing:
-          - index_document  → _process_index_task
-          - reindex_all     → _process_reindex_all_task
-          - transcribe      → _process_transcribe_task
-          - audio files     → _process_audio_task
-          - image edit      → _process_image_edit_task
-          - text            → _process_text_task (router)
-          - image + text    → _process_image_chat_task
-          - unknown         → error
-        """
+        """Main entry point — delegates to specialized task handlers."""
         self.app.logger.info(f"RedisRequestQueue._process_request: processing task {task['id']}")
 
-        # Check task type — it can be at top level or inside 'data' (from add_request)
         task_type = task.get('type') or task.get('data', {}).get('type')
 
-        # Index / reindex / transcription tasks — handled separately
         if task_type == 'index_document':
             return self._process_index_task(task)
         if task_type == 'reindex_all_embeddings':
@@ -965,32 +835,16 @@ class RedisRequestQueue:
         if file_type and file_type.startswith('audio/'):
             return self._process_audio_task(task, request_data, session_id, user_id, lang)
 
-        # Image editing (image uploaded + edit comment) — bypasses router
-        # Only treat as edit if there's text (user wants changes)
-        # If no text, treat as image description/chat
-        # Re-check availability at request time
-        if 'image' in self.app.modules:
-            self.app.modules['image'].check_availability()
-        if 'multimodal' in self.app.modules:
-            self.app.modules['multimodal'].check_availability()
-
-        is_image_edit = (request_type == 'image' and file_data and file_type and
-                message_text and  # Must have text comment
-                'image' in self.app.modules and self.app.modules['image'].available and
-                'multimodal' in self.app.modules and self.app.modules['multimodal'].available)
-
-        if is_image_edit:
-            return self._process_image_edit_task(message_text, file_data, file_type, session_id, user_id, lang)
-
         # Text request → router
         if request_type == 'text':
             return self._process_text_task(message_text, session_id, user_id, current_time_str, lang)
 
-        # Image + text chat (question about image)
+        # Image + text chat (question about image or edit request)
+        # The actual decision between analysis and editing is now made by the multimodal model
         if request_type == 'image' and file_data:
             return self._process_image_chat_task(
                 file_data, file_type or '', file_name or '',
-                message_text, session_id, current_time_str, lang
+                message_text, session_id, current_time_str, lang, user_id
             )
 
         # Unknown request type
@@ -998,7 +852,65 @@ class RedisRequestQueue:
             session_id, self.app.modules['base']._('Unknown request type', lang=lang), 0, lang
         )
 
-    def _process_audio_task(self, task: Dict[str, Any], request_data: Dict[str, Any], 
+    # Modified: added handling of [-IMAGE-EDIT-] marker, and user_id parameter
+    def _process_image_chat_task(self, file_data: str, file_type: str, file_name: str,
+                                 message_text: str, session_id: str, current_time_str: str,
+                                 lang: str, user_id: str) -> Dict[str, Any]:
+        """Handle image + text chat (user uploads image and asks question or requests edit).
+        The multimodal model decides: analysis answer or edit marker."""
+        process_start = time.time()
+        is_error = False
+
+        if 'multimodal' not in self.app.modules or not self.app.modules['multimodal'].available:
+            bot_reply = "⚠️ " + self.app.modules['base']._('Multimodal model unavailable', lang)
+            process_time = round(time.time() - process_start, 1)
+            is_error = True
+        else:
+            file_size = int((len(file_data) * 3) / 4) if file_data else 0
+            is_valid, error = self.app.modules['multimodal'].validate_image(
+                file_data, file_type, file_name, file_size
+            )
+            if is_valid:
+                bot_reply, error = self.app.modules['multimodal'].process_image_with_text(
+                    file_data, message_text, current_time_str, lang=lang, session_id=session_id
+                )
+                process_time = round(time.time() - process_start, 1)
+                if error:
+                    bot_reply = f"⚠️ {error}"
+                    is_error = True
+                else:
+                    # Check if the response indicates an image editing request
+                    if isinstance(bot_reply, str) and bot_reply.strip().startswith('[-IMAGE-EDIT-]'):
+                        edit_query = bot_reply.strip()[len('[-IMAGE-EDIT-]'):].strip()
+                        if edit_query:
+                            # Redirect to image editing task
+                            return self._process_image_edit_task(
+                                edit_query, file_data, file_type, session_id, user_id, lang
+                            )
+                        else:
+                            # Marker present but no query, treat as error
+                            bot_reply = "⚠️ " + self.app.modules['base']._('Image editing request was empty', lang)
+                            is_error = True
+                    # Safety net: if model returned edit-like content without the required marker,
+                    # treat as a model error, NOT an edit request.
+                    elif isinstance(bot_reply, str) and 'edit_prompt' in bot_reply:
+                        self.app.logger.warning(
+                            f"Multimodal model returned 'edit_prompt' without [-IMAGE-EDIT-] marker. "
+                            f"Treating as classification error. Response prefix: {bot_reply[:100]}..."
+                        )
+                        bot_reply = "⚠️ " + self.app.modules['base']._(
+                            'Failed to process image request. Please try again.', lang
+                        )
+                        is_error = True
+            else:
+                bot_reply = "⚠️ " + (error or self.app.modules['base']._('Invalid image', lang))
+                process_time = round(time.time() - process_start, 1)
+                is_error = True
+
+        mm_model = self._get_model_name('multimodal') or 'unknown'
+        return self._save_and_respond(session_id, bot_reply, mm_model, process_time, is_error=is_error)
+
+    def _process_audio_task(self, task: Dict[str, Any], request_data: Dict[str, Any],
                            session_id: str, user_id: str, lang: str) -> Dict[str, Any]:
         """Process audio file (voice message or audio upload) via transcription."""
         file_data = request_data.get('file_data')
@@ -1009,9 +921,6 @@ class RedisRequestQueue:
 
         process_start_time = time.time()
 
-        # Don't pre-check availability here — audio_module.transcribe() re-checks
-        # availability on each call, so a service that was unavailable at startup
-        # but is now ready will still work.
         audio_module = self.app.modules.get('audio')
         if not audio_module:
             process_time = round(time.time() - process_start_time, 1)
@@ -1028,10 +937,9 @@ class RedisRequestQueue:
                 'message_id': message_id
             }
 
-        # Perform transcription (transcribe() re-checks availability internally)
         transcribed_text = audio_module.transcribe(file_data, file_type, file_name, lang=lang)
         process_time = round(time.time() - process_start_time, 1)
-        
+
         if transcribed_text is None:
             error_msg = "⚠️ " + self.app.modules['base']._('Failed to recognize speech', lang)
             completion_time_for_db = get_current_time_in_timezone_for_db(self.app)
@@ -1045,18 +953,16 @@ class RedisRequestQueue:
                 'is_error': True,
                 'message_id': message_id
             }
-        
-        # Save transcribed message
+
         from flask_babel import force_locale
         with force_locale(lang):
             system_content = '🎤 ' + self.app.modules['base']._('Transcribed') + ': ' + transcribed_text
-        
+
         transcribed_message_id = save_message(
             session_id, 'assistant', system_content,
             model_name='whisper', response_time=str(process_time)
         )
-        
-        # If voice record, queue text for processing
+
         if voice_record:
             text_request_data = {
                 'type': 'text',
@@ -1066,7 +972,7 @@ class RedisRequestQueue:
             new_request_id, _ = self.add_request(
                 user_id, session_id, text_request_data, user_class, lang=lang
             )
-            
+
             return {
                 'transcribed_text': transcribed_text,
                 'transcribed_message_id': transcribed_message_id,
@@ -1075,7 +981,6 @@ class RedisRequestQueue:
                 'response_time': process_time
             }
         else:
-            # Audio file upload without further processing
             return {
                 'transcribed_text': transcribed_text,
                 'transcribed_message_id': transcribed_message_id,
@@ -1095,9 +1000,6 @@ class RedisRequestQueue:
         lang = task.get('lang', 'ru')
         user_class = task.get('user_class', 2)
 
-        # Don't pre-check availability — audio_module.transcribe() re-checks
-        # availability on each call, so a service that was unavailable at startup
-        # but is now ready will still work.
         audio_module = self.app.modules.get('audio')
         if not audio_module:
             error_msg = self.app.modules['base']._('Audio service unavailable', lang)
@@ -1112,34 +1014,28 @@ class RedisRequestQueue:
             save_message(session_id, 'assistant', '⚠️ ' + error_msg, model_name='system', response_time='0')
             return {'error': error_msg, 'session_id': session_id, 'is_error': True}
 
-        # Save assistant message with transcribed text
         from flask_babel import force_locale
         with force_locale(lang):
             system_content = '🎤 ' + self.app.modules['base']._('Transcribed') + ': ' + transcribed_text
         transcribed_message_id = save_message(session_id, 'assistant', system_content, model_name='whisper', response_time='0')
 
-        # If this is a voice recording, we want to process the transcribed text as a text request
         if voice_record:
-            # Create a new text request for processing
             text_request_data = {
                 'type': 'text',
                 'text': transcribed_text,
                 'preview': (transcribed_text[:50] + '...') if transcribed_text else self.app.modules['base']._('Voice request', lang=lang)
             }
-            # Add to queue (this will be processed by the same worker, but as a new task)
             new_request_id, _ = self.app.request_queue.add_request(
                 user_id, session_id, text_request_data, user_class, lang=lang
             )
-            # Return the result indicating transcription done and the new request ID for processing
             return {
                 'transcribed_text': transcribed_text,
                 'transcribed_message_id': transcribed_message_id,
                 'request_id': new_request_id,
                 'session_id': session_id,
-                'response_time': 0  # will be updated later
+                'response_time': 0
             }
         else:
-            # If not voice_record, just return the transcribed text (e.g., for audio file upload without immediate processing)
             return {
                 'transcribed_text': transcribed_text,
                 'transcribed_message_id': transcribed_message_id,
@@ -1148,7 +1044,6 @@ class RedisRequestQueue:
             }
 
     def _process_index_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        # Data can be at top level or inside 'data' (from add_request)
         data = task.get('data', {})
         doc_id = task.get('doc_id') or data.get('doc_id')
         file_path = task.get('file_path') or data.get('file_path')
@@ -1188,7 +1083,6 @@ class RedisRequestQueue:
             self.app.logger.error("RAG module not available for reindexing")
             return {'success': False, 'error': 'RAG module unavailable'}
 
-        # Process documents in batches
         batch_size = 50
         offset = 0
         total = 0
@@ -1209,7 +1103,6 @@ class RedisRequestQueue:
             doc_ids = [doc['id'] for doc in documents]
             all_doc_ids.extend(doc_ids)
 
-            # Set status to pending for this batch
             placeholders = ','.join(['%s'] * len(doc_ids))
             with get_db() as conn:
                 c = conn.cursor()
@@ -1228,7 +1121,6 @@ class RedisRequestQueue:
                 documents_folder = self.app.config['DOCUMENTS_FOLDER']
                 full_path = os.path.join(documents_folder, file_path)
 
-                # Check if file exists before attempting reindex
                 if not os.path.exists(full_path):
                     self.app.logger.warning(f"Document file not found: {full_path}, skipping")
                     update_document_index_status(doc_id, INDEX_STATUS_FAILED)
@@ -1266,11 +1158,9 @@ class RedisRequestQueue:
     def get_user_requests_status(self, user_id: str, lang: str = 'ru') -> Dict[str, Any]:
         """Get status of user's requests (processing, queued, completed)."""
         result = {'processing': None, 'queued': [], 'recent_completed': []}
-        
-        # Track which sessions are already processing (to avoid duplicates in queued)
+
         processing_session_ids = set()
 
-        # Check currently processing tasks (check both fast and slow queues)
         for proc_key in [self.processing_key, self.slow_processing_key]:
             processing_tasks = self.redis.hgetall(proc_key)
             for req_id, task_data in processing_tasks.items():
@@ -1280,14 +1170,12 @@ class RedisRequestQueue:
                     task['status'] = 'processing'
                     task['position_info'] = {'position': 1, 'estimated_seconds': 0}
                     result['processing'] = self._format_request_info(task, lang)
-                    # Track this session as processing
                     if task.get('session_id'):
                         processing_session_ids.add(task.get('session_id'))
-                    break  # Only one processing task per user
+                    break
             if result['processing']:
-                break  # Found processing task, no need to check other queue
+                break
 
-        # Check queued tasks on BOTH fast and slow queues (EXCLUDE sessions already processing)
         position = 1
         for q_key in [self.queue_key, self.slow_queue_key]:
             queue_length = self.redis.llen(q_key)
@@ -1295,7 +1183,6 @@ class RedisRequestQueue:
             for task_data in queue_tasks:
                 task = self._deserialize(task_data)
                 if task and task.get('user_id') == user_id:
-                    # Skip if this session is already processing
                     if task.get('session_id') in processing_session_ids:
                         continue
                     task['status'] = 'queued'

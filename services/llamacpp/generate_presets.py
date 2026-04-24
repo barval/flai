@@ -29,6 +29,13 @@ DEFAULTS = {
         'temperature': '0.1',
         'top-p': '0.1',
     },
+    'gpt-oss-20b-Q4_K_M': {
+        'model': '/models/gpt-oss-20b-Q4_K_M.gguf',
+        'n-gpu-layers': '-1',
+        'ctx-size': '8192',
+        'temperature': '0.7',
+        'top-p': '0.9',
+    },
     'Qwen3VL-8B-Instruct-Q4_K_M': {
         'model': '/models/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf',
         'mmproj': '/models/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf',
@@ -41,13 +48,6 @@ DEFAULTS = {
         'model': '/models/bge-m3-Q8_0.gguf',
         'n-gpu-layers': '-1',
         'ctx-size': '8192',
-    },
-    'gpt-oss-20b-mxfp4': {
-        'model': '/models/gpt-oss-20b-mxfp4.gguf',
-        'n-gpu-layers': '-1',
-        'ctx-size': '8192',
-        'temperature': '0.7',
-        'top-p': '0.9',
     },
 }
 

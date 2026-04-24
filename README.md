@@ -217,22 +217,22 @@ mkdir -p services/llamacpp/models
 
 # Chat model (fast responses)
 wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
-  "https://huggingface.co/bartowski/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 
 # Reasoning model (complex tasks)
-wget -O services/llamacpp/models/gpt-oss-20b-mxfp4.gguf \
-  "https://huggingface.co/openai/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-mxfp4.gguf"
+wget -O services/llamacpp/models/gpt-oss-20b-Q4_K_M.gguf \
+  "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q4_K_M.gguf"
 
 # Multimodal model (image analysis) — must be in subdirectory with mmproj
 mkdir -p services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M
 wget -O services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf \
-  "https://huggingface.co/bartowski/Qwen3VL-8B-Instruct-GGUF/resolve/main/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
+  "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
 wget -O services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf \
-  "https://huggingface.co/bartowski/Qwen3VL-8B-Instruct-GGUF/resolve/main/mmproj-F16.gguf"
+  "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/mmproj-Qwen3VL-8B-Instruct-F16.gguf"
 
 # Embedding model (RAG)
 wget -O services/llamacpp/models/bge-m3-Q8_0.gguf \
-  "https://huggingface.co/bartowski/bge-m3-GGUF/resolve/main/bge-m3-Q8_0.gguf"
+  "https://huggingface.co/gpustack/bge-m3-GGUF/resolve/main/bge-m3-Q8_0.gguf"
 ```
 
 #### Image Generation Models (Z_image_turbo)
@@ -417,7 +417,7 @@ llama.cpp runs in **router mode** (`--models-dir`), dynamically loading models f
 ```
 services/llamacpp/models/
 ├── Qwen3-4B-Instruct-2507-Q4_K_M.gguf     # Chat
-├── gpt-oss-20b-mxfp4.gguf                  # Reasoning
+├── gpt-oss-20b-Q4_K_M.gguf                  # Reasoning
 ├── bge-m3-Q8_0.gguf                        # Embedding
 └── Qwen3VL-8B-Instruct-Q4_K_M/             # Multimodal (subdirectory!)
     ├── Qwen3VL-8B-Instruct-Q4_K_M.gguf
@@ -508,27 +508,16 @@ Uses ONNX Piper models for text-to-speech.
 
 ```bash
 # Download voice models
-mkdir -p services/piper/piper_models
+mkdir -p services/piper/models
 
-# Russian voices (male + female)
-curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx"
-curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx.json \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json"
-curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx"
-curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx.json \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json"
+# English (female)
+curl -L -o services/piper/models/en_US-lessac-medium.onnx \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx"
 
-# English voices
-curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx"
-curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx.json \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json"
-curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx"
-curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx.json \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json"
+# Russian (male)
+curl -L -o services/piper/models/ru_RU-ruslan-medium.onnx \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/ruslan/medium/ru_RU-ruslan-medium.onnx"
+```
 ```
 
 ---
@@ -709,10 +698,10 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 
 | Model | Purpose | License | Approx. Size |
 |-------|---------|---------|-------------|
-| **Qwen3-4B-Instruct-2507-Q4_K_M** | Chat (fast responses) | [Qwen License](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF) | ~2.5 GB |
-| **gpt-oss-20b-mxfp4** | Reasoning (complex tasks) | [OpenAI License](https://huggingface.co/openai/gpt-oss-20b-GGUF) | ~12 GB |
-| **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (image analysis) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5.5 GB + mmproj ~200 MB |
-| **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/BAAI/bge-m3-gguf) | ~2.2 GB |
+| **Qwen3-4B-Instruct-2507-Q4_K_M** | Chat (fast responses) | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2.5 GB |
+| **gpt-oss-20b-Q4_K_M** | Reasoning (complex tasks) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 GB |
+| **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (image analysis) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5 GB + mmproj ~1.1 GB |
+| **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~0.6 GB |
 
 ### Image Generation Models (stable-diffusion.cpp)
 
@@ -720,7 +709,7 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 |-------|---------|---------|-------------|
 | **Z-Image-Turbo (z_image_turbo-Q8_0)** | Image generation | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~6.2 GB |
 | **ae.safetensors** (VAE) | Variational autoencoder for Z-Image | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~0.3 GB |
-| **Qwen3-4B-Instruct-2507-Q4_K_M** | Text encoder for Z-Image | [Qwen License](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF) | ~2.5 GB *(shared with chat)* |
+| **Qwen3-4B-Instruct-2507-Q4_K_M** | Text encoder for Z-Image | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2.5 GB *(shared with chat)* |
 
 ### Image Editing Models (stable-diffusion.cpp)
 

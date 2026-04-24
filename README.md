@@ -352,7 +352,8 @@ SERVICE_RETRY_DELAY=2
 
 **Session Security:**
 ```bash
-HTTPS_ENABLED=true
+# Set to true ONLY when deployed behind reverse proxy (nginx) with HTTPS enabled
+HTTPS_ENABLED=false
 PERMANENT_SESSION_LIFETIME=28800    # 8 hours
 ```
 

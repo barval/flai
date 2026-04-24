@@ -900,7 +900,7 @@ msgid "vram_partial_low"
 msgstr "Использовано VRAM: 100%, RAM: %2%% - медленно, задержки"
 
 msgid "no_gpu_low"
-msgstr "Нет GPU. Использовано %1% RAM - очень медленно"
+msgstr "Нет GPU. Использовано %1%% RAM - очень медленно"
 
 msgid "no_gpu_full"
-msgstr "Нет GPU. Использовано %1% RAM - медленно"
+msgstr "Нет GPU. Использовано %1%% RAM - медленно"

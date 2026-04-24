@@ -887,7 +887,7 @@ msgid "vram_partial_low"
 msgstr "Used VRAM: 100%, RAM: %2%% - slow, delays"
 
 msgid "no_gpu_low"
-msgstr "No GPU. Used %1% RAM - very slow"
+msgstr "No GPU. Used %1%% RAM - very slow"
 
 msgid "no_gpu_full"
-msgstr "No GPU. Used %1% RAM - slow"
+msgstr "No GPU. Used %1%% RAM - slow"

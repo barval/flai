@@ -91,17 +91,17 @@ download_llamacpp_models() {
     fi
 
     # Мультимодальная модель (публичный репозиторий)
-    if [[ ! -d "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M" ]]; then
-        info "Скачиваю Qwen3VL-4B-Instruct-Q4_K_M (мультимодальная)..."
-        mkdir -p "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M"
-        HF_DOWNLOAD "Qwen/Qwen3-VL-4B-Instruct-GGUF" \
-            "Qwen3-VL-4B-Instruct-Q4_K_M.gguf" \
-            "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M/Qwen3-VL-4B-Instruct-Q4_K_M.gguf"
-        HF_DOWNLOAD "Qwen/Qwen3-VL-4B-Instruct-GGUF" \
-            "mmproj-Qwen3VL-4B-Instruct-F16.gguf" \
-            "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M/mmproj-F16.gguf"
+    if [[ ! -d "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M" ]]; then
+        info "Скачиваю Qwen3VL-8B-Instruct-Q4_K_M (мультимодальная)..."
+        mkdir -p "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M"
+        HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
+            "Qwen3VL-8B-Instruct-Q4_K_M.gguf" \
+            "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
+        HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
+            "mmproj-Qwen3VL-8B-Instruct-F16.gguf" \
+            "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf"
     else
-        warn "Qwen3VL-4B-Instruct-Q4_K_M уже есть — пропускаю."
+        warn "Qwen3VL-8B-Instruct-Q4_K_M уже есть — пропускаю."
     fi
 
     # Модель эмбеддингов (публичный репозиторий)
@@ -175,19 +175,17 @@ download_tts_models() {
     mkdir -p "$TTS_DIR"
     # Английский
     if [[ ! -f "$TTS_DIR/en_US-lessac-medium.onnx" ]]; then
-        info "Скачиваю en_US-lessac-medium..."
+        info "Скачиваю en_US-lessac-medium.onnx..."
         HF_DOWNLOAD "rhasspy/piper-voices" \
-            "en/en_US/lessac/medium/en_US-lessac-medium.onnx" "$TTS_DIR"
+            "en/en_US/lessac/medium/en_US-lessac-medium.onnx" \
+            "$TTS_DIR/en_US-lessac-medium.onnx"
     fi
     # Русский
     if [[ ! -f "$TTS_DIR/ru_RU-ruslan-medium.onnx" ]]; then
-        info "Скачиваю ru_RU-ruslan-medium..."
+        info "Скачиваю ru_RU-ruslan-medium.onnx..."
         HF_DOWNLOAD "rhasspy/piper-voices" \
-            "ru/ru_RU/ruslan/medium/ru_RU-ruslan-medium.onnx" "$TTS_DIR"
-    fi
-    # Конфигурация
-    if [[ ! -f "$TTS_DIR/config.json" ]]; then
-        HF_DOWNLOAD "rhasspy/piper-voices" "config.json" "$TTS_DIR"
+            "ru/ru_RU/ruslan/medium/ru_RU-ruslan-medium.onnx" \
+            "$TTS_DIR/ru_RU-ruslan-medium.onnx"
     fi
 }
 

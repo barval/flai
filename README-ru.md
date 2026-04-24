@@ -187,24 +187,24 @@ nano .env
 ```bash
 mkdir -p services/llamacpp/models
 
-# Модель чата (быстрые ответы)
+# Чат-модель (быстрые ответы)
 wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
-  "https://huggingface.co/bartowski/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 
 # Модель рассуждений (сложные задачи)
-wget -O services/llamacpp/models/gpt-oss-20b-mxfp4.gguf \
-  "https://huggingface.co/openai/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-mxfp4.gguf"
+wget -O services/llamacpp/models/gpt-oss-20b-Q4_K_M.gguf \
+  "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q4_K_M.gguf"
 
 # Мультимодальная модель (анализ изображений) — ОБЯЗАТЕЛЬНО в поддиректории с mmproj!
 mkdir -p services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M
 wget -O services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf \
-  "https://huggingface.co/bartowski/Qwen3VL-8B-Instruct-GGUF/resolve/main/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
+  "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
 wget -O services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf \
-  "https://huggingface.co/bartowski/Qwen3VL-8B-Instruct-GGUF/resolve/main/mmproj-F16.gguf"
+  "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/mmproj-Qwen3VL-8B-Instruct-F16.gguf"
 
-# Модель эмбеддинга (RAG)
+# Модель эмбеддингов (RAG)
 wget -O services/llamacpp/models/bge-m3-Q8_0.gguf \
-  "https://huggingface.co/bartowski/bge-m3-GGUF/resolve/main/bge-m3-Q8_0.gguf"
+  "https://huggingface.co/gpustack/bge-m3-GGUF/resolve/main/bge-m3-Q8_0.gguf"
 ```
 
 #### Модели генерации изображений (Z_image_turbo)
@@ -390,7 +390,7 @@ llama.cpp работает в **режиме роутера** (`--models-dir`), 
 ```
 services/llamacpp/models/
 ├── Qwen3-4B-Instruct-2507-Q4_K_M.gguf     # Чат
-├── gpt-oss-20b-mxfp4.gguf                  # Рассуждения
+├── gpt-oss-20b-Q4_K_M.gguf                  # Рассуждения
 ├── bge-m3-Q8_0.gguf                        # Эмбеддинг
 └── Qwen3VL-8B-Instruct-Q4_K_M/             # Мультимодальность (поддиректория!)
     ├── Qwen3VL-8B-Instruct-Q4_K_M.gguf
@@ -478,28 +478,17 @@ docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 Использует ONNX-модели Piper для синтеза речи.
 
 ```bash
-# Скачать голосовые модели
-mkdir -p services/piper/piper_models
+# Скачивание голосовых моделей
+mkdir -p services/piper/models
 
-# Русские голоса (мужской + женский)
-curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx"
-curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx.json \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json"
-curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx"
-curl -L -o services/piper/piper_models/ru_RU-irina-medium.onnx.json \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json"
+# Английский (женский)
+curl -L -o services/piper/models/en_US-lessac-medium.onnx \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx"
 
-# Английские голоса
-curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx"
-curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx.json \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json"
-curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx"
-curl -L -o services/piper/piper_models/en_US-ljspeech-medium.onnx.json \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json"
+# Русский (мужской)
+curl -L -o services/piper/models/ru_RU-ruslan-medium.onnx \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/ruslan/medium/ru_RU-ruslan-medium.onnx"
+```
 ```
 
 ---
@@ -673,19 +662,19 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 ### LLM-модели (llama.cpp)
 
 | Модель | Назначение | Лицензия | Примерный размер |
-|--------|------------|----------|-----------------|
-| **Qwen3-4B-Instruct-2507-Q4_K_M** | Чат (быстрые ответы) | [Qwen License](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF) | ~2,5 ГБ |
-| **gpt-oss-20b-mxfp4** | Рассуждения (сложные задачи) | [OpenAI License](https://huggingface.co/openai/gpt-oss-20b-GGUF) | ~12 ГБ |
-| **Qwen3VL-8B-Instruct-Q4_K_M** | Мультимодальность (анализ изображений) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5,5 ГБ + mmproj ~200 МБ |
-| **bge-m3-Q8_0** | Эмбеддинги (RAG) | [MIT License](https://huggingface.co/BAAI/bge-m3-gguf) | ~2,2 ГБ |
+|--------|-----------|---------|--------------|
+| **Qwen3-4B-Instruct-2507-Q4_K_M** | Чат (быстрые ответы) | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2,5 ГБ |
+| **gpt-oss-20b-Q4_K_M** | Рассуждения (сложные задачи) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 ГБ |
+| **Qwen3VL-8B-Instruct-Q4_K_M** | Мультимодальность (анализ изображений) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5 ГБ + mmproj ~1,1 ГБ |
+| **bge-m3-Q8_0** | Эмбеддинги (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~0,6 ГБ |
 
 ### Модели генерации изображений (stable-diffusion.cpp)
 
 | Модель | Назначение | Лицензия | Примерный размер |
-|--------|------------|----------|-----------------|
+|--------|-----------|---------|--------------|
 | **Z-Image-Turbo (z_image_turbo-Q8_0)** | Генерация изображений | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~6,2 ГБ |
 | **ae.safetensors** (VAE) | Вариационный автоэнкодер для Z-Image | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~0,3 ГБ |
-| **Qwen3-4B-Instruct-2507-Q4_K_M** | Текстовый кодировщик для Z-Image | [Qwen License](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF) | ~2,5 ГБ *(общая с чатом)* |
+| **Qwen3-4B-Instruct-2507-Q4_K_M** | Текстовый кодировщик для Z-Image | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2,5 ГБ *(общая с чатом)* |
 
 ### Модели редактирования изображений (stable-diffusion.cpp)
 

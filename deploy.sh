@@ -90,18 +90,18 @@ download_llamacpp_models() {
         warn "gpt-oss-20b-Q4_K_M.gguf already exists — skipping."
     fi
 
-    # Multimodal model (public repository)
-    if [[ ! -d "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M" ]]; then
-        info "Downloading Qwen3VL-4B-Instruct-Q4_K_M (multimodal)..."
-        mkdir -p "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M"
-        HF_DOWNLOAD "Qwen/Qwen3-VL-4B-Instruct-GGUF" \
-            "Qwen3-VL-4B-Instruct-Q4_K_M.gguf" \
-            "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M/Qwen3-VL-4B-Instruct-Q4_K_M.gguf"
-        HF_DOWNLOAD "Qwen/Qwen3-VL-4B-Instruct-GGUF" \
-            "mmproj-Qwen3VL-4B-Instruct-F16.gguf" \
-            "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M/mmproj-F16.gguf"
+# Multimodal model (public repository)
+    if [[ ! -d "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M" ]]; then
+        info "Downloading Qwen3VL-8B-Instruct-Q4_K_M (multimodal)..."
+        mkdir -p "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M"
+        HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
+            "Qwen3VL-8B-Instruct-Q4_K_M.gguf" \
+            "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
+        HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
+            "mmproj-Qwen3VL-8B-Instruct-F16.gguf" \
+            "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf"
     else
-        warn "Qwen3VL-4B-Instruct-Q4_K_M already exists — skipping."
+        warn "Qwen3VL-8B-Instruct-Q4_K_M already exists — skipping."
     fi
 
     # Embedding model (public repository)
@@ -175,19 +175,17 @@ download_tts_models() {
     mkdir -p "$TTS_DIR"
     # English
     if [[ ! -f "$TTS_DIR/en_US-lessac-medium.onnx" ]]; then
-        info "Downloading en_US-lessac-medium..."
+        info "Downloading en_US-lessac-medium.onnx..."
         HF_DOWNLOAD "rhasspy/piper-voices" \
-            "en/en_US/lessac/medium/en_US-lessac-medium.onnx" "$TTS_DIR"
+            "en/en_US/lessac/medium/en_US-lessac-medium.onnx" \
+            "$TTS_DIR/en_US-lessac-medium.onnx"
     fi
     # Russian
     if [[ ! -f "$TTS_DIR/ru_RU-ruslan-medium.onnx" ]]; then
-        info "Downloading ru_RU-ruslan-medium..."
+        info "Downloading ru_RU-ruslan-medium.onnx..."
         HF_DOWNLOAD "rhasspy/piper-voices" \
-            "ru/ru_RU/ruslan/medium/ru_RU-ruslan-medium.onnx" "$TTS_DIR"
-    fi
-    # Config
-    if [[ ! -f "$TTS_DIR/config.json" ]]; then
-        HF_DOWNLOAD "rhasspy/piper-voices" "config.json" "$TTS_DIR"
+            "ru/ru_RU/ruslan/medium/ru_RU-ruslan-medium.onnx" \
+            "$TTS_DIR/ru_RU-ruslan-medium.onnx"
     fi
 }
 

@@ -433,7 +433,7 @@ def llamacpp_model_info(name):
                 'gemma-4-26B-A4B-it-MXFP4_MOE': {
                     'arch': 'gemma', 'params': '~26B (MoE)', 'ctx': 32768, 'emb': 4608
                 },
-                'gpt-oss-20b-mxfp4': {
+                'gpt-oss-20b-Q4_K_M': {
                     'arch': 'gpt-oss', 'params': '~20B', 'ctx': 32768, 'emb': 5120
                 },
                 'Qwen3VL-8B-Instruct-Q4_K_M': {

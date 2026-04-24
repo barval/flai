@@ -134,10 +134,6 @@ services:
         reservations:
           cpus: '2.0'
           memory: 8G
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     networks:
       - flai_network
     restart: unless-stopped
@@ -196,10 +192,6 @@ services:
         reservations:
           cpus: '4.0'
           memory: 16G
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     networks:
       - flai_network
     restart: unless-stopped

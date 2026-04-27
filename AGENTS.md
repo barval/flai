@@ -1,60 +1,96 @@
-# AGENTS.md — FLAI v8.0
+# AGENTS.md — FLAI v8.1
 
-## Commands
+## Обязательные правила для AI-агентов (OpenCode)
 
-```bash
-# Lint (ruff)
-ruff check .
+При любой модификации проекта строго соблюдайте перечисленные ниже правила.
 
-# Type check (mypy — allowed to fail non-blocking)
-mypy app/ modules/ --ignore-missing-imports || true
+1. **Чистота кода**
+   - В коде не должно быть неиспользуемых файлов, мёртвого кода, неиспользуемых CSS-стилей и неиспользуемых переводов.
+   - Запрещены любые упоминания выведенных из эксплуатации сервисов и моделей (Ollama, Automatic1111, Qwen Image Edit, Qwen Image и т.п.). Если такие ссылки встречены, они должны быть удалены или заменены на актуальные (llama.cpp router, stable-diffusion.cpp с Z-Image Turbo / Flux.2 Klein 4B).
+   - Код должен пройти линтер ruff (правила в `pyproject.toml`) и проверку типов mypy.
 
-# Run all tests
-pytest
+2. **Язык комментариев и логов**
+   - Все комментарии в исходных файлах (Python, JS, CSS) должны быть на английском языке.
+   - Исключение: русскоязычные версии скриптов развёртывания (`deploy-ru.sh`) могут содержать русские комментарии, но должны полностью соответствовать английским версиям.
+   - Вывод в лог (`logging`) всегда на английском языке.
+   - Сообщения и уведомления, видимые пользователю, выводятся на языке, выбранном в профиле пользователя (Flask-Babel).
 
-# Run tests with coverage
-pytest --cov=app --cov=modules --cov-report=html
-```
+3. **Переводы**
+   - Все строки, отображаемые в интерфейсе, должны иметь переводы в `translations/{en,ru}/LC_MESSAGES/messages.po`.
+   - Не должно быть отсутствующих ключей. При добавлении нового текста следует добавить соответствующую запись в оба файла переводов.
 
-CI runs in order: `lint → typecheck → test → docker-build`.
+4. **Документация**
+   - Основные файлы README.md (английский) и README-ru.md (русский) должны отражать актуальное состояние проекта.
+   - В разделе «Что нового» должен быть описан последний релиз с перечнем изменений.
+   - Должна быть инструкция по развёртыванию на одном сервере с использованием единого скрипта `deploy.sh` (и русского варианта `deploy-ru.sh`).
+   - Должен быть приведён список всех используемых моделей, их лицензий и примерных размеров.
 
-## Architecture
+5. **Автономность**
+   - Проект после загрузки моделей и голосовых моделей должен работать полностью автономно, без загрузки внешних скриптов или модулей во время исполнения.
+   - Все статические ресурсы (JS, CSS) должны поставляться в составе проекта, а не загружаться с CDN.
 
-- **Flask app** (`wsgi.py` → `app.create_app()`) with modular blueprints under `app/routes/`.
-- **`app/modules`** (legacy): `base.py` (chat/reasoning), `multimodal.py`, `sd_cpp.py`, `rag.py`, `audio.py`, `tts.py`, `cam.py`.
-- **`modules/`** (new): same modules refactored as proper classes.
-- **`app/llamacpp_client.py`**: single client for llama.cpp router (chat, reasoning, multimodal, embedding).
-- **Config** loaded from `app/config.py` → env vars in `.env`.
-- **DB**: PostgreSQL (`app/database.py`, `app/db.py`) + SQLite for user auth (`app/userdb.py`).
-- **Queue**: Redis (`app/queue.py`), `RedisRequestQueue` — workers call `modules/` directly.
-- **File serving**: `/api/files/<path>` with session ownership verification.
+6. **Разделение стилей и скриптов**
+   - Все стили должны находиться в отдельных `.css` файлах (в `app/static/css/`). Не допускается инлайн-стилей в шаблонах или атрибутах `style` (допустимы динамические стили через JS, если они уместны).
+   - Весь JavaScript-код должен быть в отдельных `.js` файлах (в `app/static/js/`). Допустима минимальная передача данных через шаблоны (например, `window.TRANSLATIONS`).
 
-### Module initialization order (`app/__init__.py:143-188`)
-1. `BaseModule`
-2. `MultimodalModule`
-3. `SdCppModule` (if `SD_WRAPPER_URL`)
-4. `CamModule` (if `CAMERA_ENABLED`)
-5. `RagModule` (if `QDRANT_URL`)
-6. `AudioModule`
-7. `TTSModule` (if `PIPER_URL`)
-8. `RedisRequestQueue`
+7. **Тестирование**
+   - В проекте должны присутствовать модульные, интеграционные и E2E-тесты (pytest). Конфигурация тестов в `tests/`, фикстуры в `conftest.py`.
+   - Должна быть документация по запуску тестов и нагрузочного тестирования (Locust) в `README.md` и `tests/load/README.md`.
+   - CI-пайплайн (`.github/workflows/ci.yml`) выполняет линтинг, проверку типов, тесты и сборку Docker-образа.
 
-### llama.cpp router
-Router mode (`--models-dir /models/`) with `models-preset.ini` generated at startup by `services/llamacpp/generate_presets.py` from `model_configs` DB table. Only one model in VRAM at a time (`--models-max 1`).
+8. **Безопасность файлов и пути**
+   - Пути к файлам должны проверяться на path traversal.
+   - Сессии и владение файлами проверяются в `api/files/<path>`.
+   - Все секретные данные — в `.env`, не попадают в репозиторий (проверять `.gitignore` и `.dockerignore`).
 
-### Multimodal models
-Must be in subdirectory named after the model, with `mmproj-*.gguf` inside.
+9. **Структура конфигурации**
+   - Конфигурация моделей хранится в БД (`model_configs`). Параметры по умолчанию могут быть в `.env` как резервные.
+   - Preset-файл `models/models-preset.ini` генерируется автоматически из БД при старте контейнера; редактирование вручную будет перезаписано.
 
-## Testing
+## Актуальная архитектура (v8.1)
 
-Fixtures are in `tests/conftest.py`. External services (Redis, llama.cpp, Qdrant) are mocked per-test via `patch`. Run `pytest` from repo root — `pytest.ini` sets `testpaths = tests`.
+**Основные сервисы:**
+- **llama.cpp** (router mode) — инференс LLM (чат, рассуждение, мультимодальность, эмбеддинги). `LLAMACPP_URL=http://flai-llamacpp:8033`.
+- **stable-diffusion.cpp** — генерация изображений (Z-Image Turbo) и редактирование (Flux.2 Klein 4B) через Python-враппер sd-wrapper на порту 7861.
+- **Whisper ASR** — распознавание речи (faster_whisper) `ASR_MODEL=medium`.
+- **Piper TTS** — синтез речи (ONNX модели).
+- **Qdrant** — векторная БД для RAG.
+- **PostgreSQL** — БД для чатов, сообщений, пользователей.
+- **Redis** — очередь запросов.
+- **Resource Manager** (`app/resource_manager.py`) — управление GPU/CPU/RAM, предотвращает OOM.
+- **Circuit Breaker** (`app/circuit_breaker.py`) — защита от каскадных отказов.
 
-## Gotchas
+**Удалено из v8.0:**
+- Ollama → заменён на llama.cpp router.
+- Automatic1111 → заменён на stable-diffusion.cpp.
+- Qwen Image Edit модель → редактирование изображений переведено на Flux.2 Klein 4B.
+- Reranker-модуль → реранжинг через LLM.
 
-- **Mock naming**: `create_mock_llamacpp()` / `mock_llamacpp_client` — `create_mock_ollama()` is a legacy alias.
-- **Config loading order**: `app/config.py` → env vars — env must be set **before** `create_app()` is called.
-- **CSRF**: `DEBUG_API_ENABLED=true` exempts the debug blueprint (`app/__init__.py:205`).
-- **`models-preset.ini` is auto-generated** at container start — edits are overwritten. Use the admin panel.
-- **`app.utils`**: prompt formatting, token estimation, context building.
-- **`app/model_config.py`**: DB-backed per-model parameters (chat, reasoning, multimodal, embedding, chunks).
-- **Reranker module** removed — re-ranking handled via LLM now.
+**Важные точки интеграции:**
+- Мультимодальные модели должны размещаться в поддиректории с mmproj-файлом (`Qwen3VL-8B-Instruct-Q4_K_M/`).
+- Модели загружаются скриптом `deploy.sh` из HuggingFace.
+- В админ-панели (`/admin`) можно настраивать привязку моделей к модулям, параметры чанкинга и пороги RAG.
+
+**Технические детали:**
+- Flask-приложение собирается в `create_app()`, blueprints в `app/routes/`.
+- Клиент llama.cpp — `LlamaCppClient`, используется всеми модулями.
+- Очередь Redis: два воркера (fast/slow), классификация задач.
+- Безопасность: CSRF для всех форм, проверка владения сессией, валидация UUID, path traversal защита.
+- Health-check: `/health` возвращает статус всех сервисов.
+- Prometheus-метрики: `/metrics`.
+
+## Исправления, которые необходимо выполнить (Known Issues)
+
+1. **Устаревшие упоминания в промптах**  
+   В `prompts/en/create_image_edit.template` (и возможно в других) всё ещё упоминается «Qwen Image Edit model». Следует заменить на Flux.2 Klein 4B. Аналогично проверить все шаблоны на наличие ссылок на заменённые сервисы.
+
+2. **Остатки старого нейминга в коде**  
+   В тестах (`conftest.py`) присутствует функция `create_mock_ollama()` — алиас для `create_mock_llamacpp()`. Хотя она и не нарушает работу, лучше удалить алиас и во всех тестах использовать только `mock_llamacpp_client`.
+
+3. **Дублирование перевода для «Delete»**  
+   В файлах переводов есть ключ `delete` и два разных перевода (для кнопок удаления и для действий). Это допустимо, но стоит проверить консистентность.
+
+4. **Обновление README после внесения изменений**  
+   Как только будут удалены все следы старых сервисов, необходимо обновить раздел «Что нового» в README, добавив запись о v8.1 с перечнем исправлений и соответствием правилам чистоты кода.
+
+Все агенты, работающие над этим проектом, должны следовать этим инструкциям. В случае обнаружения нарушений — исправлять их незамедлительно.

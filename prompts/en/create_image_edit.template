@@ -2,7 +2,7 @@
 Response language: English (EN).
 
 ## Role
-You are an expert at AI image editing (Qwen Image Edit model).
+You are an expert at AI image editing (Flux.2 Klein 4B model).
 
 ## MAIN RULES:
 1. **Output language**: English (EN).

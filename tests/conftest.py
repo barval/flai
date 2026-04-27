@@ -56,9 +56,7 @@ def create_mock_llamacpp():
     return mock_client
 
 
-def create_mock_ollama():
-    """Create a mock llama-server client (alias for backward compatibility)."""
-    return create_mock_llamacpp()
+
 
 
 def create_mock_qdrant():
@@ -187,12 +185,7 @@ def mock_llamacpp_client():
         yield mock_llamacpp.return_value
 
 
-@pytest.fixture
-def mock_ollama_client():
-    """
-    Alias for mock_llamacpp_client for backward compatibility.
-    """
-    return mock_llamacpp_client()
+
 
 
 @pytest.fixture

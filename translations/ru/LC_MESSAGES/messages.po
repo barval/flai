@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 8.0\n"
+"Project-Id-Version: FLAI 8.1\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-05 12:00+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -685,9 +685,6 @@ msgstr "Сервис аудио недоступен"
 msgid "Too many attempts. Please try again later."
 msgstr "Слишком много попыток. Попробуйте позже."
 
-msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v8.0 (c) 2026 Барсуков Валерий"
-
 msgid "server_error_invalid_response"
 msgstr "Ошибка сервера: получен некорректный ответ"
 
@@ -904,3 +901,6 @@ msgstr "Нет GPU. Использовано %1%% RAM - очень медлен�
 
 msgid "no_gpu_full"
 msgstr "Нет GPU. Использовано %1%% RAM - медленно"
+
+msgid "footer_text"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v8.1 (c) 2026 Барсуков Валерий"

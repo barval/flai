@@ -2,9 +2,7 @@
 import logging
 import traceback
 from typing import Dict, List, Optional, Any, Union, Tuple  # Tuple added
-from flask import current_app
 from flask_babel import gettext as _
-from flask_babel import force_locale
 from app.utils import format_prompt, estimate_tokens, build_context_prompt, validate_prompt_size, SAFETY_MARGIN, TEMPLATE_OVERHEAD
 from app.db import get_session_text_history
 from app.llamacpp_client import LlamaCppClient
@@ -24,11 +22,17 @@ class BaseModule:
         if app:
             self.init_app(app)
     
-    def _(self, key: str, lang: str = 'ru', **kwargs) -> str:
+    def translate(self, key: str, lang: str = 'ru', **kwargs) -> str:
         """Get translated message using Flask-Babel."""
-        with self.app.app_context():
+        from flask import current_app
+        from flask_babel import force_locale
+        with current_app.app_context():
             with force_locale(lang):
                 return _(key, **kwargs)
+    
+    # Shortcut alias
+    def _(self, key: str, lang: str = 'ru', **kwargs) -> str:
+        return self.translate(key, lang, **kwargs)
     
     def init_app(self, app):
         """Initialize module with Flask app."""

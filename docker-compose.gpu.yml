@@ -12,7 +12,7 @@ services:
     depends_on:
       - redis
       - postgres
-      - llamacpp
+      - llama-swap
     env_file:
       - .env
     volumes:
@@ -21,6 +21,8 @@ services:
       - ./.env:/app/.env:ro
       # Mount models directory for GGUF metadata reading
       - ./services/llamacpp/models:/models:ro
+      # Mount llama-swap config
+      - ./llama-swap-config:/config
       # Mount docker socket for GPU detection
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
@@ -108,50 +110,33 @@ services:
     networks:
       - flai_network
 
+# ============================================================
+  # LLAMA-SWAP (Required - LLM Proxy, router mode)
   # ============================================================
-  # LLAMA.CPP SERVER (Required - LLM Inference, router mode)
-  # ============================================================
-  # Router mode: handles chat, reasoning, embedding, and multimodal.
-  # Multimodal models must be in subdirectories with mmproj file named mmproj*.gguf
-  llamacpp:
-    image: ghcr.io/ggml-org/llama.cpp:server-cuda
-    container_name: flai-llamacpp
+  # llama-swap provides automatic model switching and VRAM management.
+  # Configure via LLAMACP_BACKEND=llama-swap in .env
+  llama-swap:
+    image: ghcr.io/mostlygeek/llama-swap:cuda
+    container_name: flai-llamaswap
     ports:
-      - "8080:8033"
+      - "8080:8080"
     volumes:
-      - ./services/llamacpp/models:/models
-    depends_on:
-      - llamacpp-presets
+      - ./services/llamacpp/models:/models:ro
+      - ./llama-swap-config:/config
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     runtime: nvidia
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 16G
-        reservations:
-          cpus: '2.0'
-          memory: 8G
     networks:
       - flai_network
     restart: unless-stopped
-    # Router mode: --models-dir allows dynamic model switching
-    # --models-max 1: only keep one model in VRAM at a time (avoid OOM on 16GB GPU)
-    command: >
-      --models-dir /models/
-      --models-preset /models/models-preset.ini
-      --models-max 1
-      --ctx-size 16384
-      --host 0.0.0.0
-      --port 8033
-      --n-gpu-layers -1
-      --embeddings
-      --batch-size 2048
-      --ubatch-size 2048
+    command: -config /config/llama-swap.yaml -watch-config
+    networks:
+      - flai_network
+    restart: unless-stopped
+    command: -config /config/llama-swap.yaml -watch-config
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8033/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -161,6 +146,26 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+## ALTERNATIVE: Direct llama-server (use LLAMACP_BACKEND=llamacpp in .env)
+#   llamacpp:
+#     image: ghcr.io/ggml-org/llama.cpp:server-cuda
+#     container_name: flai-llamacpp
+#     ports:
+#       - "8080:8033"
+#     volumes:
+#       - ./services/llamacpp/models:/models
+#     depends_on:
+#       - llamacpp-presets
+#     environment:
+#       - NVIDIA_VISIBLE_DEVICES=all
+#       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+#     runtime: nvidia
+#     networks:
+#       - flai_network
+#     restart: unless-stopped
+#     healthcheck:
+#       test: ["CMD-SHELL", "curl -f http://localhost:8033/health || exit 1"]
 
   # ============================================================
   # STABLE-DIFFUSION.CPP (Optional - Image Generation)

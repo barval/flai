@@ -30,6 +30,8 @@ services:
       - WHISPER_API_URL=http://flai-whisper:9000/asr
       - WHISPER_API_TIMEOUT=120
       - SD_WRAPPER_URL=http://flai-sd:7861
+      - GPU_NAME=NVIDIA GeForce RTX 5060 Ti
+      - GPU_VRAM_MB=16384
     user: "0:988"
     networks:
       - flai_network
@@ -110,11 +112,9 @@ services:
     networks:
       - flai_network
 
-# ============================================================
+  # ============================================================
   # LLAMA-SWAP (Required - LLM Proxy, router mode)
   # ============================================================
-  # llama-swap provides automatic model switching and VRAM management.
-  # Configure via LLAMACP_BACKEND=llama-swap in .env
   llama-swap:
     image: ghcr.io/mostlygeek/llama-swap:cuda
     container_name: flai-llamaswap
@@ -131,10 +131,6 @@ services:
       - flai_network
     restart: unless-stopped
     command: -config /config/llama-swap.yaml -watch-config
-    networks:
-      - flai_network
-    restart: unless-stopped
-    command: -config /config/llama-swap.yaml -watch-config
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
       interval: 30s
@@ -147,31 +143,9 @@ services:
         max-size: "10m"
         max-file: "3"
 
-## ALTERNATIVE: Direct llama-server (use LLAMACP_BACKEND=llamacpp in .env)
-#   llamacpp:
-#     image: ghcr.io/ggml-org/llama.cpp:server-cuda
-#     container_name: flai-llamacpp
-#     ports:
-#       - "8080:8033"
-#     volumes:
-#       - ./services/llamacpp/models:/models
-#     depends_on:
-#       - llamacpp-presets
-#     environment:
-#       - NVIDIA_VISIBLE_DEVICES=all
-#       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-#     runtime: nvidia
-#     networks:
-#       - flai_network
-#     restart: unless-stopped
-#     healthcheck:
-#       test: ["CMD-SHELL", "curl -f http://localhost:8033/health || exit 1"]
-
   # ============================================================
   # STABLE-DIFFUSION.CPP (Optional - Image Generation)
   # ============================================================
-  # Uses sd-cli directly via a Python HTTP wrapper (sd_wrapper.py)
-  # The sd-server's /v1/images/generations endpoint doesn't work properly.
   sd_cpp:
     build:
       context: ./services/sd_cpp
@@ -200,16 +174,12 @@ services:
     networks:
       - flai_network
     restart: unless-stopped
-    # Run sd-wrapper HTTP API on port 7861 (calls sd-cli internally)
-    entrypoint: ["python3", "/app/sd_wrapper.py"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7861/health"]
+      test: ["CMD-SHELL", "curl -f http://localhost:7861/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
-    profiles:
-      - with-image-gen
+      start_period: 60s
     logging:
       driver: "json-file"
       options:
@@ -217,98 +187,55 @@ services:
         max-file: "3"
 
   # ============================================================
-  # WHISPER ASR (Optional - Speech Recognition)
+  # WHISPER (Optional - Speech Recognition)
   # ============================================================
   whisper:
-    image: onerahmet/openai-whisper-asr-webservice:v1.9.1
+    image: ghcr.io/ggml-org/whisper.cpp:server-cuda
     container_name: flai-whisper
     ports:
       - "9000:9000"
-    environment:
-      - ASR_MODEL=medium
-      - ASR_ENGINE=faster_whisper
-      - ASR_DEVICE=cpu
-    # To enable GPU acceleration for transcription, uncomment the block below:
-    # environment:
-    #   - ASR_DEVICE=cuda
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
     volumes:
-      - ~/.cache/huggingface:/root/.cache/huggingface
+      - ./services/whisper/models:/models
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    runtime: nvidia
     networks:
       - flai_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/docs"]
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 4G
-        reservations:
-          cpus: '1.0'
-          memory: 2G
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    profiles:
-      - with-voice
+      start_period: 30s
 
   # ============================================================
   # PIPER TTS (Optional - Speech Synthesis)
   # ============================================================
   piper:
-    build:
-      context: ./services/piper
-      dockerfile: Dockerfile.piper
+    image: ghcr.io/ggml-org/piper:latest
     container_name: flai-piper
     ports:
-      - "18888:8888"
+      - "8888:8888"
     volumes:
-      - ./services/piper/piper_models:/app/models
-    environment:
-      - PIPER_MODEL_DIR=/app/models
+      - ./services/piper/models:/models
+      - ./services/piper/outputs:/outputs
     networks:
       - flai_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8888/health')\" || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8888/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 1G
-        reservations:
-          cpus: '1.0'
-          memory: 512M
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    profiles:
-      - with-voice
 
   # ============================================================
-  # QDRANT (Optional - Vector Database for RAG)
+  # QDRANT (Optional - Vector DB for RAG)
   # ============================================================
   qdrant:
-    image: qdrant/qdrant:v1.12.1
+    image: qdrant/qdrant:v1.12.0
     container_name: flai-qdrant
     ports:
       - "6333:6333"
@@ -316,76 +243,60 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     environment:
-      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
-      - QDRANT__SERVICE__ENABLE_TLS=0
+      - QDRANT__SERVICE__API_KEY=
     networks:
       - flai_network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:6333/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 4G
-        reservations:
-          cpus: '1.0'
-          memory: 2G
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    profiles:
-      - with-rag
 
   # ============================================================
-  # POSTGRESQL (Required)
+  # POSTGRESQL (Required - Application DB)
   # ============================================================
   postgres:
-    image: postgres:16.4-alpine
+    image: pgvector/pgvector:pg16
     container_name: flai-postgres
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./services/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     environment:
-      - POSTGRES_DB=flai
       - POSTGRES_USER=flai
       - POSTGRES_PASSWORD=flai_password
+      - POSTGRES_DB=flai
     networks:
       - flai_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U flai"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # CAMERA API (Optional - Room Snapshots)
+  # ============================================================
+  room-snapshot-api:
+    image: ghcr.io/remsult/room-snapshot-api:latest
+    container_name: flai-room-snapshot-api
+    ports:
+      - "5001:5000"
+    environment:
+      - ROOM_API_KEY=${ROOM_API_KEY:-}
+    networks:
+      - flai_network
+    restart: unless-stopped
 
 networks:
   flai_network:
-    name: flai_flai_network
-    driver: bridge
+    name: flai_network
 
 volumes:
   redis_data:
-  qdrant_data:
   postgres_data:
+  qdrant_data:

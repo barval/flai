@@ -282,18 +282,25 @@ class LlamaSwapConfigGenerator:
             return False
 
     def signal_reload(self) -> bool:
-        """Signal llama-swap to reload config (SIGHUP)."""
-        import signal
+        """Signal llama-swap to reload config.
+        
+        With -watch-config flag enabled, llama-swap automatically polls for config changes.
+        This method is kept for manual reload trigger if needed.
+        """
         import requests
 
         url = os.getenv('LLAMA_SWAP_URL', 'http://flai-llamaswap:8080')
 
         try:
-            response = requests.get(f"{url}/reload", timeout=5)
-            if response.status_code == 200:
-                self.logger.info("llama-swap config reload signaled")
+            response = requests.post(f"{url.rstrip('/')}/reload", timeout=10)
+            if response.status_code in (200, 404):
+                self.logger.info("llama-swap reload signaled")
                 return True
-        except Exception as e:
+            self.logger.warning(f"llama-swap reload returned {response.status_code}")
+            return False
+        except requests.exceptions.RequestException as e:
+            self.logger.warning(f"Could not signal llama-swap reload: {e}")
+            return False
             self.logger.warning(f"Failed to signal reload: {e}")
 
         return False

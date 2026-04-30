@@ -32,7 +32,7 @@ services:
       - SD_WRAPPER_URL=http://flai-sd:7861
       - GPU_NAME=NVIDIA GeForce RTX 5060 Ti
       - GPU_VRAM_MB=16384
-    user: "0:988"
+    # user: "0:988"  # Removed - uses Dockerfile user (appuser:1000)
     networks:
       - flai_network
     restart: unless-stopped
@@ -190,7 +190,7 @@ services:
   # WHISPER (Optional - Speech Recognition)
   # ============================================================
   whisper:
-    image: ghcr.io/ggml-org/whisper.cpp:server-cuda
+    image: onerahmet/openai-whisper-asr-webservice:v1.9.1
     container_name: flai-whisper
     ports:
       - "9000:9000"
@@ -214,10 +214,12 @@ services:
   # PIPER TTS (Optional - Speech Synthesis)
   # ============================================================
   piper:
-    image: ghcr.io/ggml-org/piper:latest
+    build:
+      context: ./services/piper
+      dockerfile: Dockerfile.piper
     container_name: flai-piper
     ports:
-      - "8888:8888"
+      - "18888:8888"
     volumes:
       - ./services/piper/models:/models
       - ./services/piper/outputs:/outputs
@@ -282,7 +284,9 @@ services:
   # CAMERA API (Optional - Room Snapshots)
   # ============================================================
   room-snapshot-api:
-    image: ghcr.io/remsult/room-snapshot-api:latest
+    profiles:
+      - with-room
+    image: room-snapshot-api-room-snapshot-api:latest
     container_name: flai-room-snapshot-api
     ports:
       - "5001:5000"

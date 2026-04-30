@@ -25,7 +25,7 @@ services:
       - WHISPER_API_URL=http://flai-whisper:9000/asr
       - WHISPER_API_TIMEOUT=120
       - SD_WRAPPER_URL=http://flai-sd:7861
-    user: "0:988"
+    # user: "0:988"  # Removed - uses Dockerfile user (appuser:1000)
     networks:
       - flai_network
     restart: unless-stopped

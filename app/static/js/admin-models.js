@@ -96,7 +96,7 @@ function renderModelCards() {
                 <div class="param">
                     <label>${t('Context Length')}</label>
                     <input type="number" class="context-length" data-module="${mod.id}" value="${mod.config.context_length || ''}" min="1" step="1">
-                    <small class="param-hint">&lt; <span class="max-ctx-hint" data-module="${mod.id}">${maxCtx}</span></small>
+                    <small class="param-hint ctx-hint-${mod.id}">&lt; </small>
                 </div>
                 <div class="param">
                     <label>${t('Temperature')}</label>
@@ -333,45 +333,45 @@ async function onModelSelect(event) {
         return;
     }
 
-    let info = modelDetails[`${serviceUrl}:${modelName}`];
+    const cacheKey = modelName;
+    let info = modelDetails[cacheKey];
+    let detailsHtml = '';
     if (!info) {
-        const backend = (typeof LLAMA_SWAP_URL !== 'undefined' && LLAMA_SWAP_URL) ? 'llama-swap' : 'llamacpp';
         try {
-            const res = await fetch(`/admin/api/llamacpp/model/${encodeURIComponent(modelName)}?url=${encodeURIComponent(serviceUrl)}&backend=${backend}`);
-            if (!res.ok) {
-                let errorMsg = `HTTP ${res.status}`;
-                try {
-                    const errorData = await res.json();
-                    if (errorData.error) errorMsg = errorData.error;
-                } catch (e) {}
-                throw new Error(errorMsg);
-            }
-            info = await res.json();
-            modelDetails[`${serviceUrl}:${modelName}`] = info;
+            const ctrl = new AbortController();
+            const tid = setTimeout(() => ctrl.abort(), 30000);
+            const res = await fetch(`/admin/api/llamacpp/model/${encodeURIComponent(modelName)}`, {signal: ctrl.signal});
+            clearTimeout(tid);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const text = await res.text();
+            info = JSON.parse(text);
+            modelDetails[cacheKey] = info;
         } catch (err) {
-            detailsGrid.innerHTML = `<p>${t('error')}: ${err.message}</p>`;
+            const errMsg = err.name === 'AbortError' ? t('timeout_fetching_model_info') : (err.message || String(err));
+            detailsGrid.innerHTML = `<p>${t('error')}: ${errMsg}</p>`;
             return;
         }
     }
 
-    let detailsHtml = `
-        <p><strong>${t('Architecture:')}</strong> ${info.architecture || 'N/A'}</p>
+    detailsHtml = `<p><strong>${t('Architecture:')}</strong> ${info.architecture || 'N/A'}</p>
         <p><strong>${t('Parameters:')}</strong> ${info.parameters || 'N/A'}</p>
-        <p><strong>${t('Quantization:')}</strong> ${info.quantization || 'N/A'}</p>
-    `;
+        <p><strong>${t('Quantization:')}</strong> ${info.quantization || 'N/A'}</p>`;
 
     if (info.context_length && info.context_length !== 'N/A') {
-        let sourceLabel = '';
-        if (info.context_source === 'gguf') {
-            sourceLabel = ' (GGUF)';
-        } else if (info.context_source === 'known') {
-            sourceLabel = ' (known)';
-        }
-        detailsHtml += `<p><strong>${t('Max context length:')}</strong> ${info.context_length}${sourceLabel}</p>`;
+        detailsHtml += `<p><strong>${t('Max context length:')}</strong> ${info.context_length}</p>`;
     }
 
     if (module === 'embedding' && info.embedding_length && info.embedding_length !== 'N/A') {
         detailsHtml += `<p><strong>${t('Embedding length:')}</strong> ${info.embedding_length}</p>`;
+    }
+
+    if (info.file_size_mb) {
+        const sizeMB = Math.round(info.file_size_mb);
+        detailsHtml += `<p><strong>${t('File size:')}</strong> ${sizeMB} ${t('MB')}</p>`;
+    }
+
+    if (info.model_type) {
+        detailsHtml += `<p><strong>${t('Type:')}</strong> ${info.model_type}</p>`;
     }
 
     detailsGrid.innerHTML = detailsHtml;
@@ -383,9 +383,9 @@ async function onModelSelect(event) {
     if (ctxInput && info.context_length && info.context_length !== 'N/A') {
         ctxInput.max = info.context_length;
         ctxInput.placeholder = `max: ${info.context_length}`;
-        const hintSpan = document.querySelector(`.max-ctx-hint[data-module="${module}"]`);
+        const hintSpan = document.querySelector(`.ctx-hint-${module}`);
         if (hintSpan) {
-            hintSpan.textContent = info.context_length + 1;
+            hintSpan.textContent = '< ' + String(parseInt(info.context_length) + 1);
         }
     }
 }

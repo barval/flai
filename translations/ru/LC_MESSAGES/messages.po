@@ -511,6 +511,9 @@ msgstr "Переключить пол голоса"
 msgid "Toggle theme"
 msgstr "Переключить тему"
 
+msgid "Loading..."
+msgstr "Загрузка..."
+
 msgid "byte_abbr"
 msgstr "Б"
 
@@ -901,6 +904,18 @@ msgstr "Нет GPU. Использовано %1%% RAM - очень медлен�
 
 msgid "no_gpu_full"
 msgstr "Нет GPU. Использовано %1%% RAM - медленно"
+
+msgid "timeout_fetching_model_info"
+msgstr "Превышен таймаут при получении информации о модели"
+
+msgid "Type:"
+msgstr "Тип:"
+
+msgid "MB"
+msgstr "МБ"
+
+msgid "File size:"
+msgstr "Размер файла:"
 
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v8.1 (c) 2026 Барсуков Валерий"

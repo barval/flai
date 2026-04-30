@@ -404,12 +404,22 @@ def llamacpp_models():
         import os
         models_dir = '/models'
         gguf_files = []
+        seen_bases = set()
         try:
             for root, dirs, files in os.walk(models_dir):
                 for f in files:
                     if f.endswith('.gguf'):
-                        rel_path = os.path.relpath(os.path.join(root, f), models_dir)
-                        gguf_files.append(rel_path)
+                        # Skip mmproj files - these are auxiliary files for multimodal models
+                        if 'mmproj' in f.lower():
+                            continue
+                        # Get display name - just the filename, not the full path
+                        display_name = f
+                        if root != models_dir:
+                            # Model in subdirectory - use just the gguf filename
+                            display_name = f
+                        if display_name not in seen_bases:
+                            gguf_files.append(display_name)
+                            seen_bases.add(display_name)
         except Exception as e:
             current_app.logger.warning(f"Error reading models directory: {e}")
         return jsonify(gguf_files)
@@ -451,12 +461,31 @@ def llamacpp_model_info(name):
     if backend == 'llama-swap' or 'llamaswap' in (service_url or ''):
         service_url = 'http://flai-llamaswap:8080'
     
-    # For GGUF files - read metadata from file
+    # For GGUF files - use cached metadata first (instant), fallback to reading
     if name.endswith('.gguf'):
         import os
         import re
         models_dir = '/models'
+        
+        # Try cached metadata first (instant)
+        from app.utils import get_gguf_models_cached
+        gguf_cache = get_gguf_models_cached(models_dir)
+        
+        model_key = name.replace('.gguf', '')
+        cached = gguf_cache.get(model_key, {})
+        
+        # If not in cache, try to find and read the file
         gguf_path = os.path.join(models_dir, name)
+        if not os.path.exists(gguf_path):
+            # Try to find in subdirectories - the file might be in a subfolder
+            base_name = name.replace('.gguf', '')
+            for root, dirs, files in os.walk(models_dir):
+                for f in files:
+                    if f.endswith('.gguf') and f.replace('.gguf', '') == base_name:
+                        gguf_path = os.path.join(root, f)
+                        break
+                if os.path.exists(gguf_path):
+                    break
         
         default_ctx = '32768'
         file_size_mb = 0
@@ -478,17 +507,126 @@ def llamacpp_model_info(name):
         except Exception as e:
             logger.warning(f"Could not read llama-swap config: {e}")
         
-        if os.path.exists(gguf_path):
+        # Use cached metadata if available (skip slow file reading)
+        if cached:
+            # Check model type by name FIRST (more reliable)
+            model_type = 'chat'
+            display_arch = 'Chat'
+            name_lower = name.lower()
+            
+            # Check by name patterns
+            if any(a in name_lower for a in ['embed', 'bge', 'gte', 'e5', 'bert', 'embedding']):
+                model_type = 'embedding'
+                display_arch = 'Embedding'
+            elif any(a in name_lower for a in ['vl', 'vision', 'mmproj', 'qwen3v', 'qwen2_vl', 'multimodal']):
+                model_type = 'multimodal'
+                display_arch = 'Vision'
+            elif any(a in name_lower for a in ['gpt-oss', 'mxfp4', 'qwq', 'r1', 'reasoning', 'deepseek', 'think']):
+                model_type = 'reasoning'
+                display_arch = 'Reasoning'
+            # fallback to cached value if not detected by name
+            elif cached.get('embedding_length') and not cached.get('context_length'):
+                model_type = 'embedding'
+                display_arch = 'Embedding'
+            
             from app.utils import extract_quantization, estimate_parameters_from_filename
             return jsonify({
-                'architecture': 'GGUF model',
+                'architecture': display_arch,
+                'model_type': model_type,
                 'parameters': estimate_parameters_from_filename(name),
                 'quantization': extract_quantization(name),
-                'context_length': default_ctx,
-                'file_size_mb': file_size_mb,
-                'embedding_length': '1024' if 'embed' in name.lower() or 'bge' in name.lower() else None,
-                'context_source': 'gguf_file',
-                'model_path': name
+                'context_length': cached.get('context_length') or default_ctx,
+                'file_size_mb': cached.get('file_size_mb') or file_size_mb,
+                'embedding_length': cached.get('embedding_length'),
+                'context_source': 'cache',
+                'model_path': name,
+                'gguf_architecture': cached.get('architecture')
+            })
+        
+        if os.path.exists(gguf_path):
+            from app.utils import extract_quantization, estimate_parameters_from_filename
+            # Determine model type from name
+            is_embedding = 'embed' in name.lower() or 'bge' in name.lower()
+            is_vision = 'vl' in name.lower() or 'qwen3v' in name.lower()
+            
+            # Try to read GGUF metadata for better classification
+            gguf_meta = {}
+            try:
+                import gguf
+                reader = gguf.GGUFReader(gguf_path)
+                
+                # Determine architecture from field key prefixes
+                arch = None
+                for key in reader.fields.keys():
+                    # Architecture-specific keys: <arch>.<something>
+                    if '.' in key and not key.startswith('GGUF') and not key.startswith('general'):
+                        parts = key.split('.')
+                        if len(parts) >= 2:
+                            potential_arch = parts[0]
+                            # Skip if it's not a known model architecture prefix
+                            if potential_arch not in ('gguf', 'clip', 'tokenizer', 'llava'):
+                                arch = potential_arch
+                                break
+                
+                # Check for vision-related keys
+                has_vision = False
+                for key in reader.fields.keys():
+                    if key.startswith('clip.vision') or key.startswith('mmproj'):
+                        has_vision = True
+                        break
+                    if key.startswith('llava.'):
+                        has_vision = True
+                        break
+                
+                gguf_meta = {'architecture': arch, 'has_vision': has_vision}
+            except Exception as e:
+                logger.debug(f"Could not parse GGUF metadata: {e}")
+            
+            # Classify based on metadata
+            arch = (gguf_meta.get('architecture') or name).lower()
+            
+            # Known architecture types
+            EMBEDDING_ARCHS = {'bert', 'nomic-bert', 'bge', 'gte', 'e5', 'stella', 'jina', 'snowflake', 'nemo'}
+            MULTIMODAL_ARCHS = {'vision', 'vl', 'llava', 'minicpmv', 'mllama', 'internvl', 'phi3-vision', 'qwen2_vl', 'qwen_vl', 'qwen2.5_vl', 'glm4_v', 'idefics', 'paligemma', 'siglip', 'qwen3vl'}
+            
+            model_type = 'chat'
+            display_arch = 'LLM'
+            
+            if any(a in arch for a in EMBEDDING_ARCHS) or is_embedding or 'bert' in arch:
+                model_type = 'embedding'
+                display_arch = 'Embedding'
+            elif any(a in arch for a in MULTIMODAL_ARCHS) or is_vision or gguf_meta.get('has_vision'):
+                model_type = 'multimodal'
+                display_arch = 'Vision'
+            else:
+                # Check for reasoning models by name
+                name_lower = name.lower()
+                # Extended reasoning patterns
+                reasoning_patterns = ['qwq', 'deepseek-r1', 'reasoning', 'thinking', 'open-thoughts', 'r1', 
+                                   'train', 'gpt-oss', 'mxfp4', 'moe', 'reasoner', 'o1', 'o3', 'deepseek']
+                if any(h in name_lower for h in reasoning_patterns):
+                    model_type = 'reasoning'
+                    display_arch = 'Reasoning'
+                else:
+                    display_arch = 'Chat'
+            
+            # Override with base name check for specific cases
+            name_lower = name.lower()
+            if 'gpt-oss' in name_lower:
+                model_type = 'reasoning'
+                display_arch = 'Reasoning'
+            
+            return jsonify({
+                'architecture': display_arch,
+                'model_type': model_type,
+                'parameters': estimate_parameters_from_filename(name),
+                'quantization': extract_quantization(name),
+                'context_length': cached.get('context_length') or default_ctx,
+                'file_size_mb': cached.get('file_size_mb') or file_size_mb,
+                'embedding_length': cached.get('embedding_length') or ('1024' if model_type == 'embedding' else None),
+                'context_source': 'cache' if cached else 'gguf_file',
+                'model_path': name,
+                'gguf_architecture': gguf_meta.get('architecture')
             })
     
     if not service_url:
@@ -697,7 +835,7 @@ def get_model_configs():
 @admin_required
 def update_model_config(module):
     """Update configuration for a specific module."""
-    from app.model_config import invalidate_model_config_cache
+    from app.model_config import invalidate_model_config_cache, get_model_config
     from app.database import get_db
 
     data = request.get_json()
@@ -706,7 +844,6 @@ def update_model_config(module):
     except ValidationError as e:
         return jsonify({'error': str(e)}), 400
 
-    # Get old model_name BEFORE update (for embedding change detection)
     old_model = None
     if module == 'embedding':
         old_config = get_model_config('embedding')
@@ -749,7 +886,6 @@ def update_model_config(module):
         result['model_name'] = updates.get('model_name')
 
     if module == 'reasoning':
-        from app.model_config import get_model_config
         reasoning_config = get_model_config('reasoning')
         if reasoning_config:
             ctx_length = reasoning_config.get('context_length', 8192)

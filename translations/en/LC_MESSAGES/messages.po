@@ -889,5 +889,17 @@ msgstr "No GPU. Used %1%% RAM - very slow"
 msgid "no_gpu_full"
 msgstr "No GPU. Used %1%% RAM - slow"
 
+msgid "timeout_fetching_model_info"
+msgstr "Timeout fetching model info"
+
+msgid "Type:"
+msgstr "Type:"
+
+msgid "MB"
+msgstr "MB"
+
+msgid "File size:"
+msgstr "File size:"
+
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v8.1 (c) 2026 Valery Barsukov"

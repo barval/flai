@@ -165,7 +165,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         temperature = config.get('temperature', 0.7)
         top_p = config.get('top_p', 0.9)
 
-        model_name = config.get('model_type', model)
+        model_name = model_type
 
         payload = {
             'model': model_name,

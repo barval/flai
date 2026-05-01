@@ -9,14 +9,14 @@ import os
 from typing import Dict, List, Optional, Tuple, Any
 from flask import current_app
 from flask_babel import gettext as _
-from flask_babel import force_locale
 
 from app.utils import format_prompt, estimate_tokens, build_context_prompt
 from app.db import get_session_text_history
 from app.llamacpp_client import LlamaCppClient
+from app.mixins import TranslationMixin
 
 
-class MultimodalModule:
+class MultimodalModule(TranslationMixin):
     """Module for multimodal model (image processing)."""
 
     def __init__(self, app=None):
@@ -28,11 +28,6 @@ class MultimodalModule:
         self.context_history_percent = 75
         if app:
             self.init_app(app)
-
-    def _(self, key: str, lang: str = 'ru', **kwargs) -> str:
-        with self.app.app_context():
-            with force_locale(lang):
-                return _(key, **kwargs)
 
     def init_app(self, app):
         """Initialize module with Flask app."""

@@ -45,6 +45,7 @@ target/
 *.tmp
 *.swp
 *.swo
+*.mo
 
 # Editors/IDE
 .vscode/

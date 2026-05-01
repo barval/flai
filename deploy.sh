@@ -126,7 +126,7 @@ download_sd_cpp_models() {
     if [[ ! -f "$DIFF_DIR/z_image_turbo-Q8_0.gguf" ]]; then
         info "Downloading z_image_turbo-Q8_0.gguf..."
         HF_DOWNLOAD "bartowski/Z-Image-Turbo-GGUF" \
-            "z_image_turbo-Q8_0.gguf" "$DIFF_DIR"
+            "z_image_turbo-Q8_0.gguf" "${DIFF_DIR}/z_image_turbo-Q8_0.gguf"
     else
         warn "z_image_turbo-Q8_0.gguf already exists — skipping."
     fi
@@ -135,7 +135,7 @@ download_sd_cpp_models() {
     if [[ ! -f "$DIFF_DIR/flux-2-klein-4b-Q8_0.gguf" ]]; then
         info "Downloading flux-2-klein-4b-Q8_0.gguf (editing)..."
         HF_DOWNLOAD "bartowski/FLUX.2-Klein-dev-GGUF" \
-            "flux-2-klein-4b-Q8_0.gguf" "$DIFF_DIR"
+            "flux-2-klein-4b-Q8_0.gguf" "${DIFF_DIR}/flux-2-klein-4b-Q8_0.gguf"
     else
         warn "flux-2-klein-4b-Q8_0.gguf already exists — skipping."
     fi
@@ -144,7 +144,7 @@ download_sd_cpp_models() {
     if [[ ! -f "$VAE_DIR/ae.safetensors" ]]; then
         info "Downloading ae.safetensors (VAE for generation)..."
         HF_DOWNLOAD "bartowski/Z-Image-Turbo-GGUF" \
-            "ae.safetensors" "$VAE_DIR"
+            "ae.safetensors" "${VAE_DIR}/ae.safetensors"
     else
         warn "ae.safetensors already exists — skipping."
     fi
@@ -153,7 +153,7 @@ download_sd_cpp_models() {
     if [[ ! -f "$VAE_DIR/flux2_ae.safetensors" ]]; then
         info "Downloading flux2_ae.safetensors (VAE for editing)..."
         HF_DOWNLOAD "bartowski/FLUX.2-dev-GGUF" \
-            "flux2_ae.safetensors" "$VAE_DIR"
+            "flux2_ae.safetensors" "${VAE_DIR}/flux2_ae.safetensors"
     else
         warn "flux2_ae.safetensors already exists — skipping."
     fi
@@ -162,7 +162,7 @@ download_sd_cpp_models() {
     if [[ ! -f "$TXT_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
         info "Downloading Qwen3-4B-Instruct-2507-Q4_K_M.gguf (text encoder)..."
         HF_DOWNLOAD "bartowski/Qwen3-4B-Instruct-2507-GGUF" \
-            "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" "$TXT_DIR"
+            "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" "${TXT_DIR}/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
     else
         warn "Qwen3-4B-Instruct-2507-Q4_K_M.gguf already exists — skipping."
     fi
@@ -191,7 +191,8 @@ download_tts_models() {
 
 # ── Build & Launch ──
 build_and_launch() {
-    local PROFILE="--profile with-image-gen"
+    local PROFILE=""
+    [[ "$WITH_IMAGE_GEN" == "true" ]] && PROFILE="$PROFILE --profile with-image-gen"
     [[ "$WITH_VOICE" == "true" ]] && PROFILE="$PROFILE --profile with-voice"
     [[ "$WITH_RAG" == "true" ]]    && PROFILE="$PROFILE --profile with-rag"
 
@@ -248,6 +249,7 @@ Options:
   --with-voice        Deploy Whisper ASR + Piper TTS
   --with-rag          Deploy Qdrant for RAG (document search)
   --with-image-gen    Deploy stable-diffusion.cpp for image generation/editing
+                      (default: disabled, use this flag to enable)
   --download-models   Download GGUF/safetensors models from HuggingFace
   --run-tests         Run unit tests after deployment
   --help, -h          Show this help message
@@ -267,6 +269,7 @@ USAGE
 # ── Parse arguments ──
 WITH_VOICE=false
 WITH_RAG=false
+WITH_IMAGE_GEN=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
 
@@ -274,6 +277,7 @@ for arg in "$@"; do
     case "$arg" in
         --with-voice)     WITH_VOICE=true ;;
         --with-rag)       WITH_RAG=true ;;
+        --with-image-gen) WITH_IMAGE_GEN=true ;;
         --download-models) DOWNLOAD_MODELS=true ;;
         --run-tests)      RUN_TESTS=true ;;
         --help|-h)        usage; exit 0 ;;

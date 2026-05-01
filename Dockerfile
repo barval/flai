@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libwebp-dev \
     libmagic1 \
     libpq-dev \
+    postgresql-client-16 \
     docker-cli \
     && rm -rf /var/lib/apt/lists/*
 

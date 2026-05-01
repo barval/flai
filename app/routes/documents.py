@@ -14,7 +14,13 @@ ALLOWED_MIME_TYPES = {
     'application/pdf': '.pdf',
     'application/msword': '.doc',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
-    'text/plain': '.txt'
+    'text/plain': '.txt',
+    'application/vnd.oasis.opendocument.text': '.odt',
+    'application/rtf': '.rtf',
+    'text/rtf': '.rtf',
+    'text/csv': '.csv',
+    'application/json': '.json',
+    'application/epub+zip': '.epub'
 }
 
 
@@ -22,7 +28,7 @@ def validate_file(file_stream, filename):
     """Validate file by extension and magic bytes.
     Returns (is_valid, error_message).
     """
-    allowed_extensions = {'.pdf', '.doc', '.docx', '.txt'}
+    allowed_extensions = {'.pdf', '.doc', '.docx', '.txt', '.odt', '.rtf', '.csv', '.json', '.epub'}
     ext = os.path.splitext(filename)[1].lower()
     
     if ext not in allowed_extensions:

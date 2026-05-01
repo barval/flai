@@ -9,6 +9,24 @@ __pycache__/
 *.exe
 *.class
 *.out
+.ruff_cache/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Data directories (user data, uploads, documents)
+data/
+uploads/
+documents/
+
+# Services models
+services/llamacpp/models/
+services/piper/models/
+services/piper/piper_models/
+services/sd_cpp/models/
+services/room-snapshot-api/room-snapshot-api/
 
 # Dependencies
 .venv/
@@ -33,6 +51,7 @@ target/
 .idea/
 *.swp
 *.swo
+.opencode/
 
 # System files
 .DS_Store

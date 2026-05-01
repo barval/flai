@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch, Mock
 from flask import Flask
 
 from app import create_app
-from app.db import init_db, CHAT_DB_PATH
+from app.db import init_db
 from app.userdb import init_user_db
 
 
@@ -103,7 +103,6 @@ def test_app():
                 # Configure test app
                 flask_app.config.update({
                     'TESTING': True,
-                    'CHAT_DB_PATH': db_path,
                     'USER_DB_PATH': user_db_path,
                     'WTF_CSRF_ENABLED': False,
                     'RATELIMIT_ENABLED': False,

@@ -11,8 +11,16 @@ If no custom configs exist in DB, falls back to hardcoded defaults.
 
 import os
 import sys
+import logging
 import psycopg2
 from psycopg2.extras import RealDictCursor
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 DB_URL = os.getenv('DATABASE_URL', 'postgresql://flai:flai_password@flai-postgres:5432/flai')
 PRESET_PATH = '/models/models-preset.ini'
@@ -68,7 +76,7 @@ def read_db() -> dict:
                 configs[module_name] = module
         conn.close()
     except Exception as e:
-        print(f"[generate_presets] Error reading DB: {e}")
+        logger.error(f"[generate_presets] Error reading DB: {e}")
 
     return configs
 
@@ -146,7 +154,7 @@ def generate_ini(db_configs: dict) -> str:
 
 
 def main():
-    print("[generate_presets] Starting...")
+    logger.info("[generate_presets] Starting...")
     db_configs = read_db()
     content = generate_ini(db_configs)
 
@@ -154,8 +162,8 @@ def main():
     with open(PRESET_PATH, 'w') as f:
         f.write(content)
 
-    print(f"[generate_presets] Written {PRESET_PATH}")
-    print(content)
+    logger.info(f"[generate_presets] Written {PRESET_PATH}")
+    logger.info(content)
 
 
 if __name__ == '__main__':

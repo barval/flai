@@ -4,7 +4,7 @@ This directory contains deployment configurations for AI backend services.
 
 ## llama.cpp (Required)
 
-Replaces Ollama. Runs `llama-server` in router mode (`--model-dir`) to support dynamic model switching.
+Runs `llama-server` in router mode (`--models-dir`) to support dynamic model switching.
 
 ### Setup
 
@@ -58,7 +58,7 @@ Then set `LLAMACPP_URL=http://remote-ip:8033` in FLAI's `.env`.
 
 ## stable-diffusion.cpp (Optional)
 
-Replaces Automatic1111. Provides text-to-image generation.
+Provides text-to-image generation and image editing.
 
 ### Supported model types
 

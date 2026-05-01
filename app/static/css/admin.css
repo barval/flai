@@ -340,8 +340,8 @@ body.dark-theme .models-list .section-header span {
     background-color: #219a52;
 }
 
-/* Ollama status icon */
-.ollama-status-icon {
+/* llama.cpp status icon */
+.llama-status-icon {
     margin-left: 8px;
     font-size: 1.2em;
     cursor: help;
@@ -707,6 +707,7 @@ body.admin-page .voice-gender-switcher {
 }
 
 .no-backups {
+    display: none;
     text-align: center;
     padding: 40px 20px;
     color: #7f8c8d;

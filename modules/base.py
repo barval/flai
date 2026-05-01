@@ -104,10 +104,10 @@ class BaseModule:
         
         return context
     
-    def _validate_final_prompt(self, prompt: str, model_type: str = 'chat', lang: str = 'ru') -> Tuple[bool, str]:
+    def _validate_final_prompt(self, prompt: str, model_type: str = 'chat', lang: str = 'ru') -> Optional[str]:
         """
         Validate final prompt before sending to llama-server.
-        Returns (is_valid, error_message or prompt)
+        Returns None if valid, error message string if invalid.
         """
         model_config = self._get_model_config(model_type)
         is_valid, estimated, max_tokens = validate_prompt_size(prompt, model_config, model_type, lang)
@@ -115,10 +115,10 @@ class BaseModule:
         if not is_valid:
             error_msg = f"Prompt too large: {estimated} tokens (max: {int(max_tokens * 0.95)})"
             self.logger.error(error_msg)
-            return False, self._('Request too long, please simplify your request', lang)
+            return self._('Request too long, please simplify your request', lang)
         
         self.logger.info(f"Prompt validation passed: {estimated}/{max_tokens} tokens ({estimated/max_tokens*100:.1f}%)")
-        return True, prompt
+        return None
 
     # --- Existing methods with context added ---
     def process_message(self, message_text: str, current_time_str: str, lang: str = 'ru',
@@ -139,13 +139,13 @@ class BaseModule:
             return {'error': self._('Error loading prompt template', lang)}
         
         # Validate final prompt before sending
-        is_valid, result = self._validate_final_prompt(prompt, 'chat', lang)
-        if not is_valid:
-            return {'error': result}
+        error = self._validate_final_prompt(prompt, 'chat', lang)
+        if error:
+            return {'error': error}
         
         router_messages = [
             {'role': 'system', 'content': 'You are a request router. Answer ONLY with one line in the specified language. No explanations.'},
-            {'role': 'user', 'content': result}
+            {'role': 'user', 'content': prompt}
         ]
         
         self.logger.info(f"Sending request to router: {message_text[:100]}...")
@@ -203,12 +203,12 @@ class BaseModule:
             return "⚠️ " + self._('Error loading prompt template', lang)
         
         # Validate final prompt before sending
-        is_valid, result = self._validate_final_prompt(reasoning_prompt, 'reasoning', lang)
-        if not is_valid:
-            return "⚠️ " + result
+        error = self._validate_final_prompt(reasoning_prompt, 'reasoning', lang)
+        if error:
+            return "⚠️ " + error
         
         self.logger.info(f"Sending request to reasoning model: {query[:100]}...")
-        response = self.call_llamacpp([{'role': 'user', 'content': result}],
+        response = self.call_llamacpp([{'role': 'user', 'content': reasoning_prompt}],
                                       model_type='reasoning', lang=lang)
         self.logger.info(f"Reasoning model response: {response[:100]}...")
         return response

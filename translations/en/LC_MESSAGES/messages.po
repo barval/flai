@@ -895,9 +895,6 @@ msgstr "Timeout fetching model info"
 msgid "Type:"
 msgstr "Type:"
 
-msgid "MB"
-msgstr "MB"
-
 msgid "File size:"
 msgstr "File size:"
 

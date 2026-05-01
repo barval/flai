@@ -14,8 +14,10 @@ import tarfile
 import tempfile
 import logging
 import subprocess
+import hashlib
 from datetime import datetime
 from functools import wraps
+from urllib.parse import urlparse
 
 from flask import Blueprint, jsonify, request, current_app, send_file, abort
 from flask_babel import gettext as _
@@ -138,7 +140,7 @@ def create_backup():
                     if os.path.exists(full_dir):
                         tar.add(full_dir, arcname=os.path.basename(full_dir))
 
-            # 3. Metadata
+            # 3. Metadata with checksum
             meta = {
                 'type': backup_type,
                 'created_at': datetime.now().isoformat(),
@@ -152,6 +154,37 @@ def create_backup():
 
             tar.add(meta_path, arcname='metadata.json')
             os.unlink(meta_path)
+
+        # Compute SHA256 checksum of the archive
+        sha256 = hashlib.sha256()
+        with open(archive_path, 'rb') as f:
+            for chunk in iter(lambda: f.read(8192), b''):
+                sha256.update(chunk)
+        checksum = sha256.hexdigest()
+        
+        # Update metadata with checksum (rewrite archive with updated metadata)
+        with tarfile.open(archive_path, 'r:gz') as tar:
+            members = tar.getmembers()
+            # Remove old metadata.json if exists
+            members = [m for m in members if m.name != 'metadata.json']
+        
+        # Create new archive with checksum in metadata
+        temp_archive = archive_path + '.tmp'
+        with tarfile.open(temp_archive, 'w:gz') as tar_out:
+            # Copy all members except metadata.json
+            with tarfile.open(archive_path, 'r:gz') as tar_in:
+                for member in tar_in.getmembers():
+                    if member.name != 'metadata.json':
+                        tar_out.addfile(member, tar_in.extractfile(member))
+            
+            # Add updated metadata with checksum
+            meta['checksum'] = checksum
+            meta_json = json.dumps(meta, indent=2, ensure_ascii=False).encode('utf-8')
+            info = tarfile.TarInfo(name='metadata.json')
+            info.size = len(meta_json)
+            tar_out.addfile(info, fileobj=tempfile.BytesIO(meta_json))
+        
+        os.replace(temp_archive, archive_path)
 
         logger.info(f"Backup created: {filename} ({backup_type})")
         return jsonify({
@@ -187,11 +220,22 @@ def restore_backup():
         return jsonify({'error': 'Backup file not found'}), 404
 
     try:
+        # Verify checksum before restoring
+        meta = _read_archive_metadata(archive_path)
+        if meta and 'checksum' in meta:
+            sha256 = hashlib.sha256()
+            with open(archive_path, 'rb') as f:
+                for chunk in iter(lambda: f.read(8192), b''):
+                    sha256.update(chunk)
+            actual_checksum = sha256.hexdigest()
+            if actual_checksum != meta['checksum']:
+                return jsonify({'error': 'Archive checksum mismatch. File may be corrupted.'}), 400
+
         with tempfile.TemporaryDirectory() as tmpdir:
             with tarfile.open(archive_path, 'r:gz') as tar:
                 tar.extractall(tmpdir)
 
-            # Read metadata
+            # Read metadata (already loaded above, but re-read from extracted file for consistency)
             meta_path = os.path.join(tmpdir, 'metadata.json')
             if os.path.exists(meta_path):
                 with open(meta_path) as f:
@@ -213,41 +257,10 @@ def restore_backup():
                     src = os.path.join(tmpdir, os.path.basename(dir_name))
                     dst = os.path.join(project_root, dir_name)
                     if os.path.exists(src):
-                        # Remove existing directory if possible
-                        import time as time_module
+                        # Remove existing directory safely
                         if os.path.exists(dst):
-                            for attempt in range(3):
-                                try:
-                                    shutil.rmtree(dst)
-                                    break
-                                except Exception:
-                                    time_module.sleep(0.1)
-                        if os.path.exists(dst):
-                            try:
-                                import os as os_module
-                                os_module.rename(dst, dst + '.old')
-                            except Exception:
-                                pass
-                        if not os.path.exists(dst):
-                            shutil.copytree(src, dst)
-                        # Fix ownership after copy
-                        import pwd
-                        try:
-                            pw = pwd.getpwnam('valery')
-                            os.chown(dst, pw.pw_uid, pw.pw_gid)
-                            for root, dirs, files in os.walk(dst):
-                                for d in dirs:
-                                    p = os.path.join(root, d)
-                                    try:
-                                        os.chown(p, pw.pw_uid, pw.pw_gid)
-                                    except: pass
-                                for f in files:
-                                    p = os.path.join(root, f)
-                                    try:
-                                        os.chown(p, pw.pw_uid, pw.pw_gid)
-                                    except: pass
-                        except Exception as e:
-                            logger.warning(f"Could not fix ownership: {e}")
+                            shutil.rmtree(dst, ignore_errors=True)
+                        shutil.copytree(src, dst)
                         logger.info(f"Restored directory: {dir_name}")
 
         logger.info(f"Backup restored: {filename}")
@@ -341,34 +354,81 @@ def _export_pg_dump(tables):
 
 
 def _import_sql(dump_path, backup_type):
-    """Import SQL dump into PostgreSQL."""
-    with open(dump_path, 'r') as f:
-        sql = f.read()
-
-    statements = [s.strip() + ';' for s in sql.split(';') if s.strip() and not s.strip().startswith('--')]
+    """Import SQL dump into PostgreSQL using psql utility.
     
+    For 'full' backup type, truncates all tables with CASCADE before import.
+    For 'users' backup type, truncates users table with CASCADE before import.
+    Uses psql with ON_ERROR_STOP=1 to ensure atomic restore.
+    """
+    # Get database connection parameters from DATABASE_URL
+    db_url = os.environ.get('DATABASE_URL', '')
+    if not db_url:
+        raise RuntimeError("DATABASE_URL not set")
+    
+    parsed = urlparse(db_url)
+    pg_env = os.environ.copy()
+    pg_env.update({
+        'PGHOST': parsed.hostname or 'localhost',
+        'PGPORT': str(parsed.port or 5432),
+        'PGUSER': parsed.username or 'flai',
+        'PGPASSWORD': parsed.password or '',
+        'PGDATABASE': parsed.path.lstrip('/') if parsed.path else 'flai'
+    })
+    
+    # Truncate tables before full restore to avoid key conflicts
+    tables_to_truncate = []
+    if backup_type == 'full':
+        tables_to_truncate = [
+            'messages', 'chat_sessions', 'session_visits', 'user_sessions',
+            'documents', 'model_configs', 'user_storage', 'users'
+        ]
+    elif backup_type == 'users':
+        tables_to_truncate = ['users']
+    
+    if tables_to_truncate:
+        truncate_sql = f"TRUNCATE TABLE {', '.join(tables_to_truncate)} CASCADE;"
+        logger.info(f"Truncating tables before restore: {', '.join(tables_to_truncate)}")
+        try:
+            with get_db() as conn:
+                c = conn.cursor()
+                c.execute(truncate_sql)
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Failed to truncate tables: {e}")
+            raise
+    
+    # Run psql with the dump file
+    logger.info(f"Restoring SQL dump using psql: {dump_path}")
+    result = subprocess.run(
+        ['psql', '--set', 'ON_ERROR_STOP=1', '-f', dump_path],
+        env=pg_env,
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode != 0:
+        error_msg = result.stderr.strip() or result.stdout.strip()
+        logger.error(f"psql restore failed: {error_msg}")
+        raise RuntimeError(f"SQL restore failed: {error_msg}")
+    
+    logger.info("SQL dump restored successfully")
+    
+    # Reset sequences for auto-increment primary keys
+    sequences_to_reset = ['users_id_seq', 'messages_id_seq']
     with get_db() as conn:
         c = conn.cursor()
-        for statement in statements:
+        for seq in sequences_to_reset:
             try:
-                c.execute(statement)
+                # Try to get the max id from the corresponding table
+                table_name = seq.replace('_id_seq', '')
+                c.execute(f"SELECT setval('{seq}', (SELECT COALESCE(MAX(id),1) FROM {table_name}))")
                 conn.commit()
             except Exception as e:
-                logger.warning(f"SQL error during restore: {e}")
+                logger.warning(f"Could not reset sequence {seq}: {e}")
                 try:
                     conn.rollback()
                 except:
                     pass
-
-    # Reset sequences
-    with get_db() as conn:
-        c = conn.cursor()
-        for table in ['users', 'messages']:
-            try:
-                c.execute(f"SELECT setval('{table}_id_seq', (SELECT COALESCE(MAX(id),1) FROM {table}))")
-                conn.commit()
-            except Exception:
-                pass
 
 
 def _read_archive_metadata(archive_path):

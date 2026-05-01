@@ -274,9 +274,6 @@ class RedisRequestQueue:
         if req_type == 'image' and file_type and file_type.startswith('image/'):
             return 'multimodal'
 
-        if req_type == 'image' and file_type and file_type.startswith('image/'):
-            return 'multimodal'
-
         if req_type == 'text':
             return 'chat'
 

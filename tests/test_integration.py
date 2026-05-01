@@ -9,7 +9,7 @@ class TestSessionFlow:
     """Test complete session flow."""
 
     @pytest.mark.e2e
-    def test_create_session_and_send_message(self, client, test_app, mock_ollama_client):
+    def test_create_session_and_send_message(self, client, test_app, mock_llamacpp_client):
         """Test creating a session and sending a message."""
         # Create user and login
         with test_app.app_context():

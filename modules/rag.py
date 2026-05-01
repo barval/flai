@@ -438,7 +438,7 @@ class RagModule:
         self.logger.warning("_get_embedding: no embedding returned")
         return None
 
-    def _get_batch_embeddings(self, texts: List[str], batch_size: int = 10) -> List[Optional[List[float]]]:
+    def _get_batch_embeddings(self, texts: List[str]) -> List[Optional[List[float]]]:
         """Get embeddings for multiple texts using llama.cpp batch API.
         Returns list of embeddings (None for failed requests).
         """
@@ -458,43 +458,3 @@ class RagModule:
 
         return embeddings[:len(texts)]
 
-    def _split_query_for_search(self, query: str) -> List[str]:
-        """Split complex query into simple sub-queries using LLM.
-        
-        This helps with better vector matching for complex questions.
-        
-        Args:
-            query: Original user query
-            
-        Returns:
-            List of simple sub-queries (1-5 items)
-        """
-        # If query is already simple, return as-is
-        if len(query) < 50:
-            return [query]
-        
-        prompt = f"""Разбей вопрос на 3–5 простых поисковых запросов для векторной БД.
-Каждый запрос должен содержать не более 2–3 ключевых сущностей.
-Вопрос: {query}
-Формат: список строк, каждая на новой строке."""
-        
-        try:
-            response = self.llamacpp.chat(
-                messages=[{'role': 'user', 'content': prompt}],
-                model_type='chat',
-                max_tokens=500,
-                temperature=0.3
-            )
-            if response and 'content' in response:
-                # Parse response - split by newlines
-                sub_queries = [line.strip() for line in response['content'].split('\n') if line.strip()]
-                # Filter to 3-5 items
-                sub_queries = [q for q in sub_queries if q and len(q) > 3][:5]
-                if sub_queries:
-                    self.logger.info(f"Split query '{query[:30]}...' into {len(sub_queries)} sub-queries")
-                    return sub_queries
-        except Exception as e:
-            self.logger.warning(f"Failed to split query: {e}")
-        
-        # Fallback: return original
-        return [query]

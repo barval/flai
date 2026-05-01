@@ -1,73 +1,76 @@
-# Environment and secrets
-.env
-.env.*
-!.env.example
-*.key
-*.secret
-
-# Python cache and compiled
-__pycache__/
-__pycache__
+```
+# Compiled and build artifacts
 *.pyc
-*.pyo
-*.pyd
-*.so
-.ruff_cache/
+__pycache__/
+*.o
+*.obj
 
-# Database files
-*.db
-*.sqlite
-*.sqlite3
-
-# Data directories (user data, uploads, documents)
-data/
-uploads/
-documents/
-
-# Model files (stored outside git)
-services/piper/piper_models/
-services/llamacpp/models/
-services/sd_cpp/models/
-*.gguf
-*.safetensors
-*.onnx
-*.onnx.json
-
-# Python virtual environments
-venv/
-env/
+# Dependencies
 .venv/
-
-# Build and distribution
-dist/
-build/
-*.egg/
-*.egg-info/
-
-# Testing and coverage
-.pytest_cache/
-htmlcov/
-.coverage
-coverage.xml
-
-# OS and IDE files
-.DS_Store
-.vscode/
-.idea/
-*.swp
-*.swo
-*.sublime-*
-
-# OpenCode
-.opencode/
-AGENTS.md
+venv/
+node_modules/
 
 # Logs and temp files
 *.log
 *.tmp
+*.swp
 
-# Translation compiled files
-translations/*/LC_MESSAGES/*.mo
-services/sd_cpp/src/
-services/sd_cpp/outputs/
-services/room-snapshot-api/room-snapshot-api/
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
+
+# Python specific
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
+```

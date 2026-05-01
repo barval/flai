@@ -6,9 +6,10 @@ from flask_babel import gettext as _
 from app.utils import format_prompt, estimate_tokens, build_context_prompt, validate_prompt_size, SAFETY_MARGIN, TEMPLATE_OVERHEAD
 from app.db import get_session_text_history
 from app.llamacpp_client import LlamaCppClient
+from app.mixins import TranslationMixin
 
 
-class BaseModule:
+class BaseModule(TranslationMixin):
     """Base module for chat and reasoning model interactions."""
 
     def __init__(self, app=None):
@@ -21,18 +22,6 @@ class BaseModule:
         self.max_messages_limit = 30  # Maximum messages to load from history
         if app:
             self.init_app(app)
-    
-    def translate(self, key: str, lang: str = 'ru', **kwargs) -> str:
-        """Get translated message using Flask-Babel."""
-        from flask import current_app
-        from flask_babel import force_locale
-        with current_app.app_context():
-            with force_locale(lang):
-                return _(key, **kwargs)
-    
-    # Shortcut alias
-    def _(self, key: str, lang: str = 'ru', **kwargs) -> str:
-        return self.translate(key, lang, **kwargs)
     
     def init_app(self, app):
         """Initialize module with Flask app."""

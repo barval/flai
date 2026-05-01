@@ -231,7 +231,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
     def unload_all_models(self) -> bool:
         base_url = self.get_base_url()
         try:
-            response = requests.get(f"{base_url}/models/unload", timeout=30)
+            response = requests.post(f"{base_url}/api/models/unload", timeout=30)
             if response.status_code == 200:
                 self.logger.info('llama-swap: models unloaded')
                 return True

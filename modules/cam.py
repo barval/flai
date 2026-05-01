@@ -8,10 +8,10 @@ import json
 from datetime import datetime
 from flask import current_app
 from flask_babel import gettext as _
-from flask_babel import force_locale
 from app.userdb import check_camera_permission
+from app.mixins import TranslationMixin
 
-class CamModule:
+class CamModule(TranslationMixin):
     """Module for interacting with CCTV camera system"""
     
     def __init__(self, app=None):
@@ -51,11 +51,6 @@ class CamModule:
         
         if app:
             self.init_app(app)
-
-    def _(self, key, lang='ru', **kwargs):
-        with self.app.app_context():
-            with force_locale(lang):
-                return _(key, **kwargs)
     
     def init_app(self, app):
         self.app = app

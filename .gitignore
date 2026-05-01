@@ -1,8 +1,20 @@
 ```
 # Python
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.venv-*/
+.ENV
+.ENV.*
+.env
+.env.*
+!.env.example
+!.env.defaults
 *.so
 .Python
 build/
@@ -20,49 +32,31 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
-# Virtual environments
-venv/
-ENV/
-env.bak/
-.venv/
-
-# Testing
+MANIFEST
 .coverage
-coverage/
-htmlcov/
-.nox/
-.tox/
 .coverage.*
-
-# Environment variables
-.env
-.env.local
-.env.*
-!.env.example
-
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# Logs
+.cache
+nosetests.xml
+coverage.xml
+*.cover
 *.log
-
-# MyPy
+.git/modules/
+*.sublime-project
+*.sublime-workspace
+.pytest_cache/
+.hypothesis/
+.tox/
+.nox/
+.coverage*
+htmlcov/
+.landscape.yaml
+.pyup.yml
+.isort.pkl
 .mypy_cache/
 .dmypy.json
-dmypy.json
-
-# Pytest
-.pytest_cache/
-
-# Build system
-target/
+.pyre/
+.pytype/
+cython_debug/
+.DS_Store
+Thumbs.db
 ```

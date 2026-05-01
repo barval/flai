@@ -9,7 +9,7 @@ from datetime import datetime
 from flask import Blueprint, request, session, jsonify, current_app
 from flask_babel import gettext as _, force_locale
 from app.database import get_db
-from app import db
+from app import db, limiter
 from app.utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, resize_image_if_needed, save_uploaded_file, validate_session_ownership
 
 bp = Blueprint('messages', __name__, url_prefix='/api')
@@ -47,6 +47,7 @@ def api_get_messages(session_id):
     })
 
 @bp.route('/send_message', methods=['POST'])
+@limiter.limit("15 per minute;60 per hour", key_func=lambda: session.get('login') or request.remote_addr)
 def send_message():
     current_app.logger.info("=" * 50)
     current_app.logger.info("send_message: START PROCESSING")

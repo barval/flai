@@ -211,18 +211,36 @@ class ResourceManager:
 
     # ── llama.cpp model management ──
 
-    def unload_llamacpp_model(self, llamacpp_url: str) -> bool:
-        """Force llama-server to unload its current model from VRAM.
+    def unload_llamacpp_model(self, llamacpp_url: str = None) -> bool:
+        """Force LLM backend to unload its current model from VRAM.
 
         This is called before sd-cli starts to free ALL VRAM for image operations.
-        The model will be reloaded automatically on the next llama.cpp request.
+        The model will be reloaded automatically on the next LLM request.
 
         Returns True if unload was successful or not needed.
         """
+        import os
+        import requests as req
+
+        backend_type = os.getenv('LLAMACP_BACKEND', 'llamacpp')
+
+        if backend_type == 'llama-swap':
+            swap_url = os.getenv('LLAMA_SWAP_URL', 'http://flai-llamaswap:8080')
+            try:
+                resp = req.post(f"{swap_url.rstrip('/')}/api/models/unload", timeout=30)
+                if resp.status_code == 200:
+                    logger.info("llama-swap: all models unloaded for SD")
+                    return True
+                logger.warning(f"llama-swap unload failed: {resp.status_code}")
+                return False
+            except Exception as e:
+                logger.warning(f"Error unloading llama-swap models: {e}")
+                return False
+
+        if not llamacpp_url:
+            llamacpp_url = 'http://flai-llamacpp:8033'
+
         try:
-            import requests as req
-            # POST /models/unload with model name (or empty to unload current)
-            # First, get current model
             resp = req.get(f"{llamacpp_url.rstrip('/')}/v1/models", timeout=5)
             if resp.status_code != 200:
                 logger.warning("Cannot get llama.cpp model list")
@@ -239,7 +257,6 @@ class ResourceManager:
                 logger.info("No llama.cpp model loaded — VRAM already free")
                 return True
 
-            # Unload the model
             resp = req.post(
                 f"{llamacpp_url.rstrip('/')}/models/unload",
                 json={'model': loaded_model},
@@ -257,7 +274,9 @@ class ResourceManager:
 
     def get_status(self) -> Dict[str, Any]:
         """Get current resource status for debugging/health check."""
-        return {
+        import os
+
+        status = {
             'gpu_name': self.hardware.gpu_name,
             'cuda_detected': self.hardware.cuda_detected,
             'total_vram_mb': self.hardware.total_vram_mb,
@@ -267,6 +286,20 @@ class ResourceManager:
             'cpu_count': self.hardware.cpu_count,
             'sd_busy': self._sd_busy,
         }
+
+        backend_type = os.getenv('LLAMACP_BACKEND', 'llamacpp')
+        if backend_type == 'llama-swap':
+            try:
+                import requests as req
+                swap_url = os.getenv('LLAMA_SWAP_URL', 'http://flai-llamaswap:8080')
+                resp = req.get(f"{swap_url.rstrip('/')}/running", timeout=5)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    status['loaded_models'] = data.get('models', [])
+            except Exception:
+                pass
+
+        return status
 
 
 # Global singleton

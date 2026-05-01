@@ -231,7 +231,11 @@ def set_last_session(user_id, session_id):
 
 
 def delete_session_and_messages(session_id, user_id, upload_folder=None):
-    """Delete a session, its messages, and associated files from disk."""
+    """Delete a session, its messages, and associated files from disk.
+    Also updates user_storage quota by subtracting file sizes.
+    """
+    total_deleted_bytes = 0
+    
     with get_db() as conn:
         c = conn.cursor()
         c.execute('SELECT user_id FROM chat_sessions WHERE id = %s', (session_id,))
@@ -249,10 +253,12 @@ def delete_session_and_messages(session_id, user_id, upload_folder=None):
                     full_path = file_path
                 if os.path.exists(full_path):
                     try:
+                        total_deleted_bytes += os.path.getsize(full_path)
                         os.remove(full_path)
                     except Exception as e:
                         import logging
                         logging.getLogger(__name__).warning(f"Failed to delete file {full_path}: {e}")
+        
         c.execute('DELETE FROM messages WHERE session_id = %s', (session_id,))
         c.execute('DELETE FROM chat_sessions WHERE id = %s', (session_id,))
         c.execute('SELECT COUNT(*) as cnt FROM chat_sessions WHERE user_id = %s', (user_id,))
@@ -270,6 +276,11 @@ def delete_session_and_messages(session_id, user_id, upload_folder=None):
                 else:
                     c.execute('DELETE FROM user_sessions WHERE user_id = %s', (user_id,))
         c.execute('DELETE FROM session_visits WHERE session_id = %s', (session_id,))
+    
+    # Update storage quota (subtract deleted file sizes)
+    if total_deleted_bytes > 0:
+        update_user_storage(user_id, -total_deleted_bytes)
+    
     return True
 
 
@@ -450,10 +461,18 @@ def get_document(doc_id, user_id):
 
 
 def delete_document(doc_id, user_id):
-    """Delete document metadata from database."""
+    """Delete document metadata from database and update storage quota."""
+    file_size = 0
     with get_db() as conn:
         c = conn.cursor()
+        c.execute('SELECT file_size FROM documents WHERE id = %s AND user_id = %s', (doc_id, user_id))
+        row = c.fetchone()
+        if row:
+            file_size = row['file_size'] or 0
         c.execute('DELETE FROM documents WHERE id = %s AND user_id = %s', (doc_id, user_id))
+    
+    if file_size > 0:
+        update_user_storage(user_id, -file_size)
 
 
 def get_session_text_history(session_id, max_tokens=None, max_messages=None):

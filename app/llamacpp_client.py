@@ -1,21 +1,15 @@
 # app/llamacpp_client.py
 """
-Client for llama-server (llama.cpp) OpenAI-compatible API.
+Client for llama-server/llama-swap OpenAI-compatible API.
 
-Communicates via OpenAI-compatible endpoints:
-  - POST /v1/chat/completions  (chat, reasoning, multimodal)
-  - POST /v1/embeddings        (embedding)
-  - GET  /v1/models             (list available models)
-
-The llama-server is started in router mode (--model-dir) to support
-dynamic model switching without restart.
+Uses backend pattern to support:
+- DirectLlamaBackend: direct connection to llama-server
+- LlamaSwapBackend: connection via llama-swap proxy
 """
 
 import logging
-import threading
+import os
 import requests
-import traceback
-import base64
 from typing import Dict, List, Optional, Any, Union
 
 from flask import current_app
@@ -26,103 +20,277 @@ from app.model_config import get_model_config
 from app.utils import estimate_tokens
 from app.circuit_breaker import CircuitBreaker, CircuitBreakerOpen
 
-# llama.cpp runs with --models-max 1, so only one model can be in VRAM at a time.
-# When different model types are requested concurrently (embedding vs multimodal),
-# we serialize them to avoid constant model reloading thrashing.
-# Chat/reasoning use the same model so they don't conflict with each other.
 
-_model_switch_lock = threading.Lock()
+class AbstractLlamaBackend:
+    """Abstract backend for LLM inference."""
+
+    def __init__(self, app=None):
+        self.app = app
+        self.logger = logging.getLogger(__name__)
+
+    def get_base_url(self) -> str:
+        raise NotImplementedError
+
+    def check_availability(self) -> bool:
+        raise NotImplementedError
+
+    def chat(self, messages: List[Dict], model: str, config: Dict, timeout: int, lang: str, model_type: str = 'chat') -> str:
+        raise NotImplementedError
+
+    def get_embeddings(self, texts: List[str], model: str, config: Dict, timeout: int) -> Optional[List[List[float]]]:
+        raise NotImplementedError
+
+    def unload_all_models(self) -> bool:
+        raise NotImplementedError
+
+    def get_running_models(self) -> List[str]:
+        raise NotImplementedError
+
+
+class DirectLlamaBackend(AbstractLlamaBackend):
+    """Direct connection to llama-server."""
+
+    def __init__(self, app=None):
+        super().__init__(app)
+        self.circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
+
+    def get_base_url(self) -> str:
+        url = self.app.config.get('LLAMACPP_URL') if self.app else None
+        if not url:
+            url = 'http://flai-llamacpp:8033'
+        return url.rstrip('/')
+
+    def check_availability(self) -> bool:
+        try:
+            response = requests.get(f"{self.get_base_url()}/v1/models", timeout=5)
+            return response.status_code == 200
+        except Exception:
+            return False
+
+    def chat(self, messages: List[Dict], model: str, config: Dict, timeout: int, lang: str, model_type: str = 'chat') -> str:
+        base_url = self.get_base_url()
+        context = config.get('context_length', 4096)
+        temperature = config.get('temperature', 0.7)
+        top_p = config.get('top_p', 0.9)
+
+        payload = {
+            'model': model,
+            'messages': messages,
+            'stream': False,
+            'max_tokens': context,
+            'temperature': temperature,
+            'top_p': top_p,
+            'stop': ['</s>', '<|eot_id|>'],
+        }
+
+        if not self.circuit_breaker.can_execute():
+            return 'Service temporarily unavailable. Circuit breaker is open.'
+
+        try:
+            response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout)
+            if response.status_code == 200:
+                result = response.json()
+                choices = result.get('choices', [])
+                if not choices:
+                    return 'Model returned empty response'
+
+                content = choices[0].get('message', {}).get('content', '')
+                if content is None:
+                    return 'Model returned empty response'
+
+                for stop_token in ['</s>', '<|eot_id|>']:
+                    if stop_token in content:
+                        content = content[:content.index(stop_token)]
+
+                self.circuit_breaker.record_success()
+                return content.strip()
+            else:
+                self.circuit_breaker.record_failure()
+                return f'Error: {response.status_code}'
+        except requests.exceptions.Timeout:
+            self.circuit_breaker.record_failure()
+            return f'Timeout ({timeout}s) calling model'
+        except requests.exceptions.ConnectionError:
+            self.circuit_breaker.record_failure()
+            return 'Could not connect to llama-server'
+        except Exception as e:
+            self.logger.error(f'Error: {e}')
+            return f'Error: {str(e)}'
+
+    def get_embeddings(self, texts: List[str], model: str, config: Dict, timeout: int) -> Optional[List[List[float]]]:
+        base_url = self.get_base_url()
+        payload = {'model': model, 'input': texts}
+        try:
+            response = requests.post(f"{base_url}/v1/embeddings", json=payload, timeout=timeout)
+            if response.status_code == 200:
+                result = response.json()
+                data = result.get('data', [])
+                data.sort(key=lambda x: x.get('index', 0))
+                return [item['embedding'] for item in data]
+            return None
+        except Exception as e:
+            self.logger.error(f'Embedding error: {e}')
+            return None
+
+    def unload_all_models(self) -> bool:
+        self.logger.info('Direct backend: unload called')
+        return True
+
+    def get_running_models(self) -> List[str]:
+        return []
+
+
+class LlamaSwapBackend(AbstractLlamaBackend):
+    """Connection via llama-swap proxy."""
+
+    def __init__(self, app=None):
+        super().__init__(app)
+        self.circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
+
+    def get_base_url(self) -> str:
+        url = os.getenv('LLAMA_SWAP_URL')
+        if not url:
+            url = 'http://flai-llamaswap:8080'
+        return url.rstrip('/')
+
+    def check_availability(self) -> bool:
+        try:
+            response = requests.get(f"{self.get_base_url()}/health", timeout=5)
+            return response.status_code == 200
+        except Exception:
+            return False
+
+    def chat(self, messages: List[Dict], model: str, config: Dict, timeout: int, lang: str, model_type: str = 'chat') -> str:
+        base_url = self.get_base_url()
+        temperature = config.get('temperature', 0.7)
+        top_p = config.get('top_p', 0.9)
+
+        model_name = model_type
+
+        payload = {
+            'model': model_name,
+            'messages': messages,
+            'stream': False,
+            'temperature': temperature,
+            'top_p': top_p,
+            'stop': ['</s>', '<|eot_id|>'],
+        }
+
+        self.logger.info(f"LlamaSwapBackend request: model={model}, payload keys={list(payload.keys())}")
+
+        if not self.circuit_breaker.can_execute():
+            return 'Service temporarily unavailable. Circuit breaker is open.'
+
+        try:
+            response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout)
+            self.logger.info(f"LlamaSwapBackend response: {response.status_code}")
+            if response.status_code == 200:
+                result = response.json()
+                choices = result.get('choices', [])
+                if not choices:
+                    return 'Model returned empty response'
+
+                content = choices[0].get('message', {}).get('content', '')
+                if content is None:
+                    return 'Model returned empty response'
+
+                for stop_token in ['</s>', '<|eot_id|>']:
+                    if stop_token in content:
+                        content = content[:content.index(stop_token)]
+
+                self.circuit_breaker.record_success()
+                return content.strip()
+            else:
+                self.circuit_breaker.record_failure()
+                return f'Error: {response.status_code}'
+        except requests.exceptions.Timeout:
+            self.circuit_breaker.record_failure()
+            return f'Timeout ({timeout}s) calling model'
+        except requests.exceptions.ConnectionError:
+            self.circuit_breaker.record_failure()
+            return 'Could not connect to llama-swap'
+        except Exception as e:
+            self.logger.error(f'Error: {e}')
+            return f'Error: {str(e)}'
+
+    def get_embeddings(self, texts: List[str], model: str, config: Dict, timeout: int) -> Optional[List[List[float]]]:
+        base_url = self.get_base_url()
+        payload = {'model': model, 'input': texts}
+        try:
+            response = requests.post(f"{base_url}/v1/embeddings", json=payload, timeout=timeout)
+            if response.status_code == 200:
+                result = response.json()
+                data = result.get('data', [])
+                data.sort(key=lambda x: x.get('index', 0))
+                return [item['embedding'] for item in data]
+            return None
+        except Exception as e:
+            self.logger.error(f'Embedding error: {e}')
+            return None
+
+    def unload_all_models(self) -> bool:
+        base_url = self.get_base_url()
+        try:
+            response = requests.get(f"{base_url}/models/unload", timeout=30)
+            if response.status_code == 200:
+                self.logger.info('llama-swap: models unloaded')
+                return True
+            return False
+        except Exception as e:
+            self.logger.error(f'Unload error: {e}')
+            return False
+
+    def get_running_models(self) -> List[str]:
+        base_url = self.get_base_url()
+        try:
+            response = requests.get(f"{base_url}/running", timeout=10)
+            if response.status_code == 200:
+                return response.json().get('models', [])
+            return []
+        except Exception:
+            return []
 
 
 class LlamaCppClient:
-    """Client for llama-server OpenAI-compatible API."""
+    """Client for llama-server/llama-swap via backend pattern."""
 
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
         self.available = False
         self.app = app
-        # Circuit breaker: 3 failures → open for 60s
-        self.circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
+
+        backend_type = os.getenv('LLAMACP_BACKEND', 'llamacpp')
+
+        if backend_type == 'llama-swap':
+            self.backend = LlamaSwapBackend(app)
+            self.logger.info('Using LlamaSwapBackend')
+        else:
+            self.backend = DirectLlamaBackend(app)
+            self.logger.info('Using DirectLlamaBackend')
+
         if app:
             self.init_app(app)
 
     def init_app(self, app):
-        """Initialize with Flask app config."""
+        self.app = app
         self.check_availability()
 
-    def _get_service_url(self, module_type: str) -> Optional[str]:
-        """Get the service URL for a given module type.
-        Priority: 1) service_url from DB,
-                  2) LLAMACPP_URL from config (global fallback).
-        """
-        config = get_model_config(module_type)
-        if config:
-            service_url = config.get('service_url')
-            if service_url:
-                return service_url.rstrip('/')
-        # Global fallback from .env
-        if self.app and self.app.config.get('LLAMACPP_URL'):
-            return self.app.config['LLAMACPP_URL'].rstrip('/')
-        # Last resort default
-        return 'http://flai-llamacpp:8033'
-
     def check_availability(self) -> bool:
-        """Check if llama-server is reachable via /v1/models endpoint."""
-        url = self._get_service_url('chat')
-        if not url:
-            # No URL configured — assume available
-            self.logger.warning("No llama-server URL configured, assuming available")
-            self.available = True
-            return True
-
-        try:
-            response = requests.get(f"{url}/v1/models", timeout=5)
-            if response.status_code == 200:
-                self.available = True
-                self.logger.info(f"llama-server is available at {url}")
-                return True
-            else:
-                self.logger.warning(
-                    f"llama-server returned status {response.status_code} at {url}"
-                )
-                self.available = False
-                return False
-        except requests.exceptions.ConnectionError:
-            self.logger.error(
-                f"Cannot connect to llama-server at {url} - service may not be running"
-            )
-            self.available = False
-            return False
-        except requests.exceptions.Timeout:
-            self.logger.error(f"Timeout connecting to llama-server at {url}")
-            self.available = False
-            return False
-        except Exception as e:
-            self.logger.error(f"Error checking llama-server availability: {e}")
-            self.available = False
-            return False
+        self.available = self.backend.check_availability()
+        if self.available:
+            self.logger.info(f'LLM backend available at {self.backend.get_base_url()}')
+        else:
+            self.logger.warning(f'LLM backend unavailable at {self.backend.get_base_url()}')
+        return self.available
 
     def _translate(self, key: str, lang: str = 'ru', **kwargs) -> str:
-        """Translate a message using Flask-Babel."""
         with current_app.app_context():
             with force_locale(lang):
                 return _(key, **kwargs)
 
-    def _validate_prompt(
-        self,
-        messages: List[Dict[str, Any]],
-        model_type: str,
-        lang: str,
-    ) -> Optional[str]:
-        """
-        Validate that the total prompt fits into the model's context window.
-        Returns error message if validation fails, None otherwise.
-        """
+    def _validate_prompt(self, messages: List[Dict], model_type: str, lang: str) -> Optional[str]:
         config = get_model_config(model_type)
         if not config:
-            self.logger.warning(
-                f"Missing model config for {model_type}, skipping validation"
-            )
             return None
 
         max_context = config.get('context_length', 32768)
@@ -134,49 +302,17 @@ class LlamaCppClient:
             if isinstance(content, str):
                 total_tokens += estimate_tokens(content, model_type, lang)
             elif isinstance(content, list):
-                # Multimodal: count text parts only, estimate images
                 for part in content:
                     if part.get('type') == 'text':
-                        total_tokens += estimate_tokens(
-                            part.get('text', ''), model_type, lang
-                        )
+                        total_tokens += estimate_tokens(part.get('text', ''), model_type, lang)
                     elif part.get('type') == 'image_url':
-                        total_tokens += 1000  # rough estimate per image
+                        total_tokens += 1000
 
         if total_tokens > hard_limit:
-            error_msg = self._translate(
-                'Request too long, please simplify your request', lang
-            )
-            self.logger.error(
-                f"Prompt validation failed: {total_tokens} tokens "
-                f"(limit {hard_limit}) for {model_type}"
-            )
-            return error_msg
-
-        self.logger.info(
-            f"Prompt validation passed: {total_tokens}/{hard_limit} tokens "
-            f"({total_tokens / max_context * 100:.1f}%)"
-        )
+            return f'Request too long ({total_tokens} tokens, limit {hard_limit})'
         return None
 
-    def chat(
-        self,
-        messages: List[Dict[str, Any]],
-        model_type: str = 'chat',
-        lang: str = 'ru',
-        validate: bool = True,
-    ) -> str:
-        """
-        Call llama-server chat completion via OpenAI-compatible API.
-        Returns content string on success, error message on failure.
-
-        Args:
-            messages: List of message dicts in OpenAI format
-            model_type: Module type (chat, reasoning, multimodal)
-            lang: Language for error messages
-            validate: Whether to validate prompt size before sending
-        """
-        # Optional validation
+    def chat(self, messages: List[Dict], model_type: str = 'chat', lang: str = 'ru', validate: bool = True) -> str:
         if validate:
             error = self._validate_prompt(messages, model_type, lang)
             if error:
@@ -184,127 +320,20 @@ class LlamaCppClient:
 
         config = get_model_config(model_type)
         if not config:
-            return self._translate('Model configuration missing', lang)
+            return 'Model configuration missing'
 
         model = config.get('model_name')
         if not model:
-            return self._translate(
-                'Model for {model_type} not configured', lang
-            ).format(model_type=model_type)
-
-        service_url = self._get_service_url(model_type)
-        if not service_url:
-            service_url = 'http://llamacpp:8080'
-            self.logger.warning(
-                f"No service_url for {model_type}, using default {service_url}"
-            )
+            return f'Model for {model_type} not configured'
 
         timeout = config.get('timeout', 300)
-        context = config.get('context_length', 4096)
-        temperature = config.get('temperature', 0.7)
-        top_p = config.get('top_p', 0.9)
+        return self.backend.chat(messages, model, config, timeout, lang, model_type=model_type)
 
-        # OpenAI-compatible payload
-        payload = {
-            'model': model,
-            'messages': messages,
-            'stream': False,
-            'max_tokens': context,
-            'temperature': temperature,
-            'top_p': top_p,
-            'stop': ['</s>', '<|eot_id|>'],
-        }
-
-        self.logger.info(
-            f"Sending request to {service_url}, model={model}, timeout={timeout}s"
-        )
-
-        # Circuit breaker check — fail fast if service is down
-        if not self.circuit_breaker.can_execute():
-            cb_state = self.circuit_breaker.get_state()
-            self.logger.warning(
-                f"Circuit breaker OPEN for llama-server: "
-                f"failures={cb_state['failure_count']}/{cb_state['failure_threshold']}"
-            )
-            return self._translate(
-                'Service temporarily unavailable. Circuit breaker is open after repeated failures.',
-                lang
-            )
-
-        try:
-            response = requests.post(
-                f"{service_url}/v1/chat/completions",
-                json=payload,
-                timeout=timeout
-            )
-            if response.status_code == 200:
-                result = response.json()
-                choices = result.get('choices', [])
-                if not choices:
-                    self.logger.error(f"llama-server returned no choices: {result}")
-                    return self._translate('Model returned empty response', lang)
-
-                content = choices[0].get('message', {}).get('content', '')
-                if content is None:
-                    self.logger.error(f"llama-server returned None content: {result}")
-                    return self._translate('Model returned empty response', lang)
-
-                # Remove stop tokens
-                for stop_token in ['</s>', '<|eot_id|>']:
-                    if stop_token in content:
-                        content = content[:content.index(stop_token)]
-
-                # For chat models with low temperature, keep only first line
-                if model_type == 'chat' and temperature < 0.3:
-                    content = content.split('\n')[0].strip()
-
-                self.circuit_breaker.record_success()
-                return content.strip()
-            else:
-                self.circuit_breaker.record_failure()
-                self.logger.error(
-                    f"llama-server error: {response.status_code} - {response.text}"
-                )
-                return f"{self._translate('Error', lang)}: {response.status_code}"
-        except requests.exceptions.Timeout:
-            self.circuit_breaker.record_failure()
-            self.logger.error(
-                f"Timeout ({timeout}s) calling {model} at {service_url}"
-            )
-            template = self._translate(
-                'Timeout ({timeout}s) when calling the model. '
-                'Try increasing timeout in admin panel or simplify your request.',
-                lang
-            )
-            return template.format(timeout=timeout)
-        except requests.exceptions.ConnectionError:
-            self.circuit_breaker.record_failure()
-            self.logger.error(f"Connection error to llama-server at {service_url}")
-            return self._translate('Could not connect to llama-server', lang)
-        except Exception as e:
-            self.logger.error(
-                f"Error calling llama-server: {e}\n{traceback.format_exc()}"
-            )
-            return f"{self._translate('Error', lang)}: {str(e)}"
-
-    def chat_with_image(
-        self,
-        text: str,
-        image_base64: str,
-        model_type: str = 'multimodal',
-        lang: str = 'ru',
-    ) -> str:
-        """
-        Call llama-server with image + text (multimodal).
-        Uses OpenAI-compatible format with image_url in messages.
-        The llama.cpp router automatically handles mmproj files
-        when models are placed in subdirectories with mmproj*.gguf.
-        """
-        # Detect mime type from base64 header or default to jpeg
+    def chat_with_image(self, text: str, image_base64: str, model_type: str = 'multimodal', lang: str = 'ru') -> str:
         if image_base64.startswith('data:'):
             image_content = image_base64
         else:
-            image_content = f"data:image/jpeg;base64,{image_base64}"
+            image_content = f'data:image/jpeg;base64,{image_base64}'
 
         messages = [{
             'role': 'user',
@@ -313,89 +342,25 @@ class LlamaCppClient:
                 {'type': 'image_url', 'image_url': {'url': image_content}}
             ]
         }]
-
         return self.chat(messages, model_type=model_type, lang=lang)
 
-    def get_embeddings(
-        self,
-        texts: List[str],
-        model_type: str = 'embedding',
-        lang: str = 'ru',
-    ) -> Optional[List[List[float]]]:
-        """
-        Get embeddings via OpenAI-compatible /v1/embeddings endpoint.
-        """
+    def get_embeddings(self, texts: List[str], model_type: str = 'embedding', lang: str = 'ru') -> Optional[List[List[float]]]:
         config = get_model_config(model_type)
         if not config:
-            self.logger.error(f"No model config for {model_type}")
             return None
 
         model = config.get('model_name')
         if not model:
-            self.logger.error(f"No model name configured for {model_type}")
             return None
-
-        service_url = self._get_service_url(model_type)
-        if not service_url:
-            service_url = 'http://llamacpp:8080'
-            self.logger.warning(
-                f"No service_url for {model_type}, using default {service_url}"
-            )
 
         timeout = config.get('timeout', 120)
+        return self.backend.get_embeddings(texts, model, config, timeout)
 
-        payload = {
-            'model': model,
-            'input': texts,
-        }
-
-        self.logger.info(
-            f"Sending embedding request to {service_url}, model={model}, "
-            f"texts={len(texts)}, timeout={timeout}s"
-        )
-        try:
-            response = requests.post(
-                f"{service_url}/v1/embeddings",
-                json=payload,
-                timeout=timeout
-            )
-            if response.status_code == 200:
-                result = response.json()
-                data = result.get('data', [])
-                # Sort by index (OpenAI spec requires ordering by index)
-                data.sort(key=lambda x: x.get('index', 0))
-                embeddings = [item['embedding'] for item in data]
-                self.logger.info(
-                    f"Embedding successful: {len(embeddings)} vectors, "
-                    f"dim={len(embeddings[0]) if embeddings else 0}"
-                )
-                return embeddings
-            else:
-                self.logger.error(
-                    f"Embedding error: {response.status_code} - {response.text}"
-                )
-                return None
-        except requests.exceptions.Timeout:
-            self.logger.error(f"Timeout calling embedding endpoint at {service_url}")
-            return None
-        except requests.exceptions.ConnectionError:
-            self.logger.error(f"Connection error to llama-server at {service_url}")
-            return None
-        except Exception as e:
-            self.logger.error(f"Error getting embeddings: {e}")
-            return None
-
-    def call(
-        self,
-        messages: List[Dict[str, Any]],
-        model_type: str = 'chat',
-        stream: bool = False,
-        lang: str = 'ru',
-        validate: bool = True,
-    ) -> Union[str, Dict[str, Any]]:
-        """
-        Compatibility wrapper matching the LlamaCppClient.call() signature.
-        Note: stream is ignored — llama-server streaming would require
-        a separate implementation with SSE parsing.
-        """
+    def call(self, messages: List[Dict], model_type: str = 'chat', stream: bool = False, lang: str = 'ru', validate: bool = True) -> Union[str, Dict[str, Any]]:
         return self.chat(messages, model_type=model_type, lang=lang, validate=validate)
+
+    def unload_all_models(self) -> bool:
+        return self.backend.unload_all_models()
+
+    def get_running_models(self) -> List[str]:
+        return self.backend.get_running_models()

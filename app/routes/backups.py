@@ -213,10 +213,41 @@ def restore_backup():
                     src = os.path.join(tmpdir, os.path.basename(dir_name))
                     dst = os.path.join(project_root, dir_name)
                     if os.path.exists(src):
-                        # Remove existing files and copy from backup
+                        # Remove existing directory if possible
+                        import time as time_module
                         if os.path.exists(dst):
-                            shutil.rmtree(dst)
-                        shutil.copytree(src, dst)
+                            for attempt in range(3):
+                                try:
+                                    shutil.rmtree(dst)
+                                    break
+                                except Exception:
+                                    time_module.sleep(0.1)
+                        if os.path.exists(dst):
+                            try:
+                                import os as os_module
+                                os_module.rename(dst, dst + '.old')
+                            except Exception:
+                                pass
+                        if not os.path.exists(dst):
+                            shutil.copytree(src, dst)
+                        # Fix ownership after copy
+                        import pwd
+                        try:
+                            pw = pwd.getpwnam('valery')
+                            os.chown(dst, pw.pw_uid, pw.pw_gid)
+                            for root, dirs, files in os.walk(dst):
+                                for d in dirs:
+                                    p = os.path.join(root, d)
+                                    try:
+                                        os.chown(p, pw.pw_uid, pw.pw_gid)
+                                    except: pass
+                                for f in files:
+                                    p = os.path.join(root, f)
+                                    try:
+                                        os.chown(p, pw.pw_uid, pw.pw_gid)
+                                    except: pass
+                        except Exception as e:
+                            logger.warning(f"Could not fix ownership: {e}")
                         logger.info(f"Restored directory: {dir_name}")
 
         logger.info(f"Backup restored: {filename}")
@@ -277,45 +308,36 @@ def download_backup(filename):
 # ============================================================
 
 def _export_pg_dump(tables):
-    """Export specified tables as SQL INSERT statements from PostgreSQL."""
-    lines = []
-    lines.append('-- FLAI Backup')
-    lines.append(f'-- Date: {datetime.now().isoformat()}')
-    lines.append('-- Source: PostgreSQL')
-    lines.append('')
-
-    with get_db() as conn:
-        c = conn.cursor()
-        for table in tables:
-            try:
-                c.execute(f"SELECT * FROM {table}")
-                rows = c.fetchall()
-                if rows:
-                    col_names = [desc[0] for desc in c.description]
-                    lines.append(f"DELETE FROM {table};")
-                    for row in rows:
-                        values = []
-                        for i, val in enumerate(row):
-                            if val is None:
-                                values.append('NULL')
-                            elif isinstance(val, bool):
-                                values.append('TRUE' if val else 'FALSE')
-                            elif isinstance(val, (int, float)):
-                                values.append(str(val))
-                            elif isinstance(val, datetime):
-                                values.append(f"'{val.isoformat()}'")
-                            else:
-                                escaped = str(val).replace("'", "''")
-                                values.append(f"'{escaped}'")
-                        cols_str = ', '.join(col_names)
-                        vals_str = ', '.join(values)
-                        lines.append(f"INSERT INTO {table} ({cols_str}) VALUES ({vals_str});")
-                    lines.append('')
-            except Exception as e:
-                lines.append(f'-- Error exporting table {table}: {e}')
-                lines.append('')
-
-    return '\n'.join(lines)
+    """Export specified tables as SQL using real pg_dump utility."""
+    import os
+    from urllib.parse import urlparse
+    
+    db_url = os.environ.get('DATABASE_URL', '')
+    if not db_url:
+        raise RuntimeError("DATABASE_URL not set")
+    
+    parsed = urlparse(db_url)
+    
+    env = os.environ.copy()
+    env.update({
+        'PGHOST': parsed.hostname or 'localhost',
+        'PGPORT': str(parsed.port or 5432),
+        'PGUSER': parsed.username or 'flai',
+        'PGPASSWORD': parsed.password or '',
+        'PGDATABASE': parsed.path.lstrip('/') if parsed.path else 'flai'
+    })
+    
+    result = subprocess.run(
+        ['pg_dump', '--no-owner', '--no-privileges', '-d', env['PGDATABASE']],
+        env=env,
+        capture_output=True,
+        text=True
+    )
+    
+    if result.returncode != 0:
+        raise RuntimeError(f"pg_dump failed: {result.stderr}")
+    
+    return result.stdout
 
 
 def _import_sql(dump_path, backup_type):
@@ -323,16 +345,20 @@ def _import_sql(dump_path, backup_type):
     with open(dump_path, 'r') as f:
         sql = f.read()
 
+    statements = [s.strip() + ';' for s in sql.split(';') if s.strip() and not s.strip().startswith('--')]
+    
     with get_db() as conn:
         c = conn.cursor()
-        # Execute statements one by one
-        for statement in sql.split(';'):
-            statement = statement.strip()
-            if statement and not statement.startswith('--'):
+        for statement in statements:
+            try:
+                c.execute(statement)
+                conn.commit()
+            except Exception as e:
+                logger.warning(f"SQL error during restore: {e}")
                 try:
-                    c.execute(statement)
-                except Exception as e:
-                    logger.warning(f"SQL error during restore: {e}")
+                    conn.rollback()
+                except:
+                    pass
 
     # Reset sequences
     with get_db() as conn:
@@ -340,6 +366,7 @@ def _import_sql(dump_path, backup_type):
         for table in ['users', 'messages']:
             try:
                 c.execute(f"SELECT setval('{table}_id_seq', (SELECT COALESCE(MAX(id),1) FROM {table}))")
+                conn.commit()
             except Exception:
                 pass
 

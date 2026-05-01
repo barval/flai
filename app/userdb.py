@@ -1,9 +1,12 @@
 # app/userdb.py
 """User database module — PostgreSQL only."""
 import json
+import os
+import shutil
 from typing import Any, Dict, List, Optional
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.database import get_db
+from app.db import update_user_storage, get_user_storage_usage
 
 
 def get_user_by_login(login: str) -> Optional[Dict[str, Any]]:
@@ -90,10 +93,88 @@ def update_password(login, new_password):
 
 
 def delete_user(login):
-    """Delete a user."""
+    """Delete a user account with all associated data.
+    This is a cascade delete that removes:
+    - All sessions and messages
+    - All uploaded files
+    - All documents (DB, Qdrant vectors, disk files)
+    - Storage quota
+    """
+    from app.db import delete_session_and_messages
+    from flask import current_app
+    
+    user = get_user_by_login(login)
+    if not user:
+        return False
+    
+    user_id = user['id']
+    
+    # Get config paths
+    upload_folder = current_app.config.get('UPLOAD_FOLDER', 'data/uploads')
+    documents_folder = current_app.config.get('DOCUMENTS_FOLDER', 'data/documents')
+    
+    # 1. Delete all sessions and their files
     with get_db() as conn:
         c = conn.cursor()
+        c.execute('SELECT id FROM chat_sessions WHERE user_id = %s', (user_id,))
+        sessions = c.fetchall()
+        for s in sessions:
+            delete_session_and_messages(s['id'], user_id, upload_folder)
+        
+        # 2. Delete all documents (metadata only - file deletion handled below)
+        c.execute('SELECT file_path, file_size FROM documents WHERE user_id = %s', (user_id,))
+        docs = c.fetchall()
+        
+        # Delete document files from disk
+        for doc in docs:
+            doc_path = doc.get('file_path')
+            if doc_path:
+                full_doc_path = os.path.join(documents_folder, doc_path)
+                if os.path.exists(full_doc_path):
+                    try:
+                        os.remove(full_doc_path)
+                    except Exception:
+                        pass
+        
+        # Delete from Qdrant
+        try:
+            from modules.rag import RagModule
+            rag = RagModule(current_app)
+            for doc in docs:
+                rag.delete_document(doc['id'], user_id)
+        except Exception:
+            pass
+        
+        c.execute('DELETE FROM documents WHERE user_id = %s', (user_id,))
+        
+        # 3. Delete user's data folders
+        user_uploads_dir = os.path.join(upload_folder, user_id)
+        if os.path.exists(user_uploads_dir):
+            try:
+                shutil.rmtree(user_uploads_dir, ignore_errors=True)
+            except Exception:
+                pass
+        
+        user_docs_dir = os.path.join(documents_folder, user_id)
+        if os.path.exists(user_docs_dir):
+            try:
+                shutil.rmtree(user_docs_dir, ignore_errors=True)
+            except Exception:
+                pass
+        
+        # 4. Delete from user_sessions
+        c.execute('DELETE FROM user_sessions WHERE user_id = %s', (user_id,))
+        
+        # 5. Delete from session_visits
+        c.execute('DELETE FROM session_visits WHERE user_id = %s', (user_id,))
+        
+        # 6. Delete user storage quota
+        c.execute('DELETE FROM user_storage WHERE user_id = %s', (user_id,))
+        
+        # Finally delete the user
         c.execute('DELETE FROM users WHERE login = %s', (login,))
+    
+    return True
 
 
 def list_users(exclude_admin=True):

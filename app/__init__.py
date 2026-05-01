@@ -118,6 +118,16 @@ def create_app():
     # Initialize chat DB
     init_db()
     
+    # Generate llama-swap config if using llama-swap backend
+    backend_type = app.config.get('LLAMACP_BACKEND', 'llamacpp')
+    if backend_type == 'llama-swap':
+        try:
+            from app.llama_swap_config import generate_and_write
+            generate_and_write(app)
+            app.logger.info("llama-swap config generated")
+        except Exception as e:
+            app.logger.warning(f"Could not generate llama-swap config: {e}")
+    
     # Load RAG thresholds from DB if available
     from app.model_config import get_model_config
     chunks_cfg = get_model_config('chunks')
@@ -360,27 +370,35 @@ def create_app():
             app.logger.error(f"Health check - Redis error: {e}")
             http_status = 503
         
-        # Check llama-server
+        # Check LLM backend (llama-server or llama-swap)
         try:
-            # Prefer LLAMACPP_URL from config (global setting)
-            service_url = app.config.get('LLAMACPP_URL')
-            if not service_url:
-                # Fallback to DB config
-                from app.model_config import get_model_config
-                llamacpp_config = get_model_config('chat')
-                if llamacpp_config:
-                    service_url = llamacpp_config.get('service_url')
-            if not service_url:
-                service_url = 'http://flai-llamacpp:8033'
-            response = requests.get(f"{service_url.rstrip('/')}/v1/models", timeout=5)
-            if response.status_code == 200:
-                status['services']['llamacpp'] = 'ok'
+            backend_type = app.config.get('LLAMACP_BACKEND', 'llamacpp')
+            if backend_type == 'llama-swap':
+                service_url = app.config.get('LLAMA_SWAP_URL', 'http://flai-llamaswap:8080')
+                response = requests.get(f"{service_url.rstrip('/')}/health", timeout=5)
+                if response.status_code == 200:
+                    status['services']['llamacpp'] = 'ok'
+                else:
+                    status['services']['llamacpp'] = 'error'
+                    http_status = 503
             else:
-                status['services']['llamacpp'] = 'error'
-                http_status = 503
+                service_url = app.config.get('LLAMACPP_URL')
+                if not service_url:
+                    from app.model_config import get_model_config
+                    llamacpp_config = get_model_config('chat')
+                    if llamacpp_config:
+                        service_url = llamacpp_config.get('service_url')
+                if not service_url:
+                    service_url = 'http://flai-llamacpp:8033'
+                response = requests.get(f"{service_url.rstrip('/')}/v1/models", timeout=5)
+                if response.status_code == 200:
+                    status['services']['llamacpp'] = 'ok'
+                else:
+                    status['services']['llamacpp'] = 'error'
+                    http_status = 503
         except Exception as e:
             status['services']['llamacpp'] = 'error'
-            app.logger.error(f"Health check - llama-server error: {e}")
+            app.logger.error(f"Health check - LLM backend error: {e}")
             http_status = 503
 
         # Check sd-wrapper (image generation/editing)

@@ -145,7 +145,12 @@ def _init_postgresql():
             top_p REAL,
             timeout INTEGER,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            service_url TEXT
+            service_url TEXT,
+            model_path TEXT,
+            aliases TEXT,
+            group_name TEXT DEFAULT 'default',
+            ttl INTEGER DEFAULT 0,
+            preload BOOLEAN DEFAULT FALSE
         )
     ''')
     c.execute('''

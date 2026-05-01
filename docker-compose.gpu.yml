@@ -12,7 +12,7 @@ services:
     depends_on:
       - redis
       - postgres
-      - llamacpp
+      - llama-swap
     env_file:
       - .env
     volumes:
@@ -21,6 +21,8 @@ services:
       - ./.env:/app/.env:ro
       # Mount models directory for GGUF metadata reading
       - ./services/llamacpp/models:/models:ro
+      # Mount llama-swap config
+      - ./llama-swap-config:/config
       # Mount docker socket for GPU detection
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
@@ -28,7 +30,9 @@ services:
       - WHISPER_API_URL=http://flai-whisper:9000/asr
       - WHISPER_API_TIMEOUT=120
       - SD_WRAPPER_URL=http://flai-sd:7861
-    user: "0:988"
+      - GPU_NAME=NVIDIA GeForce RTX 5060 Ti
+      - GPU_VRAM_MB=16384
+    # user: "0:988"  # Removed - uses Dockerfile user (appuser:1000)
     networks:
       - flai_network
     restart: unless-stopped
@@ -109,49 +113,26 @@ services:
       - flai_network
 
   # ============================================================
-  # LLAMA.CPP SERVER (Required - LLM Inference, router mode)
+  # LLAMA-SWAP (Required - LLM Proxy, router mode)
   # ============================================================
-  # Router mode: handles chat, reasoning, embedding, and multimodal.
-  # Multimodal models must be in subdirectories with mmproj file named mmproj*.gguf
-  llamacpp:
-    image: ghcr.io/ggml-org/llama.cpp:server-cuda
-    container_name: flai-llamacpp
+  llama-swap:
+    image: ghcr.io/mostlygeek/llama-swap:cuda
+    container_name: flai-llamaswap
     ports:
-      - "8080:8033"
+      - "8080:8080"
     volumes:
-      - ./services/llamacpp/models:/models
-    depends_on:
-      - llamacpp-presets
+      - ./services/llamacpp/models:/models:ro
+      - ./llama-swap-config:/config
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     runtime: nvidia
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 16G
-        reservations:
-          cpus: '2.0'
-          memory: 8G
     networks:
       - flai_network
     restart: unless-stopped
-    # Router mode: --models-dir allows dynamic model switching
-    # --models-max 1: only keep one model in VRAM at a time (avoid OOM on 16GB GPU)
-    command: >
-      --models-dir /models/
-      --models-preset /models/models-preset.ini
-      --models-max 1
-      --ctx-size 16384
-      --host 0.0.0.0
-      --port 8033
-      --n-gpu-layers -1
-      --embeddings
-      --batch-size 2048
-      --ubatch-size 2048
+    command: -config /config/llama-swap.yaml -watch-config
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8033/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -165,8 +146,6 @@ services:
   # ============================================================
   # STABLE-DIFFUSION.CPP (Optional - Image Generation)
   # ============================================================
-  # Uses sd-cli directly via a Python HTTP wrapper (sd_wrapper.py)
-  # The sd-server's /v1/images/generations endpoint doesn't work properly.
   sd_cpp:
     build:
       context: ./services/sd_cpp
@@ -212,7 +191,7 @@ services:
         max-file: "3"
 
   # ============================================================
-  # WHISPER ASR (Optional - Speech Recognition)
+  # WHISPER (Optional - Speech Recognition)
   # ============================================================
   whisper:
     image: onerahmet/openai-whisper-asr-webservice:v1.9.1
@@ -223,16 +202,6 @@ services:
       - ASR_MODEL=medium
       - ASR_ENGINE=faster_whisper
       - ASR_DEVICE=cpu
-    # To enable GPU acceleration for transcription, uncomment the block below:
-    # environment:
-    #   - ASR_DEVICE=cuda
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
     volumes:
       - ~/.cache/huggingface:/root/.cache/huggingface
     networks:
@@ -300,7 +269,7 @@ services:
       - with-voice
 
   # ============================================================
-  # QDRANT (Optional - Vector Database for RAG)
+  # QDRANT (Optional - Vector DB for RAG)
   # ============================================================
   qdrant:
     image: qdrant/qdrant:v1.12.1
@@ -339,48 +308,34 @@ services:
       - with-rag
 
   # ============================================================
-  # POSTGRESQL (Required)
+  # POSTGRESQL (Required - Application DB)
   # ============================================================
   postgres:
-    image: postgres:16.4-alpine
+    image: pgvector/pgvector:pg16
     container_name: flai-postgres
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./services/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     environment:
-      - POSTGRES_DB=flai
       - POSTGRES_USER=flai
       - POSTGRES_PASSWORD=flai_password
+      - POSTGRES_DB=flai
     networks:
       - flai_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U flai"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 networks:
   flai_network:
-    name: flai_flai_network
-    driver: bridge
+    name: flai_network
 
 volumes:
   redis_data:
-  qdrant_data:
   postgres_data:
+  qdrant_data:

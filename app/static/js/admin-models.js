@@ -45,9 +45,14 @@ function initAdminTabs() {
 }
 
 function loadModelConfigs() {
+    console.log('loadModelConfigs called');
     fetch('/admin/api/model_configs', { credentials: 'same-origin' })
-        .then(res => res.json())
+        .then(res => {
+            console.log('model_configs response status:', res.status);
+            return res.json();
+        })
         .then(configs => {
+            console.log('Loaded model configs:', configs);
             currentModelConfigs = configs;
             renderModelCards();
         })
@@ -55,8 +60,12 @@ function loadModelConfigs() {
 }
 
 function renderModelCards() {
+    console.log('renderModelCards called, container:', document.getElementById('models-list'));
     const container = document.getElementById('models-list');
-    if (!container) return;
+    if (!container) {
+        console.log('No models-list container!');
+        return;
+    }
 
     const modules = [
         { id: 'chat', name: 'Chat', config: currentModelConfigs.chat || {} },
@@ -67,6 +76,9 @@ function renderModelCards() {
 
     let html = '';
     modules.forEach(mod => {
+        const selectedModel = mod.config.model_name || '';
+        const maxCtx = mod.config.max_context_length || '32768';
+        
         html += `
         <div class="model-card" data-module="${mod.id}">
             <h3><span class="module-name">${t(mod.name)}</span></h3>
@@ -84,7 +96,7 @@ function renderModelCards() {
                 <div class="param">
                     <label>${t('Context Length')}</label>
                     <input type="number" class="context-length" data-module="${mod.id}" value="${mod.config.context_length || ''}" min="1" step="1">
-                    <small class="param-hint">&lt; <span class="max-ctx-hint" data-module="${mod.id}">32768</span></small>
+                    <small class="param-hint ctx-hint-${mod.id}">&lt; </small>
                 </div>
                 <div class="param">
                     <label>${t('Temperature')}</label>
@@ -109,7 +121,9 @@ function renderModelCards() {
         `;
     });
     container.innerHTML = html;
+    console.log('Rendered', modules.length, 'model cards');
 
+    // Setup event listeners
     document.querySelectorAll('.model-dropdown').forEach(select => {
         select.addEventListener('change', onModelSelect);
     });
@@ -120,6 +134,7 @@ function renderModelCards() {
         btn.addEventListener('click', onSaveConfig);
     });
 
+    // Load models for each module
     modules.forEach(mod => {
         refreshModelsForModule(mod.id, true);
     });
@@ -130,7 +145,7 @@ async function onContextLengthChange(event) {
     const module = input.dataset.module;
     const ctxLength = input.value;
 
-    const serviceUrl = 'http://llamacpp:8033';
+    const serviceUrl = typeof LLAMA_SWAP_URL !== 'undefined' ? LLAMA_SWAP_URL : 'http://flai-llamaswap:8080';
     const modelSelect = document.querySelector(`.model-dropdown[data-module="${module}"]`);
     const modelName = modelSelect.value;
 
@@ -144,7 +159,18 @@ async function onContextLengthChange(event) {
 
 async function refreshModelsForModule(module, silent = false) {
     const urlInput = document.querySelector(`.service-url[data-module="${module}"]`);
-    const serviceUrl = urlInput.value.trim();
+    let serviceUrl = urlInput.value.trim();
+    let backend = 'llamacpp';
+    
+    // Use llama-swap URL if configured
+    if (typeof LLAMA_SWAP_URL !== 'undefined' && LLAMA_SWAP_URL) {
+        serviceUrl = LLAMA_SWAP_URL;
+        backend = 'llama-swap';
+    } else if (!serviceUrl || serviceUrl === 'http://llamacpp:8033') {
+        serviceUrl = 'http://flai-llamaswap:8080';
+        backend = 'llama-swap';
+    }
+    
     const select = document.querySelector(`.model-dropdown[data-module="${module}"]`);
     const currentConfig = currentModelConfigs[module] || {};
     const currentModelName = currentConfig.model_name || '';
@@ -154,19 +180,43 @@ async function refreshModelsForModule(module, silent = false) {
     clearModelError(module);
 
     try {
-        const response = await fetch(`/admin/api/llamacpp/models?url=${encodeURIComponent(serviceUrl)}`);
-        if (!response.ok) {
-            if (!silent) {
-                let errorMsg = `HTTP ${response.status}`;
-                try {
-                    const errorData = await response.json();
-                    if (errorData.error) errorMsg = errorData.error;
-                } catch (e) {}
-                showModelError(module, t('error') + ': ' + errorMsg);
+        let models = [];
+        
+        // For llama-swap mode, first try to get actual GGUF files from models directory
+        if (backend === 'llama-swap') {
+            console.log('Trying to load GGUF files from models directory');
+            try {
+                const ggufRes = await fetch('/admin/api/llamacpp/models?list_type=gguf_files');
+                console.log('GGUF response status:', ggufRes.status);
+                if (ggufRes.ok) {
+                    models = await ggufRes.json();
+                    console.log('Loaded GGUF files:', models);
+                } else {
+                    console.warn('GGUF files endpoint failed with status:', ggufRes.status);
+                }
+            } catch (e) {
+                console.warn('Could not load GGUF files:', e);
             }
-            return;
         }
-        const models = await response.json();
+        
+        // If no GGUF files or not llama-swap, get from llama-server API
+        if (models.length === 0) {
+            console.log('Loading models from llama-server API, backend:', backend);
+            const response = await fetch(`/admin/api/llamacpp/models?url=${encodeURIComponent(serviceUrl)}&backend=${backend}`);
+            if (!response.ok) {
+                if (!silent) {
+                    let errorMsg = `HTTP ${response.status}`;
+                    try {
+                        const errorData = await response.json();
+                        if (errorData.error) errorMsg = errorData.error;
+                    } catch (e) {}
+                    showModelError(module, t('error') + ': ' + errorMsg);
+                }
+                return;
+            }
+            models = await response.json();
+        }
+        
         modelListCache[serviceUrl] = models;
         models.forEach(model => {
             const option = document.createElement('option');
@@ -180,11 +230,51 @@ async function refreshModelsForModule(module, silent = false) {
         }
     } finally {
         select.disabled = false;
-        if (currentModelName) {
-            select.value = currentModelName;
-        }
-        if (select.value) {
-            onModelSelect({ target: select });
+        
+        // Try to match current model
+        if (currentModelName && select.options.length > 0) {
+            // Simple approach: check if any option contains the current model name
+            // Start from index 1 to skip the placeholder option
+            let found = false;
+            for (let i = 1; i < select.options.length; i++) {
+                const optVal = select.options[i].value;
+                const currentNorm = currentModelName.replace(/\.gguf$/, '').toLowerCase();
+                const optNorm = optVal.replace(/\.gguf$/, '').toLowerCase();
+                
+                // Check various matches
+                if (optVal === currentModelName || currentModelName === optVal ||
+                    optNorm === currentNorm ||
+                    optVal.includes(currentModelName) || currentModelName.includes(optVal) ||
+                    optNorm.includes(currentNorm) || currentNorm.includes(optNorm)) {
+                    select.selectedIndex = i;
+                    select.value = optVal;
+                    found = true;
+                    console.log('Selected model at index', i, 'value:', optVal, 'for:', currentModelName);
+                    break;
+                }
+            }
+            
+            // Last resort: check with path normalization
+            if (!found) {
+                const currentBase = currentModelName.split('/').pop().replace(/\.gguf$/, '');
+                for (let i = 0; i < select.options.length; i++) {
+                    const optBase = select.options[i].value.split('/').pop().replace(/\.gguf$/, '');
+                    if (optBase === currentBase) {
+                        select.selectedIndex = i;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            
+            console.log('Model matching:', currentModelName, '-> found:', found);
+            
+            // Trigger model info load  
+            if (found && select.selectedIndex >= 0) {
+                setTimeout(() => {
+                    onModelSelect({ target: select });
+                }, 100);
+            }
         }
     }
 }
@@ -210,6 +300,7 @@ async function onModelSelect(event) {
     const select = event.target;
     const module = select.dataset.module;
     const modelName = select.value;
+    console.log('onModelSelect:', module, modelName);
     const detailsGrid = document.getElementById(`details-${module}`);
     if (!modelName) {
         detailsGrid.innerHTML = '';
@@ -236,50 +327,51 @@ async function onModelSelect(event) {
     clearModelError(module);
 
     const urlInput = document.querySelector(`.service-url[data-module="${module}"]`);
-    const serviceUrl = urlInput.value.trim();
+    let serviceUrl = typeof LLAMA_SWAP_URL !== 'undefined' ? LLAMA_SWAP_URL : 'http://flai-llamaswap:8080';
     if (!serviceUrl) {
         detailsGrid.innerHTML = `<p>${t('No llama-server URL provided')}</p>`;
         return;
     }
 
-    let info = modelDetails[`${serviceUrl}:${modelName}`];
+    const cacheKey = modelName;
+    let info = modelDetails[cacheKey];
+    let detailsHtml = '';
     if (!info) {
         try {
-            const res = await fetch(`/admin/api/llamacpp/model/${encodeURIComponent(modelName)}?url=${encodeURIComponent(serviceUrl)}`);
-            if (!res.ok) {
-                let errorMsg = `HTTP ${res.status}`;
-                try {
-                    const errorData = await res.json();
-                    if (errorData.error) errorMsg = errorData.error;
-                } catch (e) {}
-                throw new Error(errorMsg);
-            }
-            info = await res.json();
-            modelDetails[`${serviceUrl}:${modelName}`] = info;
+            const ctrl = new AbortController();
+            const tid = setTimeout(() => ctrl.abort(), 30000);
+            const res = await fetch(`/admin/api/llamacpp/model/${encodeURIComponent(modelName)}`, {signal: ctrl.signal});
+            clearTimeout(tid);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const text = await res.text();
+            info = JSON.parse(text);
+            modelDetails[cacheKey] = info;
         } catch (err) {
-            detailsGrid.innerHTML = `<p>${t('error')}: ${err.message}</p>`;
+            const errMsg = err.name === 'AbortError' ? t('timeout_fetching_model_info') : (err.message || String(err));
+            detailsGrid.innerHTML = `<p>${t('error')}: ${errMsg}</p>`;
             return;
         }
     }
 
-    let detailsHtml = `
-        <p><strong>${t('Architecture:')}</strong> ${info.architecture || 'N/A'}</p>
+    detailsHtml = `<p><strong>${t('Architecture:')}</strong> ${info.architecture || 'N/A'}</p>
         <p><strong>${t('Parameters:')}</strong> ${info.parameters || 'N/A'}</p>
-        <p><strong>${t('Quantization:')}</strong> ${info.quantization || 'N/A'}</p>
-    `;
+        <p><strong>${t('Quantization:')}</strong> ${info.quantization || 'N/A'}</p>`;
 
     if (info.context_length && info.context_length !== 'N/A') {
-        let sourceLabel = '';
-        if (info.context_source === 'gguf') {
-            sourceLabel = ' (GGUF)';
-        } else if (info.context_source === 'known') {
-            sourceLabel = ' (known)';
-        }
-        detailsHtml += `<p><strong>${t('Max context length:')}</strong> ${info.context_length}${sourceLabel}</p>`;
+        detailsHtml += `<p><strong>${t('Max context length:')}</strong> ${info.context_length}</p>`;
     }
 
     if (module === 'embedding' && info.embedding_length && info.embedding_length !== 'N/A') {
         detailsHtml += `<p><strong>${t('Embedding length:')}</strong> ${info.embedding_length}</p>`;
+    }
+
+    if (info.file_size_mb) {
+        const sizeMB = Math.round(info.file_size_mb);
+        detailsHtml += `<p><strong>${t('File size:')}</strong> ${sizeMB} ${t('MB')}</p>`;
+    }
+
+    if (info.model_type) {
+        detailsHtml += `<p><strong>${t('Type:')}</strong> ${info.model_type}</p>`;
     }
 
     detailsGrid.innerHTML = detailsHtml;
@@ -291,9 +383,9 @@ async function onModelSelect(event) {
     if (ctxInput && info.context_length && info.context_length !== 'N/A') {
         ctxInput.max = info.context_length;
         ctxInput.placeholder = `max: ${info.context_length}`;
-        const hintSpan = document.querySelector(`.max-ctx-hint[data-module="${module}"]`);
+        const hintSpan = document.querySelector(`.ctx-hint-${module}`);
         if (hintSpan) {
-            hintSpan.textContent = info.context_length + 1;
+            hintSpan.textContent = '< ' + String(parseInt(info.context_length) + 1);
         }
     }
 }
@@ -306,24 +398,37 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
     if (existingHint) existingHint.remove();
 
     const modelSizeMB = modelInfo.file_size_mb;
+    console.log('updateMemoryEstimation:', {module, modelInfo, modelSizeMB});
+    
+    if (!modelSizeMB) {
+        // Try to estimate from model name
+        const modelName = modelInfo.model_name || modelInfo.model_path || '';
+        if (modelName.includes('27B') || modelName.includes('-27b')) {
+            modelSizeMB = 16000;
+        } else if (modelName.includes('20B') || modelName.includes('-20b')) {
+            modelSizeMB = 12000;
+        } else if (modelName.includes('12B') || modelName.includes('-12b')) {
+            modelSizeMB = 8000;
+        } else if (modelName.includes('9B') || modelName.includes('-9b')) {
+            modelSizeMB = 6000;
+        } else if (modelName.includes('4B') || modelName.includes('-4b')) {
+            modelSizeMB = 3000;
+        }
+        console.log('Estimated modelSizeMB from name:', modelSizeMB);
+    }
+    
     const blockCount = modelInfo.block_count;
     const maxContext = modelInfo.context_length;
     const requestedCtx = parseInt(ctxLength) || 8192;
 
-    if (!modelSizeMB && !maxContext) {
-        console.log('Memory estimation skipped: no model info', {module, modelInfo});
-        return;
-    }
-
     try {
         const hwRes = await fetch('/admin/api/hardware', { credentials: 'same-origin' });
         if (!hwRes.ok) {
-            console.log('Memory estimation skipped: hardware API error', hwRes.status, await hwRes.text());
+            console.log('Memory estimation skipped: hardware API error', hwRes.status);
             return;
         }
         const hw = await hwRes.json();
-        console.log('Hardware info:', hw);
-        console.log('Model info:', {module, modelInfo, modelSizeMB, multiplier: getMultiplier(modelInfo.model_name, modelSizeMB)});
+        console.log('Hardware info:', hw, 'modelSizeMB:', modelSizeMB);
         const availableVRAM = hw.available_vram_mb || 0;
         const totalRAM = hw.total_ram_mb || 0;
         const availableRAM = hw.available_ram_mb || 0;
@@ -429,7 +534,7 @@ function validateModelConfig(module, card) {
     const topP = card.querySelector('.top-p')?.value;
     const timeout = card.querySelector('.timeout')?.value;
 
-    const serviceUrl = 'http://llamacpp:8033';
+    const serviceUrl = typeof LLAMA_SWAP_URL !== 'undefined' ? LLAMA_SWAP_URL : 'http://flai-llamaswap:8080';
     const info = modelDetails[`${serviceUrl}:${modelName}`];
     const maxContext = info && info.context_length && info.context_length !== 'N/A' ? parseInt(info.context_length) : null;
 
@@ -607,6 +712,7 @@ function initChunksSection() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOMContentLoaded, checking models-tab:', document.getElementById('models-tab'));
     initAdminTabs();
     if (document.getElementById('models-tab')) {
         loadModelConfigs();

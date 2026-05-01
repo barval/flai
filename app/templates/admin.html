@@ -203,7 +203,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
 <script>
 window.ROOMS = {{ rooms|tojson }};
-window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
+    window.LLAMA_SWAP_URL = {{ llama_swap_url|tojson }};
+    window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'delete_user_confirm': {{ _('Delete user {login}?')|tojson }},
     'error': {{ _('Error')|tojson }},
     'internal_server_error': {{ _('Internal server error')|tojson }},
@@ -265,6 +266,10 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'from GGUF file': {{ _('from GGUF file')|tojson }},
     'from known models': {{ _('from known models')|tojson }},
     'Embedding length:': {{ _('Embedding length:')|tojson }},
+    'File size:': {{ _('File size:')|tojson }},
+    'Type:': {{ _('Type:')|tojson }},
+    'MB': {{ _('MB')|tojson }},
+    'timeout_fetching_model_info': {{ _('timeout_fetching_model_info')|tojson }},
     // Validation messages
     'Please select a model first.': {{ _('Please select a model first.')|tojson }},
     'Context length must be at least 512.': {{ _('Context length must be at least 512.')|tojson }},

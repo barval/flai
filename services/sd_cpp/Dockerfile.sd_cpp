@@ -41,7 +41,6 @@ RUN mkdir -p /app/models/diffusion_models \
 
 WORKDIR /app
 
-EXPOSE 7860
+EXPOSE 7861
 
-ENTRYPOINT [ "/usr/local/bin/sd-server" ]
-CMD ["--help"]
+CMD ["python3", "sd_wrapper.py"]

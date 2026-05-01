@@ -72,6 +72,49 @@ def extract_quantization(filename: str) -> str:
     return 'Unknown'
 
 
+def estimate_parameters_from_filename(filename: str) -> str:
+    """Estimate model parameters from filename.
+    
+    Args:
+        filename: Model filename like 'Qwen3-4B-Instruct-Q4_K_M.gguf'
+    
+    Returns:
+        Estimated parameters like '~4B', '~27B', etc.
+    """
+    import re
+    name = filename.lower()
+    
+    # Common parameter patterns
+    patterns = [
+        (r'(\d+)b', lambda m: f'~{m.group(1)}B'),
+        (r'(-)(\d+)b', lambda m: f'~{m.group(2)}B'),
+        (r'(\d+)b-mxfp', lambda m: f'~{m.group(1)}B'),
+        (r'(\d+)b-it', lambda m: f'~{m.group(1)}B'),
+    ]
+    
+    for pattern, formatter in patterns:
+        match = re.search(pattern, name)
+        if match:
+            return formatter(match)
+    
+    # Special cases
+    if 'gpt-oss' in name:
+        return '~20B'
+    if 'gemma-4' in name:
+        return '~26B'
+    if 'gemma-3' in name:
+        if '12b' in name:
+            return '~12B'
+        if '4b' in name:
+            return '~4B'
+    if 'bge-m3' in name:
+        return '~560M'
+    if 'bge-' in name:
+        return '~300M'
+    
+    return 'N/A'
+
+
 # Token estimation coefficients for different languages and model types
 # Format: (model_type, language) -> characters per token
 TOKEN_COEFFICIENTS = {

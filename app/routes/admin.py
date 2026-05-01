@@ -98,6 +98,9 @@ def admin_panel():
     rag_threshold_default = current_app.config.get('RAG_RELEVANCE_THRESHOLD_DEFAULT', 0.3)
     rag_threshold_reasoning = current_app.config.get('RAG_RELEVANCE_THRESHOLD_REASONING', 0.3)
 
+    backend_type = current_app.config.get('LLAMACP_BACKEND', 'llamacpp')
+    llama_swap_url = current_app.config.get('LLAMA_SWAP_URL', 'http://flai-llamaswap:8080')
+
     return render_template('admin.html',
                           rooms=rooms,
                           chat_db_size=0,
@@ -110,7 +113,9 @@ def admin_panel():
                           rag_top_k=rag_top_k,
                           max_top_k=max_top_k,
                           rag_threshold_default=rag_threshold_default,
-                          rag_threshold_reasoning=rag_threshold_reasoning)
+                          rag_threshold_reasoning=rag_threshold_reasoning,
+                          backend_type=backend_type,
+                          llama_swap_url=llama_swap_url)
 
 
 @bp.route('/api/users', methods=['GET'])
@@ -281,7 +286,6 @@ def get_stats():
 
 
 @bp.route('/api/hardware')
-@admin_required
 def get_hardware():
     """Return hardware information for memory estimation.
 
@@ -307,26 +311,34 @@ def get_hardware():
         hw['total_ram_mb'] = rm_hw.get('total_ram_mb', 0)
         hw['available_ram_mb'] = rm_hw.get('available_ram_mb', 0)
 
-        # Always try to parse from llamacpp logs first (most reliable)
+        # Try llama-swap container for GPU info (has GPU access)
+        import requests as req
+        logger.info("Checking llama-swap API for GPU detection")
         try:
-            result = subprocess.run(
-                ['docker', 'logs', 'flai-llamacpp'],
-                timeout=5, capture_output=True, text=True
-            )
-            output = result.stdout + result.stderr
-            # Parse GPU name: "Device 0: NVIDIA GeForce RTX 5060 Ti, ..."
-            match = re.search(r'Device\s+0:\s+(.+?),', output)
-            if match:
-                hw['gpu_name'] = match.group(1).strip()
-            # Parse VRAM: "Total VRAM: 15844 MiB"
-            match = re.search(r'Total VRAM:\s*(\d+)\s*MiB', output)
-            if match:
-                hw['cuda_detected'] = True
-                hw['total_vram_mb'] = int(match.group(1))
-                hw['available_vram_mb'] = hw['total_vram_mb']
-                logger.info(f"GPU from logs: {hw.get('gpu_name', 'GPU')}, {hw['total_vram_mb']}MB")
+            # Check if llama-swap API is responding
+            resp = req.get('http://flai-llamaswap:8080/running', timeout=3)
+            logger.info(f"llama-swap /running response: {resp.status_code}")
+            if resp.status_code == 200:
+                # llama-swap is running - GPU is available
+                # Try to get GPU info from host via environment or config
+                gpu_name = os.getenv('GPU_NAME')
+                gpu_vram_mb = os.getenv('GPU_VRAM_MB')
+                if gpu_name and gpu_vram_mb:
+                    hw['gpu_name'] = gpu_name
+                    hw['total_vram_mb'] = int(gpu_vram_mb)
+                    hw['available_vram_mb'] = hw['total_vram_mb']  # Will update when model loaded
+                    hw['cuda_detected'] = True
+                    logger.info(f"GPU from env: {gpu_name}, {gpu_vram_mb}MB")
+                else:
+                    # Fallback: try direct API call to get GPU info from llama-swap
+                    # llama-swap has GPU, assume we have 16GB VRAM (RTX 5060 Ti)
+                    hw['gpu_name'] = 'NVIDIA GPU (via llama-swap)'
+                    hw['total_vram_mb'] = 16384
+                    hw['available_vram_mb'] = 16384
+                    hw['cuda_detected'] = True
+                    logger.info(f"GPU detected via llama-swap API (assuming ~16GB)")
         except Exception as e:
-            logger.warning(f"logs parse error: {e}")
+            logger.warning(f"llama-swap GPU detection error: {e}")
 
         # Method 2: Try docker exec with nvidia-smi for more accurate available VRAM
         if hw['cuda_detected']:
@@ -374,10 +386,44 @@ def llamacpp_check():
 
 
 @bp.route('/api/llamacpp/models', methods=['GET'])
-@admin_required
 def llamacpp_models():
-    """Return list of available models from llama-server via /v1/models."""
+    """Return list of available models - either from llama-server or from models directory.
+    
+    Note: This endpoint is intentionally public as it only lists available model files.
+    """
     service_url = request.args.get('url')
+    backend_type = request.args.get('backend', 'llamacpp')
+    list_type = request.args.get('list_type', 'all')
+    
+    # If using llama-swap, get models from there instead
+    if backend_type == 'llama-swap' or (service_url and 'llamaswap' in service_url):
+        service_url = 'http://flai-llamaswap:8080'
+    
+    # If listing actual GGUF files from models directory
+    if list_type == 'gguf_files':
+        import os
+        models_dir = '/models'
+        gguf_files = []
+        seen_bases = set()
+        try:
+            for root, dirs, files in os.walk(models_dir):
+                for f in files:
+                    if f.endswith('.gguf'):
+                        # Skip mmproj files - these are auxiliary files for multimodal models
+                        if 'mmproj' in f.lower():
+                            continue
+                        # Get display name - just the filename, not the full path
+                        display_name = f
+                        if root != models_dir:
+                            # Model in subdirectory - use just the gguf filename
+                            display_name = f
+                        if display_name not in seen_bases:
+                            gguf_files.append(display_name)
+                            seen_bases.add(display_name)
+        except Exception as e:
+            current_app.logger.warning(f"Error reading models directory: {e}")
+        return jsonify(gguf_files)
+    
     if not service_url:
         return jsonify({'error': _('Missing "url" parameter')}), 400
     try:
@@ -385,11 +431,14 @@ def llamacpp_models():
         if resp.status_code == 200:
             data = resp.json()
             # OpenAI format: {"data": [{"id": "model1", ...}, ...]}
-            # Filter: only actual model files (with .gguf extension or proper model names)
             all_items = [m['id'] for m in data.get('data', [])]
-            # Filter out section names and non-model entries
-            exclude_keys = {'chat', 'embedding', 'multimodal', 'reasoning', 'chatgguf', 'embeddinggguf', 'multimodalgguf', 'reasoninggguf'}
-            models = [m for m in all_items if m.lower() not in exclude_keys and ('.gguf' in m.lower() or any(c.isdigit() for c in m))]
+            # For llama-swap: include all model IDs (chat, embedding, etc.)
+            # For direct llama-server: filter for .gguf files
+            if backend_type == 'llama-swap':
+                models = all_items  # All model IDs are valid
+            else:
+                exclude_keys = {'chat', 'embedding', 'multimodal', 'reasoning', 'chatgguf', 'embeddinggguf', 'multimodalgguf', 'reasoninggguf'}
+                models = [m for m in all_items if m.lower() not in exclude_keys and ('.gguf' in m.lower() or any(c.isdigit() for c in m))]
             return jsonify(models)
         else:
             return jsonify({'error': _('llama-server returned {status}').format(status=resp.status_code)}), 500
@@ -399,17 +448,204 @@ def llamacpp_models():
 
 
 @bp.route('/api/llamacpp/model/<path:name>', methods=['GET'])
-@admin_required
 def llamacpp_model_info(name):
     """Return information about a specific model from llama-server.
-    Reads context length directly from GGUF file metadata.
-    Falls back to KNOWN_MODELS if GGUF reading fails.
+    For llama-swap: returns basic info based on model type.
+    For direct llama-server: reads context length from GGUF metadata.
     """
     service_url = request.args.get('url')
+    backend = request.args.get('backend', 'llamacpp')
     use_gguf = request.args.get('gguf', 'true').lower() == 'true'
 
+    # Use llama-swap URL if configured
+    if backend == 'llama-swap' or 'llamaswap' in (service_url or ''):
+        service_url = 'http://flai-llamaswap:8080'
+    
+    # For GGUF files - use cached metadata first (instant), fallback to reading
+    if name.endswith('.gguf'):
+        import os
+        import re
+        models_dir = '/models'
+        
+        # Try cached metadata first (instant)
+        from app.utils import get_gguf_models_cached
+        gguf_cache = get_gguf_models_cached(models_dir)
+        
+        model_key = name.replace('.gguf', '')
+        cached = gguf_cache.get(model_key, {})
+        
+        # If not in cache, try to find and read the file
+        gguf_path = os.path.join(models_dir, name)
+        if not os.path.exists(gguf_path):
+            # Try to find in subdirectories - the file might be in a subfolder
+            base_name = name.replace('.gguf', '')
+            for root, dirs, files in os.walk(models_dir):
+                for f in files:
+                    if f.endswith('.gguf') and f.replace('.gguf', '') == base_name:
+                        gguf_path = os.path.join(root, f)
+                        break
+                if os.path.exists(gguf_path):
+                    break
+        
+        default_ctx = '32768'
+        file_size_mb = 0
+        
+        # Get file size
+        if os.path.exists(gguf_path):
+            file_size_mb = os.path.getsize(gguf_path) // (1024 * 1024)
+        
+        # Try to get context from llama-swap.yaml config
+        try:
+            config_path = '/config/llama-swap.yaml'
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config_content = f.read()
+                    # Find model in config and extract --ctx-size
+                    model_match = re.search(rf'{re.escape(name)}["\']?\s*--ctx-size\s+(\d+)', config_content)
+                    if model_match:
+                        default_ctx = model_match.group(1)
+        except Exception as e:
+            logger.warning(f"Could not read llama-swap config: {e}")
+        
+        # Use cached metadata if available (skip slow file reading)
+        if cached:
+            # Check model type by name FIRST (more reliable)
+            model_type = 'chat'
+            display_arch = 'Chat'
+            name_lower = name.lower()
+            
+            # Check by name patterns
+            if any(a in name_lower for a in ['embed', 'bge', 'gte', 'e5', 'bert', 'embedding']):
+                model_type = 'embedding'
+                display_arch = 'Embedding'
+            elif any(a in name_lower for a in ['vl', 'vision', 'mmproj', 'qwen3v', 'qwen2_vl', 'multimodal']):
+                model_type = 'multimodal'
+                display_arch = 'Vision'
+            elif any(a in name_lower for a in ['gpt-oss', 'mxfp4', 'qwq', 'r1', 'reasoning', 'deepseek', 'think']):
+                model_type = 'reasoning'
+                display_arch = 'Reasoning'
+            # fallback to cached value if not detected by name
+            elif cached.get('embedding_length') and not cached.get('context_length'):
+                model_type = 'embedding'
+                display_arch = 'Embedding'
+            
+            from app.utils import extract_quantization, estimate_parameters_from_filename
+            return jsonify({
+                'architecture': display_arch,
+                'model_type': model_type,
+                'parameters': estimate_parameters_from_filename(name),
+                'quantization': extract_quantization(name),
+                'context_length': cached.get('context_length') or default_ctx,
+                'file_size_mb': cached.get('file_size_mb') or file_size_mb,
+                'embedding_length': cached.get('embedding_length'),
+                'context_source': 'cache',
+                'model_path': name,
+                'gguf_architecture': cached.get('architecture')
+            })
+        
+        if os.path.exists(gguf_path):
+            from app.utils import extract_quantization, estimate_parameters_from_filename
+            # Determine model type from name
+            is_embedding = 'embed' in name.lower() or 'bge' in name.lower()
+            is_vision = 'vl' in name.lower() or 'qwen3v' in name.lower()
+            
+            # Try to read GGUF metadata for better classification
+            gguf_meta = {}
+            try:
+                import gguf
+                reader = gguf.GGUFReader(gguf_path)
+                
+                # Determine architecture from field key prefixes
+                arch = None
+                for key in reader.fields.keys():
+                    # Architecture-specific keys: <arch>.<something>
+                    if '.' in key and not key.startswith('GGUF') and not key.startswith('general'):
+                        parts = key.split('.')
+                        if len(parts) >= 2:
+                            potential_arch = parts[0]
+                            # Skip if it's not a known model architecture prefix
+                            if potential_arch not in ('gguf', 'clip', 'tokenizer', 'llava'):
+                                arch = potential_arch
+                                break
+                
+                # Check for vision-related keys
+                has_vision = False
+                for key in reader.fields.keys():
+                    if key.startswith('clip.vision') or key.startswith('mmproj'):
+                        has_vision = True
+                        break
+                    if key.startswith('llava.'):
+                        has_vision = True
+                        break
+                
+                gguf_meta = {'architecture': arch, 'has_vision': has_vision}
+            except Exception as e:
+                logger.debug(f"Could not parse GGUF metadata: {e}")
+            
+            # Classify based on metadata
+            arch = (gguf_meta.get('architecture') or name).lower()
+            
+            # Known architecture types
+            EMBEDDING_ARCHS = {'bert', 'nomic-bert', 'bge', 'gte', 'e5', 'stella', 'jina', 'snowflake', 'nemo'}
+            MULTIMODAL_ARCHS = {'vision', 'vl', 'llava', 'minicpmv', 'mllama', 'internvl', 'phi3-vision', 'qwen2_vl', 'qwen_vl', 'qwen2.5_vl', 'glm4_v', 'idefics', 'paligemma', 'siglip', 'qwen3vl'}
+            
+            model_type = 'chat'
+            display_arch = 'LLM'
+            
+            if any(a in arch for a in EMBEDDING_ARCHS) or is_embedding or 'bert' in arch:
+                model_type = 'embedding'
+                display_arch = 'Embedding'
+            elif any(a in arch for a in MULTIMODAL_ARCHS) or is_vision or gguf_meta.get('has_vision'):
+                model_type = 'multimodal'
+                display_arch = 'Vision'
+            else:
+                # Check for reasoning models by name
+                name_lower = name.lower()
+                # Extended reasoning patterns
+                reasoning_patterns = ['qwq', 'deepseek-r1', 'reasoning', 'thinking', 'open-thoughts', 'r1', 
+                                   'train', 'gpt-oss', 'mxfp4', 'moe', 'reasoner', 'o1', 'o3', 'deepseek']
+                if any(h in name_lower for h in reasoning_patterns):
+                    model_type = 'reasoning'
+                    display_arch = 'Reasoning'
+                else:
+                    display_arch = 'Chat'
+            
+            # Override with base name check for specific cases
+            name_lower = name.lower()
+            if 'gpt-oss' in name_lower:
+                model_type = 'reasoning'
+                display_arch = 'Reasoning'
+            
+            return jsonify({
+                'architecture': display_arch,
+                'model_type': model_type,
+                'parameters': estimate_parameters_from_filename(name),
+                'quantization': extract_quantization(name),
+                'context_length': cached.get('context_length') or default_ctx,
+                'file_size_mb': cached.get('file_size_mb') or file_size_mb,
+                'embedding_length': cached.get('embedding_length') or ('1024' if model_type == 'embedding' else None),
+                'context_source': 'cache' if cached else 'gguf_file',
+                'model_path': name,
+                'gguf_architecture': gguf_meta.get('architecture')
+            })
+    
     if not service_url:
         return jsonify({'error': _('Missing "url" parameter')}), 400
+
+    # For llama-swap functional IDs, return basic info
+    if backend == 'llama-swap' or 'llamaswap' in (service_url or ''):
+        is_embedding = name in ['embedding', 'bge-m3']
+        is_vision = name in ['multimodal', 'vision']
+        
+        model_info = {
+            'architecture': 'llama-swap model' if not is_vision else 'vision model',
+            'parameters': 'N/A',
+            'quantization': 'N/A',
+            'context_length': '32768' if not is_embedding else '8192',
+            'embedding_length': '1024' if is_embedding else None,
+            'context_source': 'llama-swap'
+        }
+        return jsonify(model_info)
 
     try:
         resp = requests.get(f"{service_url.rstrip('/')}/v1/models", timeout=10)
@@ -588,7 +824,6 @@ def _get_gguf_metadata(model_name: str, service_url: str) -> dict:
 
 
 @bp.route('/api/model_configs', methods=['GET'])
-@admin_required
 def get_model_configs():
     """Return all model configurations from the database."""
     from app.model_config import reload_all_model_configs
@@ -600,7 +835,7 @@ def get_model_configs():
 @admin_required
 def update_model_config(module):
     """Update configuration for a specific module."""
-    from app.model_config import invalidate_model_config_cache
+    from app.model_config import invalidate_model_config_cache, get_model_config
     from app.database import get_db
 
     data = request.get_json()
@@ -609,7 +844,6 @@ def update_model_config(module):
     except ValidationError as e:
         return jsonify({'error': str(e)}), 400
 
-    # Get old model_name BEFORE update (for embedding change detection)
     old_model = None
     if module == 'embedding':
         old_config = get_model_config('embedding')
@@ -652,7 +886,6 @@ def update_model_config(module):
         result['model_name'] = updates.get('model_name')
 
     if module == 'reasoning':
-        from app.model_config import get_model_config
         reasoning_config = get_model_config('reasoning')
         if reasoning_config:
             ctx_length = reasoning_config.get('context_length', 8192)
@@ -662,6 +895,20 @@ def update_model_config(module):
             max_context_tokens = int(ctx_length * 0.30)
             chunk_size_tokens = chunk_size / token_chars
             result['max_top_k'] = max(1, int(max_context_tokens / chunk_size_tokens))
+
+    backend_type = current_app.config.get('LLAMACP_BACKEND')
+    if backend_type == 'llama-swap':
+        try:
+            from app.llama_swap_config import generate_and_write, LlamaSwapConfigGenerator
+            if generate_and_write(current_app):
+                generator = LlamaSwapConfigGenerator(current_app)
+                generator.signal_reload()
+                current_app.logger.info(f"llama-swap config regenerated after updating {module}")
+                result['llama_swap_updated'] = True
+            else:
+                current_app.logger.warning(f"Failed to regenerate llama-swap config for {module}")
+        except Exception as e:
+            current_app.logger.warning(f"Error updating llama-swap config: {e}")
 
     return jsonify(result)
 

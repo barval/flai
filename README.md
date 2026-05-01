@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/logo.png" alt="Fully Local AI (FLAI)" width="200">
 
-  # Fully Local AI (FLAI) v8.0
+  # Fully Local AI (FLAI)
 
   **FLAI — a fully local personal assistant powered by artificial intelligence.**
   **Run your own AI stack entirely on-premises with no cloud dependencies.**
@@ -67,16 +67,13 @@
 
 ## 🏗️ Architecture
 
-FLAI v8.0 is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
+FLAI v8.1 is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v8.0
+### What's New in v8.1
 
-| v7.5 (Old) | v8.0 (New) | Notes |
+| v8.1 (New) | Notes |
 |------------|------------|-------|
-| Ollama | **llama.cpp** (router mode) | Single server, dynamic model switching via `--models-dir` |
-| Automatic1111 | **stable-diffusion.cpp** | Z_image_turbo (generation), Flux.2 Klein 4B (editing) |
-| Ollama `/api/chat` | OpenAI-compatible `/v1/chat/completions` | Standard API format |
-| Ollama `/api/embed` | OpenAI-compatible `/v1/embeddings` | Standard API format |
+
 
 ### Core Components
 

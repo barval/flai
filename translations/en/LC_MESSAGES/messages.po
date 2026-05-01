@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 8.0\n"
+"Project-Id-Version: FLAI 8.1\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-05 12:00+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -684,9 +684,6 @@ msgstr "Audio service unavailable"
 msgid "Too many attempts. Please try again later."
 msgstr "Too many attempts. Please try again later."
 
-msgid "footer_text"
-msgstr "Fully Local AI (FLAI) v8.0 (c) 2026 Valery Barsukov"
-
 msgid "server_error_invalid_response"
 msgstr "Server error: received invalid response"
 
@@ -891,3 +888,18 @@ msgstr "No GPU. Used %1%% RAM - very slow"
 
 msgid "no_gpu_full"
 msgstr "No GPU. Used %1%% RAM - slow"
+
+msgid "timeout_fetching_model_info"
+msgstr "Timeout fetching model info"
+
+msgid "Type:"
+msgstr "Type:"
+
+msgid "MB"
+msgstr "MB"
+
+msgid "File size:"
+msgstr "File size:"
+
+msgid "footer_text"
+msgstr "Fully Local AI (FLAI) v8.1 (c) 2026 Valery Barsukov"

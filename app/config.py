@@ -25,6 +25,8 @@ def load_config(app):
     
     # llama.cpp server settings
     app.config['LLAMACPP_URL'] = os.getenv('LLAMACPP_URL')
+    app.config['LLAMACP_BACKEND'] = os.getenv('LLAMACP_BACKEND', 'llamacpp')
+    app.config['LLAMA_SWAP_URL'] = os.getenv('LLAMA_SWAP_URL', 'http://flai-llamaswap:8080')
     # stable-diffusion.cpp settings (uses sd-wrapper HTTP API)
     app.config['SD_MODEL_TYPE'] = os.getenv('SD_MODEL_TYPE', 'z_image_turbo')
     app.config['SD_EDIT_MODEL_TYPE'] = os.getenv('SD_EDIT_MODEL_TYPE', 'flux-2-klein-4b')

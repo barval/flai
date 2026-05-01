@@ -323,7 +323,7 @@ TIMEZONE=Europe/Moscow              # Your timezone
 
 **Service URLs:**
 ```bash
-LLAMACPP_URL=http://flai-llamacpp:8033   # llama.cpp router (replaces Ollama)
+LLAMACPP_URL=http://flai-llamacpp:8033   # llama.cpp router (llama-server in --models-dir mode)
 SD_CPP_URL=http://flai-sd:7860           # stable-diffusion.cpp server
 WHISPER_API_URL=http://flai-whisper:9000/asr
 PIPER_URL=http://flai-piper:8888/tts
@@ -667,8 +667,8 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 ## 🗺️ Roadmap
 
 ### ✅ Completed (v8.0)
-- **llama.cpp router mode** (`--models-dir`) replaces Ollama — single server with dynamic model switching
-- **stable-diffusion.cpp** replaces Automatic1111 — Z-Image-Turbo for generation, Flux.2 Klein 4B for editing
+- **llama.cpp router mode** (`--models-dir`) — single llama-server with dynamic model switching
+- **stable-diffusion.cpp** — Z-Image-Turbo for generation, Flux.2 Klein 4B for editing
 - OpenAI-compatible API (`/v1/chat/completions`, `/v1/embeddings`)
 - Multimodal support via mmproj in subdirectories
 - Dynamic model switching with `--models-max 1`

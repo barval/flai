@@ -295,7 +295,7 @@ TIMEZONE=Europe/Moscow               # Ваш часовой пояс
 
 **URL сервисов:**
 ```bash
-LLAMACPP_URL=http://flai-llamacpp:8033   # Роутер llama.cpp (замена Ollama)
+LLAMACPP_URL=http://flai-llamacpp:8033   # Роутер llama.cpp (режим --models-dir)
 SD_CPP_URL=http://flai-sd:7860           # Сервер stable-diffusion.cpp
 WHISPER_API_URL=http://flai-whisper:9000/asr
 PIPER_URL=http://flai-piper:8888/tts
@@ -637,8 +637,8 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 ## 🗺️ Дорожная карта
 
 ### ✅ Завершено (v8.0)
-- **Режим роутера llama.cpp** (`--models-dir`) вместо Ollama — один сервер с динамическим переключением моделей
-- **stable-diffusion.cpp** вместо Automatic1111 — Z-Image-Turbo для генерации, Flux.2 Klein 4B для редактирования
+- **Режим роутера llama.cpp** (`--models-dir`) — один llama-server с динамическим переключением моделей
+- **stable-diffusion.cpp** — Z-Image-Turbo для генерации, Flux.2 Klein 4B для редактирования
 - **Оптимизация Piper TTS** для синтеза больших текстов — порционная обработка с плавными аудиопереходами
 
 ### 🔄 В работе

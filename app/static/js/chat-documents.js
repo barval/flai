@@ -324,7 +324,7 @@ function initDocumentsView() {
             e.stopPropagation();
             const fileInput = document.createElement('input');
             fileInput.type = 'file';
-            fileInput.accept = '.pdf,.doc,.docx,.txt';
+            fileInput.accept = '.pdf,.doc,.docx,.txt,.odt,.rtf,.csv,.json,.epub';
             fileInput.onchange = function(e) {
                 if (e.target.files.length > 0) {
                     uploadDocument(e.target.files[0]);

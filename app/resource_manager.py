@@ -136,18 +136,49 @@ class ResourceManager:
             cache_capacity: model cache limit
             offload_to_cpu: whether to offload KQV cache to CPU
         """
+        from app.utils import get_gguf_models_cached
+        
         hw = self.hardware
         vram = hw.available_vram_mb  # what's free right now
         total_vram = hw.total_vram_mb
 
-        # Model VRAM requirements (approximate, for Q4_K_M)
+        # Get model configuration from database to determine actual file size
+        from app.model_config import get_model_config
+        model_name = None
+        try:
+            config = get_model_config(model_type)
+            if config:
+                model_name = config.get('model')
+        except Exception:
+            pass
+        
+        # Try to get model size from GGUF cache
+        file_size_mb = None
+        block_count = None
+        if model_name:
+            try:
+                gguf_cache = get_gguf_models_cached('/models')
+                if model_name in gguf_cache.get('models', {}):
+                    model_info = gguf_cache['models'][model_name]
+                    file_size_mb = model_info.get('file_size_mb')
+                    block_count = model_info.get('block_count')
+            except Exception:
+                pass
+        
+        # Fallback to approximate sizes if cache data unavailable
         model_vram = {
             'chat': 2500,          # Qwen3-4B ~2.5GB
             'multimodal': 5000,    # Qwen3VL-8B ~5GB
             'reasoning': 15000,    # gemma-4-26B-A4B ~15GB
             'embedding': 2000,     # bge-m3 ~2GB
         }
-        needed = model_vram.get(model_type, 3000)
+        
+        # Use actual file size if available, otherwise use fallback estimate
+        if file_size_mb is not None:
+            # Add 20% overhead for KV cache and other operations
+            needed = int(file_size_mb * 1.2)
+        else:
+            needed = model_vram.get(model_type, 3000)
 
         # How much VRAM to reserve for other operations (sd-cli, overhead)
         reserve = 2000  # 2GB safety margin
@@ -167,24 +198,43 @@ class ResourceManager:
             result['warning'] = 'No GPU detected — running CPU-only mode'
             return result
 
+        # Calculate n_gpu_layers based on available VRAM and model requirements
+        if block_count is not None and block_count > 0:
+            # Distribute layers proportionally based on available VRAM
+            available_for_model = max(0, total_vram - reserve)
+            if needed > 0 and available_for_model > 0:
+                layer_ratio = min(1.0, available_for_model / needed)
+                result['n_gpu_layers'] = max(1, int(block_count * layer_ratio))
+                if result['n_gpu_layers'] >= block_count:
+                    result['n_gpu_layers'] = -1  # All layers fit
+                else:
+                    result['offload_kqv'] = True
+                    result['warning'] = f'Model partially offloaded ({result["n_gpu_layers"]}/{block_count} layers on GPU)'
+        elif needed + reserve > total_vram:
+            # Model doesn't fit fully — reduce layers based on estimate
+            result['n_gpu_layers'] = max(10, int((total_vram - reserve) / needed * 32))
+            result['offload_kqv'] = True
+            result['cache_capacity'] = 2048
+            result['warning'] = (
+                f'Model {model_type} ({needed}MB) partially offloaded to CPU. '
+                f'Performance may be reduced.'
+            )
+
         if total_vram >= 24000:
             # 24GB+ (RTX 3090/4090) — everything fits
             result['cache_capacity'] = 8192
             result['flash_attn'] = True
         elif total_vram >= 16000:
             # 16GB (RTX 4060 Ti / 4070) — tight
-            if needed + reserve > total_vram:
-                # Model doesn't fit fully — reduce layers
+            if result['n_gpu_layers'] == -1 and needed + reserve > total_vram:
+                # Override if we didn't catch it above
                 result['n_gpu_layers'] = max(10, int((total_vram - reserve) / needed * 32))
                 result['offload_kqv'] = True
                 result['cache_capacity'] = 2048
-                result['warning'] = (
-                    f'Model {model_type} ({needed}MB) partially offloaded to CPU. '
-                    f'Performance may be reduced.'
-                )
         elif total_vram >= 8000:
             # 8GB — most models need CPU offloading
-            result['n_gpu_layers'] = 10
+            if result['n_gpu_layers'] == -1:
+                result['n_gpu_layers'] = 10
             result['offload_kqv'] = True
             result['ctx_size'] = 4096
             result['cache_capacity'] = 1024

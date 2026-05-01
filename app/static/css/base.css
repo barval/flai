@@ -30,6 +30,7 @@ main {
 .ml-auto { margin-left: auto; }
 .ml-10px { margin-left: 10px; }
 .hidden { display: none !important; }
+.inline-form { display: inline; }
 
 /* ===== SCROLLBAR ===== */
 ::-webkit-scrollbar {

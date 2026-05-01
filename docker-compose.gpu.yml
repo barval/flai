@@ -93,26 +93,6 @@ services:
         max-file: "3"
 
   # ============================================================
-  # LLAMACPP PRESET GENERATOR (init container)
-  # Generates models-preset.ini from model_configs DB before llama.cpp starts
-  # ============================================================
-  llamacpp-presets:
-    image: python:3.9-slim
-    container_name: flai-llamacpp-presets
-    volumes:
-      - ./services/llamacpp/models:/models
-      - ./services/llamacpp/generate_presets.py:/generate_presets.py:ro
-    environment:
-      - DATABASE_URL=postgresql://flai:flai_password@postgres:5432/flai
-    command: >
-      sh -c "pip install --no-cache-dir psycopg2-binary==2.9.9 && python3 /generate_presets.py"
-    depends_on:
-      - postgres
-    restart: "no"
-    networks:
-      - flai_network
-
-  # ============================================================
   # LLAMA-SWAP (Required - LLM Proxy, router mode)
   # ============================================================
   llama-swap:

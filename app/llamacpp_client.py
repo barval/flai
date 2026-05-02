@@ -349,7 +349,9 @@ class LlamaCppClient:
         if not config:
             return None
 
-        model = config.get('model_name')
+        # Use model_type (module name like 'embedding') as model identifier for llama-swap
+        # This maps to the 'id' field in llama-swap config
+        model = model_type
         if not model:
             return None
 

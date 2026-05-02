@@ -11,6 +11,7 @@ If no custom configs exist in DB, falls back to hardcoded defaults.
 
 import os
 import sys
+import glob
 import logging
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -24,40 +25,6 @@ logger = logging.getLogger(__name__)
 
 DB_URL = os.getenv('DATABASE_URL', 'postgresql://flai:flai_password@flai-postgres:5432/flai')
 PRESET_PATH = '/models/models-preset.ini'
-
-# Fallback defaults if nothing in DB
-# n-gpu-layers = -1 means ALL layers on GPU (maximum speed)
-# Models are loaded/unloaded on-demand (flickering mode)
-# Only active models used in FLAI v8.0
-DEFAULTS = {
-    'Qwen3-4B-Instruct-2507-Q4_K_M': {
-        'model': '/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf',
-        'n-gpu-layers': '-1',
-        'ctx-size': '8192',
-        'temperature': '0.1',
-        'top-p': '0.1',
-    },
-    'gpt-oss-20b-Q4_K_M': {
-        'model': '/models/gpt-oss-20b-Q4_K_M.gguf',
-        'n-gpu-layers': '-1',
-        'ctx-size': '8192',
-        'temperature': '0.7',
-        'top-p': '0.9',
-    },
-    'Qwen3VL-8B-Instruct-Q4_K_M': {
-        'model': '/models/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf',
-        'mmproj': '/models/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf',
-        'n-gpu-layers': '-1',
-        'ctx-size': '8192',
-        'temperature': '0.7',
-        'top-p': '0.9',
-    },
-    'bge-m3-Q8_0': {
-        'model': '/models/bge-m3-Q8_0.gguf',
-        'n-gpu-layers': '-1',
-        'ctx-size': '8192',
-    },
-}
 
 
 def read_db() -> dict:
@@ -82,7 +49,7 @@ def read_db() -> dict:
 
 
 def generate_ini(db_configs: dict) -> str:
-    """Generate models-preset.ini content from DB configs + defaults."""
+    """Generate models-preset.ini content from DB configs only."""
     lines = [
         '# llama.cpp model presets — auto-generated from model_configs DB',
         '# Edits to this file will be overwritten on next container restart.',
@@ -90,24 +57,15 @@ def generate_ini(db_configs: dict) -> str:
         '',
     ]
 
-    # Modules that need embeddings enabled (reranker disabled in v8.0)
-    EMBEDDING_MODULES = {'embedding'}
-
-    # First add all modules from DB (or their selected models)
-    processed = set()
     for section_name in db_configs:
-        # Get defaults for this section if exists, otherwise start empty
-        defaults = DEFAULTS.get(section_name, {})
         lines.append(f'[{section_name}]')
-        params = dict(defaults)
-        processed.add(section_name)
+        params = {}
 
-        # Add embeddings=1 only for embedding models
-        if section_name in EMBEDDING_MODULES:
+        db_cfg = db_configs[section_name]
+
+        if section_name == 'embedding':
             params['embeddings'] = 'true'
 
-        # Override with DB values
-        db_cfg = db_configs[section_name]
         overrides = {
             'ctx-size': 'ctx_size',
             'n-gpu-layers': 'n_gpu_layers',
@@ -120,30 +78,31 @@ def generate_ini(db_configs: dict) -> str:
             if val is not None and val != '':
                 params[ini_key] = str(val)
 
-        # Ensure model path is absolute - handle both single files and subdirectory paths
+        if section_name == 'embedding' and 'ctx-size' not in params:
+            params['ctx-size'] = '2048'
+
         model_val = params.get('model', '')
         if model_val and not model_val.startswith('/') and not model_val.startswith('.'):
-            import os
             if '/' in model_val:
-                # Has subdirectory path like "model.gguf" - just add /models/ prefix
                 if not model_val.endswith('.gguf'):
                     model_val = model_val + '.gguf'
                 params['model'] = f'/models/{model_val}'
             else:
-                # Single filename - check if file exists
                 if not model_val.endswith('.gguf'):
                     model_val = model_val + '.gguf'
                 if os.path.exists(f'/models/{model_val}'):
                     params['model'] = f'/models/{model_val}'
+                elif os.path.exists(f'/models/{model_val[:-5]}/{model_val}'):
+                    params['model'] = f'/models/{model_val[:-5]}/{model_val}'
                 else:
                     params['model'] = f'/models/{model_val}'
 
-        # Same for mmproj
-        mmproj_val = params.get('mmproj', '')
-        if mmproj_val and not mmproj_val.startswith('/') and not mmproj_val.startswith('.'):
-            if not mmproj_val.endswith('.gguf'):
-                mmproj_val = mmproj_val + '.gguf'
-            params['mmproj'] = f'/models/{mmproj_val}'
+        if section_name == 'multimodal' and 'model' in params:
+            model_path = params['model']
+            model_dir = os.path.dirname(model_path)
+            mmproj_files = glob.glob(os.path.join(model_dir, 'mmproj*.gguf'))
+            if mmproj_files:
+                params['mmproj'] = mmproj_files[0]
 
         for key, val in params.items():
             lines.append(f'{key} = {val}')

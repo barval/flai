@@ -80,7 +80,7 @@ class TestChatRoutes:
         response = client.get('/chat')
         assert response.status_code == 200
 
-    def test_send_message_queued(self, client, test_app, mock_ollama_client):
+    def test_send_message_queued(self, client, test_app, mock_llamacpp_client):
         """Test that send_message queues the request."""
         with test_app.app_context():
             from app.userdb import create_user, get_user_by_login

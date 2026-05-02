@@ -6,9 +6,9 @@ import os
 from datetime import datetime
 from flask import current_app
 from flask_babel import gettext as _
-from flask_babel import force_locale
+from app.mixins import TranslationMixin
 
-class AudioModule:
+class AudioModule(TranslationMixin):
     """Module for audio transcription via Whisper API"""
 
     def __init__(self, app=None):
@@ -33,11 +33,6 @@ class AudioModule:
 
         if app:
             self.init_app(app)
-
-    def _(self, key, lang='ru', **kwargs):
-        with self.app.app_context():
-            with force_locale(lang):
-                return _(key, **kwargs)
 
     def init_app(self, app):
         """Initialize module with Flask app"""

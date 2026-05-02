@@ -13,10 +13,10 @@ import base64
 from datetime import datetime
 from typing import Dict, Any
 from flask_babel import gettext as _
-from flask_babel import force_locale
+from app.mixins import TranslationMixin
 
 
-class SdCppModule:
+class SdCppModule(TranslationMixin):
     """Module for image generation via stable-diffusion.cpp sd-wrapper."""
 
     def __init__(self, app=None):
@@ -28,11 +28,6 @@ class SdCppModule:
 
         if app:
             self.init_app(app)
-
-    def _(self, key, lang='ru', **kwargs):
-        with self.app.app_context():
-            with force_locale(lang):
-                return _(key, **kwargs)
 
     def init_app(self, app):
         """Initialize module with Flask app"""

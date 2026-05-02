@@ -126,7 +126,7 @@ download_sd_cpp_models() {
     if [[ ! -f "$DIFF_DIR/z_image_turbo-Q8_0.gguf" ]]; then
         info "Скачиваю z_image_turbo-Q8_0.gguf..."
         HF_DOWNLOAD "bartowski/Z-Image-Turbo-GGUF" \
-            "z_image_turbo-Q8_0.gguf" "$DIFF_DIR"
+            "z_image_turbo-Q8_0.gguf" "${DIFF_DIR}/z_image_turbo-Q8_0.gguf"
     else
         warn "z_image_turbo-Q8_0.gguf уже есть — пропускаю."
     fi
@@ -135,7 +135,7 @@ download_sd_cpp_models() {
     if [[ ! -f "$DIFF_DIR/flux-2-klein-4b-Q8_0.gguf" ]]; then
         info "Скачиваю flux-2-klein-4b-Q8_0.gguf (редактирование)..."
         HF_DOWNLOAD "bartowski/FLUX.2-Klein-dev-GGUF" \
-            "flux-2-klein-4b-Q8_0.gguf" "$DIFF_DIR"
+            "flux-2-klein-4b-Q8_0.gguf" "${DIFF_DIR}/flux-2-klein-4b-Q8_0.gguf"
     else
         warn "flux-2-klein-4b-Q8_0.gguf уже есть — пропускаю."
     fi
@@ -144,7 +144,7 @@ download_sd_cpp_models() {
     if [[ ! -f "$VAE_DIR/ae.safetensors" ]]; then
         info "Скачиваю ae.safetensors (VAE для генерации)..."
         HF_DOWNLOAD "bartowski/Z-Image-Turbo-GGUF" \
-            "ae.safetensors" "$VAE_DIR"
+            "ae.safetensors" "${VAE_DIR}/ae.safetensors"
     else
         warn "ae.safetensors уже есть — пропускаю."
     fi
@@ -153,7 +153,7 @@ download_sd_cpp_models() {
     if [[ ! -f "$VAE_DIR/flux2_ae.safetensors" ]]; then
         info "Скачиваю flux2_ae.safetensors (VAE для редактирования)..."
         HF_DOWNLOAD "bartowski/FLUX.2-dev-GGUF" \
-            "flux2_ae.safetensors" "$VAE_DIR"
+            "flux2_ae.safetensors" "${VAE_DIR}/flux2_ae.safetensors"
     else
         warn "flux2_ae.safetensors уже есть — пропускаю."
     fi
@@ -162,7 +162,7 @@ download_sd_cpp_models() {
     if [[ ! -f "$TXT_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
         info "Скачиваю Qwen3-4B-Instruct-2507-Q4_K_M.gguf (кодировщик текста)..."
         HF_DOWNLOAD "bartowski/Qwen3-4B-Instruct-2507-GGUF" \
-            "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" "$TXT_DIR"
+            "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" "${TXT_DIR}/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
     else
         warn "Qwen3-4B-Instruct-2507-Q4_K_M.gguf уже есть — пропускаю."
     fi
@@ -191,7 +191,8 @@ download_tts_models() {
 
 # ── Сборка и запуск ──
 build_and_launch() {
-    local PROFILE="--profile with-image-gen"
+    local PROFILE=""
+    [[ "$WITH_IMAGE_GEN" == "true" ]] && PROFILE="$PROFILE --profile with-image-gen"
     [[ "$WITH_VOICE" == "true" ]] && PROFILE="$PROFILE --profile with-voice"
     [[ "$WITH_RAG" == "true" ]]    && PROFILE="$PROFILE --profile with-rag"
 
@@ -248,6 +249,7 @@ FLAI v8.0 — Скрипт развёртывания
   --with-voice        Развернуть Whisper ASR + Piper TTS
   --with-rag          Развернуть Qdrant для RAG (поиск по документам)
   --with-image-gen    Развернуть stable-diffusion.cpp для генерации/редактирования
+                      (по умолчанию: отключено, используйте этот флаг для включения)
   --download-models   Скачать GGUF/safetensors модели из HuggingFace
   --run-tests         Запустить тесты после развёртывания
   --help, -h          Показать эту справку
@@ -267,6 +269,7 @@ USAGE
 # ── Разбор аргументов ──
 WITH_VOICE=false
 WITH_RAG=false
+WITH_IMAGE_GEN=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
 
@@ -274,6 +277,7 @@ for arg in "$@"; do
     case "$arg" in
         --with-voice)     WITH_VOICE=true ;;
         --with-rag)       WITH_RAG=true ;;
+        --with-image-gen) WITH_IMAGE_GEN=true ;;
         --download-models) DOWNLOAD_MODELS=true ;;
         --run-tests)      RUN_TESTS=true ;;
         --help|-h)        usage; exit 0 ;;

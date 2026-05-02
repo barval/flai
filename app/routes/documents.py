@@ -14,7 +14,13 @@ ALLOWED_MIME_TYPES = {
     'application/pdf': '.pdf',
     'application/msword': '.doc',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
-    'text/plain': '.txt'
+    'text/plain': '.txt',
+    'application/vnd.oasis.opendocument.text': '.odt',
+    'application/rtf': '.rtf',
+    'text/rtf': '.rtf',
+    'text/csv': '.csv',
+    'application/json': '.json',
+    'application/epub+zip': '.epub'
 }
 
 
@@ -22,7 +28,7 @@ def validate_file(file_stream, filename):
     """Validate file by extension and magic bytes.
     Returns (is_valid, error_message).
     """
-    allowed_extensions = {'.pdf', '.doc', '.docx', '.txt'}
+    allowed_extensions = {'.pdf', '.doc', '.docx', '.txt', '.odt', '.rtf', '.csv', '.json', '.epub'}
     ext = os.path.splitext(filename)[1].lower()
     
     if ext not in allowed_extensions:
@@ -90,8 +96,17 @@ def api_upload_document():
     user_folder = os.path.join(documents_folder, session['login'])
     os.makedirs(user_folder, exist_ok=True)
 
-    safe_filename = f"{doc_id}_{filename}"
+    # Безопасное имя: UUID + оригинальное расширение
+    safe_ext = os.path.splitext(filename)[1].lower()
+    safe_filename = f"{doc_id}{safe_ext}"
     file_path = os.path.join(user_folder, safe_filename)
+
+    # Двойная проверка, что путь не выходит за пределы DOCUMENTS_FOLDER
+    real_file_path = os.path.realpath(file_path)
+    real_user_folder = os.path.realpath(user_folder)
+    if not real_file_path.startswith(real_user_folder + os.sep):
+        return jsonify({'error': _('Invalid file path')}), 400
+
     with open(file_path, 'wb') as f:
         f.write(file_content)
 

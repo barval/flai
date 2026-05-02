@@ -158,22 +158,28 @@ def generate_image(data):
 
     logger.info(f" Running: {' '.join(cmd[:12])}...")
 
+    proc = None
     try:
         with open('/tmp/sd_cli_output.log', 'a') as log_file:
-            result = subprocess.run(
+            proc = subprocess.Popen(
                 cmd,
                 stdout=log_file,
-                stderr=subprocess.STDOUT,
-                timeout=300
+                stderr=subprocess.STDOUT
             )
-        if result.returncode != 0:
+            try:
+                proc.wait(timeout=300)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+                return {'error': 'sd-cli timeout'}
+        if proc.returncode != 0:
             # Log full error for debugging
             try:
                 with open('/tmp/sd_cli_output.log', 'r') as f:
                     log_tail = f.read()[-2000:]
             except Exception:
                 log_tail = '(no log available)'
-            logger.info(f" sd-cli failed (rc={result.returncode}): {log_tail[:500]}")
+            logger.info(f" sd-cli failed (rc={proc.returncode}): {log_tail[:500]}")
             # Return user-friendly message only
             return {'error': 'Image generation failed'}
 
@@ -192,6 +198,11 @@ def generate_image(data):
     except Exception as e:
         return {'error': str(e)}
     finally:
+        if proc and proc.poll() is None:
+            try:
+                proc.kill()
+            except Exception:
+                pass
         if os.path.exists(output_path):
             try:
                 os.remove(output_path)
@@ -249,21 +260,27 @@ def _edit_image_impl(data):
 
     logger.info(f" Running edit: {' '.join(cmd[:12])}...")
 
+    proc = None
     try:
         with open('/tmp/sd_cli_edit_output.log', 'a') as log_file:
-            result = subprocess.run(
+            proc = subprocess.Popen(
                 cmd,
                 stdout=log_file,
-                stderr=subprocess.STDOUT,
-                timeout=900  # 15 minutes for edit operations
+                stderr=subprocess.STDOUT
             )
-        if result.returncode != 0:
+            try:
+                proc.wait(timeout=900)  # 15 minutes for edit operations
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+                return {'error': 'sd-cli edit timeout'}
+        if proc.returncode != 0:
             try:
                 with open('/tmp/sd_cli_edit_output.log', 'r') as f:
                     log_tail = f.read()[-2000:]
             except Exception:
                 log_tail = '(no log available)'
-            logger.info(f" sd-cli edit failed (rc={result.returncode}): {log_tail[:500]}")
+            logger.info(f" sd-cli edit failed (rc={proc.returncode}): {log_tail[:500]}")
             # Return detailed error to caller
             if 'out of memory' in log_tail.lower() or 'cudaMalloc failed' in log_tail:
                 return {'error': 'Insufficient VRAM (VRAM) for image editing. Try reducing the image size or closing other GPU tasks.'}
@@ -288,6 +305,11 @@ def _edit_image_impl(data):
     except Exception as e:
         return {'error': str(e)}
     finally:
+        if proc and proc.poll() is None:
+            try:
+                proc.kill()
+            except Exception:
+                pass
         if os.path.exists(output_path):
             try:
                 os.remove(output_path)

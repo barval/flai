@@ -11,7 +11,7 @@ services:
       - "${QDRANT_PORT:-6333}:6333"
       - "${QDRANT_GRPC_PORT:-6334}:6334"
     environment:
-      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
       - QDRANT__SERVICE__GRPC_PORT=${QDRANT_GRPC_PORT:-6334}
     volumes:
       - ./qdrant_storage:/qdrant/storage

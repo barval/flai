@@ -42,7 +42,7 @@
                         {% if session.get('theme') == 'dark' %}☀️{% else %}🌙{% endif %}
                     </button>
                 </div>
-                <form action="{{ url_for('auth.logout') }}" method="post" style="display:inline;">
+                <form action="{{ url_for('auth.logout') }}" method="post" class="inline-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="logout-button">{{ _('Logout') }}</button>
                 </form>
@@ -81,22 +81,7 @@
         </div>
     </footer>
 
-    <!-- Translations for JavaScript (base keys) -->
-    <script>
-        window.TRANSLATIONS = window.TRANSLATIONS || {};
-        window.TRANSLATIONS['male_voice'] = {{ _('male_voice')|tojson }};
-        window.TRANSLATIONS['female_voice'] = {{ _('female_voice')|tojson }};
-        window.TRANSLATIONS['toggle_voice_gender'] = {{ _('toggle_voice_gender')|tojson }};
-        window.TRANSLATIONS['toggle_theme'] = {{ _('Toggle theme')|tojson }};
-        window.TRANSLATIONS['loading'] = {{ _('loading')|tojson }};
-    </script>
-
-    <!-- Global language, voice gender and theme settings -->
-    <script>
-        window.CURRENT_LANG = {{ session.get("language", "ru")|tojson }};
-        window.CURRENT_VOICE_GENDER = {{ session.get("voice_gender", "male")|tojson }};
-        window.CURRENT_THEME = {{ session.get("theme", "light")|tojson }};
-    </script>
+    <!-- Translations for JavaScript (base keys) - moved to base-translations.js -->
 
     <!-- Debug translations if enabled -->
     {% if config.get('DEBUG_TRANSLATIONS') %}
@@ -105,6 +90,8 @@
     </script>
     {% endif %}
 
+    <!-- Base translations and settings module -->
+    <script src="{{ url_for('static', filename='js/base-translations.js') }}"></script>
     <!-- Header JavaScript module -->
     <script src="{{ url_for('static', filename='js/header.js') }}"></script>
     <!-- Guest theme switcher script -->

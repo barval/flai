@@ -231,7 +231,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
     def unload_all_models(self) -> bool:
         base_url = self.get_base_url()
         try:
-            response = requests.get(f"{base_url}/models/unload", timeout=30)
+            response = requests.post(f"{base_url}/api/models/unload", timeout=30)
             if response.status_code == 200:
                 self.logger.info('llama-swap: models unloaded')
                 return True
@@ -349,7 +349,9 @@ class LlamaCppClient:
         if not config:
             return None
 
-        model = config.get('model_name')
+        # Use model_type (module name like 'embedding') as model identifier for llama-swap
+        # This maps to the 'id' field in llama-swap config
+        model = model_type
         if not model:
             return None
 

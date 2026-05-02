@@ -911,9 +911,6 @@ msgstr "Превышен таймаут при получении информа
 msgid "Type:"
 msgstr "Тип:"
 
-msgid "MB"
-msgstr "МБ"
-
 msgid "File size:"
 msgstr "Размер файла:"
 

@@ -72,7 +72,15 @@ FLAI v8.1 is a modular Flask application that orchestrates self-hosted AI servic
 ### What's New in v8.1
 
 | v8.1 (New) | Notes |
-|------------|------------|-------|
+|------------|-------|
+| llama-swap backend | Added support for llama-swap for dynamic model management and GPU VRAM optimization |
+| Piper TTS chunked synthesis | Large texts are split into sentences and streamed with seamless audio transitions |
+| Image editing optimizations | Automatic image downscaling for Flux.2 Klein 4B to fit 16GB VRAM |
+| Predictive model unloading | Queue worker predicts next required model and unloads current to free VRAM |
+| Admin Backups | Built-in backup/restore system for full and user-only backups |
+| Chunk configuration UI | Admin panel for customizing RAG chunk size, overlap, strategy, thresholds |
+| Circuit Breaker | Prevents cascading failures from llama.cpp and sd.cpp services |
+| Resource Manager | Adaptive GPU/RAM management to prevent OOM errors |
 
 
 ### Core Components
@@ -323,7 +331,7 @@ TIMEZONE=Europe/Moscow              # Your timezone
 
 **Service URLs:**
 ```bash
-LLAMACPP_URL=http://flai-llamacpp:8033   # llama.cpp router (replaces Ollama)
+LLAMACPP_URL=http://flai-llamacpp:8033   # llama.cpp router (llama-server in --models-dir mode)
 SD_CPP_URL=http://flai-sd:7860           # stable-diffusion.cpp server
 WHISPER_API_URL=http://flai-whisper:9000/asr
 PIPER_URL=http://flai-piper:8888/tts
@@ -667,8 +675,8 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 ## 🗺️ Roadmap
 
 ### ✅ Completed (v8.0)
-- **llama.cpp router mode** (`--models-dir`) replaces Ollama — single server with dynamic model switching
-- **stable-diffusion.cpp** replaces Automatic1111 — Z-Image-Turbo for generation, Flux.2 Klein 4B for editing
+- **llama.cpp router mode** (`--models-dir`) — single llama-server with dynamic model switching
+- **stable-diffusion.cpp** — Z-Image-Turbo for generation, Flux.2 Klein 4B for editing
 - OpenAI-compatible API (`/v1/chat/completions`, `/v1/embeddings`)
 - Multimodal support via mmproj in subdirectories
 - Dynamic model switching with `--models-max 1`
@@ -795,6 +803,17 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 5. Open a Pull Request
 
 ---
+
+## 📄 Models Used
+
+| Model | Purpose | License | Size |
+|-------|---------|---------|------|
+| Qwen3-4B-Instruct-2507-Q4_K_M | Chat | Apache 2.0 | ~2.5 GB |
+| gpt-oss-20b-Q4_K_M | Reasoning | Apache 2.0 | ~12 GB |
+| Qwen3VL-8B-Instruct-Q4_K_M | Multimodal | Apache 2.0 | ~5 GB |
+| bge-m3-Q8_0 | Embedding | MIT | ~1.2 GB |
+| Z-Image-Turbo | Image Generation | Apache 2.0 | ~2 GB |
+| Flux.2 Klein 4B | Image Editing | Apache 2.0 | ~8 GB |
 
 ## 📄 License
 

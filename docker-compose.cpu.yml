@@ -264,7 +264,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     environment:
-      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-}
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
       - QDRANT__SERVICE__ENABLE_TLS=0
     networks:
       - flai_network

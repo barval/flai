@@ -9,6 +9,18 @@ __pycache__/
 dist/
 build/
 
+.ruff_cache/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Data directories (user data, uploads, documents)
+data/
+uploads/
+documents/
+
 # Virtual environments
 venv/
 env/

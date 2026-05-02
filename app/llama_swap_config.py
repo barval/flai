@@ -47,6 +47,10 @@ class LlamaSwapConfigGenerator:
         if not config:
             return None
 
+        # Strip .gguf extension if present in model_name to avoid doubling
+        if model_name and model_name.endswith('.gguf'):
+            model_name = model_name[:-5]
+
         model_path = config.get('model_path')
         if model_path:
             if os.path.isabs(model_path):
@@ -134,7 +138,28 @@ class LlamaSwapConfigGenerator:
         config = get_model_config(module)
         if not config:
             return 4096 if module != 'reasoning' else 8192
-        return config.get('context_length', 4096 if module != 'reasoning' else 8192)
+        ctx = config.get('context_length')
+        self.logger.info(f"get_ctx_size({module}): config ctx = {repr(ctx)}")
+        # Handle None, empty string, 0, or "None" string
+        if ctx is None or str(ctx) in ('', '0', 'None'):
+            # Set sensible defaults per model type
+            if module == 'embedding':
+                result = 2048
+            elif module == 'reasoning':
+                result = 32768
+            elif module == 'multimodal':
+                result = 8192
+            else:
+                result = 4096
+            self.logger.info(f"get_ctx_size({module}): using default {result}")
+            return result
+        try:
+            result = int(ctx)
+            self.logger.info(f"get_ctx_size({module}): using DB value {result}")
+            return result
+        except (ValueError, TypeError):
+            self.logger.warning(f"get_ctx_size({module}): invalid ctx {repr(ctx)}, using default")
+            return 4096 if module != 'reasoning' else 8192
 
     def build_model_entry(self, module: str) -> Optional[Dict[str, Any]]:
         """Build llama-swap model entry from FLAI model config."""
@@ -155,15 +180,16 @@ class LlamaSwapConfigGenerator:
 
         mmproj = self.get_mmproj_path(module, model_path) if module == 'multimodal' else None
 
+        # Use module type as name for proper routing in llama-swap
+        # This ensures requests with model=<module_type> are routed correctly
         entry = {
             'cmd': self.build_cmd(module, model_path, mmproj),
             'ttl': self.get_ttl(module),
-            'name': model_name,
+            'name': module,  # Use module type (embedding, chat, etc.) as name
         }
 
-        aliases = self.get_aliases(module)
-        if aliases:
-            entry['aliases'] = aliases
+        # Add aliases for backward compatibility with model_name
+        entry['aliases'] = [model_name]
 
         if module == 'chat':
             entry['preload'] = True
@@ -183,9 +209,13 @@ class LlamaSwapConfigGenerator:
             'llama-server',
             '--port', '${PORT}',
             '-m', model_path,
-            '--ctx-size', str(ctx_size),
             '--host', '0.0.0.0',
         ]
+
+        # Add ctx-size only if valid (for non-embedding models)
+        # Embedding models can work without ctx-size or with default
+        if ctx_size and ctx_size > 0:
+            cmd_parts.extend(['--ctx-size', str(ctx_size)])
 
         if module == 'embedding':
             cmd_parts.append('--embeddings')

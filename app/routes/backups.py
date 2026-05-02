@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 from flask import Blueprint, jsonify, request, current_app, send_file, abort
 from flask_babel import gettext as _
 
-from app.database import get_db, DATABASE_URL
+from app.database import get_db
 
 bp = Blueprint('backups', __name__, url_prefix='/admin/api/backups')
 logger = logging.getLogger(__name__)
@@ -341,7 +341,7 @@ def _export_pg_dump(tables):
     })
     
     result = subprocess.run(
-        ['pg_dump', '--no-owner', '--no-privileges', '-d', env['PGDATABASE']],
+        ['pg_dump', '--no-owner', '--no-privileges', '--clean', '-d', env['PGDATABASE']],
         env=env,
         capture_output=True,
         text=True
@@ -356,11 +356,9 @@ def _export_pg_dump(tables):
 def _import_sql(dump_path, backup_type):
     """Import SQL dump into PostgreSQL using psql utility.
     
-    For 'full' backup type, truncates all tables with CASCADE before import.
-    For 'users' backup type, truncates users table with CASCADE before import.
     Uses psql with ON_ERROR_STOP=1 to ensure atomic restore.
+    Uses --clean flag in pg_dump to drop existing tables before restore.
     """
-    # Get database connection parameters from DATABASE_URL
     db_url = os.environ.get('DATABASE_URL', '')
     if not db_url:
         raise RuntimeError("DATABASE_URL not set")
@@ -374,28 +372,6 @@ def _import_sql(dump_path, backup_type):
         'PGPASSWORD': parsed.password or '',
         'PGDATABASE': parsed.path.lstrip('/') if parsed.path else 'flai'
     })
-    
-    # Truncate tables before full restore to avoid key conflicts
-    tables_to_truncate = []
-    if backup_type == 'full':
-        tables_to_truncate = [
-            'messages', 'chat_sessions', 'session_visits', 'user_sessions',
-            'documents', 'model_configs', 'user_storage', 'users'
-        ]
-    elif backup_type == 'users':
-        tables_to_truncate = ['users']
-    
-    if tables_to_truncate:
-        truncate_sql = f"TRUNCATE TABLE {', '.join(tables_to_truncate)} CASCADE;"
-        logger.info(f"Truncating tables before restore: {', '.join(tables_to_truncate)}")
-        try:
-            with get_db() as conn:
-                c = conn.cursor()
-                c.execute(truncate_sql)
-                conn.commit()
-        except Exception as e:
-            logger.error(f"Failed to truncate tables: {e}")
-            raise
     
     # Run psql with the dump file
     logger.info(f"Restoring SQL dump using psql: {dump_path}")

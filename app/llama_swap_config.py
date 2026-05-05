@@ -219,6 +219,10 @@ class LlamaSwapConfigGenerator:
 
         if module == 'embedding':
             cmd_parts.append('--embeddings')
+            # Add batch-size for embedding models to handle larger texts
+            # --batch-size is logical, --ubatch-size is physical (default 512)
+            # RAG chunks can have up to ~550 tokens, so set both to 2048
+            cmd_parts.extend(['--batch-size', '2048', '--ubatch-size', '2048'])
 
         if mmproj:
             cmd_parts.extend(['--mmproj', mmproj])

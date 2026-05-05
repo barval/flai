@@ -20,7 +20,7 @@ class RagModule:
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
         self.qdrant_client = None
-        self.llamacpp = LlamaCppClient()
+        self.llamacpp = LlamaCppClient(app)
         self.available = False
         self.collection_name_prefix = "user_"
         self.chunk_size = 500
@@ -442,7 +442,9 @@ class RagModule:
         """Get embeddings for multiple texts using llama.cpp batch API.
         Returns list of embeddings (None for failed requests).
         """
+        self.logger.info(f"RAG: _get_batch_embeddings called with {len(texts)} texts")
         embeddings = self.llamacpp.get_embeddings(texts, model_type='embedding')
+        self.logger.info(f"RAG: get_embeddings returned {type(embeddings)}")
         if embeddings is None:
             self.logger.error("Failed to get embeddings from llama-server")
             return [None] * len(texts)

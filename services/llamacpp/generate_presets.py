@@ -67,8 +67,7 @@ def generate_ini(db_configs: dict) -> str:
             params['embeddings'] = 'true'
 
         overrides = {
-            'ctx-size': 'ctx_size',
-            'n-gpu-layers': 'n_gpu_layers',
+            'ctx-size': 'context_length',
             'temperature': 'temperature',
             'top-p': 'top_p',
             'model': 'model_name',

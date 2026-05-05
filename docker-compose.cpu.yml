@@ -19,6 +19,7 @@ services:
       - ./data:/app/data
       - ./.env:/app/.env:ro
       - ./services/llamacpp/models:/models:ro
+      - ./llama-swap-config:/config
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - REDIS_URL=redis://redis:6379/0

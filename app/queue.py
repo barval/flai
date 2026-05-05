@@ -89,8 +89,14 @@ class RedisRequestQueue:
 
     def _classify_task(self, task: Dict[str, Any]) -> str:
         """Classify task as 'fast' or 'slow' for queue routing."""
-        task_type = task.get('type', 'text')
+        # Check top-level type first (for reindex_all from add_reindex_all_task)
+        task_type = task.get('type', '')
         if task_type in ('index_document', 'reindex_all_embeddings'):
+            return 'slow'  # Indexing can be slow
+        # Also check type inside data (for index_document from documents.py)
+        request_data = task.get('data', {})
+        req_type = request_data.get('type', 'text')
+        if req_type in ('index_document', 'reindex_all_embeddings'):
             return 'slow'  # Indexing can be slow
         request_data = task.get('data', {})
         req_type = request_data.get('type', 'text')
@@ -808,8 +814,10 @@ class RedisRequestQueue:
         self.app.logger.info(f"RedisRequestQueue._process_request: processing task {task['id']}")
 
         task_type = task.get('type') or task.get('data', {}).get('type')
+        self.app.logger.info(f"_process_request: task_type={task_type}, task_id={task.get('id')}")
 
         if task_type == 'index_document':
+            self.app.logger.info(f"_process_request: calling _process_index_task for task {task.get('id')}")
             return self._process_index_task(task)
         if task_type == 'reindex_all_embeddings':
             return self._process_reindex_all_task(task)
@@ -1041,9 +1049,13 @@ class RedisRequestQueue:
             }
 
     def _process_index_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Index a document and store embeddings in Qdrant."""
+        task_id = task.get('id', 'unknown')
+        self.app.logger.info(f"_process_index_task: STARTING for task {task_id}")
+        
         data = task.get('data', {})
-        doc_id = task.get('doc_id') or data.get('doc_id')
-        file_path = task.get('file_path') or data.get('file_path')
+        doc_id = data.get('doc_id')
+        file_path = data.get('file_path')
         user_id = task['user_id']
         lang = task.get('lang', 'ru')
         indexing_started_at = get_current_time_for_db()

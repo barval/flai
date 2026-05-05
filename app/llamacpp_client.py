@@ -218,11 +218,13 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         payload = {'model': model, 'input': texts}
         try:
             response = requests.post(f"{base_url}/v1/embeddings", json=payload, timeout=timeout)
+            self.logger.info(f'Embedding status={response.status_code}')
             if response.status_code == 200:
                 result = response.json()
                 data = result.get('data', [])
                 data.sort(key=lambda x: x.get('index', 0))
                 return [item['embedding'] for item in data]
+            self.logger.error(f'Embedding failed: {response.text[:200]}')
             return None
         except Exception as e:
             self.logger.error(f'Embedding error: {e}')
@@ -345,8 +347,13 @@ class LlamaCppClient:
         return self.chat(messages, model_type=model_type, lang=lang)
 
     def get_embeddings(self, texts: List[str], model_type: str = 'embedding', lang: str = 'ru') -> Optional[List[List[float]]]:
+        import sys
+        print(f'DEBUG get_embeddings start texts={len(texts)} type={model_type}', file=sys.stderr, flush=True)
+        self.logger.info(f'get_embeddings called with {len(texts)} texts, model_type={model_type}')
         config = get_model_config(model_type)
         if not config:
+            print(f'DEBUG no config for {model_type}', file=sys.stderr, flush=True)
+            self.logger.error(f'get_embeddings: no config for {model_type}')
             return None
 
         # Use model_type (module name like 'embedding') as model identifier for llama-swap
@@ -356,7 +363,12 @@ class LlamaCppClient:
             return None
 
         timeout = config.get('timeout', 120)
-        return self.backend.get_embeddings(texts, model, config, timeout)
+        print(f'DEBUG calling backend model={model} timeout={timeout}', file=sys.stderr, flush=True)
+        self.logger.info(f'get_embeddings: calling backend with model={model}')
+        result = self.backend.get_embeddings(texts, model, config, timeout)
+        print(f'DEBUG got result type={type(result)} len={len(result) if result else None}', file=sys.stderr, flush=True)
+        self.logger.info(f'get_embeddings: result type={type(result)}, len={len(result) if result else None}')
+        return result
 
     def call(self, messages: List[Dict], model_type: str = 'chat', stream: bool = False, lang: str = 'ru', validate: bool = True) -> Union[str, Dict[str, Any]]:
         return self.chat(messages, model_type=model_type, lang=lang, validate=validate)

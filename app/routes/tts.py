@@ -17,8 +17,8 @@ def synthesize():
         return jsonify({'error': _('Missing text')}), 400
 
     text = data['text']
-    lang = data.get('lang', session.get('language', 'ru'))
-    gender = data.get('gender', session.get('voice_gender', 'male'))
+    lang = data.get('lang') or session.get('language', 'ru')
+    gender = data.get('gender') or session.get('voice_gender', 'male')
 
     tts_module = current_app.modules.get('tts')
     if not tts_module or not tts_module.available:

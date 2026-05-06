@@ -21,7 +21,6 @@ models:
     ttl: 180
     name: "embedding"
     aliases: ['bge-m3-Q8_0']
-    preload: true
     group: "llm_fast"
   reasoning:
     cmd: "llama-server --port ${PORT} -m /models/gpt-oss-20b-mxfp4.gguf --host 0.0.0.0 --ctx-size 32768"

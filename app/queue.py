@@ -5,7 +5,6 @@ import json
 import uuid
 import time
 import threading
-import sqlite3
 import os
 import hmac
 import hashlib

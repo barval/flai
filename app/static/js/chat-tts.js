@@ -341,22 +341,21 @@ async function playTTS(button, messageElement) {
         const initialBatch = Math.min(2, sentences.length);
         const synthPromises = [];
 
-        const lang = typeof CURRENT_LANG !== 'undefined' ? CURRENT_LANG : 'ru';
+        const lang = undefined;  // Let server use session.get('language')
 
         for (let i = 0; i < initialBatch; i++) {
             const idx = i; // capture index for correct ordering
+            const requestBody = { text: sentences[i] };
+            if (lang) requestBody.lang = lang;
             synthPromises.push(
                 fetchWithCSRF('/api/tts/synthesize', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        text: sentences[i],
-                        lang: lang
-                    }),
+                    body: JSON.stringify(requestBody),
                     signal: ttsAbortController.signal
                 }).then(async response => {
                     if (!response.ok) {
-                        console.warn('TTS chunk HTTP error:', response.status);
+                        console.error('TTS chunk HTTP error:', response.status, await response.text());
                         ttsAudioBuffer[idx] = null;
                         return null;
                     }

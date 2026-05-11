@@ -484,24 +484,6 @@ def scan_gguf_models(models_dir: str = '/models') -> Dict[str, Any]:
     return result
 
 
-_gguf_models_cache = None
-
-
-def get_gguf_models_cached(models_dir: str = '/models') -> Dict[str, Any]:
-    """Get cached GGUF models metadata (scanned once at startup).
-
-    Args:
-        models_dir: Directory containing GGUF model files
-
-    Returns:
-        Dict mapping model_name -> metadata dict
-    """
-    global _gguf_models_cache
-    if _gguf_models_cache is None:
-        _gguf_models_cache = scan_gguf_models(models_dir)
-    return _gguf_models_cache
-
-
 def get_gguf_model_info(model_path: str) -> Dict[str, Any]:
     """Read metadata from GGUF model file.
 
@@ -1079,3 +1061,197 @@ def check_document_quota(user_id: str) -> Optional[str]:
         pass  # Don't block upload on DB errors
 
     return None
+
+
+# ============================================================
+# GGUF Models Cache in Database
+# ============================================================
+
+_gguf_models_cache = None
+
+def init_gguf_cache_db():
+    """Create gguf_models_cache table if not exists."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        from .database import get_db
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS gguf_models_cache (
+                    model_name VARCHAR(255) PRIMARY KEY,
+                    context_length INTEGER,
+                    embedding_length INTEGER,
+                    architecture VARCHAR(100),
+                    block_count INTEGER,
+                    file_size_mb BIGINT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.commit()
+        logger.info("Initialized gguf_models_cache table in database")
+    except Exception as e:
+        logger.warning(f"Could not create gguf_models_cache table: {e}")
+
+
+def get_gguf_models_from_cache() -> Dict[str, Any]:
+    """Get GGUF models metadata from database cache.
+
+    Returns:
+        Dict mapping model_name -> metadata dict
+    """
+    from .database import get_db
+
+    result = {}
+    try:
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute('SELECT model_name, context_length, embedding_length, architecture, block_count, file_size_mb FROM gguf_models_cache')
+            for row in c.fetchall():
+                result[row['model_name']] = {
+                    'context_length': row['context_length'],
+                    'embedding_length': row['embedding_length'],
+                    'architecture': row['architecture'],
+                    'block_count': row['block_count'],
+                    'file_size_mb': row['file_size_mb'],
+                }
+    except Exception:
+        pass
+    return result
+
+
+def save_gguf_model_to_cache(model_name: str, metadata: Dict[str, Any]):
+    """Save or update GGUF model metadata in database cache.
+
+    Args:
+        model_name: Name of the model (without .gguf extension)
+        metadata: Dict with context_length, embedding_length, architecture, block_count, file_size_mb
+    """
+    from .database import get_db
+
+    try:
+        with get_db() as conn:
+            c = conn.cursor()
+            c.execute('''
+                INSERT INTO gguf_models_cache (model_name, context_length, embedding_length, architecture, block_count, file_size_mb, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (model_name) DO UPDATE SET
+                    context_length = EXCLUDED.context_length,
+                    embedding_length = EXCLUDED.embedding_length,
+                    architecture = EXCLUDED.architecture,
+                    block_count = EXCLUDED.block_count,
+                    file_size_mb = EXCLUDED.file_size_mb,
+                    updated_at = CURRENT_TIMESTAMP
+            ''', (
+                model_name,
+                metadata.get('context_length'),
+                metadata.get('embedding_length'),
+                metadata.get('architecture'),
+                metadata.get('block_count'),
+                metadata.get('file_size_mb'),
+            ))
+            conn.commit()
+    except Exception:
+        pass
+
+
+def sync_gguf_models_cache(models_dir: str = '/models') -> Dict[str, Any]:
+    """Sync GGUF models metadata: compare files with DB, load missing from files.
+
+    Args:
+        models_dir: Directory containing GGUF model files
+
+    Returns:
+        Dict mapping model_name -> metadata dict (from cache or freshly scanned)
+    """
+    import glob
+
+    # Get list of current .gguf files
+    gguf_patterns = [
+        os.path.join(models_dir, '*.gguf'),
+        os.path.join(models_dir, '*', '*.gguf'),
+    ]
+    current_files = set()
+    for pattern in gguf_patterns:
+        for f in glob.glob(pattern, recursive=True):
+            name = os.path.basename(f)
+            if name.endswith('.gguf'):
+                current_files.add(name[:-5])  # Remove .gguf
+
+    # Get cached metadata
+    cached = get_gguf_models_from_cache()
+
+    # Find models that need scanning (not in cache or missing from filesystem)
+    missing_from_cache = current_files - set(cached.keys())
+    models_to_scan = list(missing_from_cache)
+
+    if models_to_scan:
+        # Scan missing models from files
+        for model_name in models_to_scan:
+            # Find file path
+            for pattern in gguf_patterns:
+                for f in glob.glob(pattern, recursive=True):
+                    if os.path.basename(f) == model_name + '.gguf':
+                        # Scan from file
+                        scanned = {}  # Placeholder for metadata
+                        try:
+                            from gguf import GGUFReader
+                            reader = GGUFReader(f)
+                            fields = reader.fields
+                            scanned = {'context_length': None, 'embedding_length': None, 'architecture': None, 'block_count': None, 'file_size_mb': os.path.getsize(f) / (1024 * 1024)}
+                            for key in fields.keys():
+                                if key.endswith('.context_length') and scanned['context_length'] is None:
+                                    val = fields[key].parts[-1]
+                                    if hasattr(val, 'tolist'):
+                                        arr = val.tolist()
+                                        if isinstance(arr, list) and len(arr) == 1:
+                                            val = arr[0]
+                                    if val is not None:
+                                        scanned['context_length'] = int(val)
+                                if key.endswith('.embedding_length') and scanned['embedding_length'] is None:
+                                    val = fields[key].parts[-1]
+                                    if hasattr(val, 'tolist'):
+                                        arr = val.tolist()
+                                        if isinstance(arr, list) and len(arr) == 1:
+                                            val = arr[0]
+                                    if val is not None:
+                                        scanned['embedding_length'] = int(val)
+                                if 'general.architecture' in fields and not scanned['architecture']:
+                                    scanned['architecture'] = str(fields['general.architecture'].parts[-1])
+                        except Exception:
+                            pass
+                        if scanned.get('context_length') or scanned.get('embedding_length') or scanned.get('architecture'):
+                            save_gguf_model_to_cache(model_name, scanned)
+                            cached[model_name] = scanned
+                        break
+
+    # Remove metadata for deleted files (optional - keep for history)
+    # for model_name in list(cached.keys()):
+    #     if model_name not in current_files:
+    #         # Could delete or keep
+
+    return cached
+
+
+def get_gguf_models_cached(models_dir: str = '/models') -> Dict[str, Any]:
+    """Get cached GGUF models metadata (from DB or scanned at startup).
+
+    Args:
+        models_dir: Directory containing GGUF model files
+
+    Returns:
+        Dict mapping model_name -> metadata dict
+    """
+    global _gguf_models_cache
+
+    if _gguf_models_cache is not None:
+        return _gguf_models_cache
+
+    # Initialize DB table if not exists
+    init_gguf_cache_db()
+
+    # Sync with DB cache
+    _gguf_models_cache = sync_gguf_models_cache(models_dir)
+
+    return _gguf_models_cache

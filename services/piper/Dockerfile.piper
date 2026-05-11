@@ -5,7 +5,6 @@ WORKDIR /app
 
 # Install system dependencies for piper and audio conversion
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
@@ -16,11 +15,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application
 COPY app.py .
 
-# Create directory for mounted models
-RUN mkdir -p /app/models
-
-# Expose port
 EXPOSE 8888
+
+RUN addgroup --system --gid 1000 appuser && \
+    adduser --system --uid 1000 --gid 1000 appuser && \
+    mkdir -p /app/models && \
+    chown -R appuser:appuser /app
+
+USER appuser
 
 # Run the Flask app
 CMD ["python", "app.py"]

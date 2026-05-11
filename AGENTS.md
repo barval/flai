@@ -1,82 +1,70 @@
 # AGENTS.md — FLAI v8.1
 
-## Обязательные правила для AI-агентов
+## Commands (exact)
 
-При любой модификации проекта строго соблюдайте перечисленные ниже правила.
+```bash
+# Install
+pip install -e ".[dev]"          # full dev deps (ruff, mypy, types)
+pip install -e ".[test]"         # just pytest deps
 
-1. **Чистота кода**
-   - В коде не должно быть неиспользуемых файлов, мёртвого кода, неиспользуемых CSS-стилей и неиспользуемых переводов.
-   - Запрещены любые упоминания выведенных из эксплуатации сервисов и моделей (Ollama, Automatic1111, Qwen Image Edit, Qwen Image и т.п.). Если такие ссылки встречены, они должны быть удалены или заменены на актуальные (llama.cpp router, stable-diffusion.cpp с Z-Image Turbo / Flux.2 Klein 4B).
-   - Код должен пройти линтер ruff (правила в `pyproject.toml`) и проверку типов mypy.
+# Lint
+ruff check .
 
-2. **Язык комментариев и логов**
-   - Все комментарии в исходных файлах (Python, JS, CSS) должны быть на английском языке.
-   - Исключение: русскоязычные версии скриптов развёртывания (`deploy-ru.sh`) могут содержать русские комментарии, но должны полностью соответствовать английским версиям.
-   - Вывод в лог (`logging`) всегда на английском языке.
-   - Сообщения и уведомления, видимые пользователю, выводятся на языке, выбранном в профиле пользователя (Flask-Babel).
+# Type check
+mypy app/ modules/               # CI runs with `|| true` — does not block
 
-3. **Переводы**
-   - Все строки, отображаемые в интерфейсе, должны иметь переводы в `translations/{en,ru}/LC_MESSAGES/messages.po`.
-   - Не должно быть отсутствующих ключей. При добавлении нового текста следует добавить соответствующую запись в оба файла переводов.
+# Test
+pytest                           # all tests
+pytest -m unit                   # markers: unit, integration, e2e, slow, requires_db, requires_redis
+pytest -m "not slow"
+pytest --cov=app --cov=modules --cov-report=html
+pytest tests/test_admin_routes.py
 
-4. **Документация**
-   - Основные файлы README.md (английский) и README-ru.md (русский) должны отражать актуальное состояние проекта.
-   - В разделе «Что нового» должен быть описан последний релиз с перечнем изменений.
-   - Должна быть инструкция по развёртыванию на одном сервере с использованием единого скрипта `deploy.sh` (и русского варианта `deploy-ru.sh`).
-   - Должен быть приведён список всех используемых моделей, их лицензий и примерных размеров.
+# Translations
+pybabel compile -d translations  # after editing .po files
 
-5. **Автономность**
-   - Проект после загрузки моделей и голосовых моделей должен работать полностью автономно, без загрузки внешних скриптов или модулей во время исполнения.
-   - Все статические ресурсы (JS, CSS) должны поставляться в составе проекта, а не загружаться с CDN.
+# Dev server (0.0.0.0:5000, debug=True)
+python wsgi.py
 
-6. **Разделение стилей и скриптов**
-   - Все стили должны находиться в отдельных `.css` файлах (в `app/static/css/`). Не допускается инлайн-стилей в шаблонах или атрибутах `style` (допустимы динамические стили через JS, если они уместны).
-   - Весь JavaScript-код должен быть в отдельных `.js` файлах (в `app/static/js/`). Допустима минимальная передача данных через шаблоны (например, `window.TRANSLATIONS`).
+# Production (gunicorn 1 worker × 4 threads, 900s timeout)
+gunicorn -c gunicorn_config.py wsgi:app
 
-7. **Тестирование**
-   - В проекте должны присутствовать модульные, интеграционные и E2E-тесты (pytest). Конфигурация тестов в `tests/`, фикстуры в `conftest.py`.
-   - Должна быть документация по запуску тестов и нагрузочного тестирования (Locust) в `README.md` и `tests/load/README.md`.
-   - CI-пайплайн (`.github/workflows/ci.yml`) выполняет линтинг, проверку типов, тесты и сборку Docker-образа.
+# Docker compose profiles: with-image-gen, with-voice, with-rag
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
+docker compose -f docker-compose.cpu.yml ...  # for CPU-only
+docker compose -f docker-compose.gpu.yml logs -f web
 
-8. **Безопасность файлов и пути**
-   - Пути к файлам должны проверяться на path traversal.
-   - Сессии и владение файлами проверяются в `api/files/<path>`.
-   - Все секретные данные — в `.env`, не попадают в репозиторий (проверять `.gitignore` и `.dockerignore`).
+# Admin password
+flask admin-password <pass>
+docker exec flai-web flask admin-password <pass>  # in container
 
-9. **Структура конфигурации**
-   - Конфигурация моделей хранится в БД (`model_configs`). Параметры по умолчанию могут быть в `.env` как резервные.
-   - Preset-файл `models/models-preset.ini` генерируется автоматически из БД при старте контейнера; редактирование вручную будет перезаписано.
+# Load test
+locust -f tests/load/locustfile.py --host http://localhost:5000
+```
 
-10. **Согласование изменений**
-   - Любое изменение кода (добавление, удаление, модификация) должно предварительно описываться: что именно меняется и зачем.
-   - Изменения должны быть явно одобрены (согласованы) перед их внесением. AI-агент не должен производить деструктивные действия без предварительного уведомления и разрешения.
+## Architecture & conventions
 
-## Актуальная архитектура (v8.1)
+- **Entrypoint**: `app/__init__.py:create_app()` → returns Flask app. Blueprints in `app/routes/` (auth, chat, admin, queue, tts, messages, sessions, documents, backups). Modules in `modules/` (base/router, multimodal, sd_cpp, cam, rag, audio, tts).
+- **LLM client**: `app/llamacpp_client.py:LlamaCppClient` with two backends — `DirectLlamaBackend` (direct llama-server) or `LlamaSwapBackend` (via llama-swap proxy). Selected by `LLAMACP_BACKEND` env var.
+- **Queue**: `app/queue.py:RedisRequestQueue`. Two workers: fast (text, audio, RAG, camera) and slow (image gen/edit, document indexing). Tasks are HMAC-signed JSON.
+- **DB**: PostgreSQL only via `app/database.py:get_db()` context manager (psycopg2 RealDictCursor). `DATABASE_URL` required. Tables: user_sessions, chat_sessions, messages, documents, session_visits, model_configs, user_storage.
+- **Helpers**: `app/circuit_breaker.py`, `app/resource_manager.py`, `app/llama_swap_config.py` — llama-swap config auto-generated from DB at startup into `llama-swap-config/`.
+- **Docker mounts**: `./data/` → `/app/data`, `./services/llamacpp/models/` → `/models:ro`, `/var/run/docker.sock` for GPU detection.
+- **Config**: Model configs in DB (`model_configs` table). `.env` values are fallback defaults only. Admin panel at `/admin`.
+- **Multimodal models**: MUST be in a subdirectory with `mmproj-*.gguf` (e.g. `Qwen3VL-8B-Instruct-Q4_K_M/`).
+- **LLM backend modes**: `LLAMACP_BACKEND=llama-swap` (default in .env.example) uses llama-swap at `LLAMA_SWAP_URL=http://flai-llamaswap:8080`. `LLAMACP_BACKEND=llamacpp` (direct) uses `LLAMACPP_URL=http://flai-llamacpp:8033`.
+- **Style**: All CSS in `app/static/css/`, JS in `app/static/js/`. No inline styles, no CDN (all assets bundled). Comments/logs in English. User-facing strings via Flask-Babel (`translations/{en,ru}/LC_MESSAGES/messages.po`). Add new keys to both `.po` files.
+- **Lint config** (pyproject.toml): ruff line-length=120, select E/W/F/I/N/UP/B/SIM/PTH, ignore E501/B008/PTH123. `__init__.py` per-file-ignore F401. mypy target 3.9, ignore-missing-imports, excludes tests/ and translations/.
+- **Security**: Path traversal checks in `api/files/<path>`. Session ownership validated. CSRF on all forms. Secrets in `.env` only.
 
-**Основные сервисы:**
-- **llama.cpp** (router mode) — инференс LLM (чат, рассуждение, мультимодальность, эмбеддинги). `LLAMACPP_URL=http://flai-llamacpp:8033`.
-- **stable-diffusion.cpp** — генерация изображений (Z-Image Turbo) и редактирование (Flux.2 Klein 4B) через Python-враппер sd-wrapper на порту 7861.
-- **Whisper ASR** — распознавание речи (faster_whisper) `ASR_MODEL=medium`.
-- **Piper TTS** — синтез речи (ONNX модели).
-- **Qdrant** — векторная БД для RAG.
-- **PostgreSQL** — БД для чатов, сообщений, пользователей.
-- **Redis** — очередь запросов.
-- **Resource Manager** (`app/resource_manager.py`) — управление GPU/CPU/RAM, предотвращает OOM.
-- **Circuit Breaker** (`app/circuit_breaker.py`) — защита от каскадных отказов.
+## Testing
 
-**Важные точки интеграции:**
-- Мультимодальные модели должны размещаться в поддиректории с mmproj-файлом (`Qwen3VL-8B-Instruct-Q4_K_M/`).
-- Модели загружаются скриптом `deploy.sh` из HuggingFace.
-- В админ-панели (`/admin`) можно настраивать привязку моделей к модулям, параметры чанкинга и пороги RAG.
+- Fixtures in `tests/conftest.py`: `test_app` (isolated app + temp dirs), `client` (Flask test client), `runner` (CLI runner)
+- External services are ALWAYS mocked: Redis (`redis.from_url`), llama.cpp (`app.llamacpp_client.LlamaCppClient`), Qdrant (`modules.rag.QdrantClient`)
+- Available markers: `unit`, `integration`, `e2e`, `slow`, `requires_db`, `requires_redis`
+- Example: `pytest -m "not slow"` to skip slow tests
 
-**Технические детали:**
-- Flask-приложение собирается в `create_app()`, blueprints в `app/routes/`.
-- Клиент llama.cpp — `LlamaCppClient`, используется всеми модулями.
-- Очередь Redis: два воркера (fast/slow), классификация задач.
-- Безопасность: CSRF для всех форм, проверка владения сессией, валидация UUID, path traversal защита.
-- Health-check: `/health` возвращает статус всех сервисов.
-- Prometheus-метрики: `/metrics`.
+## Known issues (fix on sight)
 
-Все агенты, работающие над этим проектом, должны следовать этим инструкциям. В случае обнаружения нарушений — исправлять их незамедлительно.
-
-## Исправления, которые необходимо выполнить (Known Issues)
+- `app/queue.py:8` imports `sqlite3` — unused dead code, remove
+- `app/database.py` model_configs seed URLs use `http://llamacpp:8033` — should be `http://flai-llamacpp:8033` to match docker-compose service names

@@ -347,12 +347,9 @@ class LlamaCppClient:
         return self.chat(messages, model_type=model_type, lang=lang)
 
     def get_embeddings(self, texts: List[str], model_type: str = 'embedding', lang: str = 'ru') -> Optional[List[List[float]]]:
-        import sys
-        print(f'DEBUG get_embeddings start texts={len(texts)} type={model_type}', file=sys.stderr, flush=True)
         self.logger.info(f'get_embeddings called with {len(texts)} texts, model_type={model_type}')
         config = get_model_config(model_type)
         if not config:
-            print(f'DEBUG no config for {model_type}', file=sys.stderr, flush=True)
             self.logger.error(f'get_embeddings: no config for {model_type}')
             return None
 
@@ -363,10 +360,8 @@ class LlamaCppClient:
             return None
 
         timeout = config.get('timeout', 120)
-        print(f'DEBUG calling backend model={model} timeout={timeout}', file=sys.stderr, flush=True)
         self.logger.info(f'get_embeddings: calling backend with model={model}')
         result = self.backend.get_embeddings(texts, model, config, timeout)
-        print(f'DEBUG got result type={type(result)} len={len(result) if result else None}', file=sys.stderr, flush=True)
         self.logger.info(f'get_embeddings: result type={type(result)}, len={len(result) if result else None}')
         return result
 

@@ -1,36 +1,6 @@
 // static/js/chat-utils.js
 // Utility functions used across chat modules
 
-// Get CSRF token from meta tag
-function getCSRFToken() {
-    const token = document.querySelector('meta[name="csrf-token"]');
-    return token ? token.getAttribute('content') : '';
-}
-
-// Fetch wrapper with CSRF token for POST/PUT/DELETE requests
-function fetchWithCSRF(url, options = {}) {
-    const method = (options.method || 'GET').toUpperCase();
-    
-    // Add CSRF token for state-changing requests
-    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-        const headers = options.headers || {};
-        if (!headers['X-CSRFToken'] && !headers['X-CSRF-TOKEN']) {
-            headers['X-CSRFToken'] = getCSRFToken();
-        }
-        options.headers = headers;
-    }
-    
-    return fetch(url, options);
-}
-
-function t(key) {
-    if (!(key in window.TRANSLATIONS)) {
-        console.warn('Missing translation key:', key);
-        return key;
-    }
-    return window.TRANSLATIONS[key];
-}
-
 function formatString(str, params) {
     return str.replace(/{(\w+)}/g, (match, key) => params[key] || match);
 }
@@ -61,9 +31,8 @@ function decodeHtmlEntities(text) {
 }
 
 function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    if (!text) return '';
+    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function formatFullDateTime(ts) {

@@ -16,12 +16,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /sd.cpp
 
 # Clone the official repository at runtime
-RUN git clone --depth 1 https://github.com/leejet/stable-diffusion.cpp.git . && \
-    git submodule update --init --recursive
+RUN git clone --depth 1 --recurse-submodules https://github.com/leejet/stable-diffusion.cpp.git .
 
 ARG CUDACXX=/usr/local/cuda/bin/nvcc
-RUN cmake . -B ./build -DSD_CUDA=ON
-RUN cmake --build ./build --config Release -j$(nproc)
+RUN cmake . -B ./build -DSD_CUDA=ON && \
+    cmake --build ./build --config Release -j$(nproc)
 
 FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu${UBUNTU_VERSION} AS runtime
 
@@ -42,5 +41,12 @@ RUN mkdir -p /app/models/diffusion_models \
 WORKDIR /app
 
 EXPOSE 7861
+
+RUN addgroup --system --gid 1001 appuser && \
+    adduser --system --uid 1001 --gid 1001 appuser && \
+    mkdir -p /app/logs && \
+    chown -R appuser:appuser /app
+
+USER appuser
 
 CMD ["python3", "sd_wrapper.py"]

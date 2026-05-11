@@ -5,7 +5,7 @@
 services:
   room-snapshot-api:
     build:
-      context: ./room-snapshot-api
+      context: .
       dockerfile: Dockerfile
     container_name: flai-room-snapshot-api
     ports:

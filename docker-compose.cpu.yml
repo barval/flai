@@ -20,7 +20,6 @@ services:
       - ./.env:/app/.env:ro
       - ./services/llamacpp/models:/models:ro
       - ./llama-swap-config:/config
-      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - REDIS_URL=redis://redis:6379/0
       - WHISPER_API_URL=http://flai-whisper:9000/asr
@@ -56,8 +55,6 @@ services:
   redis:
     image: redis:8.4.2-alpine
     container_name: flai-redis
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -94,7 +91,7 @@ services:
       - ./services/llamacpp/models:/models
       - ./services/llamacpp/generate_presets.py:/generate_presets.py:ro
     environment:
-      - DATABASE_URL=postgresql://flai:flai_password@postgres:5432/flai
+      - DATABASE_URL=${DATABASE_URL:-postgresql://flai:flai_password@postgres:5432/flai}
     command: >
       sh -c "pip install --no-cache-dir psycopg2-binary==2.9.9 && python3 /generate_presets.py"
     depends_on:
@@ -109,8 +106,6 @@ services:
   llamacpp:
     image: ghcr.io/ggml-org/llama.cpp:server
     container_name: flai-llamacpp
-    ports:
-      - "8080:8033"
     volumes:
       - ./services/llamacpp/models:/models
     depends_on:
@@ -149,8 +144,6 @@ services:
       context: ./services/sd_cpp
       dockerfile: Dockerfile.sd_cpp-cpu
     container_name: flai-sd
-    ports:
-      - "7861:7861"
     volumes:
       - ./services/sd_cpp/models/diffusion_models:/app/models/diffusion_models
       - ./services/sd_cpp/models/vae:/app/models/vae
@@ -181,8 +174,6 @@ services:
   whisper:
     image: onerahmet/openai-whisper-asr-webservice:v1.9.1
     container_name: flai-whisper
-    ports:
-      - "9000:9000"
     environment:
       - ASR_MODEL=medium
       - ASR_ENGINE=faster_whisper
@@ -222,8 +213,6 @@ services:
       context: ./services/piper
       dockerfile: Dockerfile.piper
     container_name: flai-piper
-    ports:
-      - "18888:8888"
     volumes:
       - ./services/piper/piper_models:/app/models
     environment:
@@ -259,9 +248,6 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.12.1
     container_name: flai-qdrant
-    ports:
-      - "6333:6333"
-      - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
     environment:
@@ -296,10 +282,8 @@ services:
   # POSTGRESQL (Required)
   # ============================================================
   postgres:
-    image: postgres:16.4-alpine
+    image: postgres:16-alpine
     container_name: flai-postgres
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
@@ -331,7 +315,7 @@ services:
 
 networks:
   flai_network:
-    name: flai_flai_network
+    name: flai_network
     driver: bridge
 
 volumes:

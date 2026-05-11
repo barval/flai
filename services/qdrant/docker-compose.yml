@@ -1,11 +1,9 @@
-version: '3.8'
-
 # Qdrant Vector Database Standalone Service
 # Use this docker-compose for deploying Qdrant on a separate server
 
 services:
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.12.1
     container_name: flai-qdrant
     ports:
       - "${QDRANT_PORT:-6333}:6333"

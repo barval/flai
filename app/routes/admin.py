@@ -293,7 +293,6 @@ def get_hardware():
     """
     try:
         import subprocess
-        import re
 
         hw = {
             'gpu_name': None,
@@ -311,54 +310,56 @@ def get_hardware():
         hw['total_ram_mb'] = rm_hw.get('total_ram_mb', 0)
         hw['available_ram_mb'] = rm_hw.get('available_ram_mb', 0)
 
-        # Try llama-swap container for GPU info (has GPU access)
-        import requests as req
-        logger.info("Checking llama-swap API for GPU detection")
+        # Method 1: docker exec nvidia-smi (most reliable from within container)
         try:
-            # Check if llama-swap API is responding
-            resp = req.get('http://flai-llamaswap:8080/running', timeout=3)
-            logger.info(f"llama-swap /running response: {resp.status_code}")
-            if resp.status_code == 200:
-                # llama-swap is running - GPU is available
-                # Try to get GPU info from host via environment or config
-                gpu_name = os.getenv('GPU_NAME')
-                gpu_vram_mb = os.getenv('GPU_VRAM_MB')
-                if gpu_name and gpu_vram_mb:
-                    hw['gpu_name'] = gpu_name
-                    hw['total_vram_mb'] = int(gpu_vram_mb)
-                    hw['available_vram_mb'] = hw['total_vram_mb']  # Will update when model loaded
+            result = subprocess.run(
+                ['docker', 'exec', 'flai-llamacpp', 'nvidia-smi',
+                 '--query-gpu=name,memory.total,memory.free',
+                 '--format=csv,noheader,nounits'],
+                timeout=5, capture_output=True, text=True
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                parts = result.stdout.strip().split(',')
+                if len(parts) >= 3:
+                    hw['gpu_name'] = parts[0].strip()
+                    hw['total_vram_mb'] = int(parts[1].strip())
+                    hw['available_vram_mb'] = int(parts[2].strip())
                     hw['cuda_detected'] = True
-                    logger.info(f"GPU from env: {gpu_name}, {gpu_vram_mb}MB")
-                else:
-                    # Fallback: try direct API call to get GPU info from llama-swap
-                    # llama-swap has GPU, assume we have 16GB VRAM (RTX 5060 Ti)
-                    hw['gpu_name'] = 'NVIDIA GPU (via llama-swap)'
-                    hw['total_vram_mb'] = 16384
-                    hw['available_vram_mb'] = 16384
-                    hw['cuda_detected'] = True
-                    logger.info(f"GPU detected via llama-swap API (assuming ~16GB)")
+                    logger.info(f"GPU from nvidia-smi (docker exec): {hw['gpu_name']}, {hw['total_vram_mb']}MB, {hw['available_vram_mb']}MB free")
         except Exception as e:
-            logger.warning(f"llama-swap GPU detection error: {e}")
+            logger.warning(f"docker exec nvidia-smi failed: {e}")
 
-        # Method 2: Try docker exec with nvidia-smi for more accurate available VRAM
-        if hw['cuda_detected']:
+        # Method 2: Direct nvidia-smi (fallback if docker exec unavailable)
+        if not hw['cuda_detected']:
             try:
                 result = subprocess.run(
-                    ['docker', 'exec', 'flai-llamacpp', 'nvidia-smi',
-                     '--query-gpu=name,memory.total,memory.free',
+                    ['nvidia-smi', '--query-gpu=name,memory.total,memory.free',
                      '--format=csv,noheader,nounits'],
                     timeout=5, capture_output=True, text=True
                 )
                 if result.returncode == 0 and result.stdout.strip():
                     parts = result.stdout.strip().split(',')
                     if len(parts) >= 3:
-                        # Update with more accurate info
                         hw['gpu_name'] = parts[0].strip()
                         hw['total_vram_mb'] = int(parts[1].strip())
                         hw['available_vram_mb'] = int(parts[2].strip())
-                        logger.info(f"GPU from nvidia-smi: {hw['gpu_name']}, {hw['total_vram_mb']}MB free: {hw['available_vram_mb']}MB")
+                        hw['cuda_detected'] = True
+                        logger.info(f"GPU from nvidia-smi (direct): {hw['gpu_name']}, {hw['total_vram_mb']}MB, {hw['available_vram_mb']}MB free")
             except Exception as e:
-                logger.warning(f"nvidia-smi exception: {e}")
+                logger.warning(f"direct nvidia-smi failed: {e}")
+
+        # Method 3: Check llama-swap API as GPU indicator (unknown VRAM)
+        if not hw['cuda_detected']:
+            try:
+                resp = requests.get('http://flai-llamaswap:8080/running', timeout=3)
+                if resp.status_code == 200:
+                    hw['gpu_name'] = 'NVIDIA GPU (via llama-swap)'
+                    hw['cuda_detected'] = True
+                    hw['total_vram_mb'] = 0
+                    hw['available_vram_mb'] = 0
+                    logger.info("GPU detected via llama-swap (unknown VRAM)")
+            except Exception as e:
+                logger.warning(f"llama-swap GPU detection failed: {e}")
 
         return jsonify(hw)
     except Exception as e:

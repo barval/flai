@@ -28,6 +28,9 @@ services/piper/piper_models/
 services/sd_cpp/models/
 services/room-snapshot-api/room-snapshot-api/
 
+# Generated config (dynamically created at startup from DB)
+llama-swap-config/
+
 # Dependencies
 .venv/
 venv/

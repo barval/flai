@@ -18,11 +18,6 @@ ebooklib>=0.17
 gguf>=0.10.0
 psycopg2-binary==2.9.9
 
-# For testing (not required in production)
-pytest==7.4.3
-pytest-flask==1.3.0
-pytest-cov==4.1.0
-
 # Load testing - install locally if needed: pip install locust
 # locust==2.20.1
 

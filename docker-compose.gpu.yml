@@ -27,11 +27,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - WHISPER_API_URL=http://flai-whisper:9000/asr
-      - WHISPER_API_TIMEOUT=120
-      - SD_WRAPPER_URL=http://flai-sd:7861
-      - GPU_NAME=NVIDIA GeForce RTX 5060 Ti
-      - GPU_VRAM_MB=16384
+      - GPU_NAME=${GPU_NAME:-NVIDIA GeForce RTX 5060 Ti}
+      - GPU_VRAM_MB=${GPU_VRAM_MB:-16384}
     # user: "0:988"  # Removed - uses Dockerfile user (appuser:1000)
     networks:
       - flai_network
@@ -64,8 +61,6 @@ services:
   redis:
     image: redis:8.4.2-alpine
     container_name: flai-redis
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -98,8 +93,6 @@ services:
   llama-swap:
     image: ghcr.io/mostlygeek/llama-swap:cuda
     container_name: flai-llamaswap
-    ports:
-      - "8080:8080"
     volumes:
       - ./services/llamacpp/models:/models:ro
       - ./llama-swap-config:/config
@@ -131,8 +124,6 @@ services:
       context: ./services/sd_cpp
       dockerfile: Dockerfile.sd_cpp
     container_name: flai-sd
-    ports:
-      - "7861:7861"
     volumes:
       - ./services/sd_cpp/models/diffusion_models:/app/models/diffusion_models
       - ./services/sd_cpp/models/vae:/app/models/vae
@@ -176,8 +167,6 @@ services:
   whisper:
     image: onerahmet/openai-whisper-asr-webservice:v1.9.1
     container_name: flai-whisper
-    ports:
-      - "9000:9000"
     environment:
       - ASR_MODEL=medium
       - ASR_ENGINE=faster_whisper
@@ -217,8 +206,6 @@ services:
       context: ./services/piper
       dockerfile: Dockerfile.piper
     container_name: flai-piper
-    ports:
-      - "18888:8888"
     volumes:
       - ./services/piper/piper_models:/app/models
     environment:
@@ -254,9 +241,6 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.12.1
     container_name: flai-qdrant
-    ports:
-      - "6333:6333"
-      - "6334:6334"
     volumes:
       - qdrant_data:/qdrant/storage
     environment:
@@ -291,13 +275,10 @@ services:
   # POSTGRESQL (Required - Application DB)
   # ============================================================
   postgres:
-    image: pgvector/pgvector:pg16
+    image: postgres:16-alpine
     container_name: flai-postgres
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./services/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     environment:
       - POSTGRES_USER=flai
       - POSTGRES_PASSWORD=flai_password
@@ -307,13 +288,15 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U flai"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 networks:
   flai_network:
     name: flai_network
+    driver: bridge
 
 volumes:
   redis_data:

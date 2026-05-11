@@ -143,9 +143,10 @@ def create_app():
     app.logger.info(f"Hardware: {rm.get_status()}")
 
     # Pre-load GGUF models metadata for fast admin panel access
+    app.logger.info("Starting GGUF metadata preload...")
     try:
-        from app.utils import get_gguf_models_cached
-        gguf_models = get_gguf_models_cached('/models')
+        from app.utils import sync_gguf_models_cache
+        gguf_models = sync_gguf_models_cache('/models')
         app.logger.info(f"Preloaded GGUF metadata for {len(gguf_models)} models")
     except Exception as e:
         app.logger.warning(f"Could not preload GGUF metadata: {e}")

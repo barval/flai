@@ -24,7 +24,7 @@
 - 🎨 **Image Generation** – create images from text using stable-diffusion.cpp with automatic prompt optimization
 - ✏️ **Image Editing** – upload an image and ask to edit it (Flux.2 Klein 4B model: change colors, remove objects, stylize)
 - 🎤 **Voice Transcription** – convert voice messages to text using Whisper ASR (faster_whisper)
-- 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper TTS (male/female voice)
+- 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper TTS (male and female voices in English and Russian)
 
 ### 📁 Document & Knowledge Management
 - 📚 **RAG with Qdrant** – upload documents (PDF, DOC, DOCX, TXT) and ask questions about their content
@@ -88,10 +88,10 @@ FLAI v8.1 is a modular Flask application that orchestrates self-hosted AI servic
 | Component | Purpose | Technology | Default Port |
 |-----------|---------|------------|--------------|
 | **Flask Web** | Web interface, routing, API | Python | 5000 |
-| **llama.cpp** | LLM inference (chat, reasoning, multimodal, embedding) | C++ + CUDA | 8033 |
-| **stable-diffusion.cpp** | Image generation (Z_image_turbo) and editing (Flux.2 Klein 4B) | C++ + CUDA | 7860 |
+| **llama-swap** | Dynamic LLM model routing & management (llama.cpp proxy) | Go + llama.cpp | 8080 |
+| **stable-diffusion.cpp** | Image generation (Z_image_turbo) and editing (Flux.2 Klein 4B) | C++ + CUDA | 7861 |
 | **Whisper ASR** | Speech-to-text transcription | faster_whisper | 9000 |
-| **Piper TTS** | Text-to-speech synthesis | ONNX + Piper | 18888 |
+| **Piper TTS** | Text-to-speech synthesis | ONNX + Piper | 8888 |
 | **Qdrant** | Vector database for RAG | Rust | 6333 |
 | **Redis** | Request queue management | C | 6379 |
 | **PostgreSQL** | User accounts, sessions, messages | SQL | 5432 |
@@ -109,12 +109,12 @@ All services run on one machine with GPU sharing:
 └──────┬──────────┬────────────┬───────────────────────┘
        │          │            │
        ▼          ▼            ▼
-  llama.cpp   sd.cpp      Whisper/Piper/Qdrant
-  :8033       :7860       (separate containers)
-  (router mode: dynamic model switching)
+   llama-swap  sd.cpp      Whisper/Piper/Qdrant
+   :8080       :7861       (separate containers)
+   (dynamic model routing via llama-swap)
 ```
 
-**Router Mode**: llama.cpp runs in `--models-dir` mode, dynamically loading/unloading GGUF models from a shared directory. Only one model occupies VRAM at a time, with automatic switching on demand.
+**Dynamic Model Routing**: llama-swap acts as a proxy to llama.cpp, dynamically loading/unloading GGUF models on demand. Only one model occupies VRAM at a time, with automatic switching based on request type. Model configuration is managed via the admin panel and stored in the database.
 
 ---
 
@@ -308,7 +308,7 @@ docker exec flai-web flask admin-password YourSecurePassword123
    - Select the GGUF model from the dropdown
    - Adjust parameters if needed (Context Length, Temperature, Top P, Timeout)
    - Click **Save**
-4. For Image Generation: Ensure `SD_CPP_URL=http://flai-sd:7860` is set in `.env`
+4. For Image Generation: Ensure `SD_WRAPPER_URL=http://flai-sd:7861` is set in `.env`
 
 ### 6. You're Ready!
 
@@ -327,12 +327,18 @@ docker exec flai-web flask admin-password YourSecurePassword123
 ```bash
 SECRET_KEY=your_secret_key_here      # Flask session secret
 TIMEZONE=Europe/Moscow              # Your timezone
+DATABASE_URL=postgresql://flai:flai_password@postgres:5432/flai  # PostgreSQL connection
+```
+
+**Backend Mode:**
+```bash
+LLAMACP_BACKEND=llama-swap    # 'llama-swap' (default, recommended) or 'llamacpp' (direct)
+LLAMA_SWAP_URL=http://flai-llamaswap:8080  # llama-swap endpoint
 ```
 
 **Service URLs:**
 ```bash
-LLAMACPP_URL=http://flai-llamacpp:8033   # llama.cpp router (llama-server in --models-dir mode)
-SD_CPP_URL=http://flai-sd:7860           # stable-diffusion.cpp server
+SD_WRAPPER_URL=http://flai-sd:7861          # sd-wrapper HTTP API (sd-cli wrapper)
 WHISPER_API_URL=http://flai-whisper:9000/asr
 PIPER_URL=http://flai-piper:8888/tts
 QDRANT_URL=http://flai-qdrant:6333
@@ -346,7 +352,7 @@ SD_CPP_DEFAULT_WIDTH=1024
 SD_CPP_DEFAULT_HEIGHT=1024
 SD_CPP_DEFAULT_CFG_SCALE=1.0    # 1.0 for flow-matching models (Z_image_turbo)
 SD_CPP_DEFAULT_STEPS=10         # 10 for Z_image_turbo
-SD_CPP_TIMEOUT=300
+SD_CPP_TIMEOUT=900
 ```
 
 **Service Retry Settings:**
@@ -375,23 +381,18 @@ DEBUG_API_ENABLED=false   # Set to 'true' only for development/testing
 
 ### Docker Configuration
 
-**Gunicorn Settings (Dockerfile):**
-```dockerfile
-CMD ["gunicorn", \
-     "--bind", "0.0.0.0:5000", \
-     "--workers", "1", \
-     "--threads", "4", \
-     "--worker-class", "gthread", \
-     "--timeout", "120", \
-     "--keep-alive", "5", \
-     "wsgi:app"]
-```
+**Gunicorn Settings (gunicorn_config.py):**
 
-**Why 1 worker × 4 threads?**
-- Minimal RAM usage (+40MB vs 1/1)
-- Handles 4 concurrent connections
-- Optimal for I/O bound (waiting for AI responses)
-- Saves 280MB vs 4 workers
+Configuration is loaded from `gunicorn_config.py`, not inline CLI args.
+
+| Setting | Value | Reason |
+|---------|-------|--------|
+| workers | 1 | Minimal RAM (+40MB); all requests wait for the same AI backend |
+| threads | 4 | Handles 4 concurrent I/O-bound connections |
+| worker_class | gthread | Optimal for waiting on AI responses |
+| timeout | 900s | Accommodates long operations (image editing up to 15 min) |
+| graceful_timeout | 30s | Graceful worker shutdown |
+| keepalive | 5s | Connection reuse for health checks |
 
 ### Docker Compose Profiles
 
@@ -482,7 +483,7 @@ Editing uses separate model files and runs independently from generation — no 
 The `sd_cpp` service is **built from source** during first `docker compose up`:
 1. Clones `https://github.com/leejet/stable-diffusion.cpp`
 2. Initializes git submodules (`ggml`, `thirdparty/*`)
-3. Compiles with CUDA 12.8.1 (`cmake -DSD_CUDA=ON`)
+3. Compiles with CUDA 13.0.1 (`cmake -DSD_CUDA=ON`)
 4. Produces `sd-server` and `sd-cli` binaries
 
 > ⏱️ **First build**: ~5-10 minutes depending on CPU. Subsequent builds use Docker cache.
@@ -493,6 +494,10 @@ The `sd_cpp` service is **built from source** during first `docker compose up`:
 # sd-wrapper HTTP API (port 7861)
 SD_WRAPPER_URL=http://flai-sd:7861
 SD_CPP_TIMEOUT=900                  # Timeout for gen/edit operations (seconds)
+SD_CPP_DEFAULT_WIDTH=1024
+SD_CPP_DEFAULT_HEIGHT=1024
+SD_CPP_DEFAULT_CFG_SCALE=1.0
+SD_CPP_DEFAULT_STEPS=10
 ```
 
 ---
@@ -513,16 +518,16 @@ docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 Uses ONNX Piper models for text-to-speech.
 
 ```bash
-# Download voice models
-mkdir -p services/piper/models
+# Download voice models (see services/piper/download-voices.sh)
+mkdir -p services/piper/piper_models
 
-# English (female)
-curl -L -o services/piper/models/en_US-lessac-medium.onnx \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx"
+# English (male)
+curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx"
 
 # Russian (male)
-curl -L -o services/piper/models/ru_RU-ruslan-medium.onnx \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/ruslan/medium/ru_RU-ruslan-medium.onnx"
+curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx"
 ```
 ```
 
@@ -572,8 +577,8 @@ CAMERA_CHECK_INTERVAL=30
 
 ### Camera Permissions
 In Admin Panel → Users tab, assign camera codes:
-`tam` (tambour), `hal` (hallway), `cor` (corridor), `spa` (bedroom),
-`off` (office), `chi` (children's), `liv` (living room), `kit` (kitchen), `bal` (balcony)
+`tam` (tambour/entry), `pri` (hallway), `kor` (corridor), `spa` (bedroom),
+`kab` (office/study), `det` (children's), `gos` (living room), `kuh` (kitchen), `bal` (balcony)
 
 ---
 
@@ -646,32 +651,6 @@ curl http://localhost:5000/metrics
 
 ---
 
-## 🧪 Testing
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage report
-pytest --cov=app --cov=modules --cov-report=html
-
-# Run specific test category
-pytest tests/test_admin_routes.py
-pytest tests/test_image_module.py
-pytest tests/test_sd_cpp_module.py
-```
-
-### Load Testing
-```bash
-# Web interface
-locust -f tests/load/locustfile.py --host http://localhost:5000
-
-# Headless mode
-locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
-```
-
----
-
 ## 🗺️ Roadmap
 
 ### ✅ Completed (v8.0)
@@ -728,8 +707,10 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 
 | Model | Purpose | License | Approx. Size |
 |-------|---------|---------|-------------|
-| **en_US-lessac-medium** | English TTS (female) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~75 MB |
-| **ru_RU-ruslan-medium** | Russian TTS (male) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~75 MB |
+| **en_US-ryan-medium** | English TTS (male) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~63 MB |
+| **en_US-ljspeech-medium** | English TTS (female) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~63 MB |
+| **ru_RU-dmitri-medium** | Russian TTS (male) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~63 MB |
+| **ru_RU-irina-medium** | Russian TTS (female) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~63 MB |
 | **Whisper medium** | Speech recognition | [MIT (OpenAI)](https://github.com/openai/whisper) | ~1.5 GB |
 
 ### Total Download Sizes (Approximate)
@@ -810,10 +791,10 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 |-------|---------|---------|------|
 | Qwen3-4B-Instruct-2507-Q4_K_M | Chat | Apache 2.0 | ~2.5 GB |
 | gpt-oss-20b-Q4_K_M | Reasoning | Apache 2.0 | ~12 GB |
-| Qwen3VL-8B-Instruct-Q4_K_M | Multimodal | Apache 2.0 | ~5 GB |
-| bge-m3-Q8_0 | Embedding | MIT | ~1.2 GB |
-| Z-Image-Turbo | Image Generation | Apache 2.0 | ~2 GB |
-| Flux.2 Klein 4B | Image Editing | Apache 2.0 | ~8 GB |
+| Qwen3VL-8B-Instruct-Q4_K_M | Multimodal | Apache 2.0 | ~5 GB + mmproj ~1.1 GB |
+| bge-m3-Q8_0 | Embedding | MIT | ~0.6 GB |
+| Z-Image-Turbo (z_image_turbo-Q8_0) | Image Generation | Apache 2.0 | ~6.2 GB |
+| Flux.2 Klein 4B (flux-2-klein-4b-Q8_0) | Image Editing | Apache 2.0 | ~4.5 GB |
 
 ## 📄 License
 

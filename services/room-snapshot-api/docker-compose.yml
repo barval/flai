@@ -28,4 +28,4 @@ services:
 networks:
   flai_network:
     external: true
-    name: flai_flai_network
+    name: flai_network

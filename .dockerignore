@@ -10,6 +10,7 @@ dist/
 build/
 
 .ruff_cache/
+.mypy_cache/
 
 # Database files
 *.db
@@ -20,24 +21,17 @@ build/
 data/
 uploads/
 documents/
+llama-swap-config/
 
 # Virtual environments
 venv/
 env/
 .venv/
 
-# Data directories (important!)
-data/
-uploads/
-documents/
-*.db
-*.sqlite
-*.sqlite3
-
-# Model files — excluded from all build contexts
-services/piper/piper_models/
-services/llamacpp/models/
-services/sd_cpp/models/
+# Service directories — separate Docker images, not needed in web build
+services/
+# Model files — excluded from all build contexts (redundant with services/ above, kept for clarity)
+services/sd_cpp/outputs/
 *.gguf
 *.safetensors
 *.onnx
@@ -61,6 +55,10 @@ htmlcov/
 
 # Qwen Code
 .qwen/
+
+# Environment files (secrets!)
+.env
+.env.*
 
 # Log and temp files
 *.log

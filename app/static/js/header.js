@@ -8,11 +8,29 @@ function getCSRFToken() {
 }
 
 function fetchWithCSRF(url, options = {}) {
-    const csrfToken = getCSRFToken();
-    if (!options.headers) options.headers = {};
-    options.headers['X-CSRFToken'] = csrfToken;
+    const method = (options.method || 'GET').toUpperCase();
+    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+        const headers = options.headers || {};
+        if (!headers['X-CSRFToken'] && !headers['X-CSRF-TOKEN']) {
+            headers['X-CSRFToken'] = getCSRFToken();
+        }
+        options.headers = headers;
+    }
     options.credentials = 'same-origin';
     return fetch(url, options);
+}
+
+function t(key) {
+    if (!(key in window.TRANSLATIONS)) {
+        console.warn('Missing translation key:', key);
+        return key;
+    }
+    return window.TRANSLATIONS[key];
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 document.addEventListener('DOMContentLoaded', function() {

@@ -33,7 +33,8 @@ USERS_TABLES = ['users']
 # Tables included in 'full' backup
 FULL_TABLES = [
     'users', 'user_sessions', 'chat_sessions', 'messages',
-    'session_visits', 'documents', 'model_configs', 'user_storage'
+    'session_visits', 'documents', 'model_configs', 'user_storage',
+    'gguf_models_cache'
 ]
 
 # Directories included in 'full' backup

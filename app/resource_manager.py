@@ -158,8 +158,8 @@ class ResourceManager:
         if model_name:
             try:
                 gguf_cache = get_gguf_models_cached('/models')
-                if model_name in gguf_cache.get('models', {}):
-                    model_info = gguf_cache['models'][model_name]
+                model_info = gguf_cache.get(model_name, {})
+                if model_info:
                     file_size_mb = model_info.get('file_size_mb')
                     block_count = model_info.get('block_count')
             except Exception:

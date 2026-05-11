@@ -149,16 +149,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     };
 
-    // Utility: translation helper
-    function t(key) {
-        return (window.TRANSLATIONS && window.TRANSLATIONS[key]) || key;
-    }
-
-    function escapeHtml(str) {
-        if (!str) return '';
-        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    }
-
     function formatSize(bytes) {
         if (bytes < 1024) return bytes + ' B';
         if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';

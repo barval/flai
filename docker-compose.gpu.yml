@@ -27,8 +27,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - GPU_NAME=${GPU_NAME:-NVIDIA GeForce RTX 5060 Ti}
-      - GPU_VRAM_MB=${GPU_VRAM_MB:-16384}
     # user: "0:988"  # Removed - uses Dockerfile user (appuser:1000)
     networks:
       - flai_network

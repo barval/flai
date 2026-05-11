@@ -23,7 +23,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DB_URL = os.getenv('DATABASE_URL', 'postgresql://flai:flai_password@flai-postgres:5432/flai')
+DB_URL = os.getenv('DATABASE_URL', 'postgresql://flai:flai_password@postgres:5432/flai')
 PRESET_PATH = '/models/models-preset.ini'
 
 

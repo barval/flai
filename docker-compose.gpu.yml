@@ -275,7 +275,7 @@ services:
   # POSTGRESQL (Required - Application DB)
   # ============================================================
   postgres:
-    image: pgvector/pgvector:pg16
+    image: postgres:16-alpine
     container_name: flai-postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data

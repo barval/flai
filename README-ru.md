@@ -24,7 +24,7 @@
 - 🎨 **Генерация изображений** – создание изображений из текста с автоматической оптимизацией промптов (модель Z-Image-Turbo)
 - ✏️ **Редактирование изображений** – загрузите изображение и попросите изменить его (модель Flux.2 Klein 4B)
 - 🎤 **Распознавание речи** – преобразование голосовых сообщений в текст через Whisper ASR (faster_whisper)
-- 🗣️ **Синтез речи** – озвучивание ответов через Piper TTS (мужской/женский голос)
+- 🗣️ **Синтез речи** – озвучивание ответов через Piper TTS (мужской и женский голоса на русском и английском)
 
 ### 📁 Управление документами и знаниями
 - 📚 **RAG с Qdrant** – загрузка документов (PDF, DOC, DOCX, TXT) и вопросы по содержимому
@@ -87,10 +87,10 @@
 | Компонент | Назначение | Технология | Порт |
 |-----------|------------|------------|------|
 | **Flask Web** | Веб-интерфейс, маршрутизация, API | Python | 5000 |
-| **llama.cpp** | LLM-инференс (чат, рассуждения, мультимодальность, эмбеддинг) | C++ + CUDA | 8033 |
-| **stable-diffusion.cpp** | Генерация изображений (Z_image_turbo) и редактирование (Flux.2 Klein 4B) | C++ + CUDA | 7860 |
+| **llama-swap** | Динамическое управление и маршрутизация LLM-моделей (прокси для llama.cpp) | Go + llama.cpp | 8080 |
+| **stable-diffusion.cpp** | Генерация изображений (Z_image_turbo) и редактирование (Flux.2 Klein 4B) | C++ + CUDA | 7861 |
 | **Whisper ASR** | Распознавание речи | faster_whisper | 9000 |
-| **Piper TTS** | Синтез речи | ONNX + Piper | 18888 |
+| **Piper TTS** | Синтез речи | ONNX + Piper | 8888 |
 | **Qdrant** | Векторная база данных для RAG | Rust | 6333 |
 | **Redis** | Управление очередью запросов | C | 6379 |
 | **PostgreSQL** | Учётные записи, сессии, сообщения | SQL | 5432 |
@@ -108,12 +108,12 @@
 └──────┬──────────┬────────────┬───────────────────────┘
        │          │            │
        ▼          ▼            ▼
-  llama.cpp   sd.cpp      Whisper/Piper/Qdrant
-  :8033       :7860       (отдельные контейнеры)
-  (режим роутера: динамическое переключение)
+  llama-swap  sd.cpp      Whisper/Piper/Qdrant
+  :8080       :7861       (отдельные контейнеры)
+  (динамическая маршрутизация моделей через llama-swap)
 ```
 
-**Режим роутера**: llama.cpp работает в режиме `--models-dir`, динамически загружая/выгружая GGUF-модели из общей директории. В VRAM одновременно находится только одна модель, переключение происходит автоматически по запросу.
+**Динамическая маршрутизация моделей**: llama-swap выступает прокси для llama.cpp, динамически загружая/выгружая GGUF-модели по запросу. В VRAM одновременно находится только одна модель, переключение происходит автоматически на основе типа запроса. Конфигурация моделей управляется через панель администратора и хранится в базе данных.
 
 ---
 
@@ -157,6 +157,37 @@ docker compose -f docker-compose.cpu.yml --profile with-image-gen --profile with
 ## 🚀 Быстрый старт
 
 > 💡 **Примечание**: На хосте должны быть установлены **драйверы NVIDIA** и **NVIDIA Container Toolkit**.
+
+### Вариант A: Автоматическое развёртывание (рекомендуется)
+
+Единый скрипт развёртывания управляет всем: настройкой окружения, загрузкой моделей, сборкой и запуском.
+
+```bash
+git clone https://github.com/barval/flai.git
+cd flai
+
+# Только чат + llama.cpp
+./deploy.sh --download-models
+
+# + Генерация/редактирование изображений
+./deploy.sh --download-models --with-image-gen
+
+# + Голос (Whisper ASR + Piper TTS)
+./deploy.sh --download-models --with-image-gen --with-voice
+
+# Всё включая RAG (Qdrant)
+./deploy.sh --download-models --with-image-gen --with-voice --with-rag
+
+# Запуск тестов после развёртывания
+./deploy.sh --download-models --with-image-gen --run-tests
+```
+
+Также доступна русская версия скрипта:
+```bash
+./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag
+```
+
+### Вариант B: Ручное развёртывание
 
 ### 1. Клонирование и настройка
 
@@ -279,7 +310,7 @@ docker exec flai-web flask admin-password ВашНадёжныйПароль123
    - Выберите GGUF-модель из выпадающего списка
    - При необходимости настройте параметры (длина контекста, температура, Top P, таймаут)
    - Нажмите **Сохранить**
-4. Для генерации изображений: убедитесь, что `SD_CPP_URL=http://flai-sd:7860` указано в `.env`
+4. Для генерации изображений: убедитесь, что `SD_WRAPPER_URL=http://flai-sd:7861` указано в `.env`
 
 ### 6. Готово!
 
@@ -297,14 +328,20 @@ docker exec flai-web flask admin-password ВашНадёжныйПароль123
 
 **Обязательные:**
 ```bash
-SECRET_KEY=ваш_секретный_ключ        # Секретный ключ сессий Flask
-TIMEZONE=Europe/Moscow               # Ваш часовой пояс
+SECRET_KEY=ваш_секретный_ключ      # Секретный ключ сессий Flask
+TIMEZONE=Europe/Moscow             # Ваш часовой пояс
+DATABASE_URL=postgresql://flai:flai_password@postgres:5432/flai  # PostgreSQL
+```
+
+**Режим бэкенда:**
+```bash
+LLAMACP_BACKEND=llama-swap    # 'llama-swap' (по умолч., реком.) или 'llamacpp' (напрямую)
+LLAMA_SWAP_URL=http://flai-llamaswap:8080  # llama-swap endpoint
 ```
 
 **URL сервисов:**
 ```bash
-LLAMACPP_URL=http://flai-llamacpp:8033   # Роутер llama.cpp (режим --models-dir)
-SD_CPP_URL=http://flai-sd:7860           # Сервер stable-diffusion.cpp
+SD_WRAPPER_URL=http://flai-sd:7861          # sd-wrapper HTTP API (sd-cli)
 WHISPER_API_URL=http://flai-whisper:9000/asr
 PIPER_URL=http://flai-piper:8888/tts
 QDRANT_URL=http://flai-qdrant:6333
@@ -318,7 +355,7 @@ SD_CPP_DEFAULT_WIDTH=1024
 SD_CPP_DEFAULT_HEIGHT=1024
 SD_CPP_DEFAULT_CFG_SCALE=1.0    # 1.0 для flow-matching моделей (Z_image_turbo)
 SD_CPP_DEFAULT_STEPS=10         # 10 для Z_image_turbo
-SD_CPP_TIMEOUT=300
+SD_CPP_TIMEOUT=900
 ```
 
 **Повторные попытки подключения:**
@@ -347,23 +384,18 @@ DEBUG_API_ENABLED=false   # Установите 'true' только для ра
 
 ### Конфигурация Docker
 
-**Настройки Gunicorn (Dockerfile):**
-```dockerfile
-CMD ["gunicorn", \
-     "--bind", "0.0.0.0:5000", \
-     "--workers", "1", \
-     "--threads", "4", \
-     "--worker-class", "gthread", \
-     "--timeout", "120", \
-     "--keep-alive", "5", \
-     "wsgi:app"]
-```
+**Настройки Gunicorn (gunicorn_config.py):**
 
-**Почему 1 воркер × 4 потока?**
-- Минимальное потребление ОЗУ (+40 МБ по сравнению с 1/1)
-- Обработка 4 одновременных подключений
-- Оптимально для операций ввода/вывода (ожидание ответов ИИ)
-- Экономия 280 МБ по сравнению с 4 воркерами
+Конфигурация загружается из `gunicorn_config.py`, не из CLI-аргументов.
+
+| Параметр | Значение | Причина |
+|----------|----------|--------|
+| workers | 1 | Минимальное потребление ОЗУ (+40 МБ); все запросы ожидают один и тот же AI-бэкенд |
+| threads | 4 | Обработка 4 одновременных I/O-подключений |
+| worker_class | gthread | Оптимально для ожидания ответов ИИ |
+| timeout | 900 с | Учитывает длительные операции (редактирование изображений до 15 мин) |
+| graceful_timeout | 30 с | Плавное завершение воркеров |
+| keepalive | 5 с | Переиспользование соединений для healthcheck
 
 ### Профили Docker Compose
 
@@ -449,7 +481,7 @@ services/llamacpp/models/
 Сервис `sd_cpp` **собирается из исходников** при первом запуске:
 1. Клонирует `https://github.com/leejet/stable-diffusion.cpp`
 2. Инициализирует git-подмодули (`ggml`, `thirdparty/*`)
-3. Компилирует с CUDA 12.8.1 (`cmake -DSD_CUDA=ON`)
+3. Компилирует с CUDA 13.0.1 (`cmake -DSD_CUDA=ON`)
 4. Создаёт бинарные файлы `sd-server` и `sd-cli`
 
 > ⏱️ **Первая сборка**: ~5-10 минут в зависимости от ЦПУ. Последующие сборки используют кеш Docker.
@@ -457,12 +489,12 @@ services/llamacpp/models/
 ### Конфигурация
 
 ```bash
-SD_CPP_URL=http://flai-sd:7860
+SD_WRAPPER_URL=http://flai-sd:7861
+SD_CPP_TIMEOUT=900                  # Таймаут для генерации/редактирования (сек)
 SD_CPP_DEFAULT_WIDTH=1024
 SD_CPP_DEFAULT_HEIGHT=1024
 SD_CPP_DEFAULT_CFG_SCALE=1.0
 SD_CPP_DEFAULT_STEPS=10
-SD_CPP_TIMEOUT=300
 ```
 
 ---
@@ -483,16 +515,16 @@ docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 Использует ONNX-модели Piper для синтеза речи.
 
 ```bash
-# Скачивание голосовых моделей
-mkdir -p services/piper/models
+# Скачивание голосовых моделей (см. services/piper/download-voices.sh)
+mkdir -p services/piper/piper_models
 
-# Английский (женский)
-curl -L -o services/piper/models/en_US-lessac-medium.onnx \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx"
+# Английский (мужской)
+curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx"
 
 # Русский (мужской)
-curl -L -o services/piper/models/ru_RU-ruslan-medium.onnx \
-  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/ruslan/medium/ru_RU-ruslan-medium.onnx"
+curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx \
+  "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx"
 ```
 ```
 
@@ -616,42 +648,23 @@ curl http://localhost:5000/metrics
 
 ---
 
-## 🧪 Тестирование
-
-```bash
-# Запустить все тесты
-pytest
-
-# С отчётом покрытия
-pytest --cov=app --cov=modules --cov-report=html
-
-# Отдельные категории
-pytest tests/test_admin_routes.py
-pytest tests/test_image_module.py
-pytest tests/test_sd_cpp_module.py
-```
-
-### Нагрузочное тестирование
-```bash
-# Веб-интерфейс
-locust -f tests/load/locustfile.py --host http://localhost:5000
-
-# Автоматический режим
-locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
-```
-
----
-
 ## 🗺️ Дорожная карта
 
 ### ✅ Завершено (v8.0)
 - **Режим роутера llama.cpp** (`--models-dir`) — один llama-server с динамическим переключением моделей
 - **stable-diffusion.cpp** — Z-Image-Turbo для генерации, Flux.2 Klein 4B для редактирования
+- **OpenAI-совместимый API** (`/v1/chat/completions`, `/v1/embeddings`)
+- **Мультимодальная поддержка** через mmproj в поддиректориях
+- **Динамическое переключение моделей** с `--models-max 1`
+- **Индивидуальные параметры моделей** через `models-preset.ini`
+- **Управление GGUF-моделями** через панель администратора
+- **Обновлённые переводы** для терминологии llama.cpp и llama-swap
 - **Оптимизация Piper TTS** для синтеза больших текстов — порционная обработка с плавными аудиопереходами
+- **llama-swap бэкенд** — динамическое управление моделями и оптимизация GPU VRAM
 
 ### 🔄 В работе
 - Долгосрочная память диалогов (кросс-сессийный контекст)
-- Продвинутый RAG: фильтрация по метаданным, гибридный поиск, реранжирование
+- Продвинутый RAG: фильтрация по метаданным, гибридный поиск
 - Оптимизация мобильного интерфейса
 
 ### 📅 Планируется
@@ -692,8 +705,10 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 
 | Модель | Назначение | Лицензия | Примерный размер |
 |--------|------------|----------|-----------------|
-| **en_US-lessac-medium** | Английский TTS (женский) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~75 МБ |
-| **ru_RU-ruslan-medium** | Русский TTS (мужской) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~75 МБ |
+| **en_US-ryan-medium** | Английский TTS (мужской) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~63 МБ |
+| **en_US-ljspeech-medium** | Английский TTS (женский) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~63 МБ |
+| **ru_RU-dmitri-medium** | Русский TTS (мужской) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~63 МБ |
+| **ru_RU-irina-medium** | Русский TTS (женский) | [BSD-3-Clause (Piper)](https://huggingface.co/rhasspy/piper-voices) | ~63 МБ |
 | **Whisper medium** | Распознавание речи | [MIT (OpenAI)](https://github.com/openai/whisper) | ~1,5 ГБ |
 
 ### Общий размер загружаемых данных
@@ -767,6 +782,17 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 5. Откройте Pull Request
 
 ---
+
+## 📄 Используемые модели
+
+| Модель | Назначение | Лицензия | Размер |
+|--------|-----------|---------|--------|
+| Qwen3-4B-Instruct-2507-Q4_K_M | Чат | Apache 2.0 | ~2,5 ГБ |
+| gpt-oss-20b-Q4_K_M | Рассуждения | Apache 2.0 | ~12 ГБ |
+| Qwen3VL-8B-Instruct-Q4_K_M | Мультимодальная | Apache 2.0 | ~5 ГБ + mmproj ~1,1 ГБ |
+| bge-m3-Q8_0 | Эмбеддинги | MIT | ~0,6 ГБ |
+| Z-Image-Turbo (z_image_turbo-Q8_0) | Генерация изображений | Apache 2.0 | ~6,2 ГБ |
+| Flux.2 Klein 4B (flux-2-klein-4b-Q8_0) | Редактирование изображений | Apache 2.0 | ~4,5 ГБ |
 
 ## 📄 Лицензия
 

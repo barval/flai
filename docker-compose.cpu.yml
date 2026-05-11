@@ -282,7 +282,7 @@ services:
   # POSTGRESQL (Required)
   # ============================================================
   postgres:
-    image: postgres:16.4-alpine
+    image: postgres:16-alpine
     container_name: flai-postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data

@@ -6,31 +6,6 @@ let currentModelConfigs = {};
 let modelDetails = {};
 let modelListCache = {};
 
-function getCSRFToken() {
-    const token = document.querySelector('meta[name="csrf-token"]');
-    return token ? token.getAttribute('content') : '';
-}
-
-function fetchWithCSRF(url, options = {}) {
-    const method = (options.method || 'GET').toUpperCase();
-    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-        const headers = options.headers || {};
-        if (!headers['X-CSRFToken'] && !headers['X-CSRF-TOKEN']) {
-            headers['X-CSRFToken'] = getCSRFToken();
-        }
-        options.headers = headers;
-    }
-    return fetch(url, options);
-}
-
-function t(key) {
-    if (!(key in window.TRANSLATIONS)) {
-        console.warn('Missing translation key:', key);
-        return key;
-    }
-    return window.TRANSLATIONS[key];
-}
-
 function initAdminTabs() {
     const tabs = document.querySelectorAll('.admin-tab');
     tabs.forEach(tab => {
@@ -636,12 +611,7 @@ function onSaveConfig(event) {
 
 function escapeHtml(str) {
     if (!str) return '';
-    return str.replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function updateChunksLimits(maxTopK) {

@@ -484,24 +484,6 @@ def scan_gguf_models(models_dir: str = '/models') -> Dict[str, Any]:
     return result
 
 
-_gguf_models_cache = None
-
-
-def get_gguf_models_cached(models_dir: str = '/models') -> Dict[str, Any]:
-    """Get cached GGUF models metadata (scanned once at startup).
-
-    Args:
-        models_dir: Directory containing GGUF model files
-
-    Returns:
-        Dict mapping model_name -> metadata dict
-    """
-    global _gguf_models_cache
-    if _gguf_models_cache is None:
-        _gguf_models_cache = scan_gguf_models(models_dir)
-    return _gguf_models_cache
-
-
 def get_gguf_model_info(model_path: str) -> Dict[str, Any]:
     """Read metadata from GGUF model file.
 
@@ -1084,6 +1066,8 @@ def check_document_quota(user_id: str) -> Optional[str]:
 # ============================================================
 # GGUF Models Cache in Database
 # ============================================================
+
+_gguf_models_cache = None
 
 def init_gguf_cache_db():
     """Create gguf_models_cache table if not exists."""

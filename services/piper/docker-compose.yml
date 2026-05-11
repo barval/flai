@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Piper TTS Standalone Service
 # Use this docker-compose for deploying Piper TTS on a separate server
 

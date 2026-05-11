@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flai"
-version = "8.0.0"
+version = "8.1.0"
 description = "Fully Local AI — a personal AI assistant that runs entirely on your hardware"
 readme = "README.md"
 license = {text = "MIT"}
@@ -29,6 +29,10 @@ dependencies = [
     "python-docx==1.1.0",
     "python-magic==0.4.27",
     "ebooklib>=0.17",
+    "odfpy>=1.4.0",
+    "striprtf>=0.0.26",
+    "gguf>=0.10.0",
+    "psycopg2-binary==2.9.9",
 ]
 
 [project.optional-dependencies]
@@ -38,17 +42,13 @@ test = [
     "pytest-cov==4.1.0",
 ]
 dev = [
-    "ruff>=0.4.0",
-    "mypy>=1.8.0",
+    "ruff==0.4.0",
+    "mypy==1.8.0",
     "types-requests",
     "types-redis",
     "types-PyPDF2",
     "types-python-docx",
     "types-pytz",
-    "psycopg2-binary>=2.9.9",  # PostgreSQL support
-]
-postgres = [
-    "psycopg2-binary>=2.9.9",
 ]
 load-test = [
     "locust>=2.20.1",

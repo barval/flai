@@ -335,9 +335,6 @@ class LlamaSwapConfigGenerator:
         except requests.exceptions.RequestException as e:
             self.logger.warning(f"Could not signal llama-swap reload: {e}")
             return False
-            self.logger.warning(f"Failed to signal reload: {e}")
-
-        return False
 
 
 def generate_and_write(app=None) -> bool:

@@ -159,7 +159,7 @@ def send_message():
         user_content.append({"type": content_type, "file_data": file_data, "file_type": file_type, "file_name": file_name})
 
     user_content_json = json.dumps(user_content, ensure_ascii=False)
-    user_message_id = db.save_message(session_id, 'user', user_content_json, file_data, file_type, file_name, None)
+    user_message_id = db.save_message(session_id, 'user', user_content_json, file_data, file_type, file_name, file_path)
 
     # Mark session as visited when user sends a message (prevents "unread" bug)
     db.update_session_visit(user_id, session_id)

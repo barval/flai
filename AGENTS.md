@@ -23,6 +23,11 @@ pytest tests/test_admin_routes.py
 # Translations
 pybabel compile -d translations  # after editing .po files
 
+# Admin tasks
+flask admin-password <pass>       # set/reset admin password
+docker exec flai-web flask cleanup-uploads  # remove orphaned files from uploads/
+docker exec flai-web flask admin-password <pass>  # in container
+
 # Dev server (0.0.0.0:5000, debug=True)
 python wsgi.py
 
@@ -33,10 +38,6 @@ gunicorn -c gunicorn_config.py wsgi:app
 docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
 docker compose -f docker-compose.cpu.yml ...  # for CPU-only
 docker compose -f docker-compose.gpu.yml logs -f web
-
-# Admin password
-flask admin-password <pass>
-docker exec flai-web flask admin-password <pass>  # in container
 
 # Load test
 locust -f tests/load/locustfile.py --host http://localhost:5000

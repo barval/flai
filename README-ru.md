@@ -734,20 +734,31 @@ curl http://localhost:5000/metrics
 ### Модульные тесты
 
 ```bash
+# Установить зависимости для тестов
+pip install -e ".[test]"
+
 # Запустить все тесты
 pytest
 
 # С отчётом покрытия
 pytest --cov=app --cov=modules --cov-report=html
 
-# Отдельные категории
+# По маркерам
+pytest -m unit                           # только unit-тесты (без внешних зависимостей)
+pytest -m "not slow"                     # пропустить медленные тесты
+pytest -m "not (requires_db or requires_redis)"  # без БД и Redis
+
+# Отдельные файлы
+pytest tests/test_backups.py
 pytest tests/test_admin_routes.py
-pytest tests/test_image_module.py
 pytest tests/test_sd_cpp_module.py
 pytest tests/test_queue.py
 pytest tests/test_security.py
-pytest tests/test_integration.py
+pytest tests/test_resource_manager.py
+pytest tests/test_llama_swap_config.py
 ```
+
+> **Примечание**: `tests/conftest.py` требует работающий PostgreSQL. Чтобы запускать тесты без conftest, используйте `pytest --noconftest` или запускайте тестовые файлы напрямую.
 
 ### Нагрузочное тестирование
 

@@ -736,20 +736,31 @@ FLAI includes comprehensive testing for all key components and load testing for 
 ### Unit Tests
 
 ```bash
+# Install test dependencies
+pip install -e ".[test]"
+
 # Run all tests
 pytest
 
 # Run with coverage report
 pytest --cov=app --cov=modules --cov-report=html
 
-# Run specific test category
+# Run by marker
+pytest -m unit                           # unit tests only (no external deps)
+pytest -m "not slow"                     # skip slow tests
+pytest -m "not (requires_db or requires_redis)"  # skip DB/Redis tests
+
+# Run specific test file
+pytest tests/test_backups.py
 pytest tests/test_admin_routes.py
-pytest tests/test_image_module.py
 pytest tests/test_sd_cpp_module.py
 pytest tests/test_queue.py
 pytest tests/test_security.py
-pytest tests/test_integration.py
+pytest tests/test_resource_manager.py
+pytest tests/test_llama_swap_config.py
 ```
+
+> **Note**: `tests/conftest.py` requires a running PostgreSQL. To run tests independently (without conftest), use `pytest --noconftest` or run individual test files directly.
 
 ### Load Testing
 

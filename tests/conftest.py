@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch, Mock
 from flask import Flask
 
 from app import create_app
-from app.db import init_db
+from app.database import init_db
 from app.userdb import init_user_db
 
 

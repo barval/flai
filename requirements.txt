@@ -17,6 +17,7 @@ striprtf>=0.0.26
 ebooklib>=0.17
 gguf>=0.10.0
 psycopg2-binary==2.9.9
+nvidia-ml-py>=12
 
 # Load testing - install locally if needed: pip install locust
 # locust==2.20.1

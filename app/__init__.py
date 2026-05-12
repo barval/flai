@@ -223,6 +223,7 @@ def create_app():
     # Register CLI commands
     from . import cli
     app.cli.add_command(cli.set_admin_password)
+    app.cli.add_command(cli.cleanup_uploads)
 
     # Additional camera routes
     if 'cam' in modules:

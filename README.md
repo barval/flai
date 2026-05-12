@@ -303,8 +303,7 @@ docker exec flai-web flask admin-password YourSecurePassword123
 1. Open `http://localhost:5000` and log in as `admin`
 2. Go to **Admin Panel** → **Models** tab
 3. For each module (Chat, Reasoning, Multimodal, Embedding):
-   - Check the **Local** checkbox (URL auto-fills to `http://flai-llamacpp:8033`)
-   - Click 🔄 **Refresh** to load available models from llama.cpp router
+   - Click 🔄 **Refresh** to load available GGUF models via llama-swap
    - Select the GGUF model from the dropdown
    - Adjust parameters if needed (Context Length, Temperature, Top P, Timeout)
    - Click **Save**
@@ -312,10 +311,20 @@ docker exec flai-web flask admin-password YourSecurePassword123
 
 ### 6. You're Ready!
 
-- 💬 Have conversations with AI
-- 🎨 Generate images (if stable-diffusion.cpp is configured)
-- 🎤 Send voice messages and listen to responses (if Piper/Whisper is configured)
-- 📚 Upload documents for search (if RAG profile is enabled)
+Now you can:
+- 💬 **Chat with AI** — smart routing for fast and complex responses
+- 🧠 **Advanced Reasoning** — complex calculations, code generation, creative writing
+- 🔍 **Analyze Images** — upload photos and ask questions (multimodal)
+- 🎨 **Generate Images** — create images from text descriptions
+- ✏️ **Edit Images** — upload and edit (change colors, remove objects, stylize)
+- 🎤 **Send Voice Messages** — speech-to-text via Whisper ASR
+- 🗣️ **Listen to Responses** — text-to-speech via Piper TTS (male/female, EN/RU)
+- 📚 **Search Documents** — upload PDF/DOC/TXT and ask questions (RAG)
+- 🗂️ **Multiple Chat Sessions** — separate conversations with auto-titling
+- 💾 **Export Chats** — save conversations as HTML with embedded media
+- 📹 **View Cameras** — IP camera snapshots analyzed by AI
+- 💾 **Backup & Restore** — full or user-only backups from the admin panel
+- 🔧 **CLI Tools** — admin password reset, orphaned file cleanup
 
 ---
 
@@ -431,15 +440,14 @@ services/llamacpp/models/
     └── mmproj-F16.gguf                     # Vision projector
 ```
 
-> ⚠️ **Multimodal models require a subdirectory** with the projector file named `mmproj-*.gguf` inside. The router auto-discovers and loads it.
+> ⚠️ **Multimodal models require a subdirectory** with the projector file named `mmproj-*.gguf` inside. The model server auto-discovers and loads it.
 
 ### Configure Models in Admin Panel
 
 1. Log in as admin and go to `/admin` → **Models** tab
 2. For each module (Chat, Reasoning, Multimodal, Embedding):
-   - **Step 1**: Check **Local** (URL auto-fills to `http://flai-llamacpp:8033`)
-   - **Step 2**: Click 🔄 **Refresh** to fetch models from the router
-   - **Step 3**: Select model, set parameters, click **Save**
+   - **Step 1**: Click 🔄 **Refresh** to load available GGUF models via llama-swap
+   - **Step 2**: Select model, set parameters, click **Save**
 
 > 💡 **Changing the embedding model triggers automatic re-indexing** of all documents.
 

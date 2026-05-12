@@ -286,11 +286,9 @@ def get_stats():
 def get_hardware():
     """Return hardware information for memory estimation.
 
-    Gets GPU info from llamacpp container logs or via nvidia-smi.
+    Gets GPU info via NVML (NVIDIA Management Library).
     """
     try:
-        import subprocess
-
         hw = {
             'gpu_name': None,
             'cuda_detected': False,
@@ -300,63 +298,30 @@ def get_hardware():
             'available_ram_mb': 0,
         }
 
-        # Get RAM info from resource manager
         from app.resource_manager import get_resource_manager
         rm = get_resource_manager()
         rm_hw = rm.get_status()
         hw['total_ram_mb'] = rm_hw.get('total_ram_mb', 0)
         hw['available_ram_mb'] = rm_hw.get('available_ram_mb', 0)
 
-        # Method 1: docker exec nvidia-smi (most reliable from within container)
         try:
-            result = subprocess.run(
-                ['docker', 'exec', 'flai-llamacpp', 'nvidia-smi',
-                 '--query-gpu=name,memory.total,memory.free',
-                 '--format=csv,noheader,nounits'],
-                timeout=5, capture_output=True, text=True
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                parts = result.stdout.strip().split(',')
-                if len(parts) >= 3:
-                    hw['gpu_name'] = parts[0].strip()
-                    hw['total_vram_mb'] = int(parts[1].strip())
-                    hw['available_vram_mb'] = int(parts[2].strip())
-                    hw['cuda_detected'] = True
-                    logger.info(f"GPU from nvidia-smi (docker exec): {hw['gpu_name']}, {hw['total_vram_mb']}MB, {hw['available_vram_mb']}MB free")
+            import pynvml
+            pynvml.nvmlInit()
+            count = pynvml.nvmlDeviceGetCount()
+            if count > 0:
+                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                name = pynvml.nvmlDeviceGetName(handle)
+                mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                hw['gpu_name'] = name.decode() if isinstance(name, bytes) else name
+                hw['cuda_detected'] = True
+                hw['total_vram_mb'] = mem.total // (1024 * 1024)
+                hw['available_vram_mb'] = mem.free // (1024 * 1024)
+                logger.info(f"GPU via NVML: {hw['gpu_name']}, {hw['total_vram_mb']}MB, {hw['available_vram_mb']}MB free")
+            else:
+                logger.warning("NVML: no GPU devices found")
+            pynvml.nvmlShutdown()
         except Exception as e:
-            logger.warning(f"docker exec nvidia-smi failed: {e}")
-
-        # Method 2: Direct nvidia-smi (fallback if docker exec unavailable)
-        if not hw['cuda_detected']:
-            try:
-                result = subprocess.run(
-                    ['nvidia-smi', '--query-gpu=name,memory.total,memory.free',
-                     '--format=csv,noheader,nounits'],
-                    timeout=5, capture_output=True, text=True
-                )
-                if result.returncode == 0 and result.stdout.strip():
-                    parts = result.stdout.strip().split(',')
-                    if len(parts) >= 3:
-                        hw['gpu_name'] = parts[0].strip()
-                        hw['total_vram_mb'] = int(parts[1].strip())
-                        hw['available_vram_mb'] = int(parts[2].strip())
-                        hw['cuda_detected'] = True
-                        logger.info(f"GPU from nvidia-smi (direct): {hw['gpu_name']}, {hw['total_vram_mb']}MB, {hw['available_vram_mb']}MB free")
-            except Exception as e:
-                logger.warning(f"direct nvidia-smi failed: {e}")
-
-        # Method 3: Check llama-swap API as GPU indicator (unknown VRAM)
-        if not hw['cuda_detected']:
-            try:
-                resp = requests.get('http://flai-llamaswap:8080/running', timeout=3)
-                if resp.status_code == 200:
-                    hw['gpu_name'] = 'NVIDIA GPU (via llama-swap)'
-                    hw['cuda_detected'] = True
-                    hw['total_vram_mb'] = 0
-                    hw['available_vram_mb'] = 0
-                    logger.info("GPU detected via llama-swap (unknown VRAM)")
-            except Exception as e:
-                logger.warning(f"llama-swap GPU detection failed: {e}")
+            logger.warning(f"NVML GPU detection failed: {e}")
 
         return jsonify(hw)
     except Exception as e:

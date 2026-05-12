@@ -6,21 +6,21 @@ Two backup types:
   2. 'full'      — users + chats + messages + documents + model_configs +
                    session_visits + user_sessions + user_storage + files
 """
-import os
-import json
 import glob
+import hashlib
+import io
+import json
+import logging
+import os
 import shutil
+import subprocess
 import tarfile
 import tempfile
-import logging
-import subprocess
-import hashlib
 from datetime import datetime
 from functools import wraps
 from urllib.parse import urlparse
 
-from flask import Blueprint, jsonify, request, current_app, send_file, abort
-from flask_babel import gettext as _
+from flask import Blueprint, abort, jsonify, request, send_file
 
 from app.database import get_db
 
@@ -156,20 +156,22 @@ def create_backup():
             tar.add(meta_path, arcname='metadata.json')
             os.unlink(meta_path)
 
-        # Compute SHA256 checksum of the archive
+        # Compute SHA256 checksum of archive contents (excluding metadata.json which will hold the checksum)
         sha256 = hashlib.sha256()
-        with open(archive_path, 'rb') as f:
-            for chunk in iter(lambda: f.read(8192), b''):
-                sha256.update(chunk)
-        checksum = sha256.hexdigest()
-        
-        # Update metadata with checksum (rewrite archive with updated metadata)
         with tarfile.open(archive_path, 'r:gz') as tar:
-            members = tar.getmembers()
-            # Remove old metadata.json if exists
-            members = [m for m in members if m.name != 'metadata.json']
-        
-        # Create new archive with checksum in metadata
+            for member in tar.getmembers():
+                if member.name == 'metadata.json':
+                    continue
+                f = tar.extractfile(member)
+                if f:
+                    while True:
+                        chunk = f.read(8192)
+                        if not chunk:
+                            break
+                        sha256.update(chunk)
+        checksum = sha256.hexdigest()
+
+        # Rewrite archive with checksum in metadata
         temp_archive = archive_path + '.tmp'
         with tarfile.open(temp_archive, 'w:gz') as tar_out:
             # Copy all members except metadata.json
@@ -177,14 +179,14 @@ def create_backup():
                 for member in tar_in.getmembers():
                     if member.name != 'metadata.json':
                         tar_out.addfile(member, tar_in.extractfile(member))
-            
+
             # Add updated metadata with checksum
             meta['checksum'] = checksum
             meta_json = json.dumps(meta, indent=2, ensure_ascii=False).encode('utf-8')
             info = tarfile.TarInfo(name='metadata.json')
             info.size = len(meta_json)
-            tar_out.addfile(info, fileobj=tempfile.BytesIO(meta_json))
-        
+            tar_out.addfile(info, fileobj=io.BytesIO(meta_json))
+
         os.replace(temp_archive, archive_path)
 
         logger.info(f"Backup created: {filename} ({backup_type})")
@@ -221,13 +223,21 @@ def restore_backup():
         return jsonify({'error': 'Backup file not found'}), 404
 
     try:
-        # Verify checksum before restoring
+        # Verify checksum before restoring (computed on member contents, excluding metadata.json)
         meta = _read_archive_metadata(archive_path)
         if meta and 'checksum' in meta:
             sha256 = hashlib.sha256()
-            with open(archive_path, 'rb') as f:
-                for chunk in iter(lambda: f.read(8192), b''):
-                    sha256.update(chunk)
+            with tarfile.open(archive_path, 'r:gz') as tar:
+                for member in tar.getmembers():
+                    if member.name == 'metadata.json':
+                        continue
+                    f = tar.extractfile(member)
+                    if f:
+                        while True:
+                            chunk = f.read(8192)
+                            if not chunk:
+                                break
+                            sha256.update(chunk)
             actual_checksum = sha256.hexdigest()
             if actual_checksum != meta['checksum']:
                 return jsonify({'error': 'Archive checksum mismatch. File may be corrupted.'}), 400
@@ -321,17 +331,28 @@ def download_backup(filename):
 # Helpers
 # ============================================================
 
+def _clean_sql_dump(dump):
+    """Remove version-specific SET commands that may not exist on target PG server."""
+    safe_lines = []
+    for line in dump.split('\n'):
+        stripped = line.strip()
+        if stripped.startswith('SET ') and 'transaction_timeout' in stripped:
+            continue
+        safe_lines.append(line)
+    return '\n'.join(safe_lines)
+
+
 def _export_pg_dump(tables):
     """Export specified tables as SQL using real pg_dump utility."""
     import os
     from urllib.parse import urlparse
-    
+
     db_url = os.environ.get('DATABASE_URL', '')
     if not db_url:
         raise RuntimeError("DATABASE_URL not set")
-    
+
     parsed = urlparse(db_url)
-    
+
     env = os.environ.copy()
     env.update({
         'PGHOST': parsed.hostname or 'localhost',
@@ -340,18 +361,22 @@ def _export_pg_dump(tables):
         'PGPASSWORD': parsed.password or '',
         'PGDATABASE': parsed.path.lstrip('/') if parsed.path else 'flai'
     })
-    
+
+    cmd = ['pg_dump', '--no-owner', '--no-privileges', '--clean']
+    for table in tables:
+        cmd.extend(['-t', table])
+    cmd.extend(['-d', env['PGDATABASE']])
     result = subprocess.run(
-        ['pg_dump', '--no-owner', '--no-privileges', '--clean', '-d', env['PGDATABASE']],
+        cmd,
         env=env,
         capture_output=True,
         text=True
     )
-    
+
     if result.returncode != 0:
         raise RuntimeError(f"pg_dump failed: {result.stderr}")
-    
-    return result.stdout
+
+    return _clean_sql_dump(result.stdout)
 
 
 def _import_sql(dump_path, backup_type):
@@ -363,7 +388,7 @@ def _import_sql(dump_path, backup_type):
     db_url = os.environ.get('DATABASE_URL', '')
     if not db_url:
         raise RuntimeError("DATABASE_URL not set")
-    
+
     parsed = urlparse(db_url)
     pg_env = os.environ.copy()
     pg_env.update({
@@ -373,23 +398,27 @@ def _import_sql(dump_path, backup_type):
         'PGPASSWORD': parsed.password or '',
         'PGDATABASE': parsed.path.lstrip('/') if parsed.path else 'flai'
     })
-    
-    # Run psql with the dump file
+
+    # Read dump, filter version-specific SET commands, pipe via stdin
     logger.info(f"Restoring SQL dump using psql: {dump_path}")
+    with open(dump_path, 'r', encoding='utf-8') as f:
+        dump_content = f.read()
+    cleaned = _clean_sql_dump(dump_content)
     result = subprocess.run(
-        ['psql', '--set', 'ON_ERROR_STOP=1', '-f', dump_path],
+        ['psql', '--set', 'ON_ERROR_STOP=1'],
+        input=cleaned,
         env=pg_env,
         capture_output=True,
         text=True
     )
-    
+
     if result.returncode != 0:
         error_msg = result.stderr.strip() or result.stdout.strip()
         logger.error(f"psql restore failed: {error_msg}")
         raise RuntimeError(f"SQL restore failed: {error_msg}")
-    
+
     logger.info("SQL dump restored successfully")
-    
+
     # Reset sequences for auto-increment primary keys
     sequences_to_reset = ['users_id_seq', 'messages_id_seq']
     with get_db() as conn:

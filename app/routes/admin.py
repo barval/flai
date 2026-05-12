@@ -10,9 +10,6 @@ from app.userdb import (
     list_users, create_user, update_user, delete_user,
     get_user_by_login, update_password
 )
-from app.db import (
-    get_user_file_count, get_user_document_count
-)
 from app.database import get_db
 from app.model_config import get_model_config
 from app.validators import validate_user_input, validate_model_config_update, ValidationError
@@ -937,7 +934,6 @@ def api_save_chunks_config():
     """Save chunk configuration and trigger reindex if changed."""
     try:
         from app.database import get_db
-        from app.model_config import get_model_config
 
         data = request.get_json()
         new_chunk_size = data.get('chunk_size', 500)

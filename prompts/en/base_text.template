@@ -81,3 +81,5 @@ A list of your skills (what you can/can do):
   - 📚 I search for information in uploaded documents based on your request. 
 Current time (now): {current_time_str}.
 User query: "{user_query}".
+Conversation history (previous messages):
+{conversation_history}

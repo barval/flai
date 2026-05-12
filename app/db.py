@@ -475,8 +475,34 @@ def delete_document(doc_id, user_id):
         update_user_storage(user_id, -file_size)
 
 
+def _extract_text_content(content: str) -> str:
+    """Extract only text from JSON content, stripping file_data."""
+    if not content:
+        return content
+    if not (content.startswith('[') or content.startswith('{')):
+        return content
+    try:
+        parsed = json.loads(content)
+        if isinstance(parsed, list):
+            texts = []
+            for item in parsed:
+                if isinstance(item, dict):
+                    if item.get('type') == 'text':
+                        texts.append(item.get('text', ''))
+            joined = ' '.join(t for t in texts if t).strip()
+            return joined if joined else ''
+        if isinstance(parsed, dict):
+            if 'file_data' in parsed:
+                parsed['file_data'] = '[IMAGE DATA]'
+                return json.dumps(parsed, ensure_ascii=False)
+            return json.dumps(parsed, ensure_ascii=False)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return content
+
+
 def get_session_text_history(session_id, max_tokens=None, max_messages=None):
-    """Get session messages for context building."""
+    """Get session messages for context building (text only)."""
     limit = max_messages or 200
     messages = get_session_messages(session_id, limit=limit)
     if max_tokens is not None:
@@ -484,10 +510,11 @@ def get_session_text_history(session_id, max_tokens=None, max_messages=None):
         result = []
         total = 0
         for msg in reversed(messages):
-            tokens = estimate_tokens(msg.get('content', ''))
+            text_content = _extract_text_content(msg.get('content', ''))
+            tokens = estimate_tokens(text_content)
             if total + tokens > max_tokens:
                 break
-            result.append(msg)
+            result.append({**msg, 'content': text_content})
             total += tokens
         return list(reversed(result))
     return messages

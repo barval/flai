@@ -57,7 +57,7 @@ function renderModelCards() {
         html += `
         <div class="model-card" data-module="${mod.id}">
             <h3><span class="module-name">${t(mod.name)}</span></h3>
-            <input type="hidden" class="service-url" data-module="${mod.id}" value="http://llamacpp:8033">
+            <input type="hidden" class="service-url" data-module="${mod.id}" value="http://flai-llamacpp:8033">
             <div class="model-selector">
                 <select class="model-dropdown" data-module="${mod.id}">
                     <option value="">${t('-- Select model --')}</option>
@@ -141,7 +141,7 @@ async function refreshModelsForModule(module, silent = false) {
     if (typeof LLAMA_SWAP_URL !== 'undefined' && LLAMA_SWAP_URL) {
         serviceUrl = LLAMA_SWAP_URL;
         backend = 'llama-swap';
-    } else if (!serviceUrl || serviceUrl === 'http://llamacpp:8033') {
+    } else if (!serviceUrl || serviceUrl === 'http://flai-llamacpp:8033') {
         serviceUrl = 'http://flai-llamaswap:8080';
         backend = 'llama-swap';
     }

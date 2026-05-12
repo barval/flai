@@ -8,12 +8,12 @@ Monitors VRAM/RAM usage in real-time and provides gating logic so that
 fast-worker tasks don't collide with slow-worker GPU operations.
 """
 
+import logging
 import os
 import subprocess
-import logging
 import threading
 import time
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ class ResourceManager:
     def _detect_total_ram_mb(self) -> int:
         """Get total system RAM in MB."""
         try:
-            with open('/proc/meminfo', 'r') as f:
+            with open('/proc/meminfo') as f:
                 for line in f:
                     if line.startswith('MemTotal:'):
                         return int(line.split()[1]) // 1024  # kB → MB
@@ -114,7 +114,7 @@ class ResourceManager:
     def _detect_available_ram_mb(self) -> int:
         """Get available system RAM in MB."""
         try:
-            with open('/proc/meminfo', 'r') as f:
+            with open('/proc/meminfo') as f:
                 total = avail = 0
                 for line in f:
                     if line.startswith('MemTotal:'):
@@ -137,9 +137,8 @@ class ResourceManager:
             offload_to_cpu: whether to offload KQV cache to CPU
         """
         from app.utils import get_gguf_models_cached
-        
+
         hw = self.hardware
-        vram = hw.available_vram_mb  # what's free right now
         total_vram = hw.total_vram_mb
 
         # Get model configuration from database to determine actual file size
@@ -151,7 +150,7 @@ class ResourceManager:
                 model_name = config.get('model')
         except Exception:
             pass
-        
+
         # Try to get model size from GGUF cache
         file_size_mb = None
         block_count = None
@@ -164,7 +163,7 @@ class ResourceManager:
                     block_count = model_info.get('block_count')
             except Exception:
                 pass
-        
+
         # Fallback to approximate sizes if cache data unavailable
         model_vram = {
             'chat': 2500,          # Qwen3-4B ~2.5GB
@@ -172,7 +171,7 @@ class ResourceManager:
             'reasoning': 15000,    # gemma-4-26B-A4B ~15GB
             'embedding': 2000,     # bge-m3 ~2GB
         }
-        
+
         # Use actual file size if available, otherwise use fallback estimate
         if file_size_mb is not None:
             # Add 20% overhead for KV cache and other operations
@@ -270,6 +269,7 @@ class ResourceManager:
         Returns True if unload was successful or not needed.
         """
         import os
+
         import requests as req
 
         backend_type = os.getenv('LLAMACP_BACKEND', 'llamacpp')

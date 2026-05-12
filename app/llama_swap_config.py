@@ -6,10 +6,10 @@ This module reads FLAI model configurations from the database and generates
 a YAML configuration file for llama-swap proxy.
 """
 
-import logging
 import json
+import logging
 import os
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 from app.model_config import get_model_config
 
@@ -59,17 +59,17 @@ class LlamaSwapConfigGenerator:
 
         if model_name:
             import glob
-            
+
             gguf_in_dir = os.path.join(MODELS_DIR, model_name, model_name + '.gguf')
             if os.path.exists(gguf_in_dir):
                 self.logger.info(f"Found model file for {module}: {gguf_in_dir}")
                 return gguf_in_dir
-            
+
             direct_gguf = os.path.join(MODELS_DIR, model_name + '.gguf')
             if os.path.exists(direct_gguf):
                 self.logger.info(f"Found model file for {module}: {direct_gguf}")
                 return direct_gguf
-            
+
             if os.path.isdir(os.path.join(MODELS_DIR, model_name)):
                 possible_dir = os.path.join(MODELS_DIR, model_name)
                 gguf_patterns = [os.path.join(possible_dir, '*.gguf')]
@@ -78,7 +78,7 @@ class LlamaSwapConfigGenerator:
                     if matches:
                         self.logger.info(f"Found model file for {module}: {matches[0]}")
                         return matches[0]
-            
+
             self.logger.warning(f"Model {model_name} not found in {MODELS_DIR}")
 
         return None
@@ -251,7 +251,7 @@ class LlamaSwapConfigGenerator:
             models_list = ', '.join(group_config['models'])
             if not group_config.get('swap', True):
                 lines.append(f'  {group_name}:')
-                lines.append(f'    swap: false')
+                lines.append('    swap: false')
                 lines.append(f'    models: [{models_list}]')
             else:
                 lines.append(f'  {group_name}:')

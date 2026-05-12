@@ -66,5 +66,4 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 
 ## Known issues (fix on sight)
 
-- `app/queue.py:8` imports `sqlite3` — unused dead code, remove
-- `app/database.py` model_configs seed URLs use `http://llamacpp:8033` — should be `http://flai-llamacpp:8033` to match docker-compose service names
+- (none currently known — open a GitHub issue or PR)

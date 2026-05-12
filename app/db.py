@@ -99,7 +99,7 @@ def get_session_messages(
                    mm_model, gen_model
             FROM messages
             WHERE session_id = %s AND timestamp > %s
-            ORDER BY timestamp ASC
+            ORDER BY timestamp ASC, id ASC
             LIMIT %s OFFSET %s
             ''', (session_id, since, limit, offset))
         else:
@@ -109,7 +109,7 @@ def get_session_messages(
                    mm_model, gen_model
             FROM messages
             WHERE session_id = %s
-            ORDER BY timestamp ASC
+            ORDER BY timestamp ASC, id ASC
             LIMIT %s OFFSET %s
             ''', (session_id, limit, offset))
         messages = []

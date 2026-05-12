@@ -883,6 +883,9 @@ msgstr "Used VRAM: 100%, RAM: %2%% - moderate"
 msgid "vram_partial_low"
 msgstr "Used VRAM: 100%, RAM: %2%% - slow, delays"
 
+msgid "ram_estimate"
+msgstr "Used %1%% RAM"
+
 msgid "no_gpu_low"
 msgstr "No GPU. Used %1%% RAM - very slow"
 

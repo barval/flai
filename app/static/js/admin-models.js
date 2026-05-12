@@ -437,7 +437,7 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
         const hasGPU = hw.cuda_detected;
         const totalVRAM = hw.total_vram_mb || 0;
 
-if (hasGPU && totalVRAM > 0) {
+        if (hasGPU && totalVRAM > 0) {
             if (!modelSizeMB) {
                 hintDiv.style.color = '#1CC8E3';
                 hintDiv.style.fontWeight = 'bold';
@@ -471,6 +471,18 @@ if (hasGPU && totalVRAM > 0) {
                         hintDiv.textContent = msg.replace('%2%', offloadPercent);
                     }
                 }
+            }
+        } else if (hasGPU) {
+            const gpuLabel = hw.gpu_name || 'GPU';
+            if (!modelSizeMB) {
+                hintDiv.style.color = '#1CC8E3';
+                hintDiv.style.fontWeight = 'bold';
+                hintDiv.textContent = gpuLabel;
+            } else {
+                const ramPercent = totalRAM > 0 ? Math.round((modelSizeMB * multiplier / totalRAM) * 100) : 0;
+                hintDiv.style.color = '#fd7e14';
+                hintDiv.style.fontWeight = 'bold';
+                hintDiv.textContent = gpuLabel + '. ' + t('ram_estimate').replace('%1%', ramPercent);
             }
         } else {
             const ramPercent = totalRAM > 0 ? Math.round((modelSizeMB * multiplier / totalRAM) * 100) : 0;

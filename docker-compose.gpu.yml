@@ -25,9 +25,11 @@ services:
       - ./llama-swap-config:/config
       # Mount docker socket for GPU detection
       - /var/run/docker.sock:/var/run/docker.sock
+    runtime: nvidia
     environment:
       - REDIS_URL=redis://redis:6379/0
-    # user: "0:988"  # Removed - uses Dockerfile user (appuser:1000)
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     networks:
       - flai_network
     restart: unless-stopped

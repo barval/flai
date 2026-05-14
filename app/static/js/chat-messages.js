@@ -327,7 +327,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             const fileSizeBytes = Math.round((base64Length * 3) / 4);
             fileSizeText = formatFileSize(fileSizeBytes);
         }
-        timeDisplay += ' <span class="file-info">[📎 ' + fileName + (fileSizeText ? ', ' + fileSizeText : '') + ']</span>';
+        timeDisplay += ' <span class="file-info">[📎 ' + escapeHtml(fileName) + (fileSizeText ? ', ' + fileSizeText : '') + ']</span>';
         
         let downloadUrl = '';
         if (filePath) {
@@ -338,10 +338,10 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         
         if (downloadUrl) {
             if (fileType && fileType.startsWith('image/')) {
-                timeDisplay += ' <a href="' + downloadUrl + '" download="' + (fileName || 'image.jpg') + '" class="download-link-inline" title="' + t('download_image') + '" onclick="event.stopPropagation()">⬇️</a>';
+                timeDisplay += ' <a href="' + downloadUrl + '" download="' + escapeHtml(fileName || 'image.jpg') + '" class="download-link-inline" title="' + t('download_image') + '" onclick="event.stopPropagation()">⬇️</a>';
             }
             if (fileType && fileType.startsWith('audio/')) {
-                timeDisplay += ' <a href="' + downloadUrl + '" download="' + (fileName || 'audio.webm') + '" class="download-link-inline" title="' + t('download_audio') + '" onclick="event.stopPropagation()">⬇️</a>';
+                timeDisplay += ' <a href="' + downloadUrl + '" download="' + escapeHtml(fileName || 'audio.webm') + '" class="download-link-inline" title="' + t('download_audio') + '" onclick="event.stopPropagation()">⬇️</a>';
             }
         }
     }
@@ -351,7 +351,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         const base64Length = fileData ? fileData.length : 0;
         const fileSizeBytes = fileData ? Math.round((base64Length * 3) / 4) : 0;
         const fileSize = fileSizeBytes ? formatFileSize(fileSizeBytes) : '';
-        timeDisplay += ' <span class="file-info">[📎 ' + fileName + (fileSize ? ', ' + fileSize : '') + ']</span>';
+        timeDisplay += ' <span class="file-info">[📎 ' + escapeHtml(fileName) + (fileSize ? ', ' + fileSize : '') + ']</span>';
         
         let downloadUrl = '';
         if (filePath) {
@@ -362,10 +362,10 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         
         if (downloadUrl) {
             if (fileType && fileType.startsWith('image/')) {
-                timeDisplay += ' <a href="' + downloadUrl + '" download="' + (fileName || 'generated_image.jpg') + '" class="download-link-inline" title="' + t('download_image') + '" onclick="event.stopPropagation()">⬇️</a>';
+                timeDisplay += ' <a href="' + downloadUrl + '" download="' + escapeHtml(fileName || 'generated_image.jpg') + '" class="download-link-inline" title="' + t('download_image') + '" onclick="event.stopPropagation()">⬇️</a>';
             }
             if (fileType && fileType.startsWith('audio/')) {
-                timeDisplay += ' <a href="' + downloadUrl + '" download="' + (fileName || 'audio.webm') + '" class="download-link-inline" title="' + t('download_audio') + '" onclick="event.stopPropagation()">⬇️</a>';
+                timeDisplay += ' <a href="' + downloadUrl + '" download="' + escapeHtml(fileName || 'audio.webm') + '" class="download-link-inline" title="' + t('download_audio') + '" onclick="event.stopPropagation()">⬇️</a>';
             }
         }
     }

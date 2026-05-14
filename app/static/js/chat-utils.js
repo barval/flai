@@ -58,7 +58,7 @@ function openImageModal(imgSrc, imgAlt) {
     const captionText = document.getElementById('modal-caption');
     modal.style.display = "block";
     modalImg.src = imgSrc;
-    captionText.innerHTML = imgAlt;
+    captionText.textContent = imgAlt;
 }
 
 function closeImageModal() {

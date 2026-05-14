@@ -1,7 +1,9 @@
 # tests/test_rag_module.py
 """Tests for RAG module (Qdrant vector search)."""
+
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 
 
 @pytest.mark.unit
@@ -13,13 +15,13 @@ class TestRagModule:
         """Create mock Flask app."""
         app = Mock()
         app.config = {
-            'QDRANT_URL': 'http://test-qdrant:6333',
-            'QDRANT_API_KEY': 'test-api-key',
-            'RAG_CHUNK_SIZE': 500,
-            'RAG_CHUNK_OVERLAP': 50,
-            'RAG_TOP_K': 15,
-            'RAG_RELEVANCE_THRESHOLD_DEFAULT': 0.3,
-            'RAG_RELEVANCE_THRESHOLD_REASONING': 0.7
+            "QDRANT_URL": "http://test-qdrant:6333",
+            "QDRANT_API_KEY": "test-api-key",
+            "RAG_CHUNK_SIZE": 500,
+            "RAG_CHUNK_OVERLAP": 50,
+            "RAG_TOP_K": 15,
+            "RAG_RELEVANCE_THRESHOLD_DEFAULT": 0.3,
+            "RAG_RELEVANCE_THRESHOLD_REASONING": 0.7,
         }
         app.logger = Mock()
         return app
@@ -28,7 +30,7 @@ class TestRagModule:
         """Test module initialization when Qdrant is available."""
         from modules.rag import RagModule
 
-        with patch('modules.rag.QdrantClient') as mock_client:
+        with patch("modules.rag.QdrantClient") as mock_client:
             mock_client.return_value.get_collections.return_value = MagicMock(collections=[])
 
             module = RagModule(mock_app)
@@ -42,7 +44,7 @@ class TestRagModule:
         """Test module initialization when Qdrant is unavailable."""
         from modules.rag import RagModule
 
-        with patch('modules.rag.QdrantClient') as mock_client:
+        with patch("modules.rag.QdrantClient") as mock_client:
             mock_client.side_effect = Exception("Connection error")
 
             module = RagModule(mock_app)
@@ -53,30 +55,27 @@ class TestRagModule:
         """Test get_collection_name returns properly formatted collection name."""
         from modules.rag import RagModule
 
-        with patch('modules.rag.QdrantClient') as mock_client:
+        with patch("modules.rag.QdrantClient") as mock_client:
             mock_client.return_value.get_collections.return_value = MagicMock(collections=[])
 
             module = RagModule(mock_app)
 
-            collection_name = module._get_collection_name('testuser')
+            collection_name = module._get_collection_name("testuser")
 
             assert collection_name is not None
-            assert 'testuser' in collection_name.lower()
+            assert "testuser" in collection_name.lower()
 
     def test_build_context_prompt(self, mock_app):
         """Test _build_context_prompt creates proper prompt."""
         from modules.rag import RagModule
 
-        with patch('modules.rag.QdrantClient') as mock_client:
+        with patch("modules.rag.QdrantClient") as mock_client:
             mock_client.return_value.get_collections.return_value = MagicMock(collections=[])
 
             module = RagModule(mock_app)
 
-            history = [
-                {'role': 'user', 'content': 'Hello'},
-                {'role': 'assistant', 'content': 'Hi there'}
-            ]
-            prompt = module._build_context_prompt(history, lang='en')
+            history = [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi there"}]
+            prompt = module._build_context_prompt(history, lang="en")
 
             assert prompt is not None
             assert len(prompt) > 0

@@ -1,7 +1,9 @@
 # tests/test_tts_module.py
 """Tests for TTS module (Piper text-to-speech)."""
+
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 
 
 @pytest.mark.unit
@@ -12,10 +14,7 @@ class TestTTSModule:
     def mock_app(self):
         """Create mock Flask app."""
         app = Mock()
-        app.config = {
-            'PIPER_URL': 'http://test-piper:8888/tts',
-            'PIPER_API_TIMEOUT': 30
-        }
+        app.config = {"PIPER_URL": "http://test-piper:8888/tts", "PIPER_API_TIMEOUT": 30}
         app.logger = Mock()
         return app
 
@@ -23,7 +22,7 @@ class TestTTSModule:
         """Test module initialization when Piper is available."""
         from modules.tts import TTSModule
 
-        with patch('modules.tts.requests.get') as mock_get:
+        with patch("modules.tts.requests.get") as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_get.return_value = mock_response
@@ -32,14 +31,14 @@ class TestTTSModule:
 
             # Module should be available when mock returns 200
             # Note: availability is checked during init
-            assert module.tts_url == 'http://test-piper:8888/tts'
+            assert module.tts_url == "http://test-piper:8888/tts"
             assert module.timeout == 30
 
     def test_init_with_unavailable_piper(self, mock_app):
         """Test module initialization when Piper is unavailable."""
         from modules.tts import TTSModule
 
-        with patch('modules.tts.requests.get') as mock_get:
+        with patch("modules.tts.requests.get") as mock_get:
             mock_get.side_effect = Exception("Connection error")
 
             module = TTSModule(mock_app)
@@ -50,26 +49,27 @@ class TestTTSModule:
         """Test synthesize returns None when Piper is unavailable."""
         from modules.tts import TTSModule
 
-        with patch('modules.tts.requests.get') as mock_get:
+        with patch("modules.tts.requests.get") as mock_get:
             mock_get.side_effect = Exception("Connection error")
 
             module = TTSModule(mock_app)
 
-            audio_bytes = module.synthesize('Hello world', 'en', 'male')
+            audio_bytes = module.synthesize("Hello world", "en", "male")
 
             assert audio_bytes is None
 
     def test_synthesize_returns_none_on_timeout(self, mock_app):
         """Test synthesize returns None on timeout."""
-        from modules.tts import TTSModule
         import requests
 
-        with patch('modules.tts.requests.get') as mock_get:
+        from modules.tts import TTSModule
+
+        with patch("modules.tts.requests.get") as mock_get:
             mock_get.side_effect = requests.exceptions.Timeout()
 
             module = TTSModule(mock_app)
 
-            audio_bytes = module.synthesize('Hello world', 'en', 'male')
+            audio_bytes = module.synthesize("Hello world", "en", "male")
 
             assert audio_bytes is None
 
@@ -77,23 +77,21 @@ class TestTTSModule:
         """Test check_availability returns True when Piper is healthy."""
         from modules.tts import TTSModule
 
-        with patch('modules.tts.requests.get') as mock_get:
+        with patch("modules.tts.requests.get") as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_get.return_value = mock_response
 
             module = TTSModule(mock_app)
-            # Force re-check
-            result = module.check_availability()
-
-            # Should be True after successful check
-            assert module.tts_url == 'http://test-piper:8888/tts'
+            # Force re-check — should be True after successful check
+            module.check_availability()
+            assert module.tts_url == "http://test-piper:8888/tts"
 
     def test_check_availability_with_failure(self, mock_app):
         """Test check_availability returns False when Piper is unhealthy."""
         from modules.tts import TTSModule
 
-        with patch('modules.tts.requests.get') as mock_get:
+        with patch("modules.tts.requests.get") as mock_get:
             mock_response = MagicMock()
             mock_response.status_code = 503
             mock_get.return_value = mock_response
@@ -108,7 +106,7 @@ class TestTTSModule:
         """Test check_availability handles exceptions gracefully."""
         from modules.tts import TTSModule
 
-        with patch('modules.tts.requests.get') as mock_get:
+        with patch("modules.tts.requests.get") as mock_get:
             mock_get.side_effect = Exception("Connection error")
 
             module = TTSModule(mock_app)

@@ -1,10 +1,11 @@
 # tests/test_circuit_breaker.py
 """Tests for Circuit Breaker pattern implementation."""
-import pytest
-import time
-from unittest.mock import patch, MagicMock
 
-from app.circuit_breaker import CircuitBreaker, CircuitBreakerOpen
+import time
+
+import pytest
+
+from app.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 
 
 class TestCircuitBreaker:
@@ -70,13 +71,12 @@ class TestCircuitBreaker:
         assert result == "success"
 
     def test_context_manager_raises_when_open(self):
-        """Context manager should raise CircuitBreakerOpen when OPEN."""
+        """Context manager should raise CircuitBreakerOpenError when OPEN."""
         cb = CircuitBreaker(failure_threshold=1, recovery_timeout=30)
         cb.record_failure()
 
-        with pytest.raises(CircuitBreakerOpen) as exc_info:
-            with cb:
-                pass
+        with pytest.raises(CircuitBreakerOpenError) as exc_info, cb:
+            pass
 
         assert "Circuit breaker is open" in str(exc_info.value)
 
@@ -106,10 +106,10 @@ class TestCircuitBreaker:
         state = cb.get_state()
 
         assert isinstance(state, dict)
-        assert 'state' in state
-        assert 'failure_count' in state
-        assert 'failure_threshold' in state
-        assert 'recovery_timeout' in state
+        assert "state" in state
+        assert "failure_count" in state
+        assert "failure_threshold" in state
+        assert "recovery_timeout" in state
 
     def test_half_open_state_allows_one_request(self):
         """HALF_OPEN should allow one request then return to OPEN."""
@@ -132,6 +132,7 @@ class TestCircuitBreaker:
                 cb.record_failure()
 
         import threading
+
         threads = [threading.Thread(target=record_failures) for _ in range(2)]
         for t in threads:
             t.start()
@@ -142,15 +143,15 @@ class TestCircuitBreaker:
         assert cb.state == CircuitBreaker.OPEN
 
 
-class TestCircuitBreakerOpen:
-    """Test cases for CircuitBreakerOpen exception."""
+class TestCircuitBreakerOpenError:
+    """Test cases for CircuitBreakerOpenError exception."""
 
     def test_is_exception(self):
-        """CircuitBreakerOpen should be an Exception."""
-        exc = CircuitBreakerOpen("test message")
+        """CircuitBreakerOpenError should be an Exception."""
+        exc = CircuitBreakerOpenError("test message")
         assert isinstance(exc, Exception)
 
     def test_can_be_caught(self):
-        """CircuitBreakerOpen should be catchable."""
-        with pytest.raises(CircuitBreakerOpen):
-            raise CircuitBreakerOpen("test")
+        """CircuitBreakerOpenError should be catchable."""
+        with pytest.raises(CircuitBreakerOpenError):
+            raise CircuitBreakerOpenError("test")

@@ -7,7 +7,7 @@
   **Run your own AI stack entirely on-premises with no cloud dependencies.**
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-  [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+  [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
   [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 
 [English](README.md) | [Русский](README-ru.md)
@@ -768,7 +768,7 @@ pytest tests/test_resource_manager.py
 pytest tests/test_llama_swap_config.py
 ```
 
-> **Note**: `tests/conftest.py` requires a running PostgreSQL. To run tests independently (without conftest), use `pytest --noconftest` or run individual test files directly.
+> **Note**: `tests/conftest.py` uses an in-memory mock database by default (no PostgreSQL required). In CI, a real PostgreSQL is available via the `DATABASE_URL` env variable.
 
 ### Load Testing
 

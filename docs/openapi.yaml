@@ -3,16 +3,21 @@ info:
   title: FLAI API
   description: |
     Fully Local AI (FLAI) - API Documentation
-    
+
     FLAI is a fully local personal assistant powered by artificial intelligence.
-    
+
     ## Authentication
-    Most endpoints require authentication via session cookie. 
+    Most endpoints require authentication via session cookie.
     Authenticate by POSTing to `/login` with credentials.
-    
+
     ## Rate Limiting
     Login endpoint is rate limited: 5 requests per minute, 10 per hour.
-    
+    Send message endpoint: 15 per minute, 60 per hour.
+
+    ## Feature Gates
+    - Camera endpoints (`/api/cam/*`) require `CAMERA_ENABLED=true`
+    - Debug endpoints (`/api/debug/*`, `/api/rag/*`) require `DEBUG_API_ENABLED=true`
+
     ## Error Responses
     All error responses return JSON with an `error` field:
     ```json
@@ -38,22 +43,42 @@ tags:
   - name: Authentication
     description: User authentication endpoints
   - name: Chat
-    description: Chat and messaging endpoints
+    description: Chat pages and messaging endpoints
   - name: Sessions
     description: Chat session management
   - name: Documents
     description: Document upload and RAG
-  - name: Queue
-    description: Request queue status
   - name: TTS
     description: Text-to-speech synthesis
+  - name: Queue
+    description: Request queue status
   - name: Admin
-    description: Administration endpoints
+    description: Administration endpoints (admin only)
+  - name: Backups
+    description: Backup and restore management (admin only)
+  - name: Camera
+    description: Surveillance camera endpoints (requires CAMERA_ENABLED)
+  - name: Debug
+    description: Debug API (requires DEBUG_API_ENABLED)
+  - name: Files
+    description: File serving
   - name: Health
     description: Health check and monitoring
 
 paths:
   /login:
+    get:
+      tags:
+        - Authentication
+      summary: Show login page
+      description: Render the login form
+      responses:
+        200:
+          description: Login page HTML
+          content:
+            text/html:
+              schema:
+                type: string
     post:
       tags:
         - Authentication
@@ -80,25 +105,14 @@ paths:
                   enum: [light, dark]
                   default: light
       responses:
+        302:
+          description: Redirect to admin panel or chat page
         200:
-          description: Login successful
-          headers:
-            Set-Cookie:
+          description: Login form with error (same page)
+          content:
+            text/html:
               schema:
                 type: string
-                example: session=abc123; Path=/; HttpOnly; SameSite=Lax
-        400:
-          description: Missing fields
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        401:
-          description: Invalid credentials
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
         429:
           description: Rate limit exceeded
           content:
@@ -107,7 +121,7 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /logout:
-    get:
+    post:
       tags:
         - Authentication
       summary: User logout
@@ -115,6 +129,115 @@ paths:
       responses:
         302:
           description: Redirect to login page
+
+  /set-language/{lang}:
+    post:
+      tags:
+        - Authentication
+      summary: Set language
+      description: Change user language preference (ru or en)
+      parameters:
+        - name: lang
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [ru, en]
+      responses:
+        200:
+          description: Language updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        400:
+          description: Invalid language
+
+  /set-voice-gender/{gender}:
+    post:
+      tags:
+        - Authentication
+      summary: Set voice gender
+      description: Change TTS voice gender preference
+      parameters:
+        - name: gender
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [male, female]
+      responses:
+        200:
+          description: Voice gender updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        400:
+          description: Invalid gender
+
+  /set-theme/{theme}:
+    post:
+      tags:
+        - Authentication
+      summary: Set theme
+      description: Change UI theme preference (light or dark)
+      parameters:
+        - name: theme
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [light, dark]
+      responses:
+        200:
+          description: Theme updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        400:
+          description: Invalid theme
+
+  /:
+    get:
+      tags:
+        - Chat
+      summary: Root redirect
+      description: Redirects to /chat or /login depending on auth status
+      responses:
+        302:
+          description: Redirect to /chat or /login
+
+  /chat:
+    get:
+      tags:
+        - Chat
+      summary: Chat page
+      description: Main chat interface
+      security:
+        - sessionAuth: []
+      responses:
+        200:
+          description: Chat page HTML
+          content:
+            text/html:
+              schema:
+                type: string
+        302:
+          description: Redirect to /login if not authenticated
 
   /api/sessions:
     get:
@@ -145,7 +268,7 @@ paths:
       tags:
         - Sessions
       summary: Create new session
-      description: Create a new chat session
+      description: Create a new chat session and set it as current
       security:
         - sessionAuth: []
       responses:
@@ -195,6 +318,171 @@ paths:
         404:
           description: Session not found or access denied
 
+  /api/sessions/{session_id}/model-info:
+    get:
+      tags:
+        - Sessions
+      summary: Get session model info
+      description: Get the model_name associated with a session
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Model info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  model_name:
+                    type: string
+                    example: auto
+        401:
+          description: Not authorized
+        404:
+          description: Session not found
+
+  /api/sessions/{session_id}/update-title:
+    post:
+      tags:
+        - Sessions
+      summary: Update session title
+      description: Rename a chat session
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+              properties:
+                title:
+                  type: string
+      responses:
+        200:
+          description: Title updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  title:
+                    type: string
+        401:
+          description: Not authorized
+        404:
+          description: Session not found
+
+  /api/sessions/{session_id}/delete:
+    post:
+      tags:
+        - Sessions
+      summary: Delete session
+      description: Delete a chat session and all its messages
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Session deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        401:
+          description: Not authorized
+        403:
+          description: Permission denied
+        404:
+          description: Session not found
+
+  /api/sessions/{session_id}/visit:
+    post:
+      tags:
+        - Sessions
+      summary: Mark session visited
+      description: Update last visit timestamp for a session
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Visit recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        401:
+          description: Not authorized
+        404:
+          description: Session not found
+
+  /api/clear_history:
+    post:
+      tags:
+        - Sessions
+      summary: Clear message history
+      description: Delete all messages in current session and reset title
+      security:
+        - sessionAuth: []
+      responses:
+        200:
+          description: History cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        400:
+          description: No active session
+        401:
+          description: Not authorized
+        404:
+          description: Session not found
+
   /api/sessions/{session_id}/messages:
     get:
       tags:
@@ -212,7 +500,7 @@ paths:
             format: uuid
         - name: since
           in: query
-          description: Get messages after this timestamp
+          description: Get messages after this timestamp (ISO 8601)
           schema:
             type: string
             format: date-time
@@ -264,20 +552,10 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-                - $ref: '#/components/schemas/TextMessage'
-                - $ref: '#/components/schemas/ImageMessage'
+              $ref: '#/components/schemas/SendMessageJSON'
           multipart/form-data:
             schema:
-              type: object
-              properties:
-                message:
-                  type: string
-                file:
-                  type: string
-                  format: binary
-                voice_record:
-                  type: boolean
+              $ref: '#/components/schemas/SendMessageFormData'
       responses:
         200:
           description: Message queued
@@ -289,6 +567,8 @@ paths:
           description: Empty message or file too large
         401:
           description: Not authorized
+        413:
+          description: Upload quota exceeded
 
   /api/documents:
     get:
@@ -315,10 +595,11 @@ paths:
       tags:
         - Documents
       summary: Upload document
-      description: Upload a document for RAG (PDF, DOC, DOCX, TXT)
+      description: Upload a document for RAG (PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB)
       security:
         - sessionAuth: []
       requestBody:
+        required: true
         content:
           multipart/form-data:
             schema:
@@ -331,7 +612,7 @@ paths:
                   format: binary
       responses:
         200:
-          description: Document uploaded
+          description: Document uploaded and queued for indexing
           content:
             application/json:
               schema:
@@ -340,24 +621,54 @@ paths:
                   status:
                     type: string
                     example: ok
-                  document_id:
+                  id:
                     type: string
                     format: uuid
         400:
-          description: No file or unsupported type
+          description: No file, unsupported type, or file too large
         401:
           description: Not authorized
+        413:
+          description: Document quota exceeded
 
-  /api/documents/{document_id}:
+  /api/documents/{doc_id}:
+    get:
+      tags:
+        - Documents
+      summary: Download document
+      description: Download the original document file
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: doc_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Document file
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        401:
+          description: Not authorized
+        403:
+          description: Permission denied
+        404:
+          description: Document not found
     delete:
       tags:
         - Documents
       summary: Delete document
-      description: Delete an uploaded document
+      description: Delete an uploaded document and remove from RAG index
       security:
         - sessionAuth: []
       parameters:
-        - name: document_id
+        - name: doc_id
           in: path
           required: true
           schema:
@@ -366,6 +677,14 @@ paths:
       responses:
         200:
           description: Document deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
         401:
           description: Not authorized
         404:
@@ -408,6 +727,10 @@ paths:
                 format: binary
         400:
           description: Missing text
+        401:
+          description: Not authorized
+        500:
+          description: TTS synthesis failed
         503:
           description: TTS service unavailable
 
@@ -416,7 +739,7 @@ paths:
       tags:
         - Queue
       summary: Get queue status
-      description: Get current queue status for user
+      description: Get current queue processing and queued items for user
       security:
         - sessionAuth: []
       responses:
@@ -426,13 +749,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/QueueStatus'
+        401:
+          description: Not authorized
 
   /api/queue/counts:
     get:
       tags:
         - Queue
       summary: Get queue counts
-      description: Get user and total queue counts
+      description: Get user and total queue item counts
       security:
         - sessionAuth: []
       responses:
@@ -447,13 +772,64 @@ paths:
                     type: integer
                   total_queued:
                     type: integer
+        401:
+          description: Not authorized
+
+  /api/queue/result/{request_id}:
+    get:
+      tags:
+        - Queue
+      summary: Check request result
+      description: Poll for the result of a queued request
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Request result or pending status
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      status:
+                        type: string
+                        enum: [pending]
+                  - $ref: '#/components/schemas/QueuedResponse'
+        401:
+          description: Not authorized
+
+  /admin/:
+    get:
+      tags:
+        - Admin
+      summary: Admin panel page
+      description: Main administration panel with system stats and controls
+      security:
+        - sessionAuth: []
+      responses:
+        200:
+          description: Admin HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+        403:
+          description: Forbidden (not admin)
 
   /admin/api/users:
     get:
       tags:
         - Admin
-      summary: Get users
-      description: List all users (admin only)
+      summary: List users
+      description: List all users with session/message/document counts (admin only)
       security:
         - sessionAuth: []
       responses:
@@ -469,12 +845,13 @@ paths:
           description: Not authorized
         403:
           description: Not admin
-
+        500:
+          description: Internal server error
     post:
       tags:
         - Admin
       summary: Create user
-      description: Create a new user (admin only)
+      description: Create a new user account (admin only)
       security:
         - sessionAuth: []
       requestBody:
@@ -507,6 +884,14 @@ paths:
       responses:
         200:
           description: User created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
         400:
           description: Missing fields or duplicate login
         401:
@@ -514,12 +899,135 @@ paths:
         403:
           description: Not admin
 
+  /admin/api/users/{login}:
+    put:
+      tags:
+        - Admin
+      summary: Update user
+      description: Update user details (admin only)
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                service_class:
+                  type: integer
+                is_active:
+                  type: boolean
+                camera_permissions:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        200:
+          description: User updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        401:
+          description: Not authorized
+        403:
+          description: Not admin
+        500:
+          description: Internal server error
+    delete:
+      tags:
+        - Admin
+      summary: Delete user
+      description: Delete a user account (admin only)
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: User deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        401:
+          description: Not authorized
+        403:
+          description: Not admin
+        500:
+          description: Internal server error
+
+  /admin/api/users/{login}/password:
+    put:
+      tags:
+        - Admin
+      summary: Change user password
+      description: Change a user's password (admin only)
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: login
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - new_password
+              properties:
+                new_password:
+                  type: string
+      responses:
+        200:
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        400:
+          description: New password not specified
+        401:
+          description: Not authorized
+        403:
+          description: Not admin
+        500:
+          description: Internal server error
+
   /admin/api/stats:
     get:
       tags:
         - Admin
       summary: Get system stats
-      description: Get database and storage statistics (admin only)
+      description: Get database and storage statistics in bytes (admin only)
       security:
         - sessionAuth: []
       responses:
@@ -529,6 +1037,880 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SystemStats'
+        401:
+          description: Not authorized
+        403:
+          description: Not admin
+
+  /admin/api/hardware:
+    get:
+      tags:
+        - Admin
+      summary: Get hardware info
+      description: Get GPU and RAM information for memory estimation
+      security:
+        - sessionAuth: []
+      responses:
+        200:
+          description: Hardware information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HardwareInfo'
+        500:
+          description: Internal server error
+
+  /admin/api/llamacpp/check:
+    get:
+      tags:
+        - Admin
+      summary: Check llama.cpp connection
+      description: Test if a llama-server instance is reachable
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+      responses:
+        200:
+          description: Connection status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                  error:
+                    type: string
+        400:
+          description: Missing URL parameter
+        401:
+          description: Not authorized
+        403:
+          description: Not admin
+
+  /admin/api/llamacpp/models:
+    get:
+      tags:
+        - Admin
+      summary: List models
+      description: List available models from llama-server, llama-swap, or GGUF files
+      parameters:
+        - name: url
+          in: query
+          schema:
+            type: string
+            format: uri
+        - name: backend
+          in: query
+          schema:
+            type: string
+            enum: [llamacpp, llama-swap]
+        - name: list_type
+          in: query
+          schema:
+            type: string
+            enum: [all, gguf_files]
+            default: all
+      responses:
+        200:
+          description: List of model IDs or filenames
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+        400:
+          description: Missing url parameter (when not gguf_files)
+        500:
+          description: Backend error
+
+  /admin/api/llamacpp/model/{name}:
+    get:
+      tags:
+        - Admin
+      summary: Model info
+      description: Get detailed information about a specific model
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: url
+          in: query
+          schema:
+            type: string
+            format: uri
+        - name: backend
+          in: query
+          schema:
+            type: string
+            enum: [llamacpp, llama-swap]
+        - name: gguf
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        200:
+          description: Model information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  architecture:
+                    type: string
+                  parameters:
+                    type: string
+                  quantization:
+                    type: string
+                  context_length:
+                    type: string
+                  embedding_length:
+                    oneOf:
+                      - type: string
+                      - type: "null"
+                  file_size_mb:
+                    type: integer
+                  model_type:
+                    type: string
+                    enum: [chat, reasoning, multimodal, embedding]
+                  model_path:
+                    type: string
+                  context_source:
+                    type: string
+        400:
+          description: Missing url parameter (when not GGUF)
+        500:
+          description: Backend error
+
+  /admin/api/model_configs:
+    get:
+      tags:
+        - Admin
+      summary: Get model configs
+      description: Return all model configurations from database
+      responses:
+        200:
+          description: Model configurations
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: '#/components/schemas/ModelConfig'
+
+  /admin/api/model_configs/{module}:
+    put:
+      tags:
+        - Admin
+      summary: Update model config
+      description: Update configuration for a specific module (admin only)
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: module
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [chat, reasoning, multimodal, embedding]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model_name:
+                  type: string
+                context_length:
+                  type: integer
+                temperature:
+                  type: number
+                top_p:
+                  type: number
+                timeout:
+                  type: integer
+                service_url:
+                  type: string
+      responses:
+        200:
+          description: Config updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  model_name:
+                    type: string
+                  reindex_triggered:
+                    type: boolean
+                  llama_swap_updated:
+                    type: boolean
+                  max_top_k:
+                    type: integer
+        400:
+          description: Validation error
+        401:
+          description: Not authorized
+        403:
+          description: Not admin
+
+  /admin/api/admin/reindex-all:
+    post:
+      tags:
+        - Admin
+      summary: Trigger reindex
+      description: Manually trigger reindexing of all documents (admin only)
+      security:
+        - sessionAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lang:
+                  type: string
+                  default: ru
+      responses:
+        200:
+          description: Reindex started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+        401:
+          description: Not authorized
+        403:
+          description: Not admin
+        500:
+          description: Queue not available
+
+  /admin/api/admin/chunks:
+    put:
+      tags:
+        - Admin
+      summary: Update chunk config
+      description: Save RAG chunk configuration and optionally trigger reindex (admin only)
+      security:
+        - sessionAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                chunk_size:
+                  type: integer
+                  default: 500
+                chunk_overlap:
+                  type: integer
+                  default: 50
+                chunk_strategy:
+                  type: string
+                  enum: [fixed]
+                  default: fixed
+                rag_top_k:
+                  type: integer
+                  default: 20
+                rag_threshold_default:
+                  type: number
+                  default: 0.3
+                rag_threshold_reasoning:
+                  type: number
+                  default: 0.3
+      responses:
+        200:
+          description: Config saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  reindex_triggered:
+                    type: boolean
+        401:
+          description: Not authorized
+        403:
+          description: Not admin
+
+  /admin/api/backups/:
+    get:
+      tags:
+        - Backups
+      summary: List backups
+      description: List available backup files (admin only)
+      security:
+        - sessionAuth: []
+      responses:
+        200:
+          description: List of backup files
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BackupFile'
+        403:
+          description: Not admin
+
+  /admin/api/backups/create:
+    post:
+      tags:
+        - Backups
+      summary: Create backup
+      description: Create a new database backup archive (admin only)
+      security:
+        - sessionAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum: [full, users]
+                  default: full
+      responses:
+        200:
+          description: Backup created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  filename:
+                    type: string
+                  type:
+                    type: string
+                  size:
+                    type: integer
+        400:
+          description: Invalid backup type
+        403:
+          description: Not admin
+        500:
+          description: Backup creation failed
+
+  /admin/api/backups/restore:
+    post:
+      tags:
+        - Backups
+      summary: Restore backup
+      description: Restore from a backup archive (admin only)
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - filename
+              properties:
+                filename:
+                  type: string
+      responses:
+        200:
+          description: Backup restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  filename:
+                    type: string
+                  type:
+                    type: string
+        400:
+          description: Missing filename or checksum mismatch
+        403:
+          description: Not admin
+        404:
+          description: Backup file not found
+        500:
+          description: Restore failed
+
+  /admin/api/backups/{filename}:
+    delete:
+      tags:
+        - Backups
+      summary: Delete backup
+      description: Delete a backup file (admin only)
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Backup deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        403:
+          description: Not admin or path traversal blocked
+        404:
+          description: Backup file not found
+
+  /admin/api/backups/{filename}/download:
+    get:
+      tags:
+        - Backups
+      summary: Download backup
+      description: Download a backup archive file (admin only)
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Backup file
+          content:
+            application/gzip:
+              schema:
+                type: string
+                format: binary
+        403:
+          description: Not admin or path traversal blocked
+        404:
+          description: Backup file not found
+
+  /api/files/{filename}:
+    get:
+      tags:
+        - Files
+      summary: Serve uploaded file
+      description: Serve uploaded files (images, audio) with session ownership validation
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Path in format session_id/filename
+      responses:
+        200:
+          description: File content with appropriate MIME type
+        400:
+          description: Invalid filename format
+        401:
+          description: Not authorized
+        403:
+          description: Path traversal blocked or access denied
+        404:
+          description: File not found
+
+  /api/cam/status:
+    get:
+      tags:
+        - Camera
+      summary: Camera status
+      description: Get camera module status (only when CAMERA_ENABLED)
+      security:
+        - sessionAuth: []
+      responses:
+        200:
+          description: Camera module status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                  camera_api_url:
+                    type: string
+        401:
+          description: Not authorized
+
+  /api/cam/rooms:
+    get:
+      tags:
+        - Camera
+      summary: Available rooms
+      description: List camera rooms accessible to the current user
+      security:
+        - sessionAuth: []
+      responses:
+        200:
+          description: List of available rooms
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    room:
+                      type: string
+                    name:
+                      type: string
+        401:
+          description: Not authorized
+
+  /api/cam/snapshot/{room}:
+    get:
+      tags:
+        - Camera
+      summary: Room snapshot
+      description: Get a snapshot from a specific camera room
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: room
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Room code (tam, pri, kor, spa, kab, det, gos, kuh, bal)
+      responses:
+        200:
+          description: Snapshot with image data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  image_data:
+                    type: string
+                    description: Base64-encoded image
+                  image_type:
+                    type: string
+                  room_name:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+        401:
+          description: Not authorized
+        500:
+          description: Snapshot failed
+
+  /api/cam/health:
+    get:
+      tags:
+        - Camera
+      summary: Camera health
+      description: Camera module health check
+      security:
+        - sessionAuth: []
+      responses:
+        200:
+          description: Camera health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  module:
+                    type: string
+                  available:
+                    type: boolean
+                  url:
+                    type: string
+                  timeout:
+                    type: integer
+                  check_interval:
+                    type: integer
+                  timestamp:
+                    type: string
+                    format: date-time
+        401:
+          description: Not authorized
+
+  /api/rag/search:
+    post:
+      tags:
+        - Debug
+      summary: Debug RAG search
+      description: Direct RAG search returning raw chunks (requires DEBUG_API_ENABLED)
+      parameters:
+        - name: DEBUG_API_ENABLED
+          in: query
+          description: Requires DEBUG_API_ENABLED=true in .env
+          schema:
+            type: boolean
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                user_id:
+                  type: string
+                top_k:
+                  type: integer
+                  default: 80
+      responses:
+        200:
+          description: RAG search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  query:
+                    type: string
+                  user_id:
+                    type: string
+                  chunks_found:
+                    type: integer
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RAGChunk'
+        400:
+          description: Missing JSON body or query
+        403:
+          description: Debug API disabled
+        503:
+          description: RAG module not available
+
+  /api/rag/stats:
+    get:
+      tags:
+        - Debug
+      summary: Debug RAG stats
+      description: Get RAG module configuration (requires DEBUG_API_ENABLED)
+      responses:
+        200:
+          description: RAG configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: boolean
+                  top_k:
+                    type: integer
+                  chunk_size:
+                    type: integer
+                  chunk_overlap:
+                    type: integer
+                  chunk_strategy:
+                    type: string
+                  collection_name_prefix:
+                    type: string
+        403:
+          description: Debug API disabled
+        503:
+          description: RAG module not available
+
+  /api/debug/health:
+    get:
+      tags:
+        - Debug
+      summary: Debug health
+      description: Detailed health check for all services (requires DEBUG_API_ENABLED)
+      responses:
+        200:
+          description: Detailed health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  web:
+                    type: string
+                    enum: [ok, error]
+                  database:
+                    type: string
+                    enum: [ok, error, unknown]
+                  redis:
+                    type: string
+                    enum: [ok, error, unknown]
+                  qdrant:
+                    type: string
+                    enum: [ok, error, unknown]
+                  llamacpp:
+                    type: string
+                    enum: [ok, error, unknown]
+        403:
+          description: Debug API disabled
+
+  /api/debug/documents:
+    get:
+      tags:
+        - Debug
+      summary: Debug documents
+      description: List all documents for a user (requires DEBUG_API_ENABLED)
+      parameters:
+        - name: user_id
+          in: query
+          schema:
+            type: string
+      responses:
+        200:
+          description: Document list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id:
+                    type: string
+                  documents_count:
+                    type: integer
+                  documents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        filename:
+                          type: string
+                        file_path:
+                          type: string
+                        indexed_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        file_size:
+                          type: integer
+        403:
+          description: Debug API disabled
+        500:
+          description: Database error
+
+  /api/debug/qdrant/{user_id}:
+    get:
+      tags:
+        - Debug
+      summary: Qdrant collection info
+      description: Get Qdrant vector collection info for a user (requires DEBUG_API_ENABLED)
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Collection info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collection:
+                    type: string
+                  vectors_count:
+                    type: integer
+                  points_count:
+                    type: integer
+                  segments_count:
+                    type: integer
+        403:
+          description: Debug API disabled
+        500:
+          description: Qdrant error
+        503:
+          description: RAG not available
+
+  /api/debug/qdrant/{user_id}/search:
+    post:
+      tags:
+        - Debug
+      summary: Qdrant direct search
+      description: Direct Qdrant vector search without RAG processing (requires DEBUG_API_ENABLED)
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query:
+                  type: string
+                limit:
+                  type: integer
+                  default: 10
+      responses:
+        200:
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  query:
+                    type: string
+                  limit:
+                    type: integer
+                  found:
+                    type: integer
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        doc_id:
+                          type: string
+                        score:
+                          type: number
+                        text:
+                          type: string
+        400:
+          description: Missing JSON or query
+        403:
+          description: Debug API disabled
+        500:
+          description: Search error
+        503:
+          description: RAG not available
 
   /health:
     get:
@@ -612,41 +1994,55 @@ components:
           type: string
         file_data:
           type: string
+          nullable: true
         file_type:
           type: string
+          nullable: true
         file_name:
           type: string
+          nullable: true
         file_path:
           type: string
+          nullable: true
         timestamp:
           type: string
           format: date-time
         model_name:
           type: string
+          nullable: true
         response_time:
           oneOf:
             - type: number
             - type: object
+        mm_time:
+          type: number
+          nullable: true
+        gen_time:
+          type: number
+          nullable: true
+        mm_model:
+          type: string
+          nullable: true
+        gen_model:
+          type: string
+          nullable: true
 
-    TextMessage:
+    SendMessageJSON:
       type: object
-      required:
-        - message
       properties:
         message:
           type: string
 
-    ImageMessage:
+    SendMessageFormData:
       type: object
       properties:
         message:
           type: string
-        file_data:
+        file:
           type: string
-        file_type:
-          type: string
-        file_name:
-          type: string
+          format: binary
+        voice_record:
+          type: boolean
 
     QueuedResponse:
       type: object
@@ -661,6 +2057,11 @@ components:
           type: integer
         estimated_wait:
           type: integer
+        user_message_id:
+          type: integer
+        resize_notice:
+          type: string
+          nullable: true
 
     Document:
       type: object
@@ -683,12 +2084,14 @@ components:
         indexed_at:
           type: string
           format: date-time
+          nullable: true
 
     QueueStatus:
       type: object
       properties:
         processing:
           type: object
+          nullable: true
           properties:
             session_id:
               type: string
@@ -703,6 +2106,16 @@ components:
                 type: string
               position:
                 type: integer
+        system:
+          type: object
+          properties:
+            total_queued:
+              type: integer
+            current_load:
+              type: string
+              enum: [normal, high]
+            avg_response_time:
+              type: integer
 
     User:
       type: object
@@ -731,11 +2144,31 @@ components:
       properties:
         chat_db_size:
           type: integer
+          description: Database size (0 for PostgreSQL, tracked server-side)
         user_db_size:
           type: integer
         files_db_size:
           type: integer
+          description: Size of uploads folder in bytes
         documents_db_size:
+          type: integer
+          description: Size of documents folder in bytes
+
+    HardwareInfo:
+      type: object
+      properties:
+        gpu_name:
+          type: string
+          nullable: true
+        cuda_detected:
+          type: boolean
+        total_vram_mb:
+          type: integer
+        available_vram_mb:
+          type: integer
+        total_ram_mb:
+          type: integer
+        available_ram_mb:
           type: integer
 
     HealthStatus:
@@ -762,6 +2195,94 @@ components:
             redis:
               type: string
               enum: [ok, error]
-            ollama:
+            llamacpp:
               type: string
               enum: [ok, error]
+            sd_wrapper:
+              type: string
+              enum: [ok, error]
+            whisper:
+              type: string
+              enum: [ok, error]
+            qdrant:
+              type: string
+              enum: [ok, error]
+
+    ModelConfig:
+      type: object
+      properties:
+        module:
+          type: string
+        model_name:
+          type: string
+        context_length:
+          type: integer
+        temperature:
+          type: number
+        top_p:
+          type: number
+        timeout:
+          type: integer
+        service_url:
+          type: string
+          format: uri
+        chunk_size:
+          type: integer
+        chunk_overlap:
+          type: integer
+        chunk_strategy:
+          type: string
+        top_k:
+          type: integer
+        preload:
+          type: boolean
+        aliases:
+          type: string
+        ttl:
+          type: integer
+
+    BackupFile:
+      type: object
+      properties:
+        filename:
+          type: string
+        type:
+          type: string
+          enum: [full, users, unknown]
+        size:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          nullable: true
+          properties:
+            type:
+              type: string
+            created_at:
+              type: string
+            database_type:
+              type: string
+            tables:
+              type: array
+              items:
+                type: string
+            version:
+              type: string
+            checksum:
+              type: string
+
+    RAGChunk:
+      type: object
+      properties:
+        index:
+          type: integer
+        doc_id:
+          type: string
+        text:
+          type: string
+        score:
+          type: number
+        metadata:
+          type: object

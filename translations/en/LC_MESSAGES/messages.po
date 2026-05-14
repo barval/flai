@@ -903,3 +903,93 @@ msgstr "File size:"
 
 msgid "footer_text"
 msgstr "Fully Local AI (FLAI) v8.1 (c) 2026 Valery Barsukov"
+
+msgid "Could not connect to sd-wrapper"
+msgstr ""
+
+msgid "Created"
+msgstr ""
+
+msgid "Failed to process image request. Please try again."
+msgstr ""
+
+msgid "File not found"
+msgstr ""
+
+msgid "File type does not match extension"
+msgstr ""
+
+msgid "Filename"
+msgstr ""
+
+msgid "Forbidden"
+msgstr ""
+
+msgid "HTTP error {status}"
+msgstr ""
+
+msgid "Image editing request was empty"
+msgstr ""
+
+msgid "Info"
+msgstr ""
+
+msgid "Invalid file path"
+msgstr ""
+
+msgid "Invalid language"
+msgstr ""
+
+msgid "Invalid theme"
+msgstr ""
+
+msgid "Invalid voice gender"
+msgstr ""
+
+msgid "Loading..."
+msgstr ""
+
+msgid "Missing \"url\" parameter"
+msgstr ""
+
+msgid "Missing url"
+msgstr ""
+
+msgid "No llama-server URL provided"
+msgstr ""
+
+msgid "Permission denied"
+msgstr ""
+
+msgid "Session not found"
+msgstr ""
+
+msgid "Session not found or access denied"
+msgstr ""
+
+msgid "Size"
+msgstr ""
+
+msgid "Supported formats: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB"
+msgstr ""
+
+msgid "Type"
+msgstr ""
+
+msgid "Warning"
+msgstr ""
+
+msgid "from GGUF file"
+msgstr ""
+
+msgid "from known models"
+msgstr ""
+
+msgid "llama-server returned {status}"
+msgstr ""
+
+msgid "sd-wrapper returned no image"
+msgstr ""
+
+msgid "sd-wrapper returned no image data"
+msgstr ""

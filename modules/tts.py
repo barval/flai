@@ -1,10 +1,11 @@
 # modules/tts.py
 import logging
 import time
+
 import requests
-from flask import current_app
-from flask_babel import gettext as _
+
 from app.mixins import TranslationMixin
+
 
 class TTSModule(TranslationMixin):
     """Module for text-to-speech synthesis via Piper TTS."""
@@ -20,8 +21,8 @@ class TTSModule(TranslationMixin):
     def init_app(self, app):
         """Initialize module with Flask app."""
         self.app = app
-        self.tts_url = app.config.get('PIPER_URL')
-        self.timeout = app.config.get('PIPER_TIMEOUT', 30)
+        self.tts_url = app.config.get("PIPER_URL")
+        self.timeout = app.config.get("PIPER_TIMEOUT", 30)
         self.check_availability()
         if self.available:
             self.logger.info(f"TTSModule initialized and available (URL: {self.tts_url}), timeout: {self.timeout}s")
@@ -34,7 +35,7 @@ class TTSModule(TranslationMixin):
             self.logger.error("PIPER_URL not configured")
             return False
         try:
-            base_url = self.tts_url.replace('/tts', '')
+            base_url = self.tts_url.replace("/tts", "")
             response = requests.head(f"{base_url}/health", timeout=3)
             if response.status_code == 200:
                 self.available = True
@@ -44,25 +45,21 @@ class TTSModule(TranslationMixin):
         self.available = False
         return False
 
-    def synthesize(self, text, lang='ru', gender='male'):
+    def synthesize(self, text, lang="ru", gender="male"):
         """Generate speech audio bytes for given text and gender."""
         if not self.available:
             self.logger.error("TTS unavailable")
             return None
         try:
-            payload = {
-                'text': text,
-                'language': lang,
-                'gender': gender
-            }
+            payload = {"text": text, "language": lang, "gender": gender}
             t0 = time.time()
             self.logger.info(f"Sending TTS request for text (len={len(text)}) in {lang}, gender={gender}")
             response = requests.post(self.tts_url, json=payload, timeout=self.timeout)
             elapsed = time.time() - t0
             self.logger.info(f"Piper responded in {elapsed:.2f}s with status {response.status_code}")
             if response.status_code == 200:
-                content_type = response.headers.get('content-type', '')
-                if 'audio' in content_type:
+                content_type = response.headers.get("content-type", "")
+                if "audio" in content_type:
                     return response.content  # bytes
                 else:
                     self.logger.error(f"TTS returned non-audio content: {content_type}")

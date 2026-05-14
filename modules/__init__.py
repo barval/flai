@@ -1,13 +1,10 @@
 # modules/__init__.py
-from .base import BaseModule
-from .multimodal import MultimodalModule
-from .cam import CamModule
-from .rag import RagModule
 from .audio import AudioModule
-from .tts import TTSModule
+from .base import BaseModule
+from .cam import CamModule
+from .multimodal import MultimodalModule
+from .rag import RagModule
 from .sd_cpp import SdCppModule
+from .tts import TTSModule
 
-__all__ = [
-    'BaseModule', 'MultimodalModule', 'CamModule',
-    'RagModule', 'AudioModule', 'TTSModule', 'SdCppModule'
-]
+__all__ = ["BaseModule", "MultimodalModule", "CamModule", "RagModule", "AudioModule", "TTSModule", "SdCppModule"]

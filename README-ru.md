@@ -7,7 +7,7 @@
   **Запустите свой собственный стек ИИ полностью на собственном оборудовании без привязки к облаку.**
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-  [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+  [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
   [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 
 [English](README.md) | [Русский](README-ru.md)
@@ -765,7 +765,7 @@ pytest tests/test_resource_manager.py
 pytest tests/test_llama_swap_config.py
 ```
 
-> **Примечание**: `tests/conftest.py` требует работающий PostgreSQL. Чтобы запускать тесты без conftest, используйте `pytest --noconftest` или запускайте тестовые файлы напрямую.
+> **Примечание**: `tests/conftest.py` использует in-memory mock базу данных по умолчанию (PostgreSQL не требуется). В CI доступна реальная PostgreSQL через переменную `DATABASE_URL`.
 
 ### Нагрузочное тестирование
 

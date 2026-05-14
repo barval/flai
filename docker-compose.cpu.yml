@@ -85,7 +85,7 @@ services:
   # LLAMACPP PRESET GENERATOR (init container)
   # ============================================================
   llamacpp-presets:
-    image: python:3.9-slim
+    image: python:3.11-slim
     container_name: flai-llamacpp-presets
     volumes:
       - ./services/llamacpp/models:/models
@@ -109,7 +109,8 @@ services:
     volumes:
       - ./services/llamacpp/models:/models
     depends_on:
-      - llamacpp-presets
+      llamacpp-presets:
+        condition: service_completed_successfully
     networks:
       - flai_network
     restart: unless-stopped
@@ -287,9 +288,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_DB=flai
-      - POSTGRES_USER=flai
-      - POSTGRES_PASSWORD=flai_password
+      - POSTGRES_DB=${POSTGRES_DB:-flai}
+      - POSTGRES_USER=${POSTGRES_USER:-flai}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-flai_password}
     networks:
       - flai_network
     restart: unless-stopped

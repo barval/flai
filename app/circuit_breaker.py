@@ -1,7 +1,7 @@
 """Circuit Breaker pattern implementation for service resilience."""
-import time
+
 import threading
-from typing import Optional
+import time
 
 
 class CircuitBreaker:
@@ -17,13 +17,13 @@ class CircuitBreaker:
         try:
             with cb:
                 result = risky_call()
-        except CircuitBreakerOpen:
+        except CircuitBreakerOpenError:
             return fallback()
     """
 
-    CLOSED = 'closed'
-    OPEN = 'open'
-    HALF_OPEN = 'half_open'
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
 
     def __init__(self, failure_threshold: int = 3, recovery_timeout: int = 30):
         self.failure_threshold = failure_threshold
@@ -65,16 +65,16 @@ class CircuitBreaker:
         """Get circuit breaker state info."""
         with self._lock:
             return {
-                'state': self.state,
-                'failure_count': self.failure_count,
-                'failure_threshold': self.failure_threshold,
-                'recovery_timeout': self.recovery_timeout,
-                'last_failure_time': self.last_failure_time,
+                "state": self.state,
+                "failure_count": self.failure_count,
+                "failure_threshold": self.failure_threshold,
+                "recovery_timeout": self.recovery_timeout,
+                "last_failure_time": self.last_failure_time,
             }
 
     def __enter__(self):
         if not self.can_execute():
-            raise CircuitBreakerOpen(
+            raise CircuitBreakerOpenError(
                 f"Circuit breaker is {self.state}. "
                 f"Failures: {self.failure_count}/{self.failure_threshold}. "
                 f"Retry after {self.recovery_timeout}s."
@@ -87,6 +87,7 @@ class CircuitBreaker:
             self.record_success()
 
 
-class CircuitBreakerOpen(Exception):
+class CircuitBreakerOpenError(Exception):
     """Raised when circuit breaker is open and request is blocked."""
+
     pass

@@ -1,43 +1,39 @@
-import os
 import logging
+import os
+
 import click
-from flask.cli import with_appcontext
 from flask import current_app
-from app.userdb import get_user_by_login, create_user, update_password
+from flask.cli import with_appcontext
+
+from app.userdb import create_user, get_user_by_login, update_password
 
 logger = logging.getLogger(__name__)
 
 
-@click.command('admin-password')
-@click.argument('password')
+@click.command("admin-password")
+@click.argument("password")
 @with_appcontext
 def set_admin_password(password):
     """Set the admin password (creates admin user if it doesn't exist)."""
-    admin = get_user_by_login('admin')
+    admin = get_user_by_login("admin")
     if admin:
-        update_password('admin', password)
-        click.echo('Admin password changed.')
+        update_password("admin", password)
+        click.echo("Admin password changed.")
     else:
-        create_user(
-            login='admin',
-            password=password,
-            name='Administrator',
-            service_class=0,
-            is_admin=True
-        )
-        click.echo('Admin created.')
+        create_user(login="admin", password=password, name="Administrator", service_class=0, is_admin=True)
+        click.echo("Admin created.")
 
 
-@click.command('cleanup-uploads')
-@click.option('--dry-run', is_flag=True, help='Only list orphans, do not delete')
+@click.command("cleanup-uploads")
+@click.option("--dry-run", is_flag=True, help="Only list orphans, do not delete")
 @with_appcontext
 def cleanup_uploads(dry_run):
     """Remove orphaned files from uploads/ not referenced in messages table."""
     from app.database import get_db
 
-    upload_folder = current_app.config.get('UPLOAD_FOLDER', 'data/uploads')
+    upload_folder = current_app.config.get("UPLOAD_FOLDER", "data/uploads")
     if not os.path.isabs(upload_folder):
-        upload_folder = os.path.join(current_app.root_path, '..', upload_folder)
+        upload_folder = os.path.join(current_app.root_path, "..", upload_folder)
     upload_folder = os.path.abspath(upload_folder)
 
     click.echo(f"Scanning {upload_folder} ...")
@@ -46,10 +42,10 @@ def cleanup_uploads(dry_run):
     db_files = set()
     with get_db() as conn:
         c = conn.cursor()
-        c.execute('SELECT file_path FROM messages WHERE file_path IS NOT NULL')
+        c.execute("SELECT file_path FROM messages WHERE file_path IS NOT NULL")
         for row in c.fetchall():
-            if row['file_path']:
-                db_files.add(row['file_path'])
+            if row["file_path"]:
+                db_files.add(row["file_path"])
 
     click.echo(f"Files referenced in DB: {len(db_files)}")
 

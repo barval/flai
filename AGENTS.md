@@ -21,6 +21,8 @@ pytest --cov=app --cov=modules --cov-report=html
 pytest tests/test_admin_routes.py
 
 # Translations
+pybabel extract -F babel.cfg -o translations/messages.pot .
+pybabel update -i translations/messages.pot -d translations
 pybabel compile -d translations  # after editing .po files
 
 # Admin tasks
@@ -55,7 +57,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - **Multimodal models**: MUST be in a subdirectory with `mmproj-*.gguf` (e.g. `Qwen3VL-8B-Instruct-Q4_K_M/`).
 - **LLM backend modes**: `LLAMACP_BACKEND=llama-swap` (default in .env.example) uses llama-swap at `LLAMA_SWAP_URL=http://flai-llamaswap:8080`. `LLAMACP_BACKEND=llamacpp` (direct) uses `LLAMACPP_URL=http://flai-llamacpp:8033`.
 - **Style**: All CSS in `app/static/css/`, JS in `app/static/js/`. No inline styles, no CDN (all assets bundled). Comments/logs in English. User-facing strings via Flask-Babel (`translations/{en,ru}/LC_MESSAGES/messages.po`). Add new keys to both `.po` files.
-- **Lint config** (pyproject.toml): ruff line-length=120, select E/W/F/I/N/UP/B/SIM/PTH, ignore E501/B008/PTH123. `__init__.py` per-file-ignore F401. mypy target 3.9, ignore-missing-imports, excludes tests/ and translations/.
+- **Lint config** (pyproject.toml): ruff line-length=120, select E/W/F/I/N/UP/B/SIM/PTH, ignore E501/B008/PTH123. `__init__.py` per-file-ignore F401. mypy target 3.11, ignore-missing-imports, excludes tests/ and translations/.
 - **Security**: Path traversal checks in `api/files/<path>`. Session ownership validated. CSRF on all forms. Secrets in `.env` only.
 
 ## Testing
@@ -67,4 +69,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 
 ## Known issues (fix on sight)
 
-- (none currently known — open a GitHub issue or PR)
+- **ruff PTH***: 219 errors in `services/` microservices (pathlib). Not part of core app.
+- **mypy** `app/utils.py:654`: `Module has no attribute "parse_rtf"` — striprtf stub issue.
+- **Unit test speed**: CamModule has 5×2s init retries, making test_cam.py ~10s per fixture.
+- **Load tests** (`tests/load/`) excluded from pytest collection (require locust fixtures).

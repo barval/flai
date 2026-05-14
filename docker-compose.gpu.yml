@@ -280,9 +280,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_USER=flai
-      - POSTGRES_PASSWORD=flai_password
-      - POSTGRES_DB=flai
+      - POSTGRES_USER=${POSTGRES_USER:-flai}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-flai_password}
+      - POSTGRES_DB=${POSTGRES_DB:-flai}
     networks:
       - flai_network
     restart: unless-stopped

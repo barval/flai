@@ -13,7 +13,7 @@ import os
 import subprocess
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class HardwareInfo:
         self.total_ram_mb: int = 0
         self.available_ram_mb: int = 0
         self.cpu_count: int = 0
-        self.gpu_name: str = 'unknown'
+        self.gpu_name: str = "unknown"
         self.cuda_detected: bool = False
 
 
@@ -62,14 +62,19 @@ class ResourceManager:
         # Detect GPU via nvidia-smi
         try:
             result = subprocess.run(
-                ['nvidia-smi', '--query-gpu=name,memory.total,memory.used,memory.free',
-                 '--format=csv,noheader,nounits'],
-                capture_output=True, text=True, timeout=10
+                [
+                    "nvidia-smi",
+                    "--query-gpu=name,memory.total,memory.used,memory.free",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             if result.returncode == 0:
-                lines = result.stdout.strip().split('\n')
+                lines = result.stdout.strip().split("\n")
                 if lines:
-                    parts = lines[0].split(',')
+                    parts = lines[0].split(",")
                     hw.gpu_name = parts[0].strip()
                     hw.total_vram_mb = int(parts[1].strip())
                     used = int(parts[2].strip())
@@ -93,20 +98,21 @@ class ResourceManager:
             hw.cuda_detected = False
 
         self.hardware = hw
-        return hw
+        return hw  # type: ignore[no-any-return]
 
     def _detect_total_ram_mb(self) -> int:
         """Get total system RAM in MB."""
         try:
-            with open('/proc/meminfo') as f:
+            with open("/proc/meminfo") as f:
                 for line in f:
-                    if line.startswith('MemTotal:'):
+                    if line.startswith("MemTotal:"):
                         return int(line.split()[1]) // 1024  # kB → MB
         except Exception:
             pass
         # Fallback
         try:
             import resource
+
             return resource.getrlimit(resource.RLIMIT_AS)[0] // (1024 * 1024)
         except Exception:
             return 8192  # Assume 8GB
@@ -114,12 +120,12 @@ class ResourceManager:
     def _detect_available_ram_mb(self) -> int:
         """Get available system RAM in MB."""
         try:
-            with open('/proc/meminfo') as f:
+            with open("/proc/meminfo") as f:
                 total = avail = 0
                 for line in f:
-                    if line.startswith('MemTotal:'):
+                    if line.startswith("MemTotal:"):
                         total = int(line.split()[1]) // 1024
-                    elif line.startswith('MemAvailable:'):
+                    elif line.startswith("MemAvailable:"):
                         avail = int(line.split()[1]) // 1024
                 return avail if avail > 0 else total
         except Exception:
@@ -127,7 +133,7 @@ class ResourceManager:
 
     # ── Adaptive config computation ──
 
-    def compute_llamacpp_config(self, model_type: str) -> Dict[str, Any]:
+    def compute_llamacpp_config(self, model_type: str) -> dict[str, Any]:
         """Compute optimal llama-server parameters for given model type.
 
         Returns dict with:
@@ -143,11 +149,12 @@ class ResourceManager:
 
         # Get model configuration from database to determine actual file size
         from app.model_config import get_model_config
+
         model_name = None
         try:
             config = get_model_config(model_type)
             if config:
-                model_name = config.get('model')
+                model_name = config.get("model")
         except Exception:
             pass
 
@@ -156,45 +163,41 @@ class ResourceManager:
         block_count = None
         if model_name:
             try:
-                gguf_cache = get_gguf_models_cached('/models')
+                gguf_cache = get_gguf_models_cached("/models")
                 model_info = gguf_cache.get(model_name, {})
                 if model_info:
-                    file_size_mb = model_info.get('file_size_mb')
-                    block_count = model_info.get('block_count')
+                    file_size_mb = model_info.get("file_size_mb")
+                    block_count = model_info.get("block_count")
             except Exception:
                 pass
 
         # Fallback to approximate sizes if cache data unavailable
         model_vram = {
-            'chat': 2500,          # Qwen3-4B ~2.5GB
-            'multimodal': 5000,    # Qwen3VL-8B ~5GB
-            'reasoning': 15000,    # gemma-4-26B-A4B ~15GB
-            'embedding': 2000,     # bge-m3 ~2GB
+            "chat": 2500,  # Qwen3-4B ~2.5GB
+            "multimodal": 5000,  # Qwen3VL-8B ~5GB
+            "reasoning": 15000,  # gemma-4-26B-A4B ~15GB
+            "embedding": 2000,  # bge-m3 ~2GB
         }
 
         # Use actual file size if available, otherwise use fallback estimate
-        if file_size_mb is not None:
-            # Add 20% overhead for KV cache and other operations
-            needed = int(file_size_mb * 1.2)
-        else:
-            needed = model_vram.get(model_type, 3000)
+        needed = int(file_size_mb * 1.2) if file_size_mb is not None else model_vram.get(model_type, 3000)
 
         # How much VRAM to reserve for other operations (sd-cli, overhead)
         reserve = 2000  # 2GB safety margin
 
         result = {
-            'n_gpu_layers': -1,  # default: all on GPU
-            'ctx_size': 8192,
-            'cache_capacity': 4096,
-            'offload_kqv': False,
-            'flash_attn': False,
-            'warning': None,
+            "n_gpu_layers": -1,  # default: all on GPU
+            "ctx_size": 8192,
+            "cache_capacity": 4096,
+            "offload_kqv": False,
+            "flash_attn": False,
+            "warning": "",
         }
 
         if not hw.cuda_detected:
             # CPU-only mode
-            result['n_gpu_layers'] = 0
-            result['warning'] = 'No GPU detected — running CPU-only mode'
+            result["n_gpu_layers"] = 0
+            result["warning"] = "No GPU detected — running CPU-only mode"
             return result
 
         # Calculate n_gpu_layers based on available VRAM and model requirements
@@ -203,45 +206,46 @@ class ResourceManager:
             available_for_model = max(0, total_vram - reserve)
             if needed > 0 and available_for_model > 0:
                 layer_ratio = min(1.0, available_for_model / needed)
-                result['n_gpu_layers'] = max(1, int(block_count * layer_ratio))
-                if result['n_gpu_layers'] >= block_count:
-                    result['n_gpu_layers'] = -1  # All layers fit
+                result["n_gpu_layers"] = max(1, int(block_count * layer_ratio))
+                if result["n_gpu_layers"] >= block_count:
+                    result["n_gpu_layers"] = -1  # All layers fit
                 else:
-                    result['offload_kqv'] = True
-                    result['warning'] = f'Model partially offloaded ({result["n_gpu_layers"]}/{block_count} layers on GPU)'
+                    result["offload_kqv"] = True
+                    result["warning"] = (
+                        f"Model partially offloaded ({result['n_gpu_layers']}/{block_count} layers on GPU)"
+                    )
         elif needed + reserve > total_vram:
             # Model doesn't fit fully — reduce layers based on estimate
-            result['n_gpu_layers'] = max(10, int((total_vram - reserve) / needed * 32))
-            result['offload_kqv'] = True
-            result['cache_capacity'] = 2048
-            result['warning'] = (
-                f'Model {model_type} ({needed}MB) partially offloaded to CPU. '
-                f'Performance may be reduced.'
+            result["n_gpu_layers"] = max(10, int((total_vram - reserve) / needed * 32))
+            result["offload_kqv"] = True
+            result["cache_capacity"] = 2048
+            result["warning"] = (
+                f"Model {model_type} ({needed}MB) partially offloaded to CPU. Performance may be reduced."
             )
 
         if total_vram >= 24000:
             # 24GB+ (RTX 3090/4090) — everything fits
-            result['cache_capacity'] = 8192
-            result['flash_attn'] = True
+            result["cache_capacity"] = 8192
+            result["flash_attn"] = True
         elif total_vram >= 16000:
             # 16GB (RTX 4060 Ti / 4070) — tight
-            if result['n_gpu_layers'] == -1 and needed + reserve > total_vram:
+            if result["n_gpu_layers"] == -1 and needed + reserve > total_vram:
                 # Override if we didn't catch it above
-                result['n_gpu_layers'] = max(10, int((total_vram - reserve) / needed * 32))
-                result['offload_kqv'] = True
-                result['cache_capacity'] = 2048
+                result["n_gpu_layers"] = max(10, int((total_vram - reserve) / needed * 32))
+                result["offload_kqv"] = True
+                result["cache_capacity"] = 2048
         elif total_vram >= 8000:
             # 8GB — most models need CPU offloading
-            if result['n_gpu_layers'] == -1:
-                result['n_gpu_layers'] = 10
-            result['offload_kqv'] = True
-            result['ctx_size'] = 4096
-            result['cache_capacity'] = 1024
-            result['warning'] = f'Limited VRAM ({total_vram}MB) — heavy CPU offloading'
+            if result["n_gpu_layers"] == -1:
+                result["n_gpu_layers"] = 10
+            result["offload_kqv"] = True
+            result["ctx_size"] = 4096
+            result["cache_capacity"] = 1024
+            result["warning"] = f"Limited VRAM ({total_vram}MB) — heavy CPU offloading"
         else:
             # <8GB — CPU-only
-            result['n_gpu_layers'] = 0
-            result['warning'] = f'Very limited VRAM ({total_vram}MB) — CPU-only mode'
+            result["n_gpu_layers"] = 0
+            result["warning"] = f"Very limited VRAM ({total_vram}MB) — CPU-only mode"
 
         return result
 
@@ -260,7 +264,7 @@ class ResourceManager:
 
     # ── llama.cpp model management ──
 
-    def unload_llamacpp_model(self, llamacpp_url: str = None) -> bool:
+    def unload_llamacpp_model(self, llamacpp_url: str | None = None) -> bool:
         """Force LLM backend to unload its current model from VRAM.
 
         This is called before sd-cli starts to free ALL VRAM for image operations.
@@ -272,10 +276,10 @@ class ResourceManager:
 
         import requests as req
 
-        backend_type = os.getenv('LLAMACP_BACKEND', 'llamacpp')
+        backend_type = os.getenv("LLAMACP_BACKEND", "llamacpp")
 
-        if backend_type == 'llama-swap':
-            swap_url = os.getenv('LLAMA_SWAP_URL', 'http://flai-llamaswap:8080')
+        if backend_type == "llama-swap":
+            swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
             try:
                 resp = req.post(f"{swap_url.rstrip('/')}/api/models/unload", timeout=30)
                 if resp.status_code == 200:
@@ -288,7 +292,7 @@ class ResourceManager:
                 return False
 
         if not llamacpp_url:
-            llamacpp_url = 'http://flai-llamacpp:8033'
+            llamacpp_url = "http://flai-llamacpp:8033"
 
         try:
             resp = req.get(f"{llamacpp_url.rstrip('/')}/v1/models", timeout=5)
@@ -296,22 +300,18 @@ class ResourceManager:
                 logger.warning("Cannot get llama.cpp model list")
                 return False
 
-            models = resp.json().get('data', [])
+            models = resp.json().get("data", [])
             loaded_model = None
             for m in models:
-                if m.get('status', {}).get('value') == 'loaded':
-                    loaded_model = m['id']
+                if m.get("status", {}).get("value") == "loaded":
+                    loaded_model = m["id"]
                     break
 
             if not loaded_model:
                 logger.info("No llama.cpp model loaded — VRAM already free")
                 return True
 
-            resp = req.post(
-                f"{llamacpp_url.rstrip('/')}/models/unload",
-                json={'model': loaded_model},
-                timeout=30
-            )
+            resp = req.post(f"{llamacpp_url.rstrip('/')}/models/unload", json={"model": loaded_model}, timeout=30)
             if resp.status_code == 200:
                 logger.info(f"Unloaded llama.cpp model: {loaded_model}")
                 return True
@@ -322,30 +322,31 @@ class ResourceManager:
             logger.warning(f"Error unloading llama.cpp model: {e}")
             return False
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Get current resource status for debugging/health check."""
         import os
 
         status = {
-            'gpu_name': self.hardware.gpu_name,
-            'cuda_detected': self.hardware.cuda_detected,
-            'total_vram_mb': self.hardware.total_vram_mb,
-            'available_vram_mb': self.hardware.available_vram_mb,
-            'total_ram_mb': self.hardware.total_ram_mb,
-            'available_ram_mb': self.hardware.available_ram_mb,
-            'cpu_count': self.hardware.cpu_count,
-            'sd_busy': self._sd_busy,
+            "gpu_name": self.hardware.gpu_name,
+            "cuda_detected": self.hardware.cuda_detected,
+            "total_vram_mb": self.hardware.total_vram_mb,
+            "available_vram_mb": self.hardware.available_vram_mb,
+            "total_ram_mb": self.hardware.total_ram_mb,
+            "available_ram_mb": self.hardware.available_ram_mb,
+            "cpu_count": self.hardware.cpu_count,
+            "sd_busy": self._sd_busy,
         }
 
-        backend_type = os.getenv('LLAMACP_BACKEND', 'llamacpp')
-        if backend_type == 'llama-swap':
+        backend_type = os.getenv("LLAMACP_BACKEND", "llamacpp")
+        if backend_type == "llama-swap":
             try:
                 import requests as req
-                swap_url = os.getenv('LLAMA_SWAP_URL', 'http://flai-llamaswap:8080')
+
+                swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
                 resp = req.get(f"{swap_url.rstrip('/')}/running", timeout=5)
                 if resp.status_code == 200:
                     data = resp.json()
-                    status['loaded_models'] = data.get('models', [])
+                    status["loaded_models"] = data.get("models", [])
             except Exception:
                 pass
 
@@ -353,7 +354,7 @@ class ResourceManager:
 
 
 # Global singleton
-_resource_manager: Optional[ResourceManager] = None
+_resource_manager: ResourceManager | None = None
 _rm_lock = threading.Lock()
 
 

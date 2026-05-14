@@ -919,3 +919,78 @@ msgstr "Размер файла:"
 
 msgid "footer_text"
 msgstr "Полностью Локальный ИИ (ПЛИИ) v8.1 (c) 2026 Барсуков Валерий"
+
+msgid "Could not connect to sd-wrapper"
+msgstr "Не удалось подключиться к sd-wrapper"
+
+msgid "Failed to process image request. Please try again."
+msgstr "Не удалось обработать запрос изображения. Попробуйте снова."
+
+msgid "File not found"
+msgstr "Файл не найден"
+
+msgid "File type does not match extension"
+msgstr "Тип файла не соответствует расширению"
+
+msgid "Forbidden"
+msgstr "Доступ запрещён"
+
+msgid "HTTP error {status}"
+msgstr "Ошибка HTTP {status}"
+
+msgid "Image editing request was empty"
+msgstr "Запрос на редактирование изображения пуст"
+
+msgid "Info"
+msgstr "Информация"
+
+msgid "Invalid file path"
+msgstr "Некорректный путь к файлу"
+
+msgid "Invalid language"
+msgstr "Некорректный язык"
+
+msgid "Invalid theme"
+msgstr "Некорректная тема"
+
+msgid "Invalid voice gender"
+msgstr "Некорректный пол голоса"
+
+msgid "Missing \"url\" parameter"
+msgstr "Отсутствует параметр "url""
+
+msgid "Missing url"
+msgstr "Отсутствует url"
+
+msgid "No llama-server URL provided"
+msgstr "Не указан URL llama-server"
+
+msgid "Permission denied"
+msgstr "Нет доступа"
+
+msgid "Session not found"
+msgstr "Сессия не найдена"
+
+msgid "Session not found or access denied"
+msgstr "Сессия не найдена или доступ запрещён"
+
+msgid "Supported formats: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB"
+msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB"
+
+msgid "Warning"
+msgstr "Предупреждение"
+
+msgid "from GGUF file"
+msgstr "из GGUF файла"
+
+msgid "from known models"
+msgstr "из известных моделей"
+
+msgid "llama-server returned {status}"
+msgstr "llama-server вернул {status}"
+
+msgid "sd-wrapper returned no image"
+msgstr "sd-wrapper не вернул изображение"
+
+msgid "sd-wrapper returned no image data"
+msgstr "sd-wrapper не вернул данные изображения"

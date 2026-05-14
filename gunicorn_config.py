@@ -1,7 +1,3 @@
-import multiprocessing
-import logging
-from logging import Formatter
-
 # ── Worker configuration ──
 # Single worker with multiple threads is optimal for I/O-bound
 # operations (waiting for AI model responses).

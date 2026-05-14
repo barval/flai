@@ -3,12 +3,15 @@
 Tests performance of various API endpoints without authentication
 to measure raw server capacity.
 """
-from locust import HttpUser, task, between
+
 import random
+
+from locust import HttpUser, between, task
 
 
 class APILoadUser(HttpUser):
     """Simulates users hitting various API endpoints."""
+
     wait_time = between(1, 3)
 
     @task(5)
@@ -35,6 +38,7 @@ class APILoadUser(HttpUser):
 
 class AuthenticatedChatUser(HttpUser):
     """Simulates authenticated users with full workflow."""
+
     wait_time = between(2, 5)
 
     def on_start(self):
@@ -55,11 +59,11 @@ class AuthenticatedChatUser(HttpUser):
             self.csrf_token = match.group(1)
 
         # Step 2: Login
-        self.client.post("/login", data={
-            "login": self.username,
-            "password": self.password,
-            "csrf_token": self.csrf_token
-        }, allow_redirects=True)
+        self.client.post(
+            "/login",
+            data={"login": self.username, "password": self.password, "csrf_token": self.csrf_token},
+            allow_redirects=True,
+        )
 
         # Step 3: Get chat page CSRF
         chat_page = self.client.get("/chat")
@@ -68,9 +72,7 @@ class AuthenticatedChatUser(HttpUser):
             self.csrf_token = match.group(1)
 
         # Step 4: Create session
-        resp = self.client.post("/api/sessions/new", json={}, headers={
-            "X-CSRFToken": self.csrf_token
-        })
+        resp = self.client.post("/api/sessions/new", json={}, headers={"X-CSRFToken": self.csrf_token})
         if resp.status_code == 200:
             self.session_id = resp.json().get("id")
 

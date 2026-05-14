@@ -1,33 +1,36 @@
 # tests/test_utils.py
 """Unit tests for utility functions."""
-import pytest
-from app.utils import (
-    format_prompt, load_prompt_template, chunk_text,
-    get_current_time_in_timezone, get_current_time_in_timezone_for_db,
-    resize_image_if_needed, extract_text_from_file
-)
-import os
-import tempfile
+
 import base64
-from PIL import Image
 import io
+
+import pytest
+from PIL import Image
+
+from app.utils import (
+    chunk_text,
+    extract_text_from_file,
+    format_prompt,
+    resize_image_if_needed,
+)
 
 
 @pytest.mark.unit
 def test_format_prompt(tmp_path):
     """Test prompt template formatting."""
-    prompts_dir = tmp_path / 'prompts' / 'ru'
+    prompts_dir = tmp_path / "prompts" / "ru"
     prompts_dir.mkdir(parents=True)
-    template_file = prompts_dir / 'test.template'
+    template_file = prompts_dir / "test.template"
     template_file.write_text("Hello, {name}!")
 
     # Patch the PROMPTS_DIR global for the test
     import app.utils
+
     original_dir = app.utils.PROMPTS_DIR
-    app.utils.PROMPTS_DIR = str(tmp_path / 'prompts')
+    app.utils.PROMPTS_DIR = str(tmp_path / "prompts")
 
     try:
-        result = format_prompt('test.template', {'name': 'World'}, lang='ru')
+        result = format_prompt("test.template", {"name": "World"}, lang="ru")
         assert result == "Hello, World!"
     finally:
         app.utils.PROMPTS_DIR = original_dir
@@ -52,12 +55,12 @@ def test_chunk_text():
 def test_resize_image_if_needed_small():
     """Test that image not resized if dimensions OK."""
     # Create small image
-    img = Image.new('RGB', (100, 100), color='red')
+    img = Image.new("RGB", (100, 100), color="red")
     buf = io.BytesIO()
-    img.save(buf, format='JPEG')
-    img_data = base64.b64encode(buf.getvalue()).decode('utf-8')
+    img.save(buf, format="JPEG")
+    img_data = base64.b64encode(buf.getvalue()).decode("utf-8")
     new_data, new_type, new_name, resized, orig_dims, new_dims = resize_image_if_needed(
-        img_data, 'image/jpeg', 'test.jpg', 3840, 2160
+        img_data, "image/jpeg", "test.jpg", 3840, 2160
     )
     assert not resized
     assert new_data == img_data
@@ -67,16 +70,16 @@ def test_resize_image_if_needed_small():
 def test_resize_image_if_needed_large():
     """Test that image is resized when too large."""
     # Create large image
-    img = Image.new('RGB', (4000, 3000), color='blue')
+    img = Image.new("RGB", (4000, 3000), color="blue")
     buf = io.BytesIO()
-    img.save(buf, format='JPEG')
-    img_data = base64.b64encode(buf.getvalue()).decode('utf-8')
+    img.save(buf, format="JPEG")
+    img_data = base64.b64encode(buf.getvalue()).decode("utf-8")
     new_data, new_type, new_name, resized, orig_dims, new_dims = resize_image_if_needed(
-        img_data, 'image/jpeg', 'test.jpg', 1920, 1080
+        img_data, "image/jpeg", "test.jpg", 1920, 1080
     )
     assert resized
-    assert new_type == 'image/jpeg'
-    assert new_name.endswith('.jpg')
+    assert new_type == "image/jpeg"
+    assert new_name.endswith(".jpg")
     # Decode and check new dimensions
     decoded = base64.b64decode(new_data)
     new_img = Image.open(io.BytesIO(decoded))
@@ -87,8 +90,8 @@ def test_resize_image_if_needed_large():
 @pytest.mark.unit
 def test_extract_text_from_file(tmp_path):
     """Test text extraction from .txt file."""
-    file = tmp_path / 'test.txt'
+    file = tmp_path / "test.txt"
     content = "Hello world\nSecond line"
-    file.write_text(content, encoding='utf-8')
+    file.write_text(content, encoding="utf-8")
     extracted = extract_text_from_file(str(file))
     assert extracted == content

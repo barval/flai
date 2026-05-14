@@ -2,12 +2,15 @@
 """Load testing for public endpoints only (no auth required).
 Measures raw server capacity without authentication overhead.
 """
-from locust import HttpUser, task, between
+
 import random
+
+from locust import HttpUser, between, task
 
 
 class PublicUser(HttpUser):
     """Simulates anonymous users hitting public endpoints."""
+
     wait_time = between(0.5, 2)
 
     @task(10)

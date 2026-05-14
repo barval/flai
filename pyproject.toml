@@ -8,22 +8,22 @@ version = "8.1.0"
 description = "Fully Local AI — a personal AI assistant that runs entirely on your hardware"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 authors = [
     {name = "Valery Barval"},
 ]
 
 dependencies = [
-    "flask==2.3.3",
-    "flask-wtf==1.2.1",
-    "flask-limiter==3.5.0",
+    "flask>=3.0",
+    "flask-wtf>=1.2.1",
+    "flask-limiter>=3.5.0",
     "python-dotenv==1.0.0",
     "requests==2.31.0",
     "gunicorn==21.2.0",
-    "Pillow==10.1.0",
+    "Pillow>=10.1.0",
     "pytz==2023.3",
     "redis==5.0.1",
-    "Flask-Babel==2.0.0",
+    "Flask-Babel>=3.0",
     "qdrant-client==1.9.1",
     "PyPDF2==3.0.1",
     "python-docx==1.1.0",
@@ -32,7 +32,8 @@ dependencies = [
     "odfpy>=1.4.0",
     "striprtf>=0.0.26",
     "gguf>=0.10.0",
-    "psycopg2-binary==2.9.9",
+    "psycopg2-binary>=2.9.9",
+    "nvidia-ml-py>=12",
 ]
 
 [project.optional-dependencies]
@@ -42,12 +43,10 @@ test = [
     "pytest-cov==4.1.0",
 ]
 dev = [
-    "ruff==0.4.0",
-    "mypy==1.8.0",
+    "ruff>=0.15.0",
+    "mypy>=2.0.0",
     "types-requests",
     "types-redis",
-    "types-PyPDF2",
-    "types-python-docx",
     "types-pytz",
 ]
 load-test = [
@@ -61,7 +60,7 @@ flai = "wsgi:app"
 include = ["app*", "modules*"]
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py311"
 line-length = 120
 exclude = [
     ".git",
@@ -86,6 +85,7 @@ select = [
 ignore = [
     "E501",   # line length handled by formatter
     "B008",   # do not perform function calls in argument defaults (common in Flask)
+    "E402",   # module level import not at top (required for test setup)
     "PTH123", # open() should be replaced by Path.open() (too invasive)
 ]
 
@@ -93,7 +93,7 @@ ignore = [
 "__init__.py" = ["F401"]  # unused imports in __init__ are expected
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
@@ -107,6 +107,7 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short --strict-markers"
+norecursedirs = ["load", "load/*"]
 markers = [
     "unit: Unit tests (no external dependencies)",
     "integration: Integration tests (with mocked services)",

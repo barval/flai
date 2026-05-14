@@ -1,12 +1,13 @@
 # app/model_config.py
-import time
 import logging
+import time
+
 from app.database import get_db
 
 logger = logging.getLogger(__name__)
 
 # Cache with TTL: {module: {'data': dict, 'time': float}}
-_MODEL_CONFIG_CACHE = {}
+_MODEL_CONFIG_CACHE: dict = {}
 _CACHE_TTL = 60  # seconds
 
 
@@ -15,17 +16,17 @@ def get_model_config(module):
     now = time.time()
     entry = _MODEL_CONFIG_CACHE.get(module)
 
-    if entry and (now - entry['time']) < _CACHE_TTL:
-        return entry['data']
+    if entry and (now - entry["time"]) < _CACHE_TTL:
+        return entry["data"]
 
     try:
         with get_db() as conn:
             c = conn.cursor()
-            c.execute('SELECT * FROM model_configs WHERE module = %s', (module,))
+            c.execute("SELECT * FROM model_configs WHERE module = %s", (module,))
             row = c.fetchone()
             if row:
                 result = dict(row)
-                _MODEL_CONFIG_CACHE[module] = {'data': result, 'time': now}
+                _MODEL_CONFIG_CACHE[module] = {"data": result, "time": now}
                 return result
             return None
     except Exception as e:
@@ -51,10 +52,10 @@ def reload_all_model_configs():
     try:
         with get_db() as conn:
             c = conn.cursor()
-            c.execute('SELECT * FROM model_configs')
+            c.execute("SELECT * FROM model_configs")
             for row in c.fetchall():
-                _MODEL_CONFIG_CACHE[row['module']] = {'data': dict(row), 'time': now}
-            return {k: v['data'] for k, v in _MODEL_CONFIG_CACHE.items()}
+                _MODEL_CONFIG_CACHE[row["module"]] = {"data": dict(row), "time": now}
+            return {k: v["data"] for k, v in _MODEL_CONFIG_CACHE.items()}
     except Exception as e:
         logger.error(f"Error reloading model configs from DB: {e}")
         return {}

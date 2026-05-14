@@ -9,22 +9,19 @@ llama.cpp router mode uses the admin-configured values.
 If no custom configs exist in DB, falls back to hardcoded defaults.
 """
 
-import os
-import sys
 import glob
 import logging
+import os
+
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-DB_URL = os.getenv('DATABASE_URL', 'postgresql://flai:flai_password@postgres:5432/flai')
-PRESET_PATH = '/models/models-preset.ini'
+DB_URL = os.getenv("DATABASE_URL", "postgresql://flai:flai_password@postgres:5432/flai")
+PRESET_PATH = "/models/models-preset.ini"
 
 
 def read_db() -> dict:
@@ -34,10 +31,12 @@ def read_db() -> dict:
         conn = psycopg2.connect(DB_URL)
         conn.cursor_factory = RealDictCursor
         c = conn.cursor()
-        c.execute("SELECT * FROM model_configs WHERE module IS NOT NULL AND module != '' AND module != 'chunks' AND module != 'reranker'")
+        c.execute(
+            "SELECT * FROM model_configs WHERE module IS NOT NULL AND module != '' AND module != 'chunks' AND module != 'reranker'"
+        )
         for row in c.fetchall():
             module = dict(row)
-            module_name = module.get('module', '')
+            module_name = module.get("module", "")
             # Use module name directly as section name (chat, reasoning, multimodal, embedding)
             if module_name:
                 configs[module_name] = module
@@ -51,64 +50,64 @@ def read_db() -> dict:
 def generate_ini(db_configs: dict) -> str:
     """Generate models-preset.ini content from DB configs only."""
     lines = [
-        '# llama.cpp model presets — auto-generated from model_configs DB',
-        '# Edits to this file will be overwritten on next container restart.',
-        '# Use the admin panel to change model parameters.',
-        '',
+        "# llama.cpp model presets — auto-generated from model_configs DB",
+        "# Edits to this file will be overwritten on next container restart.",
+        "# Use the admin panel to change model parameters.",
+        "",
     ]
 
     for section_name in db_configs:
-        lines.append(f'[{section_name}]')
+        lines.append(f"[{section_name}]")
         params = {}
 
         db_cfg = db_configs[section_name]
 
-        if section_name == 'embedding':
-            params['embeddings'] = 'true'
+        if section_name == "embedding":
+            params["embeddings"] = "true"
 
         overrides = {
-            'ctx-size': 'context_length',
-            'temperature': 'temperature',
-            'top-p': 'top_p',
-            'model': 'model_name',
+            "ctx-size": "context_length",
+            "temperature": "temperature",
+            "top-p": "top_p",
+            "model": "model_name",
         }
         for ini_key, db_key in overrides.items():
             val = db_cfg.get(db_key)
-            if val is not None and val != '':
+            if val is not None and val != "":
                 params[ini_key] = str(val)
 
-        if section_name == 'embedding' and 'ctx-size' not in params:
-            params['ctx-size'] = '2048'
+        if section_name == "embedding" and "ctx-size" not in params:
+            params["ctx-size"] = "2048"
 
-        model_val = params.get('model', '')
-        if model_val and not model_val.startswith('/') and not model_val.startswith('.'):
-            if '/' in model_val:
-                if not model_val.endswith('.gguf'):
-                    model_val = model_val + '.gguf'
-                params['model'] = f'/models/{model_val}'
+        model_val = params.get("model", "")
+        if model_val and not model_val.startswith("/") and not model_val.startswith("."):
+            if "/" in model_val:
+                if not model_val.endswith(".gguf"):
+                    model_val = model_val + ".gguf"
+                params["model"] = f"/models/{model_val}"
             else:
-                if not model_val.endswith('.gguf'):
-                    model_val = model_val + '.gguf'
-                if os.path.exists(f'/models/{model_val}'):
-                    params['model'] = f'/models/{model_val}'
-                elif os.path.exists(f'/models/{model_val[:-5]}/{model_val}'):
-                    params['model'] = f'/models/{model_val[:-5]}/{model_val}'
+                if not model_val.endswith(".gguf"):
+                    model_val = model_val + ".gguf"
+                if os.path.exists(f"/models/{model_val}"):
+                    params["model"] = f"/models/{model_val}"
+                elif os.path.exists(f"/models/{model_val[:-5]}/{model_val}"):
+                    params["model"] = f"/models/{model_val[:-5]}/{model_val}"
                 else:
-                    params['model'] = f'/models/{model_val}'
+                    params["model"] = f"/models/{model_val}"
 
-        if section_name == 'multimodal' and 'model' in params:
-            model_path = params['model']
+        if section_name == "multimodal" and "model" in params:
+            model_path = params["model"]
             model_dir = os.path.dirname(model_path)
-            mmproj_files = glob.glob(os.path.join(model_dir, 'mmproj*.gguf'))
+            mmproj_files = glob.glob(os.path.join(model_dir, "mmproj*.gguf"))
             if mmproj_files:
-                params['mmproj'] = mmproj_files[0]
+                params["mmproj"] = mmproj_files[0]
 
         for key, val in params.items():
-            lines.append(f'{key} = {val}')
+            lines.append(f"{key} = {val}")
 
-        lines.append('')
+        lines.append("")
 
-    return '\n'.join(lines)
+    return "\n".join(lines)
 
 
 def main():
@@ -117,12 +116,12 @@ def main():
     content = generate_ini(db_configs)
 
     os.makedirs(os.path.dirname(PRESET_PATH), exist_ok=True)
-    with open(PRESET_PATH, 'w') as f:
+    with open(PRESET_PATH, "w") as f:
         f.write(content)
 
     logger.info(f"[generate_presets] Written {PRESET_PATH}")
     logger.info(content)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

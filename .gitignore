@@ -1,4 +1,3 @@
-```
 # Compiled and build artifacts
 *.pyc
 __pycache__/
@@ -67,13 +66,10 @@ coverage/
 htmlcov/
 
 # Python specific
-*.pyc
 __pycache__/
 *.pyo
 *.pyd
 .Python
-*.so
-.PyCharmCache/
 .mypy_cache/
 .pytest_cache/
 .tox/
@@ -98,11 +94,5 @@ __pycache__/
 *.Z
 *.lz
 *.lzo
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.tar.zst
 
 # Pip build artifacts
-=*
-```

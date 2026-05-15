@@ -50,6 +50,7 @@
 - 🌐 **Multi-language Support** – full interface and AI responses in Russian and English
 - 🌓 **Dark/Light Theme** – toggle between themes with persistent preference storage
 - 🎚️ **Voice Gender Selection** – choose male or female voice for TTS responses
+- 🎭 **Response Styles** – choose the AI's conversational tone in real-time from the chat header: neutral, academic, professional, friendly, or funny. Affects all responses including text, RAG, image analysis, and camera queries.
 - 📊 **Request Queue** – real-time status tracking with position indicators for queued requests
 - 📎 **File Attachments** – support for images, audio files, and documents in conversations
 - 🔔 **Notifications** – unread message indicators and blinking status icons for processing/queued requests
@@ -70,17 +71,10 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 ### What's New in v8.2
 
-| v8.1 (New) | Notes |
+| v8.2 (New) | Notes |
 |------------|-------|
-| llama-swap backend | Added support for llama-swap for dynamic model management and GPU VRAM optimization |
-| Piper TTS chunked synthesis | Large texts are split into sentences and streamed with seamless audio transitions |
-| Image editing optimizations | Automatic image downscaling for Flux.2 Klein 4B to fit 16GB VRAM |
-| Predictive model unloading | Queue worker predicts next required model and unloads current to free VRAM |
-| Admin Backups | Built-in backup/restore system for full and user-only backups |
-| Chunk configuration UI | Admin panel for customizing RAG chunk size, overlap, strategy, thresholds |
-| Circuit Breaker | Prevents cascading failures from llama.cpp and sd.cpp services |
-| Resource Manager | Adaptive GPU/RAM management to prevent OOM errors |
-
+| **Response Style Selector** | Dropdown in the chat header to choose the AI's tone: neutral, academic, professional, friendly, or funny. |
+| **PostgreSQL 18 Upgrade** | Migrated from PostgreSQL 16 to 18 with zero data loss via pg_dump + pg_restore. Mount point changed to `/var/lib/postgresql` (required by 18+). |
 
 ### Core Components
 

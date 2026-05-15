@@ -993,3 +993,24 @@ msgstr ""
 
 msgid "sd-wrapper returned no image data"
 msgstr ""
+
+msgid "response_style_label"
+msgstr "Style"
+
+msgid "response_style_title"
+msgstr "Response style"
+
+msgid "response_style_neutral"
+msgstr "Neutral"
+
+msgid "response_style_academic"
+msgstr "Academic"
+
+msgid "response_style_professional"
+msgstr "Professional"
+
+msgid "response_style_friendly"
+msgstr "Friendly"
+
+msgid "response_style_funny"
+msgstr "Funny"

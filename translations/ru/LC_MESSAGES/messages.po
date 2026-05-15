@@ -994,3 +994,24 @@ msgstr "sd-wrapper не вернул изображение"
 
 msgid "sd-wrapper returned no image data"
 msgstr "sd-wrapper не вернул данные изображения"
+
+msgid "response_style_label"
+msgstr "Стиль"
+
+msgid "response_style_title"
+msgstr "Стиль ответа"
+
+msgid "response_style_neutral"
+msgstr "Нейтральный"
+
+msgid "response_style_academic"
+msgstr "Академический"
+
+msgid "response_style_professional"
+msgstr "Деловой"
+
+msgid "response_style_friendly"
+msgstr "Дружеский"
+
+msgid "response_style_funny"
+msgstr "Весёлый"

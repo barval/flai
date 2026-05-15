@@ -919,6 +919,17 @@ audio {
         font-size: 1rem;
     }
     
+    .response-style-btn {
+        font-size: 0.85rem;
+        padding: 1px 4px;
+    }
+    
+    .response-style-menu {
+        min-width: 180px;
+        right: 0;
+        left: auto;
+    }
+    
     .context-info {
         font-size: 0.8rem;
         padding: 0.2rem 0.4rem;
@@ -971,6 +982,79 @@ audio {
         animation: blink-animation 2s infinite !important;
         -webkit-animation: blink-animation 2s infinite !important;
     }
+}
+
+/* ===== RESPONSE STYLE DROPDOWN ===== */
+.header-divider {
+    color: #999;
+    vertical-align: middle;
+}
+
+.dark-theme .header-divider {
+    color: #666;
+}
+
+.response-style-label {
+    vertical-align: middle;
+}
+
+.response-style-dropdown {
+    display: inline-block;
+    position: relative;
+    vertical-align: middle;
+}
+
+.response-style-btn {
+    background: none;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 1px 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1.4;
+    transition: background-color 0.2s;
+    vertical-align: middle;
+}
+
+.response-style-btn:hover {
+    background-color: #f0f0f0;
+}
+
+.response-style-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    min-width: 200px;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    padding: 4px 0;
+    margin-top: 4px;
+}
+
+.response-style-menu.show {
+    display: block;
+}
+
+.response-style-option {
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: #2c3e50;
+    white-space: nowrap;
+    transition: background-color 0.15s;
+}
+
+.response-style-option:hover {
+    background-color: #e6f2ff;
+}
+
+.response-style-option.selected {
+    background-color: #d0e8ff;
+    font-weight: 600;
 }
 
 /* ===== DARK THEME SUPPORT ===== */
@@ -1060,4 +1144,31 @@ audio {
 
 .dark-theme .loading-text {
     color: #b0b0b0;
+}
+
+.dark-theme .response-style-btn {
+    background-color: #3a3a3a;
+    border-color: #555;
+    color: #ecf0f1;
+}
+
+.dark-theme .response-style-btn:hover {
+    background-color: #4a4a4a;
+}
+
+.dark-theme .response-style-menu {
+    background-color: #2d2d2d;
+    border-color: #444;
+}
+
+.dark-theme .response-style-option {
+    color: #ecf0f1;
+}
+
+.dark-theme .response-style-option:hover {
+    background-color: #3a3a3a;
+}
+
+.dark-theme .response-style-option.selected {
+    background-color: #34495e;
 }

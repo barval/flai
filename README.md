@@ -3,8 +3,7 @@
 
   # Fully Local AI (FLAI)
 
-  **FLAI — a fully local personal assistant powered by artificial intelligence.**
-  **Run your own AI stack entirely on-premises with no cloud dependencies.**
+  **FLAI — a multifunctional, fully local, privacy-first AI platform.**
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
   [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)

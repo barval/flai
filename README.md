@@ -303,7 +303,6 @@ docker exec flai-web flask admin-password YourSecurePassword123
 1. Open `http://localhost:5000` and log in as `admin`
 2. Go to **Admin Panel** → **Models** tab
 3. For each module (Chat, Reasoning, Multimodal, Embedding):
-   - Click 🔄 **Refresh** to load available GGUF models via llama-swap
    - Select the GGUF model from the dropdown
    - Adjust parameters if needed (Context Length, Temperature, Top P, Timeout)
    - Click **Save**
@@ -446,8 +445,7 @@ services/llamacpp/models/
 
 1. Log in as admin and go to `/admin` → **Models** tab
 2. For each module (Chat, Reasoning, Multimodal, Embedding):
-   - **Step 1**: Click 🔄 **Refresh** to load available GGUF models via llama-swap
-   - **Step 2**: Select model, set parameters, click **Save**
+   - Select the GGUF model from the dropdown, set parameters, click **Save**
 
 > 💡 **Changing the embedding model triggers automatic re-indexing** of all documents.
 

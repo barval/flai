@@ -66,9 +66,9 @@
 
 ## 🏗️ Architecture
 
-FLAI v8.1 is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
+FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v8.1
+### What's New in v8.2
 
 | v8.1 (New) | Notes |
 |------------|-------|

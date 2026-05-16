@@ -1006,7 +1006,12 @@ def build_context_prompt(history: list[dict[str, str]], lang: str = "ru") -> str
     lines = []
     for msg in history:
         role = "User" if msg["role"] == "user" else "Assistant"
-        lines.append(f"{role}: {msg['content']}")
+        ts = msg.get("timestamp", "")
+        if ts:
+            ts_clean = ts[:19].replace("T", " ")
+            lines.append(f"{role} [{ts_clean}]: {msg['content']}")
+        else:
+            lines.append(f"{role}: {msg['content']}")
     return "\n".join(lines)
 
 

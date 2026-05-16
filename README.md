@@ -50,6 +50,7 @@
 - 🌐 **Multi-language Support** – full interface and AI responses in Russian and English
 - 🌓 **Dark/Light Theme** – toggle between themes with persistent preference storage
 - 🎚️ **Voice Gender Selection** – choose male or female voice for TTS responses
+- 🎭 **Response Styles** – choose the AI's conversational tone in real-time from the chat header: neutral, academic, professional, friendly, or funny. Affects all responses including text, RAG, image analysis, and camera queries.
 - 📊 **Request Queue** – real-time status tracking with position indicators for queued requests
 - 📎 **File Attachments** – support for images, audio files, and documents in conversations
 - 🔔 **Notifications** – unread message indicators and blinking status icons for processing/queued requests
@@ -66,21 +67,15 @@
 
 ## 🏗️ Architecture
 
-FLAI v8.1 is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
+FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v8.1
+### What's New in v8.2
 
-| v8.1 (New) | Notes |
+| v8.2 (New) | Notes |
 |------------|-------|
-| llama-swap backend | Added support for llama-swap for dynamic model management and GPU VRAM optimization |
-| Piper TTS chunked synthesis | Large texts are split into sentences and streamed with seamless audio transitions |
-| Image editing optimizations | Automatic image downscaling for Flux.2 Klein 4B to fit 16GB VRAM |
-| Predictive model unloading | Queue worker predicts next required model and unloads current to free VRAM |
-| Admin Backups | Built-in backup/restore system for full and user-only backups |
-| Chunk configuration UI | Admin panel for customizing RAG chunk size, overlap, strategy, thresholds |
-| Circuit Breaker | Prevents cascading failures from llama.cpp and sd.cpp services |
-| Resource Manager | Adaptive GPU/RAM management to prevent OOM errors |
-
+| **Response Style Selector** | Dropdown in the chat header to choose the AI's tone: neutral, academic, professional, friendly, or funny. |
+| **Repeat Penalty** | New `repeat_penalty` parameter (range 1.0–2.0) prevents model looping/repetition. Configurable per model in admin panel. Defaults: chat 1.1, reasoning 1.15, multimodal 1.1. |
+| **PostgreSQL 18 Upgrade** | Migrated from PostgreSQL 16 to 18 with zero data loss via pg_dump + pg_restore. Mount point changed to `/var/lib/postgresql` (required by 18+). |
 
 ### Core Components
 
@@ -303,7 +298,7 @@ docker exec flai-web flask admin-password YourSecurePassword123
 2. Go to **Admin Panel** → **Models** tab
 3. For each module (Chat, Reasoning, Multimodal, Embedding):
    - Select the GGUF model from the dropdown
-   - Adjust parameters if needed (Context Length, Temperature, Top P, Timeout)
+   - Adjust parameters if needed (Context Length, Temperature, Top P, Repeat Penalty, Timeout)
    - Click **Save**
 4. For Image Generation: Ensure `SD_WRAPPER_URL=http://flai-sd:7861` is set in `.env`
 
@@ -455,6 +450,7 @@ services/llamacpp/models/
 | Context Length | 8192 | 32768 | 8192 | 512 |
 | Temperature | 0.1 | 0.7 | 0.7 | – |
 | Top P | 0.1 | 0.9 | 0.9 | – |
+| Repeat Penalty | 1.1 | 1.15 | 1.1 | – |
 | Timeout (s) | 60 | 300 | 120 | 30 |
 
 ---
@@ -509,7 +505,7 @@ SD_CPP_DEFAULT_STEPS=10
 
 ## 🎤 Voice Features Setup
 
-### Whisper ASR (Unchanged from v7.5)
+### Whisper ASR
 
 Uses `onerahmet/openai-whisper-asr-webservice` (faster_whisper engine).
 
@@ -518,7 +514,7 @@ Uses `onerahmet/openai-whisper-asr-webservice` (faster_whisper engine).
 docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 ```
 
-### Piper TTS (Unchanged from v7.5)
+### Piper TTS
 
 Uses ONNX Piper models for text-to-speech.
 
@@ -658,7 +654,7 @@ curl http://localhost:5000/metrics
 
 ## 🗺️ Roadmap
 
-### ✅ Completed (v8.0)
+### ✅ Completed
 - **llama.cpp router mode** (`--models-dir`) — single llama-server with dynamic model switching
 - **stable-diffusion.cpp** — Z-Image-Turbo for generation, Flux.2 Klein 4B for editing
 - OpenAI-compatible API (`/v1/chat/completions`, `/v1/embeddings`)
@@ -668,6 +664,7 @@ curl http://localhost:5000/metrics
 - GGUF model management via admin panel
 - All translations updated for llama.cpp terminology
 - **Piper TTS optimization** for large text synthesis — chunked processing with seamless audio transitions
+- **llama-swap backend** — dynamic model management and GPU VRAM optimization
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)
@@ -763,6 +760,8 @@ pytest tests/test_queue.py
 pytest tests/test_security.py
 pytest tests/test_resource_manager.py
 pytest tests/test_llama_swap_config.py
+pytest tests/test_validators.py
+pytest tests/test_model_config.py
 ```
 
 > **Note**: `tests/conftest.py` uses an in-memory mock database by default (no PostgreSQL required). In CI, a real PostgreSQL is available via the `DATABASE_URL` env variable.

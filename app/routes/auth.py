@@ -57,6 +57,7 @@ def login():
             session["language"] = user["language"]
             session["voice_gender"] = user["voice_gender"]
             session["theme"] = theme
+            session["response_style"] = user.get("response_style", "neutral")
 
             if user["is_admin"]:
                 return redirect(url_for("admin.admin_panel"))
@@ -109,4 +110,15 @@ def set_theme(theme):
     session["theme"] = theme
     if "login" in session:
         update_user(session["login"], theme=theme)
+    return jsonify({"success": True})
+
+
+@bp.route("/set-response-style/<style>", methods=["POST"])
+def set_response_style(style):
+    valid_styles = ["neutral", "academic", "professional", "friendly", "funny"]
+    if style not in valid_styles:
+        return jsonify({"error": _("Invalid response style")}), 400
+    session["response_style"] = style
+    if "login" in session:
+        update_user(session["login"], response_style=style)
     return jsonify({"success": True})

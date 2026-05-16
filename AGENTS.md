@@ -1,4 +1,4 @@
-# AGENTS.md — FLAI v8.1
+# AGENTS.md — FLAI v8.2
 
 ## Commands (exact)
 
@@ -66,6 +66,39 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - External services are ALWAYS mocked: Redis (`redis.from_url`), llama.cpp (`app.llamacpp_client.LlamaCppClient`), Qdrant (`modules.rag.QdrantClient`)
 - Available markers: `unit`, `integration`, `e2e`, `slow`, `requires_db`, `requires_redis`
 - Example: `pytest -m "not slow"` to skip slow tests
+
+## Localization & Language
+- All **code comments** and **log messages** must be in English.
+- All **user-facing messages** (UI, notifications, errors) must use the selected user language (i18n).
+- Always keep translation files (`messages.po`) up‑to‑date and complete.
+- For Russian, the file `deploy-ru.sh` is the only place where Russian comments are allowed.
+
+## Dependencies & External Resources
+- The project must run **fully offline** after model/voice downloads.
+- No external scripts, CDN links, or remotely loaded modules in production.
+- All CSS must reside in `.css` files; all JavaScript in `.js` files (no inline styles/scripts).
+- External dependencies (models, voices) must be documented with size, license, and download instructions.
+
+## Cleanliness & Dead Code
+- No unused files, dead code, or unused CSS/JS.
+- Every import must be used; every translation key must appear in the UI.
+- Run `pybabel extract` / `pybabel update` / `pybabel compile` after modifying translatable strings.
+- Remove any leftover debug prints, commented-out blocks, or obsolete TODOs.
+
+## Documentation
+- README files in English and Russian must always reflect the current state of the project.
+- Each version must include release notes (“What’s new”).
+- Provide a one‑command deployment script (English and Russian versions) that handles:
+  - Environment setup
+  - Model downloads
+  - Component builds
+  - Full project launch
+- List all used models, their licenses, and approximate sizes in README.
+
+## Code Quality
+- No typos, syntax errors, or unreachable code.
+- Lint with `ruff check .` and type‑check with `mypy app/ modules/`.
+- Always write clean, self‑documenting code; add comments only when necessary.
 
 ## Known issues (fix on sight)
 

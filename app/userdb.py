@@ -31,6 +31,7 @@ def create_user(
     language: str = "ru",
     voice_gender: str = "male",
     theme: str = "light",
+    response_style: str = "neutral",
 ) -> None:
     """Create a new user."""
     if camera_permissions is not None:
@@ -42,11 +43,22 @@ def create_user(
         c.execute(
             """
             INSERT INTO users (login, name, password_hash, service_class, is_admin,
-                               camera_permissions, language, voice_gender, theme)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                               camera_permissions, language, voice_gender, theme, response_style)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (login) DO NOTHING
         """,
-            (login, name, password_hash, service_class, is_admin, camera_permissions, language, voice_gender, theme),
+            (
+                login,
+                name,
+                password_hash,
+                service_class,
+                is_admin,
+                camera_permissions,
+                language,
+                voice_gender,
+                theme,
+                response_style,
+            ),
         )
 
 
@@ -59,6 +71,7 @@ def update_user(
     language=None,
     voice_gender=None,
     theme=None,
+    response_style=None,
 ):
     """Update user data (except password)."""
     updates = []
@@ -72,6 +85,7 @@ def update_user(
         "language": language,
         "voice_gender": voice_gender,
         "theme": theme,
+        "response_style": response_style,
     }
 
     for field, value in values_to_update.items():
@@ -228,10 +242,12 @@ def init_user_db() -> None:
                 language TEXT DEFAULT 'ru',
                 voice_gender TEXT DEFAULT 'male',
                 theme TEXT DEFAULT 'light',
+                response_style TEXT DEFAULT 'neutral',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        c.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS response_style TEXT DEFAULT 'neutral'")
     _ensure_admin_exists()
 
 

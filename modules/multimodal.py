@@ -123,13 +123,36 @@ class MultimodalModule(TranslationMixin):
         return self._build_context_prompt(history_msgs, lang)
 
     def process_image_with_text(
-        self, image_data: str, user_text: str, current_time_str: str, lang: str = "ru", session_id: str | None = None
+        self,
+        image_data: str,
+        user_text: str,
+        current_time_str: str,
+        lang: str = "ru",
+        session_id: str | None = None,
+        response_style: str = "neutral",
     ) -> tuple[str | None, str | None]:
         """Process image with text, including conversation history."""
         if not self.check_availability():
             return None, self._("Multimodal model unavailable", lang)
 
         response_language = "Russian" if lang == "ru" else "English"
+        style_map = {
+            "ru": {
+                "neutral": "Без особого стиля.",
+                "academic": "Отвечай в формальном академическом стиле. Используй точную терминологию, строгие формулировки и логически структурированные аргументы. Избегай разговорных выражений. При необходимости ссылайся на факты.",
+                "professional": "Отвечай в профессиональном деловом стиле. Будь чётким, конкретным и по делу. Используй ясные формулировки. Избегай лишних эмоций и воды.",
+                "friendly": "Отвечай в тёплом дружеском стиле. Будь приветлив и располагай к общению. Используй естественный разговорный тон. Покажи эмпатию и заботу о пользователе. Можно использовать эмодзи, если они уместны и помогают выразить эмоцию.",
+                "funny": "Отвечай с юмором и остроумием. Будь игрив и занимателен. Используй шутки, метафоры и неожиданные сравнения, но не забывай давать полезную информацию по существу вопроса. Эмодзи приветствуются, если они к месту и усиливают эффект.",
+            },
+            "en": {
+                "neutral": "Default style.",
+                "academic": "Answer in a formal academic style. Use precise terminology, rigorous wording, and logically structured arguments. Avoid colloquial expressions. Reference facts where appropriate.",
+                "professional": "Answer in a professional business-like style. Be clear, specific, and to the point. Use straightforward wording. Avoid unnecessary emotions or fluff.",
+                "friendly": "Answer in a warm, friendly style. Be welcoming and approachable. Use a natural conversational tone. Show empathy and care for the user. You may use emojis when they are appropriate and help convey emotion.",
+                "funny": "Answer with humor and wit. Be playful and entertaining. Use jokes, metaphors, and unexpected comparisons, but still provide useful information on the topic. Emojis are welcome when they fit the context and enhance the effect.",
+            },
+        }
+        style_instruction = style_map.get(lang, style_map["ru"]).get(response_style, style_map["ru"]["neutral"])
 
         context_str = self._get_context_for_model(session_id, user_text, lang)  # type: ignore[arg-type]
 
@@ -141,6 +164,7 @@ class MultimodalModule(TranslationMixin):
                     "user_query": user_text,
                     "response_language": response_language,
                     "conversation_history": context_str,
+                    "response_style": style_instruction,
                 },
                 lang=lang,
             )
@@ -151,6 +175,7 @@ class MultimodalModule(TranslationMixin):
                     "current_time_str": current_time_str,
                     "response_language": response_language,
                     "conversation_history": context_str,
+                    "response_style": style_instruction,
                 },
                 lang=lang,
             )
@@ -164,7 +189,9 @@ class MultimodalModule(TranslationMixin):
         )
         return response, None
 
-    def generate_image_params(self, user_query: str, lang: str = "ru") -> tuple[dict[str, Any] | None, str | None]:
+    def generate_image_params(
+        self, user_query: str, lang: str = "ru", response_style: str = "neutral"
+    ) -> tuple[dict[str, Any] | None, str | None]:
         """Generate parameters for image creation.
         Chooses the prompt template based on SD_MODEL_TYPE config.
         """
@@ -179,6 +206,7 @@ class MultimodalModule(TranslationMixin):
             template_name,
             {
                 "image_query": user_query,
+                "response_style": "",
             },
             lang=lang,
         )
@@ -228,7 +256,7 @@ class MultimodalModule(TranslationMixin):
         return self.llamacpp.chat(messages, model_type="multimodal", lang=lang)  # type: ignore[no-any-return]
 
     def generate_edit_params(
-        self, user_query: str, image_base64: str, lang: str = "ru"
+        self, user_query: str, image_base64: str, lang: str = "ru", response_style: str = "neutral"
     ) -> tuple[dict[str, Any] | None, str | None]:
         """Generate editing parameters for an existing image.
         Uses multimodal model to analyze the image + edit request.
@@ -246,6 +274,7 @@ class MultimodalModule(TranslationMixin):
             "create_image_edit.template",
             {
                 "edit_query": user_query,
+                "response_style": "",
             },
             lang=lang,
         )

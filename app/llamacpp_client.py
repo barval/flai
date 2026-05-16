@@ -76,6 +76,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         context = config.get("context_length", 4096)
         temperature = config.get("temperature", 0.7)
         top_p = config.get("top_p", 0.9)
+        repeat_penalty = config.get("repeat_penalty", 1.1)
 
         payload = {
             "model": model,
@@ -84,6 +85,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             "max_tokens": context,
             "temperature": temperature,
             "top_p": top_p,
+            "repeat_penalty": repeat_penalty,
             "stop": ["</s>", "<|eot_id|>"],
         }
 
@@ -170,6 +172,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         base_url = self.get_base_url()
         temperature = config.get("temperature", 0.7)
         top_p = config.get("top_p", 0.9)
+        repeat_penalty = config.get("repeat_penalty", 1.1)
 
         model_name = model_type
 
@@ -179,6 +182,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
             "stream": False,
             "temperature": temperature,
             "top_p": top_p,
+            "repeat_penalty": repeat_penalty,
             "stop": ["</s>", "<|eot_id|>"],
         }
 

@@ -44,7 +44,20 @@
 
     <div class="chat-main">
         <div class="chat-header">
-            <h2>{{ _('Chat') }} <span id="status-counter" class="status-counter" title="{{ _('Your requests in queue / Total in queue') }}">📊 0/0</span></h2>
+            <h2>{{ _('Chat') }} <span id="status-counter" class="status-counter" title="{{ _('Your requests in queue / Total in queue') }}">📊 0/0</span>&nbsp;&nbsp;<span class="header-divider">|</span>&nbsp;&nbsp;<span class="response-style-label">{{ _('response_style_label') }}:</span>
+                <div class="response-style-dropdown">
+                    <button class="response-style-btn" id="response-style-btn" title="{{ _('response_style_title') }}">
+                        {% set style_icons = {'neutral': '🤖', 'academic': '🎓', 'professional': '💼', 'friendly': '😊', 'funny': '😂'} %}
+                        {{ style_icons.get(session.get('response_style', 'neutral'), '🤖') }}
+                    </button>
+                    <div class="response-style-menu" id="response-style-menu">
+                        <div class="response-style-option{% if session.get('response_style', 'neutral') == 'neutral' %} selected{% endif %}" data-style="neutral">🤖 {{ _('response_style_neutral') }}</div>
+                        <div class="response-style-option{% if session.get('response_style') == 'academic' %} selected{% endif %}" data-style="academic">🎓 {{ _('response_style_academic') }}</div>
+                        <div class="response-style-option{% if session.get('response_style') == 'professional' %} selected{% endif %}" data-style="professional">💼 {{ _('response_style_professional') }}</div>
+                        <div class="response-style-option{% if session.get('response_style') == 'friendly' %} selected{% endif %}" data-style="friendly">😊 {{ _('response_style_friendly') }}</div>
+                        <div class="response-style-option{% if session.get('response_style') == 'funny' %} selected{% endif %}" data-style="funny">😂 {{ _('response_style_funny') }}</div>
+                    </div>
+                </div></h2>
             <div class="context-info-container">
                 <div id="context-info" class="context-info">{{ _('Messages') }}: 0</div>
                 <button id="save-chat-button" class="save-chat-button" title="{{ _('Save as HTML') }}">💾</button>
@@ -88,6 +101,7 @@
 <script>
 window.initialSessionId = {{ current_session|tojson }};
 window.CURRENT_USER_LOGIN = {{ session.get('login', '')|tojson }};
+window.CURRENT_RESPONSE_STYLE = {{ session.get('response_style', 'neutral')|tojson }};
 window.CURRENT_EMBEDDING_MODEL = {{ embedding_model|tojson }};
 window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'send': {{ _("Send")|tojson }},
@@ -168,7 +182,14 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'status_indexed': {{ _('status_indexed')|tojson }},
     'status_failed': {{ _('status_failed')|tojson }},
     'status_unknown': {{ _('status_unknown')|tojson }},
-    'transcribing': {{ _('transcribing')|tojson }}
+    'transcribing': {{ _('transcribing')|tojson }},
+    'response_style_title': {{ _('response_style_title')|tojson }},
+    'response_style_label': {{ _('response_style_label')|tojson }},
+    'response_style_neutral': {{ _('response_style_neutral')|tojson }},
+    'response_style_academic': {{ _('response_style_academic')|tojson }},
+    'response_style_professional': {{ _('response_style_professional')|tojson }},
+    'response_style_friendly': {{ _('response_style_friendly')|tojson }},
+    'response_style_funny': {{ _('response_style_funny')|tojson }}
 });
 window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
 function t(key) {
@@ -193,5 +214,6 @@ console.log('Chat TRANSLATIONS merged:', window.TRANSLATIONS);
 <script src="{{ url_for('static', filename='js/chat-recording.js') }}"></script>
 <script src="{{ url_for('static', filename='js/chat-export.js') }}"></script>
 <script src="{{ url_for('static', filename='js/chat-queue.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-style.js') }}"></script>
 <script src="{{ url_for('static', filename='js/chat-init.js') }}"></script>
 {% endblock %}

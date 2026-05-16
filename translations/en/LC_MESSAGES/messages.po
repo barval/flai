@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 8.1\n"
+"Project-Id-Version: FLAI 8.2\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-05 12:00+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -618,6 +618,12 @@ msgstr "Top P must be between 0.0 and 1.0."
 msgid "Timeout must be between 0 and 1200 seconds."
 msgstr "Timeout must be between 0 and 1200 seconds."
 
+msgid "Repeat Penalty"
+msgstr "Repeat Penalty"
+
+msgid "Repeat penalty must be between 1.0 and 2.0."
+msgstr "Repeat penalty must be between 1.0 and 2.0."
+
 msgid "Reindexing all documents with new embedding model started. This may take a while."
 msgstr "Reindexing all documents with new embedding model started. This may take a while."
 
@@ -902,7 +908,7 @@ msgid "File size:"
 msgstr "File size:"
 
 msgid "footer_text"
-msgstr "Fully Local AI (FLAI) v8.1 (c) 2026 Valery Barsukov"
+msgstr "Fully Local AI (FLAI) v8.2 (c) 2026 Valery Barsukov"
 
 msgid "Could not connect to sd-wrapper"
 msgstr ""
@@ -993,3 +999,24 @@ msgstr ""
 
 msgid "sd-wrapper returned no image data"
 msgstr ""
+
+msgid "response_style_label"
+msgstr "Style"
+
+msgid "response_style_title"
+msgstr "Response style"
+
+msgid "response_style_neutral"
+msgstr "Neutral"
+
+msgid "response_style_academic"
+msgstr "Academic"
+
+msgid "response_style_professional"
+msgstr "Professional"
+
+msgid "response_style_friendly"
+msgstr "Friendly"
+
+msgid "response_style_funny"
+msgstr "Funny"

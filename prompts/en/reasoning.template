@@ -1,5 +1,6 @@
 # INSTRUCTION
 Response language: {response_language}.
+Response style: {response_style}.
 Response format: Without reasoning. Do not ask questions. Do not write about things not in the user's request.
 Task: Answer the user's request.
 

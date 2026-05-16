@@ -507,7 +507,13 @@ class RedisRequestQueue:
         return config.get("model_name") if config else None
 
     def _try_rag_answer(
-        self, query: str, session_id: str, user_id: str, lang: str, strict: bool = False
+        self,
+        query: str,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        strict: bool = False,
+        response_style: str = "neutral",
     ) -> tuple[str | None, str | None]:
         """Attempt to answer using RAG."""
         rag = self.app.modules.get("rag")
@@ -516,7 +522,9 @@ class RedisRequestQueue:
                 threshold = self.app.config.get("RAG_RELEVANCE_THRESHOLD_REASONING", 0.7)
             else:
                 threshold = self.app.config.get("RAG_RELEVANCE_THRESHOLD_DEFAULT", 0.5)
-            answer, error, model_name = rag.generate_answer(user_id, query, session_id, lang=lang, threshold=threshold)
+            answer, error, model_name = rag.generate_answer(
+                user_id, query, session_id, lang=lang, threshold=threshold, response_style=response_style
+            )
             if answer is not None and error is None:
                 return answer, model_name
         return None, None
@@ -679,23 +687,27 @@ class RedisRequestQueue:
             extra=extra,
         )
 
-    def _process_image_gen_task(self, query: str, session_id: str, user_id: str, lang: str) -> dict[str, Any]:
+    def _process_image_gen_task(
+        self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
+    ) -> dict[str, Any]:
         """Handle image generation from text (router action_type='image')."""
         if "image" not in self.app.modules:
             return self._build_error_response(
-                session_id, "⚠️ " + self.app.modules["base"]._("Image generation module unavailable", lang=lang), 0, lang
+                session_id, self.app.modules["base"]._("Image generation module unavailable", lang=lang), 0, lang
             )
         self.app.modules["image"].check_availability()
         if not self.app.modules["image"].available:
             return self._build_error_response(
-                session_id, "⚠️ " + self.app.modules["base"]._("Image generation module unavailable", lang=lang), 0, lang
+                session_id, self.app.modules["base"]._("Image generation module unavailable", lang=lang), 0, lang
             )
 
         mm_start = time.time()
-        prompt_data, error = self.app.modules["multimodal"].generate_image_params(query, lang=lang)
+        prompt_data, error = self.app.modules["multimodal"].generate_image_params(
+            query, lang=lang, response_style=response_style
+        )
         mm_time = round(time.time() - mm_start, 1)
         if error:
-            return self._build_error_response(session_id, f"⚠️ {error}", mm_time, lang)
+            return self._build_error_response(session_id, error, mm_time, lang)
 
         gen_start = time.time()
         image_result = self.app.modules["image"]._call_wrapper(prompt_data, lang=lang)
@@ -742,12 +754,19 @@ class RedisRequestQueue:
         )
 
     def _process_camera_task(
-        self, query: str, session_id: str, user_id: str, message_text: str, current_time_str: str, lang: str
+        self,
+        query: str,
+        session_id: str,
+        user_id: str,
+        message_text: str,
+        current_time_str: str,
+        lang: str,
+        response_style: str = "neutral",
     ) -> dict[str, Any]:
         """Handle camera snapshot request (router action_type='camera')."""
         if "cam" not in self.app.modules or not self.app.modules["cam"].available:
             return self._build_error_response(
-                session_id, "⚠️ " + self.app.modules["base"]._("Camera module unavailable", lang=lang), 0, lang
+                session_id, self.app.modules["base"]._("Camera module unavailable", lang=lang), 0, lang
             )
 
         camera_start = time.time()
@@ -755,7 +774,7 @@ class RedisRequestQueue:
         camera_time = round(time.time() - camera_start, 1)
 
         if not camera_result["success"]:
-            return self._build_error_response(session_id, f"⚠️ {camera_result['error']}", camera_time, lang)
+            return self._build_error_response(session_id, camera_result["error"], camera_time, lang)
 
         template = self.app.modules["base"]._("Camera snapshot: {room_name}", lang=lang)
         translated_text = template.format(room_name=camera_result["room_name"])
@@ -791,7 +810,12 @@ class RedisRequestQueue:
         if message_text and "multimodal" in self.app.modules and self.app.modules["multimodal"].available:
             mm_start = time.time()
             bot_reply, error = self.app.modules["multimodal"].process_image_with_text(
-                camera_result["image_data"], message_text, current_time_str, lang=lang, session_id=session_id
+                camera_result["image_data"],
+                message_text,
+                current_time_str,
+                lang=lang,
+                session_id=None,
+                response_style=response_style,
             )
             mm_time = round(time.time() - mm_start, 1)
             if error:
@@ -803,10 +827,14 @@ class RedisRequestQueue:
 
         return {"messages": messages, "session_id": session_id}
 
-    def _process_rag_task(self, query: str, session_id: str, user_id: str, lang: str) -> dict[str, Any]:
+    def _process_rag_task(
+        self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
+    ) -> dict[str, Any]:
         """Handle explicit RAG request (router action_type='rag')."""
         rag_start = time.time()
-        rag_answer, rag_model = self._try_rag_answer(query, session_id, user_id, lang, strict=False)
+        rag_answer, rag_model = self._try_rag_answer(
+            query, session_id, user_id, lang, strict=False, response_style=response_style
+        )
         rag_time = round(time.time() - rag_start, 1)
 
         if rag_answer is not None:
@@ -814,16 +842,22 @@ class RedisRequestQueue:
             return self._save_and_respond(session_id, rag_answer, model_used, rag_time)
         else:
             return self._build_error_response(
-                session_id, "⚠️ " + self.app.modules["base"]._("No relevant documents found", lang), rag_time, lang
+                session_id, self.app.modules["base"]._("No relevant documents found", lang), rag_time, lang
             )
 
     def _process_text_task(
-        self, message_text: str, session_id: str, user_id: str, current_time_str: str, lang: str
+        self,
+        message_text: str,
+        session_id: str,
+        user_id: str,
+        current_time_str: str,
+        lang: str,
+        response_style: str = "neutral",
     ) -> dict[str, Any]:
         """Handle text request — routes through base module router."""
         router_start = time.time()
         router_result = self.app.modules["base"].process_message(
-            message_text, current_time_str, lang=lang, session_id=session_id
+            message_text, current_time_str, lang=lang, session_id=session_id, response_style=response_style
         )
         router_time = round(time.time() - router_start, 1)
 
@@ -835,7 +869,9 @@ class RedisRequestQueue:
 
         if action_type == "reasoning":
             rag_start = time.time()
-            rag_answer, rag_model = self._try_rag_answer(query, session_id, user_id, lang, strict=True)
+            rag_answer, rag_model = self._try_rag_answer(
+                query, session_id, user_id, lang, strict=True, response_style=response_style
+            )
             rag_time = round(time.time() - rag_start, 1)
             if rag_answer is not None:
                 model_used = rag_model + " (RAG)" if rag_model else "unknown (RAG)"
@@ -845,16 +881,18 @@ class RedisRequestQueue:
             process_time = router_time
 
         if action_type == "image":
-            return self._process_image_gen_task(query, session_id, user_id, lang)
+            return self._process_image_gen_task(query, session_id, user_id, lang, response_style)
         elif action_type == "camera":
-            return self._process_camera_task(query, session_id, user_id, message_text, current_time_str, lang)
+            return self._process_camera_task(
+                query, session_id, user_id, message_text, current_time_str, lang, response_style
+            )
         elif action_type == "rag":
-            return self._process_rag_task(query, session_id, user_id, lang)
+            return self._process_rag_task(query, session_id, user_id, lang, response_style)
         elif action_type == "reasoning":
             if router_result.get("needs_reasoning"):
                 reasoning_start = time.time()
                 final_response = self.app.modules["base"].process_reasoning(
-                    query, current_time_str, lang=lang, session_id=session_id
+                    query, current_time_str, lang=lang, session_id=session_id, response_style=response_style
                 )
                 process_time = round(time.time() - reasoning_start, 1)
             else:
@@ -886,6 +924,7 @@ class RedisRequestQueue:
         request_data = task["data"]
         lang = task.get("lang", "ru")
         current_time_str = get_current_time_in_timezone(self.app)
+        response_style = request_data.get("response_style", "neutral")
 
         request_type = request_data.get("type", "text")
         message_text = request_data.get("text", "")
@@ -899,7 +938,7 @@ class RedisRequestQueue:
 
         # Text request → router
         if request_type == "text":
-            return self._process_text_task(message_text, session_id, user_id, current_time_str, lang)  # type: ignore[arg-type]
+            return self._process_text_task(message_text, session_id, user_id, current_time_str, lang, response_style)  # type: ignore[arg-type]
 
         # Image + text chat (question about image or edit request)
         # The actual decision between analysis and editing is now made by the multimodal model
@@ -913,6 +952,7 @@ class RedisRequestQueue:
                 current_time_str,
                 lang,
                 user_id,  # type: ignore[arg-type]
+                response_style,
             )
 
         # Unknown request type
@@ -931,6 +971,7 @@ class RedisRequestQueue:
         current_time_str: str,
         lang: str,
         user_id: str,
+        response_style: str = "neutral",
     ) -> dict[str, Any]:
         """Handle image + text chat (user uploads image and asks question or requests edit).
         The multimodal model decides: analysis answer or edit marker."""
@@ -946,7 +987,12 @@ class RedisRequestQueue:
             is_valid, error = self.app.modules["multimodal"].validate_image(file_data, file_type, file_name, file_size)
             if is_valid:
                 bot_reply, error = self.app.modules["multimodal"].process_image_with_text(
-                    file_data, message_text, current_time_str, lang=lang, session_id=session_id
+                    file_data,
+                    message_text,
+                    current_time_str,
+                    lang=lang,
+                    session_id=session_id,
+                    response_style=response_style,
                 )
                 process_time = round(time.time() - process_start, 1)
                 if error:
@@ -1043,12 +1089,14 @@ class RedisRequestQueue:
         )
 
         if voice_record:
+            response_style = request_data.get("response_style", "neutral")
             text_request_data = {
                 "type": "text",
                 "text": transcribed_text,
                 "preview": (transcribed_text[:50] + "...")
                 if transcribed_text
                 else self.app.modules["base"]._("Voice request", lang),
+                "response_style": response_style,
             }
             new_request_id, _ = self.add_request(user_id, session_id, text_request_data, user_class, lang=lang)
 
@@ -1100,12 +1148,14 @@ class RedisRequestQueue:
         )
 
         if voice_record:
+            response_style = request_data.get("response_style", "neutral")
             text_request_data = {
                 "type": "text",
                 "text": transcribed_text,
                 "preview": (transcribed_text[:50] + "...")
                 if transcribed_text
                 else self.app.modules["base"]._("Voice request", lang=lang),
+                "response_style": response_style,
             }
             new_request_id, _ = self.app.request_queue.add_request(
                 user_id, session_id, text_request_data, user_class, lang=lang

@@ -87,6 +87,11 @@ function renderModelCards() {
                     <label>${t('Timeout (s)')}</label>
                     <input type="number" class="timeout" data-module="${mod.id}" value="${mod.config.timeout || ''}" min="0" max="1200" step="1">
                 </div>
+                <div class="param">
+                    <label>${t('Repeat Penalty')}</label>
+                    <input type="number" class="repeat-penalty" data-module="${mod.id}" value="${mod.config.repeat_penalty ?? (mod.id === 'reasoning' ? 1.15 : 1.1)}" min="1.0" max="2.0" step="0.05">
+                    <small class="param-hint">1.0 ... 2.0</small>
+                </div>
             </div>`;
         }
 
@@ -561,6 +566,15 @@ function validateModelConfig(module, card) {
         }
     }
 
+    const repeatPenalty = card.querySelector('.repeat-penalty')?.value;
+    if (repeatPenalty !== undefined && repeatPenalty !== '') {
+        const val = parseFloat(repeatPenalty);
+        if (isNaN(val) || val < 1.0 || val > 2.0) {
+            alert(t('Repeat penalty must be between 1.0 and 2.0.'));
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -578,13 +592,16 @@ function onSaveConfig(event) {
     const topP = card.querySelector('.top-p')?.value;
     const timeout = card.querySelector('.timeout')?.value;
 
+    const repeatPenalty = card.querySelector('.repeat-penalty')?.value;
+
     const data = {
         model_name: modelName,
         service_url: serviceUrl,
         context_length: contextLength ? parseInt(contextLength) : null,
         temperature: temperature ? parseFloat(temperature) : null,
         top_p: topP ? parseFloat(topP) : null,
-        timeout: timeout ? parseInt(timeout) : null
+        timeout: timeout ? parseInt(timeout) : null,
+        repeat_penalty: repeatPenalty ? parseFloat(repeatPenalty) : (module === 'reasoning' ? 1.15 : 1.1),
     };
 
     fetchWithCSRF(`/admin/api/model_configs/${module}`, {

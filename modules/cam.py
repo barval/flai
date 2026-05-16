@@ -208,9 +208,6 @@ class CamModule(TranslationMixin):
         return None
 
     def get_snapshot(self, user_login, room_code, lang="ru"):
-        if not self.check_permission(user_login, room_code):
-            return {"success": False, "error": self._("Access to this camera is denied", lang), "status_code": 403}
-
         self.check_availability()
         if not self.available:
             return {"success": False, "error": self._("CCTV service unavailable", lang), "status_code": 503}
@@ -228,6 +225,9 @@ class CamModule(TranslationMixin):
                     "status_code": 404,
                     "available_rooms": list(self.room_names.keys()),
                 }
+
+        if not self.check_permission(user_login, room_code):
+            return {"success": False, "error": self._("Access to this camera is denied", lang), "status_code": 403}
 
         room_name = self.get_room_name(room_code, lang)
 

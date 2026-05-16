@@ -631,6 +631,12 @@ msgstr "Top P должен быть в диапазоне от 0.0 до 1.0."
 msgid "Timeout must be between 0 and 1200 seconds."
 msgstr "Таймаут должен быть в диапазоне от 0 до 1200 секунд."
 
+msgid "Repeat Penalty"
+msgstr "Штраф за повтор"
+
+msgid "Repeat penalty must be between 1.0 and 2.0."
+msgstr "Штраф за повтор должен быть в диапазоне от 1.0 до 2.0."
+
 msgid "Reindexing all documents with new embedding model started. This may take a while."
 msgstr "Начата переиндексация всех документов с новой моделью эмбеддингов. Это может занять некоторое время."
 

@@ -74,6 +74,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | v8.2 (New) | Notes |
 |------------|-------|
 | **Response Style Selector** | Dropdown in the chat header to choose the AI's tone: neutral, academic, professional, friendly, or funny. |
+| **Repeat Penalty** | New `repeat_penalty` parameter (range 1.0–2.0) prevents model looping/repetition. Configurable per model in admin panel. Defaults: chat 1.1, reasoning 1.15, multimodal 1.1. |
 | **PostgreSQL 18 Upgrade** | Migrated from PostgreSQL 16 to 18 with zero data loss via pg_dump + pg_restore. Mount point changed to `/var/lib/postgresql` (required by 18+). |
 
 ### Core Components

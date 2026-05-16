@@ -618,6 +618,12 @@ msgstr "Top P must be between 0.0 and 1.0."
 msgid "Timeout must be between 0 and 1200 seconds."
 msgstr "Timeout must be between 0 and 1200 seconds."
 
+msgid "Repeat Penalty"
+msgstr "Repeat Penalty"
+
+msgid "Repeat penalty must be between 1.0 and 2.0."
+msgstr "Repeat penalty must be between 1.0 and 2.0."
+
 msgid "Reindexing all documents with new embedding model started. This may take a while."
 msgstr "Reindexing all documents with new embedding model started. This may take a while."
 

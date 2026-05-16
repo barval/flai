@@ -153,8 +153,25 @@ def _init_postgresql():
             aliases TEXT,
             group_name TEXT DEFAULT 'default',
             ttl INTEGER DEFAULT 0,
-            preload BOOLEAN DEFAULT FALSE
+            preload BOOLEAN DEFAULT FALSE,
+            repeat_penalty REAL DEFAULT 1.1
         )
+    """)
+    c.execute("""
+        DO $migrate$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                          WHERE table_name = 'model_configs' AND column_name = 'repeat_penalty') THEN
+                ALTER TABLE model_configs ADD COLUMN repeat_penalty REAL DEFAULT 1.1;
+            END IF;
+        END
+        $migrate$
+    """)
+    # Fix default for reasoning — should be 1.15, not 1.1
+    # NOTE: ::real cast is needed because real != numeric (1.1 vs 1.100000023841858)
+    c.execute("""
+        UPDATE model_configs SET repeat_penalty = 1.15::real
+        WHERE module = 'reasoning' AND (repeat_penalty IS NULL OR repeat_penalty = 1.1::real)
     """)
     c.execute("""
         CREATE TABLE IF NOT EXISTS user_storage (
@@ -177,12 +194,12 @@ def _init_postgresql():
     c.execute("SELECT COUNT(*) as cnt FROM model_configs")
     if c.fetchone()["cnt"] == 0:
         c.execute("""
-            INSERT INTO model_configs (module, model_name, context_length, temperature, top_p, timeout, service_url)
+            INSERT INTO model_configs (module, model_name, context_length, temperature, top_p, timeout, service_url, repeat_penalty)
             VALUES
-                ('chat', 'Qwen3-4B-Instruct-2507-Q4_K_M', 8192, 0.1, 0.1, 120, 'http://flai-llamacpp:8033'),
-                ('reasoning', 'gpt-oss-20b-Q4_K_M', 8192, 0.7, 0.9, 120, 'http://flai-llamacpp:8033'),
-                ('multimodal', 'Qwen3VL-8B-Instruct-Q4_K_M', 8192, 0.7, 0.9, 120, 'http://flai-llamacpp:8033'),
-                ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://flai-llamacpp:8033')
+                ('chat', 'Qwen3-4B-Instruct-2507-Q4_K_M', 8192, 0.1, 0.1, 120, 'http://flai-llamacpp:8033', 1.1),
+                ('reasoning', 'gpt-oss-20b-Q4_K_M', 8192, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.15),
+                ('multimodal', 'Qwen3VL-8B-Instruct-Q4_K_M', 8192, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
+                ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://flai-llamacpp:8033', NULL)
         """)
 
     conn.commit()

@@ -301,7 +301,7 @@ docker exec flai-web flask admin-password ВашНадёжныйПароль123
 2. Перейдите в **Админ-панель** → вкладка **Модели**
 3. Для каждого модуля (Чат, Рассуждения, Мультимодальность, Эмбеддинг):
    - Выберите GGUF-модель из выпадающего списка
-   - При необходимости настройте параметры (длина контекста, температура, Top P, таймаут)
+   - При необходимости настройте параметры (длина контекста, температура, Top P, штраф за повтор, таймаут)
    - Нажмите **Сохранить**
 4. Для генерации изображений: убедитесь, что `SD_WRAPPER_URL=http://flai-sd:7861` указано в `.env`
 
@@ -453,6 +453,7 @@ services/llamacpp/models/
 | Длина контекста | 8192 | 32768 | 8192 | 512 |
 | Температура | 0.1 | 0.7 | 0.7 | – |
 | Top P | 0.1 | 0.9 | 0.9 | – |
+| Штраф за повтор | 1.1 | 1.15 | 1.1 | – |
 | Таймаут (с) | 60 | 300 | 120 | 30 |
 
 ---
@@ -501,7 +502,7 @@ SD_CPP_DEFAULT_STEPS=10
 
 ## 🎤 Голосовые функции
 
-### Whisper ASR (без изменений с v7.5)
+### Whisper ASR
 
 Использует `onerahmet/openai-whisper-asr-webservice` (движок faster_whisper).
 
@@ -650,7 +651,7 @@ curl http://localhost:5000/metrics
 
 ## 🗺️ Дорожная карта
 
-### ✅ Завершено (v8.0)
+### ✅ Завершено
 - **Режим роутера llama.cpp** (`--models-dir`) — один llama-server с динамическим переключением моделей
 - **stable-diffusion.cpp** — Z-Image-Turbo для генерации, Flux.2 Klein 4B для редактирования
 - **OpenAI-совместимый API** (`/v1/chat/completions`, `/v1/embeddings`)
@@ -756,6 +757,8 @@ pytest tests/test_queue.py
 pytest tests/test_security.py
 pytest tests/test_resource_manager.py
 pytest tests/test_llama_swap_config.py
+pytest tests/test_validators.py
+pytest tests/test_model_config.py
 ```
 
 > **Примечание**: `tests/conftest.py` использует in-memory mock базу данных по умолчанию (PostgreSQL не требуется). В CI доступна реальная PostgreSQL через переменную `DATABASE_URL`.

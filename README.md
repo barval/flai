@@ -298,7 +298,7 @@ docker exec flai-web flask admin-password YourSecurePassword123
 2. Go to **Admin Panel** → **Models** tab
 3. For each module (Chat, Reasoning, Multimodal, Embedding):
    - Select the GGUF model from the dropdown
-   - Adjust parameters if needed (Context Length, Temperature, Top P, Timeout)
+   - Adjust parameters if needed (Context Length, Temperature, Top P, Repeat Penalty, Timeout)
    - Click **Save**
 4. For Image Generation: Ensure `SD_WRAPPER_URL=http://flai-sd:7861` is set in `.env`
 
@@ -450,6 +450,7 @@ services/llamacpp/models/
 | Context Length | 8192 | 32768 | 8192 | 512 |
 | Temperature | 0.1 | 0.7 | 0.7 | – |
 | Top P | 0.1 | 0.9 | 0.9 | – |
+| Repeat Penalty | 1.1 | 1.15 | 1.1 | – |
 | Timeout (s) | 60 | 300 | 120 | 30 |
 
 ---
@@ -504,7 +505,7 @@ SD_CPP_DEFAULT_STEPS=10
 
 ## 🎤 Voice Features Setup
 
-### Whisper ASR (Unchanged from v7.5)
+### Whisper ASR
 
 Uses `onerahmet/openai-whisper-asr-webservice` (faster_whisper engine).
 
@@ -513,7 +514,7 @@ Uses `onerahmet/openai-whisper-asr-webservice` (faster_whisper engine).
 docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 ```
 
-### Piper TTS (Unchanged from v7.5)
+### Piper TTS
 
 Uses ONNX Piper models for text-to-speech.
 
@@ -653,7 +654,7 @@ curl http://localhost:5000/metrics
 
 ## 🗺️ Roadmap
 
-### ✅ Completed (v8.0)
+### ✅ Completed
 - **llama.cpp router mode** (`--models-dir`) — single llama-server with dynamic model switching
 - **stable-diffusion.cpp** — Z-Image-Turbo for generation, Flux.2 Klein 4B for editing
 - OpenAI-compatible API (`/v1/chat/completions`, `/v1/embeddings`)
@@ -663,6 +664,7 @@ curl http://localhost:5000/metrics
 - GGUF model management via admin panel
 - All translations updated for llama.cpp terminology
 - **Piper TTS optimization** for large text synthesis — chunked processing with seamless audio transitions
+- **llama-swap backend** — dynamic model management and GPU VRAM optimization
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)
@@ -758,6 +760,8 @@ pytest tests/test_queue.py
 pytest tests/test_security.py
 pytest tests/test_resource_manager.py
 pytest tests/test_llama_swap_config.py
+pytest tests/test_validators.py
+pytest tests/test_model_config.py
 ```
 
 > **Note**: `tests/conftest.py` uses an in-memory mock database by default (no PostgreSQL required). In CI, a real PostgreSQL is available via the `DATABASE_URL` env variable.

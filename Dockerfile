@@ -4,13 +4,17 @@ WORKDIR /app
 
 # Installing system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates gnupg \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-archive-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] http://apt.postgresql.org/pub/repos/apt trixie-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
     libjpeg-dev \
     zlib1g-dev \
     libtiff-dev \
     libwebp-dev \
     libmagic1 \
     libpq-dev \
-    postgresql-client \
+    postgresql-client-18 \
     docker-cli \
     && rm -rf /var/lib/apt/lists/*
 

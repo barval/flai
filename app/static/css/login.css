@@ -7,6 +7,13 @@
     padding: 20px;
 }
 
+@media (max-width: 768px) {
+    .login-wrapper {
+        align-items: flex-start;
+        padding-top: 2rem;
+    }
+}
+
 .login-container {
     max-width: 400px;
     width: 90%;

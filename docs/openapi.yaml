@@ -1239,6 +1239,12 @@ paths:
                   type: number
                 timeout:
                   type: integer
+                repeat_penalty:
+                  type: number
+                  description: Repetition penalty for the model (1.0 = none, 2.0 = maximum)
+                  minimum: 1.0
+                  maximum: 2.0
+                  default: 1.1
                 service_url:
                   type: string
       responses:

@@ -99,6 +99,8 @@ def send_message():
     if not message_text and not file_data:
         return jsonify({"error": _("Empty message")}), 400
 
+    response_style = session.get("response_style", "neutral")
+
     request_type = "text"
     if file_data and file_type:
         if file_type.startswith("image/"):
@@ -183,6 +185,7 @@ def send_message():
             "file_name": file_name,
             "voice_record": voice_record,
             "preview": (message_text[:50] + "...") if message_text else (file_name or _("Voice request")),
+            "response_style": response_style,
         }
         request_id, position_info = current_app.request_queue.add_request(
             user_id, session_id, request_data, user_class, lang=session.get("language", "ru")
@@ -209,12 +212,14 @@ def send_message():
             "file_type": file_type,
             "file_name": file_name,
             "preview": (message_text[:50] + "...") if message_text else (file_name or _("Image")),
+            "response_style": response_style,
         }
     else:
         request_data = {
             "type": "text",
             "text": message_text,
             "preview": (message_text[:50] + "...") if message_text else _("Text request"),
+            "response_style": response_style,
         }
 
     request_id, position_info = current_app.request_queue.add_request(

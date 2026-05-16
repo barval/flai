@@ -14,6 +14,55 @@ from app.utils import (
     validate_prompt_size,
 )
 
+STYLE_INSTRUCTIONS = {
+    "ru": {
+        "neutral": "Без особого стиля.",
+        "academic": (
+            "Отвечай в формальном академическом стиле. Используй точную терминологию, "
+            "строгие формулировки и логически структурированные аргументы. "
+            "Избегай разговорных выражений. При необходимости ссылайся на факты."
+        ),
+        "professional": (
+            "Отвечай в профессиональном деловом стиле. Будь чётким, конкретным и по делу. "
+            "Используй ясные формулировки. Избегай лишних эмоций и воды."
+        ),
+        "friendly": (
+            "Отвечай в тёплом дружеском стиле. Будь приветлив и располагай к общению. "
+            "Используй естественный разговорный тон. Покажи эмпатию и заботу о пользователе. "
+            "Можно использовать эмодзи, если они уместны и помогают выразить эмоцию."
+        ),
+        "funny": (
+            "Отвечай с юмором и остроумием. Будь игрив и занимателен. "
+            "Используй шутки, метафоры и неожиданные сравнения, но не забывай "
+            "давать полезную информацию по существу вопроса. "
+            "Эмодзи приветствуются, если они к месту и усиливают эффект."
+        ),
+    },
+    "en": {
+        "neutral": "Default style.",
+        "academic": (
+            "Answer in a formal academic style. Use precise terminology, "
+            "rigorous wording, and logically structured arguments. "
+            "Avoid colloquial expressions. Reference facts where appropriate."
+        ),
+        "professional": (
+            "Answer in a professional business-like style. Be clear, specific, and to the point. "
+            "Use straightforward wording. Avoid unnecessary emotions or fluff."
+        ),
+        "friendly": (
+            "Answer in a warm, friendly style. Be welcoming and approachable. "
+            "Use a natural conversational tone. Show empathy and care for the user. "
+            "You may use emojis when they are appropriate and help convey emotion."
+        ),
+        "funny": (
+            "Answer with humor and wit. Be playful and entertaining. "
+            "Use jokes, metaphors, and unexpected comparisons, "
+            "but still provide useful information on the topic. "
+            "Emojis are welcome when they fit the context and enhance the effect."
+        ),
+    },
+}
+
 
 class BaseModule(TranslationMixin):
     """Base module for chat and reasoning model interactions."""
@@ -120,11 +169,19 @@ class BaseModule(TranslationMixin):
 
     # --- Existing methods with context added ---
     def process_message(
-        self, message_text: str, current_time_str: str, lang: str = "ru", session_id: str | None = None
+        self,
+        message_text: str,
+        current_time_str: str,
+        lang: str = "ru",
+        session_id: str | None = None,
+        response_style: str = "neutral",
     ) -> dict[str, Any]:
         """Process text message through router model."""
         response_language = "Russian" if lang == "ru" else "English"
         context_str = self._get_context_for_model(session_id, "chat", message_text, lang)  # type: ignore[arg-type]
+        style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
+            response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
+        )
 
         prompt = format_prompt(
             "base_text.template",
@@ -133,6 +190,7 @@ class BaseModule(TranslationMixin):
                 "user_query": message_text,
                 "response_language": response_language,
                 "conversation_history": context_str,
+                "response_style": style_instruction,
             },
             lang=lang,
         )
@@ -189,11 +247,19 @@ class BaseModule(TranslationMixin):
         return {"action": "none", "query": response, "needs_reasoning": False}
 
     def process_reasoning(
-        self, query: str, current_time_str: str, lang: str = "ru", session_id: str | None = None
+        self,
+        query: str,
+        current_time_str: str,
+        lang: str = "ru",
+        session_id: str | None = None,
+        response_style: str = "neutral",
     ) -> str:
         """Process complex query via reasoning model."""
         response_language = "Russian" if lang == "ru" else "English"
         context_str = self._get_context_for_model(session_id, "reasoning", query, lang)  # type: ignore[arg-type]
+        style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
+            response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
+        )
 
         reasoning_prompt = format_prompt(
             "reasoning.template",
@@ -202,6 +268,7 @@ class BaseModule(TranslationMixin):
                 "reasoning_query": query,
                 "response_language": response_language,
                 "conversation_history": context_str,
+                "response_style": style_instruction,
             },
             lang=lang,
         )

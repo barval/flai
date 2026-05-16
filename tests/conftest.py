@@ -362,6 +362,7 @@ class _MockDatabase:
                     "top_p": 0.1,
                     "timeout": 120,
                     "service_url": "http://flai-llamacpp:8033",
+                    "repeat_penalty": 1.1,
                 },
                 {
                     "module": "reasoning",
@@ -371,6 +372,7 @@ class _MockDatabase:
                     "top_p": 0.9,
                     "timeout": 120,
                     "service_url": "http://flai-llamacpp:8033",
+                    "repeat_penalty": 1.15,
                 },
                 {
                     "module": "multimodal",
@@ -380,6 +382,7 @@ class _MockDatabase:
                     "top_p": 0.9,
                     "timeout": 120,
                     "service_url": "http://flai-llamacpp:8033",
+                    "repeat_penalty": 1.1,
                 },
                 {
                     "module": "embedding",
@@ -389,6 +392,7 @@ class _MockDatabase:
                     "top_p": None,
                     "timeout": 120,
                     "service_url": "http://flai-llamacpp:8033",
+                    "repeat_penalty": None,
                 },
             ]
             self._model_configs = defaults

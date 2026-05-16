@@ -102,6 +102,7 @@ def validate_model_config_update(data: dict[str, Any] | None, module: str) -> di
         "group_name",
         "ttl",
         "preload",
+        "repeat_penalty",
     }
     updates = {k: v for k, v in data.items() if k in allowed_fields}
 
@@ -130,6 +131,11 @@ def validate_model_config_update(data: dict[str, Any] | None, module: str) -> di
         val = updates["timeout"]
         if not isinstance(val, int) or val < 0 or val > 1200:
             errors.append("Timeout must be between 0 and 1200 seconds")
+
+    if "repeat_penalty" in updates and updates["repeat_penalty"] is not None:
+        val = updates["repeat_penalty"]
+        if not isinstance(val, (int, float)) or val < 1.0 or val > 2.0:
+            errors.append("Repeat penalty must be between 1.0 and 2.0")
 
     if "service_url" in updates and updates["service_url"] is not None:
         url = updates["service_url"]

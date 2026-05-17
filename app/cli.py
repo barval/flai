@@ -82,3 +82,74 @@ def cleanup_uploads(dry_run):
     click.echo(f"\nDeleted {deleted_files} orphan files ({deleted_bytes} bytes), {empty_dirs} empty dirs")
     if dry_run:
         click.echo("(dry-run, no changes made)")
+
+
+@click.command("migrate-messages-format")
+@click.option("--dry-run", is_flag=True, help="Only list messages to convert, do not update")
+@with_appcontext
+def migrate_messages_format(dry_run):
+    """Migrate old plain-text service messages to new JSON {prefix, text} format."""
+    import json
+
+    from app.database import get_db
+
+    # Known prefixes for service messages (EN + RU)
+    prefixes_whisper = ["🎤 Transcribed: ", "🎤 Распознано: "]
+    prefixes_other = [
+        "🎤 Transcribed: ",
+        "🎤 Распознано: ",
+        "Image edited from request: ",
+        "Изображение отредактировано по запросу: ",
+        "Image generated from request: ",
+        "Изображение сгенерировано по запросу: ",
+        "Camera snapshot: ",
+        "Снимок с камеры: ",
+    ]
+
+    updated = 0
+    skipped = 0
+
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, content, model_name FROM messages WHERE role = 'assistant'")
+
+        for row in c.fetchall():
+            msg_id = row["id"]
+            content = row["content"]
+            model_name = row["model_name"]
+
+            if not content:
+                continue
+
+            # Already in JSON format — skip
+            if content.startswith("{") and content.endswith("}"):
+                try:
+                    parsed = json.loads(content)
+                    if "prefix" in parsed and "text" in parsed:
+                        skipped += 1
+                        continue
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            # Choose prefix candidates based on model_name
+            candidates = prefixes_whisper if model_name == "whisper" else prefixes_other
+
+            matched = False
+            for prefix in candidates:
+                if content.startswith(prefix):
+                    text = content[len(prefix) :]
+                    new_content = json.dumps({"prefix": prefix, "text": text}, ensure_ascii=False)
+                    click.echo(f"  MIGRATE id={msg_id}: {prefix!r} → {new_content[:80]}...")
+                    if not dry_run:
+                        c.execute("UPDATE messages SET content = %s WHERE id = %s", (new_content, msg_id))
+                        conn.commit()
+                    updated += 1
+                    matched = True
+                    break
+
+            if not matched:
+                skipped += 1
+
+    click.echo(f"\nUpdated: {updated}, Skipped (already JSON or no match): {skipped}")
+    if dry_run:
+        click.echo("(dry-run, no changes made)")

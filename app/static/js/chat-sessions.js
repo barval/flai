@@ -72,7 +72,7 @@ function loadSessionsFromServer() {
 
             // If current session was deleted on server, switch to first available
             if (currentSessionId && !sessionsData[currentSessionId] && sessions.length > 0) {
-                console.debug('loadSessionsFromServer: current session deleted, switching to', sessions[0].id);
+                dlog('loadSessionsFromServer: current session deleted, switching to', sessions[0].id);
                 currentSessionId = sessions[0].id;
                 delete newMessageIndicators[currentSessionId];
             }
@@ -334,21 +334,14 @@ function switchSession(sessionId) {
 
     // Don't switch if already on this session
     if (sessionId === currentSessionId) {
-        console.debug('switchSession: Already on this session, skipping');
+        dlog('switchSession: Already on this session, skipping');
         return;
     }
 
-    console.debug('switchSession: Switching from', currentSessionId, 'to', sessionId);
+    dlog('switchSession: Switching from', currentSessionId, 'to', sessionId);
 
     // Block all sync operations during session switch
     isSwitchingSession = true;
-
-    // Stop ALL polling (message polling AND sync interval)
-    stopMessagePolling();
-    if (syncInterval) {
-        clearInterval(syncInterval);
-        syncInterval = null;
-    }
 
     const previousSessionId = currentSessionId;
 
@@ -376,12 +369,8 @@ function switchSession(sessionId) {
             loadMessages(sessionId).catch(err => {
                 console.error('Error loading messages in switchSession:', err);
             }).finally(() => {
-                // Unblock sync and restart intervals
+                // Unblock sync
                 isSwitchingSession = false;
-                startMessagePolling();
-                if (typeof startSyncInterval === 'function') {
-                    startSyncInterval();
-                }
                 // Update status counter
                 window.updateStatusCounter();
                 // Fetch queue status to update session statuses

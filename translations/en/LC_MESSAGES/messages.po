@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 8.2\n"
+"Project-Id-Version: FLAI 8.3\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-05 12:00+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -908,7 +908,7 @@ msgid "File size:"
 msgstr "File size:"
 
 msgid "footer_text"
-msgstr "Fully Local AI (FLAI) v8.2 (c) 2026 Valery Barsukov"
+msgstr "Fully Local AI (FLAI) v8.3 (c) 2026 Valery Barsukov"
 
 msgid "Could not connect to sd-wrapper"
 msgstr ""

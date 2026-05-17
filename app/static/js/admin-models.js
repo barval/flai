@@ -20,14 +20,14 @@ function initAdminTabs() {
 }
 
 function loadModelConfigs() {
-    console.log('loadModelConfigs called');
+    dlog('loadModelConfigs called');
     fetch('/admin/api/model_configs', { credentials: 'same-origin' })
         .then(res => {
-            console.log('model_configs response status:', res.status);
+            dlog('model_configs response status:', res.status);
             return res.json();
         })
         .then(configs => {
-            console.log('Loaded model configs:', configs);
+            dlog('Loaded model configs:', configs);
             currentModelConfigs = configs;
             renderModelCards();
         })
@@ -35,10 +35,10 @@ function loadModelConfigs() {
 }
 
 function renderModelCards() {
-    console.log('renderModelCards called, container:', document.getElementById('models-list'));
+    dlog('renderModelCards called, container:', document.getElementById('models-list'));
     const container = document.getElementById('models-list');
     if (!container) {
-        console.log('No models-list container!');
+        dlog('No models-list container!');
         return;
     }
 
@@ -101,7 +101,7 @@ function renderModelCards() {
         `;
     });
     container.innerHTML = html;
-    console.log('Rendered', modules.length, 'model cards');
+    dlog('Rendered', modules.length, 'model cards');
 
     // Setup event listeners
     document.querySelectorAll('.model-dropdown').forEach(select => {
@@ -164,24 +164,24 @@ async function refreshModelsForModule(module, silent = false) {
         
         // For llama-swap mode, first try to get actual GGUF files from models directory
         if (backend === 'llama-swap') {
-            console.log('Trying to load GGUF files from models directory');
+            dlog('Trying to load GGUF files from models directory');
             try {
                 const ggufRes = await fetch('/admin/api/llamacpp/models?list_type=gguf_files');
-                console.log('GGUF response status:', ggufRes.status);
+                dlog('GGUF response status:', ggufRes.status);
                 if (ggufRes.ok) {
                     models = await ggufRes.json();
-                    console.log('Loaded GGUF files:', models);
+                    dlog('Loaded GGUF files:', models);
                 } else {
-                    console.warn('GGUF files endpoint failed with status:', ggufRes.status);
+                    dwarn('GGUF files endpoint failed with status:', ggufRes.status);
                 }
             } catch (e) {
-                console.warn('Could not load GGUF files:', e);
+                dwarn('Could not load GGUF files:', e);
             }
         }
         
         // If no GGUF files or not llama-swap, get from llama-server API
         if (models.length === 0) {
-            console.log('Loading models from llama-server API, backend:', backend);
+            dlog('Loading models from llama-server API, backend:', backend);
             const response = await fetch(`/admin/api/llamacpp/models?url=${encodeURIComponent(serviceUrl)}&backend=${backend}`);
             if (!response.ok) {
                 if (!silent) {
@@ -229,7 +229,7 @@ async function refreshModelsForModule(module, silent = false) {
                     select.selectedIndex = i;
                     select.value = optVal;
                     found = true;
-                    console.log('Selected model at index', i, 'value:', optVal, 'for:', currentModelName);
+                    dlog('Selected model at index', i, 'value:', optVal, 'for:', currentModelName);
                     break;
                 }
             }
@@ -247,7 +247,7 @@ async function refreshModelsForModule(module, silent = false) {
                 }
             }
             
-            console.log('Model matching:', currentModelName, '-> found:', found);
+            dlog('Model matching:', currentModelName, '-> found:', found);
             
             // Trigger model info load  
             if (found && select.selectedIndex >= 0) {
@@ -280,7 +280,7 @@ async function onModelSelect(event) {
     const select = event.target;
     const module = select.dataset.module;
     const modelName = select.value;
-    console.log('onModelSelect:', module, modelName);
+    dlog('onModelSelect:', module, modelName);
     const detailsGrid = document.getElementById(`details-${module}`);
     if (!modelName) {
         detailsGrid.innerHTML = '';
@@ -378,7 +378,7 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
     if (existingHint) existingHint.remove();
 
     const modelSizeMB = modelInfo.file_size_mb;
-    console.log('updateMemoryEstimation:', {module, modelInfo, modelSizeMB});
+    dlog('updateMemoryEstimation:', {module, modelInfo, modelSizeMB});
     
     if (!modelSizeMB) {
         // Try to estimate from model name
@@ -394,7 +394,7 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
         } else if (modelName.includes('4B') || modelName.includes('-4b')) {
             modelSizeMB = 3000;
         }
-        console.log('Estimated modelSizeMB from name:', modelSizeMB);
+        dlog('Estimated modelSizeMB from name:', modelSizeMB);
     }
     
     const blockCount = modelInfo.block_count;
@@ -404,11 +404,11 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
     try {
         const hwRes = await fetch('/admin/api/hardware', { credentials: 'same-origin' });
         if (!hwRes.ok) {
-            console.log('Memory estimation skipped: hardware API error', hwRes.status);
+            dlog('Memory estimation skipped: hardware API error', hwRes.status);
             return;
         }
         const hw = await hwRes.json();
-        console.log('Hardware info:', hw, 'modelSizeMB:', modelSizeMB);
+        dlog('Hardware info:', hw, 'modelSizeMB:', modelSizeMB);
         const availableVRAM = hw.available_vram_mb || 0;
         const totalRAM = hw.total_ram_mb || 0;
         const availableRAM = hw.available_ram_mb || 0;
@@ -437,8 +437,8 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
         const multiplier = getMultiplier(modelInfo.model_name, modelSizeMB);
         const estimatedVRAM = modelSizeMB ? modelSizeMB * multiplier : 0;
 
-        console.log('Hardware info:', hw);
-        console.log('Model info:', {module, modelInfo, modelSizeMB, multiplier: getMultiplier(modelInfo.model_name, modelSizeMB)});
+        dlog('Hardware info:', hw);
+        dlog('Model info:', {module, modelInfo, modelSizeMB, multiplier: getMultiplier(modelInfo.model_name, modelSizeMB)});
         const hasGPU = hw.cuda_detected;
         const totalVRAM = hw.total_vram_mb || 0;
 
@@ -450,7 +450,7 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
             } else {
                 const vramPercent = Math.round((modelSizeMB * multiplier / totalVRAM) * 100);
                 const vramUsed = Math.min(vramPercent, 100);
-                console.log('VRAM calc:', {modelSizeMB, multiplier, totalVRAM, vramPercent});
+                dlog('VRAM calc:', {modelSizeMB, multiplier, totalVRAM, vramPercent});
 
                 if (vramPercent <= 100) {
                     hintDiv.style.color = '#29A847';
@@ -711,7 +711,7 @@ function initChunksSection() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOMContentLoaded, checking models-tab:', document.getElementById('models-tab'));
+    dlog('DOMContentLoaded, checking models-tab:', document.getElementById('models-tab'));
     initAdminTabs();
     if (document.getElementById('models-tab')) {
         loadModelConfigs();

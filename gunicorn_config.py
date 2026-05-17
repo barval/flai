@@ -3,9 +3,8 @@
 # operations (waiting for AI model responses).
 # Adding more workers increases RAM usage without improving throughput
 # since all requests ultimately wait for the same llama.cpp server.
-workers = 1
-threads = 4
-worker_class = "gthread"
+workers = 2  # 2 workers for SSE + regular requests
+worker_class = "gevent"
 
 # ── Network ──
 bind = "0.0.0.0:5000"

@@ -123,7 +123,7 @@ async function synthesizeInBackground(sentences, lang, startIndex) {
             });
 
             if (!response.ok) {
-                console.warn('TTS background chunk HTTP error:', response.status);
+                dwarn('TTS background chunk HTTP error:', response.status);
                 continue;
             }
 
@@ -148,7 +148,7 @@ async function synthesizeInBackground(sentences, lang, startIndex) {
                 ttsIsGenerating = false;
                 return;
             }
-            console.warn('TTS background chunk error:', err);
+            dwarn('TTS background chunk error:', err);
         }
     }
 
@@ -224,7 +224,7 @@ function playNextFromQueue() {
     };
 
     audio.onerror = () => {
-        console.warn('TTS chunk playback error');
+        dwarn('TTS chunk playback error');
         currentAudio = null;
         ttsCurrentAudio = null;
         URL.revokeObjectURL(audioUrl);
@@ -232,7 +232,7 @@ function playNextFromQueue() {
     };
 
     audio.play().catch(err => {
-        console.warn('TTS play error:', err);
+        dwarn('TTS play error:', err);
         currentAudio = null;
         ttsCurrentAudio = null;
     });
@@ -247,7 +247,7 @@ function restoreTTSButtonState() {
     if (currentTTSMessageText) {
         for (const msg of messages) {
             if (msg.dataset.sessionId === currentPlayingSessionId) {
-                const rawText = msg.dataset.rawText;
+                const rawText = msg.dataset.cleanText || msg.dataset.rawText;
                 if (rawText === currentTTSMessageText) {
                     const ttsButton = msg.querySelector('.tts-button');
                     if (ttsButton) {
@@ -291,18 +291,18 @@ function restoreTTSButtonState() {
 
 async function playTTS(button, messageElement) {
     try {
-        const text = messageElement.dataset.rawText;
+        const text = messageElement.dataset.cleanText || messageElement.dataset.rawText;
         if (!text) {
-            console.warn('playTTS: no rawText found');
+            dwarn('playTTS: no rawText found');
             return;
         }
         const sessionId = messageElement.dataset.sessionId;
 
-        console.debug('playTTS called, text length:', text.length);
+        dlog('playTTS called, text length:', text.length);
 
         // If already playing or pending, stop immediately
         if (ttsState === 'playing' || ttsState === 'pending') {
-            console.debug('playTTS: stopping current playback');
+            dlog('playTTS: stopping current playback');
             resetTtsState();
             return;
         }
@@ -332,7 +332,7 @@ async function playTTS(button, messageElement) {
 
         // Split text into sentences
         const sentences = splitIntoSentences(text);
-        console.debug('playTTS: split into', sentences.length, 'sentences');
+        dlog('playTTS: split into', sentences.length, 'sentences');
 
         // Initialize buffer with correct size
         ttsAudioBuffer = new Array(sentences.length);
@@ -365,7 +365,7 @@ async function playTTS(button, messageElement) {
                     return audioUrl;
                 }).catch(err => {
                     if (err.name !== 'AbortError') {
-                        console.warn('TTS chunk error:', err);
+                        dwarn('TTS chunk error:', err);
                     }
                     ttsAudioBuffer[idx] = null;
                     return null;
@@ -379,28 +379,28 @@ async function playTTS(button, messageElement) {
         // Drain completed entries to queue (in correct order)
         drainBufferToQueue();
 
-        console.debug('playTTS: initial batch done, queue length:', ttsAudioQueue.length, 'state:', ttsState);
+        dlog('playTTS: initial batch done, queue length:', ttsAudioQueue.length, 'state:', ttsState);
 
         // Check if still pending (not cancelled)
         if (ttsState !== 'pending') {
-            console.debug('playTTS: state changed from pending, stopping');
+            dlog('playTTS: state changed from pending, stopping');
             return;
         }
 
         // Play first available audio from queue
         if (ttsAudioQueue.length > 0) {
-            console.debug('playTTS: starting playback from queue');
+            dlog('playTTS: starting playback from queue');
             playNextFromQueue();
         } else {
             // No audio generated
-            console.warn('playTTS: no audio in queue');
+            dwarn('playTTS: no audio in queue');
             resetTtsState();
             return;
         }
 
         // Start background synthesis for remaining sentences
         if (sentences.length > initialBatch) {
-            console.debug('playTTS: starting background synthesis for remaining', sentences.length - initialBatch, 'sentences');
+            dlog('playTTS: starting background synthesis for remaining', sentences.length - initialBatch, 'sentences');
             synthesizeInBackground(sentences, lang, initialBatch);
         }
     } catch (err) {

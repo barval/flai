@@ -69,13 +69,11 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v8.2
+### What's New in v8.3
 
-| v8.2 (New) | Notes |
+| v8.3 (New) | Notes |
 |------------|-------|
-| **Response Style Selector** | Dropdown in the chat header to choose the AI's tone: neutral, academic, professional, friendly, or funny. |
-| **Repeat Penalty** | New `repeat_penalty` parameter (range 1.0–2.0) prevents model looping/repetition. Configurable per model in admin panel. Defaults: chat 1.1, reasoning 1.15, multimodal 1.1. |
-| **PostgreSQL 18 Upgrade** | Migrated from PostgreSQL 16 to 18 with zero data loss via pg_dump + pg_restore. Mount point changed to `/var/lib/postgresql` (required by 18+). |
+| **Service Prefix Formatting** | Voice transcription, camera snapshot, image generation, and image editing notifications display their prefix in bold. These prefixes are excluded from TTS playback and clipboard copy for cleaner output. |
 
 ### Core Components
 
@@ -655,16 +653,30 @@ curl http://localhost:5000/metrics
 ## 🗺️ Roadmap
 
 ### ✅ Completed
+
 - **llama.cpp router mode** (`--models-dir`) — single llama-server with dynamic model switching
 - **stable-diffusion.cpp** — Z-Image-Turbo for generation, Flux.2 Klein 4B for editing
-- OpenAI-compatible API (`/v1/chat/completions`, `/v1/embeddings`)
-- Multimodal support via mmproj in subdirectories
-- Dynamic model switching with `--models-max 1`
-- Individual model parameters via `models-preset.ini`
-- GGUF model management via admin panel
-- All translations updated for llama.cpp terminology
+- **OpenAI-compatible API** (`/v1/chat/completions`, `/v1/embeddings`)
+- **Multimodal support** via mmproj in subdirectories
+- **Dynamic model switching** with `--models-max 1`
+- **Individual model parameters** via `models-preset.ini`
+- **GGUF model management** via admin panel — configure models per module (chat, reasoning, multimodal, embedding) directly from the web interface
+- **All translations updated** for llama.cpp and llama-swap terminology (EN + RU)
 - **Piper TTS optimization** for large text synthesis — chunked processing with seamless audio transitions
-- **llama-swap backend** — dynamic model management and GPU VRAM optimization
+- **llama-swap backend** — dynamic model management and GPU VRAM optimization, auto-generated config from DB
+- **Voice features** — Whisper ASR (faster_whisper) speech-to-text + Piper TTS with male/female voices in EN/RU
+- **Image generation & editing** — create images from text via Z_image_turbo, edit uploaded images via Flux.2 Klein 4B
+- **RAG document search** — upload PDF/DOC/DOCX/TXT, vector search via Qdrant with configurable chunking
+- **Camera integration** — request snapshots from IP cameras, analyze with multimodal models, granular user permissions
+- **Backup & restore** — full or users-only backups from the admin panel (pg_dump + tar.gz archives)
+- **Admin CLI tools** — `admin-password` for password reset, `cleanup-uploads` for orphaned file removal
+- **Health check & metrics** — `/health` endpoint with service status, `/metrics` for Prometheus
+- **Response style selector** — dropdown in chat header: neutral, academic, professional, friendly, funny
+- **Repeat penalty** — `repeat_penalty` parameter (1.0–2.0) per model, prevents response loops
+- **PostgreSQL 18 upgrade** — migrated from 16 to 18 with zero data loss
+- **Service prefix formatting** — voice, camera, image gen/edit messages show bold prefix; excluded from TTS and clipboard
+- **Message format migration** — all old service messages converted to structured JSON `{prefix, text}` format
+- **SSE real-time delivery** — queue results delivered via Server-Sent Events for instant message display
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)

@@ -5,12 +5,14 @@ let currentSortField = null;
 let currentSortDirection = 'asc';
 
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('Admin page loaded');
+    dlog('Admin page loaded');
     document.body.classList.add('admin-page');
 
     loadUsers();
     setupModals();
     setupSortableHeaders();
+
+    // Admin stats: refresh periodically (SSE is chat-specific, not used here)
     setInterval(refreshStats, 30000);
 });
 
@@ -46,7 +48,7 @@ function loadUsers() {
     fetch('/admin/api/users')
     .then(response => response.json())
     .then(users => {
-        console.log('Users loaded:', users);
+        dlog('Users loaded:', users);
         // Sort users if a sort field is selected
         if (currentSortField) {
             users.sort((a, b) => {
@@ -173,7 +175,7 @@ function updateUserField(login, field, value) {
         body: JSON.stringify(data)
     }).then(response => response.json()).then(result => {
         if (result.status === 'ok') {
-            console.log('Updated', login, field, value);
+            dlog('Updated', login, field, value);
         } else {
             console.error('Update failed', result);
         }
@@ -234,7 +236,7 @@ function setupModals() {
         return;
     }
     addBtn.addEventListener('click', () => {
-        console.log('Add button clicked');
+        dlog('Add button clicked');
         modal.style.display = 'block';
     });
     closeSpans.forEach(span => {

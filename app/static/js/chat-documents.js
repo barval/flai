@@ -4,7 +4,6 @@
 
 let currentView = 'sessions'; // 'sessions' or 'documents'
 let documentsData = {};
-let documentsPollingInterval = null;
 
 // Apply the current view to the UI: update tab active state and show/hide the correct list
 function applyCurrentView() {
@@ -24,14 +23,12 @@ function applyCurrentView() {
         sessionsList.style.display = 'block';
         documentsList.classList.remove('active');
         documentsList.classList.add('hidden');
-        stopDocumentsPolling();
     } else {
         sessionsList.classList.remove('active');
         sessionsList.style.display = 'none';
         documentsList.classList.remove('hidden');
         documentsList.classList.add('active');
-        loadDocuments(); // immediate load
-        startDocumentsPolling();
+        loadDocuments(); // immediate load (no polling — SSE handles updates)
     }
 }
 
@@ -59,29 +56,6 @@ function switchView(view) {
     if (login) {
         localStorage.setItem(`current_view_${login}`, view);
     }
-}
-
-function startDocumentsPolling() {
-    if (documentsPollingInterval) clearInterval(documentsPollingInterval);
-    // Poll server every 10 seconds
-    documentsPollingInterval = setInterval(() => {
-        if (currentView === 'documents') {
-            loadDocuments(false); // silent update
-        } else {
-            stopDocumentsPolling();
-        }
-    }, 10000);
-
-    // Start live timer for elapsed time display (updates every second)
-    startLiveDocumentTimer();
-}
-
-function stopDocumentsPolling() {
-    if (documentsPollingInterval) {
-        clearInterval(documentsPollingInterval);
-        documentsPollingInterval = null;
-    }
-    stopLiveDocumentTimer();
 }
 
 // Live timer — updates elapsed time display every second without server requests

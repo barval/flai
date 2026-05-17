@@ -337,10 +337,11 @@ window.ROOMS = {{ rooms|tojson }};
     'Refresh backup list': {{ _('Refresh backup list')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}
-console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);
+if (window.DEBUG_JS) console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);
 {% endif %}
 </script>
-<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
-<script src="{{ url_for('static', filename='js/admin-models.js') }}"></script>
-<script src="{{ url_for('static', filename='js/admin-backups.js') }}"></script>
+<script src="{{ url_for('static', filename='js/events.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/admin.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/admin-models.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/admin-backups.js', v=config.STATIC_VERSION) }}"></script>
 {% endblock %}

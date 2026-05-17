@@ -1,6 +1,7 @@
 # app/config.py
 # Configuration loader for FLAI application
 import os
+import time
 from datetime import timedelta
 
 import pytz
@@ -95,6 +96,9 @@ def load_config(app):
     # Debug translations
     app.config["DEBUG_TRANSLATIONS"] = os.getenv("DEBUG_TRANSLATIONS", "false").lower() == "true"
 
+    # Debug JS console.log output
+    app.config["DEBUG_JS"] = os.getenv("DEBUG_JS", "false").lower() == "true"
+
     # Upload folder for images and files
     app.config["UPLOAD_FOLDER"] = os.getenv("UPLOAD_FOLDER", "data/uploads")
     os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
@@ -155,3 +159,6 @@ def load_config(app):
 
     # File validation settings
     app.config["MAX_EXTENSION_LENGTH"] = int(os.getenv("MAX_EXTENSION_LENGTH", 10))
+
+    # Static file cache busting version (changes on every restart)
+    app.config["STATIC_VERSION"] = str(int(time.time()))

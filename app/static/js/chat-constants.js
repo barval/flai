@@ -8,7 +8,6 @@ let attachedFile = null;
 let pendingRequests = {};
 let defaultModelName = 'qwen3-vl:8b-instruct';
 let sessionsData = {};
-let syncInterval = null;
 let newMessageIndicators = {};
 let sessionQueueInfo = {};
 let sessionsUpdateTimeout = null;
@@ -25,7 +24,5 @@ let currentAudio = null;
 let currentTTSButton = null;
 let currentPlayingSessionId = null;
 let currentTTSMessageText = null;  // Store text of message being played to find it later
-// Message polling
-let messagePollingInterval = null;
 let lastMessageTimestamp = null;
 let displayedMessageIds = new Set(); // IDs of messages already displayed in current session

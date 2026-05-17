@@ -95,7 +95,7 @@
 </div>
 
 <!-- Markdown parser library -->
-<script src="{{ url_for('static', filename='js/marked.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/marked.min.js', v=config.STATIC_VERSION) }}"></script>
 
 <!-- JavaScript translations and configuration -->
 <script>
@@ -194,26 +194,27 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
 window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
 function t(key) {
     if (!(key in window.TRANSLATIONS)) {
-        console.warn('Missing translation key:', key);
+        dwarn('Missing translation key:', key);
         return key;
     }
     return window.TRANSLATIONS[key];
 }
 {% if config.get('DEBUG_TRANSLATIONS') %}
-console.log('Chat TRANSLATIONS merged:', window.TRANSLATIONS);
+if (window.DEBUG_JS) console.log('Chat TRANSLATIONS merged:', window.TRANSLATIONS);
 {% endif %}
 </script>
 
 <!-- Chat JavaScript modules (order matters) -->
-<script src="{{ url_for('static', filename='js/chat-constants.js') }}"></script>
-<script src="{{ url_for('static', filename='js/chat-utils.js') }}"></script>
-<script src="{{ url_for('static', filename='js/chat-sessions.js') }}"></script>
-<script src="{{ url_for('static', filename='js/chat-documents.js') }}"></script>
-<script src="{{ url_for('static', filename='js/chat-messages.js') }}"></script>
-<script src="{{ url_for('static', filename='js/chat-tts.js') }}"></script>
-<script src="{{ url_for('static', filename='js/chat-recording.js') }}"></script>
-<script src="{{ url_for('static', filename='js/chat-export.js') }}"></script>
-<script src="{{ url_for('static', filename='js/chat-queue.js') }}"></script>
-<script src="{{ url_for('static', filename='js/chat-style.js') }}"></script>
-<script src="{{ url_for('static', filename='js/chat-init.js') }}"></script>
+<script src="{{ url_for('static', filename='js/chat-constants.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/chat-utils.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/chat-sessions.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/chat-documents.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/chat-messages.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/chat-tts.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/chat-recording.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/chat-export.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/events.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/chat-queue.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/chat-style.js', v=config.STATIC_VERSION) }}"></script>
+<script src="{{ url_for('static', filename='js/chat-init.js', v=config.STATIC_VERSION) }}"></script>
 {% endblock %}

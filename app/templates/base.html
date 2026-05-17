@@ -13,6 +13,11 @@
     <link rel="stylesheet" href="/static/css/markdown.css">
     <link rel="stylesheet" href="/static/css/dark-theme.css">
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <script>
+        window.DEBUG_JS = {% if config.get('DEBUG_JS') %}true{% else %}false{% endif %};
+        function dlog() { if (window.DEBUG_JS) console.log.apply(console, arguments); }
+        function dwarn() { if (window.DEBUG_JS) console.warn.apply(console, arguments); }
+    </script>
 </head>
 <body class="{% if session.get('theme') == 'dark' %}dark-theme{% endif %}">
     <header>
@@ -86,15 +91,15 @@
     <!-- Debug translations if enabled -->
     {% if config.get('DEBUG_TRANSLATIONS') %}
     <script>
-        console.log('Base TRANSLATIONS loaded:', window.TRANSLATIONS);
+        if (window.DEBUG_JS) console.log('Base TRANSLATIONS loaded:', window.TRANSLATIONS);
     </script>
     {% endif %}
 
     <!-- Base translations and settings module -->
-    <script src="{{ url_for('static', filename='js/base-translations.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/base-translations.js', v=config.STATIC_VERSION) }}"></script>
     <!-- Header JavaScript module -->
-    <script src="{{ url_for('static', filename='js/header.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/header.js', v=config.STATIC_VERSION) }}"></script>
     <!-- Guest theme switcher script -->
-    <script src="{{ url_for('static', filename='js/guest-theme.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/guest-theme.js', v=config.STATIC_VERSION) }}"></script>
 </body>
 </html>

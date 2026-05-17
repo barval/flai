@@ -52,7 +52,7 @@ function loadMessages(sessionId) {
         return Promise.reject(new Error('Session ID is empty'));
     }
 
-    console.debug('loadMessages: loading messages for session', sessionId);
+    dlog('loadMessages: loading messages for session', sessionId);
 
     // Show loading indicator BEFORE fetch starts
     showMessagesLoadingIndicator();
@@ -66,7 +66,7 @@ function loadMessages(sessionId) {
             if (!res.ok) {
                 // Session is gone — stop trying and reload sessions list
                 if (res.status === 404) {
-                    console.warn('loadMessages: Session not found (404). Reloading sessions...');
+                    dwarn('loadMessages: Session not found (404). Reloading sessions...');
                     if (typeof window.loadSessionsFromServer === 'function') {
                         window.loadSessionsFromServer();
                     }
@@ -86,7 +86,7 @@ function loadMessages(sessionId) {
 
             // Handle both old format (array) and new format (object with messages)
             const messages = Array.isArray(data) ? data : (data.messages || []);
-            console.debug('loadMessages: received', messages.length, 'messages');
+            dlog('loadMessages: received', messages.length, 'messages');
 
             // Update sessionsData count to match server state
             if (sessionsData[sessionId]) {
@@ -111,13 +111,13 @@ function loadMessages(sessionId) {
 
             messages.forEach((msg) => {
                 try {
-                    console.debug('loadMessages: Processing message:', msg.id, msg.role, msg.timestamp);
+                    dlog('loadMessages: Processing message:', msg.id, msg.role, msg.timestamp);
                     
                     // FIX: Skip if message already exists in DOM (prevents duplicates after polling)
                     if (msg.id) {
                         const existingMsg = document.querySelector(`[data-message-id="${msg.id}"]`);
                         if (existingMsg) {
-                            console.debug('loadMessages: Message ID', msg.id, 'already in DOM, skipping');
+                            dlog('loadMessages: Message ID', msg.id, 'already in DOM, skipping');
                             displayedMessageIds.add(msg.id);
                             return;
                         }
@@ -125,7 +125,7 @@ function loadMessages(sessionId) {
                         const tempId = `temp-${msg.timestamp}`;
                         const existingWithTempId = document.querySelector(`[data-tempId="${tempId}"]`);
                         if (existingWithTempId) {
-                            console.debug('loadMessages: Message with tempId', tempId, 'already in DOM, updating');
+                            dlog('loadMessages: Message with tempId', tempId, 'already in DOM, updating');
                             // Update the tempId message with the real messageId
                             existingWithTempId.dataset.messageId = msg.id;
                             delete existingWithTempId.dataset.tempId;
@@ -136,7 +136,7 @@ function loadMessages(sessionId) {
 
                     // Display user messages from DB (for cross-client sync and page reload)
                     if (msg.role === 'user') {
-                        console.debug('loadMessages: Displaying user message:', msg.id);
+                        dlog('loadMessages: Displaying user message:', msg.id);
                         lastUserMessage = msg;
                         displayMessage(
                             msg.role,
@@ -147,7 +147,7 @@ function loadMessages(sessionId) {
                             msg.file_path,
                             msg.timestamp,
                             null, null, null, null, null, null,
-                            msg.id
+                            msg.id, null
                         );
                         return;
                     }
@@ -171,14 +171,14 @@ function loadMessages(sessionId) {
                                         msg.timestamp,
                                         null, 'system',
                                         null, null, null, null,
-                                        msg.id
+                                        msg.id, null
                                     );
                                     if (msg.id) displayedMessageIds.add(msg.id);
                                 }
                             }
                             // Skip normal processing for system messages
                         } else {
-                            console.debug('loadMessages: Displaying assistant message:', msg.id);
+                            dlog('loadMessages: Displaying assistant message:', msg.id);
                             let responseTime = null;
                         if (lastUserMessage) {
                             const userTime = new Date(lastUserMessage.timestamp);
@@ -223,7 +223,8 @@ function loadMessages(sessionId) {
                             genTime,
                             mmModel,
                             genModel,
-                            msg.id
+                            msg.id,
+                            msg.response_style
                         );
                         lastUserMessage = null;
                         }
@@ -247,24 +248,35 @@ function loadMessages(sessionId) {
         });
 }
 
-function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId) {
+function getResponseStyleEmoji(style) {
+    var map = {
+        'neutral': '\u{1F916}',
+        'academic': '\u{1F393}',
+        'professional': '\u{1F4BC}',
+        'friendly': '\u{1F60A}',
+        'funny': '\u{1F604}'
+    };
+    return map[style] || '';
+}
+
+function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle) {
     if (window.IS_RELOADING) {
-        console.debug('displayMessage: Skipping - IS_RELOADING');
+        dlog('displayMessage: Skipping - IS_RELOADING');
         return;
     }
 
-    console.debug('displayMessage: Called with role=', role, 'messageId=', messageId, 'timestamp=', timestamp);
+    dlog('displayMessage: Called with role=', role, 'messageId=', messageId, 'timestamp=', timestamp);
 
     // FIX: Prevent duplicate messages by checking message ID
     if (messageId) {
         const existing = document.querySelector(`[data-message-id="${messageId}"]`);
         if (existing) {
-            console.debug('displayMessage: Message ID', messageId, 'already exists in DOM, skipping');
+            dlog('displayMessage: Message ID', messageId, 'already exists in DOM, skipping');
             return;
         }
         // Also check displayedMessageIds set
         if (displayedMessageIds.has(messageId)) {
-            console.debug('displayMessage: Message ID', messageId, 'already in displayedMessageIds set, skipping');
+            dlog('displayMessage: Message ID', messageId, 'already in displayedMessageIds set, skipping');
             return;
         }
     }
@@ -273,7 +285,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     if (!messageId && timestamp) {
         const existing = document.querySelector(`[data-timestamp="${timestamp}"][data-role="${role}"]`);
         if (existing) {
-            console.debug('displayMessage: Message with timestamp', timestamp, 'and role', role, 'already exists, skipping');
+            dlog('displayMessage: Message with timestamp', timestamp, 'and role', role, 'already exists, skipping');
             return;
         }
     }
@@ -290,11 +302,27 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     const rawContent = typeof content === 'string' ? content : JSON.stringify(content);
     msgDiv.setAttribute('data-raw-text', rawContent);
     
+    // Structured content support: extract cleanText from JSON {"prefix": ..., "text": ...}
+    if (typeof rawContent === 'string') {
+        try {
+            const parsed = JSON.parse(rawContent);
+            if (parsed && typeof parsed.prefix === 'string' && typeof parsed.text === 'string') {
+                msgDiv.dataset.cleanText = parsed.text;
+            }
+        } catch (e) {
+            // plain string, ignore
+        }
+    }
+
+    if (responseStyle) {
+        msgDiv.dataset.responseStyle = responseStyle;
+    }
+    
     // FIX: Store and check message ID to prevent duplicates
     if (messageId) {
         msgDiv.setAttribute('data-message-id', messageId);
         displayedMessageIds.add(messageId);
-        console.debug('displayMessage: Added message ID', messageId, 'to displayed set');
+        dlog('displayMessage: Added message ID', messageId, 'to displayed set');
     }
     
     // FIX: Store filename for duplicate detection (audio files)
@@ -451,6 +479,19 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             headerDiv.appendChild(extraSpan);
         }
 
+        // Response style emoji
+        if (responseStyle) {
+            const styleEmoji = getResponseStyleEmoji(responseStyle);
+            if (styleEmoji) {
+                const styleLabel = t('response_style_' + responseStyle) || responseStyle;
+                const styleSpan = document.createElement('span');
+                styleSpan.className = 'response-style-indicator';
+                styleSpan.title = styleLabel;
+                styleSpan.textContent = styleEmoji;
+                headerDiv.appendChild(styleSpan);
+            }
+        }
+
         // TTS button
         const ttsButton = document.createElement('button');
         ttsButton.className = 'tts-button';
@@ -467,9 +508,25 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     }
 
     let contentHTML = '<div class="message-content">';
-    
+
     if (typeof content === 'string') {
-        if (content.startsWith('[')) {
+        // Structured content: {"prefix": "...", "text": "..."}
+        if (content.startsWith('{')) {
+            try {
+                const parsed = JSON.parse(content);
+                if (parsed && typeof parsed.prefix === 'string' && typeof parsed.text === 'string') {
+                    const escapedPrefix = escapeHtml(parsed.prefix);
+                    const escapedText = escapeHtml(parsed.text);
+                    contentHTML += '<strong>' + escapedPrefix + '</strong>' + escapedText;
+                    msgDiv.dataset.cleanText = parsed.text;
+                } else {
+                    throw new Error('not structured');
+                }
+            } catch (e) {
+                const decodedText = (role === 'assistant') ? decodeHtmlEntities(content) : escapeHtml(content);
+                contentHTML += marked.parse(decodedText);
+            }
+        } else if (content.startsWith('[')) {
             try {
                 const parts = JSON.parse(content);
                 let textContent = '';
@@ -489,7 +546,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             contentHTML += marked.parse(decodedText);
         }
     }
-    
+
     contentHTML += '</div>';
 
     // Add header to message div
@@ -574,7 +631,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         copyButton.addEventListener('click', async (e) => {
             e.preventDefault();
             if (window.IS_RELOADING) return;
-            const rawText = msgDiv.dataset.rawText;
+            const rawText = msgDiv.dataset.cleanText || msgDiv.dataset.rawText;
             if (!rawText) return;
             const success = await copyToClipboard(rawText);
             const originalHTML = copyButton.innerHTML;

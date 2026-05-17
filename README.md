@@ -74,6 +74,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | v8.3 (New) | Notes |
 |------------|-------|
 | **Service Prefix Formatting** | Voice transcription, camera snapshot, image generation, and image editing notifications display their prefix in bold. These prefixes are excluded from TTS playback and clipboard copy for cleaner output. |
+| **SSE Real-Time Delivery** | Queue results and new messages delivered via Server-Sent Events (Redis pub/sub) instead of HTTP polling. Instant updates, lower bandwidth, no polling delays. |
 
 ### Core Components
 
@@ -676,7 +677,10 @@ curl http://localhost:5000/metrics
 - **PostgreSQL 18 upgrade** — migrated from 16 to 18 with zero data loss
 - **Service prefix formatting** — voice, camera, image gen/edit messages show bold prefix; excluded from TTS and clipboard
 - **Message format migration** — all old service messages converted to structured JSON `{prefix, text}` format
-- **SSE real-time delivery** — queue results delivered via Server-Sent Events for instant message display
+- **SSE real-time delivery** — queue results and new messages delivered via Server-Sent Events (Redis pub/sub), replacing all HTTP polling
+- **Static cache-busting** — all JS/CSS assets served with `?v=timestamp` to prevent stale cache after updates
+- **Debug logging system** — `console.log`/`console.warn` replaced with `dlog`/`dwarn`, active only when `DEBUG_JS=true`
+- **CLI command** — `flask migrate-messages-format` to convert old plain-text service messages to JSON format (supports `--dry-run`)
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)

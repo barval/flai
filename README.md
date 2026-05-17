@@ -73,9 +73,6 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 | v8.3 (New) | Notes |
 |------------|-------|
-| **Response Style Selector** | Dropdown in the chat header to choose the AI's tone: neutral, academic, professional, friendly, or funny. |
-| **Repeat Penalty** | New `repeat_penalty` parameter (range 1.0–2.0) prevents model looping/repetition. Configurable per model in admin panel. Defaults: chat 1.1, reasoning 1.15, multimodal 1.1. |
-| **PostgreSQL 18 Upgrade** | Migrated from PostgreSQL 16 to 18 with zero data loss via pg_dump + pg_restore. Mount point changed to `/var/lib/postgresql` (required by 18+). |
 | **Service Prefix Formatting** | Voice transcription, camera snapshot, image generation, and image editing notifications display their prefix in bold. These prefixes are excluded from TTS playback and clipboard copy for cleaner output. |
 | **SSE Real-Time Delivery** | Queue results and new messages delivered via Server-Sent Events (Redis pub/sub) instead of HTTP polling. Instant updates, lower bandwidth, no polling delays. |
 
@@ -675,8 +672,6 @@ curl http://localhost:5000/metrics
 - **Backup & restore** — full or users-only backups from the admin panel (pg_dump + tar.gz archives)
 - **Admin CLI tools** — `admin-password` for password reset, `cleanup-uploads` for orphaned file removal
 - **Health check & metrics** — `/health` endpoint with service status, `/metrics` for Prometheus
-
-**v8.3 (Refinement):**
 - **Response style selector** — dropdown in chat header: neutral, academic, professional, friendly, funny
 - **Repeat penalty** — `repeat_penalty` parameter (1.0–2.0) per model, prevents response loops
 - **PostgreSQL 18 upgrade** — migrated from 16 to 18 with zero data loss

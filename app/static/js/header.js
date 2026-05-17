@@ -22,7 +22,7 @@ function fetchWithCSRF(url, options = {}) {
 
 function t(key) {
     if (!(key in window.TRANSLATIONS)) {
-        console.warn('Missing translation key:', key);
+        dwarn('Missing translation key:', key);
         return key;
     }
     return window.TRANSLATIONS[key];

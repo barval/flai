@@ -6,7 +6,7 @@ async function saveChatAsHTML() {
         const response = await fetch('/api/footer-text');
         if (response.ok) {
             footerText = await response.text();
-            console.log('Footer text fetched:', footerText);
+            dlog('Footer text fetched:', footerText);
         } else {
             console.error('Footer API returned status:', response.status);
             footerText = t('footer_text');
@@ -87,13 +87,13 @@ async function saveChatAsHTML() {
     const mediaToFetch = [];
 
     // DEBUG: Check what message elements exist in DOM
-    console.log('=== EXPORT DEBUG START ===');
+    dlog('=== EXPORT DEBUG START ===');
     const allUserMessages = document.querySelectorAll('.user-message');
     const allAssistantMessages = document.querySelectorAll('.assistant-message');
     const allBotMessages = document.querySelectorAll('.bot-message');
-    console.log('User messages found:', allUserMessages.length);
-    console.log('Assistant messages found:', allAssistantMessages.length);
-    console.log('Bot messages found:', allBotMessages.length);
+    dlog('User messages found:', allUserMessages.length);
+    dlog('Assistant messages found:', allAssistantMessages.length);
+    dlog('Bot messages found:', allBotMessages.length);
 
     document.querySelectorAll('.user-message, .assistant-message, .bot-message').forEach((msgEl, index) => {
         const role = msgEl.classList.contains('user-message') ? 'user' : 'assistant';
@@ -109,7 +109,7 @@ async function saveChatAsHTML() {
         const fileEl = msgEl.querySelector('.attached-file');
 
         // DEBUG: Log media elements for each message
-        console.log('Message', index, '-', role, ':', {
+        dlog('Message', index, '-', role, ':', {
             hasImage: !!imageEl,
             imageSrc: imageEl ? imageEl.src.substring(0, 80) : null,
             hasAudio: !!audioEl,
@@ -136,13 +136,13 @@ async function saveChatAsHTML() {
                     type: 'image',
                     msgIndex: index
                 });
-                console.log('Added image to fetch:', imageEl.src);
+                dlog('Added image to fetch:', imageEl.src);
             } else if (imageEl.src.startsWith('data:')) {
                 mediaInfo.image = {
                     src: imageEl.src,
                     alt: imageEl.alt || t('image')
                 };
-                console.log('Image already base64, skipping fetch');
+                dlog('Image already base64, skipping fetch');
             }
         }
 
@@ -159,12 +159,12 @@ async function saveChatAsHTML() {
                     type: 'audio',
                     msgIndex: index
                 });
-                console.log('Added audio to fetch:', audioEl.src);
+                dlog('Added audio to fetch:', audioEl.src);
             } else if (audioEl.src.startsWith('data:')) {
                 mediaInfo.audio = {
                     src: audioEl.src
                 };
-                console.log('Audio already base64, skipping fetch');
+                dlog('Audio already base64, skipping fetch');
             }
         }
 
@@ -188,9 +188,9 @@ async function saveChatAsHTML() {
         });
     });
 
-    console.log('Total messages collected:', messageElements.length);
-    console.log('Total media to fetch:', mediaToFetch.length);
-    console.log('=== EXPORT DEBUG END ===');
+    dlog('Total messages collected:', messageElements.length);
+    dlog('Total media to fetch:', mediaToFetch.length);
+    dlog('=== EXPORT DEBUG END ===');
 
     if (messageElements.length === 0) {
         alert(t('no_messages_to_save'));
@@ -198,11 +198,11 @@ async function saveChatAsHTML() {
     }
 
     // Fetch all media files and convert to base64
-    console.log('Fetching', mediaToFetch.length, 'media files...');
+    dlog('Fetching', mediaToFetch.length, 'media files...');
     const mediaBase64Results = new Array(mediaToFetch.length).fill(null);
     const fetchPromises = mediaToFetch.map(async (mediaItem, idx) => {
         try {
-            console.log('Fetching media:', mediaItem.url, 'for message', mediaItem.msgIndex);
+            dlog('Fetching media:', mediaItem.url, 'for message', mediaItem.msgIndex);
             
             // IMPORTANT: include credentials to pass session cookie
             const response = await fetch(mediaItem.url, {
@@ -226,7 +226,7 @@ async function saveChatAsHTML() {
                 reader.onloadend = () => {
                     const base64Data = reader.result;
                     mediaBase64Results[idx] = base64Data;
-                    console.log('Media fetched successfully:', mediaItem.url, 
+                    dlog('Media fetched successfully:', mediaItem.url, 
                                'Size:', base64Data.length);
                     resolve();
                 };
@@ -242,7 +242,7 @@ async function saveChatAsHTML() {
     });
 
     await Promise.all(fetchPromises);
-    console.log('All media fetched. Results:', mediaBase64Results.filter(r => r !== null).length, 'of', mediaToFetch.length);
+    dlog('All media fetched. Results:', mediaBase64Results.filter(r => r !== null).length, 'of', mediaToFetch.length);
 
     // Build messages HTML with embedded media
     const messagesHtml = messageElements.map((msg, msgIdx) => {
@@ -258,7 +258,7 @@ async function saveChatAsHTML() {
                 fileHtml += '<div class="image-container"><img src="' + imgSrc + '" class="attached-image" alt="' + escapeHtml(msg.media.image.alt) + '"></div>';
             } else {
                 // Fallback to original URL if base64 conversion failed
-                console.warn('Image missing base64, using original URL:', msg.media.image.url);
+                dwarn('Image missing base64, using original URL:', msg.media.image.url);
                 fileHtml += '<div class="image-container"><img src="' + msg.media.image.url + '" class="attached-image" alt="' + escapeHtml(msg.media.image.alt) + '"></div>';
             }
         }
@@ -272,7 +272,7 @@ async function saveChatAsHTML() {
             if (audioSrc) {
                 fileHtml += '<div class="audio-container"><audio controls src="' + audioSrc + '"></audio></div>';
             } else {
-                console.warn('Audio missing base64, using original URL:', msg.media.audio.url);
+                dwarn('Audio missing base64, using original URL:', msg.media.audio.url);
                 fileHtml += '<div class="audio-container"><audio controls src="' + msg.media.audio.url + '"></audio></div>';
             }
         }
@@ -312,7 +312,7 @@ ${fileHtml}
             try {
                 const response = await fetch(url);
                 if (!response.ok) {
-                    console.warn('Failed to load CSS:', url);
+                    dwarn('Failed to load CSS:', url);
                     return '';
                 }
                 return await response.text();
@@ -374,5 +374,5 @@ ${fileHtml}
     a.click();
     URL.revokeObjectURL(url);
 
-    console.log('Chat export completed!');
+    dlog('Chat export completed!');
 }

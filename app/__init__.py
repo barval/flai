@@ -13,6 +13,7 @@ from flask_wtf.csrf import CSRFProtect
 
 from .config import load_config
 from .database import init_db
+from .events import init_events_publisher
 from .queue import RedisRequestQueue
 from .resource_manager import get_resource_manager
 from .userdb import get_user_by_login, init_user_db
@@ -214,8 +215,11 @@ def create_app():
     # Initialize Redis queue
     app.request_queue = RedisRequestQueue(app)
 
+    # Initialize events publisher (Redis pub/sub for SSE)
+    init_events_publisher(app)
+
     # Register blueprints (new modular structure)
-    from .routes import admin, auth, backups, chat, documents, messages, queue, sessions, tts
+    from .routes import admin, auth, backups, chat, documents, events, messages, queue, sessions, tts
 
     app.register_blueprint(auth.bp)
     app.register_blueprint(chat.bp)
@@ -226,6 +230,7 @@ def create_app():
     app.register_blueprint(sessions.bp)
     app.register_blueprint(documents.bp)
     app.register_blueprint(backups.bp)
+    app.register_blueprint(events.bp)
 
     # Debug API endpoints (only when DEBUG_API_ENABLED=true)
     if app.config.get("DEBUG_API_ENABLED"):
@@ -241,6 +246,7 @@ def create_app():
 
     app.cli.add_command(cli.set_admin_password)
     app.cli.add_command(cli.cleanup_uploads)
+    app.cli.add_command(cli.migrate_messages_format)
 
     # Additional camera routes
     if "cam" in modules:

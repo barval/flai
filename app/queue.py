@@ -20,6 +20,7 @@ from .db import (
     save_message,
     update_document_index_status,
 )
+from .events import get_events_publisher
 from .model_config import get_model_config
 from .utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, save_uploaded_file
 
@@ -424,6 +425,7 @@ class RedisRequestQueue:
             if user_id:
                 self._cleanup_user_request(user_id, task_id)
                 self._decrement_user_queue_count(user_id)
+            self._publish_result_event(task, "error", {"error": error_text, "session_id": task.get("session_id")})
             return
 
         try:
@@ -438,6 +440,7 @@ class RedisRequestQueue:
                 )
                 self.redis.expire(self.results_key, self.app.config.get("REDIS_RESULT_TTL", 3600))
                 self.app.logger.info(f"Task {task_id} completed successfully for session {task.get('session_id')}")
+                self._publish_result_event(task, "completed", result_data)
         except Exception as e:
             self.app.logger.error(f"Error processing task {task_id}: {e}", exc_info=True)
             self.redis.hset(
@@ -453,6 +456,7 @@ class RedisRequestQueue:
                 ),
             )
             self.redis.expire(self.results_key, self.app.config.get("REDIS_RESULT_TTL", 3600))
+            self._publish_result_event(task, "error", {"error": str(e), "session_id": task.get("session_id")})
         finally:
             self.redis.hdel(processing_key, task_id)
             user_id = task.get("user_id")
@@ -582,6 +586,7 @@ class RedisRequestQueue:
         file_name=None,
         file_path=None,
         extra: dict | None = None,
+        response_style: str = "neutral",
     ) -> dict[str, Any]:
         """Save assistant message to DB and return response dict."""
         resp_time = process_time if isinstance(process_time, dict) else str(process_time)
@@ -595,13 +600,25 @@ class RedisRequestQueue:
             file_path=file_path,
             model_name=model_name,
             response_time=resp_time,
+            response_style=response_style,
         )
-        return self._build_success_response(session_id, text, model_name, process_time, message_id=msg_id, extra=extra)
+        result = self._build_success_response(
+            session_id, text, model_name, process_time, message_id=msg_id, extra=extra
+        )
+        result["response_style"] = response_style
+        return result
 
     # ── Task handlers extracted from _process_request ──
 
     def _process_image_edit_task(
-        self, message_text: str, file_data: str, file_type: str, session_id: str, user_id: str, lang: str
+        self,
+        message_text: str,
+        file_data: str,
+        file_type: str,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        response_style: str = "neutral",
     ) -> dict[str, Any]:
         """Handle image editing request (image uploaded + edit comment)."""
         mm_start = time.time()
@@ -642,7 +659,8 @@ class RedisRequestQueue:
             resize_notice = resize_text
 
         template = self.app.modules["base"]._("Image edited from request: {query}", lang=lang)
-        message_text_out = template.format(query=message_text)
+        prefix = template.replace("{query}", "")
+        message_text_out = json.dumps({"prefix": prefix, "text": message_text}, ensure_ascii=False)
         file_path = None
         if image_result.get("image_data"):
             self.app.logger.info(f"Edit: saving image, data length={len(image_result['image_data'])}")
@@ -685,6 +703,7 @@ class RedisRequestQueue:
             file_name=image_result["file_name"],
             file_path=file_path,
             extra=extra,
+            response_style=response_style,
         )
 
     def _process_image_gen_task(
@@ -718,7 +737,8 @@ class RedisRequestQueue:
 
         sd_model = self.app.config.get("SD_MODEL_TYPE", "z_image_turbo")
         template = self.app.modules["base"]._("Image generated from request: {query}", lang=lang)
-        message_text = template.format(query=query)
+        prefix = template.replace("{query}", "")
+        message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
         file_path = None
         if image_result.get("image_data"):
             file_path = save_uploaded_file(
@@ -751,6 +771,7 @@ class RedisRequestQueue:
             file_name=image_result["file_name"],
             file_path=file_path,
             extra=extra,
+            response_style=response_style,
         )
 
     def _process_camera_task(
@@ -777,7 +798,8 @@ class RedisRequestQueue:
             return self._build_error_response(session_id, camera_result["error"], camera_time, lang)
 
         template = self.app.modules["base"]._("Camera snapshot: {room_name}", lang=lang)
-        translated_text = template.format(room_name=camera_result["room_name"])
+        prefix = template.replace("{room_name}", "")
+        translated_text = json.dumps({"prefix": prefix, "text": camera_result["room_name"]}, ensure_ascii=False)
         file_path = None
         if camera_result.get("image_data"):
             file_path = save_uploaded_file(
@@ -804,6 +826,7 @@ class RedisRequestQueue:
                 "file_type": camera_result["image_type"],
                 "response_time": camera_time,
             },
+            response_style=response_style,
         )
 
         messages = [first_message]
@@ -821,7 +844,9 @@ class RedisRequestQueue:
             if error:
                 bot_reply = f"⚠️ {error}"
             mm_model = self._get_model_name("multimodal") or "unknown"
-            second = self._save_and_respond(session_id, bot_reply, mm_model, mm_time, is_error=bool(error))
+            second = self._save_and_respond(
+                session_id, bot_reply, mm_model, mm_time, is_error=bool(error), response_style=response_style
+            )
             second["response_time"] = mm_time
             messages.append(second)
 
@@ -839,7 +864,7 @@ class RedisRequestQueue:
 
         if rag_answer is not None:
             model_used = (rag_model + " (RAG)") if rag_model else "unknown (RAG)"
-            return self._save_and_respond(session_id, rag_answer, model_used, rag_time)
+            return self._save_and_respond(session_id, rag_answer, model_used, rag_time, response_style=response_style)
         else:
             return self._build_error_response(
                 session_id, self.app.modules["base"]._("No relevant documents found", lang), rag_time, lang
@@ -875,7 +900,9 @@ class RedisRequestQueue:
             rag_time = round(time.time() - rag_start, 1)
             if rag_answer is not None:
                 model_used = rag_model + " (RAG)" if rag_model else "unknown (RAG)"
-                return self._save_and_respond(session_id, rag_answer, model_used, rag_time)
+                return self._save_and_respond(
+                    session_id, rag_answer, model_used, rag_time, response_style=response_style
+                )
             self.app.logger.info(f"RAG returned no answer, falling back to reasoning model for query: {query[:50]}...")
             action_type = "reasoning"
             process_time = router_time
@@ -899,9 +926,13 @@ class RedisRequestQueue:
                 process_time = 0
                 final_response = query
             model_used = self._get_model_name("reasoning") or "unknown"
-            return self._save_and_respond(session_id, final_response, model_used, process_time)
+            return self._save_and_respond(
+                session_id, final_response, model_used, process_time, response_style=response_style
+            )
         else:
-            return self._save_and_respond(session_id, query, self._get_model_name("chat") or "unknown", router_time)
+            return self._save_and_respond(
+                session_id, query, self._get_model_name("chat") or "unknown", router_time, response_style=response_style
+            )
 
     # Modified: removed hardcoded is_image_edit block; all image+text now go through _process_image_chat_task
     def _process_request(self, task: dict[str, Any]) -> dict[str, Any]:
@@ -1005,7 +1036,7 @@ class RedisRequestQueue:
                         if edit_query:
                             # Redirect to image editing task
                             return self._process_image_edit_task(
-                                edit_query, file_data, file_type, session_id, user_id, lang
+                                edit_query, file_data, file_type, session_id, user_id, lang, response_style
                             )
                         else:
                             # Marker present but no query, treat as error
@@ -1028,7 +1059,9 @@ class RedisRequestQueue:
                 is_error = True
 
         mm_model = self._get_model_name("multimodal") or "unknown"
-        return self._save_and_respond(session_id, bot_reply, mm_model, process_time, is_error=is_error)
+        return self._save_and_respond(
+            session_id, bot_reply, mm_model, process_time, is_error=is_error, response_style=response_style
+        )
 
     def _process_audio_task(
         self, task: dict[str, Any], request_data: dict[str, Any], session_id: str, user_id: str, lang: str
@@ -1082,7 +1115,9 @@ class RedisRequestQueue:
         from flask_babel import force_locale
 
         with force_locale(lang):
-            system_content = "🎤 " + self.app.modules["base"]._("Transcribed") + ": " + transcribed_text
+            prefix = "🎤 " + self.app.modules["base"]._("Transcribed") + ": "
+
+        system_content = json.dumps({"prefix": prefix, "text": transcribed_text}, ensure_ascii=False)
 
         transcribed_message_id = save_message(
             session_id, "assistant", system_content, model_name="whisper", response_time=str(process_time)
@@ -1142,7 +1177,9 @@ class RedisRequestQueue:
         from flask_babel import force_locale
 
         with force_locale(lang):
-            system_content = "🎤 " + self.app.modules["base"]._("Transcribed") + ": " + transcribed_text
+            prefix = "🎤 " + self.app.modules["base"]._("Transcribed") + ": "
+
+        system_content = json.dumps({"prefix": prefix, "text": transcribed_text}, ensure_ascii=False)
         transcribed_message_id = save_message(
             session_id, "assistant", system_content, model_name="whisper", response_time="0"
         )
@@ -1365,3 +1402,22 @@ class RedisRequestQueue:
         if result_data:
             return self._deserialize(result_data)
         return None
+
+    def _publish_result_event(self, task: dict[str, Any], status: str, result_data: dict[str, Any]) -> None:
+        """Publish task result to the user's SSE event stream."""
+        user_id = task.get("user_id")
+        if not user_id:
+            return
+        publisher = get_events_publisher()
+        if publisher is None:
+            return
+        publisher.publish(
+            user_id,
+            "result_completed",
+            {
+                "task_id": task.get("id"),
+                "session_id": task.get("session_id"),
+                "status": status,
+                "result": result_data,
+            },
+        )

@@ -1,4 +1,4 @@
-# AGENTS.md — FLAI v8.2
+# AGENTS.md — FLAI v8.3
 
 ## Commands (exact)
 
@@ -29,6 +29,8 @@ pybabel compile -d translations  # after editing .po files
 flask admin-password <pass>       # set/reset admin password
 docker exec flai-web flask cleanup-uploads  # remove orphaned files from uploads/
 docker exec flai-web flask admin-password <pass>  # in container
+docker exec flai-web flask migrate-messages-format  # convert old plain-text service msgs → JSON {prefix, text}
+docker exec flai-web flask migrate-messages-format --dry-run  # preview without writing
 
 # Dev server (0.0.0.0:5000, debug=True)
 python wsgi.py

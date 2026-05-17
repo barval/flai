@@ -69,7 +69,7 @@ function closeImageModal() {
 // Helper to ensure currentSessionId is valid
 function ensureValidSessionId() {
     if (!currentSessionId) {
-        console.warn('currentSessionId is empty, trying to recover');
+        dwarn('currentSessionId is empty, trying to recover');
         const sessions = document.querySelectorAll('.session-item');
         if (sessions.length > 0) {
             const firstId = sessions[0].dataset.sessionId;

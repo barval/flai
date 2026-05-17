@@ -18,5 +18,5 @@ window.CURRENT_THEME = 'light';
 
 // Debug logging helper
 function logTranslationsLoaded() {
-    console.log('Base TRANSLATIONS loaded:', window.TRANSLATIONS);
+    dlog('Base TRANSLATIONS loaded:', window.TRANSLATIONS);
 }

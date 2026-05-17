@@ -202,6 +202,18 @@ def _init_postgresql():
                 ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://flai-llamacpp:8033', NULL)
         """)
 
+    # Add response_style column to messages table
+    c.execute("""
+        DO $migrate$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                          WHERE table_name = 'messages' AND column_name = 'response_style') THEN
+                ALTER TABLE messages ADD COLUMN response_style TEXT DEFAULT 'neutral';
+            END IF;
+        END
+        $migrate$
+    """)
+
     conn.commit()
     conn.close()
     logger.info("PostgreSQL database initialized")

@@ -587,6 +587,7 @@ class RedisRequestQueue:
         file_path=None,
         extra: dict | None = None,
         response_style: str = "neutral",
+        user_id: str | None = None,
     ) -> dict[str, Any]:
         """Save assistant message to DB and return response dict."""
         resp_time = process_time if isinstance(process_time, dict) else str(process_time)
@@ -601,6 +602,7 @@ class RedisRequestQueue:
             model_name=model_name,
             response_time=resp_time,
             response_style=response_style,
+            user_id=user_id,
         )
         result = self._build_success_response(
             session_id, text, model_name, process_time, message_id=msg_id, extra=extra
@@ -659,7 +661,7 @@ class RedisRequestQueue:
             resize_notice = resize_text
 
         template = self.app.modules["base"]._("Image edited from request: {query}", lang=lang)
-        prefix = template.replace("{query}", "")
+        prefix = "🎨 " + template.replace("{query}", "")
         message_text_out = json.dumps({"prefix": prefix, "text": message_text}, ensure_ascii=False)
         file_path = None
         if image_result.get("image_data"):
@@ -737,7 +739,7 @@ class RedisRequestQueue:
 
         sd_model = self.app.config.get("SD_MODEL_TYPE", "z_image_turbo")
         template = self.app.modules["base"]._("Image generated from request: {query}", lang=lang)
-        prefix = template.replace("{query}", "")
+        prefix = "🎨 " + template.replace("{query}", "")
         message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
         file_path = None
         if image_result.get("image_data"):
@@ -901,7 +903,7 @@ class RedisRequestQueue:
             if rag_answer is not None:
                 model_used = rag_model + " (RAG)" if rag_model else "unknown (RAG)"
                 return self._save_and_respond(
-                    session_id, rag_answer, model_used, rag_time, response_style=response_style
+                    session_id, rag_answer, model_used, rag_time, response_style=response_style, user_id=user_id
                 )
             self.app.logger.info(f"RAG returned no answer, falling back to reasoning model for query: {query[:50]}...")
             action_type = "reasoning"
@@ -927,11 +929,16 @@ class RedisRequestQueue:
                 final_response = query
             model_used = self._get_model_name("reasoning") or "unknown"
             return self._save_and_respond(
-                session_id, final_response, model_used, process_time, response_style=response_style
+                session_id, final_response, model_used, process_time, response_style=response_style, user_id=user_id
             )
         else:
             return self._save_and_respond(
-                session_id, query, self._get_model_name("chat") or "unknown", router_time, response_style=response_style
+                session_id,
+                query,
+                self._get_model_name("chat") or "unknown",
+                router_time,
+                response_style=response_style,
+                user_id=user_id,
             )
 
     # Modified: removed hardcoded is_image_edit block; all image+text now go through _process_image_chat_task
@@ -1203,6 +1210,7 @@ class RedisRequestQueue:
                 "request_id": new_request_id,
                 "session_id": session_id,
                 "response_time": 0,
+                "assistant_timestamp": get_current_time_in_timezone_for_db(self.app),
             }
         else:
             return {
@@ -1210,6 +1218,7 @@ class RedisRequestQueue:
                 "transcribed_message_id": transcribed_message_id,
                 "session_id": session_id,
                 "response_time": 0,
+                "assistant_timestamp": get_current_time_in_timezone_for_db(self.app),
             }
 
     def _process_index_task(self, task: dict[str, Any]) -> dict[str, Any]:

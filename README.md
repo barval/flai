@@ -69,12 +69,14 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v8.3
+### What's New in v8.4
 
-| v8.3 (New) | Notes |
+| v8.4 (New) | Notes |
 |------------|-------|
-| **Service Prefix Formatting** | Voice transcription, camera snapshot, image generation, and image editing notifications display their prefix in bold. These prefixes are excluded from TTS playback and clipboard copy for cleaner output. |
-| **SSE Real-Time Delivery** | Queue results and new messages delivered via Server-Sent Events (Redis pub/sub) instead of HTTP polling. Instant updates, lower bandwidth, no polling delays. |
+| 🎨 Service emoji & style | Added `🎨` to image gen/edit service messages, pipe separators around response time like `&#124; ⏱️ 5.8с &#124;` |
+| 🔧 SSE reliability fixes | Fixed 4 root causes: voice messages now appear without manual page refresh (lightning icon, response delivery) |
+| 🧰 Migration tool extended | `flask migrate-messages-format --add-emojis` — adds `🎨` to existing image messages in DB |
+
 
 ### Core Components
 
@@ -680,6 +682,9 @@ curl http://localhost:5000/metrics
 - **Static cache-busting** — all JS/CSS assets served with `?v=timestamp` to prevent stale cache after updates
 - **Debug logging system** — `console.log`/`console.warn` replaced with `dlog`/`dwarn`, active only when `DEBUG_JS=true`
 - **CLI command** — `flask migrate-messages-format` to convert old plain-text service messages to JSON format (supports `--dry-run`)
+- **Service emoji & style** — image gen/edit messages prefixed with `🎨`, response time wrapped in pipes (`&#124; ⏱️ 5.8с &#124;`) for visual consistency
+- **SSE reliability** — 4 root cause fixes for voice message delivery (lightning icon visibility, reconnect recovery, `user_id` passthrough for `message_new` events)
+- **Migration `--add-emojis`** — `flask migrate-messages-format --add-emojis` to retroactively add `🎨` to existing image service messages (supports `--dry-run`)
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)

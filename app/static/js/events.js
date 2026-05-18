@@ -43,6 +43,9 @@ function scheduleReconnect() {
         if (typeof fetchQueueStatus === 'function') {
             fetchQueueStatus();
         }
+        if (typeof loadMessages === 'function' && currentSessionId) {
+            loadMessages(currentSessionId);
+        }
     }, 3000);
 }
 
@@ -189,8 +192,8 @@ function handleTranscriptionResult(result, resultSessionId, expectedSessionId) {
             setNewMessageIndicator(resultSessionId, true);
         }
         setLocalTranscribing(resultSessionId, false);
+        window.updateStatusCounter();
     }
-    clearSessionQueue(resultSessionId);
 }
 
 function handleCameraResult(result, resultSessionId) {

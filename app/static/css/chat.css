@@ -760,6 +760,33 @@ audio {
 }
 
 /* ===== MEDIA QUERIES FOR CHAT ===== */
+
+/* Tablet range — prevent calc(100vh) overflow from browser chrome */
+@media (min-width: 769px) and (max-width: 1199px) {
+    body {
+        overflow: hidden;
+    }
+
+    main {
+        overflow: hidden;
+    }
+
+    .chat-container {
+        height: 100%;
+        overflow: hidden;
+    }
+
+    .chat-main {
+        height: 100%;
+    }
+
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+    }
+}
+
 @media (max-width: 768px) {
     body {
         overflow: hidden;

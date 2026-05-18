@@ -76,6 +76,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | 🎨 Service emoji & style | Added `🎨` to image gen/edit service messages, pipe separators around response time like `&#124; ⏱️ 5.8с &#124;` |
 | 🔧 SSE reliability fixes | Fixed 4 root causes: voice messages now appear without manual page refresh (lightning icon, response delivery) |
 | 🧰 Migration tool extended | `flask migrate-messages-format --add-emojis` — adds `🎨` to existing image messages in DB |
+| 📱 Tablet responsive fix | Added media query for 769-1199px range — prevents footer overlap with chat input on tablets |
 
 
 ### Core Components
@@ -685,6 +686,7 @@ curl http://localhost:5000/metrics
 - **Service emoji & style** — image gen/edit messages prefixed with `🎨`, response time wrapped in pipes (`&#124; ⏱️ 5.8с &#124;`) for visual consistency
 - **SSE reliability** — 4 root cause fixes for voice message delivery (lightning icon visibility, reconnect recovery, `user_id` passthrough for `message_new` events)
 - **Migration `--add-emojis`** — `flask migrate-messages-format --add-emojis` to retroactively add `🎨` to existing image service messages (supports `--dry-run`)
+- **Tablet responsive layout** — media query for 769–1199px fixes footer overlap with chat input caused by `100vh` vs `100%` mismatch in mobile browsers
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)

@@ -529,7 +529,6 @@ curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx \
 curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx \
   "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx"
 ```
-```
 
 ---
 

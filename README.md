@@ -77,6 +77,12 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | 🔧 SSE reliability fixes | Fixed 4 root causes: voice messages now appear without manual page refresh (lightning icon, response delivery) |
 | 🧰 Migration tool extended | `flask migrate-messages-format --add-emojis` — adds `🎨` to existing image messages in DB |
 | 📱 Tablet responsive fix | Added media query for 769-1199px range — prevents footer overlap with chat input on tablets |
+| 📄 PDF extraction via pdftotext | Replaced PyPDF2 with `pdftotext` (poppler-utils). Cities and layout from complex PDFs (hh.ru, etc.) are now correctly preserved. Fallback to pdfplumber. |
+| ✂️ Character-based chunk_text | `chunk_text()` now splits by characters, not words — consistent with `chunk_text_recursive()`. Admin parameter `chunk_size` always means characters. |
+| 🔢 Adaptive `rag_top_k` clamp | Clamped to calculated max from reasoning model context; frontend input updates automatically on save. |
+| ⚡ flash_attn always on for CUDA | Removed 24GB+ VRAM gate; flash_attn now auto-enabled on any CUDA GPU. Config applied via ResourceManager → `build_cmd()`. |
+| 🔌 SSE event for document indexing | `document_indexed` event published when indexing completes/fails; document list refreshes in real time. |
+| 🔄 Retry on embedding failure | Up to 3 retries (5s/10s/15s) in `_get_batch_embeddings()` for transient failures during llama-swap reload. |
 
 
 ### Core Components
@@ -681,6 +687,9 @@ curl http://localhost:5000/metrics
 - **Message format migration** — all old service messages converted to structured JSON `{prefix, text}` format
 - **SSE real-time delivery** — queue results and new messages delivered via Server-Sent Events (Redis pub/sub), replacing all HTTP polling
 - **Static cache-busting** — all JS/CSS assets served with `?v=timestamp` to prevent stale cache after updates
+- **PDF extraction via pdftotext** — accurate text positioning for complex PDF layouts (hh.ru resumes, tables, multi-column)
+- **Character-based chunking** — consistent `chunk_size` parameter across fixed and recursive strategies (always characters, not words)
+- **Real-time document indexing SSE** — document list auto-refresh when indexing completes or fails, no manual page reload needed
 - **Debug logging system** — `console.log`/`console.warn` replaced with `dlog`/`dwarn`, active only when `DEBUG_JS=true`
 - **CLI command** — `flask migrate-messages-format` to convert old plain-text service messages to JSON format (supports `--dry-run`)
 - **Service emoji & style** — image gen/edit messages prefixed with `🎨`, response time wrapped in pipes (`&#124; ⏱️ 5.8с &#124;`) for visual consistency

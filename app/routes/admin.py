@@ -92,6 +92,10 @@ def admin_panel():
         chunk_size_tokens = chunk_size / token_chars
         max_top_k = max(1, int(max_context_tokens / chunk_size_tokens))
 
+    # Clamp displayed rag_top_k to max allowed
+    if rag_top_k > max_top_k:
+        rag_top_k = max_top_k
+
     # Get RAG thresholds from config
     rag_threshold_default = current_app.config.get("RAG_RELEVANCE_THRESHOLD_DEFAULT", 0.3)
     rag_threshold_reasoning = current_app.config.get("RAG_RELEVANCE_THRESHOLD_REASONING", 0.3)
@@ -985,6 +989,17 @@ def api_save_chunks_config():
         new_threshold_default = data.get("rag_threshold_default", 0.3)
         new_threshold_reasoning = data.get("rag_threshold_reasoning", 0.3)
 
+        # Clamp rag_top_k to max allowed by reasoning model context
+        reasoning_config = get_model_config("reasoning")
+        if reasoning_config:
+            ctx_length = reasoning_config.get("context_length", 8192)
+            max_context_tokens = int(ctx_length * 0.30)
+            token_chars = current_app.config.get("TOKEN_CHARS", 3)
+            chunk_size_tokens = new_chunk_size / token_chars
+            max_top_k = max(1, int(max_context_tokens / chunk_size_tokens))
+            if new_rag_top_k > max_top_k:
+                new_rag_top_k = max_top_k
+
         # Get original config
         rag = current_app.modules.get("rag")
         if not rag:
@@ -1081,10 +1096,10 @@ def api_save_chunks_config():
                 current_app.logger.info("Reindex triggered due to chunk config change")
                 reindex_triggered = True
 
-            return jsonify({"ok": True, "reindex_triggered": reindex_triggered})
+            return jsonify({"ok": True, "reindex_triggered": reindex_triggered, "rag_top_k": new_rag_top_k})
         else:
             current_app.logger.info("Chunk config unchanged")
-            return jsonify({"ok": True, "reindex_triggered": False})
+            return jsonify({"ok": True, "reindex_triggered": False, "rag_top_k": new_rag_top_k})
     except Exception as e:
         current_app.logger.error(f"Error saving chunks config: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500

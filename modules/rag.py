@@ -474,19 +474,30 @@ class RagModule:
     def _get_batch_embeddings(self, texts: list[str]) -> list[list[float] | None]:
         """Get embeddings for multiple texts using llama.cpp batch API.
         Returns list of embeddings (None for failed requests).
+        Retries on transient failures (e.g. server restart after config change).
         """
-        self.logger.info(f"RAG: _get_batch_embeddings called with {len(texts)} texts")
-        embeddings = self.llamacpp.get_embeddings(texts, model_type="embedding")
-        self.logger.info(f"RAG: get_embeddings returned {type(embeddings)}")
-        if embeddings is None:
-            self.logger.error("Failed to get embeddings from llama-server")
-            return [None] * len(texts)
+        import time as time_module
 
-        # Ensure we have the same number of embeddings as input texts
-        if len(embeddings) != len(texts):
-            self.logger.warning(f"Embedding count mismatch: expected {len(texts)}, got {len(embeddings)}")
-            # Pad with None if needed
-            while len(embeddings) < len(texts):
-                embeddings.append(None)
+        max_retries = 3
+        for attempt in range(max_retries):
+            self.logger.info(
+                f"RAG: _get_batch_embeddings called with {len(texts)} texts (attempt {attempt + 1}/{max_retries})"
+            )
+            embeddings = self.llamacpp.get_embeddings(texts, model_type="embedding")
+            self.logger.info(f"RAG: get_embeddings returned {type(embeddings)}")
 
-        return embeddings[: len(texts)]  # type: ignore[no-any-return]
+            if embeddings is not None:
+                # Ensure we have the same number of embeddings as input texts
+                if len(embeddings) != len(texts):
+                    self.logger.warning(f"Embedding count mismatch: expected {len(texts)}, got {len(embeddings)}")
+                    while len(embeddings) < len(texts):
+                        embeddings.append(None)
+                return embeddings[: len(texts)]  # type: ignore[no-any-return]
+
+            if attempt < max_retries - 1:
+                delay = 5 * (attempt + 1)
+                self.logger.warning(f"Embedding failed, retrying in {delay}s (attempt {attempt + 1}/{max_retries})")
+                time_module.sleep(delay)
+
+        self.logger.error("Failed to get embeddings after all retries")
+        return [None] * len(texts)

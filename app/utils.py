@@ -2,12 +2,12 @@
 import base64
 import os
 import re
+import subprocess
 import uuid
 from datetime import datetime
 from io import BytesIO
 from typing import Any
 
-import PyPDF2
 import pytz
 from docx import Document
 from flask import current_app
@@ -413,14 +413,30 @@ def extract_text_from_file(file_path: str) -> str | None:
                 content = f.read()
                 return _enhance_markdown(content)
         elif ext == ".pdf":
-            text = ""
-            with open(file_path, "rb") as f:
-                reader = PyPDF2.PdfReader(f)
-                for page in reader.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += page_text + "\n"
-            return _pdf_to_markdown(text.strip())
+            try:
+                result = subprocess.run(
+                    ["pdftotext", "-layout", file_path, "-"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    return _pdf_to_markdown(result.stdout.strip())
+            except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+                pass
+            # Fallback: pdfplumber if pdftotext unavailable
+            try:
+                import pdfplumber
+
+                text = ""
+                with pdfplumber.open(file_path) as pdf:
+                    for page in pdf.pages:
+                        page_text = page.extract_text()
+                        if page_text:
+                            text += page_text + "\n"
+                return _pdf_to_markdown(text.strip()) if text.strip() else None
+            except ImportError:
+                return None
         elif ext == ".docx":
             doc = Document(file_path)
             return _docx_to_markdown(doc)
@@ -828,12 +844,11 @@ def _enhance_markdown(content: str) -> str:
 
 
 def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
-    """Split text into overlapping chunks of approximately chunk_size words."""
-    words = text.split()
+    """Split text into overlapping chunks of approximately chunk_size characters."""
     chunks = []
     i = 0
-    while i < len(words):
-        chunk = " ".join(words[i : i + chunk_size])
+    while i < len(text):
+        chunk = text[i : i + chunk_size]
         if chunk:
             chunks.append(chunk)
         i += chunk_size - overlap

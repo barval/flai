@@ -28,7 +28,7 @@ RUN mkdir build && cd build && \
     cp bin/sd-cli /usr/local/bin/
 
 # Install Python dependencies for the wrapper
-RUN pip3 install --no-cache-dir flask requests pillow
+RUN pip3 install --no-cache-dir --break-system-packages flask requests pillow
 
 WORKDIR /app
 

@@ -231,6 +231,25 @@ class LlamaSwapConfigGenerator:
         if mmproj:
             cmd_parts.extend(["--mmproj", mmproj])
 
+        # Apply adaptive GPU config from ResourceManager
+        try:
+            from app.resource_manager import get_resource_manager
+
+            rm = get_resource_manager()
+            config = rm.compute_llamacpp_config(module)
+
+            if config.get("flash_attn"):
+                cmd_parts.extend(["--flash-attn", "on"])
+
+            ngl = config.get("n_gpu_layers", -1)
+            if ngl is not None and ngl >= 0:
+                cmd_parts.extend(["--n-gpu-layers", str(ngl)])
+
+            if config.get("offload_kqv"):
+                cmd_parts.append("--kv-offload")
+        except Exception:
+            pass
+
         return " ".join(cmd_parts)
 
     def generate_yaml(self) -> str:

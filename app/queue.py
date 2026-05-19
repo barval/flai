@@ -1221,6 +1221,20 @@ class RedisRequestQueue:
                 "assistant_timestamp": get_current_time_in_timezone_for_db(self.app),
             }
 
+    def _publish_document_event(self, user_id: str, doc_id: str, index_status: str) -> None:
+        """Publish a document_indexed event to the user's SSE stream."""
+        publisher = get_events_publisher()
+        if publisher is None:
+            return
+        publisher.publish(
+            user_id,
+            "document_indexed",
+            {
+                "doc_id": doc_id,
+                "index_status": index_status,
+            },
+        )
+
     def _process_index_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Index a document and store embeddings in Qdrant."""
         task_id = task.get("id", "unknown")
@@ -1236,6 +1250,7 @@ class RedisRequestQueue:
         if not rag or not rag.available:
             error_msg = "RAG module unavailable"
             update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+            self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
             return {"success": False, "error": error_msg, "doc_id": doc_id}
         try:
             success, message = rag.index_document(user_id, doc_id, file_path)
@@ -1249,14 +1264,17 @@ class RedisRequestQueue:
                     indexing_started_at=indexing_started_at,
                     embedding_model=embedding_model,
                 )
+                self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXED)
                 self.app.logger.info(f"Set embedding_model for doc {doc_id} to {embedding_model}")
                 return {"success": True, "message": message, "doc_id": doc_id}
             else:
                 update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+                self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
                 return {"success": False, "error": message, "doc_id": doc_id}
         except Exception as e:
             self.app.logger.error(f"Indexing failed for doc {doc_id}: {e}")
             update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+            self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
             return {"success": False, "error": str(e), "doc_id": doc_id}
 
     def _process_reindex_all_task(self, task: dict[str, Any]) -> dict[str, Any]:
@@ -1314,6 +1332,7 @@ class RedisRequestQueue:
                 if not os.path.exists(full_path):
                     self.app.logger.warning(f"Document file not found: {full_path}, skipping")
                     update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+                    self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
                     fail_count += 1
                     continue
 
@@ -1332,14 +1351,17 @@ class RedisRequestQueue:
                         update_document_index_status(
                             doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at, embedding_model=embedding_model
                         )
+                        self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXED)
                         success_count += 1
                     else:
                         update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+                        self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
                         fail_count += 1
                         self.app.logger.error(f"Reindex failed for doc {doc_id}: {message}")
                 except Exception as e:
                     self.app.logger.error(f"Reindex error for doc {doc_id}: {e}")
                     update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+                    self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
                     fail_count += 1
 
             offset += batch_size

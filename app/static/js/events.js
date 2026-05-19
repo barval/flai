@@ -46,6 +46,9 @@ function scheduleReconnect() {
         if (typeof loadMessages === 'function' && currentSessionId) {
             loadMessages(currentSessionId);
         }
+        if (typeof loadDocuments === 'function') {
+            loadDocuments(false);
+        }
     }, 3000);
 }
 
@@ -67,6 +70,11 @@ function handleEvent(event) {
             break;
         case 'message_new':
             onMessageNew(event.data);
+            break;
+        case 'document_indexed':
+            if (typeof loadDocuments === 'function') {
+                loadDocuments(false);
+            }
             break;
         default:
             dlog('SSE unknown event type:', event.type);

@@ -185,18 +185,21 @@ class ResourceManager:
         # How much VRAM to reserve for other operations (sd-cli, overhead)
         reserve = 2000  # 2GB safety margin
 
+        flash_attn_default = hw.cuda_detected
+
         result = {
             "n_gpu_layers": -1,  # default: all on GPU
             "ctx_size": 8192,
             "cache_capacity": 4096,
             "offload_kqv": False,
-            "flash_attn": False,
+            "flash_attn": flash_attn_default,
             "warning": "",
         }
 
         if not hw.cuda_detected:
             # CPU-only mode
             result["n_gpu_layers"] = 0
+            result["flash_attn"] = False
             result["warning"] = "No GPU detected — running CPU-only mode"
             return result
 
@@ -226,7 +229,6 @@ class ResourceManager:
         if total_vram >= 24000:
             # 24GB+ (RTX 3090/4090) — everything fits
             result["cache_capacity"] = 8192
-            result["flash_attn"] = True
         elif total_vram >= 16000:
             # 16GB (RTX 4060 Ti / 4070) — tight
             if result["n_gpu_layers"] == -1 and needed + reserve > total_vram:

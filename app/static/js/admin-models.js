@@ -692,6 +692,9 @@ function initChunksSection() {
                 } else {
                     alert(t('chunks_unchanged'));
                 }
+                if (result.rag_top_k) {
+                    document.getElementById('rag-top-k').value = result.rag_top_k;
+                }
                 statusEl.textContent = '✅';
             } else {
                 alert(t('Error') + ': ' + (result.error || t('unknown_error')));

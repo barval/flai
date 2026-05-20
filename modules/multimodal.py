@@ -3,6 +3,7 @@ import base64
 import json
 import logging
 import os
+from collections.abc import Generator
 from io import BytesIO
 from typing import Any
 
@@ -122,19 +123,15 @@ class MultimodalModule(TranslationMixin):
         history_msgs = get_session_text_history(session_id, remaining_for_history)
         return self._build_context_prompt(history_msgs, lang)
 
-    def process_image_with_text(
+    def _prepare_image_prompt(
         self,
-        image_data: str,
         user_text: str,
         current_time_str: str,
-        lang: str = "ru",
-        session_id: str | None = None,
-        response_style: str = "neutral",
-    ) -> tuple[str | None, str | None]:
-        """Process image with text, including conversation history."""
-        if not self.check_availability():
-            return None, self._("Multimodal model unavailable", lang)
-
+        lang: str,
+        session_id: str | None,
+        response_style: str,
+    ) -> str | None:
+        """Build the prompt text for image processing. Returns None on error."""
         response_language = "Russian" if lang == "ru" else "English"
         style_map = {
             "ru": {
@@ -181,13 +178,53 @@ class MultimodalModule(TranslationMixin):
             )
 
         if not prompt:
+            self.logger.error("Failed to load image prompt template")
+        return prompt
+
+    def process_image_with_text(
+        self,
+        image_data: str,
+        user_text: str,
+        current_time_str: str,
+        lang: str = "ru",
+        session_id: str | None = None,
+        response_style: str = "neutral",
+    ) -> tuple[str | None, str | None]:
+        """Process image with text, including conversation history."""
+        if not self.check_availability():
+            return None, self._("Multimodal model unavailable", lang)
+
+        prompt = self._prepare_image_prompt(user_text, current_time_str, lang, session_id, response_style)
+        if not prompt:
             return None, self._("Error loading prompt template", lang)
 
-        # Use llama.cpp OpenAI-compatible format with image_url
         response = self.llamacpp.chat_with_image(
             text=prompt, image_base64=image_data, model_type="multimodal", lang=lang
         )
         return response, None
+
+    def process_image_with_text_stream(
+        self,
+        image_data: str,
+        user_text: str,
+        current_time_str: str,
+        lang: str = "ru",
+        session_id: str | None = None,
+        response_style: str = "neutral",
+    ) -> Generator[str, None, None]:
+        """Stream multimodal response for image+text, token by token."""
+        if not self.check_availability():
+            yield "⚠️ " + self._("Multimodal model unavailable", lang)
+            return
+
+        prompt = self._prepare_image_prompt(user_text, current_time_str, lang, session_id, response_style)
+        if not prompt:
+            yield "⚠️ " + self._("Error loading prompt template", lang)
+            return
+
+        yield from self.llamacpp.chat_with_image_stream(
+            text=prompt, image_base64=image_data, model_type="multimodal", lang=lang
+        )
 
     def generate_image_params(
         self, user_query: str, lang: str = "ru", response_style: str = "neutral"

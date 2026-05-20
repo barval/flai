@@ -40,11 +40,16 @@ function fetchQueueStatus() {
                 if (!newInfo[processingSessionId]) {
                     newInfo[processingSessionId] = { processing: false, queued: 0, queue_position: 0, has_transcribing: false };
                 }
-                newInfo[processingSessionId].processing = true;
-                if (data.processing.type === 'transcribe_audio' || data.processing.type === 'audio') {
-                    newInfo[processingSessionId].has_transcribing = true;
+                // Only show processing if we haven't already received the result for this task
+                // Prevents a stale fetchQueueStatus response from re‑setting ⚡ after
+                // clearSessionQueue removed the task from pendingRequestIds
+                if (pendingRequestIds[data.processing.id]) {
+                    newInfo[processingSessionId].processing = true;
+                    if (data.processing.type === 'transcribe_audio' || data.processing.type === 'audio') {
+                        newInfo[processingSessionId].has_transcribing = true;
+                    }
                 }
-                dlog('fetchQueueStatus: processing session', processingSessionId);
+                dlog('fetchQueueStatus: processing session', processingSessionId, 'active:', !!pendingRequestIds[data.processing.id]);
             }
 
             // Mark queued sessions (hourglass)
@@ -66,6 +71,21 @@ function fetchQueueStatus() {
                 Object.keys(pendingRequests).forEach(reqId => {
                     delete pendingRequests[reqId];
                 });
+            }
+
+            // Preserve processing flag for sessions with recently-tracked pending requests.
+            // Handles the race where handleTranscriptionResult tracks a new task (via
+            // trackPendingRequest) before the server reports it as processing — without this,
+            // the stale HTTP response from the original fetchQueueStatus would overwrite
+            // the ⚡ with idle state.
+            const recentCutoff = Date.now() - 10000;
+            for (const reqId in pendingRequestIds) {
+                const reqInfo = pendingRequestIds[reqId];
+                if (!reqInfo) continue;
+                const sid = reqInfo.sessionId;
+                if (sid && newInfo[sid] && !newInfo[sid].processing && (reqInfo.timestamp || 0) > recentCutoff) {
+                    newInfo[sid].processing = true;
+                }
             }
 
             // Update global sessionQueueInfo

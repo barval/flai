@@ -5,1019 +5,1494 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 8.3\n"
+"Project-Id-Version: FLAI 8.4\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-03-05 12:00+0300\n"
+"POT-Creation-Date: 2026-05-20 10:49+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
 "Last-Translator: Valeriy Barsukov\n"
 "Language: ru\n"
 "Language-Team: Russian\n"
-"Content-Type: text/plain; charset=UTF-8\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
-
-msgid "Documents"
-msgstr "Документы"
-
-msgid "New document"
-msgstr "Новый документ"
-
-msgid "Delete document"
-msgstr "Удалить документ"
-
-msgid "Delete document \"{filename}\"?"
-msgstr "Удалить документ \"{filename}\"?"
-
-msgid "Upload document"
-msgstr "Загрузить документ"
-
-msgid "Document uploaded"
-msgstr "Документ загружен"
-
-msgid "Document upload failed"
-msgstr "Ошибка загрузки документа"
-
-msgid "Supported formats: PDF, DOC, DOCX, TXT"
-msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
-
-msgid "No file provided"
-msgstr "Файл не предоставлен"
-
-msgid "No file selected"
-msgstr "Файл не выбран"
-
-msgid "Document not found"
-msgstr "Документ не найден"
-
-msgid "Documents DB"
-msgstr "База документов"
-
-msgid "Documents Reindexing"
-msgstr "Переиндексация документов"
-
-msgid "Reindex All Documents"
-msgstr "Переиндексировать все документы"
-
-msgid "Rebuild all document embeddings with current chunking strategy"
-msgstr "Перестроить все эмбеддинги документов с текущей стратегией чанкинга"
-
-msgid "Current strategy"
-msgstr "Текущая стратегия"
-
-msgid "Reindex all documents"
-msgstr "Переиндексировать все документы"
-
-msgid "Reindex All"
-msgstr "Переиндексировать"
-
-msgid "Reindexing all documents with new embedding model started. This may take a while."
-msgstr "Началась переиндексация всех документов с новой моделью эмбеддингов. Это может занять некоторое время."
-
-msgid "Reindexing in progress"
-msgstr "Переиндексация в процессе"
-
-msgid "Reindexing complete"
-msgstr "Переиндексация завершена"
-
-msgid "Reindexing failed"
-msgstr "Переиндексация не удалась"
-
-msgid "Reindex all documents? This will rebuild all document embeddings."
-msgstr "Переиндексировать все документы? Это перестроит все эмбеддинги документов."
-
-msgid "FLAI"
-msgstr "ПЛИИ"
-
-msgid "Administrator"
-msgstr "Администратор"
-
-msgid "Logout"
-msgstr "Выйти"
-
-msgid "Authorization"
-msgstr "Авторизация"
-
-msgid "All fields are required"
-msgstr "Все поля обязательны"
-
-msgid "Invalid login or password"
-msgstr "Неверный логин или пароль"
-
-msgid "Login"
-msgstr "Логин"
-
-msgid "Password"
-msgstr "Пароль"
-
-msgid "Not authorized"
-msgstr "Не авторизован"
-
-msgid "session"
-msgstr "Сеанс"
-
-msgid "saved_on"
-msgstr "Сохранено"
-
-msgid "total_messages"
-msgstr "Всего сообщений"
-
-msgid "New session"
-msgstr "Новый сеанс"
-
-msgid "Permission denied or session not found"
-msgstr "Нет прав или сеанс не найден"
-
-msgid "No active session"
-msgstr "Нет активного сеанса"
-
-msgid "Delete session {title} from {date}?"
-msgstr "Удалить сеанс \"{title}\" от {date}?"
-
-msgid "Empty message"
-msgstr "Пустое сообщение"
-
-msgid "Failed to recognize speech"
-msgstr "Не удалось распознать речь"
-
-msgid "Transcribed"
-msgstr "Распознано"
-
-msgid "Voice request"
-msgstr "Голосовой запрос"
-
-msgid "Audio transcribed"
-msgstr "Аудио распознано"
-
-msgid "Request queued (position {pos})"
-msgstr "Запрос поставлен в очередь (позиция {pos})"
-
-msgid "Speech recognized, request queued (position {pos})"
-msgstr "Голос распознан, запрос поставлен в очередь (позиция {pos})"
-
-msgid "Image"
-msgstr "Изображение"
-
-msgid "Text request"
-msgstr "Текстовый запрос"
-
-msgid "Unknown session"
-msgstr "Неизвестный сеанс"
-
-msgid "Sessions"
-msgstr "Сеансы"
-
-msgid "Delete session"
-msgstr "Удалить сеанс"
-
-msgid "Chat"
-msgstr "Чат"
-
-msgid "Messages"
-msgstr "Сообщения"
-
-msgid "Your requests in queue / Total in queue"
-msgstr "Ваши запросы в очереди / Всего в очереди"
-
-msgid "Save as HTML"
-msgstr "Сохранить как HTML"
-
-msgid "Enter message..."
-msgstr "Введите сообщение..."
-
-msgid "Record voice message"
-msgstr "Записать голосовое сообщение"
-
-msgid "Send"
-msgstr "Отправить"
-
-msgid "Recording..."
-msgstr "Запись..."
-
-msgid "Sending..."
-msgstr "Отправка..."
-
-msgid "processing"
-msgstr "обрабатывается"
-
-msgid "queued"
-msgstr "в очереди"
-
-msgid "new_response"
-msgstr "новый ответ"
-
-msgid "delete_session_confirm"
-msgstr "Удалить сеанс \"{title}\" от {date}?"
-
-msgid "download_image"
-msgstr "Скачать изображение"
-
-msgid "download_audio"
-msgstr "Скачать аудио"
-
-msgid "click_to_enlarge"
-msgstr "Нажмите для увеличения"
-
-msgid "image"
-msgstr "изображение"
-
-msgid "browser_no_audio_support"
-msgstr "Ваш браузер не поддерживает запись аудио"
-
-msgid "secure_context_required"
-msgstr "Для записи голоса требуется безопасное соединение (HTTPS). Попробуйте открыть сайт по HTTPS или localhost."
-
-msgid "microphone_access_denied"
-msgstr "Не удалось получить доступ к микрофону."
-
-msgid "enter_message_or_file"
-msgstr "Введите сообщение или прикрепите файл"
-
-msgid "error"
-msgstr "Ошибка"
-
-msgid "unknown_error"
-msgstr "Неизвестная ошибка"
-
-msgid "request_timeout"
-msgstr "Превышено время ожидания ответа. Проверьте статус запроса."
-
-msgid "footer_not_configured"
-msgstr "Подпись не настроена"
-
-msgid "footer_load_error"
-msgstr "Ошибка загрузки подписи"
-
-msgid "user"
-msgstr "Пользователь"
-
-msgid "no_active_session_save"
-msgstr "Нет активного сеанса для сохранения"
-
-msgid "chat"
-msgstr "Чат"
-
-msgid "saved_chat"
-msgstr "Сохраненный чат"
-
-msgid "no_messages_to_save"
-msgstr "Нет сообщений для сохранения"
-
-msgid "copied"
-msgstr "Скопировано!"
-
-msgid "copy_code"
-msgstr "Копировать код"
-
-msgid "copy_failed"
-msgstr "Ошибка копирования"
-
-msgid "copy_text"
-msgstr "Копировать текст"
-
-msgid "Admin Panel"
-msgstr "Панель администратора"
-
-msgid "Add user"
-msgstr "Добавить пользователя"
-
-msgid "Chat DB"
-msgstr "База чатов"
-
-msgid "User DB"
-msgstr "База пользователей"
-
-msgid "Files DB"
-msgstr "База файлов"
-
-msgid "Status"
-msgstr "Статус"
-
-msgid "Name"
-msgstr "Имя"
-
-msgid "Class"
-msgstr "Класс"
-
-msgid "Files"
-msgstr "Файлы"
-
-msgid "Camera access"
-msgstr "Доступ к камерам"
-
-msgid "Camera snapshot: {room_name}"
-msgstr "Снимок с камеры: {room_name}"
-
-msgid "Actions"
-msgstr "Действия"
-
-msgid "New user"
-msgstr "Новый пользователь"
-
-msgid "Only lowercase letters and digits"
-msgstr "Только строчные латинские буквы и цифры"
-
-msgid "highest"
-msgstr "высший"
-
-msgid "medium"
-msgstr "средний"
-
-msgid "lowest"
-msgstr "низший"
-
-msgid "Active"
-msgstr "Активен"
-
-msgid "Leave all unchecked to deny access to all cameras."
-msgstr "Оставьте все неотмеченными — доступ будет закрыт ко всем камерам."
-
-msgid "Create"
-msgstr "Создать"
-
-msgid "Change password"
-msgstr "Смена пароля"
-
-msgid "New password"
-msgstr "Новый пароль"
-
-msgid "Save"
-msgstr "Сохранить"
-
-msgid "Delete user {login}?"
-msgstr "Удалить пользователя {login}?"
-
-msgid "Delete user"
-msgstr "Удалить пользователя"
-
+"Generated-By: Babel 2.18.0\n"
+
+#: app/__init__.py:332 app/__init__.py:346
+msgid "Session expired. Please refresh the page."
+msgstr "Сессия истекла. Обновите страницу."
+
+#: app/__init__.py:339
+msgid "Authentication required."
+msgstr "Требуется авторизация."
+
+#: app/__init__.py:352 app/routes/admin.py:176 app/routes/admin.py:217
+#: app/routes/admin.py:241 app/routes/admin.py:257 app/routes/admin.py:269
+#: app/routes/admin.py:294 app/routes/admin.py:345 app/templates/admin.html:210
 msgid "Internal server error"
 msgstr "Внутренняя ошибка сервера"
 
-msgid "Missing fields"
-msgstr "Не все поля заполнены"
-
-msgid "Login already exists"
-msgstr "Логин уже существует"
-
-msgid "New password not specified"
-msgstr "Новый пароль не указан"
-
-msgid "OK"
-msgstr "ОК"
-
-msgid "Cancel"
-msgstr "Отмена"
-
-msgid "Change"
-msgstr "Сменить"
-
-msgid "delete"
-msgstr "Удалить"
-
-msgid "llama.cpp service unavailable"
-msgstr "Сервис llama.cpp недоступен"
-
-msgid "Model for {model_type} not configured"
-msgstr "Модель для {model_type} не настроена"
-
-msgid "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request."
-msgstr "Превышено время ожидания ответа от модели ({timeout}с). Попробуйте увеличить таймаут в панели администратора или упростите запрос."
-
-msgid "Could not connect to llama.cpp"
-msgstr "Не удалось подключиться к llama.cpp"
-
-msgid "Could not connect to llama-server"
-msgstr "Не удалось подключиться к llama-server"
-
-msgid "llama-server available"
-msgstr "llama-server доступен"
-
-msgid "llama-server unavailable"
-msgstr "llama-server недоступен"
-
-msgid "Please provide llama-server URL first."
-msgstr "Сначала укажите URL llama-server."
-
-msgid "Please provide llama-server URL first"
-msgstr "Сначала укажите URL llama-server"
-
-msgid "Please provide llama-server URL."
-msgstr "Укажите URL llama-server."
-
-msgid "Refresh models from llama-server"
-msgstr "Обновить модели из llama-server"
-
-msgid "Error"
-msgstr "Ошибка"
-
-msgid "Error loading prompt template"
-msgstr "Ошибка загрузки шаблона промпта"
-
-msgid "Could not determine action"
-msgstr "Не удалось определить действие"
-
-msgid "Access to this camera is denied"
-msgstr "Доступ к данной камере запрещён"
-
-msgid "CCTV service unavailable"
-msgstr "Сервис видеонаблюдения недоступен"
-
-msgid "Unknown room: {room}"
-msgstr "Неизвестная комната: {room}"
-
-msgid "Failed to get snapshot from camera {room_name}"
-msgstr "Не удалось получить изображение с камеры {room_name}"
-
-msgid "Timeout ({timeout}s)"
-msgstr "Таймаут ({timeout}с)"
-
-msgid "Connection error"
-msgstr "Ошибка подключения"
-
-msgid "Timeout ({timeout}s) during audio transcription"
-msgstr "Таймаут ({timeout}с) при транскрибации аудио"
-
-msgid "Connection error to Whisper API"
-msgstr "Ошибка подключения к Whisper API"
-
-msgid "Multimodal model unavailable"
-msgstr "Мультимодальная модель недоступна"
-
-msgid "Maximum file size {max_size} MB"
-msgstr "Максимальный размер файла {max_size} Мб"
-
-msgid "Unsupported file type"
-msgstr "Неподдерживаемый тип файла"
-
-msgid "Maximum resolution {max_width}x{max_height}"
-msgstr "Максимальное разрешение {max_width}x{max_height}"
-
-msgid "Could not process image file"
-msgstr "Не удалось обработать файл изображения"
-
-msgid "Timeout ({timeout}s) when calling multimodal model"
-msgstr "Превышено время ожидания ответа от мультимодальной модели ({timeout}с)"
-
-msgid "Could not find JSON in model response"
-msgstr "Не удалось найти JSON в ответе модели"
-
-msgid "JSON parsing error: {error}"
-msgstr "Ошибка парсинга JSON: {error}"
-
-msgid "Image generation service unavailable"
-msgstr "Сервис генерации изображений недоступен"
-
-msgid "Multimodal module unavailable (required for parameter generation)"
-msgstr "Мультимодальный модуль недоступен (требуется для генерации параметров)"
-
-msgid "Image generation timeout ({timeout}s)"
-msgstr "Превышено время ожидания генерации изображения ({timeout}с)"
-
-msgid "Image generated from request: {query}"
-msgstr "Изображение сгенерировано по запросу: {query}"
-
-msgid "Could not connect to image generation service"
-msgstr "Не удалось подключиться к сервису генерации изображений"
-
-msgid "Image generation returned no image"
-msgstr "Генерация изображений не вернула изображение"
-
-msgid "MB"
-msgstr "МБ"
-
-msgid "TTS service unavailable"
-msgstr "Сервис озвучки недоступен"
-
-msgid "TTS synthesis failed"
-msgstr "Ошибка синтеза речи"
-
-msgid "Missing text"
-msgstr "Отсутствует текст"
-
-msgid "speak"
-msgstr "Озвучить"
-
-msgid "stop"
-msgstr "Остановить"
-
-msgid "male_voice"
-msgstr "Мужской голос"
-
-msgid "female_voice"
-msgstr "Женский голос"
-
-msgid "toggle_voice_gender"
-msgstr "Переключить пол голоса"
-
-msgid "Toggle theme"
-msgstr "Переключить тему"
-
-msgid "Loading..."
-msgstr "Загрузка..."
-
-msgid "byte_abbr"
-msgstr "Б"
-
-msgid "kb_abbr"
-msgstr "КБ"
-
-msgid "mb_abbr"
-msgstr "МБ"
-
-msgid "gb_abbr"
-msgstr "ГБ"
-
-msgid "seconds_suffix"
-msgstr "с"
-
-msgid "The image has been reduced."
-msgstr "Изображение было уменьшено."
-
-msgid "loading"
-msgstr "Загрузка..."
-
-msgid "minutes_abbr"
-msgstr "мин"
-
-msgid "status_pending"
-msgstr "Ожидает индексации"
-
-msgid "status_indexing"
-msgstr "Индексация выполняется"
-
-msgid "status_indexed"
-msgstr "Проиндексирован"
-
-msgid "status_failed"
-msgstr "Ошибка индексации"
-
-msgid "status_unknown"
-msgstr "Не индексирован"
-
-msgid "Refresh models from llama.cpp"
-msgstr "Обновить модели из llama.cpp"
-
-msgid "Saved"
-msgstr "Сохранено"
-
-msgid "Reasoning"
-msgstr "Рассуждения"
-
-msgid "Multimodal"
-msgstr "Мультимодальная"
-
-msgid "Embedding"
-msgstr "Эмбеддинги"
-
-msgid "Reranker"
-msgstr "Реранкинг"
-
-msgid "Cross-encoder model — reranks search results by relevance"
-msgstr "Кросс-энкодер — переранжирует результаты поиска по релевантности"
-
-msgid "BGE Cross-Encoder"
-msgstr "BGE Cross-Encoder"
-
-msgid "-- Select model --"
-msgstr "-- Выберите модель --"
-
-msgid "Context Length"
-msgstr "Длина контекста"
-
-msgid "Temperature"
-msgstr "Температура"
-
-msgid "Top P"
-msgstr "Top P"
-
-msgid "Timeout (s)"
-msgstr "Таймаут (с)"
-
-msgid "Architecture:"
-msgstr "Архитектура:"
-
-msgid "Parameters:"
-msgstr "Параметры:"
-
-msgid "Quantization:"
-msgstr "Квантование:"
-
-msgid "Max context length:"
-msgstr "Макс. длина контекста:"
-
-msgid "Embedding length:"
-msgstr "Длина эмбеддинга:"
-
-msgid "Users"
-msgstr "Пользователи"
-
-msgid "Models"
-msgstr "Модели"
-
-msgid "Please select a model first."
-msgstr "Сначала выберите модель."
-
-msgid "Context length must be at least 512."
-msgstr "Длина контекста должна быть не менее 512."
-
-msgid "Context length cannot exceed {max} (max for this model)."
-msgstr "Длина контекста не может превышать {max} (максимум для этой модели)."
-
-msgid "Temperature must be between 0.0 and 2.0."
-msgstr "Температура должна быть в диапазоне от 0.0 до 2.0."
-
-msgid "Top P must be between 0.0 and 1.0."
-msgstr "Top P должен быть в диапазоне от 0.0 до 1.0."
-
-msgid "Timeout must be between 0 and 1200 seconds."
-msgstr "Таймаут должен быть в диапазоне от 0 до 1200 секунд."
-
-msgid "Repeat Penalty"
-msgstr "Штраф за повтор"
-
-msgid "Repeat penalty must be between 1.0 and 2.0."
-msgstr "Штраф за повтор должен быть в диапазоне от 1.0 до 2.0."
-
-msgid "Reindexing all documents with new embedding model started. This may take a while."
-msgstr "Начата переиндексация всех документов с новой моделью эмбеддингов. Это может занять некоторое время."
-
-msgid "transcribing"
-msgstr "Распознаётся..."
-
-msgid "Model returned empty response"
-msgstr "Модель вернула пустой ответ"
-
-msgid "Local"
-msgstr "Локально"
-
-msgid "Please provide llama.cpp URL first."
-msgstr "Сначала укажите URL llama.cpp."
-
-msgid "llama.cpp available"
-msgstr "llama.cpp доступен"
-
-msgid "llama.cpp unavailable"
-msgstr "llama.cpp недоступен"
-
-msgid "your_requests"
-msgstr "Ваши запросы в очереди / Всего в очереди"
-
-msgid "Request too long, please simplify your request"
-msgstr "Запрос слишком длинный, пожалуйста, упростите запрос"
-
+#: app/__init__.py:358
+msgid "Not found"
+msgstr "Не найдено"
+
+#: app/db.py:155 app/routes/sessions.py:81 app/routes/sessions.py:145
+#: app/templates/chat.html:19 app/templates/chat.html:121
+msgid "New session"
+msgstr "Новый сеанс"
+
+#: app/queue.py:407
+#, python-brace-format
 msgid "Request cancelled - too long in queue ({queue_time:.1f}s)"
 msgstr "Запрос отменён - слишком долго в очереди ({queue_time:.1f}с)"
 
-msgid "Invalid image"
-msgstr "Неверное изображение"
+#: app/queue.py:655
+#, python-brace-format
+msgid ""
+"Maximum resolution for editing is {max_w}×{max_h}. The image has been "
+"resized from {orig_w}×{orig_h} to {new_w}×{new_h}."
+msgstr ""
+"Максимальное разрешение для редактирования — {max_w}×{max_h}. Изображение"
+" уменьшено с {orig_w}×{orig_h} до {new_w}×{new_h}."
 
-msgid "Unknown request type"
-msgstr "Неизвестный тип запроса"
-
-msgid "Camera module unavailable"
-msgstr "Модуль камер недоступен"
-
-msgid "RAG module unavailable"
-msgstr "RAG модуль недоступен"
-
-msgid "Image generation module unavailable"
-msgstr "Модуль генерации изображений недоступен"
-
-msgid "Source"
-msgstr "Источник"
-
-msgid "No relevant documents found"
-msgstr "Не найдено релевантных документов"
-
-msgid "Audio service unavailable"
-msgstr "Сервис аудио недоступен"
-
-msgid "Too many attempts. Please try again later."
-msgstr "Слишком много попыток. Попробуйте позже."
-
-msgid "server_error_invalid_response"
-msgstr "Ошибка сервера: получен некорректный ответ"
-
-msgid "recording"
-msgstr "Запись"
-
-msgid "room_tambour"
-msgstr "тамбур"
-
-msgid "room_hallway"
-msgstr "прихожая"
-
-msgid "room_corridor"
-msgstr "коридор"
-
-msgid "room_bedroom"
-msgstr "спальня"
-
-msgid "room_office"
-msgstr "кабинет"
-
-msgid "room_children"
-msgstr "детская"
-
-msgid "room_living"
-msgstr "гостиная"
-
-msgid "room_kitchen"
-msgstr "кухня"
-
-msgid "room_balcony"
-msgstr "балкон"
-
-msgid "Image generation failed. Try again later."
-msgstr "Генерация изображения не удалась. Попробуйте позже."
-
-msgid "Image generation produced empty output."
-msgstr "Генерация изображения дала пустой результат."
-
-msgid "Image generation error. Check logs for details."
-msgstr "Ошибка генерации изображения. Подробности в логах."
-
-msgid "Image editing failed. Try again later."
-msgstr "Редактирование изображения не удалось. Попробуйте позже."
-
-msgid "Image editing produced empty output."
-msgstr "Редактирование дало пустой результат."
-
-msgid "No editing instructions provided."
-msgstr "Не указаны инструкции для редактирования."
-
-msgid "No source image provided."
-msgstr "Не предоставлено исходное изображение."
-
-msgid "Image editing error."
-msgstr "Ошибка редактирования изображения."
-
-msgid "Edit result has no image data."
-msgstr "Результат редактирования не содержит изображения."
-
-msgid "Edit returned no image."
-msgstr "Редактирование не вернуло изображение."
-
-msgid "Editing timeout ({timeout}s)"
-msgstr "Превышено время редактирования ({timeout}с)"
-
-msgid "Could not connect to editor."
-msgstr "Не удалось подключиться к редактору."
-
+#: app/queue.py:666
+#, python-brace-format
 msgid "Image edited from request: {query}"
 msgstr "Изображение отредактировано по запросу: {query}"
 
-msgid "Maximum resolution for editing is {max_w}×{max_h}. The image has been resized from {orig_w}×{orig_h} to {new_w}×{new_h}."
-msgstr "Максимальное разрешение для редактирования — {max_w}×{max_h}. Изображение уменьшено с {orig_w}×{orig_h} до {new_w}×{new_h}."
+#: app/queue.py:720 app/queue.py:725
+msgid "Image generation module unavailable"
+msgstr "Модуль генерации изображений недоступен"
 
-msgid "Image editing timeout ({timeout}s)"
-msgstr "Превышено время редактирования ({timeout}с)"
+#: app/queue.py:744 app/templates/chat.html:118
+#, python-brace-format
+msgid "Image generated from request: {query}"
+msgstr "Изображение сгенерировано по запросу: {query}"
 
-# Backup/restore translations
-msgid "Backups"
-msgstr "Резервные копии"
+#: app/queue.py:795 app/queue.py:874
+msgid "Camera module unavailable"
+msgstr "Модуль камер недоступен"
 
-msgid "Backup type"
-msgstr "Тип резервной копии"
+#: app/queue.py:805 app/queue.py:884 app/templates/chat.html:119
+#, python-brace-format
+msgid "Camera snapshot: {room_name}"
+msgstr "Снимок с камеры: {room_name}"
 
-msgid "Users only"
-msgstr "Только пользователи"
+#: app/queue.py:975 app/queue.py:1004
+msgid "No relevant documents found"
+msgstr "Не найдено релевантных документов"
 
-msgid "Full (users + chats + files)"
-msgstr "Полная (пользователи + чаты + файлы)"
+#: app/queue.py:1141
+msgid "Reasoning model returned empty response"
+msgstr "Модель рассуждений вернула пустой ответ"
 
-msgid "Create backup"
-msgstr "Создать резервную копию"
+#: app/queue.py:1251
+msgid "Unknown request type"
+msgstr "Неизвестный тип запроса"
 
-msgid "Restore"
-msgstr "Восстановить"
+#: app/queue.py:1273 app/queue.py:1344 modules/multimodal.py:195
+#: modules/multimodal.py:217 modules/multimodal.py:236
+#: modules/multimodal.py:308
+msgid "Multimodal model unavailable"
+msgstr "Мультимодальная модель недоступна"
 
-msgid "Delete"
-msgstr "Удалить"
-
-msgid "Download"
-msgstr "Скачать"
-
-msgid "No backups found"
-msgstr "Резервные копии не найдены"
-
-msgid "Restore users database from {filename}? Current data will be replaced."
-msgstr "Восстановить базу пользователей из {filename}? Текущие данные будут заменены."
-
-msgid "Restore full backup from {filename}? All data (users, chats, documents, files) will be replaced."
-msgstr "Восстановить полную резервную копию из {filename}? Все данные (пользователи, чаты, документы, файлы) будут заменены."
-
-msgid "Delete file {filename}? This action cannot be undone."
-msgstr "Удалить файл {filename}? Это действие необратимо."
-
-msgid "Backup created: {filename}"
-msgstr "Резервная копия создана: {filename}"
-
-msgid "Data restored from: {filename}"
-msgstr "Данные восстановлены из: {filename}"
-
-msgid "File deleted: {filename}"
-msgstr "Файл удалён: {filename}"
-
-msgid "Error creating backup"
-msgstr "Ошибка при создании резервной копии"
-
-msgid "Error restoring backup"
-msgstr "Ошибка при восстановлении"
-
-msgid "Error deleting backup"
-msgstr "Ошибка при удалении"
-
-msgid "Refresh list"
-msgstr "Обновить список"
-
-msgid "Success"
-msgstr "Успешно"
-
-msgid "Creating..."
-msgstr "Создание..."
-
-msgid "Restoring..."
-msgstr "Восстановление..."
-
-msgid "Filename"
-msgstr "Имя файла"
-
-msgid "Type"
-msgstr "Тип"
-
-msgid "Size"
-msgstr "Размер"
-
-msgid "Created"
-msgstr "Создана"
-
-msgid "Refresh backup list"
-msgstr "Обновить список резервных копий"
-
-msgid "Service temporarily unavailable. Circuit breaker is open after repeated failures."
-msgstr "Сервис временно недоступен. Сработал защитный механизм после неоднократных сбоев."
-
-msgid "Chunks"
-msgstr "Чанки"
-
-msgid "Chunk Size (characters)"
-msgstr "Размер чанка (символов)"
-
-msgid "Chunk Overlap (characters)"
-msgstr "Перекрытие чанков (символов)"
-
-msgid "Chunk Strategy"
-msgstr "Стратегия чанкинга"
-
-msgid "Fixed (by size)"
-msgstr "Фиксированный (по размеру)"
-
-msgid "Structural (by headings)"
-msgstr "Структурный (по заголовкам)"
-
-msgid "Chunk configuration saved. Reindexing started."
-msgstr "Конфигурация чанков сохранена. Переиндексация запущена."
-
-msgid "Chunk configuration saved."
-msgstr "Конфигурация чанков сохранена."
-
-msgid "Number of chunks"
-msgstr "Число чанков"
-
-msgid "Threshold (documents)"
-msgstr "Порог (документы)"
-
-msgid "Threshold (reasoning)"
-msgstr "Порог (рассуждения)"
-
-msgid "vram_optimal"
-msgstr "Использовано VRAM: 100%, RAM: 0% - оптимально"
-
-msgid "vram_optimal_dynamic"
-msgstr "Использовано VRAM: %1%%, RAM: 0% - оптимально"
-
-msgid "vram_partial_high"
-msgstr "Использовано VRAM: 100%, RAM: %2%% - хорошо"
-
-msgid "vram_partial_med"
-msgstr "Использовано VRAM: 100%, RAM: %2%% - умеренно"
-
-msgid "vram_partial_low"
-msgstr "Использовано VRAM: 100%, RAM: %2%% - медленно, задержки"
-
-msgid "ram_estimate"
-msgstr "Использовано %1%% RAM"
-
-msgid "no_gpu_low"
-msgstr "Нет GPU. Использовано %1%% RAM - очень медленно"
-
-msgid "no_gpu_full"
-msgstr "Нет GPU. Использовано %1%% RAM - медленно"
-
-msgid "timeout_fetching_model_info"
-msgstr "Превышен таймаут при получении информации о модели"
-
-msgid "Type:"
-msgstr "Тип:"
-
-msgid "File size:"
-msgstr "Размер файла:"
-
-msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v8.3 (c) 2026 Барсуков Валерий"
-
-msgid "Could not connect to sd-wrapper"
-msgstr "Не удалось подключиться к sd-wrapper"
-
-msgid "Failed to process image request. Please try again."
-msgstr "Не удалось обработать запрос изображения. Попробуйте снова."
-
-msgid "File not found"
-msgstr "Файл не найден"
-
-msgid "File type does not match extension"
-msgstr "Тип файла не соответствует расширению"
-
-msgid "Forbidden"
-msgstr "Доступ запрещён"
-
-msgid "HTTP error {status}"
-msgstr "Ошибка HTTP {status}"
-
+#: app/queue.py:1303 app/queue.py:1399
 msgid "Image editing request was empty"
 msgstr "Запрос на редактирование изображения пуст"
 
-msgid "Info"
-msgstr "Информация"
+#: app/queue.py:1313
+msgid "Failed to process image request. Please try again."
+msgstr "Не удалось обработать запрос изображения. Попробуйте снова."
 
-msgid "Invalid file path"
-msgstr "Некорректный путь к файлу"
+#: app/queue.py:1317 app/queue.py:1353
+msgid "Invalid image"
+msgstr "Неверное изображение"
 
-msgid "Invalid language"
-msgstr "Некорректный язык"
+#: app/queue.py:1442 app/queue.py:1528
+msgid "Audio service unavailable"
+msgstr "Сервис аудио недоступен"
 
-msgid "Invalid theme"
-msgstr "Некорректная тема"
+#: app/queue.py:1461 app/queue.py:1534 app/templates/chat.html:112
+msgid "Failed to recognize speech"
+msgstr "Не удалось распознать речь"
 
-msgid "Invalid voice gender"
-msgstr "Некорректный пол голоса"
+#: app/queue.py:1479 app/queue.py:1541 app/templates/chat.html:117
+msgid "Transcribed"
+msgstr "Распознано"
 
-msgid "Missing \"url\" parameter"
-msgstr "Отсутствует параметр "url""
+#: app/queue.py:1494 app/queue.py:1555 app/routes/messages.py:187
+#: app/templates/chat.html:113
+msgid "Voice request"
+msgstr "Голосовой запрос"
 
+#: app/queue.py:1776 app/templates/chat.html:120
+msgid "Unknown session"
+msgstr "Неизвестный сеанс"
+
+#: app/utils.py:1132
+#, python-brace-format
+msgid ""
+"Storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used. Delete some "
+"files to free space."
+msgstr ""
+"Превышена квота хранилища: использовано {used_mb:.0f}МБ из {max_mb}МБ. "
+"Удалите часть файлов."
+
+#: app/utils.py:1158
+#, python-brace-format
+msgid ""
+"Document quota exceeded: {count} / {max_docs} documents. Delete some to "
+"upload more."
+msgstr ""
+"Превышена квота документов: {count} из {max_docs}. Удалите часть "
+"документов."
+
+#: app/utils.py:1161
+#, python-brace-format
+msgid "Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used."
+msgstr ""
+"Превышена квота хранилища документов: использовано {used_mb:.0f}МБ из "
+"{max_mb}МБ."
+
+#: app/routes/admin.py:49 app/routes/backups.py:59
+msgid "Forbidden"
+msgstr "Доступ запрещён"
+
+#: app/routes/admin.py:188 app/routes/admin.py:441 app/routes/admin.py:812
+#: app/routes/admin.py:883 app/routes/admin.py:974 app/templates/admin.html:209
+#: app/templates/chat.html:133 modules/cam.py:317 modules/sd_cpp.py:208
+#: modules/sd_cpp.py:326
+msgid "Error"
+msgstr "Ошибка"
+
+#: app/routes/admin.py:198 app/templates/admin.html:211
+msgid "Missing fields"
+msgstr "Не все поля заполнены"
+
+#: app/routes/admin.py:200 app/templates/admin.html:212
+msgid "Login already exists"
+msgstr "Логин уже существует"
+
+#: app/routes/admin.py:252 app/templates/admin.html:213
+msgid "New password not specified"
+msgstr "Новый пароль не указан"
+
+#: app/routes/admin.py:357
 msgid "Missing url"
 msgstr "Отсутствует url"
 
-msgid "No llama-server URL provided"
-msgstr "Не указан URL llama-server"
+#: app/routes/admin.py:363 modules/sd_cpp.py:198 modules/sd_cpp.py:314
+#, python-brace-format
+msgid "HTTP error {status}"
+msgstr "Ошибка HTTP {status}"
 
-msgid "Permission denied"
-msgstr "Нет доступа"
+#: app/routes/admin.py:409 app/routes/admin.py:667
+msgid "Missing \"url\" parameter"
+msgstr "Отсутствует параметр \"url\""
 
-msgid "Session not found"
-msgstr "Сессия не найдена"
-
-msgid "Session not found or access denied"
-msgstr "Сессия не найдена или доступ запрещён"
-
-msgid "Supported formats: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB"
-msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB"
-
-msgid "Warning"
-msgstr "Предупреждение"
-
-msgid "from GGUF file"
-msgstr "из GGUF файла"
-
-msgid "from known models"
-msgstr "из известных моделей"
-
+#: app/routes/admin.py:438 app/routes/admin.py:809
+#, python-brace-format
 msgid "llama-server returned {status}"
 msgstr "llama-server вернул {status}"
 
-msgid "sd-wrapper returned no image"
-msgstr "sd-wrapper не вернул изображение"
+#: app/routes/admin.py:967
+msgid "Request queue not available"
+msgstr "Очередь запросов недоступна"
 
-msgid "sd-wrapper returned no image data"
-msgstr "sd-wrapper не вернул данные изображения"
+#: app/routes/admin.py:971
+msgid "Reindex started"
+msgstr "Переиндексация запущена"
 
+#: app/routes/admin.py:1006
+msgid "RAG module unavailable"
+msgstr "RAG модуль недоступен"
+
+#: app/routes/auth.py:20 app/routes/auth.py:21
+msgid "Too many attempts. Please try again later."
+msgstr "Слишком много попыток. Попробуйте позже."
+
+#: app/routes/auth.py:41
+msgid "All fields are required"
+msgstr "Все поля обязательны"
+
+#: app/routes/auth.py:68
+msgid "Invalid login or password"
+msgstr "Неверный логин или пароль"
+
+#: app/routes/auth.py:89
+msgid "Invalid language"
+msgstr "Некорректный язык"
+
+#: app/routes/auth.py:99
+msgid "Invalid voice gender"
+msgstr "Некорректный пол голоса"
+
+#: app/routes/auth.py:109
+msgid "Invalid theme"
+msgstr "Некорректная тема"
+
+#: app/routes/auth.py:120
+#, fuzzy
+msgid "Invalid response style"
+msgstr "Некорректный тип резервной копии"
+
+#: app/routes/backups.py:129
+msgid "Invalid backup type"
+msgstr "Некорректный тип резервной копии"
+
+#: app/routes/backups.py:214 app/templates/admin.html:325
+msgid "Error creating backup"
+msgstr "Ошибка при создании резервной копии"
+
+#: app/routes/backups.py:227
+msgid "filename is required"
+msgstr "Не указано имя файла"
+
+#: app/routes/backups.py:233
+msgid "Backup file not found"
+msgstr "Файл резервной копии не найден"
+
+#: app/routes/backups.py:253
+msgid "Archive checksum mismatch. File may be corrupted."
+msgstr "Контрольная сумма не совпадает. Файл может быть повреждён."
+
+#: app/routes/backups.py:292 app/templates/admin.html:326
+msgid "Error restoring backup"
+msgstr "Ошибка при восстановлении"
+
+#: app/routes/backups.py:310 app/routes/documents.py:168
+msgid "File not found"
+msgstr "Файл не найден"
+
+#: app/routes/documents.py:37 app/routes/documents.py:45
+#: modules/multimodal.py:81
+msgid "Unsupported file type"
+msgstr "Неподдерживаемый тип файла"
+
+#: app/routes/documents.py:50
+msgid "File type does not match extension"
+msgstr "Тип файла не соответствует расширению"
+
+#: app/routes/documents.py:58 app/routes/documents.py:65
+#: app/routes/documents.py:150 app/routes/documents.py:180
+#: app/routes/messages.py:24 app/routes/messages.py:55
+#: app/routes/messages.py:249 app/routes/queue.py:11 app/routes/queue.py:27
+#: app/routes/queue.py:36 app/routes/sessions.py:15 app/routes/sessions.py:22
+#: app/routes/sessions.py:43 app/routes/sessions.py:59
+#: app/routes/sessions.py:74 app/routes/sessions.py:99
+#: app/routes/sessions.py:118 app/routes/sessions.py:130 app/routes/tts.py:15
+#: app/templates/chat.html:110 modules/cam.py:341 modules/cam.py:347
+#: modules/cam.py:355 modules/cam.py:375
+msgid "Not authorized"
+msgstr "Не авторизован"
+
+#: app/routes/documents.py:67
+msgid "No file provided"
+msgstr "Файл не предоставлен"
+
+#: app/routes/documents.py:70
+msgid "No file selected"
+msgstr "Файл не выбран"
+
+#: app/routes/documents.py:87 app/routes/messages.py:148
+#: modules/multimodal.py:75
+#, python-brace-format
+msgid "Maximum file size {max_size} MB"
+msgstr "Максимальный размер файла {max_size} Мб"
+
+#: app/routes/documents.py:112
+msgid "Invalid file path"
+msgstr "Некорректный путь к файлу"
+
+#: app/routes/documents.py:153 app/routes/documents.py:183
+msgid "Document not found"
+msgstr "Документ не найден"
+
+#: app/routes/documents.py:164 app/routes/documents.py:200
+#: app/templates/chat.html:124
+msgid "Permission denied"
+msgstr "Нет доступа"
+
+#: app/routes/messages.py:29 app/routes/sessions.py:47
+#: app/routes/sessions.py:78 app/routes/sessions.py:121
+#: app/routes/sessions.py:137 app/templates/chat.html:125
+msgid "Session not found"
+msgstr "Сессия не найдена"
+
+#: app/routes/messages.py:100 app/templates/chat.html:111
+msgid "Empty message"
+msgstr "Пустое сообщение"
+
+#: app/routes/messages.py:123 modules/multimodal.py:89
+#, python-brace-format
+msgid "Maximum resolution {max_width}x{max_height}"
+msgstr "Максимальное разрешение {max_width}x{max_height}"
+
+#: app/routes/messages.py:126
+msgid "The image has been reduced."
+msgstr "Изображение было уменьшено."
+
+#: app/routes/messages.py:198 app/routes/messages.py:236
+#: app/templates/chat.html:115
+#, python-brace-format
+msgid "Request queued (position {pos})"
+msgstr "Запрос поставлен в очередь (позиция {pos})"
+
+#: app/routes/messages.py:214
+msgid "Image"
+msgstr "Изображение"
+
+#: app/routes/messages.py:222 app/templates/chat.html:165
+msgid "Text request"
+msgstr "Текстовый запрос"
+
+#: app/routes/messages.py:253
+#, fuzzy
+msgid "Task not found"
+msgstr "Не найдено"
+
+#: app/routes/sessions.py:28 app/routes/sessions.py:103
+msgid "Session not found or access denied"
+msgstr "Сессия не найдена или доступ запрещён"
+
+#: app/routes/sessions.py:109
+msgid "Permission denied or session not found"
+msgstr "Нет прав или сеанс не найден"
+
+#: app/routes/sessions.py:133 app/templates/chat.html:126
+msgid "No active session"
+msgstr "Нет активного сеанса"
+
+#: app/routes/tts.py:19
+msgid "Missing text"
+msgstr "Отсутствует текст"
+
+#: app/routes/tts.py:27
+msgid "TTS service unavailable"
+msgstr "Сервис озвучки недоступен"
+
+#: app/routes/tts.py:33
+msgid "TTS synthesis failed"
+msgstr "Ошибка синтеза речи"
+
+#: app/templates/admin.html:5
+msgid "Admin Panel"
+msgstr "Панель администратора"
+
+#: app/templates/admin.html:9
+msgid "Users"
+msgstr "Пользователи"
+
+#: app/templates/admin.html:10
+msgid "Models"
+msgstr "Модели"
+
+# Backup/restore translations
+#: app/templates/admin.html:11 app/templates/admin.html:310
+msgid "Backups"
+msgstr "Резервные копии"
+
+#: app/templates/admin.html:18
+msgid "Add user"
+msgstr "Добавить пользователя"
+
+#: app/templates/admin.html:20 app/templates/admin.html:242
+msgid "User DB"
+msgstr "База пользователей"
+
+#: app/templates/admin.html:20 app/templates/admin.html:21
+#: app/templates/admin.html:22 app/templates/admin.html:23
+#: app/templates/admin.html:246 app/templates/admin.html:271
+msgid "MB"
+msgstr "МБ"
+
+#: app/templates/admin.html:21 app/templates/admin.html:243
+msgid "Chat DB"
+msgstr "База чатов"
+
+#: app/templates/admin.html:22 app/templates/admin.html:244
+msgid "Files DB"
+msgstr "База файлов"
+
+#: app/templates/admin.html:23 app/templates/admin.html:245
+msgid "Documents DB"
+msgstr "База документов"
+
+#: app/templates/admin.html:30 app/templates/admin.html:221
+msgid "Status"
+msgstr "Статус"
+
+#: app/templates/admin.html:31 app/templates/admin.html:143
+#: app/templates/admin.html:222 app/templates/login.html:14
+#: app/templates/login.html:23
+msgid "Login"
+msgstr "Логин"
+
+#: app/templates/admin.html:32 app/templates/admin.html:147
+#: app/templates/admin.html:223 app/templates/login.html:18
+msgid "Password"
+msgstr "Пароль"
+
+#: app/templates/admin.html:33 app/templates/admin.html:151
+#: app/templates/admin.html:224
+msgid "Name"
+msgstr "Имя"
+
+#: app/templates/admin.html:34 app/templates/admin.html:155
+#: app/templates/admin.html:225
+msgid "Class"
+msgstr "Класс"
+
+#: app/templates/admin.html:35 app/templates/admin.html:226
+#: app/templates/chat.html:18 app/templates/chat.html:129
+msgid "Sessions"
+msgstr "Сеансы"
+
+#: app/templates/admin.html:36 app/templates/admin.html:227
+#: app/templates/chat.html:62 app/templates/chat.html:131
+msgid "Messages"
+msgstr "Сообщения"
+
+#: app/templates/admin.html:37 app/templates/admin.html:228
+msgid "Files"
+msgstr "Файлы"
+
+#: app/templates/admin.html:38 app/templates/admin.html:229
+#: app/templates/chat.html:13 app/templates/chat.html:130
+msgid "Documents"
+msgstr "Документы"
+
+#: app/templates/admin.html:40 app/templates/admin.html:169
+#: app/templates/admin.html:230
+msgid "Camera access"
+msgstr "Доступ к камерам"
+
+#: app/templates/admin.html:42 app/templates/admin.html:120
+#: app/templates/admin.html:231 app/templates/admin.html:336
+msgid "Actions"
+msgstr "Действия"
+
+#: app/templates/admin.html:62 app/templates/admin.html:283
+msgid "Chunks"
+msgstr "Чанки"
+
+#: app/templates/admin.html:65 app/templates/admin.html:284
+msgid "Chunk Size (characters)"
+msgstr "Размер чанка (символов)"
+
+#: app/templates/admin.html:69 app/templates/admin.html:285
+msgid "Chunk Overlap (characters)"
+msgstr "Перекрытие чанков (символов)"
+
+#: app/templates/admin.html:73 app/templates/admin.html:286
+msgid "Chunk Strategy"
+msgstr "Стратегия чанкинга"
+
+#: app/templates/admin.html:75 app/templates/admin.html:287
+msgid "Fixed (by size)"
+msgstr "Фиксированный (по размеру)"
+
+#: app/templates/admin.html:76 app/templates/admin.html:288
+msgid "Structural (by headings)"
+msgstr "Структурный (по заголовкам)"
+
+#: app/templates/admin.html:80
+msgid "Number of chunks"
+msgstr "Число чанков"
+
+#: app/templates/admin.html:85
+msgid "Threshold (documents)"
+msgstr "Порог (документы)"
+
+#: app/templates/admin.html:89
+msgid "Threshold (reasoning)"
+msgstr "Порог (рассуждения)"
+
+#: app/templates/admin.html:94 app/templates/admin.html:198
+#: app/templates/admin.html:215 app/templates/admin.html:282
+msgid "Save"
+msgstr "Сохранить"
+
+#: app/templates/admin.html:104 app/templates/admin.html:311
+msgid "Backup type"
+msgstr "Тип резервной копии"
+
+#: app/templates/admin.html:106 app/templates/admin.html:312
+msgid "Users only"
+msgstr "Только пользователи"
+
+#: app/templates/admin.html:107 app/templates/admin.html:313
+msgid "Full (users + chats + files)"
+msgstr "Полная (пользователи + чаты + файлы)"
+
+#: app/templates/admin.html:109 app/templates/admin.html:314
+msgid "Create backup"
+msgstr "Создать резервную копию"
+
+#: app/templates/admin.html:110 app/templates/admin.html:337
+msgid "Refresh backup list"
+msgstr "Обновить список резервных копий"
+
+#: app/templates/admin.html:116 app/templates/admin.html:332
+msgid "Filename"
+msgstr "Имя файла"
+
+#: app/templates/admin.html:117 app/templates/admin.html:333
+msgid "Type"
+msgstr "Тип"
+
+#: app/templates/admin.html:118 app/templates/admin.html:334
+msgid "Size"
+msgstr "Размер"
+
+#: app/templates/admin.html:119 app/templates/admin.html:335
+msgid "Created"
+msgstr "Создана"
+
+#: app/templates/admin.html:128 app/templates/admin.html:318
+msgid "No backups found"
+msgstr "Резервные копии не найдены"
+
+#: app/templates/admin.html:138 app/templates/admin.html:235
+msgid "New user"
+msgstr "Новый пользователь"
+
+#: app/templates/admin.html:144 app/templates/admin.html:236
+msgid "Only lowercase letters and digits"
+msgstr "Только строчные латинские буквы и цифры"
+
+#: app/templates/admin.html:157 app/templates/admin.html:237
+msgid "highest"
+msgstr "высший"
+
+#: app/templates/admin.html:158 app/templates/admin.html:238
+msgid "medium"
+msgstr "средний"
+
+#: app/templates/admin.html:159 app/templates/admin.html:239
+msgid "lowest"
+msgstr "низший"
+
+#: app/templates/admin.html:164 app/templates/admin.html:232
+msgid "Active"
+msgstr "Активен"
+
+#: app/templates/admin.html:177 app/templates/admin.html:240
+msgid "Leave all unchecked to deny access to all cameras."
+msgstr "Оставьте все неотмеченными — доступ будет закрыт ко всем камерам."
+
+#: app/templates/admin.html:180 app/templates/admin.html:233
+msgid "Create"
+msgstr "Создать"
+
+#: app/templates/admin.html:189 app/templates/admin.html:219
+msgid "Change password"
+msgstr "Смена пароля"
+
+#: app/templates/admin.html:195 app/templates/admin.html:234
+msgid "New password"
+msgstr "Новый пароль"
+
+#: app/templates/admin.html:208
+#, python-brace-format
+msgid "Delete user {login}?"
+msgstr "Удалить пользователя {login}?"
+
+#: app/templates/admin.html:214
+msgid "OK"
+msgstr "ОК"
+
+#: app/templates/admin.html:216
+msgid "Cancel"
+msgstr "Отмена"
+
+#: app/templates/admin.html:217
+msgid "Change"
+msgstr "Сменить"
+
+#: app/templates/admin.html:218
+msgid "delete"
+msgstr "Удалить"
+
+#: app/templates/admin.html:220
+msgid "Delete user"
+msgstr "Удалить пользователя"
+
+#: app/templates/admin.html:241 app/templates/chat.html:148
+msgid "unknown_error"
+msgstr "Неизвестная ошибка"
+
+#: app/templates/admin.html:248
+msgid "Refresh models from llama-server"
+msgstr "Обновить модели из llama-server"
+
+#: app/templates/admin.html:249
+msgid "Saved"
+msgstr "Сохранено"
+
+#: app/templates/admin.html:251 app/templates/chat.html:47
+#: app/templates/chat.html:128
+msgid "Chat"
+msgstr "Чат"
+
+#: app/templates/admin.html:252
+msgid "Reasoning"
+msgstr "Рассуждения"
+
+#: app/templates/admin.html:253
+msgid "Multimodal"
+msgstr "Мультимодальная"
+
+#: app/templates/admin.html:254
+msgid "Embedding"
+msgstr "Эмбеддинги"
+
+#: app/templates/admin.html:255
+msgid "-- Select model --"
+msgstr "-- Выберите модель --"
+
+#: app/templates/admin.html:256
+msgid "Loading..."
+msgstr "Загрузка..."
+
+#: app/templates/admin.html:257
+msgid "No llama-server URL provided"
+msgstr "Не указан URL llama-server"
+
+#: app/templates/admin.html:258
+msgid "Context Length"
+msgstr "Длина контекста"
+
+#: app/templates/admin.html:259
+msgid "Temperature"
+msgstr "Температура"
+
+#: app/templates/admin.html:260
+msgid "Top P"
+msgstr "Top P"
+
+#: app/templates/admin.html:261
+msgid "Timeout (s)"
+msgstr "Таймаут (с)"
+
+#: app/templates/admin.html:262
+msgid "Architecture:"
+msgstr "Архитектура:"
+
+#: app/templates/admin.html:263
+msgid "Parameters:"
+msgstr "Параметры:"
+
+#: app/templates/admin.html:264
+msgid "Quantization:"
+msgstr "Квантование:"
+
+#: app/templates/admin.html:265
+msgid "Max context length:"
+msgstr "Макс. длина контекста:"
+
+#: app/templates/admin.html:266
+msgid "from GGUF file"
+msgstr "из GGUF файла"
+
+#: app/templates/admin.html:267
+msgid "from known models"
+msgstr "из известных моделей"
+
+#: app/templates/admin.html:268
+msgid "Embedding length:"
+msgstr "Длина эмбеддинга:"
+
+#: app/templates/admin.html:269
+msgid "File size:"
+msgstr "Размер файла:"
+
+#: app/templates/admin.html:270
+msgid "Type:"
+msgstr "Тип:"
+
+#: app/templates/admin.html:272
+msgid "timeout_fetching_model_info"
+msgstr "Превышен таймаут при получении информации о модели"
+
+#: app/templates/admin.html:274
+msgid "Please select a model first."
+msgstr "Сначала выберите модель."
+
+#: app/templates/admin.html:275
+msgid "Context length must be at least 512."
+msgstr "Длина контекста должна быть не менее 512."
+
+#: app/templates/admin.html:276
+#, python-brace-format
+msgid "Context length cannot exceed {max} (max for this model)."
+msgstr "Длина контекста не может превышать {max} (максимум для этой модели)."
+
+#: app/templates/admin.html:277
+msgid "Temperature must be between 0.0 and 2.0."
+msgstr "Температура должна быть в диапазоне от 0.0 до 2.0."
+
+#: app/templates/admin.html:278
+msgid "Top P must be between 0.0 and 1.0."
+msgstr "Top P должен быть в диапазоне от 0.0 до 1.0."
+
+#: app/templates/admin.html:279
+msgid "Timeout must be between 0 and 1200 seconds."
+msgstr "Таймаут должен быть в диапазоне от 0 до 1200 секунд."
+
+#: app/templates/admin.html:280
+msgid "Repeat Penalty"
+msgstr "Штраф за повтор"
+
+#: app/templates/admin.html:281
+msgid "Repeat penalty must be between 1.0 and 2.0."
+msgstr "Штраф за повтор должен быть в диапазоне от 1.0 до 2.0."
+
+#: app/templates/admin.html:289
+msgid "Chunk configuration saved. Reindexing started."
+msgstr "Конфигурация чанков сохранена. Переиндексация запущена."
+
+#: app/templates/admin.html:290
+msgid "Chunk configuration saved."
+msgstr "Конфигурация чанков сохранена."
+
+#: app/templates/admin.html:291
+msgid "vram_optimal"
+msgstr "Использовано VRAM: 100%, RAM: 0% - оптимально"
+
+#: app/templates/admin.html:292
+msgid "vram_optimal_dynamic"
+msgstr "Использовано VRAM: %1%%, RAM: 0% - оптимально"
+
+#: app/templates/admin.html:293
+msgid "vram_partial_high"
+msgstr "Использовано VRAM: 100%, RAM: %2%% - хорошо"
+
+#: app/templates/admin.html:294
+msgid "vram_partial_med"
+msgstr "Использовано VRAM: 100%, RAM: %2%% - умеренно"
+
+#: app/templates/admin.html:295
+msgid "vram_partial_low"
+msgstr "Использовано VRAM: 100%, RAM: %2%% - медленно, задержки"
+
+#: app/templates/admin.html:296
+msgid "no_gpu_full"
+msgstr "Нет GPU. Использовано %1%% RAM - медленно"
+
+#: app/templates/admin.html:297
+msgid "ram_estimate"
+msgstr "Использовано %1%% RAM"
+
+#: app/templates/admin.html:298
+msgid "no_gpu_low"
+msgstr "Нет GPU. Использовано %1%% RAM - очень медленно"
+
+#: app/templates/admin.html:299
+msgid ""
+"Reindexing all documents with new embedding model started. This may take "
+"a while."
+msgstr ""
+"Началась переиндексация всех документов с новой моделью эмбеддингов. Это "
+"может занять некоторое время."
+
+#: app/templates/admin.html:300
+msgid "Reindex all documents? This will rebuild all document embeddings."
+msgstr "Переиндексировать все документы? Это перестроит все эмбеддинги документов."
+
+#: app/templates/admin.html:302
+msgid "Local"
+msgstr "Локально"
+
+#: app/templates/admin.html:303
+msgid "Please provide llama-server URL first"
+msgstr "Сначала укажите URL llama-server"
+
+#: app/templates/admin.html:304
+msgid "Please provide llama-server URL first."
+msgstr "Сначала укажите URL llama-server."
+
+#: app/templates/admin.html:305
+msgid "Please provide llama-server URL."
+msgstr "Укажите URL llama-server."
+
+#: app/templates/admin.html:307
+msgid "llama-server available"
+msgstr "llama-server доступен"
+
+#: app/templates/admin.html:308
+msgid "llama-server unavailable"
+msgstr "llama-server недоступен"
+
+#: app/templates/admin.html:315
+msgid "Restore"
+msgstr "Восстановить"
+
+#: app/templates/admin.html:316
+msgid "Delete"
+msgstr "Удалить"
+
+#: app/templates/admin.html:317
+msgid "Download"
+msgstr "Скачать"
+
+#: app/templates/admin.html:319
+#, python-brace-format
+msgid "Restore users database from {filename}? Current data will be replaced."
+msgstr ""
+"Восстановить базу пользователей из {filename}? Текущие данные будут "
+"заменены."
+
+#: app/templates/admin.html:320
+#, python-brace-format
+msgid ""
+"Restore full backup from {filename}? All data (users, chats, documents, "
+"files) will be replaced."
+msgstr ""
+"Восстановить полную резервную копию из {filename}? Все данные "
+"(пользователи, чаты, документы, файлы) будут заменены."
+
+#: app/templates/admin.html:321
+#, python-brace-format
+msgid "Delete file {filename}? This action cannot be undone."
+msgstr "Удалить файл {filename}? Это действие необратимо."
+
+#: app/templates/admin.html:322
+#, python-brace-format
+msgid "Backup created: {filename}"
+msgstr "Резервная копия создана: {filename}"
+
+#: app/templates/admin.html:323
+#, python-brace-format
+msgid "Data restored from: {filename}"
+msgstr "Данные восстановлены из: {filename}"
+
+#: app/templates/admin.html:324
+#, python-brace-format
+msgid "File deleted: {filename}"
+msgstr "Файл удалён: {filename}"
+
+#: app/templates/admin.html:327
+msgid "Error deleting backup"
+msgstr "Ошибка при удалении"
+
+#: app/templates/admin.html:328
+msgid "Refresh list"
+msgstr "Обновить список"
+
+#: app/templates/admin.html:329
+msgid "Success"
+msgstr "Успешно"
+
+#: app/templates/admin.html:330
+msgid "Creating..."
+msgstr "Создание..."
+
+#: app/templates/admin.html:331
+msgid "Restoring..."
+msgstr "Восстановление..."
+
+#: app/templates/base.html:7 app/templates/base.html:25
+msgid "FLAI"
+msgstr "ПЛИИ"
+
+#: app/templates/base.html:29
+msgid "Administrator"
+msgstr "Администратор"
+
+#: app/templates/base.html:39
+msgid "toggle_voice_gender"
+msgstr "Переключить пол голоса"
+
+#: app/templates/base.html:46 app/templates/base.html:65
+msgid "Toggle theme"
+msgstr "Переключить тему"
+
+#: app/templates/base.html:52
+msgid "Logout"
+msgstr "Выйти"
+
+#: app/templates/base.html:78 app/templates/chat.html:162
+msgid "footer_text"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v8.4 (c) 2026 Барсуков Валерий"
+
+#: app/templates/chat.html:14 app/templates/chat.html:172
+msgid "New document"
+msgstr "Новый документ"
+
+#: app/templates/chat.html:33 app/templates/chat.html:122
+msgid "Delete session"
+msgstr "Удалить сеанс"
+
+#: app/templates/chat.html:47 app/templates/chat.html:132
+msgid "Your requests in queue / Total in queue"
+msgstr "Ваши запросы в очереди / Всего в очереди"
+
+#: app/templates/chat.html:47 app/templates/chat.html:187
 msgid "response_style_label"
 msgstr "Стиль"
 
+#: app/templates/chat.html:49 app/templates/chat.html:186
 msgid "response_style_title"
 msgstr "Стиль ответа"
 
+#: app/templates/chat.html:54 app/templates/chat.html:188
 msgid "response_style_neutral"
 msgstr "Нейтральный"
 
+#: app/templates/chat.html:55 app/templates/chat.html:189
 msgid "response_style_academic"
 msgstr "Академический"
 
+#: app/templates/chat.html:56 app/templates/chat.html:190
 msgid "response_style_professional"
 msgstr "Деловой"
 
+#: app/templates/chat.html:57 app/templates/chat.html:191
 msgid "response_style_friendly"
 msgstr "Дружеский"
 
+#: app/templates/chat.html:58 app/templates/chat.html:192
 msgid "response_style_funny"
 msgstr "Весёлый"
+
+#: app/templates/chat.html:63 app/templates/chat.html:127
+msgid "Save as HTML"
+msgstr "Сохранить как HTML"
+
+#: app/templates/chat.html:88
+msgid "Enter message..."
+msgstr "Введите сообщение..."
+
+#: app/templates/chat.html:89 app/templates/chat.html:166
+msgid "Record voice message"
+msgstr "Записать голосовое сообщение"
+
+#: app/templates/chat.html:92 app/templates/chat.html:107
+msgid "Send"
+msgstr "Отправить"
+
+#: app/templates/chat.html:108
+msgid "Sending..."
+msgstr "Отправка..."
+
+#: app/templates/chat.html:109
+msgid "Recording..."
+msgstr "Запись..."
+
+#: app/templates/chat.html:114
+msgid "Audio transcribed"
+msgstr "Аудио распознано"
+
+#: app/templates/chat.html:116
+#, python-brace-format
+msgid "Speech recognized, request queued (position {pos})"
+msgstr "Голос распознан, запрос поставлен в очередь (позиция {pos})"
+
+#: app/templates/chat.html:123
+#, python-brace-format
+msgid "Delete session {title} from {date}?"
+msgstr "Удалить сеанс \"{title}\" от {date}?"
+
+#: app/templates/chat.html:134
+msgid "Warning"
+msgstr "Предупреждение"
+
+#: app/templates/chat.html:135
+msgid "Info"
+msgstr "Информация"
+
+#: app/templates/chat.html:136
+msgid "user"
+msgstr "Пользователь"
+
+#: app/templates/chat.html:137
+msgid "session"
+msgstr "Сеанс"
+
+#: app/templates/chat.html:138
+msgid "saved_on"
+msgstr "Сохранено"
+
+#: app/templates/chat.html:139
+msgid "total_messages"
+msgstr "Всего сообщений"
+
+#: app/templates/chat.html:140
+msgid "speak"
+msgstr "Озвучить"
+
+#: app/templates/chat.html:141
+msgid "stop"
+msgstr "Остановить"
+
+#: app/templates/chat.html:142
+msgid "download_image"
+msgstr "Скачать изображение"
+
+#: app/templates/chat.html:143
+msgid "download_audio"
+msgstr "Скачать аудио"
+
+#: app/templates/chat.html:144
+msgid "click_to_enlarge"
+msgstr "Нажмите для увеличения"
+
+#: app/templates/chat.html:145
+msgid "image"
+msgstr "изображение"
+
+#: app/templates/chat.html:146
+msgid "enter_message_or_file"
+msgstr "Введите сообщение или прикрепите файл"
+
+#: app/templates/chat.html:147
+msgid "request_timeout"
+msgstr "Превышено время ожидания ответа. Проверьте статус запроса."
+
+#: app/templates/chat.html:149
+msgid "copied"
+msgstr "Скопировано!"
+
+#: app/templates/chat.html:150
+msgid "copy_code"
+msgstr "Копировать код"
+
+#: app/templates/chat.html:151
+msgid "copy_failed"
+msgstr "Ошибка копирования"
+
+#: app/templates/chat.html:152
+msgid "copy_text"
+msgstr "Копировать текст"
+
+#: app/templates/chat.html:153
+msgid "processing"
+msgstr "обрабатывается"
+
+#: app/templates/chat.html:154
+msgid "queued"
+msgstr "в очереди"
+
+#: app/templates/chat.html:155
+msgid "new_response"
+msgstr "новый ответ"
+
+#: app/templates/chat.html:156
+msgid "browser_no_audio_support"
+msgstr "Ваш браузер не поддерживает запись аудио"
+
+#: app/templates/chat.html:157
+msgid "secure_context_required"
+msgstr ""
+"Для записи голоса требуется безопасное соединение (HTTPS). Попробуйте "
+"открыть сайт по HTTPS или localhost."
+
+#: app/templates/chat.html:158
+msgid "microphone_access_denied"
+msgstr "Не удалось получить доступ к микрофону."
+
+#: app/templates/chat.html:159
+msgid "no_active_session_save"
+msgstr "Нет активного сеанса для сохранения"
+
+#: app/templates/chat.html:160
+msgid "saved_chat"
+msgstr "Сохраненный чат"
+
+#: app/templates/chat.html:161
+msgid "no_messages_to_save"
+msgstr "Нет сообщений для сохранения"
+
+#: app/templates/chat.html:163
+msgid "footer_not_configured"
+msgstr "Подпись не настроена"
+
+#: app/templates/chat.html:164
+msgid "footer_load_error"
+msgstr "Ошибка загрузки подписи"
+
+#: app/templates/chat.html:167
+msgid "seconds_suffix"
+msgstr "с"
+
+#: app/templates/chat.html:168
+msgid "byte_abbr"
+msgstr "Б"
+
+#: app/templates/chat.html:169
+msgid "kb_abbr"
+msgstr "КБ"
+
+#: app/templates/chat.html:170
+msgid "mb_abbr"
+msgstr "МБ"
+
+#: app/templates/chat.html:171
+msgid "gb_abbr"
+msgstr "ГБ"
+
+#: app/templates/chat.html:173
+msgid "Delete document"
+msgstr "Удалить документ"
+
+#: app/templates/chat.html:174
+#, python-brace-format
+msgid "Delete document \"{filename}\"?"
+msgstr "Удалить документ \"{filename}\"?"
+
+#: app/templates/chat.html:175
+msgid "Upload document"
+msgstr "Загрузить документ"
+
+#: app/templates/chat.html:176
+msgid "Document uploaded"
+msgstr "Документ загружен"
+
+#: app/templates/chat.html:177
+msgid "Document upload failed"
+msgstr "Ошибка загрузки документа"
+
+#: app/templates/chat.html:178
+msgid "Supported formats: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB"
+msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB"
+
+#: app/templates/chat.html:179
+msgid "minutes_abbr"
+msgstr "мин"
+
+#: app/templates/chat.html:180
+msgid "status_pending"
+msgstr "Ожидает индексации"
+
+#: app/templates/chat.html:181
+msgid "status_indexing"
+msgstr "Индексация выполняется"
+
+#: app/templates/chat.html:182
+msgid "status_indexed"
+msgstr "Проиндексирован"
+
+#: app/templates/chat.html:183
+msgid "status_failed"
+msgstr "Ошибка индексации"
+
+#: app/templates/chat.html:184
+msgid "status_unknown"
+msgstr "Не индексирован"
+
+#: app/templates/chat.html:185
+msgid "transcribing"
+msgstr "Распознаётся..."
+
+#: app/templates/chat.html:193
+msgid "generating"
+msgstr "Генерация..."
+
+#: app/templates/chat.html:194
+msgid "stop_generating"
+msgstr "Остановить"
+
+#: app/templates/chat.html:195
+msgid "cancelling"
+msgstr "Остановка..."
+
+#: app/templates/chat.html:196
+msgid "cancelled"
+msgstr "Отменено"
+
+#: app/templates/login.html:6
+msgid "Authorization"
+msgstr "Авторизация"
+
+#: modules/base.py:164
+msgid "Request too long, please simplify your request"
+msgstr "Запрос слишком длинный, пожалуйста, упростите запрос"
+
+#: modules/base.py:201 modules/base.py:278 modules/base.py:322
+#: modules/base.py:363 modules/multimodal.py:199 modules/multimodal.py:222
+#: modules/multimodal.py:252 modules/multimodal.py:320
+msgid "Error loading prompt template"
+msgstr "Ошибка загрузки шаблона промпта"
+
+#: modules/base.py:222 modules/base.py:236
+msgid "Model returned empty response"
+msgstr "Модель вернула пустой ответ"
+
+#: modules/cam.py:213 modules/cam.py:324
+msgid "CCTV service unavailable"
+msgstr "Сервис видеонаблюдения недоступен"
+
+#: modules/cam.py:221
+#, python-brace-format
+msgid "Unknown room: {room}"
+msgstr "Неизвестная комната: {room}"
+
+#: modules/cam.py:230
+msgid "Access to this camera is denied"
+msgstr "Доступ к данной камере запрещён"
+
+#: modules/cam.py:297
+msgid "Connection error"
+msgstr "Ошибка подключения"
+
+#: modules/cam.py:300
+#, python-brace-format
+msgid "Timeout ({timeout}s)"
+msgstr "Таймаут ({timeout}с)"
+
+#: modules/cam.py:307
+#, python-brace-format
+msgid "Failed to get snapshot from camera {room_name}"
+msgstr "Не удалось получить изображение с камеры {room_name}"
+
+#: modules/multimodal.py:97
+msgid "Could not process image file"
+msgstr "Не удалось обработать файл изображения"
+
+#: modules/multimodal.py:285 modules/multimodal.py:346
+msgid "Could not find JSON in model response"
+msgstr "Не удалось найти JSON в ответе модели"
+
+#: modules/multimodal.py:288 modules/multimodal.py:349
+#, python-brace-format
+msgid "JSON parsing error: {error}"
+msgstr "Ошибка парсинга JSON: {error}"
+
+#: modules/rag.py:329 modules/rag.py:389
+msgid "Source"
+msgstr "Источник"
+
+#: modules/sd_cpp.py:104
+msgid "Image generation service unavailable"
+msgstr "Сервис генерации изображений недоступен"
+
+#: modules/sd_cpp.py:109
+msgid "Multimodal module unavailable (required for parameter generation)"
+msgstr "Мультимодальный модуль недоступен (требуется для генерации параметров)"
+
+#: modules/sd_cpp.py:178
+msgid "sd-wrapper returned no image data"
+msgstr "sd-wrapper не вернул данные изображения"
+
+#: modules/sd_cpp.py:195
+msgid "sd-wrapper returned no image"
+msgstr "sd-wrapper не вернул изображение"
+
+#: modules/sd_cpp.py:202
+#, python-brace-format
+msgid "Image generation timeout ({timeout}s)"
+msgstr "Превышено время ожидания генерации изображения ({timeout}с)"
+
+#: modules/sd_cpp.py:205
+msgid "Could not connect to sd-wrapper"
+msgstr "Не удалось подключиться к sd-wrapper"
+
+#: modules/sd_cpp.py:291
+msgid "Edit result has no image data."
+msgstr "Результат редактирования не содержит изображения."
+
+#: modules/sd_cpp.py:311
+msgid "Edit returned no image."
+msgstr "Редактирование не вернуло изображение."
+
+#: modules/sd_cpp.py:320
+#, python-brace-format
+msgid "Editing timeout ({timeout}s)"
+msgstr "Превышено время редактирования ({timeout}с)"
+
+#: modules/sd_cpp.py:323
+msgid "Could not connect to editor."
+msgstr "Не удалось подключиться к редактору."
+
+#~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
+#~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
+
+#~ msgid "Documents Reindexing"
+#~ msgstr "Переиндексация документов"
+
+#~ msgid "Reindex All Documents"
+#~ msgstr "Переиндексировать все документы"
+
+#~ msgid "Rebuild all document embeddings with current chunking strategy"
+#~ msgstr "Перестроить все эмбеддинги документов с текущей стратегией чанкинга"
+
+#~ msgid "Current strategy"
+#~ msgstr "Текущая стратегия"
+
+#~ msgid "Reindex all documents"
+#~ msgstr "Переиндексировать все документы"
+
+#~ msgid "Reindex All"
+#~ msgstr "Переиндексировать"
+
+#~ msgid "Reindexing in progress"
+#~ msgstr "Переиндексация в процессе"
+
+#~ msgid "Reindexing complete"
+#~ msgstr "Переиндексация завершена"
+
+#~ msgid "Reindexing failed"
+#~ msgstr "Переиндексация не удалась"
+
+#~ msgid "delete_session_confirm"
+#~ msgstr "Удалить сеанс \"{title}\" от {date}?"
+
+#~ msgid "error"
+#~ msgstr "Ошибка"
+
+#~ msgid "chat"
+#~ msgstr "Чат"
+
+#~ msgid "llama.cpp service unavailable"
+#~ msgstr "Сервис llama.cpp недоступен"
+
+#~ msgid "Model for {model_type} not configured"
+#~ msgstr "Модель для {model_type} не настроена"
+
+#~ msgid ""
+#~ "Timeout ({timeout}s) when calling the "
+#~ "model. Try increasing timeout in admin"
+#~ " panel or simplify your request."
+#~ msgstr ""
+#~ "Превышено время ожидания ответа от "
+#~ "модели ({timeout}с). Попробуйте увеличить "
+#~ "таймаут в панели администратора или "
+#~ "упростите запрос."
+
+#~ msgid "Could not connect to llama.cpp"
+#~ msgstr "Не удалось подключиться к llama.cpp"
+
+#~ msgid "Could not connect to llama-server"
+#~ msgstr "Не удалось подключиться к llama-server"
+
+#~ msgid "Could not determine action"
+#~ msgstr "Не удалось определить действие"
+
+#~ msgid "Timeout ({timeout}s) during audio transcription"
+#~ msgstr "Таймаут ({timeout}с) при транскрибации аудио"
+
+#~ msgid "Connection error to Whisper API"
+#~ msgstr "Ошибка подключения к Whisper API"
+
+#~ msgid "Timeout ({timeout}s) when calling multimodal model"
+#~ msgstr "Превышено время ожидания ответа от мультимодальной модели ({timeout}с)"
+
+#~ msgid "Could not connect to image generation service"
+#~ msgstr "Не удалось подключиться к сервису генерации изображений"
+
+#~ msgid "Image generation returned no image"
+#~ msgstr "Генерация изображений не вернула изображение"
+
+#~ msgid "male_voice"
+#~ msgstr "Мужской голос"
+
+#~ msgid "female_voice"
+#~ msgstr "Женский голос"
+
+#~ msgid "loading"
+#~ msgstr "Загрузка..."
+
+#~ msgid "Refresh models from llama.cpp"
+#~ msgstr "Обновить модели из llama.cpp"
+
+#~ msgid "Reranker"
+#~ msgstr "Реранкинг"
+
+#~ msgid "Cross-encoder model — reranks search results by relevance"
+#~ msgstr "Кросс-энкодер — переранжирует результаты поиска по релевантности"
+
+#~ msgid "BGE Cross-Encoder"
+#~ msgstr "BGE Cross-Encoder"
+
+#~ msgid "Please provide llama.cpp URL first."
+#~ msgstr "Сначала укажите URL llama.cpp."
+
+#~ msgid "llama.cpp available"
+#~ msgstr "llama.cpp доступен"
+
+#~ msgid "llama.cpp unavailable"
+#~ msgstr "llama.cpp недоступен"
+
+#~ msgid "your_requests"
+#~ msgstr "Ваши запросы в очереди / Всего в очереди"
+
+#~ msgid "server_error_invalid_response"
+#~ msgstr "Ошибка сервера: получен некорректный ответ"
+
+#~ msgid "recording"
+#~ msgstr "Запись"
+
+#~ msgid "room_tambour"
+#~ msgstr "тамбур"
+
+#~ msgid "room_hallway"
+#~ msgstr "прихожая"
+
+#~ msgid "room_corridor"
+#~ msgstr "коридор"
+
+#~ msgid "room_bedroom"
+#~ msgstr "спальня"
+
+#~ msgid "room_office"
+#~ msgstr "кабинет"
+
+#~ msgid "room_children"
+#~ msgstr "детская"
+
+#~ msgid "room_living"
+#~ msgstr "гостиная"
+
+#~ msgid "room_kitchen"
+#~ msgstr "кухня"
+
+#~ msgid "room_balcony"
+#~ msgstr "балкон"
+
+#: app/utils.py
+msgid "Image generation failed. Try again later."
+msgstr "Генерация изображения не удалась. Попробуйте позже."
+
+#: app/utils.py
+msgid "Image generation produced empty output."
+msgstr "Генерация изображения дала пустой результат."
+
+#: app/utils.py
+msgid "Image generation error. Check logs for details."
+msgstr "Ошибка генерации изображения. Подробности в логах."
+
+#: app/utils.py
+msgid "Image editing failed. Try again later."
+msgstr "Редактирование изображения не удалось. Попробуйте позже."
+
+#: app/utils.py
+msgid "Image editing produced empty output."
+msgstr "Редактирование дало пустой результат."
+
+#: app/utils.py
+msgid "No editing instructions provided."
+msgstr "Не указаны инструкции для редактирования."
+
+#: app/utils.py
+msgid "No source image provided."
+msgstr "Не предоставлено исходное изображение."
+
+#: app/utils.py
+msgid "Image editing timeout ({timeout}s)"
+msgstr "Превышено время редактирования ({timeout}с)"
+
+#~ msgid ""
+#~ "Service temporarily unavailable. Circuit "
+#~ "breaker is open after repeated failures."
+#~ msgstr ""
+#~ "Сервис временно недоступен. Сработал защитный"
+#~ " механизм после неоднократных сбоев."
+
+#~ msgid "Model configuration missing"
+#~ msgstr "Конфигурация модели отсутствует"
+
+#~ msgid "Could not connect to llama-swap"
+#~ msgstr "Не удалось подключиться к llama-swap"
+

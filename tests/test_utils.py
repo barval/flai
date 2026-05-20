@@ -38,17 +38,15 @@ def test_format_prompt(tmp_path):
 
 @pytest.mark.unit
 def test_chunk_text():
-    """Test text chunking with overlap."""
-    text = " ".join([f"word{i}" for i in range(100)])
-    chunks = chunk_text(text, chunk_size=10, overlap=2)
+    """Test text chunking by characters with overlap."""
+    text = "Hello, this is a test text for chunking."
+    chunks = chunk_text(text, chunk_size=10, overlap=3)
     assert len(chunks) > 0
-    # Check that first chunk contains first 10 words
-    assert chunks[0].startswith("word0")
-    # Check overlap between consecutive chunks
+    # First chunk contains first 10 characters
+    assert chunks[0] == "Hello, thi"
+    # Check overlap between consecutive chunks (in characters)
     if len(chunks) > 1:
-        first_words_chunk1 = chunks[0].split()[-2:]
-        first_words_chunk2 = chunks[1].split()[:2]
-        assert first_words_chunk1 == first_words_chunk2
+        assert chunks[0][-3:] == chunks[1][:3]
 
 
 @pytest.mark.unit

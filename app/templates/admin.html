@@ -78,8 +78,8 @@
                 </div>
                 <div class="param">
                     <label>{{ _('Number of chunks') }}</label>
-                    <input type="number" id="rag-top-k" min="1" max="{{ max_top_k + 1 }}" value="{{ rag_top_k }}">
-                    <small>&lt; {{ max_top_k + 1 }}</small>
+                    <input type="number" id="rag-top-k" min="1" max="{{ max_top_k }}" value="{{ rag_top_k }}">
+                    <small>&le; {{ max_top_k }}</small>
                 </div>
                 <div class="param">
                     <label>{{ _('Threshold (documents)') }}</label>

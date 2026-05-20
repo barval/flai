@@ -151,6 +151,7 @@ class SdCppModule(TranslationMixin):
                 "height": prompt_data.get("height", 1024),
                 "cfg_scale": prompt_data.get("cfg_scale", 1.0),
                 "flow_shift": prompt_data.get("flow_shift", 2.0),
+                "use_gpu": rm.hardware.cuda_detected,
             }
             # Optional sampler (required for qwen_image)
             if prompt_data.get("sampling_method"):
@@ -195,7 +196,7 @@ class SdCppModule(TranslationMixin):
                     return {"success": False, "error": self._("sd-wrapper returned no image", lang)}
             else:
                 self.logger.error(f"sd-wrapper error: {response.status_code} - {response.text[:500]}")
-                return {"success": False, "error": f"sd-wrapper error: {response.status_code}"}
+                return {"success": False, "error": self._("HTTP error {status}", lang, status=response.status_code)}
 
         except requests.exceptions.Timeout:
             self.logger.error(f"Timeout ({self.timeout}s) during image generation")
@@ -263,6 +264,7 @@ class SdCppModule(TranslationMixin):
             "strength": edit_prompt_data.get("strength", 0.7),
             "width": edit_prompt_data.get("width", 1024),
             "height": edit_prompt_data.get("height", 1024),
+            "use_gpu": rm.hardware.cuda_detected,
         }
         if edit_prompt_data.get("mask"):
             payload["mask"] = edit_prompt_data["mask"]
@@ -311,7 +313,7 @@ class SdCppModule(TranslationMixin):
                     return {"success": False, "error": self._("Edit returned no image.", lang)}
             else:
                 self.logger.error(f"sd-wrapper edit error: {response.status_code} - {response.text[:500]}")
-                return {"success": False, "error": f"sd-wrapper edit error: {response.status_code}"}
+                return {"success": False, "error": self._("HTTP error {status}", lang, status=response.status_code)}
 
         except requests.exceptions.Timeout:
             self.logger.error(f"Edit timeout ({self.timeout}s)")

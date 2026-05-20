@@ -74,6 +74,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - All **user-facing messages** (UI, notifications, errors) must use the selected user language (i18n).
 - Always keep translation files (`messages.po`) up‑to‑date and complete.
 - For Russian, the file `deploy-ru.sh` is the only place where Russian comments are allowed.
+- **Every** user-facing string MUST be wrapped in `_()` / `self._()` / `gettext()`. Raw `str(e)` must NEVER be returned to the user.
 
 ## Dependencies & External Resources
 - The project must run **fully offline** after model/voice downloads.

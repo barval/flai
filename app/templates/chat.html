@@ -189,7 +189,11 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'response_style_academic': {{ _('response_style_academic')|tojson }},
     'response_style_professional': {{ _('response_style_professional')|tojson }},
     'response_style_friendly': {{ _('response_style_friendly')|tojson }},
-    'response_style_funny': {{ _('response_style_funny')|tojson }}
+    'response_style_funny': {{ _('response_style_funny')|tojson }},
+    'generating': {{ _('generating')|tojson }},
+    'stop_generating': {{ _('stop_generating')|tojson }},
+    'cancelling': {{ _('cancelling')|tojson }},
+    'cancelled': {{ _('cancelled')|tojson }}
 });
 window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
 function t(key) {

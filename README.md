@@ -69,12 +69,19 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v8.3
+### What's New in v8.4
 
-| v8.3 (New) | Notes |
+| v8.4 (New) | Notes |
 |------------|-------|
-| **Service Prefix Formatting** | Voice transcription, camera snapshot, image generation, and image editing notifications display their prefix in bold. These prefixes are excluded from TTS playback and clipboard copy for cleaner output. |
-| **SSE Real-Time Delivery** | Queue results and new messages delivered via Server-Sent Events (Redis pub/sub) instead of HTTP polling. Instant updates, lower bandwidth, no polling delays. |
+| 🔄 **Image streaming fix** | `queue.py:1392`: tokens after `[-IMAGE-EDIT-]` marker no longer discarded during SSE streaming, eliminating empty edit query errors |
+| 🖥️ **GPU/CPU auto-detect for SD** | `sd_wrapper.py` detects CUDA inside container via `nvidia-smi`; omits `--offload-to-cpu`/`--vae-on-cpu`/`--clip-on-cpu` on GPU; no `--cuda` flag — sd-cli auto-detects |
+| 🔁 **CUDA fallback** | If `use_gpu=True` but CUDA unavailable in sd-container, automatic fallback to CPU |
+| 🌐 **SD error translations restored** | `_sd_error_translation_markers()` in `utils.py` for pybabel extraction; 8 stale `#~` keys in `.po` files reactivated with proper source references |
+| 🔧 **Session switching fix** | `chat-sessions.js`: `loadMessages()` now called after server-side session deletion; clicking already-active session re-fetches messages instead of silent early return |
+| 🗣️ **Full i18n coverage** | All user-facing error messages wrapped in `_()` / `gettext()`; 14 new translation keys; rule added to `AGENTS.md` — raw `str(e)` never returned to user |
+| ⚡ **Audio ⚡ hang fix** | `clearSessionQueue` + `fetchQueueStatus` race conditions fixed in HTTP audio responses without `request_id`; only one session shows ⚡ at a time |
+| 🗑️ **`.gitignore *.pot`** | `messages.pot` excluded from version control |
+
 
 ### Core Components
 
@@ -678,8 +685,18 @@ curl http://localhost:5000/metrics
 - **Message format migration** — all old service messages converted to structured JSON `{prefix, text}` format
 - **SSE real-time delivery** — queue results and new messages delivered via Server-Sent Events (Redis pub/sub), replacing all HTTP polling
 - **Static cache-busting** — all JS/CSS assets served with `?v=timestamp` to prevent stale cache after updates
-- **Debug logging system** — `console.log`/`console.warn` replaced with `dlog`/`dwarn`, active only when `DEBUG_JS=true`
+- **PDF extraction via pdftotext** — accurate text positioning for complex PDF layouts (hh.ru resumes, tables, multi-column)
+- **Real-time document indexing SSE** — document list auto-refresh when indexing completes or fails, no manual page reload needed
 - **CLI command** — `flask migrate-messages-format` to convert old plain-text service messages to JSON format (supports `--dry-run`)
+- **SSE reliability** — 4 root cause fixes for voice message delivery (lightning icon visibility, reconnect recovery, `user_id` passthrough for `message_new` events)
+- **Migration `--add-emojis`** — `flask migrate-messages-format --add-emojis` to retroactively add `🎨` to existing image service messages (supports `--dry-run`)
+- **Tablet responsive layout** — media query for 769–1199px fixes footer overlap with chat input caused by `100vh` vs `100%` mismatch in mobile browsers
+- **Image streaming fix** — tokens after `[-IMAGE-EDIT-]` marker no longer discarded during SSE streaming, eliminating empty edit query errors
+- **GPU/CPU auto-detect for SD** — `sd_wrapper.py` detects CUDA inside container via `nvidia-smi`; omits CPU offload flags on GPU; no `--cuda`; automatic CPU fallback
+- **SD error translations restored** — `_sd_error_translation_markers()` in `utils.py` for pybabel extraction; 8 stale `.po` keys reactivated with proper source references
+- **Session switching UI fix** — `chat-sessions.js`: `loadMessages()` called after server-side session deletion; same-session click re-fetches messages
+- **Full i18n coverage** — all user-facing errors wrapped in `_()`/`gettext()`; 14 new translation keys; rule added to `AGENTS.md`
+- **Audio ⚡ race condition fix** — `clearSessionQueue` + `fetchQueueStatus` race fixed for HTTP audio responses without `request_id`; single-session ⚡ indicator
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)

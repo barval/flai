@@ -48,6 +48,7 @@ target/
 *.swp
 *.swo
 *.mo
+*.pot
 
 # Editors/IDE
 .vscode/

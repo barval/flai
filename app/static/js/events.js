@@ -43,6 +43,12 @@ function scheduleReconnect() {
         if (typeof fetchQueueStatus === 'function') {
             fetchQueueStatus();
         }
+        if (typeof loadMessages === 'function' && currentSessionId) {
+            loadMessages(currentSessionId);
+        }
+        if (typeof loadDocuments === 'function') {
+            loadDocuments(false);
+        }
     }, 3000);
 }
 
@@ -62,11 +68,222 @@ function handleEvent(event) {
         case 'result_completed':
             onResultCompleted(event.data);
             break;
+        case 'stream_token':
+            onStreamToken(event.data);
+            break;
+        case 'stream_cancelled':
+            onStreamCancelled(event.data);
+            break;
+        case 'camera_image':
+            onCameraImage(event.data);
+            break;
         case 'message_new':
             onMessageNew(event.data);
             break;
+        case 'document_indexed':
+            if (typeof loadDocuments === 'function') {
+                loadDocuments(false);
+            }
+            break;
         default:
             dlog('SSE unknown event type:', event.type);
+    }
+}
+
+// ── camera_image ────────────────────────────────────────────────────
+
+function onCameraImage(data) {
+    if (!data || !data.session_id || data.session_id !== currentSessionId) return;
+    if (data.message_id && displayedMessageIds.has(data.message_id)) return;
+    dlog('onCameraImage:', data.message_id);
+    window.displayMessage('assistant', data.response, null,
+        data.file_type || null, data.file_name || null, data.file_path || null,
+        data.assistant_timestamp || new Date().toISOString(),
+        data.response_time, data.model_used,
+        null, null, null, null, data.message_id,
+        data.response_style);
+}
+
+// ── stream_token ─────────────────────────────────────────────────────
+
+function onStreamToken(data) {
+    if (!data || !data.task_id || !data.token) return;
+    dlog('onStreamToken:', data.task_id, 'token len:', data.token.length);
+
+    const reqInfo = pendingRequestIds[data.task_id];
+    if (!reqInfo) {
+        dlog('onStreamToken: no pending request found for', data.task_id);
+        return;
+    }
+
+    // Accumulate content
+    if (!reqInfo.accumulatedContent) {
+        reqInfo.accumulatedContent = '';
+    }
+    reqInfo.accumulatedContent += data.token;
+
+    // Save to sessionStorage for recovery after page reload
+    _saveStreamToSessionStorage(data.task_id, data.session_id, reqInfo.accumulatedContent);
+
+    // Only update DOM for active session
+    if (data.session_id !== currentSessionId) return;
+
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+
+    let streamMsg = chatMessages.querySelector('.assistant-message[data-streaming="true"]');
+
+    if (!streamMsg) {
+        // Create new message element with proper structure
+        streamMsg = document.createElement('div');
+        streamMsg.className = 'assistant-message bot-message';
+        streamMsg.setAttribute('data-streaming', 'true');
+        streamMsg.setAttribute('data-task-id', data.task_id);
+        streamMsg.setAttribute('data-role', 'assistant');
+        streamMsg.dataset.sessionId = data.session_id;
+        chatMessages.appendChild(streamMsg);
+
+        // Header with timestamp, streaming indicator, cancel button
+        const headerDiv = document.createElement('span');
+        headerDiv.className = 'message-header';
+
+        const timeSpan = document.createElement('span');
+        timeSpan.textContent = '📅 ' + formatFullDateTime(new Date().toISOString());
+        headerDiv.appendChild(timeSpan);
+
+        const indicatorSpan = document.createElement('span');
+        indicatorSpan.className = 'streaming-indicator blink';
+        indicatorSpan.textContent = '⚡ ' + t('generating');
+        headerDiv.appendChild(indicatorSpan);
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'cancel-stream-button';
+        cancelBtn.title = t('stop_generating');
+        cancelBtn.textContent = '■';
+        cancelBtn.addEventListener('click', function () {
+            cancelBtn.disabled = true;
+            cancelBtn.textContent = '⏳';
+            cancelBtn.title = t('cancelling');
+            fetchWithCSRF('/api/cancel_task/' + data.task_id, { method: 'POST' }).catch(function () {});
+        });
+        headerDiv.appendChild(cancelBtn);
+
+        streamMsg.appendChild(headerDiv);
+
+        // Content div
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        streamMsg.appendChild(contentDiv);
+    }
+
+    // Update content
+    const contentDiv = streamMsg.querySelector('.message-content');
+    if (contentDiv) {
+        contentDiv.textContent = reqInfo.accumulatedContent;
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+}
+
+function _saveStreamToSessionStorage(taskId, sessionId, content) {
+    try {
+        sessionStorage.setItem('stream_' + taskId, JSON.stringify({
+            sessionId: sessionId,
+            content: content,
+            timestamp: Date.now()
+        }));
+    } catch (e) {
+        // sessionStorage full or unavailable — ignore
+    }
+}
+
+function _clearStreamFromSessionStorage(taskId) {
+    try {
+        sessionStorage.removeItem('stream_' + taskId);
+    } catch (e) {
+        // ignore
+    }
+}
+
+function restoreStreamingFromSessionStorage() {
+    if (!currentSessionId) return;
+    const keysToRemove = [];
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+
+    for (var i = 0; i < sessionStorage.length; i++) {
+        var key = sessionStorage.key(i);
+        if (!key || !key.startsWith('stream_')) continue;
+        try {
+            var saved = JSON.parse(sessionStorage.getItem(key));
+            if (!saved || !saved.sessionId || !saved.content) {
+                keysToRemove.push(key);
+                continue;
+            }
+            if (saved.sessionId !== currentSessionId) {
+                keysToRemove.push(key);
+                continue;
+            }
+            // Restore DOM for this session
+            var existing = chatMessages.querySelector('[data-task-id="' + key.replace('stream_', '') + '"]');
+            if (existing) {
+                keysToRemove.push(key);
+                continue;
+            }
+            var taskId = key.replace('stream_', '');
+            var msgDiv = document.createElement('div');
+            msgDiv.className = 'assistant-message bot-message';
+            msgDiv.setAttribute('data-streaming', 'true');
+            msgDiv.setAttribute('data-task-id', taskId);
+            msgDiv.setAttribute('data-role', 'assistant');
+            msgDiv.dataset.sessionId = currentSessionId;
+            chatMessages.appendChild(msgDiv);
+
+            var headerDiv = document.createElement('span');
+            headerDiv.className = 'message-header';
+
+            var timeSpan = document.createElement('span');
+            timeSpan.textContent = '📅 ' + formatFullDateTime(new Date(saved.timestamp).toISOString());
+            headerDiv.appendChild(timeSpan);
+
+            var indicatorSpan = document.createElement('span');
+            indicatorSpan.className = 'streaming-indicator blink';
+            indicatorSpan.textContent = '⚡ ' + t('generating');
+            headerDiv.appendChild(indicatorSpan);
+
+            var cancelBtn = document.createElement('button');
+            cancelBtn.className = 'cancel-stream-button';
+            cancelBtn.title = t('stop_generating');
+            cancelBtn.textContent = '■';
+            cancelBtn.addEventListener('click', function () {
+                cancelBtn.disabled = true;
+                cancelBtn.textContent = '⏳';
+                cancelBtn.title = t('cancelling');
+                fetchWithCSRF('/api/cancel_task/' + taskId, { method: 'POST' }).catch(function () {});
+            });
+            headerDiv.appendChild(cancelBtn);
+
+            msgDiv.appendChild(headerDiv);
+
+            var contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = saved.content;
+            msgDiv.appendChild(contentDiv);
+
+            // Re-register in pendingRequestIds
+            if (!pendingRequestIds[taskId]) {
+                pendingRequestIds[taskId] = {
+                    sessionId: currentSessionId,
+                    timestamp: saved.timestamp,
+                    accumulatedContent: saved.content
+                };
+            }
+        } catch (e) {
+            keysToRemove.push(key);
+        }
+    }
+    // Clean stale keys
+    for (var j = 0; j < keysToRemove.length; j++) {
+        try { sessionStorage.removeItem(keysToRemove[j]); } catch (e) {}
     }
 }
 
@@ -83,6 +300,13 @@ function onResultCompleted(data) {
     }
 
     const expectedSessionId = reqInfo.sessionId;
+
+    // Handle streamed completion differently
+    if (reqInfo.accumulatedContent !== undefined) {
+        finalizeStreamedMessage(data, reqInfo, expectedSessionId);
+        return;
+    }
+
     delete pendingRequestIds[data.task_id];
 
     if (data.status === 'completed' && data.result) {
@@ -90,6 +314,198 @@ function onResultCompleted(data) {
     } else if (data.status === 'error') {
         handleErrorResult(data, expectedSessionId);
     }
+}
+
+function onStreamCancelled(data) {
+    if (!data || !data.task_id) return;
+    dlog('onStreamCancelled:', data.task_id);
+
+    // The result_completed will follow shortly — let finalizeStreamedMessage handle cleanup.
+    // Just mark the DOM as cancelled.
+    const streamMsg = document.querySelector('.assistant-message[data-streaming="true"]');
+    if (streamMsg) {
+        // Update header: remove cancel button, show cancelled label
+        const cancelBtn = streamMsg.querySelector('.cancel-stream-button');
+        if (cancelBtn) cancelBtn.remove();
+        const indicator = streamMsg.querySelector('.streaming-indicator');
+        if (indicator) {
+            indicator.className = 'cancelled-label';
+            indicator.textContent = '⚠️ ' + t('cancelled');
+        }
+    }
+    _clearStreamFromSessionStorage(data.task_id);
+}
+
+function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
+    const resultSessionId = data.result?.session_id || data.session_id || expectedSessionId;
+    const taskId = data.task_id || reqInfo.taskId;
+
+    // Update sessions count
+    if (resultSessionId && sessionsData[resultSessionId]) {
+        sessionsData[resultSessionId].message_count = (sessionsData[resultSessionId].message_count || 0) + 1;
+        sessionsData[resultSessionId].updated_at = new Date().toISOString();
+        delete newMessageIndicators[resultSessionId];
+    }
+
+    // Find stream message by task-id (more reliable than generic [data-streaming])
+    const streamMsg = document.querySelector('.assistant-message[data-task-id="' + taskId + '"]');
+    if (streamMsg) {
+        streamMsg.removeAttribute('data-streaming');
+        streamMsg.removeAttribute('data-task-id');
+        if (data.result?.message_id) {
+            streamMsg.dataset.messageId = data.result.message_id;
+            displayedMessageIds.add(data.result.message_id);
+        }
+        // Remove streaming-only elements
+        var cancelBtn = streamMsg.querySelector('.cancel-stream-button');
+        if (cancelBtn) cancelBtn.remove();
+        var indicator = streamMsg.querySelector('.streaming-indicator');
+        if (indicator) indicator.remove();
+        var cancelledLabel = streamMsg.querySelector('.cancelled-label');
+        if (cancelledLabel) cancelledLabel.remove();
+
+        // Rebuild header with metadata from result
+        var result = data.result;
+        if (result) {
+            var oldHeader = streamMsg.querySelector('.message-header');
+            if (oldHeader) {
+                var newHeader = document.createElement('span');
+                newHeader.className = 'message-header';
+
+                // Timestamp
+                var ts = result.assistant_timestamp || new Date().toISOString();
+                newHeader.innerHTML = '📅 ' + formatFullDateTime(ts);
+
+                // Model name
+                if (result.model_used) {
+                    var shortModel = result.model_used.split('/').pop() || result.model_used;
+                    var modelSpan = document.createElement('span');
+                    modelSpan.className = 'text-muted';
+                    modelSpan.textContent = ' | ' + shortModel;
+                    newHeader.appendChild(modelSpan);
+                }
+
+                // Response time
+                if (result.response_time) {
+                    var duration = null;
+                    if (typeof result.response_time === 'object') {
+                        if (result.response_time.mm_time && result.response_time.gen_time) {
+                            duration = (parseFloat(result.response_time.mm_time) + parseFloat(result.response_time.gen_time)).toFixed(1);
+                        } else if (result.response_time.mm_time) {
+                            duration = parseFloat(result.response_time.mm_time).toFixed(1);
+                        } else if (result.response_time.gen_time) {
+                            duration = parseFloat(result.response_time.gen_time).toFixed(1);
+                        }
+                    } else if (typeof result.response_time === 'number' || !isNaN(parseFloat(result.response_time))) {
+                        duration = parseFloat(result.response_time).toFixed(1);
+                    }
+                    if (duration) {
+                        var langSuffix = t('seconds_suffix');
+                        var timeSpan = document.createElement('span');
+                        timeSpan.className = 'text-muted';
+                        timeSpan.textContent = ' | ⏱️ ' + duration + langSuffix + ' |';
+                        newHeader.appendChild(timeSpan);
+                    }
+                }
+
+                // Response style emoji
+                if (result.response_style) {
+                    var styleEmoji = getResponseStyleEmoji(result.response_style);
+                    if (styleEmoji) {
+                        var styleLabel = t('response_style_' + result.response_style) || result.response_style;
+                        var styleSpan = document.createElement('span');
+                        styleSpan.className = 'response-style-indicator';
+                        styleSpan.title = styleLabel;
+                        styleSpan.textContent = styleEmoji;
+                        newHeader.appendChild(styleSpan);
+                    }
+                }
+
+                // TTS button
+                var ttsBtn = document.createElement('button');
+                ttsBtn.className = 'tts-button';
+                ttsBtn.title = t('speak');
+                ttsBtn.textContent = '🗣️';
+                newHeader.appendChild(ttsBtn);
+
+                // Copy button
+                var copyBtn = document.createElement('button');
+                copyBtn.className = 'copy-message-button';
+                copyBtn.title = t('copy_text');
+                copyBtn.textContent = '📋';
+                newHeader.appendChild(copyBtn);
+
+                oldHeader.replaceWith(newHeader);
+
+                // Attach TTS click handler
+                ttsBtn = newHeader.querySelector('.tts-button');
+                if (ttsBtn) {
+                    ttsBtn.removeAttribute('onclick');
+                    ttsBtn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        if (window.IS_RELOADING) return;
+                        var fn = window.playTTS || playTTS;
+                        if (typeof fn === 'function') fn(ttsBtn, streamMsg);
+                    });
+                }
+
+                // Attach copy button click handler
+                copyBtn = newHeader.querySelector('.copy-message-button');
+                if (copyBtn) {
+                    copyBtn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        if (window.IS_RELOADING) return;
+                        var rawText = streamMsg.dataset.rawText || streamMsg.dataset.cleanText || result.response;
+                        if (!rawText) return;
+                        copyToClipboard(rawText).then(function(success) {
+                            var originalHTML = copyBtn.innerHTML;
+                            var originalTitle = copyBtn.title;
+                            if (success) {
+                                copyBtn.innerHTML = '✓';
+                                copyBtn.title = t('copied');
+                                setTimeout(function() {
+                                    copyBtn.innerHTML = originalHTML;
+                                    copyBtn.title = originalTitle;
+                                }, 2000);
+                            }
+                        });
+                    });
+                }
+            }
+        }
+
+        // Set raw text for copy button
+        if (result && result.response) {
+            streamMsg.setAttribute('data-raw-text', result.response);
+        }
+
+        // Replace content with full rendered markdown
+        var contentDiv = streamMsg.querySelector('.message-content');
+        if (contentDiv && result && result.response) {
+            contentDiv.innerHTML = marked.parse(result.response);
+        }
+        if (typeof updateLastVisit === 'function') updateLastVisit(currentSessionId);
+        if (typeof addCopyButtonsToMessage === 'function') addCopyButtonsToMessage(streamMsg);
+    } else if (resultSessionId === currentSessionId && data.result?.response) {
+        // Fallback: create the message via displayMessage
+        window.displayMessage('assistant', data.result.response, null, null, null, null,
+            data.result.assistant_timestamp || new Date().toISOString(),
+            data.result.response_time, data.result.model_used,
+            null, null, null, null, data.result.message_id,
+            data.result.response_style);
+    }
+
+    if (resultSessionId && resultSessionId !== currentSessionId) {
+        setNewMessageIndicator(resultSessionId, true);
+    }
+
+    // Cleanup
+    if (resultSessionId) {
+        setLocalTranscribing(resultSessionId, false);
+        clearSessionQueue(resultSessionId);
+    }
+    delete pendingRequestIds[taskId];
+    _clearStreamFromSessionStorage(taskId);
 }
 
 function trackPendingRequest(requestId, sessionId) {
@@ -180,6 +596,17 @@ function handleTranscriptionResult(result, resultSessionId, expectedSessionId) {
             trackPendingRequest(result.request_id, resultSessionId);
             sessionQueueInfo[resultSessionId] = { processing: true, queued: 0, queue_position: 0, has_transcribing: false };
             window.updateStatusCounter();
+            if (typeof fetchQueueStatus === 'function') fetchQueueStatus();
+        } else {
+            // Audio file — no further processing, clear ⚡
+            clearSessionQueue(resultSessionId);
+            if (typeof fetchQueueStatus === 'function') fetchQueueStatus();
+
+            // Also clear the safety‑valve cache to force UI redraw
+            if (typeof updateSessionsListFromData === 'function') {
+                window._lastSessionsJson = null;
+                updateSessionsListFromData();
+            }
         }
         setLocalTranscribing(resultSessionId, false);
     } else {
@@ -189,8 +616,8 @@ function handleTranscriptionResult(result, resultSessionId, expectedSessionId) {
             setNewMessageIndicator(resultSessionId, true);
         }
         setLocalTranscribing(resultSessionId, false);
+        window.updateStatusCounter();
     }
-    clearSessionQueue(resultSessionId);
 }
 
 function handleCameraResult(result, resultSessionId) {
@@ -302,3 +729,4 @@ document.addEventListener('visibilitychange', function () {
 window.connectEventStream = connectEventStream;
 window.disconnectEventStream = disconnectEventStream;
 window.trackPendingRequest = trackPendingRequest;
+window.restoreStreamingFromSessionStorage = restoreStreamingFromSessionStorage;

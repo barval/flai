@@ -6,6 +6,7 @@ import os
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from typing import Any
 
 import redis
@@ -518,6 +519,7 @@ class RedisRequestQueue:
         lang: str,
         strict: bool = False,
         response_style: str = "neutral",
+        token_callback: Callable[[str], None] | None = None,
     ) -> tuple[str | None, str | None]:
         """Attempt to answer using RAG."""
         rag = self.app.modules.get("rag")
@@ -527,7 +529,13 @@ class RedisRequestQueue:
             else:
                 threshold = self.app.config.get("RAG_RELEVANCE_THRESHOLD_DEFAULT", 0.5)
             answer, error, model_name = rag.generate_answer(
-                user_id, query, session_id, lang=lang, threshold=threshold, response_style=response_style
+                user_id,
+                query,
+                session_id,
+                lang=lang,
+                threshold=threshold,
+                response_style=response_style,
+                token_callback=token_callback,
             )
             if answer is not None and error is None:
                 return answer, model_name
@@ -587,6 +595,7 @@ class RedisRequestQueue:
         file_path=None,
         extra: dict | None = None,
         response_style: str = "neutral",
+        user_id: str | None = None,
     ) -> dict[str, Any]:
         """Save assistant message to DB and return response dict."""
         resp_time = process_time if isinstance(process_time, dict) else str(process_time)
@@ -601,6 +610,7 @@ class RedisRequestQueue:
             model_name=model_name,
             response_time=resp_time,
             response_style=response_style,
+            user_id=user_id,
         )
         result = self._build_success_response(
             session_id, text, model_name, process_time, message_id=msg_id, extra=extra
@@ -659,7 +669,7 @@ class RedisRequestQueue:
             resize_notice = resize_text
 
         template = self.app.modules["base"]._("Image edited from request: {query}", lang=lang)
-        prefix = template.replace("{query}", "")
+        prefix = "🎨 " + template.replace("{query}", "")
         message_text_out = json.dumps({"prefix": prefix, "text": message_text}, ensure_ascii=False)
         file_path = None
         if image_result.get("image_data"):
@@ -737,7 +747,7 @@ class RedisRequestQueue:
 
         sd_model = self.app.config.get("SD_MODEL_TYPE", "z_image_turbo")
         template = self.app.modules["base"]._("Image generated from request: {query}", lang=lang)
-        prefix = template.replace("{query}", "")
+        prefix = "🎨 " + template.replace("{query}", "")
         message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
         file_path = None
         if image_result.get("image_data"):
@@ -852,6 +862,114 @@ class RedisRequestQueue:
 
         return {"messages": messages, "session_id": session_id}
 
+    def _process_camera_task_stream(
+        self,
+        task: dict[str, Any],
+        query: str,
+        session_id: str,
+        user_id: str,
+        message_text: str,
+        current_time_str: str,
+        lang: str,
+        response_style: str = "neutral",
+    ) -> dict[str, Any]:
+        """Handle camera: show image immediately, then stream description."""
+        if "cam" not in self.app.modules or not self.app.modules["cam"].available:
+            return self._build_error_response(
+                session_id, self.app.modules["base"]._("Camera module unavailable", lang=lang), 0, lang
+            )
+
+        camera_start = time.time()
+        camera_result = self.app.modules["cam"].get_snapshot(user_id, query, lang=lang)
+        camera_time = round(time.time() - camera_start, 1)
+
+        if not camera_result["success"]:
+            return self._build_error_response(session_id, camera_result["error"], camera_time, lang)
+
+        template = self.app.modules["base"]._("Camera snapshot: {room_name}", lang=lang)
+        prefix = template.replace("{room_name}", "")
+        translated_text = json.dumps({"prefix": prefix, "text": camera_result["room_name"]}, ensure_ascii=False)
+        file_path = None
+        if camera_result.get("image_data"):
+            file_path = save_uploaded_file(
+                file_data=camera_result["image_data"],
+                filename=camera_result["file_name"],
+                session_id=session_id,
+                upload_folder=self.app.config["UPLOAD_FOLDER"],
+                user_id=user_id,
+            )
+
+        image_result = self._save_and_respond(
+            session_id,
+            translated_text,
+            "camera",
+            camera_time,
+            file_data=None,
+            file_type=camera_result["image_type"],
+            file_name=camera_result["file_name"],
+            file_path=file_path,
+            extra={
+                "file_path": file_path,
+                "file_name": camera_result["file_name"],
+                "file_size": camera_result["file_size"],
+                "file_type": camera_result["image_type"],
+                "response_time": camera_time,
+            },
+            response_style=response_style,
+        )
+
+        # No text or no multimodal → return both together (original behavior)
+        if not message_text or "multimodal" not in self.app.modules or not self.app.modules["multimodal"].available:
+            return {"messages": [image_result], "session_id": session_id}
+
+        # Publish image immediately via custom SSE event
+        self._publish_stream_event(
+            task,
+            "camera_image",
+            {
+                "response": translated_text,
+                "session_id": session_id,
+                "model_used": "camera",
+                "response_time": camera_time,
+                "message_id": image_result.get("message_id"),
+                "assistant_timestamp": image_result.get("assistant_timestamp"),
+                "file_path": file_path,
+                "file_name": camera_result["file_name"],
+                "file_type": camera_result["image_type"],
+                "response_style": response_style,
+            },
+        )
+
+        # Stream description from multimodal model
+        stream_start = time.time()
+        full_response = ""
+        cancelled = False
+        for token in self.app.modules["multimodal"].process_image_with_text_stream(
+            camera_result["image_data"],
+            message_text,
+            current_time_str,
+            lang=lang,
+            session_id=None,
+            response_style=response_style,
+        ):
+            full_response += token
+            self._publish_stream_token(task, token)
+            if self._is_task_cancelled(task["id"]):
+                cancelled = True
+                break
+        mm_time = round(time.time() - stream_start, 1)
+        model_used = self._get_model_name("multimodal") or "unknown"
+        if cancelled:
+            self.app.logger.info(f"Task {task['id']} cancelled during camera stream")
+            self._publish_stream_event(task, "stream_cancelled")
+        return self._save_and_respond(
+            session_id,
+            full_response,
+            model_used,
+            mm_time,
+            response_style=response_style,
+        )
+
     def _process_rag_task(
         self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
     ) -> dict[str, Any]:
@@ -859,6 +977,40 @@ class RedisRequestQueue:
         rag_start = time.time()
         rag_answer, rag_model = self._try_rag_answer(
             query, session_id, user_id, lang, strict=False, response_style=response_style
+        )
+        rag_time = round(time.time() - rag_start, 1)
+
+        if rag_answer is not None:
+            model_used = (rag_model + " (RAG)") if rag_model else "unknown (RAG)"
+            return self._save_and_respond(session_id, rag_answer, model_used, rag_time, response_style=response_style)
+        else:
+            return self._build_error_response(
+                session_id, self.app.modules["base"]._("No relevant documents found", lang), rag_time, lang
+            )
+
+    def _process_rag_task_stream(
+        self,
+        task: dict[str, Any],
+        query: str,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        response_style: str = "neutral",
+    ) -> dict[str, Any]:
+        """Handle explicit RAG request with streaming for the LLM generation part."""
+        rag_start = time.time()
+
+        def publish_token(token: str) -> None:
+            self._publish_stream_token(task, token)
+
+        rag_answer, rag_model = self._try_rag_answer(
+            query,
+            session_id,
+            user_id,
+            lang,
+            strict=False,
+            response_style=response_style,
+            token_callback=publish_token,
         )
         rag_time = round(time.time() - rag_start, 1)
 
@@ -901,7 +1053,7 @@ class RedisRequestQueue:
             if rag_answer is not None:
                 model_used = rag_model + " (RAG)" if rag_model else "unknown (RAG)"
                 return self._save_and_respond(
-                    session_id, rag_answer, model_used, rag_time, response_style=response_style
+                    session_id, rag_answer, model_used, rag_time, response_style=response_style, user_id=user_id
                 )
             self.app.logger.info(f"RAG returned no answer, falling back to reasoning model for query: {query[:50]}...")
             action_type = "reasoning"
@@ -927,12 +1079,136 @@ class RedisRequestQueue:
                 final_response = query
             model_used = self._get_model_name("reasoning") or "unknown"
             return self._save_and_respond(
-                session_id, final_response, model_used, process_time, response_style=response_style
+                session_id, final_response, model_used, process_time, response_style=response_style, user_id=user_id
             )
         else:
             return self._save_and_respond(
-                session_id, query, self._get_model_name("chat") or "unknown", router_time, response_style=response_style
+                session_id,
+                query,
+                self._get_model_name("chat") or "unknown",
+                router_time,
+                response_style=response_style,
+                user_id=user_id,
             )
+
+    def _process_text_task_stream(
+        self,
+        task: dict[str, Any],
+        message_text: str,
+        session_id: str,
+        user_id: str,
+        current_time_str: str,
+        lang: str,
+        response_style: str = "neutral",
+    ) -> dict[str, Any]:
+        """Handle text request with streaming for the final LLM response."""
+        router_start = time.time()
+        router_result = self.app.modules["base"].process_message(
+            message_text, current_time_str, lang=lang, session_id=session_id, response_style=response_style
+        )
+        router_time = round(time.time() - router_start, 1)
+
+        if "error" in router_result:
+            return self._build_error_response(session_id, router_result["error"], router_time, lang)
+
+        action_type = router_result["action"]
+        query = router_result["query"]
+
+        # Stream reasoning model responses token by token
+        if action_type == "reasoning" and router_result.get("needs_reasoning"):
+            # Try RAG first (same as non-streaming path)
+            def rag_publish(token: str) -> None:
+                self._publish_stream_token(task, token)
+
+            rag_answer, rag_model = self._try_rag_answer(
+                query,
+                session_id,
+                user_id,
+                lang,
+                strict=True,
+                response_style=response_style,
+                token_callback=rag_publish,
+            )
+            if rag_answer is not None:
+                model_used = rag_model + " (RAG)" if rag_model else "unknown (RAG)"
+                return self._save_and_respond(
+                    session_id,
+                    rag_answer,
+                    model_used,
+                    round(time.time() - router_start, 1),
+                    response_style=response_style,
+                    user_id=user_id,
+                )
+
+            stream_start = time.time()
+            full_response = ""
+            cancelled = False
+            for token in self.app.modules["base"].generate_reasoning_response_stream(
+                query, current_time_str, lang=lang, session_id=session_id, response_style=response_style
+            ):
+                full_response += token
+                self._publish_stream_token(task, token)
+                if self._is_task_cancelled(task["id"]):
+                    cancelled = True
+                    break
+
+            process_time = round(time.time() - stream_start, 1)
+            model_used = self._get_model_name("reasoning") or "unknown"
+
+            # Safety: strip reasoning marker if model leaked it
+            marker = "[-REASONING-]"
+            if marker in full_response:
+                self.app.logger.warning(f"Reasoning model returned marker for task {task['id']}: {full_response[:100]}")
+                full_response = full_response.replace(marker, "").strip()
+
+            # Safety: handle empty response
+            if not full_response.strip():
+                full_response = "⚠️ " + self.app.modules["base"]._("Reasoning model returned empty response", lang)
+
+            if cancelled:
+                self.app.logger.info(f"Task {task['id']} cancelled during reasoning stream")
+                self._publish_stream_event(task, "stream_cancelled")
+            return self._save_and_respond(
+                session_id,
+                full_response,
+                model_used,
+                process_time,
+                response_style=response_style,
+                user_id=user_id,
+            )
+
+        # Direct-response actions: router already generated the answer in `query`
+        if action_type == "none" or (action_type == "reasoning" and not router_result.get("needs_reasoning")):
+            return self._save_and_respond(
+                session_id,
+                query,
+                self._get_model_name("chat") or "unknown",
+                router_time,
+                response_style=response_style,
+                user_id=user_id,
+            )
+
+        # Stream-aware actions — dispatch directly, no second router call
+        if action_type == "rag":
+            return self._process_rag_task_stream(task, query, session_id, user_id, lang, response_style)
+
+        if action_type == "image":
+            return self._process_image_gen_task(query, session_id, user_id, lang, response_style)
+
+        if action_type == "camera":
+            return self._process_camera_task_stream(
+                task, query, session_id, user_id, message_text, current_time_str, lang, response_style
+            )
+
+        # Unknown action — safe fallback that still avoids a second router call
+        return self._save_and_respond(
+            session_id,
+            query,
+            self._get_model_name("chat") or "unknown",
+            router_time,
+            response_style=response_style,
+            user_id=user_id,
+        )
 
     # Modified: removed hardcoded is_image_edit block; all image+text now go through _process_image_chat_task
     def _process_request(self, task: dict[str, Any]) -> dict[str, Any]:
@@ -967,13 +1243,30 @@ class RedisRequestQueue:
         if file_type and file_type.startswith("audio/"):
             return self._process_audio_task(task, request_data, session_id, user_id, lang)
 
-        # Text request → router
+        # Text request → router (streaming if requested)
         if request_type == "text":
+            if request_data.get("stream", False):
+                return self._process_text_task_stream(
+                    task, message_text, session_id, user_id, current_time_str, lang, response_style
+                )  # type: ignore[arg-type]
             return self._process_text_task(message_text, session_id, user_id, current_time_str, lang, response_style)  # type: ignore[arg-type]
 
         # Image + text chat (question about image or edit request)
         # The actual decision between analysis and editing is now made by the multimodal model
         if request_type == "image" and file_data:
+            if request_data.get("stream", False):
+                return self._process_image_chat_task_stream(
+                    task,
+                    file_data,
+                    file_type or "",
+                    file_name or "",
+                    message_text,
+                    session_id,
+                    current_time_str,
+                    lang,
+                    user_id,  # type: ignore[arg-type]
+                    response_style,
+                )
             return self._process_image_chat_task(
                 file_data,
                 file_type or "",
@@ -1061,6 +1354,140 @@ class RedisRequestQueue:
         mm_model = self._get_model_name("multimodal") or "unknown"
         return self._save_and_respond(
             session_id, bot_reply, mm_model, process_time, is_error=is_error, response_style=response_style
+        )
+
+    def _process_image_chat_task_stream(
+        self,
+        task: dict[str, Any],
+        file_data: str,
+        file_type: str,
+        file_name: str,
+        message_text: str,
+        session_id: str,
+        current_time_str: str,
+        lang: str,
+        user_id: str,
+        response_style: str = "neutral",
+    ) -> dict[str, Any]:
+        """Handle image+text with streaming. Buffers early tokens to detect [-IMAGE-EDIT-] marker."""
+        edit_marker = "[-IMAGE-EDIT-]"
+        process_start = time.time()
+
+        if "multimodal" not in self.app.modules or not self.app.modules["multimodal"].available:
+            bot_reply = "⚠️ " + self.app.modules["base"]._("Multimodal model unavailable", lang)
+            process_time = round(time.time() - process_start, 1)
+            return self._save_and_respond(
+                session_id,
+                bot_reply,
+                "unknown",
+                process_time,
+                is_error=True,
+                response_style=response_style,
+            )
+
+        file_size = int((len(file_data) * 3) / 4) if file_data else 0
+        is_valid, error = self.app.modules["multimodal"].validate_image(file_data, file_type, file_name, file_size)
+        if not is_valid:
+            bot_reply = "⚠️ " + (error or self.app.modules["base"]._("Invalid image", lang))
+            process_time = round(time.time() - process_start, 1)
+            return self._save_and_respond(
+                session_id,
+                bot_reply,
+                "unknown",
+                process_time,
+                is_error=True,
+                response_style=response_style,
+            )
+
+        stream_gen = self.app.modules["multimodal"].process_image_with_text_stream(
+            file_data,
+            message_text,
+            current_time_str,
+            lang=lang,
+            session_id=session_id,
+            response_style=response_style,
+        )
+
+        full_response = ""
+        cancelled = False
+
+        # No text → no edit possible, stream directly
+        if not message_text.strip():
+            for token in stream_gen:
+                full_response += token
+                self._publish_stream_token(task, token)
+                if self._is_task_cancelled(task["id"]):
+                    cancelled = True
+                    break
+            process_time = round(time.time() - process_start, 1)
+            mm_model = self._get_model_name("multimodal") or "unknown"
+            if cancelled:
+                self.app.logger.info(f"Task {task['id']} cancelled during image chat stream")
+                self._publish_stream_event(task, "stream_cancelled")
+            return self._save_and_respond(
+                session_id,
+                full_response,
+                mm_model,
+                process_time,
+                response_style=response_style,
+            )
+
+        # Text present → buffer early tokens to detect edit marker
+        buffer = ""
+        released = False
+        for token in stream_gen:
+            full_response += token
+            if not released:
+                buffer += token
+                if edit_marker in buffer:
+                    for token in stream_gen:
+                        full_response += token
+                    edit_query = full_response.split(edit_marker, 1)[1].strip()
+                    if edit_query:
+                        return self._process_image_edit_task(
+                            edit_query,
+                            file_data,
+                            file_type,
+                            session_id,
+                            user_id,
+                            lang,
+                            response_style,
+                        )
+                    bot_reply = "⚠️ " + self.app.modules["base"]._("Image editing request was empty", lang)
+                    process_time = round(time.time() - process_start, 1)
+                    return self._save_and_respond(
+                        session_id,
+                        bot_reply,
+                        "unknown",
+                        process_time,
+                        is_error=True,
+                        response_style=response_style,
+                    )
+                if len(buffer) > 100:
+                    self._publish_stream_token(task, buffer)
+                    released = True
+                    buffer = ""
+            else:
+                self._publish_stream_token(task, token)
+
+            if self._is_task_cancelled(task["id"]):
+                cancelled = True
+                break
+
+        if buffer:
+            self._publish_stream_token(task, buffer)
+
+        process_time = round(time.time() - process_start, 1)
+        mm_model = self._get_model_name("multimodal") or "unknown"
+        if cancelled:
+            self.app.logger.info(f"Task {task['id']} cancelled during image chat stream")
+            self._publish_stream_event(task, "stream_cancelled")
+        return self._save_and_respond(
+            session_id,
+            full_response,
+            mm_model,
+            process_time,
+            response_style=response_style,
         )
 
     def _process_audio_task(
@@ -1168,7 +1595,9 @@ class RedisRequestQueue:
             save_message(session_id, "assistant", "⚠️ " + error_msg, model_name="system", response_time="0")
             return {"error": error_msg, "session_id": session_id, "is_error": True}
 
+        start_time = time.time()
         transcribed_text = audio_module.transcribe(file_data, file_type, file_name, lang=lang)
+        process_time = round(time.time() - start_time, 1)
         if transcribed_text is None:
             error_msg = self.app.modules["base"]._("Failed to recognize speech", lang)
             save_message(session_id, "assistant", "⚠️ " + error_msg, model_name="system", response_time="0")
@@ -1181,7 +1610,7 @@ class RedisRequestQueue:
 
         system_content = json.dumps({"prefix": prefix, "text": transcribed_text}, ensure_ascii=False)
         transcribed_message_id = save_message(
-            session_id, "assistant", system_content, model_name="whisper", response_time="0"
+            session_id, "assistant", system_content, model_name="whisper", response_time=str(process_time)
         )
 
         if voice_record:
@@ -1202,15 +1631,31 @@ class RedisRequestQueue:
                 "transcribed_message_id": transcribed_message_id,
                 "request_id": new_request_id,
                 "session_id": session_id,
-                "response_time": 0,
+                "response_time": process_time,
+                "assistant_timestamp": get_current_time_in_timezone_for_db(self.app),
             }
         else:
             return {
                 "transcribed_text": transcribed_text,
                 "transcribed_message_id": transcribed_message_id,
                 "session_id": session_id,
-                "response_time": 0,
+                "response_time": process_time,
+                "assistant_timestamp": get_current_time_in_timezone_for_db(self.app),
             }
+
+    def _publish_document_event(self, user_id: str, doc_id: str, index_status: str) -> None:
+        """Publish a document_indexed event to the user's SSE stream."""
+        publisher = get_events_publisher()
+        if publisher is None:
+            return
+        publisher.publish(
+            user_id,
+            "document_indexed",
+            {
+                "doc_id": doc_id,
+                "index_status": index_status,
+            },
+        )
 
     def _process_index_task(self, task: dict[str, Any]) -> dict[str, Any]:
         """Index a document and store embeddings in Qdrant."""
@@ -1227,6 +1672,7 @@ class RedisRequestQueue:
         if not rag or not rag.available:
             error_msg = "RAG module unavailable"
             update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+            self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
             return {"success": False, "error": error_msg, "doc_id": doc_id}
         try:
             success, message = rag.index_document(user_id, doc_id, file_path)
@@ -1240,14 +1686,17 @@ class RedisRequestQueue:
                     indexing_started_at=indexing_started_at,
                     embedding_model=embedding_model,
                 )
+                self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXED)
                 self.app.logger.info(f"Set embedding_model for doc {doc_id} to {embedding_model}")
                 return {"success": True, "message": message, "doc_id": doc_id}
             else:
                 update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+                self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
                 return {"success": False, "error": message, "doc_id": doc_id}
         except Exception as e:
             self.app.logger.error(f"Indexing failed for doc {doc_id}: {e}")
             update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+            self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
             return {"success": False, "error": str(e), "doc_id": doc_id}
 
     def _process_reindex_all_task(self, task: dict[str, Any]) -> dict[str, Any]:
@@ -1305,6 +1754,7 @@ class RedisRequestQueue:
                 if not os.path.exists(full_path):
                     self.app.logger.warning(f"Document file not found: {full_path}, skipping")
                     update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+                    self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
                     fail_count += 1
                     continue
 
@@ -1323,14 +1773,17 @@ class RedisRequestQueue:
                         update_document_index_status(
                             doc_id, INDEX_STATUS_INDEXED, indexed_at=indexed_at, embedding_model=embedding_model
                         )
+                        self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXED)
                         success_count += 1
                     else:
                         update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+                        self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
                         fail_count += 1
                         self.app.logger.error(f"Reindex failed for doc {doc_id}: {message}")
                 except Exception as e:
                     self.app.logger.error(f"Reindex error for doc {doc_id}: {e}")
                     update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+                    self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
                     fail_count += 1
 
             offset += batch_size
@@ -1403,6 +1856,40 @@ class RedisRequestQueue:
             return self._deserialize(result_data)
         return None
 
+    def _publish_stream_token(self, task: dict[str, Any], token: str) -> None:
+        """Publish a single stream token to the user's SSE event stream."""
+        user_id = task.get("user_id")
+        if not user_id or not token:
+            return
+        publisher = get_events_publisher()
+        if publisher is None:
+            return
+        publisher.publish(
+            user_id,
+            "stream_token",
+            {
+                "task_id": task.get("id"),
+                "session_id": task.get("session_id"),
+                "token": token,
+            },
+        )
+
+    def _publish_stream_event(self, task: dict[str, Any], event_type: str, extra: dict | None = None) -> None:
+        """Publish a streaming lifecycle event (e.g. stream_cancelled)."""
+        user_id = task.get("user_id")
+        if not user_id:
+            return
+        publisher = get_events_publisher()
+        if publisher is None:
+            return
+        payload = {
+            "task_id": task.get("id"),
+            "session_id": task.get("session_id"),
+        }
+        if extra:
+            payload.update(extra)
+        publisher.publish(user_id, event_type, payload)
+
     def _publish_result_event(self, task: dict[str, Any], status: str, result_data: dict[str, Any]) -> None:
         """Publish task result to the user's SSE event stream."""
         user_id = task.get("user_id")
@@ -1421,3 +1908,19 @@ class RedisRequestQueue:
                 "result": result_data,
             },
         )
+
+    def cancel_task(self, task_id: str) -> bool:
+        """Mark a task as cancelled in Redis. Returns True if the task exists."""
+        exists = self.redis.hexists(self.processing_key, task_id)
+        if not exists:
+            exists = self.redis.hexists(self.results_key, task_id)
+        if not exists:
+            return False
+        ttl = self.app.config.get("QUEUE_MAX_WAIT_TIME", 300) + 120
+        self.redis.setex(f"task:cancel:{task_id}", ttl, "1")
+        self.app.logger.info(f"Task {task_id} marked as cancelled")
+        return True
+
+    def _is_task_cancelled(self, task_id: str) -> bool:
+        """Check if a task has been cancelled (polled by the streaming worker)."""
+        return bool(self.redis.exists(f"task:cancel:{task_id}"))

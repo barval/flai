@@ -73,6 +73,21 @@ function fetchQueueStatus() {
                 });
             }
 
+            // Preserve processing flag for sessions with recently-tracked pending requests.
+            // Handles the race where handleTranscriptionResult tracks a new task (via
+            // trackPendingRequest) before the server reports it as processing — without this,
+            // the stale HTTP response from the original fetchQueueStatus would overwrite
+            // the ⚡ with idle state.
+            const recentCutoff = Date.now() - 10000;
+            for (const reqId in pendingRequestIds) {
+                const reqInfo = pendingRequestIds[reqId];
+                if (!reqInfo) continue;
+                const sid = reqInfo.sessionId;
+                if (sid && newInfo[sid] && !newInfo[sid].processing && (reqInfo.timestamp || 0) > recentCutoff) {
+                    newInfo[sid].processing = true;
+                }
+            }
+
             // Update global sessionQueueInfo
             sessionQueueInfo = newInfo;
 

@@ -479,8 +479,8 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             headerDiv.appendChild(extraSpan);
         }
 
-        // Response style emoji
-        if (responseStyle) {
+        // Response style emoji (skip for transcription — style doesn't apply)
+        if (responseStyle && modelName !== 'whisper') {
             const styleEmoji = getResponseStyleEmoji(responseStyle);
             if (styleEmoji) {
                 const styleLabel = t('response_style_' + responseStyle) || responseStyle;

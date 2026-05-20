@@ -596,6 +596,7 @@ function handleTranscriptionResult(result, resultSessionId, expectedSessionId) {
             trackPendingRequest(result.request_id, resultSessionId);
             sessionQueueInfo[resultSessionId] = { processing: true, queued: 0, queue_position: 0, has_transcribing: false };
             window.updateStatusCounter();
+            if (typeof fetchQueueStatus === 'function') fetchQueueStatus();
         } else {
             // Audio file — no further processing, clear ⚡
             clearSessionQueue(resultSessionId);

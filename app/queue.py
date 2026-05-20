@@ -1595,7 +1595,9 @@ class RedisRequestQueue:
             save_message(session_id, "assistant", "⚠️ " + error_msg, model_name="system", response_time="0")
             return {"error": error_msg, "session_id": session_id, "is_error": True}
 
+        start_time = time.time()
         transcribed_text = audio_module.transcribe(file_data, file_type, file_name, lang=lang)
+        process_time = round(time.time() - start_time, 1)
         if transcribed_text is None:
             error_msg = self.app.modules["base"]._("Failed to recognize speech", lang)
             save_message(session_id, "assistant", "⚠️ " + error_msg, model_name="system", response_time="0")
@@ -1608,7 +1610,7 @@ class RedisRequestQueue:
 
         system_content = json.dumps({"prefix": prefix, "text": transcribed_text}, ensure_ascii=False)
         transcribed_message_id = save_message(
-            session_id, "assistant", system_content, model_name="whisper", response_time="0"
+            session_id, "assistant", system_content, model_name="whisper", response_time=str(process_time)
         )
 
         if voice_record:
@@ -1629,7 +1631,7 @@ class RedisRequestQueue:
                 "transcribed_message_id": transcribed_message_id,
                 "request_id": new_request_id,
                 "session_id": session_id,
-                "response_time": 0,
+                "response_time": process_time,
                 "assistant_timestamp": get_current_time_in_timezone_for_db(self.app),
             }
         else:
@@ -1637,7 +1639,7 @@ class RedisRequestQueue:
                 "transcribed_text": transcribed_text,
                 "transcribed_message_id": transcribed_message_id,
                 "session_id": session_id,
-                "response_time": 0,
+                "response_time": process_time,
                 "assistant_timestamp": get_current_time_in_timezone_for_db(self.app),
             }
 

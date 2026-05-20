@@ -73,16 +73,14 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 | v8.4 (New) | Notes |
 |------------|-------|
-| 🎨 Service emoji & style | Added `🎨` to image gen/edit service messages, pipe separators around response time like `&#124; ⏱️ 5.8с &#124;` |
-| 🔧 SSE reliability fixes | Fixed 4 root causes: voice messages now appear without manual page refresh (lightning icon, response delivery) |
-| 🧰 Migration tool extended | `flask migrate-messages-format --add-emojis` — adds `🎨` to existing image messages in DB |
-| 📱 Tablet responsive fix | Added media query for 769-1199px range — prevents footer overlap with chat input on tablets |
-| 📄 PDF extraction via pdftotext | Replaced PyPDF2 with `pdftotext` (poppler-utils). Cities and layout from complex PDFs (hh.ru, etc.) are now correctly preserved. Fallback to pdfplumber. |
-| ✂️ Character-based chunk_text | `chunk_text()` now splits by characters, not words — consistent with `chunk_text_recursive()`. Admin parameter `chunk_size` always means characters. |
-| 🔢 Adaptive `rag_top_k` clamp | Clamped to calculated max from reasoning model context; frontend input updates automatically on save. |
-| ⚡ flash_attn always on for CUDA | Removed 24GB+ VRAM gate; flash_attn now auto-enabled on any CUDA GPU. Config applied via ResourceManager → `build_cmd()`. |
-| 🔌 SSE event for document indexing | `document_indexed` event published when indexing completes/fails; document list refreshes in real time. |
-| 🔄 Retry on embedding failure | Up to 3 retries (5s/10s/15s) in `_get_batch_embeddings()` for transient failures during llama-swap reload. |
+| 🔄 **Image streaming fix** | `queue.py:1392`: tokens after `[-IMAGE-EDIT-]` marker no longer discarded during SSE streaming, eliminating empty edit query errors |
+| 🖥️ **GPU/CPU auto-detect for SD** | `sd_wrapper.py` detects CUDA inside container via `nvidia-smi`; omits `--offload-to-cpu`/`--vae-on-cpu`/`--clip-on-cpu` on GPU; no `--cuda` flag — sd-cli auto-detects |
+| 🔁 **CUDA fallback** | If `use_gpu=True` but CUDA unavailable in sd-container, automatic fallback to CPU |
+| 🌐 **SD error translations restored** | `_sd_error_translation_markers()` in `utils.py` for pybabel extraction; 8 stale `#~` keys in `.po` files reactivated with proper source references |
+| 🔧 **Session switching fix** | `chat-sessions.js`: `loadMessages()` now called after server-side session deletion; clicking already-active session re-fetches messages instead of silent early return |
+| 🗣️ **Full i18n coverage** | All user-facing error messages wrapped in `_()` / `gettext()`; 14 new translation keys; rule added to `AGENTS.md` — raw `str(e)` never returned to user |
+| ⚡ **Audio ⚡ hang fix** | `clearSessionQueue` + `fetchQueueStatus` race conditions fixed in HTTP audio responses without `request_id`; only one session shows ⚡ at a time |
+| 🗑️ **`.gitignore *.pot`** | `messages.pot` excluded from version control |
 
 
 ### Core Components
@@ -688,14 +686,17 @@ curl http://localhost:5000/metrics
 - **SSE real-time delivery** — queue results and new messages delivered via Server-Sent Events (Redis pub/sub), replacing all HTTP polling
 - **Static cache-busting** — all JS/CSS assets served with `?v=timestamp` to prevent stale cache after updates
 - **PDF extraction via pdftotext** — accurate text positioning for complex PDF layouts (hh.ru resumes, tables, multi-column)
-- **Character-based chunking** — consistent `chunk_size` parameter across fixed and recursive strategies (always characters, not words)
 - **Real-time document indexing SSE** — document list auto-refresh when indexing completes or fails, no manual page reload needed
-- **Debug logging system** — `console.log`/`console.warn` replaced with `dlog`/`dwarn`, active only when `DEBUG_JS=true`
 - **CLI command** — `flask migrate-messages-format` to convert old plain-text service messages to JSON format (supports `--dry-run`)
-- **Service emoji & style** — image gen/edit messages prefixed with `🎨`, response time wrapped in pipes (`&#124; ⏱️ 5.8с &#124;`) for visual consistency
 - **SSE reliability** — 4 root cause fixes for voice message delivery (lightning icon visibility, reconnect recovery, `user_id` passthrough for `message_new` events)
 - **Migration `--add-emojis`** — `flask migrate-messages-format --add-emojis` to retroactively add `🎨` to existing image service messages (supports `--dry-run`)
 - **Tablet responsive layout** — media query for 769–1199px fixes footer overlap with chat input caused by `100vh` vs `100%` mismatch in mobile browsers
+- **Image streaming fix** — tokens after `[-IMAGE-EDIT-]` marker no longer discarded during SSE streaming, eliminating empty edit query errors
+- **GPU/CPU auto-detect for SD** — `sd_wrapper.py` detects CUDA inside container via `nvidia-smi`; omits CPU offload flags on GPU; no `--cuda`; automatic CPU fallback
+- **SD error translations restored** — `_sd_error_translation_markers()` in `utils.py` for pybabel extraction; 8 stale `.po` keys reactivated with proper source references
+- **Session switching UI fix** — `chat-sessions.js`: `loadMessages()` called after server-side session deletion; same-session click re-fetches messages
+- **Full i18n coverage** — all user-facing errors wrapped in `_()`/`gettext()`; 14 new translation keys; rule added to `AGENTS.md`
+- **Audio ⚡ race condition fix** — `clearSessionQueue` + `fetchQueueStatus` race fixed for HTTP audio responses without `request_id`; single-session ⚡ indicator
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)

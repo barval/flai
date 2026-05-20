@@ -75,6 +75,23 @@
 .dark-theme .message-header {
     color: #b0b0b0;
 }
+.dark-theme .streaming-indicator {
+    color: #f1c40f;
+}
+.dark-theme .cancel-stream-button {
+    border-color: #e74c3c;
+    color: #e74c3c;
+}
+.dark-theme .cancel-stream-button:hover {
+    background: #e74c3c;
+    color: #fff;
+}
+.dark-theme .cancel-stream-button:disabled {
+    opacity: 0.5;
+}
+.dark-theme .cancelled-label {
+    color: #e74c3c;
+}
 .dark-theme .text-muted {
     color: #b0b0b0 !important;
 }

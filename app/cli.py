@@ -86,22 +86,30 @@ def cleanup_uploads(dry_run):
 
 @click.command("migrate-messages-format")
 @click.option("--dry-run", is_flag=True, help="Only list messages to convert, do not update")
+@click.option("--add-emojis", is_flag=True, help="Add 🎨 emoji to image-related service prefixes")
 @with_appcontext
-def migrate_messages_format(dry_run):
-    """Migrate old plain-text service messages to new JSON {prefix, text} format."""
+def migrate_messages_format(dry_run, add_emojis):
+    """Migrate old plain-text service messages to new JSON {prefix, text} format.
+
+    With --add-emojis, also add 🎨 prefix to existing image gen/edit messages
+    that are missing it (both EN and RU), regardless of format (plain or JSON).
+    """
     import json
 
     from app.database import get_db
 
     # Known prefixes for service messages (EN + RU)
     prefixes_whisper = ["🎤 Transcribed: ", "🎤 Распознано: "]
+    prefixes_image = [
+        "Image generated from request: ",
+        "Изображение сгенерировано по запросу: ",
+        "Image edited from request: ",
+        "Изображение отредактировано по запросу: ",
+    ]
     prefixes_other = [
         "🎤 Transcribed: ",
         "🎤 Распознано: ",
-        "Image edited from request: ",
-        "Изображение отредактировано по запросу: ",
-        "Image generated from request: ",
-        "Изображение сгенерировано по запросу: ",
+        *prefixes_image,
         "Camera snapshot: ",
         "Снимок с камеры: ",
     ]
@@ -121,16 +129,36 @@ def migrate_messages_format(dry_run):
             if not content:
                 continue
 
-            # Already in JSON format — skip
+            # --- JSON path (already in {prefix, text} format) ---
             if content.startswith("{") and content.endswith("}"):
                 try:
                     parsed = json.loads(content)
-                    if "prefix" in parsed and "text" in parsed:
-                        skipped += 1
-                        continue
                 except (json.JSONDecodeError, TypeError):
-                    pass
+                    parsed = None
 
+                if parsed and "prefix" in parsed and "text" in parsed:
+                    if add_emojis:
+                        old_prefix = parsed["prefix"]
+                        # Check if this is an image prefix without 🎨
+                        is_image = any(old_prefix == p or old_prefix.startswith(p) for p in prefixes_image)
+                        if is_image and "🎨 " not in old_prefix:
+                            parsed["prefix"] = "🎨 " + old_prefix
+                            new_content = json.dumps(parsed, ensure_ascii=False)
+                            click.echo(f"  EMOJI  id={msg_id}: {old_prefix!r} → {parsed['prefix']!r}")
+                            if not dry_run:
+                                c.execute(
+                                    "UPDATE messages SET content = %s WHERE id = %s",
+                                    (new_content, msg_id),
+                                )
+                                conn.commit()
+                            updated += 1
+                        else:
+                            skipped += 1
+                    else:
+                        skipped += 1
+                    continue
+
+            # --- Plain-text path ---
             # Choose prefix candidates based on model_name
             candidates = prefixes_whisper if model_name == "whisper" else prefixes_other
 
@@ -138,10 +166,17 @@ def migrate_messages_format(dry_run):
             for prefix in candidates:
                 if content.startswith(prefix):
                     text = content[len(prefix) :]
-                    new_content = json.dumps({"prefix": prefix, "text": text}, ensure_ascii=False)
+                    final_prefix = prefix
+                    # Add 🎨 to image prefixes when --add-emojis is set
+                    if add_emojis and any(prefix.startswith(p) for p in prefixes_image):
+                        final_prefix = "🎨 " + prefix
+                    new_content = json.dumps({"prefix": final_prefix, "text": text}, ensure_ascii=False)
                     click.echo(f"  MIGRATE id={msg_id}: {prefix!r} → {new_content[:80]}...")
                     if not dry_run:
-                        c.execute("UPDATE messages SET content = %s WHERE id = %s", (new_content, msg_id))
+                        c.execute(
+                            "UPDATE messages SET content = %s WHERE id = %s",
+                            (new_content, msg_id),
+                        )
                         conn.commit()
                     updated += 1
                     matched = True

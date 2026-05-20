@@ -213,6 +213,7 @@ def send_message():
             "file_name": file_name,
             "preview": (message_text[:50] + "...") if message_text else (file_name or _("Image")),
             "response_style": response_style,
+            "stream": True,
         }
     else:
         request_data = {
@@ -220,6 +221,7 @@ def send_message():
             "text": message_text,
             "preview": (message_text[:50] + "...") if message_text else _("Text request"),
             "response_style": response_style,
+            "stream": True,
         }
 
     request_id, position_info = current_app.request_queue.add_request(
@@ -238,3 +240,16 @@ def send_message():
         response_data["resize_notice"] = resize_notice
         response_data["resize_notice_id"] = resize_notice_id
     return jsonify(response_data)
+
+
+@bp.route("/cancel_task/<task_id>", methods=["POST"])
+def cancel_task(task_id):
+    """Cancel a running streaming task."""
+    if "login" not in session:
+        return jsonify({"error": _("Not authorized")}), 401
+    user_id = session["login"]
+    cancelled = current_app.request_queue.cancel_task(task_id)
+    if not cancelled:
+        return jsonify({"error": _("Task not found")}), 404
+    current_app.logger.info(f"User {user_id} cancelled task {task_id}")
+    return jsonify({"status": "ok"})

@@ -152,8 +152,9 @@ def create_app():
     # Pre-load GGUF models metadata for fast admin panel access
     app.logger.info("Starting GGUF metadata preload...")
     try:
-        from app.utils import sync_gguf_models_cache
+        from app.utils import init_gguf_cache_db, sync_gguf_models_cache
 
+        init_gguf_cache_db()
         gguf_models = sync_gguf_models_cache("/models")
         app.logger.info(f"Preloaded GGUF metadata for {len(gguf_models)} models")
     except Exception as e:
@@ -328,33 +329,37 @@ def create_app():
     def bad_request(error):
         """Handle 400 errors — CSRF failures return session_expired for API."""
         if request.path.startswith("/api/"):
-            return jsonify({"error": "Session expired. Please refresh the page.", "session_expired": True}), 400
+            return jsonify(
+                {"error": gettext("Session expired. Please refresh the page."), "session_expired": True}
+            ), 400
         return error
 
     @app.errorhandler(401)
     def unauthorized(error):
         """Handle 401 errors — redirect to login for HTML, JSON for API."""
         if request.path.startswith("/api/"):
-            return jsonify({"error": "Authentication required.", "session_expired": True}), 401
+            return jsonify({"error": gettext("Authentication required."), "session_expired": True}), 401
         return redirect(url_for("auth.login")) if not request.is_json else error
 
     @app.errorhandler(403)
     def forbidden(error):
         """Handle 403 errors — session expired or forbidden access."""
         if request.path.startswith("/api/"):
-            return jsonify({"error": "Session expired. Please refresh the page.", "session_expired": True}), 403
+            return jsonify(
+                {"error": gettext("Session expired. Please refresh the page."), "session_expired": True}
+            ), 403
         return error
 
     @app.errorhandler(500)
     def internal_error(error):
         if request.path.startswith("/api/"):
-            return jsonify({"error": "Internal server error"}), 500
+            return jsonify({"error": gettext("Internal server error")}), 500
         return error
 
     @app.errorhandler(404)
     def not_found(error):
         if request.path.startswith("/api/"):
-            return jsonify({"error": "Not found"}), 404
+            return jsonify({"error": gettext("Not found")}), 404
         return error
 
     # Comprehensive health check endpoint

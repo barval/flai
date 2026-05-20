@@ -9,6 +9,7 @@ import contextlib
 import json
 import logging
 import os
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -56,6 +57,25 @@ SD_CLI = "/usr/local/bin/sd-cli"
 
 # Lock to serialize generation (one at a time)
 _lock = threading.Lock()
+
+# ── CUDA detection ──
+_CUDA_AVAILABLE: bool | None = None
+
+
+def _check_cuda() -> bool:
+    global _CUDA_AVAILABLE
+    if _CUDA_AVAILABLE is not None:
+        return _CUDA_AVAILABLE
+    if shutil.which("nvidia-smi"):
+        try:
+            result = subprocess.run(["nvidia-smi"], capture_output=True, timeout=10)
+            _CUDA_AVAILABLE = result.returncode == 0
+        except Exception:
+            _CUDA_AVAILABLE = False
+    else:
+        _CUDA_AVAILABLE = False
+    logger.info(f"CUDA detected: {_CUDA_AVAILABLE}")
+    return _CUDA_AVAILABLE
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -119,6 +139,11 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b"Stable Diffusion Wrapper is running\n")
 
 
+def _validate_use_gpu(use_gpu: bool) -> bool:
+    """Return True only if user wants GPU AND CUDA is actually available."""
+    return use_gpu and _check_cuda()
+
+
 def generate_image(data):
     prompt = data.get("prompt", "")
     steps = int(data.get("steps", DEFAULT_STEPS))
@@ -128,6 +153,7 @@ def generate_image(data):
     seed = int(data.get("seed", -1))
     flow_shift = float(data.get("flow_shift", DEFAULT_FLOW_SHIFT))
     sampler = data.get("sampling_method", DEFAULT_SAMPLER)
+    use_gpu = _validate_use_gpu(data.get("use_gpu", False))
 
     cmd = [
         SD_CLI,
@@ -154,8 +180,10 @@ def generate_image(data):
         "--diffusion-fa",
         "--flow-shift",
         str(flow_shift),
-        "--offload-to-cpu",
     ]
+
+    if not use_gpu:
+        cmd.append("--offload-to-cpu")
 
     # Add sampler if specified
     if sampler:
@@ -218,6 +246,7 @@ def edit_image(data):
 def _edit_image_impl(data):
     edit_prompt = data.get("edit_prompt", "")
     image_data = data.get("image_data", "")  # base64 encoded source image
+    use_gpu = _validate_use_gpu(data.get("use_gpu", False))
 
     if not edit_prompt:
         return {"error": "No edit prompt provided"}
@@ -258,16 +287,20 @@ def _edit_image_impl(data):
         "--rng",
         "cuda",
         "--diffusion-fa",
-        "--offload-to-cpu",
-        # Force VAE and CLIP to RAM (saves VRAM)
-        "--vae-on-cpu",
-        "--clip-on-cpu",
-        # Use unified cache for better memory management
-        "--cache-mode",
-        "ucache",
-        "-o",
-        output_path,
     ]
+
+    if not use_gpu:
+        cmd.extend(["--offload-to-cpu", "--vae-on-cpu", "--clip-on-cpu"])
+
+    cmd.extend(
+        [
+            # Use unified cache for better memory management
+            "--cache-mode",
+            "ucache",
+            "-o",
+            output_path,
+        ]
+    )
 
     logger.info(f" Running edit: {' '.join(cmd[:12])}...")
 

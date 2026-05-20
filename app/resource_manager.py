@@ -141,6 +141,9 @@ class ResourceManager:
             ctx_size: context window size
             cache_capacity: model cache limit
             offload_to_cpu: whether to offload KQV cache to CPU
+            cache_type_k: KV cache type for K
+            cache_type_v: KV cache type for V
+            n_cpu_moe: number of MoE experts to offload to CPU (0 = all on GPU)
         """
         from app.utils import get_gguf_models_cached
 
@@ -161,6 +164,7 @@ class ResourceManager:
         # Try to get model size from GGUF cache
         file_size_mb = None
         block_count = None
+        expert_count = 0
         if model_name:
             try:
                 gguf_cache = get_gguf_models_cached("/models")
@@ -168,6 +172,7 @@ class ResourceManager:
                 if model_info:
                     file_size_mb = model_info.get("file_size_mb")
                     block_count = model_info.get("block_count")
+                    expert_count = model_info.get("expert_count") or 0
             except Exception:
                 pass
 
@@ -185,18 +190,24 @@ class ResourceManager:
         # How much VRAM to reserve for other operations (sd-cli, overhead)
         reserve = 2000  # 2GB safety margin
 
+        flash_attn_default = hw.cuda_detected
+
         result = {
             "n_gpu_layers": -1,  # default: all on GPU
             "ctx_size": 8192,
             "cache_capacity": 4096,
             "offload_kqv": False,
-            "flash_attn": False,
+            "flash_attn": flash_attn_default,
+            "cache_type_k": "q4_0",
+            "cache_type_v": "q4_0",
+            "n_cpu_moe": 0,
             "warning": "",
         }
 
         if not hw.cuda_detected:
             # CPU-only mode
             result["n_gpu_layers"] = 0
+            result["flash_attn"] = False
             result["warning"] = "No GPU detected — running CPU-only mode"
             return result
 
@@ -226,7 +237,6 @@ class ResourceManager:
         if total_vram >= 24000:
             # 24GB+ (RTX 3090/4090) — everything fits
             result["cache_capacity"] = 8192
-            result["flash_attn"] = True
         elif total_vram >= 16000:
             # 16GB (RTX 4060 Ti / 4070) — tight
             if result["n_gpu_layers"] == -1 and needed + reserve > total_vram:
@@ -246,6 +256,17 @@ class ResourceManager:
             # <8GB — CPU-only
             result["n_gpu_layers"] = 0
             result["warning"] = f"Very limited VRAM ({total_vram}MB) — CPU-only mode"
+
+        # n_cpu_moe: for MoE models that don't fully fit — offload experts proportionally
+        is_moe = expert_count > 0
+        if is_moe and result["n_gpu_layers"] != -1 and result["n_gpu_layers"] > 0:
+            # Model is MoE and partially offloaded — offload some experts to CPU
+            partial_ratio = 1.0 - (result["n_gpu_layers"] / block_count) if (block_count and block_count > 0) else 0.5
+            result["n_cpu_moe"] = max(1, int(expert_count * partial_ratio))
+            if "warning" in result and result["warning"]:
+                result["warning"] += f"; {result['n_cpu_moe']}/{expert_count} experts on CPU"
+            else:
+                result["warning"] = f"{result['n_cpu_moe']}/{expert_count} experts on CPU"
 
         return result
 

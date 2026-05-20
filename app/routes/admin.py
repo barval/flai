@@ -92,6 +92,10 @@ def admin_panel():
         chunk_size_tokens = chunk_size / token_chars
         max_top_k = max(1, int(max_context_tokens / chunk_size_tokens))
 
+    # Clamp displayed rag_top_k to max allowed
+    if rag_top_k > max_top_k:
+        rag_top_k = max_top_k
+
     # Get RAG thresholds from config
     rag_threshold_default = current_app.config.get("RAG_RELEVANCE_THRESHOLD_DEFAULT", 0.3)
     rag_threshold_reasoning = current_app.config.get("RAG_RELEVANCE_THRESHOLD_REASONING", 0.3)
@@ -181,7 +185,7 @@ def add_user():
         try:
             data = validate_user_input(data)
         except ValidationError as e:
-            return jsonify({"error": str(e)}), 400
+            return jsonify({"error": _("Error") + ": " + str(e)}), 400
 
         login = data.get("login")
         password = data.get("password")
@@ -434,7 +438,7 @@ def llamacpp_models():
             return jsonify({"error": _("llama-server returned {status}").format(status=resp.status_code)}), 500
     except Exception as e:
         current_app.logger.error(f"Error fetching llama.cpp models from {service_url}: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": _("Error") + ": " + str(e)}), 500
 
 
 @bp.route("/api/llamacpp/model/<path:name>", methods=["GET"])
@@ -805,7 +809,7 @@ def llamacpp_model_info(name):
             return jsonify({"error": _("llama-server returned {status}").format(status=resp.status_code)}), 500
     except Exception as e:
         current_app.logger.error(f"Error fetching llama.cpp model info for {name}: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": _("Error") + ": " + str(e)}), 500
 
 
 def _get_gguf_metadata(model_name: str, service_url: str) -> dict:
@@ -876,7 +880,7 @@ def update_model_config(module):
     try:
         updates = validate_model_config_update(data, module)
     except ValidationError as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": _("Error") + ": " + str(e)}), 400
 
     old_model = None
     if module == "embedding":
@@ -960,14 +964,14 @@ def api_admin_reindex_all():
     current_app.logger.info(f"Reindex API called, is_admin={session.get('is_admin')}")
     try:
         if not hasattr(current_app, "request_queue") or not current_app.request_queue:
-            return jsonify({"ok": False, "error": "Request queue not available"}), 500
+            return jsonify({"ok": False, "error": _("Request queue not available")}), 500
         lang = request.json.get("lang", "ru") if request.is_json else "ru"
         current_app.request_queue.add_reindex_all_task(lang=lang)
         current_app.logger.info("Manual reindex all documents triggered via admin")
-        return jsonify({"ok": True, "message": "Reindex started"})
+        return jsonify({"ok": True, "message": _("Reindex started")})
     except Exception as e:
         current_app.logger.error(f"Error triggering reindex: {e}")
-        return jsonify({"ok": False, "error": str(e)}), 500
+        return jsonify({"ok": False, "error": _("Error") + ": " + str(e)}), 500
 
 
 @bp.route("/api/admin/chunks", methods=["PUT"])
@@ -985,10 +989,21 @@ def api_save_chunks_config():
         new_threshold_default = data.get("rag_threshold_default", 0.3)
         new_threshold_reasoning = data.get("rag_threshold_reasoning", 0.3)
 
+        # Clamp rag_top_k to max allowed by reasoning model context
+        reasoning_config = get_model_config("reasoning")
+        if reasoning_config:
+            ctx_length = reasoning_config.get("context_length", 8192)
+            max_context_tokens = int(ctx_length * 0.30)
+            token_chars = current_app.config.get("TOKEN_CHARS", 3)
+            chunk_size_tokens = new_chunk_size / token_chars
+            max_top_k = max(1, int(max_context_tokens / chunk_size_tokens))
+            if new_rag_top_k > max_top_k:
+                new_rag_top_k = max_top_k
+
         # Get original config
         rag = current_app.modules.get("rag")
         if not rag:
-            return jsonify({"ok": False, "error": "RAG module not available"}), 500
+            return jsonify({"ok": False, "error": _("RAG module unavailable")}), 500
 
         old_chunk_size = rag.chunk_size
         old_chunk_overlap = rag.chunk_overlap
@@ -1081,10 +1096,10 @@ def api_save_chunks_config():
                 current_app.logger.info("Reindex triggered due to chunk config change")
                 reindex_triggered = True
 
-            return jsonify({"ok": True, "reindex_triggered": reindex_triggered})
+            return jsonify({"ok": True, "reindex_triggered": reindex_triggered, "rag_top_k": new_rag_top_k})
         else:
             current_app.logger.info("Chunk config unchanged")
-            return jsonify({"ok": True, "reindex_triggered": False})
+            return jsonify({"ok": True, "reindex_triggered": False, "rag_top_k": new_rag_top_k})
     except Exception as e:
         current_app.logger.error(f"Error saving chunks config: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500

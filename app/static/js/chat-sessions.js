@@ -75,6 +75,9 @@ function loadSessionsFromServer() {
                 dlog('loadSessionsFromServer: current session deleted, switching to', sessions[0].id);
                 currentSessionId = sessions[0].id;
                 delete newMessageIndicators[currentSessionId];
+                if (typeof loadMessages === 'function') {
+                    loadMessages(currentSessionId);
+                }
             }
 
             // Only rebuild sessions list HTML if something VISIBLE changed
@@ -205,7 +208,11 @@ function attachSessionEventHandlers() {
         el.addEventListener('click', function(e) {
             if (e.target.closest('.delete-session-button')) return;
             const sessionId = this.dataset.sessionId;
-            if (sessionId === currentSessionId) return;
+            if (sessionId === currentSessionId) {
+                dlog('Session already active, reloading messages');
+                loadMessages(sessionId);
+                return;
+            }
             setNewMessageIndicator(sessionId, false);
             document.querySelectorAll('.session-item').forEach(i => i.classList.remove('active'));
             this.classList.add('active');

@@ -23,6 +23,7 @@ from functools import wraps
 from urllib.parse import urlparse
 
 from flask import Blueprint, abort, jsonify, request, send_file
+from flask_babel import gettext as _
 
 from app.database import get_db
 
@@ -55,7 +56,7 @@ def admin_required(f):
         from flask import session
 
         if not session.get("is_admin"):
-            return jsonify({"error": "Forbidden"}), 403
+            return jsonify({"error": _("Forbidden")}), 403
         return f(*args, **kwargs)
 
     return decorated
@@ -125,7 +126,7 @@ def create_backup():
     backup_type = data.get("type", "full")  # 'users' or 'full'
 
     if backup_type not in ("users", "full"):
-        return jsonify({"error": "Invalid backup type"}), 400
+        return jsonify({"error": _("Invalid backup type")}), 400
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename = f"{backup_type}_{timestamp}.tar.gz"
@@ -210,7 +211,7 @@ def create_backup():
         logger.error(f"Backup creation failed: {e}", exc_info=True)
         if os.path.exists(archive_path):
             os.unlink(archive_path)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": _("Error creating backup")}), 500
 
 
 # ============================================================
@@ -223,13 +224,13 @@ def restore_backup():
     data = request.get_json(silent=True) or {}
     filename = data.get("filename")
     if not filename:
-        return jsonify({"error": "filename is required"}), 400
+        return jsonify({"error": _("filename is required")}), 400
 
     backup_dir = _ensure_backup_dir()
     archive_path = os.path.join(backup_dir, filename)
 
     if not os.path.exists(archive_path):
-        return jsonify({"error": "Backup file not found"}), 404
+        return jsonify({"error": _("Backup file not found")}), 404
 
     try:
         # Verify checksum before restoring (computed on member contents, excluding metadata.json)
@@ -249,7 +250,7 @@ def restore_backup():
                             sha256.update(chunk)
             actual_checksum = sha256.hexdigest()
             if actual_checksum != meta["checksum"]:
-                return jsonify({"error": "Archive checksum mismatch. File may be corrupted."}), 400
+                return jsonify({"error": _("Archive checksum mismatch. File may be corrupted.")}), 400
 
         with tempfile.TemporaryDirectory() as tmpdir:
             with tarfile.open(archive_path, "r:gz") as tar:
@@ -288,7 +289,7 @@ def restore_backup():
 
     except Exception as e:
         logger.error(f"Backup restore failed: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": _("Error restoring backup")}), 500
 
 
 # ============================================================
@@ -306,7 +307,7 @@ def delete_backup(filename):
         abort(403)
 
     if not os.path.exists(fpath):
-        return jsonify({"error": "File not found"}), 404
+        return jsonify({"error": _("File not found")}), 404
 
     os.unlink(fpath)
     return jsonify({"status": "ok"})

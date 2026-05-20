@@ -435,6 +435,50 @@
     position: relative;
 }
 
+/* ── Streaming UI ──────────────────────────────────── */
+.streaming-indicator {
+    color: #f39c12;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.cancel-stream-button {
+    background: none;
+    border: 1px solid #e74c3c;
+    color: #e74c3c;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    padding: 0 8px;
+    margin-left: auto;
+    line-height: 1.8;
+    min-width: 32px;
+    min-height: 32px;
+    transition: background 0.15s, color 0.15s;
+}
+.cancel-stream-button:hover {
+    background: #e74c3c;
+    color: #fff;
+}
+.cancel-stream-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.cancelled-label {
+    color: #e74c3c;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-left: auto;
+}
+
+@keyframes blink {
+    50% { opacity: 0.4; }
+}
+.blink {
+    animation: blink 1.2s infinite;
+}
+
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
@@ -760,6 +804,33 @@ audio {
 }
 
 /* ===== MEDIA QUERIES FOR CHAT ===== */
+
+/* Tablet range — prevent calc(100vh) overflow from browser chrome */
+@media (min-width: 769px) and (max-width: 1199px) {
+    body {
+        overflow: hidden;
+    }
+
+    main {
+        overflow: hidden;
+    }
+
+    .chat-container {
+        height: 100%;
+        overflow: hidden;
+    }
+
+    .chat-main {
+        height: 100%;
+    }
+
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+    }
+}
+
 @media (max-width: 768px) {
     body {
         overflow: hidden;

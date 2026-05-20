@@ -425,7 +425,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
 
         if (duration) {
             const langSuffix = t('seconds_suffix');
-            headerExtra += ' <span class="text-muted">⏱️ ' + duration + langSuffix + '</span>';
+            headerExtra += ' <span class="text-muted">| ⏱️ ' + duration + langSuffix + ' |</span>';
         }
 
         // TTS button
@@ -469,7 +469,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
 
         if (duration) {
             const langSuffix = t('seconds_suffix');
-            headerExtraHTML += ' <span class="text-muted">⏱️ ' + duration + langSuffix + '</span>';
+            headerExtraHTML += ' <span class="text-muted">| ⏱️ ' + duration + langSuffix + ' |</span>';
         }
 
         // Add model name and duration to header
@@ -479,8 +479,8 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             headerDiv.appendChild(extraSpan);
         }
 
-        // Response style emoji
-        if (responseStyle) {
+        // Response style emoji (skip for transcription — style doesn't apply)
+        if (responseStyle && modelName !== 'whisper') {
             const styleEmoji = getResponseStyleEmoji(responseStyle);
             if (styleEmoji) {
                 const styleLabel = t('response_style_' + responseStyle) || responseStyle;

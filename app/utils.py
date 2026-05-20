@@ -11,6 +11,7 @@ from typing import Any
 import pytz
 from docx import Document
 from flask import current_app
+from flask_babel import gettext
 from PIL import Image
 
 PROMPTS_DIR = "prompts"
@@ -500,6 +501,7 @@ def scan_gguf_models(models_dir: str = "/models") -> dict[str, Any]:
                 "embedding_length": None,
                 "architecture": None,
                 "block_count": None,
+                "expert_count": None,
                 "file_size_mb": None,
             }
 
@@ -534,6 +536,17 @@ def scan_gguf_models(models_dir: str = "/models") -> dict[str, Any]:
                             val = arr[0]
                     if val is not None:
                         info["embedding_length"] = int(val)  # type: ignore[assignment]
+                        break
+
+            for key in fields:
+                if key.endswith(".expert_count") and info["expert_count"] is None:
+                    val = fields[key].parts[-1]
+                    if hasattr(val, "tolist"):
+                        arr = val.tolist()
+                        if isinstance(arr, list) and len(arr) == 1:
+                            val = arr[0]
+                    if val is not None:
+                        info["expert_count"] = int(val)  # type: ignore[assignment]
                         break
 
             if "general.architecture" in fields:
@@ -576,6 +589,7 @@ def get_gguf_model_info(model_path: str) -> dict[str, Any]:
         "embedding_length": None,
         "architecture": None,
         "block_count": None,
+        "expert_count": None,
         "file_size_mb": None,
     }
 
@@ -609,6 +623,17 @@ def get_gguf_model_info(model_path: str) -> dict[str, Any]:
                         val = arr[0]
                 if val is not None:
                     result["block_count"] = int(val)  # type: ignore[assignment]
+                    break
+
+        for key in fields:
+            if key.endswith(".expert_count") and result["expert_count"] is None:
+                val = fields[key].parts[-1]
+                if hasattr(val, "tolist"):
+                    arr = val.tolist()
+                    if isinstance(arr, list) and len(arr) == 1:
+                        val = arr[0]
+                if val is not None:
+                    result["expert_count"] = int(val)  # type: ignore[assignment]
                     break
 
         if "general.architecture" in fields:
@@ -1104,7 +1129,9 @@ def check_upload_quota(user_id: str, additional_bytes: int) -> str | None:
 
     if total_used + additional_bytes > max_bytes:
         used_mb = total_used / (1024 * 1024)
-        return f"Storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used. Delete some files to free space."
+        return gettext(
+            "Storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used. Delete some files to free space."
+        ).format(used_mb=used_mb, max_mb=max_mb)
     return None
 
 
@@ -1130,10 +1157,14 @@ def check_document_quota(user_id: str) -> str | None:
             count, total_bytes = row["count"], row["coalesce"]
 
             if count >= max_docs:
-                return f"Document quota exceeded: {count} / {max_docs} documents. Delete some to upload more."
+                return gettext(
+                    "Document quota exceeded: {count} / {max_docs} documents. Delete some to upload more."
+                ).format(count=count, max_docs=max_docs)
             if total_bytes + 1 > max_mb * 1024 * 1024:
                 used_mb = total_bytes / (1024 * 1024)
-                return f"Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used."
+                return gettext("Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used.").format(
+                    used_mb=used_mb, max_mb=max_mb
+                )
     except Exception:
         pass  # Don't block upload on DB errors
 
@@ -1165,10 +1196,14 @@ def init_gguf_cache_db():
                     embedding_length INTEGER,
                     architecture VARCHAR(100),
                     block_count INTEGER,
+                    expert_count INTEGER DEFAULT 0,
                     file_size_mb BIGINT,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            conn.commit()
+
+            c.execute("ALTER TABLE gguf_models_cache ADD COLUMN IF NOT EXISTS expert_count INTEGER DEFAULT 0")
             conn.commit()
         logger.info("Initialized gguf_models_cache table in database")
     except Exception as e:
@@ -1188,7 +1223,7 @@ def get_gguf_models_from_cache() -> dict[str, Any]:
         with get_db() as conn:
             c = conn.cursor()
             c.execute(
-                "SELECT model_name, context_length, embedding_length, architecture, block_count, file_size_mb FROM gguf_models_cache"
+                "SELECT model_name, context_length, embedding_length, architecture, block_count, expert_count, file_size_mb FROM gguf_models_cache"
             )
             for row in c.fetchall():
                 result[row["model_name"]] = {
@@ -1196,6 +1231,7 @@ def get_gguf_models_from_cache() -> dict[str, Any]:
                     "embedding_length": row["embedding_length"],
                     "architecture": row["architecture"],
                     "block_count": row["block_count"],
+                    "expert_count": row["expert_count"],
                     "file_size_mb": row["file_size_mb"],
                 }
     except Exception:
@@ -1217,13 +1253,14 @@ def save_gguf_model_to_cache(model_name: str, metadata: dict[str, Any]):
             c = conn.cursor()
             c.execute(
                 """
-                INSERT INTO gguf_models_cache (model_name, context_length, embedding_length, architecture, block_count, file_size_mb, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                INSERT INTO gguf_models_cache (model_name, context_length, embedding_length, architecture, block_count, expert_count, file_size_mb, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                 ON CONFLICT (model_name) DO UPDATE SET
                     context_length = EXCLUDED.context_length,
                     embedding_length = EXCLUDED.embedding_length,
                     architecture = EXCLUDED.architecture,
                     block_count = EXCLUDED.block_count,
+                    expert_count = EXCLUDED.expert_count,
                     file_size_mb = EXCLUDED.file_size_mb,
                     updated_at = CURRENT_TIMESTAMP
             """,
@@ -1233,6 +1270,7 @@ def save_gguf_model_to_cache(model_name: str, metadata: dict[str, Any]):
                     metadata.get("embedding_length"),
                     metadata.get("architecture"),
                     metadata.get("block_count"),
+                    metadata.get("expert_count", 0),
                     metadata.get("file_size_mb"),
                 ),
             )
@@ -1251,6 +1289,9 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
         Dict mapping model_name -> metadata dict (from cache or freshly scanned)
     """
     import glob
+
+    # Ensure DB table exists with all required columns
+    init_gguf_cache_db()
 
     # Get list of current .gguf files
     gguf_patterns = [
@@ -1290,6 +1331,7 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                                 "embedding_length": None,
                                 "architecture": None,
                                 "block_count": None,
+                                "expert_count": None,
                                 "file_size_mb": os.path.getsize(f) / (1024 * 1024),
                             }
                             for key in fields:
@@ -1309,6 +1351,14 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                                             val = arr[0]
                                     if val is not None:
                                         scanned["embedding_length"] = int(val)  # type: ignore[assignment]
+                                if key.endswith(".expert_count") and scanned["expert_count"] is None:
+                                    val = fields[key].parts[-1]
+                                    if hasattr(val, "tolist"):
+                                        arr = val.tolist()
+                                        if isinstance(arr, list) and len(arr) == 1:
+                                            val = arr[0]
+                                    if val is not None:
+                                        scanned["expert_count"] = int(val)  # type: ignore[assignment]
                                 if "general.architecture" in fields and not scanned["architecture"]:
                                     scanned["architecture"] = str(fields["general.architecture"].parts[-1])  # type: ignore[assignment]
                         except Exception:
@@ -1351,3 +1401,16 @@ def get_gguf_models_cached(models_dir: str = "/models") -> dict[str, Any]:
     _gguf_models_cache = sync_gguf_models_cache(models_dir)
 
     return _gguf_models_cache
+
+
+# ── i18n markers for pybabel extract (used by translate_sd_error) ──
+def _sd_error_translation_markers() -> None:
+    """Placeholder — never called. Marks SD error strings for pybabel extraction."""
+    gettext("Image generation failed. Try again later.")
+    gettext("Image generation produced empty output.")
+    gettext("Image generation error. Check logs for details.")
+    gettext("Image editing failed. Try again later.")
+    gettext("Image editing produced empty output.")
+    gettext("No editing instructions provided.")
+    gettext("No source image provided.")
+    gettext("Image editing timeout ({timeout}s)")

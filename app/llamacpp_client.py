@@ -7,8 +7,10 @@ Uses backend pattern to support:
 - LlamaSwapBackend: connection via llama-swap proxy
 """
 
+import json
 import logging
 import os
+from collections.abc import Generator
 from typing import Any
 
 import requests
@@ -19,6 +21,15 @@ from flask_babel import gettext as _
 from app.circuit_breaker import CircuitBreaker
 from app.model_config import get_model_config
 from app.utils import estimate_tokens
+
+
+def _tr(key: str, lang: str = "ru", **kwargs: Any) -> str:
+    """Translate a user-facing error string using the specified language."""
+    try:
+        with force_locale(lang):
+            return _(key, **kwargs)  # type: ignore[no-any-return]
+    except Exception:
+        return key.format(**kwargs) if kwargs else key
 
 
 class AbstractLlamaBackend:
@@ -37,6 +48,11 @@ class AbstractLlamaBackend:
     def chat(
         self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
     ) -> str:
+        raise NotImplementedError
+
+    def chat_stream(
+        self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
+    ) -> Generator[str, None, None]:
         raise NotImplementedError
 
     def get_embeddings(self, texts: list[str], model: str, config: dict, timeout: int) -> list[list[float]] | None:
@@ -90,7 +106,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         }
 
         if not self.circuit_breaker.can_execute():
-            return "Service temporarily unavailable. Circuit breaker is open."
+            return _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
 
         try:
             response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout)
@@ -98,11 +114,11 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                 result = response.json()
                 choices = result.get("choices", [])
                 if not choices:
-                    return "Model returned empty response"
+                    return _tr("Model returned empty response", lang)
 
                 content = choices[0].get("message", {}).get("content", "")
                 if content is None:
-                    return "Model returned empty response"
+                    return _tr("Model returned empty response", lang)
 
                 for stop_token in ["</s>", "<|eot_id|>"]:
                     if stop_token in content:
@@ -112,16 +128,87 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                 return content.strip()  # type: ignore[no-any-return]
             else:
                 self.circuit_breaker.record_failure()
-                return f"Error: {response.status_code}"
+                return _tr("HTTP error {status}", lang, status=response.status_code)
         except requests.exceptions.Timeout:
             self.circuit_breaker.record_failure()
-            return f"Timeout ({timeout}s) calling model"
+            return _tr(
+                "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request.",
+                lang,
+                timeout=timeout,
+            )
         except requests.exceptions.ConnectionError:
             self.circuit_breaker.record_failure()
-            return "Could not connect to llama-server"
+            return _tr("Could not connect to llama-server", lang)
         except Exception as e:
             self.logger.error(f"Error: {e}")
-            return f"Error: {str(e)}"
+            return _tr("Error", lang) + f": {str(e)}"
+
+    def chat_stream(
+        self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
+    ) -> Generator[str, None, None]:
+        base_url = self.get_base_url()
+        context = config.get("context_length", 4096)
+        temperature = config.get("temperature", 0.7)
+        top_p = config.get("top_p", 0.9)
+        repeat_penalty = config.get("repeat_penalty", 1.1)
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": True,
+            "max_tokens": context,
+            "temperature": temperature,
+            "top_p": top_p,
+            "repeat_penalty": repeat_penalty,
+            "stop": ["</s>", "<|eot_id|>"],
+        }
+
+        if not self.circuit_breaker.can_execute():
+            yield _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
+            return
+
+        response = None
+        try:
+            response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True)
+            if response.status_code != 200:
+                self.circuit_breaker.record_failure()
+                yield _tr("HTTP error {status}", lang, status=response.status_code)
+                return
+
+            self.circuit_breaker.record_success()
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                decoded = line.decode("utf-8")
+                if not decoded.startswith("data: "):
+                    continue
+                data_str = decoded[6:]
+                if data_str == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data_str)
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    content = delta.get("content", "")
+                    if content:
+                        yield content
+                except json.JSONDecodeError:
+                    continue
+        except requests.exceptions.Timeout:
+            self.circuit_breaker.record_failure()
+            yield _tr(
+                "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request.",
+                lang,
+                timeout=timeout,
+            )
+        except requests.exceptions.ConnectionError:
+            self.circuit_breaker.record_failure()
+            yield _tr("Could not connect to llama-server", lang)
+        except Exception as e:
+            self.logger.error(f"Stream error: {e}")
+            yield f"{_tr('Error', lang)}: {str(e)}"
+        finally:
+            if response is not None:
+                response.close()
 
     def get_embeddings(self, texts: list[str], model: str, config: dict, timeout: int) -> list[list[float]] | None:
         base_url = self.get_base_url()
@@ -189,7 +276,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         self.logger.info(f"LlamaSwapBackend request: model={model}, payload keys={list(payload.keys())}")
 
         if not self.circuit_breaker.can_execute():
-            return "Service temporarily unavailable. Circuit breaker is open."
+            return _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
 
         try:
             response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout)
@@ -198,11 +285,11 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                 result = response.json()
                 choices = result.get("choices", [])
                 if not choices:
-                    return "Model returned empty response"
+                    return _tr("Model returned empty response", lang)
 
                 content = choices[0].get("message", {}).get("content", "")
                 if content is None:
-                    return "Model returned empty response"
+                    return _tr("Model returned empty response", lang)
 
                 for stop_token in ["</s>", "<|eot_id|>"]:
                     if stop_token in content:
@@ -212,16 +299,86 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                 return content.strip()  # type: ignore[no-any-return]
             else:
                 self.circuit_breaker.record_failure()
-                return f"Error: {response.status_code}"
+                return _tr("HTTP error {status}", lang, status=response.status_code)
         except requests.exceptions.Timeout:
             self.circuit_breaker.record_failure()
-            return f"Timeout ({timeout}s) calling model"
+            return _tr(
+                "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request.",
+                lang,
+                timeout=timeout,
+            )
         except requests.exceptions.ConnectionError:
             self.circuit_breaker.record_failure()
-            return "Could not connect to llama-swap"
+            return _tr("Could not connect to llama-swap", lang)
         except Exception as e:
             self.logger.error(f"Error: {e}")
-            return f"Error: {str(e)}"
+            return f"{_tr('Error', lang)}: {str(e)}"
+
+    def chat_stream(
+        self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
+    ) -> Generator[str, None, None]:
+        base_url = self.get_base_url()
+        temperature = config.get("temperature", 0.7)
+        top_p = config.get("top_p", 0.9)
+        repeat_penalty = config.get("repeat_penalty", 1.1)
+        model_name = model_type
+
+        payload = {
+            "model": model_name,
+            "messages": messages,
+            "stream": True,
+            "temperature": temperature,
+            "top_p": top_p,
+            "repeat_penalty": repeat_penalty,
+            "stop": ["</s>", "<|eot_id|>"],
+        }
+
+        if not self.circuit_breaker.can_execute():
+            yield _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
+            return
+
+        response = None
+        try:
+            response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True)
+            if response.status_code != 200:
+                self.circuit_breaker.record_failure()
+                yield _tr("HTTP error {status}", lang, status=response.status_code)
+                return
+
+            self.circuit_breaker.record_success()
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                decoded = line.decode("utf-8")
+                if not decoded.startswith("data: "):
+                    continue
+                data_str = decoded[6:]
+                if data_str == "[DONE]":
+                    break
+                try:
+                    chunk = json.loads(data_str)
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    content = delta.get("content", "")
+                    if content:
+                        yield content
+                except json.JSONDecodeError:
+                    continue
+        except requests.exceptions.Timeout:
+            self.circuit_breaker.record_failure()
+            yield _tr(
+                "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request.",
+                lang,
+                timeout=timeout,
+            )
+        except requests.exceptions.ConnectionError:
+            self.circuit_breaker.record_failure()
+            yield _tr("Could not connect to llama-swap", lang)
+        except Exception as e:
+            self.logger.error(f"Stream error: {e}")
+            yield f"{_tr('Error', lang)}: {str(e)}"
+        finally:
+            if response is not None:
+                response.close()
 
     def get_embeddings(self, texts: list[str], model: str, config: dict, timeout: int) -> list[list[float]] | None:
         base_url = self.get_base_url()
@@ -320,7 +477,7 @@ class LlamaCppClient:
                         total_tokens += 1000
 
         if total_tokens > hard_limit:
-            return f"Request too long ({total_tokens} tokens, limit {hard_limit})"
+            return self._translate("Request too long, please simplify your request", lang)
         return None
 
     def chat(self, messages: list[dict], model_type: str = "chat", lang: str = "ru", validate: bool = True) -> str:
@@ -331,14 +488,36 @@ class LlamaCppClient:
 
         config = get_model_config(model_type)
         if not config:
-            return "Model configuration missing"
+            return self._translate("Model configuration missing", lang)
 
         model = config.get("model_name")
         if not model:
-            return f"Model for {model_type} not configured"
+            return self._translate("Model for {model_type} not configured", lang, model_type=model_type)
 
         timeout = config.get("timeout", 300)
         return self.backend.chat(messages, model, config, timeout, lang, model_type=model_type)  # type: ignore[no-any-return]
+
+    def chat_stream(
+        self, messages: list[dict], model_type: str = "chat", lang: str = "ru", validate: bool = True
+    ) -> Generator[str, None, None]:
+        if validate:
+            error = self._validate_prompt(messages, model_type, lang)
+            if error:
+                yield error
+                return
+
+        config = get_model_config(model_type)
+        if not config:
+            yield self._translate("Model configuration missing", lang)
+            return
+
+        model = config.get("model_name")
+        if not model:
+            yield self._translate("Model for {model_type} not configured", lang, model_type=model_type)
+            return
+
+        timeout = config.get("timeout", 600)
+        yield from self.backend.chat_stream(messages, model, config, timeout, lang, model_type=model_type)
 
     def chat_with_image(self, text: str, image_base64: str, model_type: str = "multimodal", lang: str = "ru") -> str:
         image_content = image_base64 if image_base64.startswith("data:") else f"data:image/jpeg;base64,{image_base64}"
@@ -350,6 +529,20 @@ class LlamaCppClient:
             }
         ]
         return self.chat(messages, model_type=model_type, lang=lang)
+
+    def chat_with_image_stream(
+        self, text: str, image_base64: str, model_type: str = "multimodal", lang: str = "ru"
+    ) -> Generator[str, None, None]:
+        """Streaming variant of chat_with_image."""
+        image_content = image_base64 if image_base64.startswith("data:") else f"data:image/jpeg;base64,{image_base64}"
+
+        messages = [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": image_content}}],
+            }
+        ]
+        yield from self.chat_stream(messages, model_type=model_type, lang=lang)
 
     def get_embeddings(
         self, texts: list[str], model_type: str = "embedding", lang: str = "ru"
@@ -379,7 +572,9 @@ class LlamaCppClient:
         stream: bool = False,
         lang: str = "ru",
         validate: bool = True,
-    ) -> str | dict[str, Any]:
+    ) -> str | dict[str, Any] | Generator[str, None, None]:
+        if stream:
+            return self.chat_stream(messages, model_type=model_type, lang=lang, validate=validate)
         return self.chat(messages, model_type=model_type, lang=lang, validate=validate)
 
     def unload_all_models(self) -> bool:

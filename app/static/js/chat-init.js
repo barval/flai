@@ -251,6 +251,7 @@ async function sendMessage() {
                         window.updateStatusCounter();
                         fetchQueueStatus();
                     } else {
+                        // Audio file — no further processing, clear ⚡
                         const targetSessionId = data.session_id || currentSessionId;
                         if (targetSessionId === currentSessionId) {
                             var transcribedContent = JSON.stringify({prefix: '🎤 ' + t('transcribed') + ': ', text: data.transcribed_text});
@@ -265,34 +266,41 @@ async function sendMessage() {
                                 }
                             }
                         } else {
-                            // Only show unread if there's no further processing
-                            if (!data.request_id) {
-                                setNewMessageIndicator(targetSessionId, true);
-                            }
+                            setNewMessageIndicator(targetSessionId, true);
+                        }
+                        if (typeof clearSessionQueue === 'function') {
+                            clearSessionQueue(targetSessionId);
                         }
                     }
                     return;
                 }
                 
                 if (data.status === 'queued') {
-                    // Worker picks up tasks via blpop almost instantly.
-                    // By the time this response reaches the frontend, the task is already processing.
-                    // Show processing icon immediately - fetchQueueStatus will confirm/update.
+                    // Check if another session is already processing (only ONE ⚡ allowed)
+                    var alreadyProcessing = false;
+                    for (var sid in sessionQueueInfo) {
+                        if (sessionQueueInfo[sid].processing && sid !== currentSessionId) {
+                            alreadyProcessing = true;
+                            break;
+                        }
+                    }
+
                     if (!sessionQueueInfo[currentSessionId]) {
                         sessionQueueInfo[currentSessionId] = {
-                            processing: true,  // Worker already has it
-                            queued: 0,
-                            queue_position: 0
+                            processing: !alreadyProcessing,
+                            queued: alreadyProcessing ? 1 : 0,
+                            queue_position: alreadyProcessing ? (data.position || 1) : 0,
                         };
                     } else {
-                        sessionQueueInfo[currentSessionId].processing = true;
-                        sessionQueueInfo[currentSessionId].queued = 0;
-                        sessionQueueInfo[currentSessionId].queue_position = 0;
+                        sessionQueueInfo[currentSessionId].processing = !alreadyProcessing;
+                        sessionQueueInfo[currentSessionId].queued = alreadyProcessing ? 1 : 0;
+                        sessionQueueInfo[currentSessionId].queue_position = alreadyProcessing ? (data.position || 1) : 0;
                     }
 
                     updateSessionsListFromData();
                     trackPendingRequest(data.request_id, currentSessionId);
                     window.updateStatusCounter();
+                    if (typeof fetchQueueStatus === 'function') fetchQueueStatus();
                 } else if (data.response) {
                     originalDisplayMessage('assistant', data.response, data.file_data, data.file_type, data.file_name, data.file_path,
                         data.assistant_timestamp, data.response_time, data.model_used);
@@ -426,6 +434,10 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error loading messages after language switch:', err);
         }).finally(() => {
             hideMessagesLoadingIndicator();
+            // Restore streaming messages from sessionStorage (page reload during stream)
+            if (typeof restoreStreamingFromSessionStorage === 'function') {
+                restoreStreamingFromSessionStorage();
+            }
             // Restore TTS button state if TTS is playing
             if (typeof restoreTTSButtonState === 'function') {
                 restoreTTSButtonState();

@@ -40,11 +40,16 @@ function fetchQueueStatus() {
                 if (!newInfo[processingSessionId]) {
                     newInfo[processingSessionId] = { processing: false, queued: 0, queue_position: 0, has_transcribing: false };
                 }
-                newInfo[processingSessionId].processing = true;
-                if (data.processing.type === 'transcribe_audio' || data.processing.type === 'audio') {
-                    newInfo[processingSessionId].has_transcribing = true;
+                // Only show processing if we haven't already received the result for this task
+                // Prevents a stale fetchQueueStatus response from re‑setting ⚡ after
+                // clearSessionQueue removed the task from pendingRequestIds
+                if (pendingRequestIds[data.processing.id]) {
+                    newInfo[processingSessionId].processing = true;
+                    if (data.processing.type === 'transcribe_audio' || data.processing.type === 'audio') {
+                        newInfo[processingSessionId].has_transcribing = true;
+                    }
                 }
-                dlog('fetchQueueStatus: processing session', processingSessionId);
+                dlog('fetchQueueStatus: processing session', processingSessionId, 'active:', !!pendingRequestIds[data.processing.id]);
             }
 
             // Mark queued sessions (hourglass)

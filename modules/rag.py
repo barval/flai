@@ -1,6 +1,7 @@
 # modules/rag.py
 import logging
 import uuid
+from collections.abc import Callable
 
 from flask import current_app
 from flask_babel import force_locale
@@ -292,6 +293,7 @@ class RagModule:
         lang: str = "ru",
         threshold: float | None = None,
         response_style: str = "neutral",
+        token_callback: Callable[[str], None] | None = None,
     ) -> tuple[str | None, str | None, str | None]:
         """Full RAG answer: search + call reasoning model with context."""
         # 1. Retrieve relevant chunks
@@ -452,13 +454,22 @@ class RagModule:
             return None, "Error loading prompt template", None
 
         # 6. Call reasoning model
+        model_name = reasoning_config.get("model_name", "unknown")
+        if token_callback:
+            full_response = ""
+            for token in self.llamacpp.chat_stream(
+                [{"role": "user", "content": prompt}], model_type="reasoning", lang=lang
+            ):
+                full_response += token
+                token_callback(token)
+            return full_response, None, model_name
+
         reasoning_module = current_app.modules.get("base")  # type: ignore[attr-defined]
         if not reasoning_module:
             return None, "Reasoning module unavailable", None
         response = reasoning_module.call_llamacpp(
             [{"role": "user", "content": prompt}], model_type="reasoning", lang=lang
         )
-        model_name = reasoning_config.get("model_name", "unknown")
         return response, None, model_name
 
     def _get_embedding(self, text: str) -> list[float] | None:

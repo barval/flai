@@ -247,6 +247,14 @@ class LlamaSwapConfigGenerator:
 
             if config.get("offload_kqv"):
                 cmd_parts.append("--kv-offload")
+
+            n_cpu_moe = config.get("n_cpu_moe", 0)
+            if n_cpu_moe and n_cpu_moe > 0:
+                cmd_parts.extend(["--n-cpu-moe", str(n_cpu_moe)])
+
+            ck = config.get("cache_type_k", "q4_0")
+            cv = config.get("cache_type_v", "q4_0")
+            cmd_parts.extend(["--cache-type-k", ck, "--cache-type-v", cv])
         except Exception:
             pass
 

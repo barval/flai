@@ -1,6 +1,7 @@
 # modules/base.py
 import logging
-from typing import Any  # Tuple added
+from collections.abc import Generator
+from typing import Any
 
 from app.db import get_session_text_history
 from app.llamacpp_client import LlamaCppClient
@@ -287,3 +288,83 @@ class BaseModule(TranslationMixin):
         )
         self.logger.info(f"Reasoning model response: {response[:100]}...")  # type: ignore[index]
         return response  # type: ignore[return-value]
+
+    # ── Streaming methods ──────────────────────────────────────────────
+
+    def generate_chat_response_stream(
+        self,
+        query: str,
+        current_time_str: str,
+        lang: str = "ru",
+        session_id: str | None = None,
+        response_style: str = "neutral",
+    ) -> Generator[str, None, None]:
+        """Build prompt and stream chat model response."""
+        response_language = "Russian" if lang == "ru" else "English"
+        context_str = self._get_context_for_model(session_id, "chat", query, lang)  # type: ignore[arg-type]
+        style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
+            response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
+        )
+
+        prompt = format_prompt(
+            "chat.template",
+            {
+                "current_time_str": current_time_str,
+                "user_query": query,
+                "response_language": response_language,
+                "conversation_history": context_str,
+                "response_style": style_instruction,
+            },
+            lang=lang,
+        )
+
+        if not prompt:
+            yield "⚠️ " + self._("Error loading prompt template", lang)
+            return
+
+        error = self._validate_final_prompt(prompt, "chat", lang)
+        if error:
+            yield "⚠️ " + error
+            return
+
+        self.logger.info(f"Streaming chat response for query: {query[:100]}...")
+        yield from self.llamacpp.chat_stream([{"role": "user", "content": prompt}], model_type="chat", lang=lang)
+
+    def generate_reasoning_response_stream(
+        self,
+        query: str,
+        current_time_str: str,
+        lang: str = "ru",
+        session_id: str | None = None,
+        response_style: str = "neutral",
+    ) -> Generator[str, None, None]:
+        """Build prompt and stream reasoning model response."""
+        response_language = "Russian" if lang == "ru" else "English"
+        context_str = self._get_context_for_model(session_id, "reasoning", query, lang)  # type: ignore[arg-type]
+        style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
+            response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
+        )
+
+        prompt = format_prompt(
+            "reasoning.template",
+            {
+                "current_time_str": current_time_str,
+                "reasoning_query": query,
+                "response_language": response_language,
+                "conversation_history": context_str,
+                "response_style": style_instruction,
+            },
+            lang=lang,
+        )
+
+        if not prompt:
+            yield "⚠️ " + self._("Error loading prompt template", lang)
+            return
+
+        error = self._validate_final_prompt(prompt, "reasoning", lang)
+        if error:
+            yield "⚠️ " + error
+            return
+
+        self.logger.info(f"Streaming reasoning response for query: {query[:100]}...")
+        yield from self.llamacpp.chat_stream([{"role": "user", "content": prompt}], model_type="reasoning", lang=lang)

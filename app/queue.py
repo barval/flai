@@ -1622,6 +1622,7 @@ class RedisRequestQueue:
                 if transcribed_text
                 else self.app.modules["base"]._("Voice request", lang=lang),
                 "response_style": response_style,
+                "stream": True,
             }
             new_request_id, _ = self.app.request_queue.add_request(
                 user_id, session_id, text_request_data, user_class, lang=lang

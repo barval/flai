@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 8.4\n"
+"Project-Id-Version: FLAI 8.5\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-05-20 10:49+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -786,7 +786,23 @@ msgstr "Used %1%% RAM"
 msgid "no_gpu_low"
 msgstr "No GPU. Used %1%% RAM - very slow"
 
+#: app/templates/admin.html:298
+msgid "vram_nodata_gpu"
+msgstr "GPU: %1% MB (no model data)"
+
 #: app/templates/admin.html:299
+msgid "vram_nodata"
+msgstr "No data for estimation"
+
+#: app/templates/admin.html:300
+msgid "vram_estimate_detail"
+msgstr " (model=%1%MB + KV=%2%MB + compute=%3%MB)"
+
+#: app/templates/admin.html:301
+msgid "ngl_info"
+msgstr "ngl=%1%, layers=%2%"
+
+#: app/templates/admin.html:302
 msgid ""
 "Reindexing all documents with new embedding model started. This may take "
 "a while."
@@ -910,7 +926,7 @@ msgstr "Logout"
 
 #: app/templates/base.html:78 app/templates/chat.html:162
 msgid "footer_text"
-msgstr "Fully Local AI (FLAI) v8.4 (c) 2026 Valery Barsukov"
+msgstr "Fully Local AI (FLAI) v8.5 (c) 2026 Valery Barsukov"
 
 #: app/templates/chat.html:14 app/templates/chat.html:172
 msgid "New document"
@@ -1113,6 +1129,10 @@ msgid "seconds_suffix"
 msgstr "s"
 
 #: app/templates/chat.html:168
+msgid "tps_suffix"
+msgstr " tok/s"
+
+#: app/templates/chat.html:169
 msgid "byte_abbr"
 msgstr "B"
 

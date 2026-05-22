@@ -23,7 +23,12 @@ from .db import (
 )
 from .events import get_events_publisher
 from .model_config import get_model_config
-from .utils import get_current_time_in_timezone, get_current_time_in_timezone_for_db, save_uploaded_file
+from .utils import (
+    estimate_tokens,
+    get_current_time_in_timezone,
+    get_current_time_in_timezone_for_db,
+    save_uploaded_file,
+)
 
 
 class RedisRequestQueue:
@@ -599,6 +604,7 @@ class RedisRequestQueue:
     ) -> dict[str, Any]:
         """Save assistant message to DB and return response dict."""
         resp_time = process_time if isinstance(process_time, dict) else str(process_time)
+        completion_tokens = estimate_tokens(text) if text else 0
         msg_id = save_message(
             session_id,
             "assistant",
@@ -611,11 +617,13 @@ class RedisRequestQueue:
             response_time=resp_time,
             response_style=response_style,
             user_id=user_id,
+            completion_tokens=completion_tokens,
         )
         result = self._build_success_response(
             session_id, text, model_name, process_time, message_id=msg_id, extra=extra
         )
         result["response_style"] = response_style
+        result["completion_tokens"] = completion_tokens
         return result
 
     # ── Task handlers extracted from _process_request ──

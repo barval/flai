@@ -18,6 +18,10 @@ logger = logging.getLogger(__name__)
 MODELS_DIR = os.getenv("MODELS_DIR", "/models")
 CONFIG_DIR = os.getenv("LLAMA_SWAP_CONFIG_DIR", "/config")
 CONFIG_FILE = os.getenv("LLAMA_SWAP_CONFIG_FILE", "llama-swap.yaml")
+CONFIG_CPU_FILE = os.getenv("LLAMA_SWAP_CONFIG_CPU_FILE", "llama-swap-cpu.yaml")
+
+# Progressive degradation steps: fraction of original n_gpu_layers
+DEGRADATION_STEPS = [0.75, 0.50, 0.25, 0.0]
 
 DEFAULT_TTL = {
     "chat": 600,
@@ -29,8 +33,8 @@ DEFAULT_TTL = {
 GROUP_SETTINGS = {
     "chat": {"group": "llm_fast"},
     "embedding": {"group": "llm_fast"},
-    "reasoning": {"group": "default"},
-    "multimodal": {"group": "default"},
+    "reasoning": {"group": "llm_fast"},
+    "multimodal": {"group": "llm_fast"},
 }
 
 
@@ -40,6 +44,78 @@ class LlamaSwapConfigGenerator:
     def __init__(self, app=None):
         self.app = app
         self.logger = logging.getLogger(__name__)
+        # Per-model degradation tracking: {module: step_index}
+        self._degradations: dict[str, int] = {}
+
+    def get_degradation_step(self, module: str) -> int:
+        """Get current degradation step index for a module."""
+        return self._degradations.get(module, 0)
+
+    def degrade_model(self, module: str) -> int | None:
+        """Move to next degradation step for a model. Returns new ngl or None if CPU-only."""
+        current = self._degradations.get(module, 0)
+        next_step = current + 1
+        if next_step >= len(DEGRADATION_STEPS):
+            self.logger.warning(f"{module}: already at max degradation, cannot degrade further")
+            return None
+        self._degradations[module] = next_step
+        fraction = DEGRADATION_STEPS[next_step]
+        original_ngl = self._get_original_ngl(module)
+        if original_ngl is None:
+            return None
+        new_ngl = 0 if fraction == 0.0 else max(1, int(original_ngl * fraction))
+        self.logger.warning(f"{module}: degraded to n_gpu_layers={new_ngl} (step {next_step}, {fraction * 100:.0f}%)")
+        return new_ngl
+
+    def reset_degradation(self, module: str):
+        """Reset degradation for a model (after successful recovery)."""
+        self._degradations.pop(module, None)
+        self.logger.info(f"{module}: degradation reset")
+
+    def _get_original_ngl(self, module: str) -> int | None:
+        """Get the original (non-degraded) n_gpu_layers for a module.
+
+        Returns the concrete layer count (never -1) so degradation math works correctly.
+        """
+        try:
+            from app.resource_manager import get_resource_manager
+
+            rm = get_resource_manager()
+            config = rm.compute_llamacpp_config(module)
+            ngl = config.get("n_gpu_layers", -1)
+            if ngl == -1:
+                from app.utils import get_gguf_models_cached
+
+                mc = get_model_config(module)
+                if mc:
+                    model_name = mc.get("model_name")
+                    if model_name:
+                        cache = get_gguf_models_cached("/models")
+                        info = cache.get(model_name, {})
+                        block_count = info.get("block_count")
+                        if block_count:
+                            return block_count  # type: ignore[no-any-return]
+                defaults = {"chat": 32, "embedding": 12, "reasoning": 48, "multimodal": 32}
+                return defaults.get(module, 32)
+            return ngl  # type: ignore[no-any-return]
+        except Exception:
+            return None
+
+    def _get_committed_ngl(self, module: str) -> tuple[int | None, bool]:
+        """Get the committed n_gpu_layers for a module, accounting for degradation.
+
+        Returns (ngl, is_degraded).
+        """
+        step = self._degradations.get(module)
+        if step is None or step == 0:
+            return None, False
+        fraction = DEGRADATION_STEPS[step]
+        original = self._get_original_ngl(module)
+        if original is None:
+            return None, False
+        if fraction == 0.0:
+            return 0, True
+        return max(1, int(original * fraction)), True
 
     def get_model_path(self, module: str, model_name: str) -> str | None:
         """Get full path to GGUF model file."""
@@ -162,7 +238,7 @@ class LlamaSwapConfigGenerator:
             self.logger.warning(f"get_ctx_size({module}): invalid ctx {repr(ctx)}, using default")
             return 4096 if module != "reasoning" else 8192
 
-    def build_model_entry(self, module: str) -> dict[str, Any] | None:
+    def build_model_entry(self, module: str, ngl_override: int | None = None) -> dict[str, Any] | None:
         """Build llama-swap model entry from FLAI model config."""
         config = get_model_config(module)
         if not config:
@@ -184,7 +260,7 @@ class LlamaSwapConfigGenerator:
         # Use module type as name for proper routing in llama-swap
         # This ensures requests with model=<module_type> are routed correctly
         entry = {
-            "cmd": self.build_cmd(module, model_path, mmproj),
+            "cmd": self.build_cmd(module, model_path, mmproj, ngl_override=ngl_override),
             "ttl": self.get_ttl(module),
             "name": module,  # Use module type (embedding, chat, etc.) as name
         }
@@ -202,7 +278,9 @@ class LlamaSwapConfigGenerator:
         self.logger.info(f"Built model entry for {module}: {entry}")
         return {module: entry}
 
-    def build_cmd(self, module: str, model_path: str, mmproj: str | None = None) -> str:
+    def build_cmd(
+        self, module: str, model_path: str, mmproj: str | None = None, ngl_override: int | None = None
+    ) -> str:
         """Build llama-server command for model."""
         ctx_size = self.get_ctx_size(module)
 
@@ -238,30 +316,38 @@ class LlamaSwapConfigGenerator:
             rm = get_resource_manager()
             config = rm.compute_llamacpp_config(module)
 
-            if config.get("flash_attn"):
+            is_cpu = ngl_override is not None and ngl_override == 0
+
+            if config.get("flash_attn") and not is_cpu:
                 cmd_parts.extend(["--flash-attn", "on"])
 
-            ngl = config.get("n_gpu_layers", -1)
+            ngl = ngl_override if ngl_override is not None else config.get("n_gpu_layers", -1)
             if ngl is not None and ngl >= 0:
                 cmd_parts.extend(["--n-gpu-layers", str(ngl)])
 
-            if config.get("offload_kqv"):
+            if config.get("offload_kqv") and not is_cpu:
                 cmd_parts.append("--kv-offload")
 
             n_cpu_moe = config.get("n_cpu_moe", 0)
             if n_cpu_moe and n_cpu_moe > 0:
                 cmd_parts.extend(["--n-cpu-moe", str(n_cpu_moe)])
 
-            ck = config.get("cache_type_k", "q4_0")
-            cv = config.get("cache_type_v", "q4_0")
-            cmd_parts.extend(["--cache-type-k", ck, "--cache-type-v", cv])
+            if not is_cpu:
+                ck = config.get("cache_type_k", "q4_0")
+                cv = config.get("cache_type_v", "q4_0")
+                cmd_parts.extend(["--cache-type-k", ck, "--cache-type-v", cv])
         except Exception:
             pass
 
         return " ".join(cmd_parts)
 
-    def generate_yaml(self) -> str:
-        """Generate full llama-swap YAML configuration."""
+    def generate_yaml(self, ngl_overrides: dict[str, int] | None = None) -> str:
+        """Generate full llama-swap YAML configuration.
+
+        Args:
+            ngl_overrides: Per-module n_gpu_layers override, e.g. {"reasoning": 10}.
+        """
+        ngl_overrides = ngl_overrides or {}
         lines = [
             "# Generated by FLAI v8.1",
             "",
@@ -272,8 +358,8 @@ class LlamaSwapConfigGenerator:
 
         groups = {
             "llm_fast": {
-                "swap": False,
-                "models": ["chat", "embedding"],
+                "swap": True,
+                "models": ["chat", "embedding", "reasoning", "multimodal"],
             }
         }
 
@@ -292,7 +378,8 @@ class LlamaSwapConfigGenerator:
         lines.append("models:")
 
         for module in ["chat", "embedding", "reasoning", "multimodal"]:
-            entry = self.build_model_entry(module)
+            ngl_override = ngl_overrides.get(module)
+            entry = self.build_model_entry(module, ngl_override=ngl_override)
             if not entry:
                 continue
 
@@ -367,8 +454,72 @@ class LlamaSwapConfigGenerator:
             self.logger.warning(f"Could not signal llama-swap reload: {e}")
             return False
 
+    def generate_cpu_yaml(self) -> str:
+        """Generate CPU-only config (all models with n_gpu_layers=0)."""
+        return self.generate_yaml(
+            ngl_overrides={
+                "chat": 0,
+                "embedding": 0,
+                "reasoning": 0,
+                "multimodal": 0,
+            }
+        )
+
+    def write_cpu_config(self, path: str | None = None) -> bool:
+        """Write CPU-only config to file."""
+        config_path = path or os.path.join(CONFIG_DIR, CONFIG_CPU_FILE)
+        yaml_content = self.generate_cpu_yaml()
+        try:
+            with open(config_path, "w") as f:
+                f.write(yaml_content)
+            self.logger.info(f"Wrote CPU-only config to {config_path}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to write CPU config: {e}")
+            return False
+
+    def degrade_and_reload(self, module: str) -> bool:
+        """Degrade one model's GPU usage and reload llama-swap config.
+
+        Returns True if degradation was applied and reload signaled.
+        """
+        ngl = self.degrade_model(module)
+        if ngl is None:
+            if self._degradations.get(module, 0) >= len(DEGRADATION_STEPS) - 1:
+                self.logger.warning(f"{module}: switching to CPU-only config")
+                self.write_cpu_config()
+                self.signal_reload()
+                return True
+            return False
+
+        overrides: dict[str, int] = {}
+        for mod, step in self._degradations.items():
+            frac = DEGRADATION_STEPS[step]
+            orig = self._get_original_ngl(mod)
+            if orig is not None:
+                if frac == 0.0:
+                    overrides[mod] = 0
+                else:
+                    overrides[mod] = max(1, int(orig * frac))
+        overrides[module] = ngl
+
+        new_yaml = self.generate_yaml(ngl_overrides=overrides)
+        config_path = os.path.join(CONFIG_DIR, CONFIG_FILE)
+        try:
+            with open(config_path, "w") as f:
+                f.write(new_yaml)
+            self.logger.info(f"Wrote degraded config to {config_path} (module={module}, ngl={ngl})")
+        except Exception as e:
+            self.logger.error(f"Failed to write degraded config: {e}")
+            return False
+
+        self.signal_reload()
+        return True
+
 
 def generate_and_write(app=None) -> bool:
-    """Convenience function to generate and write config."""
+    """Generate GPU config, CPU config, and write them both."""
     generator = LlamaSwapConfigGenerator(app)
-    return generator.write_config()
+    gpu_ok = generator.write_config()
+    cpu_ok = generator.write_cpu_config()
+    return gpu_ok and cpu_ok

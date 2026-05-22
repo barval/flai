@@ -39,13 +39,20 @@ class CircuitBreaker:
             self.failure_count = 0
             self.state = self.CLOSED
 
-    def record_failure(self):
-        """Record a failed call."""
+    def record_failure(self) -> bool:
+        """Record a failed call.
+
+        Returns True if the circuit just transitioned to OPEN (useful for triggering fallback logic).
+        """
         with self._lock:
             self.failure_count += 1
             self.last_failure_time = time.time()
             if self.failure_count >= self.failure_threshold:
+                if self.state != self.OPEN:
+                    self.state = self.OPEN
+                    return True
                 self.state = self.OPEN
+            return False
 
     def can_execute(self) -> bool:
         """Check if a request can be executed."""

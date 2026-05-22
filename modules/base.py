@@ -237,7 +237,13 @@ class BaseModule(TranslationMixin):
             }
 
         response = response.strip()
-        markers = {"[-IMAGE-]": "image", "[-CAMERA-]": "camera", "[-REASONING-]": "reasoning", "[-RAG-]": "rag"}
+        markers = {
+            "[-IMAGE-]": "image",
+            "[-CAMERA-]": "camera",
+            "[-REASONING-]": "reasoning",
+            "[-RAG-]": "rag",
+            "[-VIDEO-]": "video",
+        }
 
         for marker, action in markers.items():
             if marker in response:

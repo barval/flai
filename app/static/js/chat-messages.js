@@ -372,6 +372,9 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             if (fileType && fileType.startsWith('audio/')) {
                 timeDisplay += ' <a href="' + downloadUrl + '" download="' + escapeHtml(fileName || 'audio.webm') + '" class="download-link-inline" title="' + t('download_audio') + '" onclick="event.stopPropagation()">⬇️</a>';
             }
+            if (fileType && fileType.startsWith('video/')) {
+                timeDisplay += ' <a href="' + downloadUrl + '" download="' + escapeHtml(fileName || 'video.mp4') + '" class="download-link-inline" title="' + t('download_video') + '" onclick="event.stopPropagation()">⬇️</a>';
+            }
         }
     }
     
@@ -395,6 +398,9 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             }
             if (fileType && fileType.startsWith('audio/')) {
                 timeDisplay += ' <a href="' + downloadUrl + '" download="' + escapeHtml(fileName || 'audio.webm') + '" class="download-link-inline" title="' + t('download_audio') + '" onclick="event.stopPropagation()">⬇️</a>';
+            }
+            if (fileType && fileType.startsWith('video/')) {
+                timeDisplay += ' <a href="' + downloadUrl + '" download="' + escapeHtml(fileName || 'video.mp4') + '" class="download-link-inline" title="' + t('download_video') + '" onclick="event.stopPropagation()">⬇️</a>';
             }
         }
     }
@@ -595,6 +601,14 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
                 audio.src = fileUrl;
                 audio.preload = 'metadata';
                 msgDiv.appendChild(audio);
+            } else if (fileType && fileType.startsWith('video/')) {
+                const video = document.createElement('video');
+                video.controls = true;
+                video.src = fileUrl;
+                video.preload = 'metadata';
+                video.style.maxWidth = '100%';
+                video.style.borderRadius = '8px';
+                msgDiv.appendChild(video);
             } else {
                 // Create file link safely
                 const fileDiv = document.createElement('div');

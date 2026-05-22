@@ -162,6 +162,51 @@ services:
         max-file: "3"
 
   # ============================================================
+  # LTX-VIDEO (Optional - Video Generation)
+  # ============================================================
+  ltxvideo:
+    build:
+      context: ./services/ltx_video
+      dockerfile: Dockerfile.ltx_video
+    container_name: flai-ltxvideo
+    volumes:
+      - ./services/ltx_video/models:/app/models:rw
+      - ./services/llamacpp/models:/models:ro
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - LTX_MODELS_DIR=/app/models
+      - LTX_DEFAULT_MODEL=ltxv-2b-0.9.8-distilled.safetensors
+      - LTX_DEFAULT_UPSCALER=ltxv-spatial-upscaler-0.9.8.safetensors
+      - LTX_PIPELINE_CONFIG=ltxv-2b-0.9.8-distilled.yaml
+      - LTX_TEXT_ENCODER_PATH=/app/models/t5_encoder
+    runtime: nvidia
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7872/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+    deploy:
+      resources:
+        limits:
+          cpus: '8.0'
+          memory: 24G
+        reservations:
+          cpus: '4.0'
+          memory: 16G
+    profiles:
+      - with-video
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ============================================================
   # WHISPER (Optional - Speech Recognition)
   # ============================================================
   whisper:

@@ -47,6 +47,8 @@ class ResourceManager:
         self._lock = threading.Lock()
         self._sd_busy = False  # True while sd-cli is actively using GPU
         self._sd_busy_since = 0.0
+        self._video_busy = False  # True while ltx-video is actively using GPU
+        self._video_busy_since = 0.0
         self._vram_poll_timer: threading.Timer | None = None
         self._vram_poll_interval = 60  # seconds
 
@@ -352,6 +354,17 @@ class ResourceManager:
         with self._lock:
             self._sd_busy = False
 
+    def mark_video_busy(self):
+        """Signal that ltx-video started using GPU."""
+        with self._lock:
+            self._video_busy = True
+            self._video_busy_since = time.time()
+
+    def mark_video_idle(self):
+        """Signal that ltx-video finished."""
+        with self._lock:
+            self._video_busy = False
+
     # ── llama.cpp model management ──
 
     def unload_llamacpp_model(self, llamacpp_url: str | None = None) -> bool:
@@ -425,6 +438,7 @@ class ResourceManager:
             "available_ram_mb": self.hardware.available_ram_mb,
             "cpu_count": self.hardware.cpu_count,
             "sd_busy": self._sd_busy,
+            "video_busy": self._video_busy,
         }
 
         backend_type = os.getenv("LLAMACP_BACKEND", "llamacpp")

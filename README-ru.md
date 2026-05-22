@@ -22,6 +22,7 @@
 - 🔍 **Мультимодальный анализ** – загрузка изображений и вопросы по их содержанию (llama.cpp + mmproj)
 - 🎨 **Генерация изображений** – создание изображений из текста с автоматической оптимизацией промптов (модель Z-Image-Turbo)
 - ✏️ **Редактирование изображений** – загрузите изображение и попросите изменить его (модель Flux.2 Klein 4B)
+- 🎬 **Генерация видео** – создавайте короткие видео из текста или изображения+текста с помощью LTX-Video 2B (дистиллированная, 8 шагов)
 - 🎤 **Распознавание речи** – преобразование голосовых сообщений в текст через Whisper ASR (faster_whisper)
 - 🗣️ **Синтез речи** – озвучивание ответов через Piper TTS (мужской и женский голоса на русском и английском)
 
@@ -69,9 +70,15 @@
 
 ПЛИИ — модульное Flask-приложение, оркестрирующее сервисы на экосистеме llama.cpp.
 
-### Что нового в v8.5
+### Что нового в v8.7
 
-| v8.5 (Новое) | Примечания |
+| v8.7 (Новое) | Примечания |
+|--------------|------------|
+| 🎬 **Генерация видео** | Text-to-video и image+text-to-video через LTX-Video 2B distilled. Отдельный GPU-контейнер с изоляцией VRAM, T5 кодировщик на CPU (~8.9 GiB экономии VRAM). 8 шагов инференса, ~11с для 9 кадров 320×512. Требуется PyTorch с поддержкой sm_120 для RTX 5060 Ti (cu128 nightly). Включить через `--profile with-video`. |
+
+### Что нового в v8.6
+
+| v8.6 (Новое) | Примечания |
 |--------------|------------|
 | 🔄 **Восстановление после F5** | ⚡, стриминг и финальный ответ выживают после обновления страницы во время генерации — `onStreamToken`/`onResultCompleted` теперь обрабатывают отсутствие `pendingRequestIds` после перезагрузки |
 | 🖥️ **Монитор VRAM и автодеградация** | Фоновый опрос VRAM через `nvidia-smi` каждые 60 сек. Прогрессивная деградация моделей (100%→0% n_gpu_layers в 4 шага) при OOM. Безопасные лимиты `_MAX_SAFE_NGL` для каждого объёма VRAM (16GB → ngl 24). Все модели в единой группе `llm_fast` с swap |
@@ -90,6 +97,7 @@
 | **Flask Web** | Веб-интерфейс, маршрутизация, API | Python | 5000 |
 | **llama-swap** | Динамическое управление и маршрутизация LLM-моделей (прокси для llama.cpp) | Go + llama.cpp | 8080 |
 | **stable-diffusion.cpp** | Генерация изображений (Z_image_turbo) и редактирование (Flux.2 Klein 4B) | C++ + CUDA | 7861 |
+| **LTX-Video** | Генерация видео (text-to-video / image+text-to-video) | Python + PyTorch | 7872 |
 | **Whisper ASR** | Распознавание речи | faster_whisper | 9000 |
 | **Piper TTS** | Синтез речи | ONNX + Piper | 8888 |
 | **Qdrant** | Векторная база данных для RAG | Rust | 6333 |
@@ -103,18 +111,20 @@
 Все сервисы работают на одной машине с разделением GPU:
 
 ```text
-┌──────────────────────────────────────────────────────┐
+┌───────────────────────────────────────────────────────────────┐
 │              FLAI Web (Flask)                        │
-│   Очередь Redis → Маршрутизатор → Ответ              │
-└──────┬──────────┬────────────┬───────────────────────┘
-       │          │            │
-       ▼          ▼            ▼
-  llama-swap  sd.cpp      Whisper/Piper/Qdrant
-  :8080       :7861       (отдельные контейнеры)
-  (динамическая маршрутизация моделей через llama-swap)
+│           Очередь Redis → Маршрутизатор → Ответ               │
+└──────┬──────────┬────────────┬──────────────┬─────────────────┘
+       │          │            │              │
+       ▼          ▼            ▼              ▼
+   llama-swap  sd.cpp      LTX-Video    Whisper/Piper/Qdrant
+   :8080       :7861       :7872        (отдельные контейнеры)
+   (динамическая маршрутизация моделей через llama-swap)
 ```
 
 **Динамическая маршрутизация моделей**: llama-swap выступает прокси для llama.cpp, динамически загружая/выгружая GGUF-модели по запросу. В VRAM одновременно находится только одна модель, переключение происходит автоматически на основе типа запроса. Конфигурация моделей управляется через панель администратора и хранится в базе данных.
+
+> 🎬 **Генерация видео** использует **отдельный GPU-контейнер** (`ltxvideo`) с собственной VRAM-областью. Перед каждой генерацией видео LLM-модель llama.cpp автоматически выгружается из VRAM для освобождения памяти под видео-пайплайн (трансформер + VAE ≈ 6 GiB). T5 text encoder остаётся на CPU для экономии VRAM.
 
 ---
 
@@ -179,13 +189,16 @@ cd flai
 # Всё включая RAG (Qdrant)
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag
 
+# + Генерация видео (LTX-Video)
+./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video
+
 # Запуск тестов после развёртывания
 ./deploy.sh --download-models --with-image-gen --run-tests
 ```
 
 Также доступна русская версия скрипта:
 ```bash
-./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag
+./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag --with-video
 ```
 
 ### Вариант B: Ручное развёртывание
@@ -318,6 +331,7 @@ docker exec flai-web flask admin-password ВашНадёжныйПароль123
 - 🧠 **Продвинутые рассуждения** — сложные вычисления, генерация кода, творческие задачи
 - 🔍 **Анализировать изображения** — загружать фото и задавать вопросы (мультимодально)
 - 🎨 **Генерировать изображения** — создавать картинки по текстовому описанию
+- 🎬 **Генерировать видео** — создавать короткие видео из текста или изображения
 - ✏️ **Редактировать изображения** — загрузить и изменить (цвета, объекты, стилизация)
 - 🎤 **Отправлять голосовые сообщения** — распознавание речи через Whisper ASR
 - 🗣️ **Слушать ответы** — синтез речи через Piper TTS (мужской/женский, EN/RU)
@@ -355,6 +369,7 @@ PIPER_URL=http://flai-piper:8888/tts
 QDRANT_URL=http://flai-qdrant:6333
 QDRANT_API_KEY=ваш_ключ_qdrant
 CAMERA_API_URL=http://flai-room-snapshot-api:5000
+LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872  # LTX-Video генерация видео
 ```
 
 **Параметры генерации изображений по умолчанию:**
@@ -408,13 +423,16 @@ DEBUG_API_ENABLED=false   # Установите 'true' только для ра
 ### Профили Docker Compose
 
 ```bash
-# Запуск всех сервисов
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
+# Запуск всех сервисов (чат + изображения + голос + RAG + видео)
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video up -d
 
-# Чат + голос (без изображений)
+# Чат + голос (без изображений и видео)
 docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 
-# Только чат (без изображений и голоса)
+# Генерация видео
+docker compose -f docker-compose.gpu.yml --profile with-video up -d
+
+# Только чат (без изображений, голоса и видео)
 docker compose -f docker-compose.gpu.yml up -d
 
 # Остановка всех сервисов
@@ -482,6 +500,35 @@ services/llamacpp/models/
 3. Оригинальное изображение сохраняется, за исключением запрошенных изменений
 
 Редактирование использует отдельные файлы моделей и работает независимо от генерации — конфликтов между ними нет.
+
+### Генерация видео (LTX-Video 2B)
+
+Проект использует **LTX-Video 2B 0.9.8 distilled** для генерации видео:
+
+| Модель | Шаги | Частота кадров | Разрешение | Примечания |
+|--------|------|---------------|------------|------------|
+| **LTX-Video 2B distilled** | 8 | 8–30 fps | до 768×1344 | Дистиллированная, один GPU (~6 ГБ VRAM) |
+
+Генерация видео запускается в **отдельном GPU-контейнере** (через `--profile with-video`). Перед генерацией LLM-модель llama.cpp автоматически выгружается из VRAM. T5 text encoder (~8,9 ГБ в bf16) остаётся на CPU.
+
+**Требуемые модели:**
+1. `ltxv-2b-0.9.8-distilled.safetensors` (~5,9 ГБ) — диффузионный трансформер + VAE
+2. `PixArt-alpha/PixArt-XL-2-1024-MS` text encoder / tokenizer — T5-XXL кодировщик (~18 ГБ на диске в float32, ~8,9 ГБ в VRAM в bf16)
+
+```bash
+# Загрузка через скрипт развёртывания
+./deploy.sh --download-models --with-video
+
+# Или вручную:
+bash services/ltx_video/download-t5-encoder.sh
+```
+
+**Конфигурация:**
+```bash
+LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872
+LTX_VIDEO_MODEL=ltxv-2b-0.9.8-distilled
+LTX_VIDEO_TIMEOUT=600
+```
 
 ### Сборка stable-diffusion.cpp
 
@@ -658,6 +705,7 @@ curl http://localhost:5000/metrics
 
 ### ✅ Завершено
 
+- **Генерация видео (LTX-Video 2B)** — text-to-video и image+text-to-video. Отдельный GPU-контейнер с изоляцией VRAM, T5 encoder на CPU, авто-выгрузка LLM llama.cpp. 8 шагов дистиллированного инференса, ~11с для 9 кадров 320×512.
 - **Режим роутера llama.cpp** (`--models-dir`) — один llama-server с динамическим переключением моделей
 - **stable-diffusion.cpp** — Z-Image-Turbo для генерации, Flux.2 Klein 4B для редактирования
 - **OpenAI-совместимый API** (`/v1/chat/completions`, `/v1/embeddings`)
@@ -742,6 +790,13 @@ curl http://localhost:5000/metrics
 | **Flux.2 Klein 4B (flux-2-klein-4b-Q8_0)** | Редактирование (смена цветов, удаление объектов, стилизация) | [Flux License](https://huggingface.co/black-forest-labs/FLUX.2-Klein-dev) | ~4,5 ГБ |
 | **flux2_ae.safetensors** | VAE для Flux.2 редактирования | [Flux License](https://huggingface.co/black-forest-labs/FLUX.2-dev) | ~0,3 ГБ |
 
+### Модели генерации видео
+
+| Модель | Назначение | Лицензия | Примерный размер |
+|--------|-----------|---------|--------------|
+| **ltxv-2b-0.9.8-distilled.safetensors** | LTX-Video 2B диффузионный трансформер + VAE | [LTX-Video License](https://huggingface.co/Lightricks/LTX-Video) | ~5,9 ГБ |
+| **PixArt T5-XXL (text_encoder)** | T5 text encoder для LTX-Video | [PixArt License](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS) | ~18 ГБ (диск, float32) |
+
 ### Голосовые модели
 
 | Модель | Назначение | Лицензия | Примерный размер |
@@ -763,6 +818,7 @@ curl http://localhost:5000/metrics
 | + Генерация изображений | ~28 ГБ |
 | + Редактирование изображений | ~31 ГБ |
 | + Голос (TTS + Whisper) | ~35 ГБ |
+| + Генерация видео (LTX-Video + T5 encoder) | ~59 ГБ *(T5 encoder ~18 ГБ на диске в float32)* |
 
 > **Примечание**: После загрузки моделей ПЛИИ работает полностью офлайн. Внешние скрипты и модули не загружаются во время работы.
 

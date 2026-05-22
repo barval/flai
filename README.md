@@ -22,6 +22,7 @@
 - 🔍 **Multimodal Analysis** – upload images and ask questions about their content (llama.cpp + mmproj)
 - 🎨 **Image Generation** – create images from text using stable-diffusion.cpp with automatic prompt optimization
 - ✏️ **Image Editing** – upload an image and ask to edit it (Flux.2 Klein 4B model: change colors, remove objects, stylize)
+- 🎬 **Video Generation** – create short videos from text or image+text prompts using LTX-Video 2B (distilled, 8-step inference)
 - 🎤 **Voice Transcription** – convert voice messages to text using Whisper ASR (faster_whisper)
 - 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper TTS (male and female voices in English and Russian)
 
@@ -69,9 +70,13 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v8.5
+### What's New in v8.7
 
-| v8.5 (New) | Notes |
+| v8.7 (New) | Notes |
+|------------|-------|
+| 🎬 **Video generation** | Text-to-video and image+text-to-video via LTX-Video 2B distilled model. Separate GPU container with VRAM isolation, T5 encoder on CPU (~8.9 GiB VRAM saved). 8-step inference, ~11s for 9 frames at 320×512. Requires PyTorch with sm_120 support for RTX 5060 Ti (cu128 nightly). Enable with `--profile with-video`. |
+
+| v8.6 | Notes |
 |------------|-------|
 | 🔄 **Page-refresh recovery** | ⚡ indicator, live streaming, and final response all survive F5 during generation — `onStreamToken`/`onResultCompleted` now handle missing `pendingRequestIds` after reload |
 | 🖥️ **VRAM monitor & auto-degradation** | Background VRAM polling via `nvidia-smi` every 60s. Progressive model degradation (100%→0% n_gpu_layers in 4 steps) on OOM. `_MAX_SAFE_NGL` per-VRAM-tier safety caps (16GB → ngl 24). All models in single `llm_fast` swap group |
@@ -90,6 +95,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | **Flask Web** | Web interface, routing, API | Python | 5000 |
 | **llama-swap** | Dynamic LLM model routing & management (llama.cpp proxy) | Go + llama.cpp | 8080 |
 | **stable-diffusion.cpp** | Image generation (Z_image_turbo) and editing (Flux.2 Klein 4B) | C++ + CUDA | 7861 |
+| **LTX-Video** | Video generation (text-to-video / image+text-to-video) | Python + PyTorch | 7872 |
 | **Whisper ASR** | Speech-to-text transcription | faster_whisper | 9000 |
 | **Piper TTS** | Text-to-speech synthesis | ONNX + Piper | 8888 |
 | **Qdrant** | Vector database for RAG | Rust | 6333 |
@@ -103,18 +109,20 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 All services run on one machine with GPU sharing:
 
 ```text
-┌──────────────────────────────────────────────────────┐
-│                 FLAI Web (Flask)                     │
-│   Redis Queue → Model Router → Response              │
-└──────┬──────────┬────────────┬───────────────────────┘
-       │          │            │
-       ▼          ▼            ▼
-   llama-swap  sd.cpp      Whisper/Piper/Qdrant
-   :8080       :7861       (separate containers)
+┌───────────────────────────────────────────────────────────────┐
+│                       FLAI Web (Flask)                        │
+│           Redis Queue → Model Router → Response               │
+└──────┬──────────┬────────────┬──────────────┬─────────────────┘
+       │          │            │              │
+       ▼          ▼            ▼              ▼
+   llama-swap  sd.cpp      LTX-Video    Whisper/Piper/Qdrant
+   :8080       :7861       :7872        (separate containers)
    (dynamic model routing via llama-swap)
 ```
 
 **Dynamic Model Routing**: llama-swap acts as a proxy to llama.cpp, dynamically loading/unloading GGUF models on demand. Only one model occupies VRAM at a time, with automatic switching based on request type. Model configuration is managed via the admin panel and stored in the database.
+
+> 🎬 **Video generation** uses a **separate GPU container** (`ltxvideo`) with its own VRAM context. Before each video generation, the llama.cpp LLM model is automatically unloaded from VRAM to free memory for the video pipeline (transformer + VAE ≈ 6 GiB). The T5 text encoder stays on CPU to conserve VRAM.
 
 ---
 
@@ -178,6 +186,9 @@ cd flai
 
 # Everything including RAG (Qdrant)
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag
+
+# + Video generation (LTX-Video)
+./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video
 
 # Run tests after deployment
 ./deploy.sh --download-models --with-image-gen --run-tests
@@ -286,8 +297,8 @@ docker compose -f docker-compose.gpu.yml --profile with-image-gen up -d
 # With voice features
 docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 
-# Full stack: chat + images + voice + RAG
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
+# Full stack: chat + images + voice + RAG + video
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video up -d
 ```
 
 > ⏱️ **First build takes time**: stable-diffusion.cpp is compiled from source (~5-10 minutes). Subsequent builds use the cache.
@@ -316,6 +327,7 @@ Now you can:
 - 🔍 **Analyze Images** — upload photos and ask questions (multimodal)
 - 🎨 **Generate Images** — create images from text descriptions
 - ✏️ **Edit Images** — upload and edit (change colors, remove objects, stylize)
+- 🎬 **Generate Videos** — create short videos from text or image+text prompts
 - 🎤 **Send Voice Messages** — speech-to-text via Whisper ASR
 - 🗣️ **Listen to Responses** — text-to-speech via Piper TTS (male/female, EN/RU)
 - 📚 **Search Documents** — upload PDF/DOC/TXT and ask questions (RAG)
@@ -352,6 +364,7 @@ PIPER_URL=http://flai-piper:8888/tts
 QDRANT_URL=http://flai-qdrant:6333
 QDRANT_API_KEY=your_qdrant_api_key
 CAMERA_API_URL=http://flai-room-snapshot-api:5000
+LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872  # LTX-Video video generation
 ```
 
 **Image Generation Defaults:**
@@ -405,13 +418,16 @@ Configuration is loaded from `gunicorn_config.py`, not inline CLI args.
 ### Docker Compose Profiles
 
 ```bash
-# Start all services
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
+# Start all services (chat + images + voice + RAG + video)
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video up -d
 
 # Chat + voice only
 docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 
-# Chat only (no images, no voice)
+# Video generation
+docker compose -f docker-compose.gpu.yml --profile with-video up -d
+
+# Chat only (no images, no voice, no video)
 docker compose -f docker-compose.gpu.yml up -d
 
 # Stop all services
@@ -474,6 +490,35 @@ The project uses **Z_image_turbo** as the only image generation model:
 Configure via `SD_MODEL_TYPE` in `.env`:
 ```bash
 SD_MODEL_TYPE=z_image_turbo
+```
+
+### Video Generation (LTX-Video 2B)
+
+The project uses **LTX-Video 2B 0.9.8 distilled** for video generation:
+
+| Model | Steps | Frame Rate | Resolution | Notes |
+|-------|-------|-----------|------------|-------|
+| **LTX-Video 2B distilled** | 8 | 8–30 fps | up to 768×1344 | Distilled, single GPU (~6 GB VRAM) |
+
+Video generation runs in a **separate GPU container** (via `--profile with-video`). Before generating, the llama.cpp LLM is automatically unloaded from VRAM to free memory. The T5 text encoder (~8.9 GB in bf16) stays on CPU.
+
+**Required models:**
+1. `ltxv-2b-0.9.8-distilled.safetensors` (~5.9 GB) — diffusion transformer + VAE
+2. `PixArt-alpha/PixArt-XL-2-1024-MS` text encoder / tokenizer — T5-XXL encoder (~18 GB on disk in float32, ~8.9 GB in VRAM in bf16)
+
+```bash
+# Download via deploy script
+./deploy.sh --download-models --with-video
+
+# Or manually:
+bash services/ltx_video/download-t5-encoder.sh
+```
+
+**Configuration:**
+```bash
+LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872
+LTX_VIDEO_MODEL=ltxv-2b-0.9.8-distilled
+LTX_VIDEO_TIMEOUT=600
 ```
 
 ### Image Editing (Flux.2 Klein 4B)
@@ -661,6 +706,7 @@ curl http://localhost:5000/metrics
 
 ### ✅ Completed
 
+- **Video generation (LTX-Video 2B)** — text-to-video and image+text-to-video. Separate GPU container with VRAM isolation, T5 encoder on CPU, llama.cpp LLM auto-unload. 8-step distilled inference, ~11s for 9 frames at 320×512.
 - **llama.cpp router mode** (`--models-dir`) — single llama-server with dynamic model switching
 - **stable-diffusion.cpp** — Z-Image-Turbo for generation, Flux.2 Klein 4B for editing
 - **OpenAI-compatible API** (`/v1/chat/completions`, `/v1/embeddings`)
@@ -745,6 +791,13 @@ curl http://localhost:5000/metrics
 | **Flux.2 Klein 4B (flux-2-klein-4b-Q8_0)** | Image editing (change colors, remove objects, stylize) | [Flux License](https://huggingface.co/black-forest-labs/FLUX.2-Klein-dev) | ~4.5 GB |
 | **flux2_ae.safetensors** | VAE for Flux.2 editing | [Flux License](https://huggingface.co/black-forest-labs/FLUX.2-dev) | ~0.3 GB |
 
+### Video Generation Models
+
+| Model | Purpose | License | Approx. Size |
+|-------|---------|---------|-------------|
+| **ltxv-2b-0.9.8-distilled.safetensors** | LTX-Video 2B diffusion transformer + VAE | [LTX-Video License](https://huggingface.co/Lightricks/LTX-Video) | ~5.9 GB |
+| **PixArt T5-XXL (text_encoder)** | T5 text encoder for LTX-Video | [PixArt License](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS) | ~18 GB (disk, float32) |
+
 ### Voice Models
 
 | Model | Purpose | License | Approx. Size |
@@ -766,6 +819,7 @@ curl http://localhost:5000/metrics
 | + Image generation | ~28 GB |
 | + Image editing | ~31 GB |
 | + Voice (TTS + Whisper) | ~35 GB |
+| + Video generation (LTX-Video + T5 encoder) | ~59 GB *(T5 encoder ~18 GB on disk in float32)* |
 
 > **Note**: After downloading models, FLAI works completely offline. No external scripts or modules are loaded at runtime.
 
@@ -850,6 +904,8 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 | bge-m3-Q8_0 | Embedding | MIT | ~0.6 GB |
 | Z-Image-Turbo (z_image_turbo-Q8_0) | Image Generation | Apache 2.0 | ~6.2 GB |
 | Flux.2 Klein 4B (flux-2-klein-4b-Q8_0) | Image Editing | Apache 2.0 | ~4.5 GB |
+| **LTX-Video 2B** (ltxv-2b-0.9.8-distilled.safetensors) | Video Generation | [LTX-Video License](https://huggingface.co/Lightricks/LTX-Video) | ~5.9 GB |
+| **PixArt T5-XXL** (text_encoder) | T5 text encoder for LTX-Video | [PixArt License](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS) | ~18 GB (disk, float32) |
 
 ## 📄 License
 

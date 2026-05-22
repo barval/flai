@@ -1,0 +1,49 @@
+# Dockerfile for LTX-Video inference server with CUDA
+# Uses PyTorch base image with CUDA 12.4
+
+FROM pytorch/pytorch:2.5.0-cuda12.4-cudnn9-runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    git \
+    curl \
+    ffmpeg \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir \
+    "git+https://github.com/Lightricks/LTX-Video.git" \
+    flask \
+    gunicorn \
+    pyyaml \
+    imageio \
+    imageio-ffmpeg \
+    av
+
+# Install PyTorch with CUDA 12.8 for RTX 5060 Ti (sm_120) support.
+# Must be AFTER ltx-video install, otherwise pip downgrades torch.
+RUN pip install --no-cache-dir --force-reinstall --pre torch --index-url https://download.pytorch.org/whl/nightly/cu128 && \
+    pip install --no-cache-dir --force-reinstall --pre --no-deps torchvision --index-url https://download.pytorch.org/whl/nightly/cu128
+
+# Create directories
+RUN mkdir -p /app/models \
+    /app/models/huggingface \
+    /app/logs
+
+WORKDIR /app
+
+COPY ltx_wrapper.py /app/ltx_wrapper.py
+
+# Port for HTTP wrapper
+EXPOSE 7872
+
+ENV HF_HOME=/app/models/huggingface
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=180s \
+    CMD curl -f http://localhost:7872/health || exit 1
+
+CMD ["gunicorn", "-w", "1", "-b", "0.0.0.0:7872", "--timeout", "600", "--access-logfile", "-", "--error-logfile", "-", "ltx_wrapper:app"]

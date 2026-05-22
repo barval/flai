@@ -287,6 +287,118 @@ class MultimodalModule(TranslationMixin):
             self.logger.error(f"JSON parsing error: {str(e)}")
             return None, self._("JSON parsing error: {error}", lang, error=str(e))
 
+    def generate_video_params(
+        self, user_query: str, lang: str = "ru", response_style: str = "neutral"
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """Generate parameters for video creation via LTX-Video."""
+        if not self.check_availability():
+            return None, self._("Multimodal model unavailable", lang)
+
+        create_prompt = format_prompt(
+            "create_video.template",
+            {
+                "video_query": user_query,
+                "response_style": "",
+            },
+            lang=lang,
+        )
+
+        if not create_prompt:
+            return None, self._("Error loading prompt template", lang)
+
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a video generation parameter generator. Always respond with valid JSON only, no explanations.",
+            },
+            {"role": "user", "content": create_prompt},
+        ]
+
+        response = self._call_multimodal(messages, lang=lang)
+        self.logger.info(f"Multimodal model video param response: {response[:500]}")
+
+        try:
+            import re
+
+            json_match = re.search(r"\{\{\{[\s\S]*?\}\}\}|\{[\s\S]*\}", response)
+            if json_match:
+                json_str = json_match.group()
+                prompt_data = json.loads(json_str)
+                self.logger.info(f"Parsed video prompt_data: {prompt_data}")
+
+                if "prompt" not in prompt_data or not prompt_data["prompt"].strip():
+                    prompt_data["prompt"] = user_query
+                if "negative_prompt" not in prompt_data:
+                    prompt_data["negative_prompt"] = "worst quality, inconsistent motion, blurry, jittery, distorted"
+                if "width" not in prompt_data:
+                    prompt_data["width"] = 896
+                if "height" not in prompt_data:
+                    prompt_data["height"] = 512
+                if "num_frames" not in prompt_data:
+                    prompt_data["num_frames"] = 257
+                if "frame_rate" not in prompt_data:
+                    prompt_data["frame_rate"] = 30
+
+                return prompt_data, None
+            else:
+                return None, self._("Could not find JSON in model response", lang)
+        except Exception as e:
+            self.logger.error(f"JSON parsing error: {str(e)}")
+            return None, self._("JSON parsing error: {error}", lang, error=str(e))
+
+    def generate_video_params_from_image(
+        self, user_query: str, image_base64: str, lang: str = "ru", response_style: str = "neutral"
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """Generate parameters for video creation from image + text."""
+        if not self.check_availability():
+            return None, self._("Multimodal model unavailable", lang)
+
+        create_prompt = format_prompt(
+            "create_video_from_image.template",
+            {
+                "video_query": user_query,
+                "response_style": "",
+            },
+            lang=lang,
+        )
+
+        if not create_prompt:
+            return None, self._("Error loading prompt template", lang)
+
+        response = self.llamacpp.chat_with_image(
+            text=create_prompt, image_base64=image_base64, model_type="multimodal", lang=lang
+        )
+        self.logger.info(f"Multimodal model video-from-image param response: {response[:500]}")
+
+        try:
+            import re
+
+            json_match = re.search(r"\{\{\{[\s\S]*?\}\}\}|\{[\s\S]*\}", response)
+            if json_match:
+                json_str = json_match.group()
+                prompt_data = json.loads(json_str)
+                self.logger.info(f"Parsed video-from-image prompt_data: {prompt_data}")
+
+                if "prompt" not in prompt_data or not prompt_data["prompt"].strip():
+                    prompt_data["prompt"] = user_query
+                if "negative_prompt" not in prompt_data:
+                    prompt_data["negative_prompt"] = "worst quality, inconsistent motion, blurry, jittery, distorted"
+                if "width" not in prompt_data:
+                    prompt_data["width"] = 896
+                if "height" not in prompt_data:
+                    prompt_data["height"] = 512
+                if "num_frames" not in prompt_data:
+                    prompt_data["num_frames"] = 257
+                if "frame_rate" not in prompt_data:
+                    prompt_data["frame_rate"] = 30
+
+                return prompt_data, None
+            else:
+                return None, self._("Could not find JSON in model response", lang)
+        except Exception as e:
+            self.logger.error(f"JSON parsing error: {str(e)}")
+            return None, self._("JSON parsing error: {error}", lang, error=str(e))
+
     def _call_multimodal(self, messages: list[dict[str, Any]], lang: str = "ru") -> str:
         """Call multimodal model via llama.cpp client (delegates to LlamaCppClient)."""
         # LlamaCppClient handles validation and configuration internally

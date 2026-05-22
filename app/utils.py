@@ -590,6 +590,7 @@ def get_gguf_model_info(model_path: str) -> dict[str, Any]:
         "architecture": None,
         "block_count": None,
         "expert_count": None,
+        "parameter_count": None,
         "file_size_mb": None,
     }
 
@@ -649,6 +650,15 @@ def get_gguf_model_info(model_path: str) -> dict[str, Any]:
                 result["size_label"] = bytes(val.tolist()).decode("utf-8", errors="replace")  # type: ignore[assignment]
             else:
                 result["size_label"] = str(val)  # type: ignore[assignment]
+
+        if "general.parameter_count" in fields:
+            val = fields["general.parameter_count"].parts[-1]
+            if hasattr(val, "tolist"):
+                arr = val.tolist()
+                if isinstance(arr, list) and len(arr) == 1:
+                    val = arr[0]
+            if val is not None:
+                result["parameter_count"] = int(float(val))  # type: ignore[assignment]
 
         if model_path and os.path.exists(model_path):
             result["file_size_mb"] = os.path.getsize(model_path) / (1024 * 1024)  # type: ignore[assignment]
@@ -1203,8 +1213,19 @@ def init_gguf_cache_db():
             """)
             conn.commit()
 
-            c.execute("ALTER TABLE gguf_models_cache ADD COLUMN IF NOT EXISTS expert_count INTEGER DEFAULT 0")
-            conn.commit()
+            for col in [
+                "expert_count INTEGER DEFAULT 0",
+                "head_count INTEGER",
+                "head_count_kv INTEGER",
+                "key_length INTEGER",
+                "value_length INTEGER",
+                "parameter_count BIGINT",
+            ]:
+                try:
+                    c.execute(f"ALTER TABLE gguf_models_cache ADD COLUMN IF NOT EXISTS {col}")
+                    conn.commit()
+                except Exception:
+                    pass
         logger.info("Initialized gguf_models_cache table in database")
     except Exception as e:
         logger.warning(f"Could not create gguf_models_cache table: {e}")
@@ -1216,23 +1237,39 @@ def get_gguf_models_from_cache() -> dict[str, Any]:
     Returns:
         Dict mapping model_name -> metadata dict
     """
+    import re
+
     from .database import get_db
 
     result = {}
+    _numpy_re = re.compile(r"^\[\s*\d+(?:\s+\d+)*\s*\]$")
     try:
         with get_db() as conn:
             c = conn.cursor()
             c.execute(
-                "SELECT model_name, context_length, embedding_length, architecture, block_count, expert_count, file_size_mb FROM gguf_models_cache"
+                "SELECT model_name, context_length, embedding_length, architecture, block_count, expert_count, file_size_mb, head_count, head_count_kv, key_length, value_length, parameter_count FROM gguf_models_cache"
             )
             for row in c.fetchall():
+                arch = row["architecture"]
+                if arch and _numpy_re.match(arch):
+                    # Fix bad architecture stored as numpy array string e.g. "[113 119 101 110 51]"
+                    try:
+                        decoded = bytes(int(x) for x in arch.strip("[]").split()).decode("utf-8", errors="replace")
+                        arch = decoded
+                    except Exception:
+                        pass
                 result[row["model_name"]] = {
                     "context_length": row["context_length"],
                     "embedding_length": row["embedding_length"],
-                    "architecture": row["architecture"],
+                    "architecture": arch,
                     "block_count": row["block_count"],
                     "expert_count": row["expert_count"],
                     "file_size_mb": row["file_size_mb"],
+                    "head_count": row["head_count"],
+                    "head_count_kv": row["head_count_kv"],
+                    "key_length": row["key_length"],
+                    "value_length": row["value_length"],
+                    "parameter_count": row["parameter_count"],
                 }
     except Exception:
         pass
@@ -1253,8 +1290,8 @@ def save_gguf_model_to_cache(model_name: str, metadata: dict[str, Any]):
             c = conn.cursor()
             c.execute(
                 """
-                INSERT INTO gguf_models_cache (model_name, context_length, embedding_length, architecture, block_count, expert_count, file_size_mb, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                INSERT INTO gguf_models_cache (model_name, context_length, embedding_length, architecture, block_count, expert_count, file_size_mb, head_count, head_count_kv, key_length, value_length, parameter_count, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                 ON CONFLICT (model_name) DO UPDATE SET
                     context_length = EXCLUDED.context_length,
                     embedding_length = EXCLUDED.embedding_length,
@@ -1262,6 +1299,11 @@ def save_gguf_model_to_cache(model_name: str, metadata: dict[str, Any]):
                     block_count = EXCLUDED.block_count,
                     expert_count = EXCLUDED.expert_count,
                     file_size_mb = EXCLUDED.file_size_mb,
+                    head_count = EXCLUDED.head_count,
+                    head_count_kv = EXCLUDED.head_count_kv,
+                    key_length = EXCLUDED.key_length,
+                    value_length = EXCLUDED.value_length,
+                    parameter_count = EXCLUDED.parameter_count,
                     updated_at = CURRENT_TIMESTAMP
             """,
                 (
@@ -1272,6 +1314,11 @@ def save_gguf_model_to_cache(model_name: str, metadata: dict[str, Any]):
                     metadata.get("block_count"),
                     metadata.get("expert_count", 0),
                     metadata.get("file_size_mb"),
+                    metadata.get("head_count"),
+                    metadata.get("head_count_kv"),
+                    metadata.get("key_length"),
+                    metadata.get("value_length"),
+                    metadata.get("parameter_count"),
                 ),
             )
             conn.commit()
@@ -1289,6 +1336,10 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
         Dict mapping model_name -> metadata dict (from cache or freshly scanned)
     """
     import glob
+    import logging
+    import re
+
+    logger = logging.getLogger(__name__)
 
     # Ensure DB table exists with all required columns
     init_gguf_cache_db()
@@ -1307,6 +1358,15 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
 
     # Get cached metadata
     cached = get_gguf_models_from_cache()
+
+    # Detect and fix bad architecture values (numpy array string like "[113 119 101 110 51]")
+    # caused by str() on numpy bytes array in a previous buggy version
+    _numpy_re = re.compile(r"^\[\s*\d+(?:\s+\d+)*\s*\]$")
+    for model_name in list(cached.keys()):
+        arch = cached[model_name].get("architecture", "")
+        if arch and _numpy_re.match(str(arch)):
+            logger.warning(f"Detected bad architecture in cache for {model_name}: {arch!r}, will re-scan")
+            del cached[model_name]
 
     # Find models that need scanning (not in cache or missing from filesystem)
     missing_from_cache = current_files - set(cached.keys())
@@ -1332,8 +1392,14 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                                 "architecture": None,
                                 "block_count": None,
                                 "expert_count": None,
+                                "head_count": None,
+                                "head_count_kv": None,
+                                "key_length": None,
+                                "value_length": None,
+                                "parameter_count": None,
                                 "file_size_mb": os.path.getsize(f) / (1024 * 1024),
                             }
+                            arch_prefix = None
                             for key in fields:
                                 if key.endswith(".context_length") and scanned["context_length"] is None:
                                     val = fields[key].parts[-1]
@@ -1359,8 +1425,40 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                                             val = arr[0]
                                     if val is not None:
                                         scanned["expert_count"] = int(val)  # type: ignore[assignment]
+                                if "general.parameter_count" in fields and scanned["parameter_count"] is None:
+                                    val = fields["general.parameter_count"].parts[-1]
+                                    if hasattr(val, "tolist"):
+                                        arr = val.tolist()
+                                        if isinstance(arr, list) and len(arr) == 1:
+                                            val = arr[0]
+                                    if val is not None:
+                                        scanned["parameter_count"] = int(float(val))
                                 if "general.architecture" in fields and not scanned["architecture"]:
-                                    scanned["architecture"] = str(fields["general.architecture"].parts[-1])  # type: ignore[assignment]
+                                    arch_val = fields["general.architecture"].parts[-1]
+                                    if hasattr(arch_val, "tolist"):
+                                        decoded = bytes(arch_val.tolist()).decode("utf-8", errors="replace")
+                                        scanned["architecture"] = decoded
+                                        arch_prefix = decoded
+                                    else:
+                                        scanned["architecture"] = str(arch_val)
+                                        arch_prefix = str(arch_val)
+                                # KV cache related fields: head_count, head_count_kv, key_length, value_length
+                                if arch_prefix:
+                                    for suffix, field_name in [
+                                        (".attention.head_count", "head_count"),
+                                        (".attention.head_count_kv", "head_count_kv"),
+                                        (".attention.key_length", "key_length"),
+                                        (".attention.value_length", "value_length"),
+                                    ]:
+                                        lookup = f"{arch_prefix}{suffix}"
+                                        if lookup in fields and scanned[field_name] is None:
+                                            val = fields[lookup].parts[-1]
+                                            if hasattr(val, "tolist"):
+                                                arr = val.tolist()
+                                                if isinstance(arr, list) and len(arr) == 1:
+                                                    val = arr[0]
+                                            if val is not None:
+                                                scanned[field_name] = int(val)  # type: ignore[assignment]
                         except Exception:
                             pass
                         if (
@@ -1392,7 +1490,17 @@ def get_gguf_models_cached(models_dir: str = "/models") -> dict[str, Any]:
     global _gguf_models_cache
 
     if _gguf_models_cache is not None:
-        return _gguf_models_cache
+        # Defensive: check if any cached entry has bad architecture and re-sync if so
+        import re
+
+        _numpy_re = re.compile(r"^\[\s*\d+(?:\s+\d+)*\s*\]$")
+        for meta in _gguf_models_cache.values():
+            arch = meta.get("architecture", "")
+            if arch and _numpy_re.match(arch):
+                _gguf_models_cache = None
+                break
+        if _gguf_models_cache is not None:
+            return _gguf_models_cache
 
     # Initialize DB table if not exists
     init_gguf_cache_db()

@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 8.4\n"
+"Project-Id-Version: FLAI 8.5\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-05-20 10:49+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -789,7 +789,23 @@ msgstr "Использовано %1%% RAM"
 msgid "no_gpu_low"
 msgstr "Нет GPU. Использовано %1%% RAM - очень медленно"
 
+#: app/templates/admin.html:298
+msgid "vram_nodata_gpu"
+msgstr "GPU: %1% МБ (нет данных о модели)"
+
 #: app/templates/admin.html:299
+msgid "vram_nodata"
+msgstr "Нет данных для оценки"
+
+#: app/templates/admin.html:300
+msgid "vram_estimate_detail"
+msgstr " (модель=%1%МБ + KV=%2%МБ + compute=%3%МБ)"
+
+#: app/templates/admin.html:301
+msgid "ngl_info"
+msgstr "ngl=%1%, слоёв=%2%"
+
+#: app/templates/admin.html:302
 msgid ""
 "Reindexing all documents with new embedding model started. This may take "
 "a while."
@@ -915,7 +931,7 @@ msgstr "Выйти"
 
 #: app/templates/base.html:78 app/templates/chat.html:162
 msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v8.4 (c) 2026 Барсуков Валерий"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v8.5 (c) 2026 Барсуков Валерий"
 
 #: app/templates/chat.html:14 app/templates/chat.html:172
 msgid "New document"
@@ -1118,6 +1134,10 @@ msgid "seconds_suffix"
 msgstr "с"
 
 #: app/templates/chat.html:168
+msgid "tps_suffix"
+msgstr " ток/с"
+
+#: app/templates/chat.html:169
 msgid "byte_abbr"
 msgstr "Б"
 

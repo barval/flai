@@ -144,17 +144,15 @@ def _validate_use_gpu(use_gpu: bool) -> bool:
     return use_gpu and _check_cuda()
 
 
-def generate_image(data):
-    prompt = data.get("prompt", "")
-    steps = int(data.get("steps", DEFAULT_STEPS))
-    width = int(data.get("width", 1024))
-    height = int(data.get("height", 1024))
-    cfg_scale = float(data.get("cfg_scale", 1.0))
-    seed = int(data.get("seed", -1))
-    flow_shift = float(data.get("flow_shift", DEFAULT_FLOW_SHIFT))
-    sampler = data.get("sampling_method", DEFAULT_SAMPLER)
-    use_gpu = _validate_use_gpu(data.get("use_gpu", False))
+def _build_generate_cmd(prompt, steps, width, height, cfg_scale, seed, flow_shift, sampler, use_gpu, offload_level=0):
+    """Build sd-cli command for image generation with specified offload level.
 
+    offload_level:
+        0 — all on GPU
+        1 — clip/text encoder on CPU (--clip-on-cpu)
+        2 — clip + vae on CPU (--clip-on-cpu --vae-on-cpu)
+        3 — everything on CPU (--offload-to-cpu)
+    """
     cmd = [
         SD_CLI,
         "--diffusion-model",
@@ -182,59 +180,99 @@ def generate_image(data):
         str(flow_shift),
     ]
 
-    if not use_gpu:
+    if offload_level == 1:
+        cmd.append("--clip-on-cpu")
+    elif offload_level == 2:
+        cmd.extend(["--clip-on-cpu", "--vae-on-cpu"])
+    elif offload_level >= 3:
         cmd.append("--offload-to-cpu")
 
-    # Add sampler if specified
     if sampler:
         cmd.extend(["--sampler", sampler])
+    return cmd
 
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-        output_path = tmp.name
 
-    cmd.extend(["-o", output_path])
-
-    logger.info(f" Running: {' '.join(cmd[:12])}...")
-
+def _run_sd_cli(cmd, log_path, timeout=300):
+    """Run sd-cli subprocess and return (result_dict, tail_log)."""
     proc = None
+    output_path = None
     try:
-        with open("/tmp/sd_cli_output.log", "a") as log_file:
+        for part in cmd:
+            if part.startswith("/") and part.endswith(".png") and os.path.dirname(part):
+                output_path = part
+                break
+        if not output_path:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                output_path = tmp.name
+            cmd.extend(["-o", output_path])
+        with open(log_path, "a") as log_file:
             proc = subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
             try:
-                proc.wait(timeout=300)
+                proc.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait()
-                return {"error": "sd-cli timeout"}
+                return {"error": "sd-cli timeout"}, ""
         if proc.returncode != 0:
-            # Log full error for debugging
             try:
-                with open("/tmp/sd_cli_output.log") as f:
+                with open(log_path) as f:
                     log_tail = f.read()[-2000:]
             except Exception:
-                log_tail = "(no log available)"
-            logger.info(f" sd-cli failed (rc={proc.returncode}): {log_tail[:500]}")
-            # Return user-friendly message only
-            return {"error": "Image generation failed"}
-
+                log_tail = ""
+            return None, log_tail
         if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
-            return {"error": "Image generation produced empty output"}
-
+            return {"error": "sd-cli produced empty output"}, ""
         with open(output_path, "rb") as f:
             image_bytes = f.read()
-
-        return {"created": 0, "data": [{"b64_json": base64.b64encode(image_bytes).decode()}]}
+        return {"created": 0, "data": [{"b64_json": base64.b64encode(image_bytes).decode()}]}, ""
     except subprocess.TimeoutExpired:
-        return {"error": "sd-cli timeout"}
+        return {"error": "sd-cli timeout"}, ""
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": str(e)}, ""
     finally:
         if proc and proc.poll() is None:
             with contextlib.suppress(Exception):
                 proc.kill()
-        if os.path.exists(output_path):
+        if output_path and os.path.exists(output_path):
             with contextlib.suppress(Exception):
                 os.remove(output_path)
+
+
+def _is_oom_error(log_tail):
+    """Check if sd-cli log indicates an OOM error."""
+    return "out of memory" in log_tail.lower() or "cudamalloc" in log_tail.lower() or "cuda error" in log_tail.lower()
+
+
+def generate_image(data):
+    prompt = data.get("prompt", "")
+    steps = int(data.get("steps", DEFAULT_STEPS))
+    width = int(data.get("width", 1024))
+    height = int(data.get("height", 1024))
+    cfg_scale = float(data.get("cfg_scale", 1.0))
+    seed = int(data.get("seed", -1))
+    flow_shift = float(data.get("flow_shift", DEFAULT_FLOW_SHIFT))
+    sampler = data.get("sampling_method", DEFAULT_SAMPLER)
+    use_gpu = _validate_use_gpu(data.get("use_gpu", False))
+
+    offload_levels = range(4) if use_gpu else [3]
+
+    for level in offload_levels:
+        cmd = _build_generate_cmd(
+            prompt, steps, width, height, cfg_scale, seed, flow_shift, sampler, use_gpu, offload_level=level
+        )
+
+        logger.info(f" Running generate (offload_level={level}): {' '.join(cmd[:12])}...")
+
+        result, log_tail = _run_sd_cli(cmd, "/tmp/sd_cli_output.log", timeout=300)
+        if isinstance(result, dict):
+            return result
+        if log_tail and _is_oom_error(log_tail):
+            logger.warning(f" sd-cli OOM at offload_level={level}, retrying with more offload")
+            continue
+        logger.info(f" sd-cli failed (non-OOM): {log_tail[:300]}")
+        return {"error": "Image generation failed"}
+
+    return {"error": "Insufficient VRAM for image generation. Try disabling GPU or reducing image size."}
 
 
 def edit_image(data):
@@ -243,27 +281,15 @@ def edit_image(data):
         return _edit_image_impl(data)
 
 
-def _edit_image_impl(data):
-    edit_prompt = data.get("edit_prompt", "")
-    image_data = data.get("image_data", "")  # base64 encoded source image
-    use_gpu = _validate_use_gpu(data.get("use_gpu", False))
+def _build_edit_cmd(edit_prompt, src_path, use_gpu, offload_level=0):
+    """Build sd-cli command for image editing with specified offload level.
 
-    if not edit_prompt:
-        return {"error": "No edit prompt provided"}
-    if not image_data:
-        return {"error": "No source image provided"}
-
-    # Save source image to temp file
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as src_tmp:
-        src_tmp.write(base64.b64decode(image_data))
-        src_path = src_tmp.name
-
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as out_tmp:
-        output_path = out_tmp.name
-
-    # Flux.2 Klein 4B edit parameters
-    # Ref: https://github.com/leejet/stable-diffusion.cpp/blob/master/docs/flux2.md
-    # Flux Kontext mode: --cfg-scale 1.0, --steps 4, -r for reference image
+    offload_level:
+        0 — all on GPU
+        1 — clip/text encoder on CPU (--clip-on-cpu)
+        2 — clip + vae on CPU (--clip-on-cpu --vae-on-cpu)
+        3 — everything on CPU (--offload-to-cpu)
+    """
     cmd = [
         SD_CLI,
         "--diffusion-model",
@@ -289,67 +315,89 @@ def _edit_image_impl(data):
         "--diffusion-fa",
     ]
 
-    if not use_gpu:
+    if offload_level == 1:
+        cmd.append("--clip-on-cpu")
+    elif offload_level == 2:
+        cmd.extend(["--clip-on-cpu", "--vae-on-cpu"])
+    elif offload_level >= 3:
         cmd.extend(["--offload-to-cpu", "--vae-on-cpu", "--clip-on-cpu"])
 
-    cmd.extend(
-        [
-            # Use unified cache for better memory management
-            "--cache-mode",
-            "ucache",
-            "-o",
-            output_path,
-        ]
-    )
+    cmd.extend(["--cache-mode", "ucache"])
+    return cmd
 
-    logger.info(f" Running edit: {' '.join(cmd[:12])}...")
 
-    proc = None
+def _edit_image_impl(data):
+    edit_prompt = data.get("edit_prompt", "")
+    image_data = data.get("image_data", "")
+    use_gpu = _validate_use_gpu(data.get("use_gpu", False))
+
+    if not edit_prompt:
+        return {"error": "No edit prompt provided"}
+    if not image_data:
+        return {"error": "No source image provided"}
+
+    # Save source image to temp file
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as src_tmp:
+        src_tmp.write(base64.b64decode(image_data))
+        src_path = src_tmp.name
+
     try:
-        with open("/tmp/sd_cli_edit_output.log", "a") as log_file:
-            proc = subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
+        offload_levels = range(4) if use_gpu else [3]
+        for level in offload_levels:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as out_tmp:
+                output_path = out_tmp.name
+
+            cmd = _build_edit_cmd(edit_prompt, src_path, use_gpu, offload_level=level)
+            cmd.extend(["-o", output_path])
+
+            logger.info(f" Running edit (offload_level={level}): {' '.join(cmd[:12])}...")
+
+            proc = None
             try:
-                proc.wait(timeout=900)  # 15 minutes for edit operations
+                with open("/tmp/sd_cli_edit_output.log", "a") as log_file:
+                    proc = subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
+                    try:
+                        proc.wait(timeout=900)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait()
+                        return {"error": "sd-cli edit timeout"}
+                if proc.returncode != 0:
+                    try:
+                        with open("/tmp/sd_cli_edit_output.log") as f:
+                            log_tail = f.read()[-2000:]
+                    except Exception:
+                        log_tail = ""
+                    logger.info(f" sd-cli edit failed (rc={proc.returncode}): {log_tail[:300]}")
+                    if _is_oom_error(log_tail):
+                        logger.warning(f" sd-cli edit OOM at offload_level={level}, retrying")
+                        continue
+                    if "timeout" in log_tail.lower():
+                        return {"error": "Image editing timeout"}
+                    return {"error": "Image editing failed"}
+
+                if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+                    return {"error": "Image editing produced empty output"}
+
+                with open(output_path, "rb") as f:
+                    image_bytes = f.read()
+
+                logger.info(f" Edit completed: {len(image_bytes)} bytes")
+                return {"created": 0, "data": [{"b64_json": base64.b64encode(image_bytes).decode()}]}
             except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
                 return {"error": "sd-cli edit timeout"}
-        if proc.returncode != 0:
-            try:
-                with open("/tmp/sd_cli_edit_output.log") as f:
-                    log_tail = f.read()[-2000:]
-            except Exception:
-                log_tail = "(no log available)"
-            logger.info(f" sd-cli edit failed (rc={proc.returncode}): {log_tail[:500]}")
-            # Return detailed error to caller
-            if "out of memory" in log_tail.lower() or "cudaMalloc failed" in log_tail:
-                return {
-                    "error": "Insufficient VRAM (VRAM) for image editing. Try reducing the image size or closing other GPU tasks."
-                }
-            elif "timeout" in log_tail.lower():
-                return {"error": "Image editing timeout"}
-            else:
-                return {"error": "Image editing failed"}
+            except Exception as e:
+                return {"error": str(e)}
+            finally:
+                if proc and proc.poll() is None:
+                    with contextlib.suppress(Exception):
+                        proc.kill()
+                if os.path.exists(output_path):
+                    with contextlib.suppress(Exception):
+                        os.remove(output_path)
 
-        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
-            return {"error": "Image editing produced empty output"}
-
-        with open(output_path, "rb") as f:
-            image_bytes = f.read()
-
-        logger.info(f" Edit completed: {len(image_bytes)} bytes")
-        return {"created": 0, "data": [{"b64_json": base64.b64encode(image_bytes).decode()}]}
-    except subprocess.TimeoutExpired:
-        return {"error": "sd-cli edit timeout"}
-    except Exception as e:
-        return {"error": str(e)}
+        return {"error": "Insufficient VRAM for image editing. Try reducing the image size or closing other GPU tasks."}
     finally:
-        if proc and proc.poll() is None:
-            with contextlib.suppress(Exception):
-                proc.kill()
-        if os.path.exists(output_path):
-            with contextlib.suppress(Exception):
-                os.remove(output_path)
         if os.path.exists(src_path):
             with contextlib.suppress(Exception):
                 os.remove(src_path)

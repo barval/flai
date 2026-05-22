@@ -224,7 +224,8 @@ function loadMessages(sessionId) {
                             mmModel,
                             genModel,
                             msg.id,
-                            msg.response_style
+                            msg.response_style,
+                            msg.completion_tokens
                         );
                         lastUserMessage = null;
                         }
@@ -259,7 +260,7 @@ function getResponseStyleEmoji(style) {
     return map[style] || '';
 }
 
-function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle) {
+function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens) {
     if (window.IS_RELOADING) {
         dlog('displayMessage: Skipping - IS_RELOADING');
         return;
@@ -470,6 +471,12 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         if (duration) {
             const langSuffix = t('seconds_suffix');
             headerExtraHTML += ' <span class="text-muted">| ⏱️ ' + duration + langSuffix + ' |</span>';
+
+            // Tokens per second
+            if (completionTokens) {
+                var tps = (completionTokens / parseFloat(duration)).toFixed(1);
+                headerExtraHTML += ' <span class="text-muted">🚀 ' + tps + t('tps_suffix') + ' |</span>';
+            }
         }
 
         // Add model name and duration to header

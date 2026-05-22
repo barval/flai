@@ -345,6 +345,259 @@ def get_hardware():
         return jsonify({"error": _("Internal server error")}), 500
 
 
+def _find_gguf_path(name: str, models_dir: str = "/models") -> str | None:
+    """Find a GGUF file by name (with or without .gguf suffix), searching
+    the models directory and any subdirectories."""
+    if not name.endswith(".gguf"):
+        name = name + ".gguf"
+    full = os.path.join(models_dir, name)
+    if os.path.exists(full):
+        return full
+    for root, _dirs, files in os.walk(models_dir):
+        for f in files:
+            if f == name:
+                return os.path.join(root, f)
+    return None
+
+
+def _get_actual_vram_mb() -> tuple[int | None, int | None]:
+    """Return (used_vram_mb, total_vram_mb) from nvidia-smi, or (None, None)."""
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            parts = result.stdout.strip().split(",")
+            return int(parts[0].strip()), int(parts[1].strip())
+    except Exception:
+        pass
+    return None, None
+
+
+def _estimate_model_vram(
+    file_size_mb: float,
+    block_count: int,
+    ngl: int,
+    expert_count: int = 0,
+    ctx_size: int = 8192,
+    cache_type: str = "q4_0",
+) -> dict:
+    """Estimate VRAM usage for a model with given parameters.
+
+    Returns dict with model_vram_mb, kv_cache_mb, compute_mb, total_mb, ngl.
+    """
+    # Model weights on GPU (layers * per-layer estimate)
+    # For MoE: experts stay on CPU, ~95% of per-layer weight is dense (attention + FFN gate/up/down)
+    moe_factor = 0.95 if expert_count > 0 else 1.0
+    ratio = min(1.0, ngl / block_count) if block_count > 0 else 1.0
+    model_vram = file_size_mb * ratio * moe_factor
+
+    # KV cache estimate — calibrated against empirical measurements
+    # Per-token KV cache (MB) with q4_0 compression, averaged across model sizes
+    if cache_type in ("q4_0", "q4_1"):
+        kv_per_token_mb = 0.04
+    elif cache_type in ("q8_0",):
+        kv_per_token_mb = 0.08
+    else:  # f16 default
+        kv_per_token_mb = 0.16
+    kv_cache_mb = ctx_size * kv_per_token_mb
+
+    # Compute buffers (scratch space)
+    compute_mb = 400
+
+    total_mb = model_vram + kv_cache_mb + compute_mb
+
+    return {
+        "model_vram_mb": round(model_vram, 1),
+        "kv_cache_mb": round(kv_cache_mb, 1),
+        "compute_mb": compute_mb,
+        "total_mb": round(total_mb, 1),
+        "ngl": ngl,
+        "ratio": round(ratio, 3),
+        "moe_factor": moe_factor,
+    }
+
+
+@bp.route("/api/model-estimate", methods=["GET"])
+def model_vram_estimate():
+    """Return VRAM/RAM estimate for a model.
+
+    For loaded models (via llama-swap): returns actual nvidia-smi usage.
+    For unloaded models: estimates from GGUF metadata + formula.
+    """
+    model_name = request.args.get("model", "")
+    module = request.args.get("module", "chat")
+    ctx_size = request.args.get("ctx_size", 8192, type=int)
+    ngl_param = request.args.get("ngl", type=int)
+    cache_type = request.args.get("cache_type", "q4_0")
+
+    if not model_name:
+        return jsonify({"error": _('Missing "model" parameter')}), 400
+
+    # 1. Get hardware info
+    used_vram, total_vram = _get_actual_vram_mb()
+    try:
+        import psutil
+
+        total_ram = psutil.virtual_memory().total // (1024 * 1024)
+        available_ram = psutil.virtual_memory().available // (1024 * 1024)
+    except Exception:
+        total_ram = 0
+        available_ram = 0
+
+    # 2. Get or read GGUF metadata
+    from app.utils import get_gguf_models_cached
+
+    gguf_cache = get_gguf_models_cached("/models")
+    model_key = model_name.replace(".gguf", "")
+    cached = gguf_cache.get(model_key, {})
+
+    # If not in cache, try reading from file directly
+    file_size_mb = cached.get("file_size_mb")
+    block_count = cached.get("block_count")
+    expert_count = cached.get("expert_count") or 0
+    parameter_count = cached.get("parameter_count")
+
+    if not file_size_mb or not block_count:
+        gguf_path = _find_gguf_path(model_name)
+        if gguf_path and os.path.exists(gguf_path):
+            file_size_mb = os.path.getsize(gguf_path) / (1024 * 1024)
+            try:
+                import gguf
+
+                reader = gguf.GGUFReader(gguf_path)
+                arch = None
+                for key in reader.fields:
+                    if "." in key and not key.startswith("GGUF") and not key.startswith("general"):
+                        arch = key.split(".")[0]
+                        break
+                if arch:
+                    bc_key = f"{arch}.block_count"
+                    if bc_key in reader.fields:
+                        val = reader.fields[bc_key].parts[-1]
+                        if hasattr(val, "tolist"):
+                            arr = val.tolist()
+                            if isinstance(arr, list) and len(arr) == 1:
+                                val = arr[0]
+                        block_count = int(val) if val is not None else None
+                    ec_key = f"{arch}.expert_count"
+                    if ec_key in reader.fields:
+                        val = reader.fields[ec_key].parts[-1]
+                        if hasattr(val, "tolist"):
+                            arr = val.tolist()
+                            if isinstance(arr, list) and len(arr) == 1:
+                                val = arr[0]
+                        expert_count = int(val) if val is not None else expert_count
+            except Exception:
+                pass
+
+    # 3. Determine n_gpu_layers
+    if ngl_param is not None:
+        ngl = ngl_param
+    else:
+        try:
+            from app.resource_manager import get_resource_manager
+
+            rm = get_resource_manager()
+            config = rm.compute_llamacpp_config(module)
+            ngl = config.get("n_gpu_layers", -1)
+            if ngl == -1 and block_count:
+                ngl = block_count
+        except Exception:
+            ngl = block_count or 32
+
+    # 4. Check if model is currently loaded in llama-swap
+    loaded_model = None
+    try:
+        swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+        resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=5)
+        if resp.status_code == 200:
+            running = resp.json().get("running", [])
+            for m in running:
+                if m.get("name") == module or model_name in str(m):
+                    loaded_model = m
+                    break
+    except Exception:
+        pass
+
+    # 5. Build response
+    if loaded_model and used_vram is not None and total_vram is not None:
+        # Actual VRAM usage
+        response = {
+            "status": "actual",
+            "vram_mb": used_vram,
+            "total_vram_mb": total_vram,
+            "vram_percent": round(used_vram / total_vram * 100) if total_vram > 0 else 0,
+            "vram_source": "actual",
+            "total_ram_mb": total_ram,
+            "available_ram_mb": available_ram,
+            "model": loaded_model.get("name", module),
+            "has_gpu": True,
+            "file_size_mb": round(file_size_mb, 1) if file_size_mb else None,
+            "block_count": block_count,
+            "expert_count": expert_count,
+            "parameter_count": parameter_count,
+            "ngl": ngl,
+        }
+    elif file_size_mb and block_count:
+        # Estimate
+        est = _estimate_model_vram(
+            file_size_mb=file_size_mb,
+            block_count=block_count,
+            ngl=ngl,
+            expert_count=expert_count,
+            ctx_size=max(ctx_size, 1),
+            cache_type=cache_type,
+        )
+        has_gpu = total_vram is not None and total_vram > 0
+        vram_pct = round(est["total_mb"] / total_vram * 100) if has_gpu and total_vram > 0 else 0
+        ram_pct = round(est["total_mb"] / total_ram * 100) if total_ram > 0 else 0
+
+        response = {
+            "status": "estimate",
+            "vram_mb": round(est["total_mb"]),
+            "total_vram_mb": total_vram or 0,
+            "vram_percent": vram_pct,
+            "vram_source": "estimate",
+            "ram_mb": round(est["total_mb"]),
+            "total_ram_mb": total_ram,
+            "ram_percent": ram_pct,
+            "has_gpu": has_gpu,
+            "file_size_mb": round(file_size_mb, 1),
+            "block_count": block_count,
+            "expert_count": expert_count,
+            "parameter_count": parameter_count,
+            "ngl": ngl,
+            "details": {
+                "model_vram_mb": round(est["model_vram_mb"]),
+                "kv_cache_mb": round(est["kv_cache_mb"]),
+                "compute_mb": est["compute_mb"],
+                "moe_factor": est["moe_factor"],
+            },
+        }
+    else:
+        # Not enough data
+        has_gpu = total_vram is not None and total_vram > 0
+        response = {
+            "status": "nodata",
+            "vram_mb": 0,
+            "total_vram_mb": total_vram or 0,
+            "vram_source": "nodata",
+            "has_gpu": has_gpu,
+            "file_size_mb": round(file_size_mb, 1) if file_size_mb else None,
+            "block_count": block_count,
+            "expert_count": expert_count,
+            "parameter_count": parameter_count,
+        }
+
+    return jsonify(response)
+
+
 # ==================== ENDPOINTS FOR MODEL MANAGEMENT ====================
 
 
@@ -539,6 +792,13 @@ def llamacpp_model_info(name):
                     "context_source": "cache",
                     "model_path": name,
                     "gguf_architecture": cached.get("architecture"),
+                    "parameter_count": cached.get("parameter_count"),
+                    "block_count": cached.get("block_count"),
+                    "expert_count": cached.get("expert_count"),
+                    "head_count": cached.get("head_count"),
+                    "head_count_kv": cached.get("head_count_kv"),
+                    "key_length": cached.get("key_length"),
+                    "value_length": cached.get("value_length"),
                 }
             )
 
@@ -580,6 +840,23 @@ def llamacpp_model_info(name):
                         break
 
                 gguf_meta = {"architecture": arch, "has_vision": has_vision}
+                if arch:
+                    bc_key = f"{arch}.block_count"
+                    if bc_key in reader.fields:
+                        val = reader.fields[bc_key].parts[-1]
+                        if hasattr(val, "tolist"):
+                            arr = val.tolist()
+                            if isinstance(arr, list) and len(arr) == 1:
+                                val = arr[0]
+                        gguf_meta["block_count"] = int(val) if val is not None else None
+                    ec_key = f"{arch}.expert_count"
+                    if ec_key in reader.fields:
+                        val = reader.fields[ec_key].parts[-1]
+                        if hasattr(val, "tolist"):
+                            arr = val.tolist()
+                            if isinstance(arr, list) and len(arr) == 1:
+                                val = arr[0]
+                        gguf_meta["expert_count"] = int(val) if val is not None else None
             except Exception as e:
                 logger.debug(f"Could not parse GGUF metadata: {e}")
 
@@ -660,6 +937,13 @@ def llamacpp_model_info(name):
                     "context_source": "cache" if cached else "gguf_file",
                     "model_path": name,
                     "gguf_architecture": gguf_meta.get("architecture"),
+                    "parameter_count": cached.get("parameter_count"),
+                    "block_count": cached.get("block_count") or gguf_meta.get("block_count"),
+                    "expert_count": cached.get("expert_count") or gguf_meta.get("expert_count"),
+                    "head_count": cached.get("head_count"),
+                    "head_count_kv": cached.get("head_count_kv"),
+                    "key_length": cached.get("key_length"),
+                    "value_length": cached.get("value_length"),
                 }
             )
 
@@ -846,6 +1130,8 @@ def _get_gguf_metadata(model_name: str, service_url: str) -> dict:
                 info["block_count"] = cached["block_count"]
             if cached.get("file_size_mb"):
                 info["file_size_mb"] = cached["file_size_mb"]
+            if cached.get("parameter_count"):
+                info["parameter_count"] = cached["parameter_count"]
             if cached.get("size_label"):
                 info["parameters"] = cached["size_label"]
             current_app.logger.debug(f"GGUF metadata from cache: {info}")

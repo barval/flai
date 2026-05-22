@@ -40,16 +40,15 @@ function fetchQueueStatus() {
                 if (!newInfo[processingSessionId]) {
                     newInfo[processingSessionId] = { processing: false, queued: 0, queue_position: 0, has_transcribing: false };
                 }
-                // Only show processing if we haven't already received the result for this task
-                // Prevents a stale fetchQueueStatus response from re‑setting ⚡ after
-                // clearSessionQueue removed the task from pendingRequestIds
-                if (pendingRequestIds[data.processing.id]) {
-                    newInfo[processingSessionId].processing = true;
-                    if (data.processing.type === 'transcribe_audio' || data.processing.type === 'audio') {
-                        newInfo[processingSessionId].has_transcribing = true;
-                    }
+                // Show processing ⚡ for the currently processing session.
+                // Server already filters by user_id, so if data.processing is
+                // set, the session is genuinely being processed.  We removed the
+                // pendingRequestIds guard so that ⚡ also appears after page
+                // refresh even when sessionStorage restore didn't run yet.
+                newInfo[processingSessionId].processing = true;
+                if (data.processing.type === 'transcribe_audio' || data.processing.type === 'audio') {
+                    newInfo[processingSessionId].has_transcribing = true;
                 }
-                dlog('fetchQueueStatus: processing session', processingSessionId, 'active:', !!pendingRequestIds[data.processing.id]);
             }
 
             // Mark queued sessions (hourglass)

@@ -117,6 +117,26 @@ class SdCppModule(TranslationMixin):
 
         return self._call_wrapper(prompt_data, lang)
 
+    @staticmethod
+    def _estimate_sd_vram_mb(model_type: str) -> int:
+        """Rough VRAM estimate for SD model in MB."""
+        estimates = {
+            "z_image_turbo": 6000,
+            "flux-2-klein-4b": 8000,
+        }
+        return estimates.get(model_type, 8000)
+
+    def _resolve_use_gpu(self, rm) -> bool:
+        """Determine use_gpu flag with VRAM check. Falls back to CPU if VRAM insufficient."""
+        if not rm.hardware.cuda_detected:
+            return False
+        available = rm.hardware.available_vram_mb
+        needed = self._estimate_sd_vram_mb(self.model_type) + 500  # 500MB margin
+        if available > 0 and available < needed:
+            self.logger.warning(f"VRAM too low for SD ({available}MB available, ~{needed}MB needed) — forcing CPU")
+            return False
+        return True
+
     def _call_wrapper(self, prompt_data, lang="ru"):
         """Call sd-wrapper HTTP API to generate image.
         Before starting, unloads llama.cpp model from VRAM to avoid OOM.
@@ -131,6 +151,15 @@ class SdCppModule(TranslationMixin):
         unload_success = rm.unload_llamacpp_model(llamacpp_url)
         if not unload_success:
             self.logger.warning("Failed to unload llama.cpp model before generation — OOM risk")
+
+        # Check VRAM availability after LLM unload
+        use_gpu = self._resolve_use_gpu(rm)
+        if use_gpu:
+            self.logger.info(
+                f"VRAM: {rm.hardware.available_vram_mb}MB available, ~{self._estimate_sd_vram_mb(self.model_type)}MB needed — using GPU"
+            )
+        else:
+            self.logger.info("SD will use CPU mode")
 
         rm.mark_sd_busy()
 
@@ -151,7 +180,7 @@ class SdCppModule(TranslationMixin):
                 "height": prompt_data.get("height", 1024),
                 "cfg_scale": prompt_data.get("cfg_scale", 1.0),
                 "flow_shift": prompt_data.get("flow_shift", 2.0),
-                "use_gpu": rm.hardware.cuda_detected,
+                "use_gpu": use_gpu,
             }
             # Optional sampler (required for qwen_image)
             if prompt_data.get("sampling_method"):
@@ -230,6 +259,15 @@ class SdCppModule(TranslationMixin):
         if not unload_success:
             self.logger.warning("Failed to unload llama.cpp model before editing — OOM risk")
 
+        # Check VRAM availability after LLM unload
+        use_gpu = self._resolve_use_gpu(rm)
+        if use_gpu:
+            self.logger.info(
+                f"VRAM: {rm.hardware.available_vram_mb}MB available, ~{self._estimate_sd_vram_mb(self.model_type)}MB needed — using GPU"
+            )
+        else:
+            self.logger.info("SD edit will use CPU mode")
+
         # Resize large images to avoid OOM on 16GB VRAM
         max_edit_size = 1024
         resized_info = {"resized": False, "original_size": None, "new_size": None}
@@ -264,7 +302,7 @@ class SdCppModule(TranslationMixin):
             "strength": edit_prompt_data.get("strength", 0.7),
             "width": edit_prompt_data.get("width", 1024),
             "height": edit_prompt_data.get("height", 1024),
-            "use_gpu": rm.hardware.cuda_detected,
+            "use_gpu": use_gpu,
         }
         if edit_prompt_data.get("mask"):
             payload["mask"] = edit_prompt_data["mask"]

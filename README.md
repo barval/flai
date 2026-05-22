@@ -69,18 +69,18 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v8.4
+### What's New in v8.5
 
-| v8.4 (New) | Notes |
+| v8.5 (New) | Notes |
 |------------|-------|
-| 🔄 **Image streaming fix** | `queue.py:1392`: tokens after `[-IMAGE-EDIT-]` marker no longer discarded during SSE streaming, eliminating empty edit query errors |
-| 🖥️ **GPU/CPU auto-detect for SD** | `sd_wrapper.py` detects CUDA inside container via `nvidia-smi`; omits `--offload-to-cpu`/`--vae-on-cpu`/`--clip-on-cpu` on GPU; no `--cuda` flag — sd-cli auto-detects |
-| 🔁 **CUDA fallback** | If `use_gpu=True` but CUDA unavailable in sd-container, automatic fallback to CPU |
-| 🌐 **SD error translations restored** | `_sd_error_translation_markers()` in `utils.py` for pybabel extraction; 8 stale `#~` keys in `.po` files reactivated with proper source references |
-| 🔧 **Session switching fix** | `chat-sessions.js`: `loadMessages()` now called after server-side session deletion; clicking already-active session re-fetches messages instead of silent early return |
-| 🗣️ **Full i18n coverage** | All user-facing error messages wrapped in `_()` / `gettext()`; 14 new translation keys; rule added to `AGENTS.md` — raw `str(e)` never returned to user |
-| ⚡ **Audio ⚡ hang fix** | `clearSessionQueue` + `fetchQueueStatus` race conditions fixed in HTTP audio responses without `request_id`; only one session shows ⚡ at a time |
-| 🗑️ **`.gitignore *.pot`** | `messages.pot` excluded from version control |
+| 🔄 **Page-refresh recovery** | ⚡ indicator, live streaming, and final response all survive F5 during generation — `onStreamToken`/`onResultCompleted` now handle missing `pendingRequestIds` after reload |
+| 🖥️ **VRAM monitor & auto-degradation** | Background VRAM polling via `nvidia-smi` every 60s. Progressive model degradation (100%→0% n_gpu_layers in 4 steps) on OOM. `_MAX_SAFE_NGL` per-VRAM-tier safety caps (16GB → ngl 24). All models in single `llm_fast` swap group |
+| 📊 **VRAM calculator** | New `/admin/api/model-estimate` endpoint estimates VRAM per model (weights + KV cache + compute). Model config UI with auto-calculated `n_gpu_layers` slider |
+| 🎨 **SD offload system** | Refactored `sd_wrapper.py`: 4-level VRAM offload (0=full GPU → 3=full CPU), progressive on OOM. VRAM headroom check (500MB) before SD generation |
+| ⚡ **Live token/s display** | Real-time tokens-per-second estimate during streaming + final token/s in message header. `completion_tokens` stored in DB and passed through SSE |
+| 🔧 **Model config cache fix** | TTL cache replaced with `updated_at`-based versioning — eliminates cross-worker inconsistency with gunicorn `workers=2` |
+| 🐛 **Architecture display fix** | Numpy byte-string decoding (`[113 119 101 110 51]` → `qwen3`) in admin panel. Regex handles leading-space variants |
+| 🗃️ **GGUF metadata expansion** | `parameter_count`, `head_count`, `head_count_kv`, `key_length`, `value_length` scanned and stored in DB |
 
 
 ### Core Components
@@ -697,6 +697,14 @@ curl http://localhost:5000/metrics
 - **Session switching UI fix** — `chat-sessions.js`: `loadMessages()` called after server-side session deletion; same-session click re-fetches messages
 - **Full i18n coverage** — all user-facing errors wrapped in `_()`/`gettext()`; 14 new translation keys; rule added to `AGENTS.md`
 - **Audio ⚡ race condition fix** — `clearSessionQueue` + `fetchQueueStatus` race fixed for HTTP audio responses without `request_id`; single-session ⚡ indicator
+- **Page-refresh recovery** — ⚡, streaming, and final response survive F5 during generation; `onStreamToken`/`onResultCompleted` handle missing `pendingRequestIds`
+- **VRAM monitor & model auto-degradation** — background polling via `nvidia-smi` every 60s; progressive model degradation (100%→0% n_gpu_layers in 4 steps) on OOM; per-VRAM-tier safety caps
+- **VRAM calculator in admin panel** — `/admin/api/model-estimate` endpoint estimates VRAM (weights + KV cache + compute); auto-calculated `n_gpu_layers` slider
+- **SD progressive offload system** — 4-level offload (0=full GPU → 3=full CPU); VRAM headroom check (500MB) before generation
+- **Live token/s speed display** — real-time tokens-per-second during streaming; final token/s in message header; `completion_tokens` stored in DB
+- **Model config cache fix** — TTL cache replaced with `updated_at`-based versioning, eliminating cross-worker inconsistency with gunicorn `workers=2`
+- **Architecture display fix** — numpy byte-string decoding (`[113 119 101 110 51]` → `qwen3`) in admin panel
+- **GGUF metadata expansion** — `parameter_count`, `head_count`, `head_count_kv`, `key_length`, `value_length` scanned and stored in DB
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)

@@ -47,6 +47,8 @@ class ResourceManager:
         self._lock = threading.Lock()
         self._sd_busy = False  # True while sd-cli is actively using GPU
         self._sd_busy_since = 0.0
+        self._vram_poll_timer: threading.Timer | None = None
+        self._vram_poll_interval = 60  # seconds
 
     # ── Hardware detection ──
 
@@ -98,7 +100,32 @@ class ResourceManager:
             hw.cuda_detected = False
 
         self.hardware = hw
+        self._start_vram_polling()
         return hw  # type: ignore[no-any-return]
+
+    def _start_vram_polling(self):
+        """Start background VRAM polling."""
+        if not self.hardware.cuda_detected:
+            return
+        self._poll_vram()
+
+    def _poll_vram(self):
+        """Query nvidia-smi for available VRAM and update hardware info."""
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                free = int(result.stdout.strip().split("\n")[0].strip())
+                self.hardware.available_vram_mb = free
+        except Exception:
+            pass
+        self._vram_poll_timer = threading.Timer(self._vram_poll_interval, self._poll_vram)
+        self._vram_poll_timer.daemon = True
+        self._vram_poll_timer.start()
 
     def _detect_total_ram_mb(self) -> int:
         """Get total system RAM in MB."""
@@ -130,6 +157,28 @@ class ResourceManager:
                 return avail if avail > 0 else total
         except Exception:
             return 4096  # Assume 4GB free
+
+    # ── Known model VRAM limits (tested safe n_gpu_layers per GPU VRAM tier) ──
+    # Keys: model_type, Values: dict of {min_vram_mb: max_n_gpu_layers}
+    # Used to clamp the computed n_gpu_layers and prevent OOM.
+    _MAX_SAFE_NGL: dict[str, list[tuple[int, int]]] = {
+        "reasoning": [
+            (24000, -1),  # 24GB+ — all layers on GPU
+            (15844, 24),  # 16GB (RTX 5060 Ti) — tested stable
+            (12000, 16),  # 12GB — partial offload
+            (8000, 8),  # 8GB — minimal GPU
+        ],
+        "chat": [
+            (8000, -1),  # 8GB+ — all layers fit
+        ],
+        "multimodal": [
+            (12000, -1),  # 12GB+ — all layers fit
+            (8000, 20),  # 8GB — partial
+        ],
+        "embedding": [
+            (4000, -1),  # 4GB+ — all layers
+        ],
+    }
 
     # ── Adaptive config computation ──
 
@@ -267,6 +316,26 @@ class ResourceManager:
                 result["warning"] += f"; {result['n_cpu_moe']}/{expert_count} experts on CPU"
             else:
                 result["warning"] = f"{result['n_cpu_moe']}/{expert_count} experts on CPU"
+
+        # Clamp n_gpu_layers to known safe limits per VRAM tier
+        caps = self._MAX_SAFE_NGL.get(model_type, [])
+        current_ngl = result["n_gpu_layers"]
+        if current_ngl != 0 and caps:
+            capped = -1
+            for min_vram, max_ngl in caps:
+                if total_vram >= min_vram:
+                    capped = max_ngl
+                    break
+            if capped is not None:
+                if capped == -1:
+                    capped = block_count if block_count else -1
+                if current_ngl != -1 and capped != -1 and current_ngl > capped:
+                    result["n_gpu_layers"] = capped
+                    result["offload_kqv"] = True
+                    if "warning" in result and result["warning"]:
+                        result["warning"] += f" (capped to {capped} by safety limit)"
+                    else:
+                        result["warning"] = f"Safety cap: n_gpu_layers limited to {capped} for VRAM"
 
         return result
 

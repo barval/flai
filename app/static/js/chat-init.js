@@ -394,10 +394,10 @@ window.loadMessages = function(sessionId) {
         });
 };
 
-window.displayMessage = function(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle) {
+window.displayMessage = function(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens) {
     if (window.IS_RELOADING) return;
     
-    const result = originalDisplayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle);
+    const result = originalDisplayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens);
     
     const messages = document.getElementById('chat-messages');
     if (messages) {
@@ -437,6 +437,10 @@ document.addEventListener('DOMContentLoaded', function() {
             // Restore streaming messages from sessionStorage (page reload during stream)
             if (typeof restoreStreamingFromSessionStorage === 'function') {
                 restoreStreamingFromSessionStorage();
+            }
+            // Re-check queue status after restoring pendingRequestIds
+            if (typeof fetchQueueStatus === 'function') {
+                fetchQueueStatus();
             }
             // Restore TTS button state if TTS is playing
             if (typeof restoreTTSButtonState === 'function') {

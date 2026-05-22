@@ -69,7 +69,7 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v8.4
+### What's New in v8.5
 
 | v8.4 (New) | Notes |
 |------------|-------|

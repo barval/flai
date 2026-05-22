@@ -27,7 +27,10 @@ def _tr(key: str, lang: str = "ru", **kwargs: Any) -> str:
     """Translate a user-facing error string using the specified language."""
     try:
         with force_locale(lang):
-            return _(key, **kwargs)  # type: ignore[no-any-return]
+            result = _(key)
+        if kwargs:
+            result = result.format(**kwargs) if kwargs else result
+        return result
     except Exception:
         return key.format(**kwargs) if kwargs else key
 
@@ -239,6 +242,28 @@ class LlamaSwapBackend(AbstractLlamaBackend):
     def __init__(self, app=None):
         super().__init__(app)
         self.circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
+        self._degraded_models: set[str] = set()
+
+    def _degrade_model_if_needed(self, model_type: str):
+        """Degrade model GPU config if circuit breaker opened due to OOM-like errors."""
+        if model_type in self._degraded_models:
+            return
+        try:
+            from app.llama_swap_config import LlamaSwapConfigGenerator
+
+            gen = LlamaSwapConfigGenerator(self.app)
+            ok = gen.degrade_and_reload(model_type)
+            if ok:
+                self._degraded_models.add(model_type)
+                self.logger.warning(f"{model_type}: degraded GPU config and reloaded llama-swap")
+        except Exception as e:
+            self.logger.error(f"Failed to degrade {model_type}: {e}")
+
+    def _record_llama_failure(self, model_type: str):
+        """Record circuit breaker failure and degrade on circuit open."""
+        just_opened = self.circuit_breaker.record_failure()
+        if just_opened:
+            self._degrade_model_if_needed(model_type)
 
     def get_base_url(self) -> str:
         url = os.getenv("LLAMA_SWAP_URL")
@@ -276,6 +301,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         self.logger.info(f"LlamaSwapBackend request: model={model}, payload keys={list(payload.keys())}")
 
         if not self.circuit_breaker.can_execute():
+            self._degrade_model_if_needed(model_type)
             return _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
 
         try:
@@ -298,17 +324,17 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                 self.circuit_breaker.record_success()
                 return content.strip()  # type: ignore[no-any-return]
             else:
-                self.circuit_breaker.record_failure()
+                self._record_llama_failure(model_type)
                 return _tr("HTTP error {status}", lang, status=response.status_code)
         except requests.exceptions.Timeout:
-            self.circuit_breaker.record_failure()
+            self._record_llama_failure(model_type)
             return _tr(
                 "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request.",
                 lang,
                 timeout=timeout,
             )
         except requests.exceptions.ConnectionError:
-            self.circuit_breaker.record_failure()
+            self._record_llama_failure(model_type)
             return _tr("Could not connect to llama-swap", lang)
         except Exception as e:
             self.logger.error(f"Error: {e}")
@@ -334,6 +360,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         }
 
         if not self.circuit_breaker.can_execute():
+            self._degrade_model_if_needed(model_type)
             yield _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
             return
 
@@ -341,7 +368,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         try:
             response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True)
             if response.status_code != 200:
-                self.circuit_breaker.record_failure()
+                self._record_llama_failure(model_type)
                 yield _tr("HTTP error {status}", lang, status=response.status_code)
                 return
 
@@ -364,14 +391,14 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                 except json.JSONDecodeError:
                     continue
         except requests.exceptions.Timeout:
-            self.circuit_breaker.record_failure()
+            self._record_llama_failure(model_type)
             yield _tr(
                 "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request.",
                 lang,
                 timeout=timeout,
             )
         except requests.exceptions.ConnectionError:
-            self.circuit_breaker.record_failure()
+            self._record_llama_failure(model_type)
             yield _tr("Could not connect to llama-swap", lang)
         except Exception as e:
             self.logger.error(f"Stream error: {e}")

@@ -110,15 +110,24 @@ function onStreamToken(data) {
     if (!data || !data.task_id || !data.token) return;
     dlog('onStreamToken:', data.task_id, 'token len:', data.token.length);
 
-    const reqInfo = pendingRequestIds[data.task_id];
+    let reqInfo = pendingRequestIds[data.task_id];
     if (!reqInfo) {
-        dlog('onStreamToken: no pending request found for', data.task_id);
-        return;
+        // After page refresh, pendingRequestIds is empty — create entry on first token
+        reqInfo = {
+            sessionId: data.session_id,
+            timestamp: Date.now(),
+            accumulatedContent: '',
+            streamStartTime: Date.now(),
+            lastSpeedUpdate: Date.now()
+        };
+        pendingRequestIds[data.task_id] = reqInfo;
     }
 
     // Accumulate content
     if (!reqInfo.accumulatedContent) {
         reqInfo.accumulatedContent = '';
+        reqInfo.streamStartTime = Date.now();
+        reqInfo.lastSpeedUpdate = Date.now();
     }
     reqInfo.accumulatedContent += data.token;
 
@@ -132,6 +141,7 @@ function onStreamToken(data) {
     if (!chatMessages) return;
 
     let streamMsg = chatMessages.querySelector('.assistant-message[data-streaming="true"]');
+    let indicatorSpan = null;
 
     if (!streamMsg) {
         // Create new message element with proper structure
@@ -151,7 +161,7 @@ function onStreamToken(data) {
         timeSpan.textContent = '📅 ' + formatFullDateTime(new Date().toISOString());
         headerDiv.appendChild(timeSpan);
 
-        const indicatorSpan = document.createElement('span');
+        indicatorSpan = document.createElement('span');
         indicatorSpan.className = 'streaming-indicator blink';
         indicatorSpan.textContent = '⚡ ' + t('generating');
         headerDiv.appendChild(indicatorSpan);
@@ -181,6 +191,21 @@ function onStreamToken(data) {
     if (contentDiv) {
         contentDiv.textContent = reqInfo.accumulatedContent;
         chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // Live token/s estimate (every 500ms)
+    var now = Date.now();
+    if (!indicatorSpan) {
+        indicatorSpan = streamMsg.querySelector('.streaming-indicator');
+    }
+    if (indicatorSpan && now - reqInfo.lastSpeedUpdate >= 500) {
+        reqInfo.lastSpeedUpdate = now;
+        var elapsed = (now - reqInfo.streamStartTime) / 1000;
+        if (elapsed > 0.5) {
+            var estTokens = Math.round(reqInfo.accumulatedContent.length / 3);
+            var tps = (estTokens / elapsed).toFixed(1);
+            indicatorSpan.textContent = '⚡ ' + t('generating') + ' (' + tps + t('tps_suffix') + ')';
+        }
     }
 }
 
@@ -274,7 +299,9 @@ function restoreStreamingFromSessionStorage() {
                 pendingRequestIds[taskId] = {
                     sessionId: currentSessionId,
                     timestamp: saved.timestamp,
-                    accumulatedContent: saved.content
+                    accumulatedContent: saved.content,
+                    streamStartTime: Date.now(),
+                    lastSpeedUpdate: Date.now()
                 };
             }
         } catch (e) {
@@ -295,7 +322,17 @@ function onResultCompleted(data) {
 
     const reqInfo = pendingRequestIds[data.task_id];
     if (!reqInfo) {
-        dlog('onResultCompleted: no pending request found for', data.task_id);
+        // After page refresh, pendingRequestIds is empty (in-memory, not persisted).
+        // The result may still carry a valid response — display it and clean up.
+        const existingMsg = document.querySelector('[data-task-id="' + data.task_id + '"]');
+        if (existingMsg && existingMsg.hasAttribute('data-streaming')) existingMsg.remove();
+        _clearStreamFromSessionStorage(data.task_id);
+        const sessionId = data.session_id || (data.result && data.result.session_id) || null;
+        if (data.status === 'completed' && data.result) {
+            handleCompletedResult(data.result, sessionId);
+        } else if (data.status === 'error') {
+            handleErrorResult(data, sessionId);
+        }
         return;
     }
 
@@ -405,6 +442,15 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
                         timeSpan.className = 'text-muted';
                         timeSpan.textContent = ' | ⏱️ ' + duration + langSuffix + ' |';
                         newHeader.appendChild(timeSpan);
+
+                        // Tokens per second
+                        if (result.completion_tokens) {
+                            var tps = (result.completion_tokens / parseFloat(duration)).toFixed(1);
+                            var tpsSpan = document.createElement('span');
+                            tpsSpan.className = 'text-muted';
+                            tpsSpan.textContent = ' 🚀 ' + tps + t('tps_suffix') + ' |';
+                            newHeader.appendChild(tpsSpan);
+                        }
                     }
                 }
 
@@ -492,7 +538,7 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
             data.result.assistant_timestamp || new Date().toISOString(),
             data.result.response_time, data.result.model_used,
             null, null, null, null, data.result.message_id,
-            data.result.response_style);
+            data.result.response_style, data.result.completion_tokens);
     }
 
     if (resultSessionId && resultSessionId !== currentSessionId) {
@@ -564,7 +610,7 @@ function handleCompletedResult(result, expectedSessionId) {
                     result.file_type, result.file_name, result.file_path,
                     result.assistant_timestamp || new Date().toISOString(), responseTime, modelUsed,
                     null, null, null, null, result.message_id,
-                    result.response_style);
+                    result.response_style, result.completion_tokens);
                 if (typeof updateLastVisit === 'function') updateLastVisit(currentSessionId);
             } else {
                 setNewMessageIndicator(resultSessionId, true);
@@ -697,7 +743,7 @@ function onMessageNew(data) {
                         msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                         msg.timestamp, responseTime, msg.model_name,
                         msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
-                        msg.response_style
+                        msg.response_style, msg.completion_tokens
                     );
                     if (sessionsData[data.session_id]) {
                         sessionsData[data.session_id].message_count = (sessionsData[data.session_id].message_count || 0) + 1;

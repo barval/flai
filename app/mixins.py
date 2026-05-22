@@ -9,6 +9,9 @@ class TranslationMixin:
     def _(self, key: str, lang: str = "ru", **kwargs) -> str:
         try:
             with current_app.app_context(), force_locale(lang):
-                return _(key, **kwargs)  # type: ignore[no-any-return]
+                result = _(key)
+            if kwargs:
+                result = result.format(**kwargs)
+            return result
         except RuntimeError:
             return key

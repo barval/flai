@@ -305,6 +305,7 @@ async function onModelSelect(event) {
 
     detailsGrid.innerHTML = `<p>${t('Loading...')}</p>`;
     clearModelError(module);
+    select.closest('.model-card')?.querySelectorAll('.memory-hint').forEach(el => el.remove());
 
     const urlInput = document.querySelector(`.service-url[data-module="${module}"]`);
     let serviceUrl = typeof LLAMA_SWAP_URL !== 'undefined' ? LLAMA_SWAP_URL : 'http://flai-llamaswap:8080';
@@ -333,7 +334,24 @@ async function onModelSelect(event) {
         }
     }
 
-    detailsHtml = `<p><strong>${t('Architecture:')}</strong> ${info.architecture || 'N/A'}</p>
+    const ggufArch = info.gguf_architecture || info.architecture || 'N/A';
+    let archLabel = ggufArch;
+    if (info.expert_count > 0) {
+        archLabel += ' (MoE';
+        const activeMatch = (info.model_path || '').match(/A(\d+\.?\d*)B/);
+        const totalParams = info.parameter_count;
+        const totalFromName = (info.parameters || '').match(/(\d+\.?\d*)\s*B/);
+        const totalStr = totalParams
+            ? (totalParams >= 1e11 ? `${(totalParams / 1e9).toFixed(0)}B` : `${(totalParams / 1e9).toFixed(1)}B`)
+            : (totalFromName ? totalFromName[1] + 'B' : null);
+        if (activeMatch && totalStr) {
+            archLabel += ` ${activeMatch[0]}/${totalStr}`;
+        } else if (activeMatch) {
+            archLabel += ` ${activeMatch[0]}`;
+        }
+        archLabel += ')';
+    }
+    detailsHtml = `<p><strong>${t('Architecture:')}</strong> ${archLabel}</p>
         <p><strong>${t('Parameters:')}</strong> ${info.parameters || 'N/A'}</p>
         <p><strong>${t('Quantization:')}</strong> ${info.quantization || 'N/A'}</p>`;
 
@@ -370,145 +388,118 @@ async function onModelSelect(event) {
     }
 }
 
+const _pendingEstimate = {};
+
 async function updateMemoryEstimation(module, modelInfo, ctxLength) {
     if (module === 'embedding') return;
 
     const card = document.querySelector(`.model-card[data-module="${module}"]`);
-    let existingHint = card.querySelector('.memory-hint');
-    if (existingHint) existingHint.remove();
+    const modelName = card.querySelector('.model-dropdown')?.value;
+    if (!modelName) return;
 
-    const modelSizeMB = modelInfo.file_size_mb;
-    dlog('updateMemoryEstimation:', {module, modelInfo, modelSizeMB});
-    
-    if (!modelSizeMB) {
-        // Try to estimate from model name
-        const modelName = modelInfo.model_name || modelInfo.model_path || '';
-        if (modelName.includes('27B') || modelName.includes('-27b')) {
-            modelSizeMB = 16000;
-        } else if (modelName.includes('20B') || modelName.includes('-20b')) {
-            modelSizeMB = 12000;
-        } else if (modelName.includes('12B') || modelName.includes('-12b')) {
-            modelSizeMB = 8000;
-        } else if (modelName.includes('9B') || modelName.includes('-9b')) {
-            modelSizeMB = 6000;
-        } else if (modelName.includes('4B') || modelName.includes('-4b')) {
-            modelSizeMB = 3000;
-        }
-        dlog('Estimated modelSizeMB from name:', modelSizeMB);
-    }
-    
-    const blockCount = modelInfo.block_count;
-    const maxContext = modelInfo.context_length;
+    if (_pendingEstimate[module]) return;
+    _pendingEstimate[module] = true;
+
     const requestedCtx = parseInt(ctxLength) || 8192;
 
     try {
-        const hwRes = await fetch('/admin/api/hardware', { credentials: 'same-origin' });
-        if (!hwRes.ok) {
-            dlog('Memory estimation skipped: hardware API error', hwRes.status);
+        const params = new URLSearchParams({
+            model: modelName,
+            module: module,
+            ctx_size: String(requestedCtx),
+        });
+        const resp = await fetch(`/admin/api/model-estimate?${params}`, { credentials: 'same-origin' });
+        if (!resp.ok) {
+            dlog('Model estimate API error', resp.status);
             return;
         }
-        const hw = await hwRes.json();
-        dlog('Hardware info:', hw, 'modelSizeMB:', modelSizeMB);
-        const availableVRAM = hw.available_vram_mb || 0;
-        const totalRAM = hw.total_ram_mb || 0;
-        const availableRAM = hw.available_ram_mb || 0;
+        const data = await resp.json();
+        dlog('Model estimate:', data);
 
         const hintDiv = document.createElement('div');
         hintDiv.className = 'memory-hint';
         hintDiv.style.cssText = 'margin-top: 8px; padding: 8px; border-radius: 4px; font-size: 0.85em;';
 
-        function getMultiplier(modelName, modelSizeMB) {
-            const size = modelSizeMB || 0;
-            const name = (modelName || '').toUpperCase();
-            
-            if (name.includes('MXFP4') || name.includes('IQ3') || name.includes('IQ4') || name.includes('Q5') || name.includes('Q6') || name.includes('Q8')) {
-                return 1.0;
-            }
-            
-            if (size < 5000) {
-                return 1.3;
-            } else if (size < 10000) {
-                return 1.1;
-            } else {
-                return 1.0;
-            }
-        }
+        const hasGPU = data.has_gpu;
+        const totalVRAM = data.total_vram_mb || 0;
+        const totalRAM = data.total_ram_mb || 0;
+        const status = data.status;
 
-        const multiplier = getMultiplier(modelInfo.model_name, modelSizeMB);
-        const estimatedVRAM = modelSizeMB ? modelSizeMB * multiplier : 0;
-
-        dlog('Hardware info:', hw);
-        dlog('Model info:', {module, modelInfo, modelSizeMB, multiplier: getMultiplier(modelInfo.model_name, modelSizeMB)});
-        const hasGPU = hw.cuda_detected;
-        const totalVRAM = hw.total_vram_mb || 0;
-
-        if (hasGPU && totalVRAM > 0) {
-            if (!modelSizeMB) {
-                hintDiv.style.color = '#1CC8E3';
-                hintDiv.style.fontWeight = 'bold';
-                hintDiv.textContent = 'GPU: ' + totalVRAM + 'MB';
-            } else {
-                const vramPercent = Math.round((modelSizeMB * multiplier / totalVRAM) * 100);
-                const vramUsed = Math.min(vramPercent, 100);
-                dlog('VRAM calc:', {modelSizeMB, multiplier, totalVRAM, vramPercent});
-
-                if (vramPercent <= 100) {
+        if (status === 'actual') {
+            // Model is currently loaded — show real VRAM usage
+            hintDiv.style.color = '#29A847';
+            hintDiv.style.fontWeight = 'bold';
+            hintDiv.textContent = t('vram_optimal_dynamic').replace('%1%', data.vram_percent || 0);
+        } else if (status === 'estimate') {
+            if (hasGPU && totalVRAM > 0) {
+                const vramPct = data.vram_percent || 0;
+                if (vramPct <= 100) {
                     hintDiv.style.color = '#29A847';
                     hintDiv.style.fontWeight = 'bold';
-                    const msg = t('vram_optimal_dynamic').replace('%1%', vramPercent);
-                    hintDiv.textContent = msg;
+                    const msg = t('vram_optimal_dynamic').replace('%1%', vramPct);
+                    let extra = '';
+                    if (data.details) {
+                        extra = t('vram_estimate_detail').replace('%1%', data.details.model_vram_mb).replace('%2%', data.details.kv_cache_mb).replace('%3%', data.details.compute_mb);
+                    }
+                    hintDiv.textContent = msg + extra;
                 } else {
-                    const offloadPercent = vramPercent - 100;
-                    if (offloadPercent <= 20) {
+                    const offloadPct = vramPct - 100;
+                    let msg;
+                    if (offloadPct <= 20) {
                         hintDiv.style.color = '#FFD700';
                         hintDiv.style.fontWeight = 'bold';
-                        const msg = t('vram_partial_high');
-                        hintDiv.textContent = msg.replace('%2%', offloadPercent);
-                    } else if (offloadPercent <= 40) {
+                        msg = t('vram_partial_high');
+                    } else if (offloadPct <= 40) {
                         hintDiv.style.color = '#fd7e14';
                         hintDiv.style.fontWeight = 'bold';
-                        const msg = t('vram_partial_med');
-                        hintDiv.textContent = msg.replace('%2%', offloadPercent);
+                        msg = t('vram_partial_med');
                     } else {
                         hintDiv.style.color = '#E01F1F';
                         hintDiv.style.fontWeight = 'bold';
-                        const msg = t('vram_partial_low');
-                        hintDiv.textContent = msg.replace('%2%', offloadPercent);
+                        msg = t('vram_partial_low');
                     }
+                    hintDiv.textContent = msg.replace('%2%', offloadPct);
                 }
-            }
-        } else if (hasGPU) {
-            const gpuLabel = hw.gpu_name || 'GPU';
-            if (!modelSizeMB) {
+            } else if (hasGPU && totalVRAM === 0) {
+                // GPU detected but no VRAM data — show ngl info
                 hintDiv.style.color = '#1CC8E3';
                 hintDiv.style.fontWeight = 'bold';
-                hintDiv.textContent = gpuLabel;
+                const msg = t('ngl_info').replace('%1%', data.ngl || '?').replace('%2%', data.block_count || '?');
+                hintDiv.textContent = msg;
             } else {
-                const ramPercent = totalRAM > 0 ? Math.round((modelSizeMB * multiplier / totalRAM) * 100) : 0;
-                hintDiv.style.color = '#fd7e14';
-                hintDiv.style.fontWeight = 'bold';
-                hintDiv.textContent = gpuLabel + '. ' + t('ram_estimate').replace('%1%', ramPercent);
+                // No GPU — show RAM estimate
+                const ramPct = data.ram_percent || 0;
+                if (ramPct < 50) {
+                    hintDiv.style.color = '#fd7e14';
+                    hintDiv.style.fontWeight = 'bold';
+                    const msg = t('no_gpu_low');
+                    hintDiv.textContent = msg.replace('%1%', ramPct);
+                } else {
+                    hintDiv.style.color = '#E01F1F';
+                    hintDiv.style.fontWeight = 'bold';
+                    const msg = t('no_gpu_full');
+                    hintDiv.textContent = msg.replace('%1%', ramPct);
+                }
             }
         } else {
-            const ramPercent = totalRAM > 0 ? Math.round((modelSizeMB * multiplier / totalRAM) * 100) : 0;
-            if (ramPercent < 50) {
-                hintDiv.style.color = '#fd7e14';
-                hintDiv.style.fontWeight = 'bold';
-                const msg = t('no_gpu_low');
-                hintDiv.textContent = msg.replace('%1%', ramPercent);
+            // nodata — not enough info
+            hintDiv.style.color = '#fd7e14';
+            hintDiv.style.fontWeight = 'bold';
+            if (hasGPU) {
+                hintDiv.textContent = t('vram_nodata_gpu').replace('%1%', totalVRAM);
             } else {
-                hintDiv.style.color = '#E01F1F';
-                hintDiv.style.fontWeight = 'bold';
-                const msg = t('no_gpu_full');
-                hintDiv.textContent = msg.replace('%1%', ramPercent);
+                hintDiv.textContent = t('vram_nodata');
             }
         }
 
         const saveBtn = card.querySelector('.save-button');
+        card.querySelectorAll('.memory-hint').forEach(el => el.remove());
         card.insertBefore(hintDiv, saveBtn);
 
     } catch (err) {
         console.error('Error updating memory estimation:', err);
+    } finally {
+        _pendingEstimate[module] = false;
     }
 }
 

@@ -166,8 +166,9 @@ class ResourceManager:
     _MAX_SAFE_NGL: dict[str, list[tuple[int, int]]] = {
         "reasoning": [
             (24000, -1),  # 24GB+ — all layers on GPU
-            (15844, 24),  # 16GB (RTX 5060 Ti) — tested stable
-            (12000, 16),  # 12GB — partial offload
+            (20000, 24),  # 20GB — partial offload
+            (15844, 16),  # 16GB (RTX 5060 Ti)
+            (12000, 12),  # 12GB — partial offload
             (8000, 8),  # 8GB — minimal GPU
         ],
         "chat": [

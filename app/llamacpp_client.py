@@ -333,6 +333,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                         time.sleep(5)
                         continue
                     self._record_llama_failure(model_type)
+                    err_body = response.text[:500]
+                    self.logger.error(f"chat HTTP {response.status_code} from {model_type}: {err_body}")
                     return _tr("HTTP error {status}", lang, status=response.status_code)
             except requests.exceptions.Timeout:
                 if attempt < max_retries:
@@ -399,6 +401,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                             time.sleep(5)
                             continue
                         self._record_llama_failure(model_type)
+                        err_body = response.text[:500]
+                        self.logger.error(f"chat_stream HTTP {response.status_code} from {model_type}: {err_body}")
                         yield _tr("HTTP error {status}", lang, status=response.status_code)
                         return
 

@@ -181,6 +181,34 @@ class MultimodalModule(TranslationMixin):
             self.logger.error("Failed to load image prompt template")
         return prompt
 
+    @staticmethod
+    def _resize_for_classify(image_data: str, max_size: int = 896) -> str:
+        """Resize image to fit within max_size on the longest side.
+        Reduces token usage in multimodal vision encoder and prevents context overflow.
+        """
+        try:
+            img = Image.open(BytesIO(base64.b64decode(image_data)))
+            w, h = img.size
+            if w <= max_size and h <= max_size:
+                return image_data
+            ratio = max_size / max(w, h)
+            new_w, new_h = int(w * ratio), int(h * ratio)
+            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+            if img.mode in ("RGBA", "LA", "P"):
+                rgb_img = Image.new("RGB", img.size, (255, 255, 255))
+                mask = img.split()[-1] if img.mode == "RGBA" else None
+                rgb_img.paste(img, mask=mask)
+                img = rgb_img
+            buf = BytesIO()
+            img.save(buf, format="JPEG", quality=85)
+            logger = logging.getLogger(__name__)
+            logger.info(f"Image resized for multimodal classify: {w}x{h} → {new_w}x{new_h}")
+            return base64.b64encode(buf.getvalue()).decode("utf-8")
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to resize image for multimodal classify: {e}")
+            return image_data
+
     def process_image_with_text(
         self,
         image_data: str,

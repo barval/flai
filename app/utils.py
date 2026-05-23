@@ -291,19 +291,19 @@ def format_prompt(template_name: str, variables: dict[str, Any], lang: str = "ru
 
 
 def resize_image_if_needed(
-    file_data: str, file_type: str, file_name: str, max_width: int, max_height: int, quality: int = 85
+    file_data: str, file_type: str, file_name: str, max_size: int, quality: int = 85
 ) -> tuple[str, str, str, bool, tuple[int, int] | None, tuple[int, int] | None]:
     """
-    Resize image if it exceeds max dimensions.
+    Resize image proportionally if the longest side exceeds max_size.
     Returns (new_file_data, new_file_type, new_file_name, resized_flag, original_dimensions, new_dimensions)
     """
     try:
         image_bytes = base64.b64decode(file_data)
         img = Image.open(BytesIO(image_bytes))
         original_width, original_height = img.size
-        if original_width <= max_width and original_height <= max_height:
+        if original_width <= max_size and original_height <= max_size:
             return file_data, file_type, file_name, False, None, None
-        ratio = min(max_width / original_width, max_height / original_height)
+        ratio = max_size / max(original_width, original_height)
         new_width = int(original_width * ratio)
         new_height = int(original_height * ratio)
         img_resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
@@ -316,8 +316,8 @@ def resize_image_if_needed(
         output_bytes = output.getvalue()
         new_file_data = base64.b64encode(output_bytes).decode("utf-8")
         new_file_type = "image/jpeg"
-        base, _ = os.path.splitext(file_name)
-        new_file_name = base + ".jpg"
+        base_name, _ = os.path.splitext(file_name)
+        new_file_name = base_name + ".jpg"
         return (
             new_file_data,
             new_file_type,

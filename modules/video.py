@@ -8,6 +8,7 @@ which runs LTX-Video pipeline natively with PyTorch.
 
 import base64
 import logging
+import time
 from datetime import datetime
 from io import BytesIO
 from typing import Any
@@ -238,3 +239,12 @@ class VideoModule(TranslationMixin):
             return {"success": False, "error": f"{self._('Error', lang)}: {str(e)}"}
         finally:
             rm.mark_video_idle()
+            # Re-unload any LLM processes that may have been restarted
+            # during video generation (e.g. by config reload in admin panel),
+            # and let GPU state settle before next request
+            unload_success = rm.unload_llamacpp_model(llamacpp_url)
+            if not unload_success:
+                time.sleep(2)
+                rm.unload_llamacpp_model(llamacpp_url)
+            time.sleep(1)
+            rm.log_gpu_memory("video-post-cleanup")

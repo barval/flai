@@ -49,6 +49,7 @@ def load_config(app):
     app.config["MAX_IMAGE_WIDTH"] = int(os.getenv("MAX_IMAGE_WIDTH", 3840))
     app.config["MAX_IMAGE_HEIGHT"] = int(os.getenv("MAX_IMAGE_HEIGHT", 2160))
     app.config["MAX_IMAGE_SIZE_MB"] = int(os.getenv("MAX_IMAGE_SIZE_MB", 5))
+    app.config["MAX_IMAGE_SIZE"] = int(os.getenv("MAX_IMAGE_SIZE", 1536))
 
     # Document upload settings
     app.config["MAX_DOCUMENT_SIZE_MB"] = int(os.getenv("MAX_DOCUMENT_SIZE_MB", 5))

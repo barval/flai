@@ -879,15 +879,15 @@ class RedisRequestQueue:
             )
 
         mm_start = time.time()
-        prompt_data = {
-            "prompt": query,
-            "negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted, flickering, watermark, text, logo, deformed, ugly, oversaturated, underexposed, pixelated, static, frozen, noise, grain",
-            "width": 896,
-            "height": 512,
-            "num_frames": 257,
-            "frame_rate": 30,
-        }
+        mm_model = self.app.modules.get("multimodal")
+        prompt_data, error = (
+            mm_model.generate_video_params_from_image(query, image_data, lang=lang, response_style=response_style)
+            if mm_model
+            else (None, self.app.modules["base"]._("Multimodal model unavailable", lang=lang))
+        )
         mm_time = round(time.time() - mm_start, 1)
+        if error:
+            return self._build_error_response(session_id, error, mm_time, lang)
 
         gen_start = time.time()
         video_result = self.app.modules["video"].generate_video(prompt_data, image_data=image_data, lang=lang)
@@ -932,6 +932,7 @@ class RedisRequestQueue:
                 user_id=user_id,
             )
 
+        mm_model_name = self._get_model_name("multimodal") or "unknown"
         extra = {
             "file_path": file_path,
             "file_name": video_result["file_name"],
@@ -939,8 +940,14 @@ class RedisRequestQueue:
             "file_type": video_result["file_type"],
             "mm_time": mm_time,
             "gen_time": gen_time,
+            "mm_model": mm_model_name,
             "gen_model": video_model,
-            "response_time": {"mm_time": mm_time, "gen_time": gen_time, "gen_model": video_model},
+            "response_time": {
+                "mm_time": mm_time,
+                "gen_time": gen_time,
+                "mm_model": mm_model_name,
+                "gen_model": video_model,
+            },
             "metadata": video_result.get("metadata", {}),
             "resize_notice": resize_notice,
             "resize_notice_id": resize_notice_id,

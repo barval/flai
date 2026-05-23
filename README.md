@@ -70,22 +70,11 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v8.7
+### What's New in v8.6
 
-| v8.7 (New) | Notes |
+| v8.6 (New) | Notes |
 |------------|-------|
 | 🎬 **Video generation** | Text-to-video and image+text-to-video via LTX-Video 2B distilled model. Separate GPU container with VRAM isolation, T5 encoder on CPU (~8.9 GiB VRAM saved). 8-step inference, ~11s for 9 frames at 320×512. Requires PyTorch with sm_120 support for RTX 5060 Ti (cu128 nightly). Enable with `--profile with-video`. |
-
-| v8.6 | Notes |
-|------------|-------|
-| 🔄 **Page-refresh recovery** | ⚡ indicator, live streaming, and final response all survive F5 during generation — `onStreamToken`/`onResultCompleted` now handle missing `pendingRequestIds` after reload |
-| 🖥️ **VRAM monitor & auto-degradation** | Background VRAM polling via `nvidia-smi` every 60s. Progressive model degradation (100%→0% n_gpu_layers in 4 steps) on OOM. `_MAX_SAFE_NGL` per-VRAM-tier safety caps (16GB → ngl 24). All models in single `llm_fast` swap group |
-| 📊 **VRAM calculator** | New `/admin/api/model-estimate` endpoint estimates VRAM per model (weights + KV cache + compute). Model config UI with auto-calculated `n_gpu_layers` slider |
-| 🎨 **SD offload system** | Refactored `sd_wrapper.py`: 4-level VRAM offload (0=full GPU → 3=full CPU), progressive on OOM. VRAM headroom check (500MB) before SD generation |
-| ⚡ **Live token/s display** | Real-time tokens-per-second estimate during streaming + final token/s in message header. `completion_tokens` stored in DB and passed through SSE |
-| 🔧 **Model config cache fix** | TTL cache replaced with `updated_at`-based versioning — eliminates cross-worker inconsistency with gunicorn `workers=2` |
-| 🐛 **Architecture display fix** | Numpy byte-string decoding (`[113 119 101 110 51]` → `qwen3`) in admin panel. Regex handles leading-space variants |
-| 🗃️ **GGUF metadata expansion** | `parameter_count`, `head_count`, `head_count_kv`, `key_length`, `value_length` scanned and stored in DB |
 
 
 ### Core Components
@@ -706,7 +695,6 @@ curl http://localhost:5000/metrics
 
 ### ✅ Completed
 
-- **Video generation (LTX-Video 2B)** — text-to-video and image+text-to-video. Separate GPU container with VRAM isolation, T5 encoder on CPU, llama.cpp LLM auto-unload. 8-step distilled inference, ~11s for 9 frames at 320×512.
 - **llama.cpp router mode** (`--models-dir`) — single llama-server with dynamic model switching
 - **stable-diffusion.cpp** — Z-Image-Turbo for generation, Flux.2 Klein 4B for editing
 - **OpenAI-compatible API** (`/v1/chat/completions`, `/v1/embeddings`)
@@ -751,6 +739,7 @@ curl http://localhost:5000/metrics
 - **Model config cache fix** — TTL cache replaced with `updated_at`-based versioning, eliminating cross-worker inconsistency with gunicorn `workers=2`
 - **Architecture display fix** — numpy byte-string decoding (`[113 119 101 110 51]` → `qwen3`) in admin panel
 - **GGUF metadata expansion** — `parameter_count`, `head_count`, `head_count_kv`, `key_length`, `value_length` scanned and stored in DB
+- **Video generation (LTX-Video 2B)** — text-to-video and image+text-to-video. Separate GPU container with VRAM isolation, T5 encoder on CPU, llama.cpp LLM auto-unload. 8-step distilled inference, ~11s for 9 frames at 320×512.
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)

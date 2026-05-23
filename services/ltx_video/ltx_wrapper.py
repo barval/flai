@@ -481,6 +481,22 @@ def generate_video():
     finally:
         elapsed = time.time() - gen_start
         logger.info(f"Total request time: {elapsed:.1f}s")
+        # Clean up CUDA to avoid fragmentation for next request
+        if torch.cuda.is_available():
+            try:
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+                if hasattr(torch.cuda, "reset_peak_memory_stats"):
+                    torch.cuda.reset_peak_memory_stats()
+                free_mem, total_mem = torch.cuda.mem_get_info()
+                logger.info(
+                    f"VRAM after cleanup: {free_mem / 1024**3:.1f} GiB free / {total_mem / 1024**3:.1f} GiB total"
+                )
+            except Exception as e:
+                logger.warning(f"CUDA cleanup error: {e}")
+        import gc
+
+        gc.collect()
 
 
 # Warm up pipeline on import (triggers for both gunicorn and direct runner).

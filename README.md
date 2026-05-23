@@ -82,6 +82,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | 🖼️ **Image edit resize (1024px)** | Source images for editing are resized to **1024px** on the longest side before SD inpainting (was unbounded, risking OOM). |
 | 📊 **GPU memory diagnostics** | New `log_gpu_memory()` method in resource_manager logs VRAM state via llama-swap API or nvidia-smi fallback. Called after video generation to verify cleanup. |
 | ⚡ **Chat loading optimization** | `file_data` is stripped from `content` JSON in `get_session_messages()` when file is on disk (`file_path` IS NOT NULL). Reduces response size ~1000x for sessions with many images (e.g. 10 images: ~15 MB → ~10 KB). Audio without `file_path` is unaffected. |
+| 🖼️ **Aspect ratio matching for video** | Video-from-image now matches output resolution to source image aspect ratio. Wide (w/h > 1.2) → 896×512, tall (w/h < 0.8) → 512×896, square → 512×512. Implemented in `generate_video_params_from_image()`. |
 
 
 ### Core Components
@@ -513,6 +514,8 @@ Video generation runs in a **separate GPU container** (via `--profile with-video
 
 **Source image resize:** Images for video-from-image are resized to **896px** on the longest side before being sent to the LTX pipeline (reduces VRAM and network payload). A system notice shows the original vs resized dimensions.
 
+**Aspect ratio matching:** When generating video from an image, the output video resolution is automatically adjusted to match the source image's aspect ratio: square images → 512×512, wide images (w/h > 1.2) → 896×512 landscape, tall images (w/h < 0.8) → 512×896 portrait.
+
 **Required models:**
 1. `ltxv-2b-0.9.8-distilled.safetensors` (~5.9 GB) — diffusion transformer + VAE
 2. `PixArt-alpha/PixArt-XL-2-1024-MS` text encoder / tokenizer — T5-XXL encoder (~18 GB on disk in float32, ~8.9 GB in VRAM in bf16)
@@ -771,6 +774,7 @@ curl http://localhost:5000/metrics
 - **Image edit resize (1024px)** — source images for SD editing resized to 1024px on longest side to prevent OOM.
 - **llama-swap updated to v217** — image pulled to get llama-server 9294 with Blackwell (sm_120) crash fixes.
 - **Chat loading optimization** — base64 `file_data` stripped from `content` JSON in `get_session_messages()` when file is on disk. Reduces API response payload ~1000x (10 images: ~15 MB → ~10 KB).
+- **Aspect ratio matching for video-from-image** — output video resolution matches source image aspect ratio (wide → 896×512, tall → 512×896, square → 512×512). Implemented in `generate_video_params_from_image()`. |
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)

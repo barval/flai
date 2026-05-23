@@ -420,6 +420,24 @@ class MultimodalModule(TranslationMixin):
                 if "frame_rate" not in prompt_data:
                     prompt_data["frame_rate"] = 30
 
+                # Override width/height to match source image aspect ratio
+                try:
+                    img = Image.open(BytesIO(base64.b64decode(image_base64)))
+                    w, h = img.size
+                    aspect = w / h
+                    if aspect > 1.2:
+                        prompt_data["width"], prompt_data["height"] = 896, 512
+                    elif aspect < 0.8:
+                        prompt_data["width"], prompt_data["height"] = 512, 896
+                    else:
+                        prompt_data["width"], prompt_data["height"] = 512, 512
+                    self.logger.info(
+                        f"Video aspect ratio adjusted to match source image: "
+                        f"{w}x{h} (ratio={aspect:.2f}) → {prompt_data['width']}x{prompt_data['height']}"
+                    )
+                except Exception as e:
+                    self.logger.warning(f"Failed to detect image aspect ratio: {e}")
+
                 return prompt_data, None
             else:
                 return None, self._("Could not find JSON in model response", lang)

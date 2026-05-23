@@ -125,12 +125,21 @@ All services run on one machine with GPU sharing:
 ## 📋 System Requirements
 
 ### Hardware Recommendations
+
 | Component | Minimum | Recommended | Optimal |
 |-----------|---------|-------------|---------|
 | **RAM** | 16 GB | 32 GB | 32+ GB |
 | **CPU** | 4 cores | 4+ cores | 8+ cores |
-| **GPU** | NVIDIA 8-12 GB VRAM | NVIDIA 16 GB VRAM | NVIDIA 24+ GB VRAM |
-| **Storage** | 40 GB | 60+ GB SSD | 100+ GB SSD NVMe |
+| **GPU** | NVIDIA 12 GB VRAM | NVIDIA 16 GB VRAM | NVIDIA 24+ GB VRAM |
+| **Storage** | 40 GB | 80+ GB SSD | 100+ GB SSD NVMe |
+
+> **GPU VRAM notes:**
+> - **8 GB** is sufficient for chat + embedding only (no multimodal, no image/video generation).
+> - **12 GB** enables multimodal (Qwen3VL ~6 GB) or image generation (Z_image_turbo ~7 GB in separate context), but not simultaneously.
+> - **16 GB** handles multimodal + reasoning + image gen + video gen via VRAM swapping (only one LLM model loaded at a time; SD and video run in separate GPU contexts with LLM auto-unloaded before generation).
+> - **24+ GB** allows keeping multimodal and reasoning in VRAM simultaneously without swapping.
+>
+> **CPU-only mode:** Chat, reasoning, embeddings, RAG, and TTS work without a GPU (slower). Image generation works but takes 10–30 minutes per image. Multimodal (vision) and video generation require a GPU.
 
 ### Software Prerequisites
 - Linux server with **NVIDIA GPU** (CUDA support required)

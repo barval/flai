@@ -121,7 +121,7 @@ def send_message():
             with force_locale(lang):
                 resolution_msg = _("Maximum resolution {max_size}px on the longest side").format(max_size=max_size)
                 reduced_msg = _("The image has been reduced.")
-                notice_text = f"⚠️ {resolution_msg}. {reduced_msg}"
+                notice_text = f"{resolution_msg}. {reduced_msg}"
                 notice_id = db.save_message(
                     session_id, "assistant", notice_text, model_name="system", response_time="0"
                 )

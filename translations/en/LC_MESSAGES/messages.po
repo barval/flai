@@ -1563,3 +1563,8 @@ msgstr ""
 #~ msgid "Could not connect to llama-swap"
 #~ msgstr "Could not connect to llama-swap"
 
+
+#: app/routes/messages.py:123
+#, python-brace-format
+msgid "Maximum resolution {max_size}px on the longest side"
+msgstr "Maximum resolution {max_size}px on the longest side"

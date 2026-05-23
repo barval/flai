@@ -1570,3 +1570,8 @@ msgstr "Не удалось подключиться к сервису гене�
 #~ msgid "Could not connect to llama-swap"
 #~ msgstr "Не удалось подключиться к llama-swap"
 
+
+#: app/routes/messages.py:123
+#, python-brace-format
+msgid "Maximum resolution {max_size}px on the longest side"
+msgstr "Максимальное разрешение {max_size}px по длинной стороне"

@@ -783,10 +783,183 @@ class RedisRequestQueue:
             session_id,
             message_text,
             sd_model,
-            {"mm_time": mm_time, "gen_time": gen_time},  # type: ignore[arg-type]
+            {"mm_time": mm_time, "gen_time": gen_time},
             file_data=None,
             file_type=image_result["file_type"],
             file_name=image_result["file_name"],
+            file_path=file_path,
+            extra=extra,
+            response_style=response_style,
+        )
+
+    def _process_video_gen_task(
+        self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
+    ) -> dict[str, Any]:
+        """Handle video generation from text (router action_type='video')."""
+        if "video" not in self.app.modules:
+            return self._build_error_response(
+                session_id, self.app.modules["base"]._("Video generation module unavailable", lang=lang), 0, lang
+            )
+        self.app.modules["video"].check_availability()
+        if not self.app.modules["video"].available:
+            return self._build_error_response(
+                session_id, self.app.modules["base"]._("Video generation module unavailable", lang=lang), 0, lang
+            )
+
+        mm_start = time.time()
+        prompt_data, error = self.app.modules["multimodal"].generate_video_params(
+            query, lang=lang, response_style=response_style
+        )
+        mm_time = round(time.time() - mm_start, 1)
+        if error:
+            return self._build_error_response(session_id, error, mm_time, lang)
+
+        gen_start = time.time()
+        video_result = self.app.modules["video"].generate_video(prompt_data, lang=lang)
+        gen_time = round(time.time() - gen_start, 1)
+
+        if not video_result["success"]:
+            return self._build_error_response(session_id, video_result["error"], mm_time + gen_time, lang)
+
+        video_model = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
+        template = self.app.modules["base"]._("Video generated from request: {query}", lang=lang)
+        prefix = "🎬 " + template.replace("{query}", "")
+        message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
+        file_path = None
+        if video_result.get("video_data"):
+            file_path = save_uploaded_file(
+                file_data=video_result["video_data"],
+                filename=video_result["file_name"],
+                session_id=session_id,
+                upload_folder=self.app.config["UPLOAD_FOLDER"],
+                user_id=user_id,
+            )
+
+        mm_model = self._get_model_name("multimodal") or "unknown"
+        extra = {
+            "file_path": file_path,
+            "file_name": video_result["file_name"],
+            "file_size": video_result["file_size"],
+            "file_type": video_result["file_type"],
+            "mm_time": mm_time,
+            "gen_time": gen_time,
+            "mm_model": mm_model,
+            "gen_model": video_model,
+            "response_time": {"mm_time": mm_time, "gen_time": gen_time, "mm_model": mm_model, "gen_model": video_model},
+            "metadata": video_result.get("metadata", {}),
+        }
+        return self._save_and_respond(
+            session_id,
+            message_text,
+            video_model,
+            {"mm_time": mm_time, "gen_time": gen_time},
+            file_data=None,
+            file_type=video_result["file_type"],
+            file_name=video_result["file_name"],
+            file_path=file_path,
+            extra=extra,
+            response_style=response_style,
+        )
+
+    def _process_video_gen_task_from_image(
+        self, query: str, image_data: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
+    ) -> dict[str, Any]:
+        """Handle video generation from image + text ([-VIDEO-] marker route).
+        Uses the query text as the video prompt (already classified by multimodal)
+        with default video parameters — avoids a second multimodal call.
+        """
+        if "video" not in self.app.modules:
+            return self._build_error_response(
+                session_id, self.app.modules["base"]._("Video generation module unavailable", lang=lang), 0, lang
+            )
+        self.app.modules["video"].check_availability()
+        if not self.app.modules["video"].available:
+            return self._build_error_response(
+                session_id, self.app.modules["base"]._("Video generation module unavailable", lang=lang), 0, lang
+            )
+
+        mm_start = time.time()
+        mm_model = self.app.modules.get("multimodal")
+        prompt_data, error = (
+            mm_model.generate_video_params_from_image(query, image_data, lang=lang, response_style=response_style)
+            if mm_model
+            else (None, self.app.modules["base"]._("Multimodal model unavailable", lang=lang))
+        )
+        mm_time = round(time.time() - mm_start, 1)
+        if error:
+            return self._build_error_response(session_id, error, mm_time, lang)
+
+        gen_start = time.time()
+        video_result = self.app.modules["video"].generate_video(prompt_data, image_data=image_data, lang=lang)
+        gen_time = round(time.time() - gen_start, 1)
+
+        if not video_result["success"]:
+            return self._build_error_response(session_id, video_result["error"], mm_time + gen_time, lang)
+
+        # Show resize notice if source image was downscaled for video
+        resize_notice = None
+        resize_notice_id = None
+        if video_result.get("resized") and video_result.get("original_size") and video_result.get("new_size"):
+            orig_w, orig_h = video_result["original_size"]
+            new_w, new_h = video_result["new_size"]
+            lang_for_msg = lang
+            with force_locale(lang_for_msg):
+                resize_text = (
+                    self.app.modules["base"]
+                    ._(
+                        "Maximum resolution for video is {max_w}×{max_h}. "
+                        "The image has been resized from {orig_w}×{orig_h} to {new_w}×{new_h}.",
+                        lang=lang_for_msg,
+                    )
+                    .format(max_w=896, max_h=896, orig_w=orig_w, orig_h=orig_h, new_w=new_w, new_h=new_h)
+                )
+            resize_notice_id = save_message(
+                session_id, "assistant", resize_text, model_name="system", response_time="0"
+            )
+            resize_notice = resize_text
+
+        video_model = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
+        template = self.app.modules["base"]._("Video generated from request: {query}", lang=lang)
+        prefix = "🎬 " + template.replace("{query}", "")
+        message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
+        file_path = None
+        if video_result.get("video_data"):
+            file_path = save_uploaded_file(
+                file_data=video_result["video_data"],
+                filename=video_result["file_name"],
+                session_id=session_id,
+                upload_folder=self.app.config["UPLOAD_FOLDER"],
+                user_id=user_id,
+            )
+
+        mm_model_name = self._get_model_name("multimodal") or "unknown"
+        extra = {
+            "file_path": file_path,
+            "file_name": video_result["file_name"],
+            "file_size": video_result["file_size"],
+            "file_type": video_result["file_type"],
+            "mm_time": mm_time,
+            "gen_time": gen_time,
+            "mm_model": mm_model_name,
+            "gen_model": video_model,
+            "response_time": {
+                "mm_time": mm_time,
+                "gen_time": gen_time,
+                "mm_model": mm_model_name,
+                "gen_model": video_model,
+            },
+            "metadata": video_result.get("metadata", {}),
+            "resize_notice": resize_notice,
+            "resize_notice_id": resize_notice_id,
+        }
+        return self._save_and_respond(
+            session_id,
+            message_text,
+            video_model,
+            {"mm_time": mm_time, "gen_time": gen_time},
+            file_data=None,
+            file_type=video_result["file_type"],
+            file_name=video_result["file_name"],
             file_path=file_path,
             extra=extra,
             response_style=response_style,
@@ -1069,6 +1242,8 @@ class RedisRequestQueue:
 
         if action_type == "image":
             return self._process_image_gen_task(query, session_id, user_id, lang, response_style)
+        elif action_type == "video":
+            return self._process_video_gen_task(query, session_id, user_id, lang, response_style)
         elif action_type == "camera":
             return self._process_camera_task(
                 query, session_id, user_id, message_text, current_time_str, lang, response_style
@@ -1202,6 +1377,9 @@ class RedisRequestQueue:
 
         if action_type == "image":
             return self._process_image_gen_task(query, session_id, user_id, lang, response_style)
+
+        if action_type == "video":
+            return self._process_video_gen_task(query, session_id, user_id, lang, response_style)
 
         if action_type == "camera":
             return self._process_camera_task_stream(
@@ -1343,6 +1521,17 @@ class RedisRequestQueue:
                             # Marker present but no query, treat as error
                             bot_reply = "⚠️ " + self.app.modules["base"]._("Image editing request was empty", lang)
                             is_error = True
+                    # Check if the response indicates a video generation request
+                    elif isinstance(bot_reply, str) and bot_reply.strip().startswith("[-VIDEO-]"):
+                        video_query = bot_reply.strip()[len("[-VIDEO-]") :].strip()
+                        if video_query:
+                            # Redirect to video generation task (image+text)
+                            return self._process_video_gen_task_from_image(
+                                video_query, file_data, session_id, user_id, lang, response_style
+                            )
+                        else:
+                            bot_reply = "⚠️ " + self.app.modules["base"]._("Video request was empty", lang)
+                            is_error = True
                     # Safety net: if model returned edit-like content without the required marker,
                     # treat as a model error, NOT an edit request.
                     elif isinstance(bot_reply, str) and "edit_prompt" in bot_reply:
@@ -1377,8 +1566,9 @@ class RedisRequestQueue:
         user_id: str,
         response_style: str = "neutral",
     ) -> dict[str, Any]:
-        """Handle image+text with streaming. Buffers early tokens to detect [-IMAGE-EDIT-] marker."""
+        """Handle image+text with streaming. Buffers early tokens to detect [-IMAGE-EDIT-] or [-VIDEO-] marker."""
         edit_marker = "[-IMAGE-EDIT-]"
+        video_marker = "[-VIDEO-]"
         process_start = time.time()
 
         if "multimodal" not in self.app.modules or not self.app.modules["multimodal"].available:
@@ -1462,6 +1652,24 @@ class RedisRequestQueue:
                             response_style,
                         )
                     bot_reply = "⚠️ " + self.app.modules["base"]._("Image editing request was empty", lang)
+                    process_time = round(time.time() - process_start, 1)
+                    return self._save_and_respond(
+                        session_id,
+                        bot_reply,
+                        "unknown",
+                        process_time,
+                        is_error=True,
+                        response_style=response_style,
+                    )
+                if video_marker in buffer:
+                    for token in stream_gen:
+                        full_response += token
+                    video_query = full_response.split(video_marker, 1)[1].strip()
+                    if video_query:
+                        return self._process_video_gen_task_from_image(
+                            video_query, file_data, session_id, user_id, lang, response_style
+                        )
+                    bot_reply = "⚠️ " + self.app.modules["base"]._("Video request was empty", lang)
                     process_time = round(time.time() - process_start, 1)
                     return self._save_and_respond(
                         session_id,

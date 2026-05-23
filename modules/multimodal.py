@@ -181,6 +181,34 @@ class MultimodalModule(TranslationMixin):
             self.logger.error("Failed to load image prompt template")
         return prompt
 
+    @staticmethod
+    def _resize_for_classify(image_data: str, max_size: int = 896) -> str:
+        """Resize image to fit within max_size on the longest side.
+        Reduces token usage in multimodal vision encoder and prevents context overflow.
+        """
+        try:
+            img = Image.open(BytesIO(base64.b64decode(image_data)))
+            w, h = img.size
+            if w <= max_size and h <= max_size:
+                return image_data
+            ratio = max_size / max(w, h)
+            new_w, new_h = int(w * ratio), int(h * ratio)
+            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+            if img.mode in ("RGBA", "LA", "P"):
+                rgb_img = Image.new("RGB", img.size, (255, 255, 255))
+                mask = img.split()[-1] if img.mode == "RGBA" else None
+                rgb_img.paste(img, mask=mask)
+                img = rgb_img
+            buf = BytesIO()
+            img.save(buf, format="JPEG", quality=85)
+            logger = logging.getLogger(__name__)
+            logger.info(f"Image resized for multimodal classify: {w}x{h} → {new_w}x{new_h}")
+            return base64.b64encode(buf.getvalue()).decode("utf-8")
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to resize image for multimodal classify: {e}")
+            return image_data
+
     def process_image_with_text(
         self,
         image_data: str,
@@ -279,6 +307,136 @@ class MultimodalModule(TranslationMixin):
                     self.logger.warning(f"No prompt in response, using original query: {user_query}")
                 if "negative_prompt" not in prompt_data:
                     prompt_data["negative_prompt"] = ""
+
+                return prompt_data, None
+            else:
+                return None, self._("Could not find JSON in model response", lang)
+        except Exception as e:
+            self.logger.error(f"JSON parsing error: {str(e)}")
+            return None, self._("JSON parsing error: {error}", lang, error=str(e))
+
+    def generate_video_params(
+        self, user_query: str, lang: str = "ru", response_style: str = "neutral"
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """Generate parameters for video creation via LTX-Video."""
+        if not self.check_availability():
+            return None, self._("Multimodal model unavailable", lang)
+
+        create_prompt = format_prompt(
+            "create_video.template",
+            {
+                "video_query": user_query,
+                "response_style": "",
+            },
+            lang=lang,
+        )
+
+        if not create_prompt:
+            return None, self._("Error loading prompt template", lang)
+
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a video generation parameter generator. Always respond with valid JSON only, no explanations.",
+            },
+            {"role": "user", "content": create_prompt},
+        ]
+
+        response = self._call_multimodal(messages, lang=lang)
+        self.logger.info(f"Multimodal model video param response: {response[:500]}")
+
+        try:
+            import re
+
+            json_match = re.search(r"\{\{\{[\s\S]*?\}\}\}|\{[\s\S]*\}", response)
+            if json_match:
+                json_str = json_match.group()
+                prompt_data = json.loads(json_str)
+                self.logger.info(f"Parsed video prompt_data: {prompt_data}")
+
+                if "prompt" not in prompt_data or not prompt_data["prompt"].strip():
+                    prompt_data["prompt"] = user_query
+                if "negative_prompt" not in prompt_data:
+                    prompt_data["negative_prompt"] = "worst quality, inconsistent motion, blurry, jittery, distorted"
+                if "width" not in prompt_data:
+                    prompt_data["width"] = 896
+                if "height" not in prompt_data:
+                    prompt_data["height"] = 512
+                if "num_frames" not in prompt_data:
+                    prompt_data["num_frames"] = 257
+                if "frame_rate" not in prompt_data:
+                    prompt_data["frame_rate"] = 30
+
+                return prompt_data, None
+            else:
+                return None, self._("Could not find JSON in model response", lang)
+        except Exception as e:
+            self.logger.error(f"JSON parsing error: {str(e)}")
+            return None, self._("JSON parsing error: {error}", lang, error=str(e))
+
+    def generate_video_params_from_image(
+        self, user_query: str, image_base64: str, lang: str = "ru", response_style: str = "neutral"
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """Generate parameters for video creation from image + text."""
+        if not self.check_availability():
+            return None, self._("Multimodal model unavailable", lang)
+
+        create_prompt = format_prompt(
+            "create_video_from_image.template",
+            {
+                "video_query": user_query,
+                "response_style": "",
+            },
+            lang=lang,
+        )
+
+        if not create_prompt:
+            return None, self._("Error loading prompt template", lang)
+
+        response = self.llamacpp.chat_with_image(
+            text=create_prompt, image_base64=image_base64, model_type="multimodal", lang=lang
+        )
+        self.logger.info(f"Multimodal model video-from-image param response: {response[:500]}")
+
+        try:
+            import re
+
+            json_match = re.search(r"\{\{\{[\s\S]*?\}\}\}|\{[\s\S]*\}", response)
+            if json_match:
+                json_str = json_match.group()
+                prompt_data = json.loads(json_str)
+                self.logger.info(f"Parsed video-from-image prompt_data: {prompt_data}")
+
+                if "prompt" not in prompt_data or not prompt_data["prompt"].strip():
+                    prompt_data["prompt"] = user_query
+                if "negative_prompt" not in prompt_data:
+                    prompt_data["negative_prompt"] = "worst quality, inconsistent motion, blurry, jittery, distorted"
+                if "width" not in prompt_data:
+                    prompt_data["width"] = 896
+                if "height" not in prompt_data:
+                    prompt_data["height"] = 512
+                if "num_frames" not in prompt_data:
+                    prompt_data["num_frames"] = 257
+                if "frame_rate" not in prompt_data:
+                    prompt_data["frame_rate"] = 30
+
+                # Override width/height to match source image aspect ratio
+                try:
+                    img = Image.open(BytesIO(base64.b64decode(image_base64)))
+                    w, h = img.size
+                    aspect = w / h
+                    if aspect > 1.2:
+                        prompt_data["width"], prompt_data["height"] = 896, 512
+                    elif aspect < 0.8:
+                        prompt_data["width"], prompt_data["height"] = 512, 896
+                    else:
+                        prompt_data["width"], prompt_data["height"] = 512, 512
+                    self.logger.info(
+                        f"Video aspect ratio adjusted to match source image: "
+                        f"{w}x{h} (ratio={aspect:.2f}) → {prompt_data['width']}x{prompt_data['height']}"
+                    )
+                except Exception as e:
+                    self.logger.warning(f"Failed to detect image aspect ratio: {e}")
 
                 return prompt_data, None
             else:

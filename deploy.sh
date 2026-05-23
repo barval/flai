@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v8.1 — Single-Server Deployment Script
+# FLAI v8.6 — Single-Server Deployment Script
 
 set -euo pipefail
 
@@ -220,6 +220,30 @@ download_sd_cpp_models() {
     fi
 }
 
+# ── LTX-Video models ──
+download_ltx_video_models() {
+    info "Downloading LTX-Video models..."
+    local VIDEO_DIR="services/ltx_video/models"
+
+    # LTX-Video distilled model (2B params)
+    if [[ ! -f "$VIDEO_DIR/ltxv-2b-0.9.8-distilled.safetensors" ]]; then
+        info "Downloading ltxv-2b-0.9.8-distilled.safetensors..."
+        HF_DOWNLOAD "Lightricks/LTX-Video" \
+            "ltxv-2b-0.9.8-distilled.safetensors" \
+            "$VIDEO_DIR/ltxv-2b-0.9.8-distilled.safetensors"
+    else
+        warn "ltxv-2b-0.9.8-distilled.safetensors already exists — skipping."
+    fi
+
+    # T5 text encoder (PixArt T5 ≈ 8.9 GB)
+    if [[ ! -d "$VIDEO_DIR/t5_encoder/text_encoder" ]]; then
+        info "Downloading T5 text encoder (PixArt T5-XXL, ~18 GB on disk)…"
+        bash "$SCRIPT_DIR/services/ltx_video/download-t5-encoder.sh"
+    else
+        warn "T5 text encoder already exists — skipping."
+    fi
+}
+
 # ── TTS (Speech Synthesis) models ──
 download_tts_models() {
     info "Downloading TTS (Piper) models..."
@@ -273,6 +297,7 @@ build_and_launch() {
     [[ "$WITH_IMAGE_GEN" == "true" ]] && PROFILE="$PROFILE --profile with-image-gen"
     [[ "$WITH_VOICE" == "true" ]] && PROFILE="$PROFILE --profile with-voice"
     [[ "$WITH_RAG" == "true" ]]    && PROFILE="$PROFILE --profile with-rag"
+    [[ "$WITH_VIDEO" == "true" ]]  && PROFILE="$PROFILE --profile with-video"
 
     local HAS_GPU=false
     if command -v nvidia-smi &>/dev/null && nvidia-smi -L 2>/dev/null | grep -q GPU; then
@@ -328,6 +353,8 @@ Options:
   --with-rag          Deploy Qdrant for RAG (document search)
   --with-image-gen    Deploy stable-diffusion.cpp for image generation/editing
                       (default: disabled, use this flag to enable)
+  --with-video        Deploy LTX-Video for video generation
+                      (default: disabled, use this flag to enable)
   --download-models   Download GGUF/safetensors models from HuggingFace
   --run-tests         Run unit tests after deployment
   --help, -h          Show this help message
@@ -340,6 +367,8 @@ Model Download Sizes (approximate):
     bge-m3 (embeddings)              ~1.5 GB
   Image generation (Z-Image Turbo)   ~6.5 GB
   Image editing (Flux.2 Klein 4B)    ~5 GB
+  Video generation (LTX-Video 2B)    ~5.9 GB
+  T5 text encoder (PixArt T5-XXL)    ~18 GB (on disk, float32)
   TTS (Piper)                        ~0.2 GB
 USAGE
 }
@@ -348,6 +377,7 @@ USAGE
 WITH_VOICE=false
 WITH_RAG=false
 WITH_IMAGE_GEN=false
+WITH_VIDEO=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
 
@@ -356,6 +386,7 @@ for arg in "$@"; do
         --with-voice)     WITH_VOICE=true ;;
         --with-rag)       WITH_RAG=true ;;
         --with-image-gen) WITH_IMAGE_GEN=true ;;
+        --with-video)     WITH_VIDEO=true ;;
         --download-models) DOWNLOAD_MODELS=true ;;
         --run-tests)      RUN_TESTS=true ;;
         --help|-h)        usage; exit 0 ;;
@@ -379,6 +410,7 @@ main() {
         download_llamacpp_models
         download_sd_cpp_models
         download_tts_models
+        [[ "$WITH_VIDEO" == "true" ]] && download_ltx_video_models
     fi
 
     build_and_launch

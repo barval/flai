@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v8.1 — Скрипт развёртывания на одном сервере
+# FLAI v8.6 — Скрипт развёртывания на одном сервере
 
 set -euo pipefail
 
@@ -219,6 +219,28 @@ download_sd_cpp_models() {
     fi
 }
 
+# ── Модели LTX-Video ──
+download_ltx_video_models() {
+    info "Скачиваю модели LTX-Video..."
+    local VIDEO_DIR="services/ltx_video/models"
+
+    if [[ ! -f "$VIDEO_DIR/ltxv-2b-0.9.8-distilled.safetensors" ]]; then
+        info "Скачиваю ltxv-2b-0.9.8-distilled.safetensors..."
+        HF_DOWNLOAD "Lightricks/LTX-Video" \
+            "ltxv-2b-0.9.8-distilled.safetensors" \
+            "$VIDEO_DIR/ltxv-2b-0.9.8-distilled.safetensors"
+    else
+        warn "ltxv-2b-0.9.8-distilled.safetensors уже есть — пропускаю."
+    fi
+
+    if [[ ! -d "$VIDEO_DIR/t5_encoder/text_encoder" ]]; then
+        info "Скачиваю T5 text encoder (PixArt T5-XXL, ~18 ГБ на диске)…"
+        bash "$SCRIPT_DIR/services/ltx_video/download-t5-encoder.sh"
+    else
+        warn "T5 text encoder уже есть — пропускаю."
+    fi
+}
+
 # ── Модели TTS (синтез речи) ──
 download_tts_models() {
     info "Скачиваю модели TTS (Piper)..."
@@ -272,6 +294,7 @@ build_and_launch() {
     [[ "$WITH_IMAGE_GEN" == "true" ]] && PROFILE="$PROFILE --profile with-image-gen"
     [[ "$WITH_VOICE" == "true" ]] && PROFILE="$PROFILE --profile with-voice"
     [[ "$WITH_RAG" == "true" ]]    && PROFILE="$PROFILE --profile with-rag"
+    [[ "$WITH_VIDEO" == "true" ]]  && PROFILE="$PROFILE --profile with-video"
 
     local HAS_GPU=false
     if command -v nvidia-smi &>/dev/null && nvidia-smi -L 2>/dev/null | grep -q GPU; then
@@ -327,6 +350,8 @@ FLAI v8.1 — Скрипт развёртывания
   --with-rag          Развернуть Qdrant для RAG (поиск по документам)
   --with-image-gen    Развернуть stable-diffusion.cpp для генерации/редактирования
                       (по умолчанию: отключено, используйте этот флаг для включения)
+  --with-video        Развернуть LTX-Video для генерации видео
+                      (по умолчанию: отключено, используйте этот флаг для включения)
   --download-models   Скачать GGUF/safetensors модели из HuggingFace
   --run-tests         Запустить тесты после развёртывания
   --help, -h          Показать эту справку
@@ -339,6 +364,8 @@ FLAI v8.1 — Скрипт развёртывания
     bge-m3 (эмбеддинги)                ~1,5 ГБ
   Генерация изображений (Z-Image Turbo) ~6,5 ГБ
   Редактирование (Flux.2 Klein 4B)    ~5 ГБ
+  Видео (LTX-Video 2B)                ~5,9 ГБ
+  T5 text encoder (PixArt T5-XXL)     ~18 ГБ (на диске, float32)
   TTS (Piper)                         ~0,2 ГБ
 USAGE
 }
@@ -347,6 +374,7 @@ USAGE
 WITH_VOICE=false
 WITH_RAG=false
 WITH_IMAGE_GEN=false
+WITH_VIDEO=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
 
@@ -355,6 +383,7 @@ for arg in "$@"; do
         --with-voice)     WITH_VOICE=true ;;
         --with-rag)       WITH_RAG=true ;;
         --with-image-gen) WITH_IMAGE_GEN=true ;;
+        --with-video)     WITH_VIDEO=true ;;
         --download-models) DOWNLOAD_MODELS=true ;;
         --run-tests)      RUN_TESTS=true ;;
         --help|-h)        usage; exit 0 ;;
@@ -378,6 +407,7 @@ main() {
         download_llamacpp_models
         download_sd_cpp_models
         download_tts_models
+        [[ "$WITH_VIDEO" == "true" ]] && download_ltx_video_models
     fi
 
     build_and_launch

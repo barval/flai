@@ -10,6 +10,7 @@ Uses backend pattern to support:
 import json
 import logging
 import os
+import time
 from collections.abc import Generator
 from typing import Any
 
@@ -300,45 +301,66 @@ class LlamaSwapBackend(AbstractLlamaBackend):
 
         self.logger.info(f"LlamaSwapBackend request: model={model}, payload keys={list(payload.keys())}")
 
-        if not self.circuit_breaker.can_execute():
-            self._degrade_model_if_needed(model_type)
-            return _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
+        max_retries = 1 if model_type == "multimodal" else 0
 
-        try:
-            response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout)
-            self.logger.info(f"LlamaSwapBackend response: {response.status_code}")
-            if response.status_code == 200:
-                result = response.json()
-                choices = result.get("choices", [])
-                if not choices:
-                    return _tr("Model returned empty response", lang)
+        for attempt in range(max_retries + 1):
+            if not self.circuit_breaker.can_execute():
+                self._degrade_model_if_needed(model_type)
+                return _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
 
-                content = choices[0].get("message", {}).get("content", "")
-                if content is None:
-                    return _tr("Model returned empty response", lang)
+            try:
+                response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout)
+                self.logger.info(f"LlamaSwapBackend response: {response.status_code}")
+                if response.status_code == 200:
+                    result = response.json()
+                    choices = result.get("choices", [])
+                    if not choices:
+                        return _tr("Model returned empty response", lang)
 
-                for stop_token in ["</s>", "<|eot_id|>"]:
-                    if stop_token in content:
-                        content = content[: content.index(stop_token)]
+                    content = choices[0].get("message", {}).get("content", "")
+                    if content is None:
+                        return _tr("Model returned empty response", lang)
 
-                self.circuit_breaker.record_success()
-                return content.strip()  # type: ignore[no-any-return]
-            else:
+                    for stop_token in ["</s>", "<|eot_id|>"]:
+                        if stop_token in content:
+                            content = content[: content.index(stop_token)]
+
+                    self.circuit_breaker.record_success()
+                    return content.strip()  # type: ignore[no-any-return]
+                else:
+                    if attempt < max_retries and response.status_code == 502:
+                        self.logger.warning(f"chat 502 on attempt {attempt + 1}, retrying in 5s")
+                        time.sleep(5)
+                        continue
+                    self._record_llama_failure(model_type)
+                    err_body = response.text[:500]
+                    self.logger.error(f"chat HTTP {response.status_code} from {model_type}: {err_body}")
+                    return _tr("HTTP error {status}", lang, status=response.status_code)
+            except requests.exceptions.Timeout:
+                if attempt < max_retries:
+                    self.logger.warning(f"chat timeout on attempt {attempt + 1}, retrying in 5s")
+                    time.sleep(5)
+                    continue
                 self._record_llama_failure(model_type)
-                return _tr("HTTP error {status}", lang, status=response.status_code)
-        except requests.exceptions.Timeout:
-            self._record_llama_failure(model_type)
-            return _tr(
-                "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request.",
-                lang,
-                timeout=timeout,
-            )
-        except requests.exceptions.ConnectionError:
-            self._record_llama_failure(model_type)
-            return _tr("Could not connect to llama-swap", lang)
-        except Exception as e:
-            self.logger.error(f"Error: {e}")
-            return f"{_tr('Error', lang)}: {str(e)}"
+                return _tr(
+                    "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request.",
+                    lang,
+                    timeout=timeout,
+                )
+            except requests.exceptions.ConnectionError:
+                if attempt < max_retries:
+                    self.logger.warning(f"chat connection error on attempt {attempt + 1}, retrying in 5s")
+                    time.sleep(5)
+                    continue
+                self._record_llama_failure(model_type)
+                return _tr("Could not connect to llama-swap", lang)
+            except Exception as e:
+                if attempt < max_retries:
+                    self.logger.warning(f"chat error on attempt {attempt + 1}, retrying in 5s: {e}")
+                    time.sleep(5)
+                    continue
+                self.logger.error(f"Error: {e}")
+                return f"{_tr('Error', lang)}: {str(e)}"
 
     def chat_stream(
         self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
@@ -359,50 +381,77 @@ class LlamaSwapBackend(AbstractLlamaBackend):
             "stop": ["</s>", "<|eot_id|>"],
         }
 
-        if not self.circuit_breaker.can_execute():
-            self._degrade_model_if_needed(model_type)
-            yield _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
-            return
-
+        max_retries = 1 if model_type == "multimodal" else 0
         response = None
-        try:
-            response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True)
-            if response.status_code != 200:
-                self._record_llama_failure(model_type)
-                yield _tr("HTTP error {status}", lang, status=response.status_code)
-                return
 
-            self.circuit_breaker.record_success()
-            for line in response.iter_lines():
-                if not line:
-                    continue
-                decoded = line.decode("utf-8")
-                if not decoded.startswith("data: "):
-                    continue
-                data_str = decoded[6:]
-                if data_str == "[DONE]":
-                    break
+        try:
+            for attempt in range(max_retries + 1):
+                if not self.circuit_breaker.can_execute():
+                    self._degrade_model_if_needed(model_type)
+                    yield _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
+                    return
+
                 try:
-                    chunk = json.loads(data_str)
-                    delta = chunk.get("choices", [{}])[0].get("delta", {})
-                    content = delta.get("content", "")
-                    if content:
-                        yield content
-                except json.JSONDecodeError:
-                    continue
-        except requests.exceptions.Timeout:
-            self._record_llama_failure(model_type)
-            yield _tr(
-                "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request.",
-                lang,
-                timeout=timeout,
-            )
-        except requests.exceptions.ConnectionError:
-            self._record_llama_failure(model_type)
-            yield _tr("Could not connect to llama-swap", lang)
-        except Exception as e:
-            self.logger.error(f"Stream error: {e}")
-            yield f"{_tr('Error', lang)}: {str(e)}"
+                    response = requests.post(
+                        f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True
+                    )
+                    if response.status_code != 200:
+                        if attempt < max_retries and response.status_code == 502:
+                            self.logger.warning(f"chat_stream 502 on attempt {attempt + 1}, retrying in 5s")
+                            time.sleep(5)
+                            continue
+                        self._record_llama_failure(model_type)
+                        err_body = response.text[:500]
+                        self.logger.error(f"chat_stream HTTP {response.status_code} from {model_type}: {err_body}")
+                        yield _tr("HTTP error {status}", lang, status=response.status_code)
+                        return
+
+                    self.circuit_breaker.record_success()
+                    for line in response.iter_lines():
+                        if not line:
+                            continue
+                        decoded = line.decode("utf-8")
+                        if not decoded.startswith("data: "):
+                            continue
+                        data_str = decoded[6:]
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data_str)
+                            delta = chunk.get("choices", [{}])[0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                yield content
+                        except json.JSONDecodeError:
+                            continue
+                    break  # success, exit retry loop
+                except requests.exceptions.Timeout:
+                    if attempt < max_retries:
+                        self.logger.warning(f"chat_stream timeout on attempt {attempt + 1}, retrying in 5s")
+                        time.sleep(5)
+                        continue
+                    self._record_llama_failure(model_type)
+                    yield _tr(
+                        "Timeout ({timeout}s) when calling the model. Try increasing timeout in admin panel or simplify your request.",
+                        lang,
+                        timeout=timeout,
+                    )
+                except requests.exceptions.ConnectionError:
+                    if attempt < max_retries:
+                        self.logger.warning(f"chat_stream connection error on attempt {attempt + 1}, retrying in 5s")
+                        time.sleep(5)
+                        continue
+                    self._record_llama_failure(model_type)
+                    yield _tr("Could not connect to llama-swap", lang)
+                    return
+                except Exception as e:
+                    if attempt < max_retries:
+                        self.logger.warning(f"chat_stream error on attempt {attempt + 1}, retrying in 5s: {e}")
+                        time.sleep(5)
+                        continue
+                    self.logger.error(f"Stream error: {e}")
+                    yield f"{_tr('Error', lang)}: {str(e)}"
+                    return
         finally:
             if response is not None:
                 response.close()

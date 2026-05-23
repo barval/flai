@@ -139,7 +139,30 @@ def get_session_messages(
                     if current_app.config.get("TIMEZONE") and dt.tzinfo is None:
                         dt = current_app.config["TIMEZONE"].localize(dt)
                     msg_dict["timestamp"] = dt.isoformat()
+            # Strip base64 file_data from content JSON when file is on disk
+            if msg_dict.get("file_path") and msg_dict.get("content"):
+                with contextlib.suppress(Exception):
+                    parsed = json.loads(msg_dict["content"])
+                    if isinstance(parsed, list):
+                        for item in parsed:
+                            if isinstance(item, dict) and "file_data" in item:
+                                item["file_data"] = None
+                        msg_dict["content"] = json.dumps(parsed, ensure_ascii=False)
             messages.append(msg_dict)
+
+        # Read file sizes from disk for messages with file_path
+        upload_folder = current_app.config.get("UPLOAD_FOLDER", "data/uploads")
+        for msg in messages:
+            fp = msg.get("file_path")
+            if fp:
+                full = os.path.join(upload_folder, fp) if not os.path.isabs(fp) else fp
+                try:
+                    msg["file_size"] = os.path.getsize(full)
+                except OSError:
+                    msg["file_size"] = 0
+            else:
+                msg["file_size"] = 0
+
         return messages
 
 

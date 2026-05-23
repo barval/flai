@@ -47,6 +47,8 @@ class ResourceManager:
         self._lock = threading.Lock()
         self._sd_busy = False  # True while sd-cli is actively using GPU
         self._sd_busy_since = 0.0
+        self._video_busy = False  # True while ltx-video is actively using GPU
+        self._video_busy_since = 0.0
         self._vram_poll_timer: threading.Timer | None = None
         self._vram_poll_interval = 60  # seconds
 
@@ -352,6 +354,17 @@ class ResourceManager:
         with self._lock:
             self._sd_busy = False
 
+    def mark_video_busy(self):
+        """Signal that ltx-video started using GPU."""
+        with self._lock:
+            self._video_busy = True
+            self._video_busy_since = time.time()
+
+    def mark_video_idle(self):
+        """Signal that ltx-video finished."""
+        with self._lock:
+            self._video_busy = False
+
     # ── llama.cpp model management ──
 
     def unload_llamacpp_model(self, llamacpp_url: str | None = None) -> bool:
@@ -425,6 +438,7 @@ class ResourceManager:
             "available_ram_mb": self.hardware.available_ram_mb,
             "cpu_count": self.hardware.cpu_count,
             "sd_busy": self._sd_busy,
+            "video_busy": self._video_busy,
         }
 
         backend_type = os.getenv("LLAMACP_BACKEND", "llamacpp")
@@ -441,6 +455,49 @@ class ResourceManager:
                 pass
 
         return status
+
+    def log_gpu_memory(self, tag: str = "") -> dict[str, int]:
+        """Query and log current GPU memory via nvidia-smi.
+
+        Returns dict with total_mb and free_mb (0 if query fails).
+        """
+        import requests as req
+
+        result = {"total_mb": 0, "free_mb": 0}
+        try:
+            swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+            resp = req.get(f"{swap_url.rstrip('/')}/running", timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                loaded = data.get("models", [])
+                mem_info = data.get("vram", {})
+                total = mem_info.get("total", 0)
+                free = mem_info.get("free", 0)
+                if total and free:
+                    result = {"total_mb": total // (1024 * 1024), "free_mb": free // (1024 * 1024)}
+                    logger.info(
+                        f"GPU memory [{'after ' + tag if tag else 'status'}]: "
+                        f"{result['free_mb']}MB free / {result['total_mb']}MB total, "
+                        f"loaded models: {loaded}"
+                    )
+        except Exception:
+            # Fallback: raw nvidia-smi
+            try:
+                out = subprocess.check_output(
+                    ["nvidia-smi", "--query-gpu=memory.total,memory.free", "--format=csv,noheader,nounits"],
+                    timeout=10,
+                ).decode()
+                parts = out.strip().split(", ")
+                if len(parts) >= 2:
+                    total = int(parts[0].strip())
+                    free = int(parts[1].strip())
+                    result = {"total_mb": total, "free_mb": free}
+                    logger.info(
+                        f"GPU memory [nvidia-smi{' after ' + tag if tag else ''}]: {free}MB free / {total}MB total"
+                    )
+            except Exception:
+                logger.warning("Could not query GPU memory")
+        return result
 
 
 # Global singleton

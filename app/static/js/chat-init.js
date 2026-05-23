@@ -394,10 +394,10 @@ window.loadMessages = function(sessionId) {
         });
 };
 
-window.displayMessage = function(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens) {
+window.displayMessage = function(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize) {
     if (window.IS_RELOADING) return;
     
-    const result = originalDisplayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens);
+    const result = originalDisplayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize);
     
     const messages = document.getElementById('chat-messages');
     if (messages) {

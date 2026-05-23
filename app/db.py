@@ -149,6 +149,20 @@ def get_session_messages(
                                 item["file_data"] = None
                         msg_dict["content"] = json.dumps(parsed, ensure_ascii=False)
             messages.append(msg_dict)
+
+        # Read file sizes from disk for messages with file_path
+        upload_folder = current_app.config.get("UPLOAD_FOLDER", "data/uploads")
+        for msg in messages:
+            fp = msg.get("file_path")
+            if fp:
+                full = os.path.join(upload_folder, fp) if not os.path.isabs(fp) else fp
+                try:
+                    msg["file_size"] = os.path.getsize(full)
+                except OSError:
+                    msg["file_size"] = 0
+            else:
+                msg["file_size"] = 0
+
         return messages
 
 

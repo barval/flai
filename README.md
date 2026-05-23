@@ -81,6 +81,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | 🐛 **llama-swap updated to v217** | `ghcr.io/mostlygeek/llama-swap:cuda` updated from v212 (llama-server 9128) to v217 (llama-server 9294). Includes PR #18361 (Blackwell native builds fix) and PR #22522 (PDL for Hopper+). Fixes Qwen3VL SIGABRT crashes on RTX 5060 Ti (sm_120). |
 | 🖼️ **Image edit resize (1024px)** | Source images for editing are resized to **1024px** on the longest side before SD inpainting (was unbounded, risking OOM). |
 | 📊 **GPU memory diagnostics** | New `log_gpu_memory()` method in resource_manager logs VRAM state via llama-swap API or nvidia-smi fallback. Called after video generation to verify cleanup. |
+| ⚡ **Chat loading optimization** | `file_data` is stripped from `content` JSON in `get_session_messages()` when file is on disk (`file_path` IS NOT NULL). Reduces response size ~1000x for sessions with many images (e.g. 10 images: ~15 MB → ~10 KB). Audio without `file_path` is unaffected. |
 
 
 ### Core Components
@@ -760,6 +761,7 @@ curl http://localhost:5000/metrics
 - **Unified image resize (1536px)** — `resize_image_if_needed` changed from bounding-box (3840×2160) to longest-side (1536px). Prevents Qwen3VL context overflow and reduces disk usage.
 - **Image edit resize (1024px)** — source images for SD editing resized to 1024px on longest side to prevent OOM.
 - **llama-swap updated to v217** — image pulled to get llama-server 9294 with Blackwell (sm_120) crash fixes.
+- **Chat loading optimization** — base64 `file_data` stripped from `content` JSON in `get_session_messages()` when file is on disk. Reduces API response payload ~1000x (10 images: ~15 MB → ~10 KB).
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)

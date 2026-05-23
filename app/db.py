@@ -139,6 +139,15 @@ def get_session_messages(
                     if current_app.config.get("TIMEZONE") and dt.tzinfo is None:
                         dt = current_app.config["TIMEZONE"].localize(dt)
                     msg_dict["timestamp"] = dt.isoformat()
+            # Strip base64 file_data from content JSON when file is on disk
+            if msg_dict.get("file_path") and msg_dict.get("content"):
+                with contextlib.suppress(Exception):
+                    parsed = json.loads(msg_dict["content"])
+                    if isinstance(parsed, list):
+                        for item in parsed:
+                            if isinstance(item, dict) and "file_data" in item:
+                                item["file_data"] = None
+                        msg_dict["content"] = json.dumps(parsed, ensure_ascii=False)
             messages.append(msg_dict)
         return messages
 

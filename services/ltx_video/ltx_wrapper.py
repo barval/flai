@@ -366,7 +366,7 @@ def run_inference(
         conditioning_items=conditioning_items,
         is_video=True,
         vae_per_channel_normalize=True,
-        image_cond_noise_scale=0.15,
+        image_cond_noise_scale=0.05,
         mixed_precision=False,
         offload_to_cpu=offload_to_cpu,
         enhance_prompt=False,
@@ -384,7 +384,7 @@ def run_inference(
 
     tmp_path = tempfile.mktemp(suffix=".mp4")
     try:
-        with imageio.get_writer(tmp_path, format="FFMPEG", fps=frame_rate, codec="libx264") as video:
+        with imageio.get_writer(tmp_path, format="FFMPEG", fps=frame_rate, codec="libx264", output_params=["-crf", "17"]) as video:
             for frame in video_np:
                 video.append_data(frame)
         with open(tmp_path, "rb") as f:

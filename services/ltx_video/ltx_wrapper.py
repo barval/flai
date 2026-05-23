@@ -494,6 +494,13 @@ def generate_video():
                 )
             except Exception as e:
                 logger.warning(f"CUDA cleanup error: {e}")
+            try:
+                import ctypes
+                libcuda = ctypes.CDLL("libcuda.so")
+                libcuda.cuDevicePrimaryCtxReset(0)
+                logger.info("CUDA primary context reset — all VRAM released to driver")
+            except Exception as e:
+                logger.warning(f"CUDA context reset failed: {e}")
         import gc
 
         gc.collect()

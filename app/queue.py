@@ -783,7 +783,7 @@ class RedisRequestQueue:
             session_id,
             message_text,
             sd_model,
-            {"mm_time": mm_time, "gen_time": gen_time},  # type: ignore[arg-type]
+            {"mm_time": mm_time, "gen_time": gen_time},
             file_data=None,
             file_type=image_result["file_type"],
             file_name=image_result["file_name"],

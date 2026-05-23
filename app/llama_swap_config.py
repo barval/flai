@@ -317,9 +317,8 @@ class LlamaSwapConfigGenerator:
             config = rm.compute_llamacpp_config(module)
 
             is_cpu = ngl_override is not None and ngl_override == 0
-            is_vision = module == "multimodal"
 
-            if config.get("flash_attn") and not is_cpu and not is_vision:
+            if config.get("flash_attn") and not is_cpu:
                 cmd_parts.extend(["--flash-attn", "on"])
 
             ngl = ngl_override if ngl_override is not None else config.get("n_gpu_layers", -1)
@@ -333,7 +332,7 @@ class LlamaSwapConfigGenerator:
             if n_cpu_moe and n_cpu_moe > 0:
                 cmd_parts.extend(["--n-cpu-moe", str(n_cpu_moe)])
 
-            if not is_cpu and not is_vision:
+            if not is_cpu:
                 ck = config.get("cache_type_k", "q4_0")
                 cv = config.get("cache_type_v", "q4_0")
                 cmd_parts.extend(["--cache-type-k", ck, "--cache-type-v", cv])

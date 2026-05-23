@@ -189,6 +189,104 @@ class TestCheckAvailability:
             assert module.check_availability() is True
 
 
+class TestGenerateVideoParams:
+    """Test video parameter generation."""
+
+    @pytest.fixture
+    def module_with_mock_llamacpp(self):
+        """Create module with mocked llama.cpp client."""
+        with patch("modules.multimodal.LlamaCppClient") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.available = True
+            mock_client.chat.return_value = "test response"
+            mock_client_class.return_value = mock_client
+
+            app = MagicMock()
+            app.config = {
+                "MAX_IMAGE_WIDTH": 3840,
+                "MAX_IMAGE_HEIGHT": 2160,
+                "MAX_IMAGE_SIZE_MB": 5,
+                "TOKEN_CHARS": 3,
+                "CONTEXT_HISTORY_PERCENT": 75,
+                "SD_MODEL_TYPE": "z_image_turbo",
+            }
+
+            module = MultimodalModule(app)
+            return module
+
+    def test_generate_video_params_unavailable(self):
+        """Should return error when model unavailable."""
+        with patch("modules.multimodal.LlamaCppClient") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.available = False
+            mock_client.check_availability.return_value = False
+            mock_client_class.return_value = mock_client
+
+            app = MagicMock()
+            app.config = {"MAX_IMAGE_SIZE_MB": 5}
+
+            module = MultimodalModule(app)
+            result, error = module.generate_video_params("make a video of a cat")
+            assert result is None
+            assert "unavailable" in error.lower()
+
+    def test_generate_video_params_parses_json(self, module_with_mock_llamacpp):
+        """Should parse JSON response for video params."""
+        import json
+
+        json_response = json.dumps(
+            {
+                "prompt": "A cat walking on a beach, waves crashing",
+                "width": 1216,
+                "height": 704,
+                "num_frames": 121,
+                "frame_rate": 30,
+            }
+        )
+        module_with_mock_llamacpp.llamacpp.chat.return_value = json_response
+
+        result, error = module_with_mock_llamacpp.generate_video_params("make a video of a cat")
+        assert result is not None
+        assert result["prompt"] == "A cat walking on a beach, waves crashing"
+        assert result["width"] == 1216
+        assert result["height"] == 704
+        assert result["num_frames"] == 121
+
+    def test_generate_video_params_missing_defaults(self, module_with_mock_llamacpp):
+        """Should fill defaults for missing fields."""
+        import json
+
+        json_response = json.dumps({"prompt": "A cat walking"})
+        module_with_mock_llamacpp.llamacpp.chat.return_value = json_response
+
+        result, error = module_with_mock_llamacpp.generate_video_params("make a video")
+        assert result is not None
+        assert result["width"] == 896
+        assert result["height"] == 512
+        assert result["num_frames"] == 257
+        assert result["frame_rate"] == 30
+        assert "negative_prompt" in result
+
+    def test_generate_video_params_from_image(self, module_with_mock_llamacpp):
+        """Should handle video params from image."""
+        import json
+
+        json_response = json.dumps(
+            {
+                "prompt": "The mountain landscape from the image, clouds moving",
+                "width": 1216,
+                "height": 704,
+                "num_frames": 121,
+            }
+        )
+        module_with_mock_llamacpp.llamacpp.chat_with_image.return_value = json_response
+
+        fake_image = base64.b64encode(b"fake image").decode()
+        result, error = module_with_mock_llamacpp.generate_video_params_from_image("animate this", fake_image)
+        assert result is not None
+        assert "mountain" in result["prompt"]
+
+
 class TestValidateImageEdgeCases:
     """Test edge cases for image validation."""
 

@@ -112,19 +112,16 @@ def send_message():
     resize_notice_id = None
     file_path = None
     if request_type == "image":
-        max_width = current_app.config.get("MAX_IMAGE_WIDTH", 3840)
-        max_height = current_app.config.get("MAX_IMAGE_HEIGHT", 2160)
+        max_size = current_app.config.get("MAX_IMAGE_SIZE", 1536)
         new_file_data, new_file_type, new_file_name, resized, orig_dims, new_dims = resize_image_if_needed(
-            file_data, file_type, file_name, max_width, max_height
+            file_data, file_type, file_name, max_size
         )
         if resized:
             lang = session.get("language", "ru")
             with force_locale(lang):
-                resolution_msg = _("Maximum resolution {max_width}x{max_height}").format(
-                    max_width=max_width, max_height=max_height
-                )
+                resolution_msg = _("Maximum resolution {max_size}px on the longest side").format(max_size=max_size)
                 reduced_msg = _("The image has been reduced.")
-                notice_text = f"⚠️ {resolution_msg}. {reduced_msg}"
+                notice_text = f"{resolution_msg}. {reduced_msg}"
                 notice_id = db.save_message(
                     session_id, "assistant", notice_text, model_name="system", response_time="0"
                 )

@@ -183,6 +183,15 @@ def create_app():
     else:
         app.logger.info("Image generation module disabled (SD_WRAPPER_URL not set)")
 
+    if app.config.get("LTX_VIDEO_WRAPPER_URL"):
+        from modules.video import VideoModule
+
+        modules["video"] = VideoModule(app)
+        modules["video"].set_multimodal_module(modules["multimodal"])
+        app.logger.info("Video generation module enabled (ltx-wrapper)")
+    else:
+        app.logger.info("Video generation module disabled (LTX_VIDEO_WRAPPER_URL not set)")
+
     if app.config.get("CAMERA_ENABLED"):
         from modules.cam import CamModule
 
@@ -445,6 +454,16 @@ def create_app():
             except Exception as e:
                 status["services"]["sd_wrapper"] = "error"
                 app.logger.error(f"Health check - sd-wrapper error: {e}")
+
+        # Check ltx-wrapper (video generation)
+        ltx_video_url = app.config.get("LTX_VIDEO_WRAPPER_URL")
+        if ltx_video_url:
+            try:
+                response = requests.get(f"{ltx_video_url.rstrip('/')}/health", timeout=5)
+                status["services"]["ltx_video"] = "ok" if response.status_code == 200 else "error"
+            except Exception as e:
+                status["services"]["ltx_video"] = "error"
+                app.logger.error(f"Health check - ltx-video error: {e}")
 
         # Check Whisper ASR
         whisper_url = app.config.get("WHISPER_API_URL")

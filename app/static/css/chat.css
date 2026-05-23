@@ -557,6 +557,13 @@ audio {
     align-self: flex-start;
 }
 
+video {
+    max-width: 100%;
+    margin-top: 10px;
+    border-radius: 8px;
+    align-self: flex-start;
+}
+
 /* ===== TTS BUTTON ===== */
 .tts-button {
     background: none;

@@ -137,6 +137,7 @@ function loadMessages(sessionId) {
                     // Display user messages from DB (for cross-client sync and page reload)
                     if (msg.role === 'user') {
                         dlog('loadMessages: Displaying user message:', msg.id);
+                        dlog('loadMessages: msg.fields=', 'file_name=', msg.file_name, 'file_path=', msg.file_path, 'file_size=', msg.file_size, 'file_data=', msg.file_data ? 'present' : 'null');
                         lastUserMessage = msg;
                         displayMessage(
                             msg.role,
@@ -147,7 +148,7 @@ function loadMessages(sessionId) {
                             msg.file_path,
                             msg.timestamp,
                             null, null, null, null, null, null,
-                            msg.id, null
+                            msg.id, null, null, msg.file_size
                         );
                         return;
                     }
@@ -225,7 +226,8 @@ function loadMessages(sessionId) {
                             genModel,
                             msg.id,
                             msg.response_style,
-                            msg.completion_tokens
+                            msg.completion_tokens,
+                            msg.file_size
                         );
                         lastUserMessage = null;
                         }
@@ -260,11 +262,13 @@ function getResponseStyleEmoji(style) {
     return map[style] || '';
 }
 
-function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens) {
+function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize) {
     if (window.IS_RELOADING) {
         dlog('displayMessage: Skipping - IS_RELOADING');
         return;
     }
+
+    if (fileName) dlog('displayMessage: fileName=', fileName, 'fileSize=', fileSize, 'fstype=', typeof fileSize, 'filePath=', filePath);
 
     dlog('displayMessage: Called with role=', role, 'messageId=', messageId, 'timestamp=', timestamp);
 
@@ -351,10 +355,14 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     // File info for user messages
     if (role === 'user' && fileName && (fileData || filePath)) {
         let fileSizeText = '';
-        if (fileData) {
+        if (typeof fileSize === 'number' && fileSize > 0) {
+            fileSizeText = formatFileSize(fileSize);
+            if (!fileSizeText) fileSizeText = (fileSize / 1024 / 1024).toFixed(1) + 'MB';
+        } else if (fileData) {
             const base64Length = fileData.length;
             const fileSizeBytes = Math.round((base64Length * 3) / 4);
             fileSizeText = formatFileSize(fileSizeBytes);
+            if (!fileSizeText && fileSizeBytes > 0) fileSizeText = (fileSizeBytes / 1024 / 1024).toFixed(1) + 'MB';
         }
         timeDisplay += ' <span class="file-info">[📎 ' + escapeHtml(fileName) + (fileSizeText ? ', ' + fileSizeText : '') + ']</span>';
         
@@ -372,15 +380,23 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             if (fileType && fileType.startsWith('audio/')) {
                 timeDisplay += ' <a href="' + downloadUrl + '" download="' + escapeHtml(fileName || 'audio.webm') + '" class="download-link-inline" title="' + t('download_audio') + '" onclick="event.stopPropagation()">⬇️</a>';
             }
+            if (fileType && fileType.startsWith('video/')) {
+                timeDisplay += ' <a href="' + downloadUrl + '" download="' + escapeHtml(fileName || 'video.mp4') + '" class="download-link-inline" title="' + t('download_video') + '" onclick="event.stopPropagation()">⬇️</a>';
+            }
         }
     }
     
     // File info for assistant messages
     if (role === 'assistant' && fileName && (fileData || filePath)) {
-        const base64Length = fileData ? fileData.length : 0;
-        const fileSizeBytes = fileData ? Math.round((base64Length * 3) / 4) : 0;
-        const fileSize = fileSizeBytes ? formatFileSize(fileSizeBytes) : '';
-        timeDisplay += ' <span class="file-info">[📎 ' + escapeHtml(fileName) + (fileSize ? ', ' + fileSize : '') + ']</span>';
+        let fileSizeBytes = 0;
+        if (typeof fileSize === 'number' && fileSize > 0) {
+            fileSizeBytes = fileSize;
+        } else if (fileData) {
+            const base64Length = fileData.length;
+            fileSizeBytes = Math.round((base64Length * 3) / 4);
+        }
+        const fileSizeText = fileSizeBytes ? formatFileSize(fileSizeBytes) : '';
+        timeDisplay += ' <span class="file-info">[📎 ' + escapeHtml(fileName) + (fileSizeText ? ', ' + fileSizeText : '') + ']</span>';
         
         let downloadUrl = '';
         if (filePath) {
@@ -395,6 +411,9 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             }
             if (fileType && fileType.startsWith('audio/')) {
                 timeDisplay += ' <a href="' + downloadUrl + '" download="' + escapeHtml(fileName || 'audio.webm') + '" class="download-link-inline" title="' + t('download_audio') + '" onclick="event.stopPropagation()">⬇️</a>';
+            }
+            if (fileType && fileType.startsWith('video/')) {
+                timeDisplay += ' <a href="' + downloadUrl + '" download="' + escapeHtml(fileName || 'video.mp4') + '" class="download-link-inline" title="' + t('download_video') + '" onclick="event.stopPropagation()">⬇️</a>';
             }
         }
     }
@@ -595,6 +614,14 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
                 audio.src = fileUrl;
                 audio.preload = 'metadata';
                 msgDiv.appendChild(audio);
+            } else if (fileType && fileType.startsWith('video/')) {
+                const video = document.createElement('video');
+                video.controls = true;
+                video.src = fileUrl;
+                video.preload = 'metadata';
+                video.style.maxWidth = '100%';
+                video.style.borderRadius = '8px';
+                msgDiv.appendChild(video);
             } else {
                 // Create file link safely
                 const fileDiv = document.createElement('div');

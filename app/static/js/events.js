@@ -534,11 +534,12 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
         if (typeof addCopyButtonsToMessage === 'function') addCopyButtonsToMessage(streamMsg);
     } else if (resultSessionId === currentSessionId && data.result?.response) {
         // Fallback: create the message via displayMessage
-        window.displayMessage('assistant', data.result.response, null, null, null, null,
-            data.result.assistant_timestamp || new Date().toISOString(),
-            data.result.response_time, data.result.model_used,
-            null, null, null, null, data.result.message_id,
-            data.result.response_style, data.result.completion_tokens);
+            window.displayMessage('assistant', data.result.response, null, null, null, null,
+                data.result.assistant_timestamp || new Date().toISOString(),
+                data.result.response_time, data.result.model_used,
+                null, null, null, null, data.result.message_id,
+                data.result.response_style, data.result.completion_tokens,
+                data.result.file_size);
     }
 
     if (resultSessionId && resultSessionId !== currentSessionId) {
@@ -610,7 +611,8 @@ function handleCompletedResult(result, expectedSessionId) {
                     result.file_type, result.file_name, result.file_path,
                     result.assistant_timestamp || new Date().toISOString(), responseTime, modelUsed,
                     null, null, null, null, result.message_id,
-                    result.response_style, result.completion_tokens);
+                    result.response_style, result.completion_tokens,
+                    result.file_size);
                 if (typeof updateLastVisit === 'function') updateLastVisit(currentSessionId);
             } else {
                 setNewMessageIndicator(resultSessionId, true);
@@ -673,7 +675,8 @@ function handleCameraResult(result, resultSessionId) {
             if (msg.message_id && displayedMessageIds.has(msg.message_id)) continue;
             window.displayMessage('assistant', msg.response, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                 msg.assistant_timestamp, msg.response_time, msg.model_used,
-                null, null, null, null, msg.message_id, msg.response_style);
+                null, null, null, null, msg.message_id, msg.response_style,
+                msg.completion_tokens, msg.file_size);
         }
         if (typeof updateLastVisit === 'function') updateLastVisit(currentSessionId);
     } else if (cameraSessionId) {

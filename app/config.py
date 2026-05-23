@@ -35,6 +35,11 @@ def load_config(app):
     app.config["SD_WRAPPER_URL"] = os.getenv("SD_WRAPPER_URL", "http://flai-sd:7861")
     app.config["SD_CPP_TIMEOUT"] = int(os.getenv("SD_CPP_TIMEOUT", 900))  # 15 min for editing
 
+    # LTX-Video settings (uses ltx-wrapper HTTP API)
+    app.config["LTX_VIDEO_WRAPPER_URL"] = os.getenv("LTX_VIDEO_WRAPPER_URL")
+    app.config["LTX_VIDEO_MODEL"] = os.getenv("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
+    app.config["LTX_VIDEO_TIMEOUT"] = int(os.getenv("LTX_VIDEO_TIMEOUT", 600))
+
     # Storage quotas (per user)
     app.config["MAX_UPLOAD_STORAGE_MB"] = int(os.getenv("MAX_UPLOAD_STORAGE_MB", 500))
     app.config["MAX_DOCUMENTS_STORAGE_MB"] = int(os.getenv("MAX_DOCUMENTS_STORAGE_MB", 50))
@@ -44,6 +49,7 @@ def load_config(app):
     app.config["MAX_IMAGE_WIDTH"] = int(os.getenv("MAX_IMAGE_WIDTH", 3840))
     app.config["MAX_IMAGE_HEIGHT"] = int(os.getenv("MAX_IMAGE_HEIGHT", 2160))
     app.config["MAX_IMAGE_SIZE_MB"] = int(os.getenv("MAX_IMAGE_SIZE_MB", 5))
+    app.config["MAX_IMAGE_SIZE"] = int(os.getenv("MAX_IMAGE_SIZE", 1536))
 
     # Document upload settings
     app.config["MAX_DOCUMENT_SIZE_MB"] = int(os.getenv("MAX_DOCUMENT_SIZE_MB", 5))

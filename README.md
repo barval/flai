@@ -75,6 +75,12 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | v8.6 (New) | Notes |
 |------------|-------|
 | 🎬 **Video generation** | Text-to-video and image+text-to-video via LTX-Video 2B distilled model. Separate GPU container with VRAM isolation, T5 encoder on CPU (~8.9 GiB VRAM saved). 8-step inference, ~11s for 9 frames at 320×512. Requires PyTorch with sm_120 support for RTX 5060 Ti (cu128 nightly). Enable with `--profile with-video`. |
+| 🔄 **Retry on 502 for multimodal** | Automatic retry (1 attempt, 5s delay) when Qwen3VL returns 502 (model loading race). Covers both streaming and non-streaming calls. Circuit breaker prevents cascading failures. |
+| 🧹 **CUDA cleanup after video** | `torch.cuda.synchronize()`, `torch.cuda.empty_cache()`, `gc.collect()` in ltx_wrapper.py after each generation. Repeated LLM unload via `unload_llamacpp_model()` in video.py `finally` block. |
+| 📐 **Unified image resize (1536px)** | All uploaded images resized to **1536px** on the longest side (`MAX_IMAGE_SIZE`). Prevents Qwen3VL context overflow (was 3840×2160 → ~5300 image tokens, now ~950 tokens). No separate `_resize_for_classify()` needed. |
+| 🐛 **llama-swap updated to v217** | `ghcr.io/mostlygeek/llama-swap:cuda` updated from v212 (llama-server 9128) to v217 (llama-server 9294). Includes PR #18361 (Blackwell native builds fix) and PR #22522 (PDL for Hopper+). Fixes Qwen3VL SIGABRT crashes on RTX 5060 Ti (sm_120). |
+| 🖼️ **Image edit resize (1024px)** | Source images for editing are resized to **1024px** on the longest side before SD inpainting (was unbounded, risking OOM). |
+| 📊 **GPU memory diagnostics** | New `log_gpu_memory()` method in resource_manager logs VRAM state via llama-swap API or nvidia-smi fallback. Called after video generation to verify cleanup. |
 
 
 ### Core Components
@@ -111,7 +117,7 @@ All services run on one machine with GPU sharing:
 
 **Dynamic Model Routing**: llama-swap acts as a proxy to llama.cpp, dynamically loading/unloading GGUF models on demand. Only one model occupies VRAM at a time, with automatic switching based on request type. Model configuration is managed via the admin panel and stored in the database.
 
-> 🎬 **Video generation** uses a **separate GPU container** (`ltxvideo`) with its own VRAM context. Before each video generation, the llama.cpp LLM model is automatically unloaded from VRAM to free memory for the video pipeline (transformer + VAE ≈ 6 GiB). The T5 text encoder stays on CPU to conserve VRAM.
+> 🎬 **Video generation** uses a **separate GPU container** (`ltxvideo`) with its own VRAM context. Before each video generation, the llama.cpp LLM model is automatically unloaded from VRAM to free memory for the video pipeline (transformer + VAE ≈ 6 GiB). After generation, CUDA cache is cleared and LLM processes are re-unloaded for clean GPU state. The T5 text encoder stays on CPU to conserve VRAM.
 
 ---
 
@@ -356,13 +362,15 @@ CAMERA_API_URL=http://flai-room-snapshot-api:5000
 LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872  # LTX-Video video generation
 ```
 
-**Image Generation Defaults:**
+**Image & Video Defaults:**
 ```bash
 SD_CPP_DEFAULT_WIDTH=1024
 SD_CPP_DEFAULT_HEIGHT=1024
 SD_CPP_DEFAULT_CFG_SCALE=1.0    # 1.0 for flow-matching models (Z_image_turbo)
 SD_CPP_DEFAULT_STEPS=10         # 10 for Z_image_turbo
 SD_CPP_TIMEOUT=900
+MAX_IMAGE_SIZE=1536             # Resize uploaded images to 1536px on longest side
+LTX_VIDEO_TIMEOUT=600           # Max video generation time (seconds)
 ```
 
 **Service Retry Settings:**
@@ -474,7 +482,9 @@ The project uses **Z_image_turbo** as the only image generation model:
 
 | Model | Steps | CFG Scale | Resolution | Notes |
 |-------|-------|-----------|------------|-------|
-| **Z_image_turbo** | 10 | 1.0 | 1024×1024 | Fast, flow-matching |
+| **Z_image_turbo** | 10 | 1.0 | up to 1536×1536 | Fast, flow-matching |
+
+All uploaded images are automatically resized to **1536px** on the longest side (configurable via `MAX_IMAGE_SIZE` in `.env`) to prevent Qwen3VL context overflow and reduce disk usage.
 
 Configure via `SD_MODEL_TYPE` in `.env`:
 ```bash
@@ -489,7 +499,9 @@ The project uses **LTX-Video 2B 0.9.8 distilled** for video generation:
 |-------|-------|-----------|------------|-------|
 | **LTX-Video 2B distilled** | 8 | 8–30 fps | up to 768×1344 | Distilled, single GPU (~6 GB VRAM) |
 
-Video generation runs in a **separate GPU container** (via `--profile with-video`). Before generating, the llama.cpp LLM is automatically unloaded from VRAM to free memory. The T5 text encoder (~8.9 GB in bf16) stays on CPU.
+Video generation runs in a **separate GPU container** (via `--profile with-video`). Before generating, the llama.cpp LLM is automatically unloaded from VRAM to free memory. After generation, CUDA cache is cleared and LLM processes are re-unloaded to ensure clean GPU state. The T5 text encoder (~8.9 GB in bf16) stays on CPU.
+
+**Source image resize:** Images for video-from-image are resized to **896px** on the longest side before being sent to the LTX pipeline (reduces VRAM and network payload). A system notice shows the original vs resized dimensions.
 
 **Required models:**
 1. `ltxv-2b-0.9.8-distilled.safetensors` (~5.9 GB) — diffusion transformer + VAE
@@ -516,6 +528,8 @@ Upload an image and ask to edit it (e.g., *"change the pupils to green"*, *"remo
 1. **Multimodal model** (Qwen3VL) to analyze the image and generate an edit prompt
 2. **Flux.2 Klein 4B** model via stable-diffusion.cpp to perform the edit
 3. The original image is preserved except for the requested changes
+
+Source images for editing are automatically resized to **1024px** on the longest side to avoid OOM on 16GB GPUs. A system notice shows the original vs resized dimensions if downscaled.
 
 Editing uses separate model files and runs independently from generation — no conflict between the two.
 
@@ -740,6 +754,12 @@ curl http://localhost:5000/metrics
 - **Architecture display fix** — numpy byte-string decoding (`[113 119 101 110 51]` → `qwen3`) in admin panel
 - **GGUF metadata expansion** — `parameter_count`, `head_count`, `head_count_kv`, `key_length`, `value_length` scanned and stored in DB
 - **Video generation (LTX-Video 2B)** — text-to-video and image+text-to-video. Separate GPU container with VRAM isolation, T5 encoder on CPU, llama.cpp LLM auto-unload. 8-step distilled inference, ~11s for 9 frames at 320×512.
+- **Retry on 502 for Qwen3VL** — automatic retry (1 attempt, 5s delay) when multimodal model returns 502 during loading. Circuit breaker prevents cascading failures.
+- **CUDA cleanup after video** — `torch.cuda.empty_cache()` + `gc.collect()` in ltx_wrapper.py `finally` block. Repeated LLM unload in video.py to kill zombie processes.
+- **GPU memory diagnostics** — `log_gpu_memory()` method using llama-swap API or nvidia-smi fallback. Logged after each video generation.
+- **Unified image resize (1536px)** — `resize_image_if_needed` changed from bounding-box (3840×2160) to longest-side (1536px). Prevents Qwen3VL context overflow and reduces disk usage.
+- **Image edit resize (1024px)** — source images for SD editing resized to 1024px on longest side to prevent OOM.
+- **llama-swap updated to v217** — image pulled to get llama-server 9294 with Blackwell (sm_120) crash fixes.
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)

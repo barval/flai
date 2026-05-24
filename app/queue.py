@@ -129,6 +129,9 @@ class RedisRequestQueue:
         # Text tasks are fast
         if req_type == "text":
             return "fast"
+        # Video tasks are slow
+        if req_type == "video":
+            return "slow"
         # Transcription is medium — use fast queue
         if task_type == "transcribe_audio":
             return "fast"
@@ -792,16 +795,67 @@ class RedisRequestQueue:
             response_style=response_style,
         )
 
+    def _requeue_video_task(
+        self,
+        query: str,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        response_style: str = "neutral",
+        file_data: str | None = None,
+        file_type: str | None = None,
+        file_name: str | None = None,
+        user_class: int = 2,
+    ) -> dict[str, Any]:
+        """Re-queue a video generation task to the slow queue.
+        Called when router detects [-VIDEO-] marker in text/image+text response.
+        """
+        request_data = {
+            "type": "video",
+            "text": query,
+            "preview": (query[:50] + "...") if query else self.app.modules["base"]._("Video request", lang=lang),
+            "response_style": response_style,
+        }
+        if file_data:
+            request_data["file_data"] = file_data
+            request_data["file_type"] = file_type
+            request_data["file_name"] = file_name
+
+        new_request_id, position_info = self.add_request(user_id, session_id, request_data, user_class, lang=lang)
+        self.app.logger.info(
+            f"Re-queued video task {new_request_id} for session {session_id} (position {position_info['position']})"
+        )
+
+        return {
+            "status": "queued",
+            "request_id": new_request_id,
+            "position": position_info["position"],
+            "estimated_wait": position_info["estimated_seconds"],
+        }
+
+    def _process_video_request(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Handle a video task from the slow queue.
+        Dispatches to text-to-video or image+text-to-video based on task data.
+        """
+        request_data = task.get("data", {})
+        query = request_data.get("text", "")
+        session_id = task["session_id"]
+        user_id = task["user_id"]
+        lang = task.get("lang", "ru")
+        response_style = request_data.get("response_style", "neutral")
+
+        file_data = request_data.get("file_data")
+        if file_data:
+            file_type = request_data.get("file_type", "")
+            file_name = request_data.get("file_name", "")
+            return self._process_video_gen_task_from_image(query, file_data, session_id, user_id, lang, response_style)
+        return self._process_video_gen_task(query, session_id, user_id, lang, response_style)
+
     def _process_video_gen_task(
         self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
     ) -> dict[str, Any]:
         """Handle video generation from text (router action_type='video')."""
         if "video" not in self.app.modules:
-            return self._build_error_response(
-                session_id, self.app.modules["base"]._("Video generation module unavailable", lang=lang), 0, lang
-            )
-        self.app.modules["video"].check_availability()
-        if not self.app.modules["video"].available:
             return self._build_error_response(
                 session_id, self.app.modules["base"]._("Video generation module unavailable", lang=lang), 0, lang
             )
@@ -869,11 +923,6 @@ class RedisRequestQueue:
         with default video parameters — avoids a second multimodal call.
         """
         if "video" not in self.app.modules:
-            return self._build_error_response(
-                session_id, self.app.modules["base"]._("Video generation module unavailable", lang=lang), 0, lang
-            )
-        self.app.modules["video"].check_availability()
-        if not self.app.modules["video"].available:
             return self._build_error_response(
                 session_id, self.app.modules["base"]._("Video generation module unavailable", lang=lang), 0, lang
             )
@@ -1211,6 +1260,7 @@ class RedisRequestQueue:
         current_time_str: str,
         lang: str,
         response_style: str = "neutral",
+        user_class: int = 2,
     ) -> dict[str, Any]:
         """Handle text request — routes through base module router."""
         router_start = time.time()
@@ -1243,7 +1293,7 @@ class RedisRequestQueue:
         if action_type == "image":
             return self._process_image_gen_task(query, session_id, user_id, lang, response_style)
         elif action_type == "video":
-            return self._process_video_gen_task(query, session_id, user_id, lang, response_style)
+            return self._requeue_video_task(query, session_id, user_id, lang, response_style, user_class=user_class)
         elif action_type == "camera":
             return self._process_camera_task(
                 query, session_id, user_id, message_text, current_time_str, lang, response_style
@@ -1379,7 +1429,9 @@ class RedisRequestQueue:
             return self._process_image_gen_task(query, session_id, user_id, lang, response_style)
 
         if action_type == "video":
-            return self._process_video_gen_task(query, session_id, user_id, lang, response_style)
+            return self._requeue_video_task(
+                query, session_id, user_id, lang, response_style, user_class=task.get("user_class", 2)
+            )
 
         if action_type == "camera":
             return self._process_camera_task_stream(
@@ -1411,6 +1463,8 @@ class RedisRequestQueue:
             return self._process_reindex_all_task(task)
         if task_type == "transcribe_audio":
             return self._process_transcribe_task(task)
+        if task_type == "video":
+            return self._process_video_request(task)
 
         user_id = task["user_id"]
         session_id = task["session_id"]
@@ -1525,9 +1579,16 @@ class RedisRequestQueue:
                     elif isinstance(bot_reply, str) and bot_reply.strip().startswith("[-VIDEO-]"):
                         video_query = bot_reply.strip()[len("[-VIDEO-]") :].strip()
                         if video_query:
-                            # Redirect to video generation task (image+text)
-                            return self._process_video_gen_task_from_image(
-                                video_query, file_data, session_id, user_id, lang, response_style
+                            return self._requeue_video_task(
+                                video_query,
+                                session_id,
+                                user_id,
+                                lang,
+                                response_style,
+                                file_data=file_data,
+                                file_type=file_type,
+                                file_name=file_name,
+                                user_class=task.get("user_class", 2),
                             )
                         else:
                             bot_reply = "⚠️ " + self.app.modules["base"]._("Video request was empty", lang)
@@ -1666,8 +1727,16 @@ class RedisRequestQueue:
                         full_response += token
                     video_query = full_response.split(video_marker, 1)[1].strip()
                     if video_query:
-                        return self._process_video_gen_task_from_image(
-                            video_query, file_data, session_id, user_id, lang, response_style
+                        return self._requeue_video_task(
+                            video_query,
+                            session_id,
+                            user_id,
+                            lang,
+                            response_style,
+                            file_data=file_data,
+                            file_type=file_type,
+                            file_name=file_name,
+                            user_class=task.get("user_class", 2),
                         )
                     bot_reply = "⚠️ " + self.app.modules["base"]._("Video request was empty", lang)
                     process_time = round(time.time() - process_start, 1)

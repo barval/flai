@@ -152,6 +152,18 @@ class SdCppModule(TranslationMixin):
         if not unload_success:
             self.logger.warning("Failed to unload llama.cpp model before generation — OOM risk")
 
+        # Unload ltxvideo pipeline to free its ~6.5 GB VRAM
+        try:
+            import requests as req
+            ltx_url = self.app.config.get("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
+            resp = req.post(f"{ltx_url.rstrip('/')}/v1/unload", timeout=10)
+            if resp.status_code == 200:
+                self.logger.info("ltxvideo pipeline unloaded — VRAM freed")
+            else:
+                self.logger.warning(f"ltxvideo unload returned {resp.status_code}")
+        except Exception as e:
+            self.logger.warning(f"Failed to unload ltxvideo pipeline: {e}")
+
         # Check VRAM availability after LLM unload
         use_gpu = self._resolve_use_gpu(rm)
         if use_gpu:
@@ -258,6 +270,18 @@ class SdCppModule(TranslationMixin):
         unload_success = rm.unload_llamacpp_model(llamacpp_url)
         if not unload_success:
             self.logger.warning("Failed to unload llama.cpp model before editing — OOM risk")
+
+        # Unload ltxvideo pipeline to free its ~6.5 GB VRAM
+        try:
+            import requests as req
+            ltx_url = self.app.config.get("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
+            resp = req.post(f"{ltx_url.rstrip('/')}/v1/unload", timeout=10)
+            if resp.status_code == 200:
+                self.logger.info("ltxvideo pipeline unloaded — VRAM freed")
+            else:
+                self.logger.warning(f"ltxvideo unload returned {resp.status_code}")
+        except Exception as e:
+            self.logger.warning(f"Failed to unload ltxvideo pipeline: {e}")
 
         # Check VRAM availability after LLM unload
         use_gpu = self._resolve_use_gpu(rm)

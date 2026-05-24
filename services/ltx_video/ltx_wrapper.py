@@ -384,7 +384,9 @@ def run_inference(
 
     tmp_path = tempfile.mktemp(suffix=".mp4")
     try:
-        with imageio.get_writer(tmp_path, format="FFMPEG", fps=frame_rate, codec="libx264", output_params=["-crf", "17"]) as video:
+        with imageio.get_writer(
+            tmp_path, format="FFMPEG", fps=frame_rate, codec="libx264", output_params=["-crf", "17"]
+        ) as video:
             for frame in video_np:
                 video.append_data(frame)
         with open(tmp_path, "rb") as f:
@@ -419,6 +421,24 @@ def health():
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         return jsonify({"status": "error", "error": str(e)}), 500
+
+
+@app.route("/v1/unload", methods=["POST"])
+def unload_pipeline():
+    """Unload the pipeline and free GPU memory for other services (SD, LLM)."""
+    global _pipeline
+    _pipeline = None
+    if torch.cuda.is_available():
+        try:
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        except Exception as e:
+            logger.warning(f"CUDA cleanup during unload failed: {e}")
+    import gc
+    gc.collect()
+    free_mem, total_mem = torch.cuda.mem_get_info()
+    logger.info(f"Pipeline unloaded — VRAM: {free_mem / 1024**3:.1f} GiB free / {total_mem / 1024**3:.1f} GiB total")
+    return jsonify({"status": "ok", "freed": True})
 
 
 @app.route("/v1/video/generations", methods=["POST"])
@@ -458,7 +478,7 @@ def generate_video():
         video_b64 = base64.b64encode(mp4_bytes).decode("utf-8")
 
         timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-        filename = f"video_{timestamp}_{actual_seed}_{width}x{height}x{num_frames}.mp4"
+        filename = f"{timestamp}.mp4"
 
         return jsonify(
             {
@@ -494,13 +514,9 @@ def generate_video():
                 )
             except Exception as e:
                 logger.warning(f"CUDA cleanup error: {e}")
-            try:
-                import ctypes
-                libcuda = ctypes.CDLL("libcuda.so")
-                libcuda.cuDevicePrimaryCtxReset(0)
-                logger.info("CUDA primary context reset — all VRAM released to driver")
-            except Exception as e:
-                logger.warning(f"CUDA context reset failed: {e}")
+            global _pipeline
+            _pipeline = None
+            logger.info("Pipeline reset — will reinitialize on next request")
         import gc
 
         gc.collect()

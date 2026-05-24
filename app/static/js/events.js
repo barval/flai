@@ -593,6 +593,15 @@ function handleCompletedResult(result, expectedSessionId) {
         return;
     }
 
+    // Re-queue case: task completed but created a new queue entry (e.g., video from text)
+    if (result.status === 'queued' && result.request_id) {
+        trackPendingRequest(result.request_id, resultSessionId);
+        sessionQueueInfo[resultSessionId] = { processing: true, queued: 0, queue_position: 0, has_transcribing: false };
+        if (typeof updateStatusCounter === 'function') updateStatusCounter();
+        if (typeof fetchQueueStatus === 'function') fetchQueueStatus();
+        return;
+    }
+
     // Single response (text / image gen)
     if (result.response) {
         if (result.message_id && displayedMessageIds.has(result.message_id)) {

@@ -423,6 +423,24 @@ def health():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
+@app.route("/v1/unload", methods=["POST"])
+def unload_pipeline():
+    """Unload the pipeline and free GPU memory for other services (SD, LLM)."""
+    global _pipeline
+    _pipeline = None
+    if torch.cuda.is_available():
+        try:
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        except Exception as e:
+            logger.warning(f"CUDA cleanup during unload failed: {e}")
+    import gc
+    gc.collect()
+    free_mem, total_mem = torch.cuda.mem_get_info()
+    logger.info(f"Pipeline unloaded — VRAM: {free_mem / 1024**3:.1f} GiB free / {total_mem / 1024**3:.1f} GiB total")
+    return jsonify({"status": "ok", "freed": True})
+
+
 @app.route("/v1/video/generations", methods=["POST"])
 def generate_video():
     global _pipeline

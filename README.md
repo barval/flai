@@ -74,20 +74,13 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 | v8.7 (New) | Notes |
 |------------|-------|
-| 🎬 **Video generation** | Text-to-video and image+text-to-video via LTX-Video 2B distilled model. Separate GPU container with VRAM isolation, T5 encoder on CPU (~8.9 GiB VRAM saved). 8-step inference, ~11s for 9 frames at 320×512. Requires PyTorch with sm_120 support for RTX 5060 Ti (cu128 nightly). Enable with `--profile with-video`. |
-| 🔄 **Retry on 502 for multimodal** | Automatic retry (1 attempt, 5s delay) when Qwen3VL returns 502 (model loading race). Covers both streaming and non-streaming calls. Circuit breaker prevents cascading failures. |
-| 🧹 **CUDA cleanup after video** | `torch.cuda.synchronize()`, `torch.cuda.empty_cache()`, `gc.collect()` in ltx_wrapper.py after each generation, plus `_pipeline = None` for lazy reinit. Repeated LLM unload via `unload_llamacpp_model()` in video.py `finally` block. `cuDevicePrimaryCtxReset(0)` removed (caused SIGSEGV on pipeline reload). |
-| 📐 **Unified image resize (1536px)** | All uploaded images resized to **1536px** on the longest side (`MAX_IMAGE_SIZE`). Prevents Qwen3VL context overflow (was 3840×2160 → ~5300 image tokens, now ~950 tokens). No separate `_resize_for_classify()` needed. |
-| 🐛 **llama-swap updated to v217** | `ghcr.io/mostlygeek/llama-swap:cuda` updated from v212 (llama-server 9128) to v217 (llama-server 9294). Includes PR #18361 (Blackwell native builds fix) and PR #22522 (PDL for Hopper+). Fixes Qwen3VL SIGABRT crashes on RTX 5060 Ti (sm_120). |
-| 🖼️ **Image edit resize (1024px)** | Source images for editing are resized to **1024px** on the longest side before SD inpainting (was unbounded, risking OOM). |
-| 📊 **GPU memory diagnostics** | New `log_gpu_memory()` method in resource_manager logs VRAM state via llama-swap API or nvidia-smi fallback. Called after video generation to verify cleanup. |
-| ⚡ **Chat loading optimization** | `file_data` is stripped from `content` JSON in `get_session_messages()` when file is on disk (`file_path` IS NOT NULL). Reduces response size ~1000x for sessions with many images (e.g. 10 images: ~15 MB → ~10 KB). Audio without `file_path` is unaffected. |
-| 🖼️ **Aspect ratio matching for video** | Video-from-image now matches output resolution to source image aspect ratio. Wide (w/h > 1.2) → 896×512, tall (w/h < 0.8) → 512×896, square → 512×512. Implemented in `generate_video_params_from_image()`. |
-| ⚙️ **Reasoning model VRAM optimization** | Reduced `--n-gpu-layers` from 24 to 16 and `--ctx-size` from 32768 to 16384 for the reasoning model. Prevents OOM on 16 GB GPUs, especially after video generation. |
-| 📏 **File size display in message headers** | `file_size` is read from disk for messages with `file_path` and displayed in chat headers (e.g. `video.mp4, 2.1MB`). Works for all file types (images, videos, audio) in both user and assistant messages. |
-| 🐛 **fileSize passthrough fix in chat-init.js** | `window.displayMessage` in `chat-init.js` overrode the function with only 16 parameters, dropping `fileSize`. Added 17th parameter and pass-through to the original function. |
-| 🔧 **SSE event handlers file_size fix** | Three SSE handlers (`onResultCompleted`, `handleStreamComplete`, `onTaskResult`) did not pass `file_size` to `displayMessage`. Added `msg.file_size` / `result.file_size` parameter to all calls. |
-| ✂️ **Simplified video filenames** | Changed output filename from `video_{timestamp}_{seed}_{W}x{H}x{F}.mp4` to `{timestamp}.mp4`. Seed and resolution metadata remain available in the database. |
+| 🚀 **Video task re-queuing to slow queue** | Video generation tasks are re-queued from fast worker to slow queue. Fast worker no longer blocks for 60-120 seconds. Multiple video requests are properly serialized. |
+| ⚡ **SSE re-queue fix** | Lightning indicator (⚡) now stays active when a video task is re-queued. `handleCompletedResult` in `events.js` recognizes `status: "queued"` with `request_id` and re-activates tracking. |
+| 🧹 **History filter for router** | `_extract_text_content()` in `db.py` strips `[-VIDEO-]`, `[-IMAGE-]`, `[-REASONING-]`, `[-RAG-]`, `[-CAMERA-]`, `[-IMAGE-EDIT-]` markers and `{"prefix": ..., "text": ...}` JSON from conversation history. Prevents router from copying old markers into new responses. |
+| 🎯 **Independent classification rule** | `base_text.template` updated with explicit instruction: each query is classified independently, markers from history must never be copied. |
+| 🖼️ **SD VRAM fix** | Before image generation and editing, the ltxvideo pipeline is unloaded via `POST /v1/unload`, freeing ~6.5 GB VRAM for SD models. Prevents OOM fallback to CPU (which caused 2x slowdown). |
+| 🔌 **ltx-wrapper /v1/unload endpoint** | New endpoint in `ltx_wrapper.py` to unload the pipeline and release GPU memory on demand. Used by SD module before generation. |
+| 🐛 **CUDA cleanup fixed** | Removed `cuDevicePrimaryCtxReset(0)` which caused SIGSEGV on pipeline reload. Replaced with `_pipeline = None` + `torch.cuda.empty_cache()` + `gc.collect()` for clean pipeline resets. |
 
 
 ### Core Components
@@ -806,6 +799,13 @@ curl http://localhost:5000/metrics
 - **fileSize passthrough fix** — `chat-init.js` `window.displayMessage` overrode the function with 16 parameters, dropping `fileSize`. Added 17th parameter.
 - **SSE handlers file_size fix** — `events.js` three handlers did not pass `file_size` to `displayMessage`. Fixed all call sites.
 - **Simplified video filenames** — `video_{timestamp}_{seed}_{W}x{H}x{F}.mp4` → `{timestamp}.mp4`.
+- **Video task re-queuing to slow queue** — video tasks are re-queued from fast worker to slow queue. Fast worker no longer blocks for 60-120 seconds. Multiple video requests properly serialized.
+- **SSE re-queue fix** — lightning indicator (⚡) stays active when video task is re-queued. `handleCompletedResult` recognizes `status: "queued"` with `request_id`.
+- **History filter for router** — `[-...-]` markers and `{"prefix":...,"text":...}` JSON stripped from conversation history in `_extract_text_content()`. Prevents router from copying old markers.
+- **Independent classification rule** — `base_text.template` updated: each query classified independently, markers from history never copied.
+- **SD VRAM fix** — ltxvideo pipeline unloaded via `POST /v1/unload` before SD generation, freeing ~6.5 GB VRAM.
+- **ltx-wrapper /v1/unload endpoint** — new endpoint to unload pipeline and release GPU memory on demand.
+- **CUDA cleanup fix** — removed `cuDevicePrimaryCtxReset(0)` (caused SIGSEGV), replaced with `_pipeline = None` + `empty_cache()` + `gc.collect()`.
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)

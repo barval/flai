@@ -70,13 +70,13 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v8.6
+### What's New in v8.7
 
-| v8.6 (New) | Notes |
+| v8.7 (New) | Notes |
 |------------|-------|
 | 🎬 **Video generation** | Text-to-video and image+text-to-video via LTX-Video 2B distilled model. Separate GPU container with VRAM isolation, T5 encoder on CPU (~8.9 GiB VRAM saved). 8-step inference, ~11s for 9 frames at 320×512. Requires PyTorch with sm_120 support for RTX 5060 Ti (cu128 nightly). Enable with `--profile with-video`. |
 | 🔄 **Retry on 502 for multimodal** | Automatic retry (1 attempt, 5s delay) when Qwen3VL returns 502 (model loading race). Covers both streaming and non-streaming calls. Circuit breaker prevents cascading failures. |
-| 🧹 **CUDA cleanup after video** | `torch.cuda.synchronize()`, `torch.cuda.empty_cache()`, `gc.collect()`, plus `cuDevicePrimaryCtxReset(0)` in ltx_wrapper.py after each generation. Repeated LLM unload via `unload_llamacpp_model()` in video.py `finally` block. |
+| 🧹 **CUDA cleanup after video** | `torch.cuda.synchronize()`, `torch.cuda.empty_cache()`, `gc.collect()` in ltx_wrapper.py after each generation, plus `_pipeline = None` for lazy reinit. Repeated LLM unload via `unload_llamacpp_model()` in video.py `finally` block. `cuDevicePrimaryCtxReset(0)` removed (caused SIGSEGV on pipeline reload). |
 | 📐 **Unified image resize (1536px)** | All uploaded images resized to **1536px** on the longest side (`MAX_IMAGE_SIZE`). Prevents Qwen3VL context overflow (was 3840×2160 → ~5300 image tokens, now ~950 tokens). No separate `_resize_for_classify()` needed. |
 | 🐛 **llama-swap updated to v217** | `ghcr.io/mostlygeek/llama-swap:cuda` updated from v212 (llama-server 9128) to v217 (llama-server 9294). Includes PR #18361 (Blackwell native builds fix) and PR #22522 (PDL for Hopper+). Fixes Qwen3VL SIGABRT crashes on RTX 5060 Ti (sm_120). |
 | 🖼️ **Image edit resize (1024px)** | Source images for editing are resized to **1024px** on the longest side before SD inpainting (was unbounded, risking OOM). |
@@ -85,6 +85,9 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | 🖼️ **Aspect ratio matching for video** | Video-from-image now matches output resolution to source image aspect ratio. Wide (w/h > 1.2) → 896×512, tall (w/h < 0.8) → 512×896, square → 512×512. Implemented in `generate_video_params_from_image()`. |
 | ⚙️ **Reasoning model VRAM optimization** | Reduced `--n-gpu-layers` from 24 to 16 and `--ctx-size` from 32768 to 16384 for the reasoning model. Prevents OOM on 16 GB GPUs, especially after video generation. |
 | 📏 **File size display in message headers** | `file_size` is read from disk for messages with `file_path` and displayed in chat headers (e.g. `video.mp4, 2.1MB`). Works for all file types (images, videos, audio) in both user and assistant messages. |
+| 🐛 **fileSize passthrough fix in chat-init.js** | `window.displayMessage` in `chat-init.js` overrode the function with only 16 parameters, dropping `fileSize`. Added 17th parameter and pass-through to the original function. |
+| 🔧 **SSE event handlers file_size fix** | Three SSE handlers (`onResultCompleted`, `handleStreamComplete`, `onTaskResult`) did not pass `file_size` to `displayMessage`. Added `msg.file_size` / `result.file_size` parameter to all calls. |
+| ✂️ **Simplified video filenames** | Changed output filename from `video_{timestamp}_{seed}_{W}x{H}x{F}.mp4` to `{timestamp}.mp4`. Seed and resolution metadata remain available in the database. |
 
 
 ### Core Components
@@ -121,7 +124,7 @@ All services run on one machine with GPU sharing:
 
 **Dynamic Model Routing**: llama-swap acts as a proxy to llama.cpp, dynamically loading/unloading GGUF models on demand. Only one model occupies VRAM at a time, with automatic switching based on request type. Model configuration is managed via the admin panel and stored in the database.
 
-> 🎬 **Video generation** uses a **separate GPU container** (`ltxvideo`) with its own VRAM context. Before each video generation, the llama.cpp LLM model is automatically unloaded from VRAM to free memory for the video pipeline (transformer + VAE ≈ 6 GiB). After generation, CUDA cache is cleared, LLM processes are re-unloaded, and the CUDA primary context is reset (`cuDevicePrimaryCtxReset`) to release all GPU memory back to the driver. The T5 text encoder stays on CPU to conserve VRAM.
+> 🎬 **Video generation** uses a **separate GPU container** (`ltxvideo`) with its own VRAM context. Before each video generation, the llama.cpp LLM model is automatically unloaded from VRAM to free memory for the video pipeline (transformer + VAE ≈ 6 GiB). After generation, CUDA cache is cleared, LLM processes are re-unloaded, and the pipeline is reset (`_pipeline = None`) for lazy reinit on the next request. The T5 text encoder stays on CPU to conserve VRAM.
 
 ---
 
@@ -293,6 +296,20 @@ wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
 
 > ⚠️ **Important**: Multimodal models **must** be placed in a subdirectory named after the model, with the `mmproj-*.gguf` file inside. The llama.cpp router automatically discovers and loads the projector.
 
+#### Video Generation Models (LTX-Video 2B)
+
+```bash
+# Create models directory
+mkdir -p services/ltx_video/models
+
+# Diffusion transformer + VAE checkpoint
+wget -O services/ltx_video/models/ltxv-2b-0.9.8-distilled.safetensors \
+  "https://huggingface.co/Lightricks/LTX-Video/resolve/main/ltxv-2b-0.9.8-distilled.safetensors"
+
+# T5 text encoder (run the download script)
+bash services/ltx_video/download-t5-encoder.sh
+```
+
 ### 3. Build and Start Services
 
 ```bash
@@ -304,6 +321,9 @@ docker compose -f docker-compose.gpu.yml --profile with-image-gen up -d
 
 # With voice features
 docker compose -f docker-compose.gpu.yml --profile with-voice up -d
+
+# With video generation
+docker compose -f docker-compose.gpu.yml --profile with-video up -d
 
 # Full stack: chat + images + voice + RAG + video
 docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video up -d
@@ -504,39 +524,6 @@ Configure via `SD_MODEL_TYPE` in `.env`:
 SD_MODEL_TYPE=z_image_turbo
 ```
 
-### Video Generation (LTX-Video 2B)
-
-The project uses **LTX-Video 2B 0.9.8 distilled** for video generation:
-
-| Model | Steps | Frame Rate | Resolution | Notes |
-|-------|-------|-----------|------------|-------|
-| **LTX-Video 2B distilled** | 8 | 8–30 fps | up to 768×1344 | Distilled, single GPU (~6 GB VRAM) |
-
-Video generation runs in a **separate GPU container** (via `--profile with-video`). Before generating, the llama.cpp LLM is automatically unloaded from VRAM to free memory. After generation, CUDA cache is cleared and LLM processes are re-unloaded to ensure clean GPU state. The T5 text encoder (~8.9 GB in bf16) stays on CPU.
-
-**Source image resize:** Images for video-from-image are resized to **896px** on the longest side before being sent to the LTX pipeline (reduces VRAM and network payload). A system notice shows the original vs resized dimensions.
-
-**Aspect ratio matching:** When generating video from an image, the output video resolution is automatically adjusted to match the source image's aspect ratio: square images → 512×512, wide images (w/h > 1.2) → 896×512 landscape, tall images (w/h < 0.8) → 512×896 portrait.
-
-**Required models:**
-1. `ltxv-2b-0.9.8-distilled.safetensors` (~5.9 GB) — diffusion transformer + VAE
-2. `PixArt-alpha/PixArt-XL-2-1024-MS` text encoder / tokenizer — T5-XXL encoder (~18 GB on disk in float32, ~8.9 GB in VRAM in bf16)
-
-```bash
-# Download via deploy script
-./deploy.sh --download-models --with-video
-
-# Or manually:
-bash services/ltx_video/download-t5-encoder.sh
-```
-
-**Configuration:**
-```bash
-LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872
-LTX_VIDEO_MODEL=ltxv-2b-0.9.8-distilled
-LTX_VIDEO_TIMEOUT=600
-```
-
 ### Image Editing (Flux.2 Klein 4B)
 
 Upload an image and ask to edit it (e.g., *"change the pupils to green"*, *"remove the second sun"*). The system uses:
@@ -568,6 +555,41 @@ SD_CPP_DEFAULT_WIDTH=1024
 SD_CPP_DEFAULT_HEIGHT=1024
 SD_CPP_DEFAULT_CFG_SCALE=1.0
 SD_CPP_DEFAULT_STEPS=10
+```
+
+---
+
+## 🎬 Video Generation (LTX-Video 2B)
+
+The project uses **LTX-Video 2B 0.9.8 distilled** for video generation:
+
+| Model | Steps | Frame Rate | Resolution | Notes |
+|-------|-------|-----------|------------|-------|
+| **LTX-Video 2B distilled** | 8 | 8–30 fps | up to 768×1344 | Distilled, single GPU (~6 GB VRAM) |
+
+Video generation runs in a **separate GPU container** (via `--profile with-video`). Before generating, the llama.cpp LLM is automatically unloaded from VRAM to free memory. After generation, CUDA cache is cleared, LLM processes are re-unloaded, and the CUDA primary context is reset (`cuDevicePrimaryCtxReset`) to release all GPU memory back to the driver. The T5 text encoder (~8.9 GB in bf16) stays on CPU.
+
+**Source image resize:** Images for video-from-image are resized to **896px** on the longest side before being sent to the LTX pipeline (reduces VRAM and network payload). A system notice shows the original vs resized dimensions.
+
+**Aspect ratio matching:** When generating video from an image, the output video resolution is automatically adjusted to match the source image's aspect ratio: square images → 512×512, wide images (w/h > 1.2) → 896×512 landscape, tall images (w/h < 0.8) → 512×896 portrait.
+
+**Required models:**
+1. `ltxv-2b-0.9.8-distilled.safetensors` (~5.9 GB) — diffusion transformer + VAE
+2. `PixArt-alpha/PixArt-XL-2-1024-MS` text encoder / tokenizer — T5-XXL encoder (~18 GB on disk in float32, ~8.9 GB in VRAM in bf16)
+
+```bash
+# Download via deploy script
+./deploy.sh --download-models --with-video
+
+# Or manually:
+bash services/ltx_video/download-t5-encoder.sh
+```
+
+**Configuration:**
+```bash
+LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872
+LTX_VIDEO_MODEL=ltxv-2b-0.9.8-distilled
+LTX_VIDEO_TIMEOUT=600
 ```
 
 ---
@@ -780,6 +802,10 @@ curl http://localhost:5000/metrics
 - **File size display in message headers** — `file_size` read from disk for messages with `file_path`, displayed in chat headers for all file types.
 - **Reasoning model VRAM optimization** — `--n-gpu-layers` reduced from 24 to 16 and `--ctx-size` from 32768 to 16384 to fit in 16 GB VRAM.
 - **CUDA context reset after video** — `cuDevicePrimaryCtxReset(0)` added to ltx_wrapper.py `finally` block. Completely releases all GPU memory after video generation, preventing OOM in subsequent LLM requests.
+- **Removed cuDevicePrimaryCtxReset** — replaced with `_pipeline = None` + `empty_cache()` + `gc.collect()`. The aggressive reset caused SIGSEGV during pipeline reinit on sequential video requests.
+- **fileSize passthrough fix** — `chat-init.js` `window.displayMessage` overrode the function with 16 parameters, dropping `fileSize`. Added 17th parameter.
+- **SSE handlers file_size fix** — `events.js` three handlers did not pass `file_size` to `displayMessage`. Fixed all call sites.
+- **Simplified video filenames** — `video_{timestamp}_{seed}_{W}x{H}x{F}.mp4` → `{timestamp}.mp4`.
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)
@@ -922,19 +948,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 5. Open a Pull Request
 
 ---
-
-## 📄 Models Used
-
-| Model | Purpose | License | Size |
-|-------|---------|---------|------|
-| Qwen3-4B-Instruct-2507-Q4_K_M | Chat | Apache 2.0 | ~2.5 GB |
-| gpt-oss-20b-Q4_K_M | Reasoning | Apache 2.0 | ~12 GB |
-| Qwen3VL-8B-Instruct-Q4_K_M | Multimodal | Apache 2.0 | ~5 GB + mmproj ~1.1 GB |
-| bge-m3-Q8_0 | Embedding | MIT | ~0.6 GB |
-| Z-Image-Turbo (z_image_turbo-Q8_0) | Image Generation | Apache 2.0 | ~6.2 GB |
-| Flux.2 Klein 4B (flux-2-klein-4b-Q8_0) | Image Editing | Apache 2.0 | ~4.5 GB |
-| **LTX-Video 2B** (ltxv-2b-0.9.8-distilled.safetensors) | Video Generation | [LTX-Video License](https://huggingface.co/Lightricks/LTX-Video) | ~5.9 GB |
-| **PixArt T5-XXL** (text_encoder) | T5 text encoder for LTX-Video | [PixArt License](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS) | ~18 GB (disk, float32) |
 
 ## 📄 License
 

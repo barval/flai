@@ -3,6 +3,7 @@
 import contextlib
 import json
 import os
+import re
 import uuid
 from datetime import datetime
 from typing import Any
@@ -622,11 +623,13 @@ def delete_document(doc_id, user_id):
 
 
 def _extract_text_content(content: str) -> str:
-    """Extract only text from JSON content, stripping file_data."""
+    """Extract only text from JSON content, stripping file_data and markers."""
     if not content:
         return content
     if not (content.startswith("[") or content.startswith("{")):
-        return content
+        stripped = content.strip()
+        stripped = re.sub(r"^\[-(?:IMAGE|VIDEO|REASONING|RAG|CAMERA|IMAGE-EDIT)-\]\s*", "", stripped)
+        return stripped
     try:
         parsed = json.loads(content)
         if isinstance(parsed, list):
@@ -637,13 +640,15 @@ def _extract_text_content(content: str) -> str:
             joined = " ".join(t for t in texts if t).strip()
             return joined if joined else ""
         if isinstance(parsed, dict):
+            if "text" in parsed and "prefix" in parsed:
+                return parsed["text"]
             if "file_data" in parsed:
                 parsed["file_data"] = "[IMAGE DATA]"
                 return json.dumps(parsed, ensure_ascii=False)
             return json.dumps(parsed, ensure_ascii=False)
     except (json.JSONDecodeError, TypeError):
         pass
-    return content
+    return content.strip()
 
 
 def get_session_text_history(session_id, max_tokens=None, max_messages=None):

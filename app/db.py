@@ -651,10 +651,38 @@ def _extract_text_content(content: str) -> str:
     return content.strip()
 
 
+def _has_marker(content: str) -> bool:
+    """Check if raw content contains a generation marker before any stripping."""
+    if not content:
+        return False
+    markers = ["[-VIDEO-]", "[-IMAGE-]", "[-REASONING-]", "[-RAG-]", "[-CAMERA-]", "[-IMAGE-EDIT-]"]
+    return any(content.strip().startswith(m) for m in markers)
+
+
 def get_session_text_history(session_id, max_tokens=None, max_messages=None):
-    """Get session messages for context building (text only)."""
+    """Get session messages for context building (text only).
+    Filters out pairs of user+assistant messages where the assistant
+    responded with a generation marker ([-VIDEO-], [-IMAGE-], etc.)
+    to prevent the router from copying old markers into new responses.
+    """
     limit = max_messages or 200
     messages = get_session_messages(session_id, limit=limit)
+
+    # Filter out user+assistant pairs where assistant replied with a marker
+    filtered = []
+    skip_next = False
+    for i, msg in enumerate(messages):
+        if skip_next:
+            skip_next = False
+            continue
+        if i + 1 < len(messages) and messages[i + 1]["role"] == "assistant":
+            if _has_marker(messages[i + 1].get("content", "")):
+                skip_next = True
+                continue
+        filtered.append(msg)
+
+    messages = filtered
+
     if max_tokens is not None:
         from .utils import estimate_tokens
 

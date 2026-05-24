@@ -76,7 +76,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 |------------|-------|
 | 🚀 **Video task re-queuing to slow queue** | Video generation tasks are re-queued from fast worker to slow queue. Fast worker no longer blocks for 60-120 seconds. Multiple video requests are properly serialized. |
 | ⚡ **SSE re-queue fix** | Lightning indicator (⚡) now stays active when a video task is re-queued. `handleCompletedResult` in `events.js` recognizes `status: "queued"` with `request_id` and re-activates tracking. |
-| 🧹 **History filter for router** | `_extract_text_content()` in `db.py` strips `[-VIDEO-]`, `[-IMAGE-]`, `[-REASONING-]`, `[-RAG-]`, `[-CAMERA-]`, `[-IMAGE-EDIT-]` markers and `{"prefix": ..., "text": ...}` JSON from conversation history. Prevents router from copying old markers into new responses. |
+| 🧹 **History filter for router** | `_extract_text_content()` in `db.py` strips `[-...-]` markers and `{"prefix": ..., "text": ...}` JSON from conversation history. `get_session_text_history()` additionally filters out entire user+assistant pairs where the assistant responded with a generation marker, preventing the router from ever seeing previous generation requests. |
 | 🎯 **Independent classification rule** | `base_text.template` updated with explicit instruction: each query is classified independently, markers from history must never be copied. |
 | 🖼️ **SD VRAM fix** | Before image generation and editing, the ltxvideo pipeline is unloaded via `POST /v1/unload`, freeing ~6.5 GB VRAM for SD models. Prevents OOM fallback to CPU (which caused 2x slowdown). |
 | 🔌 **ltx-wrapper /v1/unload endpoint** | New endpoint in `ltx_wrapper.py` to unload the pipeline and release GPU memory on demand. Used by SD module before generation. |
@@ -806,6 +806,7 @@ curl http://localhost:5000/metrics
 - **SD VRAM fix** — ltxvideo pipeline unloaded via `POST /v1/unload` before SD generation, freeing ~6.5 GB VRAM.
 - **ltx-wrapper /v1/unload endpoint** — new endpoint to unload pipeline and release GPU memory on demand.
 - **CUDA cleanup fix** — removed `cuDevicePrimaryCtxReset(0)` (caused SIGSEGV), replaced with `_pipeline = None` + `empty_cache()` + `gc.collect()`.
+- **Enhanced history filter** — `get_session_text_history()` filters out entire user+assistant pairs where the assistant responded with a generation marker. Prevents router from seeing previous generation requests and copying them.
 
 ### 🔄 In Progress
 - Long-term dialog memory (cross-session context)

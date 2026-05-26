@@ -75,7 +75,10 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 | v8.8 (New) | Notes |
 |------------|-------|
-| 🧠 **SuperLocalMemory (SLM) integration** | Long-term, cross-session memory via SuperLocalMemory (HTTP proxy in separate container, `--profile with-slm`). Zero-LLM retrieval (Fisher-Rao metric, CPU-only). Replaces raw conversation history (~1255 tokens) with 3-5 relevant facts (~150 tokens). Each user has an isolated SQLite database (`$HOME`-based, not `SLM_DATA_DIR` — SLM V3 ignores that env var). No daemon — per-request `--sync` calls. Pre-downloaded at build time (with background warmup as fallback). Included in full backups. Automatic fact saving after each assistant response. Background import on startup via checkpoint table (`slm_import_progress`). SLM auto-cleaned on last session deletion. Admin panel shows fact count per user. |
+| 🧠 **SuperLocalMemory (SLM) integration** | Long-term, cross-session memory via SuperLocalMemory (HTTP proxy in separate container, `--profile with-slm`). Zero-LLM retrieval (Fisher-Rao metric, CPU-only). Each user has an isolated SQLite database (`$HOME`-based, not `SLM_DATA_DIR`). No daemon — per-request `--sync` calls. Pre-downloaded at build time (with background warmup as fallback). Replaces raw conversation history (~1255 tokens) with 3-5 relevant facts (~150 tokens). Automatic fact saving after each assistant response. |
+| ⚙️ **Background SLM import on startup** | `app/slm_import.py` with checkpoint table `slm_import_progress`. On first startup (or upgrade from older version), automatically imports all existing messages into per-user SLM databases. Incremental — only processes messages since last checkpoint. Runs as daemon thread, does not block web server. CLI: `flask import-history-to-slm [--force] [user_id]`. |
+| 🗑️ **SLM cleanup on session deletion** | When the last session is deleted or history cleared, `_cleanup_slm_if_empty()` in `db.py` removes the user's SLM database. On full user deletion, the entire `/app/data/slm/{login}/` directory is removed. |
+| 📊 **SLM fact count in admin panel** | `GET /admin/api/users` now returns `slm_facts_count` per user, read directly from SQLite. Displayed as a column in the users table. Included in full backups. |
 
 
 ### Core Components

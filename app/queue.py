@@ -590,6 +590,15 @@ class RedisRequestQueue:
             result.update(extra)
         return result
 
+    def _unload_video_pipeline(self) -> None:
+        """Unload LTX-Video pipeline to free VRAM after generation."""
+        try:
+            from app.resource_manager import get_resource_manager
+            rm = get_resource_manager()
+            rm.unload_video_pipeline()
+        except Exception:
+            pass
+
     def _save_and_respond(
         self,
         session_id: str,
@@ -756,6 +765,9 @@ class RedisRequestQueue:
         if not image_result["success"]:
             return self._build_error_response(session_id, image_result["error"], mm_time + gen_time, lang)
 
+        # Unload video pipeline after SD generation — frees VRAM for subsequent LLM
+        self._unload_video_pipeline()
+
         sd_model = self.app.config.get("SD_MODEL_TYPE", "z_image_turbo")
         template = self.app.modules["base"]._("Image generated from request: {query}", lang=lang)
         prefix = "🎨 " + template.replace("{query}", "")
@@ -874,6 +886,9 @@ class RedisRequestQueue:
 
         if not video_result["success"]:
             return self._build_error_response(session_id, video_result["error"], mm_time + gen_time, lang)
+
+        # Unload video pipeline after generation — frees VRAM for subsequent LLM
+        self._unload_video_pipeline()
 
         video_model = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
         template = self.app.modules["base"]._("Video generated from request: {query}", lang=lang)

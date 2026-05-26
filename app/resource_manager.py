@@ -368,6 +368,38 @@ class ResourceManager:
 
     # ── llama.cpp model management ──
 
+    def unload_video_pipeline(self) -> bool:
+        """Unload the LTX-Video pipeline from VRAM via /v1/unload."""
+        import requests as req
+
+        ltx_url = os.getenv("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
+        try:
+            resp = req.post(f"{ltx_url.rstrip('/')}/v1/unload", timeout=30)
+            if resp.status_code == 200:
+                logger.info("LTX-Video pipeline unloaded — VRAM freed")
+                return True
+            logger.warning(f"LTX-Video unload failed: {resp.status_code}")
+            return False
+        except Exception as e:
+            logger.warning(f"Error unloading LTX-Video: {e}")
+            return False
+
+    def ensure_vram_for_llm(self, model_type: str = "chat") -> bool:
+        """Unload video pipeline if not enough VRAM for the requested LLM model.
+        Returns True if VRAM is sufficient (after potential unload).
+        """
+        if not self.hardware.cuda_detected:
+            return True
+        model_vram = {"chat": 2500, "multimodal": 5000, "reasoning": 15000, "embedding": 2000}
+        needed = model_vram.get(model_type, 3000) + 2000
+        free = self.hardware.available_vram_mb
+        if free < needed:
+            logger.info(f"VRAM low ({free}MB free, need {needed}MB) — unloading video pipeline")
+            self.unload_video_pipeline()
+            self._poll_vram()
+            free = self.hardware.available_vram_mb
+        return free >= needed
+
     def unload_llamacpp_model(self, llamacpp_url: str | None = None) -> bool:
         """Force LLM backend to unload its current model from VRAM.
 

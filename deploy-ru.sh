@@ -111,8 +111,13 @@ HF_DOWNLOAD() {
 download_llamacpp_models() {
     info "Скачиваю модели llama.cpp..."
     local MODEL_DIR="services/llamacpp/models"
+    local VRAM_MB=0
 
-    # Чат-модель (публичный репозиторий - Qwen3-4B-Instruct)
+    if command -v nvidia-smi &>/dev/null; then
+        VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+    fi
+
+    # Чат-модель — подходит для всех уровней
     if [[ ! -f "$MODEL_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
         info "Скачиваю Qwen3-4B-Instruct-2507-Q4_K_M.gguf (чат)..."
         HF_DOWNLOAD "unsloth/Qwen3-4B-Instruct-2507-GGUF" \
@@ -122,31 +127,99 @@ download_llamacpp_models() {
         warn "Qwen3-4B-Instruct-2507-Q4_K_M.gguf уже есть — пропускаю."
     fi
 
-    # Модель рассуждений (GPT-Oss 20B)
-    if [[ ! -f "$MODEL_DIR/gpt-oss-20b-Q4_K_M.gguf" ]]; then
-        info "Скачиваю gpt-oss-20b-Q4_K_M.gguf (рассуждения)..."
-        HF_DOWNLOAD "unsloth/gpt-oss-20b-GGUF" \
-            "gpt-oss-20b-Q4_K_M.gguf" \
-            "$MODEL_DIR/gpt-oss-20b-Q4_K_M.gguf"
+    # Модель рассуждений — выбор по VRAM
+    if [[ "$VRAM_MB" -ge 16000 ]]; then
+        if [[ ! -f "$MODEL_DIR/gpt-oss-20b-Q4_K_M.gguf" ]]; then
+            info "Скачиваю gpt-oss-20b-Q4_K_M.gguf (рассуждения, уровень 16GB+ )..."
+            HF_DOWNLOAD "unsloth/gpt-oss-20b-GGUF" \
+                "gpt-oss-20b-Q4_K_M.gguf" \
+                "$MODEL_DIR/gpt-oss-20b-Q4_K_M.gguf"
+        else
+            warn "gpt-oss-20b-Q4_K_M.gguf уже есть — пропускаю."
+        fi
+    elif [[ "$VRAM_MB" -ge 12000 ]]; then
+        info "VRAM ${VRAM_MB}MB: скачиваю Qwen3-8B-Thinking (рассуждения)..."
+        if [[ ! -f "$MODEL_DIR/Qwen3-8B-Thinking-2507-Q4_K_M.gguf" ]]; then
+            info "Скачиваю Qwen3-8B-Thinking-2507-Q4_K_M.gguf (рассуждения, уровень 12GB)..."
+            HF_DOWNLOAD "unsloth/Qwen3-8B-Thinking-2507-GGUF" \
+                "Qwen3-8B-Thinking-2507-Q4_K_M.gguf" \
+                "$MODEL_DIR/Qwen3-8B-Thinking-2507-Q4_K_M.gguf" || \
+            warn "Не удалось скачать 8B модель. Запасной вариант: 4B."
+            if [[ ! -f "$MODEL_DIR/Qwen3-8B-Thinking-2507-Q4_K_M.gguf" ]]; then
+                HF_DOWNLOAD "unsloth/Qwen3-4B-Thinking-2507-GGUF" \
+                    "Qwen3-4B-Thinking-2507-Q4_K_M.gguf" \
+                    "$MODEL_DIR/Qwen3-4B-Thinking-2507-Q4_K_M.gguf"
+            fi
+        fi
+    elif [[ "$VRAM_MB" -ge 8000 ]]; then
+        info "VRAM ${VRAM_MB}MB: скачиваю лёгкую модель рассуждений (Qwen3-4B-Thinking)..."
+        if [[ ! -f "$MODEL_DIR/Qwen3-4B-Thinking-2507-Q4_K_M.gguf" ]]; then
+            info "Скачиваю Qwen3-4B-Thinking-2507-Q4_K_M.gguf (лёгкая модель рассуждений)..."
+            HF_DOWNLOAD "unsloth/Qwen3-4B-Thinking-2507-GGUF" \
+                "Qwen3-4B-Thinking-2507-Q4_K_M.gguf" \
+                "$MODEL_DIR/Qwen3-4B-Thinking-2507-Q4_K_M.gguf" || \
+            warn "Не удалось скачать лёгкую модель рассуждений."
+        fi
     else
-        warn "gpt-oss-20b-Q4_K_M.gguf уже есть — пропускаю."
+        info "VRAM неизвестна: скачиваю стандартную модель рассуждений..."
+        if [[ ! -f "$MODEL_DIR/gpt-oss-20b-Q4_K_M.gguf" ]]; then
+            HF_DOWNLOAD "unsloth/gpt-oss-20b-GGUF" \
+                "gpt-oss-20b-Q4_K_M.gguf" \
+                "$MODEL_DIR/gpt-oss-20b-Q4_K_M.gguf"
+        fi
     fi
 
-    # Мультимодальная модель (публичный репозиторий)
-    if [[ ! -d "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M" ]]; then
-        info "Скачиваю Qwen3VL-8B-Instruct-Q4_K_M (мультимодальная)..."
-        mkdir -p "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M"
-        HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
-            "Qwen3VL-8B-Instruct-Q4_K_M.gguf" \
-            "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
-        HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
-            "mmproj-Qwen3VL-8B-Instruct-F16.gguf" \
-            "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf"
+    # Мультимодальная модель — выбор по VRAM
+    if [[ "$VRAM_MB" -ge 12000 ]]; then
+        if [[ ! -d "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M" ]]; then
+            info "Скачиваю Qwen3VL-8B-Instruct-Q4_K_M (мультимодальная, уровень 12GB+)..."
+            mkdir -p "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M"
+            HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
+                "Qwen3VL-8B-Instruct-Q4_K_M.gguf" \
+                "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
+            HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
+                "mmproj-Qwen3VL-8B-Instruct-F16.gguf" \
+                "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf"
+        else
+            warn "Qwen3VL-8B-Instruct-Q4_K_M уже есть — пропускаю."
+        fi
+    elif [[ "$VRAM_MB" -ge 8000 ]]; then
+        info "VRAM ${VRAM_MB}MB: скачиваю лёгкую мультимодальную (Qwen3VL-4B)..."
+        if [[ ! -d "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M" ]]; then
+            mkdir -p "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M"
+            HF_DOWNLOAD "Qwen/Qwen3-VL-4B-Instruct-GGUF" \
+                "Qwen3VL-4B-Instruct-Q4_K_M.gguf" \
+                "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M/Qwen3VL-4B-Instruct-Q4_K_M.gguf" || \
+            warn "Не удалось скачать лёгкую мультимодальную. Запасной вариант: 8B."
+            HF_DOWNLOAD "Qwen/Qwen3-VL-4B-Instruct-GGUF" \
+                "mmproj-Qwen3VL-4B-Instruct-F16.gguf" \
+                "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M/mmproj-F16.gguf" || true
+            if [[ ! -f "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M/Qwen3VL-4B-Instruct-Q4_K_M.gguf" ]]; then
+                warn "Qwen3VL-4B недоступна на HuggingFace, скачиваю 8B вместо..."
+                rm -rf "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M"
+                mkdir -p "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M"
+                HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
+                    "Qwen3VL-8B-Instruct-Q4_K_M.gguf" \
+                    "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
+                HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
+                    "mmproj-Qwen3VL-8B-Instruct-F16.gguf" \
+                    "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf"
+            fi
+        fi
     else
-        warn "Qwen3VL-8B-Instruct-Q4_K_M уже есть — пропускаю."
+        if [[ ! -d "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M" ]]; then
+            info "VRAM неизвестна: скачиваю Qwen3VL-8B-Instruct-Q4_K_M..."
+            mkdir -p "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M"
+            HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
+                "Qwen3VL-8B-Instruct-Q4_K_M.gguf" \
+                "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
+            HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
+                "mmproj-Qwen3VL-8B-Instruct-F16.gguf" \
+                "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf"
+        fi
     fi
 
-    # Модель эмбеддингов (публичный репозиторий)
+    # Модель эмбеддингов — подходит для всех уровней
     if [[ ! -f "$MODEL_DIR/bge-m3-Q8_0.gguf" ]]; then
         info "Скачиваю bge-m3-Q8_0.gguf (эмбеддинги)..."
         HF_DOWNLOAD "gpustack/bge-m3-GGUF" \
@@ -297,17 +370,22 @@ build_and_launch() {
     [[ "$WITH_VIDEO" == "true" ]]  && PROFILE="$PROFILE --profile with-video"
     [[ "$WITH_SLM" == "true" ]]    && PROFILE="$PROFILE --profile with-slm"
 
-    local HAS_GPU=false
-    if command -v nvidia-smi &>/dev/null && nvidia-smi -L 2>/dev/null | grep -q GPU; then
-        HAS_GPU=true
-    fi
+    COMPOSE_FILE="docker-compose.gpu.yml"
+    info "Режим GPU — используется GPU compose файл."
 
-    if [[ "$HAS_GPU" == "true" ]]; then
-        COMPOSE_FILE="docker-compose.gpu.yml"
-        info "GPU обнаружен — используется GPU compose файл."
+    # Определяем уровень VRAM
+    local VRAM_MB=0
+    if command -v nvidia-smi &>/dev/null; then
+        VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+    fi
+    if [[ "$VRAM_MB" -ge 16000 ]]; then
+        info "VRAM: ${VRAM_MB}MB (уровень: 16GB+) — полная производительность"
+    elif [[ "$VRAM_MB" -ge 12000 ]]; then
+        info "VRAM: ${VRAM_MB}MB (уровень: 12GB) — средняя, рекомендуется лёгкая модель рассуждений"
+    elif [[ "$VRAM_MB" -ge 8000 ]]; then
+        info "VRAM: ${VRAM_MB}MB (уровень: 8GB) — ограниченная, рекомендуется лёгкая модель рассуждений"
     else
-        COMPOSE_FILE="docker-compose.cpu.yml"
-        warn "GPU не обнаружен — используется CPU compose файл."
+        warn "VRAM: ${VRAM_MB}MB — менее 8GB минимума. Производительность будет сильно ограничена."
     fi
 
     # Удаляем старые контейнеры во избежание конфликтов
@@ -359,9 +437,19 @@ FLAI v8.1 — Скрипт развёртывания
   --help, -h          Показать эту справку
 
 Размеры скачиваемых моделей (примерно):
-  llama.cpp:
+  llama.cpp (уровень 16GB+ — полные модели):
     Qwen3-4B-Instruct (чат)            ~2,5 ГБ
     gpt-oss-20b (рассуждения)          ~12 ГБ
+    Qwen3VL-8B (мультимодальная)       ~5,5 ГБ
+    bge-m3 (эмбеддинги)                ~1,5 ГБ
+  llama.cpp (уровень 8GB — лёгкие модели):
+    Qwen3-4B-Instruct (чат)            ~2,5 ГБ
+    Qwen3-4B-Thinking (рассуждения)    ~2,5 ГБ
+    Qwen3VL-4B (мультимодальная)       ~2,5 ГБ
+    bge-m3 (эмбеддинги)                ~1,5 ГБ
+  llama.cpp (уровень 12GB — средние модели):
+    Qwen3-4B-Instruct (чат)            ~2,5 ГБ
+    Qwen3-8B-Thinking (рассуждения)    ~5 ГБ
     Qwen3VL-8B (мультимодальная)       ~5,5 ГБ
     bge-m3 (эмбеддинги)                ~1,5 ГБ
   Генерация изображений (Z-Image Turbo) ~6,5 ГБ

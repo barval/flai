@@ -556,11 +556,22 @@ class LlamaCppClient:
             return self._translate("Request too long, please simplify your request", lang)
         return None
 
+    def _ensure_vram(self, model_type: str) -> None:
+        """Unload video pipeline if VRAM is tight for the requested model."""
+        try:
+            from app.resource_manager import get_resource_manager
+            rm = get_resource_manager()
+            rm.ensure_vram_for_llm(model_type)
+        except Exception:
+            pass
+
     def chat(self, messages: list[dict], model_type: str = "chat", lang: str = "ru", validate: bool = True) -> str:
         if validate:
             error = self._validate_prompt(messages, model_type, lang)
             if error:
                 return error
+
+        self._ensure_vram(model_type)
 
         config = get_model_config(model_type)
         if not config:
@@ -581,6 +592,8 @@ class LlamaCppClient:
             if error:
                 yield error
                 return
+
+        self._ensure_vram(model_type)
 
         config = get_model_config(model_type)
         if not config:

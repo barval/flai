@@ -43,11 +43,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 2G
+          cpus: '4.0'
+          memory: 1G
         reservations:
           cpus: '0.5'
-          memory: 512M
+          memory: 256M
     # Logging configuration
     logging:
       driver: "json-file"
@@ -77,10 +77,10 @@ services:
       resources:
         limits:
           cpus: '1.0'
-          memory: 512M
+          memory: 256M
         reservations:
           cpus: '0.25'
-          memory: 128M
+          memory: 64M
     logging:
       driver: "json-file"
       options:
@@ -138,10 +138,10 @@ services:
       resources:
         limits:
           cpus: '8.0'
-          memory: 24G
+          memory: 10G
         reservations:
-          cpus: '4.0'
-          memory: 16G
+          cpus: '2.0'
+          memory: 4G
     networks:
       - flai_network
     restart: unless-stopped
@@ -194,10 +194,10 @@ services:
       resources:
         limits:
           cpus: '8.0'
-          memory: 24G
-        reservations:
-          cpus: '4.0'
           memory: 16G
+        reservations:
+          cpus: '2.0'
+          memory: 8G
     profiles:
       - with-video
     logging:
@@ -231,10 +231,10 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 4G
-        reservations:
-          cpus: '1.0'
           memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
     logging:
       driver: "json-file"
       options:
@@ -267,11 +267,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4.0'
-          memory: 1G
-        reservations:
-          cpus: '1.0'
+          cpus: '2.0'
           memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
     logging:
       driver: "json-file"
       options:
@@ -304,6 +304,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
     profiles:
       - with-slm
 
@@ -331,10 +339,10 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 4G
+          memory: 1G
         reservations:
-          cpus: '1.0'
-          memory: 2G
+          cpus: '0.5'
+          memory: 512M
     logging:
       driver: "json-file"
       options:
@@ -364,6 +372,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
 
 networks:
   flai_network:

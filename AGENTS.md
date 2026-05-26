@@ -115,3 +115,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 ## Critical rule
 
 NEVER make ANY changes to files without direct user approval. Each file change (create, edit, delete) requires explicit plan approval. Exception: only when the user explicitly said "do it" or "execute".
+
+## GPU Requirement
+
+FLAI REQUIRES an NVIDIA GPU with at least 8 GB VRAM and 16 GB system RAM. CPU-only mode is not supported — LLM inference, SD image generation, and LTX-Video all depend on CUDA. The project automatically adapts to available VRAM (8/12/16+ GB tiers), adjusting model offloading and resolution accordingly.

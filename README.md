@@ -122,22 +122,38 @@ All services run on one machine with GPU sharing:
 
 ## 📋 System Requirements
 
-### Hardware Recommendations
+### GPU Requirement
 
-| Component | Minimum | Recommended | Optimal |
-|-----------|---------|-------------|---------|
-| **RAM** | 16 GB | 32 GB | 32+ GB |
-| **CPU** | 4 cores | 4+ cores | 8+ cores |
-| **GPU** | NVIDIA 12 GB VRAM | NVIDIA 16 GB VRAM | NVIDIA 24+ GB VRAM |
+FLAI **requires** an NVIDIA GPU with CUDA support. CPU-only mode is not supported — LLM inference, image generation, and video generation all depend on CUDA.
+
+### Hardware Tiers
+
+| Component | Tier 1 (Minimal) | Tier 2 (Moderate) | Tier 3 (Full) |
+|-----------|-----------------|-------------------|---------------|
+| **GPU VRAM** | 8 GB | 12 GB | 16+ GB |
+| **RAM** | 16 GB | 16 GB | 16 GB |
+| **CPU** | 4+ cores | 4+ cores | 6+ cores |
 | **Storage** | 40 GB | 80+ GB SSD | 100+ GB SSD NVMe |
 
-> **GPU VRAM notes:**
-> - **8 GB** is sufficient for chat + embedding only (no multimodal, no image/video generation).
-> - **12 GB** enables multimodal (Qwen3VL ~6 GB) or image generation (Z_image_turbo ~7 GB in separate context), but not simultaneously.
-> - **16 GB** handles multimodal + reasoning + image gen + video gen via VRAM swapping (only one LLM model loaded at a time; SD and video run in separate GPU contexts with LLM auto-unloaded before generation).
-> - **24+ GB** allows keeping multimodal and reasoning in VRAM simultaneously without swapping.
->
-> **CPU-only mode:** Chat, reasoning, embeddings, RAG, and TTS work without a GPU (slower). Image generation works but takes 10–30 minutes per image. Multimodal (vision) and video generation require a GPU.
+#### What works at each tier
+
+| Feature | 8 GB | 12 GB | 16+ GB |
+|---------|------|-------|--------|
+| Chat (Qwen3-4B) | ✅ full speed | ✅ full speed | ✅ full speed |
+| Reasoning | ⚠️ Qwen3-4B-Thinking (~2.5 GB) | ✅ Qwen3-8B-Thinking (~5 GB) | ✅ gpt-oss-20b (~12 GB, ngl=16+) |
+| Multimodal | ⚠️ Qwen3VL-4B (~2.5 GB) recommended | ✅ Qwen3VL-8B (~5.5 GB) | ✅ Qwen3VL-8B (~5.5 GB) |
+| Image gen (SD) | ✅ (LLM unloaded, sd-cli subprocess) | ✅ | ✅ |
+| Video gen (LTX-Video) | ⚠️ reduced resolution | ✅ | ✅ |
+| Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU |
+| RAG (Qdrant) | ✅ | ✅ | ✅ |
+| SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU |
+| Image gen (SD) | ✅ (LLM unloaded, sd-cli subprocess) | ✅ (LLM unloaded) | ✅ (LLM unloaded) |
+| Video gen (LTX-Video) | ⚠️ reduced resolution | ✅ | ✅ |
+| Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU |
+| RAG (Qdrant) | ✅ | ✅ | ✅ |
+| SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU |
+
+> **VRAM management:** All LLM models (chat, reasoning, multimodal, embedding) share VRAM via llama-swap — only one is loaded at a time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. The system dynamically adjusts `n_gpu_layers` based on available VRAM.
 
 ### Software Prerequisites
 - Linux server with **NVIDIA GPU** (CUDA support required)
@@ -148,21 +164,6 @@ All services run on one machine with GPU sharing:
 - Internet connection (only for initial model downloads)
 
 > 💡 **Note**: After downloading GGUF models, FLAI works completely offline.
-
----
-
-### 💻 Running without GPU (CPU-only mode)
-
-FLAI can operate on CPU-only servers using automatic detection in the deployment script. When no NVIDIA GPU is found, the script will use CPU-optimized images for llama.cpp and stable-diffusion.cpp. Performance will be significantly slower, but all features remain functional.
-
-- Chat and reasoning: works, but may be 3-10x slower.
-- Image generation: works, but generation time can be 10-30 minutes per image.
-- Voice processing (Whisper, Piper) and document search (RAG) are unaffected.
-
-To force CPU mode even if a GPU is present, you can manually run:
-```bash
-docker compose -f docker-compose.cpu.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
-```
 
 ---
 

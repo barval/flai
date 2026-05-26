@@ -281,6 +281,8 @@ class BaseModule(TranslationMixin):
             if marker in response:
                 parts = response.split(marker, 1)
                 processed = parts[1].strip() if len(parts) > 1 else ""
+                # Take only the first line — strip template text/history the model may have copied
+                processed = processed.split("\n")[0].strip()
                 return {"action": action, "query": processed, "needs_reasoning": (action == "reasoning")}
 
         return {"action": "none", "query": response, "needs_reasoning": False}

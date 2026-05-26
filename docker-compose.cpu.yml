@@ -1,5 +1,6 @@
 # docker-compose.cpu.yml
-# CPU-only version - no GPU required
+# CPU-only version - DEPRECATED. GPU is required for all LLM inference.
+# Kept for reference only. Use docker-compose.gpu.yml instead.
 services:
   # ============================================================
   # WEB APPLICATION (Required)
@@ -38,11 +39,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 2G
+          cpus: '4.0'
+          memory: 1G
         reservations:
           cpus: '0.5'
-          memory: 512M
+          memory: 256M
     logging:
       driver: "json-file"
       options:
@@ -71,10 +72,10 @@ services:
       resources:
         limits:
           cpus: '1.0'
-          memory: 512M
+          memory: 256M
         reservations:
           cpus: '0.25'
-          memory: 128M
+          memory: 64M
     logging:
       driver: "json-file"
       options:
@@ -156,73 +157,7 @@ services:
     restart: unless-stopped
     entrypoint: ["python3", "/app/sd_wrapper.py"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7861/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    profiles:
-      - with-image-gen
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # ============================================================
-  # WHISPER ASR (Optional - Speech Recognition)
-  # ============================================================
-  whisper:
-    image: onerahmet/openai-whisper-asr-webservice:v1.9.1
-    container_name: flai-whisper
-    environment:
-      - ASR_MODEL=medium
-      - ASR_ENGINE=faster_whisper
-      - ASR_DEVICE=cpu
-    volumes:
-      - ~/.cache/huggingface:/root/.cache/huggingface
-    networks:
-      - flai_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/docs"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 4G
-        reservations:
-          cpus: '1.0'
-          memory: 2G
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    profiles:
-      - with-voice
-
-  # ============================================================
-  # PIPER TTS (Optional - Speech Synthesis)
-  # ============================================================
-  piper:
-    build:
-      context: ./services/piper
-      dockerfile: Dockerfile.piper
-    container_name: flai-piper
-    volumes:
-      - ./services/piper/piper_models:/app/models
-    environment:
-      - PIPER_MODEL_DIR=/app/models
-    networks:
-      - flai_network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8888/health')\" || exit 1"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8765/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -230,18 +165,13 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4.0'
+          cpus: '2.0'
           memory: 1G
         reservations:
-          cpus: '1.0'
+          cpus: '0.5'
           memory: 512M
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
     profiles:
-      - with-voice
+      - with-slm
 
   # ============================================================
   # QDRANT (Optional - Vector Database for RAG)
@@ -267,10 +197,10 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 4G
+          memory: 1G
         reservations:
-          cpus: '1.0'
-          memory: 2G
+          cpus: '0.5'
+          memory: 512M
     logging:
       driver: "json-file"
       options:
@@ -331,10 +261,10 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 2G
+          memory: 1G
         reservations:
           cpus: '0.5'
-          memory: 512M
+          memory: 256M
     logging:
       driver: "json-file"
       options:

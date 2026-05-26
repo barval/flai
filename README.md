@@ -25,6 +25,7 @@
 - 🎬 **Video Generation** – create short videos from text or image+text prompts using LTX-Video 2B (distilled, 8-step inference)
 - 🎤 **Voice Transcription** – convert voice messages to text using Whisper ASR (faster_whisper)
 - 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper TTS (male and female voices in English and Russian)
+- 🧠 **Long-term Memory** – cross-session, persistent memory via SuperLocalMemory (SLM). CPU-only, zero-LLM retrieval. Replaces raw conversation history with relevant facts. Enable with `--profile with-slm`.
 
 ### 📁 Document & Knowledge Management
 - 📚 **RAG with Qdrant** – upload documents (PDF, DOC, DOCX, TXT) and ask questions about their content
@@ -70,17 +71,11 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v8.7
+### What's New in v8.8
 
-| v8.7 (New) | Notes |
+| v8.8 (New) | Notes |
 |------------|-------|
-| 🚀 **Video task re-queuing to slow queue** | Video generation tasks are re-queued from fast worker to slow queue. Fast worker no longer blocks for 60-120 seconds. Multiple video requests are properly serialized. |
-| ⚡ **SSE re-queue fix** | Lightning indicator (⚡) now stays active when a video task is re-queued. `handleCompletedResult` in `events.js` recognizes `status: "queued"` with `request_id` and re-activates tracking. |
-| 🧹 **History filter for router** | `_extract_text_content()` in `db.py` strips `[-...-]` markers and `{"prefix": ..., "text": ...}` JSON from conversation history. `get_session_text_history()` additionally filters out entire user+assistant pairs where the assistant responded with a generation marker, preventing the router from ever seeing previous generation requests. |
-| 🎯 **Independent classification rule** | `base_text.template` updated with explicit instruction: each query is classified independently, markers from history must never be copied. |
-| 🖼️ **SD VRAM fix** | Before image generation and editing, the ltxvideo pipeline is unloaded via `POST /v1/unload`, freeing ~6.5 GB VRAM for SD models. Prevents OOM fallback to CPU (which caused 2x slowdown). |
-| 🔌 **ltx-wrapper /v1/unload endpoint** | New endpoint in `ltx_wrapper.py` to unload the pipeline and release GPU memory on demand. Used by SD module before generation. |
-| 🐛 **CUDA cleanup fixed** | Removed `cuDevicePrimaryCtxReset(0)` which caused SIGSEGV on pipeline reload. Replaced with `_pipeline = None` + `torch.cuda.empty_cache()` + `gc.collect()` for clean pipeline resets. |
+| 🧠 **SuperLocalMemory (SLM) integration** | Long-term, cross-session memory via SuperLocalMemory (HTTP proxy in separate container, `--profile with-slm`). Zero-LLM retrieval (Fisher-Rao metric, CPU-only). Replaces raw conversation history (~1255 tokens) with 3-5 relevant facts (~150 tokens). Each user has an isolated SQLite database (`$HOME`-based, not `SLM_DATA_DIR` — SLM V3 ignores that env var). No daemon — per-request `--sync` calls. Pre-downloaded at build time (with background warmup as fallback). Included in full backups. Automatic fact saving after each assistant response. Background import on startup via checkpoint table (`slm_import_progress`). SLM auto-cleaned on last session deletion. Admin panel shows fact count per user. |
 
 
 ### Core Components
@@ -94,6 +89,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | **Whisper ASR** | Speech-to-text transcription | faster_whisper | 9000 |
 | **Piper TTS** | Text-to-speech synthesis | ONNX + Piper | 8888 |
 | **Qdrant** | Vector database for RAG | Rust | 6333 |
+| **SuperLocalMemory** | Long-term, cross-session memory per-user (HTTP proxy) | Python + SQLite | 8765 |
 | **Redis** | Request queue management | C | 6379 |
 | **PostgreSQL** | User accounts, sessions, messages | SQL | 5432 |
 | **Resource Manager** | Adaptive GPU/CPU/RAM management, prevents OOM errors, coordinates GPU access | Python |
@@ -193,6 +189,9 @@ cd flai
 
 # + Video generation (LTX-Video)
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video
+
+# + Long-term memory (SuperLocalMemory)
+./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm
 
 # Run tests after deployment
 ./deploy.sh --download-models --with-image-gen --run-tests
@@ -318,7 +317,10 @@ docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 # With video generation
 docker compose -f docker-compose.gpu.yml --profile with-video up -d
 
-# Full stack: chat + images + voice + RAG + video
+# With long-term memory (SuperLocalMemory)
+docker compose -f docker-compose.gpu.yml --profile with-slm up -d
+
+# Full stack: chat + images + voice + RAG + video + long-term memory
 docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video up -d
 ```
 
@@ -355,6 +357,7 @@ Now you can:
 - 🗂️ **Multiple Chat Sessions** — separate conversations with auto-titling
 - 💾 **Export Chats** — save conversations as HTML with embedded media
 - 📹 **View Cameras** — IP camera snapshots analyzed by AI
+- 🧠 **Long-term Memory** — cross-session memory via SuperLocalMemory (enable with `--with-slm`)
 - 💾 **Backup & Restore** — full or user-only backups from the admin panel
 - 🔧 **CLI Tools** — admin password reset, orphaned file cleanup
 
@@ -385,8 +388,9 @@ PIPER_URL=http://flai-piper:8888/tts
 QDRANT_URL=http://flai-qdrant:6333
 QDRANT_API_KEY=your_qdrant_api_key
 CAMERA_API_URL=http://flai-room-snapshot-api:5000
-LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872  # LTX-Video video generation
-```
+ LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872  # LTX-Video video generation
+ SLM_URL=http://flai-slm:8765                      # SuperLocalMemory long-term memory
+ ```
 
 **Image & Video Defaults:**
 ```bash
@@ -441,14 +445,17 @@ Configuration is loaded from `gunicorn_config.py`, not inline CLI args.
 ### Docker Compose Profiles
 
 ```bash
-# Start all services (chat + images + voice + RAG + video)
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video up -d
+# Start all services (chat + images + voice + RAG + video + long-term memory)
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm up -d
 
 # Chat + voice only
 docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 
 # Video generation
 docker compose -f docker-compose.gpu.yml --profile with-video up -d
+
+# Long-term memory (SuperLocalMemory)
+docker compose -f docker-compose.gpu.yml --profile with-slm up -d
 
 # Chat only (no images, no voice, no video)
 docker compose -f docker-compose.gpu.yml up -d
@@ -807,9 +814,12 @@ curl http://localhost:5000/metrics
 - **ltx-wrapper /v1/unload endpoint** — new endpoint to unload pipeline and release GPU memory on demand.
 - **CUDA cleanup fix** — removed `cuDevicePrimaryCtxReset(0)` (caused SIGSEGV), replaced with `_pipeline = None` + `empty_cache()` + `gc.collect()`.
 - **Enhanced history filter** — `get_session_text_history()` filters out entire user+assistant pairs where the assistant responded with a generation marker. Prevents router from seeing previous generation requests and copying them.
+- **SuperLocalMemory (SLM) integration** — long-term, cross-session memory module. HTTP proxy in separate container (`--profile with-slm`). Each user has an isolated SQLite database (`$HOME=/app/data/slm/{user}/`, not `SLM_DATA_DIR` — SLM V3 ignores that env var). No daemon — per-request `--sync` calls. Pre-downloaded at build time (`RUN slm warmup` in Dockerfile), with background warmup on container start as fallback. Replaces raw conversation history (~1255 tokens) with 3-5 relevant facts (~150 tokens). Zero-LLM retrieval (Fisher-Rao metric), CPU-only. Automatic fact saving after assistant responses. Per-user SLM databases are included in full backups.
+- **Background SLM import on startup** — `app/slm_import.py` with checkpoint table `slm_import_progress`. On first startup (or upgrade from older version), automatically imports all existing messages into per-user SLM databases. Incremental — only processes messages since last checkpoint. Runs as daemon thread, does not block web server. CLI: `flask import-history-to-slm [--force] [user_id]`.
+- **SLM cleanup on session deletion** — when the last session is deleted or history cleared, `_cleanup_slm_if_empty()` in `db.py` removes the user's SLM database. On full user deletion (`userdb.py:delete_user()`), the entire `/app/data/slm/{login}/` directory is removed.
+- **SLM fact count in admin panel** — `GET /admin/api/users` now returns `slm_facts_count` per user, read directly from SQLite (`mode=ro&immutable=1`). Displayed as a column in the users table.
 
 ### 🔄 In Progress
-- Long-term dialog memory (cross-session context)
 - Advanced RAG: metadata filtering, hybrid search
 - Mobile-responsive UI optimizations
 
@@ -854,6 +864,12 @@ curl http://localhost:5000/metrics
 | **ltxv-2b-0.9.8-distilled.safetensors** | LTX-Video 2B diffusion transformer + VAE | [LTX-Video License](https://huggingface.co/Lightricks/LTX-Video) | ~5.9 GB |
 | **PixArt T5-XXL (text_encoder)** | T5 text encoder for LTX-Video | [PixArt License](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS) | ~18 GB (disk, float32) |
 
+### Long-term Memory Models
+
+| Model | Purpose | License | Approx. Size |
+|-------|---------|---------|-------------|
+| **nomic-embed-text-v1.5** | Text embedding for SLM retrieval | [Apache 2.0](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5) | ~500 MB |
+
 ### Voice Models
 
 | Model | Purpose | License | Approx. Size |
@@ -876,6 +892,7 @@ curl http://localhost:5000/metrics
 | + Image editing | ~31 GB |
 | + Voice (TTS + Whisper) | ~35 GB |
 | + Video generation (LTX-Video + T5 encoder) | ~59 GB *(T5 encoder ~18 GB on disk in float32)* |
+| + Long-term memory (SLM embedding model) | ~59.5 GB *(SLM adds ~500 MB)* |
 
 > **Note**: After downloading models, FLAI works completely offline. No external scripts or modules are loaded at runtime.
 

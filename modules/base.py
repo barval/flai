@@ -114,7 +114,9 @@ class BaseModule(TranslationMixin):
         """Format conversation history into a string."""
         return build_context_prompt(history, lang)
 
-    def _get_context_for_model(self, session_id: str, model_type: str, current_query: str, lang: str = "ru") -> str:
+    def _get_context_for_model(
+        self, session_id: str, model_type: str, current_query: str, lang: str = "ru", user_id: str | None = None
+    ) -> str:
         """Retrieve and prune conversation history with safety margin."""
         if not session_id:
             return ""
@@ -139,6 +141,26 @@ class BaseModule(TranslationMixin):
 
         # Load history with SQL-level limit
         history_msgs = get_session_text_history(session_id, remaining_for_history, max_messages=self.max_messages_limit)
+
+        # If SLM (SuperLocalMemory) is available, use long-term memory facts instead of history
+        slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
+        if slm and slm.available:
+            slm_context = slm.get_context(
+                current_query, lang, limit=self.app.config.get("SLM_RECALL_LIMIT", 3), profile=user_id
+            )
+            if slm_context:
+                # Keep only last 2 messages for dialog coherence
+                last_turns = self._build_context_prompt(history_msgs[-2:], lang) if len(history_msgs) > 1 else ""
+                if last_turns:
+                    context = slm_context + "\n\n" + last_turns
+                else:
+                    context = slm_context
+                context_tokens = self._estimate_tokens(context, model_type, lang)
+                self.logger.info(
+                    f"Context from SLM: {context_tokens} tokens "
+                    f"({context_tokens / max_context_tokens * 100:.1f}% of {max_context_tokens})"
+                )
+                return context
 
         context = self._build_context_prompt(history_msgs, lang)
         context_tokens = self._estimate_tokens(context, model_type, lang)
@@ -168,6 +190,12 @@ class BaseModule(TranslationMixin):
         )
         return None
 
+    def _save_to_slm(self, text: str, metadata: dict[str, Any] | None = None, user_id: str | None = None) -> None:
+        """Save a fact to SuperLocalMemory if available."""
+        slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
+        if slm and slm.available:
+            slm.remember(text, metadata=metadata, profile=user_id)
+
     # --- Existing methods with context added ---
     def process_message(
         self,
@@ -176,10 +204,11 @@ class BaseModule(TranslationMixin):
         lang: str = "ru",
         session_id: str | None = None,
         response_style: str = "neutral",
+        user_id: str | None = None,
     ) -> dict[str, Any]:
         """Process text message through router model."""
         response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(session_id, "chat", message_text, lang)  # type: ignore[arg-type]
+        context_str = self._get_context_for_model(session_id, "chat", message_text, lang, user_id=user_id)  # type: ignore[arg-type]
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )
@@ -221,7 +250,10 @@ class BaseModule(TranslationMixin):
             self.logger.error("Router response is None")
             return {"error": self._("Model returned empty response", lang)}
 
-        return self._parse_router_response(router_response, message_text, current_time_str, lang)  # type: ignore[arg-type]
+        result = self._parse_router_response(router_response, message_text, current_time_str, lang)  # type: ignore[arg-type]
+        if "error" not in result:
+            self._save_to_slm(message_text, metadata={"session_id": session_id, "type": "user_query"}, user_id=user_id)
+        return result
 
     def _parse_router_response(
         self, response: str, original_query: str, current_time_str: str, lang: str = "ru"
@@ -260,10 +292,11 @@ class BaseModule(TranslationMixin):
         lang: str = "ru",
         session_id: str | None = None,
         response_style: str = "neutral",
+        user_id: str | None = None,
     ) -> str:
         """Process complex query via reasoning model."""
         response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(session_id, "reasoning", query, lang)  # type: ignore[arg-type]
+        context_str = self._get_context_for_model(session_id, "reasoning", query, lang, user_id=user_id)  # type: ignore[arg-type]
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )
@@ -293,6 +326,8 @@ class BaseModule(TranslationMixin):
             [{"role": "user", "content": reasoning_prompt}], model_type="reasoning", lang=lang
         )
         self.logger.info(f"Reasoning model response: {response[:100]}...")  # type: ignore[index]
+        if response:
+            self._save_to_slm(response, metadata={"type": "reasoning_response", "query": query[:200]}, user_id=user_id)
         return response  # type: ignore[return-value]
 
     # ── Streaming methods ──────────────────────────────────────────────
@@ -304,10 +339,11 @@ class BaseModule(TranslationMixin):
         lang: str = "ru",
         session_id: str | None = None,
         response_style: str = "neutral",
+        user_id: str | None = None,
     ) -> Generator[str, None, None]:
         """Build prompt and stream chat model response."""
         response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(session_id, "chat", query, lang)  # type: ignore[arg-type]
+        context_str = self._get_context_for_model(session_id, "chat", query, lang, user_id=user_id)  # type: ignore[arg-type]
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )
@@ -343,10 +379,11 @@ class BaseModule(TranslationMixin):
         lang: str = "ru",
         session_id: str | None = None,
         response_style: str = "neutral",
+        user_id: str | None = None,
     ) -> Generator[str, None, None]:
         """Build prompt and stream reasoning model response."""
         response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(session_id, "reasoning", query, lang)  # type: ignore[arg-type]
+        context_str = self._get_context_for_model(session_id, "reasoning", query, lang, user_id=user_id)  # type: ignore[arg-type]
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )

@@ -179,6 +179,14 @@ def _init_postgresql():
             used_bytes INTEGER DEFAULT 0
         )
     """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS slm_import_progress (
+            user_id TEXT PRIMARY KEY,
+            last_message_id INTEGER NOT NULL DEFAULT 0,
+            total_imported INTEGER NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
 
     # Create indexes
     c.execute("CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)")

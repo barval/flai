@@ -111,3 +111,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - **mypy** `app/utils.py:767`: `Module has no attribute "parse_rtf"` — striprtf stub issue. Fix: `# type: ignore[attr-defined]`.
 - **Unit test speed**: CamModule has 5×2s init retries, making test_cam.py ~10s per fixture.
 - **Load tests** (`tests/load/`) excluded from pytest collection (require locust fixtures).
+
+## Critical rule
+
+NEVER make ANY changes to files without direct user approval. Each file change (create, edit, delete) requires explicit plan approval. Exception: only when the user explicitly said "do it" or "execute".

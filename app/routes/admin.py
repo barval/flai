@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import sqlite3
 from functools import wraps
 
 import requests
@@ -161,6 +162,19 @@ def get_users():
                 u_dict["messages_count"] = stats["messages"] if stats else 0
                 u_dict["files_count"] = stats["files_count"] if stats else 0
                 u_dict["documents_count"] = stats["documents_count"] if stats else 0
+
+                slm_db = os.path.join("/app/data/slm", u["login"], ".superlocalmemory", "memory.db")
+                if os.path.exists(slm_db):
+                    try:
+                        slm_conn = sqlite3.connect(f"file:{slm_db}?mode=ro&immutable=1", uri=True)
+                        slm_c = slm_conn.cursor()
+                        slm_c.execute("SELECT COUNT(*) FROM memories")
+                        u_dict["slm_facts_count"] = slm_c.fetchone()[0]
+                        slm_conn.close()
+                    except Exception:
+                        u_dict["slm_facts_count"] = 0
+                else:
+                    u_dict["slm_facts_count"] = 0
 
                 if u_dict["camera_permissions"]:
                     try:

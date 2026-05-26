@@ -408,7 +408,34 @@ def delete_session_and_messages(session_id, user_id, upload_folder=None):
     if total_deleted_bytes > 0:
         update_user_storage(user_id, -total_deleted_bytes)
 
+    # If user has no remaining messages, clean up SLM database
+    _cleanup_slm_if_empty(user_id)
+
     return True
+
+
+def _cleanup_slm_if_empty(user_id: str) -> None:
+    """Delete the user's SLM database if they have no messages remaining."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """SELECT COUNT(*) as cnt FROM messages m
+               JOIN chat_sessions cs ON m.session_id = cs.id
+               WHERE cs.user_id = %s""",
+            (user_id,),
+        )
+        if c.fetchone()["cnt"] > 0:
+            return
+
+    slm_dir = os.path.join("/app/data/slm", user_id, ".superlocalmemory")
+    if os.path.exists(slm_dir):
+        with contextlib.suppress(Exception):
+            import shutil
+
+            shutil.rmtree(slm_dir, ignore_errors=True)
+            import logging
+
+            logging.getLogger(__name__).info(f"SLM data deleted for user {user_id} (no messages left)")
 
 
 def update_session_visit(user_id, session_id):

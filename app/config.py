@@ -68,6 +68,11 @@ def load_config(app):
     app.config["CAMERA_API_TIMEOUT"] = int(os.getenv("CAMERA_API_TIMEOUT", 15))
     app.config["CAMERA_CHECK_INTERVAL"] = int(os.getenv("CAMERA_CHECK_INTERVAL", 30))
 
+    # SuperLocalMemory (long-term memory) settings
+    app.config["SLM_URL"] = os.getenv("SLM_URL")
+    app.config["SLM_RECALL_LIMIT"] = int(os.getenv("SLM_RECALL_LIMIT", 3))
+    app.config["SLM_DATA_DIR"] = "/app/data/slm"
+
     # Piper TTS settings
     app.config["PIPER_URL"] = os.getenv("PIPER_URL")
     app.config["PIPER_TIMEOUT"] = int(os.getenv("PIPER_TIMEOUT", 30))

@@ -135,6 +135,9 @@ function loadUsers() {
             const documentsCell = document.createElement('td');
             documentsCell.textContent = user.documents_count || 0;
             row.appendChild(documentsCell);
+            const slmCell = document.createElement('td');
+            slmCell.textContent = user.slm_facts_count || 0;
+            row.appendChild(slmCell);
             if (window.ROOMS && Object.keys(window.ROOMS).length > 0) {
                 const camCell = document.createElement('td');
                 const camContainer = document.createElement('div');

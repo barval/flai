@@ -280,6 +280,33 @@ services:
       - with-rag
 
   # ============================================================
+  # SUPERLOCALMEMORY (Optional - Long-term memory)
+  # ============================================================
+  superlocalmemory:
+    build:
+      context: ./services/superlocalmemory
+      dockerfile: Dockerfile.slm
+    container_name: flai-slm
+    environment:
+      - SLM_MODE=a
+      - SLM_PORT=8765
+      - SLM_HOST=0.0.0.0
+    volumes:
+      - slm_data:/root/.superlocalmemory
+      - ./data/slm/:/app/data/slm/
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8765/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    profiles:
+      - with-slm
+
+  # ============================================================
   # POSTGRESQL (Required)
   # ============================================================
   postgres:
@@ -323,3 +350,4 @@ volumes:
   redis_data:
   qdrant_data:
   postgres_data:
+  slm_data:

@@ -45,7 +45,7 @@ setup_env() {
 # ── Data directories ──
 setup_dirs() {
     info "Creating data directories..."
-    mkdir -p data/uploads data/documents data/db_backups
+    mkdir -p data/uploads data/documents data/db_backups data/slm
     chown -R 1000:1000 data 2>/dev/null || warn "Could not chown data/ — run with sudo if needed."
 }
 
@@ -298,6 +298,7 @@ build_and_launch() {
     [[ "$WITH_VOICE" == "true" ]] && PROFILE="$PROFILE --profile with-voice"
     [[ "$WITH_RAG" == "true" ]]    && PROFILE="$PROFILE --profile with-rag"
     [[ "$WITH_VIDEO" == "true" ]]  && PROFILE="$PROFILE --profile with-video"
+    [[ "$WITH_SLM" == "true" ]]    && PROFILE="$PROFILE --profile with-slm"
 
     local HAS_GPU=false
     if command -v nvidia-smi &>/dev/null && nvidia-smi -L 2>/dev/null | grep -q GPU; then
@@ -354,6 +355,7 @@ Options:
   --with-image-gen    Deploy stable-diffusion.cpp for image generation/editing
                       (default: disabled, use this flag to enable)
   --with-video        Deploy LTX-Video for video generation
+  --with-slm          Deploy SuperLocalMemory for long-term memory
                       (default: disabled, use this flag to enable)
   --download-models   Download GGUF/safetensors models from HuggingFace
   --run-tests         Run unit tests after deployment
@@ -370,6 +372,7 @@ Model Download Sizes (approximate):
   Video generation (LTX-Video 2B)    ~5.9 GB
   T5 text encoder (PixArt T5-XXL)    ~18 GB (on disk, float32)
   TTS (Piper)                        ~0.2 GB
+  SLM embedding model                ~0.5 GB (pre-downloaded during Docker build)
 USAGE
 }
 
@@ -378,6 +381,7 @@ WITH_VOICE=false
 WITH_RAG=false
 WITH_IMAGE_GEN=false
 WITH_VIDEO=false
+WITH_SLM=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
 
@@ -387,6 +391,7 @@ for arg in "$@"; do
         --with-rag)       WITH_RAG=true ;;
         --with-image-gen) WITH_IMAGE_GEN=true ;;
         --with-video)     WITH_VIDEO=true ;;
+        --with-slm)       WITH_SLM=true ;;
         --download-models) DOWNLOAD_MODELS=true ;;
         --run-tests)      RUN_TESTS=true ;;
         --help|-h)        usage; exit 0 ;;

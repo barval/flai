@@ -1265,7 +1265,12 @@ class RedisRequestQueue:
         """Handle text request — routes through base module router."""
         router_start = time.time()
         router_result = self.app.modules["base"].process_message(
-            message_text, current_time_str, lang=lang, session_id=session_id, response_style=response_style
+            message_text,
+            current_time_str,
+            lang=lang,
+            session_id=session_id,
+            response_style=response_style,
+            user_id=user_id,
         )
         router_time = round(time.time() - router_start, 1)
 
@@ -1304,7 +1309,12 @@ class RedisRequestQueue:
             if router_result.get("needs_reasoning"):
                 reasoning_start = time.time()
                 final_response = self.app.modules["base"].process_reasoning(
-                    query, current_time_str, lang=lang, session_id=session_id, response_style=response_style
+                    query,
+                    current_time_str,
+                    lang=lang,
+                    session_id=session_id,
+                    response_style=response_style,
+                    user_id=user_id,
                 )
                 process_time = round(time.time() - reasoning_start, 1)
             else:
@@ -1337,7 +1347,12 @@ class RedisRequestQueue:
         """Handle text request with streaming for the final LLM response."""
         router_start = time.time()
         router_result = self.app.modules["base"].process_message(
-            message_text, current_time_str, lang=lang, session_id=session_id, response_style=response_style
+            message_text,
+            current_time_str,
+            lang=lang,
+            session_id=session_id,
+            response_style=response_style,
+            user_id=user_id,
         )
         router_time = round(time.time() - router_start, 1)
 
@@ -1377,7 +1392,12 @@ class RedisRequestQueue:
             full_response = ""
             cancelled = False
             for token in self.app.modules["base"].generate_reasoning_response_stream(
-                query, current_time_str, lang=lang, session_id=session_id, response_style=response_style
+                query,
+                current_time_str,
+                lang=lang,
+                session_id=session_id,
+                response_style=response_style,
+                user_id=user_id,
             ):
                 full_response += token
                 self._publish_stream_token(task, token)

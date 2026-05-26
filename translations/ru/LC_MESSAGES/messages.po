@@ -524,6 +524,10 @@ msgstr "Файлы"
 msgid "Documents"
 msgstr "Документы"
 
+#: app/templates/admin.html:39
+msgid "SLM Facts"
+msgstr "SLM факты"
+
 #: app/templates/admin.html:40 app/templates/admin.html:169
 #: app/templates/admin.html:230
 msgid "Camera access"
@@ -1530,32 +1534,32 @@ msgstr "Не удалось подключиться к сервису гене�
 #~ msgid "recording"
 #~ msgstr "Запись"
 
-#~ msgid "room_tambour"
-#~ msgstr "тамбур"
+msgid "room_tambour"
+msgstr "тамбур"
 
-#~ msgid "room_hallway"
-#~ msgstr "прихожая"
+msgid "room_hallway"
+msgstr "прихожая"
 
-#~ msgid "room_corridor"
-#~ msgstr "коридор"
+msgid "room_corridor"
+msgstr "коридор"
 
-#~ msgid "room_bedroom"
-#~ msgstr "спальня"
+msgid "room_bedroom"
+msgstr "спальня"
 
-#~ msgid "room_office"
-#~ msgstr "кабинет"
+msgid "room_office"
+msgstr "кабинет"
 
-#~ msgid "room_children"
-#~ msgstr "детская"
+msgid "room_children"
+msgstr "детская"
 
-#~ msgid "room_living"
-#~ msgstr "гостиная"
+msgid "room_living"
+msgstr "гостиная"
 
-#~ msgid "room_kitchen"
-#~ msgstr "кухня"
+msgid "room_kitchen"
+msgstr "кухня"
 
-#~ msgid "room_balcony"
-#~ msgstr "балкон"
+msgid "room_balcony"
+msgstr "балкон"
 
 #~ msgid ""
 #~ "Service temporarily unavailable. Circuit "

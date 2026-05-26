@@ -25,6 +25,7 @@
 - 🎬 **Генерация видео** – создавайте короткие видео из текста или изображения+текста с помощью LTX-Video 2B (дистиллированная, 8 шагов)
 - 🎤 **Распознавание речи** – преобразование голосовых сообщений в текст через Whisper ASR (faster_whisper)
 - 🗣️ **Синтез речи** – озвучивание ответов через Piper TTS (мужской и женский голоса на русском и английском)
+- 🧠 **Долговременная память** – кросс-сессионная память через SuperLocalMemory (SLM). Только CPU, zero-LLM поиск. Заменяет историю переписки релевантными фактами. Включить через `--profile with-slm`.
 
 ### 📁 Управление документами и знаниями
 - 📚 **RAG с Qdrant** – загрузка документов (PDF, DOC, DOCX, TXT) и вопросы по содержимому
@@ -70,17 +71,11 @@
 
 ПЛИИ — модульное Flask-приложение, оркестрирующее сервисы на экосистеме llama.cpp.
 
-### Что нового в v8.7
+### Что нового в v8.8
 
-| v8.7 (Новое) | Примечания |
+| v8.8 (Новое) | Примечания |
 |--------------|------------|
-| 🚀 **Видео в медленную очередь** | Задачи генерации видео перекьюются из fast worker в slow queue. Fast worker больше не блокируется на 60-120 секунд. Несколько запросов видео сериализуются. |
-| ⚡ **Исправление ⚡ при перекьюинге** | Индикатор молнии больше не гаснет при перепостановке видео задачи. `handleCompletedResult` в `events.js` распознаёт `status: "queued"` с `request_id` и восстанавливает отслеживание. |
-| 🧹 **Фильтр истории для роутера** | `_extract_text_content()` в `db.py` удаляет маркеры `[-...-]` и JSON `{"prefix": ..., "text": ...}` из истории диалога. `get_session_text_history()` дополнительно фильтрует целые пары user+assistant, где ассистент ответил маркером генерации — роутер вообще не видит предыдущие запросы на генерацию. |
-| 🎯 **Независимая классификация** | `base_text.template` дополнен явной инструкцией: каждый запрос классифицируется независимо, маркеры из истории никогда не копируются. |
-| 🖼️ **Исправление VRAM для SD** | Перед генерацией и редактированием изображений пайплайн ltxvideo выгружается через `POST /v1/unload`, освобождая ~6.5 GB VRAM для SD-моделей. Предотвращает падение на CPU (вызывавшее замедление в 2+ раза). |
-| 🔌 **Эндпоинт /v1/unload в ltx-wrapper** | Новый эндпоинт в `ltx_wrapper.py` для выгрузки пайплайна и освобождения GPU памяти по запросу. Используется SD модулем перед генерацией. |
-| 🐛 **Исправление очистки CUDA** | Удалён `cuDevicePrimaryCtxReset(0)` (вызывал SIGSEGV при перезагрузке пайплайна). Заменён на `_pipeline = None` + `torch.cuda.empty_cache()` + `gc.collect()`. |
+| 🧠 **Интеграция SuperLocalMemory (SLM)** | Долговременная кросс-сессионная память через SuperLocalMemory (HTTP-прокси в отдельном контейнере, `--profile with-slm`). Zero-LLM поиск (метрика Fisher-Rao, только CPU). Заменяет «сырую» историю (~1255 токенов) на 3-5 релевантных фактов (~150 токенов). У каждого пользователя изолированная SQLite-БД (через `$HOME`, не `SLM_DATA_DIR` — SLM V3 игнорирует эту переменную). Нет демона — вызовы через `--sync`. Предзагружается при сборке Docker-образа (с фоновым warmup при старте контейнера как запасной вариант). Включено в полные бэкапы. Автоматическое сохранение фактов после ответа ассистента. Фоновый импорт при старте через checkpoint-таблицу (`slm_import_progress`). Автоочистка SLM при удалении последнего сеанса. В админ-панели отображается число фактов на пользователя. |
 
 
 ### Основные компоненты
@@ -93,6 +88,7 @@
 | **LTX-Video** | Генерация видео (text-to-video / image+text-to-video) | Python + PyTorch | 7872 |
 | **Whisper ASR** | Распознавание речи | faster_whisper | 9000 |
 | **Piper TTS** | Синтез речи | ONNX + Piper | 8888 |
+| **SuperLocalMemory** | Долговременная кросс-сессионная память на пользователя (HTTP-прокси) | Python + SQLite | 8765 |
 | **Qdrant** | Векторная база данных для RAG | Rust | 6333 |
 | **Redis** | Управление очередью запросов | C | 6379 |
 | **PostgreSQL** | Учётные записи, сессии, сообщения | SQL | 5432 |
@@ -193,13 +189,16 @@ cd flai
 # + Генерация видео (LTX-Video)
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video
 
+# + Долговременная память (SuperLocalMemory)
+./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm
+
 # Запуск тестов после развёртывания
 ./deploy.sh --download-models --with-image-gen --run-tests
 ```
 
 Также доступна русская версия скрипта:
 ```bash
-./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag --with-video
+./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm
 ```
 
 ### Вариант B: Ручное развёртывание
@@ -320,8 +319,11 @@ docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 # С генерацией видео
 docker compose -f docker-compose.gpu.yml --profile with-video up -d
 
-# Полный стек: чат + изображения + голос + RAG + видео
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video up -d
+# С долговременной памятью (SuperLocalMemory)
+docker compose -f docker-compose.gpu.yml --profile with-slm up -d
+
+# Полный стек: чат + изображения + голос + RAG + видео + память
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm up -d
 ```
 
 > ⏱️ **Первая сборка занимает время**: stable-diffusion.cpp компилируется из исходников (~5-10 минут). Последующие сборки используют кеш Docker.
@@ -357,6 +359,7 @@ docker exec flai-web flask admin-password ВашНадёжныйПароль123
 - 🗂️ **Управлять сессиями чата** — несколько диалогов с авто-озаглавливанием
 - 💾 **Экспортировать диалоги** — сохранять как HTML с встроенными медиа
 - 📹 **Просматривать камеры** — снимки с IP-камер и анализ через ИИ
+- 🧠 **Долговременная память** — кросс-сессионная память через SuperLocalMemory (включить через `--with-slm`)
 - 💾 **Создавать резервные копии** — полные или только пользователи, из админ-панели
 - 🔧 **CLI-инструменты** — сброс пароля админа, очистка orphaned файлов
 
@@ -388,6 +391,7 @@ QDRANT_URL=http://flai-qdrant:6333
 QDRANT_API_KEY=ваш_ключ_qdrant
 CAMERA_API_URL=http://flai-room-snapshot-api:5000
 LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872  # LTX-Video генерация видео
+SLM_URL=http://flai-slm:8765                      # SuperLocalMemory долговременная память
 ```
 
 **Параметры изображений и видео по умолчанию:**
@@ -443,14 +447,17 @@ DEBUG_API_ENABLED=false   # Установите 'true' только для ра
 ### Профили Docker Compose
 
 ```bash
-# Запуск всех сервисов (чат + изображения + голос + RAG + видео)
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video up -d
+# Запуск всех сервисов (чат + изображения + голос + RAG + видео + память)
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm up -d
 
 # Чат + голос (без изображений и видео)
 docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 
 # Генерация видео
 docker compose -f docker-compose.gpu.yml --profile with-video up -d
+
+# Долговременная память (SuperLocalMemory)
+docker compose -f docker-compose.gpu.yml --profile with-slm up -d
 
 # Только чат (без изображений, голоса и видео)
 docker compose -f docker-compose.gpu.yml up -d
@@ -803,9 +810,12 @@ curl http://localhost:5000/metrics
 - **Эндпоинт /v1/unload в ltx-wrapper** — эндпоинт для выгрузки пайплайна и освобождения GPU памяти.
 - **Исправление очистки CUDA** — удалён `cuDevicePrimaryCtxReset(0)` (вызывал SIGSEGV), заменён на `_pipeline = None` + `empty_cache()` + `gc.collect()`.
 - **Улучшенный фильтр истории** — `get_session_text_history()` фильтрует целые пары user+assistant, где ассистент ответил маркером генерации. Роутер не видит предыдущие запросы на генерацию.
+- **Интеграция SuperLocalMemory (SLM)** — долговременная кросс-сессионная память. HTTP-прокси в отдельном контейнере (`--profile with-slm`). У каждого пользователя изолированная SQLite-БД (`$HOME=/app/data/slm/{user}/`, не `SLM_DATA_DIR` — SLM V3 игнорирует эту переменную). Нет демона — вызовы через `--sync`. Предзагружается при сборке Docker-образа (`RUN slm warmup` в Dockerfile), с фоновым warmup при старте контейнера как запасной вариант. Заменяет историю (~1255 токенов) на 3-5 фактов (~150 токенов). Zero-LLM поиск (Fisher-Rao), только CPU. Автосохранение фактов. SLM-базы пользователей включены в полные бэкапы.
+- **Фоновый импорт SLM при старте** — `app/slm_import.py` с checkpoint-таблицей `slm_import_progress`. При первом запуске (или обновлении со старой версии) автоматически импортирует все существующие сообщения в per-user SLM-БД. Инкрементально — только сообщения с последней точки сохранения. Запускается в daemon-потоке, не блокирует web-сервер. CLI: `flask import-history-to-slm [--force] [пользователь]`.
+- **Автоочистка SLM при удалении сеансов** — при удалении последнего сеанса или очистке истории `_cleanup_slm_if_empty()` в `db.py` удаляет SLM-БД пользователя. При полном удалении учётной записи (`userdb.py:delete_user()`) удаляется весь каталог `/app/data/slm/{login}/`.
+- **Колонка SLM фактов в админ-панели** — `GET /admin/api/users` возвращает `slm_facts_count` на пользователя, читается напрямую из SQLite (`mode=ro&immutable=1`). Отображается в таблице пользователей.
 
 ### 🔄 В работе
-- Долгосрочная память диалогов (кросс-сессийный контекст)
 - Продвинутый RAG: фильтрация по метаданным, гибридный поиск
 - Оптимизация мобильного интерфейса
 
@@ -850,6 +860,12 @@ curl http://localhost:5000/metrics
 | **ltxv-2b-0.9.8-distilled.safetensors** | LTX-Video 2B диффузионный трансформер + VAE | [LTX-Video License](https://huggingface.co/Lightricks/LTX-Video) | ~5,9 ГБ |
 | **PixArt T5-XXL (text_encoder)** | T5 text encoder для LTX-Video | [PixArt License](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS) | ~18 ГБ (диск, float32) |
 
+### Модели долговременной памяти
+
+| Модель | Назначение | Лицензия | Примерный размер |
+|--------|------------|----------|-----------------|
+| **nomic-embed-text-v1.5** | Эмбеддинги текста для SLM | [Apache 2.0](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5) | ~500 МБ |
+
 ### Голосовые модели
 
 | Модель | Назначение | Лицензия | Примерный размер |
@@ -872,6 +888,7 @@ curl http://localhost:5000/metrics
 | + Редактирование изображений | ~31 ГБ |
 | + Голос (TTS + Whisper) | ~35 ГБ |
 | + Генерация видео (LTX-Video + T5 encoder) | ~59 ГБ *(T5 encoder ~18 ГБ на диске в float32)* |
+| + Долговременная память (SLM embedding model) | ~59,5 ГБ *(SLM добавляет ~500 МБ)* |
 
 > **Примечание**: После загрузки моделей ПЛИИ работает полностью офлайн. Внешние скрипты и модули не загружаются во время работы.
 

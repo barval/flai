@@ -47,7 +47,7 @@ FULL_TABLES = [
 ]
 
 # Directories included in 'full' backup
-FULL_DIRS = ["data/documents", "data/uploads"]
+FULL_DIRS = ["data/documents", "data/uploads", "data/slm"]
 
 
 def admin_required(f):

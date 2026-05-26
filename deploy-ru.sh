@@ -45,7 +45,7 @@ setup_env() {
 # ── Директории данных ──
 setup_dirs() {
     info "Создаю директории данных..."
-    mkdir -p data/uploads data/documents data/db_backups
+    mkdir -p data/uploads data/documents data/db_backups data/slm
     chown -R 1000:1000 data 2>/dev/null || warn "Не удалось изменить владельца data/ — выполните с sudo."
 }
 
@@ -295,6 +295,7 @@ build_and_launch() {
     [[ "$WITH_VOICE" == "true" ]] && PROFILE="$PROFILE --profile with-voice"
     [[ "$WITH_RAG" == "true" ]]    && PROFILE="$PROFILE --profile with-rag"
     [[ "$WITH_VIDEO" == "true" ]]  && PROFILE="$PROFILE --profile with-video"
+    [[ "$WITH_SLM" == "true" ]]    && PROFILE="$PROFILE --profile with-slm"
 
     local HAS_GPU=false
     if command -v nvidia-smi &>/dev/null && nvidia-smi -L 2>/dev/null | grep -q GPU; then
@@ -351,6 +352,7 @@ FLAI v8.1 — Скрипт развёртывания
   --with-image-gen    Развернуть stable-diffusion.cpp для генерации/редактирования
                       (по умолчанию: отключено, используйте этот флаг для включения)
   --with-video        Развернуть LTX-Video для генерации видео
+  --with-slm          Развернуть SuperLocalMemory для долговременной памяти
                       (по умолчанию: отключено, используйте этот флаг для включения)
   --download-models   Скачать GGUF/safetensors модели из HuggingFace
   --run-tests         Запустить тесты после развёртывания
@@ -367,6 +369,7 @@ FLAI v8.1 — Скрипт развёртывания
   Видео (LTX-Video 2B)                ~5,9 ГБ
   T5 text encoder (PixArt T5-XXL)     ~18 ГБ (на диске, float32)
   TTS (Piper)                         ~0,2 ГБ
+  SLM embedding model                ~0,5 ГБ (предзагружается при сборке Docker-образа)
 USAGE
 }
 
@@ -375,6 +378,7 @@ WITH_VOICE=false
 WITH_RAG=false
 WITH_IMAGE_GEN=false
 WITH_VIDEO=false
+WITH_SLM=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
 
@@ -384,6 +388,7 @@ for arg in "$@"; do
         --with-rag)       WITH_RAG=true ;;
         --with-image-gen) WITH_IMAGE_GEN=true ;;
         --with-video)     WITH_VIDEO=true ;;
+        --with-slm)       WITH_SLM=true ;;
         --download-models) DOWNLOAD_MODELS=true ;;
         --run-tests)      RUN_TESTS=true ;;
         --help|-h)        usage; exit 0 ;;

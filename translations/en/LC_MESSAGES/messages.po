@@ -520,6 +520,10 @@ msgstr "Files"
 msgid "Documents"
 msgstr "Documents"
 
+#: app/templates/admin.html:39
+msgid "SLM Facts"
+msgstr "SLM Facts"
+
 #: app/templates/admin.html:40 app/templates/admin.html:169
 #: app/templates/admin.html:230
 msgid "Camera access"
@@ -1523,32 +1527,32 @@ msgstr ""
 #~ msgid "recording"
 #~ msgstr "Recording"
 
-#~ msgid "room_tambour"
-#~ msgstr "tambour"
+msgid "room_tambour"
+msgstr "tambour"
 
-#~ msgid "room_hallway"
-#~ msgstr "hallway"
+msgid "room_hallway"
+msgstr "hallway"
 
-#~ msgid "room_corridor"
-#~ msgstr "corridor"
+msgid "room_corridor"
+msgstr "corridor"
 
-#~ msgid "room_bedroom"
-#~ msgstr "bedroom"
+msgid "room_bedroom"
+msgstr "bedroom"
 
-#~ msgid "room_office"
-#~ msgstr "office"
+msgid "room_office"
+msgstr "office"
 
-#~ msgid "room_children"
-#~ msgstr "children's room"
+msgid "room_children"
+msgstr "children's room"
 
-#~ msgid "room_living"
-#~ msgstr "living room"
+msgid "room_living"
+msgstr "living room"
 
-#~ msgid "room_kitchen"
-#~ msgstr "kitchen"
+msgid "room_kitchen"
+msgstr "kitchen"
 
-#~ msgid "room_balcony"
-#~ msgstr "balcony"
+msgid "room_balcony"
+msgstr "balcony"
 
 #~ msgid ""
 #~ "Service temporarily unavailable. Circuit "

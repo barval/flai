@@ -79,6 +79,9 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | ⚙️ **Background SLM import on startup** | `app/slm_import.py` with checkpoint table `slm_import_progress`. On first startup (or upgrade from older version), automatically imports all existing messages into per-user SLM databases. Incremental — only processes messages since last checkpoint. Runs as daemon thread, does not block web server. CLI: `flask import-history-to-slm [--force] [user_id]`. |
 | 🗑️ **SLM cleanup on session deletion** | When the last session is deleted or history cleared, `_cleanup_slm_if_empty()` in `db.py` removes the user's SLM database. On full user deletion, the entire `/app/data/slm/{login}/` directory is removed. |
 | 📊 **SLM fact count in admin panel** | `GET /admin/api/users` now returns `slm_facts_count` per user, read directly from SQLite. Displayed as a column in the users table. Included in full backups. |
+| 🖥️ **GPU requirement + three hardware tiers** | CPU-only mode removed. GPU (NVIDIA, 8 GB VRAM min) is now required. Three tiers: 8 GB (light models), 12 GB (mid models), 16+ GB (full models). Deploy scripts auto-detect VRAM and download appropriate models. Updated resource limits in docker-compose. |
+| 🔄 **VRAM management improvements** | `ensure_vram_for_llm()` in `resource_manager.py` checks VRAM before LLM requests and unloads LTX-Video pipeline if needed. `unload_video_pipeline()` called after SD and Video generation. LTX-Video also unloaded before large LLM models. |
+| 🐛 **Router response parsing fix** | `_parse_router_response()` now takes only the first line after a marker. Prevents copied template text and history markers from polluting the generated query (e.g. `[-IMAGE-]` followed by template instructions + copied `[-IMAGE-]` from history). Fixes «нарисован кот вместо яблока» bug. |
 
 
 ### Core Components
@@ -142,8 +145,9 @@ FLAI **requires** an NVIDIA GPU with CUDA support. CPU-only mode is not supporte
 | Chat (Qwen3-4B) | ✅ full speed | ✅ full speed | ✅ full speed |
 | Reasoning | ⚠️ Qwen3-4B-Thinking (~2.5 GB) | ✅ Qwen3-8B-Thinking (~5 GB) | ✅ gpt-oss-20b (~12 GB, ngl=16+) |
 | Multimodal | ⚠️ Qwen3VL-4B (~2.5 GB) recommended | ✅ Qwen3VL-8B (~5.5 GB) | ✅ Qwen3VL-8B (~5.5 GB) |
-| Image gen (SD) | ✅ (LLM unloaded, sd-cli subprocess) | ✅ | ✅ |
-| Video gen (LTX-Video) | ⚠️ reduced resolution | ✅ | ✅ |
+| Image gen (SD) | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 |
+| Image edit (Flux) | ✅ up to 768px long side | ✅ up to 1024px long side | ��� up to 1024px long side |
+| Video gen (LTX-Video) | ⚠️ 512×512×121 frames | ✅ 896×512×257 frames | ✅ 896×512×257 frames |
 | Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU |
 | RAG (Qdrant) | ✅ | ✅ | ✅ |
 | SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU |
@@ -822,6 +826,9 @@ curl http://localhost:5000/metrics
 - **Background SLM import on startup** — `app/slm_import.py` with checkpoint table `slm_import_progress`. On first startup (or upgrade from older version), automatically imports all existing messages into per-user SLM databases. Incremental — only processes messages since last checkpoint. Runs as daemon thread, does not block web server. CLI: `flask import-history-to-slm [--force] [user_id]`.
 - **SLM cleanup on session deletion** — when the last session is deleted or history cleared, `_cleanup_slm_if_empty()` in `db.py` removes the user's SLM database. On full user deletion (`userdb.py:delete_user()`), the entire `/app/data/slm/{login}/` directory is removed.
 - **SLM fact count in admin panel** — `GET /admin/api/users` now returns `slm_facts_count` per user, read directly from SQLite (`mode=ro&immutable=1`). Displayed as a column in the users table.
+- **GPU requirement + three hardware tiers** — CPU-only mode removed. GPU (NVIDIA, 8 GB VRAM min) required. Three tiers: 8 GB (Qwen3-4B-Thinking + Qwen3VL-4B), 12 GB (Qwen3-8B-Thinking + Qwen3VL-8B), 16+ GB (gpt-oss-20b + Qwen3VL-8B). Deploy scripts auto-detect VRAM and download appropriate models. Docker-compose resource limits updated to reflect real usage.
+- **VRAM management improvements** — `resource_manager.py`: new `ensure_vram_for_llm()` checks free VRAM before LLM requests, unloads LTX-Video pipeline if needed. `unload_video_pipeline()` called after SD and Video generation in `queue.py`. `llamacpp_client.py` calls `_ensure_vram()` before `chat()` and `chat_stream()`.
+- **Router response parsing fix** — `_parse_router_response()` in `base.py` now takes only the first line after a marker (`processed.split("\n")[0].strip()`). Prevents copied template text and history markers from polluting the generated query. Fixes «нарисован кот вместо яблока» — when router copied `[-IMAGE-] Нарисуй кота` from history into the query that was passed to multimodal/SD.
 
 ### 🔄 In Progress
 - Advanced RAG: metadata filtering, hybrid search

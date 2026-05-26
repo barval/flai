@@ -138,6 +138,21 @@ class VideoModule(TranslationMixin):
 
         rm.mark_video_busy()
 
+        # Cap video resolution for low VRAM tiers (8GB) to prevent OOM
+        total_vram = rm.hardware.total_vram_mb
+        if total_vram > 0 and total_vram < 10000:
+            old_w = prompt_data.get("width", 896)
+            old_h = prompt_data.get("height", 512)
+            old_frames = prompt_data.get("num_frames", 257)
+            prompt_data["width"] = min(old_w, 512)
+            prompt_data["height"] = min(old_h, 512)
+            prompt_data["num_frames"] = min(old_frames, 121)
+            if (old_w, old_h, old_frames) != (prompt_data["width"], prompt_data["height"], prompt_data["num_frames"]):
+                self.logger.info(
+                    f"VRAM tier 8GB: capped video from {old_w}×{old_h}×{old_frames}f "
+                    f"to {prompt_data['width']}×{prompt_data['height']}×{prompt_data['num_frames']}f"
+                )
+
         # Resize large source images to avoid OOM and reduce network transfer
         max_video_inpaint_size = 896
         resized_info = {"resized": False, "original_size": None, "new_size": None}

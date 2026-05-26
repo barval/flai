@@ -1,4 +1,4 @@
-# AGENTS.md — FLAI v8.3
+# AGENTS.md — FLAI v8.8
 
 ## Commands (exact)
 
@@ -31,16 +31,16 @@ docker exec flai-web flask cleanup-uploads  # remove orphaned files from uploads
 docker exec flai-web flask admin-password <pass>  # in container
 docker exec flai-web flask migrate-messages-format  # convert old plain-text service msgs → JSON {prefix, text}
 docker exec flai-web flask migrate-messages-format --dry-run  # preview without writing
+docker exec flai-web flask import-history-to-slm [--force] [user_id]  # import messages to SLM
 
 # Dev server (0.0.0.0:5000, debug=True)
 python wsgi.py
 
-# Production (gunicorn 1 worker × 4 threads, 900s timeout)
+# Production (gunicorn 2 workers, 900s timeout)
 gunicorn -c gunicorn_config.py wsgi:app
 
-# Docker compose profiles: with-image-gen, with-voice, with-rag
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
-docker compose -f docker-compose.cpu.yml ...  # for CPU-only
+# Docker compose profiles: with-image-gen, with-voice, with-rag, with-video, with-slm
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm up -d
 docker compose -f docker-compose.gpu.yml logs -f web
 
 # Load test
@@ -49,16 +49,17 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 
 ## Architecture & conventions
 
-- **Entrypoint**: `app/__init__.py:create_app()` → returns Flask app. Blueprints in `app/routes/` (auth, chat, admin, queue, tts, messages, sessions, documents, backups). Modules in `modules/` (base/router, multimodal, sd_cpp, cam, rag, audio, tts).
+- **Entrypoint**: `app/__init__.py:create_app()` → returns Flask app. Blueprints in `app/routes/` (auth, chat, admin, queue, tts, messages, sessions, documents, backups). Modules in `modules/` (base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm).
 - **LLM client**: `app/llamacpp_client.py:LlamaCppClient` with two backends — `DirectLlamaBackend` (direct llama-server) or `LlamaSwapBackend` (via llama-swap proxy). Selected by `LLAMACP_BACKEND` env var.
-- **Queue**: `app/queue.py:RedisRequestQueue`. Two workers: fast (text, audio, RAG, camera) and slow (image gen/edit, document indexing). Tasks are HMAC-signed JSON.
-- **DB**: PostgreSQL only via `app/database.py:get_db()` context manager (psycopg2 RealDictCursor). `DATABASE_URL` required. Tables: user_sessions, chat_sessions, messages, documents, session_visits, model_configs, user_storage.
-- **Helpers**: `app/circuit_breaker.py`, `app/resource_manager.py`, `app/llama_swap_config.py` — llama-swap config auto-generated from DB at startup into `llama-swap-config/`.
+- **Queue**: `app/queue.py:RedisRequestQueue`. Two workers: fast (text, audio, RAG, camera) and slow (image gen/edit, video, document indexing). Tasks are HMAC-signed JSON.
+- **DB**: PostgreSQL only via `app/database.py:get_db()` context manager (psycopg2 RealDictCursor). `DATABASE_URL` required. Tables: user_sessions, chat_sessions, messages, documents, session_visits, model_configs, user_storage, slm_import_progress, gguf_models_cache.
+- **Helpers**: `app/circuit_breaker.py`, `app/resource_manager.py`, `app/llama_swap_config.py`, `app/slm_import.py` — llama-swap config auto-generated from DB at startup into `llama-swap-config/`. Background SLM import on startup.
 - **Docker mounts**: `./data/` → `/app/data`, `./services/llamacpp/models/` → `/models:ro`, `/var/run/docker.sock` for GPU detection.
 - **Config**: Model configs in DB (`model_configs` table). `.env` values are fallback defaults only. Admin panel at `/admin`.
 - **Multimodal models**: MUST be in a subdirectory with `mmproj-*.gguf` (e.g. `Qwen3VL-8B-Instruct-Q4_K_M/`).
 - **LLM backend modes**: `LLAMACP_BACKEND=llama-swap` (default in .env.example) uses llama-swap at `LLAMA_SWAP_URL=http://flai-llamaswap:8080`. `LLAMACP_BACKEND=llamacpp` (direct) uses `LLAMACPP_URL=http://flai-llamacpp:8033`.
-- **VRAM**: All llama.cpp models (chat, embedding, reasoning, multimodal) share a single `llm_fast` group with `swap: true` in llama-swap. At most ONE model is loaded in VRAM at any time. When a different model is requested, the current one is swapped out (unloaded). This is REQUIRED to prevent OOM on 12 GB GPUs. Image gen models (SD) use a separate GPU context — not affected.
+- **VRAM**: All llama.cpp models (chat, embedding, reasoning, multimodal) share a single `llm_fast` group with `swap: true` in llama-swap. At most ONE model is loaded in VRAM at any time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. `ensure_vram_for_llm()` in `resource_manager.py` unloads LTX-Video pipeline before large models if VRAM is tight. Three VRAM tiers (8/12/16+ GB) adjust `n_gpu_layers` and resolution caps.
+- **SLM (SuperLocalMemory)**: Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`. HTTP proxy (`services/superlocalmemory/slm_http.py`) calls `slm` CLI with `--sync`. Background import on startup via `slm_import_progress` checkpoint table. Auto-cleaned on last session deletion. Fact count visible in admin panel column.
 - **`_tr()` / `self._()` format strings**: Flask-Babel 4.0.0 `gettext()` uses `%`-formatting (`string % variables`), NOT `str.format()`. Passing `{status}` kwargs directly to `gettext()` silently returns the unformatted string. Always call `gettext(key)` without kwargs, then apply `result.format(**kwargs)` manually. See `app/llamacpp_client.py:26` and `app/mixins.py:9` for the correct pattern.
 - **Style**: All CSS in `app/static/css/`, JS in `app/static/js/`. No inline styles, no CDN (all assets bundled). Comments/logs in English. User-facing strings via Flask-Babel (`translations/{en,ru}/LC_MESSAGES/messages.po`). Add new keys to both `.po` files.
 - **Lint config** (pyproject.toml): ruff line-length=120, select E/W/F/I/N/UP/B/SIM/PTH, ignore E501/B008/PTH123. `__init__.py` per-file-ignore F401. mypy target 3.11, ignore-missing-imports, excludes tests/ and translations/.
@@ -107,8 +108,8 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 
 ## Known issues (fix on sight)
 
-- **ruff PTH***: 239 total — 182 in `app/`, 34 in `services/`, 21 in `tests/`, 2 in `modules/`. Stylistic (pathlib vs `os.path`), non‑critical.
-- **mypy** `app/utils.py:767`: `Module has no attribute "parse_rtf"` — striprtf stub issue. Fix: `# type: ignore[attr-defined]`.
+- **ruff PTH***: ~200 total (pathlib vs `os.path`). Stylistic, non‑critical.
+- **mypy** `app/utils.py`: `Module has no attribute "parse_rtf"` — striprtf stub issue. Fix: `# type: ignore[attr-defined]`.
 - **Unit test speed**: CamModule has 5×2s init retries, making test_cam.py ~10s per fixture.
 - **Load tests** (`tests/load/`) excluded from pytest collection (require locust fixtures).
 
@@ -118,4 +119,4 @@ NEVER make ANY changes to files without direct user approval. Each file change (
 
 ## GPU Requirement
 
-FLAI REQUIRES an NVIDIA GPU with at least 8 GB VRAM and 16 GB system RAM. CPU-only mode is not supported — LLM inference, SD image generation, and LTX-Video all depend on CUDA. The project automatically adapts to available VRAM (8/12/16+ GB tiers), adjusting model offloading and resolution accordingly.
+FLAI REQUIRES an NVIDIA GPU with at least 8 GB VRAM and 16 GB system RAM. CPU-only mode is not supported — LLM inference, SD image generation, and LTX-Video all depend on CUDA. The project automatically adapts to available VRAM (8/12/16+ GB tiers), adjusting model offloading, resolution, and model selection accordingly.

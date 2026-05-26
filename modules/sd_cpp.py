@@ -173,6 +173,18 @@ class SdCppModule(TranslationMixin):
         else:
             self.logger.info("SD will use CPU mode")
 
+        # Cap resolution for low VRAM tiers (8 GB) to prevent OOM
+        width = prompt_data.get("width", 1024)
+        height = prompt_data.get("height", 1024)
+        total_vram = rm.hardware.total_vram_mb
+        if total_vram > 0 and total_vram < 10000:
+            max_dim = 1024
+            if width > max_dim or height > max_dim:
+                ratio = max_dim / max(width, height)
+                old_w, old_h = width, height
+                width, height = int(width * ratio), int(height * ratio)
+                self.logger.info(f"VRAM tier 8GB: capped resolution from {old_w}×{old_h} to {width}×{height}")
+
         rm.mark_sd_busy()
 
         try:
@@ -188,8 +200,8 @@ class SdCppModule(TranslationMixin):
             payload = {
                 "prompt": prompt_data.get("prompt", ""),
                 "steps": prompt_data.get("steps", 10),
-                "width": prompt_data.get("width", 1024),
-                "height": prompt_data.get("height", 1024),
+                "width": width,
+                "height": height,
                 "cfg_scale": prompt_data.get("cfg_scale", 1.0),
                 "flow_shift": prompt_data.get("flow_shift", 2.0),
                 "use_gpu": use_gpu,
@@ -292,8 +304,9 @@ class SdCppModule(TranslationMixin):
         else:
             self.logger.info("SD edit will use CPU mode")
 
-        # Resize large images to avoid OOM on 16GB VRAM
-        max_edit_size = 1024
+        # Resize large images to avoid OOM — larger cap for 16GB+, tighter for 8GB
+        total_vram = rm.hardware.total_vram_mb
+        max_edit_size = 768 if (total_vram > 0 and total_vram < 10000) else 1024
         resized_info = {"resized": False, "original_size": None, "new_size": None}
         try:
             img_bytes = base64.b64decode(image_base64)

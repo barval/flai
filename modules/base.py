@@ -296,9 +296,12 @@ class BaseModule(TranslationMixin):
                 processed = parts[1].strip() if len(parts) > 1 else ""
                 # Take only the first line — strip template text/history the model may have copied
                 processed = processed.split("\n")[0].strip()
+                # If processed is much longer than original, router added explanation — use original
+                if original_query and len(processed) > len(original_query) * 1.5:
+                    processed = original_query
                 return {"action": action, "query": processed, "needs_reasoning": (action == "reasoning")}
 
-        return {"action": "none", "query": response, "needs_reasoning": False}
+        return {"action": "none", "query": original_query, "needs_reasoning": False}
 
     def process_reasoning(
         self,

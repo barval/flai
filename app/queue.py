@@ -1340,11 +1340,20 @@ class RedisRequestQueue:
                 session_id, final_response, model_used, process_time, response_style=response_style, user_id=user_id
             )
         else:
+            # Simple query: router classified but did not generate text.
+            # Call chat model (already hot in VRAM) to generate the response.
+            chat_start = time.time()
+            chat_response = self.app.modules["base"].call_llamacpp(
+                [{"role": "user", "content": query}], model_type="chat", lang=lang
+            )
+            chat_time = round(time.time() - chat_start, 1)
+            if not chat_response:
+                chat_response = query
             return self._save_and_respond(
                 session_id,
-                query,
+                chat_response,
                 self._get_model_name("chat") or "unknown",
-                router_time,
+                {"router": router_time, "chat": chat_time},
                 response_style=response_style,
                 user_id=user_id,
             )
@@ -1445,13 +1454,27 @@ class RedisRequestQueue:
                 user_id=user_id,
             )
 
-        # Direct-response actions: router already generated the answer in `query`
+        # Simple query: router classified but did not generate text.
+        # Stream the response from chat model (already hot in VRAM).
         if action_type == "none" or (action_type == "reasoning" and not router_result.get("needs_reasoning")):
+            stream_start = time.time()
+            full_response = ""
+            cancelled = False
+            for token in self.app.modules["base"].generate_chat_response_stream(
+                query, current_time_str, lang=lang, session_id=session_id, response_style=response_style, user_id=user_id
+            ):
+                full_response += token
+                self._publish_stream_token(task, token)
+                if self._is_task_cancelled(task["id"]):
+                    cancelled = True
+                    break
+            if not full_response.strip():
+                full_response = query
             return self._save_and_respond(
                 session_id,
-                query,
+                full_response,
                 self._get_model_name("chat") or "unknown",
-                router_time,
+                round(time.time() - stream_start, 1),
                 response_style=response_style,
                 user_id=user_id,
             )

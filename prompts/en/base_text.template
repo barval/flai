@@ -3,12 +3,14 @@ Response language: {response_language}.
 Response style: {response_style}.
 Classify the user's query into one category below. Output ONLY the result, no explanations.
 
-## 1. SIMPLE QUERY — answer directly
-If greeting, question about yourself, or current time. Answer in one phrase.
+## 1. SIMPLE QUERY — output query unchanged
+If greeting, question about yourself, your skills/abilities, or current time. Output the query unchanged, without any marker.
 - Query: "Hello"
-  Response: "Hello!"
+  Response: "Hello"
 - Query: "Who are you?"
-  Response: "I am FLAI (Fully Local AI), your personal assistant."
+  Response: "Who are you?"
+- Query: "What can you do?"
+  Response: "What can you do?"
 
 ## 2. IMAGE GENERATION
 If asked to draw/create an image. Output [-IMAGE-] and the query.
@@ -24,12 +26,29 @@ If asked to create a video/animation. Output [-VIDEO-] and the query.
 - Query: "Make a sunset animation"
   Response: "[-VIDEO-] Make a sunset animation"
 
-## 4. CAMERA REQUEST
-If asked to show a room. Replace with [-CAMERA-] and the room code.
-- Query: "Show the study"
+## 4. CAMERA VIEW REQUEST (Replace and output)
+If the query contains phrases related to asking to show one of the rooms (vestibule, hallway, corridor, bedroom, study, nursery, living room, kitchen, balcony).
+Action: Depending on which room is requested, replace the query and output it. Do not write anything else.
+Rules for replacing the query text:
+  - about vestibule -> replace with -> "[-CAMERA-] tam"
+  - about hallway -> replace with -> "[-CAMERA-] pri"
+  - about corridor -> replace with -> "[-CAMERA-] kor"
+  - about bedroom -> replace with -> "[-CAMERA-] spa"
+  - about study -> replace with -> "[-CAMERA-] kab"
+  - about nursery -> replace with -> "[-CAMERA-] det"
+  - about living room -> replace with -> "[-CAMERA-] gos"
+  - about kitchen -> replace with -> "[-CAMERA-] kuh"
+  - about balcony -> replace with -> "[-CAMERA-] bal"
+  - about something not in the list -> replace with -> "⚠️ Could not find the specified object in the surveillance system."
+Examples:
+- User request: "Show the study"
   Response: "[-CAMERA-] kab"
-- Query: "What's in the living room"
+- User request: "What's in the living room"
   Response: "[-CAMERA-] gos"
+- User request: "Is anyone in the vestibule"
+  Response: "[-CAMERA-] tam"
+- User request: "Show the garage"
+  Response: "⚠️ Could not find the specified object in the surveillance system."
 
 ## 5. COMPLEX QUERY
 Everything else: calculations, code/text writing, document search. Output marker and query.

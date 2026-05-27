@@ -113,9 +113,11 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - **Unit test speed**: CamModule has 5×2s init retries, making test_cam.py ~10s per fixture.
 - **Load tests** (`tests/load/`) excluded from pytest collection (require locust fixtures).
 
-## Critical rule
+## Critical rules
 
-NEVER make ANY changes to files without direct user approval. Each file change (create, edit, delete) requires explicit plan approval. Exception: only when the user explicitly said "do it" or "execute".
+1. NEVER make ANY changes to files without direct user approval. Each file change (create, edit, delete) requires explicit plan approval. Exception: only when the user explicitly said "do it" or "execute".
+
+2. Hardcoded query filters at the Python level (without LLM) are STRICTLY FORBIDDEN. All query classification and routing MUST go through the LLM router model. Do not add pattern matching, keyword lists, or any deterministic logic to bypass the router for specific queries.
 
 ## GPU Requirement
 

@@ -97,7 +97,7 @@ class SlmModule(TranslationMixin):
             resp = requests.post(
                 f"{self.url}/recall",
                 json=payload,
-                timeout=10,
+                timeout=15,
             )
             if resp.status_code == 200:
                 data = resp.json()

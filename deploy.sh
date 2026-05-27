@@ -119,14 +119,14 @@ download_llamacpp_models() {
         VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
     fi
 
-    # Chat model (Qwen3-4B-Instruct) — fits all tiers
-    if [[ ! -f "$MODEL_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
-        info "Downloading Qwen3-4B-Instruct-2507-Q4_K_M.gguf (chat)..."
+    # Chat/router model — Qwen3-4B-Instruct MXFP4 (~2 GB), fast for routing
+    if [[ ! -f "$MODEL_DIR/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf" ]]; then
+        info "Downloading Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf (chat/router)..."
         HF_DOWNLOAD "unsloth/Qwen3-4B-Instruct-2507-GGUF" \
-            "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" \
-            "$MODEL_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+            "Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf" \
+            "$MODEL_DIR/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf"
     else
-        warn "Qwen3-4B-Instruct-2507-Q4_K_M.gguf already exists — skipping."
+        warn "Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf already exists — skipping."
     fi
 
     # Reasoning model — select based on VRAM

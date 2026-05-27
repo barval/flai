@@ -204,8 +204,8 @@ def _init_postgresql():
         c.execute("""
             INSERT INTO model_configs (module, model_name, context_length, temperature, top_p, timeout, service_url, repeat_penalty)
             VALUES
-                ('chat', 'Qwen3-4B-Instruct-2507-Q4_K_M', 8192, 0.1, 0.1, 120, 'http://flai-llamacpp:8033', 1.1),
-                ('reasoning', 'gpt-oss-20b-Q4_K_M', 8192, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.15),
+                ('chat', 'Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf', 16384, 0.1, 0.1, 120, 'http://flai-llamacpp:8033', 1.1),
+                ('reasoning', 'gpt-oss-20b-Q4_K_M', 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.15),
                 ('multimodal', 'Qwen3VL-8B-Instruct-Q4_K_M', 8192, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
                 ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://flai-llamacpp:8033', NULL)
         """)
@@ -233,6 +233,14 @@ def _init_postgresql():
         END
         $migrate$
     """)
+
+    # Switch chat model back to Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf (Instruct, ~2 GB)
+    for old_name in ['Qwen3-1.7B-Q8_0.gguf', 'Qwen3-1.7B-Instruct-Q4_K_M', 'Qwen3-4B-Instruct-2507-Q4_K_M']:
+        c.execute("""
+            UPDATE model_configs
+            SET model_name = 'Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf'
+            WHERE module = 'chat' AND model_name = %s
+        """, (old_name,))
 
     conn.commit()
     conn.close()

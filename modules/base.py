@@ -142,25 +142,27 @@ class BaseModule(TranslationMixin):
         # Load history with SQL-level limit
         history_msgs = get_session_text_history(session_id, remaining_for_history, max_messages=self.max_messages_limit)
 
-        # If SLM (SuperLocalMemory) is available, use long-term memory facts instead of history
-        slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
-        if slm and slm.available:
-            slm_context = slm.get_context(
-                current_query, lang, limit=self.app.config.get("SLM_RECALL_LIMIT", 3), profile=user_id
-            )
-            if slm_context:
-                # Keep only last 2 messages for dialog coherence
-                last_turns = self._build_context_prompt(history_msgs[-2:], lang) if len(history_msgs) > 1 else ""
-                if last_turns:
-                    context = slm_context + "\n\n" + last_turns
-                else:
-                    context = slm_context
-                context_tokens = self._estimate_tokens(context, model_type, lang)
-                self.logger.info(
-                    f"Context from SLM: {context_tokens} tokens "
-                    f"({context_tokens / max_context_tokens * 100:.1f}% of {max_context_tokens})"
+        # SLM is only used for the reasoning model — it needs long-term context.
+        # For chat/router, SLM recall adds latency (~10s) and is not needed for query classification.
+        if model_type == "reasoning":
+            slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
+            if slm and slm.available:
+                slm_context = slm.get_context(
+                    current_query, lang, limit=self.app.config.get("SLM_RECALL_LIMIT", 3), profile=user_id
                 )
-                return context
+                if slm_context:
+                    # Keep only last 2 messages for dialog coherence
+                    last_turns = self._build_context_prompt(history_msgs[-2:], lang) if len(history_msgs) > 1 else ""
+                    if last_turns:
+                        context = slm_context + "\n\n" + last_turns
+                    else:
+                        context = slm_context
+                    context_tokens = self._estimate_tokens(context, model_type, lang)
+                    self.logger.info(
+                        f"Context from SLM: {context_tokens} tokens "
+                        f"({context_tokens / max_context_tokens * 100:.1f}% of {max_context_tokens})"
+                    )
+                    return context
 
         context = self._build_context_prompt(history_msgs, lang)
         context_tokens = self._estimate_tokens(context, model_type, lang)
@@ -195,6 +197,17 @@ class BaseModule(TranslationMixin):
         slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
         if slm and slm.available:
             slm.remember(text, metadata=metadata, profile=user_id)
+
+    def _save_to_slm_async(self, text: str, metadata: dict[str, Any] | None = None, user_id: str | None = None) -> None:
+        """Save a fact to SLM in a background thread — does not block the response."""
+        import threading
+        t = threading.Thread(
+            target=self._save_to_slm,
+            args=(text,),
+            kwargs={"metadata": metadata, "user_id": user_id},
+            daemon=True,
+        )
+        t.start()
 
     # --- Existing methods with context added ---
     def process_message(
@@ -237,7 +250,7 @@ class BaseModule(TranslationMixin):
         router_messages = [
             {
                 "role": "system",
-                "content": "You are a request router. Answer ONLY with one line in the specified language. No explanations.",
+                "content": "STRICT CLASSIFICATION RULES — You are a query classifier. Output ONLY the result. No explanations, no extra text. SIMPLE queries (greetings, who-are-you, current time) → answer directly WITHOUT any marker. COMPLEX queries (code, math, writing) → use [-REASONING-]. IMAGE/VIDEO/CAMERA → use the appropriate marker. Never output [-REASONING-] for greetings or who-are-you questions. Never copy markers from examples into your response except when the query matches that category.",
             },
             {"role": "user", "content": prompt},
         ]
@@ -252,7 +265,7 @@ class BaseModule(TranslationMixin):
 
         result = self._parse_router_response(router_response, message_text, current_time_str, lang)  # type: ignore[arg-type]
         if "error" not in result:
-            self._save_to_slm(message_text, metadata={"session_id": session_id, "type": "user_query"}, user_id=user_id)
+            self._save_to_slm_async(message_text, metadata={"session_id": session_id, "type": "user_query"}, user_id=user_id)
         return result
 
     def _parse_router_response(
@@ -329,7 +342,7 @@ class BaseModule(TranslationMixin):
         )
         self.logger.info(f"Reasoning model response: {response[:100]}...")  # type: ignore[index]
         if response:
-            self._save_to_slm(response, metadata={"type": "reasoning_response", "query": query[:200]}, user_id=user_id)
+            self._save_to_slm_async(response, metadata={"type": "reasoning_response", "query": query[:200]}, user_id=user_id)
         return response  # type: ignore[return-value]
 
     # ── Streaming methods ──────────────────────────────────────────────

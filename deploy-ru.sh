@@ -117,14 +117,14 @@ download_llamacpp_models() {
         VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
     fi
 
-    # Чат-модель — подходит для всех уровней
-    if [[ ! -f "$MODEL_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
-        info "Скачиваю Qwen3-4B-Instruct-2507-Q4_K_M.gguf (чат)..."
+    # Чат-модель (роутер) — Qwen3-4B-Instruct MXFP4 (~2 ГБ), быстрая
+    if [[ ! -f "$MODEL_DIR/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf" ]]; then
+        info "Скачиваю Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf (чат/роутер)..."
         HF_DOWNLOAD "unsloth/Qwen3-4B-Instruct-2507-GGUF" \
-            "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" \
-            "$MODEL_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+            "Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf" \
+            "$MODEL_DIR/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf"
     else
-        warn "Qwen3-4B-Instruct-2507-Q4_K_M.gguf уже есть — пропускаю."
+        warn "Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf уже есть — пропускаю."
     fi
 
     # Модель рассуждений — выбор по VRAM

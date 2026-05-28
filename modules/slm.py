@@ -76,13 +76,15 @@ class SlmModule(TranslationMixin):
             self.logger.warning(f"SLM remember failed: {e}")
             return False
 
-    def recall(self, query: str, limit: int | None = None, profile: str | None = None) -> list[dict[str, Any]]:
+    def recall(self, query: str, limit: int | None = None, profile: str | None = None, semantic: bool = False) -> list[dict[str, Any]]:
         """Retrieve relevant facts from long-term memory.
 
         Args:
             query: Search query string.
             limit: Max results to return.
             profile: User ID for per-user database isolation.
+            semantic: If True, use full semantic search (subprocess, slower).
+                      If False, read latest facts via direct SQLite (fast).
 
         Returns:
             List of dicts with 'text', 'score' keys.
@@ -90,14 +92,14 @@ class SlmModule(TranslationMixin):
         if not self.available and not self.check_availability():
             return []
         limit = limit or self.recall_limit
-        payload: dict[str, Any] = {"query": query, "limit": limit}
+        payload: dict[str, Any] = {"query": query, "limit": limit, "semantic": semantic}
         if profile:
             payload["profile"] = profile
         try:
             resp = requests.post(
                 f"{self.url}/recall",
                 json=payload,
-                timeout=15,
+                timeout=15 if not semantic else 30,
             )
             if resp.status_code == 200:
                 data = resp.json()
@@ -154,7 +156,7 @@ class SlmModule(TranslationMixin):
             self.logger.warning(f"SLM list failed: {e}")
             return []
 
-    def get_context(self, query: str, lang: str = "ru", limit: int | None = None, profile: str | None = None) -> str:
+    def get_context(self, query: str, lang: str = "ru", limit: int | None = None, profile: str | None = None, semantic: bool = False) -> str:
         """Get formatted context string for prompt enrichment.
 
         Returns a multi-line string with relevant facts from long-term memory,
@@ -165,11 +167,12 @@ class SlmModule(TranslationMixin):
             lang: Language code for the header text.
             limit: Max facts to include.
             profile: User ID for per-user database isolation.
+            semantic: If True, use full semantic search (slower but more relevant).
 
         Returns:
             Formatted context string ready for injection into a prompt.
         """
-        facts = self.recall(query, limit=limit, profile=profile)
+        facts = self.recall(query, limit=limit, profile=profile, semantic=semantic)
         if not facts:
             return ""
 

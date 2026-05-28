@@ -150,7 +150,8 @@ class BaseModule(TranslationMixin):
         slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
         if slm and slm.available:
             slm_raw = slm.get_context(
-                current_query, lang, limit=slm_recall_limit, profile=user_id
+                current_query, lang, limit=slm_recall_limit, profile=user_id,
+                semantic=(model_type == "reasoning"),
             )
             if slm_raw:
                 header = (

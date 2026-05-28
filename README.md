@@ -75,7 +75,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 | v8.8 (New) | Notes |
 |------------|-------|
-| 🧠 **SLM daemon mode** | SuperLocalMemory now runs as a proper daemon (`slm serve start`) keeping the embedding model in memory permanently. Replaced the per-request `subprocess --sync` calls. SLM recall latency reduced from ~10s to ~1ms. HTTP proxy (`slm_http.py`) forwards requests to daemon internally. **Per-user isolation:** recall reads directly from the user's private SQLite, not from the daemon's shared database. |
+| 🧠 **SLM daemon mode** | SuperLocalMemory now runs as a proper daemon (`slm serve start`) keeping the embedding model in memory permanently. Replaced the per-request `subprocess --sync` calls. SLM recall latency reduced from ~10s to ~1ms. HTTP proxy (`slm_http.py`) forwards requests to daemon internally. **Per-user isolation:** recall reads directly from the user's private SQLite, not from the daemon's shared database. **Chat model** uses fast SQLite read; **reasoning model** uses full semantic search via subprocess `slm recall` (falls back to direct SQLite if embeddings unavailable). |
 | 🧠 **SLM context for both chat + reasoning** | SLM facts are now injected into prompts for BOTH chat and reasoning models (alongside full conversation history). Previously was reasoning-only with only 2 last messages. Token budget adjusted with `slm_reserve`. Configurable via `SLM_RECALL_LIMIT=5` (default). |
 | 🔄 **SLM lazy availability re-check** | `remember()` and `recall()` retry `check_availability()` if SLM was unavailable at startup. Gracefully handles SLM container starting after web. |
 | 🚫 **Router stripped of history + SLM** | Router (`base_text.template` + `process_message()`) no longer receives conversation history or SLM context. Classifies queries independently, preventing it from copying old queries/markers from history into responses. |
@@ -141,7 +141,7 @@ FLAI **requires** an NVIDIA GPU with CUDA support. CPU-only mode is not supporte
 | **GPU VRAM** | 8 GB | 12 GB | 16+ GB |
 | **RAM** | 16 GB | 16 GB | 16 GB |
 | **CPU** | 4+ cores | 4+ cores | 6+ cores |
-| **Storage** | 40 GB | 80+ GB SSD | 100+ GB SSD NVMe |
+| **Storage** | 60 GB | 80+ GB SSD | 100+ GB SSD NVMe |
 
 #### What works at each tier
 
@@ -835,7 +835,7 @@ curl http://localhost:5000/metrics
 - **VRAM management improvements** — `resource_manager.py`: new `ensure_vram_for_llm()` checks free VRAM before LLM requests, unloads LTX-Video pipeline if needed. `unload_video_pipeline()` called after SD and Video generation in `queue.py`. `llamacpp_client.py` calls `_ensure_vram()` before `chat()` and `chat_stream()`.
 - **Router response parsing fix** — `_parse_router_response()` in `base.py` now takes only the first line after a marker (`processed.split("\n")[0].strip()`). Prevents copied template text and history markers from polluting the generated query. Fixes «нарисован кот вместо яблока» — when router copied `[-IMAGE-] Нарисуй кота` from history into the query that was passed to multimodal/SD.
 - **SLM daemon mode** — SuperLocalMemory switched from per-request `subprocess --sync` to persistent daemon (`slm serve start`). Recall latency ~300-800ms (was ~10s). Embedding model stays in VRAM permanently.
-- **SLM per-user isolation via direct SQLite** — recall with profile reads directly from the user's private SQLite database (`atomic_facts` table). Daemon's shared DB is bypassed for user-specific queries (fast, ~1ms). Remember saves to both daemon (shared) and per-user DB (async).
+- **SLM per-user isolation via direct SQLite** — recall with profile reads directly from the user's private SQLite database (`atomic_facts` table). Daemon's shared DB is bypassed for user-specific queries (fast, ~1ms). **Chat model** uses fast SQLite read; **reasoning model** uses full semantic search via subprocess `slm recall` (falls back to direct SQLite if no embeddings). Remember saves to both daemon (shared) and per-user DB (async).
 - **SLM context for both chat + reasoning** — SLM facts injected into prompts for ALL model types (previously reasoning-only). Combined with full conversation history (previously only last 2 messages). `slm_reserve` tokens budgeted.
 - **SLM lazy availability re-check** — `remember()`/`recall()` retry `check_availability()` on first use if SLM was down at startup.
 - **Router stripped of history** — `base_text.template` no longer contains `{conversation_history}`. `process_message()` no longer calls `_get_context_for_model()`. Router classifies each query independently.

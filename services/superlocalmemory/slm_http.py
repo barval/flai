@@ -98,6 +98,40 @@ def _recall_from_user_db(profile: str, limit: int = 5) -> list[dict] | None:
         return None
 
 
+def _semantic_recall_from_user_db(query: str, limit: int, profile: str) -> list[dict] | None:
+    """Full semantic recall via subprocess ``slm recall``.
+
+    Slower (~2-5s) but uses SLM's multi-channel retrieval (semantic,
+    BM25, entity graph, temporal). Runs with the user's HOME for
+    per-database isolation.
+    """
+    home_dir = os.path.join(SLM_DATA_DIR, profile)
+    env = os.environ.copy()
+    env["HOME"] = home_dir
+    try:
+        result = subprocess.run(
+            ["slm", "recall", query, "--json", "--limit", str(limit)],
+            capture_output=True, text=True, timeout=30, env=env,
+        )
+        if result.returncode != 0:
+            app.logger.warning(f"SLM semantic recall subprocess failed: {result.stderr[:200]}")
+            return None
+        data = json.loads(result.stdout)
+        raw_results = data.get("data", {}).get("results", [])
+        return [
+            {
+                "content": r.get("content", ""),
+                "score": r.get("score", 0),
+                "fact_id": r.get("fact_id", ""),
+                "created_at": r.get("created_at", ""),
+            }
+            for r in raw_results
+        ]
+    except Exception as e:
+        app.logger.warning(f"SLM semantic recall exception: {e}")
+        return None
+
+
 def _remember_to_user_db(text: str, metadata: dict | None, profile: str) -> None:
     """Save a fact to the user's private SLM database via subprocess.
 
@@ -183,12 +217,17 @@ def recall():
     query = data.get("query", "")
     limit = data.get("limit", 5)
     profile = data.get("profile")
+    semantic = data.get("semantic", False)
 
     if profile:
-        results = _recall_from_user_db(profile, limit)
+        if semantic:
+            results = _semantic_recall_from_user_db(query, limit, profile)
+            if not results:
+                results = _recall_from_user_db(profile, limit)
+        else:
+            results = _recall_from_user_db(profile, limit)
         if results is not None:
             return jsonify({"success": True, "data": {"results": results}})
-        # Fall through to daemon if per-user DB is missing
 
     if not query:
         return jsonify({"success": False, "error": "Missing query"}), 400

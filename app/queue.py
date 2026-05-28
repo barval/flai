@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import os
+import subprocess
 import threading
 import time
 import uuid
@@ -646,6 +647,32 @@ class RedisRequestQueue:
         result["completion_tokens"] = completion_tokens
         return result
 
+    # ── VRAM guard ──────────────────────────────────────────────────
+
+    def _wait_for_vram(self, needed_mb: int = 6000, timeout: int = 60) -> bool:
+        """Block until at least ``needed_mb`` MB of VRAM is free.
+
+        Polls ``nvidia-smi`` every 2 seconds.  Returns ``True`` once
+        enough VRAM is available, ``False`` if the timeout expires.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                out = subprocess.run(
+                    ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if out.returncode == 0:
+                    free = int(out.stdout.strip().split("\n")[0].strip())
+                    if free >= needed_mb:
+                        return True
+                self.app.logger.info(f"VRAM: {free} MB free, need {needed_mb} MB — waiting...")
+            except Exception:
+                pass
+            time.sleep(2)
+        self.app.logger.warning(f"VRAM wait timeout ({timeout}s) — proceeding anyway")
+        return False
+
     # ── Task handlers extracted from _process_request ──
 
     def _process_image_edit_task(
@@ -659,6 +686,7 @@ class RedisRequestQueue:
         response_style: str = "neutral",
     ) -> dict[str, Any]:
         """Handle image editing request (image uploaded + edit comment)."""
+        self._wait_for_vram(6000)
         mm_start = time.time()
         edit_data, error = self.app.modules["multimodal"].generate_edit_params(message_text, file_data, lang=lang)
         mm_time = round(time.time() - mm_start, 1)
@@ -758,6 +786,7 @@ class RedisRequestQueue:
                 session_id, self.app.modules["base"]._("Image generation module unavailable", lang=lang), 0, lang
             )
 
+        self._wait_for_vram(6000)
         mm_start = time.time()
         prompt_data, error = self.app.modules["multimodal"].generate_image_params(
             query, lang=lang, response_style=response_style
@@ -917,6 +946,7 @@ class RedisRequestQueue:
                 session_id, self.app.modules["base"]._("Video generation module unavailable", lang=lang), 0, lang
             )
 
+        self._wait_for_vram(6000)
         mm_start = time.time()
         prompt_data, error = self.app.modules["multimodal"].generate_video_params(
             query, lang=lang, response_style=response_style
@@ -1131,6 +1161,7 @@ class RedisRequestQueue:
 
         messages = [first_message]
         if message_text and "multimodal" in self.app.modules and self.app.modules["multimodal"].available:
+            self._wait_for_vram(6000)
             mm_start = time.time()
             bot_reply, error = self.app.modules["multimodal"].process_image_with_text(
                 camera_result["image_data"],
@@ -1231,6 +1262,7 @@ class RedisRequestQueue:
         )
 
         # Stream description from multimodal model
+        self._wait_for_vram(6000)
         stream_start = time.time()
         full_response = ""
         cancelled = False
@@ -1657,6 +1689,7 @@ class RedisRequestQueue:
             file_size = int((len(file_data) * 3) / 4) if file_data else 0
             is_valid, error = self.app.modules["multimodal"].validate_image(file_data, file_type, file_name, file_size)
             if is_valid:
+                self._wait_for_vram(6000)
                 bot_reply, error = self.app.modules["multimodal"].process_image_with_text(
                     file_data,
                     message_text,
@@ -1765,6 +1798,7 @@ user_class=user_class,
                 response_style=response_style,
             )
 
+        self._wait_for_vram(6000)
         stream_gen = self.app.modules["multimodal"].process_image_with_text_stream(
             file_data,
             message_text,

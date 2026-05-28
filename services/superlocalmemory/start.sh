@@ -4,6 +4,12 @@
 
 set +e
 
+# Ensure shared volume is owned by appuser (matches web container UID 1000)
+# so web can clean up SLM data on session deletion.
+if [ -d /app/data/slm ]; then
+    chown -R appuser:appuser /app/data/slm 2>/dev/null || true
+fi
+
 # Ensure base SLM setup is done (creates config.json, downloads embedding model)
 if [ ! -f /root/.superlocalmemory/config.json ]; then
     slm setup --non-interactive --mode a > /tmp/slm_setup.log 2>&1
@@ -20,6 +26,11 @@ for i in $(seq 1 30); do
     fi
     sleep 1
 done
+
+# Re-chown after daemon may have created new files in the shared volume
+if [ -d /app/data/slm ]; then
+    chown -R appuser:appuser /app/data/slm 2>/dev/null || true
+fi
 
 # Start the HTTP proxy in foreground (proxies to daemon on localhost:8765)
 exec python3 /app/slm_http.py

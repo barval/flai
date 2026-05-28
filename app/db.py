@@ -702,8 +702,7 @@ def get_session_text_history(session_id, max_tokens=None, max_messages=None):
         if skip_next:
             skip_next = False
             continue
-        if i + 1 < len(messages) and messages[i + 1]["role"] == "assistant":
-            if _has_marker(messages[i + 1].get("content", "")):
+        if i + 1 < len(messages) and messages[i + 1]["role"] == "assistant" and _has_marker(messages[i + 1].get("content", "")):
                 skip_next = True
                 continue
         filtered.append(msg)

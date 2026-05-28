@@ -1,6 +1,5 @@
 # Dockerfile.slm — SuperLocalMemory (long-term memory)
-# Installs SLM, serves a thin HTTP proxy to the slm CLI.
-# No daemon — per-request calls with --sync.
+# Starts SLM daemon (holds embedding model in memory) + HTTP proxy to it.
 
 FROM python:3.11-slim
 
@@ -18,9 +17,9 @@ COPY start.sh /app/start.sh
 
 RUN chmod +x /app/start.sh
 
-EXPOSE 8765
+EXPOSE 8766
 
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=30s \
-    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8765/health', timeout=5)"
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=45s \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8766/health', timeout=5)"
 
 CMD ["/app/start.sh"]

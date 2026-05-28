@@ -118,8 +118,6 @@ def ensure_pipeline():
             _upscaler_path = None
 
         precision = config.get("precision", "bfloat16")
-        sampler = config.get("sampler", "from_checkpoint")
-        stg_mode = config.get("stg_mode", "attention_values")
 
         from ltx_video.models.autoencoders.causal_video_autoencoder import (
             CausalVideoAutoencoder,
@@ -312,13 +310,13 @@ def run_inference(
         try:
             img = Image.open(BytesIO(base64.b64decode(image_data))).convert("RGB")
             media_tensor = load_image_to_tensor_with_resize_and_crop(img, height, width, just_crop=False)
-            from torch.nn import functional as F
+            import torch.nn.functional as F  # noqa: N812
 
             media_tensor = F.pad(media_tensor, padding)
             conditioning_items = [ConditioningItem(media_tensor, 0, 1.0)]
         except Exception as e:
             logger.error(f"Failed to process conditioning image: {e}")
-            raise ValueError(f"Invalid image data: {e}")
+            raise ValueError(f"Invalid image data: {e}") from e
 
     # Run pipeline
     sample_input = {

@@ -95,7 +95,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | **Whisper ASR** | Speech-to-text transcription | faster_whisper | 9000 |
 | **Piper TTS** | Text-to-speech synthesis | ONNX + Piper | 8888 |
 | **Qdrant** | Vector database for RAG | Rust | 6333 |
-| **SuperLocalMemory** | Long-term, cross-session memory per-user (HTTP proxy) | Python + SQLite | 8765 |
+| **SuperLocalMemory** | Long-term, cross-session memory per-user (daemon + HTTP proxy) | Python + SQLite | 8766 |
 | **Redis** | Request queue management | C | 6379 |
 | **PostgreSQL** | User accounts, sessions, messages | SQL | 5432 |
 | **Resource Manager** | Adaptive GPU/CPU/RAM management, prevents OOM errors, coordinates GPU access | Python |
@@ -397,7 +397,7 @@ QDRANT_URL=http://flai-qdrant:6333
 QDRANT_API_KEY=your_qdrant_api_key
 CAMERA_API_URL=http://flai-room-snapshot-api:5000
  LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872  # LTX-Video video generation
- SLM_URL=http://flai-slm:8765                      # SuperLocalMemory long-term memory
+ SLM_URL=http://flai-slm:8766                      # SuperLocalMemory long-term memory
  ```
 
 **Image & Video Defaults:**

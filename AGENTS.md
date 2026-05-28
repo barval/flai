@@ -58,17 +58,29 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - **Config**: Model configs in DB (`model_configs` table). `.env` values are fallback defaults only. Admin panel at `/admin`.
 - **Multimodal models**: MUST be in a subdirectory with `mmproj-*.gguf` (e.g. `Qwen3VL-8B-Instruct-Q4_K_M/`).
 - **LLM backend modes**: `LLAMACP_BACKEND=llama-swap` (default in .env.example) uses llama-swap at `LLAMA_SWAP_URL=http://flai-llamaswap:8080`. `LLAMACP_BACKEND=llamacpp` (direct) uses `LLAMACPP_URL=http://flai-llamacpp:8033`.
-- **VRAM**: All llama.cpp models (chat, embedding, reasoning, multimodal) share a single `llm_fast` group with `swap: true` in llama-swap. At most ONE model is loaded in VRAM at any time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. `ensure_vram_for_llm()` in `resource_manager.py` unloads LTX-Video pipeline before large models if VRAM is tight. Three VRAM tiers (8/12/16+ GB) adjust `n_gpu_layers` and resolution caps.
-- **SLM (SuperLocalMemory)**: Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`. HTTP proxy (`services/superlocalmemory/slm_http.py`) calls `slm` CLI with `--sync`. Background import on startup via `slm_import_progress` checkpoint table. Auto-cleaned on last session deletion. Fact count visible in admin panel column.
+- **VRAM** (`app/llama_swap_config.py`): All llama.cpp models share a single `llm_fast` group with `swap: true` in llama-swap. At most ONE model is loaded in VRAM at any time. TTLS: chat=600s (always hot), multimodal/reasoning/embedding=0s (unload immediately after response). SD and LTX-Video use separate GPU contexts. Three VRAM tiers (8/12/16+ GB) adjust `n_gpu_layers` and resolution caps.
+
+  **Model lifecycle on a single consumer GPU:**
+  1. **Chat (Qwen3-4B, 2.5 GiB)** — preloaded at startup and stays hot (TTL=600s). Default model for router and direct responses. Swapped out on demand when another model from the group is needed. Reloaded automatically on the next chat request.
+  2. **Multimodal (Qwen3VL-8B, 5 GiB)** — loaded on demand (camera, image analysis, video param gen). TTL=0 → **unloaded immediately** after the response is sent. VRAM freed for subsequent tasks.
+  3. **Reasoning (gpt-oss-20b, MXFP4, 10 GiB)** — loaded on demand for complex queries. TTL=0 → unloaded immediately after response.
+  4. **Embedding (bge-m3 Q8_0, 0.5 GiB)** — TTL=0 → unloaded immediately after use.
+  5. **SD / LTX-Video** — before generation, llama-swap is asked to unload all models via `POST /api/models/unload` (implemented in `resource_manager.py:unload_llamacpp_model()`). This frees ~3-4 GiB VRAM (chat). After generation, the next user request reloads chat automatically.
+
+  **Sequence for a video generation request:**
+  `router (chat) → [-VIDEO-] → multimodal loads (chat swapped out) → multimodal generates video params → multimodal unloads (TTL=0) → video pipeline loads (full VRAM available) → video generated → video pipeline unloads → next user request reloads chat`.
+- **SLM (SuperLocalMemory)**: Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`. Daemon mode (`slm serve start`) keeps MemoryEngine + embedding model in memory permanently; `services/superlocalmemory/slm_http.py` proxies requests to daemon at `localhost:8765` (no subprocess per call). SLM facts are injected into prompt context for BOTH chat and reasoning models (alongside conversation history). Background import on startup via `slm_import_progress` checkpoint table. Auto-cleaned on last session deletion. Fact count visible in admin panel column.
 - **`_tr()` / `self._()` format strings**: Flask-Babel 4.0.0 `gettext()` uses `%`-formatting (`string % variables`), NOT `str.format()`. Passing `{status}` kwargs directly to `gettext()` silently returns the unformatted string. Always call `gettext(key)` without kwargs, then apply `result.format(**kwargs)` manually. See `app/llamacpp_client.py:26` and `app/mixins.py:9` for the correct pattern.
 - **Style**: All CSS in `app/static/css/`, JS in `app/static/js/`. No inline styles, no CDN (all assets bundled). Comments/logs in English. User-facing strings via Flask-Babel (`translations/{en,ru}/LC_MESSAGES/messages.po`). Add new keys to both `.po` files.
-- **Lint config** (pyproject.toml): ruff line-length=120, select E/W/F/I/N/UP/B/SIM/PTH, ignore E501/B008/PTH123. `__init__.py` per-file-ignore F401. mypy target 3.11, ignore-missing-imports, excludes tests/ and translations/.
+- **Lint config** (pyproject.toml): ruff line-length=120, select E/W/F/I/N/UP/B/SIM, ignore E501/B008/PTH. `__init__.py` per-file-ignore F401. mypy target 3.11, ignore-missing-imports, excludes tests/ and translations/.
 - **Security**: Path traversal checks in `api/files/<path>`. Session ownership validated. CSRF on all forms. Secrets in `.env` only.
 
 ## Testing
 
 - Fixtures in `tests/conftest.py`: `test_app` (isolated app + temp dirs), `client` (Flask test client), `runner` (CLI runner)
 - External services are ALWAYS mocked: Redis (`redis.from_url`), llama.cpp (`app.llamacpp_client.LlamaCppClient`), Qdrant (`modules.rag.QdrantClient`)
+- **DB mode**: mock by default (no `DATABASE_URL`). In CI (`DATABASE_URL` set) — real PostgreSQL with `TRUNCATE` between tests via `test_app` teardown.
+- **Background workers**: `RedisRequestQueue` threads are stopped via `stop_workers(timeout=3)` in `test_app` teardown to prevent pytest hang.
 - Available markers: `unit`, `integration`, `e2e`, `slow`, `requires_db`, `requires_redis`
 - Example: `pytest -m "not slow"` to skip slow tests
 
@@ -108,7 +120,6 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 
 ## Known issues (fix on sight)
 
-- **ruff PTH***: ~200 total (pathlib vs `os.path`). Stylistic, non‑critical.
 - **mypy** `app/utils.py`: `Module has no attribute "parse_rtf"` — striprtf stub issue. Fix: `# type: ignore[attr-defined]`.
 - **Unit test speed**: CamModule has 5×2s init retries, making test_cam.py ~10s per fixture.
 - **Load tests** (`tests/load/`) excluded from pytest collection (require locust fixtures).

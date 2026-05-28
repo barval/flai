@@ -39,7 +39,7 @@ Rules for replacing the query text:
   - about living room -> replace with -> "[-CAMERA-] gos"
   - about kitchen -> replace with -> "[-CAMERA-] kuh"
   - about balcony -> replace with -> "[-CAMERA-] bal"
-  - about something not in the list -> replace with -> "⚠️ Could not find the specified object in the surveillance system."
+  - about something not in the list -> output the query unchanged, without a marker.
 Examples:
 - User request: "Show the study"
   Response: "[-CAMERA-] kab"
@@ -48,7 +48,7 @@ Examples:
 - User request: "Is anyone in the vestibule"
   Response: "[-CAMERA-] tam"
 - User request: "Show the garage"
-  Response: "⚠️ Could not find the specified object in the surveillance system."
+  Response: "Show the garage"
 
 ## 5. COMPLEX QUERY
 Everything else: calculations, code/text writing, document search. Output marker and query.
@@ -63,7 +63,4 @@ Current time: {current_time_str}.
 User query: "{user_query}".
 
 ## RULE
-Each query is classified independently, based solely on its text. Do not copy markers from history.
-
-Conversation history:
-{conversation_history}
+Each query is classified independently, based solely on its text.

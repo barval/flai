@@ -126,6 +126,9 @@ class RedisRequestQueue:
             if message_text and message_text.strip():
                 return "slow"
             return "fast"
+        # Image generation (re-queued from router) is slow
+        if req_type == "image_gen":
+            return "slow"
         # Text tasks are fast
         if req_type == "text":
             return "fast"
@@ -198,10 +201,12 @@ class RedisRequestQueue:
             return position * 3
 
     def get_user_queue_counts(self, user_id: str) -> tuple[int, int]:
-        """Get user's queue count and total queue length in O(1)."""
+        """Get user's queue count and total queue+processing length."""
         fast_total = self.redis.llen(self.queue_key)
         slow_total = self.redis.llen(self.slow_queue_key)
-        total = fast_total + slow_total
+        fast_proc = self.redis.hlen(self.processing_key)
+        slow_proc = self.redis.hlen(self.slow_processing_key)
+        total = fast_total + slow_total + fast_proc + slow_proc
         if total == 0:
             return 0, 0
 
@@ -211,7 +216,8 @@ class RedisRequestQueue:
 
         total_count = self.redis.hget(user_count_key, "__total__")
         total_count = int(total_count) if total_count else 0
-        if total_count != total:
+        queue_total = fast_total + slow_total
+        if total_count != queue_total and not (fast_proc or slow_proc):
             self.redis.delete(user_count_key)
             user_count = 0
 
@@ -293,6 +299,8 @@ class RedisRequestQueue:
             return "chat"
 
         if req_type == "image" and file_type and file_type.startswith("image/"):
+            return "multimodal"
+        if req_type == "image_gen":
             return "multimodal"
 
         if req_type == "text":
@@ -845,6 +853,45 @@ class RedisRequestQueue:
             "estimated_wait": position_info["estimated_seconds"],
         }
 
+    def _requeue_image_task(
+        self,
+        query: str,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        response_style: str = "neutral",
+        user_class: int = 2,
+    ) -> dict[str, Any]:
+        """Re-queue an image generation task to the slow queue.
+        Prevents concurrent sd-wrapper requests which cause timeouts.
+        """
+        request_data = {
+            "type": "image_gen",
+            "text": query,
+            "preview": (query[:50] + "...") if query else self.app.modules["base"]._("Image request", lang=lang),
+            "response_style": response_style,
+        }
+        new_request_id, position_info = self.add_request(user_id, session_id, request_data, user_class, lang=lang)
+        self.app.logger.info(
+            f"Re-queued image task {new_request_id} for session {session_id} (position {position_info['position']})"
+        )
+        return {
+            "status": "queued",
+            "request_id": new_request_id,
+            "position": position_info["position"],
+            "estimated_wait": position_info["estimated_seconds"],
+        }
+
+    def _process_image_gen_request(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Handle an image generation task from the slow queue."""
+        request_data = task.get("data", {})
+        query = request_data.get("text", "")
+        session_id = task["session_id"]
+        user_id = task["user_id"]
+        lang = task.get("lang", "ru")
+        response_style = request_data.get("response_style", "neutral")
+        return self._process_image_gen_task(query, session_id, user_id, lang, response_style)
+
     def _process_video_request(self, task: dict[str, Any]) -> dict[str, Any]:
         """Handle a video task from the slow queue.
         Dispatches to text-to-video or image+text-to-video based on task data.
@@ -858,8 +905,6 @@ class RedisRequestQueue:
 
         file_data = request_data.get("file_data")
         if file_data:
-            file_type = request_data.get("file_type", "")
-            file_name = request_data.get("file_name", "")
             return self._process_video_gen_task_from_image(query, file_data, session_id, user_id, lang, response_style)
         return self._process_video_gen_task(query, session_id, user_id, lang, response_style)
 
@@ -1311,7 +1356,7 @@ class RedisRequestQueue:
             process_time = router_time
 
         if action_type == "image":
-            return self._process_image_gen_task(query, session_id, user_id, lang, response_style)
+            return self._requeue_image_task(query, session_id, user_id, lang, response_style, user_class=user_class)
         elif action_type == "video":
             return self._requeue_video_task(query, session_id, user_id, lang, response_style, user_class=user_class)
         elif action_type == "camera":
@@ -1484,7 +1529,7 @@ class RedisRequestQueue:
             return self._process_rag_task_stream(task, query, session_id, user_id, lang, response_style)
 
         if action_type == "image":
-            return self._process_image_gen_task(query, session_id, user_id, lang, response_style)
+            return self._requeue_image_task(query, session_id, user_id, lang, response_style, user_class=task.get("user_class", 2))
 
         if action_type == "video":
             return self._requeue_video_task(
@@ -1523,6 +1568,8 @@ class RedisRequestQueue:
             return self._process_transcribe_task(task)
         if task_type == "video":
             return self._process_video_request(task)
+        if task_type == "image_gen":
+            return self._process_image_gen_request(task)
 
         user_id = task["user_id"]
         session_id = task["session_id"]
@@ -1575,6 +1622,7 @@ class RedisRequestQueue:
                 lang,
                 user_id,  # type: ignore[arg-type]
                 response_style,
+                user_class=task.get("user_class", 2),
             )
 
         # Unknown request type
@@ -1594,6 +1642,7 @@ class RedisRequestQueue:
         lang: str,
         user_id: str,
         response_style: str = "neutral",
+        user_class: int = 2,
     ) -> dict[str, Any]:
         """Handle image + text chat (user uploads image and asks question or requests edit).
         The multimodal model decides: analysis answer or edit marker."""
@@ -1646,7 +1695,7 @@ class RedisRequestQueue:
                                 file_data=file_data,
                                 file_type=file_type,
                                 file_name=file_name,
-                                user_class=task.get("user_class", 2),
+user_class=user_class,
                             )
                         else:
                             bot_reply = "⚠️ " + self.app.modules["base"]._("Video request was empty", lang)

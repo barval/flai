@@ -678,6 +678,25 @@ def test_app():
 
         yield flask_app
 
+        # Teardown: stop background Redis worker threads
+        if hasattr(flask_app, "request_queue"):
+            flask_app.request_queue.stop_workers(timeout=3)
+
+        # Teardown: clean real DB between tests to prevent cross-test pollution
+        if not _USE_MOCK_DB:
+            try:
+                from app.database import get_db
+
+                with get_db() as conn:
+                    c = conn.cursor()
+                    c.execute(
+                        "TRUNCATE TABLE users, user_sessions, chat_sessions, "
+                        "messages, session_visits, model_configs, user_storage "
+                        "RESTART IDENTITY CASCADE"
+                    )
+            except Exception:
+                pass
+
     with contextlib.suppress(Exception):
         shutil.rmtree(temp_dir, ignore_errors=True)
 

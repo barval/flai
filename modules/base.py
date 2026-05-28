@@ -117,7 +117,7 @@ class BaseModule(TranslationMixin):
     def _get_context_for_model(
         self, session_id: str, model_type: str, current_query: str, lang: str = "ru", user_id: str | None = None
     ) -> str:
-        """Retrieve and prune conversation history with safety margin."""
+        """Retrieve conversation history + SLM long-term memory with safety margin."""
         if not session_id:
             return ""
 
@@ -126,12 +126,14 @@ class BaseModule(TranslationMixin):
             return ""
 
         max_context_tokens = model_config.get("context_length", 32768)
+        slm_recall_limit = self.app.config.get("SLM_RECALL_LIMIT", 3) if hasattr(self, "app") and self.app else 3
+        slm_reserve = slm_recall_limit * 70  # ~70 tokens per fact
 
         # Apply safety margin to available tokens
         available_tokens = int(max_context_tokens * (self.context_history_percent / 100.0) * self.safety_margin)
 
         query_tokens = self._estimate_tokens(current_query, model_type, lang)
-        remaining_for_history = available_tokens - query_tokens - TEMPLATE_OVERHEAD
+        remaining_for_history = available_tokens - query_tokens - TEMPLATE_OVERHEAD - slm_reserve
 
         if remaining_for_history <= 0:
             self.logger.warning(
@@ -141,35 +143,30 @@ class BaseModule(TranslationMixin):
 
         # Load history with SQL-level limit
         history_msgs = get_session_text_history(session_id, remaining_for_history, max_messages=self.max_messages_limit)
+        history_str = self._build_context_prompt(history_msgs, lang) if history_msgs else ""
 
-        # SLM is only used for the reasoning model — it needs long-term context.
-        # For chat/router, SLM recall adds latency (~10s) and is not needed for query classification.
-        if model_type == "reasoning":
-            slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
-            if slm and slm.available:
-                slm_context = slm.get_context(
-                    current_query, lang, limit=self.app.config.get("SLM_RECALL_LIMIT", 3), profile=user_id
+        # SLM: load long-term memory facts (for both chat and reasoning models)
+        slm_facts_str = ""
+        slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
+        if slm and slm.available:
+            slm_raw = slm.get_context(
+                current_query, lang, limit=slm_recall_limit, profile=user_id
+            )
+            if slm_raw:
+                header = (
+                    "Дополнительная информация из долговременной памяти:"
+                    if lang == "ru"
+                    else "Additional context from long-term memory:"
                 )
-                if slm_context:
-                    # Keep only last 2 messages for dialog coherence
-                    last_turns = self._build_context_prompt(history_msgs[-2:], lang) if len(history_msgs) > 1 else ""
-                    if last_turns:
-                        context = slm_context + "\n\n" + last_turns
-                    else:
-                        context = slm_context
-                    context_tokens = self._estimate_tokens(context, model_type, lang)
-                    self.logger.info(
-                        f"Context from SLM: {context_tokens} tokens "
-                        f"({context_tokens / max_context_tokens * 100:.1f}% of {max_context_tokens})"
-                    )
-                    return context
+                slm_facts_str = f"\n\n{header}\n{slm_raw}"
 
-        context = self._build_context_prompt(history_msgs, lang)
+        # Combine: history first (dialog continuity), SLM facts after (long-term enrichment)
+        context = history_str + slm_facts_str
         context_tokens = self._estimate_tokens(context, model_type, lang)
 
         self.logger.info(
-            f"Context loaded: {len(history_msgs)} messages, {context_tokens} tokens "
-            f"({context_tokens / max_context_tokens * 100:.1f}% of {max_context_tokens})"
+            f"Context loaded: {len(history_msgs)} history msgs, "
+            f"{context_tokens} tokens ({context_tokens / max_context_tokens * 100:.1f}% of {max_context_tokens})"
         )
 
         return context
@@ -219,9 +216,11 @@ class BaseModule(TranslationMixin):
         response_style: str = "neutral",
         user_id: str | None = None,
     ) -> dict[str, Any]:
-        """Process text message through router model."""
+        """Process text message through router model — no history, no SLM.
+        Router only classifies the query; conversation context is handled
+        by the downstream chat/reasoning model.
+        """
         response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(session_id, "chat", message_text, lang, user_id=user_id)  # type: ignore[arg-type]
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )
@@ -232,7 +231,6 @@ class BaseModule(TranslationMixin):
                 "current_time_str": current_time_str,
                 "user_query": message_text,
                 "response_language": response_language,
-                "conversation_history": context_str,
                 "response_style": style_instruction,
             },
             lang=lang,
@@ -293,12 +291,15 @@ class BaseModule(TranslationMixin):
         for marker, action in markers.items():
             if marker in response:
                 parts = response.split(marker, 1)
-                processed = parts[1].strip() if len(parts) > 1 else ""
-                # Take only the first line — strip template text/history the model may have copied
-                processed = processed.split("\n")[0].strip()
-                # If processed is much longer than original, router added explanation — use original
-                if original_query and len(processed) > len(original_query) * 1.5:
+                # For marker-based actions (image, video, camera) always use the original query.
+                # The text after the marker is unreliable — the model may copy old queries or examples.
+                if action in ("image", "video", "camera"):
                     processed = original_query
+                else:
+                    processed = parts[1].strip() if len(parts) > 1 else ""
+                    processed = processed.split("\n")[0].strip()
+                    if original_query and len(processed) > len(original_query) * 1.5:
+                        processed = original_query
                 return {"action": action, "query": processed, "needs_reasoning": (action == "reasoning")}
 
         return {"action": "none", "query": original_query, "needs_reasoning": False}

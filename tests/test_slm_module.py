@@ -13,8 +13,8 @@ class TestSlmModuleInit:
     def mock_app(self):
         app = MagicMock()
         app.config = {
-            "SLM_URL": "http://flai-slm:8765",
-            "SLM_RECALL_LIMIT": 3,
+            "SLM_URL": "http://flai-slm:8766",
+            "SLM_RECALL_LIMIT": 5,
         }
         app.logger = MagicMock()
         return app
@@ -32,7 +32,7 @@ class TestSlmModuleInit:
             from modules.slm import SlmModule
 
             module = SlmModule(mock_app)
-            assert module.url == "http://flai-slm:8765"
+            assert module.url == "http://flai-slm:8766"
             assert not module.available
 
     def test_init_with_url_available(self, mock_app):
@@ -58,7 +58,7 @@ class TestSlmModuleOperations:
             from modules.slm import SlmModule
 
             app = MagicMock()
-            app.config = {"SLM_URL": "http://flai-slm:8765", "SLM_RECALL_LIMIT": 3}
+            app.config = {"SLM_URL": "http://flai-slm:8766", "SLM_RECALL_LIMIT": 5}
             app.logger = MagicMock()
             mod = SlmModule(app)
             return mod

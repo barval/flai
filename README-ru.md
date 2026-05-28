@@ -94,7 +94,7 @@
 | **LTX-Video** | Генерация видео (text-to-video / image+text-to-video) | Python + PyTorch | 7872 |
 | **Whisper ASR** | Распознавание речи | faster_whisper | 9000 |
 | **Piper TTS** | Синтез речи | ONNX + Piper | 8888 |
-| **SuperLocalMemory** | Долговременная кросс-сессионная память на пользователя (HTTP-прокси) | Python + SQLite | 8765 |
+| **SuperLocalMemory** | Долговременная кросс-сессионная память на пользователя (демон + HTTP-прокси) | Python + SQLite | 8766 |
 | **Qdrant** | Векторная база данных для RAG | Rust | 6333 |
 | **Redis** | Управление очередью запросов | C | 6379 |
 | **PostgreSQL** | Учётные записи, сессии, сообщения | SQL | 5432 |
@@ -400,7 +400,7 @@ QDRANT_URL=http://flai-qdrant:6333
 QDRANT_API_KEY=ваш_ключ_qdrant
 CAMERA_API_URL=http://flai-room-snapshot-api:5000
 LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872  # LTX-Video генерация видео
-SLM_URL=http://flai-slm:8765                      # SuperLocalMemory долговременная память
+SLM_URL=http://flai-slm:8766                      # SuperLocalMemory долговременная память
 ```
 
 **Параметры изображений и видео по умолчанию:**

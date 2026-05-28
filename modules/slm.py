@@ -29,7 +29,7 @@ class SlmModule(TranslationMixin):
 
     def init_app(self, app):
         """Initialize with Flask app config."""
-        self.url = app.config.get("SLM_URL", "http://flai-slm:8765").rstrip("/")
+        self.url = app.config.get("SLM_URL", "http://flai-slm:8766").rstrip("/")
         self.recall_limit = app.config.get("SLM_RECALL_LIMIT", 3)
         self.check_availability()
 
@@ -62,7 +62,7 @@ class SlmModule(TranslationMixin):
         Returns:
             True if saved successfully.
         """
-        if not self.available:
+        if not self.available and not self.check_availability():
             return False
         payload: dict[str, Any] = {"text": text}
         if metadata:
@@ -87,7 +87,7 @@ class SlmModule(TranslationMixin):
         Returns:
             List of dicts with 'text', 'score' keys.
         """
-        if not self.available:
+        if not self.available and not self.check_availability():
             return []
         limit = limit or self.recall_limit
         payload: dict[str, Any] = {"query": query, "limit": limit}

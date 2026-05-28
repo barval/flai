@@ -1,18 +1,25 @@
 #!/usr/bin/env bash
 # SuperLocalMemory startup script
-# No daemon needed — SLM CLI runs per-request with --sync.
-# The HTTP proxy handles all CLI communication.
+# Starts the SLM daemon (holds embedding model in memory) then the HTTP proxy.
 
 set +e
 
-# Ensure base SLM setup is done (creates config.json, downloads embedding model on first use)
+# Ensure base SLM setup is done (creates config.json, downloads embedding model)
 if [ ! -f /root/.superlocalmemory/config.json ]; then
     slm setup --non-interactive --mode a > /tmp/slm_setup.log 2>&1
     echo "SLM setup: $?" > /tmp/slm_setup_status
 fi
 
-# Pre-download embedding model in background (~500MB, so first --sync is fast)
-slm warmup > /tmp/slm_warmup.log 2>&1 &
+# Start the daemon (keeps MemoryEngine + embedding model in memory, ~300-800ms recall)
+slm serve start > /tmp/slm_daemon.log 2>&1 &
 
-# Start the HTTP proxy in foreground (keeps container alive)
+# Wait for daemon to be ready (port 8765)
+for i in $(seq 1 30); do
+    if curl -s http://localhost:8765/health >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+# Start the HTTP proxy in foreground (proxies to daemon on localhost:8765)
 exec python3 /app/slm_http.py

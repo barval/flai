@@ -25,9 +25,9 @@ DEGRADATION_STEPS = [0.75, 0.50, 0.25, 0.0]
 
 DEFAULT_TTL = {
     "chat": 600,
-    "embedding": 180,
-    "reasoning": 900,
-    "multimodal": 600,
+    "embedding": 0,
+    "reasoning": 0,
+    "multimodal": 0,
 }
 
 GROUP_SETTINGS = {

@@ -2,11 +2,14 @@
 # Database functions - PostgreSQL only
 import contextlib
 import json
+import logging
 import os
 import re
 import uuid
 from datetime import datetime
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from flask import current_app
 from flask_babel import gettext as _

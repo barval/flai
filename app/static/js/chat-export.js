@@ -1,20 +1,7 @@
 // static/js/chat-export.js
 // Save chat as HTML function with embedded media files (base64)
 async function saveChatAsHTML() {
-    let footerText = "";
-    try {
-        const response = await fetch('/api/footer-text');
-        if (response.ok) {
-            footerText = await response.text();
-            dlog('Footer text fetched:', footerText);
-        } else {
-            console.error('Footer API returned status:', response.status);
-            footerText = t('footer_text');
-        }
-    } catch (error) {
-        console.error('Error fetching footer:', error);
-        footerText = t('footer_text');
-    }
+    let footerText = t('footer_text');
 
     const userNameElement = document.querySelector('.logout-container .user-name');
     const userName = userNameElement ? userNameElement.textContent.trim() : t('user');

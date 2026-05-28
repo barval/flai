@@ -82,6 +82,8 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | 🐛 **Multiple ⚡ prevention** | `chat-queue.js` race condition guard now checks if another session is already `processing` before setting a new ⚡. Ensures only one session shows ⚡ at a time — the rest show ⏳ (queued). |
 | ⚡ **⚡ recovery after task completion** | `events.js` — every `clearSessionQueue()` now schedules `setTimeout(fetchQueueStatus, 500)`. Restores ⚡ when the next queued task moves from queue to processing. |
 | 🐛 **Router parsing: original_query for image/video only** | `_parse_router_response()` uses `original_query` for `image`, `video` actions (text after marker was copied from history/examples). For **camera**, uses text after marker (room code) — preserves Russian declensions (гостиная → в гостиной). |
+| 🐛 **Router template updated to v8.7 style** | Image/video sections restored with explicit keywords (нарисовать/сгенерировать/создать), warnings about code vs image, negative examples. Reduces model confusion. |
+| 🐛 **Router retry on JSON error** | `process_message()` retries once if router returns `{"error": ...}` — rare model inference glitch. |
 | 🖥️ **VRAM cleanup before non-chat models** | `llamacpp_client.py:_ensure_vram()` now calls `unload_llamacpp_model()` for reasoning, multimodal, and embedding models — freeing all LLM VRAM before loading. Chat stays hot (TTL=600). Prevents 502 errors from reasoning model failing to load. |
 | 🐛 **SLM cleanup on session deletion** | `_cleanup_slm_if_empty()` in `app/db.py` now actually implemented. Removes the user's SLM database when the last session is deleted or history is cleared. SLM files now owned by `appuser` (UID 1000) in both containers so `shutil.rmtree` works — `start.sh` runs `chown -R appuser:appuser`. |
 | 🖥️ **TTL-based VRAM optimization** | llama-swap TTLs: chat=600s (always hot), multimodal=0s, reasoning=0s, embedding=0s. Non-chat models unload immediately after response. Before SD/Video, `POST /api/models/unload` frees all VRAM (~3-4 GiB from chat). |
@@ -853,6 +855,8 @@ curl http://localhost:5000/metrics
 - **Camera unknown rooms** — unknown rooms classified as normal queries (no `[-CAMERA-]` marker). Chat model responds naturally.
 - **Camera router parser: room code from marker** — `_parse_router_response()` uses text after `[-CAMERA-]` marker (room code), not original_query. Preserves Russian declensions (гостиная → в гостиной).
 - **VRAM cleanup before non-chat models** — `llamacpp_client.py:_ensure_vram()` calls `unload_llamacpp_model()` for reasoning/multimodal/embedding. Prevents 502 errors from insufficient VRAM.
+- **Router template updated** — image/video sections restored to v8.7 style: explicit keywords, warnings, negative examples.
+- **Router retry on JSON error** — `process_message()` retries once if router returns garbled response.
 - **SLM cleanup on session deletion** — `_cleanup_slm_if_empty()` in `app/db.py` implemented. Removes SLM database when last session is deleted.
 - **SLM file ownership fix** — both containers use `appuser` (UID 1000). `start.sh` runs `chown -R appuser:appuser` on the shared volume. Fixes `shutil.rmtree` permission denied. |
 - **Multiple ⚡ race guard** — `chat-queue.js`: race condition guard prevents ⚡ on multiple sessions simultaneously. Only one ⚡ at a time, others show ⏳.

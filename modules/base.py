@@ -258,6 +258,12 @@ class BaseModule(TranslationMixin):
         router_response = self.call_llamacpp(router_messages, model_type="chat", lang=lang)
         self.logger.info(f"Router response: {router_response}")
 
+        # Retry once if router produced a garbled response (rare model inference glitch)
+        if router_response and router_response.strip().startswith("{\"error\""):
+            self.logger.warning(f"Router returned error, retrying once: {router_response[:100]}")
+            router_response = self.call_llamacpp(router_messages, model_type="chat", lang=lang)
+            self.logger.info(f"Router retry response: {router_response}")
+
         if router_response is None:
             self.logger.error("Router response is None")
             return {"error": self._("Model returned empty response", lang)}

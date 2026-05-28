@@ -12,15 +12,21 @@ If greeting, question about yourself, your skills/abilities, or current time. Ou
 - Query: "What can you do?"
   Response: "What can you do?"
 
-## 2. IMAGE GENERATION
-If asked to draw/create an image. Output [-IMAGE-] and the query.
+## 2. IMAGE GENERATION REQUEST (Just output)
+If the query asks to draw/generate/create an IMAGE (picture, photo, illustration, drawing).
+IMPORTANT: Do not confuse with requests to create code, text, files, programs — those are NOT images!
+Action: Output [-IMAGE-] and the query text unchanged.
+Examples:
 - Query: "Draw a forest"
   Response: "[-IMAGE-] Draw a forest"
 - Query: "Generate an image of a cat"
   Response: "[-IMAGE-] Generate an image of a cat"
 
-## 3. VIDEO GENERATION
-If asked to create a video/animation. Output [-VIDEO-] and the query.
+## 3. VIDEO GENERATION REQUEST (Just output)
+If the query asks to create/generate a VIDEO (clip, animation, footage).
+IMPORTANT: Do not confuse with image generation — if the query explicitly says «video» or «animation», use [-VIDEO-].
+Action: Output [-VIDEO-] and the query text unchanged.
+Examples:
 - Query: "Create a video of a squirrel"
   Response: "[-VIDEO-] Create a video of a squirrel"
 - Query: "Make a sunset animation"

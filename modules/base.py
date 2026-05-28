@@ -292,10 +292,17 @@ class BaseModule(TranslationMixin):
         for marker, action in markers.items():
             if marker in response:
                 parts = response.split(marker, 1)
-                # For marker-based actions (image, video, camera) always use the original query.
-                # The text after the marker is unreliable — the model may copy old queries or examples.
-                if action in ("image", "video", "camera"):
+                if action in ("image", "video"):
+                    # Image/video: text after marker is unreliable (copied from history).
+                    # Use the original user query instead.
                     processed = original_query
+                elif action == "camera":
+                    # Camera: text after marker is the room code ("gos", "kab", etc.)
+                    # or the query itself for room name extraction. Use it directly.
+                    processed = parts[1].strip() if len(parts) > 1 else ""
+                    processed = processed.split("\n")[0].strip()
+                    if not processed and original_query:
+                        processed = original_query
                 else:
                     processed = parts[1].strip() if len(parts) > 1 else ""
                     processed = processed.split("\n")[0].strip()

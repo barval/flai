@@ -550,6 +550,8 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
     if (resultSessionId) {
         setLocalTranscribing(resultSessionId, false);
         clearSessionQueue(resultSessionId);
+        // Poll server for next queued task (500ms delay for server to dequeue)
+        setTimeout(fetchQueueStatus, 500);
     }
     delete pendingRequestIds[taskId];
     _clearStreamFromSessionStorage(taskId);
@@ -584,6 +586,7 @@ function handleCompletedResult(result, expectedSessionId) {
         }
         if (resultSessionId) setLocalTranscribing(resultSessionId, false);
         clearSessionQueue(resultSessionId);
+        setTimeout(fetchQueueStatus, 500);
         return;
     }
 
@@ -629,6 +632,7 @@ function handleCompletedResult(result, expectedSessionId) {
         }
         if (resultSessionId) setLocalTranscribing(resultSessionId, false);
         clearSessionQueue(resultSessionId);
+        setTimeout(fetchQueueStatus, 500);
         return;
     }
 
@@ -636,6 +640,7 @@ function handleCompletedResult(result, expectedSessionId) {
     if (resultSessionId) {
         setLocalTranscribing(resultSessionId, false);
         clearSessionQueue(resultSessionId);
+        setTimeout(fetchQueueStatus, 500);
     }
 }
 
@@ -693,6 +698,7 @@ function handleCameraResult(result, resultSessionId) {
     }
     if (resultSessionId) setLocalTranscribing(resultSessionId, false);
     clearSessionQueue(resultSessionId);
+    setTimeout(fetchQueueStatus, 500);
 }
 
 function handleErrorResult(data, expectedSessionId) {
@@ -704,6 +710,7 @@ function handleErrorResult(data, expectedSessionId) {
     if (errorSessionId) {
         setLocalTranscribing(errorSessionId, false);
         clearSessionQueue(errorSessionId);
+        setTimeout(fetchQueueStatus, 500);
     }
 }
 

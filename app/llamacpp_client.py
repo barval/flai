@@ -557,10 +557,18 @@ class LlamaCppClient:
         return None
 
     def _ensure_vram(self, model_type: str) -> None:
-        """Unload video pipeline if VRAM is tight for the requested model."""
+        """Ensure enough VRAM before a model call.
+
+        For non-chat models (reasoning, multimodal, embedding) the current
+        LLM model is explicitly unloaded first so the target model has
+        maximum VRAM available.  Chat stays hot (TTL=600, preload=True).
+        """
         try:
             from app.resource_manager import get_resource_manager
             rm = get_resource_manager()
+            if model_type != "chat":
+                llamacpp_url = self.app.config.get("LLAMACPP_URL", "http://flai-llamaswap:8080")
+                rm.unload_llamacpp_model(llamacpp_url)
             rm.ensure_vram_for_llm(model_type)
         except Exception:
             pass

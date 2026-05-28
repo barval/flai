@@ -80,7 +80,9 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | 🔄 **SLM lazy availability re-check** | `remember()` and `recall()` retry `check_availability()` if SLM was unavailable at startup. Gracefully handles SLM container starting after web. |
 | 🚫 **Router stripped of history + SLM** | Router (`base_text.template` + `process_message()`) no longer receives conversation history or SLM context. Classifies queries independently, preventing it from copying old queries/markers from history into responses. |
 | 🐛 **Multiple ⚡ prevention** | `chat-queue.js` race condition guard now checks if another session is already `processing` before setting a new ⚡. Ensures only one session shows ⚡ at a time — the rest show ⏳ (queued). |
+| ⚡ **⚡ recovery after task completion** | `events.js` — every `clearSessionQueue()` now schedules `setTimeout(fetchQueueStatus, 500)`. Restores ⚡ when the next queued task moves from queue to processing. |
 | 🐛 **Router parsing: original_query for image/video only** | `_parse_router_response()` uses `original_query` for `image`, `video` actions (text after marker was copied from history/examples). For **camera**, uses text after marker (room code) — preserves Russian declensions (гостиная → в гостиной). |
+| 🖥️ **VRAM cleanup before non-chat models** | `llamacpp_client.py:_ensure_vram()` now calls `unload_llamacpp_model()` for reasoning, multimodal, and embedding models — freeing all LLM VRAM before loading. Chat stays hot (TTL=600). Prevents 502 errors from reasoning model failing to load. |
 | 🖥️ **TTL-based VRAM optimization** | llama-swap TTLs: chat=600s (always hot), multimodal=0s, reasoning=0s, embedding=0s. Non-chat models unload immediately after response. Before SD/Video, `POST /api/models/unload` frees all VRAM (~3-4 GiB from chat). |
 | 🎬 **Image gen via slow queue** | Image generation tasks now go through the slow queue (serialized, no concurrent sd-wrapper requests). Prevents «sd-wrapper timeout» errors when multiple image requests arrive simultaneously. |
 | 📊 **Queue counter includes processing tasks** | `get_user_queue_counts()` now includes tasks in processing (not just waiting). Shows active tasks instead of always showing «0/0». Desync check only resets counters when no tasks are processing. |
@@ -849,7 +851,9 @@ curl http://localhost:5000/metrics
 - **Lint fixes** — SIM102, SIM108, F841 (3x), F821, N812, B904 resolved.
 - **Camera unknown rooms** — unknown rooms classified as normal queries (no `[-CAMERA-]` marker). Chat model responds naturally.
 - **Camera router parser: room code from marker** — `_parse_router_response()` uses text after `[-CAMERA-]` marker (room code), not original_query. Preserves Russian declensions (гостиная → в гостиной).
+- **VRAM cleanup before non-chat models** — `llamacpp_client.py:_ensure_vram()` calls `unload_llamacpp_model()` for reasoning/multimodal/embedding. Prevents 502 errors from insufficient VRAM.
 - **Multiple ⚡ race guard** — `chat-queue.js`: race condition guard prevents ⚡ on multiple sessions simultaneously. Only one ⚡ at a time, others show ⏳.
+- **⚡ recovery after task chain** — `events.js`: after every `clearSessionQueue()` call, `setTimeout(fetchQueueStatus, 500)` polls the server for the next queued task.
 
 ### 🔄 In Progress
 - Advanced RAG: metadata filtering, hybrid search

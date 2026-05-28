@@ -55,6 +55,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
   - **Fast worker** — CPU-only operations: router (chat model), text, audio, RAG. The chat model (2.5 GiB) stays hot in VRAM.
   - **Slow worker** — all GPU-heavy operations: multimodal (Qwen3VL-8B), SD, LTX-Video. Strictly sequential — only one GPU task runs at a time.
   - **VRAM guard** (`_wait_for_vram`) — before any multimodal/SD/Video call, blocks until at least 6 GiB VRAM is free (polls `nvidia-smi` every 2s, times out after 60s).
+- **VRAM cleanup before non-chat models** (`llamacpp_client.py:_ensure_vram`) — before loading reasoning, multimodal, or embedding models, `unload_llamacpp_model()` is called to free all LLM VRAM. Chat model stays hot (preloaded with TTL=600).
   - Tasks are HMAC-signed JSON.
 - **DB**: PostgreSQL only via `app/database.py:get_db()` context manager (psycopg2 RealDictCursor). `DATABASE_URL` required. Tables: user_sessions, chat_sessions, messages, documents, session_visits, model_configs, user_storage, slm_import_progress, gguf_models_cache.
 - **Helpers**: `app/circuit_breaker.py`, `app/resource_manager.py`, `app/llama_swap_config.py`, `app/slm_import.py` — llama-swap config auto-generated from DB at startup into `llama-swap-config/`. Background SLM import on startup.
@@ -77,6 +78,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - **`_tr()` / `self._()` format strings**: Flask-Babel 4.0.0 `gettext()` uses `%`-formatting (`string % variables`), NOT `str.format()`. Passing `{status}` kwargs directly to `gettext()` silently returns the unformatted string. Always call `gettext(key)` without kwargs, then apply `result.format(**kwargs)` manually. See `app/llamacpp_client.py:26` and `app/mixins.py:9` for the correct pattern.
 - **Style**: All CSS in `app/static/css/`, JS in `app/static/js/`. No inline styles, no CDN (all assets bundled). Comments/logs in English. User-facing strings via Flask-Babel (`translations/{en,ru}/LC_MESSAGES/messages.po`). Add new keys to both `.po` files.
 - **UI queue indicators**: `chat-queue.js` — `fetchQueueStatus()` builds `newInfo` from server data, then preserves `processing: true` for recently tracked pending requests (race condition guard, 10s window). **Multiple ⚡ prevention**: the race guard checks if any other session is already `processing` before setting a new one; if so, the session gets `queued += 1` instead. Ensures only one ⚡ across all sessions.
+- **⚡ recovery after task chain**: `events.js` — after every `clearSessionQueue()` call, `setTimeout(fetchQueueStatus, 500)` is scheduled. This polls the server for the next queued task, restoring ⚡ when the next task moves from queue to processing.
 - **Lint config** (pyproject.toml): ruff line-length=120, select E/W/F/I/N/UP/B/SIM, ignore E501/B008/PTH. `__init__.py` per-file-ignore F401. mypy target 3.11, ignore-missing-imports, excludes tests/ and translations/.
 - **Security**: Path traversal checks in `api/files/<path>`. Session ownership validated. CSRF on all forms. Secrets in `.env` only.
 

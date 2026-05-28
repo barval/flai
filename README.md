@@ -79,6 +79,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | 🧠 **SLM context for both chat + reasoning** | SLM facts are now injected into prompts for BOTH chat and reasoning models (alongside full conversation history). Previously was reasoning-only with only 2 last messages. Token budget adjusted with `slm_reserve`. Configurable via `SLM_RECALL_LIMIT=5` (default). |
 | 🔄 **SLM lazy availability re-check** | `remember()` and `recall()` retry `check_availability()` if SLM was unavailable at startup. Gracefully handles SLM container starting after web. |
 | 🚫 **Router stripped of history + SLM** | Router (`base_text.template` + `process_message()`) no longer receives conversation history or SLM context. Classifies queries independently, preventing it from copying old queries/markers from history into responses. |
+| 🐛 **Multiple ⚡ prevention** | `chat-queue.js` race condition guard now checks if another session is already `processing` before setting a new ⚡. Ensures only one session shows ⚡ at a time — the rest show ⏳ (queued). |
 | 🐛 **Router parsing: original_query for markers** | `_parse_router_response()` now uses `original_query` for `image`, `video`, `camera` actions. Text after the marker is ignored (was previously copied from history/examples). |
 | 🖥️ **TTL-based VRAM optimization** | llama-swap TTLs: chat=600s (always hot), multimodal=0s, reasoning=0s, embedding=0s. Non-chat models unload immediately after response. Before SD/Video, `POST /api/models/unload` frees all VRAM (~3-4 GiB from chat). |
 | 🎬 **Image gen via slow queue** | Image generation tasks now go through the slow queue (serialized, no concurrent sd-wrapper requests). Prevents «sd-wrapper timeout» errors when multiple image requests arrive simultaneously. |
@@ -847,6 +848,7 @@ curl http://localhost:5000/metrics
 - **Test isolation** — `stop_workers()` in `test_app` teardown. `TRUNCATE` on real PostgreSQL between tests.
 - **Lint fixes** — SIM102, SIM108, F841 (3x), F821, N812, B904 resolved.
 - **Camera unknown rooms** — unknown rooms classified as normal queries (no `[-CAMERA-]` marker). Chat model responds naturally.
+- **Multiple ⚡ race guard** — `chat-queue.js`: race condition guard prevents ⚡ on multiple sessions simultaneously. Only one ⚡ at a time, others show ⏳.
 
 ### 🔄 In Progress
 - Advanced RAG: metadata filtering, hybrid search

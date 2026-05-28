@@ -72,18 +72,24 @@ function fetchQueueStatus() {
                 });
             }
 
-            // Preserve processing flag for sessions with recently-tracked pending requests.
-            // Handles the race where handleTranscriptionResult tracks a new task (via
-            // trackPendingRequest) before the server reports it as processing — without this,
-            // the stale HTTP response from the original fetchQueueStatus would overwrite
-            // the ⚡ with idle state.
+            // Preserve processing flag for sessions with recently-tracked pending requests,
+            // but ONLY if no other session is already marked as processing (from server data
+            // or from a previous iteration). This prevents multiple ⚡ icons when several
+            // tasks were submitted rapidly — only the first one shows ⚡, the rest show ⏳.
             const recentCutoff = Date.now() - 10000;
+            let alreadyProcessing = Object.values(newInfo).some(info => info.processing);
             for (const reqId in pendingRequestIds) {
                 const reqInfo = pendingRequestIds[reqId];
                 if (!reqInfo) continue;
                 const sid = reqInfo.sessionId;
                 if (sid && newInfo[sid] && !newInfo[sid].processing && (reqInfo.timestamp || 0) > recentCutoff) {
-                    newInfo[sid].processing = true;
+                    if (!alreadyProcessing) {
+                        newInfo[sid].processing = true;
+                        alreadyProcessing = true;
+                    } else {
+                        newInfo[sid].queued += 1;
+                        newInfo[sid].queue_position = Math.max(1, newInfo[sid].queue_position || 1);
+                    }
                 }
             }
 

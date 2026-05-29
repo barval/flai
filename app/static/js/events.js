@@ -530,6 +530,44 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
         if (contentDiv && result && result.response) {
             contentDiv.innerHTML = marked.parse(result.response);
         }
+
+        // Display file attachments (image, video) from result if present
+        if (result && (result.file_path || result.file_data)) {
+            var fileUrl = '';
+            if (result.file_path) {
+                fileUrl = '/api/files/' + result.file_path;
+            } else if (result.file_data) {
+                fileUrl = 'data:' + (result.file_type || 'application/octet-stream') + ';base64,' + result.file_data;
+            }
+            if (fileUrl && result.file_type) {
+                if (result.file_type.startsWith('image/')) {
+                    var existingImg = streamMsg.querySelector('.image-container');
+                    if (!existingImg) {
+                        var imgContainer = document.createElement('div');
+                        imgContainer.className = 'image-container';
+                        var img = document.createElement('img');
+                        img.src = fileUrl;
+                        img.className = 'attached-image';
+                        img.alt = result.file_name || t('image');
+                        img.title = t('click_to_enlarge');
+                        img.onclick = function() { openImageModal(this.src, result.file_name || t('image')); };
+                        imgContainer.appendChild(img);
+                        streamMsg.appendChild(imgContainer);
+                    }
+                } else if (result.file_type.startsWith('video/')) {
+                    var existingVideo = streamMsg.querySelector('video');
+                    if (!existingVideo) {
+                        var video = document.createElement('video');
+                        video.controls = true;
+                        video.src = fileUrl;
+                        video.style.maxWidth = '100%';
+                        video.style.maxHeight = '400px';
+                        streamMsg.appendChild(video);
+                    }
+                }
+            }
+        }
+
         if (typeof updateLastVisit === 'function') updateLastVisit(currentSessionId);
         if (typeof addCopyButtonsToMessage === 'function') addCopyButtonsToMessage(streamMsg);
     } else if (resultSessionId === currentSessionId && data.result?.response) {

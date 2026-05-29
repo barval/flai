@@ -104,7 +104,7 @@ class VideoModule(TranslationMixin):
             return False
         rm._poll_vram()
         available = rm.hardware.available_vram_mb
-        needed = self._estimate_video_vram_mb() + 500
+        needed = self._estimate_video_vram_mb() + 3000
         if available > 0 and available < needed:
             self.logger.warning(f"VRAM too low for video ({available}MB available, ~{needed}MB needed) — forcing CPU")
             return False
@@ -125,18 +125,37 @@ class VideoModule(TranslationMixin):
 
         llamacpp_url = self.app.config.get("LLAMACPP_URL", "http://flai-llamacpp:8033")
         rm.unload_llamacpp_model(llamacpp_url)
-        rm._poll_vram()
-        # Verify VRAM is actually free after unload; wait if SD/Video still holds it
-        deadline = time.time() + 30
+
+        # CRITICAL: Verify llama-swap has NO models loaded (not just VRAM check).
+        # A VRAM-only check with threshold ~10GB can pass while multimodal
+        # (~5GB) is still loaded on a 15GB GPU (15-5=10 ≥ 10 → false positive).
+        swap_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+        deadline = time.time() + 60
+        video_needed = self._estimate_video_vram_mb() + 3000
         while time.time() < deadline:
-            if rm.hardware.available_vram_mb >= self._estimate_video_vram_mb() + 2000:
+            rm._poll_vram()
+            try:
+                resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=5)
+                loaded = resp.json().get("models", []) if resp.status_code == 200 else ["?"]
+            except Exception:
+                loaded = ["?"]
+            free = rm.hardware.available_vram_mb
+            if not isinstance(free, int):
+                free = 0
+            if len(loaded) == 0 and free >= video_needed:
+                self.logger.info(
+                    f"VRAM ready: {free}MB free, 0 LLM models loaded, need ≥{video_needed}MB"
+                )
                 break
             self.logger.info(
-                f"VRAM: {rm.hardware.available_vram_mb} MB free, "
-                f"need {self._estimate_video_vram_mb() + 2000} MB — waiting for unload..."
+                f"VRAM: {free}MB free, {len(loaded)} LLM model(s) loaded, "
+                f"need ≥{video_needed}MB — waiting for full unload..."
             )
-            time.sleep(1)
-            rm._poll_vram()
+            time.sleep(2)
+        else:
+            err_msg = self._("Video generation failed: GPU memory is insufficient. Try again in a moment.", lang)
+            self.logger.warning(f"VRAM wait timeout (60s) — free={free}MB, models={loaded}")
+            return {"success": False, "error": err_msg}
 
         use_gpu = self._resolve_use_gpu(rm)
         if use_gpu:
@@ -151,7 +170,7 @@ class VideoModule(TranslationMixin):
 
         # Cap video resolution for low VRAM tiers (8GB) to prevent OOM
         total_vram = rm.hardware.total_vram_mb
-        if total_vram > 0 and total_vram < 10000:
+        if isinstance(total_vram, int) and total_vram > 0 and total_vram < 10000:
             old_w = prompt_data.get("width", 896)
             old_h = prompt_data.get("height", 512)
             old_frames = prompt_data.get("num_frames", 257)

@@ -245,7 +245,7 @@ class TestVideoModuleResourceManager:
             module = VideoModule(mock_app)
             module.generate_video({"prompt": "test"})
 
-            mock_rm_instance.unload_llamacpp_model.assert_called_once()
+            mock_rm_instance.unload_llamacpp_model.assert_called()
             mock_rm_instance.mark_video_busy.assert_called_once()
             mock_rm_instance.mark_video_idle.assert_called_once()
 

@@ -132,6 +132,52 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - **Unit test speed**: CamModule has 5×2s init retries, making test_cam.py ~10s per fixture.
 - **Load tests** (`tests/load/`) excluded from pytest collection (require locust fixtures).
 
+## VRAM fixes & RAG improvements (v8.8+)
+
+### VRAM Problem statements
+- **CUDA OOM on video generation**: `_wait_for_vram()` only polled nvidia-smi without checking if llama.cpp models were unloaded, leading to fragmented memory claims and OOM when loading Qwen3VL-8B (~5GiB)
+- **HTTP 502 on reasoning queries**: `ensure_vram_for_reasoning()` returned False on timeout but code continued execution, attempting to load gpt-oss-20b (~10GiB) into insufficient memory
+- **Video OOM persisted**: After multimodal generates params (~5GB), LTX-Video pipeline (~8GB) tries to load while multimodal is still in VRAM → total exceeds 15.47GB GPU → OOM
+
+### VRAM Implemented solutions
+1. **`_wait_for_vram_full()` redesign**: Changed from `≥80% GPU threshold` to `video_needed + 3GB buffer` — the 80% threshold was impossible to meet on a 15GB GPU after unloading a 5GB multimodal model (max free was ~10GB, need 12.4GB)
+2. **Timeout increase 30→60s**: Both in queue.py and video.py; CUDA memory deallocation is async and needs more time
+3. **No "proceeding anyway"**: When VRAM wait times out, return error instead of proceeding into OOM
+4. **Buffer increase +500→+3000MB**: In `_resolve_use_gpu()` for safety margin against CUDA fragmentation
+
+### RAG Problem statements
+- **Router sends knowledge questions to reasoning instead of RAG**: "Сколько лет Валерию Барсукову?" classified as `[-REASONING-]` instead of `[-RAG-]` — no examples of Q&A about people/documents
+- **Streaming path skips RAG entirely**: `_process_text_task_stream` goes directly to `_requeue_reasoning_task()` without calling `_try_rag_answer()`
+- **Strict threshold too high**: 0.7 falls back for unconfigured environments, filtering out relevant chunks
+- **Reasoning model blind**: No document context passed to gpt-oss-20b prompt
+
+### RAG Implemented solutions
+1. **Router template updated**: Added category 5 with explicit examples for document/person/age/biography queries → `[-RAG-]`
+2. **RAG call added to streaming reasoning path**: Before requeuing to slow worker, tries RAG first
+3. **Strict threshold lowered 0.7→0.5**: Higher recall for semantic search
+4. **RAG context in reasoning prompt**: `process_reasoning()` now accepts `rag_context` parameter; appended to prompt templates
+5. **RAG retry in `_process_reasoning_request`**: Before loading reasoning model, tries RAG once more with `strict=True`
+
+### Files modified
+- `app/queue.py`: Added `_gpu_lock`, `_log_gpu_state_before_op()`, `_check_vram_ready()`, `_unload_llamacpp_models()`, RAG in streaming path, RAG retry in reasoning task
+- `app/resource_manager.py`: Enhanced `ensure_vram_for_llm()` and `ensure_vram_for_reasoning()` with dual verification
+- `modules/video.py`: Buffer +500→+3000, timeout 30→60s, no "proceeding anyway"
+- `modules/base.py`: `process_reasoning()` accepts `rag_context` parameter
+- `prompts/ru/base_text.template`: Added RAG category for person/document queries
+- `prompts/en/base_text.template`: Same RAG category
+- `prompts/ru/reasoning.template`: Added `{rag_context}` placeholder
+- `prompts/en/reasoning.template`: Added `{rag_context}` placeholder
+- `app/static/js/events.js`: `finalizeStreamedMessage` renders file attachments
+- `app/db.py`: Added `file_data` to SQL SELECT, replaced `suppress(Exception)` with logging
+- `translations/*.po`: Added GPU error + RAG context translations
+
+### Monitoring commands
+```bash
+watch -n 1 nvidia-smi          # Real-time VRAM tracking
+docker logs flai-web --tail 50 | grep GPU  # Log GPU-related events
+grep "RAG\|reasoning\|router" docker/logs/flai-web.log  # Debug RAG flow
+```
+
 ## Critical rules
 
 1. NEVER make ANY changes to files without direct user approval. Each file change (create, edit, delete) requires explicit plan approval. Exception: only when the user explicitly said "do it" or "execute".

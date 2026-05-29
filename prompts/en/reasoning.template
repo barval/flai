@@ -19,3 +19,5 @@ Current time (now): {current_time_str}.
 User request: "{reasoning_query}".
 Conversation history (previous messages):
 {conversation_history}
+Found information from documents:
+{rag_context}

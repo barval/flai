@@ -332,6 +332,7 @@ class BaseModule(TranslationMixin):
         session_id: str | None = None,
         response_style: str = "neutral",
         user_id: str | None = None,
+        rag_context: str = "",
     ) -> str:
         """Process complex query via reasoning model."""
         response_language = "Russian" if lang == "ru" else "English"
@@ -339,6 +340,8 @@ class BaseModule(TranslationMixin):
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )
+
+        rag_context_str = rag_context if rag_context else self._("No additional information from documents.", lang)
 
         reasoning_prompt = format_prompt(
             "reasoning.template",
@@ -348,6 +351,7 @@ class BaseModule(TranslationMixin):
                 "response_language": response_language,
                 "conversation_history": context_str,
                 "response_style": style_instruction,
+                "rag_context": rag_context_str,
             },
             lang=lang,
         )

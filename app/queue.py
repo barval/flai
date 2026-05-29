@@ -53,6 +53,11 @@ class RedisRequestQueue:
         self.user_requests_key = "user_requests"
         # HMAC key for signing serialized data (prevent tampering)
         self.hmac_key = app.config.get("SECRET_KEY", "fallback-key").encode("utf-8")
+
+        # NEW: Serialize ALL GPU-heavy operations globally to prevent OOM
+        self._gpu_lock = threading.Lock()
+        self._video_unload_lock = threading.Lock()
+
         self.start_worker()
 
     def _serialize(self, data: dict) -> str:
@@ -82,6 +87,12 @@ class RedisRequestQueue:
         self.app.logger.info("RedisRequestQueue: starting fast and slow workers")
         # Shutdown event for graceful termination
         self._shutdown_event = threading.Event()
+
+        # NEW: Global GPU serialization locks
+        if not hasattr(self, '_gpu_lock'):
+            self._gpu_lock = threading.Lock()
+        if not hasattr(self, '_video_unload_lock'):
+            self._video_unload_lock = threading.Lock()
         # Fast worker — text, audio, RAG, camera
         fast_thread = threading.Thread(target=self._worker_loop_fast, name="fast-worker", daemon=False)
         fast_thread.start()
@@ -512,7 +523,7 @@ class RedisRequestQueue:
         self.app.logger.info("Fast worker stopped gracefully")
 
     def _worker_loop_slow(self):
-        """Worker for slow queue (image generation/editing)."""
+        """Worker for slow queue (image/video generation, editing)."""
         self.app.logger.info("Slow worker started")
         while not self._shutdown_event.is_set():
             try:
@@ -524,7 +535,11 @@ class RedisRequestQueue:
                 if task is None:
                     self.logger.error("Slow worker: failed to deserialize task")
                     continue
-                self._process_single_task(task, self.slow_processing_key)
+
+                # GLOBAL LOCK: Only one GPU task runs at a time to prevent OOM
+                with self._gpu_lock:
+                    self._process_single_task(task, self.slow_processing_key)
+
             except Exception as e:
                 self.logger.error(f"Slow worker error: {e}")
                 time.sleep(1)
@@ -548,9 +563,9 @@ class RedisRequestQueue:
         rag = self.app.modules.get("rag")
         if rag and rag.available:
             if strict:
-                threshold = self.app.config.get("RAG_RELEVANCE_THRESHOLD_REASONING", 0.7)
+                threshold = self.app.config.get("RAG_RELEVANCE_THRESHOLD_REASONING", 0.5)
             else:
-                threshold = self.app.config.get("RAG_RELEVANCE_THRESHOLD_DEFAULT", 0.5)
+                threshold = self.app.config.get("RAG_RELEVANCE_THRESHOLD_DEFAULT", 0.3)
             answer, error, model_name = rag.generate_answer(
                 user_id,
                 query,
@@ -654,31 +669,155 @@ class RedisRequestQueue:
         result["completion_tokens"] = completion_tokens
         return result
 
-    # ── VRAM guard ──────────────────────────────────────────────────
+    # ── VRAM guard & GPU management ──────────────────────────────────────
+
+    def _log_gpu_state_before_op(self, op_name: str, needed_mb: int):
+        """Log current GPU state before an operation for debugging."""
+        from app.resource_manager import get_resource_manager
+
+        rm = get_resource_manager()
+        rm.log_gpu_memory(f"{op_name}-pre")
+
+        try:
+            import requests as req
+            llamacpp_url = self.app.config.get("LLAMACPP_URL", "http://flai-llamaswap:8080")
+            resp = req.get(f"{llamacpp_url}/running", timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                loaded_models = len(data.get("models", []))
+                self.logger.info(
+                    f"[{op_name}] Before: VRAM={rm.hardware.available_vram_mb}MB, "
+                    f"loaded_llama_models={loaded_models}, need={needed_mb}MB"
+                )
+        except Exception as e:
+            self.logger.debug(f"Failed to check llama-swap: {e}")
+
+    def _check_vram_ready(self, needed_mb: int) -> bool:
+        """Verify that sufficient free VRAM is available by polling nvidia-smi again."""
+        try:
+            out = subprocess.run(
+                ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if out.returncode == 0:
+                free = int(out.stdout.strip().split("\n")[0].strip())
+                ready = free >= needed_mb
+                if not ready:
+                    self.logger.warning(
+                        f"VRAM check failed after unload: {free}MB free, need {needed_mb}MB"
+                    )
+                return ready
+        except Exception as e:
+            self.logger.error(f"VRAM verification failed: {e}")
+        return False
+
+    def _wait_for_vram_full(self, timeout: int = 60) -> bool:
+        """Wait until ALL LLM models are unloaded AND sufficient GPU VRAM is free.
+
+        Unlike _wait_for_vram() which only checks a fixed MB threshold,
+        this verifies via llama-swap /running endpoint AND requires
+        enough VRAM for the video pipeline (~8GB) plus a 3GB safety
+        buffer — preventing OOM when video tries to load.
+        """
+        from app.resource_manager import get_resource_manager
+
+        rm = get_resource_manager()
+        llamacpp_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+        video_needed = 8000  # _estimate_video_vram_mb()
+        buffer_mb = 3000  # safety margin for CUDA deallocation lag
+        min_free = video_needed + buffer_mb
+        deadline = time.time() + timeout
+
+        while time.time() < deadline:
+            rm._poll_vram()
+            free = rm.hardware.available_vram_mb
+
+            # Check llama-swap /running for loaded models
+            loaded_count = -1  # unknown
+            try:
+                import requests as req
+                resp = req.get(f"{llamacpp_url.rstrip('/')}/running", timeout=5)
+                if resp.status_code == 200:
+                    loaded_count = len(resp.json().get("models", []))
+            except Exception:
+                pass
+
+            if loaded_count == 0 and free >= min_free:
+                self.logger.info(
+                    f"VRAM full-ready: {free}MB free, "
+                    f"0 LLM models loaded, need ≥{min_free}MB"
+                )
+                return True
+
+            if loaded_count == 0:
+                self.logger.info(f"VRAM: {free}MB free, need {min_free}MB — waiting for deallocation...")
+            else:
+                self.logger.info(f"VRAM: {free}MB free, {loaded_count} model(s) loaded — waiting for unload...")
+            time.sleep(2)
+
+        self.logger.warning(
+            f"VRAM wait timeout ({timeout}s): {free}MB free, need {min_free}MB, "
+            f"models={loaded_count}"
+        )
+        return False
+
+    def _unload_llamacpp_models(self):
+        """Unload all llama.cpp models via llama-swap proxy.
+
+        Must be called BEFORE any GPU-heavy operation (video, image gen, reasoning)
+        to ensure no LLMs block VRAM availability.
+        """
+        from app.resource_manager import get_resource_manager
+
+        rm = get_resource_manager()
+        llamacpp_url = self.app.config.get("LLAMACPP_URL", "http://flai-llamaswap:8080")
+        success = rm.unload_llamacpp_model(llamacpp_url)
+
+        if not success:
+            self.logger.warning("Failed to unload llama.cpp models, proceeding anyway")
+
+        return success
 
     def _wait_for_vram(self, needed_mb: int = 6000, timeout: int = 60) -> bool:
-        """Block until at least ``needed_mb`` MB of VRAM is free.
+        """Block until at least ``needed_mb`` MB of VRAM is free AND no LLM tasks are running.
 
-        Polls ``nvidia-smi`` every 2 seconds.  Returns ``True`` once
-        enough VRAM is available, ``False`` if the timeout expires.
+        First unloads llama.cpp models, then polls VRAM and llama-swap /running endpoint
+        until sufficient space available AND no LLM processes occupy memory.
+        Returns True on success, False if still insufficient after timeout.
         """
         deadline = time.time() + timeout
+        llamacpp_url = self.app.config.get("LLAMACPP_URL", "http://flai-llamaswap:8080")
+
         while time.time() < deadline:
             try:
-                out = subprocess.run(
-                    ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if out.returncode == 0:
-                    free = int(out.stdout.strip().split("\n")[0].strip())
-                    if free >= needed_mb:
-                        return True
-                self.app.logger.info(f"VRAM: {free} MB free, need {needed_mb} MB — waiting...")
+                # Check llama-swap for running models first
+                import requests as req
+                resp = req.get(f"{llamacpp_url}/running", timeout=5)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if len(data.get("models", [])) == 0:
+                        # No LLM models loaded, safe to check raw VRAM
+                        out = subprocess.run(
+                            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
+                        )
+                        if out.returncode == 0:
+                            free = int(out.stdout.strip().split("\n")[0].strip())
+                            if free >= needed_mb:
+                                self.logger.debug(
+                                    f"VRAM check OK: {free}MB free, {len(data.get('models', []))} LLM models loaded"
+                                )
+                                return True
+
+                self.app.logger.info(f"VRAM: waiting... (needed={needed_mb}MB, llama_models_active)")
             except Exception:
                 pass
             time.sleep(2)
+
         self.app.logger.warning(f"VRAM wait timeout ({timeout}s) — proceeding anyway")
         return False
 
@@ -695,7 +834,21 @@ class RedisRequestQueue:
         response_style: str = "neutral",
     ) -> dict[str, Any]:
         """Handle image editing request (image uploaded + edit comment)."""
-        self._wait_for_vram(6000)
+        # Pre-operation monitoring and VRAM cleanup
+        self._log_gpu_state_before_op("sd-edit", 8000)
+
+        # Unload llama.cpp models BEFORE any GPU operations
+        self._unload_llamacpp_models()
+
+        # Wait for guaranteed free VRAM
+        if not self._wait_for_vram(6000):
+            error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again.", lang=lang)
+            return self._build_error_response(session_id, error_msg, 0, lang)
+
+        if not self._check_vram_ready(6000):
+            error_msg = self.app.modules["base"]._("GPU memory check failed. Please try again.", lang=lang)
+            return self._build_error_response(session_id, error_msg, 0, lang)
+
         mm_start = time.time()
         edit_data, error = self.app.modules["multimodal"].generate_edit_params(message_text, file_data, lang=lang)
         mm_time = round(time.time() - mm_start, 1)
@@ -795,7 +948,21 @@ class RedisRequestQueue:
                 session_id, self.app.modules["base"]._("Image generation module unavailable", lang=lang), 0, lang
             )
 
-        self._wait_for_vram(6000)
+        # Pre-operation monitoring and VRAM cleanup
+        self._log_gpu_state_before_op("sd-gen", 8000)
+
+        # Unload llama.cpp models BEFORE any GPU operations
+        self._unload_llamacpp_models()
+
+        # Wait for guaranteed free VRAM
+        if not self._wait_for_vram(6000):
+            error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again.", lang=lang)
+            return self._build_error_response(session_id, error_msg, 0, lang)
+
+        if not self._check_vram_ready(6000):
+            error_msg = self.app.modules["base"]._("GPU memory check failed. Please try again.", lang=lang)
+            return self._build_error_response(session_id, error_msg, 0, lang)
+
         mm_start = time.time()
         prompt_data, error = self.app.modules["multimodal"].generate_image_params(
             query, lang=lang, response_style=response_style
@@ -965,7 +1132,7 @@ class RedisRequestQueue:
 
         Ensures VRAM is sufficient before loading the reasoning model
         (~10 GiB for gpt-oss-20b). Unloads chat and waits for SD/Video
-        to free VRAM if needed.
+        to free VRAM if needed. Passes RAG context to the reasoning model.
         """
         request_data = task.get("data", {})
         query = request_data.get("text", "")
@@ -974,15 +1141,37 @@ class RedisRequestQueue:
         lang = task.get("lang", "ru")
         response_style = request_data.get("response_style", "neutral")
 
-        # Ensure VRAM before loading reasoning model
+        # Pre-operation monitoring
+        self._log_gpu_state_before_op("reasoning", 12000)
+
+        # Try RAG first — if relevant documents found, answer directly without reasoning model
+        rag_answer, rag_model = self._try_rag_answer(
+            query, session_id, user_id, lang, strict=True, response_style=response_style
+        )
+        if rag_answer is not None:
+            model_used = rag_model + " (RAG)" if rag_model else "unknown (RAG)"
+            self.app.logger.info(f"RAG answered in reasoning request: {query[:50]}...")
+            return self._save_and_respond(
+                session_id, rag_answer, model_used, 0, response_style=response_style, user_id=user_id
+            )
+
+        # RAG didn't answer — reasoning model with empty RAG context
+        rag_context = ""
+
+        # Ensure VRAM before loading reasoning model (with improved checks)
+        vram_ok = False
         try:
             from app.resource_manager import get_resource_manager
 
             rm = get_resource_manager()
             if rm:
-                rm.ensure_vram_for_reasoning()
-        except Exception:
-            pass
+                vram_ok = rm.ensure_vram_for_reasoning()
+        except Exception as e:
+            self.logger.error(f"VRAM check for reasoning failed: {e}")
+
+        if not vram_ok:
+            error_msg = self.app.modules["base"]._("Reasoning model unavailable: GPU memory check failed. Try again.", lang=lang)
+            return self._build_error_response(session_id, error_msg, 0, lang)
 
         current_time_str = get_current_time_in_timezone(self.app)
         result = self.app.modules["base"].process_reasoning(
@@ -992,9 +1181,13 @@ class RedisRequestQueue:
             session_id=session_id,
             response_style=response_style,
             user_id=user_id,
+            rag_context=rag_context,
         )
         if isinstance(result, dict) and "error" in result:
-            return self._build_error_response(session_id, result["error"], 0, lang)
+            err = result["error"]
+            if "CUDA out of memory" in str(err):
+                err = self.app.modules["base"]._("Reasoning failed: GPU memory exhausted. Please simplify your request.", lang=lang)
+            return self._build_error_response(session_id, err, 0, lang)
         return self._save_and_respond(
             session_id,
             result,
@@ -1029,7 +1222,22 @@ class RedisRequestQueue:
                 session_id, self.app.modules["base"]._("Video generation module unavailable", lang=lang), 0, lang
             )
 
-        self._wait_for_vram(6000)
+        # Pre-operation monitoring and cleanup
+        self._log_gpu_state_before_op("video-gen", 10000)
+
+        # Unload llama.cpp models BEFORE checking VRAM — critical fix
+        self._unload_llamacpp_models()
+
+        # Wait for guaranteed free VRAM with no LLM processes
+        if not self._wait_for_vram(6000):
+            error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang=lang)
+            return self._build_error_response(session_id, error_msg, 0, lang)
+
+        # Final verification that VRAM is usable
+        if not self._check_vram_ready(6000):
+            error_msg = self.app.modules["base"]._("GPU memory check failed. Please try again.", lang=lang)
+            return self._build_error_response(session_id, error_msg, 0, lang)
+
         mm_start = time.time()
         prompt_data, error = self.app.modules["multimodal"].generate_video_params(
             query, lang=lang, response_style=response_style
@@ -1038,12 +1246,29 @@ class RedisRequestQueue:
         if error:
             return self._build_error_response(session_id, error, mm_time, lang)
 
+        # CRITICAL: Unload multimodal model AFTER params generated but BEFORE video.
+        # generate_video_params() loaded Qwen3VL-8B (~5GB) — must free VRAM
+        # before LTX-Video pipeline (~8GB) loads, or total > GPU capacity → OOM.
+        self._unload_llamacpp_models()
+
+        # Verify VRAM is truly free for video pipeline — must check BOTH:
+        # (a) no LLM models loaded via llama-swap /running
+        # (b) sufficient raw VRAM (≥80% of GPU, not just 10GB threshold)
+        if not self._wait_for_vram_full():
+            error_msg = self.app.modules["base"]._(
+                "GPU memory unavailable after unloading LLM. Try again.", lang=lang
+            )
+            return self._build_error_response(session_id, error_msg, mm_time, lang)
+
         gen_start = time.time()
         video_result = self.app.modules["video"].generate_video(prompt_data, lang=lang)
         gen_time = round(time.time() - gen_start, 1)
 
         if not video_result["success"]:
-            return self._build_error_response(session_id, video_result["error"], mm_time + gen_time, lang)
+            err_msg = video_result.get("error", "")
+            if "CUDA out of memory" in str(err_msg):
+                err_msg = self.app.modules["base"]._("Video generation failed: GPU memory exhausted. Please simplify your request.", lang=lang)
+            return self._build_error_response(session_id, err_msg, mm_time + gen_time, lang)
 
         # Unload video pipeline after generation — frees VRAM for subsequent LLM
         self._unload_video_pipeline()
@@ -1091,14 +1316,26 @@ class RedisRequestQueue:
     def _process_video_gen_task_from_image(
         self, query: str, image_data: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
     ) -> dict[str, Any]:
-        """Handle video generation from image + text ([-VIDEO-] marker route).
-        Uses the query text as the video prompt (already classified by multimodal)
-        with default video parameters — avoids a second multimodal call.
-        """
+        """Handle video generation from image + text ([-VIDEO-] marker route)."""
         if "video" not in self.app.modules:
             return self._build_error_response(
                 session_id, self.app.modules["base"]._("Video generation module unavailable", lang=lang), 0, lang
             )
+
+        # Pre-operation monitoring and VRAM cleanup
+        self._log_gpu_state_before_op("video-gen-from-img", 10000)
+
+        # Unload llama.cpp models BEFORE any GPU operations
+        self._unload_llamacpp_models()
+
+        # Wait for guaranteed free VRAM
+        if not self._wait_for_vram(6000):
+            error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again.", lang=lang)
+            return self._build_error_response(session_id, error_msg, 0, lang)
+
+        if not self._check_vram_ready(6000):
+            error_msg = self.app.modules["base"]._("GPU memory check failed. Please try again.", lang=lang)
+            return self._build_error_response(session_id, error_msg, 0, lang)
 
         mm_start = time.time()
         mm_model = self.app.modules.get("multimodal")
@@ -1111,12 +1348,26 @@ class RedisRequestQueue:
         if error:
             return self._build_error_response(session_id, error, mm_time, lang)
 
+        # CRITICAL: Unload multimodal model AFTER params generated but BEFORE video.
+        # generate_video_params_from_image() loaded Qwen3VL-8B (~5GB) — must free VRAM
+        # before LTX-Video pipeline (~8GB) loads, or total > GPU capacity → OOM.
+        self._unload_llamacpp_models()
+
+        if not self._wait_for_vram_full():
+            error_msg = self.app.modules["base"]._(
+                "GPU memory unavailable after unloading LLM. Try again.", lang=lang
+            )
+            return self._build_error_response(session_id, error_msg, mm_time, lang)
+
         gen_start = time.time()
         video_result = self.app.modules["video"].generate_video(prompt_data, image_data=image_data, lang=lang)
         gen_time = round(time.time() - gen_start, 1)
 
         if not video_result["success"]:
-            return self._build_error_response(session_id, video_result["error"], mm_time + gen_time, lang)
+            err_msg = video_result.get("error", "")
+            if "CUDA out of memory" in str(err_msg):
+                err_msg = self.app.modules["base"]._("Video generation failed: GPU memory exhausted. Please simplify your request.", lang=lang)
+            return self._build_error_response(session_id, err_msg, mm_time + gen_time, lang)
 
         # Show resize notice if source image was downscaled for video
         resize_notice = None
@@ -1529,8 +1780,20 @@ class RedisRequestQueue:
         action_type = router_result["action"]
         query = router_result["query"]
 
-        # Stream reasoning — GPU-heavy, re-queue to slow worker
+        # Stream reasoning — try RAG first, only fall back to reasoning if RAG fails
         if action_type == "reasoning" and router_result.get("needs_reasoning"):
+            rag_start = time.time()
+            rag_answer, rag_model = self._try_rag_answer(
+                query, session_id, user_id, lang, strict=True, response_style=response_style
+            )
+            if rag_answer is not None:
+                model_used = rag_model + " (RAG)" if rag_model else "unknown (RAG)"
+                self.app.logger.info(f"Streaming path: RAG answered for reasoning query: {query[:50]}...")
+                return self._save_and_respond(
+                    session_id, rag_answer, model_used, round(time.time() - rag_start, 1),
+                    response_style=response_style, user_id=user_id
+                )
+            self.app.logger.info(f"Streaming path: RAG returned no answer, falling back to reasoning model: {query[:50]}...")
             return self._requeue_reasoning_task(
                 query, session_id, user_id, lang, response_style, user_class=task.get("user_class", 2)
             )

@@ -73,7 +73,13 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 ### What's New in v8.8
 
-| v8.8 (New) | Notes |
+| v8.8+ (New) | Notes |
+|-------------|-------|
+| 🧠 **RAG fixes: router classification, streaming, context** | Router template now has dedicated category 5 for document/person/age queries → `[-RAG-]`. Streaming path (`_process_text_task_stream`) now calls RAG before requiring to reasoning. Strict threshold lowered 0.7→0.5. Reasoning model now receives document context via `{rag_context}` in templates. RAG retry in `_process_reasoning_request`. |
+| 🎮 **Video VRAM fix: multimodal unload confirmation** | Fixed `_wait_for_vram_full()` — changed from impossible ≥80% threshold to `video_needed + 3GB` buffer. Timeout increased 30→60s. No more "proceeding anyway" into OOM. `_resolve_use_gpu()` buffer +500→+3000. `generate_video()` in video.py now returns error on VRAM timeout instead of proceeding. |
+| 🖼️ **Image display in streamed messages** | `finalizeStreamedMessage` now renders images/videos from `result.file_path` / `result.file_data`. `file_data` added to `get_session_messages` SQL SELECT. `contextlib.suppress` replaced with proper logging in db.py. |
+
+| v8.8 | Notes |
 |------------|-------|
 | 🧠 **SLM daemon mode** | SuperLocalMemory now runs as a proper daemon (`slm serve start`) keeping the embedding model in memory permanently. Replaced the per-request `subprocess --sync` calls. SLM recall latency reduced from ~10s to ~1ms. HTTP proxy (`slm_http.py`) forwards requests to daemon internally. **Per-user isolation:** recall reads directly from the user's private SQLite, not from the daemon's shared database. **Chat model** uses fast SQLite read; **reasoning model** uses full semantic search via subprocess `slm recall` (falls back to direct SQLite if embeddings unavailable). |
 | 🧠 **SLM context for both chat + reasoning** | SLM facts are now injected into prompts for BOTH chat and reasoning models (alongside full conversation history). Previously was reasoning-only with only 2 last messages. Token budget adjusted with `slm_reserve`. Configurable via `SLM_RECALL_LIMIT=5` (default). |

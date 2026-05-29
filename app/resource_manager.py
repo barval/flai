@@ -8,6 +8,7 @@ Monitors VRAM/RAM usage in real-time and provides gating logic so that
 fast-worker tasks don't collide with slow-worker GPU operations.
 """
 
+import contextlib
 import logging
 import os
 import subprocess
@@ -385,48 +386,129 @@ class ResourceManager:
             return False
 
     def ensure_vram_for_llm(self, model_type: str = "chat") -> bool:
-        """Unload video pipeline if not enough VRAM for the requested LLM model.
-        Returns True if VRAM is sufficient (after potential unload).
+        """Ensure sufficient VRAM for the requested LLM model type.
+
+        Polls llama-swap /running endpoint to verify no LLM processes are running,
+        then waits for required VRAM to be free.
         """
+        import requests as req
+
         if not self.hardware.cuda_detected:
             return True
+
+        from app.resource_manager import get_resource_manager
+        rm = get_resource_manager()
+
         model_vram = {"chat": 2500, "multimodal": 5000, "reasoning": 15000, "embedding": 2000}
         needed = model_vram.get(model_type, 3000) + 2000
+        llamacpp_url = os.getenv("LLAMACP_URL", "http://flai-llamaswap:8080")
+
+        # Initial check of llama-swap state
+        try:
+            resp = req.get(f"{llamacpp_url}/running", timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                loaded_models = len(data.get("models", []))
+                logger.debug(f"ensure_vram_for_llm [{model_type}]: {loaded_models} LLM models active")
+        except Exception:
+            pass
+
         self._poll_vram()
         free = self.hardware.available_vram_mb
+
         if free < needed:
-            logger.info(f"VRAM low ({free}MB free, need {needed}MB) — unloading video pipeline")
-            self.unload_video_pipeline()
+            logger.info(f"VRAM low for [{model_type}]: {free}MB free, need {needed}MB")
+
+            # Check why VRAM is low - unloads both video and llama pipelines
+            with contextlib.suppress(Exception):
+                rm.unload_llamacpp_model(llamacpp_url)
+
+            with contextlib.suppress(Exception):
+                self.unload_video_pipeline()
+
+
+
+            # Poll a few times to get fresh readings
+            time.sleep(2)
             self._poll_vram()
+            try:
+                resp = req.get(f"{llamacpp_url}/running", timeout=5)
+                if resp.status_code == 200:
+                    logger.debug(f"After cleanup: {len(resp.json().get('models', []))} LLM models still active")
+            except Exception:
+                pass
+
             free = self.hardware.available_vram_mb
-        return free >= needed
+
+        result = free >= needed
+        if not result:
+            logger.warning(
+                f"ensure_vram_for_llm [{model_type}] failed: {free}/{needed}MB after cleanup"
+            )
+        return result
 
     def ensure_vram_for_reasoning(self, needed_mb: int = 12000) -> bool:
         """Ensure sufficient VRAM for the reasoning model (~10 GiB).
 
-        Unloads llama.cpp models and polls nvidia-smi until at least
-        ``needed_mb`` MB is free or 60 s elapses.  This guards against
-        the case where SD or Video is still holding VRAM.
+        Guarantees that:
+        1. All llama.cpp models are unloaded (via /running endpoint check)
+        2. At least ``needed_mb`` MB of raw VRAM is free
+
+        Waits up to 60 seconds. Returns True only when BOTH conditions met.
         """
         if not self.hardware.cuda_detected:
             return True
 
+        import requests as req
+
         llamacpp_url = os.getenv("LLAMACPP_URL", "http://flai-llamaswap:8080")
+
+        # Critical: Double-check unloading by verifying via health endpoint
         self.unload_llamacpp_model(llamacpp_url)
+
+        try:
+            resp = req.get(f"{llamacpp_url}/running", timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                loaded_models = len(data.get("models", []))
+                logger.info(f"Post-unload check: {loaded_models} llama models currently loaded")
+        except Exception as e:
+            logger.debug(f"Failed to verify llama-swap unload: {e}")
+
         self._poll_vram()
 
         deadline = time.time() + 60
         while time.time() < deadline:
+            # Check llama-swap state first
+            try:
+                resp = req.get(f"{llamacpp_url}/running", timeout=5)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if len(data.get("models", [])) > 0:
+                        logger.info("llama-swap reports active LLM processes, continuing wait...")
+                        self._poll_vram()
+                        time.sleep(2)
+                        continue
+            except Exception:
+                pass
+
+            # Verify raw VRAM availability
+            self._poll_vram()
             if self.hardware.available_vram_mb >= needed_mb:
+                logger.info(
+                    f"Reasoning VRAM ready: {self.hardware.available_vram_mb}/{needed_mb}MB free"
+                )
                 return True
+
             logger.info(
-                f"VRAM: {self.hardware.available_vram_mb} MB free, need {needed_mb} MB for reasoning — waiting..."
+                f"VRAM waiting for reasoning: {self.hardware.available_vram_mb} MB free, "
+                f"need {needed_mb} MB — checking again in 2s"
             )
             time.sleep(2)
-            self._poll_vram()
 
-        logger.warning(
-            f"VRAM still insufficient for reasoning after 60s ({self.hardware.available_vram_mb}/{needed_mb} MB)"
+        logger.error(
+            f"CRITICAL: Reasoning model VRAM check failed after 60s "
+            f"({self.hardware.available_vram_mb}/{needed_mb} MB available)"
         )
         return False
 

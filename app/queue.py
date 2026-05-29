@@ -1155,8 +1155,31 @@ class RedisRequestQueue:
                 session_id, rag_answer, model_used, 0, response_style=response_style, user_id=user_id
             )
 
-        # RAG didn't answer — reasoning model with empty RAG context
+        # RAG didn't answer — get raw chunks from Qdrant for reasoning model context
         rag_context = ""
+        rag = self.app.modules.get("rag")
+        if rag and rag.available:
+            try:
+                chunks, scores = rag.search(user_id, query, top_k=20)
+                if chunks:
+                    from flask_babel import gettext as _
+                    with force_locale(lang):
+                        source_label = _("Source")
+                    context_parts = []
+                    for i, chunk in enumerate(chunks[:15]):  # top 15 chunks
+                        filename = chunk.get("filename", "?")
+                        text = chunk.get("text", str(chunk))
+                        score = scores[i] if i < len(scores) else 0.0
+                        context_parts.append(
+                            f"[{source_label}: {filename} (score: {score:.2f})]\n{text}"
+                        )
+                    rag_context = "\n\n".join(context_parts)
+                    self.app.logger.info(
+                        f"RAG raw context: {len(chunks)} chunks, {len(rag_context)} chars "
+                        f"passed to reasoning model"
+                    )
+            except Exception as e:
+                self.app.logger.debug(f"RAG raw context collection failed: {e}")
 
         # Ensure VRAM before loading reasoning model (with improved checks)
         vram_ok = False

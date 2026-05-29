@@ -529,6 +529,9 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
         var contentDiv = streamMsg.querySelector('.message-content');
         if (contentDiv && result && result.response) {
             contentDiv.innerHTML = marked.parse(result.response);
+        } else if (contentDiv && result && result.error) {
+            // Show error in streaming message if no response text
+            contentDiv.innerHTML = '⚠️ ' + t('error') + ': ' + result.error;
         }
 
         // Display file attachments (image, video) from result if present

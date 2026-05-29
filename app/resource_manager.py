@@ -396,9 +396,6 @@ class ResourceManager:
         if not self.hardware.cuda_detected:
             return True
 
-        from app.resource_manager import get_resource_manager
-        rm = get_resource_manager()
-
         model_vram = {"chat": 2500, "multimodal": 5000, "reasoning": 15000, "embedding": 2000}
         needed = model_vram.get(model_type, 3000) + 2000
         llamacpp_url = os.getenv("LLAMACP_URL", "http://flai-llamaswap:8080")
@@ -421,7 +418,7 @@ class ResourceManager:
 
             # Check why VRAM is low - unloads both video and llama pipelines
             with contextlib.suppress(Exception):
-                rm.unload_llamacpp_model(llamacpp_url)
+                self.unload_llamacpp_model(llamacpp_url)
 
             with contextlib.suppress(Exception):
                 self.unload_video_pipeline()

@@ -242,8 +242,18 @@ class LlamaSwapBackend(AbstractLlamaBackend):
 
     def __init__(self, app=None):
         super().__init__(app)
-        self.circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
+        # Separate circuit breakers per model type — prevents one model's failures
+        # (e.g., reasoning OOM) from blocking another model (e.g., chat).
+        self._circuit_breakers: dict[str, CircuitBreaker] = {}
         self._degraded_models: set[str] = set()
+
+    def _get_circuit_breaker(self, model_type: str) -> CircuitBreaker:
+        """Get or create a circuit breaker for the given model type."""
+        if model_type not in self._circuit_breakers:
+            self._circuit_breakers[model_type] = CircuitBreaker(
+                failure_threshold=3, recovery_timeout=60
+            )
+        return self._circuit_breakers[model_type]
 
     def _degrade_model_if_needed(self, model_type: str):
         """Degrade model GPU config if circuit breaker opened due to OOM-like errors."""
@@ -262,7 +272,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
 
     def _record_llama_failure(self, model_type: str):
         """Record circuit breaker failure and degrade on circuit open."""
-        just_opened = self.circuit_breaker.record_failure()
+        cb = self._get_circuit_breaker(model_type)
+        just_opened = cb.record_failure()
         if just_opened:
             self._degrade_model_if_needed(model_type)
 
@@ -304,7 +315,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         max_retries = 1 if model_type == "multimodal" else 0
 
         for attempt in range(max_retries + 1):
-            if not self.circuit_breaker.can_execute():
+            cb = self._get_circuit_breaker(model_type)
+            if not cb.can_execute():
                 self._degrade_model_if_needed(model_type)
                 return _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
 
@@ -325,7 +337,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                         if stop_token in content:
                             content = content[: content.index(stop_token)]
 
-                    self.circuit_breaker.record_success()
+                    cb.record_success()
                     return content.strip()  # type: ignore[no-any-return]
                 else:
                     if attempt < max_retries and response.status_code == 502:
@@ -386,7 +398,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
 
         try:
             for attempt in range(max_retries + 1):
-                if not self.circuit_breaker.can_execute():
+                cb = self._get_circuit_breaker(model_type)
+                if not cb.can_execute():
                     self._degrade_model_if_needed(model_type)
                     yield _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
                     return
@@ -406,7 +419,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                         yield _tr("HTTP error {status}", lang, status=response.status_code)
                         return
 
-                    self.circuit_breaker.record_success()
+                    cb.record_success()
                     for line in response.iter_lines():
                         if not line:
                             continue
@@ -570,8 +583,8 @@ class LlamaCppClient:
                 llamacpp_url = self.app.config.get("LLAMACPP_URL", "http://flai-llamaswap:8080")
                 rm.unload_llamacpp_model(llamacpp_url)
             rm.ensure_vram_for_llm(model_type)
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.warning(f"VRAM check failed for {model_type}: {e}. Proceeding without VRAM guarantee.")
 
     def chat(self, messages: list[dict], model_type: str = "chat", lang: str = "ru", validate: bool = True) -> str:
         if validate:

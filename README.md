@@ -75,7 +75,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 | v8.8+ (New) | Notes |
 |-------------|-------|
-| 🧠 **RAG fixes: router classification, streaming, context** | Router template now has dedicated category 5 for document/person/age queries → `[-RAG-]`. Streaming path (`_process_text_task_stream`) now calls RAG before requiring to reasoning. Strict threshold lowered 0.7→0.5. Reasoning model now receives document context via `{rag_context}` in templates. RAG retry in `_process_reasoning_request`. |
+| 🧠 **RAG fixes: router classification, streaming, context** | Router template now has dedicated category 5 for document/person/age queries → `[-RAG-]`. Streaming path (`_process_text_task_stream`) now calls RAG before requiring to reasoning. Strict threshold lowered 0.7→0.5. Reasoning model now receives document context via `{rag_context}` in templates. RAG retry in `_process_reasoning_request`. **RAG prompt fixed**: removed "answer on your own" — now strictly uses ONLY provided context. **Raw chunks from Qdrant** passed to reasoning model even when RAG LLM fails. |
 | 🎮 **Video VRAM fix: multimodal unload confirmation** | Fixed `_wait_for_vram_full()` — changed from impossible ≥80% threshold to `video_needed + 3GB` buffer. Timeout increased 30→60s. No more "proceeding anyway" into OOM. `_resolve_use_gpu()` buffer +500→+3000. `generate_video()` in video.py now returns error on VRAM timeout instead of proceeding. |
 | 🖼️ **Image display in streamed messages** | `finalizeStreamedMessage` now renders images/videos from `result.file_path` / `result.file_data`. `file_data` added to `get_session_messages` SQL SELECT. `contextlib.suppress` replaced with proper logging in db.py. |
 

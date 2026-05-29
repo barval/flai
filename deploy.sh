@@ -373,6 +373,37 @@ download_tts_models() {
     fi
 }
 
+# ── Whisper ASR Models ──
+download_whisper_models() {
+    info "Downloading Whisper ASR model (Systran/faster-whisper-medium)..."
+    local CACHE_DIR="data/hf-cache"
+    mkdir -p "$CACHE_DIR/hub"
+
+    local MODEL_DIR="$CACHE_DIR/hub/models--Systran--faster-whisper-medium"
+    if [[ -d "$MODEL_DIR" && -f "$MODEL_DIR/snapshots/"*"/model.bin" ]]; then
+        info "Whisper model already downloaded."
+        return 0
+    fi
+
+    info "Downloading ~1.5 GB — this may take several minutes..."
+    python3 -c "
+from huggingface_hub import snapshot_download
+import os, sys
+
+os.environ['HF_HUB_DOWNLOAD_TIMEOUT'] = '600'
+try:
+    path = snapshot_download(
+        'Systran/faster-whisper-medium',
+        cache_dir='$CACHE_DIR',
+        ignore_patterns=['*.h5', '*.ot', '*.msgpack']
+    )
+    print(f'OK: model downloaded to {path}')
+except Exception as e:
+    print(f'ERROR: {e}')
+    sys.exit(1)
+" && info "Whisper model downloaded successfully." || warn "Failed to download Whisper model. ASR will be unavailable."
+}
+
 # ── Build & Launch ──
 build_and_launch() {
     local PROFILE=""
@@ -513,6 +544,7 @@ main() {
         download_sd_cpp_models
         download_tts_models
         [[ "$WITH_VIDEO" == "true" ]] && download_ltx_video_models
+        [[ "$WITH_VOICE" == "true" ]] && download_whisper_models
     fi
 
     build_and_launch

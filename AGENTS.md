@@ -33,6 +33,10 @@ docker exec flai-web flask migrate-messages-format  # convert old plain-text ser
 docker exec flai-web flask migrate-messages-format --dry-run  # preview without writing
 docker exec flai-web flask import-history-to-slm [--force] [user_id]  # import messages to SLM
 
+# Whisper model cache
+data/hf-cache/                           # HF Hub cache for whisper ASR model
+ls data/hf-cache/hub/models--Systran--faster-whisper-medium/  # Systran/faster-whisper-medium model
+
 # Dev server (0.0.0.0:5000, debug=True)
 python wsgi.py
 
@@ -150,6 +154,8 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - **Streaming path skips RAG entirely**: `_process_text_task_stream` goes directly to `_requeue_reasoning_task()` without calling `_try_rag_answer()`
 - **Strict threshold too high**: 0.7 falls back for unconfigured environments, filtering out relevant chunks
 - **Reasoning model blind**: No document context passed to gpt-oss-20b prompt
+- **RAG prompt encourages hallucination**: rag.template said "answer on your own if context is empty" + "don't write 'no info'", causing the model to fabricate answers or respond "no available information" instead of reading provided context
+- **RAG context lost on failure**: When `generate_answer()` returned None, raw document chunks were discarded; reasoning model got empty context even if Qdrant found relevant chunks
 
 ### RAG Implemented solutions
 1. **Router template updated**: Added category 5 with explicit examples for document/person/age/biography queries → `[-RAG-]`
@@ -157,12 +163,18 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 3. **Strict threshold lowered 0.7→0.5**: Higher recall for semantic search
 4. **RAG context in reasoning prompt**: `process_reasoning()` now accepts `rag_context` parameter; appended to prompt templates
 5. **RAG retry in `_process_reasoning_request`**: Before loading reasoning model, tries RAG once more with `strict=True`
+6. **RAG prompt fixed**: Changed from "answer on your own" to "use ONLY the provided context. If context doesn't contain the answer — honestly say you cannot find it." Prevents hallucination.
+7. **Raw chunks passed to reasoning model**: On RAG failure, `_process_reasoning_request` calls `rag.search()` directly to retrieve raw chunks (no LLM filtering) and passes them as `rag_context` to the reasoning model. Guarantees the reasoning model always sees document content.
 
 ### Files modified
-- `app/queue.py`: Added `_gpu_lock`, `_log_gpu_state_before_op()`, `_check_vram_ready()`, `_unload_llamacpp_models()`, RAG in streaming path, RAG retry in reasoning task
-- `app/resource_manager.py`: Enhanced `ensure_vram_for_llm()` and `ensure_vram_for_reasoning()` with dual verification
+- `app/llamacpp_client.py`: Per-model-type circuit breakers (separate CB for chat, reasoning, multimodal). Fixed `_ensure_vram` — replaced `except Exception: pass` with proper logging.
+- `app/resource_manager.py`: Fixed circular import in `ensure_vram_for_llm()` — removed redundant `from app.resource_manager import get_resource_manager`.
+- `app/queue.py`: Added `_gpu_lock`, `_log_gpu_state_before_op()`, `_check_vram_ready()`, `_unload_llamacpp_models()`, RAG in streaming path, RAG retry in reasoning task, raw chunk context from Qdrant on RAG failure
+- `app/static/js/events.js`: `finalizeStreamedMessage` renders file attachments AND error messages
 - `modules/video.py`: Buffer +500→+3000, timeout 30→60s, no "proceeding anyway"
 - `modules/base.py`: `process_reasoning()` accepts `rag_context` parameter
+- `prompts/ru/rag.template`: Fixed — removed "answer on your own" instruction, added strict "use ONLY context" directive
+- `prompts/en/rag.template`: Same fix
 - `prompts/ru/base_text.template`: Added RAG category for person/document queries
 - `prompts/en/base_text.template`: Same RAG category
 - `prompts/ru/reasoning.template`: Added `{rag_context}` placeholder

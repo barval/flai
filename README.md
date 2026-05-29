@@ -86,6 +86,11 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | 🐛 **Router retry on JSON error** | `process_message()` retries once if router returns `{"error": ...}` — rare model inference glitch. |
 | 📊 **Queue counter fix** | `get_user_queue_counts()` caps `user_count <= total` — prevents impossible displays like «2/1». Tooltip updated to «Your requests / Total requests». |
 | 🔐 **Session timeout fixed** | `session.permanent = True` at login (was missing — session lived until browser close). `WTF_CSRF_TIME_LIMIT` increased from 1h to 8h (synced with session). Prevents unexpected logouts during active use. |
+| 🧠 **SLM lazy availability fix** | `_get_context_for_model()` no longer checks `slm.available` — always calls `slm.get_context()` which has its own lazy re-check. |
+| 🧠 **SLM dedup** | `_recall_from_user_db()` fetches `limit × 3` rows and deduplicates by content. `SLM_RECALL_LIMIT` increased from 5 to 7 for more diverse facts. |
+| 🖥️ **Reasoning via slow queue** | Reasoning tasks now go through the slow queue (like SD/Video). Prevents GPU contention with parallel generation. `ensure_vram_for_reasoning()` waits for SD/Video to free VRAM before loading gpt-oss-20b. |
+| 📊 **Queue status: all processing tasks shown** | `get_user_requests_status()` now returns ALL processing tasks (from both fast and slow workers). First → ⚡, rest → ⏳. No more invisible active tasks. |
+| 🖥️ **Synchronous VRAM polling fix** | `_resolve_use_gpu()` and `ensure_vram_for_llm()` now call `_poll_vram()` synchronously before reading `available_vram_mb` (was polling every 60s, causing stale data and OOM). After every `unload_llamacpp_model()`, a wait loop (up to 30s) verifies VRAM is actually freed before proceeding. Fixed in `video.py`, `sd_cpp.py`, `resource_manager.py`. |
 | 🖥️ **VRAM cleanup before non-chat models** | `llamacpp_client.py:_ensure_vram()` now calls `unload_llamacpp_model()` for reasoning, multimodal, and embedding models — freeing all LLM VRAM before loading. Chat stays hot (TTL=600). Prevents 502 errors from reasoning model failing to load. |
 | 🐛 **SLM cleanup on session deletion** | `_cleanup_slm_if_empty()` in `app/db.py` now actually implemented. Removes the user's SLM database when the last session is deleted or history is cleared. SLM files now owned by `appuser` (UID 1000) in both containers so `shutil.rmtree` works — `start.sh` runs `chown -R appuser:appuser`. |
 | 🖥️ **TTL-based VRAM optimization** | llama-swap TTLs: chat=600s (always hot), multimodal=0s, reasoning=0s, embedding=0s. Non-chat models unload immediately after response. Before SD/Video, `POST /api/models/unload` frees all VRAM (~3-4 GiB from chat). |
@@ -860,6 +865,11 @@ curl http://localhost:5000/metrics
 - **Router template updated** — image/video sections restored to v8.7 style: explicit keywords, warnings, negative examples.
 - **Router retry on JSON error** — `process_message()` retries once if router returns garbled response.
 - **Session timeout fix** — `session.permanent = True` at login. `WTF_CSRF_TIME_LIMIT` synced to 8h. No more unexpected logouts.
+- **SLM lazy availability fix** — `_get_context_for_model()` no longer checks `slm.available`. SLM works even if container was not ready at web startup.
+- **SLM dedup** — `_recall_from_user_db()` fetches `limit × 3`, deduplicates by content. `SLM_RECALL_LIMIT=7`.
+- **Reasoning via slow queue** — `[-REASONING-]` tasks re-queued to slow worker. Prevents GPU contention with SD/Video.
+- **Queue status fix** — `get_user_requests_status()` returns ALL processing tasks. First → ⚡, rest → ⏳.
+- **Synchronous VRAM polling** — `_resolve_use_gpu()` and `ensure_vram_for_llm()` now poll VRAM synchronously. Post-unload wait loop (30s) verifies VRAM is freed before proceeding. Prevents OOM from stale `available_vram_mb`.
 - **SLM cleanup on session deletion** — `_cleanup_slm_if_empty()` in `app/db.py` implemented. Removes SLM database when last session is deleted.
 - **SLM file ownership fix** — both containers use `appuser` (UID 1000). `start.sh` runs `chown -R appuser:appuser` on the shared volume. Fixes `shutil.rmtree` permission denied. |
 - **Multiple ⚡ race guard** — `chat-queue.js`: race condition guard prevents ⚡ on multiple sessions simultaneously. Only one ⚡ at a time, others show ⏳.

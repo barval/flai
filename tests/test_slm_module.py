@@ -14,7 +14,7 @@ class TestSlmModuleInit:
         app = MagicMock()
         app.config = {
             "SLM_URL": "http://flai-slm:8766",
-            "SLM_RECALL_LIMIT": 5,
+            "SLM_RECALL_LIMIT": 7,
         }
         app.logger = MagicMock()
         return app
@@ -58,7 +58,7 @@ class TestSlmModuleOperations:
             from modules.slm import SlmModule
 
             app = MagicMock()
-            app.config = {"SLM_URL": "http://flai-slm:8766", "SLM_RECALL_LIMIT": 5}
+            app.config = {"SLM_URL": "http://flai-slm:8766", "SLM_RECALL_LIMIT": 7}
             app.logger = MagicMock()
             mod = SlmModule(app)
             return mod

@@ -148,7 +148,7 @@ class BaseModule(TranslationMixin):
         # SLM: load long-term memory facts (for both chat and reasoning models)
         slm_facts_str = ""
         slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
-        if slm and slm.available:
+        if slm:
             slm_raw = slm.get_context(
                 current_query, lang, limit=slm_recall_limit, profile=user_id,
                 semantic=(model_type == "reasoning"),

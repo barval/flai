@@ -68,6 +68,10 @@ def _user_db_path(profile: str) -> str | None:
 def _recall_from_user_db(profile: str, limit: int = 5) -> list[dict] | None:
     """Read latest active facts from the user's private SLM database.
 
+    Deduplicates by content — if the same text appears multiple times
+    (common from SLM import), only the most recent copy is kept.
+    Fetches ``limit × 3`` rows internally to collect enough unique facts.
+
     Returns a list of dicts with keys ``content``, ``score``, ``fact_id``,
     ``created_at``, or ``None`` if the database is missing.
     """
@@ -81,18 +85,26 @@ def _recall_from_user_db(profile: str, limit: int = 5) -> list[dict] | None:
             "FROM atomic_facts "
             "WHERE lifecycle = 'active' "
             "ORDER BY created_at DESC LIMIT ?",
-            (limit,),
+            (limit * 3,),
         ).fetchall()
         conn.close()
-        return [
-            {
+
+        seen: set[str] = set()
+        unique: list[dict] = []
+        for r in rows:
+            norm = r[0].strip() if r[0] else ""
+            if norm in seen:
+                continue
+            seen.add(norm)
+            unique.append({
                 "content": r[0],
                 "score": r[1] if r[1] is not None else 0.5,
                 "fact_id": r[2],
                 "created_at": r[3],
-            }
-            for r in rows
-        ]
+            })
+            if len(unique) >= limit:
+                break
+        return unique
     except Exception as e:
         app.logger.warning(f"SLM recall from user DB failed for {profile}: {e}")
         return None
@@ -118,15 +130,22 @@ def _semantic_recall_from_user_db(query: str, limit: int, profile: str) -> list[
             return None
         data = json.loads(result.stdout)
         raw_results = data.get("data", {}).get("results", [])
-        return [
-            {
+        seen: set[str] = set()
+        unique: list[dict] = []
+        for r in raw_results:
+            norm = (r.get("content") or "").strip()
+            if norm in seen:
+                continue
+            seen.add(norm)
+            unique.append({
                 "content": r.get("content", ""),
                 "score": r.get("score", 0),
                 "fact_id": r.get("fact_id", ""),
                 "created_at": r.get("created_at", ""),
-            }
-            for r in raw_results
-        ]
+            })
+            if len(unique) >= limit:
+                break
+        return unique
     except Exception as e:
         app.logger.warning(f"SLM semantic recall exception: {e}")
         return None

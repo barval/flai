@@ -70,7 +70,7 @@ def load_config(app):
 
     # SuperLocalMemory (long-term memory) settings
     app.config["SLM_URL"] = os.getenv("SLM_URL")
-    app.config["SLM_RECALL_LIMIT"] = int(os.getenv("SLM_RECALL_LIMIT", 5))
+    app.config["SLM_RECALL_LIMIT"] = int(os.getenv("SLM_RECALL_LIMIT", 7))
     app.config["SLM_DATA_DIR"] = "/app/data/slm"
 
     # Piper TTS settings

@@ -102,6 +102,7 @@ class VideoModule(TranslationMixin):
         """Determine if GPU can be used. Falls back to CPU if VRAM insufficient."""
         if not rm.hardware.cuda_detected:
             return False
+        rm._poll_vram()
         available = rm.hardware.available_vram_mb
         needed = self._estimate_video_vram_mb() + 500
         if available > 0 and available < needed:
@@ -123,9 +124,19 @@ class VideoModule(TranslationMixin):
         rm = get_resource_manager()
 
         llamacpp_url = self.app.config.get("LLAMACPP_URL", "http://flai-llamacpp:8033")
-        unload_success = rm.unload_llamacpp_model(llamacpp_url)
-        if not unload_success:
-            self.logger.warning("Failed to unload llama.cpp model before video generation — OOM risk")
+        rm.unload_llamacpp_model(llamacpp_url)
+        rm._poll_vram()
+        # Verify VRAM is actually free after unload; wait if SD/Video still holds it
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            if rm.hardware.available_vram_mb >= self._estimate_video_vram_mb() + 2000:
+                break
+            self.logger.info(
+                f"VRAM: {rm.hardware.available_vram_mb} MB free, "
+                f"need {self._estimate_video_vram_mb() + 2000} MB — waiting for unload..."
+            )
+            time.sleep(1)
+            rm._poll_vram()
 
         use_gpu = self._resolve_use_gpu(rm)
         if use_gpu:

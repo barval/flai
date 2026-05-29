@@ -9,6 +9,7 @@ doesn't properly use loaded models.
 
 import base64
 import logging
+import time
 from datetime import datetime
 from typing import Any
 
@@ -130,6 +131,7 @@ class SdCppModule(TranslationMixin):
         """Determine use_gpu flag with VRAM check. Falls back to CPU if VRAM insufficient."""
         if not rm.hardware.cuda_detected:
             return False
+        rm._poll_vram()
         available = rm.hardware.available_vram_mb
         needed = self._estimate_sd_vram_mb(self.model_type) + 500  # 500MB margin
         if available > 0 and available < needed:
@@ -148,9 +150,7 @@ class SdCppModule(TranslationMixin):
 
         # Unload llama.cpp model to free ALL VRAM for sd-cli
         llamacpp_url = self.app.config.get("LLAMACPP_URL", "http://flai-llamacpp:8033")
-        unload_success = rm.unload_llamacpp_model(llamacpp_url)
-        if not unload_success:
-            self.logger.warning("Failed to unload llama.cpp model before generation — OOM risk")
+        rm.unload_llamacpp_model(llamacpp_url)
 
         # Unload ltxvideo pipeline to free its ~6.5 GB VRAM
         try:
@@ -163,6 +163,19 @@ class SdCppModule(TranslationMixin):
                 self.logger.warning(f"ltxvideo unload returned {resp.status_code}")
         except Exception as e:
             self.logger.warning(f"Failed to unload ltxvideo pipeline: {e}")
+
+        # Verify VRAM is actually free after unloads; wait if needed
+        needed = self._estimate_sd_vram_mb(self.model_type) + 2000
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            rm._poll_vram()
+            if rm.hardware.available_vram_mb >= needed:
+                break
+            self.logger.info(
+                f"VRAM: {rm.hardware.available_vram_mb} MB free, "
+                f"need {needed} MB — waiting for unload..."
+            )
+            time.sleep(1)
 
         # Check VRAM availability after LLM unload
         use_gpu = self._resolve_use_gpu(rm)
@@ -279,9 +292,7 @@ class SdCppModule(TranslationMixin):
 
         # Unload llama.cpp model to free ALL VRAM for sd-cli
         llamacpp_url = self.app.config.get("LLAMACPP_URL", "http://flai-llamacpp:8033")
-        unload_success = rm.unload_llamacpp_model(llamacpp_url)
-        if not unload_success:
-            self.logger.warning("Failed to unload llama.cpp model before editing — OOM risk")
+        rm.unload_llamacpp_model(llamacpp_url)
 
         # Unload ltxvideo pipeline to free its ~6.5 GB VRAM
         try:

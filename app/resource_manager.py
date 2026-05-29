@@ -392,6 +392,7 @@ class ResourceManager:
             return True
         model_vram = {"chat": 2500, "multimodal": 5000, "reasoning": 15000, "embedding": 2000}
         needed = model_vram.get(model_type, 3000) + 2000
+        self._poll_vram()
         free = self.hardware.available_vram_mb
         if free < needed:
             logger.info(f"VRAM low ({free}MB free, need {needed}MB) — unloading video pipeline")
@@ -399,6 +400,37 @@ class ResourceManager:
             self._poll_vram()
             free = self.hardware.available_vram_mb
         return free >= needed
+
+    def ensure_vram_for_reasoning(self, needed_mb: int = 12000) -> bool:
+        """Ensure sufficient VRAM for the reasoning model (~10 GiB).
+
+        Unloads llama.cpp models and polls nvidia-smi until at least
+        ``needed_mb`` MB is free or 60 s elapses.  This guards against
+        the case where SD or Video is still holding VRAM.
+        """
+        if not self.hardware.cuda_detected:
+            return True
+
+        llamacpp_url = os.getenv("LLAMACPP_URL", "http://flai-llamaswap:8080")
+        self.unload_llamacpp_model(llamacpp_url)
+        self._poll_vram()
+
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            if self.hardware.available_vram_mb >= needed_mb:
+                return True
+            logger.info(
+                f"VRAM: {self.hardware.available_vram_mb} MB free, "
+                f"need {needed_mb} MB for reasoning — waiting..."
+            )
+            time.sleep(2)
+            self._poll_vram()
+
+        logger.warning(
+            f"VRAM still insufficient for reasoning after 60s "
+            f"({self.hardware.available_vram_mb}/{needed_mb} MB)"
+        )
+        return False
 
     def unload_llamacpp_model(self, llamacpp_url: str | None = None) -> bool:
         """Force LLM backend to unload its current model from VRAM.

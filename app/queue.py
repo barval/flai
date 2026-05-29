@@ -130,6 +130,8 @@ class RedisRequestQueue:
         # Image generation (re-queued from router) is slow
         if req_type == "image_gen":
             return "slow"
+        if req_type == "reasoning_task":
+            return "slow"
         # Text tasks are fast
         if req_type == "text":
             return "fast"
@@ -305,6 +307,8 @@ class RedisRequestQueue:
             return "multimodal"
         if req_type == "image_gen":
             return "multimodal"
+        if req_type == "reasoning_task":
+            return "reasoning"
 
         if req_type == "text":
             return "chat"
@@ -913,6 +917,36 @@ class RedisRequestQueue:
             "estimated_wait": position_info["estimated_seconds"],
         }
 
+    def _requeue_reasoning_task(
+        self,
+        query: str,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        response_style: str = "neutral",
+        user_class: int = 2,
+    ) -> dict[str, Any]:
+        """Re-queue a reasoning task to the slow queue.
+        Prevents GPU contention with SD/Video (all GPU ops are serialised
+        through the slow worker).
+        """
+        request_data = {
+            "type": "reasoning_task",
+            "text": query,
+            "preview": (query[:50] + "...") if query else self.app.modules["base"]._("Reasoning request", lang=lang),
+            "response_style": response_style,
+        }
+        new_request_id, position_info = self.add_request(user_id, session_id, request_data, user_class, lang=lang)
+        self.app.logger.info(
+            f"Re-queued reasoning task {new_request_id} for session {session_id} (position {position_info['position']})"
+        )
+        return {
+            "status": "queued",
+            "request_id": new_request_id,
+            "position": position_info["position"],
+            "estimated_wait": position_info["estimated_seconds"],
+        }
+
     def _process_image_gen_request(self, task: dict[str, Any]) -> dict[str, Any]:
         """Handle an image generation task from the slow queue."""
         request_data = task.get("data", {})
@@ -922,6 +956,40 @@ class RedisRequestQueue:
         lang = task.get("lang", "ru")
         response_style = request_data.get("response_style", "neutral")
         return self._process_image_gen_task(query, session_id, user_id, lang, response_style)
+
+    def _process_reasoning_request(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Handle a reasoning task from the slow queue.
+
+        Ensures VRAM is sufficient before loading the reasoning model
+        (~10 GiB for gpt-oss-20b). Unloads chat and waits for SD/Video
+        to free VRAM if needed.
+        """
+        request_data = task.get("data", {})
+        query = request_data.get("text", "")
+        session_id = task["session_id"]
+        user_id = task["user_id"]
+        lang = task.get("lang", "ru")
+        response_style = request_data.get("response_style", "neutral")
+
+        # Ensure VRAM before loading reasoning model
+        try:
+            from app.resource_manager import get_resource_manager
+            rm = get_resource_manager()
+            if rm:
+                rm.ensure_vram_for_reasoning()
+        except Exception:
+            pass
+
+        current_time_str = get_current_time_in_timezone(self.app)
+        result = self.app.modules["base"].process_reasoning(
+            query, current_time_str, lang=lang, session_id=session_id,
+            response_style=response_style, user_id=user_id,
+        )
+        if isinstance(result, dict) and "error" in result:
+            return self._build_error_response(session_id, result["error"], 0, lang)
+        return self._save_and_respond(
+            session_id, result, "reasoning", 0, response_style=response_style, user_id=user_id,
+        )
 
     def _process_video_request(self, task: dict[str, Any]) -> dict[str, Any]:
         """Handle a video task from the slow queue.
@@ -1387,7 +1455,6 @@ class RedisRequestQueue:
                 )
             self.app.logger.info(f"RAG returned no answer, falling back to reasoning model for query: {query[:50]}...")
             action_type = "reasoning"
-            process_time = router_time
 
         if action_type == "image":
             return self._requeue_image_task(query, session_id, user_id, lang, response_style, user_class=user_class)
@@ -1400,24 +1467,8 @@ class RedisRequestQueue:
         elif action_type == "rag":
             return self._process_rag_task(query, session_id, user_id, lang, response_style)
         elif action_type == "reasoning":
-            if router_result.get("needs_reasoning"):
-                reasoning_start = time.time()
-                final_response = self.app.modules["base"].process_reasoning(
-                    query,
-                    current_time_str,
-                    lang=lang,
-                    session_id=session_id,
-                    response_style=response_style,
-                    user_id=user_id,
-                )
-                process_time = round(time.time() - reasoning_start, 1)
-            else:
-                process_time = 0
-                final_response = query
-            model_used = self._get_model_name("reasoning") or "unknown"
-            return self._save_and_respond(
-                session_id, final_response, model_used, process_time, response_style=response_style, user_id=user_id
-            )
+            # GPU-heavy operation — re-queue to slow worker
+            return self._requeue_reasoning_task(query, session_id, user_id, lang, response_style, user_class=user_class)
         else:
             # Simple query: router classified but did not generate text.
             # Call chat model (already hot in VRAM) to generate the response.
@@ -1465,87 +1516,21 @@ class RedisRequestQueue:
         action_type = router_result["action"]
         query = router_result["query"]
 
-        # Stream reasoning model responses token by token
+        # Stream reasoning — GPU-heavy, re-queue to slow worker
         if action_type == "reasoning" and router_result.get("needs_reasoning"):
-            # Try RAG first (same as non-streaming path)
-            def rag_publish(token: str) -> None:
-                self._publish_stream_token(task, token)
-
-            rag_answer, rag_model = self._try_rag_answer(
-                query,
-                session_id,
-                user_id,
-                lang,
-                strict=True,
-                response_style=response_style,
-                token_callback=rag_publish,
-            )
-            if rag_answer is not None:
-                model_used = rag_model + " (RAG)" if rag_model else "unknown (RAG)"
-                return self._save_and_respond(
-                    session_id,
-                    rag_answer,
-                    model_used,
-                    round(time.time() - router_start, 1),
-                    response_style=response_style,
-                    user_id=user_id,
-                )
-
-            stream_start = time.time()
-            full_response = ""
-            cancelled = False
-            for token in self.app.modules["base"].generate_reasoning_response_stream(
-                query,
-                current_time_str,
-                lang=lang,
-                session_id=session_id,
-                response_style=response_style,
-                user_id=user_id,
-            ):
-                full_response += token
-                self._publish_stream_token(task, token)
-                if self._is_task_cancelled(task["id"]):
-                    cancelled = True
-                    break
-
-            process_time = round(time.time() - stream_start, 1)
-            model_used = self._get_model_name("reasoning") or "unknown"
-
-            # Safety: strip reasoning marker if model leaked it
-            marker = "[-REASONING-]"
-            if marker in full_response:
-                self.app.logger.warning(f"Reasoning model returned marker for task {task['id']}: {full_response[:100]}")
-                full_response = full_response.replace(marker, "").strip()
-
-            # Safety: handle empty response
-            if not full_response.strip():
-                full_response = "⚠️ " + self.app.modules["base"]._("Reasoning model returned empty response", lang)
-
-            if cancelled:
-                self.app.logger.info(f"Task {task['id']} cancelled during reasoning stream")
-                self._publish_stream_event(task, "stream_cancelled")
-            return self._save_and_respond(
-                session_id,
-                full_response,
-                model_used,
-                process_time,
-                response_style=response_style,
-                user_id=user_id,
-            )
+            return self._requeue_reasoning_task(query, session_id, user_id, lang, response_style, user_class=task.get("user_class", 2))
 
         # Simple query: router classified but did not generate text.
         # Stream the response from chat model (already hot in VRAM).
         if action_type == "none" or (action_type == "reasoning" and not router_result.get("needs_reasoning")):
             stream_start = time.time()
             full_response = ""
-            cancelled = False
             for token in self.app.modules["base"].generate_chat_response_stream(
                 query, current_time_str, lang=lang, session_id=session_id, response_style=response_style, user_id=user_id
             ):
                 full_response += token
                 self._publish_stream_token(task, token)
                 if self._is_task_cancelled(task["id"]):
-                    cancelled = True
                     break
             if not full_response.strip():
                 full_response = query
@@ -1604,6 +1589,8 @@ class RedisRequestQueue:
             return self._process_video_request(task)
         if task_type == "image_gen":
             return self._process_image_gen_request(task)
+        if task_type == "reasoning_task":
+            return self._process_reasoning_request(task)
 
         user_id = task["user_id"]
         session_id = task["session_id"]
@@ -2221,11 +2208,17 @@ user_class=user_class,
         return {"success": True, "total": total, "success_count": success_count, "failed_count": fail_count}
 
     def get_user_requests_status(self, user_id: str, lang: str = "ru") -> dict[str, Any]:
-        """Get status of user's requests (processing, queued, completed)."""
+        """Get status of user's requests (processing, queued, completed).
+
+        Collects ALL tasks from both fast and slow processing queues.
+        The first one is returned as ``processing`` (⚡), the rest are
+        added to ``queued`` (⏳) so no active task is invisible.
+        """
         result: dict = {"processing": None, "queued": [], "recent_completed": []}
+        processing_session_ids: set[str] = set()
 
-        processing_session_ids = set()
-
+        # Collect ALL processing tasks from both queues
+        all_processing: list[dict] = []
         for proc_key in [self.processing_key, self.slow_processing_key]:
             processing_tasks = self.redis.hgetall(proc_key)
             for req_id, task_data in processing_tasks.items():
@@ -2234,13 +2227,19 @@ user_class=user_class,
                 if task and task.get("user_id") == user_id:
                     task["status"] = "processing"
                     task["position_info"] = {"position": 1, "estimated_seconds": 0}
-                    result["processing"] = self._format_request_info(task, lang)
+                    all_processing.append(task)
                     if task.get("session_id"):
                         processing_session_ids.add(task.get("session_id"))
-                    break
-            if result["processing"]:
-                break
 
+        # First → ⚡, rest → ⏳ (shown as queued but are actually processing)
+        if all_processing:
+            result["processing"] = self._format_request_info(all_processing[0], lang)
+            for task in all_processing[1:]:
+                task["status"] = "queued"
+                task["position_info"] = {"position": 0, "estimated_seconds": 0}
+                result["queued"].append(self._format_request_info(task, lang))
+
+        # Collect items actually waiting in queues
         position = 1
         for q_key in [self.queue_key, self.slow_queue_key]:
             queue_length = self.redis.llen(q_key)

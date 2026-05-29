@@ -166,8 +166,8 @@ function updateSessionsList(sessions) {
             statusIcons = '<span class="session-status-icon processing blink" title="' + t('processing') + '">⚡</span>';
         } else if (info && info.queued > 0) {
             // In queue - show hourglass with position number
-            const position = info.queue_position || info.queued;
-            statusIcons = '<span class="session-status-icon queued blink" title="' + t('queued') + ' ( #' + position + ')">⏳ ' + position + '</span>';
+            const position = info.queue_position ?? info.queued;
+            statusIcons = '<span class="session-status-icon queued blink" title="' + t('queued') + (position > 0 ? ' ( #' + position + ')' : '') + '">⏳' + (position > 0 ? ' ' + position : '') + '</span>';
         } else {
             // No queue status - show unread indicator if needed (only for non-active sessions)
             // Use s.has_unread from server data OR local newMessageIndicators

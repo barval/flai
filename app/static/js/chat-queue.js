@@ -60,7 +60,7 @@ function fetchQueueStatus() {
                         newInfo[sessionId] = { processing: false, queued: 0, queue_position: 0, has_transcribing: false };
                     }
                     newInfo[sessionId].queued += 1;
-                    newInfo[sessionId].queue_position = item.position_info?.position || 999;
+                    newInfo[sessionId].queue_position = item.position_info?.position ?? 999;
                 });
             }
 

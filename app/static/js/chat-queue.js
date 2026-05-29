@@ -192,7 +192,6 @@ window.updateStatusCounter = function() {
             const counter = document.getElementById('status-counter');
             if (counter) {
                 counter.textContent = '📊 ' + data.user_queued + '/' + data.total_queued;
-                counter.title = t('your_requests');
                 dlog('updateStatusCounter:', data.user_queued + '/' + data.total_queued);
             }
         })

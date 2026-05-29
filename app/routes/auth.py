@@ -49,6 +49,7 @@ def login():
             if user["theme"] != theme:
                 update_user(login_input, theme=theme)
 
+            session.permanent = True
             session["login"] = user["login"]
             session["name"] = user["name"]
             session["service_class"] = user["service_class"]

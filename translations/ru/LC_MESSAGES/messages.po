@@ -1007,8 +1007,8 @@ msgid "Delete session"
 msgstr "Удалить сеанс"
 
 #: app/templates/chat.html:47 app/templates/chat.html:132
-msgid "Your requests in queue / Total in queue"
-msgstr "Ваши запросы в очереди / Всего в очереди"
+msgid "Your requests / Total requests"
+msgstr "Ваши запросы / Всего задач"
 
 #: app/templates/chat.html:47 app/templates/chat.html:189
 msgid "response_style_label"

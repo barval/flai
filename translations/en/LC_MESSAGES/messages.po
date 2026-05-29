@@ -1001,8 +1001,8 @@ msgid "Delete session"
 msgstr "Delete session"
 
 #: app/templates/chat.html:47 app/templates/chat.html:132
-msgid "Your requests in queue / Total in queue"
-msgstr "Your requests in queue / Total in queue"
+msgid "Your requests / Total requests"
+msgstr "Your requests / Total requests"
 
 #: app/templates/chat.html:47 app/templates/chat.html:189
 msgid "response_style_label"

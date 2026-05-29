@@ -222,7 +222,9 @@ class RedisRequestQueue:
             self.redis.delete(user_count_key)
             user_count = 0
 
-        return user_count, total
+        # Cap user_count to total — prevents impossible displays like "2/1"
+        # when the hash counter drifts due to re-queue race conditions.
+        return min(user_count, total), total
 
     def _increment_user_queue_count(self, user_id: str):
         """Increment user's queue count (O(1))."""

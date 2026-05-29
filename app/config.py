@@ -148,7 +148,7 @@ def load_config(app):
     app.config["WTF_CSRF_CHECK_DEFAULT"] = True
     app.config["WTF_CSRF_IGNORE_LOCALHOST"] = False
     # CSRF token lifetime (1 hour)
-    app.config["WTF_CSRF_TIME_LIMIT"] = 3600
+    app.config["WTF_CSRF_TIME_LIMIT"] = 28800
 
     # Service retry settings
     app.config["SERVICE_RETRY_ATTEMPTS"] = int(os.getenv("SERVICE_RETRY_ATTEMPTS", 5))

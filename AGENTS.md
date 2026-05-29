@@ -80,7 +80,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - **UI queue indicators**: `chat-queue.js` — `fetchQueueStatus()` builds `newInfo` from server data, then preserves `processing: true` for recently tracked pending requests (race condition guard, 10s window). **Multiple ⚡ prevention**: the race guard checks if any other session is already `processing` before setting a new one; if so, the session gets `queued += 1` instead. Ensures only one ⚡ across all sessions.
 - **⚡ recovery after task chain**: `events.js` — after every `clearSessionQueue()` call, `setTimeout(fetchQueueStatus, 500)` is scheduled. This polls the server for the next queued task, restoring ⚡ when the next task moves from queue to processing.
 - **Lint config** (pyproject.toml): ruff line-length=120, select E/W/F/I/N/UP/B/SIM, ignore E501/B008/PTH. `__init__.py` per-file-ignore F401. mypy target 3.11, ignore-missing-imports, excludes tests/ and translations/.
-- **Security**: Path traversal checks in `api/files/<path>`. Session ownership validated. CSRF on all forms. Secrets in `.env` only.
+- **Security**: Path traversal checks in `api/files/<path>`. Session ownership validated. CSRF on all forms (`WTF_CSRF_TIME_LIMIT=28800`, synced with session). `session.permanent = True` at login (8h idle timeout). Secrets in `.env` only.
 
 ## Testing
 

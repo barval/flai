@@ -609,6 +609,7 @@ class RedisRequestQueue:
         """Unload LTX-Video pipeline to free VRAM after generation."""
         try:
             from app.resource_manager import get_resource_manager
+
             rm = get_resource_manager()
             rm.unload_video_pipeline()
         except Exception:
@@ -666,7 +667,9 @@ class RedisRequestQueue:
             try:
                 out = subprocess.run(
                     ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-                    capture_output=True, text=True, timeout=5,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 if out.returncode == 0:
                     free = int(out.stdout.strip().split("\n")[0].strip())
@@ -974,6 +977,7 @@ class RedisRequestQueue:
         # Ensure VRAM before loading reasoning model
         try:
             from app.resource_manager import get_resource_manager
+
             rm = get_resource_manager()
             if rm:
                 rm.ensure_vram_for_reasoning()
@@ -982,13 +986,22 @@ class RedisRequestQueue:
 
         current_time_str = get_current_time_in_timezone(self.app)
         result = self.app.modules["base"].process_reasoning(
-            query, current_time_str, lang=lang, session_id=session_id,
-            response_style=response_style, user_id=user_id,
+            query,
+            current_time_str,
+            lang=lang,
+            session_id=session_id,
+            response_style=response_style,
+            user_id=user_id,
         )
         if isinstance(result, dict) and "error" in result:
             return self._build_error_response(session_id, result["error"], 0, lang)
         return self._save_and_respond(
-            session_id, result, "reasoning", 0, response_style=response_style, user_id=user_id,
+            session_id,
+            result,
+            "reasoning",
+            0,
+            response_style=response_style,
+            user_id=user_id,
         )
 
     def _process_video_request(self, task: dict[str, Any]) -> dict[str, Any]:
@@ -1518,7 +1531,9 @@ class RedisRequestQueue:
 
         # Stream reasoning — GPU-heavy, re-queue to slow worker
         if action_type == "reasoning" and router_result.get("needs_reasoning"):
-            return self._requeue_reasoning_task(query, session_id, user_id, lang, response_style, user_class=task.get("user_class", 2))
+            return self._requeue_reasoning_task(
+                query, session_id, user_id, lang, response_style, user_class=task.get("user_class", 2)
+            )
 
         # Simple query: router classified but did not generate text.
         # Stream the response from chat model (already hot in VRAM).
@@ -1526,7 +1541,12 @@ class RedisRequestQueue:
             stream_start = time.time()
             full_response = ""
             for token in self.app.modules["base"].generate_chat_response_stream(
-                query, current_time_str, lang=lang, session_id=session_id, response_style=response_style, user_id=user_id
+                query,
+                current_time_str,
+                lang=lang,
+                session_id=session_id,
+                response_style=response_style,
+                user_id=user_id,
             ):
                 full_response += token
                 self._publish_stream_token(task, token)
@@ -1548,7 +1568,9 @@ class RedisRequestQueue:
             return self._process_rag_task_stream(task, query, session_id, user_id, lang, response_style)
 
         if action_type == "image":
-            return self._requeue_image_task(query, session_id, user_id, lang, response_style, user_class=task.get("user_class", 2))
+            return self._requeue_image_task(
+                query, session_id, user_id, lang, response_style, user_class=task.get("user_class", 2)
+            )
 
         if action_type == "video":
             return self._requeue_video_task(
@@ -1717,7 +1739,7 @@ class RedisRequestQueue:
                                 file_data=file_data,
                                 file_type=file_type,
                                 file_name=file_name,
-user_class=user_class,
+                                user_class=user_class,
                             )
                         else:
                             bot_reply = "⚠️ " + self.app.modules["base"]._("Video request was empty", lang)

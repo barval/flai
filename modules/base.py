@@ -150,7 +150,10 @@ class BaseModule(TranslationMixin):
         slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
         if slm:
             slm_raw = slm.get_context(
-                current_query, lang, limit=slm_recall_limit, profile=user_id,
+                current_query,
+                lang,
+                limit=slm_recall_limit,
+                profile=user_id,
                 semantic=(model_type == "reasoning"),
             )
             if slm_raw:
@@ -199,6 +202,7 @@ class BaseModule(TranslationMixin):
     def _save_to_slm_async(self, text: str, metadata: dict[str, Any] | None = None, user_id: str | None = None) -> None:
         """Save a fact to SLM in a background thread — does not block the response."""
         import threading
+
         t = threading.Thread(
             target=self._save_to_slm,
             args=(text,),
@@ -259,7 +263,7 @@ class BaseModule(TranslationMixin):
         self.logger.info(f"Router response: {router_response}")
 
         # Retry once if router produced a garbled response (rare model inference glitch)
-        if router_response and router_response.strip().startswith("{\"error\""):
+        if router_response and router_response.strip().startswith('{"error"'):
             self.logger.warning(f"Router returned error, retrying once: {router_response[:100]}")
             router_response = self.call_llamacpp(router_messages, model_type="chat", lang=lang)
             self.logger.info(f"Router retry response: {router_response}")
@@ -270,7 +274,9 @@ class BaseModule(TranslationMixin):
 
         result = self._parse_router_response(router_response, message_text, current_time_str, lang)  # type: ignore[arg-type]
         if "error" not in result:
-            self._save_to_slm_async(message_text, metadata={"session_id": session_id, "type": "user_query"}, user_id=user_id)
+            self._save_to_slm_async(
+                message_text, metadata={"session_id": session_id, "type": "user_query"}, user_id=user_id
+            )
         return result
 
     def _parse_router_response(
@@ -360,7 +366,9 @@ class BaseModule(TranslationMixin):
         )
         self.logger.info(f"Reasoning model response: {response[:100]}...")  # type: ignore[index]
         if response:
-            self._save_to_slm_async(response, metadata={"type": "reasoning_response", "query": query[:200]}, user_id=user_id)
+            self._save_to_slm_async(
+                response, metadata={"type": "reasoning_response", "query": query[:200]}, user_id=user_id
+            )
         return response  # type: ignore[return-value]
 
     # ── Streaming methods ──────────────────────────────────────────────

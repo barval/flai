@@ -155,6 +155,7 @@ class SdCppModule(TranslationMixin):
         # Unload ltxvideo pipeline to free its ~6.5 GB VRAM
         try:
             import requests as req
+
             ltx_url = self.app.config.get("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
             resp = req.post(f"{ltx_url.rstrip('/')}/v1/unload", timeout=10)
             if resp.status_code == 200:
@@ -171,10 +172,7 @@ class SdCppModule(TranslationMixin):
             rm._poll_vram()
             if rm.hardware.available_vram_mb >= needed:
                 break
-            self.logger.info(
-                f"VRAM: {rm.hardware.available_vram_mb} MB free, "
-                f"need {needed} MB — waiting for unload..."
-            )
+            self.logger.info(f"VRAM: {rm.hardware.available_vram_mb} MB free, need {needed} MB — waiting for unload...")
             time.sleep(1)
 
         # Check VRAM availability after LLM unload
@@ -297,6 +295,7 @@ class SdCppModule(TranslationMixin):
         # Unload ltxvideo pipeline to free its ~6.5 GB VRAM
         try:
             import requests as req
+
             ltx_url = self.app.config.get("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
             resp = req.post(f"{ltx_url.rstrip('/')}/v1/unload", timeout=10)
             if resp.status_code == 200:

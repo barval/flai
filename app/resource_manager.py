@@ -420,15 +420,13 @@ class ResourceManager:
             if self.hardware.available_vram_mb >= needed_mb:
                 return True
             logger.info(
-                f"VRAM: {self.hardware.available_vram_mb} MB free, "
-                f"need {needed_mb} MB for reasoning — waiting..."
+                f"VRAM: {self.hardware.available_vram_mb} MB free, need {needed_mb} MB for reasoning — waiting..."
             )
             time.sleep(2)
             self._poll_vram()
 
         logger.warning(
-            f"VRAM still insufficient for reasoning after 60s "
-            f"({self.hardware.available_vram_mb}/{needed_mb} MB)"
+            f"VRAM still insufficient for reasoning after 60s ({self.hardware.available_vram_mb}/{needed_mb} MB)"
         )
         return False
 

@@ -30,6 +30,7 @@ app = Flask(__name__)
 
 # ── Daemon helpers (shared DB) ───────────────────────────────────────
 
+
 def _daemon_get(path: str) -> dict:
     try:
         resp = urllib.request.urlopen(f"{DAEMON_URL}{path}", timeout=30)
@@ -58,6 +59,7 @@ def _daemon_post(path: str, body: dict) -> dict:
 
 
 # ── Per-user SQLite helpers ──────────────────────────────────────────
+
 
 def _user_db_path(profile: str) -> str | None:
     """Return path to the user's SLM SQLite database, or None."""
@@ -96,12 +98,14 @@ def _recall_from_user_db(profile: str, limit: int = 5) -> list[dict] | None:
             if norm in seen:
                 continue
             seen.add(norm)
-            unique.append({
-                "content": r[0],
-                "score": r[1] if r[1] is not None else 0.5,
-                "fact_id": r[2],
-                "created_at": r[3],
-            })
+            unique.append(
+                {
+                    "content": r[0],
+                    "score": r[1] if r[1] is not None else 0.5,
+                    "fact_id": r[2],
+                    "created_at": r[3],
+                }
+            )
             if len(unique) >= limit:
                 break
         return unique
@@ -123,7 +127,10 @@ def _semantic_recall_from_user_db(query: str, limit: int, profile: str) -> list[
     try:
         result = subprocess.run(
             ["slm", "recall", query, "--json", "--limit", str(limit)],
-            capture_output=True, text=True, timeout=30, env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env,
         )
         if result.returncode != 0:
             app.logger.warning(f"SLM semantic recall subprocess failed: {result.stderr[:200]}")
@@ -137,12 +144,14 @@ def _semantic_recall_from_user_db(query: str, limit: int, profile: str) -> list[
             if norm in seen:
                 continue
             seen.add(norm)
-            unique.append({
-                "content": r.get("content", ""),
-                "score": r.get("score", 0),
-                "fact_id": r.get("fact_id", ""),
-                "created_at": r.get("created_at", ""),
-            })
+            unique.append(
+                {
+                    "content": r.get("content", ""),
+                    "score": r.get("score", 0),
+                    "fact_id": r.get("fact_id", ""),
+                    "created_at": r.get("created_at", ""),
+                }
+            )
             if len(unique) >= limit:
                 break
         return unique
@@ -172,6 +181,7 @@ def _remember_to_user_db(text: str, metadata: dict | None, profile: str) -> None
 
 # ── Routes ───────────────────────────────────────────────────────────
 
+
 @app.route("/health")
 def health():
     try:
@@ -196,9 +206,14 @@ def remember():
     if profile:
         meta["profile"] = profile
 
-    result = _daemon_post("/remember?wait=true", {
-        "content": text, "tags": "", "metadata": meta,
-    })
+    result = _daemon_post(
+        "/remember?wait=true",
+        {
+            "content": text,
+            "tags": "",
+            "metadata": meta,
+        },
+    )
 
     if profile:
         t = threading.Thread(
@@ -209,20 +224,23 @@ def remember():
         t.start()
         if not result.get("ok"):
             app.logger.warning(
-                f"Daemon remember failed for {profile}, "
-                f"but per-user save was dispatched: {result.get('error')}"
+                f"Daemon remember failed for {profile}, but per-user save was dispatched: {result.get('error')}"
             )
-        return jsonify({
-            "success": True,
-            "fact_ids": result.get("fact_ids", []),
-            "note": "saved to per-user database" if not result.get("ok") else "",
-        })
+        return jsonify(
+            {
+                "success": True,
+                "fact_ids": result.get("fact_ids", []),
+                "note": "saved to per-user database" if not result.get("ok") else "",
+            }
+        )
 
-    return jsonify({
-        "success": result.get("ok", False),
-        "fact_ids": result.get("fact_ids", []),
-        "error": result.get("error", ""),
-    })
+    return jsonify(
+        {
+            "success": result.get("ok", False),
+            "fact_ids": result.get("fact_ids", []),
+            "error": result.get("error", ""),
+        }
+    )
 
 
 @app.route("/recall", methods=["POST"])
@@ -254,17 +272,21 @@ def recall():
     result = _daemon_get(f"/recall?q={urllib.parse.quote(query)}&limit={limit}&fast=true")
     results = []
     for r in result.get("results", []):
-        results.append({
-            "content": r.get("content", ""),
-            "score": r.get("score", 0),
-            "confidence": r.get("confidence", 0),
-            "fact_id": r.get("fact_id", ""),
-        })
-    return jsonify({
-        "success": result.get("ok", False),
-        "data": {"results": results},
-        "error": result.get("error", ""),
-    })
+        results.append(
+            {
+                "content": r.get("content", ""),
+                "score": r.get("score", 0),
+                "confidence": r.get("confidence", 0),
+                "fact_id": r.get("fact_id", ""),
+            }
+        )
+    return jsonify(
+        {
+            "success": result.get("ok", False),
+            "data": {"results": results},
+            "error": result.get("error", ""),
+        }
+    )
 
 
 @app.route("/forget", methods=["POST"])

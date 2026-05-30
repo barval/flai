@@ -627,6 +627,16 @@ class RedisRequestQueue:
 
             rm = get_resource_manager()
             rm.unload_video_pipeline()
+
+            # Clear CUDA cache to reduce fragmentation after video unload
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                    self.logger.info("CUDA cache cleared after video pipeline unload")
+            except ImportError:
+                pass
         except Exception:
             pass
 

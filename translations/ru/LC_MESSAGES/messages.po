@@ -1258,3 +1258,40 @@ msgstr "Модель для рассуждений недоступна: про�
 msgid "Reasoning failed: GPU memory exhausted. Please simplify your request."
 msgstr "Рассуждение не удалось: память GPU исчерпана. Пожалуйста, упростите запрос."
 
+# VRAM estimate display keys (admin panel)
+msgid "vram_measured"
+msgstr "✓ VRAM: %1% МБ / %2% МБ (%3%%) — замерено (%4% изм., ctx=%5%)"
+
+msgid "vram_estimated"
+msgstr "ℹ VRAM: ~%1% МБ / %2% МБ (%3%%) — оценка"
+
+msgid "vram_detail"
+msgstr " (модель=%1% + KV=%2% + compute=%3% МБ)"
+
+msgid "vram_optimal_dynamic"
+msgstr "✓ VRAM: %1%% — оптимально (загружена)"
+
+msgid "vram_partial_high"
+msgstr "⚡ VRAM: >100%% (%2%% выгружено) — хорошо"
+
+msgid "vram_partial_med"
+msgstr "⚡ VRAM: >100%% (%2%% выгружено) — умеренно"
+
+msgid "vram_partial_low"
+msgstr "⚡ VRAM: >100%% (%2%% выгружено) — медленно, задержки"
+
+msgid "vram_nodata_gpu"
+msgstr "GPU: %1% МБ (нет данных)"
+
+msgid "vram_nodata"
+msgstr "Нет данных"
+
+msgid "ngl_info"
+msgstr "ngl=%1%, слоёв=%2%"
+
+msgid "no_gpu_low"
+msgstr "Нет GPU. Использовано %1%% RAM — медленно"
+
+msgid "no_gpu_full"
+msgstr "Нет GPU. Использовано %1%% RAM — очень медленно"
+

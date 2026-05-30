@@ -271,11 +271,15 @@ class LlamaSwapBackend(AbstractLlamaBackend):
             self.logger.error(f"Failed to degrade {model_type}: {e}")
 
     def _record_llama_failure(self, model_type: str):
-        """Record circuit breaker failure and degrade on circuit open."""
+        """Record circuit breaker failure and degrade on ANY failure.
+
+        Degradation reduces n_gpu_layers so the model fits in available VRAM.
+        """
         cb = self._get_circuit_breaker(model_type)
-        just_opened = cb.record_failure()
-        if just_opened:
-            self._degrade_model_if_needed(model_type)
+        cb.record_failure()
+        # Degrade on every failure — not just circuit breaker open —
+        # to adapt VRAM usage immediately after the first crash.
+        self._degrade_model_if_needed(model_type)
 
     def get_base_url(self) -> str:
         url = os.getenv("LLAMA_SWAP_URL")
@@ -312,7 +316,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
 
         self.logger.info(f"LlamaSwapBackend request: model={model}, payload keys={list(payload.keys())}")
 
-        max_retries = 1 if model_type == "multimodal" else 0
+        max_retries = 1 if model_type in ("multimodal", "reasoning") else 0
 
         for attempt in range(max_retries + 1):
             cb = self._get_circuit_breaker(model_type)
@@ -338,6 +342,17 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                             content = content[: content.index(stop_token)]
 
                     cb.record_success()
+
+                    # Measure VRAM after successful model load
+                    try:
+                        ngl = config.get("n_gpu_layers", -1)
+                        ctx_size = config.get("context_length", 4096)
+                        from app.resource_manager import get_resource_manager
+                        rm = get_resource_manager()
+                        rm.measure_model_vram(model_type, model_name, ctx_size, ngl)
+                    except Exception:
+                        pass
+
                     return content.strip()  # type: ignore[no-any-return]
                 else:
                     if attempt < max_retries and response.status_code == 502:
@@ -393,7 +408,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
             "stop": ["</s>", "<|eot_id|>"],
         }
 
-        max_retries = 1 if model_type == "multimodal" else 0
+        max_retries = 1 if model_type in ("multimodal", "reasoning") else 0
         response = None
 
         try:
@@ -420,6 +435,17 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                         return
 
                     cb.record_success()
+
+                    # Measure VRAM after successful model load
+                    try:
+                        ngl = config.get("n_gpu_layers", -1)
+                        ctx_size = config.get("context_length", 4096)
+                        from app.resource_manager import get_resource_manager
+                        rm = get_resource_manager()
+                        rm.measure_model_vram(model_type, model_name, ctx_size, ngl)
+                    except Exception:
+                        pass
+
                     for line in response.iter_lines():
                         if not line:
                             continue

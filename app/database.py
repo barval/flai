@@ -210,6 +210,21 @@ def _init_postgresql():
                 ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://flai-llamacpp:8033', NULL)
         """)
 
+    # model_vram_estimates — хранит вычисленную оценку и реальные замеры VRAM для каждой модели
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS model_vram_estimates (
+            module TEXT PRIMARY KEY,
+            model_name TEXT,
+            context_length INTEGER,
+            n_gpu_layers INTEGER,
+            estimated_vram_mb INTEGER,
+            measured_vram_mb INTEGER,
+            measurement_count INTEGER DEFAULT 0,
+            last_measured_at TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     # Add response_style column to messages table
     c.execute("""
         DO $migrate$
@@ -255,3 +270,78 @@ def get_database_type() -> str:
 def is_postgresql() -> bool:
     """Always True — PostgreSQL is the only supported database."""
     return True
+
+
+# ── VRAM estimates helpers ──────────────────────────────────────
+
+def get_vram_estimate(module: str) -> dict | None:
+    """Get VRAM estimate for a module from model_vram_estimates table."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            "SELECT * FROM model_vram_estimates WHERE module = %s", (module,)
+        )
+        row = c.fetchone()
+        return dict(row) if row else None
+
+
+def upsert_vram_estimate(
+    module: str,
+    model_name: str,
+    context_length: int,
+    n_gpu_layers: int,
+    estimated_mb: int | None = None,
+    measured_mb: int | None = None,
+) -> None:
+    """Insert or update VRAM estimate for a module."""
+    with get_db() as conn:
+        c = conn.cursor()
+
+        existing = None
+        c.execute("SELECT * FROM model_vram_estimates WHERE module = %s", (module,))
+        row = c.fetchone()
+        if row:
+            existing = dict(row)
+
+        if existing:
+            if measured_mb is not None:
+                new_count = (existing.get("measurement_count") or 0) + 1
+                # Weighted average: smooth measurements over time
+                old_weight = min(new_count - 1, 10)  # cap at 10 for smoothing
+                new_weight = 1
+                total_weight = old_weight + new_weight
+                avg_mb = (
+                    (existing.get("measured_vram_mb") or 0) * old_weight +
+                    measured_mb * new_weight
+                ) // total_weight
+                c.execute("""
+                    UPDATE model_vram_estimates
+                    SET model_name = %s, context_length = %s, n_gpu_layers = %s,
+                        estimated_vram_mb = COALESCE(%s, estimated_vram_mb),
+                        measured_vram_mb = %s,
+                        measurement_count = %s,
+                        last_measured_at = NOW(),
+                        updated_at = NOW()
+                    WHERE module = %s
+                """, (model_name, context_length, n_gpu_layers,
+                     estimated_mb, avg_mb, new_count, module))
+            else:
+                c.execute("""
+                    UPDATE model_vram_estimates
+                    SET model_name = %s, context_length = %s, n_gpu_layers = %s,
+                        estimated_vram_mb = COALESCE(%s, estimated_vram_mb),
+                        updated_at = NOW()
+                    WHERE module = %s
+                """, (model_name, context_length, n_gpu_layers,
+                     estimated_mb, module))
+        else:
+            c.execute("""
+                INSERT INTO model_vram_estimates
+                    (module, model_name, context_length, n_gpu_layers,
+                     estimated_vram_mb, measured_vram_mb,
+                     measurement_count, last_measured_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+            """, (module, model_name, context_length, n_gpu_layers,
+                 estimated_mb, measured_mb,
+                 1 if measured_mb is not None else 0))
+        conn.commit()

@@ -142,12 +142,18 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - **CUDA OOM on video generation**: `_wait_for_vram()` only polled nvidia-smi without checking if llama.cpp models were unloaded, leading to fragmented memory claims and OOM when loading Qwen3VL-8B (~5GiB)
 - **HTTP 502 on reasoning queries**: `ensure_vram_for_reasoning()` returned False on timeout but code continued execution, attempting to load gpt-oss-20b (~10GiB) into insufficient memory
 - **Video OOM persisted**: After multimodal generates params (~5GB), LTX-Video pipeline (~8GB) tries to load while multimodal is still in VRAM → total exceeds 15.47GB GPU → OOM
+- **Hardcoded VRAM constants**: All VRAM estimates were hardcoded (2500/5000/15000/2000 MB), causing 502 errors when model was changed or VRAM was fragmented
 
 ### VRAM Implemented solutions
 1. **`_wait_for_vram_full()` redesign**: Changed from `≥80% GPU threshold` to `video_needed + 3GB buffer` — the 80% threshold was impossible to meet on a 15GB GPU after unloading a 5GB multimodal model (max free was ~10GB, need 12.4GB)
 2. **Timeout increase 30→60s**: Both in queue.py and video.py; CUDA memory deallocation is async and needs more time
 3. **No "proceeding anyway"**: When VRAM wait times out, return error instead of proceeding into OOM
 4. **Buffer increase +500→+3000MB**: In `_resolve_use_gpu()` for safety margin against CUDA fragmentation
+5. **Dynamic VRAM estimation via GGUF metadata**: `_estimate_model_vram()` computes VRAM from `file_size_mb * (ngl/block_count) + ctx_size * kv_factor + overhead`. No hardcoded constants — uses actual model file size, layer count, and context window from DB.
+6. **Real VRAM measurement & storage**: `measure_model_vram()` captures actual VRAM consumption after each successful model load and stores it in `model_vram_estimates` table with measurement count and context-length metadata.
+7. **Admin panel displays measured vs estimated VRAM**: Shows "✓ VRAM: X MB / Y MB — measured (N measurements)" or "ℹ VRAM: ~X MB — estimated" with color-coded percentage bars.
+8. **Per-model-type circuit breakers**: Separate CB for chat, reasoning, multimodal, embedding. One model's failures don't block another.
+9. **Retry for reasoning on 502**: LlamaSwapBackend now retries reasoning requests once on 502, with automatic model degradation on first failure.
 
 ### RAG Problem statements
 - **Router sends knowledge questions to reasoning instead of RAG**: "Сколько лет Валерию Барсукову?" classified as `[-REASONING-]` instead of `[-RAG-]` — no examples of Q&A about people/documents
@@ -167,11 +173,12 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 7. **Raw chunks passed to reasoning model**: On RAG failure, `_process_reasoning_request` calls `rag.search()` directly to retrieve raw chunks (no LLM filtering) and passes them as `rag_context` to the reasoning model. Guarantees the reasoning model always sees document content.
 
 ### Files modified
-- `app/llamacpp_client.py`: Per-model-type circuit breakers (separate CB for chat, reasoning, multimodal). Fixed `_ensure_vram` — replaced `except Exception: pass` with proper logging.
-- `app/resource_manager.py`: Fixed circular import in `ensure_vram_for_llm()` — removed redundant `from app.resource_manager import get_resource_manager`.
-- `app/queue.py`: Added `_gpu_lock`, `_log_gpu_state_before_op()`, `_check_vram_ready()`, `_unload_llamacpp_models()`, RAG in streaming path, RAG retry in reasoning task, raw chunk context from Qdrant on RAG failure
-- `app/static/js/events.js`: `finalizeStreamedMessage` renders file attachments AND error messages
-- `modules/video.py`: Buffer +500→+3000, timeout 30→60s, no "proceeding anyway"
+- `app/database.py`: Added `model_vram_estimates` table. Added `get_vram_estimate()`, `upsert_vram_estimate()` helpers.
+- `app/routes/admin.py`: `_estimate_model_vram()` now uses dynamic formula from GGUF metadata (file_size × ratio + ctx_size × kv_factor + overhead). Reads measured VRAM from `model_vram_estimates` table. Writes computed estimate to DB. Response includes `measured_vram_mb`, `measurement_count`, `context_length`.
+- `app/resource_manager.py`: Added `measure_model_vram()` — captures VRAM after model load and stores in DB. Enhanced `ensure_vram_for_reasoning()` with CUDA cache clearing and tighter /running verification.
+- `app/llamacpp_client.py`: Calls `measure_model_vram()` after each successful model response. Per-model-type circuit breakers (separate CB for chat, reasoning, multimodal). Fixed `_ensure_vram` — replaced `except Exception: pass` with proper logging. Added retry for reasoning on 502. Degrade model on every failure (not just circuit breaker open).
+- `modules/video.py`: Buffer +500→+3000, timeout 30→60s, no "proceeding anyway". Added CUDA cache flush after generation.
+- `app/queue.py`: Added `_gpu_lock`, `_log_gpu_state_before_op()`, `_check_vram_ready()`, `_unload_llamacpp_models()`, CUDA cache flush in `_unload_video_pipeline()`, RAG in streaming path, RAG retry in reasoning task, raw chunk context from Qdrant on RAG failure
 - `modules/base.py`: `process_reasoning()` accepts `rag_context` parameter
 - `prompts/ru/rag.template`: Fixed — removed "answer on your own" instruction, added strict "use ONLY context" directive
 - `prompts/en/rag.template`: Same fix
@@ -179,9 +186,10 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - `prompts/en/base_text.template`: Same RAG category
 - `prompts/ru/reasoning.template`: Added `{rag_context}` placeholder
 - `prompts/en/reasoning.template`: Added `{rag_context}` placeholder
-- `app/static/js/events.js`: `finalizeStreamedMessage` renders file attachments
+- `app/static/js/events.js`: `finalizeStreamedMessage` renders file attachments AND error messages in streaming responses
+- `app/static/js/admin-models.js`: `updateMemoryEstimation()` now handles `status: "measured"` — shows measured VRAM with measurement count and ctx, and `status: "estimate"` with color-coded percentage.
 - `app/db.py`: Added `file_data` to SQL SELECT, replaced `suppress(Exception)` with logging
-- `translations/*.po`: Added GPU error + RAG context translations
+- `translations/*.po`: Added GPU error + RAG context + VRAM estimate translations
 
 ### Monitoring commands
 ```bash

@@ -572,12 +572,42 @@ def model_vram_estimate():
         vram_pct = round(est["total_mb"] / total_vram * 100) if has_gpu and total_vram > 0 else 0
         ram_pct = round(est["total_mb"] / total_ram * 100) if total_ram > 0 else 0
 
+        # Check for measured VRAM data in model_vram_estimates
+        measured_vram_mb = None
+        measurement_count = 0
+        measured_ctx = None
+        try:
+            from app.database import get_vram_estimate
+            db_est = get_vram_estimate(module)
+            if db_est:
+                measured_vram_mb = db_est.get("measured_vram_mb")
+                measurement_count = db_est.get("measurement_count") or 0
+                measured_ctx = db_est.get("context_length")
+        except Exception:
+            pass
+
+        # Save computed estimate to DB for future reference
+        try:
+            from app.database import upsert_vram_estimate
+            upsert_vram_estimate(
+                module=module,
+                model_name=model_name,
+                context_length=ctx_size,
+                n_gpu_layers=ngl,
+                estimated_mb=round(est["total_mb"]),
+            )
+        except Exception:
+            pass
+
         response = {
-            "status": "estimate",
+            "status": "measured" if measured_vram_mb else "estimate",
             "vram_mb": round(est["total_mb"]),
             "total_vram_mb": total_vram or 0,
             "vram_percent": vram_pct,
-            "vram_source": "estimate",
+            "vram_source": "measured" if measured_vram_mb else "estimate",
+            "measured_vram_mb": measured_vram_mb,
+            "measurement_count": measurement_count,
+            "measured_ctx": measured_ctx,
             "ram_mb": round(est["total_mb"]),
             "total_ram_mb": total_ram,
             "ram_percent": ram_pct,
@@ -587,6 +617,7 @@ def model_vram_estimate():
             "expert_count": expert_count,
             "parameter_count": parameter_count,
             "ngl": ngl,
+            "context_length": ctx_size,
             "details": {
                 "model_vram_mb": round(est["model_vram_mb"]),
                 "kv_cache_mb": round(est["kv_cache_mb"]),

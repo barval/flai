@@ -44,10 +44,10 @@ services:
       resources:
         limits:
           cpus: '4.0'
-          memory: 1G
+          memory: 4G
         reservations:
           cpus: '0.5'
-          memory: 256M
+          memory: 512M
     # Logging configuration
     logging:
       driver: "json-file"

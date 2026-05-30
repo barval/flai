@@ -1425,6 +1425,14 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                                             val = arr[0]
                                     if val is not None:
                                         scanned["expert_count"] = int(val)  # type: ignore[assignment]
+                                if key.endswith(".block_count") and scanned["block_count"] is None:
+                                    val = fields[key].parts[-1]
+                                    if hasattr(val, "tolist"):
+                                        arr = val.tolist()
+                                        if isinstance(arr, list) and len(arr) == 1:
+                                            val = arr[0]
+                                    if val is not None:
+                                        scanned["block_count"] = int(val)  # type: ignore[assignment]
                                 if "general.parameter_count" in fields and scanned["parameter_count"] is None:
                                     val = fields["general.parameter_count"].parts[-1]
                                     if hasattr(val, "tolist"):

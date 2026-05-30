@@ -68,7 +68,12 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - **Config**: Model configs in DB (`model_configs` table). `.env` values are fallback defaults only. Admin panel at `/admin`.
 - **Multimodal models**: MUST be in a subdirectory with `mmproj-*.gguf` (e.g. `Qwen3VL-8B-Instruct-Q4_K_M/`).
 - **LLM backend modes**: `LLAMACP_BACKEND=llama-swap` (default in .env.example) uses llama-swap at `LLAMA_SWAP_URL=http://flai-llamaswap:8080`. `LLAMACP_BACKEND=llamacpp` (direct) uses `LLAMACPP_URL=http://flai-llamacpp:8033`.
-- **VRAM** (`app/llama_swap_config.py`): All llama.cpp models share a single `llm_fast` group with `swap: true` in llama-swap. At most ONE model is loaded in VRAM at any time. TTLS: chat=600s (always hot), multimodal/reasoning/embedding=0s (unload immediately after response). SD and LTX-Video use separate GPU contexts. Three VRAM tiers (8/12/16+ GB) adjust `n_gpu_layers` and resolution caps.
+- **VRAM** (`app/resource_manager.py`): Centralized VRAM management via two methods:
+  - `get_vram_needed_mb(model_type)` — computes VRAM needed from GGUF metadata (file_size, block_count), DB config (context_length), and n_gpu_layers. Formula: `file_size × (ngl/block_count) × moe + ctx_size × kv_factor + overhead`. No hardcoded constants.
+  - `ensure_vram_for(model_type)` — unloads ALL models, flushes CUDA cache, polls /running + nvidia-smi (60s timeout). Returns False (never proceeds) if VRAM insufficient. Used by ALL model types: chat, reasoning, multimodal, embedding.
+  - `_ensure_vram()` in llamacpp_client.py now returns `bool` — every chat/stream call checks VRAM before POST.
+  - No model will ever receive 502 due to VRAM — insufficient VRAM returns a proper error message.
+- All llama.cpp models share a single `llm_fast` group with `swap: true` in llama-swap. At most ONE model is loaded in VRAM at any time. TTLS: chat=600s (always hot), multimodal/reasoning/embedding=0s (unload immediately after response). SD and LTX-Video use separate GPU contexts. Three VRAM tiers (8/12/16+ GB) adjust `n_gpu_layers` and resolution caps.
 
   **Model lifecycle on a single consumer GPU:**
   1. **Chat (Qwen3-4B, 2.5 GiB)** — preloaded at startup and stays hot (TTL=600s). Default model for router and direct responses. Swapped out on demand when another model from the group is needed. Reloaded automatically on the next chat request.

@@ -231,10 +231,10 @@ class ResourceManager:
 
         # Fallback to approximate sizes if cache data unavailable
         model_vram = {
-            "chat": 2500,  # Qwen3-4B ~2.5GB
-            "multimodal": 5000,  # Qwen3VL-8B ~5GB
-            "reasoning": 15000,  # gemma-4-26B-A4B ~15GB
-            "embedding": 2000,  # bge-m3 ~2GB
+            "chat": 2500,
+            "multimodal": 5000,
+            "reasoning": 10000,
+            "embedding": 2000,
         }
 
         # Use actual file size if available, otherwise use fallback estimate
@@ -333,7 +333,12 @@ class ResourceManager:
             if capped is not None:
                 if capped == -1:
                     capped = block_count if block_count else -1
-                if current_ngl != -1 and capped != -1 and current_ngl > capped:
+                # Clamp when all layers on GPU exceed safety limit
+                if current_ngl == -1 and capped != -1 and capped < (block_count or capped + 1):
+                    result["n_gpu_layers"] = capped
+                    result["offload_kqv"] = True
+                    result["warning"] = f"Safety cap: n_gpu_layers limited to {capped}/{block_count} for VRAM"
+                elif current_ngl != -1 and capped != -1 and current_ngl > capped:
                     result["n_gpu_layers"] = capped
                     result["offload_kqv"] = True
                     if "warning" in result and result["warning"]:
@@ -342,6 +347,139 @@ class ResourceManager:
                         result["warning"] = f"Safety cap: n_gpu_layers limited to {capped} for VRAM"
 
         return result
+
+    # ── Dynamic VRAM estimation ──
+
+    def get_vram_needed_mb(self, model_type: str, ctx_size: int | None = None) -> int:
+        """Compute VRAM needed for a model from GGUF metadata + DB config.
+
+        Reads model file size and layer count from GGUF cache,
+        context_length from model_configs, and n_gpu_layers from
+        compute_llamacpp_config().  Returns total estimated MB.
+        """
+        from app.model_config import get_model_config
+        from app.utils import get_gguf_models_cached
+
+        config = get_model_config(model_type)
+        model_name = config.get("model_name", "") if config else ""
+
+        # Context length: prefer explicit argument, then DB config, then fallback
+        if ctx_size is None:
+            ctx_size = config.get("context_length") if config else 4096
+        if not ctx_size:
+            ctx_size = 4096
+
+        # GGUF metadata
+        gguf_info = get_gguf_models_cached("/models").get(model_name.replace(".gguf", ""), {})
+        file_size_mb = gguf_info.get("file_size_mb") or 0
+        block_count = gguf_info.get("block_count") or 0
+        expert_count = gguf_info.get("expert_count") or 0
+
+        # Fallback block_count when GGUF metadata missing
+        if block_count == 0:
+            default_blocks = {"chat": 28, "reasoning": 40, "multimodal": 36, "embedding": 12}
+            block_count = default_blocks.get(model_type, 30)
+
+        # Fallback file_size when GGUF metadata missing
+        if file_size_mb == 0:
+            default_sizes = {"chat": 2500, "reasoning": 12000, "multimodal": 5000, "embedding": 2000}
+            file_size_mb = default_sizes.get(model_type, 3000)
+
+        # n_gpu_layers from the same logic used for llama-swap config
+        try:
+            rm_config = self.compute_llamacpp_config(model_type)
+            ngl = rm_config.get("n_gpu_layers", -1)
+        except Exception:
+            ngl = -1
+        if ngl == -1 and block_count:
+            ngl = block_count
+        elif ngl is None:
+            ngl = block_count or 1
+
+        moe_factor = 0.95 if (expert_count or 0) > 0 else 1.0
+        ratio = min(1.0, ngl / block_count) if (block_count or 0) > 0 else 1.0
+        weights_mb = (file_size_mb or 0) * ratio * moe_factor
+
+        # KV cache estimate (q4_0: ~0.04 MB per token, q8_0: ~0.08, f16: ~0.16)
+        kv_per_token = 0.04
+        kv_mb = ctx_size * kv_per_token
+
+        overhead = 400  # CUDA context, scratch buffers
+
+        total = int(weights_mb + kv_mb + overhead)
+        return max(total, 100)
+
+    # ── Unified VRAM guarantee ──
+
+    def ensure_vram_for(self, model_type: str, needed_mb: int | None = None, timeout: int = 60) -> bool:
+        """Ensure VRAM is available for the given model type.
+
+        1. Unload ALL llama.cpp models via llama-swap
+        2. Unload video pipeline
+        3. Flush CUDA cache
+        4. Poll /running until 0 models remain
+        5. Poll nvidia-smi until needed_mb is free
+
+        Returns True only when VRAM is confirmed available.
+        NEVER proceeds if VRAM is insufficient — returns False on timeout.
+        """
+        if needed_mb is None:
+            needed_mb = self.get_vram_needed_mb(model_type)
+
+        llamacpp_url = os.getenv("LLAMACPP_URL", "http://flai-llamaswap:8080")
+        import requests as req
+
+        # 1. Unload all llama.cpp models
+        logger.info(f"ensure_vram_for [{model_type}]: unloading all models, need {needed_mb}MB")
+        self.unload_llamacpp_model(llamacpp_url)
+
+        # 2. Unload video pipeline
+        with contextlib.suppress(Exception):
+            self.unload_video_pipeline()
+
+        # 3. Flush CUDA cache
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+        except ImportError:
+            pass
+
+        # 4+5. Poll /running + nvidia-smi until VRAM sufficient
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                resp = req.get(f"{llamacpp_url}/running", timeout=5)
+                if resp.status_code == 200:
+                    models = resp.json().get("models", [])
+                    if len(models) > 0:
+                        logger.debug(
+                            f"ensure_vram_for [{model_type}]: {len(models)} model(s) still active"
+                        )
+                        time.sleep(2)
+                        continue
+            except Exception:
+                pass
+
+            self._poll_vram()
+            free = self.hardware.available_vram_mb
+            if free >= needed_mb:
+                logger.info(
+                    f"ensure_vram_for [{model_type}]: {free}MB free >= {needed_mb}MB needed — OK"
+                )
+                return True
+
+            logger.debug(
+                f"ensure_vram_for [{model_type}]: {free}MB free, need {needed_mb}MB — waiting..."
+            )
+            time.sleep(2)
+
+        logger.error(
+            f"ensure_vram_for [{model_type}]: TIMEOUT after {timeout}s — "
+            f"{self.hardware.available_vram_mb}MB free, need {needed_mb}MB"
+        )
+        return False
 
     # ── Runtime gating ──
 
@@ -387,146 +525,19 @@ class ResourceManager:
 
     def ensure_vram_for_llm(self, model_type: str = "chat") -> bool:
         """Ensure sufficient VRAM for the requested LLM model type.
-
-        Polls llama-swap /running endpoint to verify no LLM processes are running,
-        then waits for required VRAM to be free.
-        """
-        import requests as req
-
-        if not self.hardware.cuda_detected:
-            return True
-
-        model_vram = {"chat": 2500, "multimodal": 5000, "reasoning": 15000, "embedding": 2000}
-        needed = model_vram.get(model_type, 3000) + 2000
-        llamacpp_url = os.getenv("LLAMACP_URL", "http://flai-llamaswap:8080")
-
-        # Initial check of llama-swap state
-        try:
-            resp = req.get(f"{llamacpp_url}/running", timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                loaded_models = len(data.get("models", []))
-                logger.debug(f"ensure_vram_for_llm [{model_type}]: {loaded_models} LLM models active")
-        except Exception:
-            pass
-
-        self._poll_vram()
-        free = self.hardware.available_vram_mb
-
-        if free < needed:
-            logger.info(f"VRAM low for [{model_type}]: {free}MB free, need {needed}MB")
-
-            # Check why VRAM is low - unloads both video and llama pipelines
-            with contextlib.suppress(Exception):
-                self.unload_llamacpp_model(llamacpp_url)
-
-            with contextlib.suppress(Exception):
-                self.unload_video_pipeline()
-
-
-
-            # Poll a few times to get fresh readings
-            time.sleep(2)
-            self._poll_vram()
-            try:
-                resp = req.get(f"{llamacpp_url}/running", timeout=5)
-                if resp.status_code == 200:
-                    logger.debug(f"After cleanup: {len(resp.json().get('models', []))} LLM models still active")
-            except Exception:
-                pass
-
-            free = self.hardware.available_vram_mb
-
-        result = free >= needed
-        if not result:
-            logger.warning(
-                f"ensure_vram_for_llm [{model_type}] failed: {free}/{needed}MB after cleanup"
-            )
-        return result
-
-    def ensure_vram_for_reasoning(self, needed_mb: int = 12000) -> bool:
-        """Ensure sufficient VRAM for the reasoning model (~10 GiB).
-
-        Guarantees that:
-        1. All llama.cpp models are unloaded (via /running endpoint check)
-        2. CUDA cache is flushed to eliminate fragmentation
-        3. At least ``needed_mb`` MB of raw VRAM is free
-
-        Waits up to 60 seconds. Returns True only when ALL conditions met.
+        Delegates to ensure_vram_for() which handles unloading + polling.
         """
         if not self.hardware.cuda_detected:
             return True
+        return self.ensure_vram_for(model_type)
 
-        import requests as req
-
-        llamacpp_url = os.getenv("LLAMACPP_URL", "http://flai-llamaswap:8080")
-
-        # Step 1: Unload ALL llama.cpp models
-        logger.info("ensure_vram_for_reasoning: unloading all llama.cpp models...")
-        self.unload_llamacpp_model(llamacpp_url)
-
-        # Step 2: Unload video pipeline if active
-        with contextlib.suppress(Exception):
-            self.unload_video_pipeline()
-
-        # Step 3: Clear CUDA cache to reduce fragmentation
-        try:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
-                logger.info("ensure_vram_for_reasoning: CUDA cache emptied")
-        except ImportError:
-            pass
-
-        # Step 4: Verify via /running endpoint that 0 models remain
-        try:
-            resp = req.get(f"{llamacpp_url}/running", timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                loaded_models = len(data.get("models", []))
-                logger.info(f"ensure_vram_for_reasoning: {loaded_models} models after unload")
-        except Exception as e:
-            logger.debug(f"ensure_vram_for_reasoning: /running check failed: {e}")
-
-        # Step 5: Poll VRAM until sufficient or timeout
-        self._poll_vram()
-        deadline = time.time() + 60
-        while time.time() < deadline:
-            # Check llama-swap state first — only proceed when 0 models loaded
-            try:
-                resp = req.get(f"{llamacpp_url}/running", timeout=5)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if len(data.get("models", [])) > 0:
-                        logger.info(
-                            f"ensure_vram_for_reasoning: {len(data.get('models', []))} model(s) "
-                            f"still active, waiting..."
-                        )
-                        time.sleep(2)
-                        continue
-            except Exception:
-                pass
-
-            # Verify raw VRAM availability
-            self._poll_vram()
-            if self.hardware.available_vram_mb >= needed_mb:
-                logger.info(
-                    f"ensure_vram_for_reasoning OK: {self.hardware.available_vram_mb}/{needed_mb}MB free"
-                )
-                return True
-
-            logger.info(
-                f"ensure_vram_for_reasoning: {self.hardware.available_vram_mb}MB free, "
-                f"need {needed_mb}MB — waiting..."
-            )
-            time.sleep(2)
-
-        logger.error(
-            f"ensure_vram_for_reasoning FAILED after 60s: "
-            f"{self.hardware.available_vram_mb}/{needed_mb}MB available"
-        )
-        return False
+    def ensure_vram_for_reasoning(self, needed_mb: int | None = None) -> bool:
+        """Ensure sufficient VRAM for reasoning model.
+        Delegates to ensure_vram_for() with dynamic VRAM estimate.
+        """
+        if not self.hardware.cuda_detected:
+            return True
+        return self.ensure_vram_for("reasoning", needed_mb)
 
     def measure_model_vram(self, module: str, model_name: str, ctx_size: int, ngl: int) -> None:
         """Measure actual VRAM consumption after a model loads and store in DB.

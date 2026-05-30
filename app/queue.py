@@ -1207,6 +1207,7 @@ class RedisRequestQueue:
             return self._build_error_response(session_id, error_msg, 0, lang)
 
         current_time_str = get_current_time_in_timezone(self.app)
+        reasoning_start = time.time()
         result = self.app.modules["base"].process_reasoning(
             query,
             current_time_str,
@@ -1216,16 +1217,17 @@ class RedisRequestQueue:
             user_id=user_id,
             rag_context=rag_context,
         )
+        reasoning_time = round(time.time() - reasoning_start, 1)
         if isinstance(result, dict) and "error" in result:
             err = result["error"]
             if "CUDA out of memory" in str(err):
                 err = self.app.modules["base"]._("Reasoning failed: GPU memory exhausted. Please simplify your request.", lang=lang)
-            return self._build_error_response(session_id, err, 0, lang)
+            return self._build_error_response(session_id, err, reasoning_time, lang)
         return self._save_and_respond(
             session_id,
             result,
-            "reasoning",
-            0,
+            self._get_model_name("reasoning") or "reasoning",
+            reasoning_time,
             response_style=response_style,
             user_id=user_id,
         )

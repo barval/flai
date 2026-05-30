@@ -595,22 +595,20 @@ class LlamaCppClient:
             return self._translate("Request too long, please simplify your request", lang)
         return None
 
-    def _ensure_vram(self, model_type: str) -> None:
+    def _ensure_vram(self, model_type: str) -> bool:
         """Ensure enough VRAM before a model call.
 
-        For non-chat models (reasoning, multimodal, embedding) the current
-        LLM model is explicitly unloaded first so the target model has
-        maximum VRAM available.  Chat stays hot (TTL=600, preload=True).
+        Uses ResourceManager.ensure_vram_for() which unloads all models,
+        flushes CUDA cache, and waits for VRAM to be available.
+        Returns True only when VRAM is confirmed sufficient.
         """
         try:
             from app.resource_manager import get_resource_manager
             rm = get_resource_manager()
-            if model_type != "chat":
-                llamacpp_url = self.app.config.get("LLAMACPP_URL", "http://flai-llamaswap:8080")
-                rm.unload_llamacpp_model(llamacpp_url)
-            rm.ensure_vram_for_llm(model_type)
+            return rm.ensure_vram_for(model_type)
         except Exception as e:
-            self.logger.warning(f"VRAM check failed for {model_type}: {e}. Proceeding without VRAM guarantee.")
+            self.logger.warning(f"VRAM check failed for {model_type}: {e}")
+            return False
 
     def chat(self, messages: list[dict], model_type: str = "chat", lang: str = "ru", validate: bool = True) -> str:
         if validate:
@@ -618,7 +616,8 @@ class LlamaCppClient:
             if error:
                 return error
 
-        self._ensure_vram(model_type)
+        if not self._ensure_vram(model_type):
+            return _tr("GPU memory unavailable. Please try again.", lang)
 
         config = get_model_config(model_type)
         if not config:
@@ -640,7 +639,9 @@ class LlamaCppClient:
                 yield error
                 return
 
-        self._ensure_vram(model_type)
+        if not self._ensure_vram(model_type):
+            yield _tr("GPU memory unavailable. Please try again.", lang)
+            return
 
         config = get_model_config(model_type)
         if not config:

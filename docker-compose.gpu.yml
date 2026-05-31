@@ -35,6 +35,7 @@ services:
       - ./modules/video.py:/app/modules/video.py
       - ./app/static/js/events.js:/app/app/static/js/events.js
       - ./app/static/js/admin-models.js:/app/app/static/js/admin-models.js
+      - ./app/static/js/chat-queue.js:/app/app/static/js/chat-queue.js
       - ./prompts/en/rag.template:/app/prompts/en/rag.template
       - ./prompts/ru/rag.template:/app/prompts/ru/rag.template
       - ./prompts/en/reasoning.template:/app/prompts/en/reasoning.template

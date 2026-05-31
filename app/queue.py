@@ -340,32 +340,55 @@ class RedisRequestQueue:
 
     def _get_current_loaded_model(self) -> str | None:
         """Query llama.cpp to find which model is currently loaded in VRAM."""
+        # Try direct llama-server first, fall back to llama-swap /running
         llamacpp_url = self.app.config.get("LLAMACPP_URL")
-        if not llamacpp_url:
-            return None
+        swap_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
 
         try:
             import requests as req
 
-            resp = req.get(f"{llamacpp_url.rstrip('/')}/v1/models", timeout=5)
-            if resp.status_code != 200:
-                return None
+            # Direct llama-server: /v1/models returns full model list
+            if llamacpp_url:
+                resp = req.get(f"{llamacpp_url.rstrip('/')}/v1/models", timeout=5)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for model in data.get("data", []):
+                        if model.get("status", {}).get("value") == "loaded":
+                            model_id = model.get("id", "")
+                            from .model_config import get_model_config
 
-            data = resp.json()
-            for model in data.get("data", []):
-                if model.get("status", {}).get("value") == "loaded":
-                    model_id = model.get("id", "")
+                            for module_type in ("chat", "reasoning", "multimodal", "embedding"):
+                                config = get_model_config(module_type)
+                                if config and config.get("model_name") in model_id:
+                                    return module_type
+                            if any(x in model_id.lower() for x in ("vl", "vision", "multimodal")):
+                                return "multimodal"
+                            if any(x in model_id.lower() for x in ("oss", "reason", "gemma-4")):
+                                return "reasoning"
+                            if any(x in model_id.lower() for x in ("bge", "embed")):
+                                return "embedding"
+                            return "chat"
+                    return None
+
+            # Fallback: llama-swap /running endpoint
+            resp = req.get(f"{swap_url.rstrip('/')}/running", timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                models = data.get("models", [])
+                if models:
                     from .model_config import get_model_config
 
                     for module_type in ("chat", "reasoning", "multimodal", "embedding"):
                         config = get_model_config(module_type)
-                        if config and config.get("model_name") in model_id:
+                        model_name = config.get("model_name", "") if config else ""
+                        if model_name and any(model_name in m for m in models):
                             return module_type
-                    if any(x in model_id.lower() for x in ("vl", "vision", "multimodal")):
+                    first_model = models[0].lower()
+                    if any(x in first_model for x in ("vl", "vision", "multimodal")):
                         return "multimodal"
-                    if any(x in model_id.lower() for x in ("oss", "reason", "gemma-4")):
+                    if any(x in first_model for x in ("oss", "reason", "gemma-4")):
                         return "reasoning"
-                    if any(x in model_id.lower() for x in ("bge", "embed")):
+                    if any(x in first_model for x in ("bge", "embed")):
                         return "embedding"
                     return "chat"
             return None
@@ -378,8 +401,7 @@ class RedisRequestQueue:
         try:
             from app.resource_manager import get_resource_manager
             rm = get_resource_manager()
-            llamacpp_url = os.environ.get("LLAMACPP_URL", "http://flai-llamaswap:8080")
-            rm.unload_llamacpp_model(llamacpp_url)
+            rm.unload_llamacpp_model()
             rm.unload_video_pipeline()
             try:
                 import torch
@@ -389,20 +411,6 @@ class RedisRequestQueue:
                 pass
         except Exception as e:
             self.logger.debug(f"VRAM cleanup after task: {e}")
-
-        llamacpp_url = self.app.config.get("LLAMACPP_URL")
-        if not llamacpp_url:
-            return
-
-        from .resource_manager import get_resource_manager
-
-        rm = get_resource_manager()
-        if rm:
-            rm.unload_llamacpp_model(llamacpp_url)
-            if has_tasks:
-                self.app.logger.info(f"VRAM freed — llama.cpp will auto-load '{next_model}' for next task")
-        else:
-            self.app.logger.debug("Resource manager not available, skipping unload")
 
     def _process_single_task(self, task: dict[str, Any], processing_key: str) -> None:
         """Process a single task: move to processing, execute, store result, cleanup."""
@@ -678,8 +686,8 @@ class RedisRequestQueue:
 
         try:
             import requests as req
-            llamacpp_url = self.app.config.get("LLAMACPP_URL", "http://flai-llamaswap:8080")
-            resp = req.get(f"{llamacpp_url}/running", timeout=5)
+            swap_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+            resp = req.get(f"{swap_url.rstrip('/')}/running", timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
                 loaded_models = len(data.get("models", []))
@@ -770,8 +778,7 @@ class RedisRequestQueue:
         from app.resource_manager import get_resource_manager
 
         rm = get_resource_manager()
-        llamacpp_url = self.app.config.get("LLAMACPP_URL", "http://flai-llamaswap:8080")
-        success = rm.unload_llamacpp_model(llamacpp_url)
+        success = rm.unload_llamacpp_model()
 
         if not success:
             self.logger.warning("Failed to unload llama.cpp models, proceeding anyway")
@@ -786,13 +793,13 @@ class RedisRequestQueue:
         Returns True on success, False if still insufficient after timeout.
         """
         deadline = time.time() + timeout
-        llamacpp_url = self.app.config.get("LLAMACPP_URL", "http://flai-llamaswap:8080")
+        swap_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
 
         while time.time() < deadline:
             try:
                 # Check llama-swap for running models first
                 import requests as req
-                resp = req.get(f"{llamacpp_url}/running", timeout=5)
+                resp = req.get(f"{swap_url.rstrip('/')}/running", timeout=5)
                 if resp.status_code == 200:
                     data = resp.json()
                     if len(data.get("models", [])) == 0:
@@ -840,7 +847,7 @@ class RedisRequestQueue:
 
         # Wait for guaranteed free VRAM
         if not self._wait_for_vram(6000):
-            error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again.", lang=lang)
+            error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang=lang)
             return self._build_error_response(session_id, error_msg, 0, lang)
 
         if not self._check_vram_ready(6000):
@@ -954,7 +961,7 @@ class RedisRequestQueue:
 
         # Wait for guaranteed free VRAM
         if not self._wait_for_vram(6000):
-            error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again.", lang=lang)
+            error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang=lang)
             return self._build_error_response(session_id, error_msg, 0, lang)
 
         if not self._check_vram_ready(6000):
@@ -1194,6 +1201,9 @@ class RedisRequestQueue:
             error_msg = self.app.modules["base"]._("Reasoning model unavailable: GPU memory check failed. Try again.", lang=lang)
             return self._build_error_response(session_id, error_msg, 0, lang)
 
+        # Brief pause to let CUDA finish deallocation after model unload — prevents 502
+        time.sleep(3)
+
         current_time_str = get_current_time_in_timezone(self.app)
         reasoning_start = time.time()
         result = self.app.modules["base"].process_reasoning(
@@ -1353,7 +1363,7 @@ class RedisRequestQueue:
 
         # Wait for guaranteed free VRAM
         if not self._wait_for_vram(6000):
-            error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again.", lang=lang)
+            error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang=lang)
             return self._build_error_response(session_id, error_msg, 0, lang)
 
         if not self._check_vram_ready(6000):

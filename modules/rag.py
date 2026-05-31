@@ -1,5 +1,6 @@
 # modules/rag.py
 import logging
+import time
 import uuid
 from collections.abc import Callable
 
@@ -454,6 +455,8 @@ class RagModule:
             return None, "Error loading prompt template", None
 
         # 6. Call reasoning model
+        # Brief pause to let CUDA finish deallocation after model unload — prevents 502
+        time.sleep(3)
         model_name = reasoning_config.get("model_name", "unknown")
         if token_callback:
             full_response = ""

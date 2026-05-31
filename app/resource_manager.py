@@ -452,7 +452,7 @@ class ResourceManager:
         if needed_mb is None:
             needed_mb = self.get_vram_needed_mb(model_type)
 
-        llamacpp_url = os.getenv("LLAMACPP_URL", "http://flai-llamaswap:8080")
+        llamacpp_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
         import requests as req
 
         # 1. Unload all llama.cpp models

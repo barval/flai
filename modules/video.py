@@ -123,14 +123,15 @@ class VideoModule(TranslationMixin):
 
         rm = get_resource_manager()
 
-        llamacpp_url = self.app.config.get("LLAMACPP_URL", "http://flai-llamacpp:8033")
+        llamacpp_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
         rm.unload_llamacpp_model(llamacpp_url)
 
         # CRITICAL: Verify llama-swap has NO models loaded (not just VRAM check).
         # A VRAM-only check with threshold ~10GB can pass while multimodal
         # (~5GB) is still loaded on a 15GB GPU (15-5=10 ≥ 10 → false positive).
         swap_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
-        deadline = time.time() + 15
+        deadline = time.time() + 60
+        video_needed = self._estimate_video_vram_mb() + 3000
         while time.time() < deadline:
             rm._poll_vram()
             try:
@@ -153,7 +154,7 @@ class VideoModule(TranslationMixin):
             time.sleep(2)
         else:
             err_msg = self._("Video generation failed: GPU memory is insufficient. Try again in a moment.", lang)
-            self.logger.warning(f"VRAM wait timeout (15s) — free={free}MB, models={loaded}")
+            self.logger.warning(f"VRAM wait timeout (60s) — free={free}MB, models={loaded}")
             return {"success": False, "error": err_msg}
 
         use_gpu = self._resolve_use_gpu(rm)

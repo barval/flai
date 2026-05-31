@@ -745,7 +745,8 @@ function handleCameraResult(result, resultSessionId) {
 function handleErrorResult(data, expectedSessionId) {
     const errorSessionId = data.result?.session_id || expectedSessionId;
     if (errorSessionId === currentSessionId) {
-        window.displayMessage('assistant', '⚠️ ' + t('error') + ': ' + (data.error || t('unknown_error')), null, null, null, null,
+        const errorMsg = data.result?.error || data.error || t('unknown_error');
+        window.displayMessage('assistant', '⚠️ ' + t('error') + ': ' + errorMsg, null, null, null, null,
             new Date().toISOString(), null, 'system', null, null, null, null, null, null);
     }
     if (errorSessionId) {

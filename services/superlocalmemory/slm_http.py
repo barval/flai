@@ -86,6 +86,7 @@ def _recall_from_user_db(profile: str, limit: int = 5) -> list[dict] | None:
             "SELECT content, confidence, fact_id, created_at "
             "FROM atomic_facts "
             "WHERE lifecycle = 'active' "
+            "AND LENGTH(content) <= 200 "
             "ORDER BY created_at DESC LIMIT ?",
             (limit * 3,),
         ).fetchall()

@@ -234,7 +234,7 @@ services:
       - ASR_ENGINE=faster_whisper
       - ASR_DEVICE=cpu
     volumes:
-      - ./data/hf-cache:/root/.cache/huggingface
+      - ./data/hf-cache/hub:/root/.cache/whisper
     networks:
       - flai_network
     restart: unless-stopped

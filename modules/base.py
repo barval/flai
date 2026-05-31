@@ -369,10 +369,6 @@ class BaseModule(TranslationMixin):
             [{"role": "user", "content": reasoning_prompt}], model_type="reasoning", lang=lang
         )
         self.logger.info(f"Reasoning model response: {response[:100]}...")  # type: ignore[index]
-        if response:
-            self._save_to_slm_async(
-                response, metadata={"type": "reasoning_response", "query": query[:200]}, user_id=user_id
-            )
         return response  # type: ignore[return-value]
 
     # ── Streaming methods ──────────────────────────────────────────────

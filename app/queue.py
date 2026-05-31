@@ -1290,6 +1290,13 @@ class RedisRequestQueue:
         # generate_video_params() loaded Qwen3VL-8B (~5GB) — must free VRAM
         # before LTX-Video pipeline (~8GB) loads, or total > GPU capacity → OOM.
         self._unload_llamacpp_models()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+        except ImportError:
+            pass
 
         # Verify VRAM is truly free for video pipeline — must check BOTH:
         # (a) no LLM models loaded via llama-swap /running
@@ -1392,6 +1399,13 @@ class RedisRequestQueue:
         # generate_video_params_from_image() loaded Qwen3VL-8B (~5GB) — must free VRAM
         # before LTX-Video pipeline (~8GB) loads, or total > GPU capacity → OOM.
         self._unload_llamacpp_models()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+        except ImportError:
+            pass
 
         if not self._wait_for_vram_full():
             error_msg = self.app.modules["base"]._(
@@ -1535,6 +1549,7 @@ class RedisRequestQueue:
 
         messages = [first_message]
         if message_text and "multimodal" in self.app.modules and self.app.modules["multimodal"].available:
+            self._unload_llamacpp_models()
             self._wait_for_vram(6000)
             mm_start = time.time()
             bot_reply, error = self.app.modules["multimodal"].process_image_with_text(
@@ -1636,6 +1651,7 @@ class RedisRequestQueue:
         )
 
         # Stream description from multimodal model
+        self._unload_llamacpp_models()
         self._wait_for_vram(6000)
         stream_start = time.time()
         full_response = ""
@@ -2003,6 +2019,7 @@ class RedisRequestQueue:
             file_size = int((len(file_data) * 3) / 4) if file_data else 0
             is_valid, error = self.app.modules["multimodal"].validate_image(file_data, file_type, file_name, file_size)
             if is_valid:
+                self._unload_llamacpp_models()
                 self._wait_for_vram(6000)
                 bot_reply, error = self.app.modules["multimodal"].process_image_with_text(
                     file_data,
@@ -2063,7 +2080,7 @@ class RedisRequestQueue:
                 process_time = round(time.time() - process_start, 1)
                 is_error = True
 
-        mm_model = self._get_model_name("multimodal") or "unknown"
+        mm_model = "system" if is_error else (self._get_model_name("multimodal") or "unknown")
         return self._save_and_respond(
             session_id, bot_reply, mm_model, process_time, is_error=is_error, response_style=response_style
         )
@@ -2112,6 +2129,7 @@ class RedisRequestQueue:
                 response_style=response_style,
             )
 
+        self._unload_llamacpp_models()
         self._wait_for_vram(6000)
         stream_gen = self.app.modules["multimodal"].process_image_with_text_stream(
             file_data,

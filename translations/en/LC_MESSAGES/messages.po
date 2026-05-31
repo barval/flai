@@ -1625,3 +1625,6 @@ msgstr "Reasoning failed: GPU memory exhausted. Please simplify your request."
 
 msgid "GPU memory unavailable. Please try again."
 msgstr "GPU memory unavailable. Please try again."
+
+msgid "GPU memory unavailable after unloading LLM. Try again."
+msgstr "GPU memory unavailable after unloading LLM. Try again."

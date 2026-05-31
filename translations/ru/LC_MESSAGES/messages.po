@@ -1632,3 +1632,6 @@ msgstr "Рассуждение не удалось: память GPU исчер�
 
 msgid "GPU memory unavailable. Please try again."
 msgstr "Память GPU недоступна. Попробуйте снова."
+
+msgid "GPU memory unavailable after unloading LLM. Try again."
+msgstr "Память GPU недоступна после выгрузки LLM. Попробуйте снова."

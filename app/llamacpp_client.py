@@ -542,6 +542,7 @@ class LlamaCppClient:
         self.logger = logging.getLogger(__name__)
         self.available = False
         self.app = app
+        self._active_model_type = None
 
         backend_type = os.getenv("LLAMACP_BACKEND", "llamacpp")
 
@@ -598,17 +599,60 @@ class LlamaCppClient:
     def _ensure_vram(self, model_type: str) -> bool:
         """Ensure enough VRAM before a model call.
 
-        Uses ResourceManager.ensure_vram_for() which unloads all models,
-        flushes CUDA cache, and waits for VRAM to be available.
-        Returns True only when VRAM is confirmed sufficient.
+        Hybrid strategy:
+        - For chat: skip if already active (router→response same instance, ~0ms)
+        - For other types: stateless /running check (safe across workers, ~300ms)
+        - Fallback: full unload + reload via ResourceManager
         """
+        # === Chat skip: router and response go through same base.py.llamacpp instance ===
+        if model_type == "chat" and self._active_model_type == "chat":
+            self.logger.debug("VRAM skip: chat model already active")
+            return True
+
+        # === Stateless check: verify model is loaded via llama-swap + nvidia-smi ===
         try:
-            from app.resource_manager import get_resource_manager
-            rm = get_resource_manager()
-            return rm.ensure_vram_for(model_type)
-        except Exception as e:
-            self.logger.warning(f"VRAM check failed for {model_type}: {e}")
-            return False
+            swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+            resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=3)
+            if resp.status_code == 200:
+                models = resp.json().get("models", [])
+                if len(models) == 1:
+                    config = get_model_config(model_type)
+                    model_name = config.get("model_name", "") if config else ""
+                    if model_name and model_name in models[0]:
+                        import subprocess
+
+                        out = subprocess.run(
+                            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
+                        )
+                        if out.returncode == 0:
+                            free = int(out.stdout.strip().split("\n")[0].strip())
+                            from app.resource_manager import get_resource_manager
+
+                            rm = get_resource_manager()
+                            needed = rm.get_vram_needed_mb(model_type)
+                            if free >= needed:
+                                self._active_model_type = model_type
+                                self.logger.debug(
+                                    f"VRAM skip: {model_type} already loaded, "
+                                    f"{free}MB free >= {needed}MB needed"
+                                )
+                                return True
+        except Exception:
+            pass
+
+        # === Full ensure_vram: unload + poll ===
+        from app.resource_manager import get_resource_manager
+
+        rm = get_resource_manager()
+        ok = rm.ensure_vram_for(model_type)
+        if ok:
+            self._active_model_type = model_type
+        else:
+            self._active_model_type = None
+        return ok
 
     def chat(self, messages: list[dict], model_type: str = "chat", lang: str = "ru", validate: bool = True) -> str:
         if validate:

@@ -452,9 +452,11 @@ class RedisRequestQueue:
             self._publish_result_event(task, "error", {"error": error_text, "session_id": task.get("session_id")})
             return
 
+        final_result = None
         try:
             with self.app.app_context():
                 result_data = self._process_request(task)
+                final_result = result_data
                 if "session_id" not in result_data and task.get("session_id"):
                     result_data["session_id"] = task.get("session_id")
                 self.redis.hset(
@@ -488,9 +490,14 @@ class RedisRequestQueue:
                 self._cleanup_user_request(user_id, task_id)
                 self._decrement_user_queue_count(user_id)
 
-        current_model = self._get_model_for_task(task)
-        if current_model in ("chat", "reasoning", "multimodal", "embedding"):
-            self._cleanup_vram_after_task(task)
+        # Skip VRAM cleanup if task was requeued — next worker needs current GPU state.
+        # E.g.: image_chat → [-VIDEO-] → requeue → slow worker uses same multimodal model.
+        if final_result is not None and final_result.get("status") == "queued":
+            self.logger.debug(f"Skipping VRAM cleanup: task {task_id} requeued (status=queued)")
+        else:
+            current_model = self._get_model_for_task(task)
+            if current_model in ("chat", "reasoning", "multimodal", "embedding"):
+                self._cleanup_vram_after_task(task)
 
     def _worker_loop_fast(self):
         """Worker for fast queue (text, audio, RAG, camera, image chat)."""

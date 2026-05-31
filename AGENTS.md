@@ -194,7 +194,11 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - `app/static/js/events.js`: `finalizeStreamedMessage` renders file attachments AND error messages in streaming responses
 - `app/static/js/admin-models.js`: `updateMemoryEstimation()` now handles `status: "measured"` — shows measured VRAM with measurement count and ctx, and `status: "estimate"` with color-coded percentage.
 - `app/db.py`: Added `file_data` to SQL SELECT, replaced `suppress(Exception)` with logging
-- `translations/*.po`: Added GPU error + RAG context + VRAM estimate translations
+- `translations/*.po`: RESTORED from v8.7-SLM baseline (1574+ EN / 1581+ RU entries). Added new translation keys: VRAM measurements, footer_text, response_style_* labels, "Your requests / Total requests"
+- `docker-compose.gpu.yml`: Removed broken .mo volume mounts; Docker image now compiles translations correctly during build
+
+### Translation system fix (v8.9 critical!)
+Removed .mo volume mounts that were overriding correct compiled translations with incomplete versions. Docker now properly compiles all translations at build time. All site features work in both Russian and English profiles.
 
 ### Monitoring commands
 ```bash

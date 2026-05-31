@@ -25,6 +25,22 @@ services:
       - ./llama-swap-config:/config
       # Mount docker socket for GPU detection
       - /var/run/docker.sock:/var/run/docker.sock
+      # Persistent code mounts (survive restart)
+      - ./app/llamacpp_client.py:/app/app/llamacpp_client.py
+      - ./app/queue.py:/app/app/queue.py
+      - ./app/resource_manager.py:/app/app/resource_manager.py
+      - ./app/utils.py:/app/app/utils.py
+      - ./app/database.py:/app/app/database.py
+      - ./app/routes/admin.py:/app/app/routes/admin.py
+      - ./modules/video.py:/app/modules/video.py
+      - ./app/static/js/events.js:/app/app/static/js/events.js
+      - ./app/static/js/admin-models.js:/app/app/static/js/admin-models.js
+      - ./prompts/en/rag.template:/app/prompts/en/rag.template
+      - ./prompts/ru/rag.template:/app/prompts/ru/rag.template
+      - ./prompts/en/reasoning.template:/app/prompts/en/reasoning.template
+      - ./prompts/ru/reasoning.template:/app/prompts/ru/reasoning.template
+      - ./prompts/en/base_text.template:/app/prompts/en/base_text.template
+      - ./prompts/ru/base_text.template:/app/prompts/ru/base_text.template
     runtime: nvidia
     environment:
       - REDIS_URL=redis://redis:6379/0

@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 8.7\n"
+"Project-Id-Version: FLAI 8.8\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-05-23 00:26+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -996,7 +996,7 @@ msgstr "Выйти"
 
 #: app/templates/base.html:78 app/templates/chat.html:163
 msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v8.7 (c) 2026 Барсуков Валерий"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v8.8 (c) 2026 Барсуков Валерий"
 
 #: app/templates/chat.html:14 app/templates/chat.html:174
 msgid "New document"
@@ -1587,6 +1587,9 @@ msgstr "✓ VRAM: %1% МБ / %2% МБ (%3%%) — замерено (%4% изм.)"
 msgid "vram_estimated"
 msgstr "ℹ VRAM: ~%1% МБ / %2% МБ (%3%%) — оценка"
 
+msgid "vram_detail"
+msgstr " (модель=%1% + KV=%2% + compute=%3% МБ)"
+
 msgid "response_style_label"
 msgstr "Стиль"
 
@@ -1607,9 +1610,6 @@ msgstr "Дружеский"
 
 msgid "response_style_funny"
 msgstr "Весёлый"
-
-msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v8.9"
 
 msgid "Your requests / Total requests"
 msgstr "Ваши запросы / Всего запросов"

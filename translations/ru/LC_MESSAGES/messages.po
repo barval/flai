@@ -1582,10 +1582,10 @@ msgstr "Максимальное разрешение {max_size}px по длин
 
 # VRAM management messages (управление VRAM)
 msgid "vram_measured"
-msgstr "✓ VRAM: %1% МБ / %2% МБ (%3%%) — замерено (%4% изм.)"
+msgstr "VRAM: %1% МБ / %2% МБ (%3%%) — замерено (%4% изм.)"
 
 msgid "vram_estimated"
-msgstr "ℹ VRAM: ~%1% МБ / %2% МБ (%3%%) — оценка"
+msgstr "VRAM: ~%1% МБ / %2% МБ (%3%%) — оценка"
 
 msgid "vram_detail"
 msgstr " (модель=%1% + KV=%2% + compute=%3% МБ)"
@@ -1613,3 +1613,22 @@ msgstr "Весёлый"
 
 msgid "Your requests / Total requests"
 msgstr "Ваши запросы / Всего запросов"
+
+# GPU memory error messages
+msgid "GPU memory unavailable. Try again in a moment."
+msgstr "Память GPU недоступна. Попробуйте снова."
+
+msgid "GPU memory check failed. Please try again."
+msgstr "Проверка памяти GPU не удалась. Попробуйте снова."
+
+msgid "Video generation failed: GPU memory exhausted. Please simplify your request."
+msgstr "Генерация видео не удалась: память GPU исчерпана. Упростите запрос."
+
+msgid "Reasoning model unavailable: GPU memory check failed. Try again."
+msgstr "Модель рассуждения недоступна: проверка памяти GPU не удалась. Попробуйте снова."
+
+msgid "Reasoning failed: GPU memory exhausted. Please simplify your request."
+msgstr "Рассуждение не удалось: память GPU исчерпана. Упростите запрос."
+
+msgid "GPU memory unavailable. Please try again."
+msgstr "Память GPU недоступна. Попробуйте снова."

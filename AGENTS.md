@@ -207,11 +207,19 @@ docker logs flai-web --tail 50 | grep GPU  # Log GPU-related events
 grep "RAG\|reasoning\|router" docker/logs/flai-web.log  # Debug RAG flow
 ```
 
-## Critical rules
+## GPU Queue Management — CRITICAL RULES
 
-1. NEVER make ANY changes to files without direct user approval. Each file change (create, edit, delete) requires explicit plan approval. Exception: only when the user explicitly said "do it" or "execute".
+1. **Tasks run strictly sequentially on GPU.** Fast worker MUST acquire `_gpu_lock` for any task that uses GPU (chat, multimodal, embedding, reasoning). Slow worker already uses `_gpu_lock`. NEVER allow two GPU tasks to run concurrently.
 
-2. Hardcoded query filters at the Python level (without LLM) are STRICTLY FORBIDDEN. All query classification and routing MUST go through the LLM router model. Do not add pattern matching, keyword lists, or any deterministic logic to bypass the router for specific queries.
+2. **VRAM is unconditionally cleaned between every GPU task.** After each task completes, ALL llama.cpp models are unloaded, video pipeline is unloaded, and CUDA cache is flushed. No "predictive" logic — the next task always starts with clean VRAM.
+
+3. **Degradation happens BEFORE model load, not after failure.** `compute_llamacpp_config()` iteratively reduces `n_gpu_layers` until the model fits in available VRAM. If a model doesn't fit even with 0 layers on GPU, the task returns an error instead of crashing with OOM.
+
+4. **VRAM timeout is 15 seconds.** All VRAM wait loops (ensure_vram_for, _wait_for_vram, video.py) use a 15-second maximum wait. If VRAM isn't freed in 15 seconds, the task returns an error instead of proceeding into OOM.
+
+Also:
+- NEVER make ANY changes to files without direct user approval. Each file change (create, edit, delete) requires explicit plan approval. Exception: only when the user explicitly said "do it" or "execute".
+- Hardcoded query filters at the Python level (without LLM) are STRICTLY FORBIDDEN. All query classification and routing MUST go through the LLM router model. Do not add pattern matching, keyword lists, or any deterministic logic to bypass the router for specific queries.
 
 ## GPU Requirement
 

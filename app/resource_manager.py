@@ -309,6 +309,32 @@ class ResourceManager:
             # <8GB — CPU-only
             result["n_gpu_layers"] = 0
             result["warning"] = f"Very limited VRAM ({total_vram}MB) — CPU-only mode"
+        
+        # Degradation: ensure model fits in available VRAM BEFORE loading
+        # Iteratively reduce n_gpu_layers if estimated VRAM exceeds capacity
+        if result["n_gpu_layers"] != 0 and block_count:
+            effective_ngl = result["n_gpu_layers"]
+            if effective_ngl == -1:
+                effective_ngl = block_count
+            while effective_ngl > 0:
+                ratio = min(1.0, effective_ngl / block_count) if block_count > 0 else 1.0
+                est_weights = max(file_size_mb or needed, 100) * ratio * (0.95 if expert_count > 0 else 1.0)
+                est_kv = ctx_size * 0.04
+                est_overhead = max(200, int((file_size_mb or needed) * 0.03 + ctx_size * 0.001))
+                est_total = est_weights + est_kv + est_overhead
+                if est_total <= available_for_model or effective_ngl == 0:
+                    break
+                effective_ngl = max(0, effective_ngl - max(1, block_count // 8))
+            if effective_ngl != result["n_gpu_layers"]:
+                if effective_ngl == -1 if result["n_gpu_layers"] == -1 else False:
+                    pass
+                result["n_gpu_layers"] = effective_ngl if effective_ngl < block_count else -1
+                if result["n_gpu_layers"] != -1:
+                    result["offload_kqv"] = True
+                    result["warning"] = (
+                        f"Auto-degraded: n_gpu_layers={result['n_gpu_layers']}/{block_count} "
+                        f"to fit VRAM ({est_total:.0f}MB > {available_for_model}MB)"
+                    )
 
         # n_cpu_moe: for MoE models that don't fully fit — offload experts proportionally
         is_moe = expert_count > 0
@@ -404,14 +430,14 @@ class ResourceManager:
         kv_per_token = 0.04
         kv_mb = ctx_size * kv_per_token
 
-        overhead = 400  # CUDA context, scratch buffers
+        overhead = max(200, int(file_size_mb * 0.03 + ctx_size * 0.001))
 
         total = int(weights_mb + kv_mb + overhead)
         return max(total, 100)
 
     # ── Unified VRAM guarantee ──
 
-    def ensure_vram_for(self, model_type: str, needed_mb: int | None = None, timeout: int = 60) -> bool:
+    def ensure_vram_for(self, model_type: str, needed_mb: int | None = None, timeout: int = 15) -> bool:
         """Ensure VRAM is available for the given model type.
 
         1. Unload ALL llama.cpp models via llama-swap

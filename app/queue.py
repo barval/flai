@@ -373,41 +373,22 @@ class RedisRequestQueue:
             self.app.logger.debug(f"Failed to query current model: {e}")
             return None
 
-    def _predictive_unload(self, current_model: str) -> None:
-        """After task completion, check next queued task and decide whether to unload."""
-        cold_models = {"reasoning", "embedding"}
-
-        if current_model == "none":
-            return
-
-        actual_model = self._get_current_loaded_model()
-        if actual_model is None:
-            self.app.logger.debug("Predictive unload: cannot determine current model, skipping")
-            return
-
-        next_model, has_tasks = self._peek_next_task_model()
-
-        if actual_model == next_model:
-            self.app.logger.info(
-                f"Predictive unload: keeping '{actual_model}' in VRAM — next task also needs '{next_model}'"
-            )
-            return
-
-        if not has_tasks:
-            if actual_model in cold_models:
-                self.app.logger.info(
-                    f"Predictive unload: queue empty, '{actual_model}' is cold — unloading to free VRAM"
-                )
-            else:
-                self.app.logger.info(
-                    f"Predictive unload: queue empty, '{actual_model}' is hot — "
-                    f"keeping loaded (may be needed for new request)"
-                )
-                return
-
-        self.app.logger.info(
-            f"Predictive unload: current='{actual_model}', next='{next_model}' — unloading '{actual_model}'"
-        )
+    def _cleanup_vram_after_task(self, task: dict[str, Any]) -> None:
+        """Unconditionally free VRAM after a GPU-using task completes."""
+        try:
+            from app.resource_manager import get_resource_manager
+            rm = get_resource_manager()
+            llamacpp_url = os.environ.get("LLAMACPP_URL", "http://flai-llamaswap:8080")
+            rm.unload_llamacpp_model(llamacpp_url)
+            rm.unload_video_pipeline()
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:
+                pass
+        except Exception as e:
+            self.logger.debug(f"VRAM cleanup after task: {e}")
 
         llamacpp_url = self.app.config.get("LLAMACPP_URL")
         if not llamacpp_url:
@@ -500,7 +481,8 @@ class RedisRequestQueue:
                 self._decrement_user_queue_count(user_id)
 
         current_model = self._get_model_for_task(task)
-        self._predictive_unload(current_model)
+        if current_model in ("chat", "reasoning", "multimodal", "embedding"):
+            self._cleanup_vram_after_task(task)
 
     def _worker_loop_fast(self):
         """Worker for fast queue (text, audio, RAG, camera, image chat)."""
@@ -516,7 +498,13 @@ class RedisRequestQueue:
                     self.logger.error("Fast worker: failed to deserialize task")
                     continue
 
-                self._process_single_task(task, self.processing_key)
+                # GPU tasks must serialize with slow worker
+                model = self._get_model_for_task(task)
+                if model in ("chat", "multimodal", "reasoning", "embedding"):
+                    with self._gpu_lock:
+                        self._process_single_task(task, self.processing_key)
+                else:
+                    self._process_single_task(task, self.processing_key)
             except Exception as e:
                 self.logger.error(f"Fast worker error: {e}")
                 time.sleep(1)
@@ -723,7 +711,7 @@ class RedisRequestQueue:
             self.logger.error(f"VRAM verification failed: {e}")
         return False
 
-    def _wait_for_vram_full(self, timeout: int = 60) -> bool:
+    def _wait_for_vram_full(self, timeout: int = 15) -> bool:
         """Wait until ALL LLM models are unloaded AND sufficient GPU VRAM is free.
 
         Unlike _wait_for_vram() which only checks a fixed MB threshold,
@@ -790,7 +778,7 @@ class RedisRequestQueue:
 
         return success
 
-    def _wait_for_vram(self, needed_mb: int = 6000, timeout: int = 60) -> bool:
+    def _wait_for_vram(self, needed_mb: int = 6000, timeout: int = 15) -> bool:
         """Block until at least ``needed_mb`` MB of VRAM is free AND no LLM tasks are running.
 
         First unloads llama.cpp models, then polls VRAM and llama-swap /running endpoint

@@ -10,6 +10,9 @@ function connectEventStream() {
         eventSource.close();
     }
 
+    // Restore pending requests from sessionStorage (survives session switches)
+    restorePendingRequests();
+
     eventSource = new EventSource('/api/events/stream');
 
     eventSource.addEventListener('connected', function () {
@@ -344,7 +347,7 @@ function onResultCompleted(data) {
         return;
     }
 
-    delete pendingRequestIds[data.task_id];
+    clearPendingRequest(data.task_id);
 
     if (data.status === 'completed' && data.result) {
         handleCompletedResult(data.result, expectedSessionId);
@@ -594,12 +597,40 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
         // Poll server for next queued task (500ms delay for server to dequeue)
         setTimeout(fetchQueueStatus, 500);
     }
-    delete pendingRequestIds[taskId];
+    clearPendingRequest(taskId);
     _clearStreamFromSessionStorage(taskId);
 }
 
 function trackPendingRequest(requestId, sessionId) {
     pendingRequestIds[requestId] = { sessionId: sessionId, timestamp: Date.now() };
+    // Persist to sessionStorage so status indicators survive session switches
+    try {
+        const stored = JSON.parse(sessionStorage.getItem('pendingRequests') || '{}');
+        stored[requestId] = { sessionId: sessionId, timestamp: Date.now() };
+        sessionStorage.setItem('pendingRequests', JSON.stringify(stored));
+    } catch (e) { /* ignore */ }
+}
+
+function restorePendingRequests() {
+    try {
+        const stored = JSON.parse(sessionStorage.getItem('pendingRequests') || '{}');
+        const now = Date.now();
+        for (const [reqId, info] of Object.entries(stored)) {
+            // Only restore if not too old (5 minutes)
+            if (!pendingRequestIds[reqId] && now - info.timestamp < 5 * 60 * 1000) {
+                pendingRequestIds[reqId] = info;
+            }
+        }
+    } catch (e) { /* ignore */ }
+}
+
+function clearPendingRequest(requestId) {
+    delete pendingRequestIds[requestId];
+    try {
+        const stored = JSON.parse(sessionStorage.getItem('pendingRequests') || '{}');
+        delete stored[requestId];
+        sessionStorage.setItem('pendingRequests', JSON.stringify(stored));
+    } catch (e) { /* ignore */ }
 }
 
 function handleCompletedResult(result, expectedSessionId) {
@@ -837,3 +868,10 @@ window.connectEventStream = connectEventStream;
 window.disconnectEventStream = disconnectEventStream;
 window.trackPendingRequest = trackPendingRequest;
 window.restoreStreamingFromSessionStorage = restoreStreamingFromSessionStorage;
+
+// Fallback polling: refresh queue status every 5s while there are pending requests
+setInterval(function () {
+    if (Object.keys(pendingRequestIds).length > 0 && typeof fetchQueueStatus === 'function') {
+        fetchQueueStatus();
+    }
+}, 5000);

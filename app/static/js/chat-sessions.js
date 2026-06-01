@@ -378,6 +378,8 @@ function switchSession(sessionId) {
             }).finally(() => {
                 // Unblock sync
                 isSwitchingSession = false;
+                // Restore pending request IDs from sessionStorage
+                restorePendingRequests();
                 // Update status counter
                 window.updateStatusCounter();
                 // Fetch queue status to update session statuses

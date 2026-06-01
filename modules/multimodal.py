@@ -291,6 +291,11 @@ class MultimodalModule(TranslationMixin):
 
         self.logger.info(f"Multimodal model response for parameter generation: {response[:500]}")
 
+        # Check for VRAM error before parsing JSON
+        if self._is_vram_error(response):
+            self.logger.warning(f"Multimodal returned VRAM error: {response[:100]}")
+            return None, self._("GPU memory unavailable. Please try again.", lang)
+
         try:
             import re
 
@@ -345,6 +350,11 @@ class MultimodalModule(TranslationMixin):
         response = self._call_multimodal(messages, lang=lang)
         self.logger.info(f"Multimodal model video param response: {response[:500]}")
 
+        # Check for VRAM error before parsing JSON
+        if self._is_vram_error(response):
+            self.logger.warning(f"Multimodal returned VRAM error: {response[:100]}")
+            return None, self._("GPU memory unavailable. Please try again.", lang)
+
         try:
             import re
 
@@ -398,6 +408,11 @@ class MultimodalModule(TranslationMixin):
         )
         self.logger.info(f"Multimodal model video-from-image param response: {response[:500]}")
 
+        # Check for VRAM error before parsing JSON
+        if self._is_vram_error(response):
+            self.logger.warning(f"Multimodal returned VRAM error: {response[:100]}")
+            return None, self._("GPU memory unavailable. Please try again.", lang)
+
         try:
             import re
 
@@ -450,6 +465,13 @@ class MultimodalModule(TranslationMixin):
         # LlamaCppClient handles validation and configuration internally
         return self.llamacpp.chat(messages, model_type="multimodal", lang=lang)  # type: ignore[no-any-return]
 
+    def _is_vram_error(self, response: str | None) -> bool:
+        """Check if the model response is a VRAM error message instead of JSON."""
+        if not response:
+            return False
+        indicators = ("GPU memory", "Память GPU", "недоступна", "недостаточно памяти")
+        return any(ind in response for ind in indicators)
+
     def generate_edit_params(
         self, user_query: str, image_base64: str, lang: str = "ru", response_style: str = "neutral"
     ) -> tuple[dict[str, Any] | None, str | None]:
@@ -482,6 +504,11 @@ class MultimodalModule(TranslationMixin):
         )
 
         self.logger.info(f"Multimodal model edit response: {response[:500]}")
+
+        # Check for VRAM error before parsing JSON
+        if self._is_vram_error(response):
+            self.logger.warning(f"Multimodal returned VRAM error: {response[:100]}")
+            return None, self._("GPU memory unavailable. Please try again.", lang)
 
         try:
             import re

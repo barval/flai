@@ -534,20 +534,37 @@ class ResourceManager:
     # ── llama.cpp model management ──
 
     def unload_video_pipeline(self) -> bool:
-        """Unload the LTX-Video pipeline from VRAM via /v1/unload."""
+        """Unload the LTX-Video pipeline from VRAM via /v1/unload.
+
+        Retries once on failure and forces CUDA cache clear if unload fails.
+        """
+        import time as _time
+
         import requests as req
 
         ltx_url = os.getenv("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
+        for attempt in range(2):
+            try:
+                resp = req.post(f"{ltx_url.rstrip('/')}/v1/unload", timeout=30)
+                if resp.status_code == 200:
+                    logger.info("LTX-Video pipeline unloaded — VRAM freed")
+                    return True
+                logger.warning(f"LTX-Video unload failed: {resp.status_code} (attempt {attempt + 1})")
+            except Exception as e:
+                logger.warning(f"Error unloading LTX-Video (attempt {attempt + 1}): {e}")
+            if attempt == 0:
+                _time.sleep(3)
+        # Force CUDA cache clear if unload failed
         try:
-            resp = req.post(f"{ltx_url.rstrip('/')}/v1/unload", timeout=30)
-            if resp.status_code == 200:
-                logger.info("LTX-Video pipeline unloaded — VRAM freed")
-                return True
-            logger.warning(f"LTX-Video unload failed: {resp.status_code}")
-            return False
-        except Exception as e:
-            logger.warning(f"Error unloading LTX-Video: {e}")
-            return False
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                logger.info("CUDA cache cleared after LTX-Video unload failure")
+        except ImportError:
+            pass
+        return False
 
     def ensure_vram_for_llm(self, model_type: str = "chat") -> bool:
         """Ensure sufficient VRAM for the requested LLM model type.

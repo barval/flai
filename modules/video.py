@@ -131,7 +131,7 @@ class VideoModule(TranslationMixin):
         # (~5GB) is still loaded on a 15GB GPU (15-5=10 ≥ 10 → false positive).
         swap_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
         deadline = time.time() + 15
-        video_needed = self._estimate_video_vram_mb() + 3000
+        video_needed = rm.estimate_video_vram_needed()
         while time.time() < deadline:
             rm._poll_vram()
             try:
@@ -153,7 +153,7 @@ class VideoModule(TranslationMixin):
             )
             time.sleep(2)
         else:
-            err_msg = self._("Video generation failed: GPU memory is insufficient. Try again in a moment.", lang)
+            err_msg = self._("Video generation failed: GPU memory exhausted. Please simplify your request.", lang)
             self.logger.warning(f"VRAM wait timeout (15s) — free={free}MB, models={loaded}")
             return {"success": False, "error": err_msg}
 

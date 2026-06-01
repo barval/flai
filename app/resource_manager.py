@@ -566,6 +566,20 @@ class ResourceManager:
             pass
         return False
 
+    def estimate_video_vram_needed(self) -> int:
+        """Unified VRAM threshold for LTX-Video pipeline loading.
+
+        Based on measured values from production (ltx-wrapper logs):
+          - LTX-Video actual usage: ~6800 MB (loaded pipeline on 16GB GPU)
+          - CUDA overhead: ~400 MB
+          - Memory fragmentation: ~300 MB
+          - Deallocation lag buffer: ~1000 MB (with torch.cuda.empty_cache in loop)
+
+        Total: 6800 + 1700 = 8500 MB
+        Configurable via LTX_VIDEO_VRAM_MB env var.
+        """
+        return int(os.getenv("LTX_VIDEO_VRAM_MB", "8500"))
+
     def ensure_vram_for_llm(self, model_type: str = "chat") -> bool:
         """Ensure sufficient VRAM for the requested LLM model type.
         Delegates to ensure_vram_for() which handles unloading + polling.

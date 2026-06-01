@@ -738,14 +738,23 @@ class RedisRequestQueue:
 
         rm = get_resource_manager()
         llamacpp_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
-        video_needed = 8000  # _estimate_video_vram_mb()
-        buffer_mb = 3000  # safety margin for CUDA deallocation lag
-        min_free = video_needed + buffer_mb
+        video_needed = rm.estimate_video_vram_needed()
+        min_free = video_needed
         deadline = time.time() + timeout
 
         while time.time() < deadline:
             rm._poll_vram()
             free = rm.hardware.available_vram_mb
+
+            # Force CUDA deallocation every poll cycle
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+            except ImportError:
+                pass
 
             # Check llama-swap /running for loaded models
             loaded_count = -1  # unknown

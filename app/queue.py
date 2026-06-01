@@ -849,8 +849,9 @@ class RedisRequestQueue:
         # Pre-operation monitoring and VRAM cleanup
         self._log_gpu_state_before_op("sd-edit", 8000)
 
-        # Unload llama.cpp models BEFORE any GPU operations
+        # Unload ALL GPU resources before multimodal model
         self._unload_llamacpp_models()
+        self._unload_video_pipeline()
 
         # Wait for guaranteed free VRAM
         if not self._wait_for_vram(6000):
@@ -963,8 +964,9 @@ class RedisRequestQueue:
         # Pre-operation monitoring and VRAM cleanup
         self._log_gpu_state_before_op("sd-gen", 8000)
 
-        # Unload llama.cpp models BEFORE any GPU operations
+        # Unload ALL GPU resources before multimodal model
         self._unload_llamacpp_models()
+        self._unload_video_pipeline()
 
         # Wait for guaranteed free VRAM
         if not self._wait_for_vram(6000):
@@ -1265,8 +1267,9 @@ class RedisRequestQueue:
         # Pre-operation monitoring and cleanup
         self._log_gpu_state_before_op("video-gen", 10000)
 
-        # Unload llama.cpp models BEFORE checking VRAM — critical fix
+        # Unload ALL GPU resources before loading multimodal
         self._unload_llamacpp_models()
+        self._unload_video_pipeline()
 
         # Wait for guaranteed free VRAM with no LLM processes
         if not self._wait_for_vram(6000):
@@ -1372,8 +1375,9 @@ class RedisRequestQueue:
         # Pre-operation monitoring and VRAM cleanup
         self._log_gpu_state_before_op("video-gen-from-img", 10000)
 
-        # Unload llama.cpp models BEFORE any GPU operations
+        # Unload ALL GPU resources before loading multimodal
         self._unload_llamacpp_models()
+        self._unload_video_pipeline()
 
         # Wait for guaranteed free VRAM
         if not self._wait_for_vram(6000):

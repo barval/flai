@@ -112,6 +112,8 @@ function updateSessionsListFromData() {
     if (sessionsUpdateTimeout) {
         clearTimeout(sessionsUpdateTimeout);
     }
+    // Restore pending requests from sessionStorage before rebuilding UI
+    restorePendingRequests();
     // FIX: Increased timeout to prevent excessive updates
     sessionsUpdateTimeout = setTimeout(() => {
         const sessions = Object.keys(sessionsData).map(id => ({

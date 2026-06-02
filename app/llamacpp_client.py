@@ -316,7 +316,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
 
         self.logger.info(f"LlamaSwapBackend request: model={model}, payload keys={list(payload.keys())}")
 
-        max_retries = 1 if model_type in ("multimodal", "reasoning") else 0
+        max_retries = 1 if model_type in ("multimodal", "reasoning", "chat") else 0
 
         for attempt in range(max_retries + 1):
             cb = self._get_circuit_breaker(model_type)
@@ -408,7 +408,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
             "stop": ["</s>", "<|eot_id|>"],
         }
 
-        max_retries = 1 if model_type in ("multimodal", "reasoning") else 0
+        max_retries = 1 if model_type in ("multimodal", "reasoning", "chat") else 0
         response = None
 
         try:
@@ -529,7 +529,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         try:
             response = requests.get(f"{base_url}/running", timeout=10)
             if response.status_code == 200:
-                return response.json().get("models", [])  # type: ignore[no-any-return]
+                return response.json().get("running", [])  # type: ignore[no-any-return]
             return []
         except Exception:
             return []
@@ -596,6 +596,10 @@ class LlamaCppClient:
             return self._translate("Request too long, please simplify your request", lang)
         return None
 
+    def reset_active_model(self):
+        """Invalidate cached active model type when model is unloaded externally."""
+        self._active_model_type = None
+
     def _ensure_vram(self, model_type: str) -> bool:
         """Ensure enough VRAM before a model call.
 
@@ -606,19 +610,33 @@ class LlamaCppClient:
         """
         # === Chat skip: router and response go through same base.py.llamacpp instance ===
         if model_type == "chat" and self._active_model_type == "chat":
-            self.logger.debug("VRAM skip: chat model already active")
-            return True
+            # Quick sanity check: verify the model is actually still loaded
+            try:
+                swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+                resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=2)
+                if resp.status_code == 200:
+                    models = resp.json().get("running", [])
+                    config = get_model_config("chat")
+                    model_name = config.get("model_name", "") if config else ""
+                    if model_name and any(model_name in m.get("cmd", "") for m in models):
+                        self.logger.debug("VRAM skip: chat model already active")
+                        return True
+            except Exception:
+                pass
+            # Model was unloaded externally — clear flag and fall through to full ensure_vram
+            self.logger.debug("VRAM skip failed: chat model not in /running — full reload needed")
+            self._active_model_type = None
 
         # === Stateless check: verify model is loaded via llama-swap + nvidia-smi ===
         try:
             swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
             resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=3)
             if resp.status_code == 200:
-                models = resp.json().get("models", [])
+                models = resp.json().get("running", [])
                 if len(models) == 1:
                     config = get_model_config(model_type)
                     model_name = config.get("model_name", "") if config else ""
-                    if model_name and model_name in models[0]:
+                    if model_name and model_name in models[0].get("cmd", ""):
                         import subprocess
 
                         out = subprocess.run(

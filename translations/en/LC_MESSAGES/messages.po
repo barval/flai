@@ -1628,3 +1628,6 @@ msgstr "GPU memory unavailable. Please try again."
 
 msgid "GPU memory unavailable after unloading LLM. Try again."
 msgstr "GPU memory unavailable after unloading LLM. Try again."
+
+msgid "Service temporarily unavailable. Circuit breaker is open after repeated failures."
+msgstr "Service temporarily unavailable. Circuit breaker is open after repeated failures."

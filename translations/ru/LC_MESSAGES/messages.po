@@ -1635,3 +1635,6 @@ msgstr "Память GPU недоступна. Попробуйте снова."
 
 msgid "GPU memory unavailable after unloading LLM. Try again."
 msgstr "Память GPU недоступна после выгрузки LLM. Попробуйте снова."
+
+msgid "Service temporarily unavailable. Circuit breaker is open after repeated failures."
+msgstr "Сервис временно недоступен. Предохранитель открыт после повторных сбоев."

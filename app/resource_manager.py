@@ -426,11 +426,12 @@ class ResourceManager:
         ratio = min(1.0, ngl / block_count) if (block_count or 0) > 0 else 1.0
         weights_mb = (file_size_mb or 0) * ratio * moe_factor
 
-        # KV cache estimate (q4_0: ~0.04 MB per token, q8_0: ~0.08, f16: ~0.16)
-        kv_per_token = 0.04
+        # KV cache estimate (q4_0: ~0.35 MB per token including CUDA overhead)
+        # Actual measured: 0.3-0.5 MB/token for q4_0 on GPU with fragmentation
+        kv_per_token = 0.35
         kv_mb = ctx_size * kv_per_token
 
-        overhead = max(200, int(file_size_mb * 0.03 + ctx_size * 0.001))
+        overhead = max(400, int(file_size_mb * 0.05 + ctx_size * 0.002))
 
         total = int(weights_mb + kv_mb + overhead)
         return max(total, 100)
@@ -478,7 +479,7 @@ class ResourceManager:
             try:
                 resp = req.get(f"{llamacpp_url}/running", timeout=5)
                 if resp.status_code == 200:
-                    models = resp.json().get("models", [])
+                    models = resp.json().get("running", [])
                     if len(models) > 0:
                         logger.debug(
                             f"ensure_vram_for [{model_type}]: {len(models)} model(s) still active"
@@ -708,7 +709,7 @@ class ResourceManager:
                 resp = req.get(f"{swap_url.rstrip('/')}/running", timeout=5)
                 if resp.status_code == 200:
                     data = resp.json()
-                    status["loaded_models"] = data.get("models", [])
+                    status["loaded_models"] = data.get("running", [])
             except Exception:
                 pass
 
@@ -727,7 +728,7 @@ class ResourceManager:
             resp = req.get(f"{swap_url.rstrip('/')}/running", timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
-                loaded = data.get("models", [])
+                loaded = data.get("running", [])
                 mem_info = data.get("vram", {})
                 total = mem_info.get("total", 0)
                 free = mem_info.get("free", 0)

@@ -590,14 +590,16 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
         setNewMessageIndicator(resultSessionId, true);
     }
 
-    // Cleanup
+    // Cleanup — but don't clear pending request if task was requeued
     if (resultSessionId) {
         setLocalTranscribing(resultSessionId, false);
         clearSessionQueue(resultSessionId);
-        // Poll server for next queued task (500ms delay for server to dequeue)
         setTimeout(fetchQueueStatus, 500);
     }
-    clearPendingRequest(taskId);
+    var wasRequeued = data.result && data.result.status === 'queued' && data.result.request_id;
+    if (!wasRequeued) {
+        clearPendingRequest(taskId);
+    }
     _clearStreamFromSessionStorage(taskId);
 }
 
@@ -670,6 +672,8 @@ function handleCompletedResult(result, expectedSessionId) {
 
     // Re-queue case: task completed but created a new queue entry (e.g., video from text)
     if (result.status === 'queued' && result.request_id) {
+        // Clear the OLD pending request (the requeued original task)
+        clearPendingRequest(data.task_id);
         trackPendingRequest(result.request_id, resultSessionId);
         sessionQueueInfo[resultSessionId] = { processing: true, queued: 0, queue_position: 0, has_transcribing: false };
         if (typeof updateStatusCounter === 'function') updateStatusCounter();

@@ -136,7 +136,7 @@ class VideoModule(TranslationMixin):
             rm._poll_vram()
             try:
                 resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=5)
-                loaded = resp.json().get("models", []) if resp.status_code == 200 else ["?"]
+                loaded = resp.json().get("running", []) if resp.status_code == 200 else ["?"]
             except Exception:
                 loaded = ["?"]
             free = rm.hardware.available_vram_mb

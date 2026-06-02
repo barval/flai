@@ -92,6 +92,8 @@ function fetchQueueStatus() {
             });
 
             updateUIFromQueueStatus();
+            // Ensure pending requests are restored after queue status update
+            restorePendingRequests();
         })
         .catch(err => console.error('Error fetching queue status:', err));
 }

@@ -102,7 +102,7 @@ def load_config(app):
 
     # RAG relevance thresholds (used only if DB doesn't have values)
     app.config["RAG_RELEVANCE_THRESHOLD_DEFAULT"] = 0.3
-    app.config["RAG_RELEVANCE_THRESHOLD_REASONING"] = 0.2
+    app.config["RAG_RELEVANCE_THRESHOLD_REASONING"] = 0.25
 
     # Debug translations
     app.config["DEBUG_TRANSLATIONS"] = os.getenv("DEBUG_TRANSLATIONS", "false").lower() == "true"

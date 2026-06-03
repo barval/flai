@@ -264,8 +264,8 @@ def recall():
                 results = _recall_from_user_db(profile, limit)
         else:
             results = _recall_from_user_db(profile, limit)
-        if results is not None:
-            return jsonify({"success": True, "data": {"results": results}})
+        # profile set → read ONLY from user DB, never fall through to daemon
+        return jsonify({"success": True, "data": {"results": results or []}})
 
     if not query:
         return jsonify({"success": False, "error": "Missing query"}), 400

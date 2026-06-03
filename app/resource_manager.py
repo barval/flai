@@ -456,7 +456,31 @@ class ResourceManager:
         llamacpp_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
         import requests as req
 
-        # 1. Unload all llama.cpp models
+        # 1. Check if needed model is already loaded — skip unload if so
+        try:
+            resp_check = req.get(f"{llamacpp_url}/running", timeout=2)
+            if resp_check.status_code == 200:
+                running = resp_check.json().get("running", [])
+                if len(running) == 1:
+                    cmd = running[0].get("cmd", "")
+                    from app.model_config import get_model_config
+
+                    config = get_model_config(model_type)
+                    model_name = config.get("model_name", "") if config else ""
+                    if model_name and model_name in cmd:
+                        # Needed model already loaded — just verify VRAM
+                        self._poll_vram()
+                        free = self.hardware.available_vram_mb
+                        if free >= needed_mb:
+                            logger.info(
+                                f"ensure_vram_for [{model_type}]: model already loaded, "
+                                f"{free}MB free >= {needed_mb}MB needed — OK"
+                            )
+                            return True
+        except Exception:
+            pass
+
+        # Model not loaded or different model active — full unload
         logger.info(f"ensure_vram_for [{model_type}]: unloading all models, need {needed_mb}MB")
         self.unload_llamacpp_model(llamacpp_url)
 

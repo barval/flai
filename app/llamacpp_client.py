@@ -562,6 +562,22 @@ class LlamaCppClient:
 
     def check_availability(self) -> bool:
         self.available = self.backend.check_availability()
+        # If chat model is preloaded, mark it as active to skip full ensure_vram on first request
+        if self.available and self._active_model_type is None:
+            try:
+                swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+                resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=2)
+                if resp.status_code == 200:
+                    models = resp.json().get("running", [])
+                    from app.model_config import get_model_config
+
+                    config = get_model_config("chat")
+                    model_name = config.get("model_name", "") if config else ""
+                    if model_name and any(model_name in m.get("cmd", "") for m in models):
+                        self._active_model_type = "chat"
+                        self.logger.info("check_availability: chat model preloaded, marked as active")
+            except Exception:
+                pass
         if self.available:
             self.logger.info(f"LLM backend available at {self.backend.get_base_url()}")
         else:

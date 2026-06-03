@@ -229,6 +229,9 @@ class MultimodalModule(TranslationMixin):
         response = self.llamacpp.chat_with_image(
             text=prompt, image_base64=image_data, model_type="multimodal", lang=lang
         )
+        if self._is_vram_error(response):
+            self.logger.warning(f"Multimodal returned VRAM error: {response[:100] if response else 'None'}")
+            return None, self._("GPU memory unavailable. Please try again.", lang)
         return response, None
 
     def process_image_with_text_stream(

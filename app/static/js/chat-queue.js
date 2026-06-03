@@ -64,6 +64,28 @@ function fetchQueueStatus() {
                 });
             }
 
+            // Preserve hourglass for sessions with pending requests that server hasn't
+            // reported yet (race between client set hourglass and server add to queue).
+            // Without this, fetchQueueStatus() overwrites local ⏳ with empty server data
+            // and the hourglass disappears until the next poll or SSE event.
+            if (typeof pendingRequestIds === 'object' && pendingRequestIds) {
+                Object.keys(pendingRequestIds).forEach(reqId => {
+                    const info = pendingRequestIds[reqId];
+                    if (!info || !info.sessionId) return;
+                    const sid = info.sessionId;
+                    if (sid === processingSessionId) return;
+                    if (!newInfo[sid]) {
+                        newInfo[sid] = { processing: false, queued: 0, queue_position: 0, has_transcribing: false };
+                    }
+                    if (!newInfo[sid].processing && newInfo[sid].queued === 0) {
+                        newInfo[sid].queued = 1;
+                        if (!newInfo[sid].queue_position) {
+                            newInfo[sid].queue_position = 999;
+                        }
+                    }
+                });
+            }
+
             // SAFETY VALVE: If server reports idle (no processing, no queued), clear pendingRequests
             // This fixes stuck lightning bolts when polling was cancelled
             if (!processingSessionId && (!data.queued || data.queued.length === 0)) {

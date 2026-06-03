@@ -210,9 +210,14 @@ class ResourceManager:
         try:
             config = get_model_config(model_type)
             if config:
-                model_name = config.get("model")
+                model_name = config.get("model_name") or config.get("model")
         except Exception:
             pass
+
+        # Context length: from DB config, fallback 8192 (matches default in result dict)
+        ctx_size = config.get("context_length") if config else None
+        if not ctx_size:
+            ctx_size = 8192
 
         # Try to get model size from GGUF cache
         file_size_mb = None
@@ -247,7 +252,7 @@ class ResourceManager:
 
         result = {
             "n_gpu_layers": -1,  # default: all on GPU
-            "ctx_size": 8192,
+            "ctx_size": ctx_size,
             "cache_capacity": 4096,
             "offload_kqv": False,
             "flash_attn": flash_attn_default,
@@ -309,7 +314,7 @@ class ResourceManager:
             # <8GB — CPU-only
             result["n_gpu_layers"] = 0
             result["warning"] = f"Very limited VRAM ({total_vram}MB) — CPU-only mode"
-        
+
         # Degradation: ensure model fits in available VRAM BEFORE loading
         # Iteratively reduce n_gpu_layers if estimated VRAM exceeds capacity
         if result["n_gpu_layers"] != 0 and block_count:
@@ -426,9 +431,10 @@ class ResourceManager:
         ratio = min(1.0, ngl / block_count) if (block_count or 0) > 0 else 1.0
         weights_mb = (file_size_mb or 0) * ratio * moe_factor
 
-        # KV cache estimate (q4_0: ~0.35 MB per token including CUDA overhead)
-        # Actual measured: 0.3-0.5 MB/token for q4_0 on GPU with fragmentation
-        kv_per_token = 0.35
+        # KV cache estimate (q4_0: ~0.12 MB per token including CUDA overhead)
+        # Actual measured on RTX 5060 Ti: chat 0.05, multimodal 0.18, reasoning 0.12 MB/token.
+        # Old 0.35 was 3-7x too high, causing ensure_vram_for to fail with generous margin.
+        kv_per_token = 0.12
         kv_mb = ctx_size * kv_per_token
 
         overhead = max(400, int(file_size_mb * 0.05 + ctx_size * 0.002))

@@ -181,6 +181,87 @@ class TestComputeConfig:
         assert cfg["n_gpu_layers"] == -1
         assert cfg["flash_attn"] is True
 
+    @patch("os.cpu_count", return_value=8)
+    @patch(
+        "builtins.open", new_callable=mock_open, read_data="MemTotal:       32768000 kB\nMemAvailable:   16384000 kB\n"
+    )
+    @patch("subprocess.run")
+    def test_degradation_loop_no_nameerror(self, mock_run, mock_file, mock_cpu):
+        """Regression: degradation loop must not raise NameError on ctx_size.
+
+        Pre-fix: ctx_size was undefined in compute_llamacpp_config, causing
+        the while loop on lines 319-337 to raise NameError. The exception was
+        swallowed by get_vram_needed_mb's try/except, so the bug was silent.
+        """
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="NVIDIA GeForce RTX 4060 Ti, 16384, 2048, 14336\n",
+        )
+        rm = ResourceManager()
+        rm.detect_hardware()
+        # Should not raise NameError on any model type
+        for mt in ["chat", "multimodal", "reasoning", "embedding"]:
+            cfg = rm.compute_llamacpp_config(mt)
+            assert "n_gpu_layers" in cfg
+            assert cfg["n_gpu_layers"] is not None
+            assert cfg["ctx_size"] > 0
+
+    @patch("os.cpu_count", return_value=8)
+    @patch(
+        "builtins.open", new_callable=mock_open, read_data="MemTotal:       32768000 kB\nMemAvailable:   16384000 kB\n"
+    )
+    @patch("subprocess.run")
+    def test_ctx_size_uses_db_config(self, mock_run, mock_file, mock_cpu):
+        """ctx_size in result should reflect DB context_length, not hardcoded 8192.
+
+        Pre-fix: result always returned ctx_size=8192 regardless of model config.
+        """
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="NVIDIA GeForce RTX 4090, 24564, 2048, 22516\n",
+        )
+        with patch("app.model_config.get_model_config") as mock_cfg:
+            mock_cfg.return_value = {
+                "model_name": "Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf",
+                "context_length": 16384,
+            }
+            rm = ResourceManager()
+            rm.detect_hardware()
+            cfg = rm.compute_llamacpp_config("chat")
+            assert cfg["ctx_size"] == 16384
+
+        with patch("app.model_config.get_model_config") as mock_cfg:
+            mock_cfg.return_value = {
+                "model_name": "Qwen3VL-8B-Instruct-Q4_K_M",
+                "context_length": 8192,
+            }
+            rm = ResourceManager()
+            rm.detect_hardware()
+            cfg = rm.compute_llamacpp_config("multimodal")
+            assert cfg["ctx_size"] == 8192
+
+    @patch("os.cpu_count", return_value=8)
+    @patch(
+        "builtins.open", new_callable=mock_open, read_data="MemTotal:       32768000 kB\nMemAvailable:   16384000 kB\n"
+    )
+    @patch("subprocess.run")
+    def test_8gb_override_keeps_ctx_4096(self, mock_run, mock_file, mock_cpu):
+        """8GB tier must still override ctx_size to 4096 even when config has 16384."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="NVIDIA GeForce RTX 3050, 8192, 2048, 6144\n",
+        )
+        with patch("app.model_config.get_model_config") as mock_cfg:
+            mock_cfg.return_value = {
+                "model_name": "Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf",
+                "context_length": 16384,
+            }
+            rm = ResourceManager()
+            rm.detect_hardware()
+            cfg = rm.compute_llamacpp_config("chat")
+            # 8GB tier caps ctx_size to 4096 regardless of DB config
+            assert cfg["ctx_size"] == 4096
+
 
 class TestGpuGating:
     def test_initial_not_busy(self):

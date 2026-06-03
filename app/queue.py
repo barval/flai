@@ -1218,22 +1218,29 @@ class RedisRequestQueue:
         # Pre-operation monitoring
         self._log_gpu_state_before_op("reasoning", 12000)
 
-        # Try RAG first — if relevant documents found, answer directly without reasoning model
-        rag_answer, rag_model = self._try_rag_answer(
-            query, session_id, user_id, lang, strict=True, response_style=response_style
-        )
-        if rag_answer is not None:
-            if self._is_llm_error_string(rag_answer):
-                return self._build_error_response(session_id, rag_answer, 0, lang)
-            model_used = rag_model + " (RAG)" if rag_model else "unknown (RAG)"
-            self.app.logger.info(f"RAG answered in reasoning request: {query[:50]}...")
-            return self._save_and_respond(
-                session_id, rag_answer, model_used, 0, response_style=response_style, user_id=user_id
-            )
-
         # Use pre-computed RAG context from fast worker, or search fresh
         rag_context = request_data.get("rag_context", "")
-        if not rag_context:
+        if rag_context:
+            self.app.logger.info(
+                f"Using pre-computed RAG context: {len(rag_context)} chars from fast worker"
+            )
+        else:
+            # No pre-computed context — try RAG answer directly (covers non-requeue paths)
+            rag_start = time.time()
+            rag_answer, rag_model = self._try_rag_answer(
+                query, session_id, user_id, lang, strict=True, response_style=response_style
+            )
+            rag_time = round(time.time() - rag_start, 1)
+            if rag_answer is not None:
+                if self._is_llm_error_string(rag_answer):
+                    return self._build_error_response(session_id, rag_answer, rag_time, lang)
+                model_used = rag_model + " (RAG)" if rag_model else "unknown (RAG)"
+                self.app.logger.info(f"RAG answered in reasoning request: {query[:50]}...")
+                return self._save_and_respond(
+                    session_id, rag_answer, model_used, rag_time, response_style=response_style, user_id=user_id
+                )
+
+            # No RAG answer — search raw chunks for reasoning model context
             rag = self.app.modules.get("rag")
             if rag and rag.available:
                 try:
@@ -1257,10 +1264,6 @@ class RedisRequestQueue:
                         )
                 except Exception as e:
                     self.app.logger.debug(f"RAG raw context collection failed: {e}")
-        else:
-            self.app.logger.info(
-                f"Using pre-computed RAG context: {len(rag_context)} chars from fast worker"
-            )
 
         # Ensure VRAM before loading reasoning model (with improved checks)
         vram_ok = False

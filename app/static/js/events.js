@@ -431,6 +431,8 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
                     if (typeof result.response_time === 'object') {
                         if (result.response_time.mm_time && result.response_time.gen_time) {
                             duration = (parseFloat(result.response_time.mm_time) + parseFloat(result.response_time.gen_time)).toFixed(1);
+                        } else if (result.response_time.router && result.response_time.chat) {
+                            duration = (parseFloat(result.response_time.router) + parseFloat(result.response_time.chat)).toFixed(1);
                         } else if (result.response_time.mm_time) {
                             duration = parseFloat(result.response_time.mm_time).toFixed(1);
                         } else if (result.response_time.gen_time) {

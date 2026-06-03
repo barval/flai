@@ -433,6 +433,8 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             if (typeof responseTime === 'object') {
                 if (responseTime.mm_time && responseTime.gen_time) {
                     duration = (parseFloat(responseTime.mm_time) + parseFloat(responseTime.gen_time)).toFixed(1);
+                } else if (responseTime.router && responseTime.chat) {
+                    duration = (parseFloat(responseTime.router) + parseFloat(responseTime.chat)).toFixed(1);
                 } else if (responseTime.mm_time) {
                     duration = parseFloat(responseTime.mm_time).toFixed(1);
                 } else if (responseTime.gen_time) {
@@ -477,6 +479,8 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             if (typeof responseTime === 'object') {
                 if (responseTime.mm_time && responseTime.gen_time) {
                     duration = (parseFloat(responseTime.mm_time) + parseFloat(responseTime.gen_time)).toFixed(1);
+                } else if (responseTime.router && responseTime.chat) {
+                    duration = (parseFloat(responseTime.router) + parseFloat(responseTime.chat)).toFixed(1);
                 } else if (responseTime.mm_time) {
                     duration = parseFloat(responseTime.mm_time).toFixed(1);
                 } else if (responseTime.gen_time) {

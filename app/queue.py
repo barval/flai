@@ -606,6 +606,19 @@ class RedisRequestQueue:
             "message_id": msg_id,
         }
 
+    @staticmethod
+    def _is_llm_error_string(text: str) -> bool:
+        """Check if a string from call_llamacpp/chat_stream is an error message."""
+        if not isinstance(text, str):
+            return False
+        indicators = (
+            "GPU memory", "HTTP error", "Could not connect", "Timeout",
+            "Service temporarily unavailable", "Circuit breaker",
+            "Model configuration missing", "Model for ", "not configured",
+            "Error:", "error occurred",
+        )
+        return any(ind in text for ind in indicators)
+
     def _build_success_response(
         self,
         session_id: str,
@@ -1153,6 +1166,7 @@ class RedisRequestQueue:
         lang: str,
         response_style: str = "neutral",
         user_class: int = 2,
+        rag_context: str = "",
     ) -> dict[str, Any]:
         """Re-queue a reasoning task to the slow queue.
         Prevents GPU contention with SD/Video (all GPU ops are serialised
@@ -1164,6 +1178,8 @@ class RedisRequestQueue:
             "preview": (query[:50] + "...") if query else self.app.modules["base"]._("Reasoning request", lang=lang),
             "response_style": response_style,
         }
+        if rag_context:
+            request_data["rag_context"] = rag_context
         new_request_id, position_info = self.add_request(user_id, session_id, request_data, user_class, lang=lang)
         self.app.logger.info(
             f"Re-queued reasoning task {new_request_id} for session {session_id} (position {position_info['position']})"
@@ -1207,37 +1223,44 @@ class RedisRequestQueue:
             query, session_id, user_id, lang, strict=True, response_style=response_style
         )
         if rag_answer is not None:
+            if self._is_llm_error_string(rag_answer):
+                return self._build_error_response(session_id, rag_answer, 0, lang)
             model_used = rag_model + " (RAG)" if rag_model else "unknown (RAG)"
             self.app.logger.info(f"RAG answered in reasoning request: {query[:50]}...")
             return self._save_and_respond(
                 session_id, rag_answer, model_used, 0, response_style=response_style, user_id=user_id
             )
 
-        # RAG didn't answer — get raw chunks from Qdrant for reasoning model context
-        rag_context = ""
-        rag = self.app.modules.get("rag")
-        if rag and rag.available:
-            try:
-                chunks, scores = rag.search(user_id, query, top_k=20)
-                if chunks:
-                    from flask_babel import gettext as _
-                    with force_locale(lang):
-                        source_label = _("Source")
-                    context_parts = []
-                    for i, chunk in enumerate(chunks[:15]):  # top 15 chunks
-                        filename = chunk.get("filename", "?")
-                        text = chunk.get("text", str(chunk))
-                        score = scores[i] if i < len(scores) else 0.0
-                        context_parts.append(
-                            f"[{source_label}: {filename} (score: {score:.2f})]\n{text}"
+        # Use pre-computed RAG context from fast worker, or search fresh
+        rag_context = request_data.get("rag_context", "")
+        if not rag_context:
+            rag = self.app.modules.get("rag")
+            if rag and rag.available:
+                try:
+                    chunks, scores = rag.search(user_id, query, top_k=20)
+                    if chunks:
+                        from flask_babel import gettext as _
+                        with force_locale(lang):
+                            source_label = _("Source")
+                        context_parts = []
+                        for i, chunk in enumerate(chunks[:15]):  # top 15 chunks
+                            filename = chunk.get("filename", "?")
+                            text = chunk.get("text", str(chunk))
+                            score = scores[i] if i < len(scores) else 0.0
+                            context_parts.append(
+                                f"[{source_label}: {filename} (score: {score:.2f})]\n{text}"
+                            )
+                        rag_context = "\n\n".join(context_parts)
+                        self.app.logger.info(
+                            f"RAG raw context: {len(chunks)} chunks, {len(rag_context)} chars "
+                            f"passed to reasoning model"
                         )
-                    rag_context = "\n\n".join(context_parts)
-                    self.app.logger.info(
-                        f"RAG raw context: {len(chunks)} chunks, {len(rag_context)} chars "
-                        f"passed to reasoning model"
-                    )
-            except Exception as e:
-                self.app.logger.debug(f"RAG raw context collection failed: {e}")
+                except Exception as e:
+                    self.app.logger.debug(f"RAG raw context collection failed: {e}")
+        else:
+            self.app.logger.info(
+                f"Using pre-computed RAG context: {len(rag_context)} chars from fast worker"
+            )
 
         # Ensure VRAM before loading reasoning model (with improved checks)
         vram_ok = False
@@ -1274,6 +1297,8 @@ class RedisRequestQueue:
             if "CUDA out of memory" in str(err):
                 err = self.app.modules["base"]._("Reasoning failed: GPU memory exhausted. Please simplify your request.", lang=lang)
             return self._build_error_response(session_id, err, reasoning_time, lang)
+        if isinstance(result, str) and self._is_llm_error_string(result):
+            return self._build_error_response(session_id, result, reasoning_time, lang)
         return self._save_and_respond(
             session_id,
             result,
@@ -1739,24 +1764,57 @@ class RedisRequestQueue:
     def _process_rag_task(
         self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
     ) -> dict[str, Any]:
-        """Handle explicit RAG request (router action_type='rag')."""
-        # RAG needs embedding (~500MB) then reasoning (~10GB) — clear VRAM first
-        self._unload_llamacpp_models()
-        self._unload_video_pipeline()
+        """Handle explicit RAG request (router action_type='rag').
 
+        Performs RAG search (embedding + Qdrant) on the fast worker,
+        then re-queues to the slow worker for reasoning model generation.
+        This avoids GPU contention: the reasoning model (~13 GiB) is loaded
+        only in the slow worker where VRAM is properly managed.
+        """
+        rag = self.app.modules.get("rag")
+        if not rag or not rag.available:
+            return self._build_error_response(
+                session_id, self.app.modules["base"]._("No relevant documents found", lang), 0, lang
+            )
+
+        # Step 1: RAG search only (embedding ~500MB — safe on fast worker)
         rag_start = time.time()
-        rag_answer, rag_model = self._try_rag_answer(
-            query, session_id, user_id, lang, strict=False, response_style=response_style
-        )
-        rag_time = round(time.time() - rag_start, 1)
-
-        if rag_answer is not None:
-            model_used = (rag_model + " (RAG)") if rag_model else "unknown (RAG)"
-            return self._save_and_respond(session_id, rag_answer, model_used, rag_time, response_style=response_style)
-        else:
+        rag_context = ""
+        try:
+            chunks, scores = rag.search(user_id, query, top_k=20)
+            if chunks:
+                from flask_babel import gettext as _
+                with force_locale(lang):
+                    source_label = _("Source")
+                context_parts = []
+                for i, chunk in enumerate(chunks[:15]):
+                    filename = chunk.get("filename", "?")
+                    text = chunk.get("text", str(chunk))
+                    score = scores[i] if i < len(scores) else 0.0
+                    context_parts.append(
+                        f"[{source_label}: {filename} (score: {score:.2f})]\n{text}"
+                    )
+                rag_context = "\n\n".join(context_parts)
+                self.app.logger.info(
+                    f"RAG search: {len(chunks)} chunks, {len(rag_context)} chars — requeueing to slow worker"
+                )
+            else:
+                rag_time = round(time.time() - rag_start, 1)
+                return self._build_error_response(
+                    session_id, self.app.modules["base"]._("No relevant documents found", lang), rag_time, lang
+                )
+        except Exception as e:
+            self.logger.error(f"RAG search failed: {e}")
+            rag_time = round(time.time() - rag_start, 1)
             return self._build_error_response(
                 session_id, self.app.modules["base"]._("No relevant documents found", lang), rag_time, lang
             )
+
+        # Step 2: Re-queue to slow worker for reasoning model generation
+        return self._requeue_reasoning_task(
+            query, session_id, user_id, lang, response_style,
+            rag_context=rag_context,
+        )
 
     def _process_rag_task_stream(
         self,
@@ -1767,34 +1825,57 @@ class RedisRequestQueue:
         lang: str,
         response_style: str = "neutral",
     ) -> dict[str, Any]:
-        """Handle explicit RAG request with streaming for the LLM generation part."""
-        # RAG needs embedding (~500MB) then reasoning (~10GB) — clear VRAM first
-        self._unload_llamacpp_models()
-        self._unload_video_pipeline()
+        """Handle explicit RAG request — search on fast worker, generation on slow worker.
 
+        Performs RAG search (embedding + Qdrant) on the fast worker,
+        then re-queues to the slow worker for reasoning model generation.
+        This avoids GPU contention: the reasoning model (~13 GiB) is loaded
+        only in the slow worker where VRAM is properly managed.
+        """
+        rag = self.app.modules.get("rag")
+        if not rag or not rag.available:
+            return self._build_error_response(
+                session_id, self.app.modules["base"]._("No relevant documents found", lang), 0, lang
+            )
+
+        # Step 1: RAG search only (embedding ~500MB — safe on fast worker)
         rag_start = time.time()
-
-        def publish_token(token: str) -> None:
-            self._publish_stream_token(task, token)
-
-        rag_answer, rag_model = self._try_rag_answer(
-            query,
-            session_id,
-            user_id,
-            lang,
-            strict=False,
-            response_style=response_style,
-            token_callback=publish_token,
-        )
-        rag_time = round(time.time() - rag_start, 1)
-
-        if rag_answer is not None:
-            model_used = (rag_model + " (RAG)") if rag_model else "unknown (RAG)"
-            return self._save_and_respond(session_id, rag_answer, model_used, rag_time, response_style=response_style)
-        else:
+        rag_context = ""
+        try:
+            chunks, scores = rag.search(user_id, query, top_k=20)
+            if chunks:
+                from flask_babel import gettext as _
+                with force_locale(lang):
+                    source_label = _("Source")
+                context_parts = []
+                for i, chunk in enumerate(chunks[:15]):
+                    filename = chunk.get("filename", "?")
+                    text = chunk.get("text", str(chunk))
+                    score = scores[i] if i < len(scores) else 0.0
+                    context_parts.append(
+                        f"[{source_label}: {filename} (score: {score:.2f})]\n{text}"
+                    )
+                rag_context = "\n\n".join(context_parts)
+                self.app.logger.info(
+                    f"RAG search: {len(chunks)} chunks, {len(rag_context)} chars — requeueing to slow worker"
+                )
+            else:
+                rag_time = round(time.time() - rag_start, 1)
+                return self._build_error_response(
+                    session_id, self.app.modules["base"]._("No relevant documents found", lang), rag_time, lang
+                )
+        except Exception as e:
+            self.logger.error(f"RAG search failed: {e}")
+            rag_time = round(time.time() - rag_start, 1)
             return self._build_error_response(
                 session_id, self.app.modules["base"]._("No relevant documents found", lang), rag_time, lang
             )
+
+        # Step 2: Re-queue to slow worker for reasoning model generation
+        return self._requeue_reasoning_task(
+            query, session_id, user_id, lang, response_style,
+            rag_context=rag_context,
+        )
 
     def _process_text_task(
         self,
@@ -1831,6 +1912,8 @@ class RedisRequestQueue:
             )
             rag_time = round(time.time() - rag_start, 1)
             if rag_answer is not None:
+                if self._is_llm_error_string(rag_answer):
+                    return self._build_error_response(session_id, rag_answer, rag_time, lang)
                 model_used = rag_model + " (RAG)" if rag_model else "unknown (RAG)"
                 return self._save_and_respond(
                     session_id, rag_answer, model_used, rag_time, response_style=response_style, user_id=user_id
@@ -1861,6 +1944,8 @@ class RedisRequestQueue:
             chat_time = round(time.time() - chat_start, 1)
             if not chat_response:
                 chat_response = query
+            if self._is_llm_error_string(chat_response):
+                return self._build_error_response(session_id, chat_response, chat_time, lang)
             return self._save_and_respond(
                 session_id,
                 chat_response,
@@ -1905,6 +1990,10 @@ class RedisRequestQueue:
                 query, session_id, user_id, lang, strict=True, response_style=response_style
             )
             if rag_answer is not None:
+                if self._is_llm_error_string(rag_answer):
+                    return self._build_error_response(
+                        session_id, rag_answer, round(time.time() - rag_start, 1), lang
+                    )
                 model_used = rag_model + " (RAG)" if rag_model else "unknown (RAG)"
                 self.app.logger.info(f"Streaming path: RAG answered for reasoning query: {query[:50]}...")
                 return self._save_and_respond(
@@ -1935,6 +2024,10 @@ class RedisRequestQueue:
                     break
             if not full_response.strip():
                 full_response = query
+            if self._is_llm_error_string(full_response):
+                return self._build_error_response(
+                    session_id, full_response, round(time.time() - stream_start, 1), lang
+                )
             return self._save_and_respond(
                 session_id,
                 full_response,

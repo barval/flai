@@ -146,6 +146,7 @@ async function sendMessage() {
                     const formData = new FormData();
                     formData.append('message', tempText);
                     formData.append('file', tempAttachedFile);
+                    formData.append('session_id', currentSessionId);
                     if (isVoiceRecorded) {
                         formData.append('voice_record', 'true');
                         isVoiceRecorded = false;
@@ -155,7 +156,7 @@ async function sendMessage() {
                     response = await fetchWithCSRF('/api/send_message', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message: tempText })
+                        body: JSON.stringify({ message: tempText, session_id: currentSessionId })
                     });
                 }
                 

@@ -73,7 +73,7 @@ def test_resize_image_if_needed_large():
     img.save(buf, format="JPEG")
     img_data = base64.b64encode(buf.getvalue()).decode("utf-8")
     new_data, new_type, new_name, resized, orig_dims, new_dims = resize_image_if_needed(
-        img_data, "image/jpeg", "test.jpg", 1920, 1080
+        img_data, "image/jpeg", "test.jpg", 1080, 85
     )
     assert resized
     assert new_type == "image/jpeg"
@@ -81,7 +81,7 @@ def test_resize_image_if_needed_large():
     # Decode and check new dimensions
     decoded = base64.b64decode(new_data)
     new_img = Image.open(io.BytesIO(decoded))
-    assert new_img.width <= 1920
+    assert new_img.width <= 1080
     assert new_img.height <= 1080
 
 

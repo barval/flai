@@ -215,7 +215,7 @@ def update_session_title(session_id, first_message, file_name=None):
     elif file_name:
         title = file_name[:40] + ("..." if len(file_name) > 40 else "")
     else:
-        title = "New session"
+        title = _("New session")
     current_time = get_current_time_for_db()
     with get_db() as conn:
         c = conn.cursor()

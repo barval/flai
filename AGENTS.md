@@ -56,8 +56,8 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - **Entrypoint**: `app/__init__.py:create_app()` → returns Flask app. Blueprints in `app/routes/` (auth, chat, admin, queue, tts, messages, sessions, documents, backups). Modules in `modules/` (base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm).
 - **LLM client**: `app/llamacpp_client.py:LlamaCppClient` with two backends — `DirectLlamaBackend` (direct llama-server) or `LlamaSwapBackend` (via llama-swap proxy). Selected by `LLAMACP_BACKEND` env var.
 - **Queue**: `app/queue.py:RedisRequestQueue`. Two workers with strict GPU serialization:
-  - **Fast worker** — CPU-only operations: router (chat model), text, audio, RAG. The chat model (2.5 GiB) stays hot in VRAM.
-  - **Slow worker** — all GPU-heavy operations: multimodal (Qwen3VL-8B), SD, LTX-Video, **reasoning** (gpt-oss-20b). Strictly sequential — only one GPU task runs at a time.
+  - **Fast worker** — CPU-only operations: router (chat model), text, audio, RAG **search** (embedding + Qdrant only, ~500 MB). The chat model (2.5 GiB) stays hot in VRAM.
+  - **Slow worker** — all GPU-heavy operations: multimodal (Qwen3VL-8B), SD, LTX-Video, **reasoning** (gpt-oss-20b), **RAG generation** (via reasoning model). Strictly sequential — only one GPU task runs at a time.
   - **VRAM guard** (`_wait_for_vram`) — before any multimodal/SD/Video call, blocks until at least 6 GiB VRAM is free (polls `nvidia-smi` every 2s, times out after 60s).
   - **Synchronous VRAM polling** (`_poll_vram`) — `_resolve_use_gpu()` and `ensure_vram_for_llm()` call `_poll_vram()` synchronously before reading `available_vram_mb` (was updated every 60s, causing stale data and OOM). After every `unload_llamacpp_model()`, a wait loop verifies VRAM is actually freed (up to 30s).
   - **VRAM guard for reasoning** (`ensure_vram_for_reasoning`) — unloads llama.cpp models and waits (up to 60s) for SD/Video to free VRAM before loading gpt-oss-20b (~10 GiB).
@@ -107,6 +107,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - Always keep translation files (`messages.po`) up‑to‑date and complete.
 - For Russian, the file `deploy-ru.sh` is the only place where Russian comments are allowed.
 - **Every** user-facing string MUST be wrapped in `_()` / `self._()` / `gettext()`. Raw `str(e)` must NEVER be returned to the user.
+- **When adding or modifying error messages**, ALWAYS verify that corresponding translation keys exist in both `translations/en/LC_MESSAGES/messages.po` and `translations/ru/LC_MESSAGES/messages.po`. Run `pybabel extract && pybabel update && pybabel compile` to sync.
 
 ## Dependencies & External Resources
 - The project must run **fully offline** after model/voice downloads.
@@ -140,6 +141,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - **mypy** `app/utils.py`: `Module has no attribute "parse_rtf"` — striprtf stub issue. Fix: `# type: ignore[attr-defined]`.
 - **Unit test speed**: CamModule has 5×2s init retries, making test_cam.py ~10s per fixture.
 - **Load tests** (`tests/load/`) excluded from pytest collection (require locust fixtures).
+- **Pre-existing excluded tests**: `test_backups.py` (KeyError 'babel' — missing Flask-Babel init in test fixture), `test_base_module.py::test_parse_router_response_image_marker` (router response format changed). These are not blocking CI.
 
 ## VRAM fixes & RAG improvements (v8.8+)
 
@@ -183,7 +185,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - `app/resource_manager.py`: Added `measure_model_vram()` — captures VRAM after model load and stores in DB. Enhanced `ensure_vram_for_reasoning()` with CUDA cache clearing and tighter /running verification.
 - `app/llamacpp_client.py`: Calls `measure_model_vram()` after each successful model response. Per-model-type circuit breakers (separate CB for chat, reasoning, multimodal). Fixed `_ensure_vram` — replaced `except Exception: pass` with proper logging. Added retry for reasoning on 502. Degrade model on every failure (not just circuit breaker open).
 - `modules/video.py`: Buffer +500→+3000, timeout 30→60s, no "proceeding anyway". Added CUDA cache flush after generation.
-- `app/queue.py`: Added `_gpu_lock`, `_log_gpu_state_before_op()`, `_check_vram_ready()`, `_unload_llamacpp_models()`, CUDA cache flush in `_unload_video_pipeline()`, RAG in streaming path, RAG retry in reasoning task, raw chunk context from Qdrant on RAG failure
+- `app/queue.py`: Added `_gpu_lock`, `_log_gpu_state_before_op()`, `_check_vram_ready()`, `_unload_llamacpp_models()`, CUDA cache flush in `_unload_video_pipeline()`, RAG in streaming path, RAG retry in reasoning task, raw chunk context from Qdrant on RAG failure. `_process_rag_task` / `_process_rag_task_stream` replaced `rag.generate_answer()` → `rag.search()` + `_requeue_reasoning_task(rag_context=...)`. `_requeue_reasoning_task` accepts optional `rag_context`. `_process_reasoning_request` reads pre-computed `rag_context` from `request_data`.
 - `modules/base.py`: `process_reasoning()` accepts `rag_context` parameter
 - `prompts/ru/rag.template`: Fixed — removed "answer on your own" instruction, added strict "use ONLY context" directive
 - `prompts/en/rag.template`: Same fix
@@ -192,16 +194,50 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - `prompts/ru/reasoning.template`: Added `{rag_context}` placeholder
 - `prompts/en/reasoning.template`: Added `{rag_context}` placeholder
 - `app/static/js/events.js`: `finalizeStreamedMessage` renders file attachments AND error messages in streaming responses
+- `app/static/js/chat-init.js`: `sendMessage()` includes `session_id: currentSessionId` in request body for multi-tab safety
 - `app/static/js/admin-models.js`: `updateMemoryEstimation()` now handles `status: "measured"` — shows measured VRAM with measurement count and ctx, and `status: "estimate"` with color-coded percentage.
-- `app/db.py`: Added `file_data` to SQL SELECT, replaced `suppress(Exception)` with logging
+- `app/routes/messages.py`: `send_message()` reads `session_id` from request body, validates (UUID v4 + DB ownership), updates Flask session
+- `app/db.py`: Added `file_data` to SQL SELECT, replaced `suppress(Exception)` with logging. `update_session_title()` uses `_("New session")` instead of hardcoded string (localization fix).
 - `translations/*.po`: RESTORED from v8.7-SLM baseline (1574+ EN / 1581+ RU entries). Added new translation keys: VRAM measurements, footer_text, response_style_* labels, "Your requests / Total requests"
 - `docker-compose.gpu.yml`: Removed broken .mo volume mounts; Docker image now compiles translations correctly during build
+- `tests/test_llama_swap_config.py`: Fixed `test_no_group_for_default` (multimodal now in `llm_fast` group) and `test_generates_valid_yaml` (`swap: true` is default, not `swap: false`)
+- `tests/test_utils.py`: Fixed `test_resize_image_if_needed_large` — function signature changed from `(max_width, max_height)` to `(max_size, quality)`
+- `tests/test_video_module.py`: Fixed 6 tests — added `mock_rm_instance.estimate_video_vram_needed.return_value = 8500` and `available_vram_mb = 12000` for VRAM check loop added in v8.8
 
-### Translation system fix (v8.9 critical!)
+### Error message prefix fix
+All error messages displayed to users MUST start with "⚠️ ". `_build_error_response()` adds this prefix automatically. However, error strings from `call_llamacpp()` (e.g., "GPU memory unavailable", "HTTP error 500") were returned as plain strings through `process_reasoning()`, `generate_chat_response_stream()`, and `rag.generate_answer()` — ending up in `_save_and_respond()` without the "⚠️ " prefix. Fixed by adding `_is_llm_error_string()` helper and routing detected errors through `_build_error_response()` in all affected code paths: `_process_reasoning_request`, `_process_text_task`, `_process_text_task_stream`, and RAG answer handling in both `_process_text_task` and `_process_text_task_stream`.
+
+### Translation system fix
 Removed .mo volume mounts that were overriding correct compiled translations with incomplete versions. Docker now properly compiles all translations at build time. All site features work in both Russian and English profiles.
 
-### Queue position fix (v8.9.1)
+### Queue position fix
 Removed `pendingRequestIds` race guard from `chat-queue.js` that was overwriting server-provided queue positions with hardcoded `1`. Queue positions now come exclusively from server data. Fast worker now also acquires `_gpu_lock` for GPU tasks. Chat model (Qwen3-4B) included in GPU lock — was excluded previously (`_ensure_vram` skipped unload for chat).
+
+### RAG architecture fix
+**Problem:** `_process_rag_task` and `_process_rag_task_stream` on the fast worker called `rag.generate_answer()` which made **direct HTTP calls** to llama-swap to load the reasoning model (~13.6 GiB). This bypassed the queue's GPU serialization. When LTX-Video pipeline was still loaded from a previous video task (in a separate container, ~8 GiB VRAM), the reasoning model couldn't fit in VRAM → "GPU memory unavailable" error.
+
+**Solution:** RAG on the fast worker now does **only search** (`rag.search()` — embedding + Qdrant, ~500 MB) and requeues to the slow worker via `_requeue_reasoning_task(rag_context=...)`. The slow worker handles VRAM management (`ensure_vram_for_reasoning()`), unloads LTX-Video, loads the reasoning model, and generates the answer.
+
+**New flow:**
+```
+Fast worker: [-RAG-] → rag.search() (embedding + Qdrant) → _requeue_reasoning_task(rag_context=...)
+Slow worker: ensure_vram_for_reasoning() → unload LTX-Video → load reasoning model → generate answer
+```
+
+**Key changes:**
+- `_process_rag_task` / `_process_rag_task_stream`: replaced `rag.generate_answer()` → `rag.search()` + `_requeue_reasoning_task(rag_context=...)`
+- `_requeue_reasoning_task`: new optional `rag_context` parameter passed in `request_data`
+- `_process_reasoning_request`: reads `rag_context` from `request_data` if present, skips redundant search
+
+### Multi-tab session fix
+**Problem:** `session_id` was read exclusively from Flask cookie (`session["current_session"]`). Flask cookies are shared between all tabs of the same browser. When a user created a new session in one tab and sent a message in another, the message could end up in the wrong session due to cookie race conditions.
+
+**Solution:** Client now sends `session_id` in the request body. Server validates it (UUID v4 + user ownership) and uses it if valid, falling back to Flask cookie for backward compatibility.
+
+**Key changes:**
+- `app/static/js/chat-init.js`: `sendMessage()` includes `session_id: currentSessionId` in both JSON and FormData requests
+- `app/routes/messages.py`: `send_message()` reads `session_id` from request body, validates (UUID v4 + DB ownership), updates Flask session
+- `app/db.py`: `update_session_title()` uses `_("New session")` instead of hardcoded `"New session"` (localization fix)
 
 ### Monitoring commands
 ```bash
@@ -223,6 +259,8 @@ grep "RAG\|reasoning\|router" docker/logs/flai-web.log  # Debug RAG flow
 Also:
 - NEVER make ANY changes to files without direct user approval. Each file change (create, edit, delete) requires explicit plan approval. Exception: only when the user explicitly said "do it" or "execute".
 - Hardcoded query filters at the Python level (without LLM) are STRICTLY FORBIDDEN. All query classification and routing MUST go through the LLM router model. Do not add pattern matching, keyword lists, or any deterministic logic to bypass the router for specific queries.
+- **All error messages displayed to users MUST start with "⚠️ ".** `_build_error_response()` adds this prefix automatically. For code paths that bypass it (e.g., string errors from `call_llamacpp()`), use `_is_llm_error_string()` check and route through `_build_error_response()`.
+- **RAG generation NEVER runs on the fast worker.** `rag.generate_answer()` must NOT be called from `_process_rag_task` or `_process_rag_task_stream`. The fast worker only runs `rag.search()` (embedding + Qdrant). Answer generation via reasoning model happens exclusively on the slow worker via `_requeue_reasoning_task()`. This prevents GPU contention with LTX-Video pipeline.
 
 ## GPU Requirement
 

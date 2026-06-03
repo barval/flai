@@ -587,6 +587,11 @@ class RedisRequestQueue:
             )
             if answer is not None and error is None:
                 return answer, model_name
+            if error:
+                self.logger.warning(
+                    f"RAG generate_answer returned error: {error} "
+                    f"for query: {query[:80]}... user_id={user_id}"
+                )
         return None, None
 
     def _build_error_response(self, session_id: str, error: str, process_time: float, lang: str) -> dict[str, Any]:
@@ -1739,6 +1744,7 @@ class RedisRequestQueue:
             return self._build_error_response(session_id, error_msg, 0, lang)
         stream_start = time.time()
         full_response = ""
+        error_detected = False
         cancelled = False
         for token in self.app.modules["multimodal"].process_image_with_text_stream(
             camera_result["image_data"],
@@ -1749,7 +1755,11 @@ class RedisRequestQueue:
             response_style=response_style,
         ):
             full_response += token
-            self._publish_stream_token(task, token)
+            if not error_detected:
+                if self._is_llm_error_string(full_response):
+                    error_detected = True
+                else:
+                    self._publish_stream_token(task, token)
             if self._is_task_cancelled(task["id"]):
                 cancelled = True
                 break
@@ -1758,6 +1768,10 @@ class RedisRequestQueue:
         if cancelled:
             self.app.logger.info(f"Task {task['id']} cancelled during camera stream")
             self._publish_stream_event(task, "stream_cancelled")
+        if self._is_llm_error_string(full_response):
+            return self._build_error_response(
+                session_id, full_response, mm_time, lang
+            )
         return self._save_and_respond(
             session_id,
             full_response,
@@ -1805,6 +1819,10 @@ class RedisRequestQueue:
                 )
             else:
                 rag_time = round(time.time() - rag_start, 1)
+                self.app.logger.warning(
+                    f"RAG search returned 0 chunks for query: {query[:100]}... "
+                    f"user_id={user_id}, search_time={rag_time}s"
+                )
                 return self._build_error_response(
                     session_id, self.app.modules["base"]._("No relevant documents found", lang), rag_time, lang
                 )
@@ -1866,6 +1884,10 @@ class RedisRequestQueue:
                 )
             else:
                 rag_time = round(time.time() - rag_start, 1)
+                self.app.logger.warning(
+                    f"RAG search returned 0 chunks for query: {query[:100]}... "
+                    f"user_id={user_id}, search_time={rag_time}s"
+                )
                 return self._build_error_response(
                     session_id, self.app.modules["base"]._("No relevant documents found", lang), rag_time, lang
                 )

@@ -65,6 +65,16 @@ async function sendMessage() {
     // Lock button immediately
     sendButton.disabled = true;
     sendButton.innerHTML = '⏳ ' + t('sending');
+
+    // Immediately show hourglass in session list (task goes to queue, not processing)
+    sessionQueueInfo[currentSessionId] = {
+        processing: false,
+        queued: 1,
+        queue_position: 1,
+        has_transcribing: false
+    };
+    window._lastSessionsJson = null;
+    if (typeof updateSessionsListFromData === 'function') updateSessionsListFromData();
     
     const messageCount = document.querySelectorAll('.user-message').length;
     if (messageCount === 0) {
@@ -313,6 +323,7 @@ async function sendMessage() {
                 const lastMessage = document.querySelector('.user-message:last-child');
                 if (lastMessage) lastMessage.style.borderLeft = '3px solid #e74c3c';
                 setLocalTranscribing(currentSessionId, false);
+                if (typeof clearSessionQueue === 'function') clearSessionQueue(currentSessionId);
             } finally {
                 // Always unlock send button after request completes (success or error)
                 unlockSendButton();

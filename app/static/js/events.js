@@ -674,8 +674,6 @@ function handleCompletedResult(result, expectedSessionId) {
 
     // Re-queue case: task completed but created a new queue entry (e.g., video from text)
     if (result.status === 'queued' && result.request_id) {
-        // Clear the OLD pending request (the requeued original task)
-        clearPendingRequest(data.task_id);
         trackPendingRequest(result.request_id, resultSessionId);
         sessionQueueInfo[resultSessionId] = { processing: true, queued: 0, queue_position: 0, has_transcribing: false };
         if (typeof updateStatusCounter === 'function') updateStatusCounter();

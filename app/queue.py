@@ -845,7 +845,6 @@ class RedisRequestQueue:
         self._unload_llamacpp_models()
         deadline = time.time() + timeout
         swap_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
-        reloaded_attempted = False
 
         while time.time() < deadline:
             try:
@@ -855,36 +854,39 @@ class RedisRequestQueue:
                 if resp.status_code == 200:
                     data = resp.json()
                     running = data.get("running", [])
-                    if len(running) > 0 and not reloaded_attempted:
-                        # Models reloaded by llama-swap (TTL) — unload again
-                        self.logger.info("VRAM: models reloaded during wait, unloading again")
-                        self._unload_llamacpp_models()
-                        reloaded_attempted = True
-                    elif len(running) == 0:
-                        # Force CUDA deallocation to combat fragmentation
-                        try:
-                            import torch
-
-                            if torch.cuda.is_available():
-                                torch.cuda.empty_cache()
-                                torch.cuda.synchronize()
-                        except ImportError:
-                            pass
-
-                        out = subprocess.run(
-                            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-                            capture_output=True,
-                            text=True,
-                            timeout=5,
+                    if len(running) > 0:
+                        # Models reloaded by llama-swap (TTL) — unload again (no limit)
+                        self.logger.info(
+                            f"VRAM: {len(running)} model(s) still running during wait, unloading again"
                         )
-                        if out.returncode == 0:
-                            free = int(out.stdout.strip().split("\n")[0].strip())
-                            if free >= needed_mb:
-                                self.logger.info(
-                                    f"VRAM check OK: {free}MB free, 0 LLM models loaded (needed={needed_mb}MB)"
-                                )
-                                return True
-                            self.logger.info(f"VRAM: {free}MB free, need {needed_mb}MB — waiting for CUDA dealloc...")
+                        self._unload_llamacpp_models()
+                        time.sleep(2)
+                        continue
+                    # len(running) == 0
+                    # Force CUDA deallocation to combat fragmentation
+                    try:
+                        import torch
+
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                            torch.cuda.synchronize()
+                    except ImportError:
+                        pass
+
+                    out = subprocess.run(
+                        ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    if out.returncode == 0:
+                        free = int(out.stdout.strip().split("\n")[0].strip())
+                        if free >= needed_mb:
+                            self.logger.info(
+                                f"VRAM check OK: {free}MB free, 0 LLM models loaded (needed={needed_mb}MB)"
+                            )
+                            return True
+                        self.logger.info(f"VRAM: {free}MB free, need {needed_mb}MB — waiting for CUDA dealloc...")
 
                 self.app.logger.info(f"VRAM: waiting... (needed={needed_mb}MB, timeout={timeout}s)")
             except Exception as e:
@@ -2013,6 +2015,7 @@ class RedisRequestQueue:
         if action_type == "none" or (action_type == "reasoning" and not router_result.get("needs_reasoning")):
             stream_start = time.time()
             full_response = ""
+            error_detected = False
             for token in self.app.modules["base"].generate_chat_response_stream(
                 query,
                 current_time_str,
@@ -2022,7 +2025,13 @@ class RedisRequestQueue:
                 user_id=user_id,
             ):
                 full_response += token
-                self._publish_stream_token(task, token)
+                # Don't publish error tokens to client — they lack the "⚠️ " prefix.
+                # The error will be shown via _build_error_response which adds the prefix.
+                if not error_detected:
+                    if self._is_llm_error_string(full_response):
+                        error_detected = True
+                    else:
+                        self._publish_stream_token(task, token)
                 if self._is_task_cancelled(task["id"]):
                     break
             if not full_response.strip():

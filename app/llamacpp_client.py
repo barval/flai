@@ -36,6 +36,47 @@ def _tr(key: str, lang: str = "ru", **kwargs: Any) -> str:
         return key.format(**kwargs) if kwargs else key
 
 
+def _extract_error_message(response: Any) -> str:
+    """Extract a human-readable error message from a llama.cpp HTTP response.
+
+    Tries to parse JSON {"error": {"message": "..."}} and falls back to raw body.
+    Used to surface the real reason (e.g., "Failed to load image or audio file")
+    instead of a generic "HTTP error 400" to the user.
+    """
+    try:
+        body = response.text[:500] if hasattr(response, "text") else str(response)[:500]
+    except Exception:
+        body = ""
+    if not body:
+        return ""
+    try:
+        data = response.json() if hasattr(response, "json") else None
+    except Exception:
+        data = None
+    if isinstance(data, dict):
+        err = data.get("error")
+        if isinstance(err, dict):
+            msg = err.get("message")
+            if msg:
+                return str(msg)
+        elif isinstance(err, str) and err:
+            return err
+    return body
+
+
+def _format_user_error(response: Any, lang: str = "ru") -> str:
+    """Build a user-facing error string with the "⚠️ " prefix.
+
+    Uses _extract_error_message to surface llama.cpp's real reason; falls back
+    to a translated generic "HTTP error {status}" string if extraction fails.
+    """
+    msg = _extract_error_message(response)
+    if msg:
+        return msg if msg.startswith("⚠️") else f"⚠️ {msg}"
+    status = getattr(response, "status_code", 0) or 0
+    return f"⚠️ {_tr('HTTP error {status}', lang, status=status)}"
+
+
 class AbstractLlamaBackend:
     """Abstract backend for LLM inference."""
 
@@ -132,7 +173,10 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                 return content.strip()  # type: ignore[no-any-return]
             else:
                 self.circuit_breaker.record_failure()
-                return _tr("HTTP error {status}", lang, status=response.status_code)
+                self.logger.error(
+                    f"chat HTTP {response.status_code} from {model_type}: {response.text[:500] if hasattr(response, 'text') else ''}"
+                )
+                return _format_user_error(response, lang)
         except requests.exceptions.Timeout:
             self.circuit_breaker.record_failure()
             return _tr(
@@ -176,7 +220,10 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True)
             if response.status_code != 200:
                 self.circuit_breaker.record_failure()
-                yield _tr("HTTP error {status}", lang, status=response.status_code)
+                self.logger.error(
+                    f"chat_stream HTTP {response.status_code} from {model_type}: {response.text[:500] if hasattr(response, 'text') else ''}"
+                )
+                yield _format_user_error(response, lang)
                 return
 
             self.circuit_breaker.record_success()
@@ -362,7 +409,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     self._record_llama_failure(model_type)
                     err_body = response.text[:500]
                     self.logger.error(f"chat HTTP {response.status_code} from {model_type}: {err_body}")
-                    return _tr("HTTP error {status}", lang, status=response.status_code)
+                    return _format_user_error(response, lang)
             except requests.exceptions.Timeout:
                 if attempt < max_retries:
                     self.logger.warning(f"chat timeout on attempt {attempt + 1}, retrying in 5s")
@@ -424,14 +471,32 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                         f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True
                     )
                     if response.status_code != 200:
-                        if attempt < max_retries and response.status_code == 502:
-                            self.logger.warning(f"chat_stream 502 on attempt {attempt + 1}, retrying in 5s")
-                            time.sleep(5)
+                        # Retry on 502 (typical transient failure) OR on
+                        # "Failed to load image" 400 (race condition when
+                        # multimodal model was just reloaded with degraded
+                        # n_gpu_layers and is still loading the image stack).
+                        is_image_load_400 = False
+                        if response.status_code == 400 and model_type == "multimodal":
+                            try:
+                                err_msg = _extract_error_message(response).lower()
+                                is_image_load_400 = "failed to load image" in err_msg
+                            except Exception:
+                                is_image_load_400 = False
+                        if attempt < max_retries and (
+                            response.status_code == 502
+                            or is_image_load_400
+                        ):
+                            delay = 5 if response.status_code == 502 else 3
+                            reason = "502" if response.status_code == 502 else "image-load-400"
+                            self.logger.warning(
+                                f"chat_stream {reason} on attempt {attempt + 1}, retrying in {delay}s"
+                            )
+                            time.sleep(delay)
                             continue
                         self._record_llama_failure(model_type)
                         err_body = response.text[:500]
                         self.logger.error(f"chat_stream HTTP {response.status_code} from {model_type}: {err_body}")
-                        yield _tr("HTTP error {status}", lang, status=response.status_code)
+                        yield _format_user_error(response, lang)
                         return
 
                     cb.record_success()

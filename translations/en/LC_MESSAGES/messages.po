@@ -167,6 +167,10 @@ msgstr "Unknown request type"
 msgid "Image editing request was empty"
 msgstr ""
 
+#: modules/multimodal.py:103
+msgid "Image format {format} is not supported by multimodal model. Convert to JPEG or PNG."
+msgstr ""
+
 #: app/queue.py:2225 app/queue.py:2381
 msgid "Video request was empty"
 msgstr ""

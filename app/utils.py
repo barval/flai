@@ -1,5 +1,6 @@
 # app/utils.py
 import base64
+import contextlib
 import os
 import re
 import subprocess
@@ -329,6 +330,57 @@ def resize_image_if_needed(
     except Exception as e:
         current_app.logger.error(f"Error resizing image: {str(e)}")
         return file_data, file_type, file_name, False, None, None
+
+
+# Formats that llama.cpp (stb_image) can decode natively.
+# Pillow supports many more (HEIC, AVIF, JPEG XL, etc.) but llama.cpp returns
+# "Failed to load image or audio file" (HTTP 400) for those.
+_LLAMACPP_SUPPORTED_FORMATS = {"JPEG", "PNG", "BMP", "GIF", "TIFF"}
+
+
+def convert_to_supported_format_if_needed(
+    file_data: str, file_type: str, file_name: str
+) -> tuple[str, str, str, bool]:
+    """
+    Convert image to a llama.cpp-supported format (JPEG) if the source format
+    is not in stb_image's supported set (HEIC, AVIF, WEBP, etc.).
+
+    Returns (new_file_data, new_file_type, new_file_name, converted_flag).
+    If conversion fails or the format is already supported, returns the
+    original data unchanged with converted_flag=False.
+    """
+    try:
+        raw = file_data
+        if raw.startswith("data:"):
+            raw = raw.split(",", 1)[1]
+        image_bytes = base64.b64decode(raw)
+        img = Image.open(BytesIO(image_bytes))
+        if img.format in _LLAMACPP_SUPPORTED_FORMATS:
+            return file_data, file_type, file_name, False
+        if img.mode in ("RGBA", "LA", "P"):
+            rgb = Image.new("RGB", img.size, (255, 255, 255))
+            if img.mode == "RGBA":
+                rgb.paste(img, mask=img.split()[-1])
+            else:
+                rgb.paste(img)
+            img = rgb  # type: ignore[assignment]
+        elif img.mode != "RGB":
+            img = img.convert("RGB")  # type: ignore[assignment]
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=90, optimize=True)
+        new_data = base64.b64encode(buf.getvalue()).decode("utf-8")
+        base_name, _ = os.path.splitext(file_name)
+        new_name = base_name + ".jpg"
+        new_type = "image/jpeg"
+        with contextlib.suppress(RuntimeError):
+            current_app.logger.info(
+                f"Image auto-converted: {img.format} → JPEG ({file_name}, {len(image_bytes)} → {len(buf.getvalue())} bytes)"
+            )
+        return new_data, new_type, new_name, True
+    except Exception as e:
+        with contextlib.suppress(RuntimeError):
+            current_app.logger.warning(f"Image auto-convert failed for {file_name}: {e}")
+        return file_data, file_type, file_name, False
 
 
 def save_uploaded_file(

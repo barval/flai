@@ -168,6 +168,10 @@ msgstr "Неизвестный тип запроса"
 msgid "Image editing request was empty"
 msgstr "Запрос на редактирование изображения пуст"
 
+#: modules/multimodal.py:103
+msgid "Image format {format} is not supported by multimodal model. Convert to JPEG or PNG."
+msgstr "Формат изображения {format} не поддерживается мультимодальной моделью. Конвертируйте в JPEG или PNG."
+
 #: app/queue.py:2225 app/queue.py:2381
 msgid "Video request was empty"
 msgstr "Запрос на создание видео пуст"

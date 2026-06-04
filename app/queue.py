@@ -627,6 +627,7 @@ class RedisRequestQueue:
             "Service temporarily unavailable", "Circuit breaker",
             "Model configuration missing", "Model for ", "not configured",
             "Error:", "error occurred",
+            "Failed to load",  # llama.cpp stb_image/audio decoder error
         )
         return any(ind in text for ind in indicators)
 
@@ -2387,9 +2388,17 @@ class RedisRequestQueue:
 
         # No text → no edit possible, stream directly
         if not message_text.strip():
+            full_response = ""
+            error_detected = False
             for token in stream_gen:
                 full_response += token
-                self._publish_stream_token(task, token)
+                # Don't publish error tokens — they need the "⚠️ " prefix added by
+                # _build_error_response. Mirrors _process_camera_task_stream.
+                if not error_detected:
+                    if self._is_llm_error_string(full_response):
+                        error_detected = True
+                    else:
+                        self._publish_stream_token(task, token)
                 if self._is_task_cancelled(task["id"]):
                     cancelled = True
                     break
@@ -2398,6 +2407,8 @@ class RedisRequestQueue:
             if cancelled:
                 self.app.logger.info(f"Task {task['id']} cancelled during image chat stream")
                 self._publish_stream_event(task, "stream_cancelled")
+            if error_detected or self._is_llm_error_string(full_response):
+                return self._build_error_response(session_id, full_response, process_time, lang)
             return self._save_and_respond(
                 session_id,
                 full_response,
@@ -2482,6 +2493,8 @@ class RedisRequestQueue:
         if cancelled:
             self.app.logger.info(f"Task {task['id']} cancelled during image chat stream")
             self._publish_stream_event(task, "stream_cancelled")
+        if self._is_llm_error_string(full_response):
+            return self._build_error_response(session_id, full_response, process_time, lang)
         return self._save_and_respond(
             session_id,
             full_response,

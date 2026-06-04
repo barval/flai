@@ -45,7 +45,7 @@ class SlmModule(TranslationMixin):
                 self.logger.info(f"SuperLocalMemory available at {self.url}")
             else:
                 self.logger.warning(f"SuperLocalMemory health failed: {resp.status_code}")
-            return self.available
+            return self.available  # type: ignore[no-any-return]
         except Exception as e:
             self.logger.warning(f"SuperLocalMemory not available: {e}")
             self.available = False
@@ -103,7 +103,7 @@ class SlmModule(TranslationMixin):
             )
             if resp.status_code == 200:
                 data = resp.json()
-                return data.get("data", {}).get("results", [])
+                return data.get("data", {}).get("results", [])  # type: ignore[no-any-return]
             return []
         except Exception as e:
             self.logger.warning(f"SLM recall failed: {e}")
@@ -150,7 +150,7 @@ class SlmModule(TranslationMixin):
             resp = requests.post(f"{self.url}/list", json=payload, timeout=10)
             if resp.status_code == 200:
                 data = resp.json()
-                return data.get("data", {}).get("results", [])
+                return data.get("data", {}).get("results", [])  # type: ignore[no-any-return]
             return []
         except Exception as e:
             self.logger.warning(f"SLM list failed: {e}")

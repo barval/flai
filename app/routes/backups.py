@@ -4,7 +4,9 @@
 Two backup types:
   1. 'users'     — users table only
   2. 'full'      — users + chats + messages + documents + model_configs +
-                   session_visits + user_sessions + user_storage + files
+                   session_visits + user_sessions + user_storage +
+                   gguf_models_cache + model_vram_estimates +
+                   slm_import_progress + files
 """
 
 import contextlib
@@ -44,6 +46,8 @@ FULL_TABLES = [
     "model_configs",
     "user_storage",
     "gguf_models_cache",
+    "model_vram_estimates",
+    "slm_import_progress",
 ]
 
 # Directories included in 'full' backup

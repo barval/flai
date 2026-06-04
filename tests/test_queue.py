@@ -27,6 +27,7 @@ class TestRedisRequestQueue:
         redis = Mock()
         redis.blpop.return_value = None
         redis.llen.return_value = 0
+        redis.hlen.return_value = 0
         redis.scard.return_value = 0
         redis.hincrby.return_value = 1
         pipe = Mock()

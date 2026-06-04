@@ -28,8 +28,10 @@ def handle_rate_limit(error):
 @bp.route("/login", methods=["GET", "POST"])
 @csrf.exempt
 @limiter.limit(
-    "5 per minute;10 per hour", key_func=lambda: request.form.get("login") or request.remote_addr, methods=["POST"]
-)  # type: ignore[arg-type, return-value]
+    "5 per minute;10 per hour",
+    key_func=lambda: request.form.get("login") or request.remote_addr or "unknown",  # type: ignore[arg-type, return-value]
+    methods=["POST"],
+)
 def login():
     if request.method == "POST":
         login_input = request.form.get("login")

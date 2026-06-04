@@ -217,12 +217,12 @@ class MultimodalModule(TranslationMixin):
                 return image_data
             ratio = max_size / max(w, h)
             new_w, new_h = int(w * ratio), int(h * ratio)
-            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)  # type: ignore[assignment]
             if img.mode in ("RGBA", "LA", "P"):
                 rgb_img = Image.new("RGB", img.size, (255, 255, 255))
                 mask = img.split()[-1] if img.mode == "RGBA" else None
                 rgb_img.paste(img, mask=mask)
-                img = rgb_img
+                img = rgb_img  # type: ignore[assignment]
             buf = BytesIO()
             img.save(buf, format="JPEG", quality=85)
             logger = logging.getLogger(__name__)

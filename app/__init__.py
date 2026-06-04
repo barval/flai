@@ -598,7 +598,7 @@ def _start_background_slm_import(app: Flask) -> None:
 
     def _run_import() -> None:
         with app.app_context():
-            slm = app.modules.get("slm")
+            slm = app.modules.get("slm")  # type: ignore[attr-defined]
             if not slm or not slm.available:
                 app.logger.info("SLM import skipped: module not available")
                 return

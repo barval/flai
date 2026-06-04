@@ -95,7 +95,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | 📺 **Video VRAM: try/finally + flush CUDA** | Both video task handlers wrap generation in `try/finally` — `_unload_video_pipeline()` and `_unload_llamacpp_models()` always run. CUDA cache flushed after generation. `_wait_for_vram_full` timeout 30 s → 60 s. Buffer +500 → +3000 MB. No more "proceeding anyway" on timeout. |
 | 📐 **Dynamic video VRAM chain** | `estimate_video_vram_needed()`: 1) measured (from `model_vram_estimates`), 2) HTTP `/v1/vram_info` from ltx-wrapper (component sizes + current peak), 3) local filesystem (if `/app/models` mounted), 4) env fallback. New endpoint in `ltx_wrapper.py`. |
 | 🗃️ **New DB tables** | `model_vram_estimates` (module, model_name, ctx, ngl, estimated_mb, measured_mb, measurement_count, last_measured_at). `slm_import_progress` (user_id, last_message_id, total_imported) for checkpoint-based background import. |
-| 🧪 **34 new tests** | `tests/test_classify_model_fit.py` (11), `tests/test_dry_load.py` (10), `tests/test_health_monitor.py` (12). All passing. |
+| 🧪 **55 new tests** | `tests/test_classify_model_fit.py` (11), `tests/test_dry_load.py` (10), `tests/test_health_monitor.py` (12), `tests/test_resource_manager_ltx_unload.py` (11), `tests/test_vram_estimates.py` (10). All passing. |
 | 🧹 **Docker compose cleanup** | Removed `docker-compose.cpu.yml` (CPU-only mode unsupported — FLAI requires NVIDIA GPU). Removed `services/llamacpp/generate_presets.py` (obsolete). Removed `services/sd_cpp/Dockerfile.sd_cpp-cpu`. |
 | 🤖 **Default chat model upgraded** | `Qwen3-4B-Instruct-2507-Q4_K_M` → `Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf` (~2 GB, faster routing). Default ctx 8192 → 16384 for both chat and reasoning. |
 | 📦 **Deploy scripts: VRAM tier detection** | `deploy.sh` / `deploy-ru.sh` now detect GPU VRAM via `nvidia-smi` and auto-select reasoning model: 16 GB+ → `gpt-oss-20b-Q4_K_M`, 12 GB → `Qwen3-8B-Thinking-Q4_K_M`, 8 GB → `Qwen3-4B-Thinking`. |
@@ -171,11 +171,6 @@ FLAI **requires** an NVIDIA GPU with CUDA support. CPU-only mode is not supporte
 | Image gen (SD) | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 |
 | Image edit (Flux) | ✅ up to 768px long side | ✅ up to 1024px long side | ��� up to 1024px long side |
 | Video gen (LTX-Video) | ⚠️ 512×512×121 frames | ✅ 896×512×257 frames | ✅ 896×512×257 frames |
-| Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU |
-| RAG (Qdrant) | ✅ | ✅ | ✅ |
-| SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU |
-| Image gen (SD) | ✅ (LLM unloaded, sd-cli subprocess) | ✅ (LLM unloaded) | ✅ (LLM unloaded) |
-| Video gen (LTX-Video) | ⚠️ reduced resolution | ✅ | ✅ |
 | Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU |
 | RAG (Qdrant) | ✅ | ✅ | ✅ |
 | SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU |
@@ -266,8 +261,8 @@ nano .env
 mkdir -p services/llamacpp/models
 
 # Chat model (fast responses)
-wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
-  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf \
+  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf"
 
 # Reasoning model (complex tasks)
 wget -O services/llamacpp/models/gpt-oss-20b-Q4_K_M.gguf \
@@ -299,8 +294,8 @@ wget -O services/sd_cpp/models/vae/ae.safetensors \
   "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/ae.safetensors"
 
 # LLM text encoder (shared with chat)
-wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
-  "https://huggingface.co/bartowski/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf \
+  "https://huggingface.co/bartowski/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf"
 ```
 
 #### Image Editing Models (Flux.2 Klein 4B)
@@ -315,7 +310,7 @@ wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
   "https://huggingface.co/bartowski/FLUX.2-dev-GGUF/resolve/main/flux2_ae.safetensors"
 ```
 
-> The text encoder `Qwen3-4B-Instruct-2507-Q4_K_M.gguf` is **shared** between generation and editing. Download it once.
+> The text encoder `Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf` is **shared** between generation and editing. Download it once.
 
 > ⚠️ **Important**: Multimodal models **must** be placed in a subdirectory named after the model, with the `mmproj-*.gguf` file inside. The llama.cpp router automatically discovers and loads the projector.
 
@@ -508,7 +503,7 @@ llama.cpp runs in **router mode** (`--models-dir`), dynamically loading models f
 
 ```
 services/llamacpp/models/
-├── Qwen3-4B-Instruct-2507-Q4_K_M.gguf     # Chat
+├── Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf     # Chat
 ├── gpt-oss-20b-Q4_K_M.gguf                  # Reasoning
 ├── bge-m3-Q8_0.gguf                        # Embedding
 └── Qwen3VL-8B-Instruct-Q4_K_M/             # Multimodal (subdirectory!)
@@ -890,7 +885,7 @@ curl http://localhost:5000/metrics
 - **Docker compose cleanup** — removed `docker-compose.cpu.yml` (CPU-only unsupported), `services/llamacpp/generate_presets.py` (obsolete), `services/sd_cpp/Dockerfile.sd_cpp-cpu`.
 - **Default chat model upgraded** — `Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf` (~2 GB, faster routing), default ctx 8192 → 16384.
 - **Deploy scripts: VRAM tier detection** — auto-select reasoning model by `nvidia-smi` query: 16 GB+ → gpt-oss-20b, 12 GB → Qwen3-8B-Thinking, 8 GB → Qwen3-4B-Thinking.
-- **34 new tests** — `tests/test_classify_model_fit.py` (11), `tests/test_dry_load.py` (10), `tests/test_health_monitor.py` (12).
+- **55 new tests** — `tests/test_classify_model_fit.py` (11), `tests/test_dry_load.py` (10), `tests/test_health_monitor.py` (12), `tests/test_resource_manager_ltx_unload.py` (11), `tests/test_vram_estimates.py` (10).
 - **Reasoning 502 → retry with degrade** — `max_retries = 1` for reasoning and chat. First failure → degrade ngl; second failure → user-facing error.
 - **Fast worker GPU lock** — chat, embedding, RAG search now also acquire `_gpu_lock` (was only slow worker). Prevents parallel GPU tasks.
 
@@ -912,7 +907,7 @@ curl http://localhost:5000/metrics
 
 | Model | Purpose | License | Approx. Size |
 |-------|---------|---------|-------------|
-| **Qwen3-4B-Instruct-2507-Q4_K_M** | Chat (fast responses) | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2.5 GB |
+| **Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf** | Chat (fast responses) | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2 GB |
 | **gpt-oss-20b-Q4_K_M** | Reasoning (complex tasks) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 GB |
 | **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (image analysis) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5 GB + mmproj ~1.1 GB |
 | **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~0.6 GB |
@@ -923,7 +918,7 @@ curl http://localhost:5000/metrics
 |-------|---------|---------|-------------|
 | **Z-Image-Turbo (z_image_turbo-Q8_0)** | Image generation | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~6.2 GB |
 | **ae.safetensors** (VAE) | Variational autoencoder for Z-Image | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~0.3 GB |
-| **Qwen3-4B-Instruct-2507-Q4_K_M** | Text encoder for Z-Image | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2.5 GB *(shared with chat)* |
+| **Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf** | Text encoder for Z-Image | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2 GB *(shared with chat)* |
 
 ### Image Editing Models (stable-diffusion.cpp)
 
@@ -1001,6 +996,11 @@ pytest tests/test_sd_cpp_module.py
 pytest tests/test_queue.py
 pytest tests/test_security.py
 pytest tests/test_resource_manager.py
+pytest tests/test_resource_manager_ltx_unload.py
+pytest tests/test_vram_estimates.py
+pytest tests/test_classify_model_fit.py
+pytest tests/test_dry_load.py
+pytest tests/test_health_monitor.py
 pytest tests/test_llama_swap_config.py
 pytest tests/test_validators.py
 pytest tests/test_model_config.py

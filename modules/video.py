@@ -185,7 +185,7 @@ class VideoModule(TranslationMixin):
 
         # Resize large source images to avoid OOM and reduce network transfer
         max_video_inpaint_size = 896
-        resized_info = {"resized": False, "original_size": None, "new_size": None}
+        resized_info: dict[str, Any] = {"resized": False, "original_size": None, "new_size": None}
         if image_data:
             try:
                 img_bytes = base64.b64decode(image_data)
@@ -194,11 +194,11 @@ class VideoModule(TranslationMixin):
                 if w > max_video_inpaint_size or h > max_video_inpaint_size:
                     ratio = max_video_inpaint_size / max(w, h)
                     new_w, new_h = int(w * ratio), int(h * ratio)
-                    img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                    img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)  # type: ignore[assignment]
                     if img.mode in ("RGBA", "LA", "P"):
                         rgb_img = Image.new("RGB", img.size, (255, 255, 255))
                         rgb_img.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
-                        img = rgb_img
+                        img = rgb_img  # type: ignore[assignment]
                     buf = BytesIO()
                     img.save(buf, format="JPEG", quality=90)
                     image_data = base64.b64encode(buf.getvalue()).decode("utf-8")

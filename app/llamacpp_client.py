@@ -31,7 +31,7 @@ def _tr(key: str, lang: str = "ru", **kwargs: Any) -> str:
             result = _(key)
         if kwargs:
             result = result.format(**kwargs) if kwargs else result
-        return result
+        return result  # type: ignore[no-any-return]
     except Exception:
         return key.format(**kwargs) if kwargs else key
 
@@ -435,6 +435,11 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     continue
                 self.logger.error(f"Error: {e}")
                 return f"{_tr('Error', lang)}: {str(e)}"
+
+        # Defensive: if the loop falls through without hitting any of the
+        # explicit returns above (e.g. unexpected control flow), return a
+        # user-facing error rather than an implicit None.
+        return _tr("Internal error: no response from model", lang)
 
     def chat_stream(
         self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"

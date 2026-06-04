@@ -17,6 +17,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import requests
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,6 +55,12 @@ class ResourceManager:
         self._video_busy_since = 0.0
         self._vram_poll_timer: threading.Timer | None = None
         self._vram_poll_interval = 60  # seconds
+        self._shutdown_event = threading.Event()
+        # LTX-Video unload cache: skip repeat HTTP unload within 30s
+        self._last_ltx_unload_at: float = 0.0
+        # LTX-Video hang detection: 3 consecutive timeouts -> docker restart
+        self._ltx_unload_consecutive_timeouts: int = 0
+        self._ltx_restart_initiated_at: float = 0.0
 
     # ── Hardware detection ──
 
@@ -127,9 +135,11 @@ class ResourceManager:
                 self.hardware.available_vram_mb = free
         except Exception:
             pass
-        self._vram_poll_timer = threading.Timer(self._vram_poll_interval, self._poll_vram)
-        self._vram_poll_timer.daemon = True
-        self._vram_poll_timer.start()
+        # Reschedule next poll to keep available_vram_mb fresh (Bug A6 fix)
+        if self._vram_poll_interval > 0 and not self._shutdown_event.is_set():
+            self._vram_poll_timer = threading.Timer(self._vram_poll_interval, self._poll_vram)
+            self._vram_poll_timer.daemon = True
+            self._vram_poll_timer.start()
 
     def _detect_total_ram_mb(self) -> int:
         """Get total system RAM in MB."""
@@ -461,11 +471,10 @@ class ResourceManager:
             needed_mb = self.get_vram_needed_mb(model_type)
 
         llamacpp_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
-        import requests as req
 
         # 1. Check if needed model is already loaded — skip unload if so
         try:
-            resp_check = req.get(f"{llamacpp_url}/running", timeout=2)
+            resp_check = requests.get(f"{llamacpp_url}/running", timeout=2)
             if resp_check.status_code == 200:
                 running = resp_check.json().get("running", [])
                 if len(running) == 1:
@@ -508,7 +517,7 @@ class ResourceManager:
         deadline = time.time() + timeout
         while time.time() < deadline:
             try:
-                resp = req.get(f"{llamacpp_url}/running", timeout=5)
+                resp = requests.get(f"{llamacpp_url}/running", timeout=5)
                 if resp.status_code == 200:
                     models = resp.json().get("running", [])
                     if len(models) > 0:
@@ -571,46 +580,87 @@ class ResourceManager:
         Retries on failure and verifies that VRAM was actually freed by polling
         nvidia-smi after the unload. If the POST succeeds but VRAM stays high,
         retries the unload up to 3 times (CUDA deallocation can be lazy).
+
+        Optimizations (v8.8+):
+          - Pre-flight GET /v1/vram_info: if pipeline not loaded, skip HTTP entirely
+            (avoids 8s × 8 polls of waiting when nothing needs unloading)
+          - Success condition is clamped to total - 1GB so it's reachable when
+            free_before is already near total
+          - 30s result cache: repeated calls within window skip the whole flow
+            (eliminates double-call between _process_image_chat_task and
+            ensure_vram_for for the same request)
+          - 3 consecutive HTTP timeouts trigger docker restart of flai-ltxvideo
+            via the mounted /var/run/docker.sock
         """
-        import time as _time
-
-        import requests as req
-
         ltx_url = os.getenv("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
+
+        # Cache: skip repeat unload if it succeeded within the last 30s
+        if time.time() - self._last_ltx_unload_at < 30:
+            return True
+
+        # Pre-flight: ask ltxvideo if pipeline is loaded at all
+        # /v1/vram_info is cheap and side-effect-free; if pipeline_loaded=false
+        # the 8×1s polling loop is pure waste
+        try:
+            resp = requests.get(f"{ltx_url.rstrip('/')}/v1/vram_info", timeout=2)
+            if resp.status_code == 200:
+                info = resp.json()
+                if not info.get("pipeline_loaded", False):
+                    logger.debug("LTX-Video pipeline not loaded — skipping unload")
+                    self._last_ltx_unload_at = time.time()
+                    self._ltx_unload_consecutive_timeouts = 0
+                    return True
+        except Exception as e:
+            logger.debug(f"LTX-Video pre-flight check failed: {e}")
+            # Continue with regular flow on pre-flight failure (container may be
+            # alive but slow to respond)
+
         self._poll_vram()
         free_before = self.hardware.available_vram_mb
         total = self.hardware.total_vram_mb
 
         for attempt in range(3):
             try:
-                resp = req.post(f"{ltx_url.rstrip('/')}/v1/unload", timeout=30)
+                resp = requests.post(f"{ltx_url.rstrip('/')}/v1/unload", timeout=30)
                 if resp.status_code != 200:
                     logger.warning(f"LTX-Video unload HTTP {resp.status_code} (attempt {attempt + 1})")
                     if attempt < 2:
-                        _time.sleep(3)
+                        time.sleep(3)
                     continue
             except Exception as e:
                 logger.warning(f"Error unloading LTX-Video (attempt {attempt + 1}): {e}")
+                if "timed out" in str(e).lower() or "timeout" in str(e).lower():
+                    self._ltx_unload_consecutive_timeouts += 1
+                    if self._ltx_unload_consecutive_timeouts >= 3:
+                        self._maybe_restart_ltx_video()
                 if attempt < 2:
-                    _time.sleep(3)
+                    time.sleep(3)
                 continue
 
+            # HTTP 200 received — reset hang counter
+            self._ltx_unload_consecutive_timeouts = 0
+
+            # Success target: either +3000 MB freed OR total-1GB reached
+            # (the latter is the physical ceiling when LTX-Video was small
+            # relative to total VRAM, or wasn't loaded at all)
+            target = min(total - 1000, free_before + 3000)
             for _ in range(8):
                 self._poll_vram()
-                if self.hardware.available_vram_mb >= free_before + 3000:
+                if self.hardware.available_vram_mb >= target:
                     logger.info(
                         f"LTX-Video pipeline unloaded — VRAM freed "
                         f"({free_before}MB → {self.hardware.available_vram_mb}MB)"
                     )
+                    self._last_ltx_unload_at = time.time()
                     return True
-                _time.sleep(1)
+                time.sleep(1)
             logger.warning(
                 f"LTX-Video unload returned 200 but VRAM did not free "
                 f"(was {free_before}MB, now {self.hardware.available_vram_mb}MB, "
-                f"total {total}MB) — attempt {attempt + 1}/3"
+                f"total {total}MB, target {target}MB) — attempt {attempt + 1}/3"
             )
             if attempt < 2:
-                _time.sleep(2)
+                time.sleep(2)
 
         try:
             import torch
@@ -622,6 +672,32 @@ class ResourceManager:
         except ImportError:
             pass
         return False
+
+    def _maybe_restart_ltx_video(self) -> None:
+        """If LTX-Video container is unresponsive (3 consecutive timeouts), restart it.
+
+        Uses the Docker socket mounted at /var/run/docker.sock in
+        docker-compose.gpu.yml:27. Rate-limited to 1 restart per 5 minutes
+        to avoid a restart loop.
+        """
+        if time.time() - self._ltx_restart_initiated_at < 300:
+            return
+        self._ltx_restart_initiated_at = time.time()
+
+        logger.error("LTX-Video unresponsive: 3 consecutive timeouts. Restarting container.")
+        try:
+            resp = requests.post(
+                "http://localhost/containers/flai-ltxvideo/restart",
+                timeout=10,
+            )
+            if resp.status_code in (204, 304):
+                logger.info("flai-ltxvideo restart initiated via Docker socket")
+                self._ltx_unload_consecutive_timeouts = 0
+                self._last_ltx_unload_at = 0.0
+            else:
+                logger.error(f"Docker restart failed: HTTP {resp.status_code}")
+        except Exception as e:
+            logger.error(f"Failed to restart flai-ltxvideo via Docker socket: {e}")
 
     def estimate_video_vram_needed(self) -> int:
         """VRAM threshold for LTX-Video pipeline loading.
@@ -644,10 +720,8 @@ class ResourceManager:
 
         # Try querying ltxvideo for component sizes (works without /app/models mount)
         try:
-            import requests as req
-
             ltx_url = os.getenv("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
-            resp = req.get(f"{ltx_url.rstrip('/')}/v1/vram_info", timeout=5)
+            resp = requests.get(f"{ltx_url.rstrip('/')}/v1/vram_info", timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
                 sizes = data.get("component_sizes_mb", {})
@@ -767,14 +841,12 @@ class ResourceManager:
         """
         import os
 
-        import requests as req
-
         backend_type = os.getenv("LLAMACP_BACKEND", "llamacpp")
 
         if backend_type == "llama-swap":
             swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
             try:
-                resp = req.post(f"{swap_url.rstrip('/')}/api/models/unload", timeout=30)
+                resp = requests.post(f"{swap_url.rstrip('/')}/api/models/unload", timeout=30)
                 if resp.status_code == 200:
                     logger.info("llama-swap: all models unloaded for SD")
                     return True
@@ -788,7 +860,7 @@ class ResourceManager:
             llamacpp_url = "http://flai-llamacpp:8033"
 
         try:
-            resp = req.get(f"{llamacpp_url.rstrip('/')}/v1/models", timeout=5)
+            resp = requests.get(f"{llamacpp_url.rstrip('/')}/v1/models", timeout=5)
             if resp.status_code != 200:
                 logger.warning("Cannot get llama.cpp model list")
                 return False
@@ -804,7 +876,7 @@ class ResourceManager:
                 logger.info("No llama.cpp model loaded — VRAM already free")
                 return True
 
-            resp = req.post(f"{llamacpp_url.rstrip('/')}/models/unload", json={"model": loaded_model}, timeout=30)
+            resp = requests.post(f"{llamacpp_url.rstrip('/')}/models/unload", json={"model": loaded_model}, timeout=30)
             if resp.status_code == 200:
                 logger.info(f"Unloaded llama.cpp model: {loaded_model}")
                 return True
@@ -834,10 +906,8 @@ class ResourceManager:
         backend_type = os.getenv("LLAMACP_BACKEND", "llamacpp")
         if backend_type == "llama-swap":
             try:
-                import requests as req
-
                 swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
-                resp = req.get(f"{swap_url.rstrip('/')}/running", timeout=5)
+                resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=5)
                 if resp.status_code == 200:
                     data = resp.json()
                     status["loaded_models"] = data.get("running", [])
@@ -851,12 +921,10 @@ class ResourceManager:
 
         Returns dict with total_mb and free_mb (0 if query fails).
         """
-        import requests as req
-
         result = {"total_mb": 0, "free_mb": 0}
         try:
             swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
-            resp = req.get(f"{swap_url.rstrip('/')}/running", timeout=5)
+            resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
                 loaded = data.get("running", [])

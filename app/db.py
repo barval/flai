@@ -679,7 +679,7 @@ def _extract_text_content(content: str) -> str:
             return joined if joined else ""
         if isinstance(parsed, dict):
             if "text" in parsed and "prefix" in parsed:
-                return parsed["text"]
+                return parsed["text"]  # type: ignore[no-any-return]
             if "file_data" in parsed:
                 parsed["file_data"] = "[IMAGE DATA]"
                 return json.dumps(parsed, ensure_ascii=False)

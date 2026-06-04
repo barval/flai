@@ -449,7 +449,7 @@ def _get_total_ram_mb() -> int:
     try:
         import psutil
 
-        return psutil.virtual_memory().total // (1024 * 1024)
+        return psutil.virtual_memory().total // (1024 * 1024)  # type: ignore[no-any-return]
     except Exception:
         return 0
 
@@ -750,7 +750,7 @@ def model_vram_estimate():
         measured_ctx = None
         try:
             from app.database import get_vram_estimate
-            db_est = get_vram_estimate(module)
+            db_est = get_vram_estimate(module, model_name=model_name)
             if db_est:
                 measured_vram_mb = db_est.get("measured_vram_mb")
                 measurement_count = db_est.get("measurement_count") or 0

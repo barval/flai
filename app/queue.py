@@ -640,7 +640,7 @@ class RedisRequestQueue:
         session_id: str,
         response: str,
         model_used: str,
-        process_time: float,
+        process_time: float | dict[str, float],
         message_id=None,
         extra: dict | None = None,
     ) -> dict[str, Any]:
@@ -691,7 +691,7 @@ class RedisRequestQueue:
         session_id: str,
         text: str,
         model_name: str,
-        process_time: float,
+        process_time: float | dict[str, float],
         is_error: bool = False,
         file_data=None,
         file_type=None,
@@ -2184,7 +2184,7 @@ class RedisRequestQueue:
         session_id = task["session_id"]
         request_data = task["data"]
         lang = task.get("lang", "ru")
-        current_time_str = get_current_time_in_timezone(self.app)
+        current_time_str = get_current_time_in_timezone(self.app) or get_current_time_in_timezone_for_db(self.app)
         response_style = request_data.get("response_style", "neutral")
 
         request_type = request_data.get("type", "text")
@@ -2202,8 +2202,8 @@ class RedisRequestQueue:
             if request_data.get("stream", False):
                 return self._process_text_task_stream(
                     task, message_text, session_id, user_id, current_time_str, lang, response_style
-                )  # type: ignore[arg-type]
-            return self._process_text_task(message_text, session_id, user_id, current_time_str, lang, response_style)  # type: ignore[arg-type]
+                )
+            return self._process_text_task(message_text, session_id, user_id, current_time_str, lang, response_style)
 
         # Image + text chat (question about image or edit request)
         # The actual decision between analysis and editing is now made by the multimodal model
@@ -2218,7 +2218,7 @@ class RedisRequestQueue:
                     session_id,
                     current_time_str,
                     lang,
-                    user_id,  # type: ignore[arg-type]
+                    user_id,
                     response_style,
                 )
             return self._process_image_chat_task(
@@ -2229,7 +2229,7 @@ class RedisRequestQueue:
                 session_id,
                 current_time_str,
                 lang,
-                user_id,  # type: ignore[arg-type]
+                user_id,
                 response_style,
                 user_class=task.get("user_class", 2),
             )
@@ -2842,8 +2842,9 @@ class RedisRequestQueue:
                     task["status"] = "processing"
                     task["position_info"] = {"position": 1, "estimated_seconds": 0}
                     all_processing.append(task)
-                    if task.get("session_id"):
-                        processing_session_ids.add(task.get("session_id"))
+                    sid = task.get("session_id")
+                    if sid:
+                        processing_session_ids.add(sid)
 
         # First → ⚡, rest → ⏳ (shown as queued but are actually processing)
         if all_processing:

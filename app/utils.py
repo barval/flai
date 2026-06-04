@@ -816,7 +816,7 @@ def _extract_rtf(file_path: str) -> str:
 
         with open(file_path, "rb") as f:
             content = f.read()
-        text = striprtf.parse_rtf(content)
+        text = striprtf.parse_rtf(content)  # type: ignore[attr-defined]
         return _pdf_to_markdown(text)
     except ImportError:
         current_app.logger.warning("striprtf not installed, using plain text for RTF")
@@ -1191,7 +1191,7 @@ def check_upload_quota(user_id: str, additional_bytes: int) -> str | None:
 
     if total_used + additional_bytes > max_bytes:
         used_mb = total_used / (1024 * 1024)
-        return gettext(
+        return gettext(  # type: ignore[no-any-return]
             "Storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used. Delete some files to free space."
         ).format(used_mb=used_mb, max_mb=max_mb)
     return None
@@ -1219,14 +1219,14 @@ def check_document_quota(user_id: str) -> str | None:
             count, total_bytes = row["count"], row["coalesce"]
 
             if count >= max_docs:
-                return gettext(
+                return gettext(  # type: ignore[no-any-return]
                     "Document quota exceeded: {count} / {max_docs} documents. Delete some to upload more."
                 ).format(count=count, max_docs=max_docs)
             if total_bytes + 1 > max_mb * 1024 * 1024:
                 used_mb = total_bytes / (1024 * 1024)
-                return gettext("Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used.").format(
-                    used_mb=used_mb, max_mb=max_mb
-                )
+                return gettext(  # type: ignore[no-any-return]
+                    "Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used."
+                ).format(used_mb=used_mb, max_mb=max_mb)
     except Exception:
         pass  # Don't block upload on DB errors
 
@@ -1432,7 +1432,7 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                 for f in glob.glob(pattern, recursive=True):
                     if os.path.basename(f) == model_name + ".gguf":
                         # Scan from file
-                        scanned = {}  # Placeholder for metadata
+                        scanned: dict[str, Any]
                         try:
                             from gguf import GGUFReader
 

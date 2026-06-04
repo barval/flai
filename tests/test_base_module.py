@@ -43,7 +43,7 @@ class TestBaseModule:
     def test_parse_router_response_image_marker(self, base_module):
         """Test parsing response with image marker."""
         response = "[-IMAGE-] draw a cat"
-        result = base_module._parse_router_response(response, "", "")
+        result = base_module._parse_router_response(response, "draw a cat", "")
         assert result["action"] == "image"
         assert result["query"] == "draw a cat"
 

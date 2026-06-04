@@ -167,6 +167,13 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 7. **Admin panel displays measured vs estimated VRAM**: Shows "✓ VRAM: X MB / Y MB — measured (N measurements)" or "ℹ VRAM: ~X MB — estimated" with color-coded percentage bars.
 8. **Per-model-type circuit breakers**: Separate CB for chat, reasoning, multimodal, embedding. One model's failures don't block another.
 9. **Retry for reasoning on 502**: LlamaSwapBackend now retries reasoning requests once on 502, with automatic model degradation on first failure.
+10. **Phantom measurement fix — PK schema change**: `model_vram_estimates` table PK changed from `(module)` to `(module, model_name)`. Each model now gets its own row — switching to a new model in the same module no longer inherits phantom measurements from the old model. Idempotent migration in `init_db()` via `DO $migrate$` block. `get_vram_estimate(module, model_name=None)` accepts optional `model_name` for exact match (legacy path for ltx-video). `upsert_vram_estimate()` queries by `(module, model_name)`. Admin endpoint (`/admin/api/model-estimate`) passes `model_name` to `get_vram_estimate()`. Bonus: fixed `UPDATE WHERE module` bug — was overwriting measurements of ALL models in the module, now scoped to `(module, model_name)`.
+11. **LTX-Video unload optimization (Plan A+B)**: Three-part fix in `resource_manager.py:unload_video_pipeline()`:
+   - **A1 — Pre-flight check**: `GET /v1/vram_info` before HTTP unload. If `pipeline_loaded=false`, return `True` immediately — skips 3×POST + 8s×8 polling (~28s saved per call).
+   - **A3 — 30s result cache**: `_last_ltx_unload_at` timestamp prevents double-call within 30s (queue.py calls unload twice per image request: once explicitly, once via `ensure_vram_for`).
+   - **A2 — Reachable success condition**: Changed from `free_before + 3000` to `min(total - 1000, free_before + 3000)`. Original condition was unreachable when `free_before > total - 3000` (our case: 15229 > 16311 - 3000).
+   - **A4 — Docker restart on 3 consecutive timeouts**: `_maybe_restart_ltx_video()` restarts `flai-ltxvideo` container via Docker socket (`POST /containers/flai-ltxvideo/restart`) after 3 consecutive `ReadTimeout` exceptions. Rate-limited to 1 restart per 5 minutes.
+   - **Tests**: `tests/test_resource_manager_ltx_unload.py` — 11 tests across 4 classes (Preflight, Cache, SuccessCondition, DockerRestart).
 
 ### RAG Problem statements
 - **Router sends knowledge questions to reasoning instead of RAG**: "Сколько лет Валерию Барсукову?" classified as `[-REASONING-]` instead of `[-RAG-]` — no examples of Q&A about people/documents
@@ -219,6 +226,20 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - `tests/test_classify_model_fit.py` (NEW): 11 tests — small model → good, medium model → cpu_offload, huge model → impossible, unknown model → unknown, arch_max_ctx propagation, .gguf extension stripping, ngl proportionality, edge cases.
 - `tests/test_dry_load.py` (NEW): 10 tests — thread spawning, empty model skip, FALLBACK_MODELS coverage, _trigger_load (200/500/network), _check_running (found/not-found/error).
 - `tests/test_health_monitor.py` (NEW): 12 tests — failure recording, sliding window eviction, per-module isolation, _clear_failures, _get_running, _try_health_check, start_watchdog daemon thread.
+- `tests/test_resource_manager_ltx_unload.py` (NEW): 11 tests across 4 classes (Preflight, Cache, SuccessCondition, DockerRestart) — pre-flight skip, 30s cache, reachable condition, Docker restart trigger.
+- `tests/test_vram_estimates.py` (NEW): 10 tests across 3 classes (Upsert, GetEstimate, AdminFilter) — phantom measurement isolation, per-model PK, legacy ltx-video path, admin endpoint model_name filter.
+- `app/llamacpp_client.py`: Defensive `return` after `for attempt` loop (mypy Missing return fix). `# type: ignore[no-any-return]` on `_tr()`.
+- `app/queue.py`: `process_time` type widened to `float | dict[str, float]` in `_save_and_respond()` and `_build_success_response()`. `current_time_str` now uses fallback `or get_current_time_in_timezone_for_db()` to eliminate `str | None` propagation. Local `sid` variable for `set.add()` to satisfy mypy.
+- `app/utils.py`: `scanned` annotated as `dict[str, Any]`. `striprtf.parse_rtf` marked `# type: ignore[attr-defined]`. `gettext` returns marked `# type: ignore[no-any-return]`.
+- `app/db.py`: `parsed["text"]` return marked `# type: ignore[no-any-return]`.
+- `app/mixins.py`: `_()` return marked `# type: ignore[no-any-return]`.
+- `app/routes/admin.py`: `psutil.virtual_memory()` return marked `# type: ignore[no-any-return]`.
+- `app/routes/auth.py`: `key_func` lambda now returns `str` guaranteed via `or "unknown"` fallback.
+- `app/__init__.py`: `app.modules.get()` marked `# type: ignore[attr-defined]`.
+- `modules/base.py`: Added `isinstance(router_response, str)` guard before `.strip()` to prevent `AttributeError` on dict response.
+- `modules/multimodal.py`: `# type: ignore[assignment]` on `Image` vs `ImageFile` reassignment (2 places).
+- `modules/slm.py`: `# type: ignore[no-any-return]` on `resp.json().get(...)` returns (3 places).
+- `modules/video.py`: `resized_info` annotated as `dict[str, Any]`. `# type: ignore[assignment]` on `Image` vs `ImageFile` reassignment (2 places).
 - `translations/{en,ru}/LC_MESSAGES/messages.po`: 5 new keys — `✓ Fits in VRAM: {vram} MB / {total} MB`, `⚠ Partial CPU offload: {ngl}/{total_layers} layers on GPU, {cpu} on RAM. ~5-10× slower.`, `✗ Model cannot be loaded. Needs {needed} MB RAM (file + KV cache), available {total} MB.`, `Model metadata not found. Run 'Refresh models' first.`, `model_cannot_be_saved`.
 
 ### Error message prefix fix
@@ -321,7 +342,7 @@ watch -n 1 nvidia-smi          # Real-time VRAM tracking
 docker logs flai-web --tail 50 | grep GPU  # Log GPU-related events
 grep "RAG\|reasoning\|router" docker/logs/flai-web.log  # Debug RAG flow
 docker logs flai-web --tail 100 | grep -E "watchdog|dry_load"  # Model protection events
-curl -s "http://localhost:5000/admin/api/model-estimate?model=Qwen3-4B-Instruct-2507-Q4_K_M.gguf&module=chat&ctx_size=8192" | jq '{tier, can_save, ngl_recommended, tier_message}'  # Test tier classification
+curl -s "http://localhost:5000/admin/api/model-estimate?model=Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf&module=chat&ctx_size=8192" | jq '{tier, can_save, ngl_recommended, tier_message}'  # Test tier classification
 ```
 
 ## GPU Queue Management — CRITICAL RULES
@@ -332,7 +353,7 @@ curl -s "http://localhost:5000/admin/api/model-estimate?model=Qwen3-4B-Instruct-
 
 3. **Degradation happens BEFORE model load, not after failure.** `compute_llamacpp_config()` iteratively reduces `n_gpu_layers` until the model fits in available VRAM. If a model doesn't fit even with 0 layers on GPU, the task returns an error instead of crashing with OOM.
 
-4. **VRAM timeout is 15 seconds.** All VRAM wait loops (ensure_vram_for, _wait_for_vram, video.py) use a 15-second maximum wait. If VRAM isn't freed in 15 seconds, the task returns an error instead of proceeding into OOM.
+4. **VRAM timeout varies by context.** `ensure_vram_for()` (resource_manager.py) uses a 15-second wait. `_wait_for_vram()` (queue.py) uses 30 seconds. `_wait_for_vram_full()` (queue.py) uses 60 seconds. If VRAM isn't freed within the timeout, the task returns an error instead of proceeding into OOM.
 
 Also:
 - NEVER make ANY changes to files without direct user approval. Each file change (create, edit, delete) requires explicit plan approval. Exception: only when the user explicitly said "do it" or "execute".

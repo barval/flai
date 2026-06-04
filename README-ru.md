@@ -95,7 +95,7 @@
 | 📺 **Видео VRAM: try/finally + flush CUDA** | Оба обработчика видео оборачивают генерацию в `try/finally` — `_unload_video_pipeline()` и `_unload_llamacpp_models()` выполняются всегда. CUDA-кэш сбрасывается после генерации. Таймаут `_wait_for_vram_full` 30 → 60 с. Буфер +500 → +3000 МБ. Больше никаких «продолжаем вопреки» при таймауте. |
 | 📐 **Динамическая цепочка VRAM видео** | `estimate_video_vram_needed()`: 1) замерено (из `model_vram_estimates`), 2) HTTP `/v1/vram_info` от ltx-wrapper (размеры компонентов + текущий пик), 3) локальная ФС (если `/app/models` примонтирован), 4) env-fallback. Новый эндпоинт в `ltx_wrapper.py`. |
 | 🗃️ **Новые таблицы БД** | `model_vram_estimates` (module, model_name, ctx, ngl, estimated_mb, measured_mb, measurement_count, last_measured_at). `slm_import_progress` (user_id, last_message_id, total_imported) для чекпоинт-фонового импорта. |
-| 🧪 **34 новых теста** | `tests/test_classify_model_fit.py` (11), `tests/test_dry_load.py` (10), `tests/test_health_monitor.py` (12). Все проходят. |
+| 🧪 **55 новых тестов** | `tests/test_classify_model_fit.py` (11), `tests/test_dry_load.py` (10), `tests/test_health_monitor.py` (12), `tests/test_resource_manager_ltx_unload.py` (11), `tests/test_vram_estimates.py` (10). Все проходят. |
 | 🧹 **Очистка Docker compose** | Удалены `docker-compose.cpu.yml` (режим CPU-only не поддерживается — FLAI требует NVIDIA GPU), `services/llamacpp/generate_presets.py` (устарел), `services/sd_cpp/Dockerfile.sd_cpp-cpu`. |
 | 🤖 **Обновлена дефолтная чат-модель** | `Qwen3-4B-Instruct-2507-Q4_K_M` → `Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf` (~2 ГБ, более быстрый роутинг). Дефолтный ctx 8192 → 16384 для чата и рассуждений. |
 | 📦 **Deploy-скрипты: определение уровня VRAM** | `deploy.sh` / `deploy-ru.sh` теперь определяют VRAM GPU через `nvidia-smi` и авто-выбирают рассуждающую модель: 16+ ГБ → `gpt-oss-20b-Q4_K_M`, 12 ГБ → `Qwen3-8B-Thinking-Q4_K_M`, 8 ГБ → `Qwen3-4B-Thinking`. |
@@ -171,11 +171,6 @@
 | Генерация изображений (SD) | ✅ до 1024×1024 | ✅ до 1536×1024 | ✅ до 1536×1024 |
 | Редактирование изображений (Flux) | ✅ до 768px по длинной стороне | ✅ до 1024px по длинной стороне | ✅ до 1024px по длинной стороне |
 | Генерация видео (LTX-Video) | ⚠️ 512×512×121 кадров | ✅ 896×512×257 кадров | ✅ 896×512×257 кадров |
-| Голос (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU |
-| RAG (Qdrant) | ✅ | ✅ | ✅ |
-| SLM долговременная память | ✅ CPU | ✅ CPU | ✅ CPU |
-| Генерация изображений (SD) | ✅ (LLM выгружается, sd-cli subprocess) | ✅ (LLM выгружается) | ✅ (LLM выгружается) |
-| Генерация видео (LTX-Video) | ⚠️ пониженное разрешение | ✅ | ✅ |
 | Голос (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU |
 | RAG (Qdrant) | ✅ | ✅ | ✅ |
 | SLM долговременная память | ✅ CPU | ✅ CPU | ✅ CPU |
@@ -269,8 +264,8 @@ nano .env
 mkdir -p services/llamacpp/models
 
 # Чат-модель (быстрые ответы)
-wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
-  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf \
+  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf"
 
 # Модель рассуждений (сложные задачи)
 wget -O services/llamacpp/models/gpt-oss-20b-Q4_K_M.gguf \
@@ -302,8 +297,8 @@ wget -O services/sd_cpp/models/vae/ae.safetensors \
   "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/ae.safetensors"
 
 # Текстовый кодировщик LLM (общий с чатом)
-wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
-  "https://huggingface.co/bartowski/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf \
+  "https://huggingface.co/bartowski/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf"
 ```
 
 #### Модели редактирования изображений (Flux.2 Klein 4B)
@@ -318,7 +313,7 @@ wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
   "https://huggingface.co/bartowski/FLUX.2-dev-GGUF/resolve/main/flux2_ae.safetensors"
 ```
 
-> Текстовый кодировщик `Qwen3-4B-Instruct-2507-Q4_K_M.gguf` используется **общий** и для генерации, и для редактирования. Скачайте его один раз.
+> Текстовый кодировщик `Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf` используется **общий** и для генерации, и для редактирования. Скачайте его один раз.
 
 > ⚠️ **Важно**: Мультимодальные модели **обязательно** должны лежать в поддиректории с именем модели, а файл проектора `mmproj-*.gguf` — внутри неё. Роутер llama.cpp автоматически обнаружит и загрузит проектор.
 
@@ -511,7 +506,7 @@ llama.cpp работает в **режиме роутера** (`--models-dir`), 
 
 ```
 services/llamacpp/models/
-├── Qwen3-4B-Instruct-2507-Q4_K_M.gguf     # Чат
+├── Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf     # Чат
 ├── gpt-oss-20b-Q4_K_M.gguf                  # Рассуждения
 ├── bge-m3-Q8_0.gguf                        # Эмбеддинг
 └── Qwen3VL-8B-Instruct-Q4_K_M/             # Мультимодальность (поддиректория!)
@@ -880,7 +875,7 @@ curl http://localhost:5000/metrics
 - **Очистка Docker compose** — удалены `docker-compose.cpu.yml` (CPU-only не поддерживается), `services/llamacpp/generate_presets.py` (устарел), `services/sd_cpp/Dockerfile.sd_cpp-cpu`.
 - **Обновлена дефолтная чат-модель** — `Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf` (~2 ГБ, быстрее), дефолтный ctx 8192 → 16384.
 - **Deploy-скрипты: определение уровня VRAM** — авто-выбор рассуждающей модели по `nvidia-smi`: 16+ ГБ → gpt-oss-20b, 12 ГБ → Qwen3-8B-Thinking, 8 ГБ → Qwen3-4B-Thinking.
-- **34 новых теста** — `tests/test_classify_model_fit.py` (11), `tests/test_dry_load.py` (10), `tests/test_health_monitor.py` (12).
+- **55 новых тестов** — `tests/test_classify_model_fit.py` (11), `tests/test_dry_load.py` (10), `tests/test_health_monitor.py` (12), `tests/test_resource_manager_ltx_unload.py` (11), `tests/test_vram_estimates.py` (10).
 - **Reasoning 502 → повтор с деградацией** — `max_retries = 1` для reasoning и chat. Первый сбой → понижение ngl; второй сбой → пользовательская ошибка.
 - **Fast worker берёт GPU lock** — чат, эмбеддинг, RAG-поиск теперь тоже берут `_gpu_lock` (раньше только slow worker). Исключает параллельные GPU-задачи.
 
@@ -902,7 +897,7 @@ curl http://localhost:5000/metrics
 
 | Модель | Назначение | Лицензия | Примерный размер |
 |--------|-----------|---------|--------------|
-| **Qwen3-4B-Instruct-2507-Q4_K_M** | Чат (быстрые ответы) | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2,5 ГБ |
+| **Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf** | Чат (быстрые ответы) | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2 ГБ |
 | **gpt-oss-20b-Q4_K_M** | Рассуждения (сложные задачи) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 ГБ |
 | **Qwen3VL-8B-Instruct-Q4_K_M** | Мультимодальность (анализ изображений) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5 ГБ + mmproj ~1,1 ГБ |
 | **bge-m3-Q8_0** | Эмбеддинги (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~0,6 ГБ |
@@ -913,7 +908,7 @@ curl http://localhost:5000/metrics
 |--------|-----------|---------|--------------|
 | **Z-Image-Turbo (z_image_turbo-Q8_0)** | Генерация изображений | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~6,2 ГБ |
 | **ae.safetensors** (VAE) | Вариационный автоэнкодер для Z-Image | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~0,3 ГБ |
-| **Qwen3-4B-Instruct-2507-Q4_K_M** | Текстовый кодировщик для Z-Image | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2,5 ГБ *(общая с чатом)* |
+| **Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf** | Текстовый кодировщик для Z-Image | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2 ГБ *(общая с чатом)* |
 
 ### Модели редактирования изображений (stable-diffusion.cpp)
 
@@ -991,6 +986,11 @@ pytest tests/test_sd_cpp_module.py
 pytest tests/test_queue.py
 pytest tests/test_security.py
 pytest tests/test_resource_manager.py
+pytest tests/test_resource_manager_ltx_unload.py
+pytest tests/test_vram_estimates.py
+pytest tests/test_classify_model_fit.py
+pytest tests/test_dry_load.py
+pytest tests/test_health_monitor.py
 pytest tests/test_llama_swap_config.py
 pytest tests/test_validators.py
 pytest tests/test_model_config.py

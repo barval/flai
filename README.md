@@ -352,7 +352,7 @@ docker compose -f docker-compose.gpu.yml --profile with-video up -d
 docker compose -f docker-compose.gpu.yml --profile with-slm up -d
 
 # Full stack: chat + images + voice + RAG + video + long-term memory
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video up -d
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm up -d
 ```
 
 > ⏱️ **First build takes time**: stable-diffusion.cpp is compiled from source (~5-10 minutes). Subsequent builds use the cache.

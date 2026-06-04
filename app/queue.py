@@ -601,7 +601,12 @@ class RedisRequestQueue:
         return None, None
 
     def _build_error_response(self, session_id: str, error: str, process_time: float, lang: str) -> dict[str, Any]:
-        """Build a standardized error response dict and save to DB."""
+        """Build a standardized error response dict and save to DB.
+
+        response_time is stored in DB (for analytics) but intentionally omitted
+        from the returned dict so the client does not render ⏱️/🚀/🤖 in the
+        error message header.
+        """
         from .db import save_message
 
         completion_time = get_current_time_in_timezone_for_db(self.app)
@@ -613,7 +618,6 @@ class RedisRequestQueue:
             "session_id": session_id,
             "assistant_timestamp": completion_time,
             "is_error": True,
-            "response_time": process_time,
             "message_id": msg_id,
         }
 
@@ -697,7 +701,12 @@ class RedisRequestQueue:
         response_style: str = "neutral",
         user_id: str | None = None,
     ) -> dict[str, Any]:
-        """Save assistant message to DB and return response dict."""
+        """Save assistant message to DB and return response dict.
+
+        For error replies (is_error=True) the response_style and
+        completion_tokens fields are intentionally omitted from the result
+        dict so the client does not render 🚀/🤖/⏱️ in the message header.
+        """
         resp_time = process_time if isinstance(process_time, dict) else str(process_time)
         completion_tokens = estimate_tokens(text) if text else 0
         msg_id = save_message(
@@ -717,8 +726,15 @@ class RedisRequestQueue:
         result = self._build_success_response(
             session_id, text, model_name, process_time, message_id=msg_id, extra=extra
         )
-        result["response_style"] = response_style
-        result["completion_tokens"] = completion_tokens
+        if is_error:
+            # Strip style/tokens/response_time so the client header shows only
+            # the model name (e.g. "system") — no ⏱️/🚀/🤖 decorations.
+            result.pop("response_style", None)
+            result.pop("completion_tokens", None)
+            result.pop("response_time", None)
+        else:
+            result["response_style"] = response_style
+            result["completion_tokens"] = completion_tokens
         return result
 
     # ── VRAM guard & GPU management ──────────────────────────────────────
@@ -2345,7 +2361,7 @@ class RedisRequestQueue:
             return self._save_and_respond(
                 session_id,
                 bot_reply,
-                "unknown",
+                "system",
                 process_time,
                 is_error=True,
                 response_style=response_style,
@@ -2359,7 +2375,7 @@ class RedisRequestQueue:
             return self._save_and_respond(
                 session_id,
                 bot_reply,
-                "unknown",
+                "system",
                 process_time,
                 is_error=True,
                 response_style=response_style,
@@ -2371,7 +2387,7 @@ class RedisRequestQueue:
             bot_reply = "⚠️ " + self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang)
             process_time = round(time.time() - process_start, 1)
             return self._save_and_respond(
-                session_id, bot_reply, "unknown", process_time,
+                session_id, bot_reply, "system", process_time,
                 is_error=True, response_style=response_style,
             )
         stream_gen = self.app.modules["multimodal"].process_image_with_text_stream(

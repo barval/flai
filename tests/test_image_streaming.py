@@ -182,3 +182,95 @@ class TestImageTextStreamErrorRouting:
         assert mock_pub.call_count >= 1
         # NOT through _save_and_respond
         assert not mock_save.called
+
+
+class TestImageStreamErrorModelName:
+    """All error paths in _process_image_chat_task_stream must save with
+    model_name='system' (not 'unknown') for consistent header display."""
+
+    @pytest.fixture
+    def q(self, test_app):
+        from app.queue import RedisRequestQueue
+        with patch("redis.from_url", return_value=MagicMock()), \
+             patch.object(RedisRequestQueue, "__init__", lambda self, app: None):
+            q = RedisRequestQueue(test_app)
+            q.app = test_app
+            q.logger = test_app.logger
+            return q
+
+    @staticmethod
+    def _wire(q, *, save_return=None):
+        """Patch all the helpers called by the early error paths."""
+        return [
+            patch.object(q, "_save_and_respond", return_value=save_return or {}),
+            patch.object(q, "_unload_llamacpp_models", return_value=True),
+            patch.object(q, "_unload_video_pipeline", return_value=True),
+            patch.object(q, "_wait_for_vram", return_value=True),
+        ]
+
+    def test_multimodal_unavailable_uses_system(self, q):
+        """When the multimodal module is missing/unavailable, the error reply
+        must be saved with model_name='system'."""
+        m = MagicMock()
+        m.available = False
+        q.app.modules["multimodal"] = m
+
+        patches = self._wire(q)
+        with patches[0] as mock_save, patches[1], patches[2], patches[3]:
+            task = {"id": "t1", "data": {}}
+            q._process_image_chat_task_stream(
+                task, _b64(b"fake-jpg"), "image/jpeg", "t.jpg", "",
+                "s1", "2026-06-04 12:00:00", "en", "u1", "neutral",
+            )
+
+        mock_save.assert_called_once()
+        assert mock_save.call_args.args[2] == "system", (
+            f"Expected model_name='system', got {mock_save.call_args.args[2]!r}"
+        )
+        assert mock_save.call_args.kwargs.get("is_error") is True
+
+    def test_image_validation_failure_uses_system(self, q):
+        """When validate_image rejects the image (e.g. WEBP/HEIC/AVIF), the
+        error reply must be saved with model_name='system'."""
+        m = MagicMock()
+        m.available = True
+        m.validate_image.return_value = (False, "Image format WEBP is not supported")
+        q.app.modules["multimodal"] = m
+
+        patches = self._wire(q)
+        with patches[0] as mock_save, patches[1], patches[2], patches[3]:
+            task = {"id": "t1", "data": {}}
+            q._process_image_chat_task_stream(
+                task, _b64(b"fake-webp"), "image/webp", "t.webp", "",
+                "s1", "2026-06-04 12:00:00", "en", "u1", "neutral",
+            )
+
+        mock_save.assert_called_once()
+        assert mock_save.call_args.args[2] == "system", (
+            f"Expected model_name='system', got {mock_save.call_args.args[2]!r}"
+        )
+        assert mock_save.call_args.kwargs.get("is_error") is True
+
+    def test_gpu_memory_unavailable_uses_system(self, q):
+        """When VRAM wait times out, the error reply must be saved with
+        model_name='system'."""
+        m = MagicMock()
+        m.available = True
+        m.validate_image.return_value = (True, None)
+        q.app.modules["multimodal"] = m
+
+        with patch.object(q, "_save_and_respond") as mock_save, \
+             patch.object(q, "_unload_llamacpp_models", return_value=True), \
+             patch.object(q, "_unload_video_pipeline", return_value=True), \
+             patch.object(q, "_wait_for_vram", return_value=False):
+            task = {"id": "t1", "data": {}}
+            q._process_image_chat_task_stream(
+                task, _b64(b"fake-jpg"), "image/jpeg", "t.jpg", "",
+                "s1", "2026-06-04 12:00:00", "en", "u1", "neutral",
+            )
+
+        mock_save.assert_called_once()
+        assert mock_save.call_args.args[2] == "system", (
+            f"Expected model_name='system', got {mock_save.call_args.args[2]!r}"
+        )
+        assert mock_save.call_args.kwargs.get("is_error") is True

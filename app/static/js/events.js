@@ -657,8 +657,10 @@ function handleCompletedResult(result, expectedSessionId) {
     // Error result
     if (result.error) {
         if (resultSessionId === currentSessionId) {
+            // Error headers intentionally get no ⏱️/🚀/🤖 — pass null for
+            // responseTime and modelName='system'.
             window.displayMessage('assistant', '⚠️ ' + result.error, null, null, null, null,
-                result.assistant_timestamp || new Date().toISOString(), result.response_time, 'system',
+                result.assistant_timestamp || new Date().toISOString(), null, 'system',
                 null, null, null, null, result.message_id, null);
         }
         if (resultSessionId) setLocalTranscribing(resultSessionId, false);

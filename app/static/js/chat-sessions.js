@@ -167,8 +167,8 @@ function updateSessionsList(sessions) {
             // Currently being processed - show lightning (ONLY ONE session can have this)
             statusIcons = '<span class="session-status-icon processing blink" title="' + t('processing') + '">⚡</span>';
         } else if (info && info.queued > 0) {
-            // In queue - show hourglass with position number
-            const position = info.queue_position ?? info.queued;
+            // In queue - show hourglass with position number (when known)
+            const position = info.queue_position ?? 0;
             statusIcons = '<span class="session-status-icon queued blink" title="' + t('queued') + (position > 0 ? ' ( #' + position + ')' : '') + '">⏳' + (position > 0 ? ' ' + position : '') + '</span>';
         } else {
             // No queue status - show unread indicator if needed (only for non-active sessions)

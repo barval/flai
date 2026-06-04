@@ -2817,7 +2817,7 @@ class RedisRequestQueue:
             "type": task.get("data", {}).get("type", task.get("type", "unknown")),
             "type_icon": type_icons.get(task.get("data", {}).get("type", task.get("type", "unknown")), "📄"),
             "status": task.get("status", "queued"),
-            "position_info": task.get("position_info", {"position": "?", "estimated_seconds": 5}),
+            "position_info": task.get("position_info", {"position": 0, "estimated_seconds": 0}),
             "preview": task.get("data", {}).get("preview", ""),
         }
 

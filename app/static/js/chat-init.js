@@ -67,10 +67,12 @@ async function sendMessage() {
     sendButton.innerHTML = '⏳ ' + t('sending');
 
     // Immediately show hourglass in session list (task goes to queue, not processing)
+    // queue_position is 0 — real position is unknown until the server responds,
+    // so UI shows ⏳ without a number (avoids duplicate "1"/"999" across sessions).
     sessionQueueInfo[currentSessionId] = {
         processing: false,
         queued: 1,
-        queue_position: 1,
+        queue_position: 0,
         has_transcribing: false
     };
     window._lastSessionsJson = null;
@@ -300,12 +302,12 @@ async function sendMessage() {
                         sessionQueueInfo[currentSessionId] = {
                             processing: !alreadyProcessing,
                             queued: alreadyProcessing ? 1 : 0,
-                            queue_position: alreadyProcessing ? (data.position || 1) : 0,
+                            queue_position: alreadyProcessing ? (data.position ?? 0) : 0,
                         };
                     } else {
                         sessionQueueInfo[currentSessionId].processing = !alreadyProcessing;
                         sessionQueueInfo[currentSessionId].queued = alreadyProcessing ? 1 : 0;
-                        sessionQueueInfo[currentSessionId].queue_position = alreadyProcessing ? (data.position || 1) : 0;
+                        sessionQueueInfo[currentSessionId].queue_position = alreadyProcessing ? (data.position ?? 0) : 0;
                     }
 
                     updateSessionsListFromData();

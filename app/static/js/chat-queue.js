@@ -60,7 +60,7 @@ function fetchQueueStatus() {
                         newInfo[sessionId] = { processing: false, queued: 0, queue_position: 0, has_transcribing: false };
                     }
                     newInfo[sessionId].queued += 1;
-                    newInfo[sessionId].queue_position = item.position_info?.position ?? 999;
+                    newInfo[sessionId].queue_position = item.position_info?.position ?? 0;
                 });
             }
 
@@ -68,6 +68,9 @@ function fetchQueueStatus() {
             // reported yet (race between client set hourglass and server add to queue).
             // Without this, fetchQueueStatus() overwrites local ⏳ with empty server data
             // and the hourglass disappears until the next poll or SSE event.
+            // queue_position is intentionally left at 0 here (no real position known)
+            // so the UI shows ⏳ without a number instead of a duplicate "999" across
+            // multiple pending sessions.
             if (typeof pendingRequestIds === 'object' && pendingRequestIds) {
                 Object.keys(pendingRequestIds).forEach(reqId => {
                     const info = pendingRequestIds[reqId];
@@ -79,9 +82,6 @@ function fetchQueueStatus() {
                     }
                     if (!newInfo[sid].processing && newInfo[sid].queued === 0) {
                         newInfo[sid].queued = 1;
-                        if (!newInfo[sid].queue_position) {
-                            newInfo[sid].queue_position = 999;
-                        }
                     }
                 });
             }

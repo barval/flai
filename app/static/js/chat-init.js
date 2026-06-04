@@ -75,6 +75,16 @@ async function sendMessage() {
         queue_position: 0,
         has_transcribing: false
     };
+    // Register an optimistic pending request BEFORE the network roundtrip.
+    // Without this, fetchQueueStatus() (e.g. from SSE reconnect or
+    // visibilitychange) could clobber the hourglass because pendingRequestIds
+    // wouldn't yet know about the request. The temp ID is not persisted to
+    // sessionStorage — only the real server-assigned request_id is.
+    const tempRequestId = 'temp-' + (typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Date.now() + '-' + Math.random().toString(36).slice(2));
+    trackPendingRequest(tempRequestId, currentSessionId, false);
+    window._activeSendTempId = tempRequestId;
     window._lastSessionsJson = null;
     if (typeof updateSessionsListFromData === 'function') updateSessionsListFromData();
     
@@ -259,6 +269,11 @@ async function sendMessage() {
                         } else {
                             sessionQueueInfo[currentSessionId].queued += 1;
                         }
+                        // Replace optimistic temp ID with the real server-assigned request_id.
+                        if (window._activeSendTempId) {
+                            clearPendingRequest(window._activeSendTempId);
+                            window._activeSendTempId = null;
+                        }
                         updateSessionsListFromData();
                         trackPendingRequest(data.request_id, currentSessionId);
                         window.updateStatusCounter();
@@ -310,6 +325,13 @@ async function sendMessage() {
                         sessionQueueInfo[currentSessionId].queue_position = alreadyProcessing ? (data.position ?? 0) : 0;
                     }
 
+                    // Replace optimistic temp ID with the real server-assigned request_id.
+                    // Real ID is persisted to sessionStorage (survives page refresh);
+                    // temp ID was in-memory only.
+                    if (window._activeSendTempId) {
+                        clearPendingRequest(window._activeSendTempId);
+                        window._activeSendTempId = null;
+                    }
                     updateSessionsListFromData();
                     trackPendingRequest(data.request_id, currentSessionId);
                     window.updateStatusCounter();
@@ -325,6 +347,11 @@ async function sendMessage() {
                 const lastMessage = document.querySelector('.user-message:last-child');
                 if (lastMessage) lastMessage.style.borderLeft = '3px solid #e74c3c';
                 setLocalTranscribing(currentSessionId, false);
+                // Drop the optimistic temp ID — server never saw this request.
+                if (window._activeSendTempId) {
+                    clearPendingRequest(window._activeSendTempId);
+                    window._activeSendTempId = null;
+                }
                 if (typeof clearSessionQueue === 'function') clearSessionQueue(currentSessionId);
             } finally {
                 // Always unlock send button after request completes (success or error)

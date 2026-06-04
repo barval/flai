@@ -231,7 +231,13 @@ class RedisRequestQueue:
         total_count = self.redis.hget(user_count_key, "__total__")
         total_count = int(total_count) if total_count else 0
         queue_total = fast_total + slow_total
-        if total_count != queue_total and not (fast_proc or slow_proc):
+        # Auto-heal: if the hash counter (__total__) drifts away from the actual
+        # queue length, the hash is stale (e.g. after recover_stale_tasks, a
+        # worker crash mid-transition, or manual Redis cleanup). Reset it
+        # unconditionally — waiting for "no processing" only delays the fix
+        # and leaves users with an undercounted "4/4" while they actually have
+        # more queued tasks. The next add_request() will rebuild the count.
+        if total_count != queue_total:
             self.redis.delete(user_count_key)
             user_count = 0
 
@@ -758,21 +764,26 @@ class RedisRequestQueue:
             self.logger.error(f"VRAM verification failed: {e}")
         return False
 
-    def _wait_for_vram_full(self, timeout: int = 30) -> bool:
+    def _wait_for_vram_full(self, timeout: int = 60) -> bool:
         """Wait until ALL LLM models are unloaded AND sufficient GPU VRAM is free.
 
         Unlike _wait_for_vram() which only checks a fixed MB threshold,
         this verifies via llama-swap /running endpoint AND requires
-        enough VRAM for the video pipeline (~8GB) plus a 3GB safety
-        buffer — preventing OOM when video tries to load.
+        enough VRAM for the video pipeline (estimated from file sizes
+        or measured peak) — preventing OOM when video tries to load.
+
+        Active unload synchronization: if models remain loaded in
+        llama-swap after the initial POST /unload, re-triggers unload
+        every poll cycle until /running reports 0.
         """
         from app.resource_manager import get_resource_manager
 
         rm = get_resource_manager()
         llamacpp_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
-        video_needed = rm.estimate_video_vram_needed()
-        min_free = video_needed
+        min_free = rm.estimate_video_vram_needed()
         deadline = time.time() + timeout
+
+        self._unload_llamacpp_models()
 
         while time.time() < deadline:
             rm._poll_vram()
@@ -808,7 +819,8 @@ class RedisRequestQueue:
             if loaded_count == 0:
                 self.logger.info(f"VRAM: {free}MB free, need {min_free}MB — waiting for deallocation...")
             else:
-                self.logger.info(f"VRAM: {free}MB free, {loaded_count} model(s) loaded — waiting for unload...")
+                self.logger.info(f"VRAM: {free}MB free, {loaded_count} model(s) loaded — re-triggering unload...")
+                self._unload_llamacpp_models()
             time.sleep(2)
 
         self.logger.warning(
@@ -1350,97 +1362,110 @@ class RedisRequestQueue:
         self._unload_llamacpp_models()
         self._unload_video_pipeline()
 
-        # Wait for guaranteed free VRAM with no LLM processes (multimodal model)
-        if not self._wait_for_vram(self._get_vram_needed("multimodal")):
-            error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang=lang)
-            return self._build_error_response(session_id, error_msg, 0, lang)
-
-        # Final verification that VRAM is usable
-        if not self._check_vram_ready(self._get_vram_needed("multimodal")):
-            error_msg = self.app.modules["base"]._("GPU memory check failed. Please try again.", lang=lang)
-            return self._build_error_response(session_id, error_msg, 0, lang)
-
-        mm_start = time.time()
-        prompt_data, error = self.app.modules["multimodal"].generate_video_params(
-            query, lang=lang, response_style=response_style
-        )
-        mm_time = round(time.time() - mm_start, 1)
-        if error:
-            return self._build_error_response(session_id, error, mm_time, lang)
-
-        # CRITICAL: Unload multimodal model AFTER params generated but BEFORE video.
-        # generate_video_params() loaded Qwen3VL-8B (~5GB) — must free VRAM
-        # before LTX-Video pipeline (~8GB) loads, or total > GPU capacity → OOM.
-        self._unload_llamacpp_models()
         try:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
-        except ImportError:
-            pass
+            # Wait for guaranteed free VRAM with no LLM processes (multimodal model)
+            if not self._wait_for_vram(self._get_vram_needed("multimodal")):
+                error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang=lang)
+                return self._build_error_response(session_id, error_msg, 0, lang)
 
-        # Verify VRAM is truly free for video pipeline — must check BOTH:
-        # (a) no LLM models loaded via llama-swap /running
-        # (b) sufficient raw VRAM (≥80% of GPU, not just 10GB threshold)
-        if not self._wait_for_vram_full():
-            error_msg = self.app.modules["base"]._(
-                "GPU memory unavailable after unloading LLM. Try again.", lang=lang
+            # Final verification that VRAM is usable
+            if not self._check_vram_ready(self._get_vram_needed("multimodal")):
+                error_msg = self.app.modules["base"]._("GPU memory check failed. Please try again.", lang=lang)
+                return self._build_error_response(session_id, error_msg, 0, lang)
+
+            mm_start = time.time()
+            prompt_data, error = self.app.modules["multimodal"].generate_video_params(
+                query, lang=lang, response_style=response_style
             )
-            return self._build_error_response(session_id, error_msg, mm_time, lang)
+            mm_time = round(time.time() - mm_start, 1)
+            if error:
+                return self._build_error_response(session_id, error, mm_time, lang)
 
-        gen_start = time.time()
-        video_result = self.app.modules["video"].generate_video(prompt_data, lang=lang)
-        gen_time = round(time.time() - gen_start, 1)
+            # CRITICAL: Unload multimodal model AFTER params generated but BEFORE video.
+            # generate_video_params() loaded Qwen3VL-8B (~5GB) — must free VRAM
+            # before LTX-Video pipeline (~8GB) loads, or total > GPU capacity → OOM.
+            self._unload_llamacpp_models()
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+            except ImportError:
+                pass
 
-        if not video_result["success"]:
-            err_msg = video_result.get("error", "")
-            if "CUDA out of memory" in str(err_msg):
-                err_msg = self.app.modules["base"]._("Video generation failed: GPU memory exhausted. Please simplify your request.", lang=lang)
-            return self._build_error_response(session_id, err_msg, mm_time + gen_time, lang)
+            # Verify VRAM is truly free for video pipeline — must check BOTH:
+            # (a) no LLM models loaded via llama-swap /running
+            # (b) sufficient raw VRAM (estimated peak from files/measurements)
+            if not self._wait_for_vram_full():
+                error_msg = self.app.modules["base"]._(
+                    "GPU memory unavailable after unloading LLM. Try again.", lang=lang
+                )
+                return self._build_error_response(session_id, error_msg, mm_time, lang)
 
-        # Unload video pipeline after generation — frees VRAM for subsequent LLM
-        self._unload_video_pipeline()
+            gen_start = time.time()
+            video_result = self.app.modules["video"].generate_video(prompt_data, lang=lang)
+            gen_time = round(time.time() - gen_start, 1)
 
-        video_model = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
-        template = self.app.modules["base"]._("Video generated from request: {query}", lang=lang)
-        prefix = "🎬 " + template.replace("{query}", "")
-        message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
-        file_path = None
-        if video_result.get("video_data"):
-            file_path = save_uploaded_file(
-                file_data=video_result["video_data"],
-                filename=video_result["file_name"],
-                session_id=session_id,
-                upload_folder=self.app.config["UPLOAD_FOLDER"],
-                user_id=user_id,
+            if not video_result["success"]:
+                err_msg = video_result.get("error", "")
+                if "CUDA out of memory" in str(err_msg):
+                    err_msg = self.app.modules["base"]._("Video generation failed: GPU memory exhausted. Please simplify your request.", lang=lang)
+                return self._build_error_response(session_id, err_msg, mm_time + gen_time, lang)
+
+            # Record peak VRAM for future estimates
+            try:
+                from app.resource_manager import get_resource_manager
+
+                rm = get_resource_manager()
+                video_model_name = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
+                rm.measure_video_vram_peak(video_model_name)
+            except Exception as e:
+                self.logger.debug(f"Video VRAM measurement failed: {e}")
+
+            video_model = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
+            template = self.app.modules["base"]._("Video generated from request: {query}", lang=lang)
+            prefix = "🎬 " + template.replace("{query}", "")
+            message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
+            file_path = None
+            if video_result.get("video_data"):
+                file_path = save_uploaded_file(
+                    file_data=video_result["video_data"],
+                    filename=video_result["file_name"],
+                    session_id=session_id,
+                    upload_folder=self.app.config["UPLOAD_FOLDER"],
+                    user_id=user_id,
+                )
+
+            mm_model = self._get_model_name("multimodal") or "unknown"
+            extra = {
+                "file_path": file_path,
+                "file_name": video_result["file_name"],
+                "file_size": video_result["file_size"],
+                "file_type": video_result["file_type"],
+                "mm_time": mm_time,
+                "gen_time": gen_time,
+                "mm_model": mm_model,
+                "gen_model": video_model,
+                "response_time": {"mm_time": mm_time, "gen_time": gen_time, "mm_model": mm_model, "gen_model": video_model},
+                "metadata": video_result.get("metadata", {}),
+            }
+            return self._save_and_respond(
+                session_id,
+                message_text,
+                video_model,
+                {"mm_time": mm_time, "gen_time": gen_time},
+                file_data=None,
+                file_type=video_result["file_type"],
+                file_name=video_result["file_name"],
+                file_path=file_path,
+                extra=extra,
+                response_style=response_style,
             )
-
-        mm_model = self._get_model_name("multimodal") or "unknown"
-        extra = {
-            "file_path": file_path,
-            "file_name": video_result["file_name"],
-            "file_size": video_result["file_size"],
-            "file_type": video_result["file_type"],
-            "mm_time": mm_time,
-            "gen_time": gen_time,
-            "mm_model": mm_model,
-            "gen_model": video_model,
-            "response_time": {"mm_time": mm_time, "gen_time": gen_time, "mm_model": mm_model, "gen_model": video_model},
-            "metadata": video_result.get("metadata", {}),
-        }
-        return self._save_and_respond(
-            session_id,
-            message_text,
-            video_model,
-            {"mm_time": mm_time, "gen_time": gen_time},
-            file_data=None,
-            file_type=video_result["file_type"],
-            file_name=video_result["file_name"],
-            file_path=file_path,
-            extra=extra,
-            response_style=response_style,
-        )
+        finally:
+            # CRITICAL: Always unload video pipeline and LLM models, even on error.
+            # Prevents VRAM leak when generation fails or returns early.
+            self._unload_video_pipeline()
+            self._unload_llamacpp_models()
 
     def _process_video_gen_task_from_image(
         self, query: str, image_data: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
@@ -1458,122 +1483,138 @@ class RedisRequestQueue:
         self._unload_llamacpp_models()
         self._unload_video_pipeline()
 
-        # Wait for guaranteed free VRAM (multimodal model needs ~8GB with KV cache)
-        if not self._wait_for_vram(self._get_vram_needed("multimodal")):
-            error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang=lang)
-            return self._build_error_response(session_id, error_msg, 0, lang)
-
-        if not self._check_vram_ready(self._get_vram_needed("multimodal")):
-            error_msg = self.app.modules["base"]._("GPU memory check failed. Please try again.", lang=lang)
-            return self._build_error_response(session_id, error_msg, 0, lang)
-
-        mm_start = time.time()
-        mm_model = self.app.modules.get("multimodal")
-        prompt_data, error = (
-            mm_model.generate_video_params_from_image(query, image_data, lang=lang, response_style=response_style)
-            if mm_model
-            else (None, self.app.modules["base"]._("Multimodal model unavailable", lang=lang))
-        )
-        mm_time = round(time.time() - mm_start, 1)
-        if error:
-            return self._build_error_response(session_id, error, mm_time, lang)
-
-        # CRITICAL: Unload multimodal model AFTER params generated but BEFORE video.
-        # generate_video_params_from_image() loaded Qwen3VL-8B (~5GB) — must free VRAM
-        # before LTX-Video pipeline (~8GB) loads, or total > GPU capacity → OOM.
-        self._unload_llamacpp_models()
         try:
-            import torch
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
-        except ImportError:
-            pass
+            # Wait for guaranteed free VRAM (multimodal model needs ~8GB with KV cache)
+            if not self._wait_for_vram(self._get_vram_needed("multimodal")):
+                error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang=lang)
+                return self._build_error_response(session_id, error_msg, 0, lang)
 
-        if not self._wait_for_vram_full():
-            error_msg = self.app.modules["base"]._(
-                "GPU memory unavailable after unloading LLM. Try again.", lang=lang
+            if not self._check_vram_ready(self._get_vram_needed("multimodal")):
+                error_msg = self.app.modules["base"]._("GPU memory check failed. Please try again.", lang=lang)
+                return self._build_error_response(session_id, error_msg, 0, lang)
+
+            mm_start = time.time()
+            mm_model = self.app.modules.get("multimodal")
+            prompt_data, error = (
+                mm_model.generate_video_params_from_image(query, image_data, lang=lang, response_style=response_style)
+                if mm_model
+                else (None, self.app.modules["base"]._("Multimodal model unavailable", lang=lang))
             )
-            return self._build_error_response(session_id, error_msg, mm_time, lang)
+            mm_time = round(time.time() - mm_start, 1)
+            if error:
+                return self._build_error_response(session_id, error, mm_time, lang)
 
-        gen_start = time.time()
-        video_result = self.app.modules["video"].generate_video(prompt_data, image_data=image_data, lang=lang)
-        gen_time = round(time.time() - gen_start, 1)
+            # CRITICAL: Unload multimodal model AFTER params generated but BEFORE video.
+            # generate_video_params_from_image() loaded Qwen3VL-8B (~5GB) — must free VRAM
+            # before LTX-Video pipeline (~8GB) loads, or total > GPU capacity → OOM.
+            self._unload_llamacpp_models()
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+            except ImportError:
+                pass
 
-        if not video_result["success"]:
-            err_msg = video_result.get("error", "")
-            if "CUDA out of memory" in str(err_msg):
-                err_msg = self.app.modules["base"]._("Video generation failed: GPU memory exhausted. Please simplify your request.", lang=lang)
-            return self._build_error_response(session_id, err_msg, mm_time + gen_time, lang)
-
-        # Show resize notice if source image was downscaled for video
-        resize_notice = None
-        resize_notice_id = None
-        if video_result.get("resized") and video_result.get("original_size") and video_result.get("new_size"):
-            orig_w, orig_h = video_result["original_size"]
-            new_w, new_h = video_result["new_size"]
-            lang_for_msg = lang
-            with force_locale(lang_for_msg):
-                resize_text = (
-                    self.app.modules["base"]
-                    ._(
-                        "Maximum resolution for video is {max_w}×{max_h}. "
-                        "The image has been resized from {orig_w}×{orig_h} to {new_w}×{new_h}.",
-                        lang=lang_for_msg,
-                    )
-                    .format(max_w=896, max_h=896, orig_w=orig_w, orig_h=orig_h, new_w=new_w, new_h=new_h)
+            if not self._wait_for_vram_full():
+                error_msg = self.app.modules["base"]._(
+                    "GPU memory unavailable after unloading LLM. Try again.", lang=lang
                 )
-            resize_notice_id = save_message(
-                session_id, "assistant", resize_text, model_name="system", response_time="0"
-            )
-            resize_notice = resize_text
+                return self._build_error_response(session_id, error_msg, mm_time, lang)
 
-        video_model = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
-        template = self.app.modules["base"]._("Video generated from request: {query}", lang=lang)
-        prefix = "🎬 " + template.replace("{query}", "")
-        message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
-        file_path = None
-        if video_result.get("video_data"):
-            file_path = save_uploaded_file(
-                file_data=video_result["video_data"],
-                filename=video_result["file_name"],
-                session_id=session_id,
-                upload_folder=self.app.config["UPLOAD_FOLDER"],
-                user_id=user_id,
-            )
+            gen_start = time.time()
+            video_result = self.app.modules["video"].generate_video(prompt_data, image_data=image_data, lang=lang)
+            gen_time = round(time.time() - gen_start, 1)
 
-        mm_model_name = self._get_model_name("multimodal") or "unknown"
-        extra = {
-            "file_path": file_path,
-            "file_name": video_result["file_name"],
-            "file_size": video_result["file_size"],
-            "file_type": video_result["file_type"],
-            "mm_time": mm_time,
-            "gen_time": gen_time,
-            "mm_model": mm_model_name,
-            "gen_model": video_model,
-            "response_time": {
+            if not video_result["success"]:
+                err_msg = video_result.get("error", "")
+                if "CUDA out of memory" in str(err_msg):
+                    err_msg = self.app.modules["base"]._("Video generation failed: GPU memory exhausted. Please simplify your request.", lang=lang)
+                return self._build_error_response(session_id, err_msg, mm_time + gen_time, lang)
+
+            # Record peak VRAM for future estimates
+            try:
+                from app.resource_manager import get_resource_manager
+
+                rm = get_resource_manager()
+                video_model_name = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
+                rm.measure_video_vram_peak(video_model_name)
+            except Exception as e:
+                self.logger.debug(f"Video VRAM measurement failed: {e}")
+
+            # Show resize notice if source image was downscaled for video
+            resize_notice = None
+            resize_notice_id = None
+            if video_result.get("resized") and video_result.get("original_size") and video_result.get("new_size"):
+                orig_w, orig_h = video_result["original_size"]
+                new_w, new_h = video_result["new_size"]
+                lang_for_msg = lang
+                with force_locale(lang_for_msg):
+                    resize_text = (
+                        self.app.modules["base"]
+                        ._(
+                            "Maximum resolution for video is {max_w}×{max_h}. "
+                            "The image has been resized from {orig_w}×{orig_h} to {new_w}×{new_h}.",
+                            lang=lang_for_msg,
+                        )
+                        .format(max_w=896, max_h=896, orig_w=orig_w, orig_h=orig_h, new_w=new_w, new_h=new_h)
+                    )
+                resize_notice_id = save_message(
+                    session_id, "assistant", resize_text, model_name="system", response_time="0"
+                )
+                resize_notice = resize_text
+
+            video_model = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
+            template = self.app.modules["base"]._("Video generated from request: {query}", lang=lang)
+            prefix = "🎬 " + template.replace("{query}", "")
+            message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
+            file_path = None
+            if video_result.get("video_data"):
+                file_path = save_uploaded_file(
+                    file_data=video_result["video_data"],
+                    filename=video_result["file_name"],
+                    session_id=session_id,
+                    upload_folder=self.app.config["UPLOAD_FOLDER"],
+                    user_id=user_id,
+                )
+
+            mm_model_name = self._get_model_name("multimodal") or "unknown"
+            extra = {
+                "file_path": file_path,
+                "file_name": video_result["file_name"],
+                "file_size": video_result["file_size"],
+                "file_type": video_result["file_type"],
                 "mm_time": mm_time,
                 "gen_time": gen_time,
                 "mm_model": mm_model_name,
                 "gen_model": video_model,
-            },
-            "metadata": video_result.get("metadata", {}),
-            "resize_notice": resize_notice,
-            "resize_notice_id": resize_notice_id,
-        }
-        return self._save_and_respond(
-            session_id,
-            message_text,
-            video_model,
-            {"mm_time": mm_time, "gen_time": gen_time},
-            file_data=None,
-            file_type=video_result["file_type"],
-            file_name=video_result["file_name"],
-            file_path=file_path,
-            extra=extra,
-            response_style=response_style,
-        )
+                "response_time": {
+                    "mm_time": mm_time,
+                    "gen_time": gen_time,
+                    "mm_model": mm_model_name,
+                    "gen_model": video_model,
+                },
+                "metadata": video_result.get("metadata", {}),
+                "resize_notice": resize_notice,
+                "resize_notice_id": resize_notice_id,
+            }
+            return self._save_and_respond(
+                session_id,
+                message_text,
+                video_model,
+                {"mm_time": mm_time, "gen_time": gen_time},
+                file_data=None,
+                file_type=video_result["file_type"],
+                file_name=video_result["file_name"],
+                file_path=file_path,
+                extra=extra,
+                response_style=response_style,
+            )
+        finally:
+            # CRITICAL: Always unload video pipeline and LLM models, even on error.
+            # Prevents VRAM leak when generation fails or returns early.
+            self._unload_video_pipeline()
+            self._unload_llamacpp_models()
 
     def _process_camera_task(
         self,

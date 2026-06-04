@@ -1487,6 +1487,26 @@ msgstr "Превышено время ожидания генерации вид
 msgid "Could not connect to video generation service"
 msgstr "Не удалось подключиться к сервису генерации видео"
 
+#: app/routes/admin.py
+msgid "✓ Fits in VRAM: {vram} MB / {total} MB"
+msgstr "✓ Помещается в VRAM: {vram} МБ / {total} МБ"
+
+#: app/routes/admin.py
+msgid "⚠ Partial CPU offload: {ngl}/{total_layers} layers on GPU, {cpu} on RAM. ~5-10× slower."
+msgstr "⚠ Частичная выгрузка на CPU: {ngl}/{total_layers} слоёв в VRAM, {cpu} в RAM. ~5-10× медленнее."
+
+#: app/routes/admin.py
+msgid "✗ Model cannot be loaded. Needs {needed} MB RAM (file + KV cache), available {total} MB."
+msgstr "✗ Модель не может быть запущена. Требуется {needed} МБ RAM (файл + KV-кэш), доступно {total} МБ."
+
+#: app/routes/admin.py
+msgid "Model metadata not found. Run 'Refresh models' first."
+msgstr "Метаданные модели не найдены. Сначала нажмите 'Обновить модели'."
+
+#: app/static/js/admin-models.js
+msgid "model_cannot_be_saved"
+msgstr "Эта модель не может быть сохранена (недостаточно VRAM/RAM). Выберите модель меньшего размера."
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 

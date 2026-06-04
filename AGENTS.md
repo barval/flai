@@ -1,4 +1,4 @@
-# AGENTS.md — FLAI v8.8
+# AGENTS.md — FLAI v8.8 (model protection: 3-tier VRAM/RAM, dry-load, watchdog)
 
 ## Commands (exact)
 
@@ -53,7 +53,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 
 ## Architecture & conventions
 
-- **Entrypoint**: `app/__init__.py:create_app()` → returns Flask app. Blueprints in `app/routes/` (auth, chat, admin, queue, tts, messages, sessions, documents, backups). Modules in `modules/` (base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm).
+- **Entrypoint**: `app/__init__.py:create_app()` → returns Flask app. Blueprints in `app/routes/` (auth, chat, admin, queue, tts, messages, sessions, documents, backups). Modules in `modules/` (base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm). Background tasks in `app/tasks/` (dry_load, health_monitor).
 - **LLM client**: `app/llamacpp_client.py:LlamaCppClient` with two backends — `DirectLlamaBackend` (direct llama-server) or `LlamaSwapBackend` (via llama-swap proxy). Selected by `LLAMACP_BACKEND` env var.
 - **Queue**: `app/queue.py:RedisRequestQueue`. Two workers with strict GPU serialization:
   - **Fast worker** — CPU-only operations: router (chat model), text, audio, RAG **search** (embedding + Qdrant only, ~500 MB). The chat model (2.5 GiB) stays hot in VRAM.
@@ -63,7 +63,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
   - **VRAM guard for reasoning** (`ensure_vram_for_reasoning`) — unloads llama.cpp models and waits (up to 60s) for SD/Video to free VRAM before loading gpt-oss-20b (~10 GiB).
   - Tasks are HMAC-signed JSON.
 - **DB**: PostgreSQL only via `app/database.py:get_db()` context manager (psycopg2 RealDictCursor). `DATABASE_URL` required. Tables: user_sessions, chat_sessions, messages, documents, session_visits, model_configs, user_storage, slm_import_progress, gguf_models_cache.
-- **Helpers**: `app/circuit_breaker.py`, `app/resource_manager.py`, `app/llama_swap_config.py`, `app/slm_import.py` — llama-swap config auto-generated from DB at startup into `llama-swap-config/`. Background SLM import on startup.
+- **Helpers**: `app/circuit_breaker.py`, `app/resource_manager.py`, `app/llama_swap_config.py`, `app/slm_import.py`, `app/tasks/dry_load.py`, `app/tasks/health_monitor.py` — llama-swap config auto-generated from DB at startup into `llama-swap-config/`. Background SLM import + dry-load (after admin model save) + crash-loop watchdog all run as daemon threads.
 - **Docker mounts**: `./data/` → `/app/data`, `./services/llamacpp/models/` → `/models:ro`, `/var/run/docker.sock` for GPU detection.
 - **Config**: Model configs in DB (`model_configs` table). `.env` values are fallback defaults only. Admin panel at `/admin`.
 - **Multimodal models**: MUST be in a subdirectory with `mmproj-*.gguf` (e.g. `Qwen3VL-8B-Instruct-Q4_K_M/`).
@@ -73,6 +73,12 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
   - `ensure_vram_for(model_type)` — unloads ALL models, flushes CUDA cache, polls /running + nvidia-smi (60s timeout). Returns False (never proceeds) if VRAM insufficient. Used by ALL model types: chat, reasoning, multimodal, embedding.
   - `_ensure_vram()` in llamacpp_client.py now returns `bool` — every chat/stream call checks VRAM before POST.
   - No model will ever receive 502 due to VRAM — insufficient VRAM returns a proper error message.
+- **VRAM 3-tier classification** (`app/routes/admin.py:_classify_model_fit`): three-tier model-fit classification used in the admin panel to prevent OOM when saving a model config:
+  - `good` — `vram_needed ≤ 85% × total_vram` → save allowed, full ngl.
+  - `cpu_offload` — VRAM insufficient but (file_mb - gpu_weights) ≤ 70% × system_ram - 2 GB → save allowed, ngl degraded to fit.
+  - `impossible` — neither VRAM nor RAM can hold the model → save blocked with 400 error.
+  - `unknown` — model not in `gguf_models_cache` (no GGUF metadata) → save blocked; user must click "Refresh models" first.
+  - `arch_max_ctx` from `gguf_models_cache.context_length` is the architectural cap (Qwen3 = 262144, gpt-oss = 131072). Upper limit is now dynamic, no hardcoded 32768.
 - All llama.cpp models share a single `llm_fast` group with `swap: true` in llama-swap. At most ONE model is loaded in VRAM at any time. TTLS: chat=600s (always hot), multimodal/reasoning/embedding=0s (unload immediately after response). SD and LTX-Video use separate GPU contexts. Three VRAM tiers (8/12/16+ GB) adjust `n_gpu_layers` and resolution caps.
 
   **Model lifecycle on a single consumer GPU:**
@@ -203,6 +209,17 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - `tests/test_llama_swap_config.py`: Fixed `test_no_group_for_default` (multimodal now in `llm_fast` group) and `test_generates_valid_yaml` (`swap: true` is default, not `swap: false`)
 - `tests/test_utils.py`: Fixed `test_resize_image_if_needed_large` — function signature changed from `(max_width, max_height)` to `(max_size, quality)`
 - `tests/test_video_module.py`: Fixed 6 tests — added `mock_rm_instance.estimate_video_vram_needed.return_value = 8500` and `available_vram_mb = 12000` for VRAM check loop added in v8.8
+- `app/tasks/dry_load.py` (NEW): background dry-load test after admin saves a model. Sends a tiny completion via llama-swap, waits for `/running` to show the model (30s timeout), then unloads. On failure — rolls back to `FALLBACK_MODELS[module]`. `FALLBACK_MODELS` = `{chat: Qwen3-4B-MXFP4, reasoning: gpt-oss-20b, multimodal: Qwen3VL-8B, embedding: bge-m3}`. Daemon thread.
+- `app/tasks/health_monitor.py` (NEW): crash-loop watchdog. Every 60s polls llama-swap `/running`, sends a tiny health check to each loaded model, tracks failures in a 5-min sliding window. 3 failures in window → auto-rollback to fallback model. `start_watchdog(app)` called from `create_app()` after llama-swap init. Daemon thread.
+- `app/tasks/__init__.py` (NEW): package marker.
+- `app/routes/admin.py`: new helper `_classify_model_fit()` — 3-tier VRAM/RAM classification using GGUF cache. Extended `model_vram_estimate` endpoint response with `tier`, `can_save`, `ngl_recommended`, `tier_message`, `system_ram_mb`, `arch_max_ctx`. Server validation in `update_model_config` blocks `tier=impossible` (defense in depth). `schedule_dry_load()` called after successful `signal_reload()`.
+- `app/validators.py`: comment now notes that upper bound is enforced dynamically in `admin.py:update_model_config` using `gguf_models_cache.context_length`. No more hardcoded 32768.
+- `app/__init__.py`: starts `start_watchdog(app)` after SLM import, only when `LLAMACP_BACKEND=llama-swap`.
+- `app/static/js/admin-models.js`: `updateMemoryEstimation()` renders a colored tier indicator (green/yellow/red) below the existing memory hint. Disables the Save button on `tier=impossible` or `tier=unknown`. Suggests `ngl_recommended` in the input placeholder for yellow tier. `validateModelConfig()` blocks submission if Save button is disabled.
+- `tests/test_classify_model_fit.py` (NEW): 11 tests — small model → good, medium model → cpu_offload, huge model → impossible, unknown model → unknown, arch_max_ctx propagation, .gguf extension stripping, ngl proportionality, edge cases.
+- `tests/test_dry_load.py` (NEW): 10 tests — thread spawning, empty model skip, FALLBACK_MODELS coverage, _trigger_load (200/500/network), _check_running (found/not-found/error).
+- `tests/test_health_monitor.py` (NEW): 12 tests — failure recording, sliding window eviction, per-module isolation, _clear_failures, _get_running, _try_health_check, start_watchdog daemon thread.
+- `translations/{en,ru}/LC_MESSAGES/messages.po`: 5 new keys — `✓ Fits in VRAM: {vram} MB / {total} MB`, `⚠ Partial CPU offload: {ngl}/{total_layers} layers on GPU, {cpu} on RAM. ~5-10× slower.`, `✗ Model cannot be loaded. Needs {needed} MB RAM (file + KV cache), available {total} MB.`, `Model metadata not found. Run 'Refresh models' first.`, `model_cannot_be_saved`.
 
 ### Error message prefix fix
 All error messages displayed to users MUST start with "⚠️ ". `_build_error_response()` adds this prefix automatically. However, error strings from `call_llamacpp()` (e.g., "GPU memory unavailable", "HTTP error 500") were returned as plain strings through `process_reasoning()`, `generate_chat_response_stream()`, and `rag.generate_answer()` — ending up in `_save_and_respond()` without the "⚠️ " prefix. Fixed by adding `_is_llm_error_string()` helper and routing detected errors through `_build_error_response()` in all affected code paths: `_process_reasoning_request`, `_process_text_task`, `_process_text_task_stream`, and RAG answer handling in both `_process_text_task` and `_process_text_task_stream`.
@@ -239,11 +256,72 @@ Slow worker: ensure_vram_for_reasoning() → unload LTX-Video → load reasoning
 - `app/routes/messages.py`: `send_message()` reads `session_id` from request body, validates (UUID v4 + DB ownership), updates Flask session
 - `app/db.py`: `update_session_title()` uses `_("New session")` instead of hardcoded `"New session"` (localization fix)
 
+### Model protection (3-tier VRAM/RAM system)
+**Problem:** Admin panel allowed saving any model in the dropdown without any hardware fit check. Common failure modes: (1) model > VRAM but `compute_llamacpp_config` silently degrades ngl → model works at 0.5 tok/s; (2) ctx > 32768 hardcoded limit (or worse, ctx > model architectural max) → KV cache explosion → OOM; (3) model file not on disk → llama-server crash loop → 502; (4) crash loop after a bad save degrades service until manual intervention.
+
+**Solution:** 5-layer protection with 3-tier classification:
+
+| Tier | Condition | UI | Server | Result |
+|------|-----------|-----|--------|--------|
+| 🟢 `good` | `vram_needed ≤ 85% × total_vram` | Green "Fits in VRAM" | Save OK | Full ngl on GPU |
+| 🟡 `cpu_offload` | `vram_needed > 85%` AND `(file - gpu_weights) ≤ 70% × ram - 2GB` | Yellow "Partial CPU offload, ~5-10× slower" | Save OK with auto-degraded ngl | ngl recomputed to fit VRAM |
+| 🔴 `impossible` | `(file - gpu_weights) > 70% × ram - 2GB` | Red "Cannot be loaded" | **400 block** | ngl=0, model can't fit anywhere |
+| ⚠ `unknown` | Model not in `gguf_models_cache` | Orange "Run Refresh models first" | **400 block** | No metadata to compute fit |
+
+**Threshold formula (v8.8+):**
+```python
+TIER_VRAM_GOOD_PCT = 0.85     # 85% of total VRAM is "good" budget
+TIER_RAM_SAFETY_PCT = 0.70    # 70% of system RAM allowed for model + KV
+TIER_RAM_HEADROOM_MB = 2048   # 2GB reserved for OS + other processes
+```
+
+**Layered protection:**
+1. **UI hint** (`app/static/js/admin-models.js:updateMemoryEstimation`): on model/ctx change, fetches `/admin/api/model-estimate` and displays colored tier indicator. Save button is **disabled** when `can_save=false`.
+2. **Server validation** (`app/routes/admin.py:update_model_config`): before saving, calls `_classify_model_fit()`. If `tier=impossible` or `tier=unknown` → returns 400 with `tier_message`. Defense in depth (UI is bypassable).
+3. **Dry-load + auto-rollback** (`app/tasks/dry_load.py`): after successful `signal_reload()`, schedules a background thread that:
+   - Sends tiny completion to llama-swap to trigger model load
+   - Polls `/running` for 30s waiting for model
+   - On success: unloads test instance (next user request reloads)
+   - On failure: calls `_rollback()` to restore `FALLBACK_MODELS[module]`
+4. **Crash loop watchdog** (`app/tasks/health_monitor.py`): 60s polling loop:
+   - Reads llama-swap `/running` for active models
+   - Sends tiny health check to each
+   - Records failures in 5-min sliding window
+   - On 3 failures in window → auto-rollback to fallback
+5. **File size + context validation** (existing `gguf_models_cache` + new arch_max_ctx):
+   - `file_size_mb` cached on model scan
+   - `arch_max_ctx` from GGUF `context_length` field — replaces hardcoded 32768
+   - Server validates `ctx_requested ≤ arch_max_ctx` before save
+
+**New API response fields** in `/admin/api/model-estimate`:
+```json
+{
+  "tier": "good | cpu_offload | impossible | unknown",
+  "can_save": true | false,
+  "ngl_recommended": 28,
+  "tier_message": "✓ Fits in VRAM: 3109 MB / 16311 MB",
+  "system_ram_mb": 31694,
+  "arch_max_ctx": 262144
+}
+```
+
+**Fallback models** (used by dry_load + watchdog):
+```python
+FALLBACK_MODELS = {
+    "chat":       "Qwen3-4B-Instruct-2507-MXFP4_MOE",
+    "reasoning":  "gpt-oss-20b-mxfp4",
+    "multimodal": "Qwen3VL-8B-Instruct-Q4_K_M",
+    "embedding":  "bge-m3-Q8_0",
+}
+```
+
 ### Monitoring commands
 ```bash
 watch -n 1 nvidia-smi          # Real-time VRAM tracking
 docker logs flai-web --tail 50 | grep GPU  # Log GPU-related events
 grep "RAG\|reasoning\|router" docker/logs/flai-web.log  # Debug RAG flow
+docker logs flai-web --tail 100 | grep -E "watchdog|dry_load"  # Model protection events
+curl -s "http://localhost:5000/admin/api/model-estimate?model=Qwen3-4B-Instruct-2507-Q4_K_M.gguf&module=chat&ctx_size=8192" | jq '{tier, can_save, ngl_recommended, tier_message}'  # Test tier classification
 ```
 
 ## GPU Queue Management — CRITICAL RULES

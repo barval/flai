@@ -71,10 +71,29 @@ function fetchQueueStatus() {
             // queue_position is intentionally left at 0 here (no real position known)
             // so the UI shows ⏳ without a number instead of a duplicate "999" across
             // multiple pending sessions.
+            //
+            // TTL: stale entries (older than MAX_PENDING_AGE_MS) are dropped on every
+            // fetchQueueStatus() call. This prevents "phantom" hourglasses caused by
+            // missed SSE result_completed events — the server-side count (4/4) is the
+            // source of truth, so we should not keep showing ⏳ for tasks the server
+            // has long since forgotten.
+            const MAX_PENDING_AGE_MS = 5 * 60 * 1000;
+            const now = Date.now();
             if (typeof pendingRequestIds === 'object' && pendingRequestIds) {
+                let storedMap = null;
+                try {
+                    storedMap = JSON.parse(sessionStorage.getItem('pendingRequests') || '{}');
+                } catch (e) { /* ignore */ }
                 Object.keys(pendingRequestIds).forEach(reqId => {
                     const info = pendingRequestIds[reqId];
                     if (!info || !info.sessionId) return;
+                    if (info.timestamp && now - info.timestamp > MAX_PENDING_AGE_MS) {
+                        delete pendingRequestIds[reqId];
+                        if (storedMap && Object.prototype.hasOwnProperty.call(storedMap, reqId)) {
+                            delete storedMap[reqId];
+                        }
+                        return;
+                    }
                     const sid = info.sessionId;
                     if (sid === processingSessionId) return;
                     if (!newInfo[sid]) {
@@ -84,6 +103,11 @@ function fetchQueueStatus() {
                         newInfo[sid].queued = 1;
                     }
                 });
+                if (storedMap) {
+                    try {
+                        sessionStorage.setItem('pendingRequests', JSON.stringify(storedMap));
+                    } catch (e) { /* ignore */ }
+                }
             }
 
             // SAFETY VALVE: If server reports idle (no processing, no queued), clear pendingRequests

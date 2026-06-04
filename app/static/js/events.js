@@ -605,8 +605,9 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
     _clearStreamFromSessionStorage(taskId);
 }
 
-function trackPendingRequest(requestId, sessionId) {
+function trackPendingRequest(requestId, sessionId, persist = true) {
     pendingRequestIds[requestId] = { sessionId: sessionId, timestamp: Date.now() };
+    if (!persist) return;
     // Persist to sessionStorage so status indicators survive session switches
     try {
         const stored = JSON.parse(sessionStorage.getItem('pendingRequests') || '{}');

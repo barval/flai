@@ -14,6 +14,7 @@ import os
 import subprocess
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -567,25 +568,50 @@ class ResourceManager:
     def unload_video_pipeline(self) -> bool:
         """Unload the LTX-Video pipeline from VRAM via /v1/unload.
 
-        Retries once on failure and forces CUDA cache clear if unload fails.
+        Retries on failure and verifies that VRAM was actually freed by polling
+        nvidia-smi after the unload. If the POST succeeds but VRAM stays high,
+        retries the unload up to 3 times (CUDA deallocation can be lazy).
         """
         import time as _time
 
         import requests as req
 
         ltx_url = os.getenv("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
-        for attempt in range(2):
+        self._poll_vram()
+        free_before = self.hardware.available_vram_mb
+        total = self.hardware.total_vram_mb
+
+        for attempt in range(3):
             try:
                 resp = req.post(f"{ltx_url.rstrip('/')}/v1/unload", timeout=30)
-                if resp.status_code == 200:
-                    logger.info("LTX-Video pipeline unloaded — VRAM freed")
-                    return True
-                logger.warning(f"LTX-Video unload failed: {resp.status_code} (attempt {attempt + 1})")
+                if resp.status_code != 200:
+                    logger.warning(f"LTX-Video unload HTTP {resp.status_code} (attempt {attempt + 1})")
+                    if attempt < 2:
+                        _time.sleep(3)
+                    continue
             except Exception as e:
                 logger.warning(f"Error unloading LTX-Video (attempt {attempt + 1}): {e}")
-            if attempt == 0:
-                _time.sleep(3)
-        # Force CUDA cache clear if unload failed
+                if attempt < 2:
+                    _time.sleep(3)
+                continue
+
+            for _ in range(8):
+                self._poll_vram()
+                if self.hardware.available_vram_mb >= free_before + 3000:
+                    logger.info(
+                        f"LTX-Video pipeline unloaded — VRAM freed "
+                        f"({free_before}MB → {self.hardware.available_vram_mb}MB)"
+                    )
+                    return True
+                _time.sleep(1)
+            logger.warning(
+                f"LTX-Video unload returned 200 but VRAM did not free "
+                f"(was {free_before}MB, now {self.hardware.available_vram_mb}MB, "
+                f"total {total}MB) — attempt {attempt + 1}/3"
+            )
+            if attempt < 2:
+                _time.sleep(2)
+
         try:
             import torch
 
@@ -598,18 +624,64 @@ class ResourceManager:
         return False
 
     def estimate_video_vram_needed(self) -> int:
-        """Unified VRAM threshold for LTX-Video pipeline loading.
+        """VRAM threshold for LTX-Video pipeline loading.
 
-        Based on measured values from production (ltx-wrapper logs):
-          - LTX-Video actual usage: ~6800 MB (loaded pipeline on 16GB GPU)
-          - CUDA overhead: ~400 MB
-          - Memory fragmentation: ~300 MB
-          - Deallocation lag buffer: ~1000 MB (with torch.cuda.empty_cache in loop)
-
-        Total: 6800 + 1700 = 8500 MB
-        Configurable via LTX_VIDEO_VRAM_MB env var.
+        Resolution order:
+          1. Measured peak from previous successful gen (model_vram_estimates table)
+          2. Query ltxvideo's /v1/vram_info endpoint for component file sizes
+             (text_encoder stays on CPU per ltx_wrapper.py:159)
+          3. Compute from local filesystem (if /app/models is mounted)
+          4. Env var LTX_VIDEO_VRAM_MB fallback (default 8500)
         """
-        return int(os.getenv("LTX_VIDEO_VRAM_MB", "8500"))
+        try:
+            from app.database import get_vram_estimate
+
+            measured = get_vram_estimate("ltx-video")
+            if measured and measured.get("measured_vram_mb"):
+                return int(measured["measured_vram_mb"])
+        except Exception as e:
+            logger.debug(f"Could not load measured VRAM for ltx-video: {e}")
+
+        # Try querying ltxvideo for component sizes (works without /app/models mount)
+        try:
+            import requests as req
+
+            ltx_url = os.getenv("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
+            resp = req.get(f"{ltx_url.rstrip('/')}/v1/vram_info", timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                sizes = data.get("component_sizes_mb", {})
+                transformer_mb = sizes.get("transformer", 0)
+                upscaler_mb = sizes.get("upscaler", 0)
+                if transformer_mb > 0:
+                    persistent_mb = transformer_mb + upscaler_mb
+                    peak_mb = int(persistent_mb * 1.15)
+                    logger.info(
+                        f"LTX-Video estimated peak VRAM (from ltxvideo): {peak_mb} MB "
+                        f"(transformer={transformer_mb}MB, upscaler={upscaler_mb}MB)"
+                    )
+                    return peak_mb
+        except Exception as e:
+            logger.debug(f"Could not query ltxvideo /v1/vram_info: {e}")
+
+        # Fallback: compute from local filesystem
+        models_dir = Path(os.getenv("LTX_MODELS_DIR", "/app/models"))
+        transformer_path = models_dir / "ltxv-2b-0.9.8-distilled.safetensors"
+        upscaler_path = models_dir / "ltxv-spatial-upscaler-0.9.8.safetensors"
+
+        transformer_bytes = transformer_path.stat().st_size if transformer_path.exists() else 0
+        upscaler_bytes = upscaler_path.stat().st_size if upscaler_path.exists() else 0
+
+        if transformer_bytes == 0:
+            return int(os.getenv("LTX_VIDEO_VRAM_MB", "8500"))
+
+        persistent_bytes = transformer_bytes + upscaler_bytes
+        peak_mb = int(persistent_bytes * 1.15 // (1024 * 1024))
+        logger.info(
+            f"LTX-Video estimated peak VRAM (from local fs): {peak_mb} MB "
+            f"(transformer={transformer_bytes // 1024**2}MB, upscaler={upscaler_bytes // 1024**2}MB)"
+        )
+        return peak_mb
 
     def ensure_vram_for_llm(self, model_type: str = "chat") -> bool:
         """Ensure sufficient VRAM for the requested LLM model type.
@@ -632,6 +704,7 @@ class ResourceManager:
 
         Called from llamacpp_client after a successful model response to track
         real VRAM usage per model type, which feeds into the admin panel display.
+        For ltx-video the model_name is the pipeline config and ctx_size/ngl are unused.
         """
         try:
             from app.database import upsert_vram_estimate
@@ -655,6 +728,34 @@ class ResourceManager:
                 )
         except Exception as e:
             logger.debug(f"VRAM measurement failed for {module}: {e}")
+
+    def measure_video_vram_peak(self, model_name: str = "ltxv-2b-0.9.8-distilled") -> None:
+        """Record peak VRAM during/after video generation.
+
+        Called from queue after a successful video gen. Reads current VRAM usage
+        and stores it as a measurement for the ltx-video module, so future
+        estimate_video_vram_needed() returns the real value.
+        """
+        try:
+            self._poll_vram()
+            free = self.hardware.available_vram_mb
+            total = self.hardware.total_vram_mb
+            if total > 0 and free > 0:
+                from app.database import upsert_vram_estimate
+
+                upsert_vram_estimate(
+                    module="ltx-video",
+                    model_name=model_name,
+                    context_length=0,
+                    n_gpu_layers=0,
+                    measured_mb=total - free,
+                )
+                logger.info(
+                    f"VRAM measurement [ltx-video]: {total - free}MB used "
+                    f"({free}MB free / {total}MB total)"
+                )
+        except Exception as e:
+            logger.debug(f"Video VRAM measurement failed: {e}")
 
     def unload_llamacpp_model(self, llamacpp_url: str | None = None) -> bool:
         """Force LLM backend to unload its current model from VRAM.

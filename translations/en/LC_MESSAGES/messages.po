@@ -1481,6 +1481,26 @@ msgstr "Video generation timeout ({timeout}s)"
 msgid "Could not connect to video generation service"
 msgstr ""
 
+#: app/routes/admin.py
+msgid "✓ Fits in VRAM: {vram} MB / {total} MB"
+msgstr "✓ Fits in VRAM: {vram} MB / {total} MB"
+
+#: app/routes/admin.py
+msgid "⚠ Partial CPU offload: {ngl}/{total_layers} layers on GPU, {cpu} on RAM. ~5-10× slower."
+msgstr "⚠ Partial CPU offload: {ngl}/{total_layers} layers on GPU, {cpu} on RAM. ~5-10× slower."
+
+#: app/routes/admin.py
+msgid "✗ Model cannot be loaded. Needs {needed} MB RAM (file + KV cache), available {total} MB."
+msgstr "✗ Model cannot be loaded. Needs {needed} MB RAM (file + KV cache), available {total} MB."
+
+#: app/routes/admin.py
+msgid "Model metadata not found. Run 'Refresh models' first."
+msgstr "Model metadata not found. Run 'Refresh models' first."
+
+#: app/static/js/admin-models.js
+msgid "model_cannot_be_saved"
+msgstr "This model cannot be saved (not enough VRAM/RAM). Choose a smaller model."
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

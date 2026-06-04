@@ -423,6 +423,10 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
         const hasGPU = data.has_gpu;
         const totalVRAM = data.total_vram_mb || 0;
         const status = data.status;
+        const tier = data.tier || 'unknown';
+        const canSave = data.can_save !== false;
+        const nglRecommended = data.ngl_recommended;
+        const tierMessage = data.tier_message;
 
         if (status === 'actual') {
             hintDiv.style.color = '#29A847';
@@ -506,6 +510,48 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
         }
 
         const saveBtn = card.querySelector('.save-button');
+
+        // Render 3-tier indicator + lock save button on impossible/unknown
+        if (tierMessage) {
+            const tierDiv = document.createElement('div');
+            tierDiv.className = `tier-indicator tier-${tier}`;
+            tierDiv.style.cssText = 'margin-top: 6px; padding: 8px; border-radius: 4px; font-size: 0.85em; font-weight: bold;';
+            if (tier === 'good') {
+                tierDiv.style.color = '#29A847';
+                tierDiv.style.background = 'rgba(41, 168, 71, 0.1)';
+            } else if (tier === 'cpu_offload') {
+                tierDiv.style.color = '#b8860b';
+                tierDiv.style.background = 'rgba(255, 215, 0, 0.15)';
+            } else if (tier === 'impossible') {
+                tierDiv.style.color = '#E01F1F';
+                tierDiv.style.background = 'rgba(224, 31, 31, 0.12)';
+            } else {
+                tierDiv.style.color = '#fd7e14';
+                tierDiv.style.background = 'rgba(253, 126, 20, 0.12)';
+            }
+            tierDiv.textContent = tierMessage;
+            hintDiv.insertAdjacentElement('afterend', tierDiv);
+        }
+
+        // Toggle Save button: disable on impossible / unknown (no metadata)
+        if (saveBtn) {
+            if (canSave) {
+                saveBtn.disabled = false;
+                saveBtn.removeAttribute('title');
+            } else {
+                saveBtn.disabled = true;
+                saveBtn.setAttribute('title', tierMessage || t('model_cannot_be_saved'));
+            }
+        }
+
+        // For yellow tier, suggest ngl_recommended if it's lower than current
+        if (tier === 'cpu_offload' && nglRecommended != null) {
+            const nglInput = card.querySelector('.n-gpu-layers');
+            if (nglInput) {
+                nglInput.placeholder = '~' + nglRecommended;
+            }
+        }
+
         card.querySelectorAll('.memory-hint').forEach(el => el.remove());
         card.insertBefore(hintDiv, saveBtn);
 
@@ -524,6 +570,13 @@ function validateModelConfig(module, card) {
     }
 
     if (module === 'embedding') return true;
+
+    // Block save if the tier indicator marked the model as impossible/unknown
+    const saveBtn = card.querySelector('.save-button');
+    if (saveBtn && saveBtn.disabled) {
+        alert(saveBtn.getAttribute('title') || t('model_cannot_be_saved'));
+        return false;
+    }
 
     const contextLength = card.querySelector('.context-length')?.value;
     const temperature = card.querySelector('.temperature')?.value;

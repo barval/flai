@@ -237,6 +237,15 @@ def create_app():
     if modules.get("slm") and modules["slm"].available:
         _start_background_slm_import(app)
 
+    # Watchdog: detect llama-swap crash loops and auto-rollback
+    if app.config.get("LLAMACP_BACKEND") == "llama-swap":
+        try:
+            from app.tasks.health_monitor import start_watchdog
+
+            start_watchdog(app)
+        except Exception as e:
+            app.logger.warning(f"Could not start watchdog: {e}")
+
     # Initialize Redis queue
     app.request_queue = RedisRequestQueue(app)
 

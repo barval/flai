@@ -92,7 +92,7 @@ def rag_stats():
 @debug_api_required
 def debug_health():
     """Debug health check - more detailed than /health."""
-    from . import get_database, get_redis
+    from app.database import get_db
 
     results = {
         "web": "ok",
@@ -103,16 +103,19 @@ def debug_health():
     }
 
     try:
-        db = get_database()
-        if db:
+        with get_db() as conn:
+            conn.execute("SELECT 1")
             results["database"] = "ok"
     except Exception:
         results["database"] = "error"
 
     try:
-        r = get_redis()
-        if r:
-            results["redis"] = "ok"
+        import redis as redis_lib
+
+        r = redis_lib.from_url(current_app.config["REDIS_URL"], socket_timeout=3)
+        r.ping()
+        results["redis"] = "ok"
+        r.close()
     except Exception:
         results["redis"] = "error"
 

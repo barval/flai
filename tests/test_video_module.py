@@ -101,6 +101,7 @@ class TestVideoModuleGenerate:
             mock_rm_instance = MagicMock()
             mock_rm_instance.hardware.cuda_detected = True
             mock_rm_instance.hardware.available_vram_mb = 12000
+            mock_rm_instance.estimate_video_vram_needed.return_value = 8500
             mock_rm.return_value = mock_rm_instance
 
             module = VideoModule(mock_app)
@@ -134,6 +135,7 @@ class TestVideoModuleGenerate:
             mock_post.return_value = MagicMock(status_code=500, text="Internal error")
             mock_rm_instance = MagicMock()
             mock_rm_instance.hardware.cuda_detected = False
+            mock_rm_instance.estimate_video_vram_needed.return_value = 8500
             mock_rm.return_value = mock_rm_instance
 
             module = VideoModule(mock_app)
@@ -155,6 +157,8 @@ class TestVideoModuleGenerate:
             mock_post.side_effect = requests.exceptions.Timeout("Connection timed out")
             mock_rm_instance = MagicMock()
             mock_rm_instance.hardware.cuda_detected = False
+            mock_rm_instance.hardware.available_vram_mb = 12000
+            mock_rm_instance.estimate_video_vram_needed.return_value = 8500
             mock_rm.return_value = mock_rm_instance
 
             module = VideoModule(mock_app)
@@ -189,6 +193,7 @@ class TestVideoModuleGenerate:
             mock_rm_instance = MagicMock()
             mock_rm_instance.hardware.cuda_detected = True
             mock_rm_instance.hardware.available_vram_mb = 12000
+            mock_rm_instance.estimate_video_vram_needed.return_value = 8500
             mock_rm.return_value = mock_rm_instance
 
             module = VideoModule(mock_app)
@@ -240,12 +245,13 @@ class TestVideoModuleResourceManager:
             mock_rm_instance = MagicMock()
             mock_rm_instance.hardware.cuda_detected = True
             mock_rm_instance.hardware.available_vram_mb = 12000
+            mock_rm_instance.estimate_video_vram_needed.return_value = 8500
             mock_rm.return_value = mock_rm_instance
 
             module = VideoModule(mock_app)
             module.generate_video({"prompt": "test"})
 
-            mock_rm_instance.unload_llamacpp_model.assert_called_once()
+            mock_rm_instance.unload_llamacpp_model.assert_called()
             mock_rm_instance.mark_video_busy.assert_called_once()
             mock_rm_instance.mark_video_idle.assert_called_once()
 
@@ -275,6 +281,7 @@ class TestVideoModuleResourceManager:
             mock_rm_instance = MagicMock()
             mock_rm_instance.hardware.cuda_detected = True
             mock_rm_instance.hardware.available_vram_mb = 12000
+            mock_rm_instance.estimate_video_vram_needed.return_value = 8500
             mock_rm.return_value = mock_rm_instance
 
             module = VideoModule(mock_app)

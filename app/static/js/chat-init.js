@@ -65,6 +65,28 @@ async function sendMessage() {
     // Lock button immediately
     sendButton.disabled = true;
     sendButton.innerHTML = '⏳ ' + t('sending');
+
+    // Immediately show hourglass in session list (task goes to queue, not processing)
+    // queue_position is 0 — real position is unknown until the server responds,
+    // so UI shows ⏳ without a number (avoids duplicate "1"/"999" across sessions).
+    sessionQueueInfo[currentSessionId] = {
+        processing: false,
+        queued: 1,
+        queue_position: 0,
+        has_transcribing: false
+    };
+    // Register an optimistic pending request BEFORE the network roundtrip.
+    // Without this, fetchQueueStatus() (e.g. from SSE reconnect or
+    // visibilitychange) could clobber the hourglass because pendingRequestIds
+    // wouldn't yet know about the request. The temp ID is not persisted to
+    // sessionStorage — only the real server-assigned request_id is.
+    const tempRequestId = 'temp-' + (typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Date.now() + '-' + Math.random().toString(36).slice(2));
+    trackPendingRequest(tempRequestId, currentSessionId, false);
+    window._activeSendTempId = tempRequestId;
+    window._lastSessionsJson = null;
+    if (typeof updateSessionsListFromData === 'function') updateSessionsListFromData();
     
     const messageCount = document.querySelectorAll('.user-message').length;
     if (messageCount === 0) {
@@ -146,6 +168,7 @@ async function sendMessage() {
                     const formData = new FormData();
                     formData.append('message', tempText);
                     formData.append('file', tempAttachedFile);
+                    formData.append('session_id', currentSessionId);
                     if (isVoiceRecorded) {
                         formData.append('voice_record', 'true');
                         isVoiceRecorded = false;
@@ -155,7 +178,7 @@ async function sendMessage() {
                     response = await fetchWithCSRF('/api/send_message', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message: tempText })
+                        body: JSON.stringify({ message: tempText, session_id: currentSessionId })
                     });
                 }
                 
@@ -246,6 +269,11 @@ async function sendMessage() {
                         } else {
                             sessionQueueInfo[currentSessionId].queued += 1;
                         }
+                        // Replace optimistic temp ID with the real server-assigned request_id.
+                        if (window._activeSendTempId) {
+                            clearPendingRequest(window._activeSendTempId);
+                            window._activeSendTempId = null;
+                        }
                         updateSessionsListFromData();
                         trackPendingRequest(data.request_id, currentSessionId);
                         window.updateStatusCounter();
@@ -289,14 +317,21 @@ async function sendMessage() {
                         sessionQueueInfo[currentSessionId] = {
                             processing: !alreadyProcessing,
                             queued: alreadyProcessing ? 1 : 0,
-                            queue_position: alreadyProcessing ? (data.position || 1) : 0,
+                            queue_position: alreadyProcessing ? (data.position ?? 0) : 0,
                         };
                     } else {
                         sessionQueueInfo[currentSessionId].processing = !alreadyProcessing;
                         sessionQueueInfo[currentSessionId].queued = alreadyProcessing ? 1 : 0;
-                        sessionQueueInfo[currentSessionId].queue_position = alreadyProcessing ? (data.position || 1) : 0;
+                        sessionQueueInfo[currentSessionId].queue_position = alreadyProcessing ? (data.position ?? 0) : 0;
                     }
 
+                    // Replace optimistic temp ID with the real server-assigned request_id.
+                    // Real ID is persisted to sessionStorage (survives page refresh);
+                    // temp ID was in-memory only.
+                    if (window._activeSendTempId) {
+                        clearPendingRequest(window._activeSendTempId);
+                        window._activeSendTempId = null;
+                    }
                     updateSessionsListFromData();
                     trackPendingRequest(data.request_id, currentSessionId);
                     window.updateStatusCounter();
@@ -312,6 +347,12 @@ async function sendMessage() {
                 const lastMessage = document.querySelector('.user-message:last-child');
                 if (lastMessage) lastMessage.style.borderLeft = '3px solid #e74c3c';
                 setLocalTranscribing(currentSessionId, false);
+                // Drop the optimistic temp ID — server never saw this request.
+                if (window._activeSendTempId) {
+                    clearPendingRequest(window._activeSendTempId);
+                    window._activeSendTempId = null;
+                }
+                if (typeof clearSessionQueue === 'function') clearSessionQueue(currentSessionId);
             } finally {
                 // Always unlock send button after request completes (success or error)
                 unlockSendButton();

@@ -2,11 +2,14 @@
 # Database functions - PostgreSQL only
 import contextlib
 import json
+import logging
 import os
 import re
 import uuid
 from datetime import datetime
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from flask import current_app
 from flask_babel import gettext as _
@@ -105,7 +108,7 @@ def get_session_messages(
                 since = since.replace("T", " ")[:19]
             c.execute(
                 """
-            SELECT id, role, content, file_type, file_name, file_path,
+            SELECT id, role, content, file_type, file_name, file_path, file_data,
                    timestamp, model_name, response_time, mm_time, gen_time,
                    mm_model, gen_model, response_style, completion_tokens
             FROM messages
@@ -118,7 +121,7 @@ def get_session_messages(
         else:
             c.execute(
                 """
-            SELECT id, role, content, file_type, file_name, file_path,
+            SELECT id, role, content, file_type, file_name, file_path, file_data,
                    timestamp, model_name, response_time, mm_time, gen_time,
                    mm_model, gen_model, response_style, completion_tokens
             FROM messages
@@ -132,8 +135,12 @@ def get_session_messages(
         for row in c.fetchall():
             msg_dict = dict(row)
             if msg_dict.get("response_time"):
-                with contextlib.suppress(Exception):
+                try:
                     msg_dict["response_time"] = json.loads(msg_dict["response_time"])
+                except Exception as e:
+                    current_app.logger.debug(
+                        f"Failed to parse response_time JSON for message {msg_dict.get('id')}: {e}"
+                    )
             if msg_dict.get("timestamp"):
                 dt = msg_dict["timestamp"]
                 if hasattr(dt, "isoformat"):
@@ -142,13 +149,17 @@ def get_session_messages(
                     msg_dict["timestamp"] = dt.isoformat()
             # Strip base64 file_data from content JSON when file is on disk
             if msg_dict.get("file_path") and msg_dict.get("content"):
-                with contextlib.suppress(Exception):
+                try:
                     parsed = json.loads(msg_dict["content"])
                     if isinstance(parsed, list):
                         for item in parsed:
                             if isinstance(item, dict) and "file_data" in item:
                                 item["file_data"] = None
                         msg_dict["content"] = json.dumps(parsed, ensure_ascii=False)
+                except Exception as e:
+                    current_app.logger.debug(
+                        f"Failed to parse content JSON for message {msg_dict.get('id')}: {e}"
+                    )
             messages.append(msg_dict)
 
         # Read file sizes from disk for messages with file_path
@@ -204,7 +215,7 @@ def update_session_title(session_id, first_message, file_name=None):
     elif file_name:
         title = file_name[:40] + ("..." if len(file_name) > 40 else "")
     else:
-        title = "New session"
+        title = _("New session")
     current_time = get_current_time_for_db()
     with get_db() as conn:
         c = conn.cursor()
@@ -408,7 +419,34 @@ def delete_session_and_messages(session_id, user_id, upload_folder=None):
     if total_deleted_bytes > 0:
         update_user_storage(user_id, -total_deleted_bytes)
 
+    # If user has no remaining messages, clean up SLM database
+    _cleanup_slm_if_empty(user_id)
+
     return True
+
+
+def _cleanup_slm_if_empty(user_id: str) -> None:
+    """Delete the user's SLM database if they have no messages remaining."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """SELECT COUNT(*) as cnt FROM messages m
+               JOIN chat_sessions cs ON m.session_id = cs.id
+               WHERE cs.user_id = %s""",
+            (user_id,),
+        )
+        if c.fetchone()["cnt"] > 0:
+            return
+
+    slm_dir = os.path.join("/app/data/slm", user_id, ".superlocalmemory")
+    if os.path.exists(slm_dir):
+        with contextlib.suppress(Exception):
+            import shutil
+
+            shutil.rmtree(slm_dir, ignore_errors=True)
+            import logging
+
+            logging.getLogger(__name__).info(f"SLM data deleted for user {user_id} (no messages left)")
 
 
 def update_session_visit(user_id, session_id):
@@ -641,7 +679,7 @@ def _extract_text_content(content: str) -> str:
             return joined if joined else ""
         if isinstance(parsed, dict):
             if "text" in parsed and "prefix" in parsed:
-                return parsed["text"]
+                return parsed["text"]  # type: ignore[no-any-return]
             if "file_data" in parsed:
                 parsed["file_data"] = "[IMAGE DATA]"
                 return json.dumps(parsed, ensure_ascii=False)
@@ -675,8 +713,7 @@ def get_session_text_history(session_id, max_tokens=None, max_messages=None):
         if skip_next:
             skip_next = False
             continue
-        if i + 1 < len(messages) and messages[i + 1]["role"] == "assistant":
-            if _has_marker(messages[i + 1].get("content", "")):
+        if i + 1 < len(messages) and messages[i + 1]["role"] == "assistant" and _has_marker(messages[i + 1].get("content", "")):
                 skip_next = True
                 continue
         filtered.append(msg)

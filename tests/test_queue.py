@@ -13,6 +13,12 @@ import pytest
 class TestRedisRequestQueue:
     """Test cases for RedisRequestQueue class."""
 
+    @pytest.fixture(autouse=True)
+    def _no_workers(self):
+        """Prevent worker threads from starting during tests."""
+        with patch("app.queue.RedisRequestQueue.start_worker"):
+            yield
+
     @pytest.fixture
     def mock_app(self):
         """Create mock Flask app."""
@@ -27,6 +33,7 @@ class TestRedisRequestQueue:
         redis = Mock()
         redis.blpop.return_value = None
         redis.llen.return_value = 0
+        redis.hlen.return_value = 0
         redis.scard.return_value = 0
         redis.hincrby.return_value = 1
         pipe = Mock()
@@ -118,12 +125,11 @@ class TestRedisRequestQueue:
                 lang="ru",
             )
 
-            # Should have called rpush
-            assert mock_redis.rpush.called
-            # Should have incremented user count via pipeline.hincrby
-            assert mock_redis.pipeline.called
-            assert mock_redis.pipeline.return_value.hincrby.called
-            assert mock_redis.pipeline.return_value.execute.called
+            # RPUSH + HINCRBY should be called atomically via pipeline
+            pipe = mock_redis.pipeline.return_value
+            assert pipe.rpush.called
+            assert pipe.hincrby.called
+            assert pipe.execute.called
 
     def test_recover_stale_tasks(self, mock_app, mock_redis):
         """Test recovery of stale tasks from processing hash."""

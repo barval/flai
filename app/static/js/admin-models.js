@@ -53,7 +53,7 @@ function renderModelCards() {
     modules.forEach(mod => {
         const selectedModel = mod.config.model_name || '';
         const maxCtx = mod.config.max_context_length || '32768';
-        
+
         html += `
         <div class="model-card" data-module="${mod.id}">
             <h3><span class="module-name">${t(mod.name)}</span></h3>
@@ -141,7 +141,7 @@ async function refreshModelsForModule(module, silent = false) {
     const urlInput = document.querySelector(`.service-url[data-module="${module}"]`);
     let serviceUrl = urlInput.value.trim();
     let backend = 'llamacpp';
-    
+
     // Use llama-swap URL if configured
     if (typeof LLAMA_SWAP_URL !== 'undefined' && LLAMA_SWAP_URL) {
         serviceUrl = LLAMA_SWAP_URL;
@@ -150,7 +150,7 @@ async function refreshModelsForModule(module, silent = false) {
         serviceUrl = 'http://flai-llamaswap:8080';
         backend = 'llama-swap';
     }
-    
+
     const select = document.querySelector(`.model-dropdown[data-module="${module}"]`);
     const currentConfig = currentModelConfigs[module] || {};
     const currentModelName = currentConfig.model_name || '';
@@ -161,7 +161,7 @@ async function refreshModelsForModule(module, silent = false) {
 
     try {
         let models = [];
-        
+
         // For llama-swap mode, first try to get actual GGUF files from models directory
         if (backend === 'llama-swap') {
             dlog('Trying to load GGUF files from models directory');
@@ -178,7 +178,7 @@ async function refreshModelsForModule(module, silent = false) {
                 dwarn('Could not load GGUF files:', e);
             }
         }
-        
+
         // If no GGUF files or not llama-swap, get from llama-server API
         if (models.length === 0) {
             dlog('Loading models from llama-server API, backend:', backend);
@@ -196,7 +196,7 @@ async function refreshModelsForModule(module, silent = false) {
             }
             models = await response.json();
         }
-        
+
         modelListCache[serviceUrl] = models;
         models.forEach(model => {
             const option = document.createElement('option');
@@ -210,7 +210,7 @@ async function refreshModelsForModule(module, silent = false) {
         }
     } finally {
         select.disabled = false;
-        
+
         // Try to match current model
         if (currentModelName && select.options.length > 0) {
             // Simple approach: check if any option contains the current model name
@@ -220,7 +220,7 @@ async function refreshModelsForModule(module, silent = false) {
                 const optVal = select.options[i].value;
                 const currentNorm = currentModelName.replace(/\.gguf$/, '').toLowerCase();
                 const optNorm = optVal.replace(/\.gguf$/, '').toLowerCase();
-                
+
                 // Check various matches
                 if (optVal === currentModelName || currentModelName === optVal ||
                     optNorm === currentNorm ||
@@ -233,7 +233,7 @@ async function refreshModelsForModule(module, silent = false) {
                     break;
                 }
             }
-            
+
             // Last resort: check with path normalization
             if (!found) {
                 const currentBase = currentModelName.split('/').pop().replace(/\.gguf$/, '');
@@ -246,10 +246,10 @@ async function refreshModelsForModule(module, silent = false) {
                     }
                 }
             }
-            
+
             dlog('Model matching:', currentModelName, '-> found:', found);
-            
-            // Trigger model info load  
+
+            // Trigger model info load
             if (found && select.selectedIndex >= 0) {
                 setTimeout(() => {
                     onModelSelect({ target: select });
@@ -422,67 +422,84 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
 
         const hasGPU = data.has_gpu;
         const totalVRAM = data.total_vram_mb || 0;
-        const totalRAM = data.total_ram_mb || 0;
         const status = data.status;
+        const tier = data.tier || 'unknown';
+        const canSave = data.can_save !== false;
+        const nglRecommended = data.ngl_recommended;
+        const tierMessage = data.tier_message;
 
         if (status === 'actual') {
-            // Model is currently loaded — show real VRAM usage
             hintDiv.style.color = '#29A847';
             hintDiv.style.fontWeight = 'bold';
             hintDiv.textContent = t('vram_optimal_dynamic').replace('%1%', data.vram_percent || 0);
-        } else if (status === 'estimate') {
+        } else if (status === 'measured' && data.measured_vram_mb) {
+            if (hasGPU && totalVRAM > 0) {
+                const pct = Math.round(data.measured_vram_mb / totalVRAM * 100);
+                let color = '#29A847';
+                if (pct > 90) color = '#E01F1F';
+                else if (pct > 70) color = '#fd7e14';
+                else if (pct > 50) color = '#FFD700';
+                hintDiv.style.color = color;
+                hintDiv.style.fontWeight = 'bold';
+                var msg = t('vram_measured')
+                    .replace('%1%', data.measured_vram_mb)
+                    .replace('%2%', totalVRAM)
+                    .replace('%3%', pct)
+                    .replace('%4%', data.measurement_count || 1)
+                    .replace('%5%', data.measured_ctx || data.context_length || '?');
+                if (data.details) {
+                    msg += t('vram_detail')
+                        .replace('%1%', data.details.model_vram_mb)
+                        .replace('%2%', data.details.kv_cache_mb)
+                        .replace('%3%', data.details.compute_mb);
+                }
+                hintDiv.textContent = msg;
+            } else {
+                hintDiv.style.color = '#fd7e14';
+                hintDiv.textContent = t('vram_nodata');
+            }
+        } else if (status === 'estimate' || (status === 'measured' && !data.measured_vram_mb)) {
             if (hasGPU && totalVRAM > 0) {
                 const vramPct = data.vram_percent || 0;
-                if (vramPct <= 100) {
-                    hintDiv.style.color = '#29A847';
-                    hintDiv.style.fontWeight = 'bold';
-                    const msg = t('vram_optimal_dynamic').replace('%1%', vramPct);
-                    let extra = '';
-                    if (data.details) {
-                        extra = t('vram_estimate_detail').replace('%1%', data.details.model_vram_mb).replace('%2%', data.details.kv_cache_mb).replace('%3%', data.details.compute_mb);
-                    }
-                    hintDiv.textContent = msg + extra;
-                } else {
+                let color = '#29A847';
+                let label = 'optimal';
+                if (vramPct > 100) {
                     const offloadPct = vramPct - 100;
-                    let msg;
-                    if (offloadPct <= 20) {
-                        hintDiv.style.color = '#FFD700';
-                        hintDiv.style.fontWeight = 'bold';
-                        msg = t('vram_partial_high');
-                    } else if (offloadPct <= 40) {
-                        hintDiv.style.color = '#fd7e14';
-                        hintDiv.style.fontWeight = 'bold';
-                        msg = t('vram_partial_med');
-                    } else {
-                        hintDiv.style.color = '#E01F1F';
-                        hintDiv.style.fontWeight = 'bold';
-                        msg = t('vram_partial_low');
-                    }
-                    hintDiv.textContent = msg.replace('%2%', offloadPct);
+                    if (offloadPct <= 20) { color = '#FFD700'; label = 'high'; }
+                    else if (offloadPct <= 40) { color = '#fd7e14'; label = 'med'; }
+                    else { color = '#E01F1F'; label = 'low'; }
                 }
+                hintDiv.style.color = color;
+                hintDiv.style.fontWeight = 'bold';
+                var msg = t('vram_estimated')
+                    .replace('%1%', data.vram_mb)
+                    .replace('%2%', totalVRAM)
+                    .replace('%3%', vramPct);
+                if (data.details) {
+                    msg += t('vram_detail')
+                        .replace('%1%', data.details.model_vram_mb)
+                        .replace('%2%', data.details.kv_cache_mb)
+                        .replace('%3%', data.details.compute_mb);
+                }
+                hintDiv.textContent = msg;
             } else if (hasGPU && totalVRAM === 0) {
-                // GPU detected but no VRAM data — show ngl info
                 hintDiv.style.color = '#1CC8E3';
                 hintDiv.style.fontWeight = 'bold';
                 const msg = t('ngl_info').replace('%1%', data.ngl || '?').replace('%2%', data.block_count || '?');
                 hintDiv.textContent = msg;
             } else {
-                // No GPU — show RAM estimate
                 const ramPct = data.ram_percent || 0;
                 if (ramPct < 50) {
                     hintDiv.style.color = '#fd7e14';
                     hintDiv.style.fontWeight = 'bold';
-                    const msg = t('no_gpu_low');
-                    hintDiv.textContent = msg.replace('%1%', ramPct);
+                    hintDiv.textContent = t('no_gpu_low').replace('%1%', ramPct);
                 } else {
                     hintDiv.style.color = '#E01F1F';
                     hintDiv.style.fontWeight = 'bold';
-                    const msg = t('no_gpu_full');
-                    hintDiv.textContent = msg.replace('%1%', ramPct);
+                    hintDiv.textContent = t('no_gpu_full').replace('%1%', ramPct);
                 }
             }
         } else {
-            // nodata — not enough info
             hintDiv.style.color = '#fd7e14';
             hintDiv.style.fontWeight = 'bold';
             if (hasGPU) {
@@ -493,6 +510,48 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
         }
 
         const saveBtn = card.querySelector('.save-button');
+
+        // Render 3-tier indicator + lock save button on impossible/unknown
+        if (tierMessage) {
+            const tierDiv = document.createElement('div');
+            tierDiv.className = `tier-indicator tier-${tier}`;
+            tierDiv.style.cssText = 'margin-top: 6px; padding: 8px; border-radius: 4px; font-size: 0.85em; font-weight: bold;';
+            if (tier === 'good') {
+                tierDiv.style.color = '#29A847';
+                tierDiv.style.background = 'rgba(41, 168, 71, 0.1)';
+            } else if (tier === 'cpu_offload') {
+                tierDiv.style.color = '#b8860b';
+                tierDiv.style.background = 'rgba(255, 215, 0, 0.15)';
+            } else if (tier === 'impossible') {
+                tierDiv.style.color = '#E01F1F';
+                tierDiv.style.background = 'rgba(224, 31, 31, 0.12)';
+            } else {
+                tierDiv.style.color = '#fd7e14';
+                tierDiv.style.background = 'rgba(253, 126, 20, 0.12)';
+            }
+            tierDiv.textContent = tierMessage;
+            hintDiv.insertAdjacentElement('afterend', tierDiv);
+        }
+
+        // Toggle Save button: disable on impossible / unknown (no metadata)
+        if (saveBtn) {
+            if (canSave) {
+                saveBtn.disabled = false;
+                saveBtn.removeAttribute('title');
+            } else {
+                saveBtn.disabled = true;
+                saveBtn.setAttribute('title', tierMessage || t('model_cannot_be_saved'));
+            }
+        }
+
+        // For yellow tier, suggest ngl_recommended if it's lower than current
+        if (tier === 'cpu_offload' && nglRecommended != null) {
+            const nglInput = card.querySelector('.n-gpu-layers');
+            if (nglInput) {
+                nglInput.placeholder = '~' + nglRecommended;
+            }
+        }
+
         card.querySelectorAll('.memory-hint').forEach(el => el.remove());
         card.insertBefore(hintDiv, saveBtn);
 
@@ -511,6 +570,13 @@ function validateModelConfig(module, card) {
     }
 
     if (module === 'embedding') return true;
+
+    // Block save if the tier indicator marked the model as impossible/unknown
+    const saveBtn = card.querySelector('.save-button');
+    if (saveBtn && saveBtn.disabled) {
+        alert(saveBtn.getAttribute('title') || t('model_cannot_be_saved'));
+        return false;
+    }
 
     const contextLength = card.querySelector('.context-length')?.value;
     const temperature = card.querySelector('.temperature')?.value;

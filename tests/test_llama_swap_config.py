@@ -235,7 +235,7 @@ class TestBuildModelEntry:
 
         gen = LlamaSwapConfigGenerator()
         entry = gen.build_model_entry("multimodal")
-        assert entry["multimodal"].get("group") is None
+        assert entry["multimodal"].get("group") == "llm_fast"
 
 
 class TestBuildCmd:
@@ -360,7 +360,6 @@ class TestGenerateYaml:
         assert "startPort: 10001" in yaml_str
         assert "groups:" in yaml_str
         assert "llm_fast:" in yaml_str
-        assert "swap: false" in yaml_str
         assert "models:" in yaml_str
         assert "chat:" in yaml_str
         assert "embedding:" in yaml_str

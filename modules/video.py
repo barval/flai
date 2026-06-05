@@ -102,8 +102,9 @@ class VideoModule(TranslationMixin):
         """Determine if GPU can be used. Falls back to CPU if VRAM insufficient."""
         if not rm.hardware.cuda_detected:
             return False
+        rm._poll_vram()
         available = rm.hardware.available_vram_mb
-        needed = self._estimate_video_vram_mb() + 500
+        needed = self._estimate_video_vram_mb() + 3000
         if available > 0 and available < needed:
             self.logger.warning(f"VRAM too low for video ({available}MB available, ~{needed}MB needed) — forcing CPU")
             return False
@@ -122,10 +123,39 @@ class VideoModule(TranslationMixin):
 
         rm = get_resource_manager()
 
-        llamacpp_url = self.app.config.get("LLAMACPP_URL", "http://flai-llamacpp:8033")
-        unload_success = rm.unload_llamacpp_model(llamacpp_url)
-        if not unload_success:
-            self.logger.warning("Failed to unload llama.cpp model before video generation — OOM risk")
+        llamacpp_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+        rm.unload_llamacpp_model(llamacpp_url)
+
+        # CRITICAL: Verify llama-swap has NO models loaded (not just VRAM check).
+        # A VRAM-only check with threshold ~10GB can pass while multimodal
+        # (~5GB) is still loaded on a 15GB GPU (15-5=10 ≥ 10 → false positive).
+        swap_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+        deadline = time.time() + 15
+        video_needed = rm.estimate_video_vram_needed()
+        while time.time() < deadline:
+            rm._poll_vram()
+            try:
+                resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=5)
+                loaded = resp.json().get("running", []) if resp.status_code == 200 else ["?"]
+            except Exception:
+                loaded = ["?"]
+            free = rm.hardware.available_vram_mb
+            if not isinstance(free, int):
+                free = 0
+            if len(loaded) == 0 and free >= video_needed:
+                self.logger.info(
+                    f"VRAM ready: {free}MB free, 0 LLM models loaded, need ≥{video_needed}MB"
+                )
+                break
+            self.logger.info(
+                f"VRAM: {free}MB free, {len(loaded)} LLM model(s) loaded, "
+                f"need ≥{video_needed}MB — waiting for full unload..."
+            )
+            time.sleep(2)
+        else:
+            err_msg = self._("Video generation failed: GPU memory exhausted. Please simplify your request.", lang)
+            self.logger.warning(f"VRAM wait timeout (15s) — free={free}MB, models={loaded}")
+            return {"success": False, "error": err_msg}
 
         use_gpu = self._resolve_use_gpu(rm)
         if use_gpu:
@@ -138,9 +168,24 @@ class VideoModule(TranslationMixin):
 
         rm.mark_video_busy()
 
+        # Cap video resolution for low VRAM tiers (8GB) to prevent OOM
+        total_vram = rm.hardware.total_vram_mb
+        if isinstance(total_vram, int) and total_vram > 0 and total_vram < 10000:
+            old_w = prompt_data.get("width", 896)
+            old_h = prompt_data.get("height", 512)
+            old_frames = prompt_data.get("num_frames", 257)
+            prompt_data["width"] = min(old_w, 512)
+            prompt_data["height"] = min(old_h, 512)
+            prompt_data["num_frames"] = min(old_frames, 121)
+            if (old_w, old_h, old_frames) != (prompt_data["width"], prompt_data["height"], prompt_data["num_frames"]):
+                self.logger.info(
+                    f"VRAM tier 8GB: capped video from {old_w}×{old_h}×{old_frames}f "
+                    f"to {prompt_data['width']}×{prompt_data['height']}×{prompt_data['num_frames']}f"
+                )
+
         # Resize large source images to avoid OOM and reduce network transfer
         max_video_inpaint_size = 896
-        resized_info = {"resized": False, "original_size": None, "new_size": None}
+        resized_info: dict[str, Any] = {"resized": False, "original_size": None, "new_size": None}
         if image_data:
             try:
                 img_bytes = base64.b64decode(image_data)
@@ -149,11 +194,11 @@ class VideoModule(TranslationMixin):
                 if w > max_video_inpaint_size or h > max_video_inpaint_size:
                     ratio = max_video_inpaint_size / max(w, h)
                     new_w, new_h = int(w * ratio), int(h * ratio)
-                    img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                    img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)  # type: ignore[assignment]
                     if img.mode in ("RGBA", "LA", "P"):
                         rgb_img = Image.new("RGB", img.size, (255, 255, 255))
                         rgb_img.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
-                        img = rgb_img
+                        img = rgb_img  # type: ignore[assignment]
                     buf = BytesIO()
                     img.save(buf, format="JPEG", quality=90)
                     image_data = base64.b64encode(buf.getvalue()).decode("utf-8")
@@ -246,5 +291,16 @@ class VideoModule(TranslationMixin):
             if not unload_success:
                 time.sleep(2)
                 rm.unload_llamacpp_model(llamacpp_url)
+
+            # Clear CUDA cache to prevent fragmentation after video generation
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                    self.logger.info("CUDA cache cleared after video generation")
+            except ImportError:
+                pass
+
             time.sleep(1)
             rm.log_gpu_memory("video-post-cleanup")

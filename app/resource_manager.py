@@ -8,12 +8,16 @@ Monitors VRAM/RAM usage in real-time and provides gating logic so that
 fast-worker tasks don't collide with slow-worker GPU operations.
 """
 
+import contextlib
 import logging
 import os
 import subprocess
 import threading
 import time
+from pathlib import Path
 from typing import Any
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +55,12 @@ class ResourceManager:
         self._video_busy_since = 0.0
         self._vram_poll_timer: threading.Timer | None = None
         self._vram_poll_interval = 60  # seconds
+        self._shutdown_event = threading.Event()
+        # LTX-Video unload cache: skip repeat HTTP unload within 30s
+        self._last_ltx_unload_at: float = 0.0
+        # LTX-Video hang detection: 3 consecutive timeouts -> docker restart
+        self._ltx_unload_consecutive_timeouts: int = 0
+        self._ltx_restart_initiated_at: float = 0.0
 
     # ── Hardware detection ──
 
@@ -125,9 +135,11 @@ class ResourceManager:
                 self.hardware.available_vram_mb = free
         except Exception:
             pass
-        self._vram_poll_timer = threading.Timer(self._vram_poll_interval, self._poll_vram)
-        self._vram_poll_timer.daemon = True
-        self._vram_poll_timer.start()
+        # Reschedule next poll to keep available_vram_mb fresh (Bug A6 fix)
+        if self._vram_poll_interval > 0 and not self._shutdown_event.is_set():
+            self._vram_poll_timer = threading.Timer(self._vram_poll_interval, self._poll_vram)
+            self._vram_poll_timer.daemon = True
+            self._vram_poll_timer.start()
 
     def _detect_total_ram_mb(self) -> int:
         """Get total system RAM in MB."""
@@ -209,9 +221,14 @@ class ResourceManager:
         try:
             config = get_model_config(model_type)
             if config:
-                model_name = config.get("model")
+                model_name = config.get("model_name") or config.get("model")
         except Exception:
             pass
+
+        # Context length: from DB config, fallback 8192 (matches default in result dict)
+        ctx_size = config.get("context_length") if config else None
+        if not ctx_size:
+            ctx_size = 8192
 
         # Try to get model size from GGUF cache
         file_size_mb = None
@@ -230,10 +247,10 @@ class ResourceManager:
 
         # Fallback to approximate sizes if cache data unavailable
         model_vram = {
-            "chat": 2500,  # Qwen3-4B ~2.5GB
-            "multimodal": 5000,  # Qwen3VL-8B ~5GB
-            "reasoning": 15000,  # gemma-4-26B-A4B ~15GB
-            "embedding": 2000,  # bge-m3 ~2GB
+            "chat": 2500,
+            "multimodal": 5000,
+            "reasoning": 10000,
+            "embedding": 2000,
         }
 
         # Use actual file size if available, otherwise use fallback estimate
@@ -246,7 +263,7 @@ class ResourceManager:
 
         result = {
             "n_gpu_layers": -1,  # default: all on GPU
-            "ctx_size": 8192,
+            "ctx_size": ctx_size,
             "cache_capacity": 4096,
             "offload_kqv": False,
             "flash_attn": flash_attn_default,
@@ -309,6 +326,32 @@ class ResourceManager:
             result["n_gpu_layers"] = 0
             result["warning"] = f"Very limited VRAM ({total_vram}MB) — CPU-only mode"
 
+        # Degradation: ensure model fits in available VRAM BEFORE loading
+        # Iteratively reduce n_gpu_layers if estimated VRAM exceeds capacity
+        if result["n_gpu_layers"] != 0 and block_count:
+            effective_ngl = result["n_gpu_layers"]
+            if effective_ngl == -1:
+                effective_ngl = block_count
+            while effective_ngl > 0:
+                ratio = min(1.0, effective_ngl / block_count) if block_count > 0 else 1.0
+                est_weights = max(file_size_mb or needed, 100) * ratio * (0.95 if expert_count > 0 else 1.0)
+                est_kv = ctx_size * 0.04
+                est_overhead = max(200, int((file_size_mb or needed) * 0.03 + ctx_size * 0.001))
+                est_total = est_weights + est_kv + est_overhead
+                if est_total <= available_for_model or effective_ngl == 0:
+                    break
+                effective_ngl = max(0, effective_ngl - max(1, block_count // 8))
+            if effective_ngl != result["n_gpu_layers"]:
+                if effective_ngl == -1 if result["n_gpu_layers"] == -1 else False:
+                    pass
+                result["n_gpu_layers"] = effective_ngl if effective_ngl < block_count else -1
+                if result["n_gpu_layers"] != -1:
+                    result["offload_kqv"] = True
+                    result["warning"] = (
+                        f"Auto-degraded: n_gpu_layers={result['n_gpu_layers']}/{block_count} "
+                        f"to fit VRAM ({est_total:.0f}MB > {available_for_model}MB)"
+                    )
+
         # n_cpu_moe: for MoE models that don't fully fit — offload experts proportionally
         is_moe = expert_count > 0
         if is_moe and result["n_gpu_layers"] != -1 and result["n_gpu_layers"] > 0:
@@ -332,7 +375,12 @@ class ResourceManager:
             if capped is not None:
                 if capped == -1:
                     capped = block_count if block_count else -1
-                if current_ngl != -1 and capped != -1 and current_ngl > capped:
+                # Clamp when all layers on GPU exceed safety limit
+                if current_ngl == -1 and capped != -1 and capped < (block_count or capped + 1):
+                    result["n_gpu_layers"] = capped
+                    result["offload_kqv"] = True
+                    result["warning"] = f"Safety cap: n_gpu_layers limited to {capped}/{block_count} for VRAM"
+                elif current_ngl != -1 and capped != -1 and current_ngl > capped:
                     result["n_gpu_layers"] = capped
                     result["offload_kqv"] = True
                     if "warning" in result and result["warning"]:
@@ -341,6 +389,164 @@ class ResourceManager:
                         result["warning"] = f"Safety cap: n_gpu_layers limited to {capped} for VRAM"
 
         return result
+
+    # ── Dynamic VRAM estimation ──
+
+    def get_vram_needed_mb(self, model_type: str, ctx_size: int | None = None) -> int:
+        """Compute VRAM needed for a model from GGUF metadata + DB config.
+
+        Reads model file size and layer count from GGUF cache,
+        context_length from model_configs, and n_gpu_layers from
+        compute_llamacpp_config().  Returns total estimated MB.
+        """
+        from app.model_config import get_model_config
+        from app.utils import get_gguf_models_cached
+
+        config = get_model_config(model_type)
+        model_name = config.get("model_name", "") if config else ""
+
+        # Context length: prefer explicit argument, then DB config, then fallback
+        if ctx_size is None:
+            ctx_size = config.get("context_length") if config else 4096
+        if not ctx_size:
+            ctx_size = 4096
+
+        # GGUF metadata
+        gguf_info = get_gguf_models_cached("/models").get(model_name.replace(".gguf", ""), {})
+        file_size_mb = gguf_info.get("file_size_mb") or 0
+        block_count = gguf_info.get("block_count") or 0
+        expert_count = gguf_info.get("expert_count") or 0
+
+        # Fallback block_count when GGUF metadata missing
+        if block_count == 0:
+            default_blocks = {"chat": 28, "reasoning": 40, "multimodal": 36, "embedding": 12}
+            block_count = default_blocks.get(model_type, 30)
+
+        # Fallback file_size when GGUF metadata missing
+        if file_size_mb == 0:
+            default_sizes = {"chat": 2500, "reasoning": 12000, "multimodal": 5000, "embedding": 2000}
+            file_size_mb = default_sizes.get(model_type, 3000)
+
+        # n_gpu_layers from the same logic used for llama-swap config
+        try:
+            rm_config = self.compute_llamacpp_config(model_type)
+            ngl = rm_config.get("n_gpu_layers", -1)
+        except Exception:
+            ngl = -1
+        if ngl == -1 and block_count:
+            ngl = block_count
+        elif ngl is None:
+            ngl = block_count or 1
+
+        moe_factor = 0.95 if (expert_count or 0) > 0 else 1.0
+        ratio = min(1.0, ngl / block_count) if (block_count or 0) > 0 else 1.0
+        weights_mb = (file_size_mb or 0) * ratio * moe_factor
+
+        # KV cache estimate (q4_0: ~0.12 MB per token including CUDA overhead)
+        # Actual measured on RTX 5060 Ti: chat 0.05, multimodal 0.18, reasoning 0.12 MB/token.
+        # Old 0.35 was 3-7x too high, causing ensure_vram_for to fail with generous margin.
+        kv_per_token = 0.12
+        kv_mb = ctx_size * kv_per_token
+
+        overhead = max(400, int(file_size_mb * 0.05 + ctx_size * 0.002))
+
+        total = int(weights_mb + kv_mb + overhead)
+        return max(total, 100)
+
+    # ── Unified VRAM guarantee ──
+
+    def ensure_vram_for(self, model_type: str, needed_mb: int | None = None, timeout: int = 15) -> bool:
+        """Ensure VRAM is available for the given model type.
+
+        1. Unload ALL llama.cpp models via llama-swap
+        2. Unload video pipeline
+        3. Flush CUDA cache
+        4. Poll /running until 0 models remain
+        5. Poll nvidia-smi until needed_mb is free
+
+        Returns True only when VRAM is confirmed available.
+        NEVER proceeds if VRAM is insufficient — returns False on timeout.
+        """
+        if needed_mb is None:
+            needed_mb = self.get_vram_needed_mb(model_type)
+
+        llamacpp_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+
+        # 1. Check if needed model is already loaded — skip unload if so
+        try:
+            resp_check = requests.get(f"{llamacpp_url}/running", timeout=2)
+            if resp_check.status_code == 200:
+                running = resp_check.json().get("running", [])
+                if len(running) == 1:
+                    cmd = running[0].get("cmd", "")
+                    from app.model_config import get_model_config
+
+                    config = get_model_config(model_type)
+                    model_name = config.get("model_name", "") if config else ""
+                    if model_name and model_name in cmd:
+                        # Needed model already loaded — just verify VRAM
+                        self._poll_vram()
+                        free = self.hardware.available_vram_mb
+                        if free >= needed_mb:
+                            logger.info(
+                                f"ensure_vram_for [{model_type}]: model already loaded, "
+                                f"{free}MB free >= {needed_mb}MB needed — OK"
+                            )
+                            return True
+        except Exception:
+            pass
+
+        # Model not loaded or different model active — full unload
+        logger.info(f"ensure_vram_for [{model_type}]: unloading all models, need {needed_mb}MB")
+        self.unload_llamacpp_model(llamacpp_url)
+
+        # 2. Unload video pipeline
+        with contextlib.suppress(Exception):
+            self.unload_video_pipeline()
+
+        # 3. Flush CUDA cache
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+        except ImportError:
+            pass
+
+        # 4+5. Poll /running + nvidia-smi until VRAM sufficient
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                resp = requests.get(f"{llamacpp_url}/running", timeout=5)
+                if resp.status_code == 200:
+                    models = resp.json().get("running", [])
+                    if len(models) > 0:
+                        logger.debug(
+                            f"ensure_vram_for [{model_type}]: {len(models)} model(s) still active"
+                        )
+                        time.sleep(2)
+                        continue
+            except Exception:
+                pass
+
+            self._poll_vram()
+            free = self.hardware.available_vram_mb
+            if free >= needed_mb:
+                logger.info(
+                    f"ensure_vram_for [{model_type}]: {free}MB free >= {needed_mb}MB needed — OK"
+                )
+                return True
+
+            logger.debug(
+                f"ensure_vram_for [{model_type}]: {free}MB free, need {needed_mb}MB — waiting..."
+            )
+            time.sleep(2)
+
+        logger.error(
+            f"ensure_vram_for [{model_type}]: TIMEOUT after {timeout}s — "
+            f"{self.hardware.available_vram_mb}MB free, need {needed_mb}MB"
+        )
+        return False
 
     # ── Runtime gating ──
 
@@ -368,6 +574,263 @@ class ResourceManager:
 
     # ── llama.cpp model management ──
 
+    def unload_video_pipeline(self) -> bool:
+        """Unload the LTX-Video pipeline from VRAM via /v1/unload.
+
+        Retries on failure and verifies that VRAM was actually freed by polling
+        nvidia-smi after the unload. If the POST succeeds but VRAM stays high,
+        retries the unload up to 3 times (CUDA deallocation can be lazy).
+
+        Optimizations (v8.8+):
+          - Pre-flight GET /v1/vram_info: if pipeline not loaded, skip HTTP entirely
+            (avoids 8s × 8 polls of waiting when nothing needs unloading)
+          - Success condition is clamped to total - 1GB so it's reachable when
+            free_before is already near total
+          - 30s result cache: repeated calls within window skip the whole flow
+            (eliminates double-call between _process_image_chat_task and
+            ensure_vram_for for the same request)
+          - 3 consecutive HTTP timeouts trigger docker restart of flai-ltxvideo
+            via the mounted /var/run/docker.sock
+        """
+        ltx_url = os.getenv("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
+
+        # Cache: skip repeat unload if it succeeded within the last 30s
+        if time.time() - self._last_ltx_unload_at < 30:
+            return True
+
+        # Pre-flight: ask ltxvideo if pipeline is loaded at all
+        # /v1/vram_info is cheap and side-effect-free; if pipeline_loaded=false
+        # the 8×1s polling loop is pure waste
+        try:
+            resp = requests.get(f"{ltx_url.rstrip('/')}/v1/vram_info", timeout=2)
+            if resp.status_code == 200:
+                info = resp.json()
+                if not info.get("pipeline_loaded", False):
+                    logger.debug("LTX-Video pipeline not loaded — skipping unload")
+                    self._last_ltx_unload_at = time.time()
+                    self._ltx_unload_consecutive_timeouts = 0
+                    return True
+        except Exception as e:
+            logger.debug(f"LTX-Video pre-flight check failed: {e}")
+            # Continue with regular flow on pre-flight failure (container may be
+            # alive but slow to respond)
+
+        self._poll_vram()
+        free_before = self.hardware.available_vram_mb
+        total = self.hardware.total_vram_mb
+
+        for attempt in range(3):
+            try:
+                resp = requests.post(f"{ltx_url.rstrip('/')}/v1/unload", timeout=30)
+                if resp.status_code != 200:
+                    logger.warning(f"LTX-Video unload HTTP {resp.status_code} (attempt {attempt + 1})")
+                    if attempt < 2:
+                        time.sleep(3)
+                    continue
+            except Exception as e:
+                logger.warning(f"Error unloading LTX-Video (attempt {attempt + 1}): {e}")
+                if "timed out" in str(e).lower() or "timeout" in str(e).lower():
+                    self._ltx_unload_consecutive_timeouts += 1
+                    if self._ltx_unload_consecutive_timeouts >= 3:
+                        self._maybe_restart_ltx_video()
+                if attempt < 2:
+                    time.sleep(3)
+                continue
+
+            # HTTP 200 received — reset hang counter
+            self._ltx_unload_consecutive_timeouts = 0
+
+            # Success target: either +3000 MB freed OR total-1GB reached
+            # (the latter is the physical ceiling when LTX-Video was small
+            # relative to total VRAM, or wasn't loaded at all)
+            target = min(total - 1000, free_before + 3000)
+            for _ in range(8):
+                self._poll_vram()
+                if self.hardware.available_vram_mb >= target:
+                    logger.info(
+                        f"LTX-Video pipeline unloaded — VRAM freed "
+                        f"({free_before}MB → {self.hardware.available_vram_mb}MB)"
+                    )
+                    self._last_ltx_unload_at = time.time()
+                    return True
+                time.sleep(1)
+            logger.warning(
+                f"LTX-Video unload returned 200 but VRAM did not free "
+                f"(was {free_before}MB, now {self.hardware.available_vram_mb}MB, "
+                f"total {total}MB, target {target}MB) — attempt {attempt + 1}/3"
+            )
+            if attempt < 2:
+                time.sleep(2)
+
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                logger.info("CUDA cache cleared after LTX-Video unload failure")
+        except ImportError:
+            pass
+        return False
+
+    def _maybe_restart_ltx_video(self) -> None:
+        """If LTX-Video container is unresponsive (3 consecutive timeouts), restart it.
+
+        Uses the Docker socket mounted at /var/run/docker.sock in
+        docker-compose.gpu.yml:27. Rate-limited to 1 restart per 5 minutes
+        to avoid a restart loop.
+        """
+        if time.time() - self._ltx_restart_initiated_at < 300:
+            return
+        self._ltx_restart_initiated_at = time.time()
+
+        logger.error("LTX-Video unresponsive: 3 consecutive timeouts. Restarting container.")
+        try:
+            resp = requests.post(
+                "http://localhost/containers/flai-ltxvideo/restart",
+                timeout=10,
+            )
+            if resp.status_code in (204, 304):
+                logger.info("flai-ltxvideo restart initiated via Docker socket")
+                self._ltx_unload_consecutive_timeouts = 0
+                self._last_ltx_unload_at = 0.0
+            else:
+                logger.error(f"Docker restart failed: HTTP {resp.status_code}")
+        except Exception as e:
+            logger.error(f"Failed to restart flai-ltxvideo via Docker socket: {e}")
+
+    def estimate_video_vram_needed(self) -> int:
+        """VRAM threshold for LTX-Video pipeline loading.
+
+        Resolution order:
+          1. Measured peak from previous successful gen (model_vram_estimates table)
+          2. Query ltxvideo's /v1/vram_info endpoint for component file sizes
+             (text_encoder stays on CPU per ltx_wrapper.py:159)
+          3. Compute from local filesystem (if /app/models is mounted)
+          4. Env var LTX_VIDEO_VRAM_MB fallback (default 8500)
+        """
+        try:
+            from app.database import get_vram_estimate
+
+            measured = get_vram_estimate("ltx-video")
+            if measured and measured.get("measured_vram_mb"):
+                return int(measured["measured_vram_mb"])
+        except Exception as e:
+            logger.debug(f"Could not load measured VRAM for ltx-video: {e}")
+
+        # Try querying ltxvideo for component sizes (works without /app/models mount)
+        try:
+            ltx_url = os.getenv("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
+            resp = requests.get(f"{ltx_url.rstrip('/')}/v1/vram_info", timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                sizes = data.get("component_sizes_mb", {})
+                transformer_mb = sizes.get("transformer", 0)
+                upscaler_mb = sizes.get("upscaler", 0)
+                if transformer_mb > 0:
+                    persistent_mb = transformer_mb + upscaler_mb
+                    peak_mb = int(persistent_mb * 1.15)
+                    logger.info(
+                        f"LTX-Video estimated peak VRAM (from ltxvideo): {peak_mb} MB "
+                        f"(transformer={transformer_mb}MB, upscaler={upscaler_mb}MB)"
+                    )
+                    return peak_mb
+        except Exception as e:
+            logger.debug(f"Could not query ltxvideo /v1/vram_info: {e}")
+
+        # Fallback: compute from local filesystem
+        models_dir = Path(os.getenv("LTX_MODELS_DIR", "/app/models"))
+        transformer_path = models_dir / "ltxv-2b-0.9.8-distilled.safetensors"
+        upscaler_path = models_dir / "ltxv-spatial-upscaler-0.9.8.safetensors"
+
+        transformer_bytes = transformer_path.stat().st_size if transformer_path.exists() else 0
+        upscaler_bytes = upscaler_path.stat().st_size if upscaler_path.exists() else 0
+
+        if transformer_bytes == 0:
+            return int(os.getenv("LTX_VIDEO_VRAM_MB", "8500"))
+
+        persistent_bytes = transformer_bytes + upscaler_bytes
+        peak_mb = int(persistent_bytes * 1.15 // (1024 * 1024))
+        logger.info(
+            f"LTX-Video estimated peak VRAM (from local fs): {peak_mb} MB "
+            f"(transformer={transformer_bytes // 1024**2}MB, upscaler={upscaler_bytes // 1024**2}MB)"
+        )
+        return peak_mb
+
+    def ensure_vram_for_llm(self, model_type: str = "chat") -> bool:
+        """Ensure sufficient VRAM for the requested LLM model type.
+        Delegates to ensure_vram_for() which handles unloading + polling.
+        """
+        if not self.hardware.cuda_detected:
+            return True
+        return self.ensure_vram_for(model_type)
+
+    def ensure_vram_for_reasoning(self, needed_mb: int | None = None) -> bool:
+        """Ensure sufficient VRAM for reasoning model.
+        Delegates to ensure_vram_for() with dynamic VRAM estimate.
+        """
+        if not self.hardware.cuda_detected:
+            return True
+        return self.ensure_vram_for("reasoning", needed_mb)
+
+    def measure_model_vram(self, module: str, model_name: str, ctx_size: int, ngl: int) -> None:
+        """Measure actual VRAM consumption after a model loads and store in DB.
+
+        Called from llamacpp_client after a successful model response to track
+        real VRAM usage per model type, which feeds into the admin panel display.
+        For ltx-video the model_name is the pipeline config and ctx_size/ngl are unused.
+        """
+        try:
+            from app.database import upsert_vram_estimate
+
+            self._poll_vram()
+            after_free = self.hardware.available_vram_mb
+            total = self.hardware.total_vram_mb
+
+            if total > 0 and after_free > 0:
+                used = total - after_free
+                upsert_vram_estimate(
+                    module=module,
+                    model_name=model_name,
+                    context_length=ctx_size,
+                    n_gpu_layers=ngl,
+                    measured_mb=used,
+                )
+                logger.info(
+                    f"VRAM measurement [{module}]: {used}MB used "
+                    f"({after_free}MB free / {total}MB total)"
+                )
+        except Exception as e:
+            logger.debug(f"VRAM measurement failed for {module}: {e}")
+
+    def measure_video_vram_peak(self, model_name: str = "ltxv-2b-0.9.8-distilled") -> None:
+        """Record peak VRAM during/after video generation.
+
+        Called from queue after a successful video gen. Reads current VRAM usage
+        and stores it as a measurement for the ltx-video module, so future
+        estimate_video_vram_needed() returns the real value.
+        """
+        try:
+            self._poll_vram()
+            free = self.hardware.available_vram_mb
+            total = self.hardware.total_vram_mb
+            if total > 0 and free > 0:
+                from app.database import upsert_vram_estimate
+
+                upsert_vram_estimate(
+                    module="ltx-video",
+                    model_name=model_name,
+                    context_length=0,
+                    n_gpu_layers=0,
+                    measured_mb=total - free,
+                )
+                logger.info(
+                    f"VRAM measurement [ltx-video]: {total - free}MB used "
+                    f"({free}MB free / {total}MB total)"
+                )
+        except Exception as e:
+            logger.debug(f"Video VRAM measurement failed: {e}")
+
     def unload_llamacpp_model(self, llamacpp_url: str | None = None) -> bool:
         """Force LLM backend to unload its current model from VRAM.
 
@@ -378,14 +841,12 @@ class ResourceManager:
         """
         import os
 
-        import requests as req
-
         backend_type = os.getenv("LLAMACP_BACKEND", "llamacpp")
 
         if backend_type == "llama-swap":
             swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
             try:
-                resp = req.post(f"{swap_url.rstrip('/')}/api/models/unload", timeout=30)
+                resp = requests.post(f"{swap_url.rstrip('/')}/api/models/unload", timeout=30)
                 if resp.status_code == 200:
                     logger.info("llama-swap: all models unloaded for SD")
                     return True
@@ -399,7 +860,7 @@ class ResourceManager:
             llamacpp_url = "http://flai-llamacpp:8033"
 
         try:
-            resp = req.get(f"{llamacpp_url.rstrip('/')}/v1/models", timeout=5)
+            resp = requests.get(f"{llamacpp_url.rstrip('/')}/v1/models", timeout=5)
             if resp.status_code != 200:
                 logger.warning("Cannot get llama.cpp model list")
                 return False
@@ -415,7 +876,7 @@ class ResourceManager:
                 logger.info("No llama.cpp model loaded — VRAM already free")
                 return True
 
-            resp = req.post(f"{llamacpp_url.rstrip('/')}/models/unload", json={"model": loaded_model}, timeout=30)
+            resp = requests.post(f"{llamacpp_url.rstrip('/')}/models/unload", json={"model": loaded_model}, timeout=30)
             if resp.status_code == 200:
                 logger.info(f"Unloaded llama.cpp model: {loaded_model}")
                 return True
@@ -445,13 +906,11 @@ class ResourceManager:
         backend_type = os.getenv("LLAMACP_BACKEND", "llamacpp")
         if backend_type == "llama-swap":
             try:
-                import requests as req
-
                 swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
-                resp = req.get(f"{swap_url.rstrip('/')}/running", timeout=5)
+                resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=5)
                 if resp.status_code == 200:
                     data = resp.json()
-                    status["loaded_models"] = data.get("models", [])
+                    status["loaded_models"] = data.get("running", [])
             except Exception:
                 pass
 
@@ -462,15 +921,13 @@ class ResourceManager:
 
         Returns dict with total_mb and free_mb (0 if query fails).
         """
-        import requests as req
-
         result = {"total_mb": 0, "free_mb": 0}
         try:
             swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
-            resp = req.get(f"{swap_url.rstrip('/')}/running", timeout=5)
+            resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=5)
             if resp.status_code == 200:
                 data = resp.json()
-                loaded = data.get("models", [])
+                loaded = data.get("running", [])
                 mem_info = data.get("vram", {})
                 total = mem_info.get("total", 0)
                 free = mem_info.get("free", 0)

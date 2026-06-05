@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import sqlite3
 from functools import wraps
 
 import requests
@@ -161,6 +162,19 @@ def get_users():
                 u_dict["messages_count"] = stats["messages"] if stats else 0
                 u_dict["files_count"] = stats["files_count"] if stats else 0
                 u_dict["documents_count"] = stats["documents_count"] if stats else 0
+
+                slm_db = os.path.join("/app/data/slm", u["login"], ".superlocalmemory", "memory.db")
+                if os.path.exists(slm_db):
+                    try:
+                        slm_conn = sqlite3.connect(f"file:{slm_db}?mode=ro&immutable=1", uri=True)
+                        slm_c = slm_conn.cursor()
+                        slm_c.execute("SELECT COUNT(*) FROM memories")
+                        u_dict["slm_facts_count"] = slm_c.fetchone()[0]
+                        slm_conn.close()
+                    except Exception:
+                        u_dict["slm_facts_count"] = 0
+                else:
+                    u_dict["slm_facts_count"] = 0
 
                 if u_dict["camera_permissions"]:
                     try:
@@ -423,6 +437,165 @@ def _estimate_model_vram(
     }
 
 
+def _get_total_ram_mb() -> int:
+    """Get total system RAM in MB from /proc/meminfo (Linux) or psutil fallback."""
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    return int(line.split()[1]) // 1024
+    except (OSError, ValueError):
+        pass
+    try:
+        import psutil
+
+        return psutil.virtual_memory().total // (1024 * 1024)  # type: ignore[no-any-return]
+    except Exception:
+        return 0
+
+
+# Thresholds for tier classification (tuned for 8/12/16+ GB GPU tiers)
+TIER_VRAM_GOOD_PCT = 0.85      # vram_needed / total_vram <= this => good
+TIER_RAM_SAFETY_PCT = 0.70     # (file+kv) / system_ram <= this => possible
+TIER_RAM_HEADROOM_MB = 2048    # 2GB OS/other reserved
+
+
+def _classify_model_fit(
+    model_name: str,
+    context_length: int,
+    file_size_mb: float | None = None,
+    block_count: int | None = None,
+) -> dict:
+    """Classify whether a model can be loaded and in what mode.
+
+    Three tiers:
+    - good: fits fully in VRAM
+    - cpu_offload: needs partial CPU offload (degrade n_gpu_layers)
+    - impossible: doesn't fit even with full CPU offload (not enough RAM)
+
+    Returns dict with tier, can_save, ngl_recommended, message, and metadata.
+    """
+    from app.utils import get_gguf_models_cached
+
+    # Defaults for unknown model
+    model_key = model_name.replace(".gguf", "")
+    cache = get_gguf_models_cached("/models")
+    cached = cache.get(model_key, {})
+
+    # Prefer passed-in values, fall back to cache
+    if file_size_mb is None:
+        file_size_mb = cached.get("file_size_mb")
+    if block_count is None:
+        block_count = cached.get("block_count")
+
+    arch_max_ctx = cached.get("context_length")
+    ngl_total = block_count or 32
+
+    used_vram, total_vram = _get_actual_vram_mb()
+    if total_vram is None or total_vram <= 0:
+        total_vram = 16311
+    total_ram = _get_total_ram_mb()
+
+    # If model is not in cache and we don't have file_size, block save
+    if not file_size_mb or not block_count:
+        return {
+            "tier": "unknown",
+            "can_save": False,
+            "ngl_recommended": ngl_total,
+            "ngl_total": ngl_total,
+            "vram_mb": 0,
+            "file_mb": 0,
+            "kv_cache_mb": 0,
+            "total_vram_mb": total_vram,
+            "system_ram_mb": total_ram,
+            "arch_max_ctx": arch_max_ctx,
+            "message": _("Model metadata not found. Run 'Refresh models' first."),
+        }
+
+    file_mb = float(file_size_mb)
+
+    # 1. Compute VRAM needed for current context (with full GPU offload)
+    est = _estimate_model_vram(
+        file_size_mb=file_mb,
+        block_count=block_count,
+        ngl=ngl_total,
+        expert_count=cached.get("expert_count") or 0,
+        ctx_size=max(int(context_length), 1),
+    )
+    vram_full_mb = int(est["total_mb"])
+    kv_cache_mb = int(est["kv_cache_mb"])
+
+    # 2. Tier classification
+    vram_budget = total_vram * TIER_VRAM_GOOD_PCT
+    ram_budget = (total_ram * TIER_RAM_SAFETY_PCT) - TIER_RAM_HEADROOM_MB
+
+    if vram_full_mb <= vram_budget:
+        tier = "good"
+        ngl_recommended = ngl_total
+        message = _("✓ Fits in VRAM: {vram} MB / {total} MB").format(
+            vram=vram_full_mb, total=total_vram
+        )
+        can_save = True
+    else:
+        # Try to find the largest ngl where both VRAM and RAM fit.
+        # weights_on_gpu = file × (ngl/ngl_total)
+        # weights_on_ram = file × (1 - ngl/ngl_total) = file - weights_on_gpu
+        # kv is in VRAM (or partially in RAM; we treat as VRAM-side for safety)
+        # overhead (compute buffers) is on GPU.
+        # Find ngl_max such that:
+        #   weights_on_gpu + kv + overhead <= vram_budget
+        #   file - weights_on_gpu + overhead <= ram_budget
+        # Solving for weights_on_gpu:
+        #   weights_on_gpu <= vram_budget - kv - overhead
+        #   file - weights_on_gpu <= ram_budget - overhead
+        #   weights_on_gpu >= file - (ram_budget - overhead)
+        vram_for_weights = vram_budget - kv_cache_mb - 400
+        ram_for_weights = ram_budget - 400
+        max_gpu_weights = min(vram_for_weights, file_mb)
+        # We need: file_mb - gpu_weights <= ram_for_weights → gpu_weights >= file_mb - ram_for_weights
+        min_gpu_weights = max(0, file_mb - ram_for_weights)
+
+        if max_gpu_weights <= min_gpu_weights:
+            # No ngl value makes both sides fit
+            needed = int(file_mb + kv_cache_mb)
+            tier = "impossible"
+            ngl_recommended = 0
+            message = _(
+                "✗ Model cannot be loaded. Needs {needed} MB RAM "
+                "(file + KV cache), available {total} MB."
+            ).format(needed=needed, total=total_ram)
+            can_save = False
+        else:
+            # Pick a value within the feasible range. Use min for stability
+            # (less GPU usage → less likely to OOM on other tasks).
+            gpu_weights = max(min_gpu_weights, min(max_gpu_weights, vram_for_weights))
+            ratio = gpu_weights / file_mb if file_mb else 0
+            ngl_recommended = max(1, int(ngl_total * ratio))
+            cpu_layers = ngl_total - ngl_recommended
+            tier = "cpu_offload"
+            message = _(
+                "⚠ Partial CPU offload: {ngl}/{total_layers} layers on GPU, "
+                "{cpu} on RAM. ~5-10× slower."
+            ).format(
+                ngl=ngl_recommended, total_layers=ngl_total, cpu=cpu_layers
+            )
+            can_save = True
+
+    return {
+        "tier": tier,
+        "can_save": can_save,
+        "ngl_recommended": ngl_recommended,
+        "ngl_total": ngl_total,
+        "vram_mb": vram_full_mb,
+        "file_mb": round(file_mb, 1),
+        "kv_cache_mb": kv_cache_mb,
+        "total_vram_mb": total_vram,
+        "system_ram_mb": total_ram,
+        "arch_max_ctx": arch_max_ctx,
+        "message": message,
+    }
+
+
 @bp.route("/api/model-estimate", methods=["GET"])
 def model_vram_estimate():
     """Return VRAM/RAM estimate for a model.
@@ -526,6 +699,13 @@ def model_vram_estimate():
         pass
 
     # 5. Build response
+    # Compute tier classification (3-tier VRAM/RAM fit)
+    tier_info = _classify_model_fit(
+        model_name=model_name,
+        context_length=ctx_size,
+        file_size_mb=file_size_mb,
+        block_count=block_count,
+    )
     if loaded_model and used_vram is not None and total_vram is not None:
         # Actual VRAM usage
         response = {
@@ -543,6 +723,12 @@ def model_vram_estimate():
             "expert_count": expert_count,
             "parameter_count": parameter_count,
             "ngl": ngl,
+            "tier": tier_info["tier"],
+            "can_save": tier_info["can_save"],
+            "ngl_recommended": tier_info["ngl_recommended"],
+            "tier_message": tier_info["message"],
+            "system_ram_mb": tier_info["system_ram_mb"],
+            "arch_max_ctx": tier_info["arch_max_ctx"],
         }
     elif file_size_mb and block_count:
         # Estimate
@@ -558,12 +744,42 @@ def model_vram_estimate():
         vram_pct = round(est["total_mb"] / total_vram * 100) if has_gpu and total_vram > 0 else 0
         ram_pct = round(est["total_mb"] / total_ram * 100) if total_ram > 0 else 0
 
+        # Check for measured VRAM data in model_vram_estimates
+        measured_vram_mb = None
+        measurement_count = 0
+        measured_ctx = None
+        try:
+            from app.database import get_vram_estimate
+            db_est = get_vram_estimate(module, model_name=model_name)
+            if db_est:
+                measured_vram_mb = db_est.get("measured_vram_mb")
+                measurement_count = db_est.get("measurement_count") or 0
+                measured_ctx = db_est.get("context_length")
+        except Exception:
+            pass
+
+        # Save computed estimate to DB for future reference
+        try:
+            from app.database import upsert_vram_estimate
+            upsert_vram_estimate(
+                module=module,
+                model_name=model_name,
+                context_length=ctx_size,
+                n_gpu_layers=ngl,
+                estimated_mb=round(est["total_mb"]),
+            )
+        except Exception:
+            pass
+
         response = {
-            "status": "estimate",
+            "status": "measured" if measured_vram_mb else "estimate",
             "vram_mb": round(est["total_mb"]),
             "total_vram_mb": total_vram or 0,
             "vram_percent": vram_pct,
-            "vram_source": "estimate",
+            "vram_source": "measured" if measured_vram_mb else "estimate",
+            "measured_vram_mb": measured_vram_mb,
+            "measurement_count": measurement_count,
+            "measured_ctx": measured_ctx,
             "ram_mb": round(est["total_mb"]),
             "total_ram_mb": total_ram,
             "ram_percent": ram_pct,
@@ -573,6 +789,13 @@ def model_vram_estimate():
             "expert_count": expert_count,
             "parameter_count": parameter_count,
             "ngl": ngl,
+            "context_length": ctx_size,
+            "tier": tier_info["tier"],
+            "can_save": tier_info["can_save"],
+            "ngl_recommended": tier_info["ngl_recommended"],
+            "tier_message": tier_info["message"],
+            "system_ram_mb": tier_info["system_ram_mb"],
+            "arch_max_ctx": tier_info["arch_max_ctx"],
             "details": {
                 "model_vram_mb": round(est["model_vram_mb"]),
                 "kv_cache_mb": round(est["kv_cache_mb"]),
@@ -593,6 +816,12 @@ def model_vram_estimate():
             "block_count": block_count,
             "expert_count": expert_count,
             "parameter_count": parameter_count,
+            "tier": tier_info["tier"],
+            "can_save": tier_info["can_save"],
+            "ngl_recommended": tier_info["ngl_recommended"],
+            "tier_message": tier_info["message"],
+            "system_ram_mb": tier_info["system_ram_mb"],
+            "arch_max_ctx": tier_info["arch_max_ctx"],
         }
 
     return jsonify(response)
@@ -1168,6 +1397,26 @@ def update_model_config(module):
     except ValidationError as e:
         return jsonify({"error": _("Error") + ": " + str(e)}), 400
 
+    # ── Server-side VRAM/RAM/ctx validation (defense in depth) ──
+    new_model_name = updates.get("model_name")
+    new_ctx = updates.get("context_length")
+    if new_model_name and module != "embedding":
+        # Tier classification blocks "impossible" models (file + KV > 70% RAM)
+        # Default ctx from current config if not being updated
+        if new_ctx is None:
+            existing_cfg = get_model_config(module) or {}
+            new_ctx = existing_cfg.get("context_length", 8192)
+        tier_info = _classify_model_fit(
+            model_name=new_model_name,
+            context_length=int(new_ctx),
+        )
+        if not tier_info["can_save"]:
+            return jsonify({
+                "error": tier_info["message"],
+                "tier": tier_info["tier"],
+                "details": tier_info,
+            }), 400
+
     old_model = None
     if module == "embedding":
         old_config = get_model_config("embedding")
@@ -1239,6 +1488,16 @@ def update_model_config(module):
                 current_app.logger.warning(f"Failed to regenerate llama-swap config for {module}")
         except Exception as e:
             current_app.logger.warning(f"Error updating llama-swap config: {e}")
+
+    # ── Schedule background dry-load + auto-rollback on failure ──
+    if module != "embedding" and new_model_name:
+        try:
+            from app.tasks.dry_load import schedule_dry_load
+
+            schedule_dry_load(current_app, module, new_model_name)
+            result["dry_load_scheduled"] = True
+        except Exception as e:
+            current_app.logger.warning(f"Failed to schedule dry_load: {e}")
 
     return jsonify(result)
 

@@ -114,8 +114,10 @@ class BaseModule(TranslationMixin):
         """Format conversation history into a string."""
         return build_context_prompt(history, lang)
 
-    def _get_context_for_model(self, session_id: str, model_type: str, current_query: str, lang: str = "ru") -> str:
-        """Retrieve and prune conversation history with safety margin."""
+    def _get_context_for_model(
+        self, session_id: str, model_type: str, current_query: str, lang: str = "ru", user_id: str | None = None
+    ) -> str:
+        """Retrieve conversation history + SLM long-term memory with safety margin."""
         if not session_id:
             return ""
 
@@ -124,12 +126,14 @@ class BaseModule(TranslationMixin):
             return ""
 
         max_context_tokens = model_config.get("context_length", 32768)
+        slm_recall_limit = self.app.config.get("SLM_RECALL_LIMIT", 3) if hasattr(self, "app") and self.app else 3
+        slm_reserve = slm_recall_limit * 70  # ~70 tokens per fact
 
         # Apply safety margin to available tokens
         available_tokens = int(max_context_tokens * (self.context_history_percent / 100.0) * self.safety_margin)
 
         query_tokens = self._estimate_tokens(current_query, model_type, lang)
-        remaining_for_history = available_tokens - query_tokens - TEMPLATE_OVERHEAD
+        remaining_for_history = available_tokens - query_tokens - TEMPLATE_OVERHEAD - slm_reserve
 
         if remaining_for_history <= 0:
             self.logger.warning(
@@ -139,13 +143,34 @@ class BaseModule(TranslationMixin):
 
         # Load history with SQL-level limit
         history_msgs = get_session_text_history(session_id, remaining_for_history, max_messages=self.max_messages_limit)
+        history_str = self._build_context_prompt(history_msgs, lang) if history_msgs else ""
 
-        context = self._build_context_prompt(history_msgs, lang)
+        # SLM: load long-term memory facts (for both chat and reasoning models)
+        slm_facts_str = ""
+        slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
+        if slm:
+            slm_raw = slm.get_context(
+                current_query,
+                lang,
+                limit=slm_recall_limit,
+                profile=user_id,
+                semantic=(model_type == "reasoning"),
+            )
+            if slm_raw:
+                header = (
+                    "Дополнительная информация из долговременной памяти:"
+                    if lang == "ru"
+                    else "Additional context from long-term memory:"
+                )
+                slm_facts_str = f"\n\n{header}\n{slm_raw}"
+
+        # Combine: history first (dialog continuity), SLM facts after (long-term enrichment)
+        context = history_str + slm_facts_str
         context_tokens = self._estimate_tokens(context, model_type, lang)
 
         self.logger.info(
-            f"Context loaded: {len(history_msgs)} messages, {context_tokens} tokens "
-            f"({context_tokens / max_context_tokens * 100:.1f}% of {max_context_tokens})"
+            f"Context loaded: {len(history_msgs)} history msgs, "
+            f"{context_tokens} tokens ({context_tokens / max_context_tokens * 100:.1f}% of {max_context_tokens})"
         )
 
         return context
@@ -168,6 +193,24 @@ class BaseModule(TranslationMixin):
         )
         return None
 
+    def _save_to_slm(self, text: str, metadata: dict[str, Any] | None = None, user_id: str | None = None) -> None:
+        """Save a fact to SuperLocalMemory if available."""
+        slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
+        if slm and slm.available:
+            slm.remember(text, metadata=metadata, profile=user_id)
+
+    def _save_to_slm_async(self, text: str, metadata: dict[str, Any] | None = None, user_id: str | None = None) -> None:
+        """Save a fact to SLM in a background thread — does not block the response."""
+        import threading
+
+        t = threading.Thread(
+            target=self._save_to_slm,
+            args=(text,),
+            kwargs={"metadata": metadata, "user_id": user_id},
+            daemon=True,
+        )
+        t.start()
+
     # --- Existing methods with context added ---
     def process_message(
         self,
@@ -176,10 +219,13 @@ class BaseModule(TranslationMixin):
         lang: str = "ru",
         session_id: str | None = None,
         response_style: str = "neutral",
+        user_id: str | None = None,
     ) -> dict[str, Any]:
-        """Process text message through router model."""
+        """Process text message through router model — no history, no SLM.
+        Router only classifies the query; conversation context is handled
+        by the downstream chat/reasoning model.
+        """
         response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(session_id, "chat", message_text, lang)  # type: ignore[arg-type]
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )
@@ -190,7 +236,6 @@ class BaseModule(TranslationMixin):
                 "current_time_str": current_time_str,
                 "user_query": message_text,
                 "response_language": response_language,
-                "conversation_history": context_str,
                 "response_style": style_instruction,
             },
             lang=lang,
@@ -208,7 +253,7 @@ class BaseModule(TranslationMixin):
         router_messages = [
             {
                 "role": "system",
-                "content": "You are a request router. Answer ONLY with one line in the specified language. No explanations.",
+                "content": "STRICT CLASSIFICATION RULES — You are a query classifier. Output ONLY the result. No explanations, no extra text. SIMPLE queries (greetings, who-are-you, current time) → answer directly WITHOUT any marker. COMPLEX queries (code, math, writing) → use [-REASONING-]. IMAGE/VIDEO/CAMERA → use the appropriate marker. Never output [-REASONING-] for greetings or who-are-you questions. Never copy markers from examples into your response except when the query matches that category.",
             },
             {"role": "user", "content": prompt},
         ]
@@ -217,11 +262,25 @@ class BaseModule(TranslationMixin):
         router_response = self.call_llamacpp(router_messages, model_type="chat", lang=lang)
         self.logger.info(f"Router response: {router_response}")
 
+        # Retry once if router produced a garbled response (rare model inference glitch)
+        if (
+            isinstance(router_response, str)
+            and router_response.strip().startswith('{"error"')
+        ):
+            self.logger.warning(f"Router returned error, retrying once: {router_response[:100]}")
+            router_response = self.call_llamacpp(router_messages, model_type="chat", lang=lang)
+            self.logger.info(f"Router retry response: {router_response}")
+
         if router_response is None:
             self.logger.error("Router response is None")
             return {"error": self._("Model returned empty response", lang)}
 
-        return self._parse_router_response(router_response, message_text, current_time_str, lang)  # type: ignore[arg-type]
+        result = self._parse_router_response(router_response, message_text, current_time_str, lang)  # type: ignore[arg-type]
+        if "error" not in result:
+            self._save_to_slm_async(
+                message_text, metadata={"session_id": session_id, "type": "user_query"}, user_id=user_id
+            )
+        return result
 
     def _parse_router_response(
         self, response: str, original_query: str, current_time_str: str, lang: str = "ru"
@@ -248,10 +307,25 @@ class BaseModule(TranslationMixin):
         for marker, action in markers.items():
             if marker in response:
                 parts = response.split(marker, 1)
-                processed = parts[1].strip() if len(parts) > 1 else ""
+                if action in ("image", "video"):
+                    # Image/video: text after marker is unreliable (copied from history).
+                    # Use the original user query instead.
+                    processed = original_query
+                elif action == "camera":
+                    # Camera: text after marker is the room code ("gos", "kab", etc.)
+                    # or the query itself for room name extraction. Use it directly.
+                    processed = parts[1].strip() if len(parts) > 1 else ""
+                    processed = processed.split("\n")[0].strip()
+                    if not processed and original_query:
+                        processed = original_query
+                else:
+                    processed = parts[1].strip() if len(parts) > 1 else ""
+                    processed = processed.split("\n")[0].strip()
+                    if original_query and len(processed) > len(original_query) * 1.5:
+                        processed = original_query
                 return {"action": action, "query": processed, "needs_reasoning": (action == "reasoning")}
 
-        return {"action": "none", "query": response, "needs_reasoning": False}
+        return {"action": "none", "query": original_query, "needs_reasoning": False}
 
     def process_reasoning(
         self,
@@ -260,13 +334,17 @@ class BaseModule(TranslationMixin):
         lang: str = "ru",
         session_id: str | None = None,
         response_style: str = "neutral",
+        user_id: str | None = None,
+        rag_context: str = "",
     ) -> str:
         """Process complex query via reasoning model."""
         response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(session_id, "reasoning", query, lang)  # type: ignore[arg-type]
+        context_str = self._get_context_for_model(session_id, "reasoning", query, lang, user_id=user_id)  # type: ignore[arg-type]
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )
+
+        rag_context_str = rag_context if rag_context else self._("No additional information from documents.", lang)
 
         reasoning_prompt = format_prompt(
             "reasoning.template",
@@ -276,6 +354,7 @@ class BaseModule(TranslationMixin):
                 "response_language": response_language,
                 "conversation_history": context_str,
                 "response_style": style_instruction,
+                "rag_context": rag_context_str,
             },
             lang=lang,
         )
@@ -304,10 +383,11 @@ class BaseModule(TranslationMixin):
         lang: str = "ru",
         session_id: str | None = None,
         response_style: str = "neutral",
+        user_id: str | None = None,
     ) -> Generator[str, None, None]:
         """Build prompt and stream chat model response."""
         response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(session_id, "chat", query, lang)  # type: ignore[arg-type]
+        context_str = self._get_context_for_model(session_id, "chat", query, lang, user_id=user_id)  # type: ignore[arg-type]
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )
@@ -343,10 +423,11 @@ class BaseModule(TranslationMixin):
         lang: str = "ru",
         session_id: str | None = None,
         response_style: str = "neutral",
+        user_id: str | None = None,
     ) -> Generator[str, None, None]:
         """Build prompt and stream reasoning model response."""
         response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(session_id, "reasoning", query, lang)  # type: ignore[arg-type]
+        context_str = self._get_context_for_model(session_id, "reasoning", query, lang, user_id=user_id)  # type: ignore[arg-type]
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )

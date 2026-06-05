@@ -212,6 +212,17 @@ def create_app():
 
     modules["audio"] = AudioModule(app)
 
+    if app.config.get("SLM_URL"):
+        from modules.slm import SlmModule
+
+        modules["slm"] = SlmModule(app)
+        if modules["slm"].available:
+            app.logger.info("SuperLocalMemory (SLM) module enabled")
+        else:
+            app.logger.warning("SuperLocalMemory (SLM) configured but not available")
+    else:
+        app.logger.info("SuperLocalMemory (SLM) module disabled (SLM_URL not set)")
+
     from modules.tts import TTSModule
 
     if app.config.get("PIPER_URL"):
@@ -221,6 +232,19 @@ def create_app():
         app.logger.info("TTS module disabled (PIPER_URL not set)")
 
     app.modules = modules
+
+    # Background SLM import: process unimported messages without blocking startup
+    if modules.get("slm") and modules["slm"].available:
+        _start_background_slm_import(app)
+
+    # Watchdog: detect llama-swap crash loops and auto-rollback
+    if app.config.get("LLAMACP_BACKEND") == "llama-swap":
+        try:
+            from app.tasks.health_monitor import start_watchdog
+
+            start_watchdog(app)
+        except Exception as e:
+            app.logger.warning(f"Could not start watchdog: {e}")
 
     # Initialize Redis queue
     app.request_queue = RedisRequestQueue(app)
@@ -257,6 +281,7 @@ def create_app():
     app.cli.add_command(cli.set_admin_password)
     app.cli.add_command(cli.cleanup_uploads)
     app.cli.add_command(cli.migrate_messages_format)
+    app.cli.add_command(cli.import_history_to_slm)
 
     # Additional camera routes
     if "cam" in modules:
@@ -565,3 +590,29 @@ def create_app():
         return "\n".join(metrics_output) + "\n", 200, {"Content-Type": "text/plain; charset=utf-8"}
 
     return app
+
+
+def _start_background_slm_import(app: Flask) -> None:
+    """Start a background thread to import unprocessed messages into SLM."""
+    import threading
+
+    def _run_import() -> None:
+        with app.app_context():
+            slm = app.modules.get("slm")  # type: ignore[attr-defined]
+            if not slm or not slm.available:
+                app.logger.info("SLM import skipped: module not available")
+                return
+            try:
+                from app.slm_import import import_all_users
+
+                results = import_all_users(slm)
+                total = sum(r[0] for r in results.values())
+                app.logger.info(
+                    "Background SLM import complete: %d messages imported across %d users", total, len(results)
+                )
+            except Exception:
+                app.logger.exception("Background SLM import failed")
+
+    thread = threading.Thread(target=_run_import, daemon=True, name="slm-import")
+    thread.start()
+    app.logger.info("Background SLM import thread started")

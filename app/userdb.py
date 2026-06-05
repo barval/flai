@@ -193,6 +193,12 @@ def delete_user(login):
         # 6. Delete user storage quota
         c.execute("DELETE FROM user_storage WHERE user_id = %s", (user_id,))
 
+        # 7. Delete user's SLM (SuperLocalMemory) database if it exists
+        slm_data_dir = os.path.join(current_app.config.get("SLM_DATA_DIR", "/app/data/slm"), login)
+        if os.path.exists(slm_data_dir):
+            with contextlib.suppress(Exception):
+                shutil.rmtree(slm_data_dir, ignore_errors=True)
+
         # Finally delete the user
         c.execute("DELETE FROM users WHERE login = %s", (login,))
 

@@ -179,6 +179,14 @@ def _init_postgresql():
             used_bytes INTEGER DEFAULT 0
         )
     """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS slm_import_progress (
+            user_id TEXT PRIMARY KEY,
+            last_message_id INTEGER NOT NULL DEFAULT 0,
+            total_imported INTEGER NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
 
     # Create indexes
     c.execute("CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)")
@@ -196,11 +204,77 @@ def _init_postgresql():
         c.execute("""
             INSERT INTO model_configs (module, model_name, context_length, temperature, top_p, timeout, service_url, repeat_penalty)
             VALUES
-                ('chat', 'Qwen3-4B-Instruct-2507-Q4_K_M', 8192, 0.1, 0.1, 120, 'http://flai-llamacpp:8033', 1.1),
-                ('reasoning', 'gpt-oss-20b-Q4_K_M', 8192, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.15),
+                ('chat', 'Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf', 16384, 0.1, 0.1, 120, 'http://flai-llamacpp:8033', 1.1),
+                ('reasoning', 'gpt-oss-20b-Q4_K_M', 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.15),
                 ('multimodal', 'Qwen3VL-8B-Instruct-Q4_K_M', 8192, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
                 ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://flai-llamacpp:8033', NULL)
         """)
+
+    # model_vram_estimates — хранит вычисленную оценку и реальные замеры VRAM для каждой модели
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS model_vram_estimates (
+            module TEXT NOT NULL,
+            model_name TEXT NOT NULL DEFAULT 'unknown',
+            context_length INTEGER,
+            n_gpu_layers INTEGER,
+            estimated_vram_mb INTEGER,
+            measured_vram_mb INTEGER,
+            measurement_count INTEGER DEFAULT 0,
+            last_measured_at TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (module, model_name)
+        )
+    """)
+
+    # Migration: PK (module) → (module, model_name).
+    # Older deployments had PRIMARY KEY (module) and allowed model_name=NULL,
+    # which caused "phantom" measurements to leak between models in the same module.
+    c.execute("""
+        DO $migrate$
+        DECLARE
+            pk_cols TEXT;
+            has_model_name_col BOOLEAN;
+        BEGIN
+            -- Drop old single-column PK if it exists
+            SELECT string_agg(a.attname, ',' ORDER BY a.attnum) INTO pk_cols
+            FROM pg_constraint c
+            JOIN pg_class t ON c.conrelid = t.oid
+            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(c.conkey)
+            WHERE t.relname = 'model_vram_estimates' AND c.contype = 'p';
+
+            IF pk_cols = 'module' THEN
+                -- Backfill NULL model_names before tightening the schema
+                UPDATE model_vram_estimates SET model_name = 'unknown' WHERE model_name IS NULL;
+                -- If the unknown group already exists for this module, merge: keep the row
+                -- with most measurements, delete the duplicates.
+                DELETE FROM model_vram_estimates a
+                USING model_vram_estimates b
+                WHERE a.module = b.module
+                  AND a.model_name = 'unknown' AND b.model_name = 'unknown'
+                  AND a.ctid <> b.ctid
+                  AND (a.measurement_count, a.updated_at) < (b.measurement_count, b.updated_at);
+                ALTER TABLE model_vram_estimates DROP CONSTRAINT model_vram_estimates_pkey;
+                ALTER TABLE model_vram_estimates ALTER COLUMN model_name SET DEFAULT 'unknown';
+                ALTER TABLE model_vram_estimates ALTER COLUMN model_name SET NOT NULL;
+                ALTER TABLE model_vram_estimates ADD PRIMARY KEY (module, model_name);
+            END IF;
+
+            -- Make model_name NOT NULL if it isn't already (in case PK migration
+            -- was skipped because PK was already composite from a fresh install)
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'model_vram_estimates'
+                  AND column_name = 'model_name' AND is_nullable = 'YES'
+            ) INTO has_model_name_col;
+
+            IF has_model_name_col THEN
+                UPDATE model_vram_estimates SET model_name = 'unknown' WHERE model_name IS NULL;
+                ALTER TABLE model_vram_estimates ALTER COLUMN model_name SET DEFAULT 'unknown';
+                ALTER TABLE model_vram_estimates ALTER COLUMN model_name SET NOT NULL;
+            END IF;
+        END
+        $migrate$
+    """)
 
     # Add response_style column to messages table
     c.execute("""
@@ -226,6 +300,14 @@ def _init_postgresql():
         $migrate$
     """)
 
+    # Switch chat model back to Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf (Instruct, ~2 GB)
+    for old_name in ['Qwen3-1.7B-Q8_0.gguf', 'Qwen3-1.7B-Instruct-Q4_K_M', 'Qwen3-4B-Instruct-2507-Q4_K_M']:
+        c.execute("""
+            UPDATE model_configs
+            SET model_name = 'Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf'
+            WHERE module = 'chat' AND model_name = %s
+        """, (old_name,))
+
     conn.commit()
     conn.close()
     logger.info("PostgreSQL database initialized")
@@ -239,3 +321,102 @@ def get_database_type() -> str:
 def is_postgresql() -> bool:
     """Always True — PostgreSQL is the only supported database."""
     return True
+
+
+# ── VRAM estimates helpers ──────────────────────────────────────
+
+def get_vram_estimate(
+    module: str,
+    model_name: str | None = None,
+) -> dict | None:
+    """Get VRAM estimate for a module from model_vram_estimates table.
+
+    If model_name is provided — exact (module, model_name) match.
+    If model_name is None — most recently updated record for the module
+    (legacy behavior; returns None if no rows).
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+        if model_name is not None:
+            c.execute(
+                "SELECT * FROM model_vram_estimates WHERE module = %s AND model_name = %s",
+                (module, model_name),
+            )
+        else:
+            c.execute(
+                "SELECT * FROM model_vram_estimates WHERE module = %s "
+                "ORDER BY updated_at DESC LIMIT 1",
+                (module,),
+            )
+        row = c.fetchone()
+        return dict(row) if row else None
+
+
+def upsert_vram_estimate(
+    module: str,
+    model_name: str,
+    context_length: int,
+    n_gpu_layers: int,
+    estimated_mb: int | None = None,
+    measured_mb: int | None = None,
+) -> None:
+    """Insert or update VRAM estimate for a (module, model_name) row.
+
+    Measurements are scoped to the specific model_name; switching to a new model
+    in the same module creates a fresh row with measured_vram_mb=NULL and
+    measurement_count=0 — old measurements stay attached to the previous model.
+    """
+    with get_db() as conn:
+        c = conn.cursor()
+
+        existing = None
+        c.execute(
+            "SELECT * FROM model_vram_estimates WHERE module = %s AND model_name = %s",
+            (module, model_name),
+        )
+        row = c.fetchone()
+        if row:
+            existing = dict(row)
+
+        if existing:
+            if measured_mb is not None:
+                new_count = (existing.get("measurement_count") or 0) + 1
+                # Weighted average: smooth measurements over time
+                old_weight = min(new_count - 1, 10)  # cap at 10 for smoothing
+                new_weight = 1
+                total_weight = old_weight + new_weight
+                avg_mb = (
+                    (existing.get("measured_vram_mb") or 0) * old_weight +
+                    measured_mb * new_weight
+                ) // total_weight
+                c.execute("""
+                    UPDATE model_vram_estimates
+                    SET model_name = %s, context_length = %s, n_gpu_layers = %s,
+                        estimated_vram_mb = COALESCE(%s, estimated_vram_mb),
+                        measured_vram_mb = %s,
+                        measurement_count = %s,
+                        last_measured_at = NOW(),
+                        updated_at = NOW()
+                    WHERE module = %s AND model_name = %s
+                """, (model_name, context_length, n_gpu_layers,
+                     estimated_mb, avg_mb, new_count, module, model_name))
+            else:
+                c.execute("""
+                    UPDATE model_vram_estimates
+                    SET model_name = %s, context_length = %s, n_gpu_layers = %s,
+                        estimated_vram_mb = COALESCE(%s, estimated_vram_mb),
+                        updated_at = NOW()
+                    WHERE module = %s AND model_name = %s
+                """, (model_name, context_length, n_gpu_layers,
+                     estimated_mb, module, model_name))
+        else:
+            c.execute("""
+                INSERT INTO model_vram_estimates
+                    (module, model_name, context_length, n_gpu_layers,
+                     estimated_vram_mb, measured_vram_mb,
+                     measurement_count, last_measured_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+            """, (module, model_name, context_length, n_gpu_layers,
+                 estimated_mb, measured_mb,
+                 1 if measured_mb is not None else 0))
+        conn.commit()

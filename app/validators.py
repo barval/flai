@@ -116,6 +116,8 @@ def validate_model_config_update(data: dict[str, Any] | None, module: str) -> di
         val = updates["context_length"]
         if not isinstance(val, int) or val < 512:
             errors.append("Context length must be at least 512")
+        # Upper bound is enforced dynamically in admin.py update_model_config
+        # using gguf_models_cache.context_length (architectural model max).
 
     if "temperature" in updates and updates["temperature"] is not None:
         val = updates["temperature"]

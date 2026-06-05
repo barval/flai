@@ -49,8 +49,18 @@ class MultimodalModule(TranslationMixin):
                 "image/webp",
                 "image/tiff",
                 "image/tif",
+                "image/gif",
+                # These pass the mimetype check but are rejected by the
+                # llama.cpp format check below (stb_image cannot decode them).
+                "image/heic",
+                "image/heif",
+                "image/avif",
             },
-            "supported_extensions": {".jpg", ".jpeg", ".jpe", ".png", ".bmp", ".webp", ".tif", ".tiff"},
+            "supported_extensions": {
+                ".jpg", ".jpeg", ".jpe", ".png", ".bmp",
+                ".webp", ".tif", ".tiff",
+                ".heic", ".heif", ".avif",
+            },
         }
 
         self.token_chars = app.config.get("TOKEN_CHARS", 3)
@@ -66,6 +76,10 @@ class MultimodalModule(TranslationMixin):
         from app.model_config import get_model_config
 
         return get_model_config("multimodal")  # type: ignore[no-any-return]
+
+    # Formats that llama.cpp (stb_image) can decode natively.
+    # Mirrors the set in app/utils.py:convert_to_supported_format_if_needed.
+    LLAMACPP_SUPPORTED_FORMATS = {"JPEG", "PNG", "BMP", "GIF", "TIFF"}
 
     def validate_image(
         self, file_data: str, file_type: str, file_name: str, file_size: int, lang: str = "ru"
@@ -89,6 +103,16 @@ class MultimodalModule(TranslationMixin):
                 template = self._("Maximum resolution {max_width}x{max_height}", lang)
                 return False, template.format(
                     max_width=self.image_settings["max_width"], max_height=self.image_settings["max_height"]
+                )
+
+            # Reject formats that llama.cpp (stb_image) cannot decode natively
+            # (HEIC, AVIF, WEBP, etc.). The caller can either convert the image
+            # or upload a JPEG/PNG instead. Only check when the format is known.
+            if img.format and img.format not in self.LLAMACPP_SUPPORTED_FORMATS:
+                return False, self._(
+                    "Image format {format} is not supported by multimodal model. Convert to JPEG or PNG.",
+                    lang,
+                    format=img.format,
                 )
 
             return True, None
@@ -193,12 +217,12 @@ class MultimodalModule(TranslationMixin):
                 return image_data
             ratio = max_size / max(w, h)
             new_w, new_h = int(w * ratio), int(h * ratio)
-            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)  # type: ignore[assignment]
             if img.mode in ("RGBA", "LA", "P"):
                 rgb_img = Image.new("RGB", img.size, (255, 255, 255))
                 mask = img.split()[-1] if img.mode == "RGBA" else None
                 rgb_img.paste(img, mask=mask)
-                img = rgb_img
+                img = rgb_img  # type: ignore[assignment]
             buf = BytesIO()
             img.save(buf, format="JPEG", quality=85)
             logger = logging.getLogger(__name__)
@@ -226,9 +250,13 @@ class MultimodalModule(TranslationMixin):
         if not prompt:
             return None, self._("Error loading prompt template", lang)
 
+        converted_data, _ = self._ensure_llamacpp_compatible(image_data)
         response = self.llamacpp.chat_with_image(
-            text=prompt, image_base64=image_data, model_type="multimodal", lang=lang
+            text=prompt, image_base64=converted_data, model_type="multimodal", lang=lang
         )
+        if self._is_vram_error(response):
+            self.logger.warning(f"Multimodal returned VRAM error: {response[:100] if response else 'None'}")
+            return None, self._("GPU memory unavailable. Please try again.", lang)
         return response, None
 
     def process_image_with_text_stream(
@@ -250,9 +278,28 @@ class MultimodalModule(TranslationMixin):
             yield "⚠️ " + self._("Error loading prompt template", lang)
             return
 
+        converted_data, _ = self._ensure_llamacpp_compatible(image_data)
         yield from self.llamacpp.chat_with_image_stream(
-            text=prompt, image_base64=image_data, model_type="multimodal", lang=lang
+            text=prompt, image_base64=converted_data, model_type="multimodal", lang=lang
         )
+
+    def _ensure_llamacpp_compatible(self, image_data: str) -> tuple[str, bool]:
+        """Convert image to JPEG if its format is not supported by llama.cpp (stb_image).
+
+        Returns (image_data, was_converted). Falls back to original data on any error.
+        """
+        from app.utils import convert_to_supported_format_if_needed
+
+        try:
+            converted_data, _new_type, _new_name, was_converted = convert_to_supported_format_if_needed(
+                image_data, "image/jpeg", "uploaded.jpg"
+            )
+            if was_converted:
+                self.logger.info("Image auto-converted to JPEG for llama.cpp compatibility")
+            return converted_data, was_converted
+        except Exception as e:
+            self.logger.warning(f"_ensure_llamacpp_compatible failed: {e}")
+            return image_data, False
 
     def generate_image_params(
         self, user_query: str, lang: str = "ru", response_style: str = "neutral"
@@ -290,6 +337,11 @@ class MultimodalModule(TranslationMixin):
         response = self._call_multimodal(messages, lang=lang)
 
         self.logger.info(f"Multimodal model response for parameter generation: {response[:500]}")
+
+        # Check for VRAM error before parsing JSON
+        if self._is_vram_error(response):
+            self.logger.warning(f"Multimodal returned VRAM error: {response[:100]}")
+            return None, self._("GPU memory unavailable. Please try again.", lang)
 
         try:
             import re
@@ -345,6 +397,11 @@ class MultimodalModule(TranslationMixin):
         response = self._call_multimodal(messages, lang=lang)
         self.logger.info(f"Multimodal model video param response: {response[:500]}")
 
+        # Check for VRAM error before parsing JSON
+        if self._is_vram_error(response):
+            self.logger.warning(f"Multimodal returned VRAM error: {response[:100]}")
+            return None, self._("GPU memory unavailable. Please try again.", lang)
+
         try:
             import re
 
@@ -398,6 +455,11 @@ class MultimodalModule(TranslationMixin):
         )
         self.logger.info(f"Multimodal model video-from-image param response: {response[:500]}")
 
+        # Check for VRAM error before parsing JSON
+        if self._is_vram_error(response):
+            self.logger.warning(f"Multimodal returned VRAM error: {response[:100]}")
+            return None, self._("GPU memory unavailable. Please try again.", lang)
+
         try:
             import re
 
@@ -450,6 +512,13 @@ class MultimodalModule(TranslationMixin):
         # LlamaCppClient handles validation and configuration internally
         return self.llamacpp.chat(messages, model_type="multimodal", lang=lang)  # type: ignore[no-any-return]
 
+    def _is_vram_error(self, response: str | None) -> bool:
+        """Check if the model response is a VRAM error message instead of JSON."""
+        if not response:
+            return False
+        indicators = ("GPU memory", "Память GPU", "недоступна", "недостаточно памяти")
+        return any(ind in response for ind in indicators)
+
     def generate_edit_params(
         self, user_query: str, image_base64: str, lang: str = "ru", response_style: str = "neutral"
     ) -> tuple[dict[str, Any] | None, str | None]:
@@ -482,6 +551,11 @@ class MultimodalModule(TranslationMixin):
         )
 
         self.logger.info(f"Multimodal model edit response: {response[:500]}")
+
+        # Check for VRAM error before parsing JSON
+        if self._is_vram_error(response):
+            self.logger.warning(f"Multimodal returned VRAM error: {response[:100]}")
+            return None, self._("GPU memory unavailable. Please try again.", lang)
 
         try:
             import re

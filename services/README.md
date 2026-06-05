@@ -68,15 +68,15 @@ mkdir -p services/sd_cpp/models/{diffusion_models,vae,text_encoders}
 
 # Diffusion model
 wget -O services/sd_cpp/models/diffusion_models/z_image_turbo-Q8_0.gguf \
-  "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf"
+  "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf"
 
 # VAE
 wget -O services/sd_cpp/models/vae/ae.safetensors \
-  "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/ae.safetensors"
+  "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors"
 
-# Text encoder (LLM) — shared with editing
+# Text encoder (LLM) — separate copy for SD
 wget -O services/sd_cpp/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
-  "https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507-GGUF/resolve/main/qwen3-4b-instruct-2507-q4_k_m.gguf"
+  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 ```
 **Params:** cfg_scale=1.0, steps=10, flow_shift=2, 1024x1024, no negative_prompt.
 
@@ -89,11 +89,11 @@ mkdir -p services/sd_cpp/models/{diffusion_models,vae,text_encoders}
 
 # Diffusion model
 wget -O services/sd_cpp/models/diffusion_models/flux-2-klein-4b-Q8_0.gguf \
-  "https://huggingface.co/bartowski/FLUX.2-Klein-dev-GGUF/resolve/main/flux-2-klein-4b-Q8_0.gguf"
+  "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF/resolve/main/flux-2-klein-4b-Q8_0.gguf"
 
 # VAE
 wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
-  "https://huggingface.co/bartowski/FLUX.2-dev-GGUF/resolve/main/flux2_ae.safetensors"
+  "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors"
 
 # Text encoder (LLM) — shared with Z-Image Turbo
 # Qwen3-4B-Instruct-2507-Q4_K_M.gguf (already downloaded for generation)

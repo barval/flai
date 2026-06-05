@@ -175,10 +175,15 @@ class RedisRequestQueue:
         queue_key = self.slow_queue_key if queue_type == "slow" else self.queue_key
 
         serialized = self._serialize(task)
-        self.redis.rpush(queue_key, serialized)
 
-        # Track per-user queue count
-        self._increment_user_queue_count(user_id)
+        # Atomic: RPUSH + HINCRBY in the same pipeline so get_user_queue_counts()
+        # never sees a task in the LIST before the hash counter is updated.
+        user_count_key = f"{self.queue_key}:user_counts"
+        pipe = self.redis.pipeline()
+        pipe.rpush(queue_key, serialized)
+        pipe.hincrby(user_count_key, user_id, 1)
+        pipe.hincrby(user_count_key, "__total__", 1)
+        pipe.execute()
 
         # Get position in queue
         position = self.redis.llen(queue_key)
@@ -228,41 +233,15 @@ class RedisRequestQueue:
         user_count = self.redis.hget(user_count_key, user_id)
         user_count = int(user_count) if user_count else 0
 
-        total_count = self.redis.hget(user_count_key, "__total__")
-        total_count = int(total_count) if total_count else 0
-        # Auto-heal: if the hash counter (__total__) drifts away from the actual
-        # queue+processing length, the hash is stale (e.g. after a worker crash
-        # mid-transition, or manual Redis cleanup). Reset it unconditionally —
-        # the next add_request() will rebuild the count.
-        # NOTE: compare against `total` (queue + processing), NOT queue_total
-        # (queue only). Using queue_total causes false auto-heals whenever a
-        # task moves from queue to processing (BLPOP reduces list length but
-        # __total__ stays until task completes), wiping user counts to 0.
-        if total_count != total:
-            self.redis.delete(user_count_key)
-            user_count = 0
-
         # Cap user_count to total — prevents impossible displays like "2/1"
         # when the hash counter drifts due to re-queue race conditions.
         return min(user_count, total), total
-
-    def _increment_user_queue_count(self, user_id: str):
-        """Increment user's queue count (O(1))."""
-        user_count_key = f"{self.queue_key}:user_counts"
-        pipe = self.redis.pipeline()
-        pipe.hincrby(user_count_key, user_id, 1)
-        pipe.hincrby(user_count_key, "__total__", 1)
-        pipe.execute()
 
     def _decrement_user_queue_count(self, user_id: str):
         """Decrement user's queue count (O(1))."""
         user_count_key = f"{self.queue_key}:user_counts"
         pipe = self.redis.pipeline()
-        count = self.redis.hget(user_count_key, user_id)
-        if count and int(count) > 0:
-            pipe.hincrby(user_count_key, user_id, -1)
-        else:
-            pipe.hdel(user_count_key, user_id)
+        pipe.hincrby(user_count_key, user_id, -1)
         pipe.hincrby(user_count_key, "__total__", -1)
         pipe.execute()
 

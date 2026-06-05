@@ -125,12 +125,11 @@ class TestRedisRequestQueue:
                 lang="ru",
             )
 
-            # Should have called rpush
-            assert mock_redis.rpush.called
-            # Should have incremented user count via pipeline.hincrby
-            assert mock_redis.pipeline.called
-            assert mock_redis.pipeline.return_value.hincrby.called
-            assert mock_redis.pipeline.return_value.execute.called
+            # RPUSH + HINCRBY should be called atomically via pipeline
+            pipe = mock_redis.pipeline.return_value
+            assert pipe.rpush.called
+            assert pipe.hincrby.called
+            assert pipe.execute.called
 
     def test_recover_stale_tasks(self, mock_app, mock_redis):
         """Test recovery of stale tasks from processing hash."""

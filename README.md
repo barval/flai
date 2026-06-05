@@ -100,7 +100,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | 🤖 **Default chat model upgraded** | `Qwen3-4B-Instruct-2507-Q4_K_M` → `Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf` (~2 GB, faster routing). Default ctx 8192 → 16384 for both chat and reasoning. |
 | 📦 **Deploy scripts: VRAM tier detection** | `deploy.sh` / `deploy-ru.sh` now detect GPU VRAM via `nvidia-smi` and auto-select reasoning model: 16 GB+ → `gpt-oss-20b-Q4_K_M`, 12 GB → `Qwen3-8B-Thinking-Q4_K_M`, 8 GB → `Qwen3-4B-Thinking`. |
 | 🧠 **SLM daemon mode** | SuperLocalMemory now runs as a proper daemon (`slm serve start`) keeping the embedding model in memory permanently. Replaced the per-request `subprocess --sync` calls. SLM recall latency reduced from ~10 s to ~1 ms. HTTP proxy (`slm_http.py`) forwards requests to daemon internally. **Per-user isolation:** recall reads directly from the user's private SQLite, not from the daemon's shared database. |
-| 🧠 **SLM context for both chat + reasoning** | SLM facts are now injected into prompts for BOTH chat and reasoning models (alongside full conversation history). Previously was reasoning-only with only 2 last messages. `SLM_RECALL_LIMIT=5` (default). |
+| 🧠 **SLM context for both chat + reasoning** | SLM facts are now injected into prompts for BOTH chat and reasoning models (alongside full conversation history). Previously was reasoning-only with only 2 last messages. `SLM_RECALL_LIMIT=7` (default). |
 | 🧠 **RAG fixes: router, streaming, context** | Router template now has dedicated category 5 for document/person/age queries → `[-RAG-]`. Streaming path (`_process_text_task_stream`) now calls RAG before requeuing to reasoning. Strict threshold lowered 0.7 → 0.5. Reasoning model receives document context via `{rag_context}`. RAG retry in `_process_reasoning_request`. |
 | 🎮 **Video VRAM fix: multimodal unload confirmation** | Fixed `_wait_for_vram_full()` — changed from impossible ≥80% threshold to `video_needed + 3 GB` buffer. Timeout increased 30 → 60 s. No more "proceeding anyway" into OOM. |
 | 🖼️ **Image display in streamed messages** | `finalizeStreamedMessage` renders images/videos from `result.file_path` / `result.file_data`. `file_data` added to `get_session_messages` SQL SELECT. `contextlib.suppress` replaced with proper logging in `db.py`. |
@@ -287,15 +287,15 @@ mkdir -p services/sd_cpp/models/{diffusion_models,vae,text_encoders}
 
 # Diffusion model
 wget -O services/sd_cpp/models/diffusion_models/z_image_turbo-Q8_0.gguf \
-  "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf"
+  "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf"
 
 # VAE
 wget -O services/sd_cpp/models/vae/ae.safetensors \
-  "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/ae.safetensors"
+  "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors"
 
-# LLM text encoder (shared with chat)
-wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf \
-  "https://huggingface.co/bartowski/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf"
+# LLM text encoder (for SD, separate copy with Q4_K_M quantization)
+wget -O services/sd_cpp/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
+  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 ```
 
 #### Image Editing Models (Flux.2 Klein 4B)
@@ -303,14 +303,14 @@ wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf \
 ```bash
 # Diffusion model for editing
 wget -O services/sd_cpp/models/diffusion_models/flux-2-klein-4b-Q8_0.gguf \
-  "https://huggingface.co/bartowski/FLUX.2-Klein-dev-GGUF/resolve/main/flux-2-klein-4b-Q8_0.gguf"
+  "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF/resolve/main/flux-2-klein-4b-Q8_0.gguf"
 
 # VAE for editing
 wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
-  "https://huggingface.co/bartowski/FLUX.2-dev-GGUF/resolve/main/flux2_ae.safetensors"
+  "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors"
 ```
 
-> The text encoder `Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf` is **shared** between generation and editing. Download it once.
+> The text encoder for SD (`Qwen3-4B-Instruct-2507-Q4_K_M.gguf`) is a separate copy downloaded to `services/sd_cpp/models/text_encoders/`. The chat model (`Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf`) in `services/llamacpp/models/` is a different quantization.
 
 > ⚠️ **Important**: Multimodal models **must** be placed in a subdirectory named after the model, with the `mmproj-*.gguf` file inside. The llama.cpp router automatically discovers and loads the projector.
 
@@ -461,9 +461,8 @@ Configuration is loaded from `gunicorn_config.py`, not inline CLI args.
 
 | Setting | Value | Reason |
 |---------|-------|--------|
-| workers | 1 | Minimal RAM (+40MB); all requests wait for the same AI backend |
-| threads | 4 | Handles 4 concurrent I/O-bound connections |
-| worker_class | gthread | Optimal for waiting on AI responses |
+| workers | 2 | One for SSE streaming, one for regular requests |
+| worker_class | gevent | Async I/O-optimized worker for concurrent connections |
 | timeout | 900s | Accommodates long operations (image editing up to 15 min) |
 | graceful_timeout | 30s | Graceful worker shutdown |
 | keepalive | 5s | Connection reuse for health checks |
@@ -525,11 +524,11 @@ services/llamacpp/models/
 
 | Parameter | Chat | Reasoning | Multimodal | Embedding |
 |-----------|------|-----------|------------|-----------|
-| Context Length | 8192 | 32768 | 8192 | 512 |
+| Context Length | 16384 | 16384 | 8192 | 512 |
 | Temperature | 0.1 | 0.7 | 0.7 | – |
 | Top P | 0.1 | 0.9 | 0.9 | – |
 | Repeat Penalty | 1.1 | 1.15 | 1.1 | – |
-| Timeout (s) | 60 | 300 | 120 | 30 |
+| Timeout (s) | 120 | 120 | 120 | 120 |
 
 ---
 
@@ -838,22 +837,22 @@ curl http://localhost:5000/metrics
 | **Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf** | Chat (fast responses) | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2 GB |
 | **gpt-oss-20b-Q4_K_M** | Reasoning (complex tasks) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 GB |
 | **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (image analysis) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5 GB + mmproj ~1.1 GB |
-| **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~0.6 GB |
+| **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~1.5 GB |
 
 ### Image Generation Models (stable-diffusion.cpp)
 
 | Model | Purpose | License | Approx. Size |
 |-------|---------|---------|-------------|
-| **Z-Image-Turbo (z_image_turbo-Q8_0)** | Image generation | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~6.2 GB |
-| **ae.safetensors** (VAE) | Variational autoencoder for Z-Image | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~0.3 GB |
-| **Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf** | Text encoder for Z-Image | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2 GB *(shared with chat)* |
+| **Z-Image-Turbo (z_image_turbo-Q8_0)** | Image generation | [Apache 2.0](https://huggingface.co/leejet/Z-Image-Turbo-GGUF) | ~6.5 GB |
+| **ae.safetensors** (VAE) | Variational autoencoder for Z-Image | [Apache 2.0](https://huggingface.co/Comfy-Org/z_image_turbo) | ~0.3 GB |
+| **Qwen3-4B-Instruct-2507-Q4_K_M.gguf** | Text encoder for Z-Image | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2 GB |
 
 ### Image Editing Models (stable-diffusion.cpp)
 
 | Model | Purpose | License | Approx. Size |
 |-------|---------|---------|-------------|
-| **Flux.2 Klein 4B (flux-2-klein-4b-Q8_0)** | Image editing (change colors, remove objects, stylize) | [Flux License](https://huggingface.co/black-forest-labs/FLUX.2-Klein-dev) | ~4.5 GB |
-| **flux2_ae.safetensors** | VAE for Flux.2 editing | [Flux License](https://huggingface.co/black-forest-labs/FLUX.2-dev) | ~0.3 GB |
+| **Flux.2 Klein 4B (flux-2-klein-4b-Q8_0)** | Image editing (change colors, remove objects, stylize) | [Apache 2.0](https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF) | ~5 GB |
+| **flux2_ae.safetensors** | VAE for Flux.2 editing | [Flux License](https://huggingface.co/Comfy-Org/flux2-dev) | ~0.3 GB |
 
 ### Video Generation Models
 

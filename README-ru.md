@@ -100,7 +100,7 @@
 | 🤖 **Обновлена дефолтная чат-модель** | `Qwen3-4B-Instruct-2507-Q4_K_M` → `Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf` (~2 ГБ, более быстрый роутинг). Дефолтный ctx 8192 → 16384 для чата и рассуждений. |
 | 📦 **Deploy-скрипты: определение уровня VRAM** | `deploy.sh` / `deploy-ru.sh` теперь определяют VRAM GPU через `nvidia-smi` и авто-выбирают рассуждающую модель: 16+ ГБ → `gpt-oss-20b-Q4_K_M`, 12 ГБ → `Qwen3-8B-Thinking-Q4_K_M`, 8 ГБ → `Qwen3-4B-Thinking`. |
 | 🧠 **SLM в режиме демона** | SuperLocalMemory теперь работает как полноценный демон (`slm serve start`), постоянно держа модель эмбеддингов в памяти. Задержка recall снижена с ~10 с до ~1 мс. HTTP-прокси (`slm_http.py`) перенаправляет запросы. **Изоляция пользователей:** recall читает напрямую из per-user SQLite. |
-| 🧠 **SLM контекст для чата + рассуждений** | Факты SLM добавляются в промпт для обеих моделей вместе с полной историей диалога. `SLM_RECALL_LIMIT=5` по умолчанию. |
+| 🧠 **SLM контекст для чата + рассуждений** | Факты SLM добавляются в промпт для обеих моделей вместе с полной историей диалога. `SLM_RECALL_LIMIT=7` по умолчанию. |
 | 🧠 **Исправления RAG: роутер, стриминг, контекст** | Шаблон роутера получил категорию 5 для запросов про документы/людей/возраст → `[-RAG-]`. Стриминг (`_process_text_task_stream`) вызывает RAG перед перекьюиванием. Строгий порог 0.7 → 0.5. Рассуждающая модель получает контекст документов через `{rag_context}`. |
 | 🎮 **Исправление VRAM видео: подтверждение выгрузки multimodal** | Исправлен `_wait_for_vram_full()` — невозможный порог ≥80% заменён на `video_needed + 3 ГБ`. Таймаут 30 → 60 с. Никаких «продолжаем вопреки» в OOM. |
 | 🖼️ **Отображение изображений в стриминговых сообщениях** | `finalizeStreamedMessage` отрисовывает изображения/видео из `result.file_path` / `result.file_data`. `file_data` добавлен в `get_session_messages` SQL SELECT. |
@@ -130,7 +130,7 @@
 
 ```text
 ┌───────────────────────────────────────────────────────────────┐
-│              FLAI Web (Flask)                        │
+│                    ПЛИИ Web (Flask)                           │
 │           Очередь Redis → Маршрутизатор → Ответ               │
 └──────┬──────────┬────────────┬──────────────┬─────────────────┘
        │          │            │              │
@@ -290,15 +290,15 @@ mkdir -p services/sd_cpp/models/{diffusion_models,vae,text_encoders}
 
 # Диффузионная модель
 wget -O services/sd_cpp/models/diffusion_models/z_image_turbo-Q8_0.gguf \
-  "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf"
+  "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q8_0.gguf"
 
 # VAE
 wget -O services/sd_cpp/models/vae/ae.safetensors \
-  "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/ae.safetensors"
+  "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors"
 
-# Текстовый кодировщик LLM (общий с чатом)
-wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf \
-  "https://huggingface.co/bartowski/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf"
+# Текстовый кодировщик LLM (для SD, отдельная копия с квантизацией Q4_K_M)
+wget -O services/sd_cpp/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
+  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 ```
 
 #### Модели редактирования изображений (Flux.2 Klein 4B)
@@ -306,14 +306,14 @@ wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf \
 ```bash
 # Диффузионная модель для редактирования
 wget -O services/sd_cpp/models/diffusion_models/flux-2-klein-4b-Q8_0.gguf \
-  "https://huggingface.co/bartowski/FLUX.2-Klein-dev-GGUF/resolve/main/flux-2-klein-4b-Q8_0.gguf"
+  "https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF/resolve/main/flux-2-klein-4b-Q8_0.gguf"
 
 # VAE для редактирования
 wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
-  "https://huggingface.co/bartowski/FLUX.2-dev-GGUF/resolve/main/flux2_ae.safetensors"
+  "https://huggingface.co/Comfy-Org/flux2-dev/resolve/main/split_files/vae/flux2-vae.safetensors"
 ```
 
-> Текстовый кодировщик `Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf` используется **общий** и для генерации, и для редактирования. Скачайте его один раз.
+> Текстовый кодировщик для SD (`Qwen3-4B-Instruct-2507-Q4_K_M.gguf`) — отдельная копия в `services/sd_cpp/models/text_encoders/`. Чат-модель (`Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf`) в `services/llamacpp/models/` — это другая квантизация.
 
 > ⚠️ **Важно**: Мультимодальные модели **обязательно** должны лежать в поддиректории с именем модели, а файл проектора `mmproj-*.gguf` — внутри неё. Роутер llama.cpp автоматически обнаружит и загрузит проектор.
 
@@ -464,12 +464,11 @@ DEBUG_API_ENABLED=false   # Установите 'true' только для ра
 
 | Параметр | Значение | Причина |
 |----------|----------|--------|
-| workers | 1 | Минимальное потребление ОЗУ (+40 МБ); все запросы ожидают один и тот же AI-бэкенд |
-| threads | 4 | Обработка 4 одновременных I/O-подключений |
-| worker_class | gthread | Оптимально для ожидания ответов ИИ |
+| workers | 2 | Один для SSE-стриминга, другой для обычных запросов |
+| worker_class | gevent | Асинхронный I/O-оптимизированный воркер |
 | timeout | 900 с | Учитывает длительные операции (редактирование изображений до 15 мин) |
 | graceful_timeout | 30 с | Плавное завершение воркеров |
-| keepalive | 5 с | Переиспользование соединений для healthcheck
+| keepalive | 5 с | Переиспользование соединений для healthcheck |
 
 ### Профили Docker Compose
 
@@ -528,11 +527,11 @@ services/llamacpp/models/
 
 | Параметр | Чат | Рассуждения | Мультимодальность | Эмбеддинг |
 |----------|-----|-------------|-------------------|-----------|
-| Длина контекста | 8192 | 32768 | 8192 | 512 |
+| Длина контекста | 16384 | 16384 | 8192 | 512 |
 | Температура | 0.1 | 0.7 | 0.7 | – |
 | Top P | 0.1 | 0.9 | 0.9 | – |
 | Штраф за повтор | 1.1 | 1.15 | 1.1 | – |
-| Таймаут (с) | 60 | 300 | 120 | 30 |
+| Таймаут (с) | 120 | 120 | 120 | 120 |
 
 ---
 
@@ -835,22 +834,22 @@ curl http://localhost:5000/metrics
 | **Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf** | Чат (быстрые ответы) | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2 ГБ |
 | **gpt-oss-20b-Q4_K_M** | Рассуждения (сложные задачи) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 ГБ |
 | **Qwen3VL-8B-Instruct-Q4_K_M** | Мультимодальность (анализ изображений) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5 ГБ + mmproj ~1,1 ГБ |
-| **bge-m3-Q8_0** | Эмбеддинги (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~0,6 ГБ |
+| **bge-m3-Q8_0** | Эмбеддинги (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~1,5 ГБ |
 
 ### Модели генерации изображений (stable-diffusion.cpp)
 
 | Модель | Назначение | Лицензия | Примерный размер |
 |--------|-----------|---------|--------------|
-| **Z-Image-Turbo (z_image_turbo-Q8_0)** | Генерация изображений | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~6,2 ГБ |
-| **ae.safetensors** (VAE) | Вариационный автоэнкодер для Z-Image | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~0,3 ГБ |
-| **Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf** | Текстовый кодировщик для Z-Image | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2 ГБ *(общая с чатом)* |
+| **Z-Image-Turbo (z_image_turbo-Q8_0)** | Генерация изображений | [Apache 2.0](https://huggingface.co/leejet/Z-Image-Turbo-GGUF) | ~6,5 ГБ |
+| **ae.safetensors** (VAE) | Вариационный автоэнкодер для Z-Image | [Apache 2.0](https://huggingface.co/Comfy-Org/z_image_turbo) | ~0,3 ГБ |
+| **Qwen3-4B-Instruct-2507-Q4_K_M.gguf** | Текстовый кодировщик для Z-Image | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2 ГБ |
 
 ### Модели редактирования изображений (stable-diffusion.cpp)
 
 | Модель | Назначение | Лицензия | Примерный размер |
 |--------|------------|----------|-----------------|
-| **Flux.2 Klein 4B (flux-2-klein-4b-Q8_0)** | Редактирование (смена цветов, удаление объектов, стилизация) | [Flux License](https://huggingface.co/black-forest-labs/FLUX.2-Klein-dev) | ~4,5 ГБ |
-| **flux2_ae.safetensors** | VAE для Flux.2 редактирования | [Flux License](https://huggingface.co/black-forest-labs/FLUX.2-dev) | ~0,3 ГБ |
+| **Flux.2 Klein 4B (flux-2-klein-4b-Q8_0)** | Редактирование (смена цветов, удаление объектов, стилизация) | [Apache 2.0](https://huggingface.co/leejet/FLUX.2-klein-4B-GGUF) | ~5 ГБ |
+| **flux2_ae.safetensors** | VAE для Flux.2 редактирования | [Flux License](https://huggingface.co/Comfy-Org/flux2-dev) | ~0,3 ГБ |
 
 ### Модели генерации видео
 

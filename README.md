@@ -773,121 +773,49 @@ curl http://localhost:5000/metrics
 ### ✅ Completed
 
 - **llama.cpp router mode** (`--models-dir`) — single llama-server with dynamic model switching
-- **stable-diffusion.cpp** — Z-Image-Turbo for generation, Flux.2 Klein 4B for editing
+- **llama-swap backend** — dynamic model management, auto-generated config from DB, GPU VRAM optimization
 - **OpenAI-compatible API** (`/v1/chat/completions`, `/v1/embeddings`)
-- **Multimodal support** via mmproj in subdirectories
-- **Dynamic model switching** with `--models-max 1`
-- **Individual model parameters** via `models-preset.ini`
-- **GGUF model management** via admin panel — configure models per module (chat, reasoning, multimodal, embedding) directly from the web interface
-- **All translations updated** for llama.cpp and llama-swap terminology (EN + RU)
-- **Piper TTS optimization** for large text synthesis — chunked processing with seamless audio transitions
-- **llama-swap backend** — dynamic model management and GPU VRAM optimization, auto-generated config from DB
+- **Multimodal support** — mmproj in subdirectories, image analysis via Qwen3VL
+- **GGUF model management** via admin panel — configure models per module (chat, reasoning, multimodal, embedding) from the web interface
+- **Image generation & editing** — Z_image_turbo for generation, Flux.2 Klein 4B for editing
+- **Video generation (LTX-Video 2B)** — text-to-video and image+text-to-video, separate GPU container
 - **Voice features** — Whisper ASR (faster_whisper) speech-to-text + Piper TTS with male/female voices in EN/RU
-- **Image generation & editing** — create images from text via Z_image_turbo, edit uploaded images via Flux.2 Klein 4B
-- **RAG document search** — upload PDF/DOC/DOCX/TXT, vector search via Qdrant with configurable chunking
-- **Camera integration** — request snapshots from IP cameras, analyze with multimodal models, granular user permissions
-- **Backup & restore** — full or users-only backups from the admin panel (pg_dump + tar.gz archives)
-- **Admin CLI tools** — `admin-password` for password reset, `cleanup-uploads` for orphaned file removal
-- **Health check & metrics** — `/health` endpoint with service status, `/metrics` for Prometheus
+- **RAG document search** — PDF/DOC/DOCX/TXT upload, vector search via Qdrant with configurable chunking
+- **SuperLocalMemory (SLM)** — long-term cross-session memory, daemon mode, per-user SQLite isolation, ~1 ms recall latency
+- **RAG: generation on slow worker** — fast worker does only search, reasoning model generates answer; prevents GPU contention; RAG prompt uses ONLY context (no hallucination)
+- **5-layer model protection in admin panel** — 3-tier VRAM/RAM classification (🟢 good / 🟡 cpu_offload / 🔴 impossible / ⚠ unknown), server-side validation, background dry-load + auto-rollback, crash-loop watchdog
+- **Camera integration** — IP camera snapshots, multimodal analysis, granular user permissions
+- **Backup & restore** — full or users-only backups from admin panel (pg_dump + tar.gz)
+- **Multi-language support** — full interface and AI responses in Russian and English
+- **VRAM management** — `ensure_vram_for_llm()`, auto-unload LTX-Video before SD/video, VRAM freed between every GPU task
+- **Dynamic VRAM estimation** — computed from GGUF metadata (file_size, block_count, ctx) + real measurements stored in DB; admin panel shows color-coded percentage bars
+- **Adaptive model degradation** — iterative `n_gpu_layers` reduction on OOM, per-model-type circuit breakers, reasoning 502 retry with degrade
+- **GPU requirement + 3 hardware tiers** — auto-detect VRAM via `nvidia-smi` in deploy scripts (8/12/16+ GB)
+- **Video VRAM hardening** — try/finally in both video handlers, CUDA flush, timeout 60 s, buffer +3000 MB, no "proceeding anyway"
+- **SSE real-time delivery** — queue results and messages via Server-Sent Events (Redis pub/sub), replacing HTTP polling
+- **Video via slow queue** — video tasks re-queued from fast worker, serialized GPU access
+- **Fast worker GPU lock** — chat, embedding, RAG search also acquire `_gpu_lock`, preventing parallel GPU tasks
+- **Live token/s speed display** — real-time tokens-per-second during streaming, final speed in message header
 - **Response style selector** — dropdown in chat header: neutral, academic, professional, friendly, funny
-- **Repeat penalty** — `repeat_penalty` parameter (1.0–2.0) per model, prevents response loops
-- **PostgreSQL 18 upgrade** — migrated from 16 to 18 with zero data loss
-- **Service prefix formatting** — voice, camera, image gen/edit messages show bold prefix; excluded from TTS and clipboard
-- **Message format migration** — all old service messages converted to structured JSON `{prefix, text}` format
-- **SSE real-time delivery** — queue results and new messages delivered via Server-Sent Events (Redis pub/sub), replacing all HTTP polling
-- **Static cache-busting** — all JS/CSS assets served with `?v=timestamp` to prevent stale cache after updates
-- **PDF extraction via pdftotext** — accurate text positioning for complex PDF layouts (hh.ru resumes, tables, multi-column)
-- **Real-time document indexing SSE** — document list auto-refresh when indexing completes or fails, no manual page reload needed
-- **CLI command** — `flask migrate-messages-format` to convert old plain-text service messages to JSON format (supports `--dry-run`)
-- **SSE reliability** — 4 root cause fixes for voice message delivery (lightning icon visibility, reconnect recovery, `user_id` passthrough for `message_new` events)
-- **Migration `--add-emojis`** — `flask migrate-messages-format --add-emojis` to retroactively add `🎨` to existing image service messages (supports `--dry-run`)
-- **Tablet responsive layout** — media query for 769–1199px fixes footer overlap with chat input caused by `100vh` vs `100%` mismatch in mobile browsers
-- **Image streaming fix** — tokens after `[-IMAGE-EDIT-]` marker no longer discarded during SSE streaming, eliminating empty edit query errors
-- **GPU/CPU auto-detect for SD** — `sd_wrapper.py` detects CUDA inside container via `nvidia-smi`; omits CPU offload flags on GPU; no `--cuda`; automatic CPU fallback
-- **SD error translations restored** — `_sd_error_translation_markers()` in `utils.py` for pybabel extraction; 8 stale `.po` keys reactivated with proper source references
-- **Session switching UI fix** — `chat-sessions.js`: `loadMessages()` called after server-side session deletion; same-session click re-fetches messages
-- **Full i18n coverage** — all user-facing errors wrapped in `_()`/`gettext()`; 14 new translation keys; rule added to `AGENTS.md`
-- **Audio ⚡ race condition fix** — `clearSessionQueue` + `fetchQueueStatus` race fixed for HTTP audio responses without `request_id`; single-session ⚡ indicator
-- **Page-refresh recovery** — ⚡, streaming, and final response survive F5 during generation; `onStreamToken`/`onResultCompleted` handle missing `pendingRequestIds`
-- **VRAM monitor & model auto-degradation** — background polling via `nvidia-smi` every 60s; progressive model degradation (100%→0% n_gpu_layers in 4 steps) on OOM; per-VRAM-tier safety caps
-- **VRAM calculator in admin panel** — `/admin/api/model-estimate` endpoint estimates VRAM (weights + KV cache + compute); auto-calculated `n_gpu_layers` slider
-- **SD progressive offload system** — 4-level offload (0=full GPU → 3=full CPU); VRAM headroom check (500MB) before generation
-- **Live token/s speed display** — real-time tokens-per-second during streaming; final token/s in message header; `completion_tokens` stored in DB
-- **Model config cache fix** — TTL cache replaced with `updated_at`-based versioning, eliminating cross-worker inconsistency with gunicorn `workers=2`
-- **Architecture display fix** — numpy byte-string decoding (`[113 119 101 110 51]` → `qwen3`) in admin panel
-- **GGUF metadata expansion** — `parameter_count`, `head_count`, `head_count_kv`, `key_length`, `value_length` scanned and stored in DB
-- **Video generation (LTX-Video 2B)** — text-to-video and image+text-to-video. Separate GPU container with VRAM isolation, T5 encoder on CPU, llama.cpp LLM auto-unload. 8-step distilled inference, ~11s for 9 frames at 320×512.
-- **Retry on 502 for Qwen3VL** — automatic retry (1 attempt, 5s delay) when multimodal model returns 502 during loading. Circuit breaker prevents cascading failures.
-- **CUDA cleanup after video** — `torch.cuda.empty_cache()` + `gc.collect()` in ltx_wrapper.py `finally` block. Repeated LLM unload in video.py to kill zombie processes.
-- **GPU memory diagnostics** — `log_gpu_memory()` method using llama-swap API or nvidia-smi fallback. Logged after each video generation.
-- **Unified image resize (1536px)** — `resize_image_if_needed` changed from bounding-box (3840×2160) to longest-side (1536px). Prevents Qwen3VL context overflow and reduces disk usage.
-- **Image edit resize (1024px)** — source images for SD editing resized to 1024px on longest side to prevent OOM.
-- **llama-swap updated to v217** — image pulled to get llama-server 9294 with Blackwell (sm_120) crash fixes.
-- **Chat loading optimization** — base64 `file_data` stripped from `content` JSON in `get_session_messages()` when file is on disk. Reduces API response payload ~1000x (10 images: ~15 MB → ~10 KB).
-- **Aspect ratio matching for video-from-image** — output video resolution matches source image aspect ratio (wide → 896×512, tall → 512×896, square → 512×512). Implemented in `generate_video_params_from_image()`. |
-- **File size display in message headers** — `file_size` read from disk for messages with `file_path`, displayed in chat headers for all file types.
-- **Reasoning model VRAM optimization** — `--n-gpu-layers` reduced from 24 to 16 and `--ctx-size` from 32768 to 16384 to fit in 16 GB VRAM.
-- **CUDA context reset after video** — `cuDevicePrimaryCtxReset(0)` added to ltx_wrapper.py `finally` block. Completely releases all GPU memory after video generation, preventing OOM in subsequent LLM requests.
-- **Removed cuDevicePrimaryCtxReset** — replaced with `_pipeline = None` + `empty_cache()` + `gc.collect()`. The aggressive reset caused SIGSEGV during pipeline reinit on sequential video requests.
-- **fileSize passthrough fix** — `chat-init.js` `window.displayMessage` overrode the function with 16 parameters, dropping `fileSize`. Added 17th parameter.
-- **SSE handlers file_size fix** — `events.js` three handlers did not pass `file_size` to `displayMessage`. Fixed all call sites.
-- **Simplified video filenames** — `video_{timestamp}_{seed}_{W}x{H}x{F}.mp4` → `{timestamp}.mp4`.
-- **Video task re-queuing to slow queue** — video tasks are re-queued from fast worker to slow queue. Fast worker no longer blocks for 60-120 seconds. Multiple video requests properly serialized.
-- **SSE re-queue fix** — lightning indicator (⚡) stays active when video task is re-queued. `handleCompletedResult` recognizes `status: "queued"` with `request_id`.
-- **History filter for router** — `[-...-]` markers and `{"prefix":...,"text":...}` JSON stripped from conversation history in `_extract_text_content()`. Prevents router from copying old markers.
-- **Independent classification rule** — `base_text.template` updated: each query classified independently, markers from history never copied.
-- **SD VRAM fix** — ltxvideo pipeline unloaded via `POST /v1/unload` before SD generation, freeing ~6.5 GB VRAM.
-- **ltx-wrapper /v1/unload endpoint** — new endpoint to unload pipeline and release GPU memory on demand.
-- **CUDA cleanup fix** — removed `cuDevicePrimaryCtxReset(0)` (caused SIGSEGV), replaced with `_pipeline = None` + `empty_cache()` + `gc.collect()`.
-- **Enhanced history filter** — `get_session_text_history()` filters out entire user+assistant pairs where the assistant responded with a generation marker. Prevents router from seeing previous generation requests and copying them.
-- **SuperLocalMemory (SLM) integration** — long-term, cross-session memory module. HTTP proxy in separate container (`--profile with-slm`). Each user has an isolated SQLite database (`$HOME=/app/data/slm/{user}/`, not `SLM_DATA_DIR` — SLM V3 ignores that env var). No daemon — per-request `--sync` calls. Pre-downloaded at build time (`RUN slm warmup` in Dockerfile), with background warmup on container start as fallback. Replaces raw conversation history (~1255 tokens) with 3-5 relevant facts (~150 tokens). Zero-LLM retrieval (Fisher-Rao metric), CPU-only. Automatic fact saving after assistant responses. Per-user SLM databases are included in full backups.
-- **Background SLM import on startup** — `app/slm_import.py` with checkpoint table `slm_import_progress`. On first startup (or upgrade from older version), automatically imports all existing messages into per-user SLM databases. Incremental — only processes messages since last checkpoint. Runs as daemon thread, does not block web server. CLI: `flask import-history-to-slm [--force] [user_id]`.
-- **SLM cleanup on session deletion** — when the last session is deleted or history cleared, `_cleanup_slm_if_empty()` in `db.py` removes the user's SLM database. On full user deletion (`userdb.py:delete_user()`), the entire `/app/data/slm/{login}/` directory is removed.
-- **SLM fact count in admin panel** — `GET /admin/api/users` now returns `slm_facts_count` per user, read directly from SQLite (`mode=ro&immutable=1`). Displayed as a column in the users table.
-- **GPU requirement + three hardware tiers** — CPU-only mode removed. GPU (NVIDIA, 8 GB VRAM min) required. Three tiers: 8 GB (Qwen3-4B-Thinking + Qwen3VL-4B), 12 GB (Qwen3-8B-Thinking + Qwen3VL-8B), 16+ GB (gpt-oss-20b + Qwen3VL-8B). Deploy scripts auto-detect VRAM and download appropriate models. Docker-compose resource limits updated to reflect real usage.
-- **VRAM management improvements** — `resource_manager.py`: new `ensure_vram_for_llm()` checks free VRAM before LLM requests, unloads LTX-Video pipeline if needed. `unload_video_pipeline()` called after SD and Video generation in `queue.py`. `llamacpp_client.py` calls `_ensure_vram()` before `chat()` and `chat_stream()`.
-- **Router response parsing fix** — `_parse_router_response()` in `base.py` now takes only the first line after a marker (`processed.split("\n")[0].strip()`). Prevents copied template text and history markers from polluting the generated query. Fixes «нарисован кот вместо яблока» — when router copied `[-IMAGE-] Нарисуй кота` from history into the query that was passed to multimodal/SD.
-- **SLM daemon mode** — SuperLocalMemory switched from per-request `subprocess --sync` to persistent daemon (`slm serve start`). Recall latency ~300-800ms (was ~10s). Embedding model stays in VRAM permanently.
-- **SLM per-user isolation via direct SQLite** — recall with profile reads directly from the user's private SQLite database (`atomic_facts` table). Daemon's shared DB is bypassed for user-specific queries (fast, ~1ms). **Chat model** uses fast SQLite read; **reasoning model** uses full semantic search via subprocess `slm recall` (falls back to direct SQLite if no embeddings). Remember saves to both daemon (shared) and per-user DB (async).
-- **SLM context for both chat + reasoning** — SLM facts injected into prompts for ALL model types (previously reasoning-only). Combined with full conversation history (previously only last 2 messages). `slm_reserve` tokens budgeted.
-- **SLM lazy availability re-check** — `remember()`/`recall()` retry `check_availability()` on first use if SLM was down at startup.
-- **Router stripped of history** — `base_text.template` no longer contains `{conversation_history}`. `process_message()` no longer calls `_get_context_for_model()`. Router classifies each query independently.
-- **Router parser: original_query for markers** — `image`, `video`, `camera` actions always use `original_query`. Text after marker ignored.
-- **TTL-based VRAM optimization** — llama-swap TTLs: chat=600s, multimodal/reasoning/embedding=0s. Non-chat models unload immediately after response. `POST /api/models/unload` now works correctly.
-- **Image gen via slow queue** — `_requeue_image_task()` added. Image generation serialized through slow queue to prevent concurrent sd-wrapper requests.
-- **Queue counter fix** — `get_user_queue_counts()` includes processing tasks. Desync check only resets when no tasks in processing. Shows active tasks instead of «0/0».
-- **CI pipeline fixes** — mypy `|| true` (non-blocking). PTH rules moved to `ignore` (~200 warnings suppressed).
-- **Test isolation** — `stop_workers()` in `test_app` teardown. `TRUNCATE` on real PostgreSQL between tests.
-- **Lint fixes** — SIM102, SIM108, F841 (3x), F821, N812, B904 resolved.
-- **Camera unknown rooms** — unknown rooms classified as normal queries (no `[-CAMERA-]` marker). Chat model responds naturally.
-- **Camera router parser: room code from marker** — `_parse_router_response()` uses text after `[-CAMERA-]` marker (room code), not original_query. Preserves Russian declensions (гостиная → в гостиной).
-- **VRAM cleanup before non-chat models** — `llamacpp_client.py:_ensure_vram()` calls `unload_llamacpp_model()` for reasoning/multimodal/embedding. Prevents 502 errors from insufficient VRAM.
-- **Router template updated** — image/video sections restored to v8.7 style: explicit keywords, warnings, negative examples.
-- **Router retry on JSON error** — `process_message()` retries once if router returns garbled response.
-- **Session timeout fix** — `session.permanent = True` at login. `WTF_CSRF_TIME_LIMIT` synced to 8h. No more unexpected logouts.
-- **SLM lazy availability fix** — `_get_context_for_model()` no longer checks `slm.available`. SLM works even if container was not ready at web startup.
-- **SLM dedup** — `_recall_from_user_db()` fetches `limit × 3`, deduplicates by content. `SLM_RECALL_LIMIT=7`.
-- **Reasoning via slow queue** — `[-REASONING-]` tasks re-queued to slow worker. Prevents GPU contention with SD/Video.
-- **Queue status fix** — `get_user_requests_status()` returns ALL processing tasks. First → ⚡, rest → ⏳.
-- **Synchronous VRAM polling** — `_resolve_use_gpu()` and `ensure_vram_for_llm()` now poll VRAM synchronously. Post-unload wait loop (30s) verifies VRAM is freed before proceeding. Prevents OOM from stale `available_vram_mb`.
-- **SLM cleanup on session deletion** — `_cleanup_slm_if_empty()` in `app/db.py` implemented. Removes SLM database when last session is deleted.
-- **SLM file ownership fix** — both containers use `appuser` (UID 1000). `start.sh` runs `chown -R appuser:appuser` on the shared volume. Fixes `shutil.rmtree` permission denied. |
-- **Multiple ⚡ race guard** — `chat-queue.js`: race condition guard prevents ⚡ on multiple sessions simultaneously. Only one ⚡ at a time, others show ⏳.
-- **⚡ recovery after task chain** — `events.js`: after every `clearSessionQueue()` call, `setTimeout(fetchQueueStatus, 500)` polls the server for the next queued task.
-- **5-layer model protection in admin panel** — 3-tier VRAM/RAM classification (🟢 good / 🟡 cpu_offload / 🔴 impossible / ⚠ unknown), server-side validation blocks bad saves with HTTP 400, background dry-load + auto-rollback, crash-loop watchdog with 5-min sliding window. `app/tasks/dry_load.py`, `app/tasks/health_monitor.py`, `_classify_model_fit()` in `app/routes/admin.py`.
-- **Dynamic VRAM estimation from GGUF metadata** — `_estimate_model_vram()` uses `file_size_mb × (ngl/block_count) + ctx_size × kv_factor + overhead`. New `model_vram_estimates` table stores both estimated and measured VRAM. Admin panel shows color-coded percentage bars.
-- **Per-model-type circuit breakers** — `LlamaSwapBackend._get_circuit_breaker(model_type)` isolates failures between chat / reasoning / multimodal / embedding. Adaptive ngl degradation on every failure.
-- **RAG generation on slow worker** — `_process_rag_task*` replaced `rag.generate_answer()` with `rag.search()` + `_requeue_reasoning_task(rag_context=...)`. Reasoning model now sees raw Qdrant chunks even when RAG LLM fails. RAG prompt fixed to use ONLY context.
-- **Multi-tab session support** — client sends `session_id` in request body (UUID v4). Server validates ownership. Cookie race conditions between tabs eliminated.
-- **Error message prefix** — `_build_error_response()` adds `⚠️ ` prefix automatically. Helper `_is_llm_error_string()` routes `call_llamacpp()` errors through it. Applied in reasoning, text-task, and RAG paths.
-- **Video VRAM hardening** — try/finally in both video task handlers, `_unload_video_pipeline()` + `_unload_llamacpp_models()` always run, CUDA cache flush after generation, timeout 30 → 60 s, buffer +500 → +3000 MB, `/v1/vram_info` endpoint in ltx-wrapper for dynamic measurement.
-- **Translation system fix** — removed broken `.mo` volume mounts from `docker-compose.gpu.yml`. Docker now compiles translations at build time.
-- **Docker compose cleanup** — removed `docker-compose.cpu.yml` (CPU-only unsupported), `services/llamacpp/generate_presets.py` (obsolete), `services/sd_cpp/Dockerfile.sd_cpp-cpu`.
-- **Default chat model upgraded** — `Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf` (~2 GB, faster routing), default ctx 8192 → 16384.
-- **Deploy scripts: VRAM tier detection** — auto-select reasoning model by `nvidia-smi` query: 16 GB+ → gpt-oss-20b, 12 GB → Qwen3-8B-Thinking, 8 GB → Qwen3-4B-Thinking.
-- **55 new tests** — `tests/test_classify_model_fit.py` (11), `tests/test_dry_load.py` (10), `tests/test_health_monitor.py` (12), `tests/test_resource_manager_ltx_unload.py` (11), `tests/test_vram_estimates.py` (10).
-- **Reasoning 502 → retry with degrade** — `max_retries = 1` for reasoning and chat. First failure → degrade ngl; second failure → user-facing error.
-- **Fast worker GPU lock** — chat, embedding, RAG search now also acquire `_gpu_lock` (was only slow worker). Prevents parallel GPU tasks.
+- **Repeat penalty** — `repeat_penalty` parameter (1.0–2.0) per model
+- **Chat loading optimization** — base64 `file_data` stripped from API response (~1000× reduction)
+- **Unified image resize (1536px)** — prevents Qwen3VL context overflow, reduces disk usage
+- **Static cache-busting** — all JS/CSS served with `?v=timestamp`
+- **Translation system fix** — Docker compiles translations at build time; all features work in both languages
+- **Router response parsing fix** — prevents copied template text and history markers from polluting queries
+- **Multi-tab session support** — client sends `session_id` in request body, server validates ownership; no cookie race conditions
+- **CUDA context cleanup after video** — `_pipeline = None` + `empty_cache()` + `gc.collect()` (safe, no SIGSEGV)
+- **PostgreSQL 18** — migrated from 16 with zero data loss
+- **TTL-based VRAM optimization** — non-chat models unload immediately (TTL=0s), chat stays hot (600s)
+- **PDF extraction via pdftotext** — accurate text positioning for complex layouts (resumes, tables, multi-column)
+- **Background SLM import on startup** — incremental import with checkpoint table, daemon thread, CLI: `flask import-history-to-slm`
+- **Piper TTS optimization** — chunked processing for large text synthesis with seamless audio transitions
+- **llama-swap v217** — Blackwell (sm_120) crash fixes
+- **Default chat model upgraded** — Qwen3-4B MXFP4_MOE (~2 GB), default ctx 8192 → 16384
+- **Deploy scripts: VRAM tier detection** — auto-select reasoning model: 16 GB+ → gpt-oss-20b, 12 GB → Qwen3-8B-Thinking, 8 GB → Qwen3-4B-Thinking
+- **CLI tools** — `admin-password`, `cleanup-uploads`, `migrate-messages-format` (with `--dry-run`, `--add-emojis`)
+- **Health check & metrics** — `/health` endpoint with service status, `/metrics` for Prometheus
+- **File size display** — shown in chat headers for all file types
 
 ### 🔄 In Progress
 - Advanced RAG: metadata filtering, hybrid search

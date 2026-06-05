@@ -13,6 +13,12 @@ import pytest
 class TestRedisRequestQueue:
     """Test cases for RedisRequestQueue class."""
 
+    @pytest.fixture(autouse=True)
+    def _no_workers(self):
+        """Prevent worker threads from starting during tests."""
+        with patch("app.queue.RedisRequestQueue.start_worker"):
+            yield
+
     @pytest.fixture
     def mock_app(self):
         """Create mock Flask app."""

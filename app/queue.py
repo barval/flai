@@ -230,14 +230,15 @@ class RedisRequestQueue:
 
         total_count = self.redis.hget(user_count_key, "__total__")
         total_count = int(total_count) if total_count else 0
-        queue_total = fast_total + slow_total
         # Auto-heal: if the hash counter (__total__) drifts away from the actual
-        # queue length, the hash is stale (e.g. after recover_stale_tasks, a
-        # worker crash mid-transition, or manual Redis cleanup). Reset it
-        # unconditionally — waiting for "no processing" only delays the fix
-        # and leaves users with an undercounted "4/4" while they actually have
-        # more queued tasks. The next add_request() will rebuild the count.
-        if total_count != queue_total:
+        # queue+processing length, the hash is stale (e.g. after a worker crash
+        # mid-transition, or manual Redis cleanup). Reset it unconditionally —
+        # the next add_request() will rebuild the count.
+        # NOTE: compare against `total` (queue + processing), NOT queue_total
+        # (queue only). Using queue_total causes false auto-heals whenever a
+        # task moves from queue to processing (BLPOP reduces list length but
+        # __total__ stays until task completes), wiping user counts to 0.
+        if total_count != total:
             self.redis.delete(user_count_key)
             user_count = 0
 

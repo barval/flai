@@ -1,5 +1,6 @@
 # modules/rag.py
 import logging
+import time
 import uuid
 from collections.abc import Callable
 
@@ -367,7 +368,7 @@ class RagModule:
         self.logger.info(f"RAG: reasoning context_length from config: {max_context_tokens}")
 
         # Dynamic context limit: percentage of model's context window
-        rag_context_percent = current_app.config.get("RAG_CONTEXT_PERCENT", 30)
+        rag_context_percent = current_app.config.get("RAG_CONTEXT_PERCENT", 50)
         max_context_tokens_limit = int(max_context_tokens * rag_context_percent / 100.0)
 
         # Measure actual template overhead (already filled with variables)
@@ -454,6 +455,8 @@ class RagModule:
             return None, "Error loading prompt template", None
 
         # 6. Call reasoning model
+        # Brief pause to let CUDA finish deallocation after model unload — prevents 502
+        time.sleep(3)
         model_name = reasoning_config.get("model_name", "unknown")
         if token_callback:
             full_response = ""

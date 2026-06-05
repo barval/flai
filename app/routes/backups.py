@@ -4,7 +4,9 @@
 Two backup types:
   1. 'users'     — users table only
   2. 'full'      — users + chats + messages + documents + model_configs +
-                   session_visits + user_sessions + user_storage + files
+                   session_visits + user_sessions + user_storage +
+                   gguf_models_cache + model_vram_estimates +
+                   slm_import_progress + files
 """
 
 import contextlib
@@ -44,10 +46,12 @@ FULL_TABLES = [
     "model_configs",
     "user_storage",
     "gguf_models_cache",
+    "model_vram_estimates",
+    "slm_import_progress",
 ]
 
 # Directories included in 'full' backup
-FULL_DIRS = ["data/documents", "data/uploads"]
+FULL_DIRS = ["data/documents", "data/uploads", "data/slm"]
 
 
 def admin_required(f):
@@ -146,13 +150,19 @@ def create_backup():
             tar.add(tmp_path, arcname="db_dump.sql")
             os.unlink(tmp_path)
 
-            # 2. For 'full' backup: include documents and uploads directories
+            # 2. For 'full' backup: include documents, uploads and slm directories
             if backup_type == "full":
                 project_root = _get_project_root()
                 for dir_name in FULL_DIRS:
                     full_dir = os.path.join(project_root, dir_name)
                     if os.path.exists(full_dir):
-                        tar.add(full_dir, arcname=os.path.basename(full_dir))
+                        for root, dirs, files in os.walk(full_dir):
+                            # Skip .cache directories (e.g. HuggingFace model cache)
+                            dirs[:] = [d for d in dirs if d != ".cache"]
+                            for fname in files:
+                                filepath = os.path.join(root, fname)
+                                arcname = os.path.relpath(filepath, os.path.join(project_root, "data"))
+                                tar.add(filepath, arcname=arcname)
 
             # 3. Metadata with checksum
             meta = {

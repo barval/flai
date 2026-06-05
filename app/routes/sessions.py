@@ -144,4 +144,10 @@ def clear_history():
             "UPDATE chat_sessions SET title = %s, updated_at = %s WHERE id = %s",
             (_("New session"), current_time, session_id),
         )
+
+    # If user has no remaining messages, clean up SLM database
+    from app.db import _cleanup_slm_if_empty
+
+    _cleanup_slm_if_empty(session["login"])
+
     return jsonify({"status": "ok"})

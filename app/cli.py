@@ -188,3 +188,53 @@ def migrate_messages_format(dry_run, add_emojis):
     click.echo(f"\nUpdated: {updated}, Skipped (already JSON or no match): {skipped}")
     if dry_run:
         click.echo("(dry-run, no changes made)")
+
+
+@click.command("import-history-to-slm")
+@click.option("--dry-run", is_flag=True, help="Only show what would be imported, do not save")
+@click.option("--force", is_flag=True, help="Ignore checkpoints, re-import all messages")
+@click.argument("user_id", required=False)
+@with_appcontext
+def import_history_to_slm(dry_run, force, user_id):
+    """Import existing conversation history into SuperLocalMemory.
+
+    Reads user queries and assistant responses from the database
+    and saves them as facts in SLM for long-term memory retrieval.
+
+    By default, respects per-user checkpoints (slm_import_progress table)
+    and only imports new/unprocessed messages. Use --force to reset and
+    re-import all messages.
+
+    If USER_ID is provided, imports only that user's history.
+    Without USER_ID, imports all users' history.
+    """
+    from app.slm_import import import_all_users, import_user_messages
+
+    slm = current_app.modules.get("slm")
+    if not slm or not slm.available:
+        click.echo("Error: SLM module is not available. Is SLM_URL configured and flai-slm running?")
+        return
+
+    if force:
+        click.echo("Force mode: ignoring checkpoints, will re-import all messages")
+        since = 0
+    else:
+        from app.slm_import import _get_last_message_id as get_checkpoint
+
+        since = get_checkpoint(user_id) if user_id else 0
+
+    if user_id:
+        click.echo(f"Importing history for user: {user_id}")
+        imported, skipped, last_id = import_user_messages(slm, user_id, since_message_id=since, dry_run=dry_run)
+        click.echo(f"Imported: {imported}, Skipped: {skipped}, Last message ID: {last_id}")
+    else:
+        click.echo("Importing history for all users...")
+        results = import_all_users(slm, dry_run=dry_run)
+        total_imported = sum(r[0] for r in results.values())
+        total_skipped = sum(r[1] for r in results.values())
+        click.echo(f"Total imported: {total_imported}, Total skipped: {total_skipped}")
+        for uid, (imp, skip, lid) in sorted(results.items()):
+            click.echo(f"  {uid}: {imp} imported, {skip} skipped, up to msg {lid}")
+
+    if dry_run:
+        click.echo("(dry-run, no changes made)")

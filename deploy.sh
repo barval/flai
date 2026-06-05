@@ -45,7 +45,7 @@ setup_env() {
 # ── Data directories ──
 setup_dirs() {
     info "Creating data directories..."
-    mkdir -p data/uploads data/documents data/db_backups
+    mkdir -p data/uploads data/documents data/db_backups data/slm
     chown -R 1000:1000 data 2>/dev/null || warn "Could not chown data/ — run with sudo if needed."
 }
 
@@ -112,42 +112,124 @@ HF_DOWNLOAD() {
 download_llamacpp_models() {
     info "Downloading llama.cpp models..."
     local MODEL_DIR="services/llamacpp/models"
+    local VRAM_MB=0
 
-    # Chat model (Qwen3-4B-Instruct)
-    if [[ ! -f "$MODEL_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
-        info "Downloading Qwen3-4B-Instruct-2507-Q4_K_M.gguf (chat)..."
+    # Detect GPU VRAM for model selection
+    if command -v nvidia-smi &>/dev/null; then
+        VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+    fi
+
+    # Chat/router model — Qwen3-4B-Instruct MXFP4 (~2 GB), fast for routing
+    if [[ ! -f "$MODEL_DIR/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf" ]]; then
+        info "Downloading Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf (chat/router)..."
         HF_DOWNLOAD "unsloth/Qwen3-4B-Instruct-2507-GGUF" \
-            "Qwen3-4B-Instruct-2507-Q4_K_M.gguf" \
-            "$MODEL_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+            "Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf" \
+            "$MODEL_DIR/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf"
     else
-        warn "Qwen3-4B-Instruct-2507-Q4_K_M.gguf already exists — skipping."
+        warn "Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf already exists — skipping."
     fi
 
-    # Reasoning model (GPT-Oss 20B)
-    if [[ ! -f "$MODEL_DIR/gpt-oss-20b-Q4_K_M.gguf" ]]; then
-        info "Downloading gpt-oss-20b-Q4_K_M.gguf (reasoning)..."
-        HF_DOWNLOAD "unsloth/gpt-oss-20b-GGUF" \
-            "gpt-oss-20b-Q4_K_M.gguf" \
-            "$MODEL_DIR/gpt-oss-20b-Q4_K_M.gguf"
+    # Reasoning model — select based on VRAM
+    if [[ "$VRAM_MB" -ge 16000 ]]; then
+        # 16GB+ — full model
+        if [[ ! -f "$MODEL_DIR/gpt-oss-20b-Q4_K_M.gguf" ]]; then
+            info "Downloading gpt-oss-20b-Q4_K_M.gguf (reasoning, 16GB+ tier)..."
+            HF_DOWNLOAD "unsloth/gpt-oss-20b-GGUF" \
+                "gpt-oss-20b-Q4_K_M.gguf" \
+                "$MODEL_DIR/gpt-oss-20b-Q4_K_M.gguf"
+        else
+            warn "gpt-oss-20b-Q4_K_M.gguf already exists — skipping."
+        fi
+    elif [[ "$VRAM_MB" -ge 12000 ]]; then
+        # 12GB — Qwen3-8B-Thinking (~5GB, fits entirely with all layers on GPU)
+        info "VRAM ${VRAM_MB}MB: downloading Qwen3-8B-Thinking (reasoning)..."
+        if [[ ! -f "$MODEL_DIR/Qwen3-8B-Thinking-2507-Q4_K_M.gguf" ]]; then
+            info "Downloading Qwen3-8B-Thinking-2507-Q4_K_M.gguf (reasoning, 12GB tier)..."
+            HF_DOWNLOAD "unsloth/Qwen3-8B-Thinking-2507-GGUF" \
+                "Qwen3-8B-Thinking-2507-Q4_K_M.gguf" \
+                "$MODEL_DIR/Qwen3-8B-Thinking-2507-Q4_K_M.gguf" || \
+            warn "8B thinking model download failed. Falling back to 4B."
+            if [[ ! -f "$MODEL_DIR/Qwen3-8B-Thinking-2507-Q4_K_M.gguf" ]]; then
+                HF_DOWNLOAD "unsloth/Qwen3-4B-Thinking-2507-GGUF" \
+                    "Qwen3-4B-Thinking-2507-Q4_K_M.gguf" \
+                    "$MODEL_DIR/Qwen3-4B-Thinking-2507-Q4_K_M.gguf"
+            fi
+        fi
+    elif [[ "$VRAM_MB" -ge 8000 ]]; then
+        # 8GB — Qwen3-4B-Thinking (~2.5GB)
+        info "VRAM ${VRAM_MB}MB: downloading light reasoning model (Qwen3-4B-Thinking)..."
+        if [[ ! -f "$MODEL_DIR/Qwen3-4B-Thinking-2507-Q4_K_M.gguf" ]]; then
+            info "Downloading Qwen3-4B-Thinking-2507-Q4_K_M.gguf (light reasoning)..."
+            HF_DOWNLOAD "unsloth/Qwen3-4B-Thinking-2507-GGUF" \
+                "Qwen3-4B-Thinking-2507-Q4_K_M.gguf" \
+                "$MODEL_DIR/Qwen3-4B-Thinking-2507-Q4_K_M.gguf" || \
+            warn "Light reasoning model download failed."
+        fi
     else
-        warn "gpt-oss-20b-Q4_K_M.gguf already exists — skipping."
+        # Unknown VRAM — download both
+        info "VRAM unknown: downloading standard reasoning model..."
+        if [[ ! -f "$MODEL_DIR/gpt-oss-20b-Q4_K_M.gguf" ]]; then
+            HF_DOWNLOAD "unsloth/gpt-oss-20b-GGUF" \
+                "gpt-oss-20b-Q4_K_M.gguf" \
+                "$MODEL_DIR/gpt-oss-20b-Q4_K_M.gguf"
+        fi
     fi
 
-# Multimodal model (public repository)
-    if [[ ! -d "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M" ]]; then
-        info "Downloading Qwen3VL-8B-Instruct-Q4_K_M (multimodal)..."
-        mkdir -p "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M"
-        HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
-            "Qwen3VL-8B-Instruct-Q4_K_M.gguf" \
-            "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
-        HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
-            "mmproj-Qwen3VL-8B-Instruct-F16.gguf" \
-            "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf"
+    # Multimodal model — select based on VRAM
+    if [[ "$VRAM_MB" -ge 12000 ]]; then
+        # 12GB+ — full multimodal (Qwen3VL-8B)
+        if [[ ! -d "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M" ]]; then
+            info "Downloading Qwen3VL-8B-Instruct-Q4_K_M (multimodal, 12GB+ tier)..."
+            mkdir -p "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M"
+            HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
+                "Qwen3VL-8B-Instruct-Q4_K_M.gguf" \
+                "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
+            HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
+                "mmproj-Qwen3VL-8B-Instruct-F16.gguf" \
+                "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf"
+        else
+            warn "Qwen3VL-8B-Instruct-Q4_K_M already exists — skipping."
+        fi
+    elif [[ "$VRAM_MB" -ge 8000 ]]; then
+        # 8GB — light multimodal (Qwen3VL-4B, ~2.5GB)
+        info "VRAM ${VRAM_MB}MB: downloading light multimodal (Qwen3VL-4B)..."
+        if [[ ! -d "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M" ]]; then
+            mkdir -p "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M"
+            HF_DOWNLOAD "Qwen/Qwen3-VL-4B-Instruct-GGUF" \
+                "Qwen3VL-4B-Instruct-Q4_K_M.gguf" \
+                "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M/Qwen3VL-4B-Instruct-Q4_K_M.gguf" || \
+            warn "Light multimodal download failed. Falling back to 8B version."
+            HF_DOWNLOAD "Qwen/Qwen3-VL-4B-Instruct-GGUF" \
+                "mmproj-Qwen3VL-4B-Instruct-F16.gguf" \
+                "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M/mmproj-F16.gguf" || true
+            # Fallback to 8B if 4B not available
+            if [[ ! -f "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M/Qwen3VL-4B-Instruct-Q4_K_M.gguf" ]]; then
+                warn "Qwen3VL-4B not available on HuggingFace, downloading 8B instead..."
+                rm -rf "$MODEL_DIR/Qwen3VL-4B-Instruct-Q4_K_M"
+                mkdir -p "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M"
+                HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
+                    "Qwen3VL-8B-Instruct-Q4_K_M.gguf" \
+                    "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
+                HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
+                    "mmproj-Qwen3VL-8B-Instruct-F16.gguf" \
+                    "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf"
+            fi
+        fi
     else
-        warn "Qwen3VL-8B-Instruct-Q4_K_M already exists — skipping."
+        # Unknown — download 8B
+        if [[ ! -d "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M" ]]; then
+            info "VRAM unknown: downloading Qwen3VL-8B-Instruct-Q4_K_M..."
+            mkdir -p "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M"
+            HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
+                "Qwen3VL-8B-Instruct-Q4_K_M.gguf" \
+                "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/Qwen3VL-8B-Instruct-Q4_K_M.gguf"
+            HF_DOWNLOAD "Qwen/Qwen3-VL-8B-Instruct-GGUF" \
+                "mmproj-Qwen3VL-8B-Instruct-F16.gguf" \
+                "$MODEL_DIR/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf"
+        fi
     fi
 
-    # Embedding model (public repository)
+    # Embedding model — fits all tiers
     if [[ ! -f "$MODEL_DIR/bge-m3-Q8_0.gguf" ]]; then
         info "Downloading bge-m3-Q8_0.gguf (embeddings)..."
         HF_DOWNLOAD "gpustack/bge-m3-GGUF" \
@@ -291,6 +373,37 @@ download_tts_models() {
     fi
 }
 
+# ── Whisper ASR Models ──
+download_whisper_models() {
+    info "Downloading Whisper ASR model (Systran/faster-whisper-medium)..."
+    local CACHE_DIR="data/hf-cache"
+    mkdir -p "$CACHE_DIR/hub"
+
+    local MODEL_DIR="$CACHE_DIR/hub/models--Systran--faster-whisper-medium"
+    if [[ -d "$MODEL_DIR" && -f "$MODEL_DIR/snapshots/"*"/model.bin" ]]; then
+        info "Whisper model already downloaded."
+        return 0
+    fi
+
+    info "Downloading ~1.5 GB — this may take several minutes..."
+    python3 -c "
+from huggingface_hub import snapshot_download
+import os, sys
+
+os.environ['HF_HUB_DOWNLOAD_TIMEOUT'] = '600'
+try:
+    path = snapshot_download(
+        'Systran/faster-whisper-medium',
+        cache_dir='$CACHE_DIR',
+        ignore_patterns=['*.h5', '*.ot', '*.msgpack']
+    )
+    print(f'OK: model downloaded to {path}')
+except Exception as e:
+    print(f'ERROR: {e}')
+    sys.exit(1)
+" && info "Whisper model downloaded successfully." || warn "Failed to download Whisper model. ASR will be unavailable."
+}
+
 # ── Build & Launch ──
 build_and_launch() {
     local PROFILE=""
@@ -298,18 +411,24 @@ build_and_launch() {
     [[ "$WITH_VOICE" == "true" ]] && PROFILE="$PROFILE --profile with-voice"
     [[ "$WITH_RAG" == "true" ]]    && PROFILE="$PROFILE --profile with-rag"
     [[ "$WITH_VIDEO" == "true" ]]  && PROFILE="$PROFILE --profile with-video"
+    [[ "$WITH_SLM" == "true" ]]    && PROFILE="$PROFILE --profile with-slm"
 
-    local HAS_GPU=false
-    if command -v nvidia-smi &>/dev/null && nvidia-smi -L 2>/dev/null | grep -q GPU; then
-        HAS_GPU=true
+    COMPOSE_FILE="docker-compose.gpu.yml"
+    info "GPU mode — using GPU compose file."
+
+    # Detect GPU VRAM tier
+    local VRAM_MB=0
+    if command -v nvidia-smi &>/dev/null; then
+        VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
     fi
-
-    if [[ "$HAS_GPU" == "true" ]]; then
-        COMPOSE_FILE="docker-compose.gpu.yml"
-        info "GPU detected — using GPU compose file."
+    if [[ "$VRAM_MB" -ge 16000 ]]; then
+        info "GPU VRAM: ${VRAM_MB}MB (tier: 16GB+) — full performance"
+    elif [[ "$VRAM_MB" -ge 12000 ]]; then
+        info "GPU VRAM: ${VRAM_MB}MB (tier: 12GB) — moderate, consider light reasoning model"
+    elif [[ "$VRAM_MB" -ge 8000 ]]; then
+        info "GPU VRAM: ${VRAM_MB}MB (tier: 8GB) — limited, consider light reasoning model"
     else
-        COMPOSE_FILE="docker-compose.cpu.yml"
-        warn "No GPU detected — using CPU compose file."
+        warn "GPU VRAM: ${VRAM_MB}MB — below 8GB minimum. Performance will be severely limited."
     fi
 
     # Clean up old containers to avoid runtime conflicts
@@ -354,15 +473,26 @@ Options:
   --with-image-gen    Deploy stable-diffusion.cpp for image generation/editing
                       (default: disabled, use this flag to enable)
   --with-video        Deploy LTX-Video for video generation
+  --with-slm          Deploy SuperLocalMemory for long-term memory
                       (default: disabled, use this flag to enable)
   --download-models   Download GGUF/safetensors models from HuggingFace
   --run-tests         Run unit tests after deployment
   --help, -h          Show this help message
 
 Model Download Sizes (approximate):
-  llama.cpp:
+  llama.cpp (16GB+ tier — full models):
     Qwen3-4B-Instruct (chat)         ~2.5 GB
     gpt-oss-20b (reasoning)          ~12 GB
+    Qwen3VL-8B (multimodal)          ~5.5 GB
+    bge-m3 (embeddings)              ~1.5 GB
+  llama.cpp (8GB tier — light models):
+    Qwen3-4B-Instruct (chat)         ~2.5 GB
+    Qwen3-4B-Thinking (reasoning)    ~2.5 GB
+    Qwen3VL-4B (multimodal)          ~2.5 GB
+    bge-m3 (embeddings)              ~1.5 GB
+  llama.cpp (12GB tier — mid models):
+    Qwen3-4B-Instruct (chat)         ~2.5 GB
+    Qwen3-8B-Thinking (reasoning)    ~5 GB
     Qwen3VL-8B (multimodal)          ~5.5 GB
     bge-m3 (embeddings)              ~1.5 GB
   Image generation (Z-Image Turbo)   ~6.5 GB
@@ -370,6 +500,7 @@ Model Download Sizes (approximate):
   Video generation (LTX-Video 2B)    ~5.9 GB
   T5 text encoder (PixArt T5-XXL)    ~18 GB (on disk, float32)
   TTS (Piper)                        ~0.2 GB
+  SLM embedding model                ~0.5 GB (pre-downloaded during Docker build)
 USAGE
 }
 
@@ -378,6 +509,7 @@ WITH_VOICE=false
 WITH_RAG=false
 WITH_IMAGE_GEN=false
 WITH_VIDEO=false
+WITH_SLM=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
 
@@ -387,6 +519,7 @@ for arg in "$@"; do
         --with-rag)       WITH_RAG=true ;;
         --with-image-gen) WITH_IMAGE_GEN=true ;;
         --with-video)     WITH_VIDEO=true ;;
+        --with-slm)       WITH_SLM=true ;;
         --download-models) DOWNLOAD_MODELS=true ;;
         --run-tests)      RUN_TESTS=true ;;
         --help|-h)        usage; exit 0 ;;
@@ -411,6 +544,7 @@ main() {
         download_sd_cpp_models
         download_tts_models
         [[ "$WITH_VIDEO" == "true" ]] && download_ltx_video_models
+        [[ "$WITH_VOICE" == "true" ]] && download_whisper_models
     fi
 
     build_and_launch

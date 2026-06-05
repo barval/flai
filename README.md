@@ -25,6 +25,7 @@
 - 🎬 **Video Generation** – create short videos from text or image+text prompts using LTX-Video 2B (distilled, 8-step inference)
 - 🎤 **Voice Transcription** – convert voice messages to text using Whisper ASR (faster_whisper)
 - 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper TTS (male and female voices in English and Russian)
+- 🧠 **Long-term Memory** – cross-session, persistent memory via SuperLocalMemory (SLM). CPU-only, zero-LLM retrieval. Adds relevant facts alongside conversation history. Enable with `--profile with-slm`.
 
 ### 📁 Document & Knowledge Management
 - 📚 **RAG with Qdrant** – upload documents (PDF, DOC, DOCX, TXT) and ask questions about their content
@@ -70,18 +71,41 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v8.7
+### What's New in v8.8
 
-| v8.7 (New) | Notes |
-|------------|-------|
-| 🚀 **Video task re-queuing to slow queue** | Video generation tasks are re-queued from fast worker to slow queue. Fast worker no longer blocks for 60-120 seconds. Multiple video requests are properly serialized. |
-| ⚡ **SSE re-queue fix** | Lightning indicator (⚡) now stays active when a video task is re-queued. `handleCompletedResult` in `events.js` recognizes `status: "queued"` with `request_id` and re-activates tracking. |
-| 🧹 **History filter for router** | `_extract_text_content()` in `db.py` strips `[-...-]` markers and `{"prefix": ..., "text": ...}` JSON from conversation history. `get_session_text_history()` additionally filters out entire user+assistant pairs where the assistant responded with a generation marker, preventing the router from ever seeing previous generation requests. |
-| 🎯 **Independent classification rule** | `base_text.template` updated with explicit instruction: each query is classified independently, markers from history must never be copied. |
-| 🖼️ **SD VRAM fix** | Before image generation and editing, the ltxvideo pipeline is unloaded via `POST /v1/unload`, freeing ~6.5 GB VRAM for SD models. Prevents OOM fallback to CPU (which caused 2x slowdown). |
-| 🔌 **ltx-wrapper /v1/unload endpoint** | New endpoint in `ltx_wrapper.py` to unload the pipeline and release GPU memory on demand. Used by SD module before generation. |
-| 🐛 **CUDA cleanup fixed** | Removed `cuDevicePrimaryCtxReset(0)` which caused SIGSEGV on pipeline reload. Replaced with `_pipeline = None` + `torch.cuda.empty_cache()` + `gc.collect()` for clean pipeline resets. |
-
+| v8.8+ (New) | Notes |
+|-------------|-------|
+| 🛡️ **5-layer model protection in admin panel** | 3-tier VRAM/RAM classification: 🟢 `good` (full ngl), 🟡 `cpu_offload` (auto-degraded ngl), 🔴 `impossible` (save blocked, 400), ⚠ `unknown` (no GGUF metadata — click "Refresh models" first). Server-side validation, background dry-load + auto-rollback, crash-loop watchdog. Prevents OOM and 502 on bad model saves. |
+| 🛡️ **3-tier classification math** | `vram_needed ≤ 85% × total_vram` → good; otherwise `(file - gpu_weights) ≤ 70% × ram - 2 GB` → cpu_offload with recomputed ngl; else impossible (server returns 400). Upper ctx limit is now **dynamic** from `gguf_models_cache.context_length` (no hardcoded 32768). |
+| 🔁 **Background dry-load after admin save** | New `app/tasks/dry_load.py` — after `signal_reload()` sends a tiny completion to llama-swap, polls `/running` (30 s timeout). On failure, rolls back to `FALLBACK_MODELS[module]`. Daemon thread. |
+| 🐕 **Crash-loop watchdog** | New `app/tasks/health_monitor.py` — 60 s polling, sends health check to each running model, tracks failures in 5-min sliding window. **3 failures → auto-rollback to fallback**. Started from `create_app()` only in llama-swap mode. |
+| 📊 **Real VRAM measurement + dynamic estimation** | New `model_vram_estimates` table. `measure_model_vram()` captures actual VRAM after each successful load. `get_vram_estimate()` / `upsert_vram_estimate()` helpers. Admin panel shows "✓ Measured (N) / ℹ Estimated" with color-coded percentage bars. |
+| 🧮 **Dynamic VRAM estimation from GGUF metadata** | `_estimate_model_vram()` now uses `file_size_mb × (ngl / block_count) + ctx_size × kv_factor + overhead` — no hardcoded 2500/5000/15000/2000 MB constants. Reads from `gguf_models_cache` (block_count, file_size_mb, context_length). |
+| 🔌 **Separate circuit breaker per model type** | `LlamaSwapBackend._get_circuit_breaker(model_type)` — chat, reasoning, multimodal, embedding each have their own CB. One model's OOM no longer blocks another. |
+| ⚙️ **Adaptive model degradation on every failure** | `_record_llama_failure()` calls `_degrade_model_if_needed()` on every failure (not just when CB opens). `compute_llamacpp_config()` iteratively reduces ngl to fit available VRAM. |
+| 🔁 **Reasoning 502 → retry with degrade** | `max_retries = 1` for `reasoning` and `chat` (was only `multimodal`). First failure → degrade ngl; second failure → user-facing error. |
+| 🔒 **Fast worker now acquires `_gpu_lock`** | Previously only slow worker serialized GPU tasks. Chat, embedding, RAG search now also wait for GPU. Prevents parallel GPU tasks. |
+| 🧠 **RAG: generation moved to slow worker** | `_process_rag_task*` no longer calls `rag.generate_answer()` directly. Fast worker does **only** `rag.search()` (embedding + Qdrant) and requeues to slow worker via `_requeue_reasoning_task(rag_context=...)`. Slow worker handles VRAM (unloads LTX-Video, loads reasoning). Prevents GPU contention. |
+| 📝 **RAG prompt fix** | `rag.template` no longer says "answer on your own" or "don't write 'no info'". Now: *"use ONLY the provided context. If context doesn't contain the answer — honestly say you cannot find it."* Prevents hallucination. |
+| 📦 **Raw Qdrant chunks → reasoning model** | When `rag.generate_answer()` returns None, `_process_reasoning_request` calls `rag.search()` directly and passes raw chunks as `rag_context` to the reasoning model. Reasoning model always sees document content. |
+| 🗂️ **Multi-tab session support** | Client now sends `session_id` in request body (UUID v4). Server validates ownership and updates Flask session. Cookie race conditions between tabs fixed. `app/static/js/chat-init.js`, `app/routes/messages.py`, `app/db.py` updated. |
+| 🧹 **Queue position: server data only** | Removed `pendingRequestIds` race guard from `chat-queue.js` that overwrote server positions with hardcoded `1`. Multiple ⚡ prevention preserved (only one session shows ⚡; rest show ⏳ with real positions). |
+| ⚠️ **Error message prefix** | `_build_error_response()` adds `⚠️ ` prefix to all user errors. Helper `_is_llm_error_string()` routes `call_llamacpp()` error strings (e.g., "GPU memory unavailable", "HTTP error 500") through `_build_error_response()`. Applied in `_process_reasoning_request`, `_process_text_task*`, RAG. |
+| 🌐 **Translation system fix** | Removed broken `.mo` volume mounts from `docker-compose.gpu.yml`. Docker now compiles all translations at build time. All site features work in both Russian and English. |
+| 📺 **Video VRAM: try/finally + flush CUDA** | Both video task handlers wrap generation in `try/finally` — `_unload_video_pipeline()` and `_unload_llamacpp_models()` always run. CUDA cache flushed after generation. `_wait_for_vram_full` timeout 30 s → 60 s. Buffer +500 → +3000 MB. No more "proceeding anyway" on timeout. |
+| 📐 **Dynamic video VRAM chain** | `estimate_video_vram_needed()`: 1) measured (from `model_vram_estimates`), 2) HTTP `/v1/vram_info` from ltx-wrapper (component sizes + current peak), 3) local filesystem (if `/app/models` mounted), 4) env fallback. New endpoint in `ltx_wrapper.py`. |
+| 🗃️ **New DB tables** | `model_vram_estimates` (module, model_name, ctx, ngl, estimated_mb, measured_mb, measurement_count, last_measured_at). `slm_import_progress` (user_id, last_message_id, total_imported) for checkpoint-based background import. |
+| 🧪 **55 new tests** | `tests/test_classify_model_fit.py` (11), `tests/test_dry_load.py` (10), `tests/test_health_monitor.py` (12), `tests/test_resource_manager_ltx_unload.py` (11), `tests/test_vram_estimates.py` (10). All passing. |
+| 🧹 **Docker compose cleanup** | Removed `docker-compose.cpu.yml` (CPU-only mode unsupported — FLAI requires NVIDIA GPU). Removed `services/llamacpp/generate_presets.py` (obsolete). Removed `services/sd_cpp/Dockerfile.sd_cpp-cpu`. |
+| 🤖 **Default chat model upgraded** | `Qwen3-4B-Instruct-2507-Q4_K_M` → `Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf` (~2 GB, faster routing). Default ctx 8192 → 16384 for both chat and reasoning. |
+| 📦 **Deploy scripts: VRAM tier detection** | `deploy.sh` / `deploy-ru.sh` now detect GPU VRAM via `nvidia-smi` and auto-select reasoning model: 16 GB+ → `gpt-oss-20b-Q4_K_M`, 12 GB → `Qwen3-8B-Thinking-Q4_K_M`, 8 GB → `Qwen3-4B-Thinking`. |
+| 🧠 **SLM daemon mode** | SuperLocalMemory now runs as a proper daemon (`slm serve start`) keeping the embedding model in memory permanently. Replaced the per-request `subprocess --sync` calls. SLM recall latency reduced from ~10 s to ~1 ms. HTTP proxy (`slm_http.py`) forwards requests to daemon internally. **Per-user isolation:** recall reads directly from the user's private SQLite, not from the daemon's shared database. |
+| 🧠 **SLM context for both chat + reasoning** | SLM facts are now injected into prompts for BOTH chat and reasoning models (alongside full conversation history). Previously was reasoning-only with only 2 last messages. `SLM_RECALL_LIMIT=5` (default). |
+| 🧠 **RAG fixes: router, streaming, context** | Router template now has dedicated category 5 for document/person/age queries → `[-RAG-]`. Streaming path (`_process_text_task_stream`) now calls RAG before requeuing to reasoning. Strict threshold lowered 0.7 → 0.5. Reasoning model receives document context via `{rag_context}`. RAG retry in `_process_reasoning_request`. |
+| 🎮 **Video VRAM fix: multimodal unload confirmation** | Fixed `_wait_for_vram_full()` — changed from impossible ≥80% threshold to `video_needed + 3 GB` buffer. Timeout increased 30 → 60 s. No more "proceeding anyway" into OOM. |
+| 🖼️ **Image display in streamed messages** | `finalizeStreamedMessage` renders images/videos from `result.file_path` / `result.file_data`. `file_data` added to `get_session_messages` SQL SELECT. `contextlib.suppress` replaced with proper logging in `db.py`. |
+| 🧪 **Test isolation improvements** | `conftest.py`: `stop_workers(timeout=3)` in `test_app` teardown. `TRUNCATE` on real PostgreSQL between tests (in CI). |
+| 🔨 **Various lint fixes** | SIM102, SIM108, F841 (3×), F821, N812, B904 — all resolved across `app/db.py`, `app/queue.py`, `modules/base.py`, `services/ltx_video/ltx_wrapper.py`. |
 
 ### Core Components
 
@@ -94,6 +118,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | **Whisper ASR** | Speech-to-text transcription | faster_whisper | 9000 |
 | **Piper TTS** | Text-to-speech synthesis | ONNX + Piper | 8888 |
 | **Qdrant** | Vector database for RAG | Rust | 6333 |
+| **SuperLocalMemory** | Long-term, cross-session memory per-user (daemon + HTTP proxy) | Python + SQLite | 8766 |
 | **Redis** | Request queue management | C | 6379 |
 | **PostgreSQL** | User accounts, sessions, messages | SQL | 5432 |
 | **Resource Manager** | Adaptive GPU/CPU/RAM management, prevents OOM errors, coordinates GPU access | Python |
@@ -123,22 +148,34 @@ All services run on one machine with GPU sharing:
 
 ## 📋 System Requirements
 
-### Hardware Recommendations
+### GPU Requirement
 
-| Component | Minimum | Recommended | Optimal |
-|-----------|---------|-------------|---------|
-| **RAM** | 16 GB | 32 GB | 32+ GB |
-| **CPU** | 4 cores | 4+ cores | 8+ cores |
-| **GPU** | NVIDIA 12 GB VRAM | NVIDIA 16 GB VRAM | NVIDIA 24+ GB VRAM |
-| **Storage** | 40 GB | 80+ GB SSD | 100+ GB SSD NVMe |
+FLAI **requires** an NVIDIA GPU with CUDA support. CPU-only mode is not supported — LLM inference, image generation, and video generation all depend on CUDA.
 
-> **GPU VRAM notes:**
-> - **8 GB** is sufficient for chat + embedding only (no multimodal, no image/video generation).
-> - **12 GB** enables multimodal (Qwen3VL ~6 GB) or image generation (Z_image_turbo ~7 GB in separate context), but not simultaneously.
-> - **16 GB** handles multimodal + reasoning + image gen + video gen via VRAM swapping (only one LLM model loaded at a time; SD and video run in separate GPU contexts with LLM auto-unloaded before generation).
-> - **24+ GB** allows keeping multimodal and reasoning in VRAM simultaneously without swapping.
->
-> **CPU-only mode:** Chat, reasoning, embeddings, RAG, and TTS work without a GPU (slower). Image generation works but takes 10–30 minutes per image. Multimodal (vision) and video generation require a GPU.
+### Hardware Tiers
+
+| Component | Tier 1 (Minimal) | Tier 2 (Moderate) | Tier 3 (Full) |
+|-----------|-----------------|-------------------|---------------|
+| **GPU VRAM** | 8 GB | 12 GB | 16+ GB |
+| **RAM** | 16 GB | 16 GB | 16 GB |
+| **CPU** | 4+ cores | 4+ cores | 6+ cores |
+| **Storage** | 60 GB | 80+ GB SSD | 100+ GB SSD NVMe |
+
+#### What works at each tier
+
+| Feature | 8 GB | 12 GB | 16+ GB |
+|---------|------|-------|--------|
+| Chat (Qwen3-4B) | ✅ full speed | ✅ full speed | ✅ full speed |
+| Reasoning | ⚠️ Qwen3-4B-Thinking (~2.5 GB) | ✅ Qwen3-8B-Thinking (~5 GB) | ✅ gpt-oss-20b (~12 GB, ngl=16+) |
+| Multimodal | ⚠️ Qwen3VL-4B (~2.5 GB) recommended | ✅ Qwen3VL-8B (~5.5 GB) | ✅ Qwen3VL-8B (~5.5 GB) |
+| Image gen (SD) | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 |
+| Image edit (Flux) | ✅ up to 768px long side | ✅ up to 1024px long side | ��� up to 1024px long side |
+| Video gen (LTX-Video) | ⚠️ 512×512×121 frames | ✅ 896×512×257 frames | ✅ 896×512×257 frames |
+| Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU |
+| RAG (Qdrant) | ✅ | ✅ | ✅ |
+| SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU |
+
+> **VRAM management:** All LLM models (chat, reasoning, multimodal, embedding) share VRAM via llama-swap — only one is loaded at a time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. The system dynamically adjusts `n_gpu_layers` based on available VRAM.
 
 ### Software Prerequisites
 - Linux server with **NVIDIA GPU** (CUDA support required)
@@ -149,21 +186,6 @@ All services run on one machine with GPU sharing:
 - Internet connection (only for initial model downloads)
 
 > 💡 **Note**: After downloading GGUF models, FLAI works completely offline.
-
----
-
-### 💻 Running without GPU (CPU-only mode)
-
-FLAI can operate on CPU-only servers using automatic detection in the deployment script. When no NVIDIA GPU is found, the script will use CPU-optimized images for llama.cpp and stable-diffusion.cpp. Performance will be significantly slower, but all features remain functional.
-
-- Chat and reasoning: works, but may be 3-10x slower.
-- Image generation: works, but generation time can be 10-30 minutes per image.
-- Voice processing (Whisper, Piper) and document search (RAG) are unaffected.
-
-To force CPU mode even if a GPU is present, you can manually run:
-```bash
-docker compose -f docker-compose.cpu.yml --profile with-image-gen --profile with-voice --profile with-rag up -d
-```
 
 ---
 
@@ -193,6 +215,9 @@ cd flai
 
 # + Video generation (LTX-Video)
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video
+
+# + Long-term memory (SuperLocalMemory)
+./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm
 
 # Run tests after deployment
 ./deploy.sh --download-models --with-image-gen --run-tests
@@ -236,8 +261,8 @@ nano .env
 mkdir -p services/llamacpp/models
 
 # Chat model (fast responses)
-wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
-  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf \
+  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf"
 
 # Reasoning model (complex tasks)
 wget -O services/llamacpp/models/gpt-oss-20b-Q4_K_M.gguf \
@@ -269,8 +294,8 @@ wget -O services/sd_cpp/models/vae/ae.safetensors \
   "https://huggingface.co/bartowski/Z-Image-Turbo-GGUF/resolve/main/ae.safetensors"
 
 # LLM text encoder (shared with chat)
-wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf \
-  "https://huggingface.co/bartowski/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf \
+  "https://huggingface.co/bartowski/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf"
 ```
 
 #### Image Editing Models (Flux.2 Klein 4B)
@@ -285,7 +310,7 @@ wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
   "https://huggingface.co/bartowski/FLUX.2-dev-GGUF/resolve/main/flux2_ae.safetensors"
 ```
 
-> The text encoder `Qwen3-4B-Instruct-2507-Q4_K_M.gguf` is **shared** between generation and editing. Download it once.
+> The text encoder `Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf` is **shared** between generation and editing. Download it once.
 
 > ⚠️ **Important**: Multimodal models **must** be placed in a subdirectory named after the model, with the `mmproj-*.gguf` file inside. The llama.cpp router automatically discovers and loads the projector.
 
@@ -318,8 +343,11 @@ docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 # With video generation
 docker compose -f docker-compose.gpu.yml --profile with-video up -d
 
-# Full stack: chat + images + voice + RAG + video
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video up -d
+# With long-term memory (SuperLocalMemory)
+docker compose -f docker-compose.gpu.yml --profile with-slm up -d
+
+# Full stack: chat + images + voice + RAG + video + long-term memory
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm up -d
 ```
 
 > ⏱️ **First build takes time**: stable-diffusion.cpp is compiled from source (~5-10 minutes). Subsequent builds use the cache.
@@ -355,6 +383,7 @@ Now you can:
 - 🗂️ **Multiple Chat Sessions** — separate conversations with auto-titling
 - 💾 **Export Chats** — save conversations as HTML with embedded media
 - 📹 **View Cameras** — IP camera snapshots analyzed by AI
+- 🧠 **Long-term Memory** — cross-session memory via SuperLocalMemory (adds relevant facts alongside history, enable with `--with-slm`)
 - 💾 **Backup & Restore** — full or user-only backups from the admin panel
 - 🔧 **CLI Tools** — admin password reset, orphaned file cleanup
 
@@ -385,8 +414,9 @@ PIPER_URL=http://flai-piper:8888/tts
 QDRANT_URL=http://flai-qdrant:6333
 QDRANT_API_KEY=your_qdrant_api_key
 CAMERA_API_URL=http://flai-room-snapshot-api:5000
-LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872  # LTX-Video video generation
-```
+ LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872  # LTX-Video video generation
+ SLM_URL=http://flai-slm:8766                      # SuperLocalMemory long-term memory
+ ```
 
 **Image & Video Defaults:**
 ```bash
@@ -441,14 +471,17 @@ Configuration is loaded from `gunicorn_config.py`, not inline CLI args.
 ### Docker Compose Profiles
 
 ```bash
-# Start all services (chat + images + voice + RAG + video)
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video up -d
+# Start all services (chat + images + voice + RAG + video + long-term memory)
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm up -d
 
 # Chat + voice only
 docker compose -f docker-compose.gpu.yml --profile with-voice up -d
 
 # Video generation
 docker compose -f docker-compose.gpu.yml --profile with-video up -d
+
+# Long-term memory (SuperLocalMemory)
+docker compose -f docker-compose.gpu.yml --profile with-slm up -d
 
 # Chat only (no images, no voice, no video)
 docker compose -f docker-compose.gpu.yml up -d
@@ -470,7 +503,7 @@ llama.cpp runs in **router mode** (`--models-dir`), dynamically loading models f
 
 ```
 services/llamacpp/models/
-├── Qwen3-4B-Instruct-2507-Q4_K_M.gguf     # Chat
+├── Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf     # Chat
 ├── gpt-oss-20b-Q4_K_M.gguf                  # Reasoning
 ├── bge-m3-Q8_0.gguf                        # Embedding
 └── Qwen3VL-8B-Instruct-Q4_K_M/             # Multimodal (subdirectory!)
@@ -740,76 +773,51 @@ curl http://localhost:5000/metrics
 ### ✅ Completed
 
 - **llama.cpp router mode** (`--models-dir`) — single llama-server with dynamic model switching
-- **stable-diffusion.cpp** — Z-Image-Turbo for generation, Flux.2 Klein 4B for editing
+- **llama-swap backend** — dynamic model management, auto-generated config from DB, GPU VRAM optimization
 - **OpenAI-compatible API** (`/v1/chat/completions`, `/v1/embeddings`)
-- **Multimodal support** via mmproj in subdirectories
-- **Dynamic model switching** with `--models-max 1`
-- **Individual model parameters** via `models-preset.ini`
-- **GGUF model management** via admin panel — configure models per module (chat, reasoning, multimodal, embedding) directly from the web interface
-- **All translations updated** for llama.cpp and llama-swap terminology (EN + RU)
-- **Piper TTS optimization** for large text synthesis — chunked processing with seamless audio transitions
-- **llama-swap backend** — dynamic model management and GPU VRAM optimization, auto-generated config from DB
+- **Multimodal support** — mmproj in subdirectories, image analysis via Qwen3VL
+- **GGUF model management** via admin panel — configure models per module (chat, reasoning, multimodal, embedding) from the web interface
+- **Image generation & editing** — Z_image_turbo for generation, Flux.2 Klein 4B for editing
+- **Video generation (LTX-Video 2B)** — text-to-video and image+text-to-video, separate GPU container
 - **Voice features** — Whisper ASR (faster_whisper) speech-to-text + Piper TTS with male/female voices in EN/RU
-- **Image generation & editing** — create images from text via Z_image_turbo, edit uploaded images via Flux.2 Klein 4B
-- **RAG document search** — upload PDF/DOC/DOCX/TXT, vector search via Qdrant with configurable chunking
-- **Camera integration** — request snapshots from IP cameras, analyze with multimodal models, granular user permissions
-- **Backup & restore** — full or users-only backups from the admin panel (pg_dump + tar.gz archives)
-- **Admin CLI tools** — `admin-password` for password reset, `cleanup-uploads` for orphaned file removal
-- **Health check & metrics** — `/health` endpoint with service status, `/metrics` for Prometheus
+- **RAG document search** — PDF/DOC/DOCX/TXT upload, vector search via Qdrant with configurable chunking
+- **SuperLocalMemory (SLM)** — long-term cross-session memory, daemon mode, per-user SQLite isolation, ~1 ms recall latency
+- **RAG: generation on slow worker** — fast worker does only search, reasoning model generates answer; prevents GPU contention; RAG prompt uses ONLY context (no hallucination)
+- **5-layer model protection in admin panel** — 3-tier VRAM/RAM classification (🟢 good / 🟡 cpu_offload / 🔴 impossible / ⚠ unknown), server-side validation, background dry-load + auto-rollback, crash-loop watchdog
+- **Camera integration** — IP camera snapshots, multimodal analysis, granular user permissions
+- **Backup & restore** — full or users-only backups from admin panel (pg_dump + tar.gz)
+- **Multi-language support** — full interface and AI responses in Russian and English
+- **VRAM management** — `ensure_vram_for_llm()`, auto-unload LTX-Video before SD/video, VRAM freed between every GPU task
+- **Dynamic VRAM estimation** — computed from GGUF metadata (file_size, block_count, ctx) + real measurements stored in DB; admin panel shows color-coded percentage bars
+- **Adaptive model degradation** — iterative `n_gpu_layers` reduction on OOM, per-model-type circuit breakers, reasoning 502 retry with degrade
+- **GPU requirement + 3 hardware tiers** — auto-detect VRAM via `nvidia-smi` in deploy scripts (8/12/16+ GB)
+- **Video VRAM hardening** — try/finally in both video handlers, CUDA flush, timeout 60 s, buffer +3000 MB, no "proceeding anyway"
+- **SSE real-time delivery** — queue results and messages via Server-Sent Events (Redis pub/sub), replacing HTTP polling
+- **Video via slow queue** — video tasks re-queued from fast worker, serialized GPU access
+- **Fast worker GPU lock** — chat, embedding, RAG search also acquire `_gpu_lock`, preventing parallel GPU tasks
+- **Live token/s speed display** — real-time tokens-per-second during streaming, final speed in message header
 - **Response style selector** — dropdown in chat header: neutral, academic, professional, friendly, funny
-- **Repeat penalty** — `repeat_penalty` parameter (1.0–2.0) per model, prevents response loops
-- **PostgreSQL 18 upgrade** — migrated from 16 to 18 with zero data loss
-- **Service prefix formatting** — voice, camera, image gen/edit messages show bold prefix; excluded from TTS and clipboard
-- **Message format migration** — all old service messages converted to structured JSON `{prefix, text}` format
-- **SSE real-time delivery** — queue results and new messages delivered via Server-Sent Events (Redis pub/sub), replacing all HTTP polling
-- **Static cache-busting** — all JS/CSS assets served with `?v=timestamp` to prevent stale cache after updates
-- **PDF extraction via pdftotext** — accurate text positioning for complex PDF layouts (hh.ru resumes, tables, multi-column)
-- **Real-time document indexing SSE** — document list auto-refresh when indexing completes or fails, no manual page reload needed
-- **CLI command** — `flask migrate-messages-format` to convert old plain-text service messages to JSON format (supports `--dry-run`)
-- **SSE reliability** — 4 root cause fixes for voice message delivery (lightning icon visibility, reconnect recovery, `user_id` passthrough for `message_new` events)
-- **Migration `--add-emojis`** — `flask migrate-messages-format --add-emojis` to retroactively add `🎨` to existing image service messages (supports `--dry-run`)
-- **Tablet responsive layout** — media query for 769–1199px fixes footer overlap with chat input caused by `100vh` vs `100%` mismatch in mobile browsers
-- **Image streaming fix** — tokens after `[-IMAGE-EDIT-]` marker no longer discarded during SSE streaming, eliminating empty edit query errors
-- **GPU/CPU auto-detect for SD** — `sd_wrapper.py` detects CUDA inside container via `nvidia-smi`; omits CPU offload flags on GPU; no `--cuda`; automatic CPU fallback
-- **SD error translations restored** — `_sd_error_translation_markers()` in `utils.py` for pybabel extraction; 8 stale `.po` keys reactivated with proper source references
-- **Session switching UI fix** — `chat-sessions.js`: `loadMessages()` called after server-side session deletion; same-session click re-fetches messages
-- **Full i18n coverage** — all user-facing errors wrapped in `_()`/`gettext()`; 14 new translation keys; rule added to `AGENTS.md`
-- **Audio ⚡ race condition fix** — `clearSessionQueue` + `fetchQueueStatus` race fixed for HTTP audio responses without `request_id`; single-session ⚡ indicator
-- **Page-refresh recovery** — ⚡, streaming, and final response survive F5 during generation; `onStreamToken`/`onResultCompleted` handle missing `pendingRequestIds`
-- **VRAM monitor & model auto-degradation** — background polling via `nvidia-smi` every 60s; progressive model degradation (100%→0% n_gpu_layers in 4 steps) on OOM; per-VRAM-tier safety caps
-- **VRAM calculator in admin panel** — `/admin/api/model-estimate` endpoint estimates VRAM (weights + KV cache + compute); auto-calculated `n_gpu_layers` slider
-- **SD progressive offload system** — 4-level offload (0=full GPU → 3=full CPU); VRAM headroom check (500MB) before generation
-- **Live token/s speed display** — real-time tokens-per-second during streaming; final token/s in message header; `completion_tokens` stored in DB
-- **Model config cache fix** — TTL cache replaced with `updated_at`-based versioning, eliminating cross-worker inconsistency with gunicorn `workers=2`
-- **Architecture display fix** — numpy byte-string decoding (`[113 119 101 110 51]` → `qwen3`) in admin panel
-- **GGUF metadata expansion** — `parameter_count`, `head_count`, `head_count_kv`, `key_length`, `value_length` scanned and stored in DB
-- **Video generation (LTX-Video 2B)** — text-to-video and image+text-to-video. Separate GPU container with VRAM isolation, T5 encoder on CPU, llama.cpp LLM auto-unload. 8-step distilled inference, ~11s for 9 frames at 320×512.
-- **Retry on 502 for Qwen3VL** — automatic retry (1 attempt, 5s delay) when multimodal model returns 502 during loading. Circuit breaker prevents cascading failures.
-- **CUDA cleanup after video** — `torch.cuda.empty_cache()` + `gc.collect()` in ltx_wrapper.py `finally` block. Repeated LLM unload in video.py to kill zombie processes.
-- **GPU memory diagnostics** — `log_gpu_memory()` method using llama-swap API or nvidia-smi fallback. Logged after each video generation.
-- **Unified image resize (1536px)** — `resize_image_if_needed` changed from bounding-box (3840×2160) to longest-side (1536px). Prevents Qwen3VL context overflow and reduces disk usage.
-- **Image edit resize (1024px)** — source images for SD editing resized to 1024px on longest side to prevent OOM.
-- **llama-swap updated to v217** — image pulled to get llama-server 9294 with Blackwell (sm_120) crash fixes.
-- **Chat loading optimization** — base64 `file_data` stripped from `content` JSON in `get_session_messages()` when file is on disk. Reduces API response payload ~1000x (10 images: ~15 MB → ~10 KB).
-- **Aspect ratio matching for video-from-image** — output video resolution matches source image aspect ratio (wide → 896×512, tall → 512×896, square → 512×512). Implemented in `generate_video_params_from_image()`. |
-- **File size display in message headers** — `file_size` read from disk for messages with `file_path`, displayed in chat headers for all file types.
-- **Reasoning model VRAM optimization** — `--n-gpu-layers` reduced from 24 to 16 and `--ctx-size` from 32768 to 16384 to fit in 16 GB VRAM.
-- **CUDA context reset after video** — `cuDevicePrimaryCtxReset(0)` added to ltx_wrapper.py `finally` block. Completely releases all GPU memory after video generation, preventing OOM in subsequent LLM requests.
-- **Removed cuDevicePrimaryCtxReset** — replaced with `_pipeline = None` + `empty_cache()` + `gc.collect()`. The aggressive reset caused SIGSEGV during pipeline reinit on sequential video requests.
-- **fileSize passthrough fix** — `chat-init.js` `window.displayMessage` overrode the function with 16 parameters, dropping `fileSize`. Added 17th parameter.
-- **SSE handlers file_size fix** — `events.js` three handlers did not pass `file_size` to `displayMessage`. Fixed all call sites.
-- **Simplified video filenames** — `video_{timestamp}_{seed}_{W}x{H}x{F}.mp4` → `{timestamp}.mp4`.
-- **Video task re-queuing to slow queue** — video tasks are re-queued from fast worker to slow queue. Fast worker no longer blocks for 60-120 seconds. Multiple video requests properly serialized.
-- **SSE re-queue fix** — lightning indicator (⚡) stays active when video task is re-queued. `handleCompletedResult` recognizes `status: "queued"` with `request_id`.
-- **History filter for router** — `[-...-]` markers and `{"prefix":...,"text":...}` JSON stripped from conversation history in `_extract_text_content()`. Prevents router from copying old markers.
-- **Independent classification rule** — `base_text.template` updated: each query classified independently, markers from history never copied.
-- **SD VRAM fix** — ltxvideo pipeline unloaded via `POST /v1/unload` before SD generation, freeing ~6.5 GB VRAM.
-- **ltx-wrapper /v1/unload endpoint** — new endpoint to unload pipeline and release GPU memory on demand.
-- **CUDA cleanup fix** — removed `cuDevicePrimaryCtxReset(0)` (caused SIGSEGV), replaced with `_pipeline = None` + `empty_cache()` + `gc.collect()`.
-- **Enhanced history filter** — `get_session_text_history()` filters out entire user+assistant pairs where the assistant responded with a generation marker. Prevents router from seeing previous generation requests and copying them.
+- **Repeat penalty** — `repeat_penalty` parameter (1.0–2.0) per model
+- **Chat loading optimization** — base64 `file_data` stripped from API response (~1000× reduction)
+- **Unified image resize (1536px)** — prevents Qwen3VL context overflow, reduces disk usage
+- **Static cache-busting** — all JS/CSS served with `?v=timestamp`
+- **Translation system fix** — Docker compiles translations at build time; all features work in both languages
+- **Router response parsing fix** — prevents copied template text and history markers from polluting queries
+- **Multi-tab session support** — client sends `session_id` in request body, server validates ownership; no cookie race conditions
+- **CUDA context cleanup after video** — `_pipeline = None` + `empty_cache()` + `gc.collect()` (safe, no SIGSEGV)
+- **PostgreSQL 18** — migrated from 16 with zero data loss
+- **TTL-based VRAM optimization** — non-chat models unload immediately (TTL=0s), chat stays hot (600s)
+- **PDF extraction via pdftotext** — accurate text positioning for complex layouts (resumes, tables, multi-column)
+- **Background SLM import on startup** — incremental import with checkpoint table, daemon thread, CLI: `flask import-history-to-slm`
+- **Piper TTS optimization** — chunked processing for large text synthesis with seamless audio transitions
+- **llama-swap v217** — Blackwell (sm_120) crash fixes
+- **Default chat model upgraded** — Qwen3-4B MXFP4_MOE (~2 GB), default ctx 8192 → 16384
+- **Deploy scripts: VRAM tier detection** — auto-select reasoning model: 16 GB+ → gpt-oss-20b, 12 GB → Qwen3-8B-Thinking, 8 GB → Qwen3-4B-Thinking
+- **CLI tools** — `admin-password`, `cleanup-uploads`, `migrate-messages-format` (with `--dry-run`, `--add-emojis`)
+- **Health check & metrics** — `/health` endpoint with service status, `/metrics` for Prometheus
+- **File size display** — shown in chat headers for all file types
 
 ### 🔄 In Progress
-- Long-term dialog memory (cross-session context)
 - Advanced RAG: metadata filtering, hybrid search
 - Mobile-responsive UI optimizations
 
@@ -827,7 +835,7 @@ curl http://localhost:5000/metrics
 
 | Model | Purpose | License | Approx. Size |
 |-------|---------|---------|-------------|
-| **Qwen3-4B-Instruct-2507-Q4_K_M** | Chat (fast responses) | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2.5 GB |
+| **Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf** | Chat (fast responses) | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2 GB |
 | **gpt-oss-20b-Q4_K_M** | Reasoning (complex tasks) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 GB |
 | **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (image analysis) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5 GB + mmproj ~1.1 GB |
 | **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~0.6 GB |
@@ -838,7 +846,7 @@ curl http://localhost:5000/metrics
 |-------|---------|---------|-------------|
 | **Z-Image-Turbo (z_image_turbo-Q8_0)** | Image generation | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~6.2 GB |
 | **ae.safetensors** (VAE) | Variational autoencoder for Z-Image | [Model-specific](https://huggingface.co/bartowski/Z-Image-Turbo-GGUF) | ~0.3 GB |
-| **Qwen3-4B-Instruct-2507-Q4_K_M** | Text encoder for Z-Image | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2.5 GB *(shared with chat)* |
+| **Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf** | Text encoder for Z-Image | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2 GB *(shared with chat)* |
 
 ### Image Editing Models (stable-diffusion.cpp)
 
@@ -853,6 +861,12 @@ curl http://localhost:5000/metrics
 |-------|---------|---------|-------------|
 | **ltxv-2b-0.9.8-distilled.safetensors** | LTX-Video 2B diffusion transformer + VAE | [LTX-Video License](https://huggingface.co/Lightricks/LTX-Video) | ~5.9 GB |
 | **PixArt T5-XXL (text_encoder)** | T5 text encoder for LTX-Video | [PixArt License](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS) | ~18 GB (disk, float32) |
+
+### Long-term Memory Models
+
+| Model | Purpose | License | Approx. Size |
+|-------|---------|---------|-------------|
+| **nomic-embed-text-v1.5** | Text embedding for SLM retrieval | [Apache 2.0](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5) | ~500 MB |
 
 ### Voice Models
 
@@ -876,6 +890,7 @@ curl http://localhost:5000/metrics
 | + Image editing | ~31 GB |
 | + Voice (TTS + Whisper) | ~35 GB |
 | + Video generation (LTX-Video + T5 encoder) | ~59 GB *(T5 encoder ~18 GB on disk in float32)* |
+| + Long-term memory (SLM embedding model) | ~59.5 GB *(SLM adds ~500 MB)* |
 
 > **Note**: After downloading models, FLAI works completely offline. No external scripts or modules are loaded at runtime.
 
@@ -909,6 +924,11 @@ pytest tests/test_sd_cpp_module.py
 pytest tests/test_queue.py
 pytest tests/test_security.py
 pytest tests/test_resource_manager.py
+pytest tests/test_resource_manager_ltx_unload.py
+pytest tests/test_vram_estimates.py
+pytest tests/test_classify_model_fit.py
+pytest tests/test_dry_load.py
+pytest tests/test_health_monitor.py
 pytest tests/test_llama_swap_config.py
 pytest tests/test_validators.py
 pytest tests/test_model_config.py

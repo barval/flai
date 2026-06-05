@@ -12,6 +12,6 @@ class TranslationMixin:
                 result = _(key)
             if kwargs:
                 result = result.format(**kwargs)
-            return result
+            return result  # type: ignore[no-any-return]
         except RuntimeError:
             return key

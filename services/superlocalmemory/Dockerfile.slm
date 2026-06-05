@@ -1,0 +1,32 @@
+# Dockerfile.slm — SuperLocalMemory (long-term memory)
+# Starts SLM daemon (holds embedding model in memory) + HTTP proxy to it.
+
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gosu && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir superlocalmemory flask
+
+# Pre-download embedding model (~500 MB) during build — no delay on first use
+RUN slm warmup 2>/dev/null || true
+
+# Create appuser with UID 1000 (same as web container) for shared volume access
+RUN addgroup --system --gid 1000 appuser && \
+    adduser --system --uid 1000 --gid 1000 appuser && \
+    mkdir -p /app/data/slm && \
+    chown -R appuser:appuser /app/data
+
+COPY slm_http.py /app/slm_http.py
+COPY start.sh /app/start.sh
+
+RUN chmod +x /app/start.sh
+
+EXPOSE 8766
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=45s \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8766/health', timeout=5)"
+
+CMD ["/app/start.sh"]

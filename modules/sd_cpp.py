@@ -9,6 +9,7 @@ doesn't properly use loaded models.
 
 import base64
 import logging
+import time
 from datetime import datetime
 from typing import Any
 
@@ -130,6 +131,7 @@ class SdCppModule(TranslationMixin):
         """Determine use_gpu flag with VRAM check. Falls back to CPU if VRAM insufficient."""
         if not rm.hardware.cuda_detected:
             return False
+        rm._poll_vram()
         available = rm.hardware.available_vram_mb
         needed = self._estimate_sd_vram_mb(self.model_type) + 500  # 500MB margin
         if available > 0 and available < needed:
@@ -148,13 +150,12 @@ class SdCppModule(TranslationMixin):
 
         # Unload llama.cpp model to free ALL VRAM for sd-cli
         llamacpp_url = self.app.config.get("LLAMACPP_URL", "http://flai-llamacpp:8033")
-        unload_success = rm.unload_llamacpp_model(llamacpp_url)
-        if not unload_success:
-            self.logger.warning("Failed to unload llama.cpp model before generation — OOM risk")
+        rm.unload_llamacpp_model(llamacpp_url)
 
         # Unload ltxvideo pipeline to free its ~6.5 GB VRAM
         try:
             import requests as req
+
             ltx_url = self.app.config.get("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
             resp = req.post(f"{ltx_url.rstrip('/')}/v1/unload", timeout=10)
             if resp.status_code == 200:
@@ -164,6 +165,16 @@ class SdCppModule(TranslationMixin):
         except Exception as e:
             self.logger.warning(f"Failed to unload ltxvideo pipeline: {e}")
 
+        # Verify VRAM is actually free after unloads; wait if needed
+        needed = self._estimate_sd_vram_mb(self.model_type) + 2000
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            rm._poll_vram()
+            if rm.hardware.available_vram_mb >= needed:
+                break
+            self.logger.info(f"VRAM: {rm.hardware.available_vram_mb} MB free, need {needed} MB — waiting for unload...")
+            time.sleep(1)
+
         # Check VRAM availability after LLM unload
         use_gpu = self._resolve_use_gpu(rm)
         if use_gpu:
@@ -172,6 +183,18 @@ class SdCppModule(TranslationMixin):
             )
         else:
             self.logger.info("SD will use CPU mode")
+
+        # Cap resolution for low VRAM tiers (8 GB) to prevent OOM
+        width = prompt_data.get("width", 1024)
+        height = prompt_data.get("height", 1024)
+        total_vram = rm.hardware.total_vram_mb
+        if total_vram > 0 and total_vram < 10000:
+            max_dim = 1024
+            if width > max_dim or height > max_dim:
+                ratio = max_dim / max(width, height)
+                old_w, old_h = width, height
+                width, height = int(width * ratio), int(height * ratio)
+                self.logger.info(f"VRAM tier 8GB: capped resolution from {old_w}×{old_h} to {width}×{height}")
 
         rm.mark_sd_busy()
 
@@ -188,8 +211,8 @@ class SdCppModule(TranslationMixin):
             payload = {
                 "prompt": prompt_data.get("prompt", ""),
                 "steps": prompt_data.get("steps", 10),
-                "width": prompt_data.get("width", 1024),
-                "height": prompt_data.get("height", 1024),
+                "width": width,
+                "height": height,
                 "cfg_scale": prompt_data.get("cfg_scale", 1.0),
                 "flow_shift": prompt_data.get("flow_shift", 2.0),
                 "use_gpu": use_gpu,
@@ -267,13 +290,12 @@ class SdCppModule(TranslationMixin):
 
         # Unload llama.cpp model to free ALL VRAM for sd-cli
         llamacpp_url = self.app.config.get("LLAMACPP_URL", "http://flai-llamacpp:8033")
-        unload_success = rm.unload_llamacpp_model(llamacpp_url)
-        if not unload_success:
-            self.logger.warning("Failed to unload llama.cpp model before editing — OOM risk")
+        rm.unload_llamacpp_model(llamacpp_url)
 
         # Unload ltxvideo pipeline to free its ~6.5 GB VRAM
         try:
             import requests as req
+
             ltx_url = self.app.config.get("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
             resp = req.post(f"{ltx_url.rstrip('/')}/v1/unload", timeout=10)
             if resp.status_code == 200:
@@ -292,8 +314,9 @@ class SdCppModule(TranslationMixin):
         else:
             self.logger.info("SD edit will use CPU mode")
 
-        # Resize large images to avoid OOM on 16GB VRAM
-        max_edit_size = 1024
+        # Resize large images to avoid OOM — larger cap for 16GB+, tighter for 8GB
+        total_vram = rm.hardware.total_vram_mb
+        max_edit_size = 768 if (total_vram > 0 and total_vram < 10000) else 1024
         resized_info = {"resized": False, "original_size": None, "new_size": None}
         try:
             img_bytes = base64.b64decode(image_base64)

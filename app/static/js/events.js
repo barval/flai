@@ -10,6 +10,9 @@ function connectEventStream() {
         eventSource.close();
     }
 
+    // Restore pending requests from sessionStorage (survives session switches)
+    restorePendingRequests();
+
     eventSource = new EventSource('/api/events/stream');
 
     eventSource.addEventListener('connected', function () {
@@ -344,7 +347,7 @@ function onResultCompleted(data) {
         return;
     }
 
-    delete pendingRequestIds[data.task_id];
+    clearPendingRequest(data.task_id);
 
     if (data.status === 'completed' && data.result) {
         handleCompletedResult(data.result, expectedSessionId);
@@ -428,6 +431,8 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
                     if (typeof result.response_time === 'object') {
                         if (result.response_time.mm_time && result.response_time.gen_time) {
                             duration = (parseFloat(result.response_time.mm_time) + parseFloat(result.response_time.gen_time)).toFixed(1);
+                        } else if (result.response_time.router && result.response_time.chat) {
+                            duration = (parseFloat(result.response_time.router) + parseFloat(result.response_time.chat)).toFixed(1);
                         } else if (result.response_time.mm_time) {
                             duration = parseFloat(result.response_time.mm_time).toFixed(1);
                         } else if (result.response_time.gen_time) {
@@ -529,7 +534,48 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
         var contentDiv = streamMsg.querySelector('.message-content');
         if (contentDiv && result && result.response) {
             contentDiv.innerHTML = marked.parse(result.response);
+        } else if (contentDiv && result && result.error) {
+            // Show error in streaming message if no response text
+            contentDiv.innerHTML = '⚠️ ' + t('error') + ': ' + result.error;
         }
+
+        // Display file attachments (image, video) from result if present
+        if (result && (result.file_path || result.file_data)) {
+            var fileUrl = '';
+            if (result.file_path) {
+                fileUrl = '/api/files/' + result.file_path;
+            } else if (result.file_data) {
+                fileUrl = 'data:' + (result.file_type || 'application/octet-stream') + ';base64,' + result.file_data;
+            }
+            if (fileUrl && result.file_type) {
+                if (result.file_type.startsWith('image/')) {
+                    var existingImg = streamMsg.querySelector('.image-container');
+                    if (!existingImg) {
+                        var imgContainer = document.createElement('div');
+                        imgContainer.className = 'image-container';
+                        var img = document.createElement('img');
+                        img.src = fileUrl;
+                        img.className = 'attached-image';
+                        img.alt = result.file_name || t('image');
+                        img.title = t('click_to_enlarge');
+                        img.onclick = function() { openImageModal(this.src, result.file_name || t('image')); };
+                        imgContainer.appendChild(img);
+                        streamMsg.appendChild(imgContainer);
+                    }
+                } else if (result.file_type.startsWith('video/')) {
+                    var existingVideo = streamMsg.querySelector('video');
+                    if (!existingVideo) {
+                        var video = document.createElement('video');
+                        video.controls = true;
+                        video.src = fileUrl;
+                        video.style.maxWidth = '100%';
+                        video.style.maxHeight = '400px';
+                        streamMsg.appendChild(video);
+                    }
+                }
+            }
+        }
+
         if (typeof updateLastVisit === 'function') updateLastVisit(currentSessionId);
         if (typeof addCopyButtonsToMessage === 'function') addCopyButtonsToMessage(streamMsg);
     } else if (resultSessionId === currentSessionId && data.result?.response) {
@@ -546,17 +592,50 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
         setNewMessageIndicator(resultSessionId, true);
     }
 
-    // Cleanup
+    // Cleanup — but don't clear pending request if task was requeued
     if (resultSessionId) {
         setLocalTranscribing(resultSessionId, false);
         clearSessionQueue(resultSessionId);
+        setTimeout(fetchQueueStatus, 500);
     }
-    delete pendingRequestIds[taskId];
+    var wasRequeued = data.result && data.result.status === 'queued' && data.result.request_id;
+    if (!wasRequeued) {
+        clearPendingRequest(taskId);
+    }
     _clearStreamFromSessionStorage(taskId);
 }
 
-function trackPendingRequest(requestId, sessionId) {
+function trackPendingRequest(requestId, sessionId, persist = true) {
     pendingRequestIds[requestId] = { sessionId: sessionId, timestamp: Date.now() };
+    if (!persist) return;
+    // Persist to sessionStorage so status indicators survive session switches
+    try {
+        const stored = JSON.parse(sessionStorage.getItem('pendingRequests') || '{}');
+        stored[requestId] = { sessionId: sessionId, timestamp: Date.now() };
+        sessionStorage.setItem('pendingRequests', JSON.stringify(stored));
+    } catch (e) { /* ignore */ }
+}
+
+function restorePendingRequests() {
+    try {
+        const stored = JSON.parse(sessionStorage.getItem('pendingRequests') || '{}');
+        const now = Date.now();
+        for (const [reqId, info] of Object.entries(stored)) {
+            // Only restore if not too old (5 minutes)
+            if (!pendingRequestIds[reqId] && now - info.timestamp < 5 * 60 * 1000) {
+                pendingRequestIds[reqId] = info;
+            }
+        }
+    } catch (e) { /* ignore */ }
+}
+
+function clearPendingRequest(requestId) {
+    delete pendingRequestIds[requestId];
+    try {
+        const stored = JSON.parse(sessionStorage.getItem('pendingRequests') || '{}');
+        delete stored[requestId];
+        sessionStorage.setItem('pendingRequests', JSON.stringify(stored));
+    } catch (e) { /* ignore */ }
 }
 
 function handleCompletedResult(result, expectedSessionId) {
@@ -578,12 +657,15 @@ function handleCompletedResult(result, expectedSessionId) {
     // Error result
     if (result.error) {
         if (resultSessionId === currentSessionId) {
+            // Error headers intentionally get no ⏱️/🚀/🤖 — pass null for
+            // responseTime and modelName='system'.
             window.displayMessage('assistant', '⚠️ ' + result.error, null, null, null, null,
-                result.assistant_timestamp || new Date().toISOString(), result.response_time, 'system',
+                result.assistant_timestamp || new Date().toISOString(), null, 'system',
                 null, null, null, null, result.message_id, null);
         }
         if (resultSessionId) setLocalTranscribing(resultSessionId, false);
         clearSessionQueue(resultSessionId);
+        setTimeout(fetchQueueStatus, 500);
         return;
     }
 
@@ -629,6 +711,7 @@ function handleCompletedResult(result, expectedSessionId) {
         }
         if (resultSessionId) setLocalTranscribing(resultSessionId, false);
         clearSessionQueue(resultSessionId);
+        setTimeout(fetchQueueStatus, 500);
         return;
     }
 
@@ -636,6 +719,7 @@ function handleCompletedResult(result, expectedSessionId) {
     if (resultSessionId) {
         setLocalTranscribing(resultSessionId, false);
         clearSessionQueue(resultSessionId);
+        setTimeout(fetchQueueStatus, 500);
     }
 }
 
@@ -693,17 +777,20 @@ function handleCameraResult(result, resultSessionId) {
     }
     if (resultSessionId) setLocalTranscribing(resultSessionId, false);
     clearSessionQueue(resultSessionId);
+    setTimeout(fetchQueueStatus, 500);
 }
 
 function handleErrorResult(data, expectedSessionId) {
     const errorSessionId = data.result?.session_id || expectedSessionId;
     if (errorSessionId === currentSessionId) {
-        window.displayMessage('assistant', '⚠️ ' + t('error') + ': ' + (data.error || t('unknown_error')), null, null, null, null,
+        const errorMsg = data.result?.error || data.error || t('unknown_error');
+        window.displayMessage('assistant', '⚠️ ' + t('error') + ': ' + errorMsg, null, null, null, null,
             new Date().toISOString(), null, 'system', null, null, null, null, null, null);
     }
     if (errorSessionId) {
         setLocalTranscribing(errorSessionId, false);
         clearSessionQueue(errorSessionId);
+        setTimeout(fetchQueueStatus, 500);
     }
 }
 
@@ -788,3 +875,10 @@ window.connectEventStream = connectEventStream;
 window.disconnectEventStream = disconnectEventStream;
 window.trackPendingRequest = trackPendingRequest;
 window.restoreStreamingFromSessionStorage = restoreStreamingFromSessionStorage;
+
+// Fallback polling: refresh queue status every 5s while there are pending requests
+setInterval(function () {
+    if (Object.keys(pendingRequestIds).length > 0 && typeof fetchQueueStatus === 'function') {
+        fetchQueueStatus();
+    }
+}, 5000);

@@ -9,6 +9,7 @@ Endpoints:
 """
 
 import base64
+import contextlib
 import json
 import logging
 import os
@@ -118,8 +119,6 @@ def ensure_pipeline():
             _upscaler_path = None
 
         precision = config.get("precision", "bfloat16")
-        sampler = config.get("sampler", "from_checkpoint")
-        stg_mode = config.get("stg_mode", "attention_values")
 
         from ltx_video.models.autoencoders.causal_video_autoencoder import (
             CausalVideoAutoencoder,
@@ -312,13 +311,13 @@ def run_inference(
         try:
             img = Image.open(BytesIO(base64.b64decode(image_data))).convert("RGB")
             media_tensor = load_image_to_tensor_with_resize_and_crop(img, height, width, just_crop=False)
-            from torch.nn import functional as F
+            import torch.nn.functional as F  # noqa: N812
 
             media_tensor = F.pad(media_tensor, padding)
             conditioning_items = [ConditioningItem(media_tensor, 0, 1.0)]
         except Exception as e:
             logger.error(f"Failed to process conditioning image: {e}")
-            raise ValueError(f"Invalid image data: {e}")
+            raise ValueError(f"Invalid image data: {e}") from e
 
     # Run pipeline
     sample_input = {
@@ -366,7 +365,7 @@ def run_inference(
         conditioning_items=conditioning_items,
         is_video=True,
         vae_per_channel_normalize=True,
-        image_cond_noise_scale=0.05,
+        image_cond_noise_scale=0.15,
         mixed_precision=False,
         offload_to_cpu=offload_to_cpu,
         enhance_prompt=False,
@@ -423,22 +422,73 @@ def health():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
+@app.route("/v1/vram_info", methods=["GET"])
+def vram_info():
+    """Return pipeline component file sizes + current peak VRAM.
+
+    flai-web calls this to compute the dynamic estimate_video_vram_needed()
+    without needing direct filesystem access to /app/models.
+    """
+    try:
+        components = {
+            "transformer": MODELS_DIR + "/ltxv-2b-0.9.8-distilled.safetensors",
+            "upscaler": MODELS_DIR + "/ltxv-spatial-upscaler-0.9.8.safetensors",
+            "t5_encoder_dir": MODELS_DIR + "/t5_encoder/text_encoder",
+        }
+        sizes_mb = {}
+        for name, path in components.items():
+            p = Path(path)
+            if p.is_file():
+                sizes_mb[name] = p.stat().st_size // (1024 * 1024)
+            elif p.is_dir():
+                sizes_mb[name] = sum(
+                    f.stat().st_size for f in p.glob("*.safetensors") if f.is_file()
+                ) // (1024 * 1024)
+            else:
+                sizes_mb[name] = 0
+
+        free_mem, total_mem = (0, 0)
+        if torch.cuda.is_available():
+            with contextlib.suppress(Exception):
+                free_mem, total_mem = torch.cuda.mem_get_info()
+
+        return jsonify({
+            "component_sizes_mb": sizes_mb,
+            "current_used_mb": (total_mem - free_mem) // (1024 * 1024) if total_mem else 0,
+            "total_vram_mb": total_mem // (1024 * 1024) if total_mem else 0,
+            "pipeline_loaded": _pipeline is not None,
+        })
+    except Exception as e:
+        logger.error(f"vram_info failed: {e}")
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+
 @app.route("/v1/unload", methods=["POST"])
 def unload_pipeline():
     """Unload the pipeline and free GPU memory for other services (SD, LLM)."""
-    global _pipeline
-    _pipeline = None
+    global _pipeline, _pipeline_config_dict, _model_path, _upscaler_path
+    if _pipeline is not None:
+        del _pipeline
+        _pipeline = None
+    _pipeline_config_dict = None
+    _model_path = None
+    _upscaler_path = None
     if torch.cuda.is_available():
         try:
             torch.cuda.synchronize()
+        except Exception as e:
+            logger.warning(f"CUDA sync during unload failed: {e}")
+    import gc
+    gc.collect()
+    if torch.cuda.is_available():
+        try:
+            torch.cuda.empty_cache()
             torch.cuda.empty_cache()
         except Exception as e:
             logger.warning(f"CUDA cleanup during unload failed: {e}")
-    import gc
-    gc.collect()
     free_mem, total_mem = torch.cuda.mem_get_info()
     logger.info(f"Pipeline unloaded — VRAM: {free_mem / 1024**3:.1f} GiB free / {total_mem / 1024**3:.1f} GiB total")
-    return jsonify({"status": "ok", "freed": True})
+    return jsonify({"status": "ok", "freed": True, "free_mb": free_mem // 1024**2})
 
 
 @app.route("/v1/video/generations", methods=["POST"])

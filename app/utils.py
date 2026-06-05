@@ -1,5 +1,6 @@
 # app/utils.py
 import base64
+import contextlib
 import os
 import re
 import subprocess
@@ -329,6 +330,57 @@ def resize_image_if_needed(
     except Exception as e:
         current_app.logger.error(f"Error resizing image: {str(e)}")
         return file_data, file_type, file_name, False, None, None
+
+
+# Formats that llama.cpp (stb_image) can decode natively.
+# Pillow supports many more (HEIC, AVIF, JPEG XL, etc.) but llama.cpp returns
+# "Failed to load image or audio file" (HTTP 400) for those.
+_LLAMACPP_SUPPORTED_FORMATS = {"JPEG", "PNG", "BMP", "GIF", "TIFF"}
+
+
+def convert_to_supported_format_if_needed(
+    file_data: str, file_type: str, file_name: str
+) -> tuple[str, str, str, bool]:
+    """
+    Convert image to a llama.cpp-supported format (JPEG) if the source format
+    is not in stb_image's supported set (HEIC, AVIF, WEBP, etc.).
+
+    Returns (new_file_data, new_file_type, new_file_name, converted_flag).
+    If conversion fails or the format is already supported, returns the
+    original data unchanged with converted_flag=False.
+    """
+    try:
+        raw = file_data
+        if raw.startswith("data:"):
+            raw = raw.split(",", 1)[1]
+        image_bytes = base64.b64decode(raw)
+        img = Image.open(BytesIO(image_bytes))
+        if img.format in _LLAMACPP_SUPPORTED_FORMATS:
+            return file_data, file_type, file_name, False
+        if img.mode in ("RGBA", "LA", "P"):
+            rgb = Image.new("RGB", img.size, (255, 255, 255))
+            if img.mode == "RGBA":
+                rgb.paste(img, mask=img.split()[-1])
+            else:
+                rgb.paste(img)
+            img = rgb  # type: ignore[assignment]
+        elif img.mode != "RGB":
+            img = img.convert("RGB")  # type: ignore[assignment]
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=90, optimize=True)
+        new_data = base64.b64encode(buf.getvalue()).decode("utf-8")
+        base_name, _ = os.path.splitext(file_name)
+        new_name = base_name + ".jpg"
+        new_type = "image/jpeg"
+        with contextlib.suppress(RuntimeError):
+            current_app.logger.info(
+                f"Image auto-converted: {img.format} → JPEG ({file_name}, {len(image_bytes)} → {len(buf.getvalue())} bytes)"
+            )
+        return new_data, new_type, new_name, True
+    except Exception as e:
+        with contextlib.suppress(RuntimeError):
+            current_app.logger.warning(f"Image auto-convert failed for {file_name}: {e}")
+        return file_data, file_type, file_name, False
 
 
 def save_uploaded_file(
@@ -764,7 +816,7 @@ def _extract_rtf(file_path: str) -> str:
 
         with open(file_path, "rb") as f:
             content = f.read()
-        text = striprtf.parse_rtf(content)
+        text = striprtf.parse_rtf(content)  # type: ignore[attr-defined]
         return _pdf_to_markdown(text)
     except ImportError:
         current_app.logger.warning("striprtf not installed, using plain text for RTF")
@@ -1139,7 +1191,7 @@ def check_upload_quota(user_id: str, additional_bytes: int) -> str | None:
 
     if total_used + additional_bytes > max_bytes:
         used_mb = total_used / (1024 * 1024)
-        return gettext(
+        return gettext(  # type: ignore[no-any-return]
             "Storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used. Delete some files to free space."
         ).format(used_mb=used_mb, max_mb=max_mb)
     return None
@@ -1167,14 +1219,14 @@ def check_document_quota(user_id: str) -> str | None:
             count, total_bytes = row["count"], row["coalesce"]
 
             if count >= max_docs:
-                return gettext(
+                return gettext(  # type: ignore[no-any-return]
                     "Document quota exceeded: {count} / {max_docs} documents. Delete some to upload more."
                 ).format(count=count, max_docs=max_docs)
             if total_bytes + 1 > max_mb * 1024 * 1024:
                 used_mb = total_bytes / (1024 * 1024)
-                return gettext("Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used.").format(
-                    used_mb=used_mb, max_mb=max_mb
-                )
+                return gettext(  # type: ignore[no-any-return]
+                    "Document storage quota exceeded: {used_mb:.0f}MB / {max_mb}MB used."
+                ).format(used_mb=used_mb, max_mb=max_mb)
     except Exception:
         pass  # Don't block upload on DB errors
 
@@ -1380,7 +1432,7 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                 for f in glob.glob(pattern, recursive=True):
                     if os.path.basename(f) == model_name + ".gguf":
                         # Scan from file
-                        scanned = {}  # Placeholder for metadata
+                        scanned: dict[str, Any]
                         try:
                             from gguf import GGUFReader
 
@@ -1425,6 +1477,14 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                                             val = arr[0]
                                     if val is not None:
                                         scanned["expert_count"] = int(val)  # type: ignore[assignment]
+                                if key.endswith(".block_count") and scanned["block_count"] is None:
+                                    val = fields[key].parts[-1]
+                                    if hasattr(val, "tolist"):
+                                        arr = val.tolist()
+                                        if isinstance(arr, list) and len(arr) == 1:
+                                            val = arr[0]
+                                    if val is not None:
+                                        scanned["block_count"] = int(val)  # type: ignore[assignment]
                                 if "general.parameter_count" in fields and scanned["parameter_count"] is None:
                                     val = fields["general.parameter_count"].parts[-1]
                                     if hasattr(val, "tolist"):

@@ -68,6 +68,11 @@ def load_config(app):
     app.config["CAMERA_API_TIMEOUT"] = int(os.getenv("CAMERA_API_TIMEOUT", 15))
     app.config["CAMERA_CHECK_INTERVAL"] = int(os.getenv("CAMERA_CHECK_INTERVAL", 30))
 
+    # SuperLocalMemory (long-term memory) settings
+    app.config["SLM_URL"] = os.getenv("SLM_URL")
+    app.config["SLM_RECALL_LIMIT"] = int(os.getenv("SLM_RECALL_LIMIT", 7))
+    app.config["SLM_DATA_DIR"] = "/app/data/slm"
+
     # Piper TTS settings
     app.config["PIPER_URL"] = os.getenv("PIPER_URL")
     app.config["PIPER_TIMEOUT"] = int(os.getenv("PIPER_TIMEOUT", 30))
@@ -97,7 +102,7 @@ def load_config(app):
 
     # RAG relevance thresholds (used only if DB doesn't have values)
     app.config["RAG_RELEVANCE_THRESHOLD_DEFAULT"] = 0.3
-    app.config["RAG_RELEVANCE_THRESHOLD_REASONING"] = 0.2
+    app.config["RAG_RELEVANCE_THRESHOLD_REASONING"] = 0.25
 
     # Debug translations
     app.config["DEBUG_TRANSLATIONS"] = os.getenv("DEBUG_TRANSLATIONS", "false").lower() == "true"
@@ -143,7 +148,7 @@ def load_config(app):
     app.config["WTF_CSRF_CHECK_DEFAULT"] = True
     app.config["WTF_CSRF_IGNORE_LOCALHOST"] = False
     # CSRF token lifetime (1 hour)
-    app.config["WTF_CSRF_TIME_LIMIT"] = 3600
+    app.config["WTF_CSRF_TIME_LIMIT"] = 28800
 
     # Service retry settings
     app.config["SERVICE_RETRY_ATTEMPTS"] = int(os.getenv("SERVICE_RETRY_ATTEMPTS", 5))

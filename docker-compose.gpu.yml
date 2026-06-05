@@ -25,6 +25,23 @@ services:
       - ./llama-swap-config:/config
       # Mount docker socket for GPU detection
       - /var/run/docker.sock:/var/run/docker.sock
+      # Persistent code mounts (survive restart)
+      - ./app/llamacpp_client.py:/app/app/llamacpp_client.py
+      - ./app/queue.py:/app/app/queue.py
+      - ./app/resource_manager.py:/app/app/resource_manager.py
+      - ./app/utils.py:/app/app/utils.py
+      - ./app/database.py:/app/app/database.py
+      - ./app/routes/admin.py:/app/app/routes/admin.py
+      - ./modules/video.py:/app/modules/video.py
+      - ./app/static/js/events.js:/app/app/static/js/events.js
+      - ./app/static/js/admin-models.js:/app/app/static/js/admin-models.js
+      - ./app/static/js/chat-queue.js:/app/app/static/js/chat-queue.js
+      - ./prompts/en/rag.template:/app/prompts/en/rag.template
+      - ./prompts/ru/rag.template:/app/prompts/ru/rag.template
+      - ./prompts/en/reasoning.template:/app/prompts/en/reasoning.template
+      - ./prompts/ru/reasoning.template:/app/prompts/ru/reasoning.template
+      - ./prompts/en/base_text.template:/app/prompts/en/base_text.template
+      - ./prompts/ru/base_text.template:/app/prompts/ru/base_text.template
     runtime: nvidia
     environment:
       - REDIS_URL=redis://redis:6379/0
@@ -43,8 +60,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 2G
+          cpus: '4.0'
+          memory: 4G
         reservations:
           cpus: '0.5'
           memory: 512M
@@ -77,10 +94,10 @@ services:
       resources:
         limits:
           cpus: '1.0'
-          memory: 512M
+          memory: 256M
         reservations:
           cpus: '0.25'
-          memory: 128M
+          memory: 64M
     logging:
       driver: "json-file"
       options:
@@ -138,10 +155,10 @@ services:
       resources:
         limits:
           cpus: '8.0'
-          memory: 24G
+          memory: 10G
         reservations:
-          cpus: '4.0'
-          memory: 16G
+          cpus: '2.0'
+          memory: 4G
     networks:
       - flai_network
     restart: unless-stopped
@@ -194,10 +211,10 @@ services:
       resources:
         limits:
           cpus: '8.0'
-          memory: 24G
-        reservations:
-          cpus: '4.0'
           memory: 16G
+        reservations:
+          cpus: '2.0'
+          memory: 8G
     profiles:
       - with-video
     logging:
@@ -217,24 +234,24 @@ services:
       - ASR_ENGINE=faster_whisper
       - ASR_DEVICE=cpu
     volumes:
-      - ~/.cache/huggingface:/root/.cache/huggingface
+      - ./data/hf-cache/hub:/root/.cache/whisper
     networks:
       - flai_network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/docs"]
-      interval: 30s
-      timeout: 10s
+      interval: 15s
+      timeout: 5s
       retries: 3
-      start_period: 60s
+      start_period: 30s
     deploy:
       resources:
         limits:
           cpus: '2.0'
-          memory: 4G
-        reservations:
-          cpus: '1.0'
           memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
     logging:
       driver: "json-file"
       options:
@@ -267,11 +284,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4.0'
-          memory: 1G
-        reservations:
-          cpus: '1.0'
+          cpus: '2.0'
           memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
     logging:
       driver: "json-file"
       options:
@@ -279,6 +296,41 @@ services:
         max-file: "3"
     profiles:
       - with-voice
+
+  # ============================================================
+  # SUPERLOCALMEMORY (Optional - Long-term memory)
+  # ============================================================
+  superlocalmemory:
+    build:
+      context: ./services/superlocalmemory
+      dockerfile: Dockerfile.slm
+    container_name: flai-slm
+    environment:
+      - SLM_MODE=a
+      - SLM_PORT=8765
+      - SLM_HOST=0.0.0.0
+    volumes:
+      - slm_data:/root/.superlocalmemory
+      - ./data/slm/:/app/data/slm/
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8766/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    profiles:
+      - with-slm
 
   # ============================================================
   # QDRANT (Optional - Vector DB for RAG)
@@ -304,10 +356,10 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 4G
+          memory: 1G
         reservations:
-          cpus: '1.0'
-          memory: 2G
+          cpus: '0.5'
+          memory: 512M
     logging:
       driver: "json-file"
       options:
@@ -337,6 +389,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
 
 networks:
   flai_network:
@@ -347,3 +407,4 @@ volumes:
   redis_data:
   postgres_data:
   qdrant_data:
+  slm_data:

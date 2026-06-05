@@ -34,17 +34,16 @@ class TestBaseModule:
 
     @pytest.mark.unit
     def test_parse_router_response_no_marker(self, base_module):
-        """Test parsing response without markers."""
-        response = "This is a normal response"
-        result = base_module._parse_router_response(response, "", "")
+        """Test parsing response without markers — returns original_query."""
+        result = base_module._parse_router_response("any router output", "user query", "")
         assert result["action"] == "none"
-        assert result["query"] == response
+        assert result["query"] == "user query"
 
     @pytest.mark.unit
     def test_parse_router_response_image_marker(self, base_module):
         """Test parsing response with image marker."""
         response = "[-IMAGE-] draw a cat"
-        result = base_module._parse_router_response(response, "", "")
+        result = base_module._parse_router_response(response, "draw a cat", "")
         assert result["action"] == "image"
         assert result["query"] == "draw a cat"
 

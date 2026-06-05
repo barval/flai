@@ -58,6 +58,48 @@ def send_message():
     user_class = session.get("service_class", 2)
     session_id = session.get("current_session")
 
+    # Read session_id from request body (sent by client for multi-tab safety)
+    body_session_id = None
+    if request.is_json:
+        body_session_id = request.json.get("session_id")
+    elif request.content_type and "multipart/form-data" in request.content_type:
+        body_session_id = request.form.get("session_id")
+
+    # Validate body_session_id: must be a valid UUID owned by this user
+    if body_session_id:
+        try:
+            import uuid
+            uuid.UUID(body_session_id, version=4)
+            with db.get_db() as conn:
+                c = conn.cursor()
+                c.execute(
+                    "SELECT id FROM chat_sessions WHERE id = %s AND user_id = %s",
+                    (body_session_id, user_id),
+                )
+                if c.fetchone():
+                    session_id = body_session_id
+                    session["current_session"] = session_id
+        except (ValueError, Exception):
+            pass  # Invalid UUID or DB error — fall back to Flask session
+
+    # Verify session exists — fall back to latest if current was deleted (multi-tab race)
+    if session_id:
+        with db.get_db() as conn:
+            c = conn.cursor()
+            c.execute(
+                "SELECT id FROM chat_sessions WHERE id = %s AND user_id = %s",
+                (session_id, user_id),
+            )
+            if not c.fetchone():
+                c.execute(
+                    "SELECT id FROM chat_sessions WHERE user_id = %s ORDER BY updated_at DESC LIMIT 1",
+                    (user_id,),
+                )
+                latest = c.fetchone()
+                if latest:
+                    session_id = latest["id"]
+                    session["current_session"] = session_id
+
     if not session_id:
         session_id = db.create_session(user_id, lang=session.get("language", "ru"))
         session["current_session"] = session_id

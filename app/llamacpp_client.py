@@ -31,9 +31,50 @@ def _tr(key: str, lang: str = "ru", **kwargs: Any) -> str:
             result = _(key)
         if kwargs:
             result = result.format(**kwargs) if kwargs else result
-        return result
+        return result  # type: ignore[no-any-return]
     except Exception:
         return key.format(**kwargs) if kwargs else key
+
+
+def _extract_error_message(response: Any) -> str:
+    """Extract a human-readable error message from a llama.cpp HTTP response.
+
+    Tries to parse JSON {"error": {"message": "..."}} and falls back to raw body.
+    Used to surface the real reason (e.g., "Failed to load image or audio file")
+    instead of a generic "HTTP error 400" to the user.
+    """
+    try:
+        body = response.text[:500] if hasattr(response, "text") else str(response)[:500]
+    except Exception:
+        body = ""
+    if not body:
+        return ""
+    try:
+        data = response.json() if hasattr(response, "json") else None
+    except Exception:
+        data = None
+    if isinstance(data, dict):
+        err = data.get("error")
+        if isinstance(err, dict):
+            msg = err.get("message")
+            if msg:
+                return str(msg)
+        elif isinstance(err, str) and err:
+            return err
+    return body
+
+
+def _format_user_error(response: Any, lang: str = "ru") -> str:
+    """Build a user-facing error string with the "⚠️ " prefix.
+
+    Uses _extract_error_message to surface llama.cpp's real reason; falls back
+    to a translated generic "HTTP error {status}" string if extraction fails.
+    """
+    msg = _extract_error_message(response)
+    if msg:
+        return msg if msg.startswith("⚠️") else f"⚠️ {msg}"
+    status = getattr(response, "status_code", 0) or 0
+    return f"⚠️ {_tr('HTTP error {status}', lang, status=status)}"
 
 
 class AbstractLlamaBackend:
@@ -132,7 +173,10 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                 return content.strip()  # type: ignore[no-any-return]
             else:
                 self.circuit_breaker.record_failure()
-                return _tr("HTTP error {status}", lang, status=response.status_code)
+                self.logger.error(
+                    f"chat HTTP {response.status_code} from {model_type}: {response.text[:500] if hasattr(response, 'text') else ''}"
+                )
+                return _format_user_error(response, lang)
         except requests.exceptions.Timeout:
             self.circuit_breaker.record_failure()
             return _tr(
@@ -176,7 +220,10 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True)
             if response.status_code != 200:
                 self.circuit_breaker.record_failure()
-                yield _tr("HTTP error {status}", lang, status=response.status_code)
+                self.logger.error(
+                    f"chat_stream HTTP {response.status_code} from {model_type}: {response.text[:500] if hasattr(response, 'text') else ''}"
+                )
+                yield _format_user_error(response, lang)
                 return
 
             self.circuit_breaker.record_success()
@@ -242,8 +289,18 @@ class LlamaSwapBackend(AbstractLlamaBackend):
 
     def __init__(self, app=None):
         super().__init__(app)
-        self.circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
+        # Separate circuit breakers per model type — prevents one model's failures
+        # (e.g., reasoning OOM) from blocking another model (e.g., chat).
+        self._circuit_breakers: dict[str, CircuitBreaker] = {}
         self._degraded_models: set[str] = set()
+
+    def _get_circuit_breaker(self, model_type: str) -> CircuitBreaker:
+        """Get or create a circuit breaker for the given model type."""
+        if model_type not in self._circuit_breakers:
+            self._circuit_breakers[model_type] = CircuitBreaker(
+                failure_threshold=3, recovery_timeout=60
+            )
+        return self._circuit_breakers[model_type]
 
     def _degrade_model_if_needed(self, model_type: str):
         """Degrade model GPU config if circuit breaker opened due to OOM-like errors."""
@@ -261,10 +318,15 @@ class LlamaSwapBackend(AbstractLlamaBackend):
             self.logger.error(f"Failed to degrade {model_type}: {e}")
 
     def _record_llama_failure(self, model_type: str):
-        """Record circuit breaker failure and degrade on circuit open."""
-        just_opened = self.circuit_breaker.record_failure()
-        if just_opened:
-            self._degrade_model_if_needed(model_type)
+        """Record circuit breaker failure and degrade on ANY failure.
+
+        Degradation reduces n_gpu_layers so the model fits in available VRAM.
+        """
+        cb = self._get_circuit_breaker(model_type)
+        cb.record_failure()
+        # Degrade on every failure — not just circuit breaker open —
+        # to adapt VRAM usage immediately after the first crash.
+        self._degrade_model_if_needed(model_type)
 
     def get_base_url(self) -> str:
         url = os.getenv("LLAMA_SWAP_URL")
@@ -301,10 +363,11 @@ class LlamaSwapBackend(AbstractLlamaBackend):
 
         self.logger.info(f"LlamaSwapBackend request: model={model}, payload keys={list(payload.keys())}")
 
-        max_retries = 1 if model_type == "multimodal" else 0
+        max_retries = 1 if model_type in ("multimodal", "reasoning", "chat") else 0
 
         for attempt in range(max_retries + 1):
-            if not self.circuit_breaker.can_execute():
+            cb = self._get_circuit_breaker(model_type)
+            if not cb.can_execute():
                 self._degrade_model_if_needed(model_type)
                 return _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
 
@@ -325,7 +388,18 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                         if stop_token in content:
                             content = content[: content.index(stop_token)]
 
-                    self.circuit_breaker.record_success()
+                    cb.record_success()
+
+                    # Measure VRAM after successful model load
+                    try:
+                        ngl = config.get("n_gpu_layers", -1)
+                        ctx_size = config.get("context_length", 4096)
+                        from app.resource_manager import get_resource_manager
+                        rm = get_resource_manager()
+                        rm.measure_model_vram(model_type, model_name, ctx_size, ngl)
+                    except Exception:
+                        pass
+
                     return content.strip()  # type: ignore[no-any-return]
                 else:
                     if attempt < max_retries and response.status_code == 502:
@@ -335,7 +409,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     self._record_llama_failure(model_type)
                     err_body = response.text[:500]
                     self.logger.error(f"chat HTTP {response.status_code} from {model_type}: {err_body}")
-                    return _tr("HTTP error {status}", lang, status=response.status_code)
+                    return _format_user_error(response, lang)
             except requests.exceptions.Timeout:
                 if attempt < max_retries:
                     self.logger.warning(f"chat timeout on attempt {attempt + 1}, retrying in 5s")
@@ -362,6 +436,11 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                 self.logger.error(f"Error: {e}")
                 return f"{_tr('Error', lang)}: {str(e)}"
 
+        # Defensive: if the loop falls through without hitting any of the
+        # explicit returns above (e.g. unexpected control flow), return a
+        # user-facing error rather than an implicit None.
+        return _tr("Internal error: no response from model", lang)
+
     def chat_stream(
         self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
     ) -> Generator[str, None, None]:
@@ -381,12 +460,13 @@ class LlamaSwapBackend(AbstractLlamaBackend):
             "stop": ["</s>", "<|eot_id|>"],
         }
 
-        max_retries = 1 if model_type == "multimodal" else 0
+        max_retries = 1 if model_type in ("multimodal", "reasoning", "chat") else 0
         response = None
 
         try:
             for attempt in range(max_retries + 1):
-                if not self.circuit_breaker.can_execute():
+                cb = self._get_circuit_breaker(model_type)
+                if not cb.can_execute():
                     self._degrade_model_if_needed(model_type)
                     yield _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
                     return
@@ -396,17 +476,46 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                         f"{base_url}/v1/chat/completions", json=payload, timeout=timeout, stream=True
                     )
                     if response.status_code != 200:
-                        if attempt < max_retries and response.status_code == 502:
-                            self.logger.warning(f"chat_stream 502 on attempt {attempt + 1}, retrying in 5s")
-                            time.sleep(5)
+                        # Retry on 502 (typical transient failure) OR on
+                        # "Failed to load image" 400 (race condition when
+                        # multimodal model was just reloaded with degraded
+                        # n_gpu_layers and is still loading the image stack).
+                        is_image_load_400 = False
+                        if response.status_code == 400 and model_type == "multimodal":
+                            try:
+                                err_msg = _extract_error_message(response).lower()
+                                is_image_load_400 = "failed to load image" in err_msg
+                            except Exception:
+                                is_image_load_400 = False
+                        if attempt < max_retries and (
+                            response.status_code == 502
+                            or is_image_load_400
+                        ):
+                            delay = 5 if response.status_code == 502 else 3
+                            reason = "502" if response.status_code == 502 else "image-load-400"
+                            self.logger.warning(
+                                f"chat_stream {reason} on attempt {attempt + 1}, retrying in {delay}s"
+                            )
+                            time.sleep(delay)
                             continue
                         self._record_llama_failure(model_type)
                         err_body = response.text[:500]
                         self.logger.error(f"chat_stream HTTP {response.status_code} from {model_type}: {err_body}")
-                        yield _tr("HTTP error {status}", lang, status=response.status_code)
+                        yield _format_user_error(response, lang)
                         return
 
-                    self.circuit_breaker.record_success()
+                    cb.record_success()
+
+                    # Measure VRAM after successful model load
+                    try:
+                        ngl = config.get("n_gpu_layers", -1)
+                        ctx_size = config.get("context_length", 4096)
+                        from app.resource_manager import get_resource_manager
+                        rm = get_resource_manager()
+                        rm.measure_model_vram(model_type, model_name, ctx_size, ngl)
+                    except Exception:
+                        pass
+
                     for line in response.iter_lines():
                         if not line:
                             continue
@@ -490,7 +599,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         try:
             response = requests.get(f"{base_url}/running", timeout=10)
             if response.status_code == 200:
-                return response.json().get("models", [])  # type: ignore[no-any-return]
+                return response.json().get("running", [])  # type: ignore[no-any-return]
             return []
         except Exception:
             return []
@@ -503,6 +612,7 @@ class LlamaCppClient:
         self.logger = logging.getLogger(__name__)
         self.available = False
         self.app = app
+        self._active_model_type = None
 
         backend_type = os.getenv("LLAMACP_BACKEND", "llamacpp")
 
@@ -522,6 +632,22 @@ class LlamaCppClient:
 
     def check_availability(self) -> bool:
         self.available = self.backend.check_availability()
+        # If chat model is preloaded, mark it as active to skip full ensure_vram on first request
+        if self.available and self._active_model_type is None:
+            try:
+                swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+                resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=2)
+                if resp.status_code == 200:
+                    models = resp.json().get("running", [])
+                    from app.model_config import get_model_config
+
+                    config = get_model_config("chat")
+                    model_name = config.get("model_name", "") if config else ""
+                    if model_name and any(model_name in m.get("cmd", "") for m in models):
+                        self._active_model_type = "chat"
+                        self.logger.info("check_availability: chat model preloaded, marked as active")
+            except Exception:
+                pass
         if self.available:
             self.logger.info(f"LLM backend available at {self.backend.get_base_url()}")
         else:
@@ -556,11 +682,90 @@ class LlamaCppClient:
             return self._translate("Request too long, please simplify your request", lang)
         return None
 
+    def reset_active_model(self):
+        """Invalidate cached active model type when model is unloaded externally."""
+        self._active_model_type = None
+
+    def _ensure_vram(self, model_type: str) -> bool:
+        """Ensure enough VRAM before a model call.
+
+        Hybrid strategy:
+        - For chat: skip if already active (router→response same instance, ~0ms)
+        - For other types: stateless /running check (safe across workers, ~300ms)
+        - Fallback: full unload + reload via ResourceManager
+        """
+        # === Chat skip: router and response go through same base.py.llamacpp instance ===
+        if model_type == "chat" and self._active_model_type == "chat":
+            # Quick sanity check: verify the model is actually still loaded
+            try:
+                swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+                resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=2)
+                if resp.status_code == 200:
+                    models = resp.json().get("running", [])
+                    config = get_model_config("chat")
+                    model_name = config.get("model_name", "") if config else ""
+                    if model_name and any(model_name in m.get("cmd", "") for m in models):
+                        self.logger.debug("VRAM skip: chat model already active")
+                        return True
+            except Exception:
+                pass
+            # Model was unloaded externally — clear flag and fall through to full ensure_vram
+            self.logger.debug("VRAM skip failed: chat model not in /running — full reload needed")
+            self._active_model_type = None
+
+        # === Stateless check: verify model is loaded via llama-swap + nvidia-smi ===
+        try:
+            swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+            resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=3)
+            if resp.status_code == 200:
+                models = resp.json().get("running", [])
+                if len(models) == 1:
+                    config = get_model_config(model_type)
+                    model_name = config.get("model_name", "") if config else ""
+                    if model_name and model_name in models[0].get("cmd", ""):
+                        import subprocess
+
+                        out = subprocess.run(
+                            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
+                        )
+                        if out.returncode == 0:
+                            free = int(out.stdout.strip().split("\n")[0].strip())
+                            from app.resource_manager import get_resource_manager
+
+                            rm = get_resource_manager()
+                            needed = rm.get_vram_needed_mb(model_type)
+                            if free >= needed:
+                                self._active_model_type = model_type
+                                self.logger.debug(
+                                    f"VRAM skip: {model_type} already loaded, "
+                                    f"{free}MB free >= {needed}MB needed"
+                                )
+                                return True
+        except Exception:
+            pass
+
+        # === Full ensure_vram: unload + poll ===
+        from app.resource_manager import get_resource_manager
+
+        rm = get_resource_manager()
+        ok = rm.ensure_vram_for(model_type)
+        if ok:
+            self._active_model_type = model_type
+        else:
+            self._active_model_type = None
+        return ok
+
     def chat(self, messages: list[dict], model_type: str = "chat", lang: str = "ru", validate: bool = True) -> str:
         if validate:
             error = self._validate_prompt(messages, model_type, lang)
             if error:
                 return error
+
+        if not self._ensure_vram(model_type):
+            return _tr("GPU memory unavailable. Please try again.", lang)
 
         config = get_model_config(model_type)
         if not config:
@@ -581,6 +786,10 @@ class LlamaCppClient:
             if error:
                 yield error
                 return
+
+        if not self._ensure_vram(model_type):
+            yield _tr("GPU memory unavailable. Please try again.", lang)
+            return
 
         config = get_model_config(model_type)
         if not config:

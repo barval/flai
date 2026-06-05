@@ -423,16 +423,22 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     if (role === 'assistant') {
         let headerExtra = '';
 
+        // Error replies (model_name='system') intentionally get a minimal
+        // header — no ⏱️/🚀/🤖 decorations.
+        const isSystemError = modelName === 'system';
+
         if (modelName) {
             const shortModel = modelName.split('/').pop() || modelName;
             headerExtra += ' <span class="text-muted">| ' + escapeHtml(shortModel) + '</span>';
         }
 
         let duration = null;
-        if (responseTime) {
+        if (responseTime && !isSystemError) {
             if (typeof responseTime === 'object') {
                 if (responseTime.mm_time && responseTime.gen_time) {
                     duration = (parseFloat(responseTime.mm_time) + parseFloat(responseTime.gen_time)).toFixed(1);
+                } else if (responseTime.router && responseTime.chat) {
+                    duration = (parseFloat(responseTime.router) + parseFloat(responseTime.chat)).toFixed(1);
                 } else if (responseTime.mm_time) {
                     duration = parseFloat(responseTime.mm_time).toFixed(1);
                 } else if (responseTime.gen_time) {
@@ -467,16 +473,22 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     if (role === 'assistant') {
         let headerExtraHTML = '';
 
+        // Error replies (model_name='system') intentionally get a minimal
+        // header — no ⏱️/🚀/🤖 decorations.
+        const isSystemError = modelName === 'system';
+
         if (modelName) {
             const shortModel = modelName.split('/').pop() || modelName;
             headerExtraHTML += ' <span class="text-muted">| ' + escapeHtml(shortModel) + '</span>';
         }
 
         let duration = null;
-        if (responseTime) {
+        if (responseTime && !isSystemError) {
             if (typeof responseTime === 'object') {
                 if (responseTime.mm_time && responseTime.gen_time) {
                     duration = (parseFloat(responseTime.mm_time) + parseFloat(responseTime.gen_time)).toFixed(1);
+                } else if (responseTime.router && responseTime.chat) {
+                    duration = (parseFloat(responseTime.router) + parseFloat(responseTime.chat)).toFixed(1);
                 } else if (responseTime.mm_time) {
                     duration = parseFloat(responseTime.mm_time).toFixed(1);
                 } else if (responseTime.gen_time) {
@@ -487,7 +499,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             }
         }
 
-        if (duration) {
+        if (duration && !isSystemError) {
             const langSuffix = t('seconds_suffix');
             headerExtraHTML += ' <span class="text-muted">| ⏱️ ' + duration + langSuffix + ' |</span>';
 
@@ -505,8 +517,8 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             headerDiv.appendChild(extraSpan);
         }
 
-        // Response style emoji (skip for transcription — style doesn't apply)
-        if (responseStyle && modelName !== 'whisper') {
+        // Response style emoji (skip for transcription or system errors)
+        if (responseStyle && modelName !== 'whisper' && !isSystemError) {
             const styleEmoji = getResponseStyleEmoji(responseStyle);
             if (styleEmoji) {
                 const styleLabel = t('response_style_' + responseStyle) || responseStyle;

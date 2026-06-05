@@ -59,6 +59,7 @@ class TestMultimodalModule:
         with patch("modules.multimodal.Image.open") as mock_open:
             mock_img = MagicMock()
             mock_img.size = (800, 600)
+            mock_img.format = "JPEG"
             mock_open.return_value = mock_img
             valid_jpg = base64.b64encode(b"fake image data").decode()
             is_valid, error = multimodal_module.validate_image(valid_jpg, "image/jpeg", "test.jpg", 1024)
@@ -323,6 +324,7 @@ class TestValidateImageEdgeCases:
         with patch("modules.multimodal.Image.open") as mock_open:
             mock_img = MagicMock()
             mock_img.size = (800, 600)
+            mock_img.format = "JPEG"
             mock_open.return_value = mock_img
             is_valid, error = module.validate_image(encoded, "image/jpeg", "test.jpg", max_size)
             assert is_valid is True
@@ -335,3 +337,136 @@ class TestValidateImageEdgeCases:
 
         is_valid, error = module.validate_image(encoded, "image/jpeg", "test.jpg", max_size)
         assert is_valid is False
+
+
+class TestValidateImageFormat:
+    """Test format compatibility check against llama.cpp stb_image."""
+
+    @pytest.fixture
+    def module(self):
+        with patch("modules.multimodal.LlamaCppClient") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.available = True
+            mock_client_class.return_value = mock_client
+            app = MagicMock()
+            app.config = {
+                "MAX_IMAGE_WIDTH": 3840,
+                "MAX_IMAGE_HEIGHT": 2160,
+                "MAX_IMAGE_SIZE_MB": 5,
+                "TOKEN_CHARS": 3,
+                "CONTEXT_HISTORY_PERCENT": 75,
+            }
+            return MultimodalModule(app)
+
+    @staticmethod
+    def _patch_image_open(mock_open, fmt="JPEG", size=(100, 100)):
+        mock_img = MagicMock()
+        mock_img.size = size
+        mock_img.format = fmt
+        mock_open.return_value = mock_img
+
+    def test_validate_jpeg_accepted(self, module):
+        with patch("modules.multimodal.Image.open") as mock_open:
+            self._patch_image_open(mock_open, fmt="JPEG")
+            encoded = base64.b64encode(b"fake-jpeg").decode()
+            is_valid, error = module.validate_image(encoded, "image/jpeg", "test.jpg", 1024)
+            assert is_valid is True
+            assert error is None
+
+    def test_validate_png_accepted(self, module):
+        with patch("modules.multimodal.Image.open") as mock_open:
+            self._patch_image_open(mock_open, fmt="PNG")
+            encoded = base64.b64encode(b"fake-png").decode()
+            is_valid, error = module.validate_image(encoded, "image/png", "test.png", 1024)
+            assert is_valid is True
+            assert error is None
+
+    def test_validate_gif_accepted(self, module):
+        with patch("modules.multimodal.Image.open") as mock_open:
+            self._patch_image_open(mock_open, fmt="GIF")
+            encoded = base64.b64encode(b"fake-gif").decode()
+            is_valid, error = module.validate_image(encoded, "image/gif", "test.gif", 1024)
+            assert is_valid is True
+            assert error is None
+
+    def test_validate_heic_rejected(self, module):
+        """HEIC images pass Pillow but fail llama.cpp's stb_image decoder."""
+        # Bypass the TranslationMixin in this test so the placeholder is rendered
+        with patch.object(
+            module,
+            "_",
+            side_effect=lambda key, lang="ru", **kw: key.format(**kw) if kw else key,
+        ), patch("modules.multimodal.Image.open") as mock_open:
+            self._patch_image_open(mock_open, fmt="HEIC")
+            encoded = base64.b64encode(b"fake-heic").decode()
+            is_valid, error = module.validate_image(encoded, "image/heic", "test.heic", 1024)
+            assert is_valid is False
+            assert "HEIC" in error
+
+    def test_validate_avif_rejected(self, module):
+        """AVIF images pass Pillow but fail llama.cpp's stb_image decoder."""
+        with patch.object(
+            module,
+            "_",
+            side_effect=lambda key, lang="ru", **kw: key.format(**kw) if kw else key,
+        ), patch("modules.multimodal.Image.open") as mock_open:
+            self._patch_image_open(mock_open, fmt="AVIF")
+            encoded = base64.b64encode(b"fake-avif").decode()
+            is_valid, error = module.validate_image(encoded, "image/avif", "test.avif", 1024)
+            assert is_valid is False
+            assert "AVIF" in error
+
+
+class TestImageAutoConvert:
+    """Test _ensure_llamacpp_compatible hook in MultimodalModule."""
+
+    @pytest.fixture
+    def module(self):
+        with patch("modules.multimodal.LlamaCppClient") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.available = True
+            mock_client_class.return_value = mock_client
+            app = MagicMock()
+            app.config = {
+                "MAX_IMAGE_WIDTH": 3840,
+                "MAX_IMAGE_HEIGHT": 2160,
+                "MAX_IMAGE_SIZE_MB": 5,
+                "TOKEN_CHARS": 3,
+                "CONTEXT_HISTORY_PERCENT": 75,
+            }
+            return MultimodalModule(app)
+
+    def test_ensure_llamacpp_compatible_passthrough_for_jpeg(self, module):
+        """JPEG input is returned unchanged (no conversion)."""
+        with patch("app.utils.convert_to_supported_format_if_needed") as mock_convert:
+            mock_convert.return_value = ("abc", "image/jpeg", "t.jpg", False)
+            data, was_converted = module._ensure_llamacpp_compatible("abc")
+            assert data == "abc"
+            assert was_converted is False
+            assert mock_convert.called
+
+    def test_ensure_llamacpp_compatible_converts_webp(self, module):
+        """WebP input is flagged as converted."""
+        with patch("app.utils.convert_to_supported_format_if_needed") as mock_convert:
+            mock_convert.return_value = ("xyz", "image/jpeg", "t.jpg", True)
+            data, was_converted = module._ensure_llamacpp_compatible("xyz")
+            assert data == "xyz"
+            assert was_converted is True
+
+    def test_ensure_llamacpp_compatible_handles_exception(self, module):
+        """If convert raises, return original data unchanged."""
+        with patch("app.utils.convert_to_supported_format_if_needed", side_effect=Exception("boom")):
+            data, was_converted = module._ensure_llamacpp_compatible("original")
+            assert data == "original"
+            assert was_converted is False
+
+    def test_chat_with_image_uses_converted_data(self, module):
+        """process_image_with_text sends the converted data to llama.cpp client."""
+        module.llamacpp.chat_with_image = MagicMock(return_value="ok")
+        with patch("app.utils.convert_to_supported_format_if_needed") as mock_convert:
+            mock_convert.return_value = ("converted_data", "image/jpeg", "t.jpg", True)
+            module.process_image_with_text("describe this", "original", "multimodal", "en")
+            # chat_with_image must be called with the converted payload
+            assert module.llamacpp.chat_with_image.called
+            kwargs = module.llamacpp.chat_with_image.call_args.kwargs
+            assert "converted_data" in kwargs["image_base64"]

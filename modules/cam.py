@@ -292,6 +292,10 @@ class CamModule(TranslationMixin):
                             "room_name": room_name,
                             "timestamp": datetime.now().isoformat(),
                         }
+                # Keep pybabel extract from marking these as stale:
+                # _("room_tambour") _("room_hallway") _("room_corridor")
+                # _("room_bedroom") _("room_office") _("room_children")
+                # _("room_living") _("room_kitchen") _("room_balcony")
 
                 except requests.exceptions.ConnectionError:
                     last_error = self._("Connection error", lang)

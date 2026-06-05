@@ -18,16 +18,15 @@ logger = logging.getLogger(__name__)
 MODELS_DIR = os.getenv("MODELS_DIR", "/models")
 CONFIG_DIR = os.getenv("LLAMA_SWAP_CONFIG_DIR", "/config")
 CONFIG_FILE = os.getenv("LLAMA_SWAP_CONFIG_FILE", "llama-swap.yaml")
-CONFIG_CPU_FILE = os.getenv("LLAMA_SWAP_CONFIG_CPU_FILE", "llama-swap-cpu.yaml")
 
 # Progressive degradation steps: fraction of original n_gpu_layers
 DEGRADATION_STEPS = [0.75, 0.50, 0.25, 0.0]
 
 DEFAULT_TTL = {
     "chat": 600,
-    "embedding": 180,
-    "reasoning": 900,
-    "multimodal": 600,
+    "embedding": 0,
+    "reasoning": 0,
+    "multimodal": 0,
 }
 
 GROUP_SETTINGS = {
@@ -454,43 +453,19 @@ class LlamaSwapConfigGenerator:
             self.logger.warning(f"Could not signal llama-swap reload: {e}")
             return False
 
-    def generate_cpu_yaml(self) -> str:
-        """Generate CPU-only config (all models with n_gpu_layers=0)."""
-        return self.generate_yaml(
-            ngl_overrides={
-                "chat": 0,
-                "embedding": 0,
-                "reasoning": 0,
-                "multimodal": 0,
-            }
-        )
-
-    def write_cpu_config(self, path: str | None = None) -> bool:
-        """Write CPU-only config to file."""
-        config_path = path or os.path.join(CONFIG_DIR, CONFIG_CPU_FILE)
-        yaml_content = self.generate_cpu_yaml()
-        try:
-            with open(config_path, "w") as f:
-                f.write(yaml_content)
-            self.logger.info(f"Wrote CPU-only config to {config_path}")
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to write CPU config: {e}")
-            return False
-
     def degrade_and_reload(self, module: str) -> bool:
         """Degrade one model's GPU usage and reload llama-swap config.
 
+        Falls back to CPU-only (ngl=0) for the degraded model when max degradation reached.
         Returns True if degradation was applied and reload signaled.
         """
         ngl = self.degrade_model(module)
         if ngl is None:
             if self._degradations.get(module, 0) >= len(DEGRADATION_STEPS) - 1:
-                self.logger.warning(f"{module}: switching to CPU-only config")
-                self.write_cpu_config()
-                self.signal_reload()
-                return True
-            return False
+                self.logger.warning(f"{module}: degraded to CPU-only (ngl=0)")
+                ngl = 0
+            else:
+                return False
 
         overrides: dict[str, int] = {}
         for mod, step in self._degradations.items():
@@ -518,8 +493,6 @@ class LlamaSwapConfigGenerator:
 
 
 def generate_and_write(app=None) -> bool:
-    """Generate GPU config, CPU config, and write them both."""
+    """Generate GPU config and write it."""
     generator = LlamaSwapConfigGenerator(app)
-    gpu_ok = generator.write_config()
-    cpu_ok = generator.write_cpu_config()
-    return gpu_ok and cpu_ok
+    return generator.write_config()

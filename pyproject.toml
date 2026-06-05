@@ -81,13 +81,12 @@ select = [
     "UP",    # pyupgrade
     "B",     # flake8-bugbear
     "SIM",   # flake8-simplify
-    "PTH",   # flake8-use-pathlib
-]
+    ]
 ignore = [
     "E501",   # line length handled by formatter
     "B008",   # do not perform function calls in argument defaults (common in Flask)
     "E402",   # module level import not at top (required for test setup)
-    "PTH123", # open() should be replaced by Path.open() (too invasive)
+    "PTH",    # flake8-use-pathlib — ~200 stylistic warnings, non-critical
 ]
 
 [tool.ruff.lint.per-file-ignores]

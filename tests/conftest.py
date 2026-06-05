@@ -54,14 +54,6 @@ def create_mock_llamacpp():
     mock_client.chat.return_value = "Test response from llama-server"
     mock_client.call.return_value = "Test response from llama-server"
     mock_client.check_availability.return_value = True
-    mock_client.list_models.return_value = ["model1.gguf", "model2.gguf"]
-    mock_client.get_model_info.return_value = {
-        "architecture": "qwen3",
-        "parameters": "4B",
-        "quantization": "Q4_K_M",
-        "context_length": 32768,
-        "embedding_length": 4096,
-    }
     mock_client.get_embeddings.return_value = [[0.1] * 1024]
     mock_client.available = True
     return mock_client
@@ -677,6 +669,25 @@ def test_app():
         os.makedirs(flask_app.config["DOCUMENTS_FOLDER"], exist_ok=True)
 
         yield flask_app
+
+        # Teardown: stop background Redis worker threads
+        if hasattr(flask_app, "request_queue"):
+            flask_app.request_queue.stop_workers(timeout=3)
+
+        # Teardown: clean real DB between tests to prevent cross-test pollution
+        if not _USE_MOCK_DB:
+            try:
+                from app.database import get_db
+
+                with get_db() as conn:
+                    c = conn.cursor()
+                    c.execute(
+                        "TRUNCATE TABLE users, user_sessions, chat_sessions, "
+                        "messages, session_visits, model_configs, user_storage "
+                        "RESTART IDENTITY CASCADE"
+                    )
+            except Exception:
+                pass
 
     with contextlib.suppress(Exception):
         shutil.rmtree(temp_dir, ignore_errors=True)

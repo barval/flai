@@ -36,6 +36,7 @@
                         <th data-sort="messages_count">{{ _('Messages') }}</th>
                         <th data-sort="files_count">{{ _('Files') }}</th>
                         <th data-sort="documents_count">{{ _('Documents') }}</th>
+                        <th data-sort="slm_facts_count">{{ _('SLM Facts') }}</th>
                         {% if rooms %}
                         <th>{{ _('Camera access') }}</th>
                         {% endif %}
@@ -290,6 +291,9 @@ window.ROOMS = {{ rooms|tojson }};
     'chunks_unchanged': {{ _('Chunk configuration saved.')|tojson }},
     'vram_optimal': {{ _('vram_optimal')|tojson }},
     'vram_optimal_dynamic': {{ _('vram_optimal_dynamic')|tojson }},
+    'vram_estimated': {{ _('vram_estimated')|tojson }},
+    'vram_measured': {{ _('vram_measured')|tojson }},
+    'vram_detail': {{ _('vram_detail')|tojson }},
     'vram_partial_high': {{ _('vram_partial_high')|tojson }},
     'vram_partial_med': {{ _('vram_partial_med')|tojson }},
     'vram_partial_low': {{ _('vram_partial_low')|tojson }},
@@ -298,7 +302,6 @@ window.ROOMS = {{ rooms|tojson }};
     'no_gpu_low': {{ _('no_gpu_low')|tojson }},
     'vram_nodata_gpu': {{ _('vram_nodata_gpu')|tojson }},
     'vram_nodata': {{ _('vram_nodata')|tojson }},
-    'vram_estimate_detail': {{ _('vram_estimate_detail')|tojson }},
     'ngl_info': {{ _('ngl_info')|tojson }},
     'reindex_started': {{ _('Reindexing all documents with new embedding model started. This may take a while.')|tojson }},
     'reindex_all_confirm': {{ _('Reindex all documents? This will rebuild all document embeddings.')|tojson }},

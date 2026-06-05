@@ -60,8 +60,54 @@ function fetchQueueStatus() {
                         newInfo[sessionId] = { processing: false, queued: 0, queue_position: 0, has_transcribing: false };
                     }
                     newInfo[sessionId].queued += 1;
-                    newInfo[sessionId].queue_position = item.position_info?.position || 999;
+                    newInfo[sessionId].queue_position = item.position_info?.position ?? 0;
                 });
+            }
+
+            // Preserve hourglass for sessions with pending requests that server hasn't
+            // reported yet (race between client set hourglass and server add to queue).
+            // Without this, fetchQueueStatus() overwrites local ⏳ with empty server data
+            // and the hourglass disappears until the next poll or SSE event.
+            // queue_position is intentionally left at 0 here (no real position known)
+            // so the UI shows ⏳ without a number instead of a duplicate "999" across
+            // multiple pending sessions.
+            //
+            // TTL: stale entries (older than MAX_PENDING_AGE_MS) are dropped on every
+            // fetchQueueStatus() call. This prevents "phantom" hourglasses caused by
+            // missed SSE result_completed events — the server-side count (4/4) is the
+            // source of truth, so we should not keep showing ⏳ for tasks the server
+            // has long since forgotten.
+            const MAX_PENDING_AGE_MS = 5 * 60 * 1000;
+            const now = Date.now();
+            if (typeof pendingRequestIds === 'object' && pendingRequestIds) {
+                let storedMap = null;
+                try {
+                    storedMap = JSON.parse(sessionStorage.getItem('pendingRequests') || '{}');
+                } catch (e) { /* ignore */ }
+                Object.keys(pendingRequestIds).forEach(reqId => {
+                    const info = pendingRequestIds[reqId];
+                    if (!info || !info.sessionId) return;
+                    if (info.timestamp && now - info.timestamp > MAX_PENDING_AGE_MS) {
+                        delete pendingRequestIds[reqId];
+                        if (storedMap && Object.prototype.hasOwnProperty.call(storedMap, reqId)) {
+                            delete storedMap[reqId];
+                        }
+                        return;
+                    }
+                    const sid = info.sessionId;
+                    if (sid === processingSessionId) return;
+                    if (!newInfo[sid]) {
+                        newInfo[sid] = { processing: false, queued: 0, queue_position: 0, has_transcribing: false };
+                    }
+                    if (!newInfo[sid].processing && newInfo[sid].queued === 0) {
+                        newInfo[sid].queued = 1;
+                    }
+                });
+                if (storedMap) {
+                    try {
+                        sessionStorage.setItem('pendingRequests', JSON.stringify(storedMap));
+                    } catch (e) { /* ignore */ }
+                }
             }
 
             // SAFETY VALVE: If server reports idle (no processing, no queued), clear pendingRequests
@@ -70,21 +116,6 @@ function fetchQueueStatus() {
                 Object.keys(pendingRequests).forEach(reqId => {
                     delete pendingRequests[reqId];
                 });
-            }
-
-            // Preserve processing flag for sessions with recently-tracked pending requests.
-            // Handles the race where handleTranscriptionResult tracks a new task (via
-            // trackPendingRequest) before the server reports it as processing — without this,
-            // the stale HTTP response from the original fetchQueueStatus would overwrite
-            // the ⚡ with idle state.
-            const recentCutoff = Date.now() - 10000;
-            for (const reqId in pendingRequestIds) {
-                const reqInfo = pendingRequestIds[reqId];
-                if (!reqInfo) continue;
-                const sid = reqInfo.sessionId;
-                if (sid && newInfo[sid] && !newInfo[sid].processing && (reqInfo.timestamp || 0) > recentCutoff) {
-                    newInfo[sid].processing = true;
-                }
             }
 
             // Update global sessionQueueInfo
@@ -107,6 +138,8 @@ function fetchQueueStatus() {
             });
 
             updateUIFromQueueStatus();
+            // Ensure pending requests are restored after queue status update
+            restorePendingRequests();
         })
         .catch(err => console.error('Error fetching queue status:', err));
 }
@@ -186,7 +219,6 @@ window.updateStatusCounter = function() {
             const counter = document.getElementById('status-counter');
             if (counter) {
                 counter.textContent = '📊 ' + data.user_queued + '/' + data.total_queued;
-                counter.title = t('your_requests');
                 dlog('updateStatusCounter:', data.user_queued + '/' + data.total_queued);
             }
         })

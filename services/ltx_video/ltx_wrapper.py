@@ -365,7 +365,7 @@ def run_inference(
         conditioning_items=conditioning_items,
         is_video=True,
         vae_per_channel_normalize=True,
-        image_cond_noise_scale=0.05,
+        image_cond_noise_scale=0.15,
         mixed_precision=False,
         offload_to_cpu=offload_to_cpu,
         enhance_prompt=False,

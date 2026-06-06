@@ -1407,6 +1407,11 @@ class RedisRequestQueue:
                 err_msg = video_result.get("error", "")
                 if "CUDA out of memory" in str(err_msg):
                     err_msg = self.app.modules["base"]._("Video generation failed: GPU memory exhausted. Please simplify your request.", lang=lang)
+                    try:
+                        from app.tasks.health_monitor import record_ltx_video_oom
+                        record_ltx_video_oom()
+                    except Exception:
+                        pass
                 return self._build_error_response(session_id, err_msg, mm_time + gen_time, lang)
 
             # Record peak VRAM for future estimates
@@ -1527,6 +1532,11 @@ class RedisRequestQueue:
                 err_msg = video_result.get("error", "")
                 if "CUDA out of memory" in str(err_msg):
                     err_msg = self.app.modules["base"]._("Video generation failed: GPU memory exhausted. Please simplify your request.", lang=lang)
+                    try:
+                        from app.tasks.health_monitor import record_ltx_video_oom
+                        record_ltx_video_oom()
+                    except Exception:
+                        pass
                 return self._build_error_response(session_id, err_msg, mm_time + gen_time, lang)
 
             # Record peak VRAM for future estimates

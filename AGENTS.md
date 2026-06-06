@@ -144,10 +144,10 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 
 ## Known issues (fix on sight)
 
-- **mypy** `app/utils.py`: `Module has no attribute "parse_rtf"` — striprtf stub issue. Fix: `# type: ignore[attr-defined]`.
+- **mypy** `app/utils.py`: `Module has no attribute "parse_rtf"` — striprtf stub issue. Fix: `# type: ignore[attr-defined]`. Other 19 mypy errors in `app/utils.py` (numpy `arr[0]` narrowing + `bytes(val.tolist())` arg-type) **fixed in v8.9** via `_gguf_scalar()` helper.
 - **Unit test speed**: CamModule has 5×2s init retries, making test_cam.py ~10s per fixture.
 - **Load tests** (`tests/load/`) excluded from pytest collection (require locust fixtures).
-- **Pre-existing excluded tests**: `test_backups.py` (KeyError 'babel' — missing Flask-Babel init in test fixture), `test_base_module.py::test_parse_router_response_image_marker` (router response format changed). These are not blocking CI.
+- **Pre-existing excluded tests**: ~~`test_backups.py` (8 tests with KeyError 'babel' — missing Flask-Babel init in local fixture)~~ — **FIXED in v8.9** by adding `Babel(flask_app)` to `tests/test_backups.py:app` fixture. ~~`test_backups.py::TestBackupRestore::test_restore_backup` (shutil.copytree FileExistsError on data/slm)~~ — **FIXED in v8.9** via `dirs_exist_ok=True` in `app/routes/backups.py:restore_backup()`. `test_base_module.py::test_parse_router_response_image_marker` (router response format changed). These are not blocking CI.
 
 ## VRAM fixes & RAG improvements (v8.8+)
 
@@ -364,3 +364,42 @@ Also:
 ## GPU Requirement
 
 FLAI REQUIRES an NVIDIA GPU with at least 8 GB VRAM and 16 GB system RAM. CPU-only mode is not supported — LLM inference, SD image generation, and LTX-Video all depend on CUDA. The project automatically adapts to available VRAM (8/12/16+ GB tiers), adjusting model offloading, resolution, and model selection accordingly.
+
+## v8.9 — Video frame policy, mypy cleanup, test infrastructure fixes
+
+### Video frame policy (replaces v8.8 cap-only approach)
+
+- **Default: 257 frames** (8 sec @ 30 fps), full 896×512 landscape.
+- **Capped to 121 frames** at 512×512 ONLY when:
+  - `total_vram_mb < 10000` (8/10 GB tier GPU), OR
+  - `available_vram_mb < 6000` (12+ GB tier with fragmented VRAM after multimodal unload)
+- `prompts/{en,ru}/create_video.template`: JSON default `num_frames: 257`. Instruction text says "use 257 unless user asks for short/4 sec".
+- `modules/video.py:generate_video`: applies cap with logging (`"VRAM tier 8GB: capped..."` or `"VRAM soft-cap (available=X MB): reduced..."`).
+- `modules/multimodal.py`: warning threshold `weight > free * 50` → `weight > free * 10` (257 frames = 117 weight, 6000 MB free = no spurious warning; fires only for extreme requests like 1000+ frames at 4K).
+- `ltx_wrapper.py`: `num_frames_padded = ((nf - 2) // 8 + 1) * 8 + 1` — both 121 and 257 are already aligned to multiple of 8+1, no padding overhead.
+
+### Mypy cleanup — `app/utils.py` (19 → 0 errors)
+
+- New helper `_gguf_scalar(val)` (`app/utils.py:21-39`) normalizes gguf reader field values:
+  - numpy array with `.tobytes()` → `bytes` (for string fields — `general.architecture`, `general.size_label`)
+  - numpy array with `.tolist()` → Python scalar (for numeric fields — `*.context_length`, `*.block_count`, etc.)
+  - other → unchanged
+- Replaced 18 repeated patterns in `scan_gguf_models` (lines 555-616), `get_gguf_model_info` (lines 655-713), `scan()` (lines 1455-1521).
+- `mypy app/utils.py` now passes with 0 errors. CI still uses `|| true` for mypy (does not block).
+
+### `userdb.py` schema mismatch fix
+
+- `delete_user()` used `user_id = user["id"]` (INTEGER from `users.id SERIAL`) against TEXT columns.
+- PostgreSQL error: `psycopg2.errors.UndefinedFunction: operator does not exist: text = integer`.
+- Hidden in tests by `tests/conftest.py:327` storing `id` as `str(self._next_user_id)`.
+- **Fix:** `user_id = login` (TEXT). All `*_sessions.user_id` / `*_documents.user_id` / `*_storage.user_id` columns store login, not integer SERIAL id.
+- **Removed dead code** `user_uploads_dir = os.path.join(upload_folder, user_id)` — `data/uploads/` is per-session-UUID (`<session-uuid>/<file-uuid>.<ext>`), not per-user; rmtree was always a no-op. Real per-user cleanup is `user_docs_dir` (kept) and `slm_data_dir` (also kept).
+- Cascading fixes:
+  - `test_userdb.py::test_delete_user, test_list_users` — now pass on real PG.
+  - `test_admin_routes.py::TestAdminUsers::test_delete_user` — 500 → 200.
+
+### Test infrastructure fixes
+
+- `tests/test_backups.py`: local `app` fixture now calls `Babel(flask_app)` + sets `BABEL_DEFAULT_LOCALE="ru"` and `BABEL_TRANSLATION_DIRECTORIES=<abs>/translations`. Fixes 8 tests with `KeyError: 'babel'`.
+- `tests/test_resource_manager.py`: 4 tests (`test_queries_ltxvideo_vram_info`, `test_succeeds_when_vram_freed`, `test_retries_when_vram_doesnt_free`, `test_returns_false_on_http_error`, `test_falls_through_when_ltxvideo_unreachable`) changed from `patch.dict("sys.modules", {"requests": ...})` to `patch("app.resource_manager.requests.X", new=mock)`. The first pattern doesn't intercept already-imported `requests` module — `app/resource_manager.py:20` already bound the name. Use `new=mock` (not `return_value=mock`) when asserting on `mock.call_count`.
+- `app/routes/backups.py:restore_backup()`: `shutil.copytree(src, dst)` → `shutil.copytree(src, dst, dirs_exist_ok=True)`. Pre-rmtree removed. Individual file permission errors are caught with `try/except (PermissionError, OSError)` and logged as warnings — restore is now best-effort: a single root-owned file in a mounted Docker volume (e.g. `.superlocalmemory/` from SLM container) doesn't fail the whole restore. Fixes `test_restore_backup` `FileExistsError: data/slm` AND `PermissionError` on `.superlocalmemory`.

@@ -487,7 +487,7 @@ class TestEstimateVideoVram:
         }
         with patch("app.database.get_vram_estimate", return_value=None), \
              patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}), \
-             patch.dict("sys.modules", {"requests": MagicMock(get=MagicMock(return_value=mock_resp))}):
+             patch("app.resource_manager.requests.get", return_value=mock_resp):
             rm = ResourceManager()
             result = rm.estimate_video_vram_needed()
             # transformer (6040) + upscaler (482) = 6522 MB
@@ -501,7 +501,7 @@ class TestEstimateVideoVram:
 
         with patch("app.database.get_vram_estimate", return_value=None), \
              patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}), \
-             patch.dict("sys.modules", {"requests": MagicMock(get=MagicMock(side_effect=ConnectionError("boom")))}):
+             patch("app.resource_manager.requests.get", side_effect=ConnectionError("boom")):
             rm = ResourceManager()
             result = rm.estimate_video_vram_needed()
             assert result == 9300
@@ -528,7 +528,7 @@ class TestUnloadVideoPipeline:
         rm._poll_vram = MagicMock(side_effect=fake_poll)
 
         with patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}), \
-             patch.dict("sys.modules", {"requests": MagicMock(post=mock_post)}):
+             patch("app.resource_manager.requests.post", new=mock_post):
             result = rm.unload_video_pipeline()
         assert result is True
         assert mock_post.called
@@ -544,7 +544,7 @@ class TestUnloadVideoPipeline:
         rm._poll_vram = MagicMock()
 
         with patch("time.sleep"), patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}), \
-             patch.dict("sys.modules", {"requests": MagicMock(post=mock_post)}):
+             patch("app.resource_manager.requests.post", new=mock_post):
             result = rm.unload_video_pipeline()
         # Should have tried 3 times
         assert mock_post.call_count == 3
@@ -560,7 +560,7 @@ class TestUnloadVideoPipeline:
         rm._poll_vram = MagicMock()
 
         with patch("time.sleep"), patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}), \
-             patch.dict("sys.modules", {"requests": MagicMock(post=mock_post)}):
+             patch("app.resource_manager.requests.post", new=mock_post):
             result = rm.unload_video_pipeline()
         assert result is False
         assert mock_post.call_count == 3

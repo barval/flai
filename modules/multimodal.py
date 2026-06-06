@@ -411,6 +411,26 @@ class MultimodalModule(TranslationMixin):
                 prompt_data = json.loads(json_str)
                 self.logger.info(f"Parsed video prompt_data: {prompt_data}")
 
+                # Warn if generated params are oversized for current VRAM.
+                # Heuristic: total pixels × frames vs available VRAM.
+                # 257 frames at 896×512 (117 weight) on 6 GB+ free = OK (default).
+                # Triggers only for extreme requests (e.g. 1000+ frames at 4K).
+                try:
+                    from app.resource_manager import get_resource_manager
+                    free = get_resource_manager().hardware.available_vram_mb
+                except Exception:
+                    free = 0
+                if isinstance(free, int) and free > 0:
+                    w = int(prompt_data.get("width", 896))
+                    h = int(prompt_data.get("height", 512))
+                    nf = int(prompt_data.get("num_frames", 257))
+                    weight = (w * h * nf) / 1_000_000
+                    if weight > free * 10:
+                        self.logger.warning(
+                            f"Video params oversized: {w}×{h}×{nf}f ({weight:.1f}M px·frames) "
+                            f"for {free}MB free VRAM. May trigger OOM. Consider reducing num_frames."
+                        )
+
                 if "prompt" not in prompt_data or not prompt_data["prompt"].strip():
                     prompt_data["prompt"] = user_query
                 if "negative_prompt" not in prompt_data:

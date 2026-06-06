@@ -287,12 +287,26 @@ def run_inference(
     num_frames_padded = ((num_frames - 2) // 8 + 1) * 8 + 1
     padding = calculate_padding(height, width, height_padded, width_padded)
 
-    offload_to_cpu = config.get("offload_to_cpu", False)
-    if offload_to_cpu and torch.cuda.is_available():
-        total_mem = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-        offload_to_cpu = total_mem < 30
-    else:
-        offload_to_cpu = False
+    # Enable CPU offload ONLY when the model definitely doesn't fit in VRAM.
+    # We use file_size vs total_mem as the gate (instead of the YAML flag) to
+    # avoid unnecessary offloading for models that fit fine. On our hardware
+    # the ltx-video 2B distilled (~10 GB) easily fits in 15.5 GB — so offload
+    # stays off. For larger models (e.g. 13B+), offload kicks in automatically.
+    offload_to_cpu = False
+    try:
+        if _model_path and Path(_model_path).is_file() and torch.cuda.is_available():
+            model_size_gb = Path(_model_path).stat().st_size / (1024**3)
+            total_mem_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+            if model_size_gb > 0.85 * total_mem_gb:
+                offload_to_cpu = True
+                logger.info(
+                    f"Model {model_size_gb:.1f}GB > 85% of {total_mem_gb:.1f}GB VRAM — "
+                    f"enabling partial CPU offload for transformer"
+                )
+            elif config.get("offload_to_cpu", False) and total_mem_gb < 30:
+                offload_to_cpu = True
+    except Exception as e:
+        logger.debug(f"offload detection failed, keeping offload off: {e}")
 
     stg_mode = config.get("stg_mode", "attention_values")
     from ltx_video.utils.skip_layer_strategy import SkipLayerStrategy

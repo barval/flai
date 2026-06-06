@@ -451,6 +451,25 @@ class ResourceManager:
         overhead = max(400, int(file_size_mb * 0.05 + ctx_size * 0.002))
 
         total = int(weights_mb + kv_mb + overhead)
+
+        # Prefer measured VRAM from model_vram_estimates when available —
+        # far more accurate than GGUF formula (e.g. multimodal measured 10367 MB
+        # vs formula 6178 MB, chat 5733 vs 4410). Adds 1 GB safety margin
+        # to keep headroom for CUDA fragmentation and temporary buffers.
+        # The table stores rows under either the actual file name (e.g.
+        # "Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf") or the module name
+        # (e.g. "chat") — try most-recent record for the module first
+        # (newer measurement), then exact model_name match.
+        try:
+            from app.database import get_vram_estimate
+
+            measured = get_vram_estimate(model_type) or get_vram_estimate(model_type, model_name)
+            if measured and measured.get("measured_vram_mb"):
+                measured_mb = int(measured["measured_vram_mb"])
+                total = max(total, measured_mb + 1000)
+        except Exception:
+            pass
+
         return max(total, 100)
 
     # ── Unified VRAM guarantee ──

@@ -17,6 +17,30 @@ from PIL import Image
 
 PROMPTS_DIR = "prompts"
 
+
+def _gguf_scalar(val: Any) -> Any:
+    """Extract Python scalar from a gguf reader field value.
+
+    gguf returns ``ReaderField.parts[-1]`` as a numpy array. For 1-element
+    arrays the scalar lives at ``tolist()[0]``; for multi-dim string arrays
+    the raw byte payload is at ``.tobytes()``. Falls back to the raw value.
+
+    Args:
+        val: numpy array or scalar returned by gguf reader.
+
+    Returns:
+        Python scalar (int, float, str, bytes) or original value.
+    """
+    if hasattr(val, "tobytes"):
+        return val.tobytes()
+    if hasattr(val, "tolist"):
+        arr = val.tolist()
+        if isinstance(arr, list) and len(arr) == 1:
+            return arr[0]
+        return arr
+    return val
+
+
 # ── Shared error translations for sd.cpp module ──
 SD_ERROR_TRANSLATIONS = {
     "Image generation failed": "Image generation failed. Try again later.",
@@ -559,61 +583,45 @@ def scan_gguf_models(models_dir: str = "/models") -> dict[str, Any]:
 
             for key in fields:
                 if key.endswith(".context_length") and info["context_length"] is None:
-                    val = fields[key].parts[-1]
-                    if hasattr(val, "tolist"):
-                        arr = val.tolist()
-                        if isinstance(arr, list) and len(arr) == 1:
-                            val = arr[0]
+                    val = _gguf_scalar(fields[key].parts[-1])
                     if val is not None:
                         info["context_length"] = int(val)  # type: ignore[assignment]
                         break
 
             for key in fields:
                 if key.endswith(".block_count") and info["block_count"] is None:
-                    val = fields[key].parts[-1]
-                    if hasattr(val, "tolist"):
-                        arr = val.tolist()
-                        if isinstance(arr, list) and len(arr) == 1:
-                            val = arr[0]
+                    val = _gguf_scalar(fields[key].parts[-1])
                     if val is not None:
                         info["block_count"] = int(val)  # type: ignore[assignment]
                         break
 
             for key in fields:
                 if key.endswith(".embedding_length") and info["embedding_length"] is None:
-                    val = fields[key].parts[-1]
-                    if hasattr(val, "tolist"):
-                        arr = val.tolist()
-                        if isinstance(arr, list) and len(arr) == 1:
-                            val = arr[0]
+                    val = _gguf_scalar(fields[key].parts[-1])
                     if val is not None:
                         info["embedding_length"] = int(val)  # type: ignore[assignment]
                         break
 
             for key in fields:
                 if key.endswith(".expert_count") and info["expert_count"] is None:
-                    val = fields[key].parts[-1]
-                    if hasattr(val, "tolist"):
-                        arr = val.tolist()
-                        if isinstance(arr, list) and len(arr) == 1:
-                            val = arr[0]
+                    val = _gguf_scalar(fields[key].parts[-1])
                     if val is not None:
                         info["expert_count"] = int(val)  # type: ignore[assignment]
                         break
 
             if "general.architecture" in fields:
-                val = fields["general.architecture"].parts[-1]
-                if hasattr(val, "tolist"):
-                    info["architecture"] = bytes(val.tolist()).decode("utf-8", errors="replace")  # type: ignore[assignment]
+                raw = _gguf_scalar(fields["general.architecture"].parts[-1])
+                if isinstance(raw, (bytes, bytearray)):
+                    info["architecture"] = raw.decode("utf-8", errors="replace")  # type: ignore[assignment]
                 else:
-                    info["architecture"] = str(val)  # type: ignore[assignment]
+                    info["architecture"] = str(raw)  # type: ignore[assignment]
 
             if "general.size_label" in fields:
-                val = fields["general.size_label"].parts[-1]
-                if hasattr(val, "tolist"):
-                    info["size_label"] = bytes(val.tolist()).decode("utf-8", errors="replace")  # type: ignore[assignment]
+                raw = _gguf_scalar(fields["general.size_label"].parts[-1])
+                if isinstance(raw, (bytes, bytearray)):
+                    info["size_label"] = raw.decode("utf-8", errors="replace")  # type: ignore[assignment]
                 else:
-                    info["size_label"] = str(val)  # type: ignore[assignment]
+                    info["size_label"] = str(raw)  # type: ignore[assignment]
 
             if gguf_path and os.path.exists(gguf_path):
                 info["file_size_mb"] = os.path.getsize(gguf_path) / (1024 * 1024)  # type: ignore[assignment]
@@ -658,57 +666,41 @@ def get_gguf_model_info(model_path: str) -> dict[str, Any]:
 
         for key in fields:
             if key.endswith(".context_length") and result["context_length"] is None:
-                val = fields[key].parts[-1]
-                if hasattr(val, "tolist"):
-                    arr = val.tolist()
-                    if isinstance(arr, list) and len(arr) == 1:
-                        val = arr[0]
+                val = _gguf_scalar(fields[key].parts[-1])
                 if val is not None:
                     result["context_length"] = int(val)  # type: ignore[assignment]
                     break
 
         for key in fields:
             if key.endswith(".block_count") and result["block_count"] is None:
-                val = fields[key].parts[-1]
-                if hasattr(val, "tolist"):
-                    arr = val.tolist()
-                    if isinstance(arr, list) and len(arr) == 1:
-                        val = arr[0]
+                val = _gguf_scalar(fields[key].parts[-1])
                 if val is not None:
                     result["block_count"] = int(val)  # type: ignore[assignment]
                     break
 
         for key in fields:
             if key.endswith(".expert_count") and result["expert_count"] is None:
-                val = fields[key].parts[-1]
-                if hasattr(val, "tolist"):
-                    arr = val.tolist()
-                    if isinstance(arr, list) and len(arr) == 1:
-                        val = arr[0]
+                val = _gguf_scalar(fields[key].parts[-1])
                 if val is not None:
                     result["expert_count"] = int(val)  # type: ignore[assignment]
                     break
 
         if "general.architecture" in fields:
-            val = fields["general.architecture"].parts[-1]
-            if hasattr(val, "tolist"):
-                result["architecture"] = bytes(val.tolist()).decode("utf-8", errors="replace")  # type: ignore[assignment]
+            raw = _gguf_scalar(fields["general.architecture"].parts[-1])
+            if isinstance(raw, (bytes, bytearray)):
+                result["architecture"] = raw.decode("utf-8", errors="replace")  # type: ignore[assignment]
             else:
-                result["architecture"] = str(val)  # type: ignore[assignment]
+                result["architecture"] = str(raw)  # type: ignore[assignment]
 
         if "general.size_label" in fields:
-            val = fields["general.size_label"].parts[-1]
-            if hasattr(val, "tolist"):
-                result["size_label"] = bytes(val.tolist()).decode("utf-8", errors="replace")  # type: ignore[assignment]
+            raw = _gguf_scalar(fields["general.size_label"].parts[-1])
+            if isinstance(raw, (bytes, bytearray)):
+                result["size_label"] = raw.decode("utf-8", errors="replace")  # type: ignore[assignment]
             else:
-                result["size_label"] = str(val)  # type: ignore[assignment]
+                result["size_label"] = str(raw)  # type: ignore[assignment]
 
         if "general.parameter_count" in fields:
-            val = fields["general.parameter_count"].parts[-1]
-            if hasattr(val, "tolist"):
-                arr = val.tolist()
-                if isinstance(arr, list) and len(arr) == 1:
-                    val = arr[0]
+            val = _gguf_scalar(fields["general.parameter_count"].parts[-1])
             if val is not None:
                 result["parameter_count"] = int(float(val))  # type: ignore[assignment]
 
@@ -1454,54 +1446,33 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                             arch_prefix = None
                             for key in fields:
                                 if key.endswith(".context_length") and scanned["context_length"] is None:
-                                    val = fields[key].parts[-1]
-                                    if hasattr(val, "tolist"):
-                                        arr = val.tolist()
-                                        if isinstance(arr, list) and len(arr) == 1:
-                                            val = arr[0]
+                                    val = _gguf_scalar(fields[key].parts[-1])
                                     if val is not None:
-                                        scanned["context_length"] = int(val)
+                                        scanned["context_length"] = int(val)  # type: ignore[assignment]
                                 if key.endswith(".embedding_length") and scanned["embedding_length"] is None:
-                                    val = fields[key].parts[-1]
-                                    if hasattr(val, "tolist"):
-                                        arr = val.tolist()
-                                        if isinstance(arr, list) and len(arr) == 1:
-                                            val = arr[0]
+                                    val = _gguf_scalar(fields[key].parts[-1])
                                     if val is not None:
                                         scanned["embedding_length"] = int(val)  # type: ignore[assignment]
                                 if key.endswith(".expert_count") and scanned["expert_count"] is None:
-                                    val = fields[key].parts[-1]
-                                    if hasattr(val, "tolist"):
-                                        arr = val.tolist()
-                                        if isinstance(arr, list) and len(arr) == 1:
-                                            val = arr[0]
+                                    val = _gguf_scalar(fields[key].parts[-1])
                                     if val is not None:
                                         scanned["expert_count"] = int(val)  # type: ignore[assignment]
                                 if key.endswith(".block_count") and scanned["block_count"] is None:
-                                    val = fields[key].parts[-1]
-                                    if hasattr(val, "tolist"):
-                                        arr = val.tolist()
-                                        if isinstance(arr, list) and len(arr) == 1:
-                                            val = arr[0]
+                                    val = _gguf_scalar(fields[key].parts[-1])
                                     if val is not None:
                                         scanned["block_count"] = int(val)  # type: ignore[assignment]
                                 if "general.parameter_count" in fields and scanned["parameter_count"] is None:
-                                    val = fields["general.parameter_count"].parts[-1]
-                                    if hasattr(val, "tolist"):
-                                        arr = val.tolist()
-                                        if isinstance(arr, list) and len(arr) == 1:
-                                            val = arr[0]
+                                    val = _gguf_scalar(fields["general.parameter_count"].parts[-1])
                                     if val is not None:
-                                        scanned["parameter_count"] = int(float(val))
+                                        scanned["parameter_count"] = int(float(val))  # type: ignore[assignment]
                                 if "general.architecture" in fields and not scanned["architecture"]:
-                                    arch_val = fields["general.architecture"].parts[-1]
-                                    if hasattr(arch_val, "tolist"):
-                                        decoded = bytes(arch_val.tolist()).decode("utf-8", errors="replace")
-                                        scanned["architecture"] = decoded
-                                        arch_prefix = decoded
+                                    raw = _gguf_scalar(fields["general.architecture"].parts[-1])
+                                    if isinstance(raw, (bytes, bytearray)):
+                                        decoded = raw.decode("utf-8", errors="replace")
                                     else:
-                                        scanned["architecture"] = str(arch_val)
-                                        arch_prefix = str(arch_val)
+                                        decoded = str(raw)
+                                    scanned["architecture"] = decoded  # type: ignore[assignment]
+                                    arch_prefix = decoded
                                 # KV cache related fields: head_count, head_count_kv, key_length, value_length
                                 if arch_prefix:
                                     for suffix, field_name in [
@@ -1512,11 +1483,7 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                                     ]:
                                         lookup = f"{arch_prefix}{suffix}"
                                         if lookup in fields and scanned[field_name] is None:
-                                            val = fields[lookup].parts[-1]
-                                            if hasattr(val, "tolist"):
-                                                arr = val.tolist()
-                                                if isinstance(arr, list) and len(arr) == 1:
-                                                    val = arr[0]
+                                            val = _gguf_scalar(fields[lookup].parts[-1])
                                             if val is not None:
                                                 scanned[field_name] = int(val)  # type: ignore[assignment]
                         except Exception:

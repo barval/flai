@@ -196,13 +196,13 @@ class VideoModule(TranslationMixin):
         rm.mark_video_busy()
 
         # Cap video resolution ONLY when VRAM is insufficient.
-        # Default policy: 257 frames at 896×512 (full 8-sec video).
+        # Default policy: 257 frames at 768×512 (full 8-sec video).
         # Cap to 121 frames at 512×512 only if:
         #   (a) total_vram_mb < 10000 (8/10 GB tier GPU), OR
         #   (b) available_vram_mb < 6000 (12+ GB tier, fragmented after multimodal unload)
         total_vram = rm.hardware.total_vram_mb
         if isinstance(total_vram, int) and total_vram > 0 and total_vram < 10000:
-            old_w = prompt_data.get("width", 896)
+            old_w = prompt_data.get("width", 768)
             old_h = prompt_data.get("height", 512)
             old_frames = prompt_data.get("num_frames", 257)
             prompt_data["width"] = min(old_w, 512)
@@ -215,7 +215,7 @@ class VideoModule(TranslationMixin):
                 )
         elif isinstance(rm.hardware.available_vram_mb, int) and 0 < rm.hardware.available_vram_mb < 6000:
             old_frames = prompt_data.get("num_frames", 257)
-            old_w = prompt_data.get("width", 896)
+            old_w = prompt_data.get("width", 768)
             old_h = prompt_data.get("height", 512)
             prompt_data["width"] = min(old_w, 512)
             prompt_data["height"] = min(old_h, 512)
@@ -228,7 +228,7 @@ class VideoModule(TranslationMixin):
                 )
 
         # Resize large source images to avoid OOM and reduce network transfer
-        max_video_inpaint_size = 896
+        max_video_inpaint_size = 768
         resized_info: dict[str, Any] = {"resized": False, "original_size": None, "new_size": None}
         if image_data:
             try:
@@ -257,7 +257,7 @@ class VideoModule(TranslationMixin):
                 "negative_prompt": prompt_data.get(
                     "negative_prompt", "worst quality, inconsistent motion, blurry, jittery, distorted"
                 ),
-                "width": prompt_data.get("width", 896),
+                "width": prompt_data.get("width", 768),
                 "height": prompt_data.get("height", 512),
                 "num_frames": prompt_data.get("num_frames", 257),
                 "frame_rate": prompt_data.get("frame_rate", 30),

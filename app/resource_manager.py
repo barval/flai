@@ -667,7 +667,7 @@ class ResourceManager:
                     )
                     self._last_ltx_unload_at = time.time()
                     return True
-                time.sleep(1)
+                time.sleep(0.5)
             logger.warning(
                 f"LTX-Video unload returned 200 but VRAM did not free "
                 f"(was {free_before}MB, now {self.hardware.available_vram_mb}MB, "

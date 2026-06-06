@@ -369,7 +369,7 @@ FLAI REQUIRES an NVIDIA GPU with at least 8 GB VRAM and 16 GB system RAM. CPU-on
 
 ### Video frame policy (replaces v8.8 cap-only approach)
 
-- **Default: 257 frames** (8 sec @ 30 fps), full 896×512 landscape.
+- **Default: 257 frames** (8 sec @ 30 fps), full 768×512 landscape.
 - **Capped to 121 frames** at 512×512 ONLY when:
   - `total_vram_mb < 10000` (8/10 GB tier GPU), OR
   - `available_vram_mb < 6000` (12+ GB tier with fragmented VRAM after multimodal unload)

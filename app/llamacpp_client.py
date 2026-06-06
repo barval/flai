@@ -403,8 +403,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     return content.strip()  # type: ignore[no-any-return]
                 else:
                     if attempt < max_retries and response.status_code == 502:
-                        self.logger.warning(f"chat 502 on attempt {attempt + 1}, retrying in 5s")
-                        time.sleep(5)
+                        self.logger.warning(f"chat 502 on attempt {attempt + 1}, retrying in 2s")
+                        time.sleep(2)
                         continue
                     self._record_llama_failure(model_type)
                     err_body = response.text[:500]
@@ -412,8 +412,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     return _format_user_error(response, lang)
             except requests.exceptions.Timeout:
                 if attempt < max_retries:
-                    self.logger.warning(f"chat timeout on attempt {attempt + 1}, retrying in 5s")
-                    time.sleep(5)
+                    self.logger.warning(f"chat timeout on attempt {attempt + 1}, retrying in 2s")
+                    time.sleep(2)
                     continue
                 self._record_llama_failure(model_type)
                 return _tr(
@@ -423,15 +423,15 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                 )
             except requests.exceptions.ConnectionError:
                 if attempt < max_retries:
-                    self.logger.warning(f"chat connection error on attempt {attempt + 1}, retrying in 5s")
-                    time.sleep(5)
+                    self.logger.warning(f"chat connection error on attempt {attempt + 1}, retrying in 2s")
+                    time.sleep(2)
                     continue
                 self._record_llama_failure(model_type)
                 return _tr("Could not connect to llama-swap", lang)
             except Exception as e:
                 if attempt < max_retries:
-                    self.logger.warning(f"chat error on attempt {attempt + 1}, retrying in 5s: {e}")
-                    time.sleep(5)
+                    self.logger.warning(f"chat error on attempt {attempt + 1}, retrying in 2s: {e}")
+                    time.sleep(2)
                     continue
                 self.logger.error(f"Error: {e}")
                 return f"{_tr('Error', lang)}: {str(e)}"
@@ -491,7 +491,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                             response.status_code == 502
                             or is_image_load_400
                         ):
-                            delay = 5 if response.status_code == 502 else 3
+                            delay = 2 if response.status_code == 502 else 1
                             reason = "502" if response.status_code == 502 else "image-load-400"
                             self.logger.warning(
                                 f"chat_stream {reason} on attempt {attempt + 1}, retrying in {delay}s"
@@ -536,8 +536,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     break  # success, exit retry loop
                 except requests.exceptions.Timeout:
                     if attempt < max_retries:
-                        self.logger.warning(f"chat_stream timeout on attempt {attempt + 1}, retrying in 5s")
-                        time.sleep(5)
+                        self.logger.warning(f"chat_stream timeout on attempt {attempt + 1}, retrying in 2s")
+                        time.sleep(2)
                         continue
                     self._record_llama_failure(model_type)
                     yield _tr(
@@ -547,16 +547,16 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     )
                 except requests.exceptions.ConnectionError:
                     if attempt < max_retries:
-                        self.logger.warning(f"chat_stream connection error on attempt {attempt + 1}, retrying in 5s")
-                        time.sleep(5)
+                        self.logger.warning(f"chat_stream connection error on attempt {attempt + 1}, retrying in 2s")
+                        time.sleep(2)
                         continue
                     self._record_llama_failure(model_type)
                     yield _tr("Could not connect to llama-swap", lang)
                     return
                 except Exception as e:
                     if attempt < max_retries:
-                        self.logger.warning(f"chat_stream error on attempt {attempt + 1}, retrying in 5s: {e}")
-                        time.sleep(5)
+                        self.logger.warning(f"chat_stream error on attempt {attempt + 1}, retrying in 2s: {e}")
+                        time.sleep(2)
                         continue
                     self.logger.error(f"Stream error: {e}")
                     yield f"{_tr('Error', lang)}: {str(e)}"

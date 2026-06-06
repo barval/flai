@@ -167,13 +167,13 @@ class SdCppModule(TranslationMixin):
 
         # Verify VRAM is actually free after unloads; wait if needed
         needed = self._estimate_sd_vram_mb(self.model_type) + 2000
-        deadline = time.time() + 30
+        deadline = time.time() + 20
         while time.time() < deadline:
             rm._poll_vram()
             if rm.hardware.available_vram_mb >= needed:
                 break
             self.logger.info(f"VRAM: {rm.hardware.available_vram_mb} MB free, need {needed} MB — waiting for unload...")
-            time.sleep(1)
+            time.sleep(0.5)
 
         # Check VRAM availability after LLM unload
         use_gpu = self._resolve_use_gpu(rm)

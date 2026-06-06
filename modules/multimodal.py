@@ -421,7 +421,7 @@ class MultimodalModule(TranslationMixin):
 
                 # Warn if generated params are oversized for current VRAM.
                 # Heuristic: total pixels × frames vs available VRAM.
-                # 257 frames at 896×512 (117 weight) on 6 GB+ free = OK (default).
+                # 257 frames at 768×512 (101 weight) on 6 GB+ free = OK (default).
                 # Triggers only for extreme requests (e.g. 1000+ frames at 4K).
                 try:
                     from app.resource_manager import get_resource_manager
@@ -430,7 +430,7 @@ class MultimodalModule(TranslationMixin):
                 except Exception:
                     free = 0
                 if isinstance(free, int) and free > 0:
-                    w = int(prompt_data.get("width", 896))
+                    w = int(prompt_data.get("width", 768))
                     h = int(prompt_data.get("height", 512))
                     nf = int(prompt_data.get("num_frames", 257))
                     weight = (w * h * nf) / 1_000_000
@@ -445,7 +445,7 @@ class MultimodalModule(TranslationMixin):
                 if "negative_prompt" not in prompt_data:
                     prompt_data["negative_prompt"] = "worst quality, inconsistent motion, blurry, jittery, distorted"
                 if "width" not in prompt_data:
-                    prompt_data["width"] = 896
+                    prompt_data["width"] = 768
                 if "height" not in prompt_data:
                     prompt_data["height"] = 512
                 if "num_frames" not in prompt_data:
@@ -503,7 +503,7 @@ class MultimodalModule(TranslationMixin):
                 if "negative_prompt" not in prompt_data:
                     prompt_data["negative_prompt"] = "worst quality, inconsistent motion, blurry, jittery, distorted"
                 if "width" not in prompt_data:
-                    prompt_data["width"] = 896
+                    prompt_data["width"] = 768
                 if "height" not in prompt_data:
                     prompt_data["height"] = 512
                 if "num_frames" not in prompt_data:
@@ -517,9 +517,9 @@ class MultimodalModule(TranslationMixin):
                     w, h = img.size
                     aspect = w / h
                     if aspect > 1.2:
-                        prompt_data["width"], prompt_data["height"] = 896, 512
+                        prompt_data["width"], prompt_data["height"] = 768, 512
                     elif aspect < 0.8:
-                        prompt_data["width"], prompt_data["height"] = 512, 896
+                        prompt_data["width"], prompt_data["height"] = 512, 768
                     else:
                         prompt_data["width"], prompt_data["height"] = 512, 512
                     self.logger.info(

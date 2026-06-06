@@ -824,7 +824,7 @@ class RedisRequestQueue:
             else:
                 self.logger.info(f"VRAM: {free}MB free, {loaded_count} model(s) loaded — re-triggering unload...")
                 self._unload_llamacpp_models()
-            time.sleep(2)
+            time.sleep(1)
 
         self.logger.warning(f"VRAM wait timeout ({timeout}s): {free}MB free, need {min_free}MB, models={loaded_count}")
         return False
@@ -875,7 +875,7 @@ class RedisRequestQueue:
                         # Models reloaded by llama-swap (TTL) — unload again (no limit)
                         self.logger.info(f"VRAM: {len(running)} model(s) still running during wait, unloading again")
                         self._unload_llamacpp_models()
-                        time.sleep(2)
+                        time.sleep(1)
                         continue
                     # len(running) == 0
                     # Force CUDA deallocation to combat fragmentation
@@ -905,8 +905,8 @@ class RedisRequestQueue:
 
                 self.app.logger.info(f"VRAM: waiting... (needed={needed_mb}MB, timeout={timeout}s)")
             except Exception as e:
-                self.logger.debug(f"VRAM poll error: {e}")
-            time.sleep(2)
+                self.app.logger.debug(f"VRAM poll error: {e}")
+            time.sleep(1)
 
         self.logger.error(f"VRAM wait timeout ({timeout}s) — insufficient VRAM, returning False")
         return False
@@ -1578,7 +1578,7 @@ class RedisRequestQueue:
                             "The image has been resized from {orig_w}×{orig_h} to {new_w}×{new_h}.",
                             lang=lang_for_msg,
                         )
-                        .format(max_w=896, max_h=896, orig_w=orig_w, orig_h=orig_h, new_w=new_w, new_h=new_h)
+                        .format(max_w=768, max_h=768, orig_w=orig_w, orig_h=orig_h, new_w=new_w, new_h=new_h)
                     )
                 resize_notice_id = save_message(
                     session_id, "assistant", resize_text, model_name="system", response_time="0"

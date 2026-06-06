@@ -522,7 +522,7 @@ def generate_video():
 
         negative_prompt = data.get("negative_prompt", "worst quality, inconsistent motion, blurry, jittery, distorted")
         height = int(data.get("height", 512))
-        width = int(data.get("width", 896))
+        width = int(data.get("width", 768))
         num_frames = int(data.get("num_frames", 257))
         frame_rate = int(data.get("frame_rate", 30))
         seed = int(data.get("seed", -1))

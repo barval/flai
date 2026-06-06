@@ -257,7 +257,7 @@ class TestVideoModuleLowVram:
             mock_rm.return_value = mock_rm_instance
 
             module = VideoModule(mock_app)
-            result = module.generate_video({"prompt": "test", "width": 896, "height": 512, "num_frames": 121})
+            result = module.generate_video({"prompt": "test", "width": 768, "height": 512, "num_frames": 121})
 
         assert result["success"] is False
         assert "VRAM" in result["error"]

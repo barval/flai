@@ -362,9 +362,7 @@ def resize_image_if_needed(
 _LLAMACPP_SUPPORTED_FORMATS = {"JPEG", "PNG", "BMP", "GIF", "TIFF"}
 
 
-def convert_to_supported_format_if_needed(
-    file_data: str, file_type: str, file_name: str
-) -> tuple[str, str, str, bool]:
+def convert_to_supported_format_if_needed(file_data: str, file_type: str, file_name: str) -> tuple[str, str, str, bool]:
     """
     Convert image to a llama.cpp-supported format (JPEG) if the source format
     is not in stb_image's supported set (HEIC, AVIF, WEBP, etc.).

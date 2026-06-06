@@ -104,6 +104,7 @@ class VideoModule(TranslationMixin):
         """
         try:
             from app.resource_manager import get_resource_manager
+
             return get_resource_manager().estimate_video_vram_needed()
         except Exception:
             return 8000
@@ -160,9 +161,7 @@ class VideoModule(TranslationMixin):
             if not isinstance(free, int):
                 free = 0
             if len(loaded) == 0 and free >= video_needed:
-                self.logger.info(
-                    f"VRAM ready: {free}MB free, 0 LLM models loaded, need ≥{video_needed}MB"
-                )
+                self.logger.info(f"VRAM ready: {free}MB free, 0 LLM models loaded, need ≥{video_needed}MB")
                 break
             self.logger.info(
                 f"VRAM: {free}MB free, {len(loaded)} LLM model(s) loaded, "
@@ -191,8 +190,7 @@ class VideoModule(TranslationMixin):
             self.logger.warning(f"Video generation skipped: {err_msg}")
             return {"success": False, "error": err_msg}
         self.logger.info(
-            f"VRAM: {rm.hardware.available_vram_mb}MB available, "
-            f"~{self._estimate_video_vram_mb()}MB needed — using GPU"
+            f"VRAM: {rm.hardware.available_vram_mb}MB available, ~{self._estimate_video_vram_mb()}MB needed — using GPU"
         )
 
         rm.mark_video_busy()
@@ -341,6 +339,7 @@ class VideoModule(TranslationMixin):
             # Clear CUDA cache to prevent fragmentation after video generation
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                     torch.cuda.synchronize()

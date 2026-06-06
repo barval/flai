@@ -526,6 +526,7 @@ class ResourceManager:
         # 3. Flush CUDA cache
         try:
             import torch
+
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 torch.cuda.synchronize()
@@ -540,9 +541,7 @@ class ResourceManager:
                 if resp.status_code == 200:
                     models = resp.json().get("running", [])
                     if len(models) > 0:
-                        logger.debug(
-                            f"ensure_vram_for [{model_type}]: {len(models)} model(s) still active"
-                        )
+                        logger.debug(f"ensure_vram_for [{model_type}]: {len(models)} model(s) still active")
                         time.sleep(2)
                         continue
             except Exception:
@@ -551,14 +550,10 @@ class ResourceManager:
             self._poll_vram()
             free = self.hardware.available_vram_mb
             if free >= needed_mb:
-                logger.info(
-                    f"ensure_vram_for [{model_type}]: {free}MB free >= {needed_mb}MB needed — OK"
-                )
+                logger.info(f"ensure_vram_for [{model_type}]: {free}MB free >= {needed_mb}MB needed — OK")
                 return True
 
-            logger.debug(
-                f"ensure_vram_for [{model_type}]: {free}MB free, need {needed_mb}MB — waiting..."
-            )
+            logger.debug(f"ensure_vram_for [{model_type}]: {free}MB free, need {needed_mb}MB — waiting...")
             time.sleep(2)
 
         logger.error(
@@ -815,10 +810,7 @@ class ResourceManager:
                     n_gpu_layers=ngl,
                     measured_mb=used,
                 )
-                logger.info(
-                    f"VRAM measurement [{module}]: {used}MB used "
-                    f"({after_free}MB free / {total}MB total)"
-                )
+                logger.info(f"VRAM measurement [{module}]: {used}MB used ({after_free}MB free / {total}MB total)")
         except Exception as e:
             logger.debug(f"VRAM measurement failed for {module}: {e}")
 
@@ -843,10 +835,7 @@ class ResourceManager:
                     n_gpu_layers=0,
                     measured_mb=total - free,
                 )
-                logger.info(
-                    f"VRAM measurement [ltx-video]: {total - free}MB used "
-                    f"({free}MB free / {total}MB total)"
-                )
+                logger.info(f"VRAM measurement [ltx-video]: {total - free}MB used ({free}MB free / {total}MB total)")
         except Exception as e:
             logger.debug(f"Video VRAM measurement failed: {e}")
 

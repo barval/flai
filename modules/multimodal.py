@@ -57,9 +57,17 @@ class MultimodalModule(TranslationMixin):
                 "image/avif",
             },
             "supported_extensions": {
-                ".jpg", ".jpeg", ".jpe", ".png", ".bmp",
-                ".webp", ".tif", ".tiff",
-                ".heic", ".heif", ".avif",
+                ".jpg",
+                ".jpeg",
+                ".jpe",
+                ".png",
+                ".bmp",
+                ".webp",
+                ".tif",
+                ".tiff",
+                ".heic",
+                ".heif",
+                ".avif",
             },
         }
 
@@ -417,6 +425,7 @@ class MultimodalModule(TranslationMixin):
                 # Triggers only for extreme requests (e.g. 1000+ frames at 4K).
                 try:
                     from app.resource_manager import get_resource_manager
+
                     free = get_resource_manager().hardware.available_vram_mb
                 except Exception:
                     free = 0

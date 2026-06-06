@@ -239,9 +239,7 @@ class TestVideoModuleLowVram:
 
         def fake_post(*args, **kwargs):
             post_calls["count"] += 1
-            raise AssertionError(
-                "Should NOT POST to ltx-wrapper when VRAM is insufficient"
-            )
+            raise AssertionError("Should NOT POST to ltx-wrapper when VRAM is insufficient")
 
         # /running returns empty (no LLM models loaded) — so 15s wait exits OK
         get_resp = MagicMock(status_code=200)
@@ -259,9 +257,7 @@ class TestVideoModuleLowVram:
             mock_rm.return_value = mock_rm_instance
 
             module = VideoModule(mock_app)
-            result = module.generate_video(
-                {"prompt": "test", "width": 896, "height": 512, "num_frames": 121}
-            )
+            result = module.generate_video({"prompt": "test", "width": 896, "height": 512, "num_frames": 121})
 
         assert result["success"] is False
         assert "VRAM" in result["error"]
@@ -306,9 +302,7 @@ class TestVideoModuleLowVram:
             mock_rm.return_value = mock_rm_instance
 
             module = VideoModule(mock_app)
-            result = module.generate_video(
-                {"prompt": "test", "width": 512, "height": 512, "num_frames": 121}
-            )
+            result = module.generate_video({"prompt": "test", "width": 512, "height": 512, "num_frames": 121})
 
         assert result["success"] is True
 

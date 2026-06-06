@@ -455,9 +455,7 @@ def vram_info():
             if p.is_file():
                 sizes_mb[name] = p.stat().st_size // (1024 * 1024)
             elif p.is_dir():
-                sizes_mb[name] = sum(
-                    f.stat().st_size for f in p.glob("*.safetensors") if f.is_file()
-                ) // (1024 * 1024)
+                sizes_mb[name] = sum(f.stat().st_size for f in p.glob("*.safetensors") if f.is_file()) // (1024 * 1024)
             else:
                 sizes_mb[name] = 0
 
@@ -466,12 +464,14 @@ def vram_info():
             with contextlib.suppress(Exception):
                 free_mem, total_mem = torch.cuda.mem_get_info()
 
-        return jsonify({
-            "component_sizes_mb": sizes_mb,
-            "current_used_mb": (total_mem - free_mem) // (1024 * 1024) if total_mem else 0,
-            "total_vram_mb": total_mem // (1024 * 1024) if total_mem else 0,
-            "pipeline_loaded": _pipeline is not None,
-        })
+        return jsonify(
+            {
+                "component_sizes_mb": sizes_mb,
+                "current_used_mb": (total_mem - free_mem) // (1024 * 1024) if total_mem else 0,
+                "total_vram_mb": total_mem // (1024 * 1024) if total_mem else 0,
+                "pipeline_loaded": _pipeline is not None,
+            }
+        )
     except Exception as e:
         logger.error(f"vram_info failed: {e}")
         return jsonify({"status": "error", "error": str(e)}), 500
@@ -493,6 +493,7 @@ def unload_pipeline():
         except Exception as e:
             logger.warning(f"CUDA sync during unload failed: {e}")
     import gc
+
     gc.collect()
     if torch.cuda.is_available():
         try:

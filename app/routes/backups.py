@@ -300,10 +300,7 @@ def restore_backup():
                             shutil.copytree(src, dst, dirs_exist_ok=True)
                             logger.info(f"Restored directory: {dir_name}")
                         except (PermissionError, OSError) as e:
-                            logger.warning(
-                                f"Partial restore of {dir_name}: {e}. "
-                                f"Some files could not be overwritten."
-                            )
+                            logger.warning(f"Partial restore of {dir_name}: {e}. Some files could not be overwritten.")
 
         logger.info(f"Backup restored: {filename}")
         return jsonify({"status": "ok", "filename": filename, "type": backup_type})

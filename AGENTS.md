@@ -53,7 +53,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 
 ## Architecture & conventions
 
-- **Entrypoint**: `app/__init__.py:create_app()` → returns Flask app. Blueprints in `app/routes/` (auth, chat, admin, queue, tts, messages, sessions, documents, backups). Modules in `modules/` (base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm). Background tasks in `app/tasks/` (dry_load, health_monitor).
+- **Entrypoint**: `app/__init__.py:create_app()` → returns Flask app. Blueprints in `app/routes/` (auth, chat, admin, queue, tts, messages, sessions, documents, backups, events, debug). Modules in `modules/` (base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm). Background tasks in `app/tasks/` (dry_load, health_monitor). Templates in `app/templates/` (admin.html, base.html, chat.html, login.html).
 - **LLM client**: `app/llamacpp_client.py:LlamaCppClient` with two backends — `DirectLlamaBackend` (direct llama-server) or `LlamaSwapBackend` (via llama-swap proxy). Selected by `LLAMACP_BACKEND` env var.
 - **Queue**: `app/queue.py:RedisRequestQueue`. Two workers with strict GPU serialization:
   - **Fast worker** — CPU-only operations: router (chat model), text, audio, RAG **search** (embedding + Qdrant only, ~500 MB). The chat model (2.5 GiB) stays hot in VRAM.
@@ -63,7 +63,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
   - **VRAM guard for reasoning** (`ensure_vram_for_reasoning`) — unloads llama.cpp models and waits (up to 60s) for SD/Video to free VRAM before loading gpt-oss-20b (~10 GiB).
   - Tasks are HMAC-signed JSON.
 - **DB**: PostgreSQL only via `app/database.py:get_db()` context manager (psycopg2 RealDictCursor). `DATABASE_URL` required. Tables: user_sessions, chat_sessions, messages, documents, session_visits, model_configs, user_storage, slm_import_progress, gguf_models_cache.
-- **Helpers**: `app/circuit_breaker.py`, `app/resource_manager.py`, `app/llama_swap_config.py`, `app/slm_import.py`, `app/tasks/dry_load.py`, `app/tasks/health_monitor.py` — llama-swap config auto-generated from DB at startup into `llama-swap-config/`. Background SLM import + dry-load (after admin model save) + crash-loop watchdog all run as daemon threads.
+- **Helpers**: `app/circuit_breaker.py`, `app/resource_manager.py`, `app/llama_swap_config.py`, `app/slm_import.py`, `app/model_config.py`, `app/config.py`, `app/db.py`, `app/events.py`, `app/userdb.py`, `app/validators.py`, `app/cli.py`, `app/tasks/dry_load.py`, `app/tasks/health_monitor.py` — llama-swap config auto-generated from DB at startup into `llama-swap-config/`. Background SLM import + dry-load (after admin model save) + crash-loop watchdog all run as daemon threads.
 - **Docker mounts**: `./data/` → `/app/data`, `./services/llamacpp/models/` → `/models:ro`, `/var/run/docker.sock` for GPU detection.
 - **Config**: Model configs in DB (`model_configs` table). `.env` values are fallback defaults only. Admin panel at `/admin`.
 - **Multimodal models**: MUST be in a subdirectory with `mmproj-*.gguf` (e.g. `Qwen3VL-8B-Instruct-Q4_K_M/`).
@@ -141,6 +141,31 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - No typos, syntax errors, or unreachable code.
 - Lint with `ruff check .` and type‑check with `mypy app/ modules/`.
 - Always write clean, self‑documenting code; add comments only when necessary.
+
+## Release Documentation Process
+
+When releasing a new version, update these files in order:
+
+### 1. README.md and README-ru.md — "What's New" section
+- Located in the Architecture section (under `### What's New in vX.X`)
+- List only the **most impactful changes** from the new version
+- Format: `| **Feature name** | Brief description |`
+- Keep entries concise (1-2 lines per feature)
+
+### 2. README.md and README-ru.md — "Roadmap -> Completed" section
+- Located at the bottom of the Roadmap section (under `### ✅ Completed` / `### ✅ Завершено`)
+- Add **only the most significant new features, major changes, and critical bug fixes**
+- Do NOT add minor fixes, test changes, or internal refactoring
+- Format: `- **Feature name** — brief description`
+
+### 3. AGENTS.md — version section
+- Update the version title in `## v8.X — ...`
+- Document technical details of new features (architecture, algorithms, parameters)
+- Update the "Known issues" section — move fixed items to the version section
+
+### 4. Git tags
+- Create a git tag for the new version: `git tag v8.X`
+- Push tags: `git push origin v8.X`
 
 ## Known issues (fix on sight)
 
@@ -376,7 +401,7 @@ FLAI REQUIRES an NVIDIA GPU with at least 8 GB VRAM and 16 GB system RAM. CPU-on
 - `prompts/{en,ru}/create_video.template`: JSON default `num_frames: 240`. Instruction text says "use 240 unless user asks for short/5 sec".
 - `modules/video.py:generate_video`: applies cap with logging (`"VRAM tier 8GB: capped..."` or `"VRAM soft-cap (available=X MB): reduced..."`).
 - `modules/multimodal.py`: warning threshold `weight > free * 10` (240 frames = 92 weight, 6000 MB free = no spurious warning; fires only for extreme requests like 1000+ frames at 4K).
-- `ltx_wrapper.py`: `num_frames_padded = ((nf - 2) // 8 + 1) * 8 + 1` — both 120 and 240 are aligned to multiple of 8+1, no padding overhead.
+- `ltx_wrapper.py`: `num_frames_padded = ((nf - 2) // 8 + 1) * 8 + 1` — both 120→121 and 240→241 are padded by +1 frame.
 
 ### Mypy cleanup — `app/utils.py` (19 → 0 errors)
 

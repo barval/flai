@@ -75,6 +75,16 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 | v8.9+ (New) | Notes |
 |-------------|-------|
+| **Video: 240 frames @ 24 fps** | Default video length increased from 8s to 10s (240 frames @ 24fps). VRAM-capped mode: 120 frames @ 24fps (5 sec) |
+| **Video: 768×512 resolution** | Landscape video resolution reduced from 896×512 to 768×512 for better VRAM headroom on 16GB GPUs |
+| **3-tier model protection** | Admin panel blocks saving models that won't fit in VRAM/RAM (🟢 good / 🟡 cpu_offload / 🔴 impossible / ⚠ unknown) |
+| **Dry-load + auto-rollback** | After saving a model config, background test verifies it loads. On failure → auto-rollback to fallback model |
+| **Crash-loop watchdog** | Monitors llama-swap models every 60s. 3 failures in 5 min → auto-rollback to fallback |
+| **RAG on slow worker** | RAG generation moved to slow worker (was on fast worker, caused GPU contention with LTX-Video) |
+| **RAG context in reasoning** | Reasoning model now receives document context from RAG search |
+| **Multi-tab session fix** | Client sends `session_id` in request body; server validates ownership. No more cookie race conditions |
+| **Dead code cleanup** | Removed unused `_resize_for_classify` function (896px max, never called) |
+| **Faster retries** | llama.cpp retry sleep reduced from 5s to 2s; VRAM polling from 1s to 0.5s |
 
 ### Core Components
 
@@ -784,6 +794,11 @@ curl http://localhost:5000/metrics
 - **CLI tools** — `admin-password`, `cleanup-uploads`, `migrate-messages-format` (with `--dry-run`, `--add-emojis`)
 - **Health check & metrics** — `/health` endpoint with service status, `/metrics` for Prometheus
 - **File size display** — shown in chat headers for all file types
+- **Video 240 frames @ 24fps** — default video length 10s (was 8s), VRAM cap 120 frames (5s)
+- **Video 768×512 resolution** — landscape resolution reduced from 896×512 for better VRAM headroom
+- **3-tier model protection** — admin panel blocks impossible models, dry-load + auto-rollback, crash-loop watchdog
+- **RAG on slow worker** — prevents GPU contention with LTX-Video pipeline
+- **Multi-tab session fix** — session_id in request body, server validates ownership
 
 ### 🔄 In Progress
 - Advanced RAG: metadata filtering, hybrid search

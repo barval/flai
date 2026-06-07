@@ -369,14 +369,14 @@ FLAI REQUIRES an NVIDIA GPU with at least 8 GB VRAM and 16 GB system RAM. CPU-on
 
 ### Video frame policy (replaces v8.8 cap-only approach)
 
-- **Default: 257 frames** (8 sec @ 30 fps), full 768×512 landscape.
-- **Capped to 121 frames** at 512×512 ONLY when:
+- **Default: 240 frames** (10 sec @ 24 fps), full 768×512 landscape.
+- **Capped to 120 frames** at 512×512 ONLY when:
   - `total_vram_mb < 10000` (8/10 GB tier GPU), OR
   - `available_vram_mb < 6000` (12+ GB tier with fragmented VRAM after multimodal unload)
-- `prompts/{en,ru}/create_video.template`: JSON default `num_frames: 257`. Instruction text says "use 257 unless user asks for short/4 sec".
+- `prompts/{en,ru}/create_video.template`: JSON default `num_frames: 240`. Instruction text says "use 240 unless user asks for short/5 sec".
 - `modules/video.py:generate_video`: applies cap with logging (`"VRAM tier 8GB: capped..."` or `"VRAM soft-cap (available=X MB): reduced..."`).
-- `modules/multimodal.py`: warning threshold `weight > free * 50` → `weight > free * 10` (257 frames = 117 weight, 6000 MB free = no spurious warning; fires only for extreme requests like 1000+ frames at 4K).
-- `ltx_wrapper.py`: `num_frames_padded = ((nf - 2) // 8 + 1) * 8 + 1` — both 121 and 257 are already aligned to multiple of 8+1, no padding overhead.
+- `modules/multimodal.py`: warning threshold `weight > free * 10` (240 frames = 92 weight, 6000 MB free = no spurious warning; fires only for extreme requests like 1000+ frames at 4K).
+- `ltx_wrapper.py`: `num_frames_padded = ((nf - 2) // 8 + 1) * 8 + 1` — both 120 and 240 are aligned to multiple of 8+1, no padding overhead.
 
 ### Mypy cleanup — `app/utils.py` (19 → 0 errors)
 

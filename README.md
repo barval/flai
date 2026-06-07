@@ -170,7 +170,7 @@ FLAI **requires** an NVIDIA GPU with CUDA support. CPU-only mode is not supporte
 | Multimodal | ⚠️ Qwen3VL-4B (~2.5 GB) recommended | ✅ Qwen3VL-8B (~5.5 GB) | ✅ Qwen3VL-8B (~5.5 GB) |
 | Image gen (SD) | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 |
 | Image edit (Flux) | ✅ up to 768px long side | ✅ up to 1024px long side | ��� up to 1024px long side |
-| Video gen (LTX-Video) | ⚠️ 512×512×121 frames | ✅ 768×512×257 frames | ✅ 768×512×257 frames |
+| Video gen (LTX-Video) | ⚠️ 512×512×120 frames | ✅ 768×512×240 frames | ✅ 768×512×240 frames |
 | Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU |
 | RAG (Qdrant) | ✅ | ✅ | ✅ |
 | SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU |
@@ -590,7 +590,7 @@ The project uses **LTX-Video 2B 0.9.8 distilled** for video generation:
 
 | Model | Steps | Frame Rate | Resolution | Notes |
 |-------|-------|-----------|------------|-------|
-| **LTX-Video 2B distilled** | 8 | 8–30 fps | up to 768×1344 | Distilled, single GPU (~6 GB VRAM) |
+| **LTX-Video 2B distilled** | 8 | 24 fps | up to 768×1344 | Distilled, single GPU (~6 GB VRAM) |
 
 Video generation runs in a **separate GPU container** (via `--profile with-video`). Before generating, the llama.cpp LLM is automatically unloaded from VRAM to free memory. After generation, CUDA cache is cleared, LLM processes are re-unloaded, and the CUDA primary context is reset (`cuDevicePrimaryCtxReset`) to release all GPU memory back to the driver. The T5 text encoder (~8.9 GB in bf16) stays on CPU.
 

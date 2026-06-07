@@ -13,8 +13,8 @@
    - Портрет, фокус на человеке/объекте (портрет): `"width": 512, "height": 768`
    - Если в запросе явно указан формат — используй его.
    - Если сомневаешься — используй 768×512 (ландшафт).
-4. **Количество кадров**: 257 (≈8 секунд при 30fps), 121 (≈4 секунды)
-   - fps: 30
+4. **Количество кадров**: 240 (≈10 секунд при 24fps), 120 (≈5 секунд)
+   - fps: 24
 4. **Negative prompt**: `worst quality, inconsistent motion, blurry, jittery, distorted, flickering, watermark, text, logo, deformed, ugly, oversaturated, underexposed, pixelated, static, frozen, noise, grain`
 5. **Запрещено**: добавлять комментарии, пояснения или любые символы кроме JSON.
 6. **Если запрос неполный**: логически дополни на основе изображения, но всегда сохраняй ключевое действие из запроса как основу промпта.
@@ -26,8 +26,8 @@
   "negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted, flickering, watermark, text, logo, deformed, ugly, oversaturated, underexposed, pixelated, static, frozen, noise, grain",
   "width": 768,
   "height": 512,
-  "num_frames": 257,
-  "frame_rate": 30
+  "num_frames": 240,
+  "frame_rate": 24
 }}}}
 
 # ВХОДНЫЕ ДАННЫЕ

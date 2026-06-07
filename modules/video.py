@@ -196,30 +196,30 @@ class VideoModule(TranslationMixin):
         rm.mark_video_busy()
 
         # Cap video resolution ONLY when VRAM is insufficient.
-        # Default policy: 257 frames at 768×512 (full 8-sec video).
-        # Cap to 121 frames at 512×512 only if:
+        # Default policy: 240 frames at 768×512 (10-sec video @ 24fps).
+        # Cap to 120 frames at 512×512 only if:
         #   (a) total_vram_mb < 10000 (8/10 GB tier GPU), OR
         #   (b) available_vram_mb < 6000 (12+ GB tier, fragmented after multimodal unload)
         total_vram = rm.hardware.total_vram_mb
         if isinstance(total_vram, int) and total_vram > 0 and total_vram < 10000:
             old_w = prompt_data.get("width", 768)
             old_h = prompt_data.get("height", 512)
-            old_frames = prompt_data.get("num_frames", 257)
+            old_frames = prompt_data.get("num_frames", 240)
             prompt_data["width"] = min(old_w, 512)
             prompt_data["height"] = min(old_h, 512)
-            prompt_data["num_frames"] = min(old_frames, 121)
+            prompt_data["num_frames"] = min(old_frames, 120)
             if (old_w, old_h, old_frames) != (prompt_data["width"], prompt_data["height"], prompt_data["num_frames"]):
                 self.logger.info(
                     f"VRAM tier 8GB: capped video from {old_w}×{old_h}×{old_frames}f "
                     f"to {prompt_data['width']}×{prompt_data['height']}×{prompt_data['num_frames']}f"
                 )
         elif isinstance(rm.hardware.available_vram_mb, int) and 0 < rm.hardware.available_vram_mb < 6000:
-            old_frames = prompt_data.get("num_frames", 257)
+            old_frames = prompt_data.get("num_frames", 240)
             old_w = prompt_data.get("width", 768)
             old_h = prompt_data.get("height", 512)
             prompt_data["width"] = min(old_w, 512)
             prompt_data["height"] = min(old_h, 512)
-            prompt_data["num_frames"] = min(old_frames, 121)
+            prompt_data["num_frames"] = min(old_frames, 120)
             if (old_w, old_h, old_frames) != (prompt_data["width"], prompt_data["height"], prompt_data["num_frames"]):
                 self.logger.info(
                     f"VRAM soft-cap (available={rm.hardware.available_vram_mb}MB): "
@@ -259,8 +259,8 @@ class VideoModule(TranslationMixin):
                 ),
                 "width": prompt_data.get("width", 768),
                 "height": prompt_data.get("height", 512),
-                "num_frames": prompt_data.get("num_frames", 257),
-                "frame_rate": prompt_data.get("frame_rate", 30),
+                "num_frames": prompt_data.get("num_frames", 240),
+                "frame_rate": prompt_data.get("frame_rate", 24),
                 "seed": prompt_data.get("seed", -1),
                 "image_data": image_data,
             }

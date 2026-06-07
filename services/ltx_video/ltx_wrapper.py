@@ -257,8 +257,8 @@ def run_inference(
     negative_prompt: str = "worst quality, inconsistent motion, blurry, jittery, distorted",
     height: int = 704,
     width: int = 1216,
-    num_frames: int = 121,
-    frame_rate: int = 30,
+    num_frames: int = 120,
+    frame_rate: int = 24,
     seed: int = -1,
     image_data: str | None = None,
 ) -> tuple[bytes, int, dict]:
@@ -523,8 +523,8 @@ def generate_video():
         negative_prompt = data.get("negative_prompt", "worst quality, inconsistent motion, blurry, jittery, distorted")
         height = int(data.get("height", 512))
         width = int(data.get("width", 768))
-        num_frames = int(data.get("num_frames", 257))
-        frame_rate = int(data.get("frame_rate", 30))
+        num_frames = int(data.get("num_frames", 240))
+        frame_rate = int(data.get("frame_rate", 24))
         seed = int(data.get("seed", -1))
         image_data = data.get("image_data")
 

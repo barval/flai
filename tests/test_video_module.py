@@ -95,7 +95,7 @@ class TestVideoModuleGenerate:
                     "file_type": "video/mp4",
                     "generation_time": 30.0,
                     "seed": 12345,
-                    "metadata": {"num_frames": 121},
+                    "metadata": {"num_frames": 120},
                 },
             )
             mock_rm_instance = MagicMock()
@@ -106,7 +106,7 @@ class TestVideoModuleGenerate:
 
             module = VideoModule(mock_app)
             result = module.generate_video(
-                {"prompt": "test video prompt", "width": 1216, "height": 704, "num_frames": 121}
+                {"prompt": "test video prompt", "width": 1216, "height": 704, "num_frames": 120}
             )
 
             assert result["success"] is True
@@ -257,7 +257,7 @@ class TestVideoModuleLowVram:
             mock_rm.return_value = mock_rm_instance
 
             module = VideoModule(mock_app)
-            result = module.generate_video({"prompt": "test", "width": 768, "height": 512, "num_frames": 121})
+            result = module.generate_video({"prompt": "test", "width": 768, "height": 512, "num_frames": 120})
 
         assert result["success"] is False
         assert "VRAM" in result["error"]
@@ -302,7 +302,7 @@ class TestVideoModuleLowVram:
             mock_rm.return_value = mock_rm_instance
 
             module = VideoModule(mock_app)
-            result = module.generate_video({"prompt": "test", "width": 512, "height": 512, "num_frames": 121})
+            result = module.generate_video({"prompt": "test", "width": 512, "height": 512, "num_frames": 120})
 
         assert result["success"] is True
 

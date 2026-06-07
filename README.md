@@ -71,41 +71,10 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v8.8
+### What's New in v8.9
 
-| v8.8+ (New) | Notes |
+| v8.9+ (New) | Notes |
 |-------------|-------|
-| 🛡️ **5-layer model protection in admin panel** | 3-tier VRAM/RAM classification: 🟢 `good` (full ngl), 🟡 `cpu_offload` (auto-degraded ngl), 🔴 `impossible` (save blocked, 400), ⚠ `unknown` (no GGUF metadata — click "Refresh models" first). Server-side validation, background dry-load + auto-rollback, crash-loop watchdog. Prevents OOM and 502 on bad model saves. |
-| 🛡️ **3-tier classification math** | `vram_needed ≤ 85% × total_vram` → good; otherwise `(file - gpu_weights) ≤ 70% × ram - 2 GB` → cpu_offload with recomputed ngl; else impossible (server returns 400). Upper ctx limit is now **dynamic** from `gguf_models_cache.context_length` (no hardcoded 32768). |
-| 🔁 **Background dry-load after admin save** | New `app/tasks/dry_load.py` — after `signal_reload()` sends a tiny completion to llama-swap, polls `/running` (30 s timeout). On failure, rolls back to `FALLBACK_MODELS[module]`. Daemon thread. |
-| 🐕 **Crash-loop watchdog** | New `app/tasks/health_monitor.py` — 60 s polling, sends health check to each running model, tracks failures in 5-min sliding window. **3 failures → auto-rollback to fallback**. Started from `create_app()` only in llama-swap mode. |
-| 📊 **Real VRAM measurement + dynamic estimation** | New `model_vram_estimates` table. `measure_model_vram()` captures actual VRAM after each successful load. `get_vram_estimate()` / `upsert_vram_estimate()` helpers. Admin panel shows "✓ Measured (N) / ℹ Estimated" with color-coded percentage bars. |
-| 🧮 **Dynamic VRAM estimation from GGUF metadata** | `_estimate_model_vram()` now uses `file_size_mb × (ngl / block_count) + ctx_size × kv_factor + overhead` — no hardcoded 2500/5000/15000/2000 MB constants. Reads from `gguf_models_cache` (block_count, file_size_mb, context_length). |
-| 🔌 **Separate circuit breaker per model type** | `LlamaSwapBackend._get_circuit_breaker(model_type)` — chat, reasoning, multimodal, embedding each have their own CB. One model's OOM no longer blocks another. |
-| ⚙️ **Adaptive model degradation on every failure** | `_record_llama_failure()` calls `_degrade_model_if_needed()` on every failure (not just when CB opens). `compute_llamacpp_config()` iteratively reduces ngl to fit available VRAM. |
-| 🔁 **Reasoning 502 → retry with degrade** | `max_retries = 1` for `reasoning` and `chat` (was only `multimodal`). First failure → degrade ngl; second failure → user-facing error. |
-| 🔒 **Fast worker now acquires `_gpu_lock`** | Previously only slow worker serialized GPU tasks. Chat, embedding, RAG search now also wait for GPU. Prevents parallel GPU tasks. |
-| 🧠 **RAG: generation moved to slow worker** | `_process_rag_task*` no longer calls `rag.generate_answer()` directly. Fast worker does **only** `rag.search()` (embedding + Qdrant) and requeues to slow worker via `_requeue_reasoning_task(rag_context=...)`. Slow worker handles VRAM (unloads LTX-Video, loads reasoning). Prevents GPU contention. |
-| 📝 **RAG prompt fix** | `rag.template` no longer says "answer on your own" or "don't write 'no info'". Now: *"use ONLY the provided context. If context doesn't contain the answer — honestly say you cannot find it."* Prevents hallucination. |
-| 📦 **Raw Qdrant chunks → reasoning model** | When `rag.generate_answer()` returns None, `_process_reasoning_request` calls `rag.search()` directly and passes raw chunks as `rag_context` to the reasoning model. Reasoning model always sees document content. |
-| 🗂️ **Multi-tab session support** | Client now sends `session_id` in request body (UUID v4). Server validates ownership and updates Flask session. Cookie race conditions between tabs fixed. `app/static/js/chat-init.js`, `app/routes/messages.py`, `app/db.py` updated. |
-| 🧹 **Queue position: server data only** | Removed `pendingRequestIds` race guard from `chat-queue.js` that overwrote server positions with hardcoded `1`. Multiple ⚡ prevention preserved (only one session shows ⚡; rest show ⏳ with real positions). |
-| ⚠️ **Error message prefix** | `_build_error_response()` adds `⚠️ ` prefix to all user errors. Helper `_is_llm_error_string()` routes `call_llamacpp()` error strings (e.g., "GPU memory unavailable", "HTTP error 500") through `_build_error_response()`. Applied in `_process_reasoning_request`, `_process_text_task*`, RAG. |
-| 🌐 **Translation system fix** | Removed broken `.mo` volume mounts from `docker-compose.gpu.yml`. Docker now compiles all translations at build time. All site features work in both Russian and English. |
-| 📺 **Video VRAM: try/finally + flush CUDA** | Both video task handlers wrap generation in `try/finally` — `_unload_video_pipeline()` and `_unload_llamacpp_models()` always run. CUDA cache flushed after generation. `_wait_for_vram_full` timeout 30 s → 60 s. Buffer +500 → +3000 MB. No more "proceeding anyway" on timeout. |
-| 📐 **Dynamic video VRAM chain** | `estimate_video_vram_needed()`: 1) measured (from `model_vram_estimates`), 2) HTTP `/v1/vram_info` from ltx-wrapper (component sizes + current peak), 3) local filesystem (if `/app/models` mounted), 4) env fallback. New endpoint in `ltx_wrapper.py`. |
-| 🗃️ **New DB tables** | `model_vram_estimates` (module, model_name, ctx, ngl, estimated_mb, measured_mb, measurement_count, last_measured_at). `slm_import_progress` (user_id, last_message_id, total_imported) for checkpoint-based background import. |
-| 🧪 **55 new tests** | `tests/test_classify_model_fit.py` (11), `tests/test_dry_load.py` (10), `tests/test_health_monitor.py` (12), `tests/test_resource_manager_ltx_unload.py` (11), `tests/test_vram_estimates.py` (10). All passing. |
-| 🧹 **Docker compose cleanup** | Removed `docker-compose.cpu.yml` (CPU-only mode unsupported — FLAI requires NVIDIA GPU). Removed `services/llamacpp/generate_presets.py` (obsolete). Removed `services/sd_cpp/Dockerfile.sd_cpp-cpu`. |
-| 🤖 **Default chat model upgraded** | `Qwen3-4B-Instruct-2507-Q4_K_M` → `Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf` (~2 GB, faster routing). Default ctx 8192 → 16384 for both chat and reasoning. |
-| 📦 **Deploy scripts: VRAM tier detection** | `deploy.sh` / `deploy-ru.sh` now detect GPU VRAM via `nvidia-smi` and auto-select reasoning model: 16 GB+ → `gpt-oss-20b-Q4_K_M`, 12 GB → `Qwen3-8B-Thinking-Q4_K_M`, 8 GB → `Qwen3-4B-Thinking`. |
-| 🧠 **SLM daemon mode** | SuperLocalMemory now runs as a proper daemon (`slm serve start`) keeping the embedding model in memory permanently. Replaced the per-request `subprocess --sync` calls. SLM recall latency reduced from ~10 s to ~1 ms. HTTP proxy (`slm_http.py`) forwards requests to daemon internally. **Per-user isolation:** recall reads directly from the user's private SQLite, not from the daemon's shared database. |
-| 🧠 **SLM context for both chat + reasoning** | SLM facts are now injected into prompts for BOTH chat and reasoning models (alongside full conversation history). Previously was reasoning-only with only 2 last messages. `SLM_RECALL_LIMIT=7` (default). |
-| 🧠 **RAG fixes: router, streaming, context** | Router template now has dedicated category 5 for document/person/age queries → `[-RAG-]`. Streaming path (`_process_text_task_stream`) now calls RAG before requeuing to reasoning. Strict threshold lowered 0.7 → 0.5. Reasoning model receives document context via `{rag_context}`. RAG retry in `_process_reasoning_request`. |
-| 🎮 **Video VRAM fix: multimodal unload confirmation** | Fixed `_wait_for_vram_full()` — changed from impossible ≥80% threshold to `video_needed + 3 GB` buffer. Timeout increased 30 → 60 s. No more "proceeding anyway" into OOM. |
-| 🖼️ **Image display in streamed messages** | `finalizeStreamedMessage` renders images/videos from `result.file_path` / `result.file_data`. `file_data` added to `get_session_messages` SQL SELECT. `contextlib.suppress` replaced with proper logging in `db.py`. |
-| 🧪 **Test isolation improvements** | `conftest.py`: `stop_workers(timeout=3)` in `test_app` teardown. `TRUNCATE` on real PostgreSQL between tests (in CI). |
-| 🔨 **Various lint fixes** | SIM102, SIM108, F841 (3×), F821, N812, B904 — all resolved across `app/db.py`, `app/queue.py`, `modules/base.py`, `services/ltx_video/ltx_wrapper.py`. |
 
 ### Core Components
 

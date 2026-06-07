@@ -71,41 +71,10 @@
 
 ПЛИИ — модульное Flask-приложение, оркестрирующее сервисы на экосистеме llama.cpp.
 
-### Что нового в v8.8
+### Что нового в v8.9
 
-| v8.8+ (Новое) | Примечания |
+| v8.9+ (Новое) | Примечания |
 |---------------|------------|
-| 🛡️ **5-уровневая защита моделей в админ-панели** | 3-уровневая классификация VRAM/RAM: 🟢 `good` (полный ngl), 🟡 `cpu_offload` (авто-пониженный ngl), 🔴 `impossible` (сохранение блокируется, 400), ⚠ `unknown` (нет метаданных GGUF — сначала нажмите «Обновить модели»). Серверная валидация, фоновый dry-load + авто-откат, watchdog от краш-лупов. Предотвращает OOM и 502 при неудачном сохранении. |
-| 🛡️ **Математика 3-уровневой классификации** | `vram_needed ≤ 85% × total_vram` → good; иначе `(file - gpu_weights) ≤ 70% × ram - 2 ГБ` → cpu_offload с пересчитанным ngl; иначе impossible (сервер вернёт 400). Верхний предел ctx теперь **динамический** из `gguf_models_cache.context_length` (без хардкода 32768). |
-| 🔁 **Фоновая dry-load после сохранения** | Новый `app/tasks/dry_load.py` — после `signal_reload()` отправляет минимальный completion в llama-swap, опрашивает `/running` (таймаут 30 с). При сбое откатывается на `FALLBACK_MODELS[module]`. Daemon-поток. |
-| 🐕 **Watchdog от краш-лупов** | Новый `app/tasks/health_monitor.py` — опрос каждые 60 с, отправляет health check каждой запущенной модели, хранит сбои в 5-минутном скользящем окне. **3 сбоя → авто-откат на fallback**. Запускается из `create_app()` только в режиме llama-swap. |
-| 📊 **Реальные замеры VRAM + динамическая оценка** | Новая таблица `model_vram_estimates`. `measure_model_vram()` захватывает фактическую VRAM после каждой успешной загрузки. Хелперы `get_vram_estimate()` / `upsert_vram_estimate()`. В админ-панели отображается «✓ Замерено (N) / ℹ Оценка» с цветными полосками процентов. |
-| 🧮 **Динамическая оценка VRAM по метаданным GGUF** | `_estimate_model_vram()` теперь использует `file_size_mb × (ngl / block_count) + ctx_size × kv_factor + overhead` — никаких хардкод-констант 2500/5000/15000/2000 МБ. Читает из `gguf_models_cache` (block_count, file_size_mb, context_length). |
-| 🔌 **Отдельные circuit breaker по типу модели** | `LlamaSwapBackend._get_circuit_breaker(model_type)` — у chat, reasoning, multimodal, embedding свой CB. OOM одной модели больше не блокирует другую. |
-| ⚙️ **Адаптивная деградация при каждом сбое** | `_record_llama_failure()` вызывает `_degrade_model_if_needed()` при каждом сбое (а не только при открытии CB). `compute_llamacpp_config()` итеративно снижает ngl под доступную VRAM. |
-| 🔁 **Reasoning 502 → повтор с деградацией** | `max_retries = 1` для `reasoning` и `chat` (раньше только `multimodal`). Первый сбой → понижение ngl; второй сбой → пользовательская ошибка. |
-| 🔒 **Fast worker теперь берёт `_gpu_lock`** | Раньше только slow worker сериализовал GPU-задачи. Чат, эмбеддинг, RAG-поиск теперь тоже ждут GPU. Исключает параллельные GPU-задачи. |
-| 🧠 **RAG: генерация перенесена на slow worker** | `_process_rag_task*` больше не вызывает `rag.generate_answer()` напрямую. Fast worker делает **только** `rag.search()` (эмбеддинг + Qdrant) и перекьюивает в slow worker через `_requeue_reasoning_task(rag_context=...)`. Slow worker управляет VRAM (выгружает LTX-Video, грузит reasoning). Предотвращает конкуренцию за GPU. |
-| 📝 **Исправлен промпт RAG** | Из `rag.template` убрано «придумай сам» и «не пиши "нет информации"». Теперь: *«используй ТОЛЬКО предоставленный контекст. Если в контексте нет ответа — честно скажи, что не можешь найти».* Предотвращает галлюцинации. |
-| 📦 **Сырые чанки Qdrant → reasoning модель** | Когда `rag.generate_answer()` возвращает None, `_process_reasoning_request` вызывает `rag.search()` напрямую и передаёт сырые чанки как `rag_context` в рассуждающую модель. Рассуждающая модель всегда видит содержимое документов. |
-| 🗂️ **Поддержка нескольких вкладок** | Клиент теперь отправляет `session_id` в теле запроса (UUID v4). Сервер проверяет владельца и обновляет Flask-сессию. Устранены гонки cookie между вкладками. |
-| 🧹 **Позиция в очереди: только серверные данные** | Удалён `pendingRequestIds` race guard из `chat-queue.js`, перезаписывавший серверные позиции хардкодом `1`. Множественная защита ⚡ сохранена (только одна сессия показывает ⚡; остальные ⏳ с реальными позициями). |
-| ⚠️ **Префикс сообщений об ошибках** | `_build_error_response()` добавляет префикс `⚠️ ` ко всем пользовательским ошибкам. Хелпер `_is_llm_error_string()` направляет строки ошибок `call_llamacpp()` (напр., «GPU memory unavailable», «HTTP error 500») через `_build_error_response()`. Применено в `_process_reasoning_request`, `_process_text_task*`, RAG. |
-| 🌐 **Исправлена система переводов** | Удалены сломанные `.mo` маунты из `docker-compose.gpu.yml`. Docker теперь компилирует все переводы во время сборки. Все функции сайта работают на русском и английском. |
-| 📺 **Видео VRAM: try/finally + flush CUDA** | Оба обработчика видео оборачивают генерацию в `try/finally` — `_unload_video_pipeline()` и `_unload_llamacpp_models()` выполняются всегда. CUDA-кэш сбрасывается после генерации. Таймаут `_wait_for_vram_full` 30 → 60 с. Буфер +500 → +3000 МБ. Больше никаких «продолжаем вопреки» при таймауте. |
-| 📐 **Динамическая цепочка VRAM видео** | `estimate_video_vram_needed()`: 1) замерено (из `model_vram_estimates`), 2) HTTP `/v1/vram_info` от ltx-wrapper (размеры компонентов + текущий пик), 3) локальная ФС (если `/app/models` примонтирован), 4) env-fallback. Новый эндпоинт в `ltx_wrapper.py`. |
-| 🗃️ **Новые таблицы БД** | `model_vram_estimates` (module, model_name, ctx, ngl, estimated_mb, measured_mb, measurement_count, last_measured_at). `slm_import_progress` (user_id, last_message_id, total_imported) для чекпоинт-фонового импорта. |
-| 🧪 **55 новых тестов** | `tests/test_classify_model_fit.py` (11), `tests/test_dry_load.py` (10), `tests/test_health_monitor.py` (12), `tests/test_resource_manager_ltx_unload.py` (11), `tests/test_vram_estimates.py` (10). Все проходят. |
-| 🧹 **Очистка Docker compose** | Удалены `docker-compose.cpu.yml` (режим CPU-only не поддерживается — FLAI требует NVIDIA GPU), `services/llamacpp/generate_presets.py` (устарел), `services/sd_cpp/Dockerfile.sd_cpp-cpu`. |
-| 🤖 **Обновлена дефолтная чат-модель** | `Qwen3-4B-Instruct-2507-Q4_K_M` → `Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf` (~2 ГБ, более быстрый роутинг). Дефолтный ctx 8192 → 16384 для чата и рассуждений. |
-| 📦 **Deploy-скрипты: определение уровня VRAM** | `deploy.sh` / `deploy-ru.sh` теперь определяют VRAM GPU через `nvidia-smi` и авто-выбирают рассуждающую модель: 16+ ГБ → `gpt-oss-20b-Q4_K_M`, 12 ГБ → `Qwen3-8B-Thinking-Q4_K_M`, 8 ГБ → `Qwen3-4B-Thinking`. |
-| 🧠 **SLM в режиме демона** | SuperLocalMemory теперь работает как полноценный демон (`slm serve start`), постоянно держа модель эмбеддингов в памяти. Задержка recall снижена с ~10 с до ~1 мс. HTTP-прокси (`slm_http.py`) перенаправляет запросы. **Изоляция пользователей:** recall читает напрямую из per-user SQLite. |
-| 🧠 **SLM контекст для чата + рассуждений** | Факты SLM добавляются в промпт для обеих моделей вместе с полной историей диалога. `SLM_RECALL_LIMIT=7` по умолчанию. |
-| 🧠 **Исправления RAG: роутер, стриминг, контекст** | Шаблон роутера получил категорию 5 для запросов про документы/людей/возраст → `[-RAG-]`. Стриминг (`_process_text_task_stream`) вызывает RAG перед перекьюиванием. Строгий порог 0.7 → 0.5. Рассуждающая модель получает контекст документов через `{rag_context}`. |
-| 🎮 **Исправление VRAM видео: подтверждение выгрузки multimodal** | Исправлен `_wait_for_vram_full()` — невозможный порог ≥80% заменён на `video_needed + 3 ГБ`. Таймаут 30 → 60 с. Никаких «продолжаем вопреки» в OOM. |
-| 🖼️ **Отображение изображений в стриминговых сообщениях** | `finalizeStreamedMessage` отрисовывает изображения/видео из `result.file_path` / `result.file_data`. `file_data` добавлен в `get_session_messages` SQL SELECT. |
-| 🧪 **Улучшения изоляции тестов** | `conftest.py`: `stop_workers(timeout=3)` в teardown `test_app`. `TRUNCATE` на реальном PostgreSQL между тестами (в CI). |
-| 🔨 **Разные lint-исправления** | SIM102, SIM108, F841 (3×), F821, N812, B904 — исправлены в `app/db.py`, `app/queue.py`, `modules/base.py`, `services/ltx_video/ltx_wrapper.py`. |
 
 ### Основные компоненты
 

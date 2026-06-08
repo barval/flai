@@ -343,7 +343,7 @@ def edit_image(data):
         return _edit_image_impl(data)
 
 
-def _build_edit_cmd(edit_prompt, src_path, use_gpu, offload_level=0):
+def _build_edit_cmd(edit_prompt, src_path, use_gpu, offload_level=0, strength=0.7):
     """Build sd-cli command for image editing with specified offload level.
 
     offload_level:
@@ -375,6 +375,8 @@ def _build_edit_cmd(edit_prompt, src_path, use_gpu, offload_level=0):
         "--rng",
         "cuda",
         "--diffusion-fa",
+        "--strength",
+        str(strength),
     ]
 
     if offload_level == 1:
@@ -396,6 +398,7 @@ def _edit_image_impl(data):
     user_id = data.get("user_id")
     session_id = data.get("session_id")
     task_id = data.get("task_id")
+    strength = float(data.get("strength", 0.7))
     edit_total_steps = 4  # hardcoded in _build_edit_cmd
 
     if not edit_prompt:
@@ -414,7 +417,7 @@ def _edit_image_impl(data):
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as out_tmp:
                 output_path = out_tmp.name
 
-            cmd = _build_edit_cmd(edit_prompt, src_path, use_gpu, offload_level=level)
+            cmd = _build_edit_cmd(edit_prompt, src_path, use_gpu, offload_level=level, strength=strength)
             cmd.extend(["-o", output_path])
 
             logger.info(f" Running edit (offload_level={level}): {' '.join(cmd[:12])}...")

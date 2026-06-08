@@ -1,4 +1,5 @@
 # app/queue.py
+import contextlib
 import hashlib
 import hmac
 import json
@@ -2709,17 +2710,35 @@ class RedisRequestQueue:
 
         if voice_record:
             response_style = request_data.get("response_style", "neutral")
-            text_request_data = {
-                "type": "text",
-                "text": transcribed_text,
-                "preview": (transcribed_text[:50] + "...")
-                if transcribed_text
-                else self.app.modules["base"]._("Voice request", lang=lang),
-                "response_style": response_style,
-                "stream": True,
-            }
+            image_data = request_data.get("image_data")
+            image_type = request_data.get("image_type")
+            image_name = request_data.get("image_name")
+
+            if image_data:
+                # Image + voice: requeue as image task (multimodal processing)
+                requeue_request_data = {
+                    "type": "image",
+                    "text": transcribed_text,
+                    "file_data": image_data,
+                    "file_type": image_type,
+                    "file_name": image_name,
+                    "preview": (transcribed_text[:50] + "...") if transcribed_text else self.app.modules["base"]._("Voice request", lang=lang),
+                    "response_style": response_style,
+                    "stream": True,
+                }
+            else:
+                # Voice only: requeue as text task (router processing)
+                requeue_request_data = {
+                    "type": "text",
+                    "text": transcribed_text,
+                    "preview": (transcribed_text[:50] + "...")
+                    if transcribed_text
+                    else self.app.modules["base"]._("Voice request", lang=lang),
+                    "response_style": response_style,
+                    "stream": True,
+                }
             new_request_id, _ = self.app.request_queue.add_request(
-                user_id, session_id, text_request_data, user_class, lang=lang
+                user_id, session_id, requeue_request_data, user_class, lang=lang
             )
             return {
                 "transcribed_text": transcribed_text,
@@ -2919,6 +2938,17 @@ class RedisRequestQueue:
                 task["position_info"] = {"position": 0, "estimated_seconds": 0}
                 result["queued"].append(self._format_request_info(task, lang))
 
+        # Enrich processing entry with current stage from Redis progress hash
+        if result["processing"]:
+            task_id = result["processing"].get("id")
+            if task_id:
+                try:
+                    stage = self.redis.hget(f"task_progress:{task_id}", "stage")
+                    if stage:
+                        result["processing"]["stage"] = stage
+                except Exception:
+                    pass
+
         # Collect items actually waiting in queues
         position = 1
         for q_key in [self.queue_key, self.slow_queue_key]:
@@ -2982,6 +3012,29 @@ class RedisRequestQueue:
             },
         )
 
+    def _save_progress(self, task_id: str, progress_type: str, data: dict[str, Any]) -> None:
+        """Persist latest progress state in Redis for restore after reconnect/page reload."""
+        key = f"task_progress:{task_id}"
+        mapping = {"type": progress_type, "timestamp": str(time.time())}
+        if progress_type == "task_progress":
+            mapping["stage"] = data.get("stage", "")
+        elif progress_type in ("video_step", "image_step"):
+            mapping["step"] = str(data.get("step", 0))
+            mapping["total"] = str(data.get("total", 0))
+            mapping["percent"] = str(data.get("percent", 0))
+        try:
+            pipe = self.redis.pipeline()
+            pipe.hset(key, mapping=mapping)
+            pipe.expire(key, 1800)
+            pipe.execute()
+        except Exception:
+            pass  # non-critical
+
+    def _cleanup_progress(self, task_id: str) -> None:
+        """Remove progress hash when task completes."""
+        with contextlib.suppress(Exception):
+            self.redis.delete(f"task_progress:{task_id}")
+
     def _publish_stream_event(self, task: dict[str, Any], event_type: str, extra: dict | None = None) -> None:
         """Publish a streaming lifecycle event (e.g. stream_cancelled)."""
         user_id = task.get("user_id")
@@ -2997,6 +3050,8 @@ class RedisRequestQueue:
         if extra:
             payload.update(extra)
         publisher.publish(user_id, event_type, payload)
+        if event_type == "task_progress" and extra:
+            self._save_progress(task.get("id", ""), "task_progress", extra)
 
     def _publish_result_event(self, task: dict[str, Any], status: str, result_data: dict[str, Any]) -> None:
         """Publish task result to the user's SSE event stream."""
@@ -3016,6 +3071,7 @@ class RedisRequestQueue:
                 "result": result_data,
             },
         )
+        self._cleanup_progress(task.get("id", ""))
 
     def cancel_task(self, task_id: str) -> bool:
         """Mark a task as cancelled in Redis. Returns True if the task exists."""

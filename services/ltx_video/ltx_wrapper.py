@@ -384,18 +384,33 @@ def run_inference(
         if _redis is None or user_id is None:
             return
         try:
+            step_num = step + 1
+            pct = round(step_num / total_steps * 100)
             payload = json.dumps({
                 "type": "video_step",
                 "data": {
                     "session_id": session_id,
                     "task_id": task_id,
-                    "step": step + 1,
+                    "step": step_num,
                     "total": total_steps,
-                    "percent": round((step + 1) / total_steps * 100),
+                    "percent": pct,
                 },
                 "timestamp": time.time(),
             }, ensure_ascii=False)
             _redis.publish(f"user:events:{user_id}", payload)
+            # Persist progress for restore after reconnect
+            if task_id:
+                key = f"task_progress:{task_id}"
+                pipe = _redis.pipeline()
+                pipe.hset(key, mapping={
+                    "type": "video_step",
+                    "step": str(step_num),
+                    "total": str(total_steps),
+                    "percent": str(pct),
+                    "timestamp": str(time.time()),
+                })
+                pipe.expire(key, 1800)
+                pipe.execute()
         except Exception:
             pass  # non-critical
 

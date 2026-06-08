@@ -46,6 +46,9 @@ function scheduleReconnect() {
         if (typeof fetchQueueStatus === 'function') {
             fetchQueueStatus();
         }
+        if (typeof restoreTaskProgress === 'function') {
+            restoreTaskProgress();
+        }
         if (typeof loadDocuments === 'function') {
             loadDocuments(false);
         }
@@ -1024,6 +1027,50 @@ function onMessageNew(data) {
         .catch(function () {});
 }
 
+// ── Progress restore after reconnect / page reload ──────────────────
+
+async function restoreTaskProgress() {
+    for (const [taskId, info] of Object.entries(pendingRequestIds)) {
+        if (info.sessionId !== currentSessionId) continue;
+        if (info._progressRestored) continue;
+
+        try {
+            const resp = await fetch('/api/queue/progress/' + taskId);
+            const json = await resp.json();
+            const progress = json && json.progress;
+            if (!progress) continue;
+
+            info._progressRestored = true;
+
+            if (progress.type === 'video_step') {
+                onVideoStep({
+                    session_id: info.sessionId,
+                    task_id: taskId,
+                    step: progress.step,
+                    total: progress.total,
+                    percent: progress.percent,
+                });
+            } else if (progress.type === 'image_step') {
+                onImageStep({
+                    session_id: info.sessionId,
+                    task_id: taskId,
+                    step: progress.step,
+                    total: progress.total,
+                    percent: progress.percent,
+                });
+            } else if (progress.type === 'task_progress') {
+                onTaskProgress({
+                    session_id: info.sessionId,
+                    task_id: taskId,
+                    stage: progress.stage,
+                });
+            }
+        } catch (e) {
+            dlog('Failed to restore progress for', taskId, e);
+        }
+    }
+}
+
 // ── Initialisation ───────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -1037,6 +1084,7 @@ document.addEventListener('visibilitychange', function () {
         connectEventStream();
         if (typeof loadSessionsFromServer === 'function') loadSessionsFromServer();
         if (typeof fetchQueueStatus === 'function') fetchQueueStatus();
+        if (typeof restoreTaskProgress === 'function') restoreTaskProgress();
     }
 });
 
@@ -1045,6 +1093,7 @@ window.connectEventStream = connectEventStream;
 window.disconnectEventStream = disconnectEventStream;
 window.trackPendingRequest = trackPendingRequest;
 window.restoreStreamingFromSessionStorage = restoreStreamingFromSessionStorage;
+window.restoreTaskProgress = restoreTaskProgress;
 
 // Fallback polling: refresh queue status every 5s while there are pending requests
 setInterval(function () {

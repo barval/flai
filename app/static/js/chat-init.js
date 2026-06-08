@@ -169,10 +169,18 @@ async function sendMessage() {
                     formData.append('message', tempText);
                     formData.append('file', tempAttachedFile);
                     formData.append('session_id', currentSessionId);
-                    if (isVoiceRecorded) {
+
+                    if (isVoiceRecorded && attachedVoiceBlob) {
+                        // Image + voice: send both files
+                        formData.append('voice', attachedVoiceBlob);
+                        formData.append('voice_record', 'true');
+                        isVoiceRecorded = false;
+                        attachedVoiceBlob = null;
+                    } else if (isVoiceRecorded) {
                         formData.append('voice_record', 'true');
                         isVoiceRecorded = false;
                     }
+
                     response = await fetchWithCSRF('/api/send_message', { method: 'POST', body: formData });
                 } else {
                     response = await fetchWithCSRF('/api/send_message', {
@@ -479,6 +487,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (typeof restoreStreamingFromSessionStorage === 'function') {
                 restoreStreamingFromSessionStorage();
             }
+            // Restore progress bars from Redis (page reload during generation)
+            if (typeof restoreTaskProgress === 'function') {
+                restoreTaskProgress();
+            }
             // Re-check queue status after restoring pendingRequestIds
             if (typeof fetchQueueStatus === 'function') {
                 fetchQueueStatus();
@@ -527,6 +539,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     document.getElementById('remove-file-button').addEventListener('click', function() {
         attachedFile = null;
+        attachedVoiceBlob = null;
         document.getElementById('file-input').value = '';
         // FIX: Add 'hidden' class back instead of setting display
         document.getElementById('file-preview-container').classList.add('hidden');

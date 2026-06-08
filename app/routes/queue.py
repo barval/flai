@@ -68,6 +68,8 @@ def api_sd_step():
     if publisher is None:
         return jsonify({"error": "Events publisher unavailable"}), 503
 
+    percent = round(step / total * 100) if total > 0 else 0
+
     publisher.publish(
         user_id,
         "image_step",
@@ -76,10 +78,54 @@ def api_sd_step():
             "session_id": session_id,
             "step": step,
             "total": total,
-            "percent": round(step / total * 100) if total > 0 else 0,
+            "percent": percent,
         },
     )
+
+    # Persist progress for restore after reconnect
+    if task_id:
+        try:
+            import redis as redis_lib
+
+            r = redis_lib.from_url(current_app.config["REDIS_URL"], decode_responses=True)
+            key = f"task_progress:{task_id}"
+            pipe = r.pipeline()
+            pipe.hset(key, mapping={
+                "type": "image_step",
+                "step": str(step),
+                "total": str(total),
+                "percent": str(percent),
+                "timestamp": str(__import__("time").time()),
+            })
+            pipe.expire(key, 1800)
+            pipe.execute()
+        except Exception:
+            pass
+
     return jsonify({"status": "ok"})
+
+
+@bp.route("/progress/<task_id>", methods=["GET"])
+def api_task_progress(task_id):
+    """Return latest persisted progress state for a task (for restore after reconnect)."""
+    if "login" not in session:
+        return jsonify({"error": _("Not authorized")}), 401
+
+    import redis as redis_lib
+
+    r = redis_lib.from_url(current_app.config["REDIS_URL"], decode_responses=True)
+    data = r.hgetall(f"task_progress:{task_id}")
+    if not data:
+        return jsonify({"progress": None})
+
+    progress: dict = {"type": data.get("type", "task_progress")}
+    if data.get("stage"):
+        progress["stage"] = data["stage"]
+    if data.get("step"):
+        progress["step"] = int(data["step"])
+        progress["total"] = int(data.get("total", 0))
+        progress["percent"] = int(data.get("percent", 0))
+    return jsonify({"progress": progress})
 
 
 @bp.route("/status", methods=["GET"])

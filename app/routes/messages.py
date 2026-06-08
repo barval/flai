@@ -110,6 +110,9 @@ def send_message():
     file_name = None
     voice_record = False
     file_size_bytes = 0
+    voice_file_data = None
+    voice_file_type = None
+    voice_file_name = None
 
     if request.content_type and "multipart/form-data" in request.content_type:
         message_text = request.form.get("message", "")

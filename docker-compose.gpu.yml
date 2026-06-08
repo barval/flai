@@ -34,6 +34,10 @@ services:
       - ./app/db.py:/app/app/db.py
       - ./app/routes/admin.py:/app/app/routes/admin.py
       - ./app/routes/queue.py:/app/app/routes/queue.py
+      - ./app/routes/messages.py:/app/app/routes/messages.py
+      - ./app/static/js/chat-init.js:/app/app/static/js/chat-init.js
+      - ./app/static/js/chat-recording.js:/app/app/static/js/chat-recording.js
+      - ./app/static/js/chat-constants.js:/app/app/static/js/chat-constants.js
       - ./app/__init__.py:/app/app/__init__.py
       - ./modules/video.py:/app/modules/video.py
       - ./modules/sd_cpp.py:/app/modules/sd_cpp.py
@@ -48,6 +52,8 @@ services:
       - ./prompts/en/base_text.template:/app/prompts/en/base_text.template
       - ./prompts/ru/base_text.template:/app/prompts/ru/base_text.template
     runtime: nvidia
+    group_add:
+      - "988"  # Docker socket group — needed for `docker restart` from inside container
     environment:
       - REDIS_URL=redis://redis:6379/0
       - NVIDIA_VISIBLE_DEVICES=all

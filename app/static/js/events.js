@@ -52,6 +52,8 @@ function scheduleReconnect() {
         if (typeof loadDocuments === 'function') {
             loadDocuments(false);
         }
+        // Check if any pending tasks completed while SSE was disconnected
+        verifyPendingRequests();
     }, 3000);
 }
 
@@ -777,6 +779,33 @@ function restorePendingRequests() {
             }
         }
     } catch (e) { /* ignore */ }
+}
+
+function verifyPendingRequests() {
+    // On SSE reconnect, check if any pending tasks already completed on the server.
+    // Fixes stuck hourglasses when result_completed event was lost during disconnection.
+    const ids = Object.keys(pendingRequestIds);
+    if (ids.length === 0) return;
+
+    ids.forEach(function (reqId) {
+        fetchWithCSRF('/api/queue/result/' + reqId)
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                if (data.status === 'completed' && data.result) {
+                    const info = pendingRequestIds[reqId];
+                    const sessionId = info ? info.sessionId : null;
+                    clearPendingRequest(reqId);
+                    handleCompletedResult(data.result, sessionId);
+                } else if (data.status === 'error') {
+                    const info = pendingRequestIds[reqId];
+                    const sessionId = info ? info.sessionId : null;
+                    clearPendingRequest(reqId);
+                    handleErrorResult(data, sessionId);
+                }
+                // 'pending' means still running — leave it in pendingRequestIds
+            })
+            .catch(function () { /* ignore network errors */ });
+    });
 }
 
 function clearPendingRequest(requestId) {

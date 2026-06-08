@@ -523,6 +523,25 @@ class ResourceManager:
         with contextlib.suppress(Exception):
             self.unload_video_pipeline()
 
+        # 2b. If still short on VRAM, restart LTX-Video to free CUDA context (~3 GB)
+        # The gunicorn worker inside flai-ltxvideo holds a CUDA context that survives
+        # /v1/unload. Only a container restart releases it.
+        self._poll_vram()
+        if self.hardware.available_vram_mb < needed_mb:
+            logger.info(
+                f"ensure_vram_for [{model_type}]: still {self.hardware.available_vram_mb}MB "
+                f"free after unload (need {needed_mb}MB) — restarting LTX-Video to free CUDA context"
+            )
+            self._force_restart_ltx_video()
+
+            # Wait for VRAM to free after restart
+            deadline_restart = time.time() + 20
+            while time.time() < deadline_restart:
+                self._poll_vram()
+                if self.hardware.available_vram_mb >= needed_mb:
+                    break
+                time.sleep(2)
+
         # 3. Flush CUDA cache
         try:
             import torch
@@ -699,19 +718,43 @@ class ResourceManager:
         self._ltx_restart_initiated_at = time.time()
 
         logger.error("LTX-Video unresponsive: 3 consecutive timeouts. Restarting container.")
+        self._restart_ltx_container()
+
+    def _force_restart_ltx_video(self) -> None:
+        """Force-restart LTX-Video to free CUDA context overhead (~3 GB).
+
+        Called from ensure_vram_for() when VRAM is still insufficient after
+        unload_video_pipeline(). The gunicorn worker inside flai-ltxvideo holds
+        a CUDA context that survives /v1/unload — only a container restart
+        releases it. Rate-limited to 1 restart per 3 minutes.
+        """
+        if time.time() - self._ltx_restart_initiated_at < 180:
+            logger.debug("LTX-Video restart rate-limited — skipping")
+            return
+        self._ltx_restart_initiated_at = time.time()
+
+        logger.warning("Force-restarting LTX-Video container to free CUDA context")
+        self._restart_ltx_container()
+
+    def _restart_ltx_container(self) -> None:
+        """Restart the flai-ltxvideo container via Docker socket."""
         try:
-            resp = requests.post(
-                "http://localhost/containers/flai-ltxvideo/restart",
-                timeout=10,
+            result = subprocess.run(
+                ["docker", "restart", "flai-ltxvideo"],
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
-            if resp.status_code in (204, 304):
-                logger.info("flai-ltxvideo restart initiated via Docker socket")
+            if result.returncode == 0:
+                logger.info("flai-ltxvideo restart initiated via docker CLI")
                 self._ltx_unload_consecutive_timeouts = 0
                 self._last_ltx_unload_at = 0.0
             else:
-                logger.error(f"Docker restart failed: HTTP {resp.status_code}")
+                logger.error(f"Docker restart failed (rc={result.returncode}): {result.stderr}")
+        except FileNotFoundError:
+            logger.error("Docker CLI not found in container — cannot restart flai-ltxvideo")
         except Exception as e:
-            logger.error(f"Failed to restart flai-ltxvideo via Docker socket: {e}")
+            logger.error(f"Failed to restart flai-ltxvideo: {e}")
 
     def estimate_video_vram_needed(self) -> int:
         """VRAM threshold for LTX-Video pipeline loading.

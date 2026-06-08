@@ -2125,30 +2125,43 @@ class RedisRequestQueue:
         action_type = router_result["action"]
         query = router_result["query"]
 
-        # Stream reasoning — try RAG first, only fall back to reasoning if RAG fails
+        # Reasoning — search RAG on fast worker, then requeue to slow worker for generation.
+        # NEVER call rag.generate_answer() on the fast worker — it loads the reasoning model
+        # (~10 GiB) and blocks _gpu_lock for minutes, freezing all other tasks.
         if action_type == "reasoning" and router_result.get("needs_reasoning"):
-            rag_start = time.time()
-            rag_answer, rag_model = self._try_rag_answer(
-                query, session_id, user_id, lang, strict=True, response_style=response_style
-            )
-            if rag_answer is not None:
-                if self._is_llm_error_string(rag_answer):
-                    return self._build_error_response(session_id, rag_answer, round(time.time() - rag_start, 1), lang)
-                model_used = rag_model + " (RAG)" if rag_model else "unknown (RAG)"
-                self.app.logger.info(f"Streaming path: RAG answered for reasoning query: {query[:50]}...")
-                return self._save_and_respond(
-                    session_id,
-                    rag_answer,
-                    model_used,
-                    round(time.time() - rag_start, 1),
-                    response_style=response_style,
-                    user_id=user_id,
-                )
-            self.app.logger.info(
-                f"Streaming path: RAG returned no answer, falling back to reasoning model: {query[:50]}..."
-            )
+            rag = self.app.modules.get("rag")
+            rag_context = ""
+            if rag and rag.available:
+                rag_start = time.time()
+                try:
+                    chunks, scores = rag.search(user_id, query, top_k=20)
+                    rag_time = round(time.time() - rag_start, 1)
+                    if chunks:
+                        from flask_babel import gettext as _
+
+                        with force_locale(lang):
+                            source_label = _("Source")
+                        context_parts = []
+                        for i, chunk in enumerate(chunks[:15]):
+                            filename = chunk.get("filename", "?")
+                            text = chunk.get("text", str(chunk))
+                            score = scores[i] if i < len(scores) else 0.0
+                            context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
+                        rag_context = "\n\n".join(context_parts)
+                        self.app.logger.info(
+                            f"RAG search for reasoning: {len(chunks)} chunks, "
+                            f"{len(rag_context)} chars — requeueing to slow worker ({rag_time}s)"
+                        )
+                    else:
+                        self.app.logger.info(
+                            f"RAG search returned 0 chunks for reasoning query: {query[:50]}... "
+                            f"requeueing without context ({rag_time}s)"
+                        )
+                except Exception as e:
+                    self.logger.error(f"RAG search failed for reasoning: {e}")
             return self._requeue_reasoning_task(
-                query, session_id, user_id, lang, response_style, user_class=task.get("user_class", 2)
+                query, session_id, user_id, lang, response_style,
+                user_class=task.get("user_class", 2), rag_context=rag_context,
             )
 
         # Simple query: router classified but did not generate text.

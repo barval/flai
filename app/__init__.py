@@ -259,6 +259,8 @@ def create_app():
     app.register_blueprint(chat.bp)
     app.register_blueprint(admin.bp)
     app.register_blueprint(queue.bp)
+    csrf.exempt(queue.api_sd_preview)
+    csrf.exempt(queue.api_sd_step)
     app.register_blueprint(tts.bp)
     app.register_blueprint(messages.bp)
     app.register_blueprint(sessions.bp)

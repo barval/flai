@@ -614,6 +614,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
                 imgContainer.className = 'image-container';
                 const img = document.createElement('img');
                 img.src = fileUrl;
+                img.loading = 'lazy';
                 img.className = 'attached-image';
                 img.alt = fileName || 'attached image';
                 img.title = t('click_to_enlarge');
@@ -629,8 +630,9 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             } else if (fileType && fileType.startsWith('video/')) {
                 const video = document.createElement('video');
                 video.controls = true;
-                video.src = fileUrl;
                 video.preload = 'metadata';
+                video.loading = 'lazy';
+                video.src = fileUrl;
                 video.style.maxWidth = '100%';
                 video.style.borderRadius = '8px';
                 msgDiv.appendChild(video);

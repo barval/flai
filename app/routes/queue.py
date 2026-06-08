@@ -1,8 +1,85 @@
 # app/routes/queue.py
-from flask import Blueprint, current_app, jsonify, session
+from flask import Blueprint, current_app, jsonify, request, session
 from flask_babel import gettext as _
 
 bp = Blueprint("queue", __name__, url_prefix="/api/queue")
+
+
+@bp.route("/internal/sd_preview", methods=["POST"])
+def api_sd_preview():
+    """Internal endpoint for sd-wrapper to publish image preview via SSE.
+
+    sd-wrapper calls this endpoint when a new preview frame is available during generation.
+    The preview is published to the user's SSE stream as an 'image_preview' event.
+    """
+    data = request.get_json(force=True)
+    if not data:
+        return jsonify({"error": "Invalid JSON"}), 400
+
+    user_id = data.get("user_id")
+    session_id = data.get("session_id")
+    task_id = data.get("task_id")
+    image_b64 = data.get("image_b64")
+    step = data.get("step")
+    total = data.get("total")
+
+    if not user_id or not image_b64:
+        return jsonify({"error": "Missing user_id or image_b64"}), 400
+
+    from app.events import get_events_publisher
+
+    publisher = get_events_publisher()
+    if publisher is None:
+        return jsonify({"error": "Events publisher unavailable"}), 503
+
+    publisher.publish(
+        user_id,
+        "image_preview",
+        {
+            "task_id": task_id,
+            "session_id": session_id,
+            "image_b64": image_b64,
+            "step": step,
+            "total": total,
+        },
+    )
+    return jsonify({"status": "ok"})
+
+
+@bp.route("/internal/sd_step", methods=["POST"])
+def api_sd_step():
+    """Internal endpoint for sd-wrapper to publish image generation/editing step progress via SSE."""
+    data = request.get_json(force=True)
+    if not data:
+        return jsonify({"error": "Invalid JSON"}), 400
+
+    user_id = data.get("user_id")
+    session_id = data.get("session_id")
+    task_id = data.get("task_id")
+    step = data.get("step")
+    total = data.get("total")
+
+    if not user_id or step is None or total is None:
+        return jsonify({"error": "Missing user_id, step, or total"}), 400
+
+    from app.events import get_events_publisher
+
+    publisher = get_events_publisher()
+    if publisher is None:
+        return jsonify({"error": "Events publisher unavailable"}), 503
+
+    publisher.publish(
+        user_id,
+        "image_step",
+        {
+            "task_id": task_id,
+            "session_id": session_id,
+            "step": step,
+            "total": total,
+            "percent": round(step / total * 100) if total > 0 else 0,
+        },
+    )
+    return jsonify({"status": "ok"})
 
 
 @bp.route("/status", methods=["GET"])

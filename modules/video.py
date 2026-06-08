@@ -131,6 +131,9 @@ class VideoModule(TranslationMixin):
         prompt_data: dict[str, Any],
         image_data: str | None = None,
         lang: str = "ru",
+        user_id: str | None = None,
+        session_id: str | None = None,
+        task_id: str | None = None,
     ) -> dict[str, Any]:
         """Generate video via ltx-wrapper.
         Before starting, unloads llama.cpp model from VRAM to avoid OOM.
@@ -263,6 +266,9 @@ class VideoModule(TranslationMixin):
                 "frame_rate": prompt_data.get("frame_rate", 24),
                 "seed": prompt_data.get("seed", -1),
                 "image_data": image_data,
+                "user_id": user_id,
+                "session_id": session_id,
+                "task_id": task_id,
             }
 
             self.logger.info(

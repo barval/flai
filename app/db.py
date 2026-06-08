@@ -108,7 +108,8 @@ def get_session_messages(
                 since = since.replace("T", " ")[:19]
             c.execute(
                 """
-            SELECT id, role, content, file_type, file_name, file_path, file_data,
+            SELECT id, role, content, file_type, file_name, file_path,
+                   CASE WHEN file_path IS NOT NULL THEN NULL ELSE file_data END AS file_data,
                    timestamp, model_name, response_time, mm_time, gen_time,
                    mm_model, gen_model, response_style, completion_tokens
             FROM messages
@@ -121,7 +122,8 @@ def get_session_messages(
         else:
             c.execute(
                 """
-            SELECT id, role, content, file_type, file_name, file_path, file_data,
+            SELECT id, role, content, file_type, file_name, file_path,
+                   CASE WHEN file_path IS NOT NULL THEN NULL ELSE file_data END AS file_data,
                    timestamp, model_name, response_time, mm_time, gen_time,
                    mm_model, gen_model, response_style, completion_tokens
             FROM messages
@@ -231,7 +233,11 @@ def update_session_title(session_id, first_message, file_name=None):
 
 
 def _publish_message_event(session_id, message_id, role, user_id=None):
-    """Publish a message_new event via SSE (best-effort, no-op if publisher unavailable)."""
+    """Publish a message_new event via SSE (best-effort, no-op if publisher unavailable).
+
+    Includes the full message data to avoid a separate 50-message fetch on the client.
+    file_data is NULLed when file_path exists (same as get_session_messages).
+    """
     try:
         from .events import get_events_publisher
 
@@ -247,6 +253,41 @@ def _publish_message_event(session_id, message_id, role, user_id=None):
                     return
                 user_id = row["user_id"]
         if user_id:
+            # Fetch full message data for inline delivery
+            msg_data = None
+            with get_db() as conn:
+                c = conn.cursor()
+                c.execute(
+                    """
+                    SELECT id, role, content, file_type, file_name, file_path,
+                           CASE WHEN file_path IS NOT NULL THEN NULL ELSE file_data END AS file_data,
+                           timestamp, model_name, response_time, mm_time, gen_time,
+                           mm_model, gen_model, response_style, completion_tokens
+                    FROM messages WHERE id = %s AND session_id = %s
+                    """,
+                    (message_id, session_id),
+                )
+                row = c.fetchone()
+                if row:
+                    msg_data = dict(row)
+                    # Serialize timestamp and response_time
+                    if msg_data.get("timestamp"):
+                        dt = msg_data["timestamp"]
+                        if hasattr(dt, "isoformat"):
+                            msg_data["timestamp"] = dt.isoformat()
+                    if msg_data.get("response_time"):
+                        with contextlib.suppress(Exception):
+                            msg_data["response_time"] = json.loads(msg_data["response_time"])
+                    # Strip base64 from content JSON when file_path exists
+                    if msg_data.get("file_path") and msg_data.get("content"):
+                        with contextlib.suppress(Exception):
+                            parsed = json.loads(msg_data["content"])
+                            if isinstance(parsed, list):
+                                for item in parsed:
+                                    if isinstance(item, dict) and "file_data" in item:
+                                        item["file_data"] = None
+                            msg_data["content"] = json.dumps(parsed, ensure_ascii=False)
+
             publisher.publish(
                 user_id,
                 "message_new",
@@ -254,6 +295,7 @@ def _publish_message_event(session_id, message_id, role, user_id=None):
                     "message_id": message_id,
                     "session_id": session_id,
                     "role": role,
+                    "message": msg_data,
                 },
             )
     except Exception:

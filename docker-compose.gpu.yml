@@ -31,11 +31,16 @@ services:
       - ./app/resource_manager.py:/app/app/resource_manager.py
       - ./app/utils.py:/app/app/utils.py
       - ./app/database.py:/app/app/database.py
+      - ./app/db.py:/app/app/db.py
       - ./app/routes/admin.py:/app/app/routes/admin.py
+      - ./app/routes/queue.py:/app/app/routes/queue.py
+      - ./app/__init__.py:/app/app/__init__.py
       - ./modules/video.py:/app/modules/video.py
+      - ./modules/sd_cpp.py:/app/modules/sd_cpp.py
       - ./app/static/js/events.js:/app/app/static/js/events.js
       - ./app/static/js/admin-models.js:/app/app/static/js/admin-models.js
       - ./app/static/js/chat-queue.js:/app/app/static/js/chat-queue.js
+      - ./app/static/js/chat-messages.js:/app/app/static/js/chat-messages.js
       - ./prompts/en/rag.template:/app/prompts/en/rag.template
       - ./prompts/ru/rag.template:/app/prompts/ru/rag.template
       - ./prompts/en/reasoning.template:/app/prompts/en/reasoning.template

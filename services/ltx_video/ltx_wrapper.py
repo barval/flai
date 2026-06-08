@@ -31,6 +31,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ltx-wrapper")
 
+# Redis for progress publishing
+_redis = None
+try:
+    import redis as redis_lib
+    _redis = redis_lib.from_url(os.environ.get("REDIS_URL", "redis://flai-redis:6379/0"))
+    _redis.ping()
+    logger.info("Redis connected for progress publishing")
+except Exception as e:
+    logger.warning(f"Redis unavailable for progress publishing: {e}")
+
 app = Flask(__name__)
 
 # ── Configuration from environment ──
@@ -261,6 +271,9 @@ def run_inference(
     frame_rate: int = 24,
     seed: int = -1,
     image_data: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    task_id: str | None = None,
 ) -> tuple[bytes, int, dict]:
     """Run LTX-Video inference. Returns (mp4_bytes, actual_seed, metadata)."""
     import imageio
@@ -364,12 +377,34 @@ def run_inference(
 
     logger.info(f"Running inference: seed={seed}, prompt='{prompt[:80]}...'")
 
+    # Progress callback — publishes step progress via Redis pub/sub
+    total_steps = config.get("num_inference_steps", 8)
+
+    def _progress_callback(pipeline_self, step, timestep, callback_kwargs):
+        if _redis is None or user_id is None:
+            return
+        try:
+            payload = json.dumps({
+                "type": "video_step",
+                "data": {
+                    "session_id": session_id,
+                    "task_id": task_id,
+                    "step": step + 1,
+                    "total": total_steps,
+                    "percent": round((step + 1) / total_steps * 100),
+                },
+                "timestamp": time.time(),
+            }, ensure_ascii=False)
+            _redis.publish(f"user:events:{user_id}", payload)
+        except Exception:
+            pass  # non-critical
+
     images = pipeline(
         **pipeline_kwargs,
         skip_layer_strategy=skip_layer_strategy,
         generator=generator,
         output_type="pt",
-        callback_on_step_end=None,
+        callback_on_step_end=_progress_callback,
         height=height_padded,
         width=width_padded,
         num_frames=num_frames_padded,
@@ -527,6 +562,9 @@ def generate_video():
         frame_rate = int(data.get("frame_rate", 24))
         seed = int(data.get("seed", -1))
         image_data = data.get("image_data")
+        user_id = data.get("user_id")
+        session_id = data.get("session_id")
+        task_id = data.get("task_id")
 
         mp4_bytes, actual_seed, meta = run_inference(
             prompt=prompt,
@@ -537,6 +575,9 @@ def generate_video():
             frame_rate=frame_rate,
             seed=seed,
             image_data=image_data,
+            user_id=user_id,
+            session_id=session_id,
+            task_id=task_id,
         )
 
         gen_time = round(time.time() - gen_start, 1)

@@ -922,6 +922,7 @@ class RedisRequestQueue:
         user_id: str,
         lang: str,
         response_style: str = "neutral",
+        task: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle image editing request (image uploaded + edit comment)."""
         # Pre-operation monitoring and VRAM cleanup
@@ -931,19 +932,30 @@ class RedisRequestQueue:
         self._unload_llamacpp_models()
         self._unload_video_pipeline()
 
+        self._publish_stream_event(task, "task_progress", {"stage": "preparing_gpu"})
+
         # Wait for guaranteed free VRAM (multimodal model needs ~8GB with KV cache)
         if not self._wait_for_vram(self._get_vram_needed("multimodal")):
             error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang=lang)
             return self._build_error_response(session_id, error_msg, 0, lang)
 
         mm_start = time.time()
+        if task:
+            self._publish_stream_event(task, "task_progress", {"stage": "analyzing_image"})
         edit_data, error = self.app.modules["multimodal"].generate_edit_params(message_text, file_data, lang=lang)
         mm_time = round(time.time() - mm_start, 1)
         if error:
             return self._build_error_response(session_id, error, mm_time, lang)
 
         edit_start = time.time()
-        image_result = self.app.modules["image"].edit_image(edit_data, file_data, lang=lang)
+        if task:
+            self._publish_stream_event(task, "task_progress", {"stage": "editing_image"})
+        image_result = self.app.modules["image"].edit_image(
+            edit_data, file_data, lang=lang,
+            task_id=task.get("id") if task else None,
+            user_id=user_id,
+            session_id=session_id,
+        )
         edit_time = round(time.time() - edit_start, 1)
 
         if not image_result["success"]:
@@ -1022,7 +1034,8 @@ class RedisRequestQueue:
         )
 
     def _process_image_gen_task(
-        self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
+        self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral",
+        task: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle image generation from text (router action_type='image')."""
         if "image" not in self.app.modules:
@@ -1042,6 +1055,8 @@ class RedisRequestQueue:
         self._unload_llamacpp_models()
         self._unload_video_pipeline()
 
+        self._publish_stream_event(task, "task_progress", {"stage": "preparing_gpu"})
+
         # Wait for guaranteed free VRAM (multimodal model needs ~8GB with KV cache)
         if not self._wait_for_vram(self._get_vram_needed("multimodal")):
             error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang=lang)
@@ -1052,6 +1067,8 @@ class RedisRequestQueue:
             return self._build_error_response(session_id, error_msg, 0, lang)
 
         mm_start = time.time()
+        if task:
+            self._publish_stream_event(task, "task_progress", {"stage": "analyzing_prompt"})
         prompt_data, error = self.app.modules["multimodal"].generate_image_params(
             query, lang=lang, response_style=response_style
         )
@@ -1060,7 +1077,14 @@ class RedisRequestQueue:
             return self._build_error_response(session_id, error, mm_time, lang)
 
         gen_start = time.time()
-        image_result = self.app.modules["image"]._call_wrapper(prompt_data, lang=lang)
+        if task:
+            self._publish_stream_event(task, "task_progress", {"stage": "generating_image"})
+        image_result = self.app.modules["image"]._call_wrapper(
+            prompt_data, lang=lang,
+            task_id=task.get("id") if task else None,
+            user_id=user_id,
+            session_id=session_id,
+        )
         gen_time = round(time.time() - gen_start, 1)
 
         if not image_result["success"]:
@@ -1216,7 +1240,7 @@ class RedisRequestQueue:
         user_id = task["user_id"]
         lang = task.get("lang", "ru")
         response_style = request_data.get("response_style", "neutral")
-        return self._process_image_gen_task(query, session_id, user_id, lang, response_style)
+        return self._process_image_gen_task(query, session_id, user_id, lang, response_style, task=task)
 
     def _process_reasoning_request(self, task: dict[str, Any]) -> dict[str, Any]:
         """Handle a reasoning task from the slow queue.
@@ -1234,6 +1258,8 @@ class RedisRequestQueue:
 
         # Pre-operation monitoring
         self._log_gpu_state_before_op("reasoning", 12000)
+
+        self._publish_stream_event(task, "task_progress", {"stage": "loading_reasoning_model"})
 
         # Use pre-computed RAG context from fast worker, or search fresh
         rag_context = request_data.get("rag_context", "")
@@ -1339,13 +1365,16 @@ class RedisRequestQueue:
         lang = task.get("lang", "ru")
         response_style = request_data.get("response_style", "neutral")
 
+        self._publish_stream_event(task, "task_progress", {"stage": "preparing_gpu"})
+
         file_data = request_data.get("file_data")
         if file_data:
-            return self._process_video_gen_task_from_image(query, file_data, session_id, user_id, lang, response_style)
-        return self._process_video_gen_task(query, session_id, user_id, lang, response_style)
+            return self._process_video_gen_task_from_image(query, file_data, session_id, user_id, lang, response_style, task=task)
+        return self._process_video_gen_task(query, session_id, user_id, lang, response_style, task=task)
 
     def _process_video_gen_task(
-        self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
+        self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral",
+        task: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle video generation from text (router action_type='video')."""
         if "video" not in self.app.modules:
@@ -1372,6 +1401,8 @@ class RedisRequestQueue:
                 return self._build_error_response(session_id, error_msg, 0, lang)
 
             mm_start = time.time()
+            if task:
+                self._publish_stream_event(task, "task_progress", {"stage": "analyzing"})
             prompt_data, error = self.app.modules["multimodal"].generate_video_params(
                 query, lang=lang, response_style=response_style
             )
@@ -1402,7 +1433,11 @@ class RedisRequestQueue:
                 return self._build_error_response(session_id, error_msg, mm_time, lang)
 
             gen_start = time.time()
-            video_result = self.app.modules["video"].generate_video(prompt_data, lang=lang)
+            if task:
+                self._publish_stream_event(task, "task_progress", {"stage": "generating_video"})
+            video_result = self.app.modules["video"].generate_video(
+                prompt_data, lang=lang, user_id=user_id, session_id=session_id, task_id=task.get("id") if task else None
+            )
             gen_time = round(time.time() - gen_start, 1)
 
             if not video_result["success"]:
@@ -1480,7 +1515,8 @@ class RedisRequestQueue:
             self._unload_llamacpp_models()
 
     def _process_video_gen_task_from_image(
-        self, query: str, image_data: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
+        self, query: str, image_data: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral",
+        task: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle video generation from image + text ([-VIDEO-] marker route)."""
         if "video" not in self.app.modules:
@@ -1506,6 +1542,8 @@ class RedisRequestQueue:
                 return self._build_error_response(session_id, error_msg, 0, lang)
 
             mm_start = time.time()
+            if task:
+                self._publish_stream_event(task, "task_progress", {"stage": "analyzing_image"})
             mm_model = self.app.modules.get("multimodal")
             prompt_data, error = (
                 mm_model.generate_video_params_from_image(query, image_data, lang=lang, response_style=response_style)
@@ -1536,7 +1574,12 @@ class RedisRequestQueue:
                 return self._build_error_response(session_id, error_msg, mm_time, lang)
 
             gen_start = time.time()
-            video_result = self.app.modules["video"].generate_video(prompt_data, image_data=image_data, lang=lang)
+            if task:
+                self._publish_stream_event(task, "task_progress", {"stage": "generating_video"})
+            video_result = self.app.modules["video"].generate_video(
+                prompt_data, image_data=image_data, lang=lang, user_id=user_id, session_id=session_id,
+                task_id=task.get("id") if task else None,
+            )
             gen_time = round(time.time() - gen_start, 1)
 
             if not video_result["success"]:
@@ -1739,6 +1782,8 @@ class RedisRequestQueue:
             return self._build_error_response(
                 session_id, self.app.modules["base"]._("Camera module unavailable", lang=lang), 0, lang
             )
+
+        self._publish_stream_event(task, "task_progress", {"stage": "capturing_snapshot"})
 
         camera_start = time.time()
         camera_result = self.app.modules["cam"].get_snapshot(user_id, query, lang=lang)
@@ -2472,6 +2517,7 @@ class RedisRequestQueue:
                             user_id,
                             lang,
                             response_style,
+                            task=task,
                         )
                     bot_reply = "⚠️ " + self.app.modules["base"]._("Image editing request was empty", lang)
                     process_time = round(time.time() - process_start, 1)

@@ -45,6 +45,7 @@ def _gguf_scalar(val: Any) -> Any:
 SD_ERROR_TRANSLATIONS = {
     "Image generation failed": "Image generation failed. Try again later.",
     "Image generation produced empty output": "Image generation produced empty output.",
+    "sd-cli produced empty output": "Image generation produced empty output.",
     "sd-wrapper returned no image data": "sd-wrapper returned no image data.",
     "sd-wrapper returned no image": "sd-wrapper returned no image.",
     "sd-cli timeout": "Image generation timeout ({timeout}s)",

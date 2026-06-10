@@ -30,6 +30,9 @@ Only STATEMENTS and INSTRUCTIONS (NOT questions!):
 - "Document was approved on 17.04.2005" → "[-FACT-] Document was approved on 17.04.2005"
 - "Use only libtest=1.0.0" → "[-FACT-] Use only libtest=1.0.0"
 - "Vasily doesn't eat dairy" → "[-FACT-] Vasily doesn't eat dairy"
+- "Remember: I am vegetarian" → "[-FACT-] Remember: I am vegetarian"
+- "Save address: 10 Pushkin St" → "[-FACT-] Save address: 10 Pushkin St"
+- "Write down wifi password: mypassword123" → "[-FACT-] Write down wifi password: mypassword123"
 QUESTIONS are NOT facts (category 1):
 - "Who are you?" → question, NOT a fact
 - "What can you do?" → question, NOT a fact

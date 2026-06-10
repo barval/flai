@@ -593,7 +593,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     // Use DOM methods instead of innerHTML for security
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
-    contentDiv.innerHTML = contentHTML.replace('<div class="message-content">', '').replace('</div>', '');
+    contentDiv.innerHTML = DOMPurify.sanitize(contentHTML.replace('<div class="message-content">', '').replace('</div>', ''));
     msgDiv.appendChild(contentDiv);
 
     // File display

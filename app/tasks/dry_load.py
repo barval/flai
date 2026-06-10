@@ -83,7 +83,7 @@ def _rollback(app: Any, module: str, failed_model: str) -> bool:
     from app.model_config import invalidate_model_config_cache
 
     fallback = FALLBACK_MODELS.get(module)
-    if not fallback or fallback == failed_model:
+    if not fallback:
         logger.error(f"No fallback model for module={module}")
         return False
 

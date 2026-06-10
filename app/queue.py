@@ -611,27 +611,74 @@ class RedisRequestQueue:
 
     @staticmethod
     def _is_llm_error_string(text: str) -> bool:
-        """Check if a string from call_llamacpp/chat_stream is an error message."""
+        """Check if a string from call_llamacpp/chat_stream is an error message.
+
+        Uses prefix matching (not substring) to avoid false positives when the
+        LLM generates code containing words like "Error:", "Timeout", "GPU memory".
+        Backend errors always START with these phrases — never appear at position 0
+        in LLM-generated code or explanations.
+        """
         if not isinstance(text, str):
             return False
-        indicators = (
-            "GPU memory",
-            "HTTP error",
-            "Could not connect",
-            "Timeout",
-            "Service temporarily unavailable",
-            "Circuit breaker",
+        # Level 1: "⚠️ " prefix catches most errors from _format_user_error()
+        if text.startswith("⚠️"):
+            return True
+        # Level 2: Specific prefix patterns for errors returned as plain strings
+        # from call_llamacpp(), chat_stream(), process_reasoning(), and queue.py _().
+        # Both English and Russian variants are listed.
+        error_prefixes = (
+            # GPU memory errors (en + ru)
+            "GPU memory ",  # "GPU memory unavailable..."
+            "Память GPU ",  # ru: "Память GPU недоступна..."
+            "Проверка памяти GPU",  # ru: "Проверка памяти GPU не удалась"
+            # Timeout (en + ru)
+            "Timeout (",  # "Timeout (300s) when calling..."
+            "Таймаут (",  # ru: "Таймаут (300с) при вызове..."
+            # Connection errors (en + ru)
+            "Could not connect",  # "Could not connect to llama-server/swap"
+            "Не удалось подключиться",  # ru
+            # Service availability (en + ru)
+            "Service temporarily unavailable",  # circuit breaker
+            "Сервис временно недоступен",  # ru
+            # Model configuration (en + ru)
             "Model configuration missing",
-            "Model for ",
-            "not configured",
-            "Error:",
-            "error occurred",
-            "Failed to load",  # llama.cpp stb_image/audio decoder error
-            "unable to start process",  # llama-swap: process failed to start
-            "upstream command exited",  # llama-swap: upstream process crashed
-            "exited prematurely",  # llama-swap: process exited before ready
+            "Model for ",  # "Model for chat not configured"
+            "Модель для ",  # ru
+            "не настроена",  # ru: "Модель для chat не настроена"
+            # Generic errors (en + ru)
+            "Error: ",  # "Error: <exception>" (en, note trailing space)
+            "Ошибка: ",  # ru: "Ошибка: <exception>" (note trailing space)
+            "Internal error:",  # "Internal error: no response from model"
+            "Внутренняя ошибка:",  # ru
+            "HTTP error",  # "HTTP error 400" (en)
+            "Ошибка HTTP",  # ru
+            # Request errors (en + ru)
+            "Request too long",  # "Request too long, please simplify"
+            "Запрос слишком длинный",  # ru
+            "Request cancelled",  # "Request cancelled - too long in queue"
+            "Запрос отменён",  # ru
+            # Model response errors (en + ru)
+            "Model returned empty response",
+            "Модель вернула пустой ответ",  # ru
+            # Reasoning errors (en + ru)
+            "Reasoning model unavailable:",  # "Reasoning model unavailable: GPU memory..."
+            "Модель рассуждения недоступна:",  # ru
+            "Reasoning failed:",  # "Reasoning failed: GPU memory exhausted..."
+            "Рассуждение не удалось:",  # ru
+            # Video generation errors (en + ru)
+            "Video generation failed:",  # "Video generation failed: GPU memory..."
+            "Генерация видео не удалась:",  # ru
+            # Prompt template errors (en + ru)
+            "Error loading prompt template",
+            "Ошибка загрузки шаблона промпта",  # ru
+            # CUDA OOM (from llama.cpp directly, not translated)
+            "CUDA out of memory",
+            # llama-swap specific (Go binary, not translated)
+            "upstream command exited",
+            "exited prematurely",
+            "unable to start process",
         )
-        return any(ind in text for ind in indicators)
+        return any(text.startswith(pfx) for pfx in error_prefixes)
 
     def _build_success_response(
         self,
@@ -1330,9 +1377,6 @@ class RedisRequestQueue:
                 "Reasoning model unavailable: GPU memory check failed. Try again.", lang=lang
             )
             return self._build_error_response(session_id, error_msg, 0, lang)
-
-        # Brief pause to let CUDA finish deallocation after model unload — prevents 502
-        time.sleep(3)
 
         current_time_str = get_current_time_in_timezone(self.app)
         reasoning_start = time.time()

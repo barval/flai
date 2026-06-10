@@ -680,13 +680,13 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
             streamMsg.setAttribute('data-raw-text', result.response);
         }
 
-        // Replace content with full rendered markdown
+        // Replace content with full rendered markdown (sanitized to prevent XSS)
         var contentDiv = streamMsg.querySelector('.message-content');
         if (contentDiv && result && result.response) {
-            contentDiv.innerHTML = marked.parse(result.response);
+            contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(result.response));
         } else if (contentDiv && result && result.error) {
             // Show error in streaming message if no response text
-            contentDiv.innerHTML = '⚠️ ' + t('error') + ': ' + result.error;
+            contentDiv.innerHTML = DOMPurify.sanitize('⚠️ ' + t('error') + ': ' + result.error);
         }
 
         // Display file attachments (image, video) from result if present

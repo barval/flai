@@ -96,6 +96,8 @@
 
 <!-- Markdown parser library -->
 <script src="{{ url_for('static', filename='js/marked.min.js', v=config.STATIC_VERSION) }}"></script>
+<!-- HTML sanitizer — prevents XSS from LLM-generated HTML in markdown -->
+<script src="{{ url_for('static', filename='js/purify.min.js', v=config.STATIC_VERSION) }}"></script>
 
 <!-- JavaScript translations and configuration -->
 <script>

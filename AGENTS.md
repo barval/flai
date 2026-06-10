@@ -21,7 +21,7 @@ pytest --cov=app --cov=modules --cov-report=html
 pytest tests/test_admin_routes.py
 
 # Translations
-pybabel extract -F babel.cfg -o translations/messages.pot .
+pybabel extract -F babel.cfg -k _tr -o translations/messages.pot .
 pybabel update -i translations/messages.pot -d translations
 pybabel compile -d translations  # after editing .po files
 
@@ -91,7 +91,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
   **Sequence for a video generation request:**
   `router (chat) → [-VIDEO-] → multimodal loads (chat swapped out) → multimodal generates video params → multimodal unloads (TTL=0) → video pipeline loads (full VRAM available) → video generated → video pipeline unloads → next user request reloads chat`.
 - **SLM (SuperLocalMemory)**: Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`. Daemon mode (`slm serve start`) keeps embedding model in memory permanently; `services/superlocalmemory/slm_http.py` proxies requests to daemon at `localhost:8765` (no subprocess per call). **Per-user isolation**: recall reads directly from the user's private SQLite table (`atomic_facts`), not from the daemon's shared database. **Chat model** uses fast direct SQLite read (`ORDER BY created_at DESC`). **Reasoning model** uses full semantic search via subprocess `slm recall` (falls back to direct SQLite if no embeddings). Remember saves to both daemon (shared) and per-user DB (async subprocess). **Camera router parser**: uses text after `[-CAMERA-]` marker (room code), NOT original_query — preserves compatibility with Russian declensions (гостиная → в гостиной). **Router retry on JSON error** — `process_message()` retries once if the router returns a garbled `{"error": ...}` response. SLM facts are injected into prompt context for BOTH chat and reasoning models (alongside conversation history). **Router retry on JSON error** — `process_message()` retries once if the router returns a garbled `{"error": ...}` response. **SLM lazy availability re-check** — `_get_context_for_model()` always calls `slm.get_context()` (no `slm.available` check), the method has its own lazy re-check. **SLM dedup** — `_recall_from_user_db()` in `slm_http.py` deduplicates facts by content (score `limit × 3`, returns unique). Configurable via `SLM_RECALL_LIMIT` (default 7). Background import on startup via `slm_import_progress` checkpoint table. Auto-cleaned on last session deletion (`_cleanup_slm_if_empty()` in `db.py`). **Per-user SLM files are owned by appuser (UID 1000)** matching the web container — `start.sh` runs `chown -R appuser:appuser` on the shared volume. Fact count visible in admin panel column.
-- **`_tr()` / `self._()` format strings**: Flask-Babel 4.0.0 `gettext()` uses `%`-formatting (`string % variables`), NOT `str.format()`. Passing `{status}` kwargs directly to `gettext()` silently returns the unformatted string. Always call `gettext(key)` without kwargs, then apply `result.format(**kwargs)` manually. See `app/llamacpp_client.py:26` and `app/mixins.py:9` for the correct pattern.
+- **`_tr()` / `self._()` format strings**: Flask-Babel 4.0.0 `gettext()` uses `%`-formatting (`string % variables`), NOT `str.format()`. Passing `{status}` kwargs directly to `gettext()` silently returns the unformatted string. Always call `gettext(key)` without kwargs, then apply `result.format(**kwargs)` manually. See `app/llamacpp_client.py:26` and `app/mixins.py:9` for the correct pattern. **pybabel extraction**: always use `-k _tr` flag when extracting, since `_tr` is a custom keyword not recognized by default: `pybabel extract -F babel.cfg -k _tr -o translations/messages.pot .`
 - **Style**: All CSS in `app/static/css/`, JS in `app/static/js/`. No inline styles, no CDN (all assets bundled). Comments/logs in English. User-facing strings via Flask-Babel (`translations/{en,ru}/LC_MESSAGES/messages.po`). Add new keys to both `.po` files.
 - **UI queue indicators**: `chat-queue.js` — `fetchQueueStatus()` builds `newInfo` from server data only (no `pendingRequestIds` race guard). **Multiple ⚡ prevention**: only one session shows ⚡ at a time — the rest show ⏳ with real queue positions from server. **Queue position display**: uses nullish coalescing (`??`) — position 0 (extra processing tasks) shows ⏳ without a number, normal queue positions show ⏳ N.
 - **⚡ recovery after task chain**: `events.js` — after every `clearSessionQueue()` call, `setTimeout(fetchQueueStatus, 500)` is scheduled. This polls the server for the next queued task, restoring ⚡ when the next task moves from queue to processing.
@@ -113,7 +113,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - Always keep translation files (`messages.po`) up‑to‑date and complete.
 - For Russian, the file `deploy-ru.sh` is the only place where Russian comments are allowed.
 - **Every** user-facing string MUST be wrapped in `_()` / `self._()` / `gettext()`. Raw `str(e)` must NEVER be returned to the user.
-- **When adding or modifying error messages**, ALWAYS verify that corresponding translation keys exist in both `translations/en/LC_MESSAGES/messages.po` and `translations/ru/LC_MESSAGES/messages.po`. Run `pybabel extract && pybabel update && pybabel compile` to sync.
+- **When adding or modifying error messages**, ALWAYS verify that corresponding translation keys exist in both `translations/en/LC_MESSAGES/messages.po` and `translations/ru/LC_MESSAGES/messages.po`. Run `pybabel extract -k _tr && pybabel update && pybabel compile` to sync.
 
 ## Dependencies & External Resources
 - The project must run **fully offline** after model/voice downloads.
@@ -125,7 +125,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 ## Cleanliness & Dead Code
 - No unused files, dead code, or unused CSS/JS.
 - Every import must be used; every translation key must appear in the UI.
-- Run `pybabel extract` / `pybabel update` / `pybabel compile` after modifying translatable strings.
+- Run `pybabel extract -k _tr` / `pybabel update` / `pybabel compile` after modifying translatable strings.
 - Remove any leftover debug prints, commented-out blocks, or obsolete TODOs.
 
 ## Documentation

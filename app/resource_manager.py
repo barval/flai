@@ -172,28 +172,10 @@ class ResourceManager:
         except Exception:
             return 4096  # Assume 4GB free
 
-    # ── Known model VRAM limits (tested safe n_gpu_layers per GPU VRAM tier) ──
-    # Keys: model_type, Values: dict of {min_vram_mb: max_n_gpu_layers}
-    # Used to clamp the computed n_gpu_layers and prevent OOM.
-    _MAX_SAFE_NGL: dict[str, list[tuple[int, int]]] = {
-        "reasoning": [
-            (24000, -1),  # 24GB+ — all layers on GPU
-            (20000, 24),  # 20GB — partial offload
-            (15844, 16),  # 16GB (RTX 5060 Ti)
-            (12000, 12),  # 12GB — partial offload
-            (8000, 8),  # 8GB — minimal GPU
-        ],
-        "chat": [
-            (8000, -1),  # 8GB+ — all layers fit
-        ],
-        "multimodal": [
-            (12000, -1),  # 12GB+ — all layers fit
-            (8000, 20),  # 8GB — partial
-        ],
-        "embedding": [
-            (4000, -1),  # 4GB+ — all layers
-        ],
-    }
+    # Safety caps removed — iterative degradation in compute_llamacpp_config()
+    # dynamically computes n_gpu_layers from actual model file_size, block_count,
+    # ctx_size, and measured VRAM.  Hardcoded per-tier caps caused OOM-free models
+    # (e.g. 9 GB IQ2_XXS) to be needlessly offloaded to CPU on 16 GB GPUs.
 
     # ── Adaptive config computation ──
 
@@ -339,8 +321,8 @@ class ResourceManager:
             while effective_ngl > 0:
                 ratio = min(1.0, effective_ngl / block_count) if block_count > 0 else 1.0
                 est_weights = max(file_size_mb or needed, 100) * ratio * (0.95 if expert_count > 0 else 1.0) * (1.15 if supports_mtp else 1.0)
-                est_kv = ctx_size * 0.04
-                est_overhead = max(200, int((file_size_mb or needed) * 0.03 + ctx_size * 0.001))
+                est_kv = ctx_size * 0.12  # q4_0: ~0.12 MB per token (matches get_vram_needed_mb)
+                est_overhead = max(400, int((file_size_mb or needed) * 0.05 + ctx_size * 0.002))
                 est_total = est_weights + est_kv + est_overhead
                 if est_total <= available_for_model or effective_ngl == 0:
                     break
@@ -366,31 +348,6 @@ class ResourceManager:
                 result["warning"] += f"; {result['n_cpu_moe']}/{expert_count} experts on CPU"
             else:
                 result["warning"] = f"{result['n_cpu_moe']}/{expert_count} experts on CPU"
-
-        # Clamp n_gpu_layers to known safe limits per VRAM tier
-        caps = self._MAX_SAFE_NGL.get(model_type, [])
-        current_ngl = result["n_gpu_layers"]
-        if current_ngl != 0 and caps:
-            capped = -1
-            for min_vram, max_ngl in caps:
-                if total_vram >= min_vram:
-                    capped = max_ngl
-                    break
-            if capped is not None:
-                if capped == -1:
-                    capped = block_count if block_count else -1
-                # Clamp when all layers on GPU exceed safety limit
-                if current_ngl == -1 and capped != -1 and capped < (block_count or capped + 1):
-                    result["n_gpu_layers"] = capped
-                    result["offload_kqv"] = True
-                    result["warning"] = f"Safety cap: n_gpu_layers limited to {capped}/{block_count} for VRAM"
-                elif current_ngl != -1 and capped != -1 and current_ngl > capped:
-                    result["n_gpu_layers"] = capped
-                    result["offload_kqv"] = True
-                    if "warning" in result and result["warning"]:
-                        result["warning"] += f" (capped to {capped} by safety limit)"
-                    else:
-                        result["warning"] = f"Safety cap: n_gpu_layers limited to {capped} for VRAM"
 
         return result
 

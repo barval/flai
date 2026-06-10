@@ -49,6 +49,8 @@ def _try_health_check(swap_url: str, module: str) -> bool:
     import requests
 
     try:
+        # Reasoning models (27B+) need more time to load and generate even 1 token
+        timeout = 60 if module == "reasoning" else 30
         resp = requests.post(
             f"{swap_url.rstrip('/')}/v1/chat/completions",
             json={
@@ -57,7 +59,7 @@ def _try_health_check(swap_url: str, module: str) -> bool:
                 "max_tokens": 1,
                 "stream": False,
             },
-            timeout=30,
+            timeout=timeout,
         )
         return resp.status_code == 200
     except Exception as e:
@@ -117,7 +119,9 @@ def _auto_rollback(app: Any, module: str) -> bool:
         logger.error(f"watchdog: no fallback for module={module}")
         return False
     logger.warning(f"watchdog: auto-rolling back {module} to {fallback} due to crash loop")
-    return _rollback(app, module, fallback)
+    # Pass sentinel — not the actual fallback model — so _rollback() doesn't
+    # refuse with "fallback == failed_model" (which is a dry_load dedup guard).
+    return _rollback(app, module, f"watchdog-rollback-{module}")
 
 
 def _watchdog_loop(app: Any) -> None:

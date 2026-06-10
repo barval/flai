@@ -93,6 +93,7 @@ async function saveChatAsHTML() {
         // Find all media elements
         const imageEl = msgEl.querySelector('.attached-image');
         const audioEl = msgEl.querySelector('audio');
+        const videoEl = msgEl.querySelector('video');
         const fileEl = msgEl.querySelector('.attached-file');
 
         // DEBUG: Log media elements for each message
@@ -101,12 +102,15 @@ async function saveChatAsHTML() {
             imageSrc: imageEl ? imageEl.src.substring(0, 80) : null,
             hasAudio: !!audioEl,
             audioSrc: audioEl ? audioEl.src.substring(0, 80) : null,
+            hasVideo: !!videoEl,
+            videoSrc: videoEl ? videoEl.src.substring(0, 80) : null,
             hasFile: !!fileEl
         });
 
         const mediaInfo = {
             image: null,
             audio: null,
+            video: null,
             file: null
         };
 
@@ -155,8 +159,29 @@ async function saveChatAsHTML() {
             }
         }
 
+        // Collect video
+        if (videoEl && videoEl.src) {
+            if (videoEl.src.includes('/api/files/')) {
+                mediaInfo.video = {
+                    url: videoEl.src,
+                    index: mediaToFetch.length
+                };
+                mediaToFetch.push({
+                    url: videoEl.src,
+                    type: 'video',
+                    msgIndex: index
+                });
+                dlog('Added video to fetch:', videoEl.src);
+            } else if (videoEl.src.startsWith('data:')) {
+                mediaInfo.video = {
+                    src: videoEl.src
+                };
+                dlog('Video already base64, skipping fetch');
+            }
+        }
+
         // Collect file attachment
-        if (fileEl && !imageEl && !audioEl) {
+        if (fileEl && !imageEl && !audioEl && !videoEl) {
             const linkEl = fileEl.querySelector('a');
             if (linkEl) {
                 mediaInfo.file = {
@@ -195,7 +220,7 @@ async function saveChatAsHTML() {
             const response = await fetch(mediaItem.url, {
                 credentials: 'include',
                 headers: {
-                    'Accept': mediaItem.type === 'image' ? 'image/*' : 'audio/*'
+                    'Accept': mediaItem.type === 'image' ? 'image/*' : mediaItem.type === 'video' ? 'video/*' : 'audio/*'
                 }
             });
             
@@ -261,6 +286,20 @@ async function saveChatAsHTML() {
             } else {
                 dwarn('Audio missing base64, using original URL:', msg.media.audio.url);
                 fileHtml += '<div class="audio-container"><audio controls src="' + msg.media.audio.url + '"></audio></div>';
+            }
+        }
+
+        // Add video with base64
+        if (msg.media.video) {
+            let videoSrc = msg.media.video.src;
+            if (!videoSrc && msg.media.video.index !== undefined) {
+                videoSrc = mediaBase64Results[msg.media.video.index];
+            }
+            if (videoSrc) {
+                fileHtml += '<div class="video-container"><video controls preload="metadata" src="' + videoSrc + '"></video></div>';
+            } else {
+                dwarn('Video missing base64, using original URL:', msg.media.video.url);
+                fileHtml += '<div class="video-container"><video controls preload="metadata" src="' + msg.media.video.url + '"></video></div>';
             }
         }
 

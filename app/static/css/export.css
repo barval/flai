@@ -135,6 +135,15 @@ footer {
     display: none !important;
 }
 
+.video-container {
+    margin: 8px 0;
+}
+
+.video-container video {
+    max-width: 100%;
+    border-radius: 8px;
+}
+
 /* ===== DARK THEME OVERRIDES FOR EXPORT ===== */
 .dark-theme .chat-wrapper {
     background-color: #1e1e1e;

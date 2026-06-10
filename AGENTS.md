@@ -496,3 +496,8 @@ FLAI REQUIRES an NVIDIA GPU with at least 8 GB VRAM and 16 GB system RAM. CPU-on
 - `tests/test_resource_manager.py`: `patch("app.resource_manager.requests.X", new=mock)`.
 - `app/routes/backups.py:restore_backup()`: `dirs_exist_ok=True`. Version updated to `"8.9"`.
 - `tests/test_morph.py` (NEW): 14 tests for pymorphy3 morphological analysis.
+
+### Chat video export
+
+- `app/static/js/chat-export.js`: `saveChatAsHTML()` now collects `<video>` elements from DOM, fetches video files from `/api/files/` and converts to base64. Accept header updated to include `video/*`. Video rendered as `<video controls preload="metadata">` in exported HTML.
+- `app/static/css/export.css`: Added `.video-container` and `.video-container video` styles for exported video elements.

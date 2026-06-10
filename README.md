@@ -106,6 +106,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | **Qwen3-4B MXFP4 migration** | Auto-migration of old chat models to Qwen3-4B-Instruct-2507-MXFP4_MOE |
 | **Dead code cleanup** | Removed unused functions (`get_gguf_model_info`, `find_gguf_file`, `chunk_text_by_sentences`, etc.) and CSS classes |
 | **Faster retries** | llama.cpp retry sleep reduced from 5s to 2s; VRAM polling from 1s to 0.5s |
+| **Chat export includes videos** | Generated videos are now embedded in exported HTML files as base64 |
 
 ### Core Components
 
@@ -841,6 +842,7 @@ curl http://localhost:5000/metrics
 - **Run HTML button** — execute HTML code blocks from chat in a new browser tab
 - **Copy message text** — one-click copy of full assistant response
 - **Lazy loading images** — images and videos load lazily for faster initial rendering
+- **Chat export includes videos** — generated videos are now embedded as base64 in exported HTML files
 
 ### 🔄 In Progress
 - Advanced RAG: metadata filtering, hybrid search

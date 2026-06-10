@@ -22,6 +22,7 @@ class TestBaseModule:
             "LLM_CHAT_TIMEOUT": 300,
         }
         app.logger = MagicMock()
+        app.modules = {}
         return app
 
     @pytest.fixture

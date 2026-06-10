@@ -57,9 +57,17 @@ class MultimodalModule(TranslationMixin):
                 "image/avif",
             },
             "supported_extensions": {
-                ".jpg", ".jpeg", ".jpe", ".png", ".bmp",
-                ".webp", ".tif", ".tiff",
-                ".heic", ".heif", ".avif",
+                ".jpg",
+                ".jpeg",
+                ".jpe",
+                ".png",
+                ".bmp",
+                ".webp",
+                ".tif",
+                ".tiff",
+                ".heic",
+                ".heif",
+                ".avif",
             },
         }
 
@@ -204,34 +212,6 @@ class MultimodalModule(TranslationMixin):
         if not prompt:
             self.logger.error("Failed to load image prompt template")
         return prompt
-
-    @staticmethod
-    def _resize_for_classify(image_data: str, max_size: int = 896) -> str:
-        """Resize image to fit within max_size on the longest side.
-        Reduces token usage in multimodal vision encoder and prevents context overflow.
-        """
-        try:
-            img = Image.open(BytesIO(base64.b64decode(image_data)))
-            w, h = img.size
-            if w <= max_size and h <= max_size:
-                return image_data
-            ratio = max_size / max(w, h)
-            new_w, new_h = int(w * ratio), int(h * ratio)
-            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)  # type: ignore[assignment]
-            if img.mode in ("RGBA", "LA", "P"):
-                rgb_img = Image.new("RGB", img.size, (255, 255, 255))
-                mask = img.split()[-1] if img.mode == "RGBA" else None
-                rgb_img.paste(img, mask=mask)
-                img = rgb_img  # type: ignore[assignment]
-            buf = BytesIO()
-            img.save(buf, format="JPEG", quality=85)
-            logger = logging.getLogger(__name__)
-            logger.info(f"Image resized for multimodal classify: {w}x{h} → {new_w}x{new_h}")
-            return base64.b64encode(buf.getvalue()).decode("utf-8")
-        except Exception as e:
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to resize image for multimodal classify: {e}")
-            return image_data
 
     def process_image_with_text(
         self,
@@ -411,18 +391,39 @@ class MultimodalModule(TranslationMixin):
                 prompt_data = json.loads(json_str)
                 self.logger.info(f"Parsed video prompt_data: {prompt_data}")
 
+                # Warn if generated params are oversized for current VRAM.
+                # Heuristic: total pixels × frames vs available VRAM.
+                # 240 frames at 768×512 (92 weight) on 6 GB+ free = OK (default).
+                # Triggers only for extreme requests (e.g. 1000+ frames at 4K).
+                try:
+                    from app.resource_manager import get_resource_manager
+
+                    free = get_resource_manager().hardware.available_vram_mb
+                except Exception:
+                    free = 0
+                if isinstance(free, int) and free > 0:
+                    w = int(prompt_data.get("width", 768))
+                    h = int(prompt_data.get("height", 512))
+                    nf = int(prompt_data.get("num_frames", 240))
+                    weight = (w * h * nf) / 1_000_000
+                    if weight > free * 10:
+                        self.logger.warning(
+                            f"Video params oversized: {w}×{h}×{nf}f ({weight:.1f}M px·frames) "
+                            f"for {free}MB free VRAM. May trigger OOM. Consider reducing num_frames."
+                        )
+
                 if "prompt" not in prompt_data or not prompt_data["prompt"].strip():
                     prompt_data["prompt"] = user_query
                 if "negative_prompt" not in prompt_data:
                     prompt_data["negative_prompt"] = "worst quality, inconsistent motion, blurry, jittery, distorted"
                 if "width" not in prompt_data:
-                    prompt_data["width"] = 896
+                    prompt_data["width"] = 768
                 if "height" not in prompt_data:
                     prompt_data["height"] = 512
                 if "num_frames" not in prompt_data:
-                    prompt_data["num_frames"] = 257
+                    prompt_data["num_frames"] = 240
                 if "frame_rate" not in prompt_data:
-                    prompt_data["frame_rate"] = 30
+                    prompt_data["frame_rate"] = 24
 
                 return prompt_data, None
             else:
@@ -474,13 +475,13 @@ class MultimodalModule(TranslationMixin):
                 if "negative_prompt" not in prompt_data:
                     prompt_data["negative_prompt"] = "worst quality, inconsistent motion, blurry, jittery, distorted"
                 if "width" not in prompt_data:
-                    prompt_data["width"] = 896
+                    prompt_data["width"] = 768
                 if "height" not in prompt_data:
                     prompt_data["height"] = 512
                 if "num_frames" not in prompt_data:
-                    prompt_data["num_frames"] = 257
+                    prompt_data["num_frames"] = 240
                 if "frame_rate" not in prompt_data:
-                    prompt_data["frame_rate"] = 30
+                    prompt_data["frame_rate"] = 24
 
                 # Override width/height to match source image aspect ratio
                 try:
@@ -488,9 +489,9 @@ class MultimodalModule(TranslationMixin):
                     w, h = img.size
                     aspect = w / h
                     if aspect > 1.2:
-                        prompt_data["width"], prompt_data["height"] = 896, 512
+                        prompt_data["width"], prompt_data["height"] = 768, 512
                     elif aspect < 0.8:
-                        prompt_data["width"], prompt_data["height"] = 512, 896
+                        prompt_data["width"], prompt_data["height"] = 512, 768
                     else:
                         prompt_data["width"], prompt_data["height"] = 512, 512
                     self.logger.info(

@@ -110,12 +110,13 @@ function fetchQueueStatus() {
                 }
             }
 
-            // SAFETY VALVE: If server reports idle (no processing, no queued), clear pendingRequests
-            // This fixes stuck lightning bolts when polling was cancelled
+            // SAFETY VALVE: If server reports idle (no processing, no queued), clear stale pendingRequestIds
+            // Fixes stuck hourglasses when SSE missed the result_completed event
             if (!processingSessionId && (!data.queued || data.queued.length === 0)) {
-                Object.keys(pendingRequests).forEach(reqId => {
-                    delete pendingRequests[reqId];
+                Object.keys(pendingRequestIds).forEach(reqId => {
+                    delete pendingRequestIds[reqId];
                 });
+                try { sessionStorage.removeItem('pendingRequests'); } catch (e) { /* ignore */ }
             }
 
             // Update global sessionQueueInfo

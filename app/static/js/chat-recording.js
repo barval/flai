@@ -101,14 +101,27 @@ const seconds = String(now.getSeconds()).padStart(2, '0');
 // Remove 'voice_' prefix as requested
 const filename = year + month + day + '_' + hours + minutes + seconds + '.webm';
 const file = new File([blob], filename, { type: 'audio/webm' });
-attachedFile = file;
-isVoiceRecorded = true;
-// FIX: Set transcribing flag immediately when voice message is recorded
-setLocalTranscribing(currentSessionId, true);
-const preview = document.getElementById('file-preview-container');
-document.getElementById('file-preview-name').textContent = file.name;
-const fileSize = formatFileSize(file.size);
-document.getElementById('file-preview-size').textContent = ' (' + fileSize + ')';
-preview.style.display = 'block';
+if (attachedFile && attachedFile.type && attachedFile.type.startsWith('image/')) {
+    // Image already attached — keep it, store voice separately
+    attachedVoiceBlob = file;
+    isVoiceRecorded = true;
+    setLocalTranscribing(currentSessionId, true);
+    const preview = document.getElementById('file-preview-container');
+    document.getElementById('file-preview-name').textContent =
+        attachedFile.name + ' + \uD83C\uDFA4 ' + file.name;
+    const sizeSpan = document.getElementById('file-preview-size');
+    if (sizeSpan) sizeSpan.textContent = '';
+    preview.classList.remove('hidden');
+} else {
+    // No image — original behavior
+    attachedFile = file;
+    isVoiceRecorded = true;
+    setLocalTranscribing(currentSessionId, true);
+    const preview = document.getElementById('file-preview-container');
+    document.getElementById('file-preview-name').textContent = file.name;
+    const fileSize = formatFileSize(file.size);
+    document.getElementById('file-preview-size').textContent = ' (' + fileSize + ')';
+    preview.style.display = 'block';
+}
 sendMessage();
 }

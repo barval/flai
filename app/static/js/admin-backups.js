@@ -26,10 +26,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function refreshBackups() {
         refreshBtn.disabled = true;
-        refreshBtn.textContent = '⏳';
+        refreshBtn.classList.add('btn-syncing');
+        refreshBtn.textContent = '🔄 ' + t('Loading...');
         loadBackups().finally(() => {
             refreshBtn.disabled = false;
-            refreshBtn.textContent = '🔄';
+            refreshBtn.classList.remove('btn-syncing');
+            refreshBtn.textContent = '🔄 ' + t('Update backup list');
         });
     }
 
@@ -46,9 +48,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 backupsTable.style.display = 'table';
                 noBackupsMsg.style.display = 'none';
 
-                backups.forEach(backup => {
+                backups.forEach((backup, index) => {
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
+                        <td class="cam-num">${index + 1}</td>
                         <td title="${escapeHtml(backup.filename)}">${escapeHtml(backup.filename)}</td>
                         <td><span class="backup-type-badge ${backup.type}">${backup.type === 'users' ? t('Users only') : (backup.type === 'full' ? t('Full (users + chats + files)') : backup.type)}</span></td>
                         <td>${formatSize(backup.size)}</td>

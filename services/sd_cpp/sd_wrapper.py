@@ -9,13 +9,18 @@ import contextlib
 import json
 import logging
 import os
+import re
+import select
 import shutil
 import subprocess
 import tempfile
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from logging.handlers import RotatingFileHandler
 from urllib.parse import urlparse
+
+import requests
 
 # ── Logging with rotation (max 10MB, 5 files) ──
 LOG_DIR = os.environ.get("SD_LOG_DIR", "/app/logs")
@@ -144,7 +149,8 @@ def _validate_use_gpu(use_gpu: bool) -> bool:
     return use_gpu and _check_cuda()
 
 
-def _build_generate_cmd(prompt, steps, width, height, cfg_scale, seed, flow_shift, sampler, use_gpu, offload_level=0):
+def _build_generate_cmd(prompt, steps, width, height, cfg_scale, seed, flow_shift, sampler, use_gpu, offload_level=0,
+                        preview_path=None, preview_interval=2):
     """Build sd-cli command for image generation with specified offload level.
 
     offload_level:
@@ -152,6 +158,8 @@ def _build_generate_cmd(prompt, steps, width, height, cfg_scale, seed, flow_shif
         1 — clip/text encoder on CPU (--clip-on-cpu)
         2 — clip + vae on CPU (--clip-on-cpu --vae-on-cpu)
         3 — everything on CPU (--offload-to-cpu)
+    preview_path: path to write preview images (enables --preview tae)
+    preview_interval: steps between preview updates (default 2)
     """
     cmd = [
         SD_CLI,
@@ -180,6 +188,9 @@ def _build_generate_cmd(prompt, steps, width, height, cfg_scale, seed, flow_shif
         str(flow_shift),
     ]
 
+    if preview_path:
+        cmd.extend(["--preview", "tae", "--preview-path", preview_path, "--preview-interval", str(preview_interval)])
+
     if offload_level == 1:
         cmd.append("--clip-on-cpu")
     elif offload_level == 2:
@@ -192,10 +203,16 @@ def _build_generate_cmd(prompt, steps, width, height, cfg_scale, seed, flow_shif
     return cmd
 
 
-def _run_sd_cli(cmd, log_path, timeout=300):
-    """Run sd-cli subprocess and return (result_dict, tail_log)."""
+def _run_sd_cli(cmd, log_path, timeout=300, preview_path=None, preview_url=None,
+                 user_id=None, session_id=None, task_id=None, total_steps=None):
+    """Run sd-cli subprocess and return (result_dict, tail_log).
+
+    Pipes stdout to parse step progress in real-time and POSTs to preview_url.
+    Also writes stdout to log_path for debugging.
+    """
     proc = None
     output_path = None
+    start_time = time.time()
     try:
         for part in cmd:
             if part.startswith("/") and part.endswith(".png") and os.path.dirname(part):
@@ -206,25 +223,61 @@ def _run_sd_cli(cmd, log_path, timeout=300):
                 output_path = tmp.name
             cmd.extend(["-o", output_path])
         with open(log_path, "a") as log_file:
-            proc = subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
-            try:
-                proc.wait(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
-                return {"error": "sd-cli timeout"}, ""
-        if proc.returncode != 0:
-            try:
-                with open(log_path) as f:
-                    log_tail = f.read()[-2000:]
-            except Exception:
-                log_tail = ""
-            return None, log_tail
-        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
-            return {"error": "sd-cli produced empty output"}, ""
-        with open(output_path, "rb") as f:
-            image_bytes = f.read()
-        return {"created": 0, "data": [{"b64_json": base64.b64encode(image_bytes).decode()}]}, ""
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0)
+            stdout_buf = b""
+            while proc.poll() is None:
+                ready, _, _ = select.select([proc.stdout], [], [], 0.5)
+                if ready:
+                    byte = proc.stdout.read(1)
+                    if byte:
+                        stdout_buf += byte
+                        if byte in (b"\r", b"\n"):
+                            line = stdout_buf.decode(errors="replace")
+                            log_file.write(line)
+                            log_file.flush()
+                            if preview_url:
+                                m = re.search(r"(\d+)/(\d+)", line)
+                                if m:
+                                    step, total = int(m.group(1)), int(m.group(2))
+                                    # Skip text-encoder token progress (e.g. 1/1095)
+                                    if total_steps and total != total_steps:
+                                        pass
+                                    else:
+                                        try:
+                                            requests.post(
+                                                preview_url,
+                                                json={
+                                                    "user_id": user_id,
+                                                    "session_id": session_id,
+                                                    "task_id": task_id,
+                                                    "step": step,
+                                                    "total": total,
+                                                },
+                                                timeout=2,
+                                            )
+                                        except Exception as e:
+                                            logger.warning(f"Failed to post step progress: {e}")
+                            stdout_buf = b""
+                if time.time() - start_time > timeout:
+                    proc.kill()
+                    proc.wait()
+                    return {"error": "sd-cli timeout"}, ""
+            remaining = proc.stdout.read()
+            if remaining:
+                log_file.write(remaining.decode(errors="replace"))
+                log_file.flush()
+            if proc.returncode != 0:
+                try:
+                    with open(log_path) as f:
+                        log_tail = f.read()[-2000:]
+                except Exception:
+                    log_tail = ""
+                return None, log_tail
+            if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+                return {"error": "sd-cli produced empty output"}, ""
+            with open(output_path, "rb") as f:
+                image_bytes = f.read()
+            return {"created": 0, "data": [{"b64_json": base64.b64encode(image_bytes).decode()}]}, ""
     except subprocess.TimeoutExpired:
         return {"error": "sd-cli timeout"}, ""
     except Exception as e:
@@ -253,17 +306,26 @@ def generate_image(data):
     flow_shift = float(data.get("flow_shift", DEFAULT_FLOW_SHIFT))
     sampler = data.get("sampling_method", DEFAULT_SAMPLER)
     use_gpu = _validate_use_gpu(data.get("use_gpu", False))
+    preview_path = data.get("preview_path")
+    preview_url = data.get("preview_url")
+    user_id = data.get("user_id")
+    session_id = data.get("session_id")
+    task_id = data.get("task_id")
 
     offload_levels = range(4) if use_gpu else [3]
 
     for level in offload_levels:
         cmd = _build_generate_cmd(
-            prompt, steps, width, height, cfg_scale, seed, flow_shift, sampler, use_gpu, offload_level=level
+            prompt, steps, width, height, cfg_scale, seed, flow_shift, sampler, use_gpu, offload_level=level,
+            preview_path=preview_path,
         )
 
         logger.info(f" Running generate (offload_level={level}): {' '.join(cmd[:12])}...")
 
-        result, log_tail = _run_sd_cli(cmd, "/tmp/sd_cli_output.log", timeout=300)
+        result, log_tail = _run_sd_cli(cmd, "/tmp/sd_cli_output.log", timeout=300,
+                                       preview_path=preview_path, preview_url=preview_url,
+                                       user_id=user_id, session_id=session_id, task_id=task_id,
+                                       total_steps=steps)
         if isinstance(result, dict):
             return result
         if log_tail and _is_oom_error(log_tail):
@@ -281,7 +343,7 @@ def edit_image(data):
         return _edit_image_impl(data)
 
 
-def _build_edit_cmd(edit_prompt, src_path, use_gpu, offload_level=0):
+def _build_edit_cmd(edit_prompt, src_path, use_gpu, offload_level=0, strength=0.7):
     """Build sd-cli command for image editing with specified offload level.
 
     offload_level:
@@ -313,6 +375,8 @@ def _build_edit_cmd(edit_prompt, src_path, use_gpu, offload_level=0):
         "--rng",
         "cuda",
         "--diffusion-fa",
+        "--strength",
+        str(strength),
     ]
 
     if offload_level == 1:
@@ -330,6 +394,12 @@ def _edit_image_impl(data):
     edit_prompt = data.get("edit_prompt", "")
     image_data = data.get("image_data", "")
     use_gpu = _validate_use_gpu(data.get("use_gpu", False))
+    preview_url = data.get("preview_url")
+    user_id = data.get("user_id")
+    session_id = data.get("session_id")
+    task_id = data.get("task_id")
+    strength = float(data.get("strength", 0.7))
+    edit_total_steps = 4  # hardcoded in _build_edit_cmd
 
     if not edit_prompt:
         return {"error": "No edit prompt provided"}
@@ -347,21 +417,58 @@ def _edit_image_impl(data):
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as out_tmp:
                 output_path = out_tmp.name
 
-            cmd = _build_edit_cmd(edit_prompt, src_path, use_gpu, offload_level=level)
+            cmd = _build_edit_cmd(edit_prompt, src_path, use_gpu, offload_level=level, strength=strength)
             cmd.extend(["-o", output_path])
 
             logger.info(f" Running edit (offload_level={level}): {' '.join(cmd[:12])}...")
 
             proc = None
+            start_time = time.time()
             try:
                 with open("/tmp/sd_cli_edit_output.log", "a") as log_file:
-                    proc = subprocess.Popen(cmd, stdout=log_file, stderr=subprocess.STDOUT)
-                    try:
-                        proc.wait(timeout=900)
-                    except subprocess.TimeoutExpired:
-                        proc.kill()
-                        proc.wait()
-                        return {"error": "sd-cli edit timeout"}
+                    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0)
+                    stdout_buf = b""
+                    while proc.poll() is None:
+                        ready, _, _ = select.select([proc.stdout], [], [], 0.5)
+                        if ready:
+                            byte = proc.stdout.read(1)
+                            if byte:
+                                stdout_buf += byte
+                                if byte in (b"\r", b"\n"):
+                                    line = stdout_buf.decode(errors="replace")
+                                    log_file.write(line)
+                                    log_file.flush()
+                                    if preview_url:
+                                        m = re.search(r"(\d+)/(\d+)", line)
+                                        if m:
+                                            step, total = int(m.group(1)), int(m.group(2))
+                                            # Skip text-encoder token progress (e.g. 1/1095)
+                                            if total != edit_total_steps:
+                                                pass
+                                            else:
+                                                try:
+                                                    requests.post(
+                                                        preview_url,
+                                                        json={
+                                                            "user_id": user_id,
+                                                            "session_id": session_id,
+                                                            "task_id": task_id,
+                                                            "step": step,
+                                                            "total": total,
+                                                        },
+                                                        timeout=2,
+                                                    )
+                                                except Exception as e:
+                                                    logger.warning(f"Failed to post edit step progress: {e}")
+                                    stdout_buf = b""
+                        if time.time() - start_time > 900:
+                            proc.kill()
+                            proc.wait()
+                            return {"error": "sd-cli edit timeout"}
+                    remaining = proc.stdout.read()
+                    if remaining:
+                        log_file.write(remaining.decode(errors="replace"))
+                        log_file.flush()
                 if proc.returncode != 0:
                     try:
                         with open("/tmp/sd_cli_edit_output.log") as f:

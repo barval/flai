@@ -22,7 +22,8 @@ RUN pip install --no-cache-dir \
     pyyaml \
     imageio \
     imageio-ffmpeg \
-    av
+    av \
+    redis
 
 # Install PyTorch with CUDA 12.8 for RTX 5060 Ti (sm_120) support.
 # Must be AFTER ltx-video install, otherwise pip downgrades torch.

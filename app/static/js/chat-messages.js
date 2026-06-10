@@ -593,7 +593,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     // Use DOM methods instead of innerHTML for security
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
-    contentDiv.innerHTML = contentHTML.replace('<div class="message-content">', '').replace('</div>', '');
+    contentDiv.innerHTML = DOMPurify.sanitize(contentHTML.replace('<div class="message-content">', '').replace('</div>', ''));
     msgDiv.appendChild(contentDiv);
 
     // File display
@@ -614,6 +614,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
                 imgContainer.className = 'image-container';
                 const img = document.createElement('img');
                 img.src = fileUrl;
+                img.loading = 'lazy';
                 img.className = 'attached-image';
                 img.alt = fileName || 'attached image';
                 img.title = t('click_to_enlarge');
@@ -629,8 +630,9 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             } else if (fileType && fileType.startsWith('video/')) {
                 const video = document.createElement('video');
                 video.controls = true;
-                video.src = fileUrl;
                 video.preload = 'metadata';
+                video.loading = 'lazy';
+                video.src = fileUrl;
                 video.style.maxWidth = '100%';
                 video.style.borderRadius = '8px';
                 msgDiv.appendChild(video);
@@ -764,33 +766,69 @@ async function handleCopyClick(button, codeElement) {
     }
 }
 
+function handleOpenHtmlClick(codeBlock) {
+    const code = codeBlock.textContent || codeBlock.innerText || '';
+    const trimmed = code.trim();
+    if (!trimmed) return;
+
+    let html;
+    if (/<html[\s>]/i.test(trimmed)) {
+        html = trimmed;
+    } else if (/<(!DOCTYPE|!doctype)[\s>]/i.test(trimmed)) {
+        html = trimmed;
+    } else {
+        html = '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n</head>\n<body>\n' + trimmed + '\n</body>\n</html>';
+    }
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 function addCopyButtonsToMessage(messageElement) {
     if (window.IS_RELOADING) return;
     if (!messageElement) return;
-    
+
     const codeBlocks = messageElement.querySelectorAll('pre code');
     codeBlocks.forEach((codeBlock) => {
         const parent = codeBlock.parentNode;
         if (parent.classList.contains('code-block-wrapper')) return;
-        
+
         const wrapper = document.createElement('div');
         wrapper.className = 'code-block-wrapper';
-        
+
         const copyButton = document.createElement('button');
         copyButton.className = 'copy-code-button';
         copyButton.innerHTML = '📋';
         copyButton.title = t('copy_code');
-        
+
         copyButton.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
             if (window.IS_RELOADING) return;
             handleCopyClick(copyButton, codeBlock);
         });
-        
+
         parent.parentNode.insertBefore(wrapper, parent);
         wrapper.appendChild(parent);
         wrapper.appendChild(copyButton);
+
+        if (codeBlock.classList.contains('language-html')) {
+            const openButton = document.createElement('button');
+            openButton.className = 'open-html-button';
+            openButton.innerHTML = '&#9654;';
+            openButton.title = t('open_html');
+
+            openButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (window.IS_RELOADING) return;
+                handleOpenHtmlClick(codeBlock);
+            });
+
+            wrapper.insertBefore(openButton, copyButton);
+        }
     });
 }
 

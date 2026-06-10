@@ -437,8 +437,10 @@ class TestEstimateVideoVram:
                 return _FakeStat(res, files_sizes[self])
             return res
 
-        with patch("app.database.get_vram_estimate", return_value=None), \
-             patch.object(type(tmp_path), "stat", fake_stat):
+        with (
+            patch("app.database.get_vram_estimate", return_value=None),
+            patch.object(type(tmp_path), "stat", fake_stat),
+        ):
             rm = ResourceManager()
             result = rm.estimate_video_vram_needed()
             # transformer (6007 MB) + upscaler (476 MB) = 6483 MB
@@ -458,8 +460,10 @@ class TestEstimateVideoVram:
                 return _FakeStat(res, 6_000_000_000)
             return res
 
-        with patch("app.database.get_vram_estimate", return_value=None), \
-             patch.object(type(tmp_path), "stat", fake_stat):
+        with (
+            patch("app.database.get_vram_estimate", return_value=None),
+            patch.object(type(tmp_path), "stat", fake_stat),
+        ):
             rm = ResourceManager()
             result = rm.estimate_video_vram_needed()
             # 5715 MB (6GB) + 15% overhead = ~6573 MB
@@ -485,9 +489,11 @@ class TestEstimateVideoVram:
                 "t5_encoder_dir": 19050,
             }
         }
-        with patch("app.database.get_vram_estimate", return_value=None), \
-             patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}), \
-             patch.dict("sys.modules", {"requests": MagicMock(get=MagicMock(return_value=mock_resp))}):
+        with (
+            patch("app.database.get_vram_estimate", return_value=None),
+            patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}),
+            patch("app.resource_manager.requests.get", return_value=mock_resp),
+        ):
             rm = ResourceManager()
             result = rm.estimate_video_vram_needed()
             # transformer (6040) + upscaler (482) = 6522 MB
@@ -499,9 +505,11 @@ class TestEstimateVideoVram:
         monkeypatch.setenv("LTX_MODELS_DIR", str(tmp_path))
         monkeypatch.setenv("LTX_VIDEO_VRAM_MB", "9300")
 
-        with patch("app.database.get_vram_estimate", return_value=None), \
-             patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}), \
-             patch.dict("sys.modules", {"requests": MagicMock(get=MagicMock(side_effect=ConnectionError("boom")))}):
+        with (
+            patch("app.database.get_vram_estimate", return_value=None),
+            patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}),
+            patch("app.resource_manager.requests.get", side_effect=ConnectionError("boom")),
+        ):
             rm = ResourceManager()
             result = rm.estimate_video_vram_needed()
             assert result == 9300
@@ -527,8 +535,10 @@ class TestUnloadVideoPipeline:
 
         rm._poll_vram = MagicMock(side_effect=fake_poll)
 
-        with patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}), \
-             patch.dict("sys.modules", {"requests": MagicMock(post=mock_post)}):
+        with (
+            patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}),
+            patch("app.resource_manager.requests.post", new=mock_post),
+        ):
             result = rm.unload_video_pipeline()
         assert result is True
         assert mock_post.called
@@ -543,8 +553,11 @@ class TestUnloadVideoPipeline:
         # VRAM never grows — simulate stuck pipeline
         rm._poll_vram = MagicMock()
 
-        with patch("time.sleep"), patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}), \
-             patch.dict("sys.modules", {"requests": MagicMock(post=mock_post)}):
+        with (
+            patch("time.sleep"),
+            patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}),
+            patch("app.resource_manager.requests.post", new=mock_post),
+        ):
             result = rm.unload_video_pipeline()
         # Should have tried 3 times
         assert mock_post.call_count == 3
@@ -559,8 +572,11 @@ class TestUnloadVideoPipeline:
         mock_post = MagicMock(return_value=MagicMock(status_code=500))
         rm._poll_vram = MagicMock()
 
-        with patch("time.sleep"), patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}), \
-             patch.dict("sys.modules", {"requests": MagicMock(post=mock_post)}):
+        with (
+            patch("time.sleep"),
+            patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}),
+            patch("app.resource_manager.requests.post", new=mock_post),
+        ):
             result = rm.unload_video_pipeline()
         assert result is False
         assert mock_post.call_count == 3
@@ -573,8 +589,11 @@ class TestUnloadVideoPipeline:
 
         mock_post = MagicMock(side_effect=ConnectionError("boom"))
         rm._poll_vram = MagicMock()
-        with patch("time.sleep"), patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}), \
-             patch.dict("sys.modules", {"requests": MagicMock(post=mock_post)}):
+        with (
+            patch("time.sleep"),
+            patch.dict("os.environ", {"LTX_VIDEO_WRAPPER_URL": "http://test:7872"}),
+            patch.dict("sys.modules", {"requests": MagicMock(post=mock_post)}),
+        ):
             result = rm.unload_video_pipeline()
         assert result is False
 

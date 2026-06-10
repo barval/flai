@@ -134,7 +134,10 @@ def delete_user(login):
     if not user:
         return False
 
-    user_id = user["id"]
+    # Use login (TEXT) as user_id — all *_sessions/_documents/_storage.user_id
+    # columns are TEXT in PostgreSQL. user["id"] is SERIAL/INTEGER and would
+    # fail on TEXT comparison (psycopg2 UndefinedFunction: text = integer).
+    user_id = login
 
     # Get config paths
     upload_folder = current_app.config.get("UPLOAD_FOLDER", "data/uploads")
@@ -173,12 +176,7 @@ def delete_user(login):
 
         c.execute("DELETE FROM documents WHERE user_id = %s", (user_id,))
 
-        # 3. Delete user's data folders
-        user_uploads_dir = os.path.join(upload_folder, user_id)
-        if os.path.exists(user_uploads_dir):
-            with contextlib.suppress(Exception):
-                shutil.rmtree(user_uploads_dir, ignore_errors=True)
-
+        # 3. Delete user's documents folder
         user_docs_dir = os.path.join(documents_folder, user_id)
         if os.path.exists(user_docs_dir):
             with contextlib.suppress(Exception):

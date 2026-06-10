@@ -110,6 +110,9 @@ def send_message():
     file_name = None
     voice_record = False
     file_size_bytes = 0
+    voice_file_data = None
+    voice_file_type = None
+    voice_file_name = None
 
     if request.content_type and "multipart/form-data" in request.content_type:
         message_text = request.form.get("message", "")
@@ -129,6 +132,18 @@ def send_message():
                 if quota_error:
                     return jsonify({"error": quota_error}), 413
         voice_record = request.form.get("voice_record") == "true"
+
+        # Read voice file when both image + voice are sent together
+        voice_file_data = None
+        voice_file_type = None
+        voice_file_name = None
+        if "voice" in request.files:
+            vfile = request.files["voice"]
+            if vfile and vfile.filename:
+                vbytes = vfile.read()
+                voice_file_data = base64.b64encode(vbytes).decode("utf-8")
+                voice_file_type = vfile.content_type or mimetypes.guess_type(vfile.filename)[0] or "audio/webm"
+                voice_file_name = vfile.filename
     else:
         try:
             data = request.get_json()
@@ -146,9 +161,12 @@ def send_message():
     request_type = "text"
     if file_data and file_type:
         if file_type.startswith("image/"):
-            request_type = "image"
+            request_type = "audio" if voice_file_data else "image"
         elif current_app.modules["audio"].is_audio_file(file_type, file_name):
             request_type = "audio"
+    elif voice_file_data:
+        # Voice file is in "voice" field only (no "file" field or "file" is not image)
+        request_type = "audio"
 
     resize_notice = None
     resize_notice_id = None
@@ -183,7 +201,9 @@ def send_message():
 
     if request_type == "audio":
         limit_mb = current_app.config["MAX_VOICE_SIZE_MB"] if voice_record else current_app.config["MAX_AUDIO_SIZE_MB"]
-        if file_size_bytes > limit_mb * 1024 * 1024:
+        # When image + voice, check voice file size (not image)
+        audio_size = len(base64.b64decode(voice_file_data)) if voice_file_data else file_size_bytes
+        if audio_size > limit_mb * 1024 * 1024:
             return jsonify({"error": _("Maximum file size {max_size} MB").format(max_size=limit_mb)}), 400
 
     user_content = []
@@ -217,15 +237,29 @@ def send_message():
     # Audio files are processed asynchronously: queue transcription task
     if request_type == "audio":
         current_app.logger.info("send_message: audio detected, queueing transcription task")
+
+        # Determine which file is audio and which is image
+        audio_file_data = voice_file_data or file_data
+        audio_file_type = voice_file_type or file_type
+        audio_file_name = voice_file_name or file_name
+        img_data = file_data if voice_file_data else None
+        img_type = file_type if voice_file_data else None
+        img_name = file_name if voice_file_data else None
+
         request_data = {
             "type": "transcribe_audio",
-            "file_data": file_data,
-            "file_type": file_type,
-            "file_name": file_name,
+            "file_data": audio_file_data,
+            "file_type": audio_file_type,
+            "file_name": audio_file_name,
             "voice_record": voice_record,
-            "preview": (message_text[:50] + "...") if message_text else (file_name or _("Voice request")),
+            "preview": (message_text[:50] + "...") if message_text else (audio_file_name or _("Voice request")),
             "response_style": response_style,
         }
+        # Pass image data for combined processing (voice → text + image → multimodal)
+        if img_data:
+            request_data["image_data"] = img_data
+            request_data["image_type"] = img_type
+            request_data["image_name"] = img_name
         request_id, position_info = current_app.request_queue.add_request(
             user_id, session_id, request_data, user_class, lang=session.get("language", "ru")
         )

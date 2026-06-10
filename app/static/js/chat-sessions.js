@@ -382,6 +382,10 @@ function switchSession(sessionId) {
                 isSwitchingSession = false;
                 // Restore pending request IDs from sessionStorage
                 restorePendingRequests();
+                // Restore progress bars from Redis
+                if (typeof restoreTaskProgress === 'function') {
+                    restoreTaskProgress();
+                }
                 // Update status counter
                 window.updateStatusCounter();
                 // Fetch queue status to update session statuses

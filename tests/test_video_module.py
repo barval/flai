@@ -95,7 +95,7 @@ class TestVideoModuleGenerate:
                     "file_type": "video/mp4",
                     "generation_time": 30.0,
                     "seed": 12345,
-                    "metadata": {"num_frames": 121},
+                    "metadata": {"num_frames": 120},
                 },
             )
             mock_rm_instance = MagicMock()
@@ -106,7 +106,7 @@ class TestVideoModuleGenerate:
 
             module = VideoModule(mock_app)
             result = module.generate_video(
-                {"prompt": "test video prompt", "width": 1216, "height": 704, "num_frames": 121}
+                {"prompt": "test video prompt", "width": 1216, "height": 704, "num_frames": 120}
             )
 
             assert result["success"] is True
@@ -151,14 +151,18 @@ class TestVideoModuleGenerate:
             patch("modules.video.requests.post") as mock_post,
             patch("app.resource_manager.get_resource_manager") as mock_rm,
         ):
-            mock_get.return_value = MagicMock(status_code=200)
+            # /running returns empty so 15s wait exits immediately
+            running_resp = MagicMock(status_code=200)
+            running_resp.json.return_value = {"running": []}
+            mock_get.return_value = running_resp
             import requests
 
             mock_post.side_effect = requests.exceptions.Timeout("Connection timed out")
             mock_rm_instance = MagicMock()
-            mock_rm_instance.hardware.cuda_detected = False
+            mock_rm_instance.hardware.cuda_detected = True
             mock_rm_instance.hardware.available_vram_mb = 12000
-            mock_rm_instance.estimate_video_vram_needed.return_value = 8500
+            mock_rm_instance.hardware.total_vram_mb = 16311
+            mock_rm_instance.estimate_video_vram_needed.return_value = 3057
             mock_rm.return_value = mock_rm_instance
 
             module = VideoModule(mock_app)
@@ -201,6 +205,106 @@ class TestVideoModuleGenerate:
 
             assert result["success"] is True
             assert result["video_data"] == mock_b64
+
+
+@pytest.mark.unit
+class TestVideoModuleLowVram:
+    """Test that low VRAM causes immediate error without POST to ltx-wrapper.
+
+    Regression: previously the code logged "forcing CPU" and continued,
+    causing 92-second waste + OOM in ltx-wrapper. Now it must return
+    error within milliseconds when available_vram_mb < threshold.
+    """
+
+    @pytest.fixture
+    def mock_app(self):
+        app = MagicMock()
+        app.config = {
+            "LTX_VIDEO_WRAPPER_URL": "http://test-ltxvideo:7872",
+            "LTX_VIDEO_MODEL": "ltxv-2b-0.9.8-distilled",
+            "LTX_VIDEO_TIMEOUT": 600,
+            "LLAMA_SWAP_URL": "http://test-llamaswap:8080",
+            "LLAMACPP_URL": "http://test-llamacpp:8033",
+        }
+        app.logger = MagicMock()
+        return app
+
+    def test_low_vram_returns_error_no_post(self, mock_app, monkeypatch):
+        import requests
+
+        from modules.video import VideoModule
+
+        # Track all POSTs to ltx-wrapper
+        post_calls = {"count": 0}
+
+        def fake_post(*args, **kwargs):
+            post_calls["count"] += 1
+            raise AssertionError("Should NOT POST to ltx-wrapper when VRAM is insufficient")
+
+        # /running returns empty (no LLM models loaded) — so 15s wait exits OK
+        get_resp = MagicMock(status_code=200)
+        get_resp.json.return_value = {"running": []}
+
+        monkeypatch.setattr(requests, "post", fake_post)
+        monkeypatch.setattr(requests, "get", lambda *a, **kw: get_resp)
+
+        with patch("app.resource_manager.get_resource_manager") as mock_rm:
+            mock_rm_instance = MagicMock()
+            mock_rm_instance.hardware.cuda_detected = True
+            mock_rm_instance.hardware.available_vram_mb = 1000  # 1 GB free
+            mock_rm_instance.hardware.total_vram_mb = 16311
+            mock_rm_instance.estimate_video_vram_needed.return_value = 3057
+            mock_rm.return_value = mock_rm_instance
+
+            module = VideoModule(mock_app)
+            result = module.generate_video({"prompt": "test", "width": 768, "height": 512, "num_frames": 120})
+
+        assert result["success"] is False
+        assert "VRAM" in result["error"]
+        assert "1000" in result["error"] or "below" in result["error"].lower()
+        assert post_calls["count"] == 0
+
+    def test_healthy_vram_proceeds_normally(self, mock_app, monkeypatch):
+        import base64
+
+        import requests
+
+        from modules.video import VideoModule
+
+        # VRAM is sufficient — generation should proceed
+        get_resp = MagicMock(status_code=200)
+        get_resp.json.return_value = {"running": []}
+
+        mock_b64 = base64.b64encode(b"fake mp4").decode("utf-8")
+        post_resp = MagicMock(
+            status_code=200,
+            json=lambda: {
+                "success": True,
+                "video_data": mock_b64,
+                "file_name": "ok.mp4",
+                "file_size": 100,
+                "file_type": "video/mp4",
+                "generation_time": 5.0,
+                "seed": 1,
+                "metadata": {},
+            },
+        )
+
+        monkeypatch.setattr(requests, "get", lambda *a, **kw: get_resp)
+        monkeypatch.setattr(requests, "post", lambda *a, **kw: post_resp)
+
+        with patch("app.resource_manager.get_resource_manager") as mock_rm:
+            mock_rm_instance = MagicMock()
+            mock_rm_instance.hardware.cuda_detected = True
+            mock_rm_instance.hardware.available_vram_mb = 12000  # 12 GB free
+            mock_rm_instance.hardware.total_vram_mb = 16311
+            mock_rm_instance.estimate_video_vram_needed.return_value = 3057
+            mock_rm.return_value = mock_rm_instance
+
+            module = VideoModule(mock_app)
+            result = module.generate_video({"prompt": "test", "width": 512, "height": 512, "num_frames": 120})
+
+        assert result["success"] is True
 
 
 @pytest.mark.unit

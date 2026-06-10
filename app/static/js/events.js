@@ -46,12 +46,14 @@ function scheduleReconnect() {
         if (typeof fetchQueueStatus === 'function') {
             fetchQueueStatus();
         }
-        if (typeof loadMessages === 'function' && currentSessionId) {
-            loadMessages(currentSessionId);
+        if (typeof restoreTaskProgress === 'function') {
+            restoreTaskProgress();
         }
         if (typeof loadDocuments === 'function') {
             loadDocuments(false);
         }
+        // Check if any pending tasks completed while SSE was disconnected
+        verifyPendingRequests();
     }, 3000);
 }
 
@@ -80,6 +82,18 @@ function handleEvent(event) {
         case 'camera_image':
             onCameraImage(event.data);
             break;
+        case 'task_progress':
+            onTaskProgress(event.data);
+            break;
+        case 'video_step':
+            onVideoStep(event.data);
+            break;
+        case 'image_step':
+            onImageStep(event.data);
+            break;
+        case 'image_preview':
+            onImagePreview(event.data);
+            break;
         case 'message_new':
             onMessageNew(event.data);
             break;
@@ -105,6 +119,155 @@ function onCameraImage(data) {
         data.response_time, data.model_used,
         null, null, null, null, data.message_id,
         data.response_style);
+}
+
+// ── task_progress ────────────────────────────────────────────────────
+
+const STAGE_LABELS = {
+    preparing_gpu: '⏳ Очистка GPU...',
+    analyzing: '🔍 Анализ запроса...',
+    analyzing_image: '🔍 Анализ изображения...',
+    analyzing_prompt: '🔍 Анализ промпта...',
+    generating_video: '🎬 Генерация видео...',
+    generating_image: '🎨 Генерация изображения...',
+    editing_image: '✏️ Редактирование изображения...',
+    loading_reasoning_model: '🧠 Загрузка модели рассуждений...',
+    capturing_snapshot: '📹 Получение снимка...',
+};
+
+function onTaskProgress(data) {
+    if (!data || !data.session_id || data.session_id !== currentSessionId) return;
+    if (!data.stage) return;
+    dlog('onTaskProgress:', data.stage);
+
+    const label = STAGE_LABELS[data.stage] || data.stage;
+    _updateProgressElement(data.task_id, label);
+}
+
+function _updateProgressElement(taskId, text) {
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+
+    let progressEl = chatMessages.querySelector('.task-progress[data-task-id="' + taskId + '"]');
+    if (!progressEl) {
+        progressEl = document.createElement('div');
+        progressEl.className = 'task-progress';
+        progressEl.setAttribute('data-task-id', taskId);
+        chatMessages.appendChild(progressEl);
+    }
+    progressEl.textContent = text;
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function _removeProgressElement(taskId) {
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+    const el = chatMessages.querySelector('.task-progress[data-task-id="' + taskId + '"]');
+    if (el) el.remove();
+}
+
+// ── video_step ───────────────────────────────────────────────────────
+
+function onVideoStep(data) {
+    if (!data || !data.session_id || data.session_id !== currentSessionId) return;
+    if (!data.task_id || data.total === undefined) return;
+    dlog('onVideoStep:', data.step, '/', data.total);
+
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+
+    const pct = data.percent || Math.round((data.step / data.total) * 100);
+
+    let barContainer = chatMessages.querySelector('.video-progress-bar[data-task-id="' + data.task_id + '"]');
+    if (!barContainer) {
+        barContainer = document.createElement('div');
+        barContainer.className = 'video-progress-bar';
+        barContainer.setAttribute('data-task-id', data.task_id);
+        barContainer.innerHTML = '<div class="fill"></div><span class="label"></span>';
+        chatMessages.appendChild(barContainer);
+    }
+
+    barContainer.querySelector('.fill').style.width = pct + '%';
+    barContainer.querySelector('.label').textContent = '🎬 ' + data.step + '/' + data.total + ' (' + pct + '%)';
+
+    _removeProgressElement(data.task_id);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// ── image_step ────────────────────────────────────────────────────
+
+function onImageStep(data) {
+    if (!data || !data.session_id || data.session_id !== currentSessionId) return;
+    if (!data.task_id || data.total === undefined) return;
+    dlog('onImageStep:', data.step, '/', data.total);
+
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+
+    const pct = data.percent || Math.round((data.step / data.total) * 100);
+
+    let barContainer = chatMessages.querySelector('.video-progress-bar[data-task-id="' + data.task_id + '"]');
+    if (!barContainer) {
+        barContainer = document.createElement('div');
+        barContainer.className = 'video-progress-bar';
+        barContainer.setAttribute('data-task-id', data.task_id);
+        barContainer.innerHTML = '<div class="fill"></div><span class="label"></span>';
+        chatMessages.appendChild(barContainer);
+    }
+
+    barContainer.querySelector('.fill').style.width = pct + '%';
+    barContainer.querySelector('.label').textContent = '🎨 ' + data.step + '/' + data.total + ' (' + pct + '%)';
+
+    _removeProgressElement(data.task_id);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// ── image_preview ────────────────────────────────────────────────────
+
+function onImagePreview(data) {
+    if (!data || !data.session_id || data.session_id !== currentSessionId) return;
+    if (!data.task_id || !data.image_b64) return;
+    dlog('onImagePreview:', data.task_id, 'step:', data.step);
+
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+
+    let previewContainer = chatMessages.querySelector('.image-preview-container[data-task-id="' + data.task_id + '"]');
+    if (!previewContainer) {
+        previewContainer = document.createElement('div');
+        previewContainer.className = 'image-preview-container';
+        previewContainer.setAttribute('data-task-id', data.task_id);
+        previewContainer.innerHTML = '<img alt="preview"><div class="step-label"></div>';
+        chatMessages.appendChild(previewContainer);
+    }
+
+    previewContainer.querySelector('img').src = 'data:image/png;base64,' + data.image_b64;
+    if (data.total !== undefined) {
+        previewContainer.querySelector('.step-label').textContent = 'Шаг ' + data.step + '/' + data.total;
+    }
+
+    _removeProgressElement(data.task_id);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// ── thinking tag filter (fallback for --reasoning_format none) ─────────
+// Handles two formats:
+// - `` blocks (Qwen, DeepSeek, Gemma, QwQ)
+// - `<|channel|>analysis<|message|>...<|end|>` (gpt-oss-20b ChatML reasoning)
+
+function _stripThinkingTags(text) {
+    if (!text) return text;
+    if (!text.includes('<think') && !text.includes('<|channel|>')) return text;
+    let result = text;
+    // Remove complete <think>...</think> blocks (including multiline)
+    result = result.replace(/<think[\s>][\s\S]*?<\/think>/gi, '');
+    // Remove incomplete opening tag at the end (streaming: closing tag hasn't arrived yet)
+    result = result.replace(/<think[\s>][\s\S]*$/i, '');
+    // Remove complete <|channel|>analysis<|message|>...<|end|> blocks
+    result = result.replace(/<\|channel\|>analysis<\|message\|>[\s\S]*?<\|end\|>/gi, '');
+    // Remove incomplete opening tag at the end (streaming)
+    result = result.replace(/<\|channel\|>analysis<\|message\|>[\s\S]*$/i, '');
+    return result;
 }
 
 // ── stream_token ─────────────────────────────────────────────────────
@@ -189,10 +352,10 @@ function onStreamToken(data) {
         streamMsg.appendChild(contentDiv);
     }
 
-    // Update content
+    // Update content (strip thinking tags for display)
     const contentDiv = streamMsg.querySelector('.message-content');
     if (contentDiv) {
-        contentDiv.textContent = reqInfo.accumulatedContent;
+        contentDiv.textContent = _stripThinkingTags(reqInfo.accumulatedContent);
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
@@ -322,6 +485,13 @@ function restoreStreamingFromSessionStorage() {
 function onResultCompleted(data) {
     if (!data || !data.task_id) return;
     dlog('onResultCompleted:', data.task_id, data.status);
+
+    // Clean up progress indicators
+    _removeProgressElement(data.task_id);
+    const barEl = document.querySelector('.video-progress-bar[data-task-id="' + data.task_id + '"]');
+    if (barEl) barEl.remove();
+    const previewEl = document.querySelector('.image-preview-container[data-task-id="' + data.task_id + '"]');
+    if (previewEl) previewEl.remove();
 
     const reqInfo = pendingRequestIds[data.task_id];
     if (!reqInfo) {
@@ -525,18 +695,19 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
             }
         }
 
-        // Set raw text for copy button
+        // Set raw text for copy button (strip thinking tags)
         if (result && result.response) {
-            streamMsg.setAttribute('data-raw-text', result.response);
+            streamMsg.setAttribute('data-raw-text', _stripThinkingTags(result.response));
         }
 
-        // Replace content with full rendered markdown
+        // Replace content with full rendered markdown (sanitized to prevent XSS)
         var contentDiv = streamMsg.querySelector('.message-content');
         if (contentDiv && result && result.response) {
-            contentDiv.innerHTML = marked.parse(result.response);
+            var cleanResponse = _stripThinkingTags(result.response);
+            contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(cleanResponse));
         } else if (contentDiv && result && result.error) {
             // Show error in streaming message if no response text
-            contentDiv.innerHTML = '⚠️ ' + t('error') + ': ' + result.error;
+            contentDiv.innerHTML = DOMPurify.sanitize('⚠️ ' + t('error') + ': ' + result.error);
         }
 
         // Display file attachments (image, video) from result if present
@@ -555,6 +726,7 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
                         imgContainer.className = 'image-container';
                         var img = document.createElement('img');
                         img.src = fileUrl;
+                        img.loading = 'lazy';
                         img.className = 'attached-image';
                         img.alt = result.file_name || t('image');
                         img.title = t('click_to_enlarge');
@@ -567,6 +739,7 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
                     if (!existingVideo) {
                         var video = document.createElement('video');
                         video.controls = true;
+                        video.preload = 'metadata';
                         video.src = fileUrl;
                         video.style.maxWidth = '100%';
                         video.style.maxHeight = '400px';
@@ -627,6 +800,33 @@ function restorePendingRequests() {
             }
         }
     } catch (e) { /* ignore */ }
+}
+
+function verifyPendingRequests() {
+    // On SSE reconnect, check if any pending tasks already completed on the server.
+    // Fixes stuck hourglasses when result_completed event was lost during disconnection.
+    const ids = Object.keys(pendingRequestIds);
+    if (ids.length === 0) return;
+
+    ids.forEach(function (reqId) {
+        fetchWithCSRF('/api/queue/result/' + reqId)
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                if (data.status === 'completed' && data.result) {
+                    const info = pendingRequestIds[reqId];
+                    const sessionId = info ? info.sessionId : null;
+                    clearPendingRequest(reqId);
+                    handleCompletedResult(data.result, sessionId);
+                } else if (data.status === 'error') {
+                    const info = pendingRequestIds[reqId];
+                    const sessionId = info ? info.sessionId : null;
+                    clearPendingRequest(reqId);
+                    handleErrorResult(data, sessionId);
+                }
+                // 'pending' means still running — leave it in pendingRequestIds
+            })
+            .catch(function () { /* ignore network errors */ });
+    });
 }
 
 function clearPendingRequest(requestId) {
@@ -821,7 +1021,30 @@ function onMessageNew(data) {
         return;
     }
 
-    // Fetch the full message data from server
+    // Use inline message data from SSE event (avoids fetching 50 messages)
+    if (data.message) {
+        var msg = data.message;
+        if (!displayedMessageIds.has(msg.id)) {
+            displayedMessageIds.add(msg.id);
+            var responseTime = null;
+            if (msg.response_time) {
+                if (typeof msg.response_time === 'object') responseTime = msg.response_time;
+                else if (!isNaN(parseFloat(msg.response_time))) responseTime = parseFloat(msg.response_time);
+            }
+            window.displayMessage(
+                msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
+                msg.timestamp, responseTime, msg.model_name,
+                msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
+                msg.response_style, msg.completion_tokens
+            );
+            if (sessionsData[data.session_id]) {
+                sessionsData[data.session_id].message_count = (sessionsData[data.session_id].message_count || 0) + 1;
+            }
+        }
+        return;
+    }
+
+    // Fallback: fetch the full message data from server (legacy path)
     fetch('/api/sessions/' + data.session_id + '/messages?limit=50')
         .then(function (res) { return res.ok ? res.json() : null; })
         .then(function (json) {
@@ -854,6 +1077,50 @@ function onMessageNew(data) {
         .catch(function () {});
 }
 
+// ── Progress restore after reconnect / page reload ──────────────────
+
+async function restoreTaskProgress() {
+    for (const [taskId, info] of Object.entries(pendingRequestIds)) {
+        if (info.sessionId !== currentSessionId) continue;
+        if (info._progressRestored) continue;
+
+        try {
+            const resp = await fetch('/api/queue/progress/' + taskId);
+            const json = await resp.json();
+            const progress = json && json.progress;
+            if (!progress) continue;
+
+            info._progressRestored = true;
+
+            if (progress.type === 'video_step') {
+                onVideoStep({
+                    session_id: info.sessionId,
+                    task_id: taskId,
+                    step: progress.step,
+                    total: progress.total,
+                    percent: progress.percent,
+                });
+            } else if (progress.type === 'image_step') {
+                onImageStep({
+                    session_id: info.sessionId,
+                    task_id: taskId,
+                    step: progress.step,
+                    total: progress.total,
+                    percent: progress.percent,
+                });
+            } else if (progress.type === 'task_progress') {
+                onTaskProgress({
+                    session_id: info.sessionId,
+                    task_id: taskId,
+                    stage: progress.stage,
+                });
+            }
+        } catch (e) {
+            dlog('Failed to restore progress for', taskId, e);
+        }
+    }
+}
+
 // ── Initialisation ───────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -867,6 +1134,7 @@ document.addEventListener('visibilitychange', function () {
         connectEventStream();
         if (typeof loadSessionsFromServer === 'function') loadSessionsFromServer();
         if (typeof fetchQueueStatus === 'function') fetchQueueStatus();
+        if (typeof restoreTaskProgress === 'function') restoreTaskProgress();
     }
 });
 
@@ -875,6 +1143,7 @@ window.connectEventStream = connectEventStream;
 window.disconnectEventStream = disconnectEventStream;
 window.trackPendingRequest = trackPendingRequest;
 window.restoreStreamingFromSessionStorage = restoreStreamingFromSessionStorage;
+window.restoreTaskProgress = restoreTaskProgress;
 
 // Fallback polling: refresh queue status every 5s while there are pending requests
 setInterval(function () {

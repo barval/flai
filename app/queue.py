@@ -1,8 +1,10 @@
 # app/queue.py
+import contextlib
 import hashlib
 import hmac
 import json
 import os
+import re
 import subprocess
 import threading
 import time
@@ -89,9 +91,9 @@ class RedisRequestQueue:
         self._shutdown_event = threading.Event()
 
         # NEW: Global GPU serialization locks
-        if not hasattr(self, '_gpu_lock'):
+        if not hasattr(self, "_gpu_lock"):
             self._gpu_lock = threading.Lock()
-        if not hasattr(self, '_video_unload_lock'):
+        if not hasattr(self, "_video_unload_lock"):
             self._video_unload_lock = threading.Lock()
         # Fast worker — text, audio, RAG, camera
         fast_thread = threading.Thread(target=self._worker_loop_fast, name="fast-worker", daemon=False)
@@ -386,9 +388,15 @@ class RedisRequestQueue:
         """Unconditionally free VRAM after a GPU-using task completes."""
         try:
             from app.resource_manager import get_resource_manager
+
             rm = get_resource_manager()
             rm.unload_llamacpp_model()
             rm.unload_video_pipeline()
+            # After video generation: restart LTX-Video container to free CUDA context (~3 GB).
+            # The gunicorn worker inside flai-ltxvideo holds a CUDA context that survives
+            # /v1/unload — only a container restart releases it.
+            if task.get("type") == "video":
+                rm._force_restart_ltx_video()
             # Invalidate active model tracking in ALL llamacpp instances
             for module_name in ("base", "multimodal", "rag"):
                 module = self.app.modules.get(module_name)
@@ -396,6 +404,7 @@ class RedisRequestQueue:
                     module.llamacpp.reset_active_model()
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
             except ImportError:
@@ -489,7 +498,7 @@ class RedisRequestQueue:
             current_model = self._get_model_for_task(task)
             # Chat model stays hot in VRAM (TTL=600s) — only unload heavier models.
             # Unloading chat after every request caused cold starts (+2-3s) and CUDA fragmentation.
-            if current_model in ("reasoning", "multimodal", "embedding"):
+            if current_model in ("reasoning", "multimodal", "embedding") or task.get("type") == "video":
                 self._cleanup_vram_after_task(task)
 
     def _worker_loop_fast(self):
@@ -575,8 +584,7 @@ class RedisRequestQueue:
                 return answer, model_name
             if error:
                 self.logger.warning(
-                    f"RAG generate_answer returned error: {error} "
-                    f"for query: {query[:80]}... user_id={user_id}"
+                    f"RAG generate_answer returned error: {error} for query: {query[:80]}... user_id={user_id}"
                 )
         return None, None
 
@@ -590,8 +598,9 @@ class RedisRequestQueue:
         from .db import save_message
 
         completion_time = get_current_time_in_timezone_for_db(self.app)
+        prefix = "" if error.startswith("⚠️") else "⚠️ "
         msg_id = save_message(
-            session_id, "assistant", "⚠️ " + error, model_name="system", response_time=str(process_time)
+            session_id, "assistant", prefix + error, model_name="system", response_time=str(process_time)
         )
         return {
             "error": error,
@@ -603,17 +612,102 @@ class RedisRequestQueue:
 
     @staticmethod
     def _is_llm_error_string(text: str) -> bool:
-        """Check if a string from call_llamacpp/chat_stream is an error message."""
+        """Check if a string from call_llamacpp/chat_stream is an error message.
+
+        Uses prefix matching (not substring) to avoid false positives when the
+        LLM generates code containing words like "Error:", "Timeout", "GPU memory".
+        Backend errors always START with these phrases — never appear at position 0
+        in LLM-generated code or explanations.
+
+        Also handles streaming: if the accumulated text contains "⚠️ " followed
+        by an error indicator, it's an error even if it doesn't start the string.
+        The "⚠️ " marker is only added by _format_user_error(), never by the LLM.
+        """
         if not isinstance(text, str):
             return False
-        indicators = (
-            "GPU memory", "HTTP error", "Could not connect", "Timeout",
-            "Service temporarily unavailable", "Circuit breaker",
-            "Model configuration missing", "Model for ", "not configured",
-            "Error:", "error occurred",
-            "Failed to load",  # llama.cpp stb_image/audio decoder error
+        # Level 1: "⚠️ " prefix catches most errors from _format_user_error()
+        if text.startswith("⚠️"):
+            return True
+        # Level 2: Specific prefix patterns for errors returned as plain strings
+        # from call_llamacpp(), chat_stream(), process_reasoning(), and queue.py _().
+        # Both English and Russian variants are listed.
+        error_prefixes = (
+            # GPU memory errors (en + ru)
+            "GPU memory ",  # "GPU memory unavailable..."
+            "Память GPU ",  # ru: "Память GPU недоступна..."
+            "Проверка памяти GPU",  # ru: "Проверка памяти GPU не удалась"
+            # Timeout (en + ru)
+            "Timeout (",  # "Timeout (300s) when calling..."
+            "Таймаут (",  # ru: "Таймаут (300с) при вызове..."
+            # Connection errors (en + ru)
+            "Could not connect",  # "Could not connect to llama-server/swap"
+            "Не удалось подключиться",  # ru
+            # Service availability (en + ru)
+            "Service temporarily unavailable",  # circuit breaker
+            "Сервис временно недоступен",  # ru
+            # Model configuration (en + ru)
+            "Model configuration missing",
+            "Model for ",  # "Model for chat not configured"
+            "Модель для ",  # ru
+            "не настроена",  # ru: "Модель для chat не настроена"
+            # Generic errors (en + ru)
+            "Error: ",  # "Error: <exception>" (en, note trailing space)
+            "Ошибка: ",  # ru: "Ошибка: <exception>" (note trailing space)
+            "Internal error:",  # "Internal error: no response from model"
+            "Внутренняя ошибка:",  # ru
+            "HTTP error",  # "HTTP error 400" (en)
+            "Ошибка HTTP",  # ru
+            # Request errors (en + ru)
+            "Request too long",  # "Request too long, please simplify"
+            "Запрос слишком длинный",  # ru
+            "Request cancelled",  # "Request cancelled - too long in queue"
+            "Запрос отменён",  # ru
+            # Model response errors (en + ru)
+            "Model returned empty response",
+            "Модель вернула пустой ответ",  # ru
+            # Reasoning errors (en + ru)
+            "Reasoning model unavailable:",  # "Reasoning model unavailable: GPU memory..."
+            "Модель рассуждения недоступна:",  # ru
+            "Reasoning failed:",  # "Reasoning failed: GPU memory exhausted..."
+            "Рассуждение не удалось:",  # ru
+            # Video generation errors (en + ru)
+            "Video generation failed:",  # "Video generation failed: GPU memory..."
+            "Генерация видео не удалась:",  # ru
+            # Prompt template errors (en + ru)
+            "Error loading prompt template",
+            "Ошибка загрузки шаблона промпта",  # ru
+            # CUDA OOM (from llama.cpp directly, not translated)
+            "CUDA out of memory",
+            # llama-swap specific (Go binary, not translated)
+            "upstream command exited",
+            "exited prematurely",
+            "unable to start process",
         )
-        return any(ind in text for ind in indicators)
+        if any(text.startswith(pfx) for pfx in error_prefixes):
+            return True
+        # Level 3: Streaming errors — "⚠️ " marker appears after normal tokens.
+        # The "⚠️ " prefix is only added by _format_user_error(), never by LLM.
+        # So if we find "⚠️ " followed by an error prefix, it's definitely an error.
+        if "⚠️ " in text:
+            idx = text.index("⚠️ ")
+            tail = text[idx + 3:]  # skip "⚠️ "
+            if any(tail.startswith(pfx) for pfx in error_prefixes):
+                return True
+        return False
+
+    @staticmethod
+    def _strip_thinking_tags(text: str) -> str:
+        """Remove thinking/reasoning blocks from model output.
+
+        Primary filtering happens in llamacpp_client.py at the backend level.
+        This is a safety net for responses saved to DB.
+        Handles: `` and `<|channel|>analysis<|message|>...<|end|>`.
+        """
+        if not text or ("<think" not in text and "<|channel|>" not in text):
+            return text
+        text = re.sub(r"<think[\s>][\s\S]*?</think>", "", text)
+        text = re.sub(r"<\|channel\|>analysis<\|message\|>[\s\S]*?<\|end\|>", "", text)
+        return text.strip()
 
     def _build_success_response(
         self,
@@ -650,6 +744,7 @@ class RedisRequestQueue:
             # Clear CUDA cache to reduce fragmentation after video unload
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                     torch.cuda.synchronize()
@@ -728,6 +823,7 @@ class RedisRequestQueue:
 
         try:
             import requests as req
+
             swap_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
             resp = req.get(f"{swap_url.rstrip('/')}/running", timeout=5)
             if resp.status_code == 200:
@@ -753,9 +849,7 @@ class RedisRequestQueue:
                 free = int(out.stdout.strip().split("\n")[0].strip())
                 ready = free >= needed_mb
                 if not ready:
-                    self.logger.warning(
-                        f"VRAM check failed after unload: {free}MB free, need {needed_mb}MB"
-                    )
+                    self.logger.warning(f"VRAM check failed after unload: {free}MB free, need {needed_mb}MB")
                 return ready
         except Exception as e:
             self.logger.error(f"VRAM verification failed: {e}")
@@ -800,6 +894,7 @@ class RedisRequestQueue:
             loaded_count = -1  # unknown
             try:
                 import requests as req
+
                 resp = req.get(f"{llamacpp_url.rstrip('/')}/running", timeout=5)
                 if resp.status_code == 200:
                     loaded_count = len(resp.json().get("running", []))
@@ -807,10 +902,7 @@ class RedisRequestQueue:
                 pass
 
             if loaded_count == 0 and free >= min_free:
-                self.logger.info(
-                    f"VRAM full-ready: {free}MB free, "
-                    f"0 LLM models loaded, need ≥{min_free}MB"
-                )
+                self.logger.info(f"VRAM full-ready: {free}MB free, 0 LLM models loaded, need ≥{min_free}MB")
                 return True
 
             if loaded_count == 0:
@@ -818,12 +910,9 @@ class RedisRequestQueue:
             else:
                 self.logger.info(f"VRAM: {free}MB free, {loaded_count} model(s) loaded — re-triggering unload...")
                 self._unload_llamacpp_models()
-            time.sleep(2)
+            time.sleep(1)
 
-        self.logger.warning(
-            f"VRAM wait timeout ({timeout}s): {free}MB free, need {min_free}MB, "
-            f"models={loaded_count}"
-        )
+        self.logger.warning(f"VRAM wait timeout ({timeout}s): {free}MB free, need {min_free}MB, models={loaded_count}")
         return False
 
     def _unload_llamacpp_models(self):
@@ -870,11 +959,9 @@ class RedisRequestQueue:
                     running = data.get("running", [])
                     if len(running) > 0:
                         # Models reloaded by llama-swap (TTL) — unload again (no limit)
-                        self.logger.info(
-                            f"VRAM: {len(running)} model(s) still running during wait, unloading again"
-                        )
+                        self.logger.info(f"VRAM: {len(running)} model(s) still running during wait, unloading again")
                         self._unload_llamacpp_models()
-                        time.sleep(2)
+                        time.sleep(1)
                         continue
                     # len(running) == 0
                     # Force CUDA deallocation to combat fragmentation
@@ -904,8 +991,8 @@ class RedisRequestQueue:
 
                 self.app.logger.info(f"VRAM: waiting... (needed={needed_mb}MB, timeout={timeout}s)")
             except Exception as e:
-                self.logger.debug(f"VRAM poll error: {e}")
-            time.sleep(2)
+                self.app.logger.debug(f"VRAM poll error: {e}")
+            time.sleep(1)
 
         self.logger.error(f"VRAM wait timeout ({timeout}s) — insufficient VRAM, returning False")
         return False
@@ -921,6 +1008,7 @@ class RedisRequestQueue:
         user_id: str,
         lang: str,
         response_style: str = "neutral",
+        task: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle image editing request (image uploaded + edit comment)."""
         # Pre-operation monitoring and VRAM cleanup
@@ -930,19 +1018,30 @@ class RedisRequestQueue:
         self._unload_llamacpp_models()
         self._unload_video_pipeline()
 
+        self._publish_stream_event(task, "task_progress", {"stage": "preparing_gpu"})
+
         # Wait for guaranteed free VRAM (multimodal model needs ~8GB with KV cache)
         if not self._wait_for_vram(self._get_vram_needed("multimodal")):
             error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang=lang)
             return self._build_error_response(session_id, error_msg, 0, lang)
 
         mm_start = time.time()
+        if task:
+            self._publish_stream_event(task, "task_progress", {"stage": "analyzing_image"})
         edit_data, error = self.app.modules["multimodal"].generate_edit_params(message_text, file_data, lang=lang)
         mm_time = round(time.time() - mm_start, 1)
         if error:
             return self._build_error_response(session_id, error, mm_time, lang)
 
         edit_start = time.time()
-        image_result = self.app.modules["image"].edit_image(edit_data, file_data, lang=lang)
+        if task:
+            self._publish_stream_event(task, "task_progress", {"stage": "editing_image"})
+        image_result = self.app.modules["image"].edit_image(
+            edit_data, file_data, lang=lang,
+            task_id=task.get("id") if task else None,
+            user_id=user_id,
+            session_id=session_id,
+        )
         edit_time = round(time.time() - edit_start, 1)
 
         if not image_result["success"]:
@@ -1021,7 +1120,8 @@ class RedisRequestQueue:
         )
 
     def _process_image_gen_task(
-        self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
+        self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral",
+        task: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle image generation from text (router action_type='image')."""
         if "image" not in self.app.modules:
@@ -1041,6 +1141,8 @@ class RedisRequestQueue:
         self._unload_llamacpp_models()
         self._unload_video_pipeline()
 
+        self._publish_stream_event(task, "task_progress", {"stage": "preparing_gpu"})
+
         # Wait for guaranteed free VRAM (multimodal model needs ~8GB with KV cache)
         if not self._wait_for_vram(self._get_vram_needed("multimodal")):
             error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang=lang)
@@ -1051,6 +1153,8 @@ class RedisRequestQueue:
             return self._build_error_response(session_id, error_msg, 0, lang)
 
         mm_start = time.time()
+        if task:
+            self._publish_stream_event(task, "task_progress", {"stage": "analyzing_prompt"})
         prompt_data, error = self.app.modules["multimodal"].generate_image_params(
             query, lang=lang, response_style=response_style
         )
@@ -1059,7 +1163,14 @@ class RedisRequestQueue:
             return self._build_error_response(session_id, error, mm_time, lang)
 
         gen_start = time.time()
-        image_result = self.app.modules["image"]._call_wrapper(prompt_data, lang=lang)
+        if task:
+            self._publish_stream_event(task, "task_progress", {"stage": "generating_image"})
+        image_result = self.app.modules["image"]._call_wrapper(
+            prompt_data, lang=lang,
+            task_id=task.get("id") if task else None,
+            user_id=user_id,
+            session_id=session_id,
+        )
         gen_time = round(time.time() - gen_start, 1)
 
         if not image_result["success"]:
@@ -1215,7 +1326,7 @@ class RedisRequestQueue:
         user_id = task["user_id"]
         lang = task.get("lang", "ru")
         response_style = request_data.get("response_style", "neutral")
-        return self._process_image_gen_task(query, session_id, user_id, lang, response_style)
+        return self._process_image_gen_task(query, session_id, user_id, lang, response_style, task=task)
 
     def _process_reasoning_request(self, task: dict[str, Any]) -> dict[str, Any]:
         """Handle a reasoning task from the slow queue.
@@ -1234,12 +1345,12 @@ class RedisRequestQueue:
         # Pre-operation monitoring
         self._log_gpu_state_before_op("reasoning", 12000)
 
+        self._publish_stream_event(task, "task_progress", {"stage": "loading_reasoning_model"})
+
         # Use pre-computed RAG context from fast worker, or search fresh
         rag_context = request_data.get("rag_context", "")
         if rag_context:
-            self.app.logger.info(
-                f"Using pre-computed RAG context: {len(rag_context)} chars from fast worker"
-            )
+            self.app.logger.info(f"Using pre-computed RAG context: {len(rag_context)} chars from fast worker")
         else:
             # No pre-computed context — try RAG answer directly (covers non-requeue paths)
             rag_start = time.time()
@@ -1263,6 +1374,7 @@ class RedisRequestQueue:
                     chunks, scores = rag.search(user_id, query, top_k=20)
                     if chunks:
                         from flask_babel import gettext as _
+
                         with force_locale(lang):
                             source_label = _("Source")
                         context_parts = []
@@ -1270,13 +1382,10 @@ class RedisRequestQueue:
                             filename = chunk.get("filename", "?")
                             text = chunk.get("text", str(chunk))
                             score = scores[i] if i < len(scores) else 0.0
-                            context_parts.append(
-                                f"[{source_label}: {filename} (score: {score:.2f})]\n{text}"
-                            )
+                            context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
                         rag_context = "\n\n".join(context_parts)
                         self.app.logger.info(
-                            f"RAG raw context: {len(chunks)} chunks, {len(rag_context)} chars "
-                            f"passed to reasoning model"
+                            f"RAG raw context: {len(chunks)} chunks, {len(rag_context)} chars passed to reasoning model"
                         )
                 except Exception as e:
                     self.app.logger.debug(f"RAG raw context collection failed: {e}")
@@ -1293,15 +1402,16 @@ class RedisRequestQueue:
             self.logger.error(f"VRAM check for reasoning failed: {e}")
 
         if not vram_ok:
-            error_msg = self.app.modules["base"]._("Reasoning model unavailable: GPU memory check failed. Try again.", lang=lang)
+            error_msg = self.app.modules["base"]._(
+                "Reasoning model unavailable: GPU memory check failed. Try again.", lang=lang
+            )
             return self._build_error_response(session_id, error_msg, 0, lang)
 
-        # Brief pause to let CUDA finish deallocation after model unload — prevents 502
-        time.sleep(3)
-
         current_time_str = get_current_time_in_timezone(self.app)
-        reasoning_start = time.time()
-        result = self.app.modules["base"].process_reasoning(
+        stream_start = time.time()
+        full_response = ""
+        error_detected = False
+        for token in self.app.modules["base"].generate_reasoning_response_stream(
             query,
             current_time_str,
             lang=lang,
@@ -1309,18 +1419,27 @@ class RedisRequestQueue:
             response_style=response_style,
             user_id=user_id,
             rag_context=rag_context,
-        )
-        reasoning_time = round(time.time() - reasoning_start, 1)
-        if isinstance(result, dict) and "error" in result:
-            err = result["error"]
-            if "CUDA out of memory" in str(err):
-                err = self.app.modules["base"]._("Reasoning failed: GPU memory exhausted. Please simplify your request.", lang=lang)
-            return self._build_error_response(session_id, err, reasoning_time, lang)
-        if isinstance(result, str) and self._is_llm_error_string(result):
-            return self._build_error_response(session_id, result, reasoning_time, lang)
+        ):
+            full_response += token
+            if not error_detected:
+                if self._is_llm_error_string(full_response):
+                    error_detected = True
+                else:
+                    self._publish_stream_token(task, token)
+            if self._is_task_cancelled(task["id"]):
+                break
+        reasoning_time = round(time.time() - stream_start, 1)
+        full_response = self._strip_thinking_tags(full_response)
+        if not full_response.strip():
+            return self._build_error_response(
+                session_id, "⚠️ " + self.app.modules["base"]._("No response from reasoning model", lang),
+                reasoning_time, lang,
+            )
+        if self._is_llm_error_string(full_response):
+            return self._build_error_response(session_id, full_response, reasoning_time, lang)
         return self._save_and_respond(
             session_id,
-            result,
+            full_response,
             self._get_model_name("reasoning") or "reasoning",
             reasoning_time,
             response_style=response_style,
@@ -1338,13 +1457,16 @@ class RedisRequestQueue:
         lang = task.get("lang", "ru")
         response_style = request_data.get("response_style", "neutral")
 
+        self._publish_stream_event(task, "task_progress", {"stage": "preparing_gpu"})
+
         file_data = request_data.get("file_data")
         if file_data:
-            return self._process_video_gen_task_from_image(query, file_data, session_id, user_id, lang, response_style)
-        return self._process_video_gen_task(query, session_id, user_id, lang, response_style)
+            return self._process_video_gen_task_from_image(query, file_data, session_id, user_id, lang, response_style, task=task)
+        return self._process_video_gen_task(query, session_id, user_id, lang, response_style, task=task)
 
     def _process_video_gen_task(
-        self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
+        self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral",
+        task: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle video generation from text (router action_type='video')."""
         if "video" not in self.app.modules:
@@ -1371,6 +1493,8 @@ class RedisRequestQueue:
                 return self._build_error_response(session_id, error_msg, 0, lang)
 
             mm_start = time.time()
+            if task:
+                self._publish_stream_event(task, "task_progress", {"stage": "analyzing"})
             prompt_data, error = self.app.modules["multimodal"].generate_video_params(
                 query, lang=lang, response_style=response_style
             )
@@ -1384,6 +1508,7 @@ class RedisRequestQueue:
             self._unload_llamacpp_models()
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                     torch.cuda.synchronize()
@@ -1400,13 +1525,25 @@ class RedisRequestQueue:
                 return self._build_error_response(session_id, error_msg, mm_time, lang)
 
             gen_start = time.time()
-            video_result = self.app.modules["video"].generate_video(prompt_data, lang=lang)
+            if task:
+                self._publish_stream_event(task, "task_progress", {"stage": "generating_video"})
+            video_result = self.app.modules["video"].generate_video(
+                prompt_data, lang=lang, user_id=user_id, session_id=session_id, task_id=task.get("id") if task else None
+            )
             gen_time = round(time.time() - gen_start, 1)
 
             if not video_result["success"]:
                 err_msg = video_result.get("error", "")
                 if "CUDA out of memory" in str(err_msg):
-                    err_msg = self.app.modules["base"]._("Video generation failed: GPU memory exhausted. Please simplify your request.", lang=lang)
+                    err_msg = self.app.modules["base"]._(
+                        "Video generation failed: GPU memory exhausted. Please simplify your request.", lang=lang
+                    )
+                    try:
+                        from app.tasks.health_monitor import record_ltx_video_oom
+
+                        record_ltx_video_oom()
+                    except Exception:
+                        pass
                 return self._build_error_response(session_id, err_msg, mm_time + gen_time, lang)
 
             # Record peak VRAM for future estimates
@@ -1443,7 +1580,12 @@ class RedisRequestQueue:
                 "gen_time": gen_time,
                 "mm_model": mm_model,
                 "gen_model": video_model,
-                "response_time": {"mm_time": mm_time, "gen_time": gen_time, "mm_model": mm_model, "gen_model": video_model},
+                "response_time": {
+                    "mm_time": mm_time,
+                    "gen_time": gen_time,
+                    "mm_model": mm_model,
+                    "gen_model": video_model,
+                },
                 "metadata": video_result.get("metadata", {}),
             }
             return self._save_and_respond(
@@ -1465,7 +1607,8 @@ class RedisRequestQueue:
             self._unload_llamacpp_models()
 
     def _process_video_gen_task_from_image(
-        self, query: str, image_data: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
+        self, query: str, image_data: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral",
+        task: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle video generation from image + text ([-VIDEO-] marker route)."""
         if "video" not in self.app.modules:
@@ -1491,6 +1634,8 @@ class RedisRequestQueue:
                 return self._build_error_response(session_id, error_msg, 0, lang)
 
             mm_start = time.time()
+            if task:
+                self._publish_stream_event(task, "task_progress", {"stage": "analyzing_image"})
             mm_model = self.app.modules.get("multimodal")
             prompt_data, error = (
                 mm_model.generate_video_params_from_image(query, image_data, lang=lang, response_style=response_style)
@@ -1507,6 +1652,7 @@ class RedisRequestQueue:
             self._unload_llamacpp_models()
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                     torch.cuda.synchronize()
@@ -1520,13 +1666,26 @@ class RedisRequestQueue:
                 return self._build_error_response(session_id, error_msg, mm_time, lang)
 
             gen_start = time.time()
-            video_result = self.app.modules["video"].generate_video(prompt_data, image_data=image_data, lang=lang)
+            if task:
+                self._publish_stream_event(task, "task_progress", {"stage": "generating_video"})
+            video_result = self.app.modules["video"].generate_video(
+                prompt_data, image_data=image_data, lang=lang, user_id=user_id, session_id=session_id,
+                task_id=task.get("id") if task else None,
+            )
             gen_time = round(time.time() - gen_start, 1)
 
             if not video_result["success"]:
                 err_msg = video_result.get("error", "")
                 if "CUDA out of memory" in str(err_msg):
-                    err_msg = self.app.modules["base"]._("Video generation failed: GPU memory exhausted. Please simplify your request.", lang=lang)
+                    err_msg = self.app.modules["base"]._(
+                        "Video generation failed: GPU memory exhausted. Please simplify your request.", lang=lang
+                    )
+                    try:
+                        from app.tasks.health_monitor import record_ltx_video_oom
+
+                        record_ltx_video_oom()
+                    except Exception:
+                        pass
                 return self._build_error_response(session_id, err_msg, mm_time + gen_time, lang)
 
             # Record peak VRAM for future estimates
@@ -1554,7 +1713,7 @@ class RedisRequestQueue:
                             "The image has been resized from {orig_w}×{orig_h} to {new_w}×{new_h}.",
                             lang=lang_for_msg,
                         )
-                        .format(max_w=896, max_h=896, orig_w=orig_w, orig_h=orig_h, new_w=new_w, new_h=new_h)
+                        .format(max_w=768, max_h=768, orig_w=orig_w, orig_h=orig_h, new_w=new_w, new_h=new_h)
                     )
                 resize_notice_id = save_message(
                     session_id, "assistant", resize_text, model_name="system", response_time="0"
@@ -1674,7 +1833,10 @@ class RedisRequestQueue:
             self._unload_video_pipeline()
             if not self._wait_for_vram(self._get_vram_needed("multimodal")):
                 error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang=lang)
-                return {"messages": [self._build_error_response(session_id, error_msg, 0, lang)], "session_id": session_id}
+                return {
+                    "messages": [self._build_error_response(session_id, error_msg, 0, lang)],
+                    "session_id": session_id,
+                }
             mm_start = time.time()
             bot_reply, error = self.app.modules["multimodal"].process_image_with_text(
                 camera_result["image_data"],
@@ -1712,6 +1874,8 @@ class RedisRequestQueue:
             return self._build_error_response(
                 session_id, self.app.modules["base"]._("Camera module unavailable", lang=lang), 0, lang
             )
+
+        self._publish_stream_event(task, "task_progress", {"stage": "capturing_snapshot"})
 
         camera_start = time.time()
         camera_result = self.app.modules["cam"].get_snapshot(user_id, query, lang=lang)
@@ -1807,9 +1971,7 @@ class RedisRequestQueue:
             self.app.logger.info(f"Task {task['id']} cancelled during camera stream")
             self._publish_stream_event(task, "stream_cancelled")
         if self._is_llm_error_string(full_response):
-            return self._build_error_response(
-                session_id, full_response, mm_time, lang
-            )
+            return self._build_error_response(session_id, full_response, mm_time, lang)
         return self._save_and_respond(
             session_id,
             full_response,
@@ -1841,6 +2003,7 @@ class RedisRequestQueue:
             chunks, scores = rag.search(user_id, query, top_k=20)
             if chunks:
                 from flask_babel import gettext as _
+
                 with force_locale(lang):
                     source_label = _("Source")
                 context_parts = []
@@ -1848,9 +2011,7 @@ class RedisRequestQueue:
                     filename = chunk.get("filename", "?")
                     text = chunk.get("text", str(chunk))
                     score = scores[i] if i < len(scores) else 0.0
-                    context_parts.append(
-                        f"[{source_label}: {filename} (score: {score:.2f})]\n{text}"
-                    )
+                    context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
                 rag_context = "\n\n".join(context_parts)
                 self.app.logger.info(
                     f"RAG search: {len(chunks)} chunks, {len(rag_context)} chars — requeueing to slow worker"
@@ -1873,7 +2034,11 @@ class RedisRequestQueue:
 
         # Step 2: Re-queue to slow worker for reasoning model generation
         return self._requeue_reasoning_task(
-            query, session_id, user_id, lang, response_style,
+            query,
+            session_id,
+            user_id,
+            lang,
+            response_style,
             rag_context=rag_context,
         )
 
@@ -1906,6 +2071,7 @@ class RedisRequestQueue:
             chunks, scores = rag.search(user_id, query, top_k=20)
             if chunks:
                 from flask_babel import gettext as _
+
                 with force_locale(lang):
                     source_label = _("Source")
                 context_parts = []
@@ -1913,9 +2079,7 @@ class RedisRequestQueue:
                     filename = chunk.get("filename", "?")
                     text = chunk.get("text", str(chunk))
                     score = scores[i] if i < len(scores) else 0.0
-                    context_parts.append(
-                        f"[{source_label}: {filename} (score: {score:.2f})]\n{text}"
-                    )
+                    context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
                 rag_context = "\n\n".join(context_parts)
                 self.app.logger.info(
                     f"RAG search: {len(chunks)} chunks, {len(rag_context)} chars — requeueing to slow worker"
@@ -1938,7 +2102,11 @@ class RedisRequestQueue:
 
         # Step 2: Re-queue to slow worker for reasoning model generation
         return self._requeue_reasoning_task(
-            query, session_id, user_id, lang, response_style,
+            query,
+            session_id,
+            user_id,
+            lang,
+            response_style,
             rag_context=rag_context,
         )
 
@@ -2048,31 +2216,48 @@ class RedisRequestQueue:
         action_type = router_result["action"]
         query = router_result["query"]
 
-        # Stream reasoning — try RAG first, only fall back to reasoning if RAG fails
+        # Reasoning — search RAG on fast worker, then requeue to slow worker for generation.
+        # NEVER call rag.generate_answer() on the fast worker — it loads the reasoning model
+        # (~10 GiB) and blocks _gpu_lock for minutes, freezing all other tasks.
         if action_type == "reasoning" and router_result.get("needs_reasoning"):
-            rag_start = time.time()
-            rag_answer, rag_model = self._try_rag_answer(
-                query, session_id, user_id, lang, strict=True, response_style=response_style
-            )
-            if rag_answer is not None:
-                if self._is_llm_error_string(rag_answer):
-                    return self._build_error_response(
-                        session_id, rag_answer, round(time.time() - rag_start, 1), lang
-                    )
-                model_used = rag_model + " (RAG)" if rag_model else "unknown (RAG)"
-                self.app.logger.info(f"Streaming path: RAG answered for reasoning query: {query[:50]}...")
-                return self._save_and_respond(
-                    session_id, rag_answer, model_used, round(time.time() - rag_start, 1),
-                    response_style=response_style, user_id=user_id
-                )
-            self.app.logger.info(f"Streaming path: RAG returned no answer, falling back to reasoning model: {query[:50]}...")
+            rag = self.app.modules.get("rag")
+            rag_context = ""
+            if rag and rag.available:
+                rag_start = time.time()
+                try:
+                    chunks, scores = rag.search(user_id, query, top_k=20)
+                    rag_time = round(time.time() - rag_start, 1)
+                    if chunks:
+                        from flask_babel import gettext as _
+
+                        with force_locale(lang):
+                            source_label = _("Source")
+                        context_parts = []
+                        for i, chunk in enumerate(chunks[:15]):
+                            filename = chunk.get("filename", "?")
+                            text = chunk.get("text", str(chunk))
+                            score = scores[i] if i < len(scores) else 0.0
+                            context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
+                        rag_context = "\n\n".join(context_parts)
+                        self.app.logger.info(
+                            f"RAG search for reasoning: {len(chunks)} chunks, "
+                            f"{len(rag_context)} chars — requeueing to slow worker ({rag_time}s)"
+                        )
+                    else:
+                        self.app.logger.info(
+                            f"RAG search returned 0 chunks for reasoning query: {query[:50]}... "
+                            f"requeueing without context ({rag_time}s)"
+                        )
+                except Exception as e:
+                    self.logger.error(f"RAG search failed for reasoning: {e}")
             return self._requeue_reasoning_task(
-                query, session_id, user_id, lang, response_style, user_class=task.get("user_class", 2)
+                query, session_id, user_id, lang, response_style,
+                user_class=task.get("user_class", 2), rag_context=rag_context,
             )
 
         # Simple query: router classified but did not generate text.
         # Stream the response from chat model (already hot in VRAM).
-        if action_type == "none" or (action_type == "reasoning" and not router_result.get("needs_reasoning")):
+        if action_type in ("none", "fact") or (action_type == "reasoning" and not router_result.get("needs_reasoning")):
             stream_start = time.time()
             full_response = ""
             error_detected = False
@@ -2083,6 +2268,7 @@ class RedisRequestQueue:
                 session_id=session_id,
                 response_style=response_style,
                 user_id=user_id,
+                skip_slm=(action_type == "none"),
             ):
                 full_response += token
                 # Don't publish error tokens to client — they lack the "⚠️ " prefix.
@@ -2097,9 +2283,7 @@ class RedisRequestQueue:
             if not full_response.strip():
                 full_response = query
             if self._is_llm_error_string(full_response):
-                return self._build_error_response(
-                    session_id, full_response, round(time.time() - stream_start, 1), lang
-                )
+                return self._build_error_response(session_id, full_response, round(time.time() - stream_start, 1), lang)
             return self._save_and_respond(
                 session_id,
                 full_response,
@@ -2249,7 +2433,9 @@ class RedisRequestQueue:
                 self._unload_llamacpp_models()
                 self._unload_video_pipeline()
                 if not self._wait_for_vram(self._get_vram_needed("multimodal")):
-                    bot_reply = "⚠️ " + self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang)
+                    bot_reply = "⚠️ " + self.app.modules["base"]._(
+                        "GPU memory unavailable. Try again in a moment.", lang
+                    )
                     process_time = round(time.time() - process_start, 1)
                     is_error = True
                 else:
@@ -2367,8 +2553,12 @@ class RedisRequestQueue:
             bot_reply = "⚠️ " + self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang)
             process_time = round(time.time() - process_start, 1)
             return self._save_and_respond(
-                session_id, bot_reply, "system", process_time,
-                is_error=True, response_style=response_style,
+                session_id,
+                bot_reply,
+                "system",
+                process_time,
+                is_error=True,
+                response_style=response_style,
             )
         stream_gen = self.app.modules["multimodal"].process_image_with_text_stream(
             file_data,
@@ -2433,6 +2623,7 @@ class RedisRequestQueue:
                             user_id,
                             lang,
                             response_style,
+                            task=task,
                         )
                     bot_reply = "⚠️ " + self.app.modules["base"]._("Image editing request was empty", lang)
                     process_time = round(time.time() - process_start, 1)
@@ -2624,17 +2815,35 @@ class RedisRequestQueue:
 
         if voice_record:
             response_style = request_data.get("response_style", "neutral")
-            text_request_data = {
-                "type": "text",
-                "text": transcribed_text,
-                "preview": (transcribed_text[:50] + "...")
-                if transcribed_text
-                else self.app.modules["base"]._("Voice request", lang=lang),
-                "response_style": response_style,
-                "stream": True,
-            }
+            image_data = request_data.get("image_data")
+            image_type = request_data.get("image_type")
+            image_name = request_data.get("image_name")
+
+            if image_data:
+                # Image + voice: requeue as image task (multimodal processing)
+                requeue_request_data = {
+                    "type": "image",
+                    "text": transcribed_text,
+                    "file_data": image_data,
+                    "file_type": image_type,
+                    "file_name": image_name,
+                    "preview": (transcribed_text[:50] + "...") if transcribed_text else self.app.modules["base"]._("Voice request", lang=lang),
+                    "response_style": response_style,
+                    "stream": True,
+                }
+            else:
+                # Voice only: requeue as text task (router processing)
+                requeue_request_data = {
+                    "type": "text",
+                    "text": transcribed_text,
+                    "preview": (transcribed_text[:50] + "...")
+                    if transcribed_text
+                    else self.app.modules["base"]._("Voice request", lang=lang),
+                    "response_style": response_style,
+                    "stream": True,
+                }
             new_request_id, _ = self.app.request_queue.add_request(
-                user_id, session_id, text_request_data, user_class, lang=lang
+                user_id, session_id, requeue_request_data, user_class, lang=lang
             )
             return {
                 "transcribed_text": transcribed_text,
@@ -2834,6 +3043,17 @@ class RedisRequestQueue:
                 task["position_info"] = {"position": 0, "estimated_seconds": 0}
                 result["queued"].append(self._format_request_info(task, lang))
 
+        # Enrich processing entry with current stage from Redis progress hash
+        if result["processing"]:
+            task_id = result["processing"].get("id")
+            if task_id:
+                try:
+                    stage = self.redis.hget(f"task_progress:{task_id}", "stage")
+                    if stage:
+                        result["processing"]["stage"] = stage
+                except Exception:
+                    pass
+
         # Collect items actually waiting in queues
         position = 1
         for q_key in [self.queue_key, self.slow_queue_key]:
@@ -2897,6 +3117,29 @@ class RedisRequestQueue:
             },
         )
 
+    def _save_progress(self, task_id: str, progress_type: str, data: dict[str, Any]) -> None:
+        """Persist latest progress state in Redis for restore after reconnect/page reload."""
+        key = f"task_progress:{task_id}"
+        mapping = {"type": progress_type, "timestamp": str(time.time())}
+        if progress_type == "task_progress":
+            mapping["stage"] = data.get("stage", "")
+        elif progress_type in ("video_step", "image_step"):
+            mapping["step"] = str(data.get("step", 0))
+            mapping["total"] = str(data.get("total", 0))
+            mapping["percent"] = str(data.get("percent", 0))
+        try:
+            pipe = self.redis.pipeline()
+            pipe.hset(key, mapping=mapping)
+            pipe.expire(key, 1800)
+            pipe.execute()
+        except Exception:
+            pass  # non-critical
+
+    def _cleanup_progress(self, task_id: str) -> None:
+        """Remove progress hash when task completes."""
+        with contextlib.suppress(Exception):
+            self.redis.delete(f"task_progress:{task_id}")
+
     def _publish_stream_event(self, task: dict[str, Any], event_type: str, extra: dict | None = None) -> None:
         """Publish a streaming lifecycle event (e.g. stream_cancelled)."""
         user_id = task.get("user_id")
@@ -2912,6 +3155,8 @@ class RedisRequestQueue:
         if extra:
             payload.update(extra)
         publisher.publish(user_id, event_type, payload)
+        if event_type == "task_progress" and extra:
+            self._save_progress(task.get("id", ""), "task_progress", extra)
 
     def _publish_result_event(self, task: dict[str, Any], status: str, result_data: dict[str, Any]) -> None:
         """Publish task result to the user's SSE event stream."""
@@ -2931,6 +3176,7 @@ class RedisRequestQueue:
                 "result": result_data,
             },
         )
+        self._cleanup_progress(task.get("id", ""))
 
     def cancel_task(self, task_id: str) -> bool:
         """Mark a task as cancelled in Redis. Returns True if the task exists."""

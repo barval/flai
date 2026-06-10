@@ -96,6 +96,8 @@
 
 <!-- Markdown parser library -->
 <script src="{{ url_for('static', filename='js/marked.min.js', v=config.STATIC_VERSION) }}"></script>
+<!-- HTML sanitizer — prevents XSS from LLM-generated HTML in markdown -->
+<script src="{{ url_for('static', filename='js/purify.min.js', v=config.STATIC_VERSION) }}"></script>
 
 <!-- JavaScript translations and configuration -->
 <script>
@@ -104,6 +106,7 @@ window.CURRENT_USER_LOGIN = {{ session.get('login', '')|tojson }};
 window.CURRENT_RESPONSE_STYLE = {{ session.get('response_style', 'neutral')|tojson }};
 window.CURRENT_EMBEDDING_MODEL = {{ embedding_model|tojson }};
 window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
+    'loading': {{ _("Loading...")|tojson }},
     'send': {{ _("Send")|tojson }},
     'sending': {{ _("Sending...")|tojson }},
     'recording': {{ _("Recording...")|tojson }},
@@ -151,6 +154,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'copy_code': {{ _("copy_code")|tojson }},
     'copy_failed': {{ _("copy_failed")|tojson }},
     'copy_text': {{ _("copy_text")|tojson }},
+    'open_html': {{ _("open_html")|tojson }},
     'processing': {{ _("processing")|tojson }},
     'queued': {{ _("queued")|tojson }},
     'new_response': {{ _("new_response")|tojson }},

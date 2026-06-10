@@ -8,6 +8,9 @@
     <div class="admin-tabs">
         <button class="admin-tab active" data-tab="users">{{ _('Users') }}</button>
         <button class="admin-tab" data-tab="models">{{ _('Models') }}</button>
+        {% if camera_enabled %}
+        <button class="admin-tab" data-tab="cameras">{{ _('Cameras') }}</button>
+        {% endif %}
         <button class="admin-tab" data-tab="backups">{{ _('Backups') }}</button>
     </div>
 
@@ -53,6 +56,9 @@
     <!-- Models tab content -->
     <div id="models-tab" class="admin-tab-content">
         <div class="models-container">
+            <div class="models-header">
+                <button id="refresh-gguf-btn" class="add-user-button" title="{{ _('Refresh models from llama-server') }}">🔄 {{ _('Update model list') }}</button>
+            </div>
             <div id="models-list">
                 <!-- Cards will be populated by JavaScript -->
             </div>
@@ -97,10 +103,39 @@
         </div>
     </div>
 
+    <!-- Cameras tab content -->
+    {% if camera_enabled %}
+    <div id="cameras-tab" class="admin-tab-content">
+        <div class="cameras-header">
+            <button id="sync-cameras-btn" class="add-user-button">🔄 {{ _('Update camera list') }}</button>
+        </div>
+        <div class="cameras-table-wrapper">
+            <table id="cameras-table">
+                <thead>
+                    <tr>
+                        <th>№</th>
+                        <th>{{ _('Status') }}</th>
+                        <th>{{ _('Code') }}</th>
+                        <th>{{ _('Room') }}</th>
+                        <th>{{ _('Preview') }}</th>
+                    </tr>
+                </thead>
+                <tbody id="cameras-tbody">
+                    <!-- Data loaded via JS -->
+                </tbody>
+            </table>
+            <div id="no-cameras-msg" class="no-backups" style="display:none;">
+                {{ _('No cameras configured') }}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Backups tab content -->
     <div id="backups-tab" class="admin-tab-content">
         <div class="backups-container">
             <div class="backups-header">
+                <button id="refresh-backups-btn" class="add-user-button">🔄 {{ _('Update backup list') }}</button>
                 <div class="backup-create">
                     <label for="backup-type">{{ _('Backup type') }}:</label>
                     <select id="backup-type">
@@ -108,23 +143,25 @@
                         <option value="full">{{ _('Full (users + chats + files)') }}</option>
                     </select>
                     <button id="create-backup-btn" class="btn-primary">{{ _('Create backup') }}</button>
-                    <button id="refresh-backups-btn" class="refresh-models-btn" title="{{ _('Refresh backup list') }}">🔄</button>
                 </div>
             </div>
-            <table id="backups-table" class="backups-table">
-                <thead>
-                    <tr>
-                        <th>{{ _('Filename') }}</th>
-                        <th>{{ _('Type') }}</th>
-                        <th>{{ _('Size') }}</th>
-                        <th>{{ _('Created') }}</th>
-                        <th class="th-actions">{{ _('Actions') }}</th>
-                    </tr>
-                </thead>
-                <tbody id="backups-tbody">
-                    <!-- Data loaded via JS -->
-                </tbody>
-            </table>
+            <div class="backups-table-wrapper">
+                <table id="backups-table" class="backups-table">
+                    <thead>
+                        <tr>
+                            <th>№</th>
+                            <th>{{ _('Filename') }}</th>
+                            <th>{{ _('Type') }}</th>
+                            <th>{{ _('Size') }}</th>
+                            <th>{{ _('Created') }}</th>
+                            <th class="th-actions">{{ _('Actions') }}</th>
+                        </tr>
+                    </thead>
+                    <tbody id="backups-tbody">
+                        <!-- Data loaded via JS -->
+                    </tbody>
+                </table>
+            </div>
             <div id="no-backups-msg" class="no-backups">
                 {{ _('No backups found') }}
             </div>
@@ -204,6 +241,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
 <script>
 window.ROOMS = {{ rooms|tojson }};
+window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     window.LLAMA_SWAP_URL = {{ llama_swap_url|tojson }};
     window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'delete_user_confirm': {{ _('Delete user {login}?')|tojson }},
@@ -247,6 +285,7 @@ window.ROOMS = {{ rooms|tojson }};
     'mb': {{ _('MB')|tojson }},
     // New translations for models tab
     'Refresh models from llama-server': {{ _('Refresh models from llama-server')|tojson }},
+    'Update model list': {{ _('Update model list')|tojson }},
     'Saved': {{ _('Saved')|tojson }},
     // Model tab translations
     'Chat': {{ _('Chat')|tojson }},
@@ -269,6 +308,9 @@ window.ROOMS = {{ rooms|tojson }};
     'Embedding length:': {{ _('Embedding length:')|tojson }},
     'File size:': {{ _('File size:')|tojson }},
     'Type:': {{ _('Type:')|tojson }},
+    'MTP support:': {{ _('MTP support:')|tojson }},
+    'yes': {{ _('yes')|tojson }},
+    'no': {{ _('no')|tojson }},
     'MB': {{ _('MB')|tojson }},
     'timeout_fetching_model_info': {{ _('timeout_fetching_model_info')|tojson }},
     // Validation messages
@@ -294,6 +336,7 @@ window.ROOMS = {{ rooms|tojson }};
     'vram_estimated': {{ _('vram_estimated')|tojson }},
     'vram_measured': {{ _('vram_measured')|tojson }},
     'vram_detail': {{ _('vram_detail')|tojson }},
+    'calculating_vram': {{ _('calculating_vram')|tojson }},
     'vram_partial_high': {{ _('vram_partial_high')|tojson }},
     'vram_partial_med': {{ _('vram_partial_med')|tojson }},
     'vram_partial_low': {{ _('vram_partial_low')|tojson }},
@@ -303,6 +346,7 @@ window.ROOMS = {{ rooms|tojson }};
     'vram_nodata_gpu': {{ _('vram_nodata_gpu')|tojson }},
     'vram_nodata': {{ _('vram_nodata')|tojson }},
     'ngl_info': {{ _('ngl_info')|tojson }},
+    'ngl_offload_hint': {{ _('ngl_offload_hint')|tojson }},
     'reindex_started': {{ _('Reindexing all documents with new embedding model started. This may take a while.')|tojson }},
     'reindex_all_confirm': {{ _('Reindex all documents? This will rebuild all document embeddings.')|tojson }},
     // New translations for per-model URL
@@ -341,7 +385,19 @@ window.ROOMS = {{ rooms|tojson }};
     'Size': {{ _('Size')|tojson }},
     'Created': {{ _('Created')|tojson }},
     'Actions': {{ _('Actions')|tojson }},
-    'Refresh backup list': {{ _('Refresh backup list')|tojson }}
+    'Update backup list': {{ _('Update backup list')|tojson }},
+    // Camera translations
+    'Cameras': {{ _('Cameras')|tojson }},
+    'Update camera list': {{ _('Update camera list')|tojson }},
+    'Code': {{ _('Code')|tojson }},
+    'Room': {{ _('Room')|tojson }},
+    'Preview': {{ _('Preview')|tojson }},
+    'Status': {{ _('Status')|tojson }},
+    'No cameras configured': {{ _('No cameras configured')|tojson }},
+    'Camera list updated': {{ _('Camera list updated')|tojson }},
+    'Cameras synced': {{ _('Cameras synced: {count}')|tojson }},
+    'Camera unavailable': {{ _('Camera unavailable')|tojson }},
+    'Sync error': {{ _('Error syncing cameras')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}
 if (window.DEBUG_JS) console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);
@@ -351,4 +407,7 @@ if (window.DEBUG_JS) console.log('Admin TRANSLATIONS merged:', window.TRANSLATIO
 <script src="{{ url_for('static', filename='js/admin.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/admin-models.js', v=config.STATIC_VERSION) }}"></script>
 <script src="{{ url_for('static', filename='js/admin-backups.js', v=config.STATIC_VERSION) }}"></script>
+{% if camera_enabled %}
+<script src="{{ url_for('static', filename='js/admin-cameras.js', v=config.STATIC_VERSION) }}"></script>
+{% endif %}
 {% endblock %}

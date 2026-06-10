@@ -61,6 +61,15 @@ def admin_panel():
     if "cam" in current_app.modules and current_app.modules["cam"].available:
         rooms = current_app.modules["cam"].get_all_rooms()
 
+    # Camera rooms from DB (for the Cameras CRUD tab)
+    camera_rooms = []
+    try:
+        from app.cameradb import get_all_camera_rooms
+
+        camera_rooms = get_all_camera_rooms(enabled_only=False)
+    except Exception as e:
+        logger.warning(f"Failed to load camera rooms for admin panel: {e}")
+
     # PostgreSQL size is tracked on the server, not accessible from app container
     user_db_size = 0
     uploads_folder = current_app.config.get("UPLOAD_FOLDER", "data/uploads")
@@ -107,6 +116,8 @@ def admin_panel():
     return render_template(
         "admin.html",
         rooms=rooms,
+        camera_rooms=camera_rooms,
+        camera_enabled=current_app.config.get("CAMERA_ENABLED", False),
         chat_db_size=0,
         user_db_size=user_db_size,
         files_db_size=files_db_size,
@@ -400,6 +411,7 @@ def _estimate_model_vram(
     expert_count: int = 0,
     ctx_size: int = 8192,
     cache_type: str = "q4_0",
+    supports_mtp: bool = False,
 ) -> dict:
     """Estimate VRAM usage for a model with given parameters.
 
@@ -408,8 +420,10 @@ def _estimate_model_vram(
     # Model weights on GPU (layers * per-layer estimate)
     # For MoE: experts stay on CPU, ~95% of per-layer weight is dense (attention + FFN gate/up/down)
     moe_factor = 0.95 if expert_count > 0 else 1.0
+    # MTP draft prediction layers add ~15% overhead to model weights in VRAM
+    mtp_factor = 1.15 if supports_mtp else 1.0
     ratio = min(1.0, ngl / block_count) if block_count > 0 else 1.0
-    model_vram = file_size_mb * ratio * moe_factor
+    model_vram = file_size_mb * ratio * moe_factor * mtp_factor
 
     # KV cache estimate — calibrated against empirical measurements
     # Per-token KV cache (MB) with q4_0 compression, averaged across model sizes
@@ -434,6 +448,7 @@ def _estimate_model_vram(
         "ngl": ngl,
         "ratio": round(ratio, 3),
         "moe_factor": moe_factor,
+        "mtp_factor": mtp_factor,
     }
 
 
@@ -496,7 +511,33 @@ def _classify_model_fit(
         total_vram = 16311
     total_ram = _get_total_ram_mb()
 
-    # If model is not in cache and we don't have file_size, block save
+    # If model is not in cache and we don't have file_size, try reading from GGUF file
+    if not file_size_mb or not block_count:
+        gguf_path = _find_gguf_path(model_name)
+        if gguf_path and os.path.exists(gguf_path):
+            file_size_mb = os.path.getsize(gguf_path) / (1024 * 1024)
+            try:
+                import gguf
+
+                reader = gguf.GGUFReader(gguf_path)
+                arch = None
+                for key in reader.fields:
+                    if "." in key and not key.startswith("GGUF") and not key.startswith("general"):
+                        arch = key.split(".")[0]
+                        break
+                if arch:
+                    bc_key = f"{arch}.block_count"
+                    if bc_key in reader.fields:
+                        val = reader.fields[bc_key].parts[-1]
+                        if hasattr(val, "tolist"):
+                            arr = val.tolist()
+                            if isinstance(arr, list) and len(arr) == 1:
+                                val = arr[0]
+                        block_count = int(val) if val is not None else None
+            except Exception:
+                pass
+
+    # If model is still not resolvable, block save
     if not file_size_mb or not block_count:
         return {
             "tier": "unknown",
@@ -521,6 +562,7 @@ def _classify_model_fit(
         ngl=ngl_total,
         expert_count=cached.get("expert_count") or 0,
         ctx_size=max(int(context_length), 1),
+        supports_mtp=cached.get("supports_mtp", False),
     )
     vram_full_mb = int(est["total_mb"])
     kv_cache_mb = int(est["kv_cache_mb"])
@@ -630,16 +672,69 @@ def model_vram_estimate():
     model_key = model_name.replace(".gguf", "")
     cached = gguf_cache.get(model_key, {})
 
+    # Fast path: if we have a measured VRAM for this exact model+ctx, return it
+    # immediately — skip expensive GGUF file parsing and filesystem walks.
+    try:
+        from app.database import get_vram_estimate
+        db_est = get_vram_estimate(module, model_name=model_name)
+        if db_est and db_est.get("measured_vram_mb"):
+            measured_mb = int(db_est["measured_vram_mb"])
+            measurement_count = db_est.get("measurement_count") or 0
+            measured_ctx = db_est.get("context_length")
+            vram_pct = round(measured_mb / total_vram * 100) if total_vram else 0
+            tier = "good" if measured_mb <= total_vram * TIER_VRAM_GOOD_PCT else "cpu_offload"
+            tier_msg = (
+                _("✓ Fits in VRAM: {vram} MB / {total} MB").format(vram=measured_mb, total=total_vram)
+                if tier == "good"
+                else _("⚠ Partial CPU offload needed").format()
+            )
+            return jsonify({
+                "status": "measured",
+                "vram_mb": measured_mb,
+                "total_vram_mb": total_vram,
+                "vram_percent": vram_pct,
+                "vram_source": "measured",
+                "measured_vram_mb": measured_mb,
+                "measurement_count": measurement_count,
+                "measured_ctx": measured_ctx,
+                "ram_mb": measured_mb,
+                "total_ram_mb": total_ram,
+                "ram_percent": round(measured_mb / total_ram * 100) if total_ram else 0,
+                "has_gpu": total_vram is not None and total_vram > 0,
+                "file_size_mb": round(cached.get("file_size_mb", 0), 1) if cached.get("file_size_mb") else None,
+                "block_count": cached.get("block_count"),
+                "expert_count": cached.get("expert_count"),
+                "parameter_count": cached.get("parameter_count"),
+                "ngl": cached.get("block_count"),
+                "context_length": ctx_size,
+                "tier": tier,
+                "can_save": True,
+                "ngl_recommended": cached.get("block_count"),
+                "tier_message": tier_msg,
+                "system_ram_mb": total_ram,
+                "arch_max_ctx": cached.get("context_length"),
+                "details": None,
+            })
+    except Exception:
+        pass
+
     # If not in cache, try reading from file directly
     file_size_mb = cached.get("file_size_mb")
     block_count = cached.get("block_count")
     expert_count = cached.get("expert_count") or 0
     parameter_count = cached.get("parameter_count")
 
+    # Diagnostics: track where file_size came from
+    file_size_source = "cache" if file_size_mb else "none"
+    actual_file_size_mb = None
+
     if not file_size_mb or not block_count:
         gguf_path = _find_gguf_path(model_name)
         if gguf_path and os.path.exists(gguf_path):
-            file_size_mb = os.path.getsize(gguf_path) / (1024 * 1024)
+            actual_file_size_mb = os.path.getsize(gguf_path) / (1024 * 1024)
+            if not file_size_mb:
+                file_size_mb = actual_file_size_mb
+                file_size_source = "file"
             try:
                 import gguf
 
@@ -669,20 +764,27 @@ def model_vram_estimate():
             except Exception:
                 pass
 
-    # 3. Determine n_gpu_layers
+    # 3. Determine n_gpu_layers for THIS selected model (not the one currently in DB config)
+    #    compute_llamacpp_config() reads the current model from DB, which gives wrong ngl
+    #    when the user is estimating a different model in the dropdown.
     if ngl_param is not None:
         ngl = ngl_param
+    elif file_size_mb and block_count and total_vram and total_vram > 0:
+        reserve = 2000  # 2GB safety margin (matches compute_llamacpp_config)
+        available_for_model = max(0, total_vram - reserve)
+        needed = file_size_mb * 1.2  # weights + overhead multiplier
+        if cached.get("supports_mtp", False):
+            needed *= 1.15
+        ngl = block_count if needed <= available_for_model else max(1, int(block_count * available_for_model / needed))
     else:
-        try:
-            from app.resource_manager import get_resource_manager
+        ngl = block_count or 32
 
-            rm = get_resource_manager()
-            config = rm.compute_llamacpp_config(module)
-            ngl = config.get("n_gpu_layers", -1)
-            if ngl == -1 and block_count:
-                ngl = block_count
-        except Exception:
-            ngl = block_count or 32
+    ratio = min(1.0, ngl / block_count) if block_count and block_count > 0 else 1.0
+    logger.info(
+        f"model-estimate: model={model_name}, file={file_size_mb:.0f}MB "
+        f"(source={file_size_source}), "
+        f"blocks={block_count}, ngl={ngl}, ratio={ratio:.2f}"
+    )
 
     # 4. Check if model is currently loaded in llama-swap
     loaded_model = None
@@ -739,6 +841,7 @@ def model_vram_estimate():
             expert_count=expert_count,
             ctx_size=max(ctx_size, 1),
             cache_type=cache_type,
+            supports_mtp=cached.get("supports_mtp", False),
         )
         has_gpu = total_vram is not None and total_vram > 0
         vram_pct = round(est["total_mb"] / total_vram * 100) if has_gpu and total_vram > 0 else 0
@@ -785,6 +888,8 @@ def model_vram_estimate():
             "ram_percent": ram_pct,
             "has_gpu": has_gpu,
             "file_size_mb": round(file_size_mb, 1),
+            "file_size_source": file_size_source,
+            "actual_file_size_mb": round(actual_file_size_mb, 1) if actual_file_size_mb else None,
             "block_count": block_count,
             "expert_count": expert_count,
             "parameter_count": parameter_count,
@@ -923,6 +1028,19 @@ def llamacpp_models():
         return jsonify({"error": _("Error") + ": " + str(e)}), 500
 
 
+@bp.route("/api/refresh-gguf-cache", methods=["POST"])
+@admin_required
+def refresh_gguf_cache():
+    """Force re-scan of GGUF models directory and refresh metadata cache."""
+    import app.utils as utils_module
+    from app.utils import sync_gguf_models_cache
+
+    utils_module._gguf_models_cache = None
+    result = sync_gguf_models_cache("/models")
+    logger.info(f"GGUF cache refreshed: {len(result)} models found")
+    return jsonify({"status": "ok", "model_count": len(result)})
+
+
 @bp.route("/api/llamacpp/model/<path:name>", methods=["GET"])
 def llamacpp_model_info(name):
     """Return information about a specific model from llama-server.
@@ -1028,6 +1146,7 @@ def llamacpp_model_info(name):
                     "head_count_kv": cached.get("head_count_kv"),
                     "key_length": cached.get("key_length"),
                     "value_length": cached.get("value_length"),
+                    "supports_mtp": cached.get("supports_mtp", False),
                 }
             )
 
@@ -1086,6 +1205,15 @@ def llamacpp_model_info(name):
                             if isinstance(arr, list) and len(arr) == 1:
                                 val = arr[0]
                         gguf_meta["expert_count"] = int(val) if val is not None else None
+                    # MTP: {arch}.nextn_predict_layers > 0
+                    mtp_key = f"{arch}.nextn_predict_layers"
+                    if mtp_key in reader.fields:
+                        val = reader.fields[mtp_key].parts[-1]
+                        if hasattr(val, "tolist"):
+                            arr = val.tolist()
+                            if isinstance(arr, list) and len(arr) == 1:
+                                val = arr[0]
+                        gguf_meta["supports_mtp"] = int(val) > 0 if val is not None else False
             except Exception as e:
                 logger.debug(f"Could not parse GGUF metadata: {e}")
 
@@ -1173,6 +1301,7 @@ def llamacpp_model_info(name):
                     "head_count_kv": cached.get("head_count_kv"),
                     "key_length": cached.get("key_length"),
                     "value_length": cached.get("value_length"),
+                    "supports_mtp": cached.get("supports_mtp", False) or gguf_meta.get("supports_mtp", False),
                 }
             )
 
@@ -1648,3 +1777,105 @@ def api_save_chunks_config():
     except Exception as e:
         current_app.logger.error(f"Error saving chunks config: {e}")
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ==================== ENDPOINTS FOR CAMERA MANAGEMENT ====================
+
+
+def _reload_camera_rooms():
+    """Reload CamModule rooms from DB."""
+    if "cam" in current_app.modules:
+        current_app.modules["cam"].reload_rooms()
+
+
+@bp.route("/api/cameras", methods=["GET"])
+@admin_required
+def get_cameras():
+    """Return all camera rooms from DB."""
+    try:
+        from app.cameradb import get_all_camera_rooms
+
+        rooms = get_all_camera_rooms(enabled_only=False)
+        return jsonify(rooms)
+    except Exception as e:
+        logger.error(f"Error in get_cameras: {e}", exc_info=True)
+        return jsonify({"error": _("Internal server error")}), 500
+
+
+@bp.route("/api/cameras/<code>/toggle", methods=["PUT"])
+@admin_required
+def toggle_camera(code):
+    """Toggle camera enabled/disabled status."""
+    try:
+        from app.cameradb import toggle_camera_enabled
+
+        data = request.get_json(force=True)
+        enabled = bool(data.get("enabled", True))
+        toggle_camera_enabled(code, enabled)
+        _reload_camera_rooms()
+        return jsonify({"status": "ok", "code": code, "enabled": enabled})
+    except Exception as e:
+        logger.error(f"Error toggling camera {code}: {e}", exc_info=True)
+        return jsonify({"error": _("Internal server error")}), 500
+
+
+@bp.route("/api/cameras/sync", methods=["POST"])
+@admin_required
+def sync_cameras():
+    """Sync camera list from room-snapshot-api.
+
+    Upserts cameras (preserving enabled status) and removes stale entries.
+    """
+    try:
+        from app.cameradb import delete_cameras_not_in, populate_from_camera_api
+
+        camera_api_url = current_app.config.get("CAMERA_API_URL", "http://flai-room-snapshot-api:5000")
+        timeout = current_app.config.get("CAMERA_API_TIMEOUT", 15)
+
+        codes = populate_from_camera_api(camera_api_url, timeout)
+        if codes:
+            delete_cameras_not_in(codes)
+        _reload_camera_rooms()
+
+        rooms = []
+        if codes:
+            from app.cameradb import get_all_camera_rooms
+
+            rooms = get_all_camera_rooms(enabled_only=False)
+
+        return jsonify({"status": "ok", "count": len(codes), "rooms": rooms})
+    except Exception as e:
+        logger.error(f"Error in sync_cameras: {e}", exc_info=True)
+        return jsonify({"error": _("Internal server error")}), 500
+
+
+@bp.route("/api/cameras/<code>/proxy", methods=["GET"])
+@admin_required
+def proxy_camera_snapshot(code):
+    """Proxy snapshot from room-snapshot-api for preview thumbnails.
+
+    Returns the raw JPEG image from GET {camera_api_url}/snapshot/{code}.
+    """
+    import requests as req
+
+    camera_api_url = current_app.config.get("CAMERA_API_URL", "http://flai-room-snapshot-api:5000")
+    timeout = current_app.config.get("CAMERA_API_TIMEOUT", 15)
+
+    endpoints = [
+        f"{camera_api_url.rstrip('/')}/snapshot/{code}",
+        f"{camera_api_url.rstrip('/')}/api/snapshot/{code}",
+        f"{camera_api_url.rstrip('/')}/camera/{code}",
+    ]
+
+    for endpoint in endpoints:
+        try:
+            resp = req.get(endpoint, timeout=timeout, headers={"Accept": "image/jpeg,image/png,*/*"})
+            if resp.status_code == 200:
+                content_type = resp.headers.get("content-type", "image/jpeg")
+                from flask import Response
+
+                return Response(resp.content, mimetype=content_type)
+        except req.exceptions.RequestException:
+            continue
+
+    return jsonify({"error": _("Camera unavailable")}), 503

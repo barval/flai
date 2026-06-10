@@ -139,7 +139,7 @@ class SdCppModule(TranslationMixin):
             return False
         return True
 
-    def _call_wrapper(self, prompt_data, lang="ru"):
+    def _call_wrapper(self, prompt_data, lang="ru", task_id=None, user_id=None, session_id=None):
         """Call sd-wrapper HTTP API to generate image.
         Before starting, unloads llama.cpp model from VRAM to avoid OOM.
         """
@@ -167,13 +167,13 @@ class SdCppModule(TranslationMixin):
 
         # Verify VRAM is actually free after unloads; wait if needed
         needed = self._estimate_sd_vram_mb(self.model_type) + 2000
-        deadline = time.time() + 30
+        deadline = time.time() + 20
         while time.time() < deadline:
             rm._poll_vram()
             if rm.hardware.available_vram_mb >= needed:
                 break
             self.logger.info(f"VRAM: {rm.hardware.available_vram_mb} MB free, need {needed} MB — waiting for unload...")
-            time.sleep(1)
+            time.sleep(0.5)
 
         # Check VRAM availability after LLM unload
         use_gpu = self._resolve_use_gpu(rm)
@@ -208,6 +208,7 @@ class SdCppModule(TranslationMixin):
             self.logger.info(f"sd.cpp prompt: '{prompt_data.get('prompt', '')[:100]}...'")
 
             # Parameters from template — each model type has its own defaults
+            preview_url = f"{self.app.config.get('PREFERRED_URL', 'http://flai-web:5000')}/api/queue/internal/sd_step"
             payload = {
                 "prompt": prompt_data.get("prompt", ""),
                 "steps": prompt_data.get("steps", 10),
@@ -216,6 +217,10 @@ class SdCppModule(TranslationMixin):
                 "cfg_scale": prompt_data.get("cfg_scale", 1.0),
                 "flow_shift": prompt_data.get("flow_shift", 2.0),
                 "use_gpu": use_gpu,
+                "user_id": user_id,
+                "session_id": session_id,
+                "task_id": task_id,
+                "preview_url": preview_url,
             }
             # Optional sampler (required for qwen_image)
             if prompt_data.get("sampling_method"):
@@ -274,7 +279,8 @@ class SdCppModule(TranslationMixin):
         finally:
             rm.mark_sd_idle()
 
-    def edit_image(self, edit_prompt_data: dict[str, Any], image_base64: str, lang: str = "ru") -> dict[str, Any]:
+    def edit_image(self, edit_prompt_data: dict[str, Any], image_base64: str, lang: str = "ru",
+                   task_id: str | None = None, user_id: str | None = None, session_id: str | None = None) -> dict[str, Any]:
         """Edit an existing image using Flux.2 Klein 4B model.
         Before starting, unloads llama.cpp model from VRAM to avoid OOM.
         Resizes large images to max 1024px to fit 16GB VRAM.
@@ -350,6 +356,10 @@ class SdCppModule(TranslationMixin):
             "width": edit_prompt_data.get("width", 1024),
             "height": edit_prompt_data.get("height", 1024),
             "use_gpu": use_gpu,
+            "preview_url": f"{self.app.config.get('PREFERRED_URL', 'http://flai-web:5000')}/api/queue/internal/sd_step",
+            "task_id": task_id,
+            "user_id": user_id,
+            "session_id": session_id,
         }
         if edit_prompt_data.get("mask"):
             payload["mask"] = edit_prompt_data["mask"]

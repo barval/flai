@@ -83,40 +83,8 @@ def _rollback(app: Any, module: str, failed_model: str) -> bool:
     from app.model_config import invalidate_model_config_cache
 
     fallback = FALLBACK_MODELS.get(module)
-    if not fallback or fallback == failed_model:
+    if not fallback:
         logger.error(f"No fallback model for module={module}")
-        return False
-
-    try:
-        with get_db() as conn:
-            c = conn.cursor()
-            c.execute(
-                """
-                UPDATE model_configs
-                SET model_name = %s, updated_at = CURRENT_TIMESTAMP
-                WHERE module = %s
-            """,
-                (fallback, module),
-            )
-            conn.commit()
-        invalidate_model_config_cache(module)
-
-        # Regenerate llama-swap config
-        from app.llama_swap_config import generate_and_write
-
-        if generate_and_write(app_obj):
-            from app.llama_swap_config import LlamaSwapConfigGenerator
-
-            gen = LlamaSwapConfigGenerator(app_obj)
-            gen.signal_reload()
-            logger.warning(
-                f"Auto-rollback: {module} reverted to {fallback} "
-                f"(was {failed_model})"
-            )
-            return True
-        return False
-    except Exception as e:
-        logger.exception(f"Rollback failed for {module}: {e}")
         return False
 
     try:

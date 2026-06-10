@@ -197,6 +197,17 @@ def create_app():
 
         modules["cam"] = CamModule(app)
         app.logger.info("Camera module enabled")
+
+        # Regenerate name_forms with pymorphy3 (one-time migration from old suffix-based forms)
+        try:
+            from app.cameradb import migrate_name_forms
+
+            migrated = migrate_name_forms()
+            if migrated:
+                modules["cam"].reload_rooms()
+                app.logger.info(f"Migrated {migrated} camera room name_forms to pymorphy3")
+        except Exception as e:
+            app.logger.warning(f"Camera name_forms migration skipped: {e}")
     else:
         app.logger.info("Camera module disabled (CAMERA_ENABLED=False)")
 
@@ -259,6 +270,8 @@ def create_app():
     app.register_blueprint(chat.bp)
     app.register_blueprint(admin.bp)
     app.register_blueprint(queue.bp)
+    csrf.exempt(queue.api_sd_preview)
+    csrf.exempt(queue.api_sd_step)
     app.register_blueprint(tts.bp)
     app.register_blueprint(messages.bp)
     app.register_blueprint(sessions.bp)
@@ -537,7 +550,7 @@ def create_app():
         # System metrics
         metrics_output.append("# HELP flai_web_info Web service information")
         metrics_output.append("# TYPE flai_web_info gauge")
-        metrics_output.append('flai_web_info{version="1.0.0"} 1')
+        metrics_output.append('flai_web_info{version="8.9"} 1')
 
         # Queue metrics
         try:

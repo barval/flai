@@ -810,6 +810,35 @@ video {
     opacity: 1;
 }
 
+/* ===== OPEN HTML BUTTON ===== */
+.open-html-button {
+    position: absolute;
+    top: 8px;
+    right: 56px;
+    background-color: rgba(52,73,94,0.8);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.6;
+    transition: all 0.2s ease;
+    z-index: 10;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    backdrop-filter: blur(2px);
+}
+
+.open-html-button:hover {
+    opacity: 1;
+    background-color: #2ecc71;
+    transform: scale(1.05);
+}
+
 /* ===== MEDIA QUERIES FOR CHAT ===== */
 
 /* Tablet range — prevent calc(100vh) overflow from browser chrome */
@@ -961,6 +990,14 @@ video {
         font-size: 14px;
         top: 4px;
         right: 4px;
+    }
+
+    .open-html-button {
+        width: 28px;
+        height: 28px;
+        font-size: 14px;
+        top: 4px;
+        right: 46px;
     }
     
     .session-status-icon {
@@ -1249,4 +1286,93 @@ video {
 
 .dark-theme .response-style-option.selected {
     background-color: #34495e;
+}
+
+/* ── Task progress indicators ──────────────────────────────────── */
+
+.task-progress {
+    font-size: 0.85em;
+    color: #888;
+    padding: 6px 12px;
+    margin: 4px 0;
+    border-radius: 6px;
+    background: rgba(0,0,0,0.03);
+    animation: progressPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes progressPulse {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 1; }
+}
+
+.video-progress-bar {
+    height: 28px;
+    background: #e8e8e8;
+    border-radius: 14px;
+    margin: 8px 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.video-progress-bar .fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4caf50, #66bb6a);
+    border-radius: 14px;
+    transition: width 0.4s ease;
+    min-width: 0;
+}
+
+.video-progress-bar .label {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.8em;
+    color: #333;
+    white-space: nowrap;
+    font-weight: 500;
+}
+
+.image-preview-container {
+    max-width: 512px;
+    margin: 8px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #e0e0e0;
+}
+
+.image-preview-container img {
+    width: 100%;
+    display: block;
+}
+
+.image-preview-container .step-label {
+    font-size: 0.8em;
+    color: #888;
+    padding: 4px 8px;
+    text-align: center;
+    background: rgba(0,0,0,0.03);
+}
+
+/* Dark theme overrides */
+.dark-theme .task-progress {
+    color: #aaa;
+    background: rgba(255,255,255,0.05);
+}
+
+.dark-theme .video-progress-bar {
+    background: #444;
+}
+
+.dark-theme .video-progress-bar .label {
+    color: #ddd;
+}
+
+.dark-theme .image-preview-container {
+    border-color: #555;
+}
+
+.dark-theme .image-preview-container .step-label {
+    color: #aaa;
+    background: rgba(255,255,255,0.05);
 }

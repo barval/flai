@@ -109,6 +109,8 @@ def _recall_from_user_db(profile: str, limit: int = 5) -> list[dict] | None:
             )
             if len(unique) >= limit:
                 break
+        min_score = float(os.environ.get("SLM_MIN_SCORE", "0.3"))
+        unique = [r for r in unique if r.get("score", 0) >= min_score]
         return unique
     except Exception as e:
         app.logger.warning(f"SLM recall from user DB failed for {profile}: {e}")
@@ -155,6 +157,8 @@ def _semantic_recall_from_user_db(query: str, limit: int, profile: str) -> list[
             )
             if len(unique) >= limit:
                 break
+        min_score = float(os.environ.get("SLM_MIN_SCORE", "0.3"))
+        unique = [r for r in unique if r.get("score", 0) >= min_score]
         return unique
     except Exception as e:
         app.logger.warning(f"SLM semantic recall exception: {e}")

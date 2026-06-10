@@ -25,7 +25,7 @@ RUN cmake . -B ./build -DSD_CUDA=ON && \
 FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu${UBUNTU_VERSION} AS runtime
 
 RUN apt-get update && \
-    apt-get install --yes --no-install-recommends libgomp1 curl python3 && \
+    apt-get install --yes --no-install-recommends libgomp1 curl python3 python3-requests && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy sd-cli built in the build stage (linked against same CUDA version)

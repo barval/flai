@@ -3,16 +3,42 @@ Response language: {response_language}.
 Response style: {response_style}.
 Classify the user's query into one category below. Output ONLY the result, no explanations.
 
-## 1. SIMPLE QUERY — output query unchanged
-If greeting, question about yourself, your skills/abilities, or current time. Output the query unchanged, without any marker.
-- Query: "Hello"
-  Response: "Hello"
-- Query: "Who are you?"
-  Response: "Who are you?"
-- Query: "What can you do?"
-  Response: "What can you do?"
+## MAIN RULE: QUESTION vs STATEMENT
+If text contains "?" or is a question — it is a QUESTION.
+BUT: questions about cameras/rooms (category 5) have PRIORITY over category 1.
+Questions about documents/people (category 6) also have priority over category 1.
+Only simple questions (greetings, about yourself, time, skills) → category 1.
+If text is a statement or instruction (no "?") — it is a FACT → category 2.
 
-## 2. IMAGE GENERATION REQUEST (Just output)
+## 1. SIMPLE QUERY — output query unchanged
+Any QUESTION: greeting, question about yourself, skills, time, or any other question.
+Output the query unchanged, without any marker.
+- "Hello" → "Hello"
+- "Who are you?" → "Who are you?"
+- "What can you do?" → "What can you do?"
+- "How are you?" → "How are you?"
+- "What time is it?" → "What time is it?"
+- "What day is it?" → "What day is it?"
+- "What's new?" → "What's new?"
+- "Can you help?" → "Can you help?"
+
+## 2. FACT OR INSTRUCTION (output with marker)
+Only STATEMENTS and INSTRUCTIONS (NOT questions!):
+- "My name is John" → "[-FACT-] My name is John"
+- "I am 45 years old" → "[-FACT-] I am 45 years old"
+- "I work as a programmer" → "[-FACT-] I work as a programmer"
+- "Document was approved on 17.04.2005" → "[-FACT-] Document was approved on 17.04.2005"
+- "Use only libtest=1.0.0" → "[-FACT-] Use only libtest=1.0.0"
+- "Vasily doesn't eat dairy" → "[-FACT-] Vasily doesn't eat dairy"
+- "Remember: I am vegetarian" → "[-FACT-] Remember: I am vegetarian"
+- "Save address: 10 Pushkin St" → "[-FACT-] Save address: 10 Pushkin St"
+- "Write down wifi password: mypassword123" → "[-FACT-] Write down wifi password: mypassword123"
+QUESTIONS are NOT facts (category 1):
+- "Who are you?" → question, NOT a fact
+- "What can you do?" → question, NOT a fact
+- "How old is John?" → question, NOT a fact
+
+## 3. IMAGE GENERATION REQUEST (Just output)
 If the query asks to draw/generate/create an IMAGE (picture, photo, illustration, drawing).
 IMPORTANT: Do not confuse with requests to create code, text, files, programs — those are NOT images!
 Action: Output [-IMAGE-] and the query text unchanged.
@@ -22,7 +48,7 @@ Examples:
 - Query: "Generate an image of a cat"
   Response: "[-IMAGE-] Generate an image of a cat"
 
-## 3. VIDEO GENERATION REQUEST (Just output)
+## 4. VIDEO GENERATION REQUEST (Just output)
 If the query asks to create/generate a VIDEO (clip, animation, footage).
 IMPORTANT: Do not confuse with image generation — if the query explicitly says «video» or «animation», use [-VIDEO-].
 Action: Output [-VIDEO-] and the query text unchanged.
@@ -32,31 +58,9 @@ Examples:
 - Query: "Make a sunset animation"
   Response: "[-VIDEO-] Make a sunset animation"
 
-## 4. CAMERA VIEW REQUEST (Replace and output)
-If the query contains phrases related to asking to show one of the rooms (vestibule, hallway, corridor, bedroom, study, nursery, living room, kitchen, balcony).
-Action: Depending on which room is requested, replace the query and output it. Do not write anything else.
-Rules for replacing the query text:
-  - about vestibule -> replace with -> "[-CAMERA-] tam"
-  - about hallway -> replace with -> "[-CAMERA-] pri"
-  - about corridor -> replace with -> "[-CAMERA-] kor"
-  - about bedroom -> replace with -> "[-CAMERA-] spa"
-  - about study -> replace with -> "[-CAMERA-] kab"
-  - about nursery -> replace with -> "[-CAMERA-] det"
-  - about living room -> replace with -> "[-CAMERA-] gos"
-  - about kitchen -> replace with -> "[-CAMERA-] kuh"
-  - about balcony -> replace with -> "[-CAMERA-] bal"
-  - about something not in the list -> output the query unchanged, without a marker.
-Examples:
-- User request: "Show the study"
-  Response: "[-CAMERA-] kab"
-- User request: "What's in the living room"
-  Response: "[-CAMERA-] gos"
-- User request: "Is anyone in the vestibule"
-  Response: "[-CAMERA-] tam"
-- User request: "Show the garage"
-  Response: "Show the garage"
+{camera_section}
 
-## 5. DOCUMENT SEARCH REQUEST (output unchanged with marker)
+## 6. DOCUMENT SEARCH REQUEST (output unchanged with marker)
 If the query asks to search documents, files, find information about people, biography, resume, age, addresses, dates, events, facts — and this fact may be in uploaded documents.
 Action: Output [-RAG-] and the query text unchanged.
 Examples:
@@ -69,7 +73,7 @@ Examples:
 - Query: "What is the company address?"
   Response: "[-RAG-] What is the company address?"
 
-## 6. COMPLEX QUERY (only if NOT document search)
+## 7. COMPLEX QUERY (only if NOT document search)
 Everything else: calculations, code/text writing, story creation. Output marker and query.
 - Query: "Write a story about spring"
   Response: "[-REASONING-] Write a story about spring"

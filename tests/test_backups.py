@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from flask import Flask
+from flask_babel import Babel
 
 from app.routes.backups import bp as backups_bp
 
@@ -24,8 +25,15 @@ def app():
     flask_app = Flask(__name__)
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.config["BABEL_DEFAULT_LOCALE"] = "ru"
+    translations_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "translations",
+    )
+    flask_app.config["BABEL_TRANSLATION_DIRECTORIES"] = translations_path
     flask_app.secret_key = "test-secret-key"
     flask_app.register_blueprint(backups_bp)
+    Babel(flask_app)
 
     with patch("app.routes.backups._ensure_backup_dir", return_value=BACKUP_DIR):
         yield flask_app
@@ -281,7 +289,7 @@ class TestBackupMetadata:
         with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
             tmp_path = tmp.name
         try:
-            meta = {"type": "full", "version": "8.0"}
+            meta = {"type": "full", "version": "8.9"}
             with tarfile.open(tmp_path, "w:gz") as tar:
                 meta_bytes = json.dumps(meta).encode("utf-8")
                 info = tarfile.TarInfo(name="metadata.json")

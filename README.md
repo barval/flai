@@ -18,7 +18,7 @@
 
 ### 🤖 Core AI Capabilities
 - 💬 **Intelligent Chat** – smart request routing (fast models for simple queries, powerful models for complex reasoning)
-- 🧠 **Advanced Reasoning** – dedicated model for calculations, code generation, creative writing
+- 🧠 **Advanced Reasoning** – dedicated model for calculations, code generation, creative writing (streaming responses)
 - 🔍 **Multimodal Analysis** – upload images and ask questions about their content (llama.cpp + mmproj)
 - 🎨 **Image Generation** – create images from text using stable-diffusion.cpp with automatic prompt optimization
 - ✏️ **Image Editing** – upload an image and ask to edit it (Flux.2 Klein 4B model: change colors, remove objects, stylize)
@@ -55,7 +55,13 @@
 - 🎭 **Response Styles** – choose the AI's conversational tone in real-time from the chat header: neutral, academic, professional, friendly, or funny. Affects all responses including text, RAG, image analysis, and camera queries.
 - 📊 **Request Queue** – real-time status tracking with position indicators for queued requests
 - 📎 **File Attachments** – support for images, audio files, and documents in conversations
+- 🎤 **Combined Voice + Image** – record voice message while an image is attached; both sent together
 - 🔔 **Notifications** – unread message indicators and blinking status icons for processing/queued requests
+- ⏹ **Task Cancellation** – cancel any in-progress streaming generation with a single click
+- 📊 **Progress Bars** – visual progress indicators for video, image, and reasoning generation
+- 📋 **Copy Messages** – one-click copy of full assistant message text
+- ▶ **Run HTML** – execute HTML code blocks directly from chat in a new browser tab
+- 🛡 **XSS Protection** – all markdown HTML sanitized via DOMPurify before rendering
 
 ### ⚙️ Administration
 - 👤 **User Management** – add, edit, delete users; change passwords; assign service classes
@@ -71,41 +77,36 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v8.8
+### What's New in v8.9
 
-| v8.8+ (New) | Notes |
+| v8.9+ (New) | Notes |
 |-------------|-------|
-| 🛡️ **5-layer model protection in admin panel** | 3-tier VRAM/RAM classification: 🟢 `good` (full ngl), 🟡 `cpu_offload` (auto-degraded ngl), 🔴 `impossible` (save blocked, 400), ⚠ `unknown` (no GGUF metadata — click "Refresh models" first). Server-side validation, background dry-load + auto-rollback, crash-loop watchdog. Prevents OOM and 502 on bad model saves. |
-| 🛡️ **3-tier classification math** | `vram_needed ≤ 85% × total_vram` → good; otherwise `(file - gpu_weights) ≤ 70% × ram - 2 GB` → cpu_offload with recomputed ngl; else impossible (server returns 400). Upper ctx limit is now **dynamic** from `gguf_models_cache.context_length` (no hardcoded 32768). |
-| 🔁 **Background dry-load after admin save** | New `app/tasks/dry_load.py` — after `signal_reload()` sends a tiny completion to llama-swap, polls `/running` (30 s timeout). On failure, rolls back to `FALLBACK_MODELS[module]`. Daemon thread. |
-| 🐕 **Crash-loop watchdog** | New `app/tasks/health_monitor.py` — 60 s polling, sends health check to each running model, tracks failures in 5-min sliding window. **3 failures → auto-rollback to fallback**. Started from `create_app()` only in llama-swap mode. |
-| 📊 **Real VRAM measurement + dynamic estimation** | New `model_vram_estimates` table. `measure_model_vram()` captures actual VRAM after each successful load. `get_vram_estimate()` / `upsert_vram_estimate()` helpers. Admin panel shows "✓ Measured (N) / ℹ Estimated" with color-coded percentage bars. |
-| 🧮 **Dynamic VRAM estimation from GGUF metadata** | `_estimate_model_vram()` now uses `file_size_mb × (ngl / block_count) + ctx_size × kv_factor + overhead` — no hardcoded 2500/5000/15000/2000 MB constants. Reads from `gguf_models_cache` (block_count, file_size_mb, context_length). |
-| 🔌 **Separate circuit breaker per model type** | `LlamaSwapBackend._get_circuit_breaker(model_type)` — chat, reasoning, multimodal, embedding each have their own CB. One model's OOM no longer blocks another. |
-| ⚙️ **Adaptive model degradation on every failure** | `_record_llama_failure()` calls `_degrade_model_if_needed()` on every failure (not just when CB opens). `compute_llamacpp_config()` iteratively reduces ngl to fit available VRAM. |
-| 🔁 **Reasoning 502 → retry with degrade** | `max_retries = 1` for `reasoning` and `chat` (was only `multimodal`). First failure → degrade ngl; second failure → user-facing error. |
-| 🔒 **Fast worker now acquires `_gpu_lock`** | Previously only slow worker serialized GPU tasks. Chat, embedding, RAG search now also wait for GPU. Prevents parallel GPU tasks. |
-| 🧠 **RAG: generation moved to slow worker** | `_process_rag_task*` no longer calls `rag.generate_answer()` directly. Fast worker does **only** `rag.search()` (embedding + Qdrant) and requeues to slow worker via `_requeue_reasoning_task(rag_context=...)`. Slow worker handles VRAM (unloads LTX-Video, loads reasoning). Prevents GPU contention. |
-| 📝 **RAG prompt fix** | `rag.template` no longer says "answer on your own" or "don't write 'no info'". Now: *"use ONLY the provided context. If context doesn't contain the answer — honestly say you cannot find it."* Prevents hallucination. |
-| 📦 **Raw Qdrant chunks → reasoning model** | When `rag.generate_answer()` returns None, `_process_reasoning_request` calls `rag.search()` directly and passes raw chunks as `rag_context` to the reasoning model. Reasoning model always sees document content. |
-| 🗂️ **Multi-tab session support** | Client now sends `session_id` in request body (UUID v4). Server validates ownership and updates Flask session. Cookie race conditions between tabs fixed. `app/static/js/chat-init.js`, `app/routes/messages.py`, `app/db.py` updated. |
-| 🧹 **Queue position: server data only** | Removed `pendingRequestIds` race guard from `chat-queue.js` that overwrote server positions with hardcoded `1`. Multiple ⚡ prevention preserved (only one session shows ⚡; rest show ⏳ with real positions). |
-| ⚠️ **Error message prefix** | `_build_error_response()` adds `⚠️ ` prefix to all user errors. Helper `_is_llm_error_string()` routes `call_llamacpp()` error strings (e.g., "GPU memory unavailable", "HTTP error 500") through `_build_error_response()`. Applied in `_process_reasoning_request`, `_process_text_task*`, RAG. |
-| 🌐 **Translation system fix** | Removed broken `.mo` volume mounts from `docker-compose.gpu.yml`. Docker now compiles all translations at build time. All site features work in both Russian and English. |
-| 📺 **Video VRAM: try/finally + flush CUDA** | Both video task handlers wrap generation in `try/finally` — `_unload_video_pipeline()` and `_unload_llamacpp_models()` always run. CUDA cache flushed after generation. `_wait_for_vram_full` timeout 30 s → 60 s. Buffer +500 → +3000 MB. No more "proceeding anyway" on timeout. |
-| 📐 **Dynamic video VRAM chain** | `estimate_video_vram_needed()`: 1) measured (from `model_vram_estimates`), 2) HTTP `/v1/vram_info` from ltx-wrapper (component sizes + current peak), 3) local filesystem (if `/app/models` mounted), 4) env fallback. New endpoint in `ltx_wrapper.py`. |
-| 🗃️ **New DB tables** | `model_vram_estimates` (module, model_name, ctx, ngl, estimated_mb, measured_mb, measurement_count, last_measured_at). `slm_import_progress` (user_id, last_message_id, total_imported) for checkpoint-based background import. |
-| 🧪 **55 new tests** | `tests/test_classify_model_fit.py` (11), `tests/test_dry_load.py` (10), `tests/test_health_monitor.py` (12), `tests/test_resource_manager_ltx_unload.py` (11), `tests/test_vram_estimates.py` (10). All passing. |
-| 🧹 **Docker compose cleanup** | Removed `docker-compose.cpu.yml` (CPU-only mode unsupported — FLAI requires NVIDIA GPU). Removed `services/llamacpp/generate_presets.py` (obsolete). Removed `services/sd_cpp/Dockerfile.sd_cpp-cpu`. |
-| 🤖 **Default chat model upgraded** | `Qwen3-4B-Instruct-2507-Q4_K_M` → `Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf` (~2 GB, faster routing). Default ctx 8192 → 16384 for both chat and reasoning. |
-| 📦 **Deploy scripts: VRAM tier detection** | `deploy.sh` / `deploy-ru.sh` now detect GPU VRAM via `nvidia-smi` and auto-select reasoning model: 16 GB+ → `gpt-oss-20b-Q4_K_M`, 12 GB → `Qwen3-8B-Thinking-Q4_K_M`, 8 GB → `Qwen3-4B-Thinking`. |
-| 🧠 **SLM daemon mode** | SuperLocalMemory now runs as a proper daemon (`slm serve start`) keeping the embedding model in memory permanently. Replaced the per-request `subprocess --sync` calls. SLM recall latency reduced from ~10 s to ~1 ms. HTTP proxy (`slm_http.py`) forwards requests to daemon internally. **Per-user isolation:** recall reads directly from the user's private SQLite, not from the daemon's shared database. |
-| 🧠 **SLM context for both chat + reasoning** | SLM facts are now injected into prompts for BOTH chat and reasoning models (alongside full conversation history). Previously was reasoning-only with only 2 last messages. `SLM_RECALL_LIMIT=7` (default). |
-| 🧠 **RAG fixes: router, streaming, context** | Router template now has dedicated category 5 for document/person/age queries → `[-RAG-]`. Streaming path (`_process_text_task_stream`) now calls RAG before requeuing to reasoning. Strict threshold lowered 0.7 → 0.5. Reasoning model receives document context via `{rag_context}`. RAG retry in `_process_reasoning_request`. |
-| 🎮 **Video VRAM fix: multimodal unload confirmation** | Fixed `_wait_for_vram_full()` — changed from impossible ≥80% threshold to `video_needed + 3 GB` buffer. Timeout increased 30 → 60 s. No more "proceeding anyway" into OOM. |
-| 🖼️ **Image display in streamed messages** | `finalizeStreamedMessage` renders images/videos from `result.file_path` / `result.file_data`. `file_data` added to `get_session_messages` SQL SELECT. `contextlib.suppress` replaced with proper logging in `db.py`. |
-| 🧪 **Test isolation improvements** | `conftest.py`: `stop_workers(timeout=3)` in `test_app` teardown. `TRUNCATE` on real PostgreSQL between tests (in CI). |
-| 🔨 **Various lint fixes** | SIM102, SIM108, F841 (3×), F821, N812, B904 — all resolved across `app/db.py`, `app/queue.py`, `modules/base.py`, `services/ltx_video/ltx_wrapper.py`. |
+| **Video: 240 frames @ 24 fps** | Default video length increased from 8s to 10s (240 frames @ 24fps). VRAM-capped mode: 120 frames @ 24fps (5 sec) |
+| **Video: 768×512 resolution** | Landscape video resolution reduced from 896×512 to 768×512 for better VRAM headroom on 16GB GPUs |
+| **3-tier model protection** | Admin panel blocks saving models that won't fit in VRAM/RAM (🟢 good / 🟡 cpu_offload / 🔴 impossible / ⚠ unknown) |
+| **Dry-load + auto-rollback** | After saving a model config, background test verifies it loads. On failure → auto-rollback to fallback model |
+| **Crash-loop watchdog** | Monitors llama-swap models every 60s. 3 failures in 5 min → auto-rollback to fallback |
+| **RAG on slow worker** | RAG generation moved to slow worker (was on fast worker, caused GPU contention with LTX-Video) |
+| **RAG context in reasoning** | Reasoning model now receives document context from RAG search |
+| **Multi-tab session fix** | Client sends `session_id` in request body; server validates ownership. No more cookie race conditions |
+| **Streaming reasoning** | Reasoning model now streams responses token-by-token instead of returning the full response at once |
+| **Generation progress bars** | Visual progress indicators for video, image, and reasoning generation via SSE events |
+| **Task cancellation** | Cancel any in-progress streaming task with the `■` button in real time |
+| **Thinking tag filtering** | Automatic removal of `<tool_call>` and `<\|channel\|>` reasoning blocks from model output (client + server) |
+| **Camera rooms CRUD** | Full camera management in admin panel: sync from API, enable/disable, thumbnail previews |
+| **Russian morphological analysis** | pymorphy3 for recognizing all grammatical declensions of camera room names in queries |
+| **Combined voice + image** | Record voice message while an image is already attached — both sent together |
+| **DOMPurify XSS protection** | All markdown HTML sanitized before DOM insertion to prevent XSS attacks |
+| **Lazy loading images** | Images and videos in messages load lazily for faster initial rendering |
+| **Run HTML button** | Execute HTML code blocks directly from chat in a new browser tab |
+| **Copy message text** | One-click copy of full assistant message text |
+| **Stream recovery** | Progress bars and streaming state restored after page reload or SSE reconnect |
+| **MTP factor in VRAM estimation** | Multi-Token Prediction draft layers (+15% VRAM) accounted for in model fit calculations |
+| **GGUF fallback reading** | Admin panel reads model metadata directly from GGUF files when cache is empty |
+| **Qwen3-4B MXFP4 migration** | Auto-migration of old chat models to Qwen3-4B-Instruct-2507-MXFP4_MOE |
+| **Dead code cleanup** | Removed unused functions (`get_gguf_model_info`, `find_gguf_file`, `chunk_text_by_sentences`, etc.) and CSS classes |
+| **Faster retries** | llama.cpp retry sleep reduced from 5s to 2s; VRAM polling from 1s to 0.5s |
+| **Chat export includes videos** | Generated videos are now embedded in exported HTML files as base64 |
 
 ### Core Components
 
@@ -170,7 +171,7 @@ FLAI **requires** an NVIDIA GPU with CUDA support. CPU-only mode is not supporte
 | Multimodal | ⚠️ Qwen3VL-4B (~2.5 GB) recommended | ✅ Qwen3VL-8B (~5.5 GB) | ✅ Qwen3VL-8B (~5.5 GB) |
 | Image gen (SD) | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 |
 | Image edit (Flux) | ✅ up to 768px long side | ✅ up to 1024px long side | ��� up to 1024px long side |
-| Video gen (LTX-Video) | ⚠️ 512×512×121 frames | ✅ 896×512×257 frames | ✅ 896×512×257 frames |
+| Video gen (LTX-Video) | ⚠️ 512×512×120 frames | ✅ 768×512×240 frames | ✅ 768×512×240 frames |
 | Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU |
 | RAG (Qdrant) | ✅ | ✅ | ✅ |
 | SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU |
@@ -590,13 +591,13 @@ The project uses **LTX-Video 2B 0.9.8 distilled** for video generation:
 
 | Model | Steps | Frame Rate | Resolution | Notes |
 |-------|-------|-----------|------------|-------|
-| **LTX-Video 2B distilled** | 8 | 8–30 fps | up to 768×1344 | Distilled, single GPU (~6 GB VRAM) |
+| **LTX-Video 2B distilled** | 8 | 24 fps | up to 768×1344 | Distilled, single GPU (~6 GB VRAM) |
 
 Video generation runs in a **separate GPU container** (via `--profile with-video`). Before generating, the llama.cpp LLM is automatically unloaded from VRAM to free memory. After generation, CUDA cache is cleared, LLM processes are re-unloaded, and the CUDA primary context is reset (`cuDevicePrimaryCtxReset`) to release all GPU memory back to the driver. The T5 text encoder (~8.9 GB in bf16) stays on CPU.
 
-**Source image resize:** Images for video-from-image are resized to **896px** on the longest side before being sent to the LTX pipeline (reduces VRAM and network payload). A system notice shows the original vs resized dimensions.
+**Source image resize:** Images for video-from-image are resized to **768px** on the longest side before being sent to the LTX pipeline (reduces VRAM and network payload). A system notice shows the original vs resized dimensions.
 
-**Aspect ratio matching:** When generating video from an image, the output video resolution is automatically adjusted to match the source image's aspect ratio: square images → 512×512, wide images (w/h > 1.2) → 896×512 landscape, tall images (w/h < 0.8) → 512×896 portrait.
+**Aspect ratio matching:** When generating video from an image, the output video resolution is automatically adjusted to match the source image's aspect ratio: square images → 512×512, wide images (w/h > 1.2) → 768×512 landscape, tall images (w/h < 0.8) → 512×768 portrait.
 
 **Required models:**
 1. `ltxv-2b-0.9.8-distilled.safetensors` (~5.9 GB) — diffusion transformer + VAE
@@ -682,6 +683,15 @@ docker compose -f docker-compose.gpu.yml --profile with-rag up -d
 ## 📹 Camera Integration (Optional)
 
 The camera module connects to a separate `room-snapshot-api` service. See [services/README.md](services/README.md) and [services/room-snapshot-api/README.md](services/room-snapshot-api/README.md) for deployment guides.
+
+### Camera Management (Admin Panel)
+The admin panel includes a **Cameras** tab with full CRUD operations:
+- **Sync** – import camera list from room-snapshot-api (`/rooms` endpoint)
+- **Enable/Disable** – toggle individual cameras on/off
+- **Thumbnail previews** – lazy-loaded camera snapshots with localStorage caching
+- **Russian name recognition** – pymorphy3 morphological analysis generates all grammatical declensions (именительный, винительный, предложный падежи) for each room name, so the AI recognizes "покажи гостиную", "что в гостиной", "на кухне" etc.
+
+Camera room data is stored in the `camera_rooms` database table (code, name_forms, enabled, sort_order).
 
 ### Configuration
 ```bash
@@ -815,6 +825,24 @@ curl http://localhost:5000/metrics
 - **CLI tools** — `admin-password`, `cleanup-uploads`, `migrate-messages-format` (with `--dry-run`, `--add-emojis`)
 - **Health check & metrics** — `/health` endpoint with service status, `/metrics` for Prometheus
 - **File size display** — shown in chat headers for all file types
+- **Video 240 frames @ 24fps** — default video length 10s (was 8s), VRAM cap 120 frames (5s)
+- **Video 768×512 resolution** — landscape resolution reduced from 896×512 for better VRAM headroom
+- **3-tier model protection** — admin panel blocks impossible models, dry-load + auto-rollback, crash-loop watchdog
+- **RAG on slow worker** — prevents GPU contention with LTX-Video pipeline
+- **Multi-tab session fix** — session_id in request body, server validates ownership
+- **Streaming reasoning** — reasoning model streams responses token-by-token with real-time display
+- **Generation progress bars** — visual progress for video, image, and reasoning tasks via SSE
+- **Task cancellation** — cancel any in-progress streaming generation in real time
+- **Thinking tag filtering** — automatic removal of `<tool_call>` and `<|channel|>` blocks from model output
+- **Camera rooms CRUD** — dynamic camera management in admin panel with sync from API
+- **Russian morphological analysis** — pymorphy3 for recognizing all declensions of room names
+- **Combined voice + image** — record voice while image is attached; both sent together
+- **DOMPurify XSS protection** — all markdown HTML sanitized before rendering
+- **Stream recovery** — progress bars and streaming state restored after page reload or SSE reconnect
+- **Run HTML button** — execute HTML code blocks from chat in a new browser tab
+- **Copy message text** — one-click copy of full assistant response
+- **Lazy loading images** — images and videos load lazily for faster initial rendering
+- **Chat export includes videos** — generated videos are now embedded as base64 in exported HTML files
 
 ### 🔄 In Progress
 - Advanced RAG: metadata filtering, hybrid search
@@ -866,6 +894,12 @@ curl http://localhost:5000/metrics
 | Model | Purpose | License | Approx. Size |
 |-------|---------|---------|-------------|
 | **nomic-embed-text-v1.5** | Text embedding for SLM retrieval | [Apache 2.0](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5) | ~500 MB |
+
+### Morphological Analysis
+
+| Package | Purpose | License |
+|---------|---------|---------|
+| **pymorphy3** | Russian morphological analysis for camera room name recognition (generates declension forms) | [MIT License](https://github.com/kmike/pymorphy3) |
 
 ### Voice Models
 
@@ -931,6 +965,7 @@ pytest tests/test_health_monitor.py
 pytest tests/test_llama_swap_config.py
 pytest tests/test_validators.py
 pytest tests/test_model_config.py
+pytest tests/test_morph.py
 ```
 
 > **Note**: `tests/conftest.py` uses an in-memory mock database by default (no PostgreSQL required). In CI, a real PostgreSQL is available via the `DATABASE_URL` env variable.

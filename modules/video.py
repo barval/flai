@@ -95,18 +95,34 @@ class VideoModule(TranslationMixin):
 
     @staticmethod
     def _estimate_video_vram_mb() -> int:
-        """Rough VRAM estimate for LTX-Video model in MB."""
-        return 8000  # ~8GB for 2B distilled model
+        """Dynamic VRAM estimate for LTX-Video model in MB.
+
+        Reads the measured peak from model_vram_estimates (10+ measurements
+        stored by resource_manager.measure_video_vram_peak). On our hardware
+        the actual peak is ~3057 MB, not the 8000 MB the hardcoded value
+        assumed. Falls back to 8000 MB if the DB query fails.
+        """
+        try:
+            from app.resource_manager import get_resource_manager
+
+            return get_resource_manager().estimate_video_vram_needed()
+        except Exception:
+            return 8000
 
     def _resolve_use_gpu(self, rm) -> bool:
-        """Determine if GPU can be used. Falls back to CPU if VRAM insufficient."""
+        """Determine if GPU can be used. Returns False if VRAM insufficient.
+
+        Buffer reduced 3000->1000 MB: measured ltx-video peak is 3057 MB,
+        +1 GB for KV cache = 4057 MB threshold. With 1000 MB safety margin
+        we no longer false-trigger "forcing CPU" on 16 GB GPUs.
+        """
         if not rm.hardware.cuda_detected:
             return False
         rm._poll_vram()
         available = rm.hardware.available_vram_mb
-        needed = self._estimate_video_vram_mb() + 3000
+        needed = self._estimate_video_vram_mb() + 1000
         if available > 0 and available < needed:
-            self.logger.warning(f"VRAM too low for video ({available}MB available, ~{needed}MB needed) — forcing CPU")
+            self.logger.warning(f"VRAM too low for video ({available}MB available, ~{needed}MB needed)")
             return False
         return True
 
@@ -115,6 +131,9 @@ class VideoModule(TranslationMixin):
         prompt_data: dict[str, Any],
         image_data: str | None = None,
         lang: str = "ru",
+        user_id: str | None = None,
+        session_id: str | None = None,
+        task_id: str | None = None,
     ) -> dict[str, Any]:
         """Generate video via ltx-wrapper.
         Before starting, unloads llama.cpp model from VRAM to avoid OOM.
@@ -129,9 +148,11 @@ class VideoModule(TranslationMixin):
         # CRITICAL: Verify llama-swap has NO models loaded (not just VRAM check).
         # A VRAM-only check with threshold ~10GB can pass while multimodal
         # (~5GB) is still loaded on a 15GB GPU (15-5=10 ≥ 10 → false positive).
+        # Threshold = measured ltx-video peak + 1 GB safety margin, consistent
+        # with _resolve_use_gpu() below.
         swap_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
         deadline = time.time() + 15
-        video_needed = rm.estimate_video_vram_needed()
+        video_needed = rm.estimate_video_vram_needed() + 1000
         while time.time() < deadline:
             rm._poll_vram()
             try:
@@ -143,9 +164,7 @@ class VideoModule(TranslationMixin):
             if not isinstance(free, int):
                 free = 0
             if len(loaded) == 0 and free >= video_needed:
-                self.logger.info(
-                    f"VRAM ready: {free}MB free, 0 LLM models loaded, need ≥{video_needed}MB"
-                )
+                self.logger.info(f"VRAM ready: {free}MB free, 0 LLM models loaded, need ≥{video_needed}MB")
                 break
             self.logger.info(
                 f"VRAM: {free}MB free, {len(loaded)} LLM model(s) loaded, "
@@ -153,38 +172,66 @@ class VideoModule(TranslationMixin):
             )
             time.sleep(2)
         else:
-            err_msg = self._("Video generation failed: GPU memory exhausted. Please simplify your request.", lang)
+            err_msg = self._(
+                "Video generation requires GPU; available VRAM ({free} MB) "
+                "is below safe threshold ({need} MB). Please try again later or simplify the request.",
+                lang,
+            ).format(free=free, need=video_needed)
             self.logger.warning(f"VRAM wait timeout (15s) — free={free}MB, models={loaded}")
             return {"success": False, "error": err_msg}
 
         use_gpu = self._resolve_use_gpu(rm)
-        if use_gpu:
-            self.logger.info(
-                f"VRAM: {rm.hardware.available_vram_mb}MB available, "
-                f"~{self._estimate_video_vram_mb()}MB needed — using GPU"
+        if not use_gpu:
+            err_msg = self._(
+                "Video generation requires GPU; available VRAM ({free} MB) "
+                "is below safe threshold ({need} MB). Please try again later or simplify the request.",
+                lang,
+            ).format(
+                free=rm.hardware.available_vram_mb,
+                need=int(self._estimate_video_vram_mb() + 1000),
             )
-        else:
-            self.logger.info("Video generation will use CPU mode (may be very slow)")
+            self.logger.warning(f"Video generation skipped: {err_msg}")
+            return {"success": False, "error": err_msg}
+        self.logger.info(
+            f"VRAM: {rm.hardware.available_vram_mb}MB available, ~{self._estimate_video_vram_mb()}MB needed — using GPU"
+        )
 
         rm.mark_video_busy()
 
-        # Cap video resolution for low VRAM tiers (8GB) to prevent OOM
+        # Cap video resolution ONLY when VRAM is insufficient.
+        # Default policy: 240 frames at 768×512 (10-sec video @ 24fps).
+        # Cap to 120 frames at 512×512 only if:
+        #   (a) total_vram_mb < 10000 (8/10 GB tier GPU), OR
+        #   (b) available_vram_mb < 6000 (12+ GB tier, fragmented after multimodal unload)
         total_vram = rm.hardware.total_vram_mb
         if isinstance(total_vram, int) and total_vram > 0 and total_vram < 10000:
-            old_w = prompt_data.get("width", 896)
+            old_w = prompt_data.get("width", 768)
             old_h = prompt_data.get("height", 512)
-            old_frames = prompt_data.get("num_frames", 257)
+            old_frames = prompt_data.get("num_frames", 240)
             prompt_data["width"] = min(old_w, 512)
             prompt_data["height"] = min(old_h, 512)
-            prompt_data["num_frames"] = min(old_frames, 121)
+            prompt_data["num_frames"] = min(old_frames, 120)
             if (old_w, old_h, old_frames) != (prompt_data["width"], prompt_data["height"], prompt_data["num_frames"]):
                 self.logger.info(
                     f"VRAM tier 8GB: capped video from {old_w}×{old_h}×{old_frames}f "
                     f"to {prompt_data['width']}×{prompt_data['height']}×{prompt_data['num_frames']}f"
                 )
+        elif isinstance(rm.hardware.available_vram_mb, int) and 0 < rm.hardware.available_vram_mb < 6000:
+            old_frames = prompt_data.get("num_frames", 240)
+            old_w = prompt_data.get("width", 768)
+            old_h = prompt_data.get("height", 512)
+            prompt_data["width"] = min(old_w, 512)
+            prompt_data["height"] = min(old_h, 512)
+            prompt_data["num_frames"] = min(old_frames, 120)
+            if (old_w, old_h, old_frames) != (prompt_data["width"], prompt_data["height"], prompt_data["num_frames"]):
+                self.logger.info(
+                    f"VRAM soft-cap (available={rm.hardware.available_vram_mb}MB): "
+                    f"reduced video from {old_w}×{old_h}×{old_frames}f "
+                    f"to {prompt_data['width']}×{prompt_data['height']}×{prompt_data['num_frames']}f"
+                )
 
         # Resize large source images to avoid OOM and reduce network transfer
-        max_video_inpaint_size = 896
+        max_video_inpaint_size = 768
         resized_info: dict[str, Any] = {"resized": False, "original_size": None, "new_size": None}
         if image_data:
             try:
@@ -213,12 +260,15 @@ class VideoModule(TranslationMixin):
                 "negative_prompt": prompt_data.get(
                     "negative_prompt", "worst quality, inconsistent motion, blurry, jittery, distorted"
                 ),
-                "width": prompt_data.get("width", 896),
+                "width": prompt_data.get("width", 768),
                 "height": prompt_data.get("height", 512),
-                "num_frames": prompt_data.get("num_frames", 257),
-                "frame_rate": prompt_data.get("frame_rate", 30),
+                "num_frames": prompt_data.get("num_frames", 240),
+                "frame_rate": prompt_data.get("frame_rate", 24),
                 "seed": prompt_data.get("seed", -1),
                 "image_data": image_data,
+                "user_id": user_id,
+                "session_id": session_id,
+                "task_id": task_id,
             }
 
             self.logger.info(
@@ -295,6 +345,7 @@ class VideoModule(TranslationMixin):
             # Clear CUDA cache to prevent fragmentation after video generation
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                     torch.cuda.synchronize()

@@ -27,15 +27,25 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Persistent code mounts (survive restart)
       - ./app/llamacpp_client.py:/app/app/llamacpp_client.py
+      - ./app/llama_swap_config.py:/app/app/llama_swap_config.py
       - ./app/queue.py:/app/app/queue.py
       - ./app/resource_manager.py:/app/app/resource_manager.py
       - ./app/utils.py:/app/app/utils.py
       - ./app/database.py:/app/app/database.py
+      - ./app/db.py:/app/app/db.py
       - ./app/routes/admin.py:/app/app/routes/admin.py
+      - ./app/routes/queue.py:/app/app/routes/queue.py
+      - ./app/routes/messages.py:/app/app/routes/messages.py
+      - ./app/static/js/chat-init.js:/app/app/static/js/chat-init.js
+      - ./app/static/js/chat-recording.js:/app/app/static/js/chat-recording.js
+      - ./app/static/js/chat-constants.js:/app/app/static/js/chat-constants.js
+      - ./app/__init__.py:/app/app/__init__.py
       - ./modules/video.py:/app/modules/video.py
+      - ./modules/sd_cpp.py:/app/modules/sd_cpp.py
       - ./app/static/js/events.js:/app/app/static/js/events.js
       - ./app/static/js/admin-models.js:/app/app/static/js/admin-models.js
       - ./app/static/js/chat-queue.js:/app/app/static/js/chat-queue.js
+      - ./app/static/js/chat-messages.js:/app/app/static/js/chat-messages.js
       - ./prompts/en/rag.template:/app/prompts/en/rag.template
       - ./prompts/ru/rag.template:/app/prompts/ru/rag.template
       - ./prompts/en/reasoning.template:/app/prompts/en/reasoning.template
@@ -43,6 +53,8 @@ services:
       - ./prompts/en/base_text.template:/app/prompts/en/base_text.template
       - ./prompts/ru/base_text.template:/app/prompts/ru/base_text.template
     runtime: nvidia
+    group_add:
+      - "988"  # Docker socket group — needed for `docker restart` from inside container
     environment:
       - REDIS_URL=redis://redis:6379/0
       - NVIDIA_VISIBLE_DEVICES=all

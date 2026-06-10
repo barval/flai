@@ -172,28 +172,10 @@ class ResourceManager:
         except Exception:
             return 4096  # Assume 4GB free
 
-    # ── Known model VRAM limits (tested safe n_gpu_layers per GPU VRAM tier) ──
-    # Keys: model_type, Values: dict of {min_vram_mb: max_n_gpu_layers}
-    # Used to clamp the computed n_gpu_layers and prevent OOM.
-    _MAX_SAFE_NGL: dict[str, list[tuple[int, int]]] = {
-        "reasoning": [
-            (24000, -1),  # 24GB+ — all layers on GPU
-            (20000, 24),  # 20GB — partial offload
-            (15844, 16),  # 16GB (RTX 5060 Ti)
-            (12000, 12),  # 12GB — partial offload
-            (8000, 8),  # 8GB — minimal GPU
-        ],
-        "chat": [
-            (8000, -1),  # 8GB+ — all layers fit
-        ],
-        "multimodal": [
-            (12000, -1),  # 12GB+ — all layers fit
-            (8000, 20),  # 8GB — partial
-        ],
-        "embedding": [
-            (4000, -1),  # 4GB+ — all layers
-        ],
-    }
+    # Safety caps removed — iterative degradation in compute_llamacpp_config()
+    # dynamically computes n_gpu_layers from actual model file_size, block_count,
+    # ctx_size, and measured VRAM.  Hardcoded per-tier caps caused OOM-free models
+    # (e.g. 9 GB IQ2_XXS) to be needlessly offloaded to CPU on 16 GB GPUs.
 
     # ── Adaptive config computation ──
 
@@ -234,6 +216,7 @@ class ResourceManager:
         file_size_mb = None
         block_count = None
         expert_count = 0
+        supports_mtp = False
         if model_name:
             try:
                 gguf_cache = get_gguf_models_cached("/models")
@@ -242,6 +225,7 @@ class ResourceManager:
                     file_size_mb = model_info.get("file_size_mb")
                     block_count = model_info.get("block_count")
                     expert_count = model_info.get("expert_count") or 0
+                    supports_mtp = model_info.get("supports_mtp", False)
             except Exception:
                 pass
 
@@ -255,6 +239,8 @@ class ResourceManager:
 
         # Use actual file size if available, otherwise use fallback estimate
         needed = int(file_size_mb * 1.2) if file_size_mb is not None else model_vram.get(model_type, 3000)
+        if supports_mtp:
+            needed = int(needed * 1.15)
 
         # How much VRAM to reserve for other operations (sd-cli, overhead)
         reserve = 2000  # 2GB safety margin
@@ -334,9 +320,9 @@ class ResourceManager:
                 effective_ngl = block_count
             while effective_ngl > 0:
                 ratio = min(1.0, effective_ngl / block_count) if block_count > 0 else 1.0
-                est_weights = max(file_size_mb or needed, 100) * ratio * (0.95 if expert_count > 0 else 1.0)
-                est_kv = ctx_size * 0.04
-                est_overhead = max(200, int((file_size_mb or needed) * 0.03 + ctx_size * 0.001))
+                est_weights = max(file_size_mb or needed, 100) * ratio * (0.95 if expert_count > 0 else 1.0) * (1.15 if supports_mtp else 1.0)
+                est_kv = ctx_size * 0.12  # q4_0: ~0.12 MB per token (matches get_vram_needed_mb)
+                est_overhead = max(400, int((file_size_mb or needed) * 0.05 + ctx_size * 0.002))
                 est_total = est_weights + est_kv + est_overhead
                 if est_total <= available_for_model or effective_ngl == 0:
                     break
@@ -362,31 +348,6 @@ class ResourceManager:
                 result["warning"] += f"; {result['n_cpu_moe']}/{expert_count} experts on CPU"
             else:
                 result["warning"] = f"{result['n_cpu_moe']}/{expert_count} experts on CPU"
-
-        # Clamp n_gpu_layers to known safe limits per VRAM tier
-        caps = self._MAX_SAFE_NGL.get(model_type, [])
-        current_ngl = result["n_gpu_layers"]
-        if current_ngl != 0 and caps:
-            capped = -1
-            for min_vram, max_ngl in caps:
-                if total_vram >= min_vram:
-                    capped = max_ngl
-                    break
-            if capped is not None:
-                if capped == -1:
-                    capped = block_count if block_count else -1
-                # Clamp when all layers on GPU exceed safety limit
-                if current_ngl == -1 and capped != -1 and capped < (block_count or capped + 1):
-                    result["n_gpu_layers"] = capped
-                    result["offload_kqv"] = True
-                    result["warning"] = f"Safety cap: n_gpu_layers limited to {capped}/{block_count} for VRAM"
-                elif current_ngl != -1 and capped != -1 and current_ngl > capped:
-                    result["n_gpu_layers"] = capped
-                    result["offload_kqv"] = True
-                    if "warning" in result and result["warning"]:
-                        result["warning"] += f" (capped to {capped} by safety limit)"
-                    else:
-                        result["warning"] = f"Safety cap: n_gpu_layers limited to {capped} for VRAM"
 
         return result
 
@@ -416,6 +377,7 @@ class ResourceManager:
         file_size_mb = gguf_info.get("file_size_mb") or 0
         block_count = gguf_info.get("block_count") or 0
         expert_count = gguf_info.get("expert_count") or 0
+        supports_mtp = gguf_info.get("supports_mtp", False)
 
         # Fallback block_count when GGUF metadata missing
         if block_count == 0:
@@ -439,8 +401,9 @@ class ResourceManager:
             ngl = block_count or 1
 
         moe_factor = 0.95 if (expert_count or 0) > 0 else 1.0
+        mtp_factor = 1.15 if supports_mtp else 1.0
         ratio = min(1.0, ngl / block_count) if (block_count or 0) > 0 else 1.0
-        weights_mb = (file_size_mb or 0) * ratio * moe_factor
+        weights_mb = (file_size_mb or 0) * ratio * moe_factor * mtp_factor
 
         # KV cache estimate (q4_0: ~0.12 MB per token including CUDA overhead)
         # Actual measured on RTX 5060 Ti: chat 0.05, multimodal 0.18, reasoning 0.12 MB/token.
@@ -451,6 +414,25 @@ class ResourceManager:
         overhead = max(400, int(file_size_mb * 0.05 + ctx_size * 0.002))
 
         total = int(weights_mb + kv_mb + overhead)
+
+        # Prefer measured VRAM from model_vram_estimates when available —
+        # far more accurate than GGUF formula (e.g. multimodal measured 10367 MB
+        # vs formula 6178 MB, chat 5733 vs 4410). Adds 1 GB safety margin
+        # to keep headroom for CUDA fragmentation and temporary buffers.
+        # The table stores rows under either the actual file name (e.g.
+        # "Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf") or the module name
+        # (e.g. "chat") — try most-recent record for the module first
+        # (newer measurement), then exact model_name match.
+        try:
+            from app.database import get_vram_estimate
+
+            measured = get_vram_estimate(model_type) or get_vram_estimate(model_type, model_name)
+            if measured and measured.get("measured_vram_mb"):
+                measured_mb = int(measured["measured_vram_mb"])
+                total = max(total, measured_mb + 1000)
+        except Exception:
+            pass
+
         return max(total, 100)
 
     # ── Unified VRAM guarantee ──
@@ -507,6 +489,7 @@ class ResourceManager:
         # 3. Flush CUDA cache
         try:
             import torch
+
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 torch.cuda.synchronize()
@@ -521,9 +504,7 @@ class ResourceManager:
                 if resp.status_code == 200:
                     models = resp.json().get("running", [])
                     if len(models) > 0:
-                        logger.debug(
-                            f"ensure_vram_for [{model_type}]: {len(models)} model(s) still active"
-                        )
+                        logger.debug(f"ensure_vram_for [{model_type}]: {len(models)} model(s) still active")
                         time.sleep(2)
                         continue
             except Exception:
@@ -532,14 +513,10 @@ class ResourceManager:
             self._poll_vram()
             free = self.hardware.available_vram_mb
             if free >= needed_mb:
-                logger.info(
-                    f"ensure_vram_for [{model_type}]: {free}MB free >= {needed_mb}MB needed — OK"
-                )
+                logger.info(f"ensure_vram_for [{model_type}]: {free}MB free >= {needed_mb}MB needed — OK")
                 return True
 
-            logger.debug(
-                f"ensure_vram_for [{model_type}]: {free}MB free, need {needed_mb}MB — waiting..."
-            )
+            logger.debug(f"ensure_vram_for [{model_type}]: {free}MB free, need {needed_mb}MB — waiting...")
             time.sleep(2)
 
         logger.error(
@@ -581,7 +558,7 @@ class ResourceManager:
         nvidia-smi after the unload. If the POST succeeds but VRAM stays high,
         retries the unload up to 3 times (CUDA deallocation can be lazy).
 
-        Optimizations (v8.8+):
+        Optimizations (v8.9+):
           - Pre-flight GET /v1/vram_info: if pipeline not loaded, skip HTTP entirely
             (avoids 8s × 8 polls of waiting when nothing needs unloading)
           - Success condition is clamped to total - 1GB so it's reachable when
@@ -653,7 +630,7 @@ class ResourceManager:
                     )
                     self._last_ltx_unload_at = time.time()
                     return True
-                time.sleep(1)
+                time.sleep(0.5)
             logger.warning(
                 f"LTX-Video unload returned 200 but VRAM did not free "
                 f"(was {free_before}MB, now {self.hardware.available_vram_mb}MB, "
@@ -685,19 +662,43 @@ class ResourceManager:
         self._ltx_restart_initiated_at = time.time()
 
         logger.error("LTX-Video unresponsive: 3 consecutive timeouts. Restarting container.")
+        self._restart_ltx_container()
+
+    def _force_restart_ltx_video(self) -> None:
+        """Force-restart LTX-Video to free CUDA context overhead (~3 GB).
+
+        Called from ensure_vram_for() when VRAM is still insufficient after
+        unload_video_pipeline(). The gunicorn worker inside flai-ltxvideo holds
+        a CUDA context that survives /v1/unload — only a container restart
+        releases it. Rate-limited to 1 restart per 3 minutes.
+        """
+        if time.time() - self._ltx_restart_initiated_at < 180:
+            logger.debug("LTX-Video restart rate-limited — skipping")
+            return
+        self._ltx_restart_initiated_at = time.time()
+
+        logger.warning("Force-restarting LTX-Video container to free CUDA context")
+        self._restart_ltx_container()
+
+    def _restart_ltx_container(self) -> None:
+        """Restart the flai-ltxvideo container via Docker socket."""
         try:
-            resp = requests.post(
-                "http://localhost/containers/flai-ltxvideo/restart",
-                timeout=10,
+            result = subprocess.run(
+                ["docker", "restart", "flai-ltxvideo"],
+                capture_output=True,
+                text=True,
+                timeout=30,
             )
-            if resp.status_code in (204, 304):
-                logger.info("flai-ltxvideo restart initiated via Docker socket")
+            if result.returncode == 0:
+                logger.info("flai-ltxvideo restart initiated via docker CLI")
                 self._ltx_unload_consecutive_timeouts = 0
                 self._last_ltx_unload_at = 0.0
             else:
-                logger.error(f"Docker restart failed: HTTP {resp.status_code}")
+                logger.error(f"Docker restart failed (rc={result.returncode}): {result.stderr}")
+        except FileNotFoundError:
+            logger.error("Docker CLI not found in container — cannot restart flai-ltxvideo")
         except Exception as e:
-            logger.error(f"Failed to restart flai-ltxvideo via Docker socket: {e}")
+            logger.error(f"Failed to restart flai-ltxvideo: {e}")
 
     def estimate_video_vram_needed(self) -> int:
         """VRAM threshold for LTX-Video pipeline loading.
@@ -796,10 +797,7 @@ class ResourceManager:
                     n_gpu_layers=ngl,
                     measured_mb=used,
                 )
-                logger.info(
-                    f"VRAM measurement [{module}]: {used}MB used "
-                    f"({after_free}MB free / {total}MB total)"
-                )
+                logger.info(f"VRAM measurement [{module}]: {used}MB used ({after_free}MB free / {total}MB total)")
         except Exception as e:
             logger.debug(f"VRAM measurement failed for {module}: {e}")
 
@@ -824,10 +822,7 @@ class ResourceManager:
                     n_gpu_layers=0,
                     measured_mb=total - free,
                 )
-                logger.info(
-                    f"VRAM measurement [ltx-video]: {total - free}MB used "
-                    f"({free}MB free / {total}MB total)"
-                )
+                logger.info(f"VRAM measurement [ltx-video]: {total - free}MB used ({free}MB free / {total}MB total)")
         except Exception as e:
             logger.debug(f"Video VRAM measurement failed: {e}")
 

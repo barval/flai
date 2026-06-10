@@ -58,19 +58,6 @@ def get_db():
             conn.close()
 
 
-def close_db(e=None):
-    """Close database connection (for Flask teardown)."""
-    from flask import g
-
-    db = getattr(g, "_database", None)
-    if db is not None:
-        try:
-            db.close()
-        except Exception as e:
-            logger.warning(f"Error closing DB connection: {e}")
-        g.pop("_database", None)
-
-
 def init_db():
     """Initialize the PostgreSQL database (create tables)."""
     _init_postgresql()
@@ -204,7 +191,7 @@ def _init_postgresql():
         c.execute("""
             INSERT INTO model_configs (module, model_name, context_length, temperature, top_p, timeout, service_url, repeat_penalty)
             VALUES
-                ('chat', 'Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf', 16384, 0.1, 0.1, 120, 'http://flai-llamacpp:8033', 1.1),
+                ('chat', 'qwen35-4b-instruct-mtp-mxfp4.gguf', 16384, 0.1, 0.1, 120, 'http://flai-llamacpp:8033', 1.1),
                 ('reasoning', 'gpt-oss-20b-Q4_K_M', 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.15),
                 ('multimodal', 'Qwen3VL-8B-Instruct-Q4_K_M', 8192, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
                 ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://flai-llamacpp:8033', NULL)
@@ -300,6 +287,42 @@ def _init_postgresql():
         $migrate$
     """)
 
+    # camera_rooms — configurable camera/room definitions (single source of truth)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS camera_rooms (
+            code        TEXT PRIMARY KEY,
+            name_forms  TEXT[] NOT NULL DEFAULT '{}',
+            enabled     BOOLEAN DEFAULT TRUE,
+            sort_order  INTEGER DEFAULT 0,
+            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Migration: drop unused columns if they exist from previous schema
+    c.execute("""
+        DO $migrate$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM information_schema.columns
+                      WHERE table_name = 'camera_rooms' AND column_name = 'name_en') THEN
+                ALTER TABLE camera_rooms DROP COLUMN name_en;
+            END IF;
+            IF EXISTS (SELECT 1 FROM information_schema.columns
+                      WHERE table_name = 'camera_rooms' AND column_name = 'rtsp_ip') THEN
+                ALTER TABLE camera_rooms DROP COLUMN rtsp_ip;
+            END IF;
+            IF EXISTS (SELECT 1 FROM information_schema.columns
+                      WHERE table_name = 'camera_rooms' AND column_name = 'rtsp_port') THEN
+                ALTER TABLE camera_rooms DROP COLUMN rtsp_port;
+            END IF;
+            IF EXISTS (SELECT 1 FROM information_schema.columns
+                      WHERE table_name = 'camera_rooms' AND column_name = 'rtsp_stream') THEN
+                ALTER TABLE camera_rooms DROP COLUMN rtsp_stream;
+            END IF;
+        END
+        $migrate$
+    """)
+
     # Switch chat model back to Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf (Instruct, ~2 GB)
     for old_name in ['Qwen3-1.7B-Q8_0.gguf', 'Qwen3-1.7B-Instruct-Q4_K_M', 'Qwen3-4B-Instruct-2507-Q4_K_M']:
         c.execute("""
@@ -311,16 +334,6 @@ def _init_postgresql():
     conn.commit()
     conn.close()
     logger.info("PostgreSQL database initialized")
-
-
-def get_database_type() -> str:
-    """Return the database type."""
-    return "postgresql"
-
-
-def is_postgresql() -> bool:
-    """Always True — PostgreSQL is the only supported database."""
-    return True
 
 
 # ── VRAM estimates helpers ──────────────────────────────────────

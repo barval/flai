@@ -1,5 +1,4 @@
 # modules/cam.py
-# modules/cam.py
 import base64
 import json
 import logging
@@ -14,7 +13,12 @@ from app.userdb import check_camera_permission
 
 
 class CamModule(TranslationMixin):
-    """Module for interacting with CCTV camera system"""
+    """Module for interacting with CCTV camera system.
+
+    Room definitions are loaded from the ``camera_rooms`` DB table
+    (single source of truth).  The old hardcoded dictionaries were
+    replaced by dynamic ``_load_rooms_from_db()``.
+    """
 
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
@@ -24,32 +28,11 @@ class CamModule(TranslationMixin):
         self.check_interval = 30
         self.timeout = 15
 
-        self.room_names = {
-            "tam": "тамбур",
-            "pri": "прихожая",
-            "kor": "коридор",
-            "spa": "спальня",
-            "kab": "кабинет",
-            "det": "детская",
-            "gos": "гостиная",
-            "kuh": "кухня",
-            "bal": "балкон",
-        }
-
-        # Translation keys for room names
-        self.room_name_keys = {
-            "tam": "room_tambour",
-            "pri": "room_hallway",
-            "kor": "room_corridor",
-            "spa": "room_bedroom",
-            "kab": "room_office",
-            "det": "room_children",
-            "gos": "room_living",
-            "kuh": "room_kitchen",
-            "bal": "room_balcony",
-        }
-
-        self.room_codes = {v: k for k, v in self.room_names.items()}
+        # Populated by _load_rooms_from_db()
+        self.room_names: dict[str, str] = {}          # code → primary name
+        self.room_name_forms: dict[str, list[str]] = {}  # code → all name forms
+        self.room_name_keys: dict[str, str] = {}      # code → translation key
+        self.room_codes: dict[str, str] = {}           # name_form → code
 
         if app:
             self.init_app(app)
@@ -78,6 +61,10 @@ class CamModule(TranslationMixin):
             else:
                 self.logger.warning(f"Camera API not available after {self.max_init_retries} attempts")
 
+        # Load room definitions from DB AFTER availability check
+        # (populate_from_camera_api needs self.available to be True)
+        self._load_rooms_from_db()
+
         if self.available:
             self.logger.info(
                 f"CamModule initialized and available (API: {self.camera_api_url}), timeout: {self.timeout}s"
@@ -86,6 +73,54 @@ class CamModule(TranslationMixin):
             self.logger.warning(
                 f"CamModule initialized, but camera API unavailable ({self.camera_api_url}). Will retry on each request."
             )
+
+    def _load_rooms_from_db(self):
+        """Load room definitions from the camera_rooms DB table.
+
+        Builds three lookup dicts:
+        - room_names:        code → primary name (first element of name_forms)
+        - room_name_forms:   code → list of all name forms (all declensions)
+        - room_codes:        lowercased name form → code (for reverse lookup)
+
+        If the table is empty and camera API is available, auto-populates
+        from the room-snapshot-api /rooms endpoint (one-time migration).
+        """
+        try:
+            from app.cameradb import get_all_camera_rooms, populate_from_camera_api
+
+            rooms = get_all_camera_rooms(enabled_only=True)
+
+            # Auto-populate from camera API on first run (empty table + API available)
+            if not rooms and self.available:
+                count = populate_from_camera_api(self.camera_api_url, self.timeout)
+                if count:
+                    self.logger.info(f"Auto-imported {count} cameras from room-snapshot-api")
+                    rooms = get_all_camera_rooms(enabled_only=True)
+        except Exception as e:
+            self.logger.warning(f"Could not load camera rooms from DB: {e}. Using empty room list.")
+            rooms = []
+
+        self.room_names = {}
+        self.room_name_forms = {}
+        self.room_name_keys = {}
+        self.room_codes = {}
+
+        for room in rooms:
+            code = room["code"]
+            forms = room["name_forms"] or []
+            self.room_names[code] = forms[0] if forms else code
+            self.room_name_forms[code] = [f.lower() for f in forms]
+            # Translation key: room_{code} (for i18n of room name)
+            self.room_name_keys[code] = f"room_{code}"
+            # Reverse lookup: each form → code
+            for form in forms:
+                self.room_codes[form.lower()] = code
+
+        self.logger.info(f"Loaded {len(self.room_names)} camera rooms from DB: {list(self.room_names.keys())}")
+
+    def reload_rooms(self):
+        """Reload room definitions from DB. Call after CRUD operations."""
+        self._load_rooms_from_db()
 
     def get_all_rooms(self):
         """Return dictionary {code: name} of all known cameras."""
@@ -185,8 +220,8 @@ class CamModule(TranslationMixin):
                 response = requests.get(f"{self.camera_api_url}/rooms", timeout=3)
                 if response.status_code == 200:
                     api_rooms = response.json()
-                    if isinstance(api_rooms, list):
-                        status["available_rooms"] = api_rooms
+                    if isinstance(api_rooms, dict):
+                        status["available_rooms"] = list(api_rooms.keys())
             except Exception:
                 pass
         return status
@@ -199,13 +234,33 @@ class CamModule(TranslationMixin):
         return f"room '{room_code}'"
 
     def get_room_code(self, room_name):
+        """Resolve a room name (possibly declined) to its code.
+
+        Search order:
+        1. Exact match in self.room_codes (all stored forms).
+        2. Substring match: any stored form contained in the query,
+           or the query contained in a stored form.
+        """
         room_name_lower = room_name.lower().strip()
+        # 1. Exact match
         if room_name_lower in self.room_codes:
             return self.room_codes[room_name_lower]
-        for name, code in self.room_codes.items():
-            if name in room_name_lower or room_name_lower in name:
-                return code
+        # 2. Substring match against all stored name forms
+        for code, forms in self.room_name_forms.items():
+            for form in forms:
+                if form in room_name_lower or room_name_lower in form:
+                    return code
         return None
+
+    def get_all_rooms_with_forms(self) -> list[tuple[str, list[str]]]:
+        """Return list of (code, [name_forms]) for enabled rooms.
+
+        Used by the router prompt builder to generate camera classification rules.
+        """
+        return [
+            (code, self.room_name_forms.get(code, []))
+            for code in sorted(self.room_names.keys())
+        ]
 
     def get_snapshot(self, user_login, room_code, lang="ru"):
         self.check_availability()
@@ -215,8 +270,8 @@ class CamModule(TranslationMixin):
         if room_code not in self.room_names:
             code = self.get_room_code(room_code)
             if code:
-                room_code = code
                 self.logger.info(f"Converted room name '{room_code}' to code '{code}'")
+                room_code = code
             else:
                 template = self._("Unknown room: {room}", lang)
                 return {

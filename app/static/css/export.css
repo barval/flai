@@ -101,7 +101,8 @@ footer {
 .context-info-container button,
 .copy-code-button,
 .copy-transcript-button,
-.copy-message-button {
+.copy-message-button,
+.open-html-button {
     display: none !important;
 }
 
@@ -132,6 +133,15 @@ footer {
 
 .tts-button {
     display: none !important;
+}
+
+.video-container {
+    margin: 8px 0;
+}
+
+.video-container video {
+    max-width: 100%;
+    border-radius: 8px;
 }
 
 /* ===== DARK THEME OVERRIDES FOR EXPORT ===== */

@@ -6,7 +6,7 @@ Two backup types:
   2. 'full'      — users + chats + messages + documents + model_configs +
                    session_visits + user_sessions + user_storage +
                    gguf_models_cache + model_vram_estimates +
-                   slm_import_progress + files
+                   slm_import_progress + camera_rooms + files
 """
 
 import contextlib
@@ -48,6 +48,7 @@ FULL_TABLES = [
     "gguf_models_cache",
     "model_vram_estimates",
     "slm_import_progress",
+    "camera_rooms",
 ]
 
 # Directories included in 'full' backup
@@ -170,7 +171,7 @@ def create_backup():
                 "created_at": datetime.now().isoformat(),
                 "database_type": "postgresql",
                 "tables": tables,
-                "version": "8.0",
+                "version": "8.9",
             }
             with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as tmp:
                 json.dump(meta, tmp, indent=2, ensure_ascii=False)
@@ -288,13 +289,31 @@ def restore_backup():
                     src = os.path.join(tmpdir, os.path.basename(dir_name))
                     dst = os.path.join(project_root, dir_name)
                     if os.path.exists(src):
-                        # Remove existing directory safely
-                        if os.path.exists(dst):
-                            shutil.rmtree(dst, ignore_errors=True)
-                        shutil.copytree(src, dst)
-                        logger.info(f"Restored directory: {dir_name}")
+                        # dirs_exist_ok=True handles dst still present when
+                        # rmtree silently failed (e.g. root-owned files in
+                        # mounted Docker volumes — pre-existing race in
+                        # test_restore_backup that crashed on data/slm).
+                        # Permission errors on individual files are caught
+                        # and logged so restore is best-effort: a single
+                        # root-owned file in a mounted volume doesn't fail
+                        # the whole restore.
+                        try:
+                            shutil.copytree(src, dst, dirs_exist_ok=True)
+                            logger.info(f"Restored directory: {dir_name}")
+                        except (PermissionError, OSError) as e:
+                            logger.warning(f"Partial restore of {dir_name}: {e}. Some files could not be overwritten.")
 
         logger.info(f"Backup restored: {filename}")
+
+        # Reload camera rooms from DB (DB may have been overwritten by restore)
+        try:
+            from flask import current_app
+
+            if "cam" in current_app.modules:
+                current_app.modules["cam"].reload_rooms()
+        except Exception:
+            pass
+
         return jsonify({"status": "ok", "filename": filename, "type": backup_type})
 
     except Exception as e:

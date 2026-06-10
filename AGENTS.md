@@ -1,4 +1,4 @@
-# AGENTS.md — FLAI v8.8 (model protection: 3-tier VRAM/RAM, dry-load, watchdog)
+# AGENTS.md — FLAI v8.9 (model protection: 3-tier VRAM/RAM, dry-load, watchdog)
 
 ## Commands (exact)
 
@@ -21,7 +21,7 @@ pytest --cov=app --cov=modules --cov-report=html
 pytest tests/test_admin_routes.py
 
 # Translations
-pybabel extract -F babel.cfg -o translations/messages.pot .
+pybabel extract -F babel.cfg -k _tr -o translations/messages.pot .
 pybabel update -i translations/messages.pot -d translations
 pybabel compile -d translations  # after editing .po files
 
@@ -53,7 +53,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 
 ## Architecture & conventions
 
-- **Entrypoint**: `app/__init__.py:create_app()` → returns Flask app. Blueprints in `app/routes/` (auth, chat, admin, queue, tts, messages, sessions, documents, backups). Modules in `modules/` (base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm). Background tasks in `app/tasks/` (dry_load, health_monitor).
+- **Entrypoint**: `app/__init__.py:create_app()` → returns Flask app. Blueprints in `app/routes/` (auth, chat, admin, queue, tts, messages, sessions, documents, backups, events, debug). Modules in `modules/` (base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm). Background tasks in `app/tasks/` (dry_load, health_monitor). Templates in `app/templates/` (admin.html, base.html, chat.html, login.html).
 - **LLM client**: `app/llamacpp_client.py:LlamaCppClient` with two backends — `DirectLlamaBackend` (direct llama-server) or `LlamaSwapBackend` (via llama-swap proxy). Selected by `LLAMACP_BACKEND` env var.
 - **Queue**: `app/queue.py:RedisRequestQueue`. Two workers with strict GPU serialization:
   - **Fast worker** — CPU-only operations: router (chat model), text, audio, RAG **search** (embedding + Qdrant only, ~500 MB). The chat model (2.5 GiB) stays hot in VRAM.
@@ -62,8 +62,8 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
   - **Synchronous VRAM polling** (`_poll_vram`) — `_resolve_use_gpu()` and `ensure_vram_for_llm()` call `_poll_vram()` synchronously before reading `available_vram_mb` (was updated every 60s, causing stale data and OOM). After every `unload_llamacpp_model()`, a wait loop verifies VRAM is actually freed (up to 30s).
   - **VRAM guard for reasoning** (`ensure_vram_for_reasoning`) — unloads llama.cpp models and waits (up to 60s) for SD/Video to free VRAM before loading gpt-oss-20b (~10 GiB).
   - Tasks are HMAC-signed JSON.
-- **DB**: PostgreSQL only via `app/database.py:get_db()` context manager (psycopg2 RealDictCursor). `DATABASE_URL` required. Tables: user_sessions, chat_sessions, messages, documents, session_visits, model_configs, user_storage, slm_import_progress, gguf_models_cache.
-- **Helpers**: `app/circuit_breaker.py`, `app/resource_manager.py`, `app/llama_swap_config.py`, `app/slm_import.py`, `app/tasks/dry_load.py`, `app/tasks/health_monitor.py` — llama-swap config auto-generated from DB at startup into `llama-swap-config/`. Background SLM import + dry-load (after admin model save) + crash-loop watchdog all run as daemon threads.
+- **DB**: PostgreSQL only via `app/database.py:get_db()` context manager (psycopg2 RealDictCursor). `DATABASE_URL` required. Tables: user_sessions, chat_sessions, messages, documents, session_visits, model_configs, user_storage, slm_import_progress, gguf_models_cache, camera_rooms.
+- **Helpers**: `app/circuit_breaker.py`, `app/resource_manager.py`, `app/llama_swap_config.py`, `app/slm_import.py`, `app/model_config.py`, `app/config.py`, `app/db.py`, `app/events.py`, `app/userdb.py`, `app/validators.py`, `app/cli.py`, `app/cameradb.py`, `app/morph.py`, `app/tasks/dry_load.py`, `app/tasks/health_monitor.py` — llama-swap config auto-generated from DB at startup into `llama-swap-config/`. Background SLM import + dry-load (after admin model save) + crash-loop watchdog all run as daemon threads.
 - **Docker mounts**: `./data/` → `/app/data`, `./services/llamacpp/models/` → `/models:ro`, `/var/run/docker.sock` for GPU detection.
 - **Config**: Model configs in DB (`model_configs` table). `.env` values are fallback defaults only. Admin panel at `/admin`.
 - **Multimodal models**: MUST be in a subdirectory with `mmproj-*.gguf` (e.g. `Qwen3VL-8B-Instruct-Q4_K_M/`).
@@ -91,12 +91,19 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
   **Sequence for a video generation request:**
   `router (chat) → [-VIDEO-] → multimodal loads (chat swapped out) → multimodal generates video params → multimodal unloads (TTL=0) → video pipeline loads (full VRAM available) → video generated → video pipeline unloads → next user request reloads chat`.
 - **SLM (SuperLocalMemory)**: Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`. Daemon mode (`slm serve start`) keeps embedding model in memory permanently; `services/superlocalmemory/slm_http.py` proxies requests to daemon at `localhost:8765` (no subprocess per call). **Per-user isolation**: recall reads directly from the user's private SQLite table (`atomic_facts`), not from the daemon's shared database. **Chat model** uses fast direct SQLite read (`ORDER BY created_at DESC`). **Reasoning model** uses full semantic search via subprocess `slm recall` (falls back to direct SQLite if no embeddings). Remember saves to both daemon (shared) and per-user DB (async subprocess). **Camera router parser**: uses text after `[-CAMERA-]` marker (room code), NOT original_query — preserves compatibility with Russian declensions (гостиная → в гостиной). **Router retry on JSON error** — `process_message()` retries once if the router returns a garbled `{"error": ...}` response. SLM facts are injected into prompt context for BOTH chat and reasoning models (alongside conversation history). **Router retry on JSON error** — `process_message()` retries once if the router returns a garbled `{"error": ...}` response. **SLM lazy availability re-check** — `_get_context_for_model()` always calls `slm.get_context()` (no `slm.available` check), the method has its own lazy re-check. **SLM dedup** — `_recall_from_user_db()` in `slm_http.py` deduplicates facts by content (score `limit × 3`, returns unique). Configurable via `SLM_RECALL_LIMIT` (default 7). Background import on startup via `slm_import_progress` checkpoint table. Auto-cleaned on last session deletion (`_cleanup_slm_if_empty()` in `db.py`). **Per-user SLM files are owned by appuser (UID 1000)** matching the web container — `start.sh` runs `chown -R appuser:appuser` on the shared volume. Fact count visible in admin panel column.
-- **`_tr()` / `self._()` format strings**: Flask-Babel 4.0.0 `gettext()` uses `%`-formatting (`string % variables`), NOT `str.format()`. Passing `{status}` kwargs directly to `gettext()` silently returns the unformatted string. Always call `gettext(key)` without kwargs, then apply `result.format(**kwargs)` manually. See `app/llamacpp_client.py:26` and `app/mixins.py:9` for the correct pattern.
+- **`_tr()` / `self._()` format strings**: Flask-Babel 4.0.0 `gettext()` uses `%`-formatting (`string % variables`), NOT `str.format()`. Passing `{status}` kwargs directly to `gettext()` silently returns the unformatted string. Always call `gettext(key)` without kwargs, then apply `result.format(**kwargs)` manually. See `app/llamacpp_client.py:26` and `app/mixins.py:9` for the correct pattern. **pybabel extraction**: always use `-k _tr` flag when extracting, since `_tr` is a custom keyword not recognized by default: `pybabel extract -F babel.cfg -k _tr -o translations/messages.pot .`
 - **Style**: All CSS in `app/static/css/`, JS in `app/static/js/`. No inline styles, no CDN (all assets bundled). Comments/logs in English. User-facing strings via Flask-Babel (`translations/{en,ru}/LC_MESSAGES/messages.po`). Add new keys to both `.po` files.
 - **UI queue indicators**: `chat-queue.js` — `fetchQueueStatus()` builds `newInfo` from server data only (no `pendingRequestIds` race guard). **Multiple ⚡ prevention**: only one session shows ⚡ at a time — the rest show ⏳ with real queue positions from server. **Queue position display**: uses nullish coalescing (`??`) — position 0 (extra processing tasks) shows ⏳ without a number, normal queue positions show ⏳ N.
 - **⚡ recovery after task chain**: `events.js` — after every `clearSessionQueue()` call, `setTimeout(fetchQueueStatus, 500)` is scheduled. This polls the server for the next queued task, restoring ⚡ when the next task moves from queue to processing.
 - **Lint config** (pyproject.toml): ruff line-length=120, select E/W/F/I/N/UP/B/SIM, ignore E501/B008/PTH. `__init__.py` per-file-ignore F401. mypy target 3.11, ignore-missing-imports, excludes tests/ and translations/.
 - **Security**: Path traversal checks in `api/files/<path>`. Session ownership validated. CSRF on all forms (`WTF_CSRF_TIME_LIMIT=28800`, synced with session). `session.permanent = True` at login (8h idle timeout). Secrets in `.env` only.
+- **Streaming reasoning**: `modules/base.py:generate_reasoning_response_stream()` yields tokens one-by-one. `app/queue.py:_process_reasoning_request()` publishes via `_publish_stream_token()`. Server-side `_strip_thinking_tags()` removes `<tool_call>` and `<|channel|>analysis<|message|>...<|end|>` blocks before DB save. Client-side `_stripThinkingTags()` in `events.js` handles both complete and incomplete (streaming) tags.
+- **Task cancellation**: `cancel_task(task_id)` sets Redis flag `task:cancel:{task_id}` with TTL. `_is_task_cancelled(task_id)` checked in every streaming loop iteration. Client sends POST to `/api/cancel_task/{task_id}`.
+- **Generation progress**: `task_progress` (stage labels), `video_step`, `image_step` (progress bars), `image_preview` (base64 preview). Stored in Redis hash `task_progress:{task_id}` with TTL 30 min. Client restores via `GET /api/queue/progress/<task_id>`.
+- **DOMPurify**: `purify.min.js` loaded in `chat.html`. All `marked.parse()` output goes through `DOMPurify.sanitize()` before DOM insertion in `events.js:finalizeStreamedMessage()` and `chat-messages.js:displayMessage()`.
+- **Camera rooms CRUD**: `app/cameradb.py` provides CRUD for `camera_rooms` table. `app/morph.py` generates Russian declension forms (nomn, accs, loct) via pymorphy3. `modules/base.py:_build_camera_prompt_section()` builds router prompt dynamically from DB. `modules/cam.py` loads rooms from DB and resolves declensions via `get_room_code()`.
+- **Combined voice + image**: `app/static/js/chat-recording.js` stores voice as `attachedVoiceBlob` when image already attached. Server creates `type: "image"` task for combined processing.
+- **Lazy loading**: All `<img>` and `<video>` elements created with `loading = 'lazy'`.
 
 ## Testing
 
@@ -113,18 +120,20 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - Always keep translation files (`messages.po`) up‑to‑date and complete.
 - For Russian, the file `deploy-ru.sh` is the only place where Russian comments are allowed.
 - **Every** user-facing string MUST be wrapped in `_()` / `self._()` / `gettext()`. Raw `str(e)` must NEVER be returned to the user.
-- **When adding or modifying error messages**, ALWAYS verify that corresponding translation keys exist in both `translations/en/LC_MESSAGES/messages.po` and `translations/ru/LC_MESSAGES/messages.po`. Run `pybabel extract && pybabel update && pybabel compile` to sync.
+- **When adding or modifying error messages**, ALWAYS verify that corresponding translation keys exist in both `translations/en/LC_MESSAGES/messages.po` and `translations/ru/LC_MESSAGES/messages.po`. Run `pybabel extract -k _tr && pybabel update && pybabel compile` to sync.
 
 ## Dependencies & External Resources
 - The project must run **fully offline** after model/voice downloads.
 - No external scripts, CDN links, or remotely loaded modules in production.
 - All CSS must reside in `.css` files; all JavaScript in `.js` files (no inline styles/scripts).
 - External dependencies (models, voices) must be documented with size, license, and download instructions.
+- All Python dependencies must have **open-source licenses** (MIT, BSD, Apache 2.0, MPL, or equivalent). Proprietary or copyleft (GPL/AGPL) dependencies are prohibited. Verify license before adding.
+- **pymorphy3** is used for Russian morphological analysis of camera room names (generates declension forms).
 
 ## Cleanliness & Dead Code
 - No unused files, dead code, or unused CSS/JS.
 - Every import must be used; every translation key must appear in the UI.
-- Run `pybabel extract` / `pybabel update` / `pybabel compile` after modifying translatable strings.
+- Run `pybabel extract -k _tr` / `pybabel update` / `pybabel compile` after modifying translatable strings.
 - Remove any leftover debug prints, commented-out blocks, or obsolete TODOs.
 
 ## Documentation
@@ -142,12 +151,37 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - Lint with `ruff check .` and type‑check with `mypy app/ modules/`.
 - Always write clean, self‑documenting code; add comments only when necessary.
 
+## Release Documentation Process
+
+When releasing a new version, update these files in order:
+
+### 1. README.md and README-ru.md — "What's New" section
+- Located in the Architecture section (under `### What's New in vX.X`)
+- List only the **most impactful changes** from the new version
+- Format: `| **Feature name** | Brief description |`
+- Keep entries concise (1-2 lines per feature)
+
+### 2. README.md and README-ru.md — "Roadmap -> Completed" section
+- Located at the bottom of the Roadmap section (under `### ✅ Completed` / `### ✅ Завершено`)
+- Add **only the most significant new features, major changes, and critical bug fixes**
+- Do NOT add minor fixes, test changes, or internal refactoring
+- Format: `- **Feature name** — brief description`
+
+### 3. AGENTS.md — version section
+- Update the version title in `## v8.X — ...`
+- Document technical details of new features (architecture, algorithms, parameters)
+- Update the "Known issues" section — move fixed items to the version section
+
+### 4. Git tags
+- Create a git tag for the new version: `git tag v8.X`
+- Push tags: `git push origin v8.X`
+
 ## Known issues (fix on sight)
 
-- **mypy** `app/utils.py`: `Module has no attribute "parse_rtf"` — striprtf stub issue. Fix: `# type: ignore[attr-defined]`.
+- **mypy** `app/utils.py`: `Module has no attribute "parse_rtf"` — striprtf stub issue. Fix: `# type: ignore[attr-defined]`. Other 19 mypy errors in `app/utils.py` (numpy `arr[0]` narrowing + `bytes(val.tolist())` arg-type) **fixed in v8.9** via `_gguf_scalar()` helper.
 - **Unit test speed**: CamModule has 5×2s init retries, making test_cam.py ~10s per fixture.
 - **Load tests** (`tests/load/`) excluded from pytest collection (require locust fixtures).
-- **Pre-existing excluded tests**: `test_backups.py` (KeyError 'babel' — missing Flask-Babel init in test fixture), `test_base_module.py::test_parse_router_response_image_marker` (router response format changed). These are not blocking CI.
+- **Pre-existing excluded tests**: ~~`test_backups.py` (8 tests with KeyError 'babel' — missing Flask-Babel init in local fixture)~~ — **FIXED in v8.9** by adding `Babel(flask_app)` to `tests/test_backups.py:app` fixture. ~~`test_backups.py::TestBackupRestore::test_restore_backup` (shutil.copytree FileExistsError on data/slm)~~ — **FIXED in v8.9** via `dirs_exist_ok=True` in `app/routes/backups.py:restore_backup()`. `test_base_module.py::test_parse_router_response_image_marker` (router response format changed). These are not blocking CI.
 
 ## VRAM fixes & RAG improvements (v8.8+)
 
@@ -364,3 +398,106 @@ Also:
 ## GPU Requirement
 
 FLAI REQUIRES an NVIDIA GPU with at least 8 GB VRAM and 16 GB system RAM. CPU-only mode is not supported — LLM inference, SD image generation, and LTX-Video all depend on CUDA. The project automatically adapts to available VRAM (8/12/16+ GB tiers), adjusting model offloading, resolution, and model selection accordingly.
+
+## v8.9 — Video frame policy, streaming, camera CRUD, progress bars, thinking tags
+
+### Video frame policy (replaces v8.8 cap-only approach)
+
+- **Default: 240 frames** (10 sec @ 24 fps), full 768×512 landscape.
+- **Capped to 120 frames** at 512×512 ONLY when:
+  - `total_vram_mb < 10000` (8/10 GB tier GPU), OR
+  - `available_vram_mb < 6000` (12+ GB tier with fragmented VRAM after multimodal unload)
+- `prompts/{en,ru}/create_video.template`: JSON default `num_frames: 240`. Instruction text says "use 240 unless user asks for short/5 sec".
+- `modules/video.py:generate_video`: applies cap with logging (`"VRAM tier 8GB: capped..."` or `"VRAM soft-cap (available=X MB): reduced..."`).
+- `modules/multimodal.py`: warning threshold `weight > free * 10` (240 frames = 92 weight, 6000 MB free = no spurious warning; fires only for extreme requests like 1000+ frames at 4K).
+- `ltx_wrapper.py`: `num_frames_padded = ((nf - 2) // 8 + 1) * 8 + 1` — both 120→121 and 240→241 are padded by +1 frame.
+
+### Streaming reasoning
+
+- `modules/base.py:generate_reasoning_response_stream()` — streaming generator for reasoning model responses. Yields tokens one-by-one via `_stream_chat()`.
+- `app/queue.py:_process_reasoning_request()` now uses `generate_reasoning_response_stream()` instead of `process_reasoning()`. Tokens are published via `_publish_stream_token()`.
+- Server-side `_strip_thinking_tags()` in `queue.py` removes thinking/reasoning blocks before saving to DB.
+- Client-side `_stripThinkingTags()` in `events.js` removes `<tool_call>` and `<|channel|>analysis<|message|>...<|end|>` blocks during streaming display.
+
+### Camera rooms CRUD
+
+- **New files**: `app/cameradb.py` (CRUD for `camera_rooms` table), `app/morph.py` (pymorphy3 Russian morphological analysis), `app/static/js/admin-cameras.js` (admin UI).
+- **DB table**: `camera_rooms` (code TEXT PK, name_forms TEXT[], enabled BOOLEAN, sort_order INTEGER, created_at, updated_at).
+- **API endpoints** in `app/routes/admin.py`: `GET /admin/api/cameras`, `PUT /admin/api/cameras/<code>/toggle`, `POST /admin/api/cameras/sync`, `GET /admin/api/cameras/<code>/proxy`.
+- **Morphology**: `generate_room_name_forms(name)` generates up to 3 declension forms (nomn, accs, loct) for Russian room names. Filters adjectives by gender to avoid wrong-gender forms.
+- **Router prompt**: `modules/base.py:_build_camera_prompt_section()` dynamically builds camera section from DB with all declension forms.
+- **Camera module**: `modules/cam.py` loads rooms from DB (`_load_rooms_from_db()`), resolves declensions via `get_room_code()`, provides `get_all_rooms_with_forms()` for router prompt.
+- **Migration**: `migrate_name_forms()` in `app/__init__.py` regenerates existing room forms with pymorphy3 on startup.
+- **Dependency**: `pymorphy3>=2.0.6` added to `requirements.txt` and `pyproject.toml`.
+
+### Generation progress bars
+
+- **SSE events**: `task_progress` (stage labels), `video_step` (progress bar), `image_step` (progress bar), `image_preview` (base64 preview during generation).
+- **Server endpoints** in `app/routes/queue.py`: `POST /api/queue/internal/sd_preview`, `POST /api/queue/internal/sd_step`, `GET /api/queue/progress/<task_id>`.
+- **Progress persistence**: `_save_progress()` stores in Redis hash (`task_progress:{task_id}`) with TTL 30 min. `_cleanup_progress()` removes on completion.
+- **Client restore**: `restoreTaskProgress()` in `events.js` fetches `/api/queue/progress/{taskId}` on SSE reconnect/page reload.
+- **Stage labels** (Russian): `preparing_gpu`, `analyzing`, `analyzing_image`, `analyzing_prompt`, `generating_video`, `generating_image`, `editing_image`, `loading_reasoning_model`, `capturing_snapshot`.
+
+### Task cancellation
+
+- Client: cancel button (`■`) in streaming messages → POST `/api/cancel_task/{task_id}`.
+- Server: `cancel_task(task_id)` sets Redis flag `task:cancel:{task_id}` with TTL. `_is_task_cancelled(task_id)` checked in every streaming loop iteration.
+- SSE event: `stream_cancelled` → updates UI.
+
+### Combined voice + image recording
+
+- `app/static/js/chat-recording.js`: if image already attached when voice is recorded, voice stored as `attachedVoiceBlob` instead of replacing `attachedFile`. Preview shows `"image.jpg + 🎤 voice.webm"`.
+- Server: `_process_transcribe_task()` creates `type: "image"` task when both `image_data` + `voice_record` present.
+
+### DOMPurify XSS protection
+
+- `purify.min.js` loaded in `chat.html`. All `marked.parse()` output goes through `DOMPurify.sanitize()` before DOM insertion.
+- Applied in `events.js:finalizeStreamedMessage()` and `chat-messages.js:displayMessage()`.
+
+### Lazy loading images
+
+- All `<img>` elements created with `img.loading = 'lazy'`. `<video>` elements with `video.loading = 'lazy'`.
+
+### Run HTML button
+
+- `handleOpenHtmlClick()` in `chat-messages.js`: for `<code class="language-html">` blocks, creates Blob with HTML content and opens in new tab via `URL.createObjectURL()`.
+
+### Copy message text
+
+- `copyToClipboard(text)` in `chat-messages.js`: Clipboard API with `execCommand('copy')` fallback. Button in assistant message header.
+
+### MTP factor in VRAM estimation
+
+- `_estimate_model_vram()` in `app/routes/admin.py` accepts `supports_mtp: bool`. Formula: `mtp_factor = 1.15 if supports_mtp else 1.0`. MTP draft prediction layers add ~15% overhead to model weights in VRAM.
+
+### GGUF fallback reading
+
+- `_classify_model_fit()` and `model_vram_estimate()` in `app/routes/admin.py`: if model not in `gguf_models_cache`, reads `block_count` and `expert_count` directly from GGUF file via `gguf.GGUFReader`. Detects MTP via `{arch}.nextn_predict_layers`.
+
+### Dead code cleanup
+
+- Removed: `get_gguf_model_info()`, `find_gguf_file()`, `chunk_text_by_sentences()` from `app/utils.py`. `clear_camera_rooms()` from `app/cameradb.py`. `get_database_type()`, `is_postgresql()`, `close_db()` from `app/database.py`.
+- Removed CSS classes: `.capabilities`, `.capability` from `admin.css` and `dark-theme.css`.
+- Removed commented-out code block in `app/utils.py:1546-1549`.
+
+### Mypy cleanup — `app/utils.py` (19 → 0 errors)
+
+- New helper `_gguf_scalar(val)` (`app/utils.py:21-39`) normalizes gguf reader field values.
+- `mypy app/utils.py` now passes with 0 errors. CI still uses `|| true` for mypy (does not block).
+
+### `userdb.py` schema mismatch fix
+
+- `delete_user()` used `user_id = user["id"]` (INTEGER) against TEXT columns → `user_id = login` (TEXT).
+- Removed dead code `user_uploads_dir` (data/uploads/ is per-session-UUID, not per-user).
+
+### Test infrastructure fixes
+
+- `tests/test_backups.py`: `Babel(flask_app)` added. Version updated to `"8.9"`.
+- `tests/test_resource_manager.py`: `patch("app.resource_manager.requests.X", new=mock)`.
+- `app/routes/backups.py:restore_backup()`: `dirs_exist_ok=True`. Version updated to `"8.9"`.
+- `tests/test_morph.py` (NEW): 14 tests for pymorphy3 morphological analysis.
+
+### Chat video export
+
+- `app/static/js/chat-export.js`: `saveChatAsHTML()` now collects `<video>` elements from DOM, fetches video files from `/api/files/` and converts to base64. Accept header updated to include `video/*`. Video rendered as `<video controls preload="metadata">` in exported HTML.
+- `app/static/css/export.css`: Added `.video-container` and `.video-container video` styles for exported video elements.

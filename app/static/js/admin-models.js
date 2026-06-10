@@ -355,6 +355,12 @@ async function onModelSelect(event) {
         <p><strong>${t('Parameters:')}</strong> ${info.parameters || 'N/A'}</p>
         <p><strong>${t('Quantization:')}</strong> ${info.quantization || 'N/A'}</p>`;
 
+    if (info.supports_mtp) {
+        detailsHtml += `<p><strong>${t('MTP support:')}</strong> ${t('yes')}</p>`;
+    } else {
+        detailsHtml += `<p><strong>${t('MTP support:')}</strong> ${t('no')}</p>`;
+    }
+
     if (info.context_length && info.context_length !== 'N/A') {
         detailsHtml += `<p><strong>${t('Max context length:')}</strong> ${info.context_length}</p>`;
     }
@@ -401,6 +407,18 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
     _pendingEstimate[module] = true;
 
     const requestedCtx = parseInt(ctxLength) || 8192;
+
+    // Show blinking placeholder while the estimate is loading
+    const saveBtn = card.querySelector('.save-button');
+    card.querySelectorAll('.memory-hint, .tier-indicator').forEach(el => el.remove());
+    const placeholder = document.createElement('div');
+    placeholder.className = 'memory-hint calculating';
+    placeholder.style.cssText = 'margin-top: 8px; padding: 8px; border-radius: 4px; font-size: 0.85em; color: #888;';
+    placeholder.textContent = t('calculating_vram');
+    card.insertBefore(placeholder, saveBtn);
+
+    // Force browser to repaint placeholder before the async fetch blocks main thread
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
     try {
         const params = new URLSearchParams({
@@ -461,13 +479,14 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
         } else if (status === 'estimate' || (status === 'measured' && !data.measured_vram_mb)) {
             if (hasGPU && totalVRAM > 0) {
                 const vramPct = data.vram_percent || 0;
-                let color = '#29A847';
-                let label = 'optimal';
-                if (vramPct > 100) {
-                    const offloadPct = vramPct - 100;
-                    if (offloadPct <= 20) { color = '#FFD700'; label = 'high'; }
-                    else if (offloadPct <= 40) { color = '#fd7e14'; label = 'med'; }
-                    else { color = '#E01F1F'; label = 'low'; }
+                const tier = data.tier || 'unknown';
+                let color = '#29A847';  // green = good (all layers on GPU)
+                if (tier === 'cpu_offload') {
+                    color = '#b8860b';  // dark goldenrod — partial CPU offload
+                } else if (tier === 'impossible' || tier === 'unknown') {
+                    color = '#E01F1F';  // red
+                } else if (vramPct > 100) {
+                    color = '#E01F1F';  // red — exceeds VRAM even for good tier
                 }
                 hintDiv.style.color = color;
                 hintDiv.style.fontWeight = 'bold';
@@ -475,6 +494,11 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
                     .replace('%1%', data.vram_mb)
                     .replace('%2%', totalVRAM)
                     .replace('%3%', vramPct);
+                if (tier === 'cpu_offload' && data.ngl != null && data.block_count) {
+                    msg += ' — ' + t('ngl_offload_hint')
+                        .replace('%1%', data.ngl)
+                        .replace('%2%', data.block_count);
+                }
                 if (data.details) {
                     msg += t('vram_detail')
                         .replace('%1%', data.details.model_vram_mb)
@@ -508,8 +532,6 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
                 hintDiv.textContent = t('vram_nodata');
             }
         }
-
-        const saveBtn = card.querySelector('.save-button');
 
         // Render 3-tier indicator + lock save button on impossible/unknown
         if (tierMessage) {
@@ -552,7 +574,7 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
             }
         }
 
-        card.querySelectorAll('.memory-hint').forEach(el => el.remove());
+        card.querySelectorAll('.memory-hint, .tier-indicator').forEach(el => el.remove());
         card.insertBefore(hintDiv, saveBtn);
 
     } catch (err) {
@@ -776,5 +798,33 @@ document.addEventListener('DOMContentLoaded', function() {
     if (document.getElementById('models-tab')) {
         loadModelConfigs();
     }
+
+    const refreshBtn = document.getElementById('refresh-gguf-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', async function() {
+            this.disabled = true;
+            this.classList.add('btn-syncing');
+            this.textContent = '🔄 ' + t('Loading...');
+            try {
+                const resp = await fetchWithCSRF('/admin/api/refresh-gguf-cache', { method: 'POST' });
+                const data = await resp.json();
+                if (data.status === 'ok') {
+                    modelDetails = {};
+                    modelListCache = {};
+                    loadModelConfigs();
+                } else {
+                    alert(t('error') + ': ' + (data.error || t('unknown_error')));
+                }
+            } catch (err) {
+                console.error('Refresh GGUF cache error:', err);
+                alert(t('error') + ': ' + err.message);
+            } finally {
+                this.disabled = false;
+                this.classList.remove('btn-syncing');
+                this.textContent = '🔄 ' + t('Update model list');
+            }
+        });
+    }
+
     initChunksSection();
 });

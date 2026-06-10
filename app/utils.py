@@ -17,10 +17,39 @@ from PIL import Image
 
 PROMPTS_DIR = "prompts"
 
+
+def _gguf_scalar(val: Any) -> Any:
+    """Extract Python scalar from a gguf reader field value.
+
+    gguf returns ``ReaderField.parts[-1]`` as a numpy array.
+    - 1-element numeric array → Python int/float (e.g. block_count, nextn_predict_layers)
+    - Multi-element byte array → raw bytes for string decode (e.g. general.architecture)
+    - Fallback: tobytes() or raw value
+
+    Args:
+        val: numpy array or scalar returned by gguf reader.
+
+    Returns:
+        Python scalar (int, float, bytes) or original value.
+    """
+    if hasattr(val, "tolist"):
+        arr = val.tolist()
+        if isinstance(arr, list) and len(arr) == 1:
+            return arr[0]
+        # Multi-element array: use tobytes() for string fields (architecture, size_label)
+        if hasattr(val, "tobytes"):
+            return val.tobytes()
+        return arr
+    if hasattr(val, "tobytes"):
+        return val.tobytes()
+    return val
+
+
 # ── Shared error translations for sd.cpp module ──
 SD_ERROR_TRANSLATIONS = {
     "Image generation failed": "Image generation failed. Try again later.",
     "Image generation produced empty output": "Image generation produced empty output.",
+    "sd-cli produced empty output": "Image generation produced empty output.",
     "sd-wrapper returned no image data": "sd-wrapper returned no image data.",
     "sd-wrapper returned no image": "sd-wrapper returned no image.",
     "sd-cli timeout": "Image generation timeout ({timeout}s)",
@@ -58,16 +87,20 @@ def extract_quantization(filename: str) -> str:
     """
     qtypes = [
         "Q2_K",
+        "Q3_K_XL",
         "Q3_K_S",
         "Q3_K_M",
         "Q3_K_L",
         "Q4_0",
         "Q4_K_S",
         "Q4_K_M",
+        "Q4_K_XL",
         "Q5_0",
         "Q5_K_S",
         "Q5_K_M",
+        "Q5_K_XL",
         "Q6_K",
+        "Q6_K_XL",
         "Q8_0",
         "IQ2_XXS",
         "IQ2_XS",
@@ -338,9 +371,7 @@ def resize_image_if_needed(
 _LLAMACPP_SUPPORTED_FORMATS = {"JPEG", "PNG", "BMP", "GIF", "TIFF"}
 
 
-def convert_to_supported_format_if_needed(
-    file_data: str, file_type: str, file_name: str
-) -> tuple[str, str, str, bool]:
+def convert_to_supported_format_if_needed(file_data: str, file_type: str, file_name: str) -> tuple[str, str, str, bool]:
     """
     Convert image to a llama.cpp-supported format (JPEG) if the source format
     is not in stb_image's supported set (HEIC, AVIF, WEBP, etc.).
@@ -555,65 +586,59 @@ def scan_gguf_models(models_dir: str = "/models") -> dict[str, Any]:
                 "block_count": None,
                 "expert_count": None,
                 "file_size_mb": None,
+                "supports_mtp": False,
             }
 
             for key in fields:
                 if key.endswith(".context_length") and info["context_length"] is None:
-                    val = fields[key].parts[-1]
-                    if hasattr(val, "tolist"):
-                        arr = val.tolist()
-                        if isinstance(arr, list) and len(arr) == 1:
-                            val = arr[0]
+                    val = _gguf_scalar(fields[key].parts[-1])
                     if val is not None:
                         info["context_length"] = int(val)  # type: ignore[assignment]
                         break
 
             for key in fields:
                 if key.endswith(".block_count") and info["block_count"] is None:
-                    val = fields[key].parts[-1]
-                    if hasattr(val, "tolist"):
-                        arr = val.tolist()
-                        if isinstance(arr, list) and len(arr) == 1:
-                            val = arr[0]
+                    val = _gguf_scalar(fields[key].parts[-1])
                     if val is not None:
                         info["block_count"] = int(val)  # type: ignore[assignment]
                         break
 
             for key in fields:
                 if key.endswith(".embedding_length") and info["embedding_length"] is None:
-                    val = fields[key].parts[-1]
-                    if hasattr(val, "tolist"):
-                        arr = val.tolist()
-                        if isinstance(arr, list) and len(arr) == 1:
-                            val = arr[0]
+                    val = _gguf_scalar(fields[key].parts[-1])
                     if val is not None:
                         info["embedding_length"] = int(val)  # type: ignore[assignment]
                         break
 
             for key in fields:
                 if key.endswith(".expert_count") and info["expert_count"] is None:
-                    val = fields[key].parts[-1]
-                    if hasattr(val, "tolist"):
-                        arr = val.tolist()
-                        if isinstance(arr, list) and len(arr) == 1:
-                            val = arr[0]
+                    val = _gguf_scalar(fields[key].parts[-1])
                     if val is not None:
                         info["expert_count"] = int(val)  # type: ignore[assignment]
                         break
 
             if "general.architecture" in fields:
-                val = fields["general.architecture"].parts[-1]
-                if hasattr(val, "tolist"):
-                    info["architecture"] = bytes(val.tolist()).decode("utf-8", errors="replace")  # type: ignore[assignment]
+                raw = _gguf_scalar(fields["general.architecture"].parts[-1])
+                if isinstance(raw, (bytes, bytearray)):
+                    info["architecture"] = raw.decode("utf-8", errors="replace")  # type: ignore[assignment]
                 else:
-                    info["architecture"] = str(val)  # type: ignore[assignment]
+                    info["architecture"] = str(raw)  # type: ignore[assignment]
+
+            # MTP: {arch}.nextn_predict_layers > 0 means model supports MTP
+            arch = info.get("architecture")
+            if arch:
+                mtp_key = f"{arch}.nextn_predict_layers"
+                if mtp_key in fields:
+                    val = _gguf_scalar(fields[mtp_key].parts[-1])
+                    if val is not None and int(val) > 0:
+                        info["supports_mtp"] = True
 
             if "general.size_label" in fields:
-                val = fields["general.size_label"].parts[-1]
-                if hasattr(val, "tolist"):
-                    info["size_label"] = bytes(val.tolist()).decode("utf-8", errors="replace")  # type: ignore[assignment]
+                raw = _gguf_scalar(fields["general.size_label"].parts[-1])
+                if isinstance(raw, (bytes, bytearray)):
+                    info["size_label"] = raw.decode("utf-8", errors="replace")  # type: ignore[assignment]
                 else:
-                    info["size_label"] = str(val)  # type: ignore[assignment]
+                    info["size_label"] = str(raw)  # type: ignore[assignment]
 
             if gguf_path and os.path.exists(gguf_path):
                 info["file_size_mb"] = os.path.getsize(gguf_path) / (1024 * 1024)  # type: ignore[assignment]
@@ -625,123 +650,6 @@ def scan_gguf_models(models_dir: str = "/models") -> dict[str, Any]:
             continue
 
     return result
-
-
-def get_gguf_model_info(model_path: str) -> dict[str, Any]:
-    """Read metadata from GGUF model file.
-
-    Args:
-        model_path: Full path to GGUF file
-
-    Returns:
-        Dict with keys: context_length, embedding_length, architecture, params, quantization
-    """
-    result = {
-        "context_length": None,
-        "embedding_length": None,
-        "architecture": None,
-        "block_count": None,
-        "expert_count": None,
-        "parameter_count": None,
-        "file_size_mb": None,
-    }
-
-    try:
-        from gguf import GGUFReader
-    except ImportError:
-        result["error"] = "gguf library not installed"  # type: ignore[assignment]
-        return result
-
-    try:
-        reader = GGUFReader(model_path)
-        fields = reader.fields
-
-        for key in fields:
-            if key.endswith(".context_length") and result["context_length"] is None:
-                val = fields[key].parts[-1]
-                if hasattr(val, "tolist"):
-                    arr = val.tolist()
-                    if isinstance(arr, list) and len(arr) == 1:
-                        val = arr[0]
-                if val is not None:
-                    result["context_length"] = int(val)  # type: ignore[assignment]
-                    break
-
-        for key in fields:
-            if key.endswith(".block_count") and result["block_count"] is None:
-                val = fields[key].parts[-1]
-                if hasattr(val, "tolist"):
-                    arr = val.tolist()
-                    if isinstance(arr, list) and len(arr) == 1:
-                        val = arr[0]
-                if val is not None:
-                    result["block_count"] = int(val)  # type: ignore[assignment]
-                    break
-
-        for key in fields:
-            if key.endswith(".expert_count") and result["expert_count"] is None:
-                val = fields[key].parts[-1]
-                if hasattr(val, "tolist"):
-                    arr = val.tolist()
-                    if isinstance(arr, list) and len(arr) == 1:
-                        val = arr[0]
-                if val is not None:
-                    result["expert_count"] = int(val)  # type: ignore[assignment]
-                    break
-
-        if "general.architecture" in fields:
-            val = fields["general.architecture"].parts[-1]
-            if hasattr(val, "tolist"):
-                result["architecture"] = bytes(val.tolist()).decode("utf-8", errors="replace")  # type: ignore[assignment]
-            else:
-                result["architecture"] = str(val)  # type: ignore[assignment]
-
-        if "general.size_label" in fields:
-            val = fields["general.size_label"].parts[-1]
-            if hasattr(val, "tolist"):
-                result["size_label"] = bytes(val.tolist()).decode("utf-8", errors="replace")  # type: ignore[assignment]
-            else:
-                result["size_label"] = str(val)  # type: ignore[assignment]
-
-        if "general.parameter_count" in fields:
-            val = fields["general.parameter_count"].parts[-1]
-            if hasattr(val, "tolist"):
-                arr = val.tolist()
-                if isinstance(arr, list) and len(arr) == 1:
-                    val = arr[0]
-            if val is not None:
-                result["parameter_count"] = int(float(val))  # type: ignore[assignment]
-
-        if model_path and os.path.exists(model_path):
-            result["file_size_mb"] = os.path.getsize(model_path) / (1024 * 1024)  # type: ignore[assignment]
-
-    except Exception as e:
-        result["error"] = str(e)  # type: ignore[assignment]
-
-    return result
-
-
-def find_gguf_file(model_name: str, models_dir: str = "/models") -> str | None:
-    """Find GGUF file path for a given model name."""
-    import glob
-
-    model_basename = os.path.basename(model_name)
-    if not model_basename.endswith(".gguf"):
-        model_basename += ".gguf"
-
-    patterns = [
-        os.path.join(models_dir, model_basename),
-        os.path.join(models_dir, model_name, "*.gguf"),
-        os.path.join(models_dir, model_name.replace(" ", "_"), "*.gguf"),
-        os.path.join(models_dir, "**", model_basename),
-    ]
-
-    for pattern in patterns:
-        matches = glob.glob(pattern, recursive=True)
-        if matches:
-            return matches[0]
-
-    return None
 
 
 def _pdf_to_markdown(text: str) -> str:
@@ -1034,49 +942,6 @@ def chunk_text_recursive(
     return merged
 
 
-def chunk_text_by_sentences(text: str, chunk_size: int = 500, overlap: int = 50, min_sentences: int = 1) -> list[str]:
-    """Split text into chunks by sentences, with optional size limit.
-
-    Args:
-        text: Input text
-        chunk_size: Max characters per chunk
-        overlap: Character overlap between chunks
-        min_sentences: Minimum sentences per chunk
-
-    Returns:
-        List of text chunks
-    """
-    # Simple sentence splitting (works for Russian and English)
-    import re
-
-    sentences = re.split(r"(?<=[.!?])\s+", text)
-    sentences = [s.strip() for s in sentences if s.strip()]
-
-    if not sentences:
-        return []
-
-    chunks = []
-    current_chunk = ""
-
-    for sentence in sentences:
-        # If adding this sentence exceeds limit, save current and start new
-        if current_chunk and len(current_chunk) + len(sentence) > chunk_size:
-            chunks.append(current_chunk)
-            # Keep overlap (last part of current chunk)
-            if overlap > 0 and len(current_chunk) > overlap:
-                current_chunk = current_chunk[-(overlap):] + " " + sentence
-            else:
-                current_chunk = sentence
-        else:
-            current_chunk = (current_chunk + " " + sentence).strip() if current_chunk else sentence
-
-    # Don't forget last chunk
-    if current_chunk:
-        chunks.append(current_chunk)
-
-    return chunks
-
-
 def estimate_tokens(text: str, model_type: str = "chat", lang: str = "ru", token_chars: float | None = None) -> int:
     """
     Estimate tokens based on characters per token with language and model-specific coefficients.
@@ -1272,6 +1137,7 @@ def init_gguf_cache_db():
                 "key_length INTEGER",
                 "value_length INTEGER",
                 "parameter_count BIGINT",
+                "supports_mtp BOOLEAN DEFAULT NULL",
             ]:
                 try:
                     c.execute(f"ALTER TABLE gguf_models_cache ADD COLUMN IF NOT EXISTS {col}")
@@ -1299,7 +1165,7 @@ def get_gguf_models_from_cache() -> dict[str, Any]:
         with get_db() as conn:
             c = conn.cursor()
             c.execute(
-                "SELECT model_name, context_length, embedding_length, architecture, block_count, expert_count, file_size_mb, head_count, head_count_kv, key_length, value_length, parameter_count FROM gguf_models_cache"
+                "SELECT model_name, context_length, embedding_length, architecture, block_count, expert_count, file_size_mb, head_count, head_count_kv, key_length, value_length, parameter_count, supports_mtp FROM gguf_models_cache"
             )
             for row in c.fetchall():
                 arch = row["architecture"]
@@ -1322,6 +1188,7 @@ def get_gguf_models_from_cache() -> dict[str, Any]:
                     "key_length": row["key_length"],
                     "value_length": row["value_length"],
                     "parameter_count": row["parameter_count"],
+                    "supports_mtp": row["supports_mtp"],
                 }
     except Exception:
         pass
@@ -1342,8 +1209,8 @@ def save_gguf_model_to_cache(model_name: str, metadata: dict[str, Any]):
             c = conn.cursor()
             c.execute(
                 """
-                INSERT INTO gguf_models_cache (model_name, context_length, embedding_length, architecture, block_count, expert_count, file_size_mb, head_count, head_count_kv, key_length, value_length, parameter_count, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                INSERT INTO gguf_models_cache (model_name, context_length, embedding_length, architecture, block_count, expert_count, file_size_mb, head_count, head_count_kv, key_length, value_length, parameter_count, supports_mtp, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                 ON CONFLICT (model_name) DO UPDATE SET
                     context_length = EXCLUDED.context_length,
                     embedding_length = EXCLUDED.embedding_length,
@@ -1356,6 +1223,7 @@ def save_gguf_model_to_cache(model_name: str, metadata: dict[str, Any]):
                     key_length = EXCLUDED.key_length,
                     value_length = EXCLUDED.value_length,
                     parameter_count = EXCLUDED.parameter_count,
+                    supports_mtp = EXCLUDED.supports_mtp,
                     updated_at = CURRENT_TIMESTAMP
             """,
                 (
@@ -1371,6 +1239,7 @@ def save_gguf_model_to_cache(model_name: str, metadata: dict[str, Any]):
                     metadata.get("key_length"),
                     metadata.get("value_length"),
                     metadata.get("parameter_count"),
+                    metadata.get("supports_mtp", False),
                 ),
             )
             conn.commit()
@@ -1420,6 +1289,14 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
             logger.warning(f"Detected bad architecture in cache for {model_name}: {arch!r}, will re-scan")
             del cached[model_name]
 
+    # Patch models without supports_mtp (column was added after initial cache).
+    # Instead of deleting from cache and re-scanning (GGUFReader is slow on large files),
+    # just set supports_mtp=False. Correct values will be detected on next Refresh Models.
+    for model_name in cached:
+        if cached[model_name].get("supports_mtp") is None:
+            logger.info(f"Model {model_name} missing supports_mtp, setting False (will re-scan on Refresh)")
+            cached[model_name]["supports_mtp"] = False
+
     # Find models that need scanning (not in cache or missing from filesystem)
     missing_from_cache = current_files - set(cached.keys())
     models_to_scan = list(missing_from_cache)
@@ -1449,59 +1326,39 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                                 "key_length": None,
                                 "value_length": None,
                                 "parameter_count": None,
+                                "supports_mtp": False,
                                 "file_size_mb": os.path.getsize(f) / (1024 * 1024),
                             }
                             arch_prefix = None
                             for key in fields:
                                 if key.endswith(".context_length") and scanned["context_length"] is None:
-                                    val = fields[key].parts[-1]
-                                    if hasattr(val, "tolist"):
-                                        arr = val.tolist()
-                                        if isinstance(arr, list) and len(arr) == 1:
-                                            val = arr[0]
+                                    val = _gguf_scalar(fields[key].parts[-1])
                                     if val is not None:
-                                        scanned["context_length"] = int(val)
+                                        scanned["context_length"] = int(val)  # type: ignore[assignment]
                                 if key.endswith(".embedding_length") and scanned["embedding_length"] is None:
-                                    val = fields[key].parts[-1]
-                                    if hasattr(val, "tolist"):
-                                        arr = val.tolist()
-                                        if isinstance(arr, list) and len(arr) == 1:
-                                            val = arr[0]
+                                    val = _gguf_scalar(fields[key].parts[-1])
                                     if val is not None:
                                         scanned["embedding_length"] = int(val)  # type: ignore[assignment]
                                 if key.endswith(".expert_count") and scanned["expert_count"] is None:
-                                    val = fields[key].parts[-1]
-                                    if hasattr(val, "tolist"):
-                                        arr = val.tolist()
-                                        if isinstance(arr, list) and len(arr) == 1:
-                                            val = arr[0]
+                                    val = _gguf_scalar(fields[key].parts[-1])
                                     if val is not None:
                                         scanned["expert_count"] = int(val)  # type: ignore[assignment]
                                 if key.endswith(".block_count") and scanned["block_count"] is None:
-                                    val = fields[key].parts[-1]
-                                    if hasattr(val, "tolist"):
-                                        arr = val.tolist()
-                                        if isinstance(arr, list) and len(arr) == 1:
-                                            val = arr[0]
+                                    val = _gguf_scalar(fields[key].parts[-1])
                                     if val is not None:
                                         scanned["block_count"] = int(val)  # type: ignore[assignment]
                                 if "general.parameter_count" in fields and scanned["parameter_count"] is None:
-                                    val = fields["general.parameter_count"].parts[-1]
-                                    if hasattr(val, "tolist"):
-                                        arr = val.tolist()
-                                        if isinstance(arr, list) and len(arr) == 1:
-                                            val = arr[0]
+                                    val = _gguf_scalar(fields["general.parameter_count"].parts[-1])
                                     if val is not None:
-                                        scanned["parameter_count"] = int(float(val))
+                                        scanned["parameter_count"] = int(float(val))  # type: ignore[assignment]
                                 if "general.architecture" in fields and not scanned["architecture"]:
-                                    arch_val = fields["general.architecture"].parts[-1]
-                                    if hasattr(arch_val, "tolist"):
-                                        decoded = bytes(arch_val.tolist()).decode("utf-8", errors="replace")
-                                        scanned["architecture"] = decoded
-                                        arch_prefix = decoded
+                                    raw = _gguf_scalar(fields["general.architecture"].parts[-1])
+                                    if isinstance(raw, (bytes, bytearray)):
+                                        decoded = raw.decode("utf-8", errors="replace")
                                     else:
-                                        scanned["architecture"] = str(arch_val)
-                                        arch_prefix = str(arch_val)
+                                        decoded = str(raw)
+                                    scanned["architecture"] = decoded  # type: ignore[assignment]
+                                    arch_prefix = decoded
                                 # KV cache related fields: head_count, head_count_kv, key_length, value_length
                                 if arch_prefix:
                                     for suffix, field_name in [
@@ -1512,13 +1369,15 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                                     ]:
                                         lookup = f"{arch_prefix}{suffix}"
                                         if lookup in fields and scanned[field_name] is None:
-                                            val = fields[lookup].parts[-1]
-                                            if hasattr(val, "tolist"):
-                                                arr = val.tolist()
-                                                if isinstance(arr, list) and len(arr) == 1:
-                                                    val = arr[0]
+                                            val = _gguf_scalar(fields[lookup].parts[-1])
                                             if val is not None:
                                                 scanned[field_name] = int(val)  # type: ignore[assignment]
+                                    # MTP: {arch}.nextn_predict_layers > 0 means model supports MTP
+                                    mtp_key = f"{arch_prefix}.nextn_predict_layers"
+                                    if mtp_key in fields:
+                                        val = _gguf_scalar(fields[mtp_key].parts[-1])
+                                        if val is not None and int(val) > 0:
+                                            scanned["supports_mtp"] = True
                         except Exception:
                             pass
                         if (
@@ -1529,11 +1388,6 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                             save_gguf_model_to_cache(model_name, scanned)
                             cached[model_name] = scanned
                         break
-
-    # Remove metadata for deleted files (optional - keep for history)
-    # for model_name in list(cached.keys()):
-    #     if model_name not in current_files:
-    #         # Could delete or keep
 
     return cached
 

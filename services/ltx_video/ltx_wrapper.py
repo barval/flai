@@ -31,6 +31,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ltx-wrapper")
 
+# Redis for progress publishing
+_redis = None
+try:
+    import redis as redis_lib
+    _redis = redis_lib.from_url(os.environ.get("REDIS_URL", "redis://flai-redis:6379/0"))
+    _redis.ping()
+    logger.info("Redis connected for progress publishing")
+except Exception as e:
+    logger.warning(f"Redis unavailable for progress publishing: {e}")
+
 app = Flask(__name__)
 
 # ── Configuration from environment ──
@@ -257,10 +267,13 @@ def run_inference(
     negative_prompt: str = "worst quality, inconsistent motion, blurry, jittery, distorted",
     height: int = 704,
     width: int = 1216,
-    num_frames: int = 121,
-    frame_rate: int = 30,
+    num_frames: int = 120,
+    frame_rate: int = 24,
     seed: int = -1,
     image_data: str | None = None,
+    user_id: str | None = None,
+    session_id: str | None = None,
+    task_id: str | None = None,
 ) -> tuple[bytes, int, dict]:
     """Run LTX-Video inference. Returns (mp4_bytes, actual_seed, metadata)."""
     import imageio
@@ -287,12 +300,26 @@ def run_inference(
     num_frames_padded = ((num_frames - 2) // 8 + 1) * 8 + 1
     padding = calculate_padding(height, width, height_padded, width_padded)
 
-    offload_to_cpu = config.get("offload_to_cpu", False)
-    if offload_to_cpu and torch.cuda.is_available():
-        total_mem = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-        offload_to_cpu = total_mem < 30
-    else:
-        offload_to_cpu = False
+    # Enable CPU offload ONLY when the model definitely doesn't fit in VRAM.
+    # We use file_size vs total_mem as the gate (instead of the YAML flag) to
+    # avoid unnecessary offloading for models that fit fine. On our hardware
+    # the ltx-video 2B distilled (~10 GB) easily fits in 15.5 GB — so offload
+    # stays off. For larger models (e.g. 13B+), offload kicks in automatically.
+    offload_to_cpu = False
+    try:
+        if _model_path and Path(_model_path).is_file() and torch.cuda.is_available():
+            model_size_gb = Path(_model_path).stat().st_size / (1024**3)
+            total_mem_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+            if model_size_gb > 0.85 * total_mem_gb:
+                offload_to_cpu = True
+                logger.info(
+                    f"Model {model_size_gb:.1f}GB > 85% of {total_mem_gb:.1f}GB VRAM — "
+                    f"enabling partial CPU offload for transformer"
+                )
+            elif config.get("offload_to_cpu", False) and total_mem_gb < 30:
+                offload_to_cpu = True
+    except Exception as e:
+        logger.debug(f"offload detection failed, keeping offload off: {e}")
 
     stg_mode = config.get("stg_mode", "attention_values")
     from ltx_video.utils.skip_layer_strategy import SkipLayerStrategy
@@ -350,12 +377,49 @@ def run_inference(
 
     logger.info(f"Running inference: seed={seed}, prompt='{prompt[:80]}...'")
 
+    # Progress callback — publishes step progress via Redis pub/sub
+    total_steps = config.get("num_inference_steps", 8)
+
+    def _progress_callback(pipeline_self, step, timestep, callback_kwargs):
+        if _redis is None or user_id is None:
+            return
+        try:
+            step_num = step + 1
+            pct = round(step_num / total_steps * 100)
+            payload = json.dumps({
+                "type": "video_step",
+                "data": {
+                    "session_id": session_id,
+                    "task_id": task_id,
+                    "step": step_num,
+                    "total": total_steps,
+                    "percent": pct,
+                },
+                "timestamp": time.time(),
+            }, ensure_ascii=False)
+            _redis.publish(f"user:events:{user_id}", payload)
+            # Persist progress for restore after reconnect
+            if task_id:
+                key = f"task_progress:{task_id}"
+                pipe = _redis.pipeline()
+                pipe.hset(key, mapping={
+                    "type": "video_step",
+                    "step": str(step_num),
+                    "total": str(total_steps),
+                    "percent": str(pct),
+                    "timestamp": str(time.time()),
+                })
+                pipe.expire(key, 1800)
+                pipe.execute()
+        except Exception:
+            pass  # non-critical
+
     images = pipeline(
         **pipeline_kwargs,
         skip_layer_strategy=skip_layer_strategy,
         generator=generator,
         output_type="pt",
-        callback_on_step_end=None,
+        callback_on_step_end=_progress_callback,
         height=height_padded,
         width=width_padded,
         num_frames=num_frames_padded,
@@ -441,9 +505,7 @@ def vram_info():
             if p.is_file():
                 sizes_mb[name] = p.stat().st_size // (1024 * 1024)
             elif p.is_dir():
-                sizes_mb[name] = sum(
-                    f.stat().st_size for f in p.glob("*.safetensors") if f.is_file()
-                ) // (1024 * 1024)
+                sizes_mb[name] = sum(f.stat().st_size for f in p.glob("*.safetensors") if f.is_file()) // (1024 * 1024)
             else:
                 sizes_mb[name] = 0
 
@@ -452,12 +514,14 @@ def vram_info():
             with contextlib.suppress(Exception):
                 free_mem, total_mem = torch.cuda.mem_get_info()
 
-        return jsonify({
-            "component_sizes_mb": sizes_mb,
-            "current_used_mb": (total_mem - free_mem) // (1024 * 1024) if total_mem else 0,
-            "total_vram_mb": total_mem // (1024 * 1024) if total_mem else 0,
-            "pipeline_loaded": _pipeline is not None,
-        })
+        return jsonify(
+            {
+                "component_sizes_mb": sizes_mb,
+                "current_used_mb": (total_mem - free_mem) // (1024 * 1024) if total_mem else 0,
+                "total_vram_mb": total_mem // (1024 * 1024) if total_mem else 0,
+                "pipeline_loaded": _pipeline is not None,
+            }
+        )
     except Exception as e:
         logger.error(f"vram_info failed: {e}")
         return jsonify({"status": "error", "error": str(e)}), 500
@@ -479,6 +543,7 @@ def unload_pipeline():
         except Exception as e:
             logger.warning(f"CUDA sync during unload failed: {e}")
     import gc
+
     gc.collect()
     if torch.cuda.is_available():
         try:
@@ -507,11 +572,14 @@ def generate_video():
 
         negative_prompt = data.get("negative_prompt", "worst quality, inconsistent motion, blurry, jittery, distorted")
         height = int(data.get("height", 512))
-        width = int(data.get("width", 896))
-        num_frames = int(data.get("num_frames", 257))
-        frame_rate = int(data.get("frame_rate", 30))
+        width = int(data.get("width", 768))
+        num_frames = int(data.get("num_frames", 240))
+        frame_rate = int(data.get("frame_rate", 24))
         seed = int(data.get("seed", -1))
         image_data = data.get("image_data")
+        user_id = data.get("user_id")
+        session_id = data.get("session_id")
+        task_id = data.get("task_id")
 
         mp4_bytes, actual_seed, meta = run_inference(
             prompt=prompt,
@@ -522,6 +590,9 @@ def generate_video():
             frame_rate=frame_rate,
             seed=seed,
             image_data=image_data,
+            user_id=user_id,
+            session_id=session_id,
+            task_id=task_id,
         )
 
         gen_time = round(time.time() - gen_start, 1)
@@ -571,13 +642,6 @@ def generate_video():
 
         gc.collect()
 
-
-# Warm up pipeline on import (triggers for both gunicorn and direct runner).
-try:
-    ensure_pipeline()
-    logger.info("Pipeline ready on startup")
-except Exception as e:
-    logger.warning(f"Pipeline not ready on startup (will init lazily): {e}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("LTX_PORT", 7872))

@@ -115,7 +115,8 @@ class BaseModule(TranslationMixin):
         return build_context_prompt(history, lang)
 
     def _get_context_for_model(
-        self, session_id: str, model_type: str, current_query: str, lang: str = "ru", user_id: str | None = None
+        self, session_id: str, model_type: str, current_query: str, lang: str = "ru", user_id: str | None = None,
+        skip_slm: bool = False,
     ) -> str:
         """Retrieve conversation history + SLM long-term memory with safety margin."""
         if not session_id:
@@ -147,22 +148,23 @@ class BaseModule(TranslationMixin):
 
         # SLM: load long-term memory facts (for both chat and reasoning models)
         slm_facts_str = ""
-        slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
-        if slm:
-            slm_raw = slm.get_context(
-                current_query,
-                lang,
-                limit=slm_recall_limit,
-                profile=user_id,
-                semantic=(model_type == "reasoning"),
-            )
-            if slm_raw:
-                header = (
-                    "Дополнительная информация из долговременной памяти:"
-                    if lang == "ru"
-                    else "Additional context from long-term memory:"
+        if not skip_slm:
+            slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
+            if slm:
+                slm_raw = slm.get_context(
+                    current_query,
+                    lang,
+                    limit=slm_recall_limit,
+                    profile=user_id,
+                    semantic=True,
                 )
-                slm_facts_str = f"\n\n{header}\n{slm_raw}"
+                if slm_raw:
+                    header = (
+                        "Дополнительная информация из долговременной памяти:"
+                        if lang == "ru"
+                        else "Additional context from long-term memory:"
+                    )
+                    slm_facts_str = f"\n\n{header}\n{slm_raw}"
 
         # Combine: history first (dialog continuity), SLM facts after (long-term enrichment)
         context = history_str + slm_facts_str
@@ -211,6 +213,72 @@ class BaseModule(TranslationMixin):
         )
         t.start()
 
+    def _build_camera_prompt_section(self, lang: str = "ru") -> str:
+        """Build the camera classification section for the router prompt.
+
+        Reads room definitions from the CamModule (loaded from DB)
+        and generates category 5 with all configured rooms and their
+        name forms — no hardcoded room names.
+        """
+        cam = self.app.modules.get("cam") if hasattr(self, "app") and self.app else None  # type: ignore[attr-defined]
+        if not cam or not cam.available:
+            return ""
+
+        rooms_with_forms = cam.get_all_rooms_with_forms()
+        if not rooms_with_forms:
+            return ""
+
+        if lang == "ru":
+            lines = [
+                "## 5. ЗАПРОС НА ПРОСМОТР КАМЕРЫ (ПРИОРИТЕТ — Даже если есть «?»)",
+                "Если запрос содержит:",
+                "  (а) упоминание любой комнаты из списка ниже, И",
+                "  (б) любой вариант просьбы показать/посмотреть/узнать о комнате",
+                "      (что, как, как дела, покажи, выведи, посмотри, проверь, есть ли кто, что происходит, и т.д.)",
+                "Тогда это запрос к камере, а НЕ обычный вопрос.",
+                "Действие: выведи ТОЛЬКО [-CAMERA-] и код комнаты.",
+                "",
+                "Комнаты (из БД):",
+            ]
+            for code, forms in rooms_with_forms:
+                forms_str = " / ".join(forms)
+                lines.append(f'  - "{forms_str}" → [-CAMERA-] {code}')
+            lines.append("")
+            lines.append("Примеры:")
+            lines.append('  - "Покажи кабинет" → [-CAMERA-] kab')
+            lines.append('  - "Что в гостиной" → [-CAMERA-] gos')
+            lines.append('  - "как дела в гостиной?" → [-CAMERA-] gos')
+            lines.append('  - "как в тамбуре?" → [-CAMERA-] tam')
+            lines.append('  - "Есть ли кто в тамбуре" → [-CAMERA-] tam')
+            lines.append('  - "Что происходит в кабинете?" → [-CAMERA-] kab')
+            lines.append('  - "Покажи гараж" → Покажи гараж')
+        else:
+            lines = [
+                "## 5. CAMERA VIEW REQUEST (PRIORITY — even with '?')",
+                "If the query contains:",
+                "  (a) mention of any room from the list below, AND",
+                "  (b) any variant of asking to show/view/check the room",
+                "      (what, how, how's it, show, display, look, check, is anyone there, what's happening, etc.)",
+                "Then this is a camera request, NOT a regular question.",
+                "Action: output ONLY [-CAMERA-] and the room code.",
+                "",
+                "Rooms (from DB):",
+            ]
+            for code, forms in rooms_with_forms:
+                forms_str = " / ".join(forms)
+                lines.append(f'  - "{forms_str}" → [-CAMERA-] {code}')
+            lines.append("")
+            lines.append("Examples:")
+            lines.append('  - "Show the study" → [-CAMERA-] kab')
+            lines.append('  - "What\'s in the living room" → [-CAMERA-] gos')
+            lines.append('  - "how\'s the living room?" → [-CAMERA-] gos')
+            lines.append('  - "how\'s the vestibule?" → [-CAMERA-] tam')
+            lines.append('  - "Is anyone in the vestibule" → [-CAMERA-] tam')
+            lines.append('  - "What\'s happening in the study?" → [-CAMERA-] kab')
+            lines.append('  - "Show the garage" → Show the garage')
+
+        return "\n".join(lines)
+
     # --- Existing methods with context added ---
     def process_message(
         self,
@@ -230,6 +298,8 @@ class BaseModule(TranslationMixin):
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )
 
+        camera_section = self._build_camera_prompt_section(lang)
+
         prompt = format_prompt(
             "base_text.template",
             {
@@ -237,6 +307,7 @@ class BaseModule(TranslationMixin):
                 "user_query": message_text,
                 "response_language": response_language,
                 "response_style": style_instruction,
+                "camera_section": camera_section,
             },
             lang=lang,
         )
@@ -276,7 +347,7 @@ class BaseModule(TranslationMixin):
             return {"error": self._("Model returned empty response", lang)}
 
         result = self._parse_router_response(router_response, message_text, current_time_str, lang)  # type: ignore[arg-type]
-        if "error" not in result:
+        if "error" not in result and result.get("action") in ("fact", "rag"):
             self._save_to_slm_async(
                 message_text, metadata={"session_id": session_id, "type": "user_query"}, user_id=user_id
             )
@@ -302,6 +373,7 @@ class BaseModule(TranslationMixin):
             "[-REASONING-]": "reasoning",
             "[-RAG-]": "rag",
             "[-VIDEO-]": "video",
+            "[-FACT-]": "fact",
         }
 
         for marker, action in markers.items():
@@ -318,6 +390,13 @@ class BaseModule(TranslationMixin):
                     processed = processed.split("\n")[0].strip()
                     if not processed and original_query:
                         processed = original_query
+                    # Fallback: if LLM returned full query instead of room code,
+                    # try to extract room code via cam module
+                    cam = self.app.modules.get("cam") if hasattr(self, "app") and self.app else None  # type: ignore[attr-defined]
+                    if cam and hasattr(cam, "room_names") and processed not in cam.room_names:
+                        extracted = cam.get_room_code(processed)
+                        if extracted:
+                            processed = extracted
                 else:
                     processed = parts[1].strip() if len(parts) > 1 else ""
                     processed = processed.split("\n")[0].strip()
@@ -384,10 +463,11 @@ class BaseModule(TranslationMixin):
         session_id: str | None = None,
         response_style: str = "neutral",
         user_id: str | None = None,
+        skip_slm: bool = False,
     ) -> Generator[str, None, None]:
         """Build prompt and stream chat model response."""
         response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(session_id, "chat", query, lang, user_id=user_id)  # type: ignore[arg-type]
+        context_str = self._get_context_for_model(session_id, "chat", query, lang, user_id=user_id, skip_slm=skip_slm)  # type: ignore[arg-type]
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )
@@ -424,6 +504,7 @@ class BaseModule(TranslationMixin):
         session_id: str | None = None,
         response_style: str = "neutral",
         user_id: str | None = None,
+        rag_context: str = "",
     ) -> Generator[str, None, None]:
         """Build prompt and stream reasoning model response."""
         response_language = "Russian" if lang == "ru" else "English"
@@ -431,6 +512,8 @@ class BaseModule(TranslationMixin):
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )
+
+        rag_context_str = rag_context if rag_context else self._("No additional information from documents.", lang)
 
         prompt = format_prompt(
             "reasoning.template",
@@ -440,6 +523,7 @@ class BaseModule(TranslationMixin):
                 "response_language": response_language,
                 "conversation_history": context_str,
                 "response_style": style_instruction,
+                "rag_context": rag_context_str,
             },
             lang=lang,
         )

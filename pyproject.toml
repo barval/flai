@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flai"
-version = "8.8.0"
+version = "8.9.0"
 description = "Fully Local AI — a personal AI assistant that runs entirely on your hardware"
 readme = "README.md"
 license = {text = "MIT"}
@@ -35,6 +35,7 @@ dependencies = [
     "gguf>=0.10.0",
     "psycopg2-binary>=2.9.9",
     "nvidia-ml-py>=12",
+    "pymorphy3>=2.0.6",
 ]
 
 [project.optional-dependencies]

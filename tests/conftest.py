@@ -266,7 +266,8 @@ class _MockDatabase:
         if "FROM MESSAGES" in sql_u:
             session_id = params[0]
             msgs = [dict(m) for m in self._messages if m.get("session_id") == session_id]
-            if "FILE_PATH IS NOT NULL" in sql_u:
+            # Only filter by file_path when it's a WHERE clause, not a CASE WHEN expression
+            if "WHERE" in sql_u and "FILE_PATH IS NOT NULL" in sql_u and "CASE" not in sql_u:
                 msgs = [m for m in msgs if m.get("file_path")]
             msgs.sort(key=lambda m: (str(m.get("timestamp", "")), m.get("id", 0)))
             # Extract LIMIT / OFFSET from params if present (they are ints)

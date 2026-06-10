@@ -19,6 +19,7 @@ let mediaRecorder = null;
 let audioChunks = [];
 let isRecording = false;
 let isVoiceRecorded = false;
+let attachedVoiceBlob = null;   // voice blob when image is already attached
 // TTS global variables
 let currentAudio = null;
 let currentTTSButton = null;

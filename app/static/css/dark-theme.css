@@ -230,6 +230,14 @@
     background-color: #27ae60;
     color: white;
 }
+.dark-theme .open-html-button {
+    background-color: rgba(200,200,200,0.8);
+    color: #333;
+}
+.dark-theme .open-html-button:hover {
+    background-color: #2ecc71;
+    color: white;
+}
 .dark-theme .copy-message-button:hover {
     background-color: rgba(255,255,255,0.1);
 }
@@ -457,16 +465,6 @@
 .dark-theme .model-card .param-hint {
     color: #888;
 }
-.dark-theme .model-card .capability {
-    background-color: #3a3a3a;
-    color: #e0e0e0;
-}
-
-.dark-theme .model-card .capability.true {
-    background-color: #27ae60;
-    color: white;
-}
-
 /* ===== DARK THEME ADMIN TABS ===== */
 .dark-theme .admin-tab {
     background-color: #3a3a3a;

@@ -10,6 +10,7 @@ Uses backend pattern to support:
 import json
 import logging
 import os
+import re
 import time
 from collections.abc import Generator
 from typing import Any
@@ -75,6 +76,63 @@ def _format_user_error(response: Any, lang: str = "ru") -> str:
         return msg if msg.startswith("⚠️") else f"⚠️ {msg}"
     status = getattr(response, "status_code", 0) or 0
     return f"⚠️ {_tr('HTTP error {status}', lang, status=status)}"
+
+
+# ── Thinking tag filters ──────────────────────────────────────────────
+# Models like Qwen, DeepSeek, Gemma use: <think>...</think>
+# gpt-oss-20b uses:  <|channel|>analysis<|message|>...<|end|>
+# These filters strip reasoning blocks from both streaming and non-streaming output.
+
+_THINK_OPEN_RE = re.compile(r"<think[\s>]|<\|channel\|>analysis<\|message\|>")
+_THINK_CLOSE_RE = re.compile(r"</think>|<\|end\|>")
+
+
+def _strip_thinking_tags(text: str) -> str:
+    """Remove complete thinking/reasoning blocks from model output.
+
+    Handles two formats:
+    - `` blocks (Qwen, DeepSeek, Gemma, QwQ)
+    - `<|channel|>analysis<|message|>...<|end|>` (gpt-oss-20b ChatML reasoning)
+    """
+    if not text or ("<think" not in text and "<|channel|>" not in text):
+        return text
+    text = re.sub(r"<think[\s>][\s\S]*?</think>", "", text)
+    text = re.sub(r"<\|channel\|>analysis<\|message\|>[\s\S]*?<\|end\|>", "", text)
+    return text.strip()
+
+
+def _process_stream_chunk(buffer: str, thinking_active: bool) -> tuple[str, str, bool]:
+    """Process a streaming chunk, stripping thinking tags.
+
+    Stateful filter that tracks whether we're inside a thinking block.
+    Handles partial tags split across multiple streaming chunks.
+
+    Returns (output_text, remaining_buffer, new_thinking_state).
+    """
+    output = ""
+
+    while buffer:
+        if thinking_active:
+            close_match = _THINK_CLOSE_RE.search(buffer)
+            if close_match:
+                buffer = buffer[close_match.end():]
+                thinking_active = False
+            else:
+                break
+        else:
+            open_match = _THINK_OPEN_RE.search(buffer)
+            if open_match:
+                output += buffer[:open_match.start()]
+                buffer = buffer[open_match.start():]
+                thinking_active = True
+            else:
+                safe_len = max(len(buffer) - 30, 0)
+                if safe_len > 0:
+                    output += buffer[:safe_len]
+                    buffer = buffer[safe_len:]
+                break
+
+    return output, buffer, thinking_active
 
 
 class AbstractLlamaBackend:
@@ -170,7 +228,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                         content = content[: content.index(stop_token)]
 
                 self.circuit_breaker.record_success()
-                return content.strip()  # type: ignore[no-any-return]
+                return _strip_thinking_tags(content.strip())  # type: ignore[no-any-return]
             else:
                 self.circuit_breaker.record_failure()
                 self.logger.error(
@@ -227,6 +285,11 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                 return
 
             self.circuit_breaker.record_success()
+            # Stateful thinking tag filter — strips reasoning blocks
+            # from any model type (Qwen, DeepSeek, gpt-oss, etc.)
+            _thinking_active = False
+            _stream_buffer = ""
+
             for line in response.iter_lines():
                 if not line:
                     continue
@@ -241,9 +304,17 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                     delta = chunk.get("choices", [{}])[0].get("delta", {})
                     content = delta.get("content", "")
                     if content:
-                        yield content
+                        _stream_buffer += content
+                        output, _stream_buffer, _thinking_active = _process_stream_chunk(
+                            _stream_buffer, _thinking_active,
+                        )
+                        if output:
+                            yield output
                 except json.JSONDecodeError:
                     continue
+            # Flush remaining buffer (non-thinking tail)
+            if _stream_buffer and not _thinking_active:
+                yield _stream_buffer
         except requests.exceptions.Timeout:
             self.circuit_breaker.record_failure()
             yield _tr(
@@ -400,7 +471,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     except Exception:
                         pass
 
-                    return content.strip()  # type: ignore[no-any-return]
+                    return _strip_thinking_tags(content.strip())  # type: ignore[no-any-return]
                 else:
                     if attempt < max_retries and response.status_code == 502:
                         self.logger.warning(f"chat 502 on attempt {attempt + 1}, retrying in 5s")
@@ -516,6 +587,11 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     except Exception:
                         pass
 
+                    # Stateful thinking tag filter — strips reasoning blocks
+                    # from any model type (Qwen, DeepSeek, gpt-oss, etc.)
+                    _thinking_active = False
+                    _stream_buffer = ""
+
                     for line in response.iter_lines():
                         if not line:
                             continue
@@ -530,9 +606,17 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                             delta = chunk.get("choices", [{}])[0].get("delta", {})
                             content = delta.get("content", "")
                             if content:
-                                yield content
+                                _stream_buffer += content
+                                output, _stream_buffer, _thinking_active = _process_stream_chunk(
+                                    _stream_buffer, _thinking_active,
+                                )
+                                if output:
+                                    yield output
                         except json.JSONDecodeError:
                             continue
+                    # Flush remaining buffer (non-thinking tail)
+                    if _stream_buffer and not _thinking_active:
+                        yield _stream_buffer
                     break  # success, exit retry loop
                 except requests.exceptions.Timeout:
                     if attempt < max_retries:

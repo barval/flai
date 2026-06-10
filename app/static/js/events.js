@@ -250,6 +250,26 @@ function onImagePreview(data) {
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
+// ── thinking tag filter (fallback for --reasoning_format none) ─────────
+// Handles two formats:
+// - `` blocks (Qwen, DeepSeek, Gemma, QwQ)
+// - `<|channel|>analysis<|message|>...<|end|>` (gpt-oss-20b ChatML reasoning)
+
+function _stripThinkingTags(text) {
+    if (!text) return text;
+    if (!text.includes('<think') && !text.includes('<|channel|>')) return text;
+    let result = text;
+    // Remove complete <think>...</think> blocks (including multiline)
+    result = result.replace(/<think[\s>][\s\S]*?<\/think>/gi, '');
+    // Remove incomplete opening tag at the end (streaming: closing tag hasn't arrived yet)
+    result = result.replace(/<think[\s>][\s\S]*$/i, '');
+    // Remove complete <|channel|>analysis<|message|>...<|end|> blocks
+    result = result.replace(/<\|channel\|>analysis<\|message\|>[\s\S]*?<\|end\|>/gi, '');
+    // Remove incomplete opening tag at the end (streaming)
+    result = result.replace(/<\|channel\|>analysis<\|message\|>[\s\S]*$/i, '');
+    return result;
+}
+
 // ── stream_token ─────────────────────────────────────────────────────
 
 function onStreamToken(data) {
@@ -332,10 +352,10 @@ function onStreamToken(data) {
         streamMsg.appendChild(contentDiv);
     }
 
-    // Update content
+    // Update content (strip thinking tags for display)
     const contentDiv = streamMsg.querySelector('.message-content');
     if (contentDiv) {
-        contentDiv.textContent = reqInfo.accumulatedContent;
+        contentDiv.textContent = _stripThinkingTags(reqInfo.accumulatedContent);
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
@@ -675,15 +695,16 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
             }
         }
 
-        // Set raw text for copy button
+        // Set raw text for copy button (strip thinking tags)
         if (result && result.response) {
-            streamMsg.setAttribute('data-raw-text', result.response);
+            streamMsg.setAttribute('data-raw-text', _stripThinkingTags(result.response));
         }
 
         // Replace content with full rendered markdown (sanitized to prevent XSS)
         var contentDiv = streamMsg.querySelector('.message-content');
         if (contentDiv && result && result.response) {
-            contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(result.response));
+            var cleanResponse = _stripThinkingTags(result.response);
+            contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(cleanResponse));
         } else if (contentDiv && result && result.error) {
             // Show error in streaming message if no response text
             contentDiv.innerHTML = DOMPurify.sanitize('⚠️ ' + t('error') + ': ' + result.error);

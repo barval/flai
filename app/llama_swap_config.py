@@ -315,6 +315,9 @@ class LlamaSwapConfigGenerator:
             # RAG chunks can have up to ~550 tokens, so set both to 2048
             cmd_parts.extend(["--batch-size", "2048", "--ubatch-size", "2048"])
 
+        if module == "reasoning":
+            cmd_parts.extend(["--reasoning_format", "none"])
+
         if mmproj:
             cmd_parts.extend(["--mmproj", mmproj])
 

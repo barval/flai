@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import subprocess
 import threading
 import time
@@ -679,6 +680,20 @@ class RedisRequestQueue:
             "unable to start process",
         )
         return any(text.startswith(pfx) for pfx in error_prefixes)
+
+    @staticmethod
+    def _strip_thinking_tags(text: str) -> str:
+        """Remove thinking/reasoning blocks from model output.
+
+        Primary filtering happens in llamacpp_client.py at the backend level.
+        This is a safety net for responses saved to DB.
+        Handles: `` and `<|channel|>analysis<|message|>...<|end|>`.
+        """
+        if not text or ("<think" not in text and "<|channel|>" not in text):
+            return text
+        text = re.sub(r"<think[\s>][\s\S]*?</think>", "", text)
+        text = re.sub(r"<\|channel\|>analysis<\|message\|>[\s\S]*?<\|end\|>", "", text)
+        return text.strip()
 
     def _build_success_response(
         self,
@@ -1379,8 +1394,10 @@ class RedisRequestQueue:
             return self._build_error_response(session_id, error_msg, 0, lang)
 
         current_time_str = get_current_time_in_timezone(self.app)
-        reasoning_start = time.time()
-        result = self.app.modules["base"].process_reasoning(
+        stream_start = time.time()
+        full_response = ""
+        error_detected = False
+        for token in self.app.modules["base"].generate_reasoning_response_stream(
             query,
             current_time_str,
             lang=lang,
@@ -1388,20 +1405,27 @@ class RedisRequestQueue:
             response_style=response_style,
             user_id=user_id,
             rag_context=rag_context,
-        )
-        reasoning_time = round(time.time() - reasoning_start, 1)
-        if isinstance(result, dict) and "error" in result:
-            err = result["error"]
-            if "CUDA out of memory" in str(err):
-                err = self.app.modules["base"]._(
-                    "Reasoning failed: GPU memory exhausted. Please simplify your request.", lang=lang
-                )
-            return self._build_error_response(session_id, err, reasoning_time, lang)
-        if isinstance(result, str) and self._is_llm_error_string(result):
-            return self._build_error_response(session_id, result, reasoning_time, lang)
+        ):
+            full_response += token
+            if not error_detected:
+                if self._is_llm_error_string(full_response):
+                    error_detected = True
+                else:
+                    self._publish_stream_token(task, token)
+            if self._is_task_cancelled(task["id"]):
+                break
+        reasoning_time = round(time.time() - stream_start, 1)
+        full_response = self._strip_thinking_tags(full_response)
+        if not full_response.strip():
+            return self._build_error_response(
+                session_id, "⚠️ " + self.app.modules["base"]._("No response from reasoning model", lang),
+                reasoning_time, lang,
+            )
+        if self._is_llm_error_string(full_response):
+            return self._build_error_response(session_id, full_response, reasoning_time, lang)
         return self._save_and_respond(
             session_id,
-            result,
+            full_response,
             self._get_model_name("reasoning") or "reasoning",
             reasoning_time,
             response_style=response_style,

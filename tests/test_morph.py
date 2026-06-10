@@ -1,8 +1,6 @@
 # tests/test_morph.py
 """Tests for Russian morphological analysis of room names."""
 
-import pytest
-
 from app.morph import generate_room_name_forms
 
 

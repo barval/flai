@@ -810,6 +810,35 @@ video {
     opacity: 1;
 }
 
+/* ===== OPEN HTML BUTTON ===== */
+.open-html-button {
+    position: absolute;
+    top: 8px;
+    right: 56px;
+    background-color: rgba(52,73,94,0.8);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.6;
+    transition: all 0.2s ease;
+    z-index: 10;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    backdrop-filter: blur(2px);
+}
+
+.open-html-button:hover {
+    opacity: 1;
+    background-color: #2ecc71;
+    transform: scale(1.05);
+}
+
 /* ===== MEDIA QUERIES FOR CHAT ===== */
 
 /* Tablet range — prevent calc(100vh) overflow from browser chrome */
@@ -961,6 +990,14 @@ video {
         font-size: 14px;
         top: 4px;
         right: 4px;
+    }
+
+    .open-html-button {
+        width: 28px;
+        height: 28px;
+        font-size: 14px;
+        top: 4px;
+        right: 46px;
     }
     
     .session-status-icon {

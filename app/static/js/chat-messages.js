@@ -766,33 +766,69 @@ async function handleCopyClick(button, codeElement) {
     }
 }
 
+function handleOpenHtmlClick(codeBlock) {
+    const code = codeBlock.textContent || codeBlock.innerText || '';
+    const trimmed = code.trim();
+    if (!trimmed) return;
+
+    let html;
+    if (/<html[\s>]/i.test(trimmed)) {
+        html = trimmed;
+    } else if (/<(!DOCTYPE|!doctype)[\s>]/i.test(trimmed)) {
+        html = trimmed;
+    } else {
+        html = '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n</head>\n<body>\n' + trimmed + '\n</body>\n</html>';
+    }
+
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 function addCopyButtonsToMessage(messageElement) {
     if (window.IS_RELOADING) return;
     if (!messageElement) return;
-    
+
     const codeBlocks = messageElement.querySelectorAll('pre code');
     codeBlocks.forEach((codeBlock) => {
         const parent = codeBlock.parentNode;
         if (parent.classList.contains('code-block-wrapper')) return;
-        
+
         const wrapper = document.createElement('div');
         wrapper.className = 'code-block-wrapper';
-        
+
         const copyButton = document.createElement('button');
         copyButton.className = 'copy-code-button';
         copyButton.innerHTML = '📋';
         copyButton.title = t('copy_code');
-        
+
         copyButton.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
             if (window.IS_RELOADING) return;
             handleCopyClick(copyButton, codeBlock);
         });
-        
+
         parent.parentNode.insertBefore(wrapper, parent);
         wrapper.appendChild(parent);
         wrapper.appendChild(copyButton);
+
+        if (codeBlock.classList.contains('language-html')) {
+            const openButton = document.createElement('button');
+            openButton.className = 'open-html-button';
+            openButton.innerHTML = '&#9654;';
+            openButton.title = t('open_html');
+
+            openButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (window.IS_RELOADING) return;
+                handleOpenHtmlClick(codeBlock);
+            });
+
+            wrapper.insertBefore(openButton, copyButton);
+        }
     });
 }
 

@@ -106,6 +106,7 @@ window.CURRENT_USER_LOGIN = {{ session.get('login', '')|tojson }};
 window.CURRENT_RESPONSE_STYLE = {{ session.get('response_style', 'neutral')|tojson }};
 window.CURRENT_EMBEDDING_MODEL = {{ embedding_model|tojson }};
 window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
+    'loading': {{ _("Loading...")|tojson }},
     'send': {{ _("Send")|tojson }},
     'sending': {{ _("Sending...")|tojson }},
     'recording': {{ _("Recording...")|tojson }},

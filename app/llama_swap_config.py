@@ -453,22 +453,40 @@ class LlamaSwapConfigGenerator:
         """Signal llama-swap to reload config.
 
         With -watch-config flag enabled, llama-swap automatically polls for config changes.
-        This method is kept for manual reload trigger if needed.
+        After signaling, polls /running until a model appears (config picked up).
         """
+        import time
+
         import requests
 
-        url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+        url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080").rstrip("/")
 
         try:
-            response = requests.post(f"{url.rstrip('/')}/reload", timeout=10)
-            if response.status_code in (200, 404):
-                self.logger.info("llama-swap reload signaled")
-                return True
-            self.logger.warning(f"llama-swap reload returned {response.status_code}")
-            return False
+            response = requests.post(f"{url}/reload", timeout=10)
+            if response.status_code not in (200, 404):
+                self.logger.warning(f"llama-swap reload returned {response.status_code}")
+                return False
         except requests.exceptions.RequestException as e:
             self.logger.warning(f"Could not signal llama-swap reload: {e}")
             return False
+
+        self.logger.info("llama-swap reload signaled, waiting for config pick-up...")
+
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            try:
+                r = requests.get(f"{url}/running", timeout=2)
+                if r.status_code == 200:
+                    running = r.json().get("running", [])
+                    if running:
+                        self.logger.info(f"llama-swap reloaded: {len(running)} model(s) running")
+                        return True
+            except Exception:
+                pass
+            time.sleep(0.5)
+
+        self.logger.warning("llama-swap did not reload config within 5s")
+        return True  # config was written, reload will happen eventually
 
     def degrade_and_reload(self, module: str) -> bool:
         """Degrade one model's GPU usage and reload llama-swap config.

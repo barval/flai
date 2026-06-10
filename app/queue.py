@@ -597,8 +597,9 @@ class RedisRequestQueue:
         from .db import save_message
 
         completion_time = get_current_time_in_timezone_for_db(self.app)
+        prefix = "" if error.startswith("⚠️") else "⚠️ "
         msg_id = save_message(
-            session_id, "assistant", "⚠️ " + error, model_name="system", response_time=str(process_time)
+            session_id, "assistant", prefix + error, model_name="system", response_time=str(process_time)
         )
         return {
             "error": error,
@@ -626,6 +627,9 @@ class RedisRequestQueue:
             "Error:",
             "error occurred",
             "Failed to load",  # llama.cpp stb_image/audio decoder error
+            "unable to start process",  # llama-swap: process failed to start
+            "upstream command exited",  # llama-swap: upstream process crashed
+            "exited prematurely",  # llama-swap: process exited before ready
         )
         return any(ind in text for ind in indicators)
 

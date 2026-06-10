@@ -349,7 +349,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         top_p = config.get("top_p", 0.9)
         repeat_penalty = config.get("repeat_penalty", 1.1)
 
-        model_name = model_type
+        model_name = model
 
         payload = {
             "model": model_name,
@@ -403,8 +403,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     return content.strip()  # type: ignore[no-any-return]
                 else:
                     if attempt < max_retries and response.status_code == 502:
-                        self.logger.warning(f"chat 502 on attempt {attempt + 1}, retrying in 2s")
-                        time.sleep(2)
+                        self.logger.warning(f"chat 502 on attempt {attempt + 1}, retrying in 5s")
+                        time.sleep(5)
                         continue
                     self._record_llama_failure(model_type)
                     err_body = response.text[:500]
@@ -448,7 +448,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         temperature = config.get("temperature", 0.7)
         top_p = config.get("top_p", 0.9)
         repeat_penalty = config.get("repeat_penalty", 1.1)
-        model_name = model_type
+        model_name = model
 
         payload = {
             "model": model_name,
@@ -491,7 +491,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                             response.status_code == 502
                             or is_image_load_400
                         ):
-                            delay = 2 if response.status_code == 502 else 1
+                            delay = 5 if response.status_code == 502 else 1
                             reason = "502" if response.status_code == 502 else "image-load-400"
                             self.logger.warning(
                                 f"chat_stream {reason} on attempt {attempt + 1}, retrying in {delay}s"

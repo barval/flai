@@ -408,6 +408,18 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
 
     const requestedCtx = parseInt(ctxLength) || 8192;
 
+    // Show blinking placeholder while the estimate is loading
+    const saveBtn = card.querySelector('.save-button');
+    card.querySelectorAll('.memory-hint, .tier-indicator').forEach(el => el.remove());
+    const placeholder = document.createElement('div');
+    placeholder.className = 'memory-hint calculating';
+    placeholder.style.cssText = 'margin-top: 8px; padding: 8px; border-radius: 4px; font-size: 0.85em; color: #888;';
+    placeholder.textContent = t('calculating_vram');
+    card.insertBefore(placeholder, saveBtn);
+
+    // Force browser to repaint placeholder before the async fetch blocks main thread
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
     try {
         const params = new URLSearchParams({
             model: modelName,
@@ -515,8 +527,6 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
             }
         }
 
-        const saveBtn = card.querySelector('.save-button');
-
         // Render 3-tier indicator + lock save button on impossible/unknown
         if (tierMessage) {
             const tierDiv = document.createElement('div');
@@ -558,7 +568,7 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
             }
         }
 
-        card.querySelectorAll('.memory-hint').forEach(el => el.remove());
+        card.querySelectorAll('.memory-hint, .tier-indicator').forEach(el => el.remove());
         card.insertBefore(hintDiv, saveBtn);
 
     } catch (err) {

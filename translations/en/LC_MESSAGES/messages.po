@@ -964,6 +964,9 @@ msgstr "VRAM: %1% MB / %2% MB (%3%%) — measured (%4% measurements)"
 msgid "vram_detail"
 msgstr " (model=%1% + KV=%2% + compute=%3% MB)"
 
+msgid "calculating_vram"
+msgstr "Calculating..."
+
 #: app/templates/admin.html:335
 msgid "vram_partial_high"
 msgstr "Used VRAM: 100%, RAM: %2%% - good"

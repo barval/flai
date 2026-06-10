@@ -968,6 +968,9 @@ msgstr "VRAM: %1% МБ / %2% МБ (%3%%) — замерено (%4% изм.)"
 msgid "vram_detail"
 msgstr " (модель=%1% + KV=%2% + compute=%3% МБ)"
 
+msgid "calculating_vram"
+msgstr "Идёт расчёт..."
+
 #: app/templates/admin.html:335
 msgid "vram_partial_high"
 msgstr "Использовано VRAM: 100%, RAM: %2%% - хорошо"

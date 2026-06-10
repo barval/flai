@@ -21,23 +21,27 @@ PROMPTS_DIR = "prompts"
 def _gguf_scalar(val: Any) -> Any:
     """Extract Python scalar from a gguf reader field value.
 
-    gguf returns ``ReaderField.parts[-1]`` as a numpy array. For 1-element
-    arrays the scalar lives at ``tolist()[0]``; for multi-dim string arrays
-    the raw byte payload is at ``.tobytes()``. Falls back to the raw value.
+    gguf returns ``ReaderField.parts[-1]`` as a numpy array.
+    - 1-element numeric array → Python int/float (e.g. block_count, nextn_predict_layers)
+    - Multi-element byte array → raw bytes for string decode (e.g. general.architecture)
+    - Fallback: tobytes() or raw value
 
     Args:
         val: numpy array or scalar returned by gguf reader.
 
     Returns:
-        Python scalar (int, float, str, bytes) or original value.
+        Python scalar (int, float, bytes) or original value.
     """
-    if hasattr(val, "tobytes"):
-        return val.tobytes()
     if hasattr(val, "tolist"):
         arr = val.tolist()
         if isinstance(arr, list) and len(arr) == 1:
             return arr[0]
+        # Multi-element array: use tobytes() for string fields (architecture, size_label)
+        if hasattr(val, "tobytes"):
+            return val.tobytes()
         return arr
+    if hasattr(val, "tobytes"):
+        return val.tobytes()
     return val
 
 
@@ -1439,11 +1443,13 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
             logger.warning(f"Detected bad architecture in cache for {model_name}: {arch!r}, will re-scan")
             del cached[model_name]
 
-    # Re-scan models without supports_mtp (column was added after initial cache)
-    for model_name in list(cached.keys()):
+    # Patch models without supports_mtp (column was added after initial cache).
+    # Instead of deleting from cache and re-scanning (GGUFReader is slow on large files),
+    # just set supports_mtp=False. Correct values will be detected on next Refresh Models.
+    for model_name in cached:
         if cached[model_name].get("supports_mtp") is None:
-            logger.info(f"Model {model_name} missing supports_mtp, will re-scan")
-            del cached[model_name]
+            logger.info(f"Model {model_name} missing supports_mtp, setting False (will re-scan on Refresh)")
+            cached[model_name]["supports_mtp"] = False
 
     # Find models that need scanning (not in cache or missing from filesystem)
     missing_from_cache = current_files - set(cached.keys())

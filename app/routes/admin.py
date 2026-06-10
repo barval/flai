@@ -672,6 +672,52 @@ def model_vram_estimate():
     model_key = model_name.replace(".gguf", "")
     cached = gguf_cache.get(model_key, {})
 
+    # Fast path: if we have a measured VRAM for this exact model+ctx, return it
+    # immediately — skip expensive GGUF file parsing and filesystem walks.
+    try:
+        from app.database import get_vram_estimate
+        db_est = get_vram_estimate(module, model_name=model_name)
+        if db_est and db_est.get("measured_vram_mb"):
+            measured_mb = int(db_est["measured_vram_mb"])
+            measurement_count = db_est.get("measurement_count") or 0
+            measured_ctx = db_est.get("context_length")
+            vram_pct = round(measured_mb / total_vram * 100) if total_vram else 0
+            tier = "good" if measured_mb <= total_vram * TIER_VRAM_GOOD_PCT else "cpu_offload"
+            tier_msg = (
+                _("✓ Fits in VRAM: {vram} MB / {total} MB").format(vram=measured_mb, total=total_vram)
+                if tier == "good"
+                else _("⚠ Partial CPU offload needed").format()
+            )
+            return jsonify({
+                "status": "measured",
+                "vram_mb": measured_mb,
+                "total_vram_mb": total_vram,
+                "vram_percent": vram_pct,
+                "vram_source": "measured",
+                "measured_vram_mb": measured_mb,
+                "measurement_count": measurement_count,
+                "measured_ctx": measured_ctx,
+                "ram_mb": measured_mb,
+                "total_ram_mb": total_ram,
+                "ram_percent": round(measured_mb / total_ram * 100) if total_ram else 0,
+                "has_gpu": total_vram is not None and total_vram > 0,
+                "file_size_mb": round(cached.get("file_size_mb", 0), 1) if cached.get("file_size_mb") else None,
+                "block_count": cached.get("block_count"),
+                "expert_count": cached.get("expert_count"),
+                "parameter_count": cached.get("parameter_count"),
+                "ngl": cached.get("block_count"),
+                "context_length": ctx_size,
+                "tier": tier,
+                "can_save": True,
+                "ngl_recommended": cached.get("block_count"),
+                "tier_message": tier_msg,
+                "system_ram_mb": total_ram,
+                "arch_max_ctx": cached.get("context_length"),
+                "details": None,
+            })
+    except Exception:
+        pass
+
     # If not in cache, try reading from file directly
     file_size_mb = cached.get("file_size_mb")
     block_count = cached.get("block_count")
@@ -718,31 +764,25 @@ def model_vram_estimate():
             except Exception:
                 pass
 
-    # Always get actual file size for diagnostics (even when from cache)
-    if actual_file_size_mb is None:
-        gguf_path_diag = _find_gguf_path(model_name)
-        if gguf_path_diag and os.path.exists(gguf_path_diag):
-            actual_file_size_mb = os.path.getsize(gguf_path_diag) / (1024 * 1024)
-
-    # 3. Determine n_gpu_layers
+    # 3. Determine n_gpu_layers for THIS selected model (not the one currently in DB config)
+    #    compute_llamacpp_config() reads the current model from DB, which gives wrong ngl
+    #    when the user is estimating a different model in the dropdown.
     if ngl_param is not None:
         ngl = ngl_param
+    elif file_size_mb and block_count and total_vram and total_vram > 0:
+        reserve = 2000  # 2GB safety margin (matches compute_llamacpp_config)
+        available_for_model = max(0, total_vram - reserve)
+        needed = file_size_mb * 1.2  # weights + overhead multiplier
+        if cached.get("supports_mtp", False):
+            needed *= 1.15
+        ngl = block_count if needed <= available_for_model else max(1, int(block_count * available_for_model / needed))
     else:
-        try:
-            from app.resource_manager import get_resource_manager
-
-            rm = get_resource_manager()
-            config = rm.compute_llamacpp_config(module)
-            ngl = config.get("n_gpu_layers", -1)
-            if ngl == -1 and block_count:
-                ngl = block_count
-        except Exception:
-            ngl = block_count or 32
+        ngl = block_count or 32
 
     ratio = min(1.0, ngl / block_count) if block_count and block_count > 0 else 1.0
     logger.info(
         f"model-estimate: model={model_name}, file={file_size_mb:.0f}MB "
-        f"(source={file_size_source}, actual={actual_file_size_mb:.0f}MB), "
+        f"(source={file_size_source}), "
         f"blocks={block_count}, ngl={ngl}, ratio={ratio:.2f}"
     )
 

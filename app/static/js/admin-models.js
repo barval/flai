@@ -479,13 +479,14 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
         } else if (status === 'estimate' || (status === 'measured' && !data.measured_vram_mb)) {
             if (hasGPU && totalVRAM > 0) {
                 const vramPct = data.vram_percent || 0;
-                let color = '#29A847';
-                let label = 'optimal';
-                if (vramPct > 100) {
-                    const offloadPct = vramPct - 100;
-                    if (offloadPct <= 20) { color = '#FFD700'; label = 'high'; }
-                    else if (offloadPct <= 40) { color = '#fd7e14'; label = 'med'; }
-                    else { color = '#E01F1F'; label = 'low'; }
+                const tier = data.tier || 'unknown';
+                let color = '#29A847';  // green = good (all layers on GPU)
+                if (tier === 'cpu_offload') {
+                    color = '#b8860b';  // dark goldenrod — partial CPU offload
+                } else if (tier === 'impossible' || tier === 'unknown') {
+                    color = '#E01F1F';  // red
+                } else if (vramPct > 100) {
+                    color = '#E01F1F';  // red — exceeds VRAM even for good tier
                 }
                 hintDiv.style.color = color;
                 hintDiv.style.fontWeight = 'bold';
@@ -493,6 +494,11 @@ async function updateMemoryEstimation(module, modelInfo, ctxLength) {
                     .replace('%1%', data.vram_mb)
                     .replace('%2%', totalVRAM)
                     .replace('%3%', vramPct);
+                if (tier === 'cpu_offload' && data.ngl != null && data.block_count) {
+                    msg += ' — ' + t('ngl_offload_hint')
+                        .replace('%1%', data.ngl)
+                        .replace('%2%', data.block_count);
+                }
                 if (data.details) {
                     msg += t('vram_detail')
                         .replace('%1%', data.details.model_vram_mb)

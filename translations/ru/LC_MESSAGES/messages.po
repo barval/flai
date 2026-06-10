@@ -1007,6 +1007,9 @@ msgstr "Нет данных для оценки"
 msgid "ngl_info"
 msgstr "ngl=%1%, слоёв=%2%"
 
+msgid "ngl_offload_hint"
+msgstr "(%1%/%2% слоёв на GPU, ~5-10× медленнее)"
+
 #: app/templates/admin.html:344
 msgid ""
 "Reindexing all documents with new embedding model started. This may take "

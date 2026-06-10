@@ -618,6 +618,10 @@ class RedisRequestQueue:
         LLM generates code containing words like "Error:", "Timeout", "GPU memory".
         Backend errors always START with these phrases — never appear at position 0
         in LLM-generated code or explanations.
+
+        Also handles streaming: if the accumulated text contains "⚠️ " followed
+        by an error indicator, it's an error even if it doesn't start the string.
+        The "⚠️ " marker is only added by _format_user_error(), never by the LLM.
         """
         if not isinstance(text, str):
             return False
@@ -679,7 +683,17 @@ class RedisRequestQueue:
             "exited prematurely",
             "unable to start process",
         )
-        return any(text.startswith(pfx) for pfx in error_prefixes)
+        if any(text.startswith(pfx) for pfx in error_prefixes):
+            return True
+        # Level 3: Streaming errors — "⚠️ " marker appears after normal tokens.
+        # The "⚠️ " prefix is only added by _format_user_error(), never by LLM.
+        # So if we find "⚠️ " followed by an error prefix, it's definitely an error.
+        if "⚠️ " in text:
+            idx = text.index("⚠️ ")
+            tail = text[idx + 3:]  # skip "⚠️ "
+            if any(tail.startswith(pfx) for pfx in error_prefixes):
+                return True
+        return False
 
     @staticmethod
     def _strip_thinking_tags(text: str) -> str:

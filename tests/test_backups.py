@@ -289,7 +289,7 @@ class TestBackupMetadata:
         with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
             tmp_path = tmp.name
         try:
-            meta = {"type": "full", "version": "8.0"}
+            meta = {"type": "full", "version": "8.9"}
             with tarfile.open(tmp_path, "w:gz") as tar:
                 meta_bytes = json.dumps(meta).encode("utf-8")
                 info = tarfile.TarInfo(name="metadata.json")

@@ -558,7 +558,7 @@ class ResourceManager:
         nvidia-smi after the unload. If the POST succeeds but VRAM stays high,
         retries the unload up to 3 times (CUDA deallocation can be lazy).
 
-        Optimizations (v8.8+):
+        Optimizations (v8.9+):
           - Pre-flight GET /v1/vram_info: if pipeline not loaded, skip HTTP entirely
             (avoids 8s × 8 polls of waiting when nothing needs unloading)
           - Success condition is clamped to total - 1GB so it's reachable when

@@ -543,21 +543,6 @@ body.dark-theme .models-list .section-header span {
 .model-card .model-details p {
     margin: 5px 0;
 }
-.model-card .capabilities {
-    display: flex;
-    gap: 15px;
-    margin: 10px 0;
-}
-.model-card .capability {
-    background-color: #e0e0e0;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 0.85em;
-}
-.model-card .capability.true {
-    background-color: #27ae60;
-    color: white;
-}
 .model-card .parameters {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

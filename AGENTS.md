@@ -62,8 +62,8 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
   - **Synchronous VRAM polling** (`_poll_vram`) — `_resolve_use_gpu()` and `ensure_vram_for_llm()` call `_poll_vram()` synchronously before reading `available_vram_mb` (was updated every 60s, causing stale data and OOM). After every `unload_llamacpp_model()`, a wait loop verifies VRAM is actually freed (up to 30s).
   - **VRAM guard for reasoning** (`ensure_vram_for_reasoning`) — unloads llama.cpp models and waits (up to 60s) for SD/Video to free VRAM before loading gpt-oss-20b (~10 GiB).
   - Tasks are HMAC-signed JSON.
-- **DB**: PostgreSQL only via `app/database.py:get_db()` context manager (psycopg2 RealDictCursor). `DATABASE_URL` required. Tables: user_sessions, chat_sessions, messages, documents, session_visits, model_configs, user_storage, slm_import_progress, gguf_models_cache.
-- **Helpers**: `app/circuit_breaker.py`, `app/resource_manager.py`, `app/llama_swap_config.py`, `app/slm_import.py`, `app/model_config.py`, `app/config.py`, `app/db.py`, `app/events.py`, `app/userdb.py`, `app/validators.py`, `app/cli.py`, `app/tasks/dry_load.py`, `app/tasks/health_monitor.py` — llama-swap config auto-generated from DB at startup into `llama-swap-config/`. Background SLM import + dry-load (after admin model save) + crash-loop watchdog all run as daemon threads.
+- **DB**: PostgreSQL only via `app/database.py:get_db()` context manager (psycopg2 RealDictCursor). `DATABASE_URL` required. Tables: user_sessions, chat_sessions, messages, documents, session_visits, model_configs, user_storage, slm_import_progress, gguf_models_cache, camera_rooms.
+- **Helpers**: `app/circuit_breaker.py`, `app/resource_manager.py`, `app/llama_swap_config.py`, `app/slm_import.py`, `app/model_config.py`, `app/config.py`, `app/db.py`, `app/events.py`, `app/userdb.py`, `app/validators.py`, `app/cli.py`, `app/cameradb.py`, `app/morph.py`, `app/tasks/dry_load.py`, `app/tasks/health_monitor.py` — llama-swap config auto-generated from DB at startup into `llama-swap-config/`. Background SLM import + dry-load (after admin model save) + crash-loop watchdog all run as daemon threads.
 - **Docker mounts**: `./data/` → `/app/data`, `./services/llamacpp/models/` → `/models:ro`, `/var/run/docker.sock` for GPU detection.
 - **Config**: Model configs in DB (`model_configs` table). `.env` values are fallback defaults only. Admin panel at `/admin`.
 - **Multimodal models**: MUST be in a subdirectory with `mmproj-*.gguf` (e.g. `Qwen3VL-8B-Instruct-Q4_K_M/`).
@@ -97,6 +97,13 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - **⚡ recovery after task chain**: `events.js` — after every `clearSessionQueue()` call, `setTimeout(fetchQueueStatus, 500)` is scheduled. This polls the server for the next queued task, restoring ⚡ when the next task moves from queue to processing.
 - **Lint config** (pyproject.toml): ruff line-length=120, select E/W/F/I/N/UP/B/SIM, ignore E501/B008/PTH. `__init__.py` per-file-ignore F401. mypy target 3.11, ignore-missing-imports, excludes tests/ and translations/.
 - **Security**: Path traversal checks in `api/files/<path>`. Session ownership validated. CSRF on all forms (`WTF_CSRF_TIME_LIMIT=28800`, synced with session). `session.permanent = True` at login (8h idle timeout). Secrets in `.env` only.
+- **Streaming reasoning**: `modules/base.py:generate_reasoning_response_stream()` yields tokens one-by-one. `app/queue.py:_process_reasoning_request()` publishes via `_publish_stream_token()`. Server-side `_strip_thinking_tags()` removes `<tool_call>` and `<|channel|>analysis<|message|>...<|end|>` blocks before DB save. Client-side `_stripThinkingTags()` in `events.js` handles both complete and incomplete (streaming) tags.
+- **Task cancellation**: `cancel_task(task_id)` sets Redis flag `task:cancel:{task_id}` with TTL. `_is_task_cancelled(task_id)` checked in every streaming loop iteration. Client sends POST to `/api/cancel_task/{task_id}`.
+- **Generation progress**: `task_progress` (stage labels), `video_step`, `image_step` (progress bars), `image_preview` (base64 preview). Stored in Redis hash `task_progress:{task_id}` with TTL 30 min. Client restores via `GET /api/queue/progress/<task_id>`.
+- **DOMPurify**: `purify.min.js` loaded in `chat.html`. All `marked.parse()` output goes through `DOMPurify.sanitize()` before DOM insertion in `events.js:finalizeStreamedMessage()` and `chat-messages.js:displayMessage()`.
+- **Camera rooms CRUD**: `app/cameradb.py` provides CRUD for `camera_rooms` table. `app/morph.py` generates Russian declension forms (nomn, accs, loct) via pymorphy3. `modules/base.py:_build_camera_prompt_section()` builds router prompt dynamically from DB. `modules/cam.py` loads rooms from DB and resolves declensions via `get_room_code()`.
+- **Combined voice + image**: `app/static/js/chat-recording.js` stores voice as `attachedVoiceBlob` when image already attached. Server creates `type: "image"` task for combined processing.
+- **Lazy loading**: All `<img>` and `<video>` elements created with `loading = 'lazy'`.
 
 ## Testing
 
@@ -121,6 +128,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - All CSS must reside in `.css` files; all JavaScript in `.js` files (no inline styles/scripts).
 - External dependencies (models, voices) must be documented with size, license, and download instructions.
 - All Python dependencies must have **open-source licenses** (MIT, BSD, Apache 2.0, MPL, or equivalent). Proprietary or copyleft (GPL/AGPL) dependencies are prohibited. Verify license before adding.
+- **pymorphy3** is used for Russian morphological analysis of camera room names (generates declension forms).
 
 ## Cleanliness & Dead Code
 - No unused files, dead code, or unused CSS/JS.
@@ -391,7 +399,7 @@ Also:
 
 FLAI REQUIRES an NVIDIA GPU with at least 8 GB VRAM and 16 GB system RAM. CPU-only mode is not supported — LLM inference, SD image generation, and LTX-Video all depend on CUDA. The project automatically adapts to available VRAM (8/12/16+ GB tiers), adjusting model offloading, resolution, and model selection accordingly.
 
-## v8.9 — Video frame policy, mypy cleanup, test infrastructure fixes
+## v8.9 — Video frame policy, streaming, camera CRUD, progress bars, thinking tags
 
 ### Video frame policy (replaces v8.8 cap-only approach)
 
@@ -404,28 +412,87 @@ FLAI REQUIRES an NVIDIA GPU with at least 8 GB VRAM and 16 GB system RAM. CPU-on
 - `modules/multimodal.py`: warning threshold `weight > free * 10` (240 frames = 92 weight, 6000 MB free = no spurious warning; fires only for extreme requests like 1000+ frames at 4K).
 - `ltx_wrapper.py`: `num_frames_padded = ((nf - 2) // 8 + 1) * 8 + 1` — both 120→121 and 240→241 are padded by +1 frame.
 
+### Streaming reasoning
+
+- `modules/base.py:generate_reasoning_response_stream()` — streaming generator for reasoning model responses. Yields tokens one-by-one via `_stream_chat()`.
+- `app/queue.py:_process_reasoning_request()` now uses `generate_reasoning_response_stream()` instead of `process_reasoning()`. Tokens are published via `_publish_stream_token()`.
+- Server-side `_strip_thinking_tags()` in `queue.py` removes thinking/reasoning blocks before saving to DB.
+- Client-side `_stripThinkingTags()` in `events.js` removes `<tool_call>` and `<|channel|>analysis<|message|>...<|end|>` blocks during streaming display.
+
+### Camera rooms CRUD
+
+- **New files**: `app/cameradb.py` (CRUD for `camera_rooms` table), `app/morph.py` (pymorphy3 Russian morphological analysis), `app/static/js/admin-cameras.js` (admin UI).
+- **DB table**: `camera_rooms` (code TEXT PK, name_forms TEXT[], enabled BOOLEAN, sort_order INTEGER, created_at, updated_at).
+- **API endpoints** in `app/routes/admin.py`: `GET /admin/api/cameras`, `PUT /admin/api/cameras/<code>/toggle`, `POST /admin/api/cameras/sync`, `GET /admin/api/cameras/<code>/proxy`.
+- **Morphology**: `generate_room_name_forms(name)` generates up to 3 declension forms (nomn, accs, loct) for Russian room names. Filters adjectives by gender to avoid wrong-gender forms.
+- **Router prompt**: `modules/base.py:_build_camera_prompt_section()` dynamically builds camera section from DB with all declension forms.
+- **Camera module**: `modules/cam.py` loads rooms from DB (`_load_rooms_from_db()`), resolves declensions via `get_room_code()`, provides `get_all_rooms_with_forms()` for router prompt.
+- **Migration**: `migrate_name_forms()` in `app/__init__.py` regenerates existing room forms with pymorphy3 on startup.
+- **Dependency**: `pymorphy3>=2.0.6` added to `requirements.txt` and `pyproject.toml`.
+
+### Generation progress bars
+
+- **SSE events**: `task_progress` (stage labels), `video_step` (progress bar), `image_step` (progress bar), `image_preview` (base64 preview during generation).
+- **Server endpoints** in `app/routes/queue.py`: `POST /api/queue/internal/sd_preview`, `POST /api/queue/internal/sd_step`, `GET /api/queue/progress/<task_id>`.
+- **Progress persistence**: `_save_progress()` stores in Redis hash (`task_progress:{task_id}`) with TTL 30 min. `_cleanup_progress()` removes on completion.
+- **Client restore**: `restoreTaskProgress()` in `events.js` fetches `/api/queue/progress/{taskId}` on SSE reconnect/page reload.
+- **Stage labels** (Russian): `preparing_gpu`, `analyzing`, `analyzing_image`, `analyzing_prompt`, `generating_video`, `generating_image`, `editing_image`, `loading_reasoning_model`, `capturing_snapshot`.
+
+### Task cancellation
+
+- Client: cancel button (`■`) in streaming messages → POST `/api/cancel_task/{task_id}`.
+- Server: `cancel_task(task_id)` sets Redis flag `task:cancel:{task_id}` with TTL. `_is_task_cancelled(task_id)` checked in every streaming loop iteration.
+- SSE event: `stream_cancelled` → updates UI.
+
+### Combined voice + image recording
+
+- `app/static/js/chat-recording.js`: if image already attached when voice is recorded, voice stored as `attachedVoiceBlob` instead of replacing `attachedFile`. Preview shows `"image.jpg + 🎤 voice.webm"`.
+- Server: `_process_transcribe_task()` creates `type: "image"` task when both `image_data` + `voice_record` present.
+
+### DOMPurify XSS protection
+
+- `purify.min.js` loaded in `chat.html`. All `marked.parse()` output goes through `DOMPurify.sanitize()` before DOM insertion.
+- Applied in `events.js:finalizeStreamedMessage()` and `chat-messages.js:displayMessage()`.
+
+### Lazy loading images
+
+- All `<img>` elements created with `img.loading = 'lazy'`. `<video>` elements with `video.loading = 'lazy'`.
+
+### Run HTML button
+
+- `handleOpenHtmlClick()` in `chat-messages.js`: for `<code class="language-html">` blocks, creates Blob with HTML content and opens in new tab via `URL.createObjectURL()`.
+
+### Copy message text
+
+- `copyToClipboard(text)` in `chat-messages.js`: Clipboard API with `execCommand('copy')` fallback. Button in assistant message header.
+
+### MTP factor in VRAM estimation
+
+- `_estimate_model_vram()` in `app/routes/admin.py` accepts `supports_mtp: bool`. Formula: `mtp_factor = 1.15 if supports_mtp else 1.0`. MTP draft prediction layers add ~15% overhead to model weights in VRAM.
+
+### GGUF fallback reading
+
+- `_classify_model_fit()` and `model_vram_estimate()` in `app/routes/admin.py`: if model not in `gguf_models_cache`, reads `block_count` and `expert_count` directly from GGUF file via `gguf.GGUFReader`. Detects MTP via `{arch}.nextn_predict_layers`.
+
+### Dead code cleanup
+
+- Removed: `get_gguf_model_info()`, `find_gguf_file()`, `chunk_text_by_sentences()` from `app/utils.py`. `clear_camera_rooms()` from `app/cameradb.py`. `get_database_type()`, `is_postgresql()`, `close_db()` from `app/database.py`.
+- Removed CSS classes: `.capabilities`, `.capability` from `admin.css` and `dark-theme.css`.
+- Removed commented-out code block in `app/utils.py:1546-1549`.
+
 ### Mypy cleanup — `app/utils.py` (19 → 0 errors)
 
-- New helper `_gguf_scalar(val)` (`app/utils.py:21-39`) normalizes gguf reader field values:
-  - numpy array with `.tobytes()` → `bytes` (for string fields — `general.architecture`, `general.size_label`)
-  - numpy array with `.tolist()` → Python scalar (for numeric fields — `*.context_length`, `*.block_count`, etc.)
-  - other → unchanged
-- Replaced 18 repeated patterns in `scan_gguf_models` (lines 555-616), `get_gguf_model_info` (lines 655-713), `scan()` (lines 1455-1521).
+- New helper `_gguf_scalar(val)` (`app/utils.py:21-39`) normalizes gguf reader field values.
 - `mypy app/utils.py` now passes with 0 errors. CI still uses `|| true` for mypy (does not block).
 
 ### `userdb.py` schema mismatch fix
 
-- `delete_user()` used `user_id = user["id"]` (INTEGER from `users.id SERIAL`) against TEXT columns.
-- PostgreSQL error: `psycopg2.errors.UndefinedFunction: operator does not exist: text = integer`.
-- Hidden in tests by `tests/conftest.py:327` storing `id` as `str(self._next_user_id)`.
-- **Fix:** `user_id = login` (TEXT). All `*_sessions.user_id` / `*_documents.user_id` / `*_storage.user_id` columns store login, not integer SERIAL id.
-- **Removed dead code** `user_uploads_dir = os.path.join(upload_folder, user_id)` — `data/uploads/` is per-session-UUID (`<session-uuid>/<file-uuid>.<ext>`), not per-user; rmtree was always a no-op. Real per-user cleanup is `user_docs_dir` (kept) and `slm_data_dir` (also kept).
-- Cascading fixes:
-  - `test_userdb.py::test_delete_user, test_list_users` — now pass on real PG.
-  - `test_admin_routes.py::TestAdminUsers::test_delete_user` — 500 → 200.
+- `delete_user()` used `user_id = user["id"]` (INTEGER) against TEXT columns → `user_id = login` (TEXT).
+- Removed dead code `user_uploads_dir` (data/uploads/ is per-session-UUID, not per-user).
 
 ### Test infrastructure fixes
 
-- `tests/test_backups.py`: local `app` fixture now calls `Babel(flask_app)` + sets `BABEL_DEFAULT_LOCALE="ru"` and `BABEL_TRANSLATION_DIRECTORIES=<abs>/translations`. Fixes 8 tests with `KeyError: 'babel'`.
-- `tests/test_resource_manager.py`: 4 tests (`test_queries_ltxvideo_vram_info`, `test_succeeds_when_vram_freed`, `test_retries_when_vram_doesnt_free`, `test_returns_false_on_http_error`, `test_falls_through_when_ltxvideo_unreachable`) changed from `patch.dict("sys.modules", {"requests": ...})` to `patch("app.resource_manager.requests.X", new=mock)`. The first pattern doesn't intercept already-imported `requests` module — `app/resource_manager.py:20` already bound the name. Use `new=mock` (not `return_value=mock`) when asserting on `mock.call_count`.
-- `app/routes/backups.py:restore_backup()`: `shutil.copytree(src, dst)` → `shutil.copytree(src, dst, dirs_exist_ok=True)`. Pre-rmtree removed. Individual file permission errors are caught with `try/except (PermissionError, OSError)` and logged as warnings — restore is now best-effort: a single root-owned file in a mounted Docker volume (e.g. `.superlocalmemory/` from SLM container) doesn't fail the whole restore. Fixes `test_restore_backup` `FileExistsError: data/slm` AND `PermissionError` on `.superlocalmemory`.
+- `tests/test_backups.py`: `Babel(flask_app)` added. Version updated to `"8.9"`.
+- `tests/test_resource_manager.py`: `patch("app.resource_manager.requests.X", new=mock)`.
+- `app/routes/backups.py:restore_backup()`: `dirs_exist_ok=True`. Version updated to `"8.9"`.
+- `tests/test_morph.py` (NEW): 14 tests for pymorphy3 morphological analysis.

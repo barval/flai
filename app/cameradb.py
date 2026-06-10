@@ -29,15 +29,6 @@ def get_all_camera_rooms(enabled_only: bool = True) -> list[dict]:
         return [dict(row) for row in c.fetchall()]
 
 
-def clear_camera_rooms() -> None:
-    """Delete all rows from camera_rooms."""
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute("DELETE FROM camera_rooms")
-        conn.commit()
-    logger.info("Cleared all camera rooms")
-
-
 def populate_from_camera_api(camera_api_url: str, timeout: int = 15) -> list[str]:
     """Import camera rooms from room-snapshot-api /rooms endpoint.
 

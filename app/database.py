@@ -58,19 +58,6 @@ def get_db():
             conn.close()
 
 
-def close_db(e=None):
-    """Close database connection (for Flask teardown)."""
-    from flask import g
-
-    db = getattr(g, "_database", None)
-    if db is not None:
-        try:
-            db.close()
-        except Exception as e:
-            logger.warning(f"Error closing DB connection: {e}")
-        g.pop("_database", None)
-
-
 def init_db():
     """Initialize the PostgreSQL database (create tables)."""
     _init_postgresql()
@@ -347,16 +334,6 @@ def _init_postgresql():
     conn.commit()
     conn.close()
     logger.info("PostgreSQL database initialized")
-
-
-def get_database_type() -> str:
-    """Return the database type."""
-    return "postgresql"
-
-
-def is_postgresql() -> bool:
-    """Always True — PostgreSQL is the only supported database."""
-    return True
 
 
 # ── VRAM estimates helpers ──────────────────────────────────────

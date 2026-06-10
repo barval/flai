@@ -652,117 +652,6 @@ def scan_gguf_models(models_dir: str = "/models") -> dict[str, Any]:
     return result
 
 
-def get_gguf_model_info(model_path: str) -> dict[str, Any]:
-    """Read metadata from GGUF model file.
-
-    Args:
-        model_path: Full path to GGUF file
-
-    Returns:
-        Dict with keys: context_length, embedding_length, architecture, params, quantization
-    """
-    result = {
-        "context_length": None,
-        "embedding_length": None,
-        "architecture": None,
-        "block_count": None,
-        "expert_count": None,
-        "parameter_count": None,
-        "file_size_mb": None,
-        "supports_mtp": False,
-    }
-
-    try:
-        from gguf import GGUFReader
-    except ImportError:
-        result["error"] = "gguf library not installed"  # type: ignore[assignment]
-        return result
-
-    try:
-        reader = GGUFReader(model_path)
-        fields = reader.fields
-
-        for key in fields:
-            if key.endswith(".context_length") and result["context_length"] is None:
-                val = _gguf_scalar(fields[key].parts[-1])
-                if val is not None:
-                    result["context_length"] = int(val)  # type: ignore[assignment]
-                    break
-
-        for key in fields:
-            if key.endswith(".block_count") and result["block_count"] is None:
-                val = _gguf_scalar(fields[key].parts[-1])
-                if val is not None:
-                    result["block_count"] = int(val)  # type: ignore[assignment]
-                    break
-
-        for key in fields:
-            if key.endswith(".expert_count") and result["expert_count"] is None:
-                val = _gguf_scalar(fields[key].parts[-1])
-                if val is not None:
-                    result["expert_count"] = int(val)  # type: ignore[assignment]
-                    break
-
-        if "general.architecture" in fields:
-            raw = _gguf_scalar(fields["general.architecture"].parts[-1])
-            if isinstance(raw, (bytes, bytearray)):
-                result["architecture"] = raw.decode("utf-8", errors="replace")  # type: ignore[assignment]
-            else:
-                result["architecture"] = str(raw)  # type: ignore[assignment]
-
-        # MTP: {arch}.nextn_predict_layers > 0 means model supports MTP
-        arch = result.get("architecture")
-        if arch:
-            mtp_key = f"{arch}.nextn_predict_layers"
-            if mtp_key in fields:
-                val = _gguf_scalar(fields[mtp_key].parts[-1])
-                if val is not None and int(val) > 0:
-                    result["supports_mtp"] = True
-
-        if "general.size_label" in fields:
-            raw = _gguf_scalar(fields["general.size_label"].parts[-1])
-            if isinstance(raw, (bytes, bytearray)):
-                result["size_label"] = raw.decode("utf-8", errors="replace")  # type: ignore[assignment]
-            else:
-                result["size_label"] = str(raw)  # type: ignore[assignment]
-
-        if "general.parameter_count" in fields:
-            val = _gguf_scalar(fields["general.parameter_count"].parts[-1])
-            if val is not None:
-                result["parameter_count"] = int(float(val))  # type: ignore[assignment]
-
-        if model_path and os.path.exists(model_path):
-            result["file_size_mb"] = os.path.getsize(model_path) / (1024 * 1024)  # type: ignore[assignment]
-
-    except Exception as e:
-        result["error"] = str(e)  # type: ignore[assignment]
-
-    return result
-
-
-def find_gguf_file(model_name: str, models_dir: str = "/models") -> str | None:
-    """Find GGUF file path for a given model name."""
-    import glob
-
-    model_basename = os.path.basename(model_name)
-    if not model_basename.endswith(".gguf"):
-        model_basename += ".gguf"
-
-    patterns = [
-        os.path.join(models_dir, model_basename),
-        os.path.join(models_dir, model_name, "*.gguf"),
-        os.path.join(models_dir, model_name.replace(" ", "_"), "*.gguf"),
-        os.path.join(models_dir, "**", model_basename),
-    ]
-
-    for pattern in patterns:
-        matches = glob.glob(pattern, recursive=True)
-        if matches:
-            return matches[0]
-
-    return None
-
-
 def _pdf_to_markdown(text: str) -> str:
     """Convert PDF extracted text to Markdown with structure."""
     lines = text.split("\n")
@@ -1051,49 +940,6 @@ def chunk_text_recursive(
             merged.append(chunk)
 
     return merged
-
-
-def chunk_text_by_sentences(text: str, chunk_size: int = 500, overlap: int = 50, min_sentences: int = 1) -> list[str]:
-    """Split text into chunks by sentences, with optional size limit.
-
-    Args:
-        text: Input text
-        chunk_size: Max characters per chunk
-        overlap: Character overlap between chunks
-        min_sentences: Minimum sentences per chunk
-
-    Returns:
-        List of text chunks
-    """
-    # Simple sentence splitting (works for Russian and English)
-    import re
-
-    sentences = re.split(r"(?<=[.!?])\s+", text)
-    sentences = [s.strip() for s in sentences if s.strip()]
-
-    if not sentences:
-        return []
-
-    chunks = []
-    current_chunk = ""
-
-    for sentence in sentences:
-        # If adding this sentence exceeds limit, save current and start new
-        if current_chunk and len(current_chunk) + len(sentence) > chunk_size:
-            chunks.append(current_chunk)
-            # Keep overlap (last part of current chunk)
-            if overlap > 0 and len(current_chunk) > overlap:
-                current_chunk = current_chunk[-(overlap):] + " " + sentence
-            else:
-                current_chunk = sentence
-        else:
-            current_chunk = (current_chunk + " " + sentence).strip() if current_chunk else sentence
-
-    # Don't forget last chunk
-    if current_chunk:
-        chunks.append(current_chunk)
-
-    return chunks
 
 
 def estimate_tokens(text: str, model_type: str = "chat", lang: str = "ru", token_chars: float | None = None) -> int:
@@ -1542,11 +1388,6 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                             save_gguf_model_to_cache(model_name, scanned)
                             cached[model_name] = scanned
                         break
-
-    # Remove metadata for deleted files (optional - keep for history)
-    # for model_name in list(cached.keys()):
-    #     if model_name not in current_files:
-    #         # Could delete or keep
 
     return cached
 

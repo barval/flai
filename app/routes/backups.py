@@ -171,7 +171,7 @@ def create_backup():
                 "created_at": datetime.now().isoformat(),
                 "database_type": "postgresql",
                 "tables": tables,
-                "version": "8.0",
+                "version": "8.9",
             }
             with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as tmp:
                 json.dump(meta, tmp, indent=2, ensure_ascii=False)

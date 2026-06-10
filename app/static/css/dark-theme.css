@@ -465,16 +465,6 @@
 .dark-theme .model-card .param-hint {
     color: #888;
 }
-.dark-theme .model-card .capability {
-    background-color: #3a3a3a;
-    color: #e0e0e0;
-}
-
-.dark-theme .model-card .capability.true {
-    background-color: #27ae60;
-    color: white;
-}
-
 /* ===== DARK THEME ADMIN TABS ===== */
 .dark-theme .admin-tab {
     background-color: #3a3a3a;

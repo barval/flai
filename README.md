@@ -18,7 +18,7 @@
 
 ### 🤖 Core AI Capabilities
 - 💬 **Intelligent Chat** – smart request routing (fast models for simple queries, powerful models for complex reasoning)
-- 🧠 **Advanced Reasoning** – dedicated model for calculations, code generation, creative writing
+- 🧠 **Advanced Reasoning** – dedicated model for calculations, code generation, creative writing (streaming responses)
 - 🔍 **Multimodal Analysis** – upload images and ask questions about their content (llama.cpp + mmproj)
 - 🎨 **Image Generation** – create images from text using stable-diffusion.cpp with automatic prompt optimization
 - ✏️ **Image Editing** – upload an image and ask to edit it (Flux.2 Klein 4B model: change colors, remove objects, stylize)
@@ -55,7 +55,13 @@
 - 🎭 **Response Styles** – choose the AI's conversational tone in real-time from the chat header: neutral, academic, professional, friendly, or funny. Affects all responses including text, RAG, image analysis, and camera queries.
 - 📊 **Request Queue** – real-time status tracking with position indicators for queued requests
 - 📎 **File Attachments** – support for images, audio files, and documents in conversations
+- 🎤 **Combined Voice + Image** – record voice message while an image is attached; both sent together
 - 🔔 **Notifications** – unread message indicators and blinking status icons for processing/queued requests
+- ⏹ **Task Cancellation** – cancel any in-progress streaming generation with a single click
+- 📊 **Progress Bars** – visual progress indicators for video, image, and reasoning generation
+- 📋 **Copy Messages** – one-click copy of full assistant message text
+- ▶ **Run HTML** – execute HTML code blocks directly from chat in a new browser tab
+- 🛡 **XSS Protection** – all markdown HTML sanitized via DOMPurify before rendering
 
 ### ⚙️ Administration
 - 👤 **User Management** – add, edit, delete users; change passwords; assign service classes
@@ -83,7 +89,22 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | **RAG on slow worker** | RAG generation moved to slow worker (was on fast worker, caused GPU contention with LTX-Video) |
 | **RAG context in reasoning** | Reasoning model now receives document context from RAG search |
 | **Multi-tab session fix** | Client sends `session_id` in request body; server validates ownership. No more cookie race conditions |
-| **Dead code cleanup** | Removed unused `_resize_for_classify` function (896px max, never called) |
+| **Streaming reasoning** | Reasoning model now streams responses token-by-token instead of returning the full response at once |
+| **Generation progress bars** | Visual progress indicators for video, image, and reasoning generation via SSE events |
+| **Task cancellation** | Cancel any in-progress streaming task with the `■` button in real time |
+| **Thinking tag filtering** | Automatic removal of `<tool_call>` and `<\|channel\|>` reasoning blocks from model output (client + server) |
+| **Camera rooms CRUD** | Full camera management in admin panel: sync from API, enable/disable, thumbnail previews |
+| **Russian morphological analysis** | pymorphy3 for recognizing all grammatical declensions of camera room names in queries |
+| **Combined voice + image** | Record voice message while an image is already attached — both sent together |
+| **DOMPurify XSS protection** | All markdown HTML sanitized before DOM insertion to prevent XSS attacks |
+| **Lazy loading images** | Images and videos in messages load lazily for faster initial rendering |
+| **Run HTML button** | Execute HTML code blocks directly from chat in a new browser tab |
+| **Copy message text** | One-click copy of full assistant message text |
+| **Stream recovery** | Progress bars and streaming state restored after page reload or SSE reconnect |
+| **MTP factor in VRAM estimation** | Multi-Token Prediction draft layers (+15% VRAM) accounted for in model fit calculations |
+| **GGUF fallback reading** | Admin panel reads model metadata directly from GGUF files when cache is empty |
+| **Qwen3-4B MXFP4 migration** | Auto-migration of old chat models to Qwen3-4B-Instruct-2507-MXFP4_MOE |
+| **Dead code cleanup** | Removed unused functions (`get_gguf_model_info`, `find_gguf_file`, `chunk_text_by_sentences`, etc.) and CSS classes |
 | **Faster retries** | llama.cpp retry sleep reduced from 5s to 2s; VRAM polling from 1s to 0.5s |
 
 ### Core Components
@@ -662,6 +683,15 @@ docker compose -f docker-compose.gpu.yml --profile with-rag up -d
 
 The camera module connects to a separate `room-snapshot-api` service. See [services/README.md](services/README.md) and [services/room-snapshot-api/README.md](services/room-snapshot-api/README.md) for deployment guides.
 
+### Camera Management (Admin Panel)
+The admin panel includes a **Cameras** tab with full CRUD operations:
+- **Sync** – import camera list from room-snapshot-api (`/rooms` endpoint)
+- **Enable/Disable** – toggle individual cameras on/off
+- **Thumbnail previews** – lazy-loaded camera snapshots with localStorage caching
+- **Russian name recognition** – pymorphy3 morphological analysis generates all grammatical declensions (именительный, винительный, предложный падежи) for each room name, so the AI recognizes "покажи гостиную", "что в гостиной", "на кухне" etc.
+
+Camera room data is stored in the `camera_rooms` database table (code, name_forms, enabled, sort_order).
+
 ### Configuration
 ```bash
 CAMERA_API_URL=http://flai-room-snapshot-api:5000
@@ -799,6 +829,18 @@ curl http://localhost:5000/metrics
 - **3-tier model protection** — admin panel blocks impossible models, dry-load + auto-rollback, crash-loop watchdog
 - **RAG on slow worker** — prevents GPU contention with LTX-Video pipeline
 - **Multi-tab session fix** — session_id in request body, server validates ownership
+- **Streaming reasoning** — reasoning model streams responses token-by-token with real-time display
+- **Generation progress bars** — visual progress for video, image, and reasoning tasks via SSE
+- **Task cancellation** — cancel any in-progress streaming generation in real time
+- **Thinking tag filtering** — automatic removal of `<tool_call>` and `<|channel|>` blocks from model output
+- **Camera rooms CRUD** — dynamic camera management in admin panel with sync from API
+- **Russian morphological analysis** — pymorphy3 for recognizing all declensions of room names
+- **Combined voice + image** — record voice while image is attached; both sent together
+- **DOMPurify XSS protection** — all markdown HTML sanitized before rendering
+- **Stream recovery** — progress bars and streaming state restored after page reload or SSE reconnect
+- **Run HTML button** — execute HTML code blocks from chat in a new browser tab
+- **Copy message text** — one-click copy of full assistant response
+- **Lazy loading images** — images and videos load lazily for faster initial rendering
 
 ### 🔄 In Progress
 - Advanced RAG: metadata filtering, hybrid search
@@ -850,6 +892,12 @@ curl http://localhost:5000/metrics
 | Model | Purpose | License | Approx. Size |
 |-------|---------|---------|-------------|
 | **nomic-embed-text-v1.5** | Text embedding for SLM retrieval | [Apache 2.0](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5) | ~500 MB |
+
+### Morphological Analysis
+
+| Package | Purpose | License |
+|---------|---------|---------|
+| **pymorphy3** | Russian morphological analysis for camera room name recognition (generates declension forms) | [MIT License](https://github.com/kmike/pymorphy3) |
 
 ### Voice Models
 
@@ -915,6 +963,7 @@ pytest tests/test_health_monitor.py
 pytest tests/test_llama_swap_config.py
 pytest tests/test_validators.py
 pytest tests/test_model_config.py
+pytest tests/test_morph.py
 ```
 
 > **Note**: `tests/conftest.py` uses an in-memory mock database by default (no PostgreSQL required). In CI, a real PostgreSQL is available via the `DATABASE_URL` env variable.

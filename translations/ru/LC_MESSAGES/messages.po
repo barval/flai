@@ -77,9 +77,8 @@ msgstr ""
 "или упростите запрос."
 
 #: app/llamacpp_client.py:189 app/llamacpp_client.py:256
-#, fuzzy
 msgid "Could not connect to llama-server"
-msgstr "Не удалось подключиться к редактору."
+msgstr "Не удалось подключиться к llama-server"
 
 #: app/llamacpp_client.py:192 app/llamacpp_client.py:259
 #: app/llamacpp_client.py:437 app/llamacpp_client.py:562
@@ -91,9 +90,8 @@ msgid "Error"
 msgstr "Ошибка"
 
 #: app/llamacpp_client.py:430 app/llamacpp_client.py:554
-#, fuzzy
 msgid "Could not connect to llama-swap"
-msgstr "Не удалось подключиться к sd-wrapper"
+msgstr "Не удалось подключиться к llama-swap"
 
 #: app/llamacpp_client.py:442
 msgid "Internal error: no response from model"
@@ -145,19 +143,16 @@ msgid "Image generated from request: {query}"
 msgstr "Изображение сгенерировано по запросу: {query}"
 
 #: app/queue.py:1210
-#, fuzzy
 msgid "Video request"
-msgstr "Голосовой запрос"
+msgstr "Запрос видео"
 
 #: app/queue.py:1245
-#, fuzzy
 msgid "Image request"
-msgstr "Голосовой запрос"
+msgstr "Запрос изображения"
 
 #: app/queue.py:1276
-#, fuzzy
 msgid "Reasoning request"
-msgstr "Рассуждения"
+msgstr "Запрос рассуждений"
 
 #: app/queue.py:1350 app/queue.py:1970 app/queue.py:2038 app/queue.py:2196
 #: modules/rag.py:330 modules/rag.py:390
@@ -366,13 +361,12 @@ msgstr ""
 "RAM. ~5-10× медленнее."
 
 #: app/routes/admin.py:655
-#, fuzzy
 msgid "Missing \"model\" parameter"
-msgstr "Отсутствует параметр \"url\""
+msgstr "Отсутствует параметр \"model\""
 
 #: app/routes/admin.py:689
 msgid "⚠ Partial CPU offload needed"
-msgstr ""
+msgstr "⚠ Частичная загрузка на CPU"
 
 #: app/routes/admin.py:944
 msgid "Missing url"
@@ -428,9 +422,8 @@ msgid "Invalid theme"
 msgstr "Некорректная тема"
 
 #: app/routes/auth.py:123
-#, fuzzy
 msgid "Invalid response style"
-msgstr "Некорректный тип резервной копии"
+msgstr "Некорректный стиль ответа"
 
 #: app/routes/backups.py:134
 msgid "Invalid backup type"
@@ -543,9 +536,8 @@ msgid "Text request"
 msgstr "Текстовый запрос"
 
 #: app/routes/messages.py:326
-#, fuzzy
 msgid "Task not found"
-msgstr "Не найдено"
+msgstr "Задача не найдена"
 
 #: app/routes/sessions.py:28 app/routes/sessions.py:103
 msgid "Session not found or access denied"
@@ -1521,7 +1513,7 @@ msgstr "Ошибка загрузки шаблона промпта"
 
 #: modules/base.py:426
 msgid "No additional information from documents."
-msgstr ""
+msgstr "Дополнительной информации из документов нет."
 
 #: modules/cam.py:268 modules/cam.py:383
 msgid "CCTV service unavailable"

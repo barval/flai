@@ -234,6 +234,7 @@ class ResourceManager:
         file_size_mb = None
         block_count = None
         expert_count = 0
+        supports_mtp = False
         if model_name:
             try:
                 gguf_cache = get_gguf_models_cached("/models")
@@ -242,6 +243,7 @@ class ResourceManager:
                     file_size_mb = model_info.get("file_size_mb")
                     block_count = model_info.get("block_count")
                     expert_count = model_info.get("expert_count") or 0
+                    supports_mtp = model_info.get("supports_mtp", False)
             except Exception:
                 pass
 
@@ -255,6 +257,8 @@ class ResourceManager:
 
         # Use actual file size if available, otherwise use fallback estimate
         needed = int(file_size_mb * 1.2) if file_size_mb is not None else model_vram.get(model_type, 3000)
+        if supports_mtp:
+            needed = int(needed * 1.15)
 
         # How much VRAM to reserve for other operations (sd-cli, overhead)
         reserve = 2000  # 2GB safety margin
@@ -334,7 +338,7 @@ class ResourceManager:
                 effective_ngl = block_count
             while effective_ngl > 0:
                 ratio = min(1.0, effective_ngl / block_count) if block_count > 0 else 1.0
-                est_weights = max(file_size_mb or needed, 100) * ratio * (0.95 if expert_count > 0 else 1.0)
+                est_weights = max(file_size_mb or needed, 100) * ratio * (0.95 if expert_count > 0 else 1.0) * (1.15 if supports_mtp else 1.0)
                 est_kv = ctx_size * 0.04
                 est_overhead = max(200, int((file_size_mb or needed) * 0.03 + ctx_size * 0.001))
                 est_total = est_weights + est_kv + est_overhead
@@ -416,6 +420,7 @@ class ResourceManager:
         file_size_mb = gguf_info.get("file_size_mb") or 0
         block_count = gguf_info.get("block_count") or 0
         expert_count = gguf_info.get("expert_count") or 0
+        supports_mtp = gguf_info.get("supports_mtp", False)
 
         # Fallback block_count when GGUF metadata missing
         if block_count == 0:
@@ -439,8 +444,9 @@ class ResourceManager:
             ngl = block_count or 1
 
         moe_factor = 0.95 if (expert_count or 0) > 0 else 1.0
+        mtp_factor = 1.15 if supports_mtp else 1.0
         ratio = min(1.0, ngl / block_count) if (block_count or 0) > 0 else 1.0
-        weights_mb = (file_size_mb or 0) * ratio * moe_factor
+        weights_mb = (file_size_mb or 0) * ratio * moe_factor * mtp_factor
 
         # KV cache estimate (q4_0: ~0.12 MB per token including CUDA overhead)
         # Actual measured on RTX 5060 Ti: chat 0.05, multimodal 0.18, reasoning 0.12 MB/token.
@@ -522,25 +528,6 @@ class ResourceManager:
         # 2. Unload video pipeline
         with contextlib.suppress(Exception):
             self.unload_video_pipeline()
-
-        # 2b. If still short on VRAM, restart LTX-Video to free CUDA context (~3 GB)
-        # The gunicorn worker inside flai-ltxvideo holds a CUDA context that survives
-        # /v1/unload. Only a container restart releases it.
-        self._poll_vram()
-        if self.hardware.available_vram_mb < needed_mb:
-            logger.info(
-                f"ensure_vram_for [{model_type}]: still {self.hardware.available_vram_mb}MB "
-                f"free after unload (need {needed_mb}MB) — restarting LTX-Video to free CUDA context"
-            )
-            self._force_restart_ltx_video()
-
-            # Wait for VRAM to free after restart
-            deadline_restart = time.time() + 20
-            while time.time() < deadline_restart:
-                self._poll_vram()
-                if self.hardware.available_vram_mb >= needed_mb:
-                    break
-                time.sleep(2)
 
         # 3. Flush CUDA cache
         try:

@@ -83,16 +83,20 @@ def extract_quantization(filename: str) -> str:
     """
     qtypes = [
         "Q2_K",
+        "Q3_K_XL",
         "Q3_K_S",
         "Q3_K_M",
         "Q3_K_L",
         "Q4_0",
         "Q4_K_S",
         "Q4_K_M",
+        "Q4_K_XL",
         "Q5_0",
         "Q5_K_S",
         "Q5_K_M",
+        "Q5_K_XL",
         "Q6_K",
+        "Q6_K_XL",
         "Q8_0",
         "IQ2_XXS",
         "IQ2_XS",
@@ -578,6 +582,7 @@ def scan_gguf_models(models_dir: str = "/models") -> dict[str, Any]:
                 "block_count": None,
                 "expert_count": None,
                 "file_size_mb": None,
+                "supports_mtp": False,
             }
 
             for key in fields:
@@ -615,6 +620,15 @@ def scan_gguf_models(models_dir: str = "/models") -> dict[str, Any]:
                 else:
                     info["architecture"] = str(raw)  # type: ignore[assignment]
 
+            # MTP: {arch}.nextn_predict_layers > 0 means model supports MTP
+            arch = info.get("architecture")
+            if arch:
+                mtp_key = f"{arch}.nextn_predict_layers"
+                if mtp_key in fields:
+                    val = _gguf_scalar(fields[mtp_key].parts[-1])
+                    if val is not None and int(val) > 0:
+                        info["supports_mtp"] = True
+
             if "general.size_label" in fields:
                 raw = _gguf_scalar(fields["general.size_label"].parts[-1])
                 if isinstance(raw, (bytes, bytearray)):
@@ -651,6 +665,7 @@ def get_gguf_model_info(model_path: str) -> dict[str, Any]:
         "expert_count": None,
         "parameter_count": None,
         "file_size_mb": None,
+        "supports_mtp": False,
     }
 
     try:
@@ -690,6 +705,15 @@ def get_gguf_model_info(model_path: str) -> dict[str, Any]:
                 result["architecture"] = raw.decode("utf-8", errors="replace")  # type: ignore[assignment]
             else:
                 result["architecture"] = str(raw)  # type: ignore[assignment]
+
+        # MTP: {arch}.nextn_predict_layers > 0 means model supports MTP
+        arch = result.get("architecture")
+        if arch:
+            mtp_key = f"{arch}.nextn_predict_layers"
+            if mtp_key in fields:
+                val = _gguf_scalar(fields[mtp_key].parts[-1])
+                if val is not None and int(val) > 0:
+                    result["supports_mtp"] = True
 
         if "general.size_label" in fields:
             raw = _gguf_scalar(fields["general.size_label"].parts[-1])
@@ -1263,6 +1287,7 @@ def init_gguf_cache_db():
                 "key_length INTEGER",
                 "value_length INTEGER",
                 "parameter_count BIGINT",
+                "supports_mtp BOOLEAN DEFAULT NULL",
             ]:
                 try:
                     c.execute(f"ALTER TABLE gguf_models_cache ADD COLUMN IF NOT EXISTS {col}")
@@ -1290,7 +1315,7 @@ def get_gguf_models_from_cache() -> dict[str, Any]:
         with get_db() as conn:
             c = conn.cursor()
             c.execute(
-                "SELECT model_name, context_length, embedding_length, architecture, block_count, expert_count, file_size_mb, head_count, head_count_kv, key_length, value_length, parameter_count FROM gguf_models_cache"
+                "SELECT model_name, context_length, embedding_length, architecture, block_count, expert_count, file_size_mb, head_count, head_count_kv, key_length, value_length, parameter_count, supports_mtp FROM gguf_models_cache"
             )
             for row in c.fetchall():
                 arch = row["architecture"]
@@ -1313,6 +1338,7 @@ def get_gguf_models_from_cache() -> dict[str, Any]:
                     "key_length": row["key_length"],
                     "value_length": row["value_length"],
                     "parameter_count": row["parameter_count"],
+                    "supports_mtp": row["supports_mtp"],
                 }
     except Exception:
         pass
@@ -1333,8 +1359,8 @@ def save_gguf_model_to_cache(model_name: str, metadata: dict[str, Any]):
             c = conn.cursor()
             c.execute(
                 """
-                INSERT INTO gguf_models_cache (model_name, context_length, embedding_length, architecture, block_count, expert_count, file_size_mb, head_count, head_count_kv, key_length, value_length, parameter_count, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                INSERT INTO gguf_models_cache (model_name, context_length, embedding_length, architecture, block_count, expert_count, file_size_mb, head_count, head_count_kv, key_length, value_length, parameter_count, supports_mtp, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                 ON CONFLICT (model_name) DO UPDATE SET
                     context_length = EXCLUDED.context_length,
                     embedding_length = EXCLUDED.embedding_length,
@@ -1347,6 +1373,7 @@ def save_gguf_model_to_cache(model_name: str, metadata: dict[str, Any]):
                     key_length = EXCLUDED.key_length,
                     value_length = EXCLUDED.value_length,
                     parameter_count = EXCLUDED.parameter_count,
+                    supports_mtp = EXCLUDED.supports_mtp,
                     updated_at = CURRENT_TIMESTAMP
             """,
                 (
@@ -1362,6 +1389,7 @@ def save_gguf_model_to_cache(model_name: str, metadata: dict[str, Any]):
                     metadata.get("key_length"),
                     metadata.get("value_length"),
                     metadata.get("parameter_count"),
+                    metadata.get("supports_mtp", False),
                 ),
             )
             conn.commit()
@@ -1411,6 +1439,12 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
             logger.warning(f"Detected bad architecture in cache for {model_name}: {arch!r}, will re-scan")
             del cached[model_name]
 
+    # Re-scan models without supports_mtp (column was added after initial cache)
+    for model_name in list(cached.keys()):
+        if cached[model_name].get("supports_mtp") is None:
+            logger.info(f"Model {model_name} missing supports_mtp, will re-scan")
+            del cached[model_name]
+
     # Find models that need scanning (not in cache or missing from filesystem)
     missing_from_cache = current_files - set(cached.keys())
     models_to_scan = list(missing_from_cache)
@@ -1440,6 +1474,7 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                                 "key_length": None,
                                 "value_length": None,
                                 "parameter_count": None,
+                                "supports_mtp": False,
                                 "file_size_mb": os.path.getsize(f) / (1024 * 1024),
                             }
                             arch_prefix = None
@@ -1485,6 +1520,12 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                                             val = _gguf_scalar(fields[lookup].parts[-1])
                                             if val is not None:
                                                 scanned[field_name] = int(val)  # type: ignore[assignment]
+                                    # MTP: {arch}.nextn_predict_layers > 0 means model supports MTP
+                                    mtp_key = f"{arch_prefix}.nextn_predict_layers"
+                                    if mtp_key in fields:
+                                        val = _gguf_scalar(fields[mtp_key].parts[-1])
+                                        if val is not None and int(val) > 0:
+                                            scanned["supports_mtp"] = True
                         except Exception:
                             pass
                         if (

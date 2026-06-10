@@ -391,6 +391,11 @@ class RedisRequestQueue:
             rm = get_resource_manager()
             rm.unload_llamacpp_model()
             rm.unload_video_pipeline()
+            # After video generation: restart LTX-Video container to free CUDA context (~3 GB).
+            # The gunicorn worker inside flai-ltxvideo holds a CUDA context that survives
+            # /v1/unload — only a container restart releases it.
+            if task.get("type") == "video":
+                rm._force_restart_ltx_video()
             # Invalidate active model tracking in ALL llamacpp instances
             for module_name in ("base", "multimodal", "rag"):
                 module = self.app.modules.get(module_name)
@@ -492,7 +497,7 @@ class RedisRequestQueue:
             current_model = self._get_model_for_task(task)
             # Chat model stays hot in VRAM (TTL=600s) — only unload heavier models.
             # Unloading chat after every request caused cold starts (+2-3s) and CUDA fragmentation.
-            if current_model in ("reasoning", "multimodal", "embedding"):
+            if current_model in ("reasoning", "multimodal", "embedding") or task.get("type") == "video":
                 self._cleanup_vram_after_task(task)
 
     def _worker_loop_fast(self):
@@ -2166,7 +2171,7 @@ class RedisRequestQueue:
 
         # Simple query: router classified but did not generate text.
         # Stream the response from chat model (already hot in VRAM).
-        if action_type == "none" or (action_type == "reasoning" and not router_result.get("needs_reasoning")):
+        if action_type in ("none", "fact") or (action_type == "reasoning" and not router_result.get("needs_reasoning")):
             stream_start = time.time()
             full_response = ""
             error_detected = False
@@ -2177,6 +2182,7 @@ class RedisRequestQueue:
                 session_id=session_id,
                 response_style=response_style,
                 user_id=user_id,
+                skip_slm=(action_type == "none"),
             ):
                 full_response += token
                 # Don't publish error tokens to client — they lack the "⚠️ " prefix.

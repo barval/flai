@@ -156,7 +156,7 @@ class SlmModule(TranslationMixin):
             self.logger.warning(f"SLM list failed: {e}")
             return []
 
-    def get_context(self, query: str, lang: str = "ru", limit: int | None = None, profile: str | None = None, semantic: bool = False) -> str:
+    def get_context(self, query: str, lang: str = "ru", limit: int | None = None, profile: str | None = None, semantic: bool = False, min_score: float = 0.3) -> str:
         """Get formatted context string for prompt enrichment.
 
         Returns a multi-line string with relevant facts from long-term memory,
@@ -168,11 +168,15 @@ class SlmModule(TranslationMixin):
             limit: Max facts to include.
             profile: User ID for per-user database isolation.
             semantic: If True, use full semantic search (slower but more relevant).
+            min_score: Minimum score threshold — facts below this are filtered out.
 
         Returns:
             Formatted context string ready for injection into a prompt.
         """
         facts = self.recall(query, limit=limit, profile=profile, semantic=semantic)
+        if not facts:
+            return ""
+        facts = [f for f in facts if f.get("score", 0) >= min_score]
         if not facts:
             return ""
 

@@ -6,7 +6,7 @@ Two backup types:
   2. 'full'      — users + chats + messages + documents + model_configs +
                    session_visits + user_sessions + user_storage +
                    gguf_models_cache + model_vram_estimates +
-                   slm_import_progress + files
+                   slm_import_progress + camera_rooms + files
 """
 
 import contextlib
@@ -48,6 +48,7 @@ FULL_TABLES = [
     "gguf_models_cache",
     "model_vram_estimates",
     "slm_import_progress",
+    "camera_rooms",
 ]
 
 # Directories included in 'full' backup
@@ -303,6 +304,16 @@ def restore_backup():
                             logger.warning(f"Partial restore of {dir_name}: {e}. Some files could not be overwritten.")
 
         logger.info(f"Backup restored: {filename}")
+
+        # Reload camera rooms from DB (DB may have been overwritten by restore)
+        try:
+            from flask import current_app
+
+            if "cam" in current_app.modules:
+                current_app.modules["cam"].reload_rooms()
+        except Exception:
+            pass
+
         return jsonify({"status": "ok", "filename": filename, "type": backup_type})
 
     except Exception as e:

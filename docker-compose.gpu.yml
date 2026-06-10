@@ -27,6 +27,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Persistent code mounts (survive restart)
       - ./app/llamacpp_client.py:/app/app/llamacpp_client.py
+      - ./app/llama_swap_config.py:/app/app/llama_swap_config.py
       - ./app/queue.py:/app/app/queue.py
       - ./app/resource_manager.py:/app/app/resource_manager.py
       - ./app/utils.py:/app/app/utils.py

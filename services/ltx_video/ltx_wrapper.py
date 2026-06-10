@@ -643,13 +643,6 @@ def generate_video():
         gc.collect()
 
 
-# Warm up pipeline on import (triggers for both gunicorn and direct runner).
-try:
-    ensure_pipeline()
-    logger.info("Pipeline ready on startup")
-except Exception as e:
-    logger.warning(f"Pipeline not ready on startup (will init lazily): {e}")
-
 if __name__ == "__main__":
     port = int(os.environ.get("LTX_PORT", 7872))
     logger.info(f"Starting LTX-Video wrapper on port {port}")

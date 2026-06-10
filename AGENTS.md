@@ -120,6 +120,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - No external scripts, CDN links, or remotely loaded modules in production.
 - All CSS must reside in `.css` files; all JavaScript in `.js` files (no inline styles/scripts).
 - External dependencies (models, voices) must be documented with size, license, and download instructions.
+- All Python dependencies must have **open-source licenses** (MIT, BSD, Apache 2.0, MPL, or equivalent). Proprietary or copyleft (GPL/AGPL) dependencies are prohibited. Verify license before adding.
 
 ## Cleanliness & Dead Code
 - No unused files, dead code, or unused CSS/JS.

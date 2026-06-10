@@ -197,6 +197,17 @@ def create_app():
 
         modules["cam"] = CamModule(app)
         app.logger.info("Camera module enabled")
+
+        # Regenerate name_forms with pymorphy3 (one-time migration from old suffix-based forms)
+        try:
+            from app.cameradb import migrate_name_forms
+
+            migrated = migrate_name_forms()
+            if migrated:
+                modules["cam"].reload_rooms()
+                app.logger.info(f"Migrated {migrated} camera room name_forms to pymorphy3")
+        except Exception as e:
+            app.logger.warning(f"Camera name_forms migration skipped: {e}")
     else:
         app.logger.info("Camera module disabled (CAMERA_ENABLED=False)")
 

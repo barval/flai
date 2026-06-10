@@ -355,6 +355,12 @@ async function onModelSelect(event) {
         <p><strong>${t('Parameters:')}</strong> ${info.parameters || 'N/A'}</p>
         <p><strong>${t('Quantization:')}</strong> ${info.quantization || 'N/A'}</p>`;
 
+    if (info.supports_mtp) {
+        detailsHtml += `<p><strong>${t('MTP support:')}</strong> ${t('yes')}</p>`;
+    } else {
+        detailsHtml += `<p><strong>${t('MTP support:')}</strong> ${t('no')}</p>`;
+    }
+
     if (info.context_length && info.context_length !== 'N/A') {
         detailsHtml += `<p><strong>${t('Max context length:')}</strong> ${info.context_length}</p>`;
     }
@@ -776,5 +782,33 @@ document.addEventListener('DOMContentLoaded', function() {
     if (document.getElementById('models-tab')) {
         loadModelConfigs();
     }
+
+    const refreshBtn = document.getElementById('refresh-gguf-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', async function() {
+            this.disabled = true;
+            this.classList.add('btn-syncing');
+            this.textContent = '🔄 ' + t('Loading...');
+            try {
+                const resp = await fetchWithCSRF('/admin/api/refresh-gguf-cache', { method: 'POST' });
+                const data = await resp.json();
+                if (data.status === 'ok') {
+                    modelDetails = {};
+                    modelListCache = {};
+                    loadModelConfigs();
+                } else {
+                    alert(t('error') + ': ' + (data.error || t('unknown_error')));
+                }
+            } catch (err) {
+                console.error('Refresh GGUF cache error:', err);
+                alert(t('error') + ': ' + err.message);
+            } finally {
+                this.disabled = false;
+                this.classList.remove('btn-syncing');
+                this.textContent = '🔄 ' + t('Update model list');
+            }
+        });
+    }
+
     initChunksSection();
 });

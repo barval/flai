@@ -7,6 +7,7 @@ Classify the user's query into one category below. Output ONLY the result, no ex
 If text contains "?" or is a question — it is a QUESTION.
 BUT: questions about cameras/rooms (category 5) have PRIORITY over category 1.
 Questions about documents/people (category 6) also have priority over category 1.
+Questions requiring current internet information (category 7) also have priority over category 1.
 Only simple questions (greetings, about yourself, time, skills) → category 1.
 If text is a statement or instruction (no "?") — it is a FACT → category 2.
 
@@ -73,7 +74,21 @@ Examples:
 - Query: "What is the company address?"
   Response: "[-RAG-] What is the company address?"
 
-## 7. COMPLEX QUERY (only if NOT document search)
+## 7. WEB SEARCH REQUEST (output unchanged with marker)
+If the query requires current information from the internet: news, weather, stock prices, latest events, releases, prices, statistics, or any data that needs online search.
+IMPORTANT: Do not confuse with document search (category 6) — that is information from uploaded files. Category 7 is FRESH information from the internet.
+Action: Output [-SEARCH-] and the query text unchanged.
+Examples:
+- Query: "Weather in Moscow"
+  Response: "[-SEARCH-] Weather in Moscow"
+- Query: "Dollar exchange rate today"
+  Response: "[-SEARCH-] Dollar exchange rate today"
+- Query: "Latest AI news"
+  Response: "[-SEARCH-] Latest AI news"
+- Query: "How much does iPhone 16 cost"
+  Response: "[-SEARCH-] How much does iPhone 16 cost"
+
+## 8. COMPLEX QUERY (only if NOT document search and NOT web search)
 Everything else: calculations, code/text writing, story creation. Output marker and query.
 - Query: "Write a story about spring"
   Response: "[-REASONING-] Write a story about spring"

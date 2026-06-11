@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v8.8 — Скрипт развёртывания на одном сервере
+# FLAI v9.0 — Скрипт развёртывания на одном сервере
 
 set -euo pipefail
 
@@ -402,6 +402,7 @@ build_and_launch() {
     [[ "$WITH_RAG" == "true" ]]    && PROFILE="$PROFILE --profile with-rag"
     [[ "$WITH_VIDEO" == "true" ]]  && PROFILE="$PROFILE --profile with-video"
     [[ "$WITH_SLM" == "true" ]]    && PROFILE="$PROFILE --profile with-slm"
+    [[ "$WITH_SEARCH" == "true" ]] && PROFILE="$PROFILE --profile with-search"
 
     COMPOSE_FILE="docker-compose.gpu.yml"
     info "Режим GPU — используется GPU compose файл."
@@ -500,6 +501,7 @@ WITH_RAG=false
 WITH_IMAGE_GEN=false
 WITH_VIDEO=false
 WITH_SLM=false
+WITH_SEARCH=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
 
@@ -510,6 +512,7 @@ for arg in "$@"; do
         --with-image-gen) WITH_IMAGE_GEN=true ;;
         --with-video)     WITH_VIDEO=true ;;
         --with-slm)       WITH_SLM=true ;;
+        --with-search)    WITH_SEARCH=true ;;
         --download-models) DOWNLOAD_MODELS=true ;;
         --run-tests)      RUN_TESTS=true ;;
         --help|-h)        usage; exit 0 ;;

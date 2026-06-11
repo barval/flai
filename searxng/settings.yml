@@ -1,0 +1,14 @@
+use_default_settings: true
+
+search:
+  formats:
+    - html
+    - json
+
+server:
+  secret_key: "flai-searxng-change-me-in-production"
+  bind_address: "0.0.0.0"
+  limiter: false
+
+ui:
+  static_use_hash: true

@@ -77,36 +77,10 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v8.9
+### What's New in v9.0
 
-| v8.9+ (New) | Notes |
+| v9.0+ (New) | Notes |
 |-------------|-------|
-| **Video: 240 frames @ 24 fps** | Default video length increased from 8s to 10s (240 frames @ 24fps). VRAM-capped mode: 120 frames @ 24fps (5 sec) |
-| **Video: 768×512 resolution** | Landscape video resolution reduced from 896×512 to 768×512 for better VRAM headroom on 16GB GPUs |
-| **3-tier model protection** | Admin panel blocks saving models that won't fit in VRAM/RAM (🟢 good / 🟡 cpu_offload / 🔴 impossible / ⚠ unknown) |
-| **Dry-load + auto-rollback** | After saving a model config, background test verifies it loads. On failure → auto-rollback to fallback model |
-| **Crash-loop watchdog** | Monitors llama-swap models every 60s. 3 failures in 5 min → auto-rollback to fallback |
-| **RAG on slow worker** | RAG generation moved to slow worker (was on fast worker, caused GPU contention with LTX-Video) |
-| **RAG context in reasoning** | Reasoning model now receives document context from RAG search |
-| **Multi-tab session fix** | Client sends `session_id` in request body; server validates ownership. No more cookie race conditions |
-| **Streaming reasoning** | Reasoning model now streams responses token-by-token instead of returning the full response at once |
-| **Generation progress bars** | Visual progress indicators for video, image, and reasoning generation via SSE events |
-| **Task cancellation** | Cancel any in-progress streaming task with the `■` button in real time |
-| **Thinking tag filtering** | Automatic removal of `<tool_call>` and `<\|channel\|>` reasoning blocks from model output (client + server) |
-| **Camera rooms CRUD** | Full camera management in admin panel: sync from API, enable/disable, thumbnail previews |
-| **Russian morphological analysis** | pymorphy3 for recognizing all grammatical declensions of camera room names in queries |
-| **Combined voice + image** | Record voice message while an image is already attached — both sent together |
-| **DOMPurify XSS protection** | All markdown HTML sanitized before DOM insertion to prevent XSS attacks |
-| **Lazy loading images** | Images and videos in messages load lazily for faster initial rendering |
-| **Run HTML button** | Execute HTML code blocks directly from chat in a new browser tab |
-| **Copy message text** | One-click copy of full assistant message text |
-| **Stream recovery** | Progress bars and streaming state restored after page reload or SSE reconnect |
-| **MTP factor in VRAM estimation** | Multi-Token Prediction draft layers (+15% VRAM) accounted for in model fit calculations |
-| **GGUF fallback reading** | Admin panel reads model metadata directly from GGUF files when cache is empty |
-| **Qwen3-4B MXFP4 migration** | Auto-migration of old chat models to Qwen3-4B-Instruct-2507-MXFP4_MOE |
-| **Dead code cleanup** | Removed unused functions (`get_gguf_model_info`, `find_gguf_file`, `chunk_text_by_sentences`, etc.) and CSS classes |
-| **Faster retries** | llama.cpp retry sleep reduced from 5s to 2s; VRAM polling from 1s to 0.5s |
-| **Chat export includes videos** | Generated videos are now embedded in exported HTML files as base64 |
 
 ### Core Components
 

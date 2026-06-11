@@ -77,6 +77,11 @@ def load_config(app):
     app.config["PIPER_URL"] = os.getenv("PIPER_URL")
     app.config["PIPER_TIMEOUT"] = int(os.getenv("PIPER_TIMEOUT", 30))
 
+    # SearXNG web search settings
+    app.config["SEARXNG_URL"] = os.getenv("SEARXNG_URL")
+    app.config["SEARXNG_TIMEOUT"] = int(os.getenv("SEARXNG_TIMEOUT", 10))
+    app.config["SEARXNG_MAX_RESULTS"] = int(os.getenv("SEARXNG_MAX_RESULTS", 5))
+
     # Token estimation settings
     app.config["TOKEN_CHARS"] = int(os.getenv("TOKEN_CHARS", 3))
     app.config["CONTEXT_HISTORY_PERCENT"] = int(os.getenv("CONTEXT_HISTORY_PERCENT", 75))

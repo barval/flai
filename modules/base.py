@@ -372,6 +372,7 @@ class BaseModule(TranslationMixin):
             "[-CAMERA-]": "camera",
             "[-REASONING-]": "reasoning",
             "[-RAG-]": "rag",
+            "[-SEARCH-]": "search",
             "[-VIDEO-]": "video",
             "[-FACT-]": "fact",
         }

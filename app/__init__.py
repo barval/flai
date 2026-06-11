@@ -242,6 +242,17 @@ def create_app():
     else:
         app.logger.info("TTS module disabled (PIPER_URL not set)")
 
+    if app.config.get("SEARXNG_URL"):
+        from modules.search import SearchModule
+
+        modules["search"] = SearchModule(app)
+        if modules["search"].available:
+            app.logger.info("Web search module enabled (SearXNG)")
+        else:
+            app.logger.warning("Web search module configured but SearXNG not available")
+    else:
+        app.logger.info("Web search module disabled (SEARXNG_URL not set)")
+
     app.modules = modules
 
     # Background SLM import: process unimported messages without blocking startup

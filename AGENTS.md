@@ -1,4 +1,4 @@
-# AGENTS.md — FLAI v8.9 (model protection: 3-tier VRAM/RAM, dry-load, watchdog)
+# AGENTS.md — FLAI v9.0 (model protection: 3-tier VRAM/RAM, dry-load, watchdog)
 
 ## Commands (exact)
 

@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 8.9\n"
+"Project-Id-Version: FLAI 9.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-06-10 21:33+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -217,6 +217,22 @@ msgstr "Снимок с камеры: {room_name}"
 #: app/queue.py:2056 app/queue.py:2062
 msgid "No relevant documents found"
 msgstr "Не найдено релевантных документов"
+
+#: modules/search.py
+msgid "Web search result"
+msgstr "Результат поиска"
+
+#: modules/search.py
+msgid "Web search is not available"
+msgstr "Веб-поиск недоступен"
+
+#: modules/search.py
+msgid "No web search results found"
+msgstr "Результаты веб-поиска не найдены"
+
+#: modules/search.py
+msgid "Web search failed"
+msgstr "Ошибка веб-поиска"
 
 #: app/queue.py:2365
 msgid "Unknown request type"
@@ -1193,7 +1209,7 @@ msgstr "Выйти"
 
 #: app/templates/base.html:78 app/templates/chat.html:167
 msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v8.9 (c) 2026 Барсуков Валерий"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v9.0 (c) 2026 Барсуков Валерий"
 
 #: app/templates/chat.html:14 app/templates/chat.html:178
 msgid "New document"

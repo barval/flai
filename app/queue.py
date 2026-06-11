@@ -299,6 +299,9 @@ class RedisRequestQueue:
         if action_type == "rag":
             return "reasoning"
 
+        if action_type == "search":
+            return "none"
+
         if file_type and file_type.startswith("audio/"):
             return "chat"
 
@@ -2042,6 +2045,56 @@ class RedisRequestQueue:
             rag_context=rag_context,
         )
 
+    def _process_search_task(
+        self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
+    ) -> dict[str, Any]:
+        """Handle web search request (router action_type='search').
+
+        Searches SearXNG on the fast worker (CPU-only HTTP call),
+        then re-queues to the slow worker for reasoning model synthesis.
+        """
+        search = self.app.modules.get("search")
+        if not search or not search.available:
+            return self._build_error_response(
+                session_id, self.app.modules["base"]._("Web search is not available", lang), 0, lang
+            )
+
+        search_start = time.time()
+        try:
+            results = search.search(query, lang=lang)
+            search_time = round(time.time() - search_start, 1)
+            if not results:
+                self.app.logger.warning(f"SearXNG returned 0 results for: {query[:100]}...")
+                return self._build_error_response(
+                    session_id,
+                    self.app.modules["base"]._("No web search results found", lang),
+                    search_time,
+                    lang,
+                )
+            search_context = search.format_results_context(results, lang=lang)
+            self.app.logger.info(
+                f"Web search: '{query[:60]}...' → {len(results)} results, "
+                f"{len(search_context)} chars — requeueing to slow worker ({search_time}s)"
+            )
+        except Exception as e:
+            search_time = round(time.time() - search_start, 1)
+            self.logger.error(f"Web search failed: {e}")
+            return self._build_error_response(
+                session_id,
+                self.app.modules["base"]._("Web search failed", lang),
+                search_time,
+                lang,
+            )
+
+        return self._requeue_reasoning_task(
+            query,
+            session_id,
+            user_id,
+            lang,
+            response_style,
+            rag_context=search_context,
+        )
+
     def _process_rag_task_stream(
         self,
         task: dict[str, Any],
@@ -2164,6 +2217,8 @@ class RedisRequestQueue:
             )
         elif action_type == "rag":
             return self._process_rag_task(query, session_id, user_id, lang, response_style)
+        elif action_type == "search":
+            return self._process_search_task(query, session_id, user_id, lang, response_style)
         elif action_type == "reasoning":
             # GPU-heavy operation — re-queue to slow worker
             return self._requeue_reasoning_task(query, session_id, user_id, lang, response_style, user_class=user_class)
@@ -2296,6 +2351,9 @@ class RedisRequestQueue:
         # Stream-aware actions — dispatch directly, no second router call
         if action_type == "rag":
             return self._process_rag_task_stream(task, query, session_id, user_id, lang, response_style)
+
+        if action_type == "search":
+            return self._process_search_task(query, session_id, user_id, lang, response_style)
 
         if action_type == "image":
             return self._requeue_image_task(

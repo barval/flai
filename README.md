@@ -170,13 +170,32 @@ FLAI **requires** an NVIDIA GPU with CUDA support. CPU-only mode is not supporte
 | Reasoning | ⚠️ Qwen3-4B-Thinking (~2.5 GB) | ✅ Qwen3-8B-Thinking (~5 GB) | ✅ gpt-oss-20b (~12 GB, ngl=16+) |
 | Multimodal | ⚠️ Qwen3VL-4B (~2.5 GB) recommended | ✅ Qwen3VL-8B (~5.5 GB) | ✅ Qwen3VL-8B (~5.5 GB) |
 | Image gen (SD) | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 |
-| Image edit (Flux) | ✅ up to 768px long side | ✅ up to 1024px long side | ��� up to 1024px long side |
+| Image edit (Flux) | ✅ up to 768px long side | ✅ up to 1024px long side | ✅ up to 1024px long side |
 | Video gen (LTX-Video) | ⚠️ 512×512×120 frames | ✅ 768×512×240 frames | ✅ 768×512×240 frames |
 | Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU |
 | RAG (Qdrant) | ✅ | ✅ | ✅ |
 | SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU |
 
 > **VRAM management:** All LLM models (chat, reasoning, multimodal, embedding) share VRAM via llama-swap — only one is loaded at a time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. The system dynamically adjusts `n_gpu_layers` based on available VRAM.
+
+### Model Benchmarks (RTX 5060 Ti 16 GB)
+
+Real-world performance measured with llama.cpp (llama-swap on-demand loading, Flash Attention, q4_0 KV cache):
+
+| Model | Type | Quant | Size | VRAM | Prompt | Generation | Notes |
+|-------|------|-------|------|------|--------|------------|-------|
+| **Qwen3-4B-Instruct-2507** | Chat | MXFP4 (MoE) | 2.0 GB | 3668 MB | 1307 t/s | **127.4 t/s** | Current chat model |
+| Qwen3.5-4B-Instruct-MTP | Chat | MXFP4 + MTP | 2.5 GB | 4042 MB | 664 t/s | 108.2 t/s | MTP adds overhead |
+| **gpt-oss-20b** | Reasoning | MXFP4 (MoE) | 11.5 GB | 12255 MB | 1100 t/s | **120.5 t/s** | Current reasoning model |
+| Qwen3.5-9B-MTP-Q4_K_M | Reasoning | Q4_K_M + MTP | 5.5 GB | 6717 MB | 431 t/s | 66.1 t/s | 45% slower |
+| Qwen3.5-9B-Q8_0 | Reasoning | Q8_0 | 8.9 GB | 9719 MB | 472 t/s | 42.8 t/s | 65% slower |
+| gemma-4-12B-it-qat | Reasoning | QAT Q4_K_XL | 6.3 GB | 8090 MB | 520 t/s | 49.2 t/s | 59% slower |
+
+> **Why gpt-oss-20b wins as reasoning model:** Despite being a "20B" model, gpt-oss-20b uses Mixture-of-Experts (MoE) with 32 experts — only ~3B parameters are active per token. This gives it 3B-level compute cost with 20B-level knowledge. On RTX 5060 Ti, it generates **120 tok/s** vs 66 tok/s for dense Qwen3.5-9B — nearly **2× faster** while using the same memory bandwidth.
+
+> **Why MTP doesn't help on 128-bit GPUs:** Multi-Token Prediction (MTP) predicts draft tokens with a small head, then verifies them in parallel. On high-bandwidth GPUs (256/512-bit), this yields 1.4–2.2× speedup. On RTX 5060 Ti's 128-bit bus (448 GB/s), the draft model's extra memory reads saturate the already-limited bandwidth. Qwen3.5-4B-MTP is **15% slower** than Qwen3-4B without MTP; Qwen3.5-9B-MTP shows no meaningful speedup over a plain Q4_K_M of the same size.
+
+> **MXFP4 on Blackwell:** RTX 5060 Ti (Blackwell GB206) has 5th-gen Tensor cores with native FP4 hardware support. MXFP4 models achieve near-Q4_K_M quality at similar file sizes while benefiting from Blackwell's optimized FP4 pathways. 
 
 ### Software Prerequisites
 - Linux server with **NVIDIA GPU** (CUDA support required)

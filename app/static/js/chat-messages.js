@@ -262,7 +262,30 @@ function getResponseStyleEmoji(style) {
     return map[style] || '';
 }
 
-function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize) {
+var MODEL_EMOJI = {
+    chat: '\u{1F4AC}',
+    reasoning: '\u{1F9E0}',
+    image_gen: '\u{1F58C}\u{FE0F}',
+    image_edit: '\u{1F3A8}',
+    video: '\u{1F3A5}',
+    multimodal: '\u{1F5BC}\u{FE0F}',
+    camera: '\u{1F4F9}',
+    system: '\u26A0\u{FE0F}',
+    whisper: '\u{1F3A4}',
+};
+
+function getModelEmoji(modelType) {
+    return (modelType && MODEL_EMOJI[modelType]) ? MODEL_EMOJI[modelType] + ' ' : '';
+}
+
+function ensureGgufExtension(modelName) {
+    if (modelName && !modelName.includes('.gguf') && modelName !== 'system' && modelName !== 'whisper' && modelName !== 'camera') {
+        return modelName + '.gguf';
+    }
+    return modelName;
+}
+
+function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType) {
     if (window.IS_RELOADING) {
         dlog('displayMessage: Skipping - IS_RELOADING');
         return;
@@ -428,8 +451,9 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         const isSystemError = modelName === 'system';
 
         if (modelName) {
-            const shortModel = modelName.split('/').pop() || modelName;
-            headerExtra += ' <span class="text-muted">| ' + escapeHtml(shortModel) + '</span>';
+            const shortModel = ensureGgufExtension(modelName.split('/').pop() || modelName);
+            const emoji = getModelEmoji(modelType);
+            headerExtra += ' <span class="text-muted">| ' + emoji + escapeHtml(shortModel) + '</span>';
         }
 
         let duration = null;
@@ -478,8 +502,9 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         const isSystemError = modelName === 'system';
 
         if (modelName) {
-            const shortModel = modelName.split('/').pop() || modelName;
-            headerExtraHTML += ' <span class="text-muted">| ' + escapeHtml(shortModel) + '</span>';
+            const shortModel = ensureGgufExtension(modelName.split('/').pop() || modelName);
+            const emoji = getModelEmoji(modelType);
+            headerExtraHTML += ' <span class="text-muted">| ' + emoji + escapeHtml(shortModel) + '</span>';
         }
 
         let duration = null;

@@ -124,7 +124,7 @@ function onCameraImage(data) {
         data.assistant_timestamp || new Date().toISOString(),
         data.response_time, data.model_used,
         null, null, null, null, data.message_id,
-        data.response_style);
+        data.response_style, null, null, data.model_type);
 }
 
 // ── tool_call / tool_result ─────────────────────────────────────────
@@ -618,10 +618,11 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
 
                 // Model name
                 if (result.model_used) {
-                    var shortModel = result.model_used.split('/').pop() || result.model_used;
+                    var shortModel = ensureGgufExtension(result.model_used.split('/').pop() || result.model_used);
+                    var emoji = getModelEmoji(result.model_type);
                     var modelSpan = document.createElement('span');
                     modelSpan.className = 'text-muted';
-                    modelSpan.textContent = ' | ' + shortModel;
+                    modelSpan.textContent = ' | ' + emoji + shortModel;
                     newHeader.appendChild(modelSpan);
                 }
 
@@ -788,7 +789,7 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
                 data.result.response_time, data.result.model_used,
                 null, null, null, null, data.result.message_id,
                 data.result.response_style, data.result.completion_tokens,
-                data.result.file_size);
+                data.result.file_size, data.result.model_type);
     }
 
     if (resultSessionId && resultSessionId !== currentSessionId) {
@@ -891,7 +892,7 @@ function handleCompletedResult(result, expectedSessionId) {
             // responseTime and modelName='system'.
             window.displayMessage('assistant', '⚠️ ' + result.error, null, null, null, null,
                 result.assistant_timestamp || new Date().toISOString(), null, 'system',
-                null, null, null, null, result.message_id, null);
+                null, null, null, null, result.message_id, null, null, null, 'system');
         }
         if (resultSessionId) setLocalTranscribing(resultSessionId, false);
         clearSessionQueue(resultSessionId);
@@ -933,7 +934,7 @@ function handleCompletedResult(result, expectedSessionId) {
                     result.assistant_timestamp || new Date().toISOString(), responseTime, modelUsed,
                     null, null, null, null, result.message_id,
                     result.response_style, result.completion_tokens,
-                    result.file_size);
+                    result.file_size, result.model_type);
                 if (typeof updateLastVisit === 'function') updateLastVisit(currentSessionId);
             } else {
                 setNewMessageIndicator(resultSessionId, true);
@@ -960,7 +961,7 @@ function handleTranscriptionResult(result, resultSessionId, expectedSessionId) {
             var transcribedContent = JSON.stringify({prefix: '🎤 ' + t('transcribed') + ': ', text: transcribedText});
             window.displayMessage('assistant', transcribedContent, null, null, null, null,
                 result.assistant_timestamp || new Date().toISOString(), result.response_time, 'whisper',
-                null, null, null, null, result.transcribed_message_id, null);
+                null, null, null, null, result.transcribed_message_id, null, null, null, 'whisper');
             if (result.transcribed_message_id) displayedMessageIds.add(result.transcribed_message_id);
         }
         if (result.request_id) {
@@ -999,7 +1000,7 @@ function handleCameraResult(result, resultSessionId) {
             window.displayMessage('assistant', msg.response, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                 msg.assistant_timestamp, msg.response_time, msg.model_used,
                 null, null, null, null, msg.message_id, msg.response_style,
-                msg.completion_tokens, msg.file_size);
+                msg.completion_tokens, msg.file_size, msg.model_type);
         }
         if (typeof updateLastVisit === 'function') updateLastVisit(currentSessionId);
     } else if (cameraSessionId) {
@@ -1015,7 +1016,7 @@ function handleErrorResult(data, expectedSessionId) {
     if (errorSessionId === currentSessionId) {
         const errorMsg = data.result?.error || data.error || t('unknown_error');
         window.displayMessage('assistant', '⚠️ ' + t('error') + ': ' + errorMsg, null, null, null, null,
-            new Date().toISOString(), null, 'system', null, null, null, null, null, null);
+            new Date().toISOString(), null, 'system', null, null, null, null, null, null, null, null, 'system');
     }
     if (errorSessionId) {
         setLocalTranscribing(errorSessionId, false);
@@ -1065,7 +1066,7 @@ function onMessageNew(data) {
                 msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                 msg.timestamp, responseTime, msg.model_name,
                 msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
-                msg.response_style, msg.completion_tokens
+                msg.response_style, msg.completion_tokens, null, msg.model_type
             );
             if (sessionsData[data.session_id]) {
                 sessionsData[data.session_id].message_count = (sessionsData[data.session_id].message_count || 0) + 1;
@@ -1095,7 +1096,7 @@ function onMessageNew(data) {
                         msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                         msg.timestamp, responseTime, msg.model_name,
                         msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
-                        msg.response_style, msg.completion_tokens
+                        msg.response_style, msg.completion_tokens, null, msg.model_type
                     );
                     if (sessionsData[data.session_id]) {
                         sessionsData[data.session_id].message_count = (sessionsData[data.session_id].message_count || 0) + 1;

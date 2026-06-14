@@ -8,6 +8,7 @@ If text contains "?" or is a question — it is a QUESTION.
 BUT: questions about cameras/rooms (category 5) have PRIORITY over category 1.
 Questions about documents/people (category 6) also have priority over category 1.
 Questions requiring current internet information (category 7) also have priority over category 1.
+Requests to write code/text, create HTML pages, applications, scripts (category 8) also have priority over category 2.
 Only simple questions (greetings, about yourself, time, skills) → category 1.
 If text is a statement or instruction (no "?") — it is a FACT → category 2.
 
@@ -65,7 +66,8 @@ Examples:
 {camera_section}
 
 ## 6. DOCUMENT SEARCH REQUEST (output unchanged with marker)
-If the query asks to search documents, files, find information about people, biography, resume, age, addresses, dates, events, facts — and this fact may be in uploaded documents.
+If the query asks to search information about people, biography, resume, age, addresses, dates, events, facts — and this fact may be in uploaded documents.
+FORBIDDEN: requests to WRITE/CREATE files, code, HTML pages, scripts, or applications — these are NOT document searches! Use category 8 instead.
 Action: Output [-RAG-] and the query text unchanged.
 Examples:
 - Query: "Find in documents about climate"
@@ -76,6 +78,9 @@ Examples:
   Response: "[-RAG-] What's in the resume?"
 - Query: "What is the company address?"
   Response: "[-RAG-] What is the company address?"
+NOT category 6 (use category 8 instead):
+- "Write an HTML file" → category 8, NOT 6
+- "Create a Python script" → category 8, NOT 6
 
 ## 7. WEB SEARCH REQUEST (output unchanged with marker)
 If the query requires current information from the internet: news, weather, stock prices, latest events, releases, prices, statistics, or any data that needs online search.
@@ -92,10 +97,16 @@ Examples:
   Response: "[-SEARCH-] How much does iPhone 16 cost"
 
 ## 8. COMPLEX QUERY (only if NOT document search, NOT web search, and NOT calculations)
-Only complex tasks: code/text writing, story creation, complex reasoning.
+Only complex tasks: code/text writing, story creation, complex reasoning, creating HTML pages, applications, scripts.
 DO NOT include: simple math calculations (category 1), search (categories 6-7).
 - Query: "Write a story about spring"
   Response: "[-REASONING-] Write a story about spring"
+- Query: "Write Python code"
+  Response: "[-REASONING-] Write Python code"
+- Query: "Create an HTML page with animation"
+  Response: "[-REASONING-] Create an HTML page with animation"
+- Query: "Write an app in a single HTML file"
+  Response: "[-REASONING-] Write an app in a single HTML file"
 
 # INPUT DATA
 Role: "You are a personal assistant 'Fully Local AI (FLAI)'."

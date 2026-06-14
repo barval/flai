@@ -118,28 +118,17 @@ def _recall_from_user_db(profile: str, limit: int = 5) -> list[dict] | None:
 
 
 def _semantic_recall_from_user_db(query: str, limit: int, profile: str) -> list[dict] | None:
-    """Full semantic recall via subprocess ``slm recall``.
+    """Full semantic recall via daemon's in-process engine (~300-800ms).
 
-    Slower (~2-5s) but uses SLM's multi-channel retrieval (semantic,
-    BM25, entity graph, temporal). Runs with the user's HOME for
-    per-database isolation.
+    The daemon already holds the embedding model in RAM.  Routing through
+    the daemon avoids the cold-start penalty of spawning a fresh
+    ``slm recall`` subprocess (~30s for PyTorch + sentence-transformers).
     """
-    home_dir = os.path.join(SLM_DATA_DIR, profile)
-    env = os.environ.copy()
-    env["HOME"] = home_dir
     try:
-        result = subprocess.run(
-            ["slm", "recall", query, "--json", "--limit", str(limit)],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            env=env,
-        )
-        if result.returncode != 0:
-            app.logger.warning(f"SLM semantic recall subprocess failed: {result.stderr[:200]}")
+        result = _daemon_get(f"/recall?q={urllib.parse.quote(query)}&limit={limit}&fast=false")
+        if not result.get("ok"):
             return None
-        data = json.loads(result.stdout)
-        raw_results = data.get("data", {}).get("results", [])
+        raw_results = result.get("results", [])
         seen: set[str] = set()
         unique: list[dict] = []
         for r in raw_results:
@@ -161,7 +150,7 @@ def _semantic_recall_from_user_db(query: str, limit: int, profile: str) -> list[
         unique = [r for r in unique if r.get("score", 0) >= min_score]
         return unique
     except Exception as e:
-        app.logger.warning(f"SLM semantic recall exception: {e}")
+        app.logger.warning(f"SLM semantic recall via daemon failed: {e}")
         return None
 
 

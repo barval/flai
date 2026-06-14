@@ -137,6 +137,11 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 - All Python dependencies must have **open-source licenses** (MIT, BSD, Apache 2.0, MPL, or equivalent). Proprietary or copyleft (GPL/AGPL) dependencies are prohibited. Verify license before adding.
 - **pymorphy3** is used for Russian morphological analysis of camera room names (generates declension forms).
 
+## Git & Commits
+- **NEVER make commits unless explicitly asked.** Only create commits when the user directly requests it (e.g., "сделай коммит", "commit changes").
+- Reverting commits without user permission is also forbidden.
+- Always ask before using `git add`, `git commit`, `git push`, `git tag`, or `git revert`.
+
 ## Cleanliness & Dead Code
 - No unused files, dead code, or unused CSS/JS.
 - Every import must be used; every translation key must appear in the UI.

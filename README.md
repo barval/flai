@@ -165,16 +165,24 @@ FLAI **requires** an NVIDIA GPU with CUDA support. CPU-only mode is not supporte
 
 Real-world performance measured with llama.cpp (llama-swap on-demand loading, Flash Attention, q4_0 KV cache):
 
-| Model | Type | Quant | Size | VRAM | Prompt | Generation | Notes |
+| Model | Type | Quant | File | VRAM | Prompt | Generation | Notes |
 |-------|------|-------|------|------|--------|------------|-------|
-| **Qwen3-4B-Instruct-2507** | Chat | MXFP4 (MoE) | 2.0 GB | 3668 MB | 1307 t/s | **127.4 t/s** | Current chat model |
-| Qwen3.5-4B-Instruct-MTP | Chat | MXFP4 + MTP | 2.5 GB | 4042 MB | 664 t/s | 108.2 t/s | MTP adds overhead |
-| **gpt-oss-20b** | Reasoning | MXFP4 (MoE) | 11.5 GB | 12255 MB | 1100 t/s | **120.5 t/s** | Current reasoning model |
-| Qwen3.5-9B-MTP-Q4_K_M | Reasoning | Q4_K_M + MTP | 5.5 GB | 6717 MB | 431 t/s | 66.1 t/s | 45% slower |
-| Qwen3.5-9B-Q8_0 | Reasoning | Q8_0 | 8.9 GB | 9719 MB | 472 t/s | 42.8 t/s | 65% slower |
-| gemma-4-12B-it-qat | Reasoning | QAT Q4_K_XL | 6.3 GB | 8090 MB | 520 t/s | 49.2 t/s | 59% slower |
+| **Qwen3-4B-Instruct-2507** | Chat | MXFP4 (MoE) | 2.0 GB | 3186 MB | 3943 t/s | **127.7 t/s** | Current chat model — fastest generation |
+| Qwen3.5-4B-Instruct-MTP | Chat | MXFP4 + MTP | 2.5 GB | 4042 MB | 664 t/s | 108.2 t/s | MTP adds overhead on 128-bit bus |
+| **gemma-4-E2B-it-QAT** | Chat | QAT Q4_0 | 3.2 GB | 2123 MB | 1471 t/s | **168.1 t/s** | Fastest model — ultra-lightweight edge model |
+| **gemma-4-E4B-it-QAT** | Chat | QAT Q4_0 | 4.9 GB | 3481 MB | 1182 t/s | **99.8 t/s** | Edge model — best speed/quality balance |
+| Qwen3.5-9B-UD-Q4_K_XL | Chat | Dynamic 4-bit | 5.6 GB | 6213 MB | 565 t/s | 63.2 t/s | Candidate chat model |
+| **gpt-oss-20b** | Reasoning | MXFP4 (MoE) | 11.5 GB | 11663 MB | 1087 t/s | **118.2 t/s** | Current reasoning — MoE 3B active |
+| **Qwen3.6-35B-A3B** | Reasoning | Q2_K_XL | 12 GB | 12356 MB | 497 t/s | **106.2 t/s** | MoE 35B (3B active) — strong alternative |
+| Qwen3.5-9B-MTP-Q4_K_M | Reasoning | Q4_K_M + MTP | 5.5 GB | 6717 MB | 431 t/s | 66.1 t/s | Dense 9B — 45% slower than MoE |
+| Qwen3.5-9B-Q8_0 | Reasoning | Q8_0 | 8.9 GB | 9719 MB | 472 t/s | 42.8 t/s | Dense 9B — 65% slower, high quality |
+| gemma-4-12B-it-qat | Reasoning | QAT Q4_K_XL | 6.3 GB | 7591 MB | 1102 t/s | 48.7 t/s | Dense 12B — 62% slower |
+| **Qwen3VL-8B-Instruct** | Multimodal | Q4_K_M | 4.7 GB | 5292 MB | 2318 t/s | **73.1 t/s** | Vision model — current (fastest) |
+| Qwen3VL-8B-Instruct-MXFP4 | Multimodal | MXFP4_MOE-Q6_K | 7.7 GB | 8222 MB | 2099 t/s | 46.7 t/s | Vision model — hybrid MXFP4 (deprecated) |
 
-> **Why gpt-oss-20b wins as reasoning model:** Despite being a "20B" model, gpt-oss-20b uses Mixture-of-Experts (MoE) with 32 experts — only ~3B parameters are active per token. This gives it 3B-level compute cost with 20B-level knowledge. On RTX 5060 Ti, it generates **120 tok/s** vs 66 tok/s for dense Qwen3.5-9B — nearly **2× faster** while using the same memory bandwidth.
+> **Why gpt-oss-20b wins as reasoning model:** Despite being a "20B" model, gpt-oss-20b uses Mixture-of-Experts (MoE) with 32 experts — only ~3B parameters are active per token. This gives it 3B-level compute cost with 20B-level knowledge. On RTX 5060 Ti, it generates **118 tok/s** vs 63 tok/s for dense Qwen3.5-9B — nearly **2× faster** while using the same memory bandwidth.
+
+> **Qwen3.6-35B-A3B as reasoning alternative:** MoE architecture (35B total, ~3B active) delivers **106 tok/s** — only 10% slower than gpt-oss-20b. Its 12 GB VRAM footprint allows coexistence with chat model via llama-swap. Strong candidate if gpt-oss-20b quality is insufficient.
 
 > **Why MTP doesn't help on 128-bit GPUs:** Multi-Token Prediction (MTP) predicts draft tokens with a small head, then verifies them in parallel. On high-bandwidth GPUs (256/512-bit), this yields 1.4–2.2× speedup. On RTX 5060 Ti's 128-bit bus (448 GB/s), the draft model's extra memory reads saturate the already-limited bandwidth. Qwen3.5-4B-MTP is **15% slower** than Qwen3-4B without MTP; Qwen3.5-9B-MTP shows no meaningful speedup over a plain Q4_K_M of the same size.
 

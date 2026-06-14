@@ -208,7 +208,7 @@ class TestBuildModelEntry:
         assert "cmd" in entry["chat"]
         assert "ttl" in entry["chat"]
         assert "aliases" in entry["chat"]
-        assert entry["chat"].get("preload") is True
+        assert "preload" not in entry["chat"]
 
     @patch("app.llama_swap_config.get_model_config")
     @patch("app.llama_swap_config.os.path.exists")
@@ -222,7 +222,7 @@ class TestBuildModelEntry:
         gen = LlamaSwapConfigGenerator()
         entry = gen.build_model_entry("chat")
         assert entry["chat"].get("group") == "llm_fast"
-        assert entry["chat"].get("preload") is True
+        assert "preload" not in entry["chat"]
 
     @patch("app.llama_swap_config.get_model_config")
     @patch("app.llama_swap_config.os.path.exists")
@@ -365,7 +365,8 @@ class TestGenerateYaml:
         assert "embedding:" in yaml_str
         assert "reasoning:" in yaml_str
         assert "multimodal:" in yaml_str
-        assert "preload: true" in yaml_str
+        assert "hooks:" in yaml_str
+        assert '      - "chat"' in yaml_str
         assert "llama-server" in yaml_str
 
     @patch("app.llama_swap_config.get_model_config")

@@ -227,11 +227,12 @@ class CamModule(TranslationMixin):
         return status
 
     def get_room_name(self, room_code, lang="ru"):
-        """Get translated room name for the given code."""
-        key = self.room_name_keys.get(room_code)
-        if key:
-            return self._(key, lang)
-        return f"room '{room_code}'"
+        """Get room name for the given code.
+
+        Uses the first form from name_forms stored in the DB
+        (e.g. 'Гостиная' for code 'gos').
+        """
+        return self.room_names.get(room_code, f"room '{room_code}'")
 
     def get_room_code(self, room_name):
         """Resolve a room name (possibly declined) to its code.

@@ -23,10 +23,11 @@ CONFIG_FILE = os.getenv("LLAMA_SWAP_CONFIG_FILE", "llama-swap.yaml")
 DEGRADATION_STEPS = [0.75, 0.50, 0.25, 0.0]
 
 DEFAULT_TTL = {
-    "chat": 600,
-    "embedding": 0,
-    "reasoning": 0,
-    "multimodal": 0,
+    # llama-swap: ttl=0 means "never unload", ttl=N means "unload after N seconds idle"
+    "chat": 0,        # never unload — only swap: true removes it when another model needs VRAM
+    "embedding": 1,   # unload 1 second after response (fast: ~500 MB, reload is instant)
+    "reasoning": 1,   # unload 1 second after response
+    "multimodal": 1,  # unload 1 second after response
 }
 
 GROUP_SETTINGS = {
@@ -277,9 +278,6 @@ class LlamaSwapConfigGenerator:
         # Add aliases for backward compatibility with model_name
         entry["aliases"] = [model_name]
 
-        if module == "chat":
-            entry["preload"] = True
-
         group_info = GROUP_SETTINGS.get(module, {}).get("group")
         if group_info and group_info != "default":
             entry["group"] = group_info
@@ -358,6 +356,9 @@ class LlamaSwapConfigGenerator:
         except Exception:
             pass
 
+        # Enable Jinja templating for native tool calling support (Qwen3, etc.)
+        cmd_parts.append("--jinja")
+
         return " ".join(cmd_parts)
 
     def generate_yaml(self, ngl_overrides: dict[str, int] | None = None) -> str:
@@ -394,8 +395,16 @@ class LlamaSwapConfigGenerator:
                 lines.append(f"    models: [{models_list}]")
         lines.append("")
 
+        # Preload chat model at startup via llama-swap hooks (preload: true is NOT a valid model field)
+        lines.append("hooks:")
+        lines.append("  on_startup:")
+        lines.append("    preload:")
+        lines.append('      - "chat"')
+        lines.append("")
+
         lines.append("models:")
 
+        seen_aliases: set[str] = set()
         for module in ["chat", "embedding", "reasoning", "multimodal"]:
             ngl_override = ngl_overrides.get(module)
             entry = self.build_model_entry(module, ngl_override=ngl_override)
@@ -403,6 +412,13 @@ class LlamaSwapConfigGenerator:
                 continue
 
             model_entry = entry[module]
+
+            # Deduplicate aliases — llama-swap rejects duplicate aliases across models.
+            # When two modules use the same GGUF file, only the first keeps its alias.
+            original_aliases = model_entry.get("aliases", [])
+            model_entry["aliases"] = [a for a in original_aliases if a not in seen_aliases]
+            seen_aliases.update(original_aliases)
+
             lines.append(f"  {module}:")
             for key, value in model_entry.items():
                 if isinstance(value, dict):

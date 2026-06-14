@@ -82,6 +82,12 @@ function handleEvent(event) {
         case 'camera_image':
             onCameraImage(event.data);
             break;
+        case 'tool_call':
+            onToolCall(event.data);
+            break;
+        case 'tool_result':
+            onToolResult(event.data);
+            break;
         case 'task_progress':
             onTaskProgress(event.data);
             break;
@@ -119,6 +125,30 @@ function onCameraImage(data) {
         data.response_time, data.model_used,
         null, null, null, null, data.message_id,
         data.response_style);
+}
+
+// ── tool_call / tool_result ─────────────────────────────────────────
+
+const TOOL_LABELS = {
+    get_current_time: '🕐 ' + t('tool_get_current_time'),
+    calculator: '🔢 ' + t('tool_calculator'),
+    time_calc: '📅 ' + t('tool_time_calc'),
+    web_search: '🌐 ' + t('tool_web_search'),
+    rag_search: '📚 ' + t('tool_rag_search'),
+    camera_snapshot: '📹 ' + t('tool_camera_snapshot'),
+};
+
+function onToolCall(data) {
+    if (!data || !data.session_id || data.session_id !== currentSessionId) return;
+    dlog('onToolCall:', data.tool_name);
+    const label = TOOL_LABELS[data.tool_name] || (`🔧 ${data.tool_name}...`);
+    _updateProgressElement(data.task_id, label);
+}
+
+function onToolResult(data) {
+    if (!data || !data.session_id || data.session_id !== currentSessionId) return;
+    dlog('onToolResult:', data.tool_name);
+    _removeProgressElement(data.task_id);
 }
 
 // ── task_progress ────────────────────────────────────────────────────

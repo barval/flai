@@ -26,6 +26,7 @@ from .db import (
 )
 from .events import get_events_publisher
 from .model_config import get_model_config
+from .tools import MAX_TOOL_ITERATIONS, execute_tool, get_tool_definitions
 from .utils import (
     estimate_tokens,
     get_current_time_in_timezone,
@@ -388,32 +389,84 @@ class RedisRequestQueue:
             return None
 
     def _cleanup_vram_after_task(self, task: dict[str, Any]) -> None:
-        """Unconditionally free VRAM after a GPU-using task completes."""
+        """Free VRAM after a GPU-using task completes.
+
+        Only unloads LTX-Video pipeline and restarts its container for video tasks.
+        Non-chat llama.cpp models (reasoning, multimodal, embedding) are NOT unloaded
+        here — their TTL=0 makes llama-swap unload them automatically after the response.
+        Chat model is NEVER unloaded here — it stays hot permanently (TTL=1 year).
+        """
         try:
             from app.resource_manager import get_resource_manager
 
             rm = get_resource_manager()
-            rm.unload_llamacpp_model()
-            rm.unload_video_pipeline()
-            # After video generation: restart LTX-Video container to free CUDA context (~3 GB).
-            # The gunicorn worker inside flai-ltxvideo holds a CUDA context that survives
-            # /v1/unload — only a container restart releases it.
-            if task.get("type") == "video":
+            req_type = task.get("data", {}).get("type", "")
+            if req_type == "video":
+                rm.unload_video_pipeline()
+                # Restart LTX-Video container to free CUDA context (~3 GB).
+                # The gunicorn worker inside flai-ltxvideo holds a CUDA context that survives
+                # /v1/unload — only a container restart releases it.
                 rm._force_restart_ltx_video()
             # Invalidate active model tracking in ALL llamacpp instances
             for module_name in ("base", "multimodal", "rag"):
                 module = self.app.modules.get(module_name)
                 if module and hasattr(module, "llamacpp"):
                     module.llamacpp.reset_active_model()
-            try:
-                import torch
-
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-            except ImportError:
-                pass
+            # Preload chat model in background so the next router call is instant
+            self._preload_chat_model_background()
         except Exception as e:
             self.logger.debug(f"VRAM cleanup after task: {e}")
+
+    def _preload_chat_model_background(self) -> None:
+        """Trigger chat model loading in llama-swap via a background thread.
+
+        After a non-chat model finishes, llama-swap unloads it (TTL=0) and
+        the chat model is no longer in VRAM. This sends a tiny chat completion
+        request in a daemon thread to trigger llama-swap to load the chat model,
+        so the next router call doesn't suffer a cold start (~20-30s).
+        """
+        try:
+            import requests as req
+
+            from app.model_config import get_model_config
+
+            swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080").rstrip("/")
+
+            # Skip if chat model is already loaded
+            try:
+                resp = req.get(f"{swap_url}/running", timeout=2)
+                if resp.status_code == 200:
+                    running = resp.json().get("running", [])
+                    config = get_model_config("chat")
+                    model_name = config.get("model_name", "") if config else ""
+                    if model_name and any(model_name in m.get("cmd", "") for m in running):
+                        self.logger.debug("Chat model already loaded, skipping preload")
+                        return
+            except Exception:
+                pass
+
+            def _do_preload():
+                try:
+                    resp = req.post(
+                        f"{swap_url}/v1/chat/completions",
+                        json={
+                            "model": "chat",
+                            "messages": [{"role": "user", "content": "hi"}],
+                            "max_tokens": 1,
+                        },
+                        timeout=60,
+                    )
+                    if resp.status_code == 200:
+                        self.logger.info("Chat model preloaded in background after non-chat task")
+                    else:
+                        self.logger.debug(f"Chat preload returned {resp.status_code}")
+                except Exception as e:
+                    self.logger.debug(f"Background chat preload failed: {e}")
+
+            thread = threading.Thread(target=_do_preload, daemon=True)
+            thread.start()
+        except Exception as e:
+            self.logger.debug(f"Chat preload setup failed: {e}")
 
     def _process_single_task(self, task: dict[str, Any], processing_key: str) -> None:
         """Process a single task: move to processing, execute, store result, cleanup."""
@@ -499,9 +552,9 @@ class RedisRequestQueue:
             self.logger.debug(f"Skipping VRAM cleanup: task {task_id} requeued (status=queued)")
         else:
             current_model = self._get_model_for_task(task)
-            # Chat model stays hot in VRAM (TTL=600s) — only unload heavier models.
-            # Unloading chat after every request caused cold starts (+2-3s) and CUDA fragmentation.
-            if current_model in ("reasoning", "multimodal", "embedding") or task.get("type") == "video":
+            # Chat model stays hot in VRAM (TTL=1 year) — only cleanup non-chat models.
+            req_type = task.get("data", {}).get("type", "")
+            if current_model in ("reasoning", "multimodal", "embedding") or req_type == "video":
                 self._cleanup_vram_after_task(task)
 
     def _worker_loop_fast(self):
@@ -743,17 +796,6 @@ class RedisRequestQueue:
 
             rm = get_resource_manager()
             rm.unload_video_pipeline()
-
-            # Clear CUDA cache to reduce fragmentation after video unload
-            try:
-                import torch
-
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    torch.cuda.synchronize()
-                    self.logger.info("CUDA cache cleared after video pipeline unload")
-            except ImportError:
-                pass
         except Exception:
             pass
 
@@ -883,16 +925,6 @@ class RedisRequestQueue:
             rm._poll_vram()
             free = rm.hardware.available_vram_mb
 
-            # Force CUDA deallocation every poll cycle
-            try:
-                import torch
-
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    torch.cuda.synchronize()
-            except ImportError:
-                pass
-
             # Check llama-swap /running for loaded models
             loaded_count = -1  # unknown
             try:
@@ -967,16 +999,6 @@ class RedisRequestQueue:
                         time.sleep(1)
                         continue
                     # len(running) == 0
-                    # Force CUDA deallocation to combat fragmentation
-                    try:
-                        import torch
-
-                        if torch.cuda.is_available():
-                            torch.cuda.empty_cache()
-                            torch.cuda.synchronize()
-                    except ImportError:
-                        pass
-
                     out = subprocess.run(
                         ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
                         capture_output=True,
@@ -1509,14 +1531,6 @@ class RedisRequestQueue:
             # generate_video_params() loaded Qwen3VL-8B (~5GB) — must free VRAM
             # before LTX-Video pipeline (~8GB) loads, or total > GPU capacity → OOM.
             self._unload_llamacpp_models()
-            try:
-                import torch
-
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    torch.cuda.synchronize()
-            except ImportError:
-                pass
 
             # Verify VRAM is truly free for video pipeline — must check BOTH:
             # (a) no LLM models loaded via llama-swap /running
@@ -1653,14 +1667,6 @@ class RedisRequestQueue:
             # generate_video_params_from_image() loaded Qwen3VL-8B (~5GB) — must free VRAM
             # before LTX-Video pipeline (~8GB) loads, or total > GPU capacity → OOM.
             self._unload_llamacpp_models()
-            try:
-                import torch
-
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    torch.cuda.synchronize()
-            except ImportError:
-                pass
 
             if not self._wait_for_vram_full():
                 error_msg = self.app.modules["base"]._(
@@ -2192,20 +2198,17 @@ class RedisRequestQueue:
         query = router_result["query"]
 
         if action_type == "reasoning":
-            rag_start = time.time()
-            rag_answer, rag_model = self._try_rag_answer(
-                query, session_id, user_id, lang, strict=True, response_style=response_style
+            # Try tools first — chat model with tools can handle many "reasoning" queries
+            return self._process_chat_with_tools(
+                task={"id": uuid.uuid4().hex, "user_id": user_id, "session_id": session_id},
+                query=query,
+                current_time_str=current_time_str,
+                session_id=session_id,
+                user_id=user_id,
+                lang=lang,
+                response_style=response_style,
+                stream=False,
             )
-            rag_time = round(time.time() - rag_start, 1)
-            if rag_answer is not None:
-                if self._is_llm_error_string(rag_answer):
-                    return self._build_error_response(session_id, rag_answer, rag_time, lang)
-                model_used = rag_model + " (RAG)" if rag_model else "unknown (RAG)"
-                return self._save_and_respond(
-                    session_id, rag_answer, model_used, rag_time, response_style=response_style, user_id=user_id
-                )
-            self.app.logger.info(f"RAG returned no answer, falling back to reasoning model for query: {query[:50]}...")
-            action_type = "reasoning"
 
         if action_type == "image":
             return self._requeue_image_task(query, session_id, user_id, lang, response_style, user_class=user_class)
@@ -2224,23 +2227,16 @@ class RedisRequestQueue:
             return self._requeue_reasoning_task(query, session_id, user_id, lang, response_style, user_class=user_class)
         else:
             # Simple query: router classified but did not generate text.
-            # Call chat model (already hot in VRAM) to generate the response.
-            chat_start = time.time()
-            chat_response = self.app.modules["base"].call_llamacpp(
-                [{"role": "user", "content": query}], model_type="chat", lang=lang
-            )
-            chat_time = round(time.time() - chat_start, 1)
-            if not chat_response:
-                chat_response = query
-            if self._is_llm_error_string(chat_response):
-                return self._build_error_response(session_id, chat_response, chat_time, lang)
-            return self._save_and_respond(
-                session_id,
-                chat_response,
-                self._get_model_name("chat") or "unknown",
-                {"router": router_time, "chat": chat_time},
-                response_style=response_style,
+            # Call chat model with tool calling support.
+            return self._process_chat_with_tools(
+                task={"id": uuid.uuid4().hex, "user_id": user_id, "session_id": session_id},
+                query=query,
+                current_time_str=current_time_str,
+                session_id=session_id,
                 user_id=user_id,
+                lang=lang,
+                response_style=response_style,
+                stream=False,
             )
 
     def _process_text_task_stream(
@@ -2271,81 +2267,21 @@ class RedisRequestQueue:
         action_type = router_result["action"]
         query = router_result["query"]
 
-        # Reasoning — search RAG on fast worker, then requeue to slow worker for generation.
-        # NEVER call rag.generate_answer() on the fast worker — it loads the reasoning model
-        # (~10 GiB) and blocks _gpu_lock for minutes, freezing all other tasks.
+        # Reasoning — route through chat model with tools first.
+        # The chat model can handle simple queries (math, time, search) via tools.
+        # Only requeue to slow worker if the chat model can't handle it.
         if action_type == "reasoning" and router_result.get("needs_reasoning"):
-            rag = self.app.modules.get("rag")
-            rag_context = ""
-            if rag and rag.available:
-                rag_start = time.time()
-                try:
-                    chunks, scores = rag.search(user_id, query, top_k=20)
-                    rag_time = round(time.time() - rag_start, 1)
-                    if chunks:
-                        from flask_babel import gettext as _
-
-                        with force_locale(lang):
-                            source_label = _("Source")
-                        context_parts = []
-                        for i, chunk in enumerate(chunks[:15]):
-                            filename = chunk.get("filename", "?")
-                            text = chunk.get("text", str(chunk))
-                            score = scores[i] if i < len(scores) else 0.0
-                            context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
-                        rag_context = "\n\n".join(context_parts)
-                        self.app.logger.info(
-                            f"RAG search for reasoning: {len(chunks)} chunks, "
-                            f"{len(rag_context)} chars — requeueing to slow worker ({rag_time}s)"
-                        )
-                    else:
-                        self.app.logger.info(
-                            f"RAG search returned 0 chunks for reasoning query: {query[:50]}... "
-                            f"requeueing without context ({rag_time}s)"
-                        )
-                except Exception as e:
-                    self.logger.error(f"RAG search failed for reasoning: {e}")
-            return self._requeue_reasoning_task(
-                query, session_id, user_id, lang, response_style,
-                user_class=task.get("user_class", 2), rag_context=rag_context,
+            # Try tools first — chat model with tools can handle many "reasoning" queries
+            # (math calculations, web search, document search, camera, time)
+            return self._process_chat_with_tools(
+                task, query, current_time_str, session_id, user_id, lang, response_style,
             )
 
         # Simple query: router classified but did not generate text.
-        # Stream the response from chat model (already hot in VRAM).
+        # Use chat model with tool calling support.
         if action_type in ("none", "fact") or (action_type == "reasoning" and not router_result.get("needs_reasoning")):
-            stream_start = time.time()
-            full_response = ""
-            error_detected = False
-            for token in self.app.modules["base"].generate_chat_response_stream(
-                query,
-                current_time_str,
-                lang=lang,
-                session_id=session_id,
-                response_style=response_style,
-                user_id=user_id,
-                skip_slm=(action_type == "none"),
-            ):
-                full_response += token
-                # Don't publish error tokens to client — they lack the "⚠️ " prefix.
-                # The error will be shown via _build_error_response which adds the prefix.
-                if not error_detected:
-                    if self._is_llm_error_string(full_response):
-                        error_detected = True
-                    else:
-                        self._publish_stream_token(task, token)
-                if self._is_task_cancelled(task["id"]):
-                    break
-            if not full_response.strip():
-                full_response = query
-            if self._is_llm_error_string(full_response):
-                return self._build_error_response(session_id, full_response, round(time.time() - stream_start, 1), lang)
-            return self._save_and_respond(
-                session_id,
-                full_response,
-                self._get_model_name("chat") or "unknown",
-                round(time.time() - stream_start, 1),
-                response_style=response_style,
-                user_id=user_id,
+            return self._process_chat_with_tools(
+                task, query, current_time_str, session_id, user_id, lang, response_style,
             )
 
         # Stream-aware actions — dispatch directly, no second router call
@@ -2376,6 +2312,256 @@ class RedisRequestQueue:
             query,
             self._get_model_name("chat") or "unknown",
             router_time,
+            response_style=response_style,
+            user_id=user_id,
+        )
+
+    def _process_chat_with_tools(
+        self,
+        task: dict[str, Any],
+        query: str,
+        current_time_str: str,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        response_style: str = "neutral",
+        stream: bool = True,
+    ) -> dict[str, Any]:
+        """Chat model with tool calling loop.
+
+        Calls the chat model with tools. If the model returns tool_calls,
+        executes them and feeds results back. Repeats until the model
+        returns a final content response (max MAX_TOOL_ITERATIONS rounds).
+        """
+        from modules.base import STYLE_INSTRUCTIONS
+
+        base = self.app.modules["base"]
+        llamacpp = base.llamacpp
+
+        # Build system + user messages for tool calling
+        response_language = "Russian" if lang == "ru" else "English"
+        context_str = base._get_context_for_model(  # noqa: SLF001
+            session_id, "chat", query, lang, user_id=user_id, skip_slm=False,
+        )
+        style_instruction = STYLE_INSTRUCTIONS.get(
+            lang, STYLE_INSTRUCTIONS["ru"]
+        ).get(response_style, STYLE_INSTRUCTIONS[lang]["neutral"])
+
+        if lang == "ru":
+            system_content = (
+                f"# ИНСТРУКЦИЯ\n"
+                f"Язык ответа: {response_language}.\n"
+                f"Стиль ответа: {style_instruction}\n"
+                f"Формат ответа: Без рассуждений. Не задавай вопросов. Не пиши о том, чего нет в запросе пользователя.\n"
+                f"Задача: Ответь на запрос пользователя. Используй инструменты когда это необходимо — "
+                f"не придумывай ответ, лучше вызови инструмент.\n\n"
+                f"# ПРАВИЛА ИСПОЛЬЗОВАНИЯ ИНСТРУМЕНТОВ\n"
+                f"1. После получения результата инструмента — используй его напрямую в ответе.\n"
+                f"2. НЕ ПЕРЕСЧЫТЫВАЙ результат инструмента самостоятельно.\n"
+                f"3. НЕ ПРИДУМЫВАЙ ответ вместо использования результата инструмента.\n"
+                f"4. Если инструмент вернул число — ответь этим числом.\n\n"
+                f"# ВЫБОР ОПЕРАЦИИ time_calc\n"
+                f"ВНИМАТЕЛЬНО выбирай операцию по запросу:\n"
+                f"- 'до понедельника/вторника/.../ближайшей пятницы' → days_until_weekday\n"
+                f"- 'до 30 июня/до конкретной даты' → days_until_date\n"
+                f"- 'до конца года/месяца/лета/зимы' → days_until_end_of\n"
+                f"- 'назад закончилась весна/лето' → days_since_end_of\n"
+                f"- 'какой день недели' → day_of_week\n"
+                f"- 'между 11 и 15 июня' → days_between\n"
+                f"- 'через 5 дней какая дата' → add_days\n"
+                f"- 'какое сегодня число' → format_date\n\n"
+                f"# РОЛЬ\n"
+                f"Ты персональный ассистент на основе искусственного интеллекта 'Полностью Локальный ИИ (ПЛИИ)'.\n\n"
+                f"# НАВЫКИ\n"
+                f"- Калькулятор для математических расчётов\n"
+                f"- Калькулятор дат и времени, включая времена года (days_until_end_of, days_since_end_of)\n"
+                f"- Поиск в интернете\n"
+                f"- Поиск в документах (RAG)\n"
+                f"- Камеры видеонаблюдения\n"
+                f"- Текущее время\n\n"
+                f"Текущее время (сейчас): {current_time_str}.\n\n"
+                f"# ИСТОРИЯ ДИАЛОГА\n"
+                f"{context_str}"
+            )
+        else:
+            system_content = (
+                f"# INSTRUCTION\n"
+                f"Response language: {response_language}.\n"
+                f"Response style: {style_instruction}\n"
+                f"Response format: Without reasoning. Do not ask questions. Do not write about things not in the user's request.\n"
+                f"Task: Answer the user's request. Use tools when necessary — "
+                f"do not make up answers, call a tool instead.\n\n"
+                f"# TOOL USAGE RULES\n"
+                f"1. After receiving a tool result — use it directly in your answer.\n"
+                f"2. Do NOT recalculate the tool result yourself.\n"
+                f"3. Do NOT make up an answer instead of using the tool result.\n"
+                f"4. If a tool returns a number — answer with that number.\n\n"
+                f"# TIME_CALC OPERATION SELECTION\n"
+                f"Choose the operation carefully based on the query:\n"
+                f"- 'until Monday/Tuesday/.../next Friday' → days_until_weekday\n"
+                f"- 'until June 30/until specific date' → days_until_date\n"
+                f"- 'until end of year/month/summer/winter' → days_until_end_of\n"
+                f"- 'days since spring/summer ended' → days_since_end_of\n"
+                f"- 'what day of week is it' → day_of_week\n"
+                f"- 'between June 11 and 15' → days_between\n"
+                f"- 'what date in 5 days' → add_days\n"
+                f"- 'what is today date' → format_date\n\n"
+                f"# ROLE\n"
+                f"You are a personal assistant based on artificial intelligence 'Fully Local AI (FLAI)'.\n\n"
+                f"# SKILLS\n"
+                f"- Calculator for math calculations\n"
+                f"- Date and time calculator, including seasons (days_until_end_of, days_since_end_of)\n"
+                f"- Web search\n"
+                f"- Document search (RAG)\n"
+                f"- Camera snapshots\n"
+                f"- Current time\n\n"
+                f"Current time (now): {current_time_str}.\n\n"
+                f"# CONVERSATION HISTORY\n"
+                f"{context_str}"
+            )
+
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": query},
+        ]
+        tools = get_tool_definitions(lang)
+
+        stream_start = time.time()
+        full_response = ""
+        last_tool_result = ""
+
+        for iteration in range(MAX_TOOL_ITERATIONS):
+            if self._is_task_cancelled(task["id"]):
+                break
+
+            # Call chat model with tools (non-streaming for tool detection, low temp for reliable tool calls)
+            response = llamacpp.chat(messages, model_type="chat", lang=lang, tools=tools, temperature=0.1)
+
+            # If response is an error string
+            if isinstance(response, str):
+                if self._is_llm_error_string(response):
+                    return self._build_error_response(
+                        session_id, response, round(time.time() - stream_start, 1), lang,
+                    )
+
+                # Detect raw JSON tool call in text (small models sometimes output tool calls as text)
+                parsed_tool_call = self._try_parse_text_tool_call(response)
+                if parsed_tool_call:
+                    tool_calls = [parsed_tool_call]
+                    messages.append({
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": tool_calls,
+                    })
+                    for tc in tool_calls:
+                        tc_id = tc.get("id", "")
+                        func = tc.get("function", {})
+                        tool_name = func.get("name", "")
+                        try:
+                            arguments = json.loads(func.get("arguments", "{}"))
+                        except json.JSONDecodeError:
+                            arguments = {}
+                        self._publish_stream_event(task, "tool_call", {
+                            "tool_name": tool_name,
+                            "arguments": arguments,
+                        })
+                        self.logger.info(f"Tool call (text-parsed): {tool_name}({arguments})")
+                        tool_context = {"app": self.app, "user_id": user_id, "lang": lang}
+                        tool_result = execute_tool(tool_name, arguments, tool_context)
+                        last_tool_result = tool_result
+                        self.logger.info(f"Tool result: {tool_result[:200]}")
+                        self._publish_stream_event(task, "tool_result", {
+                            "tool_name": tool_name,
+                            "result_preview": tool_result[:200] + "..." if len(tool_result) > 200 else tool_result,
+                        })
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc_id,
+                            "content": tool_result,
+                        })
+                    continue
+
+                full_response = response
+                # Stream the final response to client
+                for char in full_response:
+                    self._publish_stream_token(task, char)
+                break
+
+            # If response is a dict with tool_calls
+            if isinstance(response, dict) and response.get("tool_calls"):
+                tool_calls = response["tool_calls"]
+                content = response.get("content", "")
+
+                # Add assistant message with tool_calls to history
+                messages.append({
+                    "role": "assistant",
+                    "content": content,
+                    "tool_calls": tool_calls,
+                })
+
+                # Execute each tool
+                for tc in tool_calls:
+                    tc_id = tc.get("id", "")
+                    func = tc.get("function", {})
+                    tool_name = func.get("name", "")
+                    try:
+                        arguments = json.loads(func.get("arguments", "{}"))
+                    except json.JSONDecodeError:
+                        arguments = {}
+
+                    # Publish tool_call event
+                    self._publish_stream_event(task, "tool_call", {
+                        "tool_name": tool_name,
+                        "arguments": arguments,
+                    })
+
+                    self.logger.info(f"Tool call: {tool_name}({arguments})")
+
+                    # Execute tool
+                    tool_context = {"app": self.app, "user_id": user_id, "lang": lang}
+                    tool_result = execute_tool(tool_name, arguments, tool_context)
+                    last_tool_result = tool_result
+
+                    self.logger.info(f"Tool result: {tool_result[:200]}")
+
+                    # Publish tool_result event
+                    result_preview = tool_result[:200] + "..." if len(tool_result) > 200 else tool_result
+                    self._publish_stream_event(task, "tool_result", {
+                        "tool_name": tool_name,
+                        "result_preview": result_preview,
+                    })
+
+                    # Add tool result to messages
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": tool_result,
+                    })
+
+                self.logger.info(
+                    f"Tool calling iteration {iteration + 1}: "
+                    f"executed {len(tool_calls)} tools: {[tc.get('function', {}).get('name', '?') for tc in tool_calls]}"
+                )
+                continue
+
+            # No tool_calls — final content response
+            full_response = response if isinstance(response, str) else str(response)
+            break
+
+        # Stream final response if not already streamed
+        if stream and full_response:
+            for char in full_response:
+                self._publish_stream_token(task, char)
+
+        if not full_response.strip():
+            full_response = last_tool_result.strip() if last_tool_result.strip() else query
+
+        process_time = round(time.time() - stream_start, 1)
+        return self._save_and_respond(
+            session_id,
+            full_response,
+            self._get_model_name("chat") or "unknown",
+            process_time,
             response_style=response_style,
             user_id=user_id,
         )
@@ -3247,6 +3433,88 @@ class RedisRequestQueue:
         self.redis.setex(f"task:cancel:{task_id}", ttl, "1")
         self.app.logger.info(f"Task {task_id} marked as cancelled")
         return True
+
+    @staticmethod
+    def _try_parse_text_tool_call(text: str) -> dict[str, Any] | None:
+        """Try to parse a raw JSON tool call from model text output.
+
+        Small models sometimes output tool calls as JSON text instead of
+        using the structured tool_calls API. Detect and parse these.
+        Supports:
+        1. JSON with "name"/"arguments" keys (standard format)
+        2. "tool_name {args_json}" — tool name as prefix, JSON is arguments
+        3. ```json blocks and <tool_call> tags
+        """
+        known_tool_names = {"get_current_time", "calculator", "web_search", "rag_search", "camera_snapshot", "time_calc"}
+        text = text.strip()
+
+        # Try <tool_call>...</tool_call> format
+        tc_match = re.search(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", text, re.DOTALL)
+        if tc_match:
+            text = tc_match.group(1).strip()
+
+        # Try ```json...``` code block
+        if "```" in text:
+            code_match = re.search(r"```(?:json)?\s*\n?\s*(\{.*?\})\s*\n?\s*```", text, re.DOTALL)
+            if code_match:
+                text = code_match.group(1).strip()
+
+        # Find JSON object { ... }
+        idx = text.find("{")
+        if idx < 0:
+            return None
+
+        json_text = text[idx:]
+
+        # Find balanced closing brace
+        depth = 0
+        end = -1
+        for i, ch in enumerate(json_text):
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        if end < 0:
+            return None
+        json_text = json_text[:end + 1]
+
+        try:
+            data = json.loads(json_text)
+        except json.JSONDecodeError:
+            return None
+
+        # Format 1: JSON has "name" and "arguments" keys
+        if "name" in data and "arguments" in data:
+            name = data["name"]
+            args = data["arguments"]
+            if not isinstance(args, dict):
+                return None
+            return {
+                "id": f"text_{name}",
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "arguments": json.dumps(args, ensure_ascii=False),
+                },
+            }
+
+        # Format 2: text before { contains a known tool name, JSON is args
+        # e.g. 'time_calc {"operation": "days_until_end_of", "period": "month"}'
+        prefix = text[:idx].strip().split()[-1] if text[:idx].strip() else ""
+        if prefix in known_tool_names and isinstance(data, dict):
+            return {
+                "id": f"text_{prefix}",
+                "type": "function",
+                "function": {
+                    "name": prefix,
+                    "arguments": json.dumps(data, ensure_ascii=False),
+                },
+            }
+
+        return None
 
     def _is_task_cancelled(self, task_id: str) -> bool:
         """Check if a task has been cancelled (polled by the streaming worker)."""

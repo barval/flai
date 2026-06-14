@@ -1649,6 +1649,103 @@ msgstr "Video generation timeout ({timeout}s)"
 msgid "Could not connect to video generation service"
 msgstr ""
 
+#: app/tools.py
+msgid "Current time unavailable"
+msgstr "Current time unavailable"
+
+#: app/tools.py
+msgid "Division by zero"
+msgstr "Division by zero"
+
+#: app/tools.py
+msgid "Calculation error: {error}"
+msgstr "Calculation error: {error}"
+
+#: app/tools.py
+msgid "Web search service unavailable"
+msgstr "Web search service unavailable"
+
+#: app/tools.py
+msgid "No results found for query: {query}"
+msgstr "No results found for query: {query}"
+
+#: app/tools.py
+msgid "Document search service unavailable"
+msgstr "Document search service unavailable"
+
+#: app/tools.py
+msgid "User not identified for document search"
+msgstr "User not identified for document search"
+
+#: app/tools.py
+msgid "Document search error: {error}"
+msgstr "Document search error: {error}"
+
+#: app/tools.py
+msgid "No relevant documents found for query: {query}"
+msgstr "No relevant documents found for query: {query}"
+
+#: app/tools.py
+msgid "CCTV service unavailable"
+msgstr "CCTV service unavailable"
+
+#: app/tools.py
+msgid "Unknown tool: {tool}"
+msgstr "Unknown tool: {tool}"
+
+#: app/tools.py
+msgid "Tool execution error: {error}"
+msgstr "Tool execution error: {error}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "No date text provided"
+msgstr "No date text provided"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Cannot parse date: {text}"
+msgstr "Cannot parse date: {text}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Date calculation error: {error}"
+msgstr "Date calculation error: {error}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Unknown time_calc operation: {op}"
+msgstr "Unknown time_calc operation: {op}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Both from_time and to_time are required"
+msgstr "Both from_time and to_time are required"
+
+#: app/static/js/events.js
+msgid "tool_get_current_time"
+msgstr "Getting time..."
+
+#: app/static/js/events.js
+msgid "tool_calculator"
+msgstr "Calculating..."
+
+#: app/static/js/events.js
+msgid "tool_time_calc"
+msgstr "Calculating date..."
+
+#: app/static/js/events.js
+msgid "tool_web_search"
+msgstr "Searching the web..."
+
+#: app/static/js/events.js
+msgid "tool_rag_search"
+msgstr "Searching documents..."
+
+#: app/static/js/events.js
+msgid "tool_camera_snapshot"
+msgstr "Getting snapshot..."
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"
 

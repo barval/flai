@@ -149,13 +149,29 @@ class AbstractLlamaBackend:
         raise NotImplementedError
 
     def chat(
-        self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
-    ) -> str:
+        self,
+        messages: list[dict],
+        model: str,
+        config: dict,
+        timeout: int,
+        lang: str,
+        model_type: str = "chat",
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
+    ) -> str | dict[str, Any]:
         raise NotImplementedError
 
     def chat_stream(
-        self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
-    ) -> Generator[str, None, None]:
+        self,
+        messages: list[dict],
+        model: str,
+        config: dict,
+        timeout: int,
+        lang: str,
+        model_type: str = "chat",
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
+    ) -> Generator[str | dict[str, Any], None, None]:
         raise NotImplementedError
 
     def get_embeddings(self, texts: list[str], model: str, config: dict, timeout: int) -> list[list[float]] | None:
@@ -189,24 +205,34 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             return False
 
     def chat(
-        self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
-    ) -> str:
+        self,
+        messages: list[dict],
+        model: str,
+        config: dict,
+        timeout: int,
+        lang: str,
+        model_type: str = "chat",
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
+    ) -> str | dict[str, Any]:
         base_url = self.get_base_url()
         context = config.get("context_length", 4096)
-        temperature = config.get("temperature", 0.7)
+        temp = temperature if temperature is not None else config.get("temperature", 0.7)
         top_p = config.get("top_p", 0.9)
         repeat_penalty = config.get("repeat_penalty", 1.1)
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
             "stream": False,
             "max_tokens": context,
-            "temperature": temperature,
+            "temperature": temp,
             "top_p": top_p,
             "repeat_penalty": repeat_penalty,
             "stop": ["</s>", "<|eot_id|>"],
         }
+        if tools:
+            payload["tools"] = tools
 
         if not self.circuit_breaker.can_execute():
             return _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
@@ -219,9 +245,16 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                 if not choices:
                     return _tr("Model returned empty response", lang)
 
-                content = choices[0].get("message", {}).get("content", "")
+                message = choices[0].get("message", {})
+                content = message.get("content", "")
+                tool_calls = message.get("tool_calls")
+
                 if content is None:
-                    return _tr("Model returned empty response", lang)
+                    content = ""
+
+                if tool_calls:
+                    self.circuit_breaker.record_success()
+                    return {"content": content, "tool_calls": tool_calls}
 
                 for stop_token in ["</s>", "<|eot_id|>"]:
                     if stop_token in content:
@@ -250,24 +283,34 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             return _tr("Error", lang) + f": {str(e)}"
 
     def chat_stream(
-        self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
-    ) -> Generator[str, None, None]:
+        self,
+        messages: list[dict],
+        model: str,
+        config: dict,
+        timeout: int,
+        lang: str,
+        model_type: str = "chat",
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
+    ) -> Generator[str | dict[str, Any], None, None]:
         base_url = self.get_base_url()
         context = config.get("context_length", 4096)
-        temperature = config.get("temperature", 0.7)
+        temp = temperature if temperature is not None else config.get("temperature", 0.7)
         top_p = config.get("top_p", 0.9)
         repeat_penalty = config.get("repeat_penalty", 1.1)
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
             "stream": True,
             "max_tokens": context,
-            "temperature": temperature,
+            "temperature": temp,
             "top_p": top_p,
             "repeat_penalty": repeat_penalty,
             "stop": ["</s>", "<|eot_id|>"],
         }
+        if tools:
+            payload["tools"] = tools
 
         if not self.circuit_breaker.can_execute():
             yield _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
@@ -289,6 +332,8 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             # from any model type (Qwen, DeepSeek, gpt-oss, etc.)
             _thinking_active = False
             _stream_buffer = ""
+            # Accumulate tool calls from streaming chunks
+            _tool_calls_by_index: dict[int, dict[str, Any]] = {}
 
             for line in response.iter_lines():
                 if not line:
@@ -310,11 +355,39 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                         )
                         if output:
                             yield output
+                    # Accumulate tool call deltas
+                    tc_deltas = delta.get("tool_calls")
+                    if tc_deltas:
+                        for tc_delta in tc_deltas:
+                            idx = tc_delta.get("index", 0)
+                            if idx not in _tool_calls_by_index:
+                                func = tc_delta.get("function", {})
+                                _tool_calls_by_index[idx] = {
+                                    "id": tc_delta.get("id", ""),
+                                    "type": "function",
+                                    "function": {
+                                        "name": func.get("name", ""),
+                                        "arguments": func.get("arguments", ""),
+                                    },
+                                }
+                            else:
+                                tc = _tool_calls_by_index[idx]
+                                func_delta = tc_delta.get("function", {})
+                                if func_delta.get("name"):
+                                    tc["function"]["name"] += func_delta["name"]
+                                if func_delta.get("arguments"):
+                                    tc["function"]["arguments"] += func_delta["arguments"]
+                                if tc_delta.get("id"):
+                                    tc["id"] = tc_delta["id"]
                 except json.JSONDecodeError:
                     continue
             # Flush remaining buffer (non-thinking tail)
             if _stream_buffer and not _thinking_active:
                 yield _stream_buffer
+            # If tool calls were accumulated, yield them as a dict
+            if _tool_calls_by_index:
+                tool_calls = [_tool_calls_by_index[i] for i in sorted(_tool_calls_by_index.keys())]
+                yield {"type": "tool_calls", "tool_calls": tool_calls}
         except requests.exceptions.Timeout:
             self.circuit_breaker.record_failure()
             yield _tr(
@@ -413,24 +486,34 @@ class LlamaSwapBackend(AbstractLlamaBackend):
             return False
 
     def chat(
-        self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
-    ) -> str:
+        self,
+        messages: list[dict],
+        model: str,
+        config: dict,
+        timeout: int,
+        lang: str,
+        model_type: str = "chat",
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
+    ) -> str | dict[str, Any]:
         base_url = self.get_base_url()
-        temperature = config.get("temperature", 0.7)
+        temp = temperature if temperature is not None else config.get("temperature", 0.7)
         top_p = config.get("top_p", 0.9)
         repeat_penalty = config.get("repeat_penalty", 1.1)
 
         model_name = model
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": model_name,
             "messages": messages,
             "stream": False,
-            "temperature": temperature,
+            "temperature": temp,
             "top_p": top_p,
             "repeat_penalty": repeat_penalty,
             "stop": ["</s>", "<|eot_id|>"],
         }
+        if tools:
+            payload["tools"] = tools
 
         self.logger.info(f"LlamaSwapBackend request: model={model}, payload keys={list(payload.keys())}")
 
@@ -451,9 +534,16 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     if not choices:
                         return _tr("Model returned empty response", lang)
 
-                    content = choices[0].get("message", {}).get("content", "")
+                    message = choices[0].get("message", {})
+                    content = message.get("content", "")
+                    tool_calls = message.get("tool_calls")
+
                     if content is None:
-                        return _tr("Model returned empty response", lang)
+                        content = ""
+
+                    if tool_calls:
+                        cb.record_success()
+                        return {"content": content, "tool_calls": tool_calls}  # type: ignore[return-value]
 
                     for stop_token in ["</s>", "<|eot_id|>"]:
                         if stop_token in content:
@@ -513,23 +603,33 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         return _tr("Internal error: no response from model", lang)
 
     def chat_stream(
-        self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
-    ) -> Generator[str, None, None]:
+        self,
+        messages: list[dict],
+        model: str,
+        config: dict,
+        timeout: int,
+        lang: str,
+        model_type: str = "chat",
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
+    ) -> Generator[str | dict[str, Any], None, None]:
         base_url = self.get_base_url()
-        temperature = config.get("temperature", 0.7)
+        temp = temperature if temperature is not None else config.get("temperature", 0.7)
         top_p = config.get("top_p", 0.9)
         repeat_penalty = config.get("repeat_penalty", 1.1)
         model_name = model
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": model_name,
             "messages": messages,
             "stream": True,
-            "temperature": temperature,
+            "temperature": temp,
             "top_p": top_p,
             "repeat_penalty": repeat_penalty,
             "stop": ["</s>", "<|eot_id|>"],
         }
+        if tools:
+            payload["tools"] = tools
 
         max_retries = 1 if model_type in ("multimodal", "reasoning", "chat") else 0
         response = None
@@ -591,6 +691,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     # from any model type (Qwen, DeepSeek, gpt-oss, etc.)
                     _thinking_active = False
                     _stream_buffer = ""
+                    # Accumulate tool calls from streaming chunks
+                    _tool_calls_by_index: dict[int, dict[str, Any]] = {}
 
                     for line in response.iter_lines():
                         if not line:
@@ -612,11 +714,39 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                                 )
                                 if output:
                                     yield output
+                            # Accumulate tool call deltas
+                            tc_deltas = delta.get("tool_calls")
+                            if tc_deltas:
+                                for tc_delta in tc_deltas:
+                                    idx = tc_delta.get("index", 0)
+                                    if idx not in _tool_calls_by_index:
+                                        func = tc_delta.get("function", {})
+                                        _tool_calls_by_index[idx] = {
+                                            "id": tc_delta.get("id", ""),
+                                            "type": "function",
+                                            "function": {
+                                                "name": func.get("name", ""),
+                                                "arguments": func.get("arguments", ""),
+                                            },
+                                        }
+                                    else:
+                                        tc = _tool_calls_by_index[idx]
+                                        func_delta = tc_delta.get("function", {})
+                                        if func_delta.get("name"):
+                                            tc["function"]["name"] += func_delta["name"]
+                                        if func_delta.get("arguments"):
+                                            tc["function"]["arguments"] += func_delta["arguments"]
+                                        if tc_delta.get("id"):
+                                            tc["id"] = tc_delta["id"]
                         except json.JSONDecodeError:
                             continue
                     # Flush remaining buffer (non-thinking tail)
                     if _stream_buffer and not _thinking_active:
                         yield _stream_buffer
+                    # If tool calls were accumulated, yield them as a dict
+                    if _tool_calls_by_index:
+                        tool_calls = [_tool_calls_by_index[i] for i in sorted(_tool_calls_by_index.keys())]
+                        yield {"type": "tool_calls", "tool_calls": tool_calls}
                     break  # success, exit retry loop
                 except requests.exceptions.Timeout:
                     if attempt < max_retries:
@@ -842,7 +972,10 @@ class LlamaCppClient:
             self._active_model_type = None
         return ok
 
-    def chat(self, messages: list[dict], model_type: str = "chat", lang: str = "ru", validate: bool = True) -> str:
+    def chat(
+        self, messages: list[dict], model_type: str = "chat", lang: str = "ru", validate: bool = True,
+        tools: list[dict] | None = None, temperature: float | None = None,
+    ) -> str | dict[str, Any]:
         if validate:
             error = self._validate_prompt(messages, model_type, lang)
             if error:
@@ -860,11 +993,12 @@ class LlamaCppClient:
             return self._translate("Model for {model_type} not configured", lang, model_type=model_type)
 
         timeout = config.get("timeout", 300)
-        return self.backend.chat(messages, model, config, timeout, lang, model_type=model_type)  # type: ignore[no-any-return]
+        return self.backend.chat(messages, model, config, timeout, lang, model_type=model_type, tools=tools, temperature=temperature)  # type: ignore[no-any-return]
 
     def chat_stream(
-        self, messages: list[dict], model_type: str = "chat", lang: str = "ru", validate: bool = True
-    ) -> Generator[str, None, None]:
+        self, messages: list[dict], model_type: str = "chat", lang: str = "ru", validate: bool = True,
+        tools: list[dict] | None = None, temperature: float | None = None,
+    ) -> Generator[str | dict[str, Any], None, None]:
         if validate:
             error = self._validate_prompt(messages, model_type, lang)
             if error:
@@ -886,7 +1020,7 @@ class LlamaCppClient:
             return
 
         timeout = config.get("timeout", 600)
-        yield from self.backend.chat_stream(messages, model, config, timeout, lang, model_type=model_type)
+        yield from self.backend.chat_stream(messages, model, config, timeout, lang, model_type=model_type, tools=tools, temperature=temperature)
 
     def chat_with_image(self, text: str, image_base64: str, model_type: str = "multimodal", lang: str = "ru") -> str:
         image_content = image_base64 if image_base64.startswith("data:") else f"data:image/jpeg;base64,{image_base64}"
@@ -897,7 +1031,7 @@ class LlamaCppClient:
                 "content": [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": image_content}}],
             }
         ]
-        return self.chat(messages, model_type=model_type, lang=lang)
+        return self.chat(messages, model_type=model_type, lang=lang)  # type: ignore[return-value]
 
     def chat_with_image_stream(
         self, text: str, image_base64: str, model_type: str = "multimodal", lang: str = "ru"
@@ -911,7 +1045,7 @@ class LlamaCppClient:
                 "content": [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": image_content}}],
             }
         ]
-        yield from self.chat_stream(messages, model_type=model_type, lang=lang)
+        yield from self.chat_stream(messages, model_type=model_type, lang=lang)  # type: ignore[misc]
 
     def get_embeddings(
         self, texts: list[str], model_type: str = "embedding", lang: str = "ru"
@@ -941,10 +1075,11 @@ class LlamaCppClient:
         stream: bool = False,
         lang: str = "ru",
         validate: bool = True,
-    ) -> str | dict[str, Any] | Generator[str, None, None]:
+        tools: list[dict] | None = None,
+    ) -> str | dict[str, Any] | Generator[str | dict[str, Any], None, None]:
         if stream:
-            return self.chat_stream(messages, model_type=model_type, lang=lang, validate=validate)
-        return self.chat(messages, model_type=model_type, lang=lang, validate=validate)
+            return self.chat_stream(messages, model_type=model_type, lang=lang, validate=validate, tools=tools)
+        return self.chat(messages, model_type=model_type, lang=lang, validate=validate, tools=tools)
 
     def unload_all_models(self) -> bool:
         return self.backend.unload_all_models()  # type: ignore[no-any-return]

@@ -12,7 +12,7 @@ Only simple questions (greetings, about yourself, time, skills) → category 1.
 If text is a statement or instruction (no "?") — it is a FACT → category 2.
 
 ## 1. SIMPLE QUERY — output query unchanged
-Any QUESTION: greeting, question about yourself, skills, time, or any other question.
+Any QUESTION: greeting, question about yourself, skills, time, calculations, or any other question.
 Output the query unchanged, without any marker.
 - "Hello" → "Hello"
 - "Who are you?" → "Who are you?"
@@ -22,6 +22,9 @@ Output the query unchanged, without any marker.
 - "What day is it?" → "What day is it?"
 - "What's new?" → "What's new?"
 - "Can you help?" → "Can you help?"
+- "What is 2+2*2?" → "What is 2+2*2?"
+- "Calculate 15 * 37 + 128" → "Calculate 15 * 37 + 128"
+- "Compute square root of 144" → "Compute square root of 144"
 
 ## 2. FACT OR INSTRUCTION (output with marker)
 Only STATEMENTS and INSTRUCTIONS (NOT questions!):
@@ -88,8 +91,9 @@ Examples:
 - Query: "How much does iPhone 16 cost"
   Response: "[-SEARCH-] How much does iPhone 16 cost"
 
-## 8. COMPLEX QUERY (only if NOT document search and NOT web search)
-Everything else: calculations, code/text writing, story creation. Output marker and query.
+## 8. COMPLEX QUERY (only if NOT document search, NOT web search, and NOT calculations)
+Only complex tasks: code/text writing, story creation, complex reasoning.
+DO NOT include: simple math calculations (category 1), search (categories 6-7).
 - Query: "Write a story about spring"
   Response: "[-REASONING-] Write a story about spring"
 

@@ -199,7 +199,13 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'generating': {{ _('generating')|tojson }},
     'stop_generating': {{ _('stop_generating')|tojson }},
     'cancelling': {{ _('cancelling')|tojson }},
-    'cancelled': {{ _('cancelled')|tojson }}
+    'cancelled': {{ _('cancelled')|tojson }},
+    'tool_get_current_time': {{ _('tool_get_current_time')|tojson }},
+    'tool_calculator': {{ _('tool_calculator')|tojson }},
+    'tool_time_calc': {{ _('tool_time_calc')|tojson }},
+    'tool_web_search': {{ _('tool_web_search')|tojson }},
+    'tool_rag_search': {{ _('tool_rag_search')|tojson }},
+    'tool_camera_snapshot': {{ _('tool_camera_snapshot')|tojson }}
 });
 window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
 function t(key) {

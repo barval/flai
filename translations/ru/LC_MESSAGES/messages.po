@@ -1656,6 +1656,115 @@ msgstr "Превышено время ожидания генерации вид
 msgid "Could not connect to video generation service"
 msgstr "Не удалось подключиться к сервису генерации видео"
 
+#: app/tools.py
+#, python-brace-format
+msgid "Current time unavailable"
+msgstr "Текущее время недоступно"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Division by zero"
+msgstr "Деление на ноль"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Calculation error: {error}"
+msgstr "Ошибка вычисления: {error}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Web search service unavailable"
+msgstr "Сервис веб-поиска недоступен"
+
+#: app/tools.py
+#, python-brace-format
+msgid "No results found for query: {query}"
+msgstr "Результаты не найдены для запроса: {query}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Document search service unavailable"
+msgstr "Сервис поиска в документах недоступен"
+
+#: app/tools.py
+#, python-brace-format
+msgid "User not identified for document search"
+msgstr "Пользователь не идентифицирован для поиска в документах"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Document search error: {error}"
+msgstr "Ошибка поиска в документах: {error}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "No relevant documents found for query: {query}"
+msgstr "Релевантные документы не найдены для запроса: {query}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "CCTV service unavailable"
+msgstr "Сервис видеонаблюдения недоступен"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Unknown tool: {tool}"
+msgstr "Неизвестный инструмент: {tool}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Tool execution error: {error}"
+msgstr "Ошибка выполнения инструмента: {error}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "No date text provided"
+msgstr "Не указан текст даты"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Cannot parse date: {text}"
+msgstr "Не удалось распознать дату: {text}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Date calculation error: {error}"
+msgstr "Ошибка вычисления даты: {error}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Unknown time_calc operation: {op}"
+msgstr "Неизвестная операция time_calc: {op}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Both from_time and to_time are required"
+msgstr "Необходимо указать оба времени: от и до"
+
+#: app/static/js/events.js
+msgid "tool_get_current_time"
+msgstr "Получаю время..."
+
+#: app/static/js/events.js
+msgid "tool_calculator"
+msgstr "Вычисляю..."
+
+#: app/static/js/events.js
+msgid "tool_time_calc"
+msgstr "Рассчитываю дату..."
+
+#: app/static/js/events.js
+msgid "tool_web_search"
+msgstr "Ищу в интернете..."
+
+#: app/static/js/events.js
+msgid "tool_rag_search"
+msgstr "Ищу в документах..."
+
+#: app/static/js/events.js
+msgid "tool_camera_snapshot"
+msgstr "Получаю снимок..."
+
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"
 

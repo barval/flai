@@ -100,10 +100,11 @@ class BaseModule(TranslationMixin):
         return get_model_config(model_type)  # type: ignore[no-any-return]
 
     def call_llamacpp(
-        self, messages: list[dict[str, Any]], model_type: str = "chat", lang: str = "ru"
+        self, messages: list[dict[str, Any]], model_type: str = "chat", lang: str = "ru",
+        tools: list[dict[str, Any]] | None = None,
     ) -> str | dict[str, Any]:
         """Call llama-server with configuration."""
-        return self.llamacpp.call(messages, model_type, False, lang)  # type: ignore[no-any-return]
+        return self.llamacpp.call(messages, model_type, False, lang, tools=tools)  # type: ignore[no-any-return]
 
     # --- Context handling methods ---
     def _estimate_tokens(self, text: str, model_type: str = "chat", lang: str = "ru") -> int:

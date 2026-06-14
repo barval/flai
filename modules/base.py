@@ -425,7 +425,11 @@ class BaseModule(TranslationMixin):
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )
 
-        rag_context_str = rag_context if rag_context else self._("No additional information from documents.", lang)
+        if rag_context:
+            heading = "Найденная информация из документов:" if lang == "ru" else "Found information from documents:"
+            rag_context_str = heading + "\n" + rag_context
+        else:
+            rag_context_str = ""
 
         reasoning_prompt = format_prompt(
             "reasoning.template",
@@ -515,7 +519,11 @@ class BaseModule(TranslationMixin):
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )
 
-        rag_context_str = rag_context if rag_context else self._("No additional information from documents.", lang)
+        if rag_context:
+            heading = "Найденная информация из документов:" if lang == "ru" else "Found information from documents:"
+            rag_context_str = heading + "\n" + rag_context
+        else:
+            rag_context_str = ""
 
         prompt = format_prompt(
             "reasoning.template",

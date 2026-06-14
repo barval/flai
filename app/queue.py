@@ -1394,7 +1394,8 @@ class RedisRequestQueue:
             if rag_answer is not None:
                 if self._is_llm_error_string(rag_answer):
                     return self._build_error_response(session_id, rag_answer, rag_time, lang)
-                model_used = rag_model.replace(".gguf", "") + " (RAG)" if rag_model else "unknown (RAG)"
+                model_name = rag_model if rag_model and rag_model.endswith(".gguf") else (rag_model + ".gguf" if rag_model else "")
+                model_used = model_name + " (RAG)" if model_name else "unknown (RAG)"
                 self.app.logger.info(f"RAG answered in reasoning request: {query[:50]}...")
                 return self._save_and_respond(
                     session_id,
@@ -2042,47 +2043,51 @@ class RedisRequestQueue:
         then re-queues to the slow worker for reasoning model generation.
         This avoids GPU contention: the reasoning model (~13 GiB) is loaded
         only in the slow worker where VRAM is properly managed.
+        When no relevant documents found (below threshold), falls back to reasoning model.
         """
         rag = self.app.modules.get("rag")
         if not rag or not rag.available:
-            return self._build_error_response(
-                session_id, self.app.modules["base"]._("No relevant documents found", lang), 0, lang
+            self.app.logger.warning("RAG not available — falling back to reasoning")
+            return self._requeue_reasoning_task(
+                query, session_id, user_id, lang, response_style,
             )
 
         # Step 1: RAG search only (embedding ~500MB — safe on fast worker)
-        rag_start = time.time()
         rag_context = ""
+        rag_threshold = self.app.config.get("RAG_RELEVANCE_THRESHOLD_DEFAULT", 0.3)
         try:
             chunks, scores = rag.search(user_id, query, top_k=20)
-            if chunks:
+            filtered = [(c, s) for c, s in zip(chunks, scores, strict=False) if s >= rag_threshold]
+            if filtered:
                 from flask_babel import gettext as _
 
                 with force_locale(lang):
                     source_label = _("Source")
                 context_parts = []
-                for i, chunk in enumerate(chunks[:15]):
+                for _i, (chunk, score) in enumerate(filtered[:15]):
                     filename = chunk.get("filename", "?")
                     text = chunk.get("text", str(chunk))
-                    score = scores[i] if i < len(scores) else 0.0
                     context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
                 rag_context = "\n\n".join(context_parts)
                 self.app.logger.info(
-                    f"RAG search: {len(chunks)} chunks, {len(rag_context)} chars — requeueing to slow worker"
+                    f"RAG _process_rag_task: {len(chunks)} raw, {len(filtered)} filtered (>={rag_threshold}), "
+                    f"{len(rag_context)} chars — requeueing to slow worker"
                 )
             else:
-                rag_time = round(time.time() - rag_start, 1)
                 self.app.logger.warning(
-                    f"RAG search returned 0 chunks for query: {query[:100]}... "
-                    f"user_id={user_id}, search_time={rag_time}s"
+                    f"RAG _process_rag_task: {len(chunks)} chunks but none above threshold {rag_threshold} "
+                    f"for query: {query[:100]}... — falling back to reasoning"
                 )
-                return self._build_error_response(
-                    session_id, self.app.modules["base"]._("No relevant documents found", lang), rag_time, lang
+                return self._requeue_reasoning_task(
+                    query, session_id, user_id, lang, response_style,
                 )
         except Exception as e:
             self.logger.error(f"RAG search failed: {e}")
-            rag_time = round(time.time() - rag_start, 1)
-            return self._build_error_response(
-                session_id, self.app.modules["base"]._("No relevant documents found", lang), rag_time, lang
+            self.app.logger.warning(
+                f"RAG search failed, falling back to reasoning: {e}"
+            )
+            return self._requeue_reasoning_task(
+                query, session_id, user_id, lang, response_style,
             )
 
         # Step 2: Re-queue to slow worker for reasoning model generation
@@ -2158,49 +2163,51 @@ class RedisRequestQueue:
 
         Performs RAG search (embedding + Qdrant) on the fast worker,
         then re-queues to the slow worker for reasoning model generation.
-        This avoids GPU contention: the reasoning model (~13 GiB) is loaded
-        only in the slow worker where VRAM is properly managed.
+        When no relevant documents found (below threshold), falls back to reasoning model.
         """
         rag = self.app.modules.get("rag")
         if not rag or not rag.available:
-            return self._build_error_response(
-                session_id, self.app.modules["base"]._("No relevant documents found", lang), 0, lang
+            self.app.logger.warning("RAG not available — falling back to reasoning")
+            return self._requeue_reasoning_task(
+                query, session_id, user_id, lang, response_style,
             )
 
         # Step 1: RAG search only (embedding ~500MB — safe on fast worker)
-        rag_start = time.time()
         rag_context = ""
+        rag_threshold = self.app.config.get("RAG_RELEVANCE_THRESHOLD_DEFAULT", 0.3)
         try:
             chunks, scores = rag.search(user_id, query, top_k=20)
-            if chunks:
+            filtered = [(c, s) for c, s in zip(chunks, scores, strict=False) if s >= rag_threshold]
+            if filtered:
                 from flask_babel import gettext as _
 
                 with force_locale(lang):
                     source_label = _("Source")
                 context_parts = []
-                for i, chunk in enumerate(chunks[:15]):
+                for _i, (chunk, score) in enumerate(filtered[:15]):
                     filename = chunk.get("filename", "?")
                     text = chunk.get("text", str(chunk))
-                    score = scores[i] if i < len(scores) else 0.0
                     context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
                 rag_context = "\n\n".join(context_parts)
                 self.app.logger.info(
-                    f"RAG search: {len(chunks)} chunks, {len(rag_context)} chars — requeueing to slow worker"
+                    f"RAG _process_rag_task_stream: {len(chunks)} raw, {len(filtered)} filtered (>={rag_threshold}), "
+                    f"{len(rag_context)} chars — requeueing to slow worker"
                 )
             else:
-                rag_time = round(time.time() - rag_start, 1)
                 self.app.logger.warning(
-                    f"RAG search returned 0 chunks for query: {query[:100]}... "
-                    f"user_id={user_id}, search_time={rag_time}s"
+                    f"RAG _process_rag_task_stream: {len(chunks)} chunks but none above threshold {rag_threshold} "
+                    f"for query: {query[:100]}... — falling back to reasoning"
                 )
-                return self._build_error_response(
-                    session_id, self.app.modules["base"]._("No relevant documents found", lang), rag_time, lang
+                return self._requeue_reasoning_task(
+                    query, session_id, user_id, lang, response_style,
                 )
         except Exception as e:
             self.logger.error(f"RAG search failed: {e}")
-            rag_time = round(time.time() - rag_start, 1)
-            return self._build_error_response(
-                session_id, self.app.modules["base"]._("No relevant documents found", lang), rag_time, lang
+            self.app.logger.warning(
+                f"RAG search failed, falling back to reasoning: {e}"
+            )
+            return self._requeue_reasoning_task(
+                query, session_id, user_id, lang, response_style,
             )
 
         # Step 2: Re-queue to slow worker for reasoning model generation

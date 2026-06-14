@@ -746,7 +746,7 @@ class RedisRequestQueue:
         # So if we find "⚠️ " followed by an error prefix, it's definitely an error.
         if "⚠️ " in text:
             idx = text.index("⚠️ ")
-            tail = text[idx + 3 :]  # skip "⚠️ "
+            tail = text[idx + 3:]  # skip "⚠️ "
             if any(tail.startswith(pfx) for pfx in error_prefixes):
                 return True
         return False
@@ -1062,9 +1062,7 @@ class RedisRequestQueue:
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "editing_image"})
         image_result = self.app.modules["image"].edit_image(
-            edit_data,
-            file_data,
-            lang=lang,
+            edit_data, file_data, lang=lang,
             task_id=task.get("id") if task else None,
             user_id=user_id,
             session_id=session_id,
@@ -1142,17 +1140,12 @@ class RedisRequestQueue:
             file_type=image_result["file_type"],
             file_name=image_result["file_name"],
             file_path=file_path,
-            extra={**extra, "model_type": "image_edit"},
+            extra=extra,
             response_style=response_style,
         )
 
     def _process_image_gen_task(
-        self,
-        query: str,
-        session_id: str,
-        user_id: str,
-        lang: str,
-        response_style: str = "neutral",
+        self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral",
         task: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle image generation from text (router action_type='image')."""
@@ -1198,8 +1191,7 @@ class RedisRequestQueue:
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "generating_image"})
         image_result = self.app.modules["image"]._call_wrapper(
-            prompt_data,
-            lang=lang,
+            prompt_data, lang=lang,
             task_id=task.get("id") if task else None,
             user_id=user_id,
             session_id=session_id,
@@ -1247,7 +1239,7 @@ class RedisRequestQueue:
             file_type=image_result["file_type"],
             file_name=image_result["file_name"],
             file_path=file_path,
-            extra={**extra, "model_type": "image_gen"},
+            extra=extra,
             response_style=response_style,
         )
 
@@ -1394,16 +1386,10 @@ class RedisRequestQueue:
             if rag_answer is not None:
                 if self._is_llm_error_string(rag_answer):
                     return self._build_error_response(session_id, rag_answer, rag_time, lang)
-                model_used = rag_model.replace(".gguf", "") + " (RAG)" if rag_model else "unknown (RAG)"
+                model_used = rag_model + " (RAG)" if rag_model else "unknown (RAG)"
                 self.app.logger.info(f"RAG answered in reasoning request: {query[:50]}...")
                 return self._save_and_respond(
-                    session_id,
-                    rag_answer,
-                    model_used,
-                    rag_time,
-                    extra={"model_type": "reasoning"},
-                    response_style=response_style,
-                    user_id=user_id,
+                    session_id, rag_answer, model_used, rag_time, response_style=response_style, user_id=user_id
                 )
 
             # No RAG answer — search raw chunks for reasoning model context
@@ -1471,10 +1457,8 @@ class RedisRequestQueue:
         full_response = self._strip_thinking_tags(full_response)
         if not full_response.strip():
             return self._build_error_response(
-                session_id,
-                "⚠️ " + self.app.modules["base"]._("No response from reasoning model", lang),
-                reasoning_time,
-                lang,
+                session_id, "⚠️ " + self.app.modules["base"]._("No response from reasoning model", lang),
+                reasoning_time, lang,
             )
         if self._is_llm_error_string(full_response):
             return self._build_error_response(session_id, full_response, reasoning_time, lang)
@@ -1483,7 +1467,6 @@ class RedisRequestQueue:
             full_response,
             self._get_model_name("reasoning") or "reasoning",
             reasoning_time,
-            extra={"model_type": "reasoning"},
             response_style=response_style,
             user_id=user_id,
         )
@@ -1503,18 +1486,11 @@ class RedisRequestQueue:
 
         file_data = request_data.get("file_data")
         if file_data:
-            return self._process_video_gen_task_from_image(
-                query, file_data, session_id, user_id, lang, response_style, task=task
-            )
+            return self._process_video_gen_task_from_image(query, file_data, session_id, user_id, lang, response_style, task=task)
         return self._process_video_gen_task(query, session_id, user_id, lang, response_style, task=task)
 
     def _process_video_gen_task(
-        self,
-        query: str,
-        session_id: str,
-        user_id: str,
-        lang: str,
-        response_style: str = "neutral",
+        self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral",
         task: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle video generation from text (router action_type='video')."""
@@ -1638,7 +1614,7 @@ class RedisRequestQueue:
                 file_type=video_result["file_type"],
                 file_name=video_result["file_name"],
                 file_path=file_path,
-                extra={**extra, "model_type": "video"},
+                extra=extra,
                 response_style=response_style,
             )
         finally:
@@ -1648,13 +1624,7 @@ class RedisRequestQueue:
             self._unload_llamacpp_models()
 
     def _process_video_gen_task_from_image(
-        self,
-        query: str,
-        image_data: str,
-        session_id: str,
-        user_id: str,
-        lang: str,
-        response_style: str = "neutral",
+        self, query: str, image_data: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral",
         task: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle video generation from image + text ([-VIDEO-] marker route)."""
@@ -1708,11 +1678,7 @@ class RedisRequestQueue:
             if task:
                 self._publish_stream_event(task, "task_progress", {"stage": "generating_video"})
             video_result = self.app.modules["video"].generate_video(
-                prompt_data,
-                image_data=image_data,
-                lang=lang,
-                user_id=user_id,
-                session_id=session_id,
+                prompt_data, image_data=image_data, lang=lang, user_id=user_id, session_id=session_id,
                 task_id=task.get("id") if task else None,
             )
             gen_time = round(time.time() - gen_start, 1)
@@ -1806,7 +1772,7 @@ class RedisRequestQueue:
                 file_type=video_result["file_type"],
                 file_name=video_result["file_name"],
                 file_path=file_path,
-                extra={**extra, "model_type": "video"},
+                extra=extra,
                 response_style=response_style,
             )
         finally:
@@ -1866,7 +1832,6 @@ class RedisRequestQueue:
                 "file_size": camera_result["file_size"],
                 "file_type": camera_result["image_type"],
                 "response_time": camera_time,
-                "model_type": "camera",
             },
             response_style=response_style,
         )
@@ -1895,13 +1860,7 @@ class RedisRequestQueue:
                 bot_reply = f"⚠️ {error}"
             mm_model = self._get_model_name("multimodal") or "unknown"
             second = self._save_and_respond(
-                session_id,
-                bot_reply,
-                mm_model,
-                mm_time,
-                is_error=bool(error),
-                extra={"model_type": "multimodal"},
-                response_style=response_style,
+                session_id, bot_reply, mm_model, mm_time, is_error=bool(error), response_style=response_style
             )
             second["response_time"] = mm_time
             messages.append(second)
@@ -1962,7 +1921,6 @@ class RedisRequestQueue:
                 "file_size": camera_result["file_size"],
                 "file_type": camera_result["image_type"],
                 "response_time": camera_time,
-                "model_type": "camera",
             },
             response_style=response_style,
         )
@@ -1979,7 +1937,6 @@ class RedisRequestQueue:
                 "response": translated_text,
                 "session_id": session_id,
                 "model_used": "camera",
-                "model_type": "camera",
                 "response_time": camera_time,
                 "message_id": image_result.get("message_id"),
                 "assistant_timestamp": image_result.get("assistant_timestamp"),
@@ -2029,7 +1986,6 @@ class RedisRequestQueue:
             full_response,
             model_used,
             mm_time,
-            extra={"model_type": "camera"},
             response_style=response_style,
         )
 
@@ -2242,8 +2198,19 @@ class RedisRequestQueue:
         query = router_result["query"]
 
         if action_type == "reasoning":
-            return self._requeue_reasoning_task(query, session_id, user_id, lang, response_style, user_class=user_class)
-        elif action_type == "image":
+            # Try tools first — chat model with tools can handle many "reasoning" queries
+            return self._process_chat_with_tools(
+                task={"id": uuid.uuid4().hex, "user_id": user_id, "session_id": session_id},
+                query=query,
+                current_time_str=current_time_str,
+                session_id=session_id,
+                user_id=user_id,
+                lang=lang,
+                response_style=response_style,
+                stream=False,
+            )
+
+        if action_type == "image":
             return self._requeue_image_task(query, session_id, user_id, lang, response_style, user_class=user_class)
         elif action_type == "video":
             return self._requeue_video_task(query, session_id, user_id, lang, response_style, user_class=user_class)
@@ -2255,6 +2222,9 @@ class RedisRequestQueue:
             return self._process_rag_task(query, session_id, user_id, lang, response_style)
         elif action_type == "search":
             return self._process_search_task(query, session_id, user_id, lang, response_style)
+        elif action_type == "reasoning":
+            # GPU-heavy operation — re-queue to slow worker
+            return self._requeue_reasoning_task(query, session_id, user_id, lang, response_style, user_class=user_class)
         else:
             # Simple query: router classified but did not generate text.
             # Call chat model with tool calling support.
@@ -2297,28 +2267,21 @@ class RedisRequestQueue:
         action_type = router_result["action"]
         query = router_result["query"]
 
-        # Reasoning — re-queue to slow worker (reasoning model, ~10 GiB VRAM).
-        if action_type == "reasoning":
-            return self._requeue_reasoning_task(
-                query,
-                session_id,
-                user_id,
-                lang,
-                response_style,
-                user_class=task.get("user_class", 2),
+        # Reasoning — route through chat model with tools first.
+        # The chat model can handle simple queries (math, time, search) via tools.
+        # Only requeue to slow worker if the chat model can't handle it.
+        if action_type == "reasoning" and router_result.get("needs_reasoning"):
+            # Try tools first — chat model with tools can handle many "reasoning" queries
+            # (math calculations, web search, document search, camera, time)
+            return self._process_chat_with_tools(
+                task, query, current_time_str, session_id, user_id, lang, response_style,
             )
 
         # Simple query: router classified but did not generate text.
         # Use chat model with tool calling support.
-        if action_type in ("none", "fact"):
+        if action_type in ("none", "fact") or (action_type == "reasoning" and not router_result.get("needs_reasoning")):
             return self._process_chat_with_tools(
-                task,
-                query,
-                current_time_str,
-                session_id,
-                user_id,
-                lang,
-                response_style,
+                task, query, current_time_str, session_id, user_id, lang, response_style,
             )
 
         # Stream-aware actions — dispatch directly, no second router call
@@ -2349,7 +2312,6 @@ class RedisRequestQueue:
             query,
             self._get_model_name("chat") or "unknown",
             router_time,
-            extra={"model_type": "chat"},
             response_style=response_style,
             user_id=user_id,
         )
@@ -2379,16 +2341,11 @@ class RedisRequestQueue:
         # Build system + user messages for tool calling
         response_language = "Russian" if lang == "ru" else "English"
         context_str = base._get_context_for_model(  # noqa: SLF001
-            session_id,
-            "chat",
-            query,
-            lang,
-            user_id=user_id,
-            skip_slm=False,
+            session_id, "chat", query, lang, user_id=user_id, skip_slm=False,
         )
-        style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
-            response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
-        )
+        style_instruction = STYLE_INSTRUCTIONS.get(
+            lang, STYLE_INSTRUCTIONS["ru"]
+        ).get(response_style, STYLE_INSTRUCTIONS[lang]["neutral"])
 
         if lang == "ru":
             system_content = (
@@ -2484,23 +2441,18 @@ class RedisRequestQueue:
             if isinstance(response, str):
                 if self._is_llm_error_string(response):
                     return self._build_error_response(
-                        session_id,
-                        response,
-                        round(time.time() - stream_start, 1),
-                        lang,
+                        session_id, response, round(time.time() - stream_start, 1), lang,
                     )
 
                 # Detect raw JSON tool call in text (small models sometimes output tool calls as text)
                 parsed_tool_call = self._try_parse_text_tool_call(response)
                 if parsed_tool_call:
                     tool_calls = [parsed_tool_call]
-                    messages.append(
-                        {
-                            "role": "assistant",
-                            "content": "",
-                            "tool_calls": tool_calls,
-                        }
-                    )
+                    messages.append({
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": tool_calls,
+                    })
                     for tc in tool_calls:
                         tc_id = tc.get("id", "")
                         func = tc.get("function", {})
@@ -2509,34 +2461,24 @@ class RedisRequestQueue:
                             arguments = json.loads(func.get("arguments", "{}"))
                         except json.JSONDecodeError:
                             arguments = {}
-                        self._publish_stream_event(
-                            task,
-                            "tool_call",
-                            {
-                                "tool_name": tool_name,
-                                "arguments": arguments,
-                            },
-                        )
+                        self._publish_stream_event(task, "tool_call", {
+                            "tool_name": tool_name,
+                            "arguments": arguments,
+                        })
                         self.logger.info(f"Tool call (text-parsed): {tool_name}({arguments})")
                         tool_context = {"app": self.app, "user_id": user_id, "lang": lang}
                         tool_result = execute_tool(tool_name, arguments, tool_context)
                         last_tool_result = tool_result
                         self.logger.info(f"Tool result: {tool_result[:200]}")
-                        self._publish_stream_event(
-                            task,
-                            "tool_result",
-                            {
-                                "tool_name": tool_name,
-                                "result_preview": tool_result[:200] + "..." if len(tool_result) > 200 else tool_result,
-                            },
-                        )
-                        messages.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": tc_id,
-                                "content": tool_result,
-                            }
-                        )
+                        self._publish_stream_event(task, "tool_result", {
+                            "tool_name": tool_name,
+                            "result_preview": tool_result[:200] + "..." if len(tool_result) > 200 else tool_result,
+                        })
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc_id,
+                            "content": tool_result,
+                        })
                     continue
 
                 full_response = response
@@ -2551,13 +2493,11 @@ class RedisRequestQueue:
                 content = response.get("content", "")
 
                 # Add assistant message with tool_calls to history
-                messages.append(
-                    {
-                        "role": "assistant",
-                        "content": content,
-                        "tool_calls": tool_calls,
-                    }
-                )
+                messages.append({
+                    "role": "assistant",
+                    "content": content,
+                    "tool_calls": tool_calls,
+                })
 
                 # Execute each tool
                 for tc in tool_calls:
@@ -2570,14 +2510,10 @@ class RedisRequestQueue:
                         arguments = {}
 
                     # Publish tool_call event
-                    self._publish_stream_event(
-                        task,
-                        "tool_call",
-                        {
-                            "tool_name": tool_name,
-                            "arguments": arguments,
-                        },
-                    )
+                    self._publish_stream_event(task, "tool_call", {
+                        "tool_name": tool_name,
+                        "arguments": arguments,
+                    })
 
                     self.logger.info(f"Tool call: {tool_name}({arguments})")
 
@@ -2590,23 +2526,17 @@ class RedisRequestQueue:
 
                     # Publish tool_result event
                     result_preview = tool_result[:200] + "..." if len(tool_result) > 200 else tool_result
-                    self._publish_stream_event(
-                        task,
-                        "tool_result",
-                        {
-                            "tool_name": tool_name,
-                            "result_preview": result_preview,
-                        },
-                    )
+                    self._publish_stream_event(task, "tool_result", {
+                        "tool_name": tool_name,
+                        "result_preview": result_preview,
+                    })
 
                     # Add tool result to messages
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tc_id,
-                            "content": tool_result,
-                        }
-                    )
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc_id,
+                        "content": tool_result,
+                    })
 
                 self.logger.info(
                     f"Tool calling iteration {iteration + 1}: "
@@ -2632,7 +2562,6 @@ class RedisRequestQueue:
             full_response,
             self._get_model_name("chat") or "unknown",
             process_time,
-            extra={"model_type": "chat"},
             response_style=response_style,
             user_id=user_id,
         )
@@ -2814,15 +2743,8 @@ class RedisRequestQueue:
                 is_error = True
 
         mm_model = "system" if is_error else (self._get_model_name("multimodal") or "unknown")
-        model_type = "system" if is_error else "multimodal"
         return self._save_and_respond(
-            session_id,
-            bot_reply,
-            mm_model,
-            process_time,
-            is_error=is_error,
-            extra={"model_type": model_type},
-            response_style=response_style,
+            session_id, bot_reply, mm_model, process_time, is_error=is_error, response_style=response_style
         )
 
     def _process_image_chat_task_stream(
@@ -2852,7 +2774,6 @@ class RedisRequestQueue:
                 "system",
                 process_time,
                 is_error=True,
-                extra={"model_type": "system"},
                 response_style=response_style,
             )
 
@@ -2867,7 +2788,6 @@ class RedisRequestQueue:
                 "system",
                 process_time,
                 is_error=True,
-                extra={"model_type": "system"},
                 response_style=response_style,
             )
 
@@ -2882,7 +2802,6 @@ class RedisRequestQueue:
                 "system",
                 process_time,
                 is_error=True,
-                extra={"model_type": "system"},
                 response_style=response_style,
             )
         stream_gen = self.app.modules["multimodal"].process_image_with_text_stream(
@@ -2925,7 +2844,6 @@ class RedisRequestQueue:
                 full_response,
                 mm_model,
                 process_time,
-                extra={"model_type": "multimodal"},
                 response_style=response_style,
             )
 
@@ -2959,7 +2877,6 @@ class RedisRequestQueue:
                         "unknown",
                         process_time,
                         is_error=True,
-                        extra={"model_type": "system"},
                         response_style=response_style,
                     )
                 if video_marker in buffer:
@@ -2986,7 +2903,6 @@ class RedisRequestQueue:
                         "unknown",
                         process_time,
                         is_error=True,
-                        extra={"model_type": "system"},
                         response_style=response_style,
                     )
                 if len(buffer) > 100:
@@ -3015,7 +2931,6 @@ class RedisRequestQueue:
             full_response,
             mm_model,
             process_time,
-            extra={"model_type": "multimodal"},
             response_style=response_style,
         )
 
@@ -3156,9 +3071,7 @@ class RedisRequestQueue:
                     "file_data": image_data,
                     "file_type": image_type,
                     "file_name": image_name,
-                    "preview": (transcribed_text[:50] + "...")
-                    if transcribed_text
-                    else self.app.modules["base"]._("Voice request", lang=lang),
+                    "preview": (transcribed_text[:50] + "...") if transcribed_text else self.app.modules["base"]._("Voice request", lang=lang),
                     "response_style": response_style,
                     "stream": True,
                 }
@@ -3532,14 +3445,7 @@ class RedisRequestQueue:
         2. "tool_name {args_json}" — tool name as prefix, JSON is arguments
         3. ```json blocks and <tool_call> tags
         """
-        known_tool_names = {
-            "get_current_time",
-            "calculator",
-            "web_search",
-            "rag_search",
-            "camera_snapshot",
-            "time_calc",
-        }
+        known_tool_names = {"get_current_time", "calculator", "web_search", "rag_search", "camera_snapshot", "time_calc"}
         text = text.strip()
 
         # Try <tool_call>...</tool_call> format
@@ -3573,7 +3479,7 @@ class RedisRequestQueue:
                     break
         if end < 0:
             return None
-        json_text = json_text[: end + 1]
+        json_text = json_text[:end + 1]
 
         try:
             data = json.loads(json_text)

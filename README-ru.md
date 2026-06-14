@@ -18,6 +18,8 @@
 
 ### 🤖 Основные возможности ИИ
 - 💬 **Интеллектуальный чат** – умная маршрутизация запросов (быстрые модели для простых, мощные для сложных)
+- 🛠 **Вызов инструментов** – нативная OpenAI-совместимая система tool calling: калькулятор, текущее время, расчёты дат/времени, поиск в интернете, поиск по документам (RAG), снимки камер — всё через `--jinja` в llama.cpp + Qwen3
+- 🌐 **Поиск в интернете** – актуальные запросы через самостоятельно размещённый метапоисковик SearXNG: новости, погода, курсы валют, цены. Включить через `--profile with-search`
 - 🧠 **Продвинутое рассуждение** – выделенная модель для вычислений, генерации кода, творчества (стриминг ответов)
 - 🔍 **Мультимодальный анализ** – загрузка изображений и вопросы по их содержанию (llama.cpp + mmproj)
 - 🎨 **Генерация изображений** – создание изображений из текста с автоматической оптимизацией промптов (модель Z-Image-Turbo)
@@ -79,8 +81,15 @@
 
 ### Что нового в v9.0
 
-| v9.0+ (Новое) | Примечания |
-|---------------|------------|
+| Возможность | Примечания |
+|-------------|------------|
+| **Вызов инструментов (Tool Calling)** | Нативная OpenAI-совместимая система: калькулятор, текущее время, расчёты дат/времени, поиск в интернете, поиск по документам (RAG), снимки камер — всё через `--jinja` в llama.cpp + Qwen3 |
+| **Поиск в интернете (SearXNG)** | Самостоятельно размещённый метапоисковик для актуальных запросов: новости, погода, курсы валют, цены. Docker-профиль `with-search` |
+| **Расчёты дат и времени** | 9 операций через Pendulum: дней до дня недели/даты/конца периода, дней между датами, ближайший день недели на число, добавить дни, форматировать дату. Полная поддержка русского/английского |
+| **Чат-модель всегда горячая** | Предзагрузка при старте через `hooks.on_startup`, TTL=0 (никогда не выгружается), фоновый reload после каждой non-chat задачи — нет холодных стартов |
+| **Дедупликация alias в llama-swap** | Автоматическое устранение дубликатов алиасов когда несколько моделей используют один GGUF — предотвращает краш `duplicate alias` |
+| **Авто-загрузка chat-модели** | После завершения reasoning/multimodal/embedding/video chat-модель перезагружается фоновым потоком через минимальный completion-запрос — следующий вызов роутера мгновенный |
+| **Безусловный restart LTX-Video** | Контейнер видео всегда перезапускается после генерации (без rate-limiting) — гарантированная очистка CUDA-контекста (~3 ГБ освобождаются) |
 
 ### Основные компоненты
 
@@ -204,7 +213,7 @@ cd flai
 # + Голос (Whisper ASR + Piper TTS)
 ./deploy.sh --download-models --with-image-gen --with-voice
 
-# Всё включая RAG (Qdrant)
+# + RAG (Qdrant)
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag
 
 # + Генерация видео (LTX-Video)
@@ -213,13 +222,16 @@ cd flai
 # + Долговременная память (SuperLocalMemory)
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm
 
+# + Поиск в интернете (SearXNG)
+./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
+
 # Запуск тестов после развёртывания
 ./deploy.sh --download-models --with-image-gen --run-tests
 ```
 
 Также доступна русская версия скрипта:
 ```bash
-./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm
+./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
 ```
 
 ### Вариант B: Ручное развёртывание
@@ -343,8 +355,11 @@ docker compose -f docker-compose.gpu.yml --profile with-video up -d
 # С долговременной памятью (SuperLocalMemory)
 docker compose -f docker-compose.gpu.yml --profile with-slm up -d
 
-# Полный стек: чат + изображения + голос + RAG + видео + память
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm up -d
+# С поиском в интернете (SearXNG)
+docker compose -f docker-compose.gpu.yml --profile with-search up -d
+
+# Полный стек: чат + изображения + голос + RAG + видео + память + поиск
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm --profile with-search up -d
 ```
 
 > ⏱️ **Первая сборка занимает время**: stable-diffusion.cpp компилируется из исходников (~5-10 минут). Последующие сборки используют кеш Docker.
@@ -467,8 +482,8 @@ DEBUG_API_ENABLED=false   # Установите 'true' только для ра
 ### Профили Docker Compose
 
 ```bash
-# Запуск всех сервисов (чат + изображения + голос + RAG + видео + память)
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm up -d
+# Запуск всех сервисов (чат + изображения + голос + RAG + видео + память + поиск)
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm --profile with-search up -d
 
 # Чат + голос (без изображений и видео)
 docker compose -f docker-compose.gpu.yml --profile with-voice up -d
@@ -770,6 +785,14 @@ curl http://localhost:5000/metrics
 ## 🗺️ Дорожная карта
 
 ### ✅ Завершено
+
+- **Система вызова инструментов (Tool Calling)** — `app/tools.py`: калькулятор, текущее время, расчёты дат/времени (9 операций через Pendulum), поиск в интернете (SearXNG), поиск по документам (RAG), снимки камер. OpenAI tools API с накоплением tool_call в стриминге
+- **Модуль поиска в интернете (SearXNG)** — самостоятельно размещённый метапоисковик, Docker-профиль `with-search`, категория 7 в роутере для интернет-запросов
+- **Чат-модель всегда горячая** — предзагрузка при старте через `hooks.on_startup`, TTL=0 (никогда не выгружается), фоновый reload после каждой non-chat задачи, нет холодных стартов
+- **Дедупликация alias в llama-swap** — предотвращает краш `duplicate alias` когда несколько моделей используют один GGUF
+- **Безусловный restart LTX-Video** — контейнер видео всегда перезапускается после генерации, гарантированная очистка CUDA-контекста
+- **Коррекция TTL** — chat=0 (никогда не выгружать), non-chat=1 (выгрузка через 1с простоя). Предыдущие значения были инвертированы
+- **Очистка мёртвого torch-кода** — удалены все вызовы `torch.cuda.empty_cache()` из flai-web (~60 строк), управление только через TTL llama-swap
 
 - **Режим роутера llama.cpp** (`--models-dir`) — один llama-server с динамическим переключением моделей
 - **llama-swap бэкенд** — динамическое управление моделями, авто-генерация конфига из БД, оптимизация GPU VRAM

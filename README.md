@@ -18,6 +18,8 @@
 
 ### 🤖 Core AI Capabilities
 - 💬 **Intelligent Chat** – smart request routing (fast models for simple queries, powerful models for complex reasoning)
+- 🛠 **Tool Calling** – native OpenAI-compatible tool calling: calculator, current time, date/time calculations, web search, document search (RAG), camera snapshots — all via llama.cpp `--jinja` + Qwen3
+- 🌐 **Web Search** – real-time internet search via self-hosted SearXNG metasearch engine: news, weather, exchange rates, prices, latest events. Enable with `--profile with-search`
 - 🧠 **Advanced Reasoning** – dedicated model for calculations, code generation, creative writing (streaming responses)
 - 🔍 **Multimodal Analysis** – upload images and ask questions about their content (llama.cpp + mmproj)
 - 🎨 **Image Generation** – create images from text using stable-diffusion.cpp with automatic prompt optimization
@@ -79,8 +81,15 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 ### What's New in v9.0
 
-| v9.0+ (New) | Notes |
-|-------------|-------|
+| Feature | Notes |
+|---------|-------|
+| **Tool Calling** | Native OpenAI-compatible tool calling: calculator, current time, date/time calculations, web search, document search (RAG), camera snapshots — all via llama.cpp `--jinja` + Qwen3 |
+| **Web Search (SearXNG)** | Self-hosted metasearch engine for real-time internet queries: news, weather, exchange rates, prices. Docker profile `with-search` |
+| **Date/Time calculations** | 9 operations via Pendulum: days until weekday/date/period end, days between dates, next weekday on specific day, add days, format date. Full Russian/English support |
+| **Chat model stays hot permanently** | Chat model preload at startup via llama-swap `hooks.on_startup`, never unloaded by TTL (only swapped when another model needs VRAM). Background preload after every non-chat task eliminates cold starts |
+| **llama-swap alias deduplication** | Automatic dedup of aliases when multiple modules share the same GGUF file — prevents `duplicate alias` crash |
+| **Chat model auto-reload** | After reasoning/multimodal/embedding/video finishes, chat model is reloaded in a background thread via tiny completion request — next router call is instant |
+| **LTX-Video unconditional restart** | Video container always restarted after generation (no rate-limiting) — guaranteed CUDA context cleanup (~3 GB freed) |
 
 ### Core Components
 
@@ -204,7 +213,7 @@ cd flai
 # + Voice (Whisper ASR + Piper TTS)
 ./deploy.sh --download-models --with-image-gen --with-voice
 
-# Everything including RAG (Qdrant)
+# + RAG (Qdrant)
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag
 
 # + Video generation (LTX-Video)
@@ -212,6 +221,9 @@ cd flai
 
 # + Long-term memory (SuperLocalMemory)
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm
+
+# + Web search (SearXNG)
+./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
 
 # Run tests after deployment
 ./deploy.sh --download-models --with-image-gen --run-tests
@@ -340,8 +352,11 @@ docker compose -f docker-compose.gpu.yml --profile with-video up -d
 # With long-term memory (SuperLocalMemory)
 docker compose -f docker-compose.gpu.yml --profile with-slm up -d
 
-# Full stack: chat + images + voice + RAG + video + long-term memory
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm up -d
+# With web search (SearXNG)
+docker compose -f docker-compose.gpu.yml --profile with-search up -d
+
+# Full stack: chat + images + voice + RAG + video + long-term memory + web search
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm --profile with-search up -d
 ```
 
 > ⏱️ **First build takes time**: stable-diffusion.cpp is compiled from source (~5-10 minutes). Subsequent builds use the cache.
@@ -464,8 +479,8 @@ Configuration is loaded from `gunicorn_config.py`, not inline CLI args.
 ### Docker Compose Profiles
 
 ```bash
-# Start all services (chat + images + voice + RAG + video + long-term memory)
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm up -d
+# Start all services (chat + images + voice + RAG + video + long-term memory + web search)
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm --profile with-search up -d
 
 # Chat + voice only
 docker compose -f docker-compose.gpu.yml --profile with-voice up -d
@@ -773,6 +788,14 @@ curl http://localhost:5000/metrics
 ## 🗺️ Roadmap
 
 ### ✅ Completed
+
+- **Tool Calling system** — `app/tools.py`: calculator, current time, date/time calculations (9 ops via Pendulum), web search (SearXNG), document search (RAG), camera snapshots. OpenAI tools API with streaming tool_call accumulation
+- **Web Search module (SearXNG)** — self-hosted metasearch engine, Docker profile `with-search`, router category 7 for internet queries
+- **Chat model stays hot** — preload at startup via `hooks.on_startup`, TTL=0 (never unloaded), background reload after every non-chat task, no cold starts
+- **llama-swap alias dedup** — prevents `duplicate alias` crash when multiple modules share the same GGUF file
+- **LTX-Video unconditional restart** — video container always restarted after generation, guaranteed CUDA context cleanup
+- **TTL correction** — chat=0 (never unload), non-chat=1 (unload after 1s idle). Previous values were inverted
+- **Dead torch code cleanup** — removed all `torch.cuda.empty_cache()` calls from flai-web (~60 lines), pure llama-swap TTL management
 
 - **llama.cpp router mode** (`--models-dir`) — single llama-server with dynamic model switching
 - **llama-swap backend** — dynamic model management, auto-generated config from DB, GPU VRAM optimization

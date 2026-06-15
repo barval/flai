@@ -1327,10 +1327,13 @@ class RedisRequestQueue:
         response_style: str = "neutral",
         user_class: int = 2,
         rag_context: str = "",
+        skip_rag: bool = False,
     ) -> dict[str, Any]:
         """Re-queue a reasoning task to the slow queue.
         Prevents GPU contention with SD/Video (all GPU ops are serialised
         through the slow worker).
+        When skip_rag=True, the slow worker will NOT retry RAG search
+        (used when RAG was already tried on the fast worker and found nothing).
         """
         request_data = {
             "type": "reasoning_task",
@@ -1340,6 +1343,8 @@ class RedisRequestQueue:
         }
         if rag_context:
             request_data["rag_context"] = rag_context
+        if skip_rag:
+            request_data["skip_rag"] = True
         new_request_id, position_info = self.add_request(user_id, session_id, request_data, user_class, lang=lang)
         self.app.logger.info(
             f"Re-queued reasoning task {new_request_id} for session {session_id} (position {position_info['position']})"
@@ -1382,8 +1387,11 @@ class RedisRequestQueue:
 
         # Use pre-computed RAG context from fast worker, or search fresh
         rag_context = request_data.get("rag_context", "")
+        skip_rag = request_data.get("skip_rag", False)
         if rag_context:
             self.app.logger.info(f"Using pre-computed RAG context: {len(rag_context)} chars from fast worker")
+        elif skip_rag:
+            self.app.logger.info("RAG already attempted on fast worker (no relevant docs) — skipping retry")
         else:
             # No pre-computed context — try RAG answer directly (covers non-requeue paths)
             rag_start = time.time()
@@ -2049,7 +2057,7 @@ class RedisRequestQueue:
         if not rag or not rag.available:
             self.app.logger.warning("RAG not available — falling back to reasoning")
             return self._requeue_reasoning_task(
-                query, session_id, user_id, lang, response_style,
+                query, session_id, user_id, lang, response_style, skip_rag=True,
             )
 
         # Step 1: RAG search only (embedding ~500MB — safe on fast worker)
@@ -2079,7 +2087,7 @@ class RedisRequestQueue:
                     f"for query: {query[:100]}... — falling back to reasoning"
                 )
                 return self._requeue_reasoning_task(
-                    query, session_id, user_id, lang, response_style,
+                    query, session_id, user_id, lang, response_style, skip_rag=True,
                 )
         except Exception as e:
             self.logger.error(f"RAG search failed: {e}")
@@ -2087,7 +2095,7 @@ class RedisRequestQueue:
                 f"RAG search failed, falling back to reasoning: {e}"
             )
             return self._requeue_reasoning_task(
-                query, session_id, user_id, lang, response_style,
+                query, session_id, user_id, lang, response_style, skip_rag=True,
             )
 
         # Step 2: Re-queue to slow worker for reasoning model generation
@@ -2169,7 +2177,7 @@ class RedisRequestQueue:
         if not rag or not rag.available:
             self.app.logger.warning("RAG not available — falling back to reasoning")
             return self._requeue_reasoning_task(
-                query, session_id, user_id, lang, response_style,
+                query, session_id, user_id, lang, response_style, skip_rag=True,
             )
 
         # Step 1: RAG search only (embedding ~500MB — safe on fast worker)
@@ -2199,7 +2207,7 @@ class RedisRequestQueue:
                     f"for query: {query[:100]}... — falling back to reasoning"
                 )
                 return self._requeue_reasoning_task(
-                    query, session_id, user_id, lang, response_style,
+                    query, session_id, user_id, lang, response_style, skip_rag=True,
                 )
         except Exception as e:
             self.logger.error(f"RAG search failed: {e}")
@@ -2207,7 +2215,7 @@ class RedisRequestQueue:
                 f"RAG search failed, falling back to reasoning: {e}"
             )
             return self._requeue_reasoning_task(
-                query, session_id, user_id, lang, response_style,
+                query, session_id, user_id, lang, response_style, skip_rag=True,
             )
 
         # Step 2: Re-queue to slow worker for reasoning model generation
@@ -2249,7 +2257,7 @@ class RedisRequestQueue:
         query = router_result["query"]
 
         if action_type == "reasoning":
-            return self._requeue_reasoning_task(query, session_id, user_id, lang, response_style, user_class=user_class)
+            return self._requeue_reasoning_task(query, session_id, user_id, lang, response_style, user_class=user_class, skip_rag=True)
         elif action_type == "image":
             return self._requeue_image_task(query, session_id, user_id, lang, response_style, user_class=user_class)
         elif action_type == "video":
@@ -2313,6 +2321,7 @@ class RedisRequestQueue:
                 lang,
                 response_style,
                 user_class=task.get("user_class", 2),
+                skip_rag=True,
             )
 
         # Simple query: router classified but did not generate text.
@@ -2479,6 +2488,7 @@ class RedisRequestQueue:
         stream_start = time.time()
         full_response = ""
         last_tool_result = ""
+        streamed = False
 
         for iteration in range(MAX_TOOL_ITERATIONS):
             if self._is_task_cancelled(task["id"]):
@@ -2547,9 +2557,19 @@ class RedisRequestQueue:
                     continue
 
                 full_response = response
+                # Check cancel after blocking chat() call — flag may have been set during generation
+                if self._is_task_cancelled(task["id"]):
+                    self._publish_stream_event(task, "stream_cancelled")
+                    break
                 # Stream the final response to client
-                for char in full_response:
+                for i, char in enumerate(full_response):
+                    if i % 20 == 0 and self._is_task_cancelled(task["id"]):
+                        self._publish_stream_event(task, "stream_cancelled")
+                        break
                     self._publish_stream_token(task, char)
+                    if i % 20 == 19:
+                        time.sleep(0.01)
+                streamed = True
                 break
 
             # If response is a dict with tool_calls
@@ -2626,9 +2646,17 @@ class RedisRequestQueue:
             break
 
         # Stream final response if not already streamed
-        if stream and full_response:
-            for char in full_response:
-                self._publish_stream_token(task, char)
+        if stream and full_response and not streamed:
+            if self._is_task_cancelled(task["id"]):
+                self._publish_stream_event(task, "stream_cancelled")
+            else:
+                for i, char in enumerate(full_response):
+                    if i % 20 == 0 and self._is_task_cancelled(task["id"]):
+                        self._publish_stream_event(task, "stream_cancelled")
+                        break
+                    self._publish_stream_token(task, char)
+                    if i % 20 == 19:
+                        time.sleep(0.01)
 
         if not full_response.strip():
             full_response = last_tool_result.strip() if last_tool_result.strip() else query
@@ -3519,6 +3547,8 @@ class RedisRequestQueue:
     def cancel_task(self, task_id: str) -> bool:
         """Mark a task as cancelled in Redis. Returns True if the task exists."""
         exists = self.redis.hexists(self.processing_key, task_id)
+        if not exists:
+            exists = self.redis.hexists(self.slow_processing_key, task_id)
         if not exists:
             exists = self.redis.hexists(self.results_key, task_id)
         if not exists:

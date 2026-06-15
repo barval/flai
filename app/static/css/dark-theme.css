@@ -78,17 +78,6 @@
 .dark-theme .streaming-indicator {
     color: #f1c40f;
 }
-.dark-theme .cancel-stream-button {
-    border-color: #e74c3c;
-    color: #e74c3c;
-}
-.dark-theme .cancel-stream-button:hover {
-    background: #e74c3c;
-    color: #fff;
-}
-.dark-theme .cancel-stream-button:disabled {
-    opacity: 0.5;
-}
 .dark-theme .cancelled-label {
     color: #e74c3c;
 }
@@ -307,6 +296,14 @@
 .dark-theme .save-chat-button:hover,
 .dark-theme .clear-context-button:hover {
     background-color: #4a4a4a;
+}
+.dark-theme .cancel-stream-header {
+    border-color: #e74c3c;
+    color: #e74c3c;
+}
+.dark-theme .cancel-stream-header:hover {
+    background-color: #e74c3c;
+    color: #fff;
 }
 .dark-theme .tts-button:hover {
     background-color: rgba(255,255,255,0.1);

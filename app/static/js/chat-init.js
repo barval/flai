@@ -546,7 +546,16 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     document.getElementById('save-chat-button').addEventListener('click', saveChatAsHTML);
-    
+
+    document.getElementById('cancel-stream-header').addEventListener('click', function () {
+        var taskId = this.dataset.taskId;
+        if (!taskId) return;
+        this.disabled = true;
+        this.textContent = '\u23f3';
+        this.title = t('cancelling');
+        fetchWithCSRF('/api/cancel_task/' + taskId, { method: 'POST' }).catch(function () {});
+    });
+
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') closeImageModal();
     });

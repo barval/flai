@@ -5,6 +5,32 @@ let eventSource = null;
 let reconnectTimer = null;
 let pendingRequestIds = {};  // requestId -> { sessionId, timestamp }
 
+function _showHeaderCancelButton(taskId) {
+    var saveBtn = document.getElementById('save-chat-button');
+    var cancelBtn = document.getElementById('cancel-stream-header');
+    if (saveBtn) saveBtn.style.display = 'none';
+    if (cancelBtn) {
+        cancelBtn.style.display = 'inline-flex';
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = '\u25a0';
+        cancelBtn.title = t('stop_generating');
+        cancelBtn.dataset.taskId = taskId;
+    }
+}
+
+function _hideHeaderCancelButton() {
+    var saveBtn = document.getElementById('save-chat-button');
+    var cancelBtn = document.getElementById('cancel-stream-header');
+    if (cancelBtn) {
+        cancelBtn.style.display = 'none';
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = '\u25a0';
+        cancelBtn.title = t('stop_generating');
+        delete cancelBtn.dataset.taskId;
+    }
+    if (saveBtn) saveBtn.style.display = '';
+}
+
 function connectEventStream() {
     if (eventSource) {
         eventSource.close();
@@ -362,24 +388,14 @@ function onStreamToken(data) {
         indicatorSpan.textContent = '⚡ ' + t('generating');
         headerDiv.appendChild(indicatorSpan);
 
-        const cancelBtn = document.createElement('button');
-        cancelBtn.className = 'cancel-stream-button';
-        cancelBtn.title = t('stop_generating');
-        cancelBtn.textContent = '■';
-        cancelBtn.addEventListener('click', function () {
-            cancelBtn.disabled = true;
-            cancelBtn.textContent = '⏳';
-            cancelBtn.title = t('cancelling');
-            fetchWithCSRF('/api/cancel_task/' + data.task_id, { method: 'POST' }).catch(function () {});
-        });
-        headerDiv.appendChild(cancelBtn);
-
         streamMsg.appendChild(headerDiv);
 
         // Content div
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
         streamMsg.appendChild(contentDiv);
+
+        _showHeaderCancelButton(data.task_id);
     }
 
     // Update content (strip thinking tags for display)
@@ -471,24 +487,14 @@ function restoreStreamingFromSessionStorage() {
             indicatorSpan.textContent = '⚡ ' + t('generating');
             headerDiv.appendChild(indicatorSpan);
 
-            var cancelBtn = document.createElement('button');
-            cancelBtn.className = 'cancel-stream-button';
-            cancelBtn.title = t('stop_generating');
-            cancelBtn.textContent = '■';
-            cancelBtn.addEventListener('click', function () {
-                cancelBtn.disabled = true;
-                cancelBtn.textContent = '⏳';
-                cancelBtn.title = t('cancelling');
-                fetchWithCSRF('/api/cancel_task/' + taskId, { method: 'POST' }).catch(function () {});
-            });
-            headerDiv.appendChild(cancelBtn);
-
             msgDiv.appendChild(headerDiv);
 
             var contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
             contentDiv.textContent = saved.content;
             msgDiv.appendChild(contentDiv);
+
+            _showHeaderCancelButton(taskId);
 
             // Re-register in pendingRequestIds
             if (!pendingRequestIds[taskId]) {
@@ -564,19 +570,19 @@ function onStreamCancelled(data) {
     // Just mark the DOM as cancelled.
     const streamMsg = document.querySelector('.assistant-message[data-streaming="true"]');
     if (streamMsg) {
-        // Update header: remove cancel button, show cancelled label
-        const cancelBtn = streamMsg.querySelector('.cancel-stream-button');
-        if (cancelBtn) cancelBtn.remove();
+        // Update header: show cancelled label
         const indicator = streamMsg.querySelector('.streaming-indicator');
         if (indicator) {
             indicator.className = 'cancelled-label';
             indicator.textContent = '⚠️ ' + t('cancelled');
         }
     }
+    _hideHeaderCancelButton();
     _clearStreamFromSessionStorage(data.task_id);
 }
 
 function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
+    _hideHeaderCancelButton();
     const resultSessionId = data.result?.session_id || data.session_id || expectedSessionId;
     const taskId = data.task_id || reqInfo.taskId;
 
@@ -597,8 +603,6 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
             displayedMessageIds.add(data.result.message_id);
         }
         // Remove streaming-only elements
-        var cancelBtn = streamMsg.querySelector('.cancel-stream-button');
-        if (cancelBtn) cancelBtn.remove();
         var indicator = streamMsg.querySelector('.streaming-indicator');
         if (indicator) indicator.remove();
         var cancelledLabel = streamMsg.querySelector('.cancelled-label');

@@ -402,7 +402,7 @@ class BaseModule(TranslationMixin):
                 else:
                     processed = parts[1].strip() if len(parts) > 1 else ""
                     processed = processed.split("\n")[0].strip()
-                    if original_query and len(processed) > len(original_query) * 1.5:
+                    if original_query and (not processed or len(processed) > len(original_query) * 1.5):
                         processed = original_query
                 return {"action": action, "query": processed, "needs_reasoning": (action == "reasoning")}
 

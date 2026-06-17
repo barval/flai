@@ -61,7 +61,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVIDIA GPU (8/12/16+ GB)**. It orchestrates multiple models (chat, reasoning, multimodal, embedding, SD, LTX-Video) through a strict GPU queue with VRAM-aware scheduling.
   - **Entrypoint:** `app/__init__.py:create_app()` (Flask)
   - **Blueprints:** `app/routes/` — auth, chat, admin, queue, tts, messages, sessions, documents, backups, events, debug
-  - **Modules:** `modules/` — base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm
+  - **Modules:** `modules/` — base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm, search, video
   - **Background tasks:** `app/tasks/` — `dry_load.py`, `health_monitor.py`
   - **LLM client:** `app/llamacpp_client.py` with `DirectLlamaBackend` and `LlamaSwapBackend`
   - **Queue:** `app/queue.py:RedisRequestQueue` with **fast worker (CPU) and slow worker (GPU)**

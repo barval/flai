@@ -45,7 +45,7 @@ When releasing a new version:
 
 ### 1. Update version number in:
   - `pyproject.toml`: `version = "X.Y.Z"`
-  - `app/__init__.py`: metrics version string
+  - `app/__init__.py`: update `flai_web_info{version="X.Y"}` to match the new version
   - `AGENTS.md`: version title `# AGENTS.md — FLAI vX.Y`
   - `README.md`: `### What's New in vX.Y`
   - `README-ru.md`: Russian equivalent section header

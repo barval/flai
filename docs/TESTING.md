@@ -57,7 +57,7 @@ pytest tests/test_admin_routes.py  # specific file
 
 `tests/test_morph.py` **(NEW in v9.0)**
 
-14 tests for pymorphy3 morphological analysis of camera room names.
+16 tests for pymorphy3 morphological analysis of camera room names.
 
 `tests/test_backups.py`
 
@@ -67,14 +67,10 @@ Fixed in v9.0:
 
 ### Known Test Issues
   - **Unit test speed:** `CamModule` has 5×2s init retries, making `test_cam.py` ~10s per fixture. Not blocking, but slow.
-  - **Load tests** (`tests/load/`) excluded from pytest collection — require locust fixtures. Run separately: `locust -f tests/load/locustfile.py --host http://localhost:5000`.
-  - **Pre-existing excluded tests:**
-    + `test_backups.py` ~~(8 tests with KeyError 'babel')~~ — **FIXED in v9.0**
-    + `test_backups.py::TestBackupRestore::test_restore_backup` ~~(FileExistsError)~~ — **FIXED in v9.0**
-    + `test_base_module.py::test_parse_router_response_image_marker` — router response format changed. Not blocking CI.
+  - **Load tests** (`tests/load/`) excluded from pytest collection — require locust fixtures. Run separately: `locust -f tests/load/locustfile.py --host http://localhost:5000` or `locust -f tests/load/locustfile_public.py --host http://localhost:5000` for public endpoints.
 
 ### Test Infrastructure Fixes (v9.0)
-  - `tests/test_backups.py`: `Babel(flask_app)` added. Version updated to `"8.9"`.
+  - `tests/test_backups.py`: `Babel(flask_app)` added.
   - `tests/test_resource_manager.py`: `patch("app.resource_manager.requests.X", new=mock)`.
-  - `app/routes/backups.py:restore_backup()`: `dirs_exist_ok=True`. Version updated to `"8.9"`.
-  - `tests/test_morph.py` **(NEW):** 14 tests for pymorphy3 morphological analysis.
+  - `app/routes/backups.py:restore_backup()`: `dirs_exist_ok=True`.
+  - `tests/test_morph.py` **(NEW):** 16 tests for pymorphy3 morphological analysis.

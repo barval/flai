@@ -68,7 +68,7 @@ PostgreSQL only via `app/database.py:get_db()` context manager (psycopg2 RealDic
 - `services/piper/` — text-to-speech
 - `services/superlocalmemory/` — long-term memory (SLM)
 - `services/llamacpp/` — llama.cpp servers
-- `services/llama-swap/` — model swap proxy
+- `llama-swap` — Docker image `ghcr.io/mostlygeek/llama-swap:cuda` (no local service directory)
 
 **Docker compose profiles**: `with-image-gen`, `with-voice`, `with-rag`, `with-video`, `with-slm`, `with-search`.
 

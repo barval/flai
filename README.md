@@ -149,8 +149,8 @@ FLAI **requires** an NVIDIA GPU with CUDA support. CPU-only mode is not supporte
 
 | Feature | 8 GB | 12 GB | 16+ GB |
 |---------|------|-------|--------|
-| Chat (Qwen3-4B) | ✅ full speed | ✅ full speed | ✅ full speed |
-| Reasoning | ⚠️ Qwen3-4B-Thinking (~2.5 GB) | ✅ Qwen3-8B-Thinking (~5 GB) | ✅ gpt-oss-20b (~12 GB, ngl=16+) |
+| Chat (Gemma 4 E2B) | ✅ full speed | ✅ full speed | ✅ full speed |
+| Reasoning | ✅ Gemma 4 E4B (~4.8 GB) | ✅ Gemma 4 E4B (~4.8 GB) | ✅ gpt-oss-20b (~12 GB) |
 | Multimodal | ⚠️ Qwen3VL-4B (~2.5 GB) recommended | ✅ Qwen3VL-8B (~5.5 GB) | ✅ Qwen3VL-8B (~5.5 GB) |
 | Image gen (SD) | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 |
 | Image edit (Flux) | ✅ up to 768px long side | ✅ up to 1024px long side | ✅ up to 1024px long side |
@@ -167,12 +167,14 @@ Real-world performance measured with llama.cpp (llama-swap on-demand loading, Fl
 
 | Model | Type | Quant | File | VRAM | Prompt | Generation | Notes |
 |-------|------|-------|------|------|--------|------------|-------|
-| **Qwen3-4B-Instruct-2507** | Chat | MXFP4 (MoE) | 2.0 GB | 3186 MB | 3943 t/s | **127.7 t/s** | Current chat model — fastest generation |
+| **gemma-4-E2B-it-Q4_0** | Chat | Q4_0 | 3.0 GB | 2123 MB | 1471 t/s | **168.1 t/s** | **Current chat model** — ultra-lightweight edge model |
+| Qwen3-4B-Instruct-2507 | Chat | MXFP4 (MoE) | 2.0 GB | 3186 MB | 3943 t/s | 127.7 t/s | Alternative chat model — fastest prompt processing |
 | Qwen3.5-4B-Instruct-MTP | Chat | MXFP4 + MTP | 2.5 GB | 4042 MB | 664 t/s | 108.2 t/s | MTP adds overhead on 128-bit bus |
 | **gemma-4-E2B-it-QAT** | Chat | QAT Q4_0 | 3.2 GB | 2123 MB | 1471 t/s | **168.1 t/s** | Fastest model — ultra-lightweight edge model |
 | **gemma-4-E4B-it-QAT** | Chat | QAT Q4_0 | 4.9 GB | 3481 MB | 1182 t/s | **99.8 t/s** | Edge model — best speed/quality balance |
 | Qwen3.5-9B-UD-Q4_K_XL | Chat | Dynamic 4-bit | 5.6 GB | 6213 MB | 565 t/s | 63.2 t/s | Candidate chat model |
-| **gpt-oss-20b** | Reasoning | MXFP4 (MoE) | 11.5 GB | 11663 MB | 1087 t/s | **118.2 t/s** | Current reasoning — MoE 3B active |
+| **gemma-4-E4B-it-Q4_0** | Reasoning | Q4_0 | 4.8 GB | 3481 MB | 1182 t/s | **99.8 t/s** | **Current reasoning model** — best speed/quality balance |
+| gpt-oss-20b | Reasoning | MXFP4 (MoE) | 11.5 GB | 11663 MB | 1087 t/s | 118.2 t/s | Alternative reasoning — MoE 3B active |
 | **Qwen3.6-35B-A3B** | Reasoning | Q2_K_XL | 12 GB | 12356 MB | 497 t/s | **106.2 t/s** | MoE 35B (3B active) — strong alternative |
 | Qwen3.5-9B-MTP-Q4_K_M | Reasoning | Q4_K_M + MTP | 5.5 GB | 6717 MB | 431 t/s | 66.1 t/s | Dense 9B — 45% slower than MoE |
 | Qwen3.5-9B-Q8_0 | Reasoning | Q8_0 | 8.9 GB | 9719 MB | 472 t/s | 42.8 t/s | Dense 9B — 65% slower, high quality |
@@ -275,12 +277,12 @@ nano .env
 mkdir -p services/llamacpp/models
 
 # Chat model (fast responses)
-wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf \
-  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf"
+wget -O services/llamacpp/models/gemma-4-E2B-it-Q4_0.gguf \
+  "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_0.gguf"
 
 # Reasoning model (complex tasks)
-wget -O services/llamacpp/models/gpt-oss-20b-Q4_K_M.gguf \
-  "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q4_K_M.gguf"
+wget -O services/llamacpp/models/gemma-4-E4B-it-Q4_0.gguf \
+  "https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_0.gguf"
 
 # Multimodal model (image analysis) — must be in subdirectory with mmproj
 mkdir -p services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M
@@ -519,8 +521,8 @@ llama.cpp runs in **router mode** (`--models-dir`), dynamically loading models f
 
 ```
 services/llamacpp/models/
-├── Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf     # Chat
-├── gpt-oss-20b-Q4_K_M.gguf                  # Reasoning
+├── gemma-4-E2B-it-Q4_0.gguf               # Chat
+├── gemma-4-E4B-it-Q4_0.gguf               # Reasoning
 ├── bge-m3-Q8_0.gguf                        # Embedding
 └── Qwen3VL-8B-Instruct-Q4_K_M/             # Multimodal (subdirectory!)
     ├── Qwen3VL-8B-Instruct-Q4_K_M.gguf
@@ -844,8 +846,8 @@ curl http://localhost:5000/metrics
 - **Background SLM import on startup** — incremental import with checkpoint table, daemon thread, CLI: `flask import-history-to-slm`
 - **Piper TTS optimization** — chunked processing for large text synthesis with seamless audio transitions
 - **llama-swap v217** — Blackwell (sm_120) crash fixes
-- **Default chat model upgraded** — Qwen3-4B MXFP4_MOE (~2 GB), default ctx 8192 → 16384
-- **Deploy scripts: VRAM tier detection** — auto-select reasoning model: 16 GB+ → gpt-oss-20b, 12 GB → Qwen3-8B-Thinking, 8 GB → Qwen3-4B-Thinking
+- **Default chat model** — Gemma 4 E2B Q4_0 (~3 GB), default ctx 8192 → 16384
+- **Reasoning models** — 8/12 GB: Gemma 4 E4B Q4_0 (~4.8 GB), 16 GB+: gpt-oss-20b Q4_K_M (~12 GB)
 - **CLI tools** — `admin-password`, `cleanup-uploads`, `migrate-messages-format` (with `--dry-run`, `--add-emojis`)
 - **Health check & metrics** — `/health` endpoint with service status, `/metrics` for Prometheus
 - **File size display** — shown in chat headers for all file types
@@ -886,8 +888,9 @@ curl http://localhost:5000/metrics
 
 | Model | Purpose | License | Approx. Size |
 |-------|---------|---------|-------------|
-| **Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf** | Chat (fast responses) | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2 GB |
-| **gpt-oss-20b-Q4_K_M** | Reasoning (complex tasks) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 GB |
+| **gemma-4-E2B-it-Q4_0.gguf** | Chat (fast responses) | [Apache 2.0](https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF) | ~3 GB |
+| **gemma-4-E4B-it-Q4_0.gguf** | Reasoning (8/12 GB) | [Apache 2.0](https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF) | ~4.8 GB |
+| **gpt-oss-20b-Q4_K_M.gguf** | Reasoning (16 GB+) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 GB |
 | **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (image analysis) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5 GB + mmproj ~1.1 GB |
 | **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~1.5 GB |
 

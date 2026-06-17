@@ -109,8 +109,8 @@ Used by dry_load + watchdog:
 
 ```python
 FALLBACK_MODELS = {
-    "chat":       "Qwen3-4B-Instruct-2507-MXFP4_MOE",
-    "reasoning":  "gpt-oss-20b-mxfp4",
+    "chat":       "gemma-4-E2B-it-Q4_0",
+    "reasoning":  "gemma-4-E4B-it-Q4_0",
     "multimodal": "Qwen3VL-8B-Instruct-Q4_K_M",
     "embedding":  "bge-m3-Q8_0",
 }
@@ -127,7 +127,7 @@ Before any multimodal/SD/Video call, blocks until at least 6 GiB VRAM is free. P
 `_resolve_use_gpu()` and `ensure_vram_for_llm()` call `_poll_vram()` synchronously before reading `available_vram_mb`. After every `unload_llamacpp_model()`, a wait loop verifies VRAM is actually freed (up to 30s).
 
 `ensure_vram_for_reasoning`
-Unloads llama.cpp models and waits (up to 60s) for SD/Video to free VRAM before loading gpt-oss-20b (~10 GiB).
+Unloads llama.cpp models and waits (up to 60s) for SD/Video to free VRAM before loading gemma-4-E4B (~4.8 GiB).
 
 ### VRAM Timeout Varies by Context
   - `ensure_vram_for()` (resource_manager.py) — 15-second wait
@@ -197,5 +197,5 @@ watch -n 1 nvidia-smi          # Real-time VRAM tracking
 docker logs flai-web --tail 50 | grep GPU  # Log GPU-related events
 grep "RAG\|reasoning\|router" docker/logs/flai-web.log  # Debug RAG flow
 docker logs flai-web --tail 100 | grep -E "watchdog|dry_load"  # Model protection events
-curl -s "http://localhost:5000/admin/api/model-estimate?model=Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf&module=chat&ctx_size=8192" | jq '{tier, can_save, ngl_recommended, tier_message}'
+curl -s "http://localhost:5000/admin/api/model-estimate?model=gemma-4-E2B-it-Q4_0.gguf&module=chat&ctx_size=8192" | jq '{tier, can_save, ngl_recommended, tier_message}'
 ```

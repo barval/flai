@@ -149,8 +149,8 @@
 
 | Функция | 8 ГБ | 12 ГБ | 16+ ГБ |
 |---------|------|-------|--------|
-| Чат (Qwen3-4B) | ✅ полная скорость | ✅ полная скорость | ✅ полная скорость |
-| Рассуждения | ⚠️ Qwen3-4B-Thinking (~2.5 ГБ) | ✅ Qwen3-8B-Thinking (~5 ГБ) | ✅ gpt-oss-20b (~12 ГБ, ngl=16+) |
+| Чат (Gemma 4 E2B) | ✅ полная скорость | ✅ полная скорость | ✅ полная скорость |
+| Рассуждения | ✅ Gemma 4 E4B (~4.8 ГБ) | ✅ Gemma 4 E4B (~4.8 ГБ) | ✅ gpt-oss-20b (~12 ГБ) |
 | Мультимодальная | ⚠️ Qwen3VL-4B (~2.5 ГБ) | ✅ Qwen3VL-8B (~5.5 ГБ) | ✅ Qwen3VL-8B (~5.5 ГБ) |
 | Генерация изображений (SD) | ✅ до 1024×1024 | ✅ до 1536×1024 | ✅ до 1536×1024 |
 | Редактирование изображений (Flux) | ✅ до 768px по длинной стороне | ✅ до 1024px по длинной стороне | ✅ до 1024px по длинной стороне |
@@ -167,12 +167,14 @@
 
 | Модель | Назначение | Квантизация | Файл | VRAM | Промпт | Генерация | Примечания |
 |--------|-----------|-------------|------|------|--------|-----------|------------|
-| **Qwen3-4B-Instruct-2507** | Чат | MXFP4 (MoE) | 2.0 ГБ | 3186 МБ | 3943 т/с | **127.7 т/с** | Текущая чат-модель — самая быстрая генерация |
+| **gemma-4-E2B-it-Q4_0** | Чат | Q4_0 | 3.0 ГБ | 2123 МБ | 1471 т/с | **168.1 т/с** | **Текущая чат-модель** — ультралёгкая edge-модель |
+| Qwen3-4B-Instruct-2507 | Чат | MXFP4 (MoE) | 2.0 ГБ | 3186 МБ | 3943 т/с | 127.7 т/с | Альтернативная чат-модель — самая быстрая обработка промпта |
 | Qwen3.5-4B-Instruct-MTP | Чат | MXFP4 + MTP | 2.5 ГБ | 4042 МБ | 664 т/с | 108.2 т/с | MTP добавляет накладные расходы на 128-bit шине |
 | **gemma-4-E2B-it-QAT** | Чат | QAT Q4_0 | 3.2 ГБ | 2123 МБ | 1471 т/с | **168.1 т/с** | Самая быстрая модель — ультралёгкая edge-модель |
 | **gemma-4-E4B-it-QAT** | Чат | QAT Q4_0 | 4.9 ГБ | 3481 МБ | 1182 т/с | **99.8 т/с** | Edge-модель — лучший баланс скорость/качество |
 | Qwen3.5-9B-UD-Q4_K_XL | Чат | Dynamic 4-bit | 5.6 ГБ | 6213 МБ | 565 т/с | 63.2 т/с | Кандидат на чат-модель |
-| **gpt-oss-20b** | Рассуждения | MXFP4 (MoE) | 11.5 ГБ | 11663 МБ | 1087 т/с | **118.2 т/с** | Текущая модель рассуждений — MoE 3B активных |
+| **gemma-4-E4B-it-Q4_0** | Рассуждения | Q4_0 | 4.8 ГБ | 3481 МБ | 1182 т/с | **99.8 т/с** | **Текущая модель рассуждений** — лучший баланс скорость/качество |
+| gpt-oss-20b | Рассуждения | MXFP4 (MoE) | 11.5 ГБ | 11663 МБ | 1087 т/с | 118.2 т/с | Альтернативная модель рассуждений — MoE 3B активных |
 | **Qwen3.6-35B-A3B** | Рассуждения | Q2_K_XL | 12 ГБ | 12356 МБ | 497 т/с | **106.2 т/с** | MoE 35B (3B активных) — сильная альтернатива |
 | Qwen3.5-9B-MTP-Q4_K_M | Рассуждения | Q4_K_M + MTP | 5.5 ГБ | 6717 МБ | 431 т/с | 66.1 т/с | Плотная 9B — на 45% медленнее MoE |
 | Qwen3.5-9B-Q8_0 | Рассуждения | Q8_0 | 8.9 ГБ | 9719 МБ | 472 т/с | 42.8 т/с | Плотная 9B — на 65% медленнее, высокое качество |
@@ -278,12 +280,12 @@ nano .env
 mkdir -p services/llamacpp/models
 
 # Чат-модель (быстрые ответы)
-wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf \
-  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf"
+wget -O services/llamacpp/models/gemma-4-E2B-it-Q4_0.gguf \
+  "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_0.gguf"
 
 # Модель рассуждений (сложные задачи)
-wget -O services/llamacpp/models/gpt-oss-20b-Q4_K_M.gguf \
-  "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q4_K_M.gguf"
+wget -O services/llamacpp/models/gemma-4-E4B-it-Q4_0.gguf \
+  "https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_0.gguf"
 
 # Мультимодальная модель (анализ изображений) — ОБЯЗАТЕЛЬНО в поддиректории с mmproj!
 mkdir -p services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M
@@ -522,8 +524,8 @@ llama.cpp работает в **режиме роутера** (`--models-dir`), 
 
 ```
 services/llamacpp/models/
-├── Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf     # Чат
-├── gpt-oss-20b-Q4_K_M.gguf                  # Рассуждения
+├── gemma-4-E2B-it-Q4_0.gguf               # Чат
+├── gemma-4-E4B-it-Q4_0.gguf               # Рассуждения
 ├── bge-m3-Q8_0.gguf                        # Эмбеддинг
 └── Qwen3VL-8B-Instruct-Q4_K_M/             # Мультимодальность (поддиректория!)
     ├── Qwen3VL-8B-Instruct-Q4_K_M.gguf
@@ -841,8 +843,8 @@ curl http://localhost:5000/metrics
 - **Фоновый импорт SLM при старте** — инкрементальный импорт с checkpoint-таблицей, daemon-поток, CLI: `flask import-history-to-slm`
 - **Оптимизация Piper TTS** — порционная обработка больших текстов с плавными аудиопереходами
 - **llama-swap v217** — исправления крашей на Blackwell (sm_120)
-- **Обновлена чат-модель** — Qwen3-4B MXFP4_MOE (~2 ГБ), дефолтный ctx 8192 → 16384
-- **Deploy-скрипты: определение уровня VRAM** — авто-выбор рассуждающей модели: 16+ ГБ → gpt-oss-20b, 12 ГБ → Qwen3-8B-Thinking, 8 ГБ → Qwen3-4B-Thinking
+- **Обновлена чат-модель** — Gemma 4 E2B Q4_0 (~3 ГБ), дефолтный ctx 8192 → 16384
+- **Модели рассуждений** — 8/12 ГБ: Gemma 4 E4B Q4_0 (~4.8 ГБ), 16 ГБ+: gpt-oss-20b Q4_K_M (~12 ГБ)
 - **CLI-инструменты** — `admin-password`, `cleanup-uploads`, `migrate-messages-format` (с `--dry-run`, `--add-emojis`)
 - **Health check и метрики** — эндпоинт `/health` со статусом сервисов, `/metrics` для Prometheus
 - **Отображение размера файлов** — в заголовках чата для всех типов файлов
@@ -883,8 +885,9 @@ curl http://localhost:5000/metrics
 
 | Модель | Назначение | Лицензия | Примерный размер |
 |--------|-----------|---------|--------------|
-| **Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf** | Чат (быстрые ответы) | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2 ГБ |
-| **gpt-oss-20b-Q4_K_M** | Рассуждения (сложные задачи) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 ГБ |
+| **gemma-4-E2B-it-Q4_0.gguf** | Чат (быстрые ответы) | [Apache 2.0](https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF) | ~3 ГБ |
+| **gemma-4-E4B-it-Q4_0.gguf** | Рассуждения (8/12 ГБ) | [Apache 2.0](https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF) | ~4.8 ГБ |
+| **gpt-oss-20b-Q4_K_M.gguf** | Рассуждения (16 ГБ+) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 ГБ |
 | **Qwen3VL-8B-Instruct-Q4_K_M** | Мультимодальность (анализ изображений) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5 ГБ + mmproj ~1,1 ГБ |
 | **bge-m3-Q8_0** | Эмбеддинги (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~1,5 ГБ |
 

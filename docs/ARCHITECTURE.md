@@ -40,7 +40,7 @@ The chat model (~2 GiB) stays hot in VRAM permanently.
 - Multimodal (Qwen3VL-8B)
 - SD (Stable Diffusion)
 - LTX-Video
-- **Reasoning** (gpt-oss-20b)
+- **Reasoning** (16GB+: gpt-oss-20b, 12/8GB: gemma-4-E4B)
 - **RAG generation** (via reasoning model)
 
 Strictly sequential — only one GPU task runs at a time.
@@ -86,11 +86,11 @@ SD and LTX-Video use separate GPU contexts.
 
 ### Sequence of Models
 
-1. **Chat (gpt-oss-20b, ~12 GiB)** — preloaded at startup, TTL=0. Default model for router and direct responses. Swapped out on demand. After other model finishes (TTL=1s → unloaded), `_preload_chat_model_background()` reloads chat via tiny completion request in a daemon thread.
+1. **Chat (gemma-4-E2B, ~3 GiB)** — preloaded at startup, TTL=0. Default model for router and direct responses. Swapped out on demand. After other model finishes (TTL=1s → unloaded), `_preload_chat_model_background()` reloads chat via tiny completion request in a daemon thread.
 
 2. **Multimodal (Qwen3VL-8B, 5 GiB)** — loaded on demand (camera, image analysis, video param gen). TTL=1s → **unloaded 1 second** after the response is sent.
 
-3. **Reasoning (gpt-oss-20b, MXFP4, 10 GiB)** — loaded on demand for complex queries. TTL=1s → unloaded 1 second after response.
+3. **Reasoning (16GB+: gpt-oss-20b Q4_K_M, 12/8GB: gemma-4-E4B Q4_0)** — loaded on demand for complex queries. TTL=1s → unloaded 1 second after response.
 
 4. **Embedding (bge-m3 Q8_0, 0.5 GiB)** — TTL=1s → unloaded 1 second after use.
 

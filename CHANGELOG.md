@@ -23,6 +23,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### 🐛 Bug Fixes
 
+- **Chat temperature too low for style sensitivity** — `_process_chat_with_tools()` hardcoded `temperature=0.1` for all chat model calls, making style instructions ineffective. Removed hardcode; chat model now uses DB-configured temperature (default 0.7). Fact extraction retains `temperature=0.1` for deterministic JSON output.
+- **STYLE_INSTRUCTIONS duplicated in 3 modules** — Identical style maps existed in `modules/base.py`, `modules/rag.py`, and `modules/multimodal.py`. Removed duplicates from `rag.py` and `multimodal.py`; both now import `STYLE_INSTRUCTIONS` from `base.py`.
+- **Context window overflow risk with SLM** — `_get_context_for_model()` reserved a hardcoded 490 tokens (7 × 70) for SLM facts, but actual fact sizes could exceed this, stealing space from conversation history. Now fetches SLM facts first, measures real token cost, then calculates history budget with the actual SLM size subtracted.
 - **Translation system** — Removed `.mo` volume mounts that were overriding correct compiled translations. Docker now properly compiles all translations at build time.
 - **Queue position** — Removed `pendingRequestIds` race guard from `chat-queue.js`. Queue positions now come exclusively from server data.
 - **Multi-tab session** — Client now sends `session_id` in request body. Server validates (UUID v4 + user ownership). Fixes race conditions between browser tabs.
@@ -39,7 +42,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### 🔧 Improvements
 
-- **Dead code cleanup** — Removed `get_gguf_model_info()`, `find_gguf_file()`, `chunk_text_by_sentences()`, `clear_camera_rooms()`, `get_database_type()`, `is_postgresql()`, `close_db()`. Removed CSS classes `.capabilities`, `.capability`.
+- **Stronger style instructions** — All 5 response styles (`neutral`, `academic`, `professional`, `friendly`, `funny`) now include explicit prohibitions (`НЕ используй...`) to improve style adherence by small local models.
+- **Context logging enhanced** — `_get_context_for_model()` now logs SLM fact count and token cost separately: `Context loaded: 12 history msgs, 5 SLM facts (387 tokens), 8421 tokens (25.6% of 32768)`.
+- **Dead code cleanup** — Removed `get_gguf_model_info()`, `find_gguf_file()`, `chunk_text_by_sentences()`, `clear_camera_rooms()`, `get_database_type()`, `is_postgresql()`, `close_db()`, `generate_chat_response_stream()`. Removed CSS classes `.capabilities`, `.capability`.
 - **Chat video export** — `saveChatAsHTML()` collects `<video>` elements, fetches video files, converts to base64. Video rendered as `<video controls preload="metadata">`.
 - **Dead torch code cleanup** — Removed all `torch.cuda.empty_cache()` and `torch.cuda.synchronize()` calls (~60 lines). `flai-web` has no CUDA context.
 - **Skills list centralized** — All skills/capabilities text extracted to `prompts/{ru,en}/skills.txt` as single source of truth. `format_prompt()` auto-injects `{skills_section}` when the template contains the placeholder. Previously skills were duplicated (and inconsistent) across `chat.template`, `reasoning.template`, `rag.template`, `image_text.template`, and inline Python code in `queue.py`. Now 10 files (8 templates + 2 master copies) always show the same 10 skills.

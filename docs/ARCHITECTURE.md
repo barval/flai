@@ -134,6 +134,30 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 - Auto-cleaned on last session deletion (`_cleanup_slm_if_empty()` in `db.py`).
 - Per-user SLM files are owned by `appuser (UID 1000)` — `start.sh` runs `chown -R appuser:appuser` on the shared volume.
 
+## Response Style System
+
+`STYLE_INSTRUCTIONS` in `modules/base.py` defines 5 styles: `neutral`, `academic`, `professional`, `friendly`, `funny`. Each includes explicit prohibitions for small model adherence.
+
+- **Single source of truth** in `base.py`. Imported by `rag.py` and `multimodal.py` (no duplicates).
+- Style injected into prompts via `{response_style}` placeholder in templates.
+- User selects style via dropdown → saved to `session["response_style"]` → passed through queue → injected into system prompt.
+- Temperature 0.7 (DB-configured) for all chat/reasoning models — enables style-sensitive generation.
+
+## Context Budget Calculation
+
+`_get_context_for_model()` in `modules/base.py` manages token budget:
+
+1. Fetch SLM facts first (two-phase: session-specific, then general)
+2. Measure actual SLM token cost
+3. Calculate history budget: `available_tokens - query_tokens - TEMPLATE_OVERHEAD - slm_tokens`
+4. Load conversation history with SQL-level limit
+5. Combine: history + SLM facts
+
+- **No hardcoded reserves** — actual fact sizes used throughout.
+- Safety margin: 85% of context window (`SAFETY_MARGIN=0.85`).
+- Template overhead: 800 tokens (`TEMPLATE_OVERHEAD=800`).
+- Final validation: `_validate_prompt_size()` enforces 95% hard limit.
+
 ## Tool Calling System
 
 `app/tools.py` — native OpenAI-compatible tool calling with `--jinja` in llama-server.

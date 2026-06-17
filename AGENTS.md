@@ -70,6 +70,8 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - **External services:** llama-swap, Qdrant, SearXNG, Piper (TTS), Whisper (STT), SuperLocalMemory (SLM)
   - **LLM backend:** `LLAMACP_BACKEND=llama-swap` (default) or `llamacpp` (direct)
   - **Skills master copy:** `prompts/{ru,en}/skills.txt` — single source of truth for all capabilities lists. `format_prompt()` auto-injects `{skills_section}`.
+  - **Response styles:** `STYLE_INSTRUCTIONS` in `modules/base.py` — single source of truth for 5 styles (neutral, academic, professional, friendly, funny). Imported by `rag.py` and `multimodal.py`. Style is injected into all prompts via `{response_style}` placeholder.
+  - **Context budget:** `_get_context_for_model()` fetches SLM facts first, measures real token cost, then fills remaining budget with conversation history. No hardcoded reserves — actual sizes used throughout.
 
 **Full architecture details** → `docs/ARCHITECTURE.md`
 

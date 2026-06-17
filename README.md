@@ -547,7 +547,7 @@ services/llamacpp/models/
 | Parameter | Chat | Reasoning | Multimodal | Embedding |
 |-----------|------|-----------|------------|-----------|
 | Context Length | 16384 | 16384 | 8192 | 512 |
-| Temperature | 0.1 | 0.7 | 0.7 | – |
+| Temperature | 0.7 | 0.7 | 0.7 | – |
 | Top P | 0.1 | 0.9 | 0.9 | – |
 | Repeat Penalty | 1.1 | 1.15 | 1.1 | – |
 | Timeout (s) | 120 | 120 | 120 | 120 |

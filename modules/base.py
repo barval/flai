@@ -17,49 +17,60 @@ from app.utils import (
 
 STYLE_INSTRUCTIONS = {
     "ru": {
-        "neutral": "Без особого стиля.",
+        "neutral": (
+            "Отвечай нейтральным ясным языком. Не проявляй лишних эмоций и не старайся быть формальным — "
+            "просто давай точный и полезный ответ по существу."
+        ),
         "academic": (
             "Отвечай в формальном академическом стиле. Используй точную терминологию, "
             "строгие формулировки и логически структурированные аргументы. "
-            "Избегай разговорных выражений. При необходимости ссылайся на факты."
+            "Ссылайся на факты и источники, когда уместно. "
+            "НЕ используй разговорные выражения, сленг, эмодзи и обращения на 'ты'."
         ),
         "professional": (
             "Отвечай в профессиональном деловом стиле. Будь чётким, конкретным и по делу. "
-            "Используй ясные формулировки. Избегай лишних эмоций и воды."
+            "Используй ясные формулировки и структурированные списки при необходимости. "
+            "НЕ используй эмодзи, шутки, разговорные выражения и лишние эмоции."
         ),
         "friendly": (
-            "Отвечай в тёплом дружеском стиле. Будь приветлив и располагай к общению. "
-            "Используй естественный разговорный тон. Покажи эмпатию и заботу о пользователе. "
-            "Можно использовать эмодзи, если они уместны и помогают выразить эмоцию."
+            "Отвечай в тёплом дружеском стиле. Обращайся на 'ты', будь приветлив и располагай к общению. "
+            "Используй естественный разговорный тон, показывай эмпатию и заботу. "
+            "Эмодзи уместны, если усиливают эмоцию. "
+            "НЕ отвечай сухо, формально или как в инструкции — это должно ощущаться как живой разговор."
         ),
         "funny": (
-            "Отвечай с юмором и остроумием. Будь игрив и занимателен. "
-            "Используй шутки, метафоры и неожиданные сравнения, но не забывай "
-            "давать полезную информацию по существу вопроса. "
-            "Эмодзи приветствуются, если они к месту и усиливают эффект."
+            "Отвечай с юмором и остроумием. Будь игрив, используй шутки, метафоры и неожиданные сравнения. "
+            "Эмодзи приветствуются, если усиливают эффект. "
+            "Всегда давай полезную информацию по существу вопроса — юмор не заменяет содержание. "
+            "НЕ отвечай серьёзно или сухо — шутка или ирония должны быть заметны."
         ),
     },
     "en": {
-        "neutral": "Default style.",
+        "neutral": (
+            "Answer in clear, neutral language. No extra emotions, no formality — just a precise, useful answer."
+        ),
         "academic": (
             "Answer in a formal academic style. Use precise terminology, "
             "rigorous wording, and logically structured arguments. "
-            "Avoid colloquial expressions. Reference facts where appropriate."
+            "Reference facts and sources where appropriate. "
+            "Do NOT use colloquial expressions, slang, emojis, or informal tone."
         ),
         "professional": (
             "Answer in a professional business-like style. Be clear, specific, and to the point. "
-            "Use straightforward wording. Avoid unnecessary emotions or fluff."
+            "Use straightforward wording and structured lists when helpful. "
+            "Do NOT use emojis, jokes, colloquial expressions, or unnecessary emotions."
         ),
         "friendly": (
-            "Answer in a warm, friendly style. Be welcoming and approachable. "
-            "Use a natural conversational tone. Show empathy and care for the user. "
-            "You may use emojis when they are appropriate and help convey emotion."
+            "Answer in a warm, friendly style. Be welcoming, approachable, and conversational. "
+            "Show empathy and care for the user. Use a natural tone as if talking to a friend. "
+            "Emojis are welcome when they convey genuine emotion. "
+            "Do NOT sound dry, formal, or robotic — this should feel like a real human conversation."
         ),
         "funny": (
-            "Answer with humor and wit. Be playful and entertaining. "
-            "Use jokes, metaphors, and unexpected comparisons, "
-            "but still provide useful information on the topic. "
-            "Emojis are welcome when they fit the context and enhance the effect."
+            "Answer with humor, wit, and playfulness. Use jokes, metaphors, and unexpected comparisons. "
+            "Emojis are welcome when they enhance the effect. "
+            "Always provide useful, on-topic information — humor should not replace substance. "
+            "Do NOT answer seriously or dryly — the joke or irony should be noticeable."
         ),
     },
 }
@@ -477,47 +488,6 @@ class BaseModule(TranslationMixin):
         return response  # type: ignore[return-value]
 
     # ── Streaming methods ──────────────────────────────────────────────
-
-    def generate_chat_response_stream(
-        self,
-        query: str,
-        current_time_str: str,
-        lang: str = "ru",
-        session_id: str | None = None,
-        response_style: str = "neutral",
-        user_id: str | None = None,
-        skip_slm: bool = False,
-    ) -> Generator[str, None, None]:
-        """Build prompt and stream chat model response."""
-        response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(session_id, "chat", query, lang, user_id=user_id, skip_slm=skip_slm)  # type: ignore[arg-type]
-        style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
-            response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
-        )
-
-        prompt = format_prompt(
-            "chat.template",
-            {
-                "current_time_str": current_time_str,
-                "user_query": query,
-                "response_language": response_language,
-                "conversation_history": context_str,
-                "response_style": style_instruction,
-            },
-            lang=lang,
-        )
-
-        if not prompt:
-            yield "⚠️ " + self._("Error loading prompt template", lang)
-            return
-
-        error = self._validate_final_prompt(prompt, "chat", lang)
-        if error:
-            yield "⚠️ " + error
-            return
-
-        self.logger.info(f"Streaming chat response for query: {query[:100]}...")
-        yield from self.llamacpp.chat_stream([{"role": "user", "content": prompt}], model_type="chat", lang=lang)
 
     def generate_reasoning_response_stream(
         self,

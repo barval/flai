@@ -2565,8 +2565,8 @@ class RedisRequestQueue:
             if self._is_task_cancelled(task["id"]):
                 break
 
-            # Call chat model with tools (non-streaming for tool detection, low temp for reliable tool calls)
-            response = llamacpp.chat(messages, model_type="chat", lang=lang, tools=tools, temperature=0.1)
+            # Call chat model with tools (non-streaming for tool detection)
+            response = llamacpp.chat(messages, model_type="chat", lang=lang, tools=tools)
 
             # If response is an error string
             if isinstance(response, str):

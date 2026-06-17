@@ -140,34 +140,21 @@ class BaseModule(TranslationMixin):
 
         max_context_tokens = model_config.get("context_length", 32768)
         slm_recall_limit = self.app.config.get("SLM_RECALL_LIMIT", 3) if hasattr(self, "app") and self.app else 3
-        slm_reserve = slm_recall_limit * 70  # ~70 tokens per fact
 
         # Apply safety margin to available tokens
         available_tokens = int(max_context_tokens * (self.context_history_percent / 100.0) * self.safety_margin)
-
         query_tokens = self._estimate_tokens(current_query, model_type, lang)
-        remaining_for_history = available_tokens - query_tokens - TEMPLATE_OVERHEAD - slm_reserve
 
-        if remaining_for_history <= 0:
-            self.logger.warning(
-                f"No tokens available for history. Query: {query_tokens}, Available: {available_tokens}"
-            )
-            return ""
-
-        # Load history with SQL-level limit
-        history_msgs = get_session_text_history(session_id, remaining_for_history, max_messages=self.max_messages_limit)
-        history_str = self._build_context_prompt(history_msgs, lang) if history_msgs else ""
-
-        # SLM: load long-term memory facts (for both chat and reasoning models)
-        slm_facts_str = ""
+        # Step 1: Fetch SLM facts first to measure their real size
+        all_facts: list[dict[str, Any]] = []
         if not skip_slm:
             slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
             if slm:
                 # Two-phase recall: session-specific first (priority), then general
-                session_facts = []
-                general_facts = []
+                session_facts: list[dict[str, Any]] = []
+                general_facts: list[dict[str, Any]] = []
 
-                # Phase 1: Session-specific facts (if session_id available)
+                # Phase 1: Session-specific facts
                 if session_id:
                     session_facts_raw = slm.recall(
                         current_query,
@@ -186,18 +173,36 @@ class BaseModule(TranslationMixin):
                 )
                 general_facts = [f for f in general_facts_raw if f.get("metadata", {}).get("fact_type") != "session_specific"]
 
-                # Combine: session-specific first (priority), then general
                 all_facts = session_facts + general_facts
-                if all_facts:
-                    header = (
-                        "Дополнительная информация из долговременной памяти:"
-                        if lang == "ru"
-                        else "Additional context from long-term memory:"
-                    )
-                    lines = [header]
-                    for f in all_facts[:slm_recall_limit]:
-                        lines.append(f"- {f.get('content', f.get('text', ''))}")
-                    slm_facts_str = "\n" + "\n".join(lines)
+
+        # Step 2: Build SLM string and measure its real token cost
+        slm_facts_str = ""
+        slm_tokens = 0
+        if all_facts:
+            header = (
+                "Дополнительная информация из долговременной памяти:"
+                if lang == "ru"
+                else "Additional context from long-term memory:"
+            )
+            lines = [header]
+            for f in all_facts[:slm_recall_limit]:
+                lines.append(f"- {f.get('content', f.get('text', ''))}")
+            slm_facts_str = "\n" + "\n".join(lines)
+            slm_tokens = self._estimate_tokens(slm_facts_str, model_type, lang)
+
+        # Step 3: Calculate history budget with actual SLM size subtracted
+        remaining_for_history = available_tokens - query_tokens - TEMPLATE_OVERHEAD - slm_tokens
+
+        if remaining_for_history <= 0:
+            self.logger.warning(
+                f"No tokens available for history. Query: {query_tokens}, SLM: {slm_tokens}, "
+                f"Available: {available_tokens}"
+            )
+            return slm_facts_str.lstrip() if slm_facts_str else ""
+
+        # Step 4: Load history with SQL-level limit based on remaining budget
+        history_msgs = get_session_text_history(session_id, remaining_for_history, max_messages=self.max_messages_limit)
+        history_str = self._build_context_prompt(history_msgs, lang) if history_msgs else ""
 
         # Combine: history first (dialog continuity), SLM facts after (long-term enrichment)
         context = history_str + slm_facts_str
@@ -205,6 +210,7 @@ class BaseModule(TranslationMixin):
 
         self.logger.info(
             f"Context loaded: {len(history_msgs)} history msgs, "
+            f"{len(all_facts)} SLM facts ({slm_tokens} tokens), "
             f"{context_tokens} tokens ({context_tokens / max_context_tokens * 100:.1f}% of {max_context_tokens})"
         )
 

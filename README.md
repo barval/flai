@@ -187,7 +187,7 @@ Real-world performance measured with llama.cpp (llama-swap on-demand loading, Fl
 
 > **Why gpt-oss-20b wins as reasoning model:** Despite being a "20B" model, gpt-oss-20b uses Mixture-of-Experts (MoE) with 32 experts — only ~3B parameters are active per token. This gives it 3B-level compute cost with 20B-level knowledge. On RTX 5060 Ti, it generates **118 tok/s** vs 63 tok/s for dense Qwen3.5-9B — nearly **2× faster** while using the same memory bandwidth.
 
-> **Qwen3.6-35B-A3B as reasoning alternative:** MoE architecture (35B total, ~3B active) delivers **106 tok/s** — only 10% slower than gpt-oss-20b. Its 12 GB VRAM footprint allows coexistence with chat model via llama-swap. Strong candidate if gpt-oss-20b quality is insufficient.
+> **Qwen3.6-35B-A3B as reasoning alternative:** MoE architecture (35B total, ~3B active) delivers **106 tok/s** — only 10% slower than gpt-oss-20b. Strong candidate if gpt-oss-20b quality is insufficient.
 
 > **Why MTP doesn't help on 128-bit GPUs:** Multi-Token Prediction (MTP) predicts draft tokens with a small head, then verifies them in parallel. On high-bandwidth GPUs (256/512-bit), this yields 1.4–2.2× speedup. On RTX 5060 Ti's 128-bit bus (448 GB/s), the draft model's extra memory reads saturate the already-limited bandwidth. Qwen3.5-4B-MTP is **15% slower** than Qwen3-4B without MTP; Qwen3.5-9B-MTP shows no meaningful speedup over a plain Q4_K_M of the same size.
 

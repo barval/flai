@@ -23,7 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### 🐛 Bug Fixes
 
-- **Chat temperature too low for style sensitivity** — `_process_chat_with_tools()` hardcoded `temperature=0.1` for all chat model calls, making style instructions ineffective. Removed hardcode; chat model now uses DB-configured temperature (default 0.7). Fact extraction retains `temperature=0.1` for deterministic JSON output.
+- **Chat temperature too low for style sensitivity** — DB default for chat model was `temperature=0.1, top_p=0.1` (inherited from router classification values), making style instructions ineffective. Updated DB defaults to `temperature=0.7, top_p=0.9` (matching reasoning model). Router now uses explicit `temperature=0.1` hardcoded in `process_message()` calls. SLM `remember` task also uses explicit `temperature=0.1` for deterministic fact extraction.
 - **STYLE_INSTRUCTIONS duplicated in 3 modules** — Identical style maps existed in `modules/base.py`, `modules/rag.py`, and `modules/multimodal.py`. Removed duplicates from `rag.py` and `multimodal.py`; both now import `STYLE_INSTRUCTIONS` from `base.py`.
 - **Context window overflow risk with SLM** — `_get_context_for_model()` reserved a hardcoded 490 tokens (7 × 70) for SLM facts, but actual fact sizes could exceed this, stealing space from conversation history. Now fetches SLM facts first, measures real token cost, then calculates history budget with the actual SLM size subtracted.
 - **Translation system** — Removed `.mo` volume mounts that were overriding correct compiled translations. Docker now properly compiles all translations at build time.

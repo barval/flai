@@ -18,7 +18,7 @@ def _mock_config(module, **overrides):
             "module": "chat",
             "model_name": "Qwen3-4B-Instruct-2507-Q4_K_M",
             "context_length": 8192,
-            "temperature": 0.1,
+            "temperature": 0.7,
             "timeout": 120,
             "service_url": "http://flai-llamacpp:8033",
             "ttl": None,

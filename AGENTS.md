@@ -63,7 +63,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - **Blueprints:** `app/routes/` — auth, chat, admin, queue, tts, messages, sessions, documents, backups, events, debug
   - **Modules:** `modules/` — base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm, search, video
   - **Background tasks:** `app/tasks/` — `dry_load.py`, `health_monitor.py`. Background queue tasks (`fact_extraction_task`, `fact_merge_task`) are excluded from queue status display and user counter.
-  - **LLM client:** `app/llamacpp_client.py` with `DirectLlamaBackend` and `LlamaSwapBackend`. Both `call()` and `chat()` accept `temperature` parameter.
+  - **LLM client:** `app/llamacpp_client.py` with `DirectLlamaBackend` and `LlamaSwapBackend`. Both `call()` and `chat()` accept `temperature` parameter. Router classification uses hardcoded `temperature=0.1`.
   - **Queue:** `app/queue.py:RedisRequestQueue` with **fast worker (CPU) and slow worker (GPU)**
   - **VRAM management:** `app/resource_manager.py`
   - **Database:** PostgreSQL only via `app/database.py:get_db()`

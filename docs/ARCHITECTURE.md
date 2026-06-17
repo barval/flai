@@ -142,6 +142,7 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 - Style injected into prompts via `{response_style}` placeholder in templates.
 - User selects style via dropdown → saved to `session["response_style"]` → passed through queue → injected into system prompt.
 - Temperature 0.7 (DB-configured) for all chat/reasoning models — enables style-sensitive generation.
+- Router classification always uses `temperature=0.1` (hardcoded in `process_message()`) for deterministic query routing.
 
 ## Context Budget Calculation
 

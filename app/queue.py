@@ -2796,6 +2796,7 @@ class RedisRequestQueue:
         result = self.app.modules["base"].call_llamacpp(
             [{"role": "user", "content": prompt}],
             model_type="chat", lang=lang,
+            temperature=0.1,
         )
 
         # Parse JSON and save to SLM

@@ -62,13 +62,14 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - **Entrypoint:** `app/__init__.py:create_app()` (Flask)
   - **Blueprints:** `app/routes/` — auth, chat, admin, queue, tts, messages, sessions, documents, backups, events, debug
   - **Modules:** `modules/` — base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm, search, video
-  - **Background tasks:** `app/tasks/` — `dry_load.py`, `health_monitor.py`
-  - **LLM client:** `app/llamacpp_client.py` with `DirectLlamaBackend` and `LlamaSwapBackend`
+  - **Background tasks:** `app/tasks/` — `dry_load.py`, `health_monitor.py`. Background queue tasks (`fact_extraction_task`, `fact_merge_task`) are excluded from queue status display and user counter.
+  - **LLM client:** `app/llamacpp_client.py` with `DirectLlamaBackend` and `LlamaSwapBackend`. Both `call()` and `chat()` accept `temperature` parameter.
   - **Queue:** `app/queue.py:RedisRequestQueue` with **fast worker (CPU) and slow worker (GPU)**
   - **VRAM management:** `app/resource_manager.py`
   - **Database:** PostgreSQL only via `app/database.py:get_db()`
   - **External services:** llama-swap, Qdrant, SearXNG, Piper (TTS), Whisper (STT), SuperLocalMemory (SLM)
   - **LLM backend:** `LLAMACP_BACKEND=llama-swap` (default) or `llamacpp` (direct)
+  - **Skills master copy:** `prompts/{ru,en}/skills.txt` — single source of truth for all capabilities lists. `format_prompt()` auto-injects `{skills_section}`.
 
 **Full architecture details** → `docs/ARCHITECTURE.md`
 

@@ -74,6 +74,9 @@ def _extract_clean_text(content: str, model_name: str | None = None) -> str | No
     # Skip very short messages
     if len(text) < 10:
         return None
+    # Truncate very long messages (assistant responses can be lengthy)
+    if len(text) > 2000:
+        text = text[:2000]
     return text
 
 
@@ -108,7 +111,7 @@ def import_user_messages(
             """SELECT m.id, m.session_id, m.role, m.content, m.model_name, cs.user_id
                FROM messages m
                JOIN chat_sessions cs ON m.session_id = cs.id
-               WHERE m.role = 'user'
+               WHERE m.role IN ('user', 'assistant')
                AND cs.user_id = %s
                AND m.id > %s
                ORDER BY m.id ASC""",

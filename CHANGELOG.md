@@ -31,12 +31,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **userdb.py schema mismatch** — `delete_user()` used `user_id = user["id"]` (INTEGER) against TEXT columns. Fixed to `user_id = login` (TEXT).
 - **test_backups.py** — Added `Babel(flask_app)` to fixture. Fixed `shutil.copytree FileExistsError` via `dirs_exist_ok=True`.
 - **mypy app/utils.py** — 19 → 0 errors via `_gguf_scalar()` helper.
+- **`call_llamacpp()` missing `temperature` parameter** — `BaseModule.call_llamacpp()` and `LlamaClient.call()` did not propagate `temperature` to `chat()`. Fact extraction, SLM extract, and SLM merge functions passed `temperature=0.1` which raised `TypeError`. Added parameter to both methods with proper passthrough.
+- **`KeyError('text')` in fact extraction** — `_process_fact_extraction()` accessed `f["text"]` on SLM facts that may lack the key. Changed to `f.get("text", "")` with filtering. Same fix applied in `slm_extract.py`.
+- **Background task errors leaking to users** — `_process_fact_extraction()` and `_process_fact_merge()` were not wrapped in try/except. Any exception (network error, parse error, LLM failure) was caught by `_process_single_task` and published as an SSE error event, causing `⚠️ Ошибка: ...` messages to appear in the user's chat after a successful response.
+- **Phantom ⚡ after chat response** — `fact_extraction_task` (enqueued on slow worker after every chat response >20 chars) had the same `session_id` as the main task. `get_user_requests_status()` reported it as `processing`, causing the lightning bolt to reappear. Background tasks are now excluded from queue status display.
+- **Negative queue counter** — `fact_extraction_task` was added directly to slow queue via `redis.rpush()` without `add_request()`, but `_process_single_task()` always called `_decrement_user_queue_count()` in its `finally` block. After N responses, `user_counts[user_id]` drifted to -N (e.g. `-9`), causing displays like `📊 -9/0`. Fixed by skipping decrement for background tasks and adding `max(0, ...)` guard in `get_user_queue_counts()`.
 
 ### 🔧 Improvements
 
 - **Dead code cleanup** — Removed `get_gguf_model_info()`, `find_gguf_file()`, `chunk_text_by_sentences()`, `clear_camera_rooms()`, `get_database_type()`, `is_postgresql()`, `close_db()`. Removed CSS classes `.capabilities`, `.capability`.
 - **Chat video export** — `saveChatAsHTML()` collects `<video>` elements, fetches video files, converts to base64. Video rendered as `<video controls preload="metadata">`.
 - **Dead torch code cleanup** — Removed all `torch.cuda.empty_cache()` and `torch.cuda.synchronize()` calls (~60 lines). `flai-web` has no CUDA context.
+- **Skills list centralized** — All skills/capabilities text extracted to `prompts/{ru,en}/skills.txt` as single source of truth. `format_prompt()` auto-injects `{skills_section}` when the template contains the placeholder. Previously skills were duplicated (and inconsistent) across `chat.template`, `reasoning.template`, `rag.template`, `image_text.template`, and inline Python code in `queue.py`. Now 10 files (8 templates + 2 master copies) always show the same 10 skills.
+- **`_process_chat_with_tools()` skills from master file** — Inline system prompt in `_process_chat_with_tools()` now loads skills via `_load_skills_section()` instead of a hardcoded list that could drift from the templates.
 
 ### 📦 Dependencies
 

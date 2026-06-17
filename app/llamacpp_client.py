@@ -1076,10 +1076,11 @@ class LlamaCppClient:
         lang: str = "ru",
         validate: bool = True,
         tools: list[dict] | None = None,
+        temperature: float | None = None,
     ) -> str | dict[str, Any] | Generator[str | dict[str, Any], None, None]:
         if stream:
-            return self.chat_stream(messages, model_type=model_type, lang=lang, validate=validate, tools=tools)
-        return self.chat(messages, model_type=model_type, lang=lang, validate=validate, tools=tools)
+            return self.chat_stream(messages, model_type=model_type, lang=lang, validate=validate, tools=tools, temperature=temperature)
+        return self.chat(messages, model_type=model_type, lang=lang, validate=validate, tools=tools, temperature=temperature)
 
     def unload_all_models(self) -> bool:
         return self.backend.unload_all_models()  # type: ignore[no-any-return]

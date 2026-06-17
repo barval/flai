@@ -259,6 +259,9 @@ def create_app():
     if modules.get("slm") and modules["slm"].available:
         _start_background_slm_import(app)
 
+    # Background SLM merge: queue merge task during idle time
+    _start_slm_merge_watcher(app)
+
     # Watchdog: detect llama-swap crash loops and auto-rollback
     if app.config.get("LLAMACP_BACKEND") == "llama-swap":
         try:
@@ -306,6 +309,7 @@ def create_app():
     app.cli.add_command(cli.cleanup_uploads)
     app.cli.add_command(cli.migrate_messages_format)
     app.cli.add_command(cli.import_history_to_slm)
+    app.cli.add_command(cli.reset_slm_checkpoint)
 
     # Additional camera routes
     if "cam" in modules:
@@ -640,3 +644,45 @@ def _start_background_slm_import(app: Flask) -> None:
     thread = threading.Thread(target=_run_import, daemon=True, name="slm-import")
     thread.start()
     app.logger.info("Background SLM import thread started")
+
+
+def _start_slm_merge_watcher(app: Flask) -> None:
+    """Start a background thread that queues SLM merge during idle time."""
+    import threading
+    import time
+
+    def _watcher() -> None:
+        with app.app_context():
+            while True:
+                time.sleep(60)  # Check every minute
+                try:
+                    if not hasattr(app, "_last_task_time"):
+                        continue
+                    if (time.time() - app._last_task_time) < 300:  # 5 min idle threshold
+                        continue
+
+                    # Queue merge task for all users
+                    from app.userdb import get_all_user_ids
+
+                    user_ids = get_all_user_ids()
+                    for user_id in user_ids:
+                        task_id = str(__import__("uuid").uuid4())
+                        merge_task = {
+                            "id": task_id,
+                            "user_id": user_id,
+                            "session_id": "system",
+                            "type": "fact_merge_task",
+                            "data": {"user_id": user_id},
+                            "user_class": 0,
+                            "lang": "ru",
+                            "timestamp": time.time(),
+                        }
+                        serialized = app.request_queue._serialize(merge_task)
+                        app.request_queue.redis.rpush(app.request_queue.slow_queue_key, serialized)
+                    app.logger.info(f"Queued SLM merge for {len(user_ids)} users")
+                except Exception as e:
+                    app.logger.warning(f"SLM merge watcher error: {e}")
+
+    thread = threading.Thread(target=_watcher, daemon=True, name="slm-merge-watcher")
+    thread.start()
+    app.logger.info("SLM merge watcher started")

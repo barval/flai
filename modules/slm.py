@@ -156,6 +156,28 @@ class SlmModule(TranslationMixin):
             self.logger.warning(f"SLM list failed: {e}")
             return []
 
+    def delete_fact(self, fact_id: str, profile: str | None = None) -> bool:
+        """Delete a specific fact by ID.
+
+        Args:
+            fact_id: The ID of the fact to delete.
+            profile: User ID for per-user database isolation.
+
+        Returns:
+            True if deleted successfully.
+        """
+        if not self.available:
+            return False
+        payload: dict[str, Any] = {"id": fact_id}
+        if profile:
+            payload["profile"] = profile
+        try:
+            resp = requests.post(f"{self.url}/delete", json=payload, timeout=30)
+            return resp.status_code == 200
+        except Exception as e:
+            self.logger.warning(f"SLM delete_fact failed: {e}")
+            return False
+
     def get_context(self, query: str, lang: str = "ru", limit: int | None = None, profile: str | None = None, semantic: bool = False, min_score: float = 0.3) -> str:
         """Get formatted context string for prompt enrichment.
 

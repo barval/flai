@@ -28,11 +28,50 @@ from .events import get_events_publisher
 from .model_config import get_model_config
 from .tools import MAX_TOOL_ITERATIONS, execute_tool, get_tool_definitions
 from .utils import (
+    _load_skills_section,
     estimate_tokens,
     get_current_time_in_timezone,
     get_current_time_in_timezone_for_db,
     save_uploaded_file,
 )
+
+
+def _parse_remember_json(llm_response: str) -> list[str]:
+    """Parse remember response JSON: {"confirmed": true, "facts": [...]}"""
+    try:
+        # Extract JSON from response
+        start = llm_response.find("{")
+        end = llm_response.rfind("}") + 1
+        if start == -1 or end <= start:
+            return []
+        data = json.loads(llm_response[start:end])
+        if data.get("confirmed"):
+            return data.get("facts", [])
+        return []
+    except Exception:
+        return []
+
+
+def _parse_facts_json(llm_response: str) -> list[dict[str, str]]:
+    """Parse extract response JSON: {"facts": [{"text": ..., "category": ..., "fact_type": ...}, ...]}"""
+    try:
+        start = llm_response.find("{")
+        end = llm_response.rfind("}") + 1
+        if start == -1 or end <= start:
+            return []
+        data = json.loads(llm_response[start:end])
+        facts = data.get("facts", [])
+        result = []
+        for f in facts:
+            if isinstance(f, dict) and f.get("text"):
+                result.append({
+                    "text": f["text"],
+                    "category": f.get("category", "context"),
+                    "fact_type": f.get("fact_type", "general"),
+                })
+        return result
+    except Exception:
+        return []
 
 
 class RedisRequestQueue:
@@ -122,6 +161,8 @@ class RedisRequestQueue:
         task_type = task.get("type", "")
         if task_type in ("index_document", "reindex_all_embeddings"):
             return "slow"  # Indexing can be slow
+        if task_type in ("fact_extraction_task", "fact_merge_task"):
+            return "slow"  # LLM-based extraction/merge is slow
         # Also check type inside data (for index_document from documents.py)
         request_data = task.get("data", {})
         req_type = request_data.get("type", "text")
@@ -237,8 +278,8 @@ class RedisRequestQueue:
         user_count = int(user_count) if user_count else 0
 
         # Cap user_count to total — prevents impossible displays like "2/1"
-        # when the hash counter drifts due to re-queue race conditions.
-        return min(user_count, total), total
+        # and negative values from background task counter drift.
+        return max(0, min(user_count, total)), total
 
     def _decrement_user_queue_count(self, user_id: str):
         """Decrement user's queue count (O(1))."""
@@ -544,7 +585,11 @@ class RedisRequestQueue:
             user_id = task.get("user_id")
             if user_id:
                 self._cleanup_user_request(user_id, task_id)
-                self._decrement_user_queue_count(user_id)
+                # Don't decrement for background tasks — they were never
+                # incremented via add_request(), so decrementing causes
+                # the user counter to drift negative.
+                if task.get("type") not in self._BACKGROUND_TASK_TYPES:
+                    self._decrement_user_queue_count(user_id)
 
         # Skip VRAM cleanup if task was requeued — next worker needs current GPU state.
         # E.g.: image_chat → [-VIDEO-] → requeue → slow worker uses same multimodal model.
@@ -1487,7 +1532,8 @@ class RedisRequestQueue:
             )
         if self._is_llm_error_string(full_response):
             return self._build_error_response(session_id, full_response, reasoning_time, lang)
-        return self._save_and_respond(
+
+        result = self._save_and_respond(
             session_id,
             full_response,
             self._get_model_name("reasoning") or "reasoning",
@@ -1496,6 +1542,29 @@ class RedisRequestQueue:
             response_style=response_style,
             user_id=user_id,
         )
+
+        # Enqueue fact extraction (post-request on slow worker)
+        if full_response.strip() and len(full_response) > 20:
+            task_id = str(uuid.uuid4())
+            extraction_task = {
+                "id": task_id,
+                "user_id": user_id,
+                "session_id": session_id,
+                "type": "fact_extraction_task",
+                "data": {
+                    "query": query,
+                    "response": full_response[:3000],
+                    "session_id": session_id,
+                },
+                "user_class": 2,
+                "lang": lang,
+                "timestamp": time.time(),
+            }
+            serialized = self._serialize(extraction_task)
+            self.redis.rpush(self.slow_queue_key, serialized)
+            self.app.logger.info(f"Fact extraction task enqueued: {task_id}")
+
+        return result
 
     def _process_video_request(self, task: dict[str, Any]) -> dict[str, Any]:
         """Handle a video task from the slow queue.
@@ -2326,8 +2395,20 @@ class RedisRequestQueue:
 
         # Simple query: router classified but did not generate text.
         # Use chat model with tool calling support.
-        if action_type in ("none", "fact"):
+        if action_type == "none":
             return self._process_chat_with_tools(
+                task,
+                query,
+                current_time_str,
+                session_id,
+                user_id,
+                lang,
+                response_style,
+            )
+
+        # Explicit remember request — process through LLM and save to SLM
+        if action_type == "remember":
+            return self._process_remember_task(
                 task,
                 query,
                 current_time_str,
@@ -2432,12 +2513,7 @@ class RedisRequestQueue:
                 f"# РОЛЬ\n"
                 f"Ты персональный ассистент на основе искусственного интеллекта 'Полностью Локальный ИИ (ПЛИИ)'.\n\n"
                 f"# НАВЫКИ\n"
-                f"- Калькулятор для математических расчётов\n"
-                f"- Калькулятор дат и времени, включая времена года (days_until_end_of, days_since_end_of)\n"
-                f"- Поиск в интернете\n"
-                f"- Поиск в документах (RAG)\n"
-                f"- Камеры видеонаблюдения\n"
-                f"- Текущее время\n\n"
+                f"{_load_skills_section(lang)}\n\n"
                 f"Текущее время (сейчас): {current_time_str}.\n\n"
                 f"# ИСТОРИЯ ДИАЛОГА\n"
                 f"{context_str}"
@@ -2468,12 +2544,7 @@ class RedisRequestQueue:
                 f"# ROLE\n"
                 f"You are a personal assistant based on artificial intelligence 'Fully Local AI (FLAI)'.\n\n"
                 f"# SKILLS\n"
-                f"- Calculator for math calculations\n"
-                f"- Date and time calculator, including seasons (days_until_end_of, days_since_end_of)\n"
-                f"- Web search\n"
-                f"- Document search (RAG)\n"
-                f"- Camera snapshots\n"
-                f"- Current time\n\n"
+                f"{_load_skills_section(lang)}\n\n"
                 f"Current time (now): {current_time_str}.\n\n"
                 f"# CONVERSATION HISTORY\n"
                 f"{context_str}"
@@ -2662,7 +2733,7 @@ class RedisRequestQueue:
             full_response = last_tool_result.strip() if last_tool_result.strip() else query
 
         process_time = round(time.time() - stream_start, 1)
-        return self._save_and_respond(
+        result = self._save_and_respond(
             session_id,
             full_response,
             self._get_model_name("chat") or "unknown",
@@ -2672,10 +2743,159 @@ class RedisRequestQueue:
             user_id=user_id,
         )
 
+        # Enqueue fact extraction (post-request on slow worker)
+        if full_response.strip() and len(full_response) > 20:
+            task_id = str(uuid.uuid4())
+            extraction_task = {
+                "id": task_id,
+                "user_id": user_id,
+                "session_id": session_id,
+                "type": "fact_extraction_task",
+                "data": {
+                    "query": query,
+                    "response": full_response[:3000],
+                    "session_id": session_id,
+                },
+                "user_class": 2,
+                "lang": lang,
+                "timestamp": time.time(),
+            }
+            serialized = self._serialize(extraction_task)
+            self.redis.rpush(self.slow_queue_key, serialized)
+            self.app.logger.info(f"Fact extraction task enqueued: {task_id}")
+
+        return result
+
+    def _process_remember_task(
+        self,
+        task: dict[str, Any],
+        query: str,
+        current_time_str: str,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        response_style: str = "neutral",
+    ) -> dict[str, Any]:
+        """Process explicit 'remember this' request via LLM and save to SLM."""
+        from app.utils import format_prompt
+
+        slm = self.app.modules.get("slm")
+        if not slm or not slm.available:
+            # SLM not available — just answer normally
+            return self._process_chat_with_tools(
+                task, query, current_time_str, session_id, user_id, lang, response_style,
+            )
+
+        # LLM processing to extract the essence of the request
+        prompt = format_prompt("slm_remember.template", {"query": query}, lang=lang)
+        if not prompt:
+            return self._process_chat_with_tools(
+                task, query, current_time_str, session_id, user_id, lang, response_style,
+            )
+
+        result = self.app.modules["base"].call_llamacpp(
+            [{"role": "user", "content": prompt}],
+            model_type="chat", lang=lang,
+        )
+
+        # Parse JSON and save to SLM
+        facts = _parse_remember_json(result)
+        for fact in facts:
+            slm.remember(
+                fact,
+                metadata={
+                    "session_id": session_id,
+                    "fact_type": "general",
+                    "category": "instruction",
+                    "source": "user_request",
+                },
+                profile=user_id,
+            )
+
+        # Answer via chat model (confirmation)
+        return self._process_chat_with_tools(
+            task, query, current_time_str, session_id, user_id, lang, response_style,
+        )
+
+    def _process_fact_extraction(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Extract facts from Q&A via chat model (runs on slow worker)."""
+        try:
+            from app.utils import format_prompt
+
+            request_data = task.get("data", {})
+            query = request_data.get("query", "")
+            response_text = request_data.get("response", "")
+            session_id = request_data.get("session_id", task["session_id"])
+            user_id = task["user_id"]
+            lang = task.get("lang", "ru")
+
+            slm = self.app.modules.get("slm")
+            if not slm or not slm.available:
+                return {"status": "ok"}
+
+            # Get existing facts for context
+            existing = slm.list_facts(limit=50, profile=user_id)
+            existing_str = "\n".join(f"- {f.get('text', '')}" for f in existing if f.get("text")) if existing else "(нет)"
+
+            # Post-request to chat model
+            prompt = format_prompt("slm_extract.template", {
+                "existing_facts": existing_str,
+                "query": query,
+                "response": response_text,
+            }, lang=lang)
+
+            if not prompt:
+                return {"status": "ok"}
+
+            result = self.app.modules["base"].call_llamacpp(
+                [{"role": "user", "content": prompt}],
+                model_type="chat", lang=lang,
+                temperature=0.1,
+            )
+
+            # Parse JSON and save
+            facts = _parse_facts_json(result)
+            for fact in facts:
+                slm.remember(
+                    fact["text"],
+                    metadata={
+                        "session_id": session_id,
+                        "fact_type": fact.get("fact_type", "general"),
+                        "category": fact.get("category", "context"),
+                        "source": "extraction",
+                    },
+                    profile=user_id,
+                )
+
+            return {"status": "ok", "facts_extracted": len(facts)}
+        except Exception as e:
+            self.app.logger.warning(f"Fact extraction failed: {e}")
+            return {"status": "ok"}
+
+    def _process_fact_merge(self, task: dict[str, Any]) -> dict[str, Any]:
+        """LLM-based fact merging (sleep mode)."""
+        try:
+            request_data = task.get("data", {})
+            user_id = request_data.get("user_id", task["user_id"])
+            lang = task.get("lang", "ru")
+
+            slm = self.app.modules.get("slm")
+            if not slm or not slm.available:
+                return {"status": "ok"}
+
+            from app.slm_merge import merge_facts_for_user
+            merge_facts_for_user(self.app.modules["base"], slm, user_id, lang)
+
+            return {"status": "ok"}
+        except Exception as e:
+            self.app.logger.warning(f"Fact merge failed: {e}")
+            return {"status": "ok"}
+
     # Modified: removed hardcoded is_image_edit block; all image+text now go through _process_image_chat_task
     def _process_request(self, task: dict[str, Any]) -> dict[str, Any]:
         """Main entry point — delegates to specialized task handlers."""
         self.app.logger.info(f"RedisRequestQueue._process_request: processing task {task['id']}")
+        self.app._last_task_time = time.time()  # Track for merge watcher
 
         task_type = task.get("type") or task.get("data", {}).get("type")
         self.app.logger.info(f"_process_request: task_type={task_type}, task_id={task.get('id')}")
@@ -2693,6 +2913,10 @@ class RedisRequestQueue:
             return self._process_image_gen_request(task)
         if task_type == "reasoning_task":
             return self._process_reasoning_request(task)
+        if task_type == "fact_extraction_task":
+            return self._process_fact_extraction(task)
+        if task_type == "fact_merge_task":
+            return self._process_fact_merge(task)
 
         user_id = task["user_id"]
         session_id = task["session_id"]
@@ -3376,12 +3600,17 @@ class RedisRequestQueue:
         self.app.logger.info(f"Reindex complete: total={total}, success={success_count}, failed={fail_count}")
         return {"success": True, "total": total, "success_count": success_count, "failed_count": fail_count}
 
+    # Task types that run in the background and are invisible to the user.
+    # They should not trigger ⚡ or ⏳ indicators in the UI.
+    _BACKGROUND_TASK_TYPES = frozenset({"fact_extraction_task", "fact_merge_task"})
+
     def get_user_requests_status(self, user_id: str, lang: str = "ru") -> dict[str, Any]:
         """Get status of user's requests (processing, queued, completed).
 
         Collects ALL tasks from both fast and slow processing queues.
         The first one is returned as ``processing`` (⚡), the rest are
         added to ``queued`` (⏳) so no active task is invisible.
+        Background tasks (fact extraction, fact merge) are excluded.
         """
         result: dict = {"processing": None, "queued": [], "recent_completed": []}
         processing_session_ids: set[str] = set()
@@ -3394,6 +3623,8 @@ class RedisRequestQueue:
                 req_id = req_id.decode() if isinstance(req_id, bytes) else req_id
                 task = self._deserialize(task_data)
                 if task and task.get("user_id") == user_id:
+                    if task.get("type") in self._BACKGROUND_TASK_TYPES:
+                        continue
                     task["status"] = "processing"
                     task["position_info"] = {"position": 1, "estimated_seconds": 0}
                     all_processing.append(task)
@@ -3428,6 +3659,8 @@ class RedisRequestQueue:
             for task_data in queue_tasks:
                 task = self._deserialize(task_data)
                 if task and task.get("user_id") == user_id:
+                    if task.get("type") in self._BACKGROUND_TASK_TYPES:
+                        continue
                     if task.get("session_id") in processing_session_ids:
                         continue
                     task["status"] = "queued"

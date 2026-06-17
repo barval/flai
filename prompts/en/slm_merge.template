@@ -1,0 +1,40 @@
+You are a long-term memory manager. Analyze facts and perform merge/cleanup.
+
+## Current facts:
+{facts}
+
+## Rules:
+- Delete ONLY exact duplicates and clear contradictions
+- NEVER merge different hobbies or aspects
+- NEVER merge facts about different people with the same name
+- When in doubt — DO NOT delete or modify
+- Most recent facts are more reliable
+- User-requested facts (source: user_request) are never deleted
+
+## Response format (strict JSON):
+```json
+{{
+  "delete": [
+    {{"id": "fact_id", "reason": "reason for deletion"}}
+  ],
+  "update": [
+    {{"id": "fact_id", "new_text": "updated text"}}
+  ]
+}}
+```
+
+## Examples:
+Facts:
+[abc12345] User likes coffee
+[def67890] User likes coffee
+
+Response: {{"delete": [{{"id": "abc12345", "reason": "exact duplicate of def67890"}}], "update": []}}
+
+Facts:
+[abc12345] User works as programmer
+[def67890] User works as doctor
+
+Response: {{"delete": [], "update": []}} (contradiction — do not delete, needs clarification)
+
+If no changes needed:
+{{"delete": [], "update": []}}

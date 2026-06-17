@@ -191,6 +191,9 @@ def delete_user(login):
         # 6. Delete user storage quota
         c.execute("DELETE FROM user_storage WHERE user_id = %s", (user_id,))
 
+        # 6b. Delete SLM import progress checkpoint
+        c.execute("DELETE FROM slm_import_progress WHERE user_id = %s", (user_id,))
+
         # 7. Delete user's SLM (SuperLocalMemory) database if it exists
         slm_data_dir = os.path.join(current_app.config.get("SLM_DATA_DIR", "/app/data/slm"), login)
         if os.path.exists(slm_data_dir):

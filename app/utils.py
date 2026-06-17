@@ -309,11 +309,31 @@ def load_prompt_template(template_name: str, lang: str = "ru") -> str | None:
         return None
 
 
+def _load_skills_section(lang: str = "ru") -> str:
+    """Load skills list from the master copy file."""
+    skills_path = os.path.join(PROMPTS_DIR, lang, "skills.txt")
+    try:
+        with open(skills_path, encoding="utf-8") as f:
+            return f.read().rstrip("\n")
+    except FileNotFoundError:
+        if lang != "ru":
+            return _load_skills_section("ru")
+        current_app.logger.error(f"Skills file not found: {skills_path}")
+        return ""
+
+
 def format_prompt(template_name: str, variables: dict[str, Any], lang: str = "ru") -> str | None:
-    """Load template and substitute variables."""
+    """Load template and substitute variables.
+
+    If the template contains ``{skills_section}`` and the caller did not
+    provide it, it is automatically loaded from ``prompts/{lang}/skills.txt``.
+    """
     template = load_prompt_template(template_name, lang)
     if not template:
         return None
+    # Auto-inject skills if the template uses {skills_section}
+    if "{skills_section}" in template and "skills_section" not in variables:
+        variables["skills_section"] = _load_skills_section(lang)
     try:
         return template.format(**variables)
     except KeyError as e:

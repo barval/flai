@@ -238,3 +238,25 @@ def import_history_to_slm(dry_run, force, user_id):
 
     if dry_run:
         click.echo("(dry-run, no changes made)")
+
+
+@click.command("reset-slm-checkpoint")
+@click.argument("user_id", required=False)
+@with_appcontext
+def reset_slm_checkpoint(user_id):
+    """Reset SLM import checkpoints so next import re-processes all messages.
+
+    If USER_ID is provided, resets only that user's checkpoint.
+    Without USER_ID, resets all users' checkpoints.
+    """
+    from app.database import get_db
+
+    with get_db() as conn:
+        c = conn.cursor()
+        if user_id:
+            c.execute("DELETE FROM slm_import_progress WHERE user_id = %s", (user_id,))
+            click.echo(f"Reset checkpoint for user: {user_id}")
+        else:
+            c.execute("DELETE FROM slm_import_progress")
+            click.echo("Reset checkpoints for all users")
+        conn.commit()

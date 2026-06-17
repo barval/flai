@@ -101,10 +101,10 @@ class BaseModule(TranslationMixin):
 
     def call_llamacpp(
         self, messages: list[dict[str, Any]], model_type: str = "chat", lang: str = "ru",
-        tools: list[dict[str, Any]] | None = None,
+        tools: list[dict[str, Any]] | None = None, temperature: float | None = None,
     ) -> str | dict[str, Any]:
         """Call llama-server with configuration."""
-        return self.llamacpp.call(messages, model_type, False, lang, tools=tools)  # type: ignore[no-any-return]
+        return self.llamacpp.call(messages, model_type, False, lang, tools=tools, temperature=temperature)  # type: ignore[no-any-return]
 
     # --- Context handling methods ---
     def _estimate_tokens(self, text: str, model_type: str = "chat", lang: str = "ru") -> int:
@@ -152,20 +152,41 @@ class BaseModule(TranslationMixin):
         if not skip_slm:
             slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
             if slm:
-                slm_raw = slm.get_context(
+                # Two-phase recall: session-specific first (priority), then general
+                session_facts = []
+                general_facts = []
+
+                # Phase 1: Session-specific facts (if session_id available)
+                if session_id:
+                    session_facts_raw = slm.recall(
+                        current_query,
+                        limit=slm_recall_limit,
+                        profile=user_id,
+                        semantic=True,
+                    )
+                    session_facts = [f for f in session_facts_raw if f.get("metadata", {}).get("fact_type") == "session_specific"]
+
+                # Phase 2: General facts
+                general_facts_raw = slm.recall(
                     current_query,
-                    lang,
                     limit=slm_recall_limit,
                     profile=user_id,
                     semantic=True,
                 )
-                if slm_raw:
+                general_facts = [f for f in general_facts_raw if f.get("metadata", {}).get("fact_type") != "session_specific"]
+
+                # Combine: session-specific first (priority), then general
+                all_facts = session_facts + general_facts
+                if all_facts:
                     header = (
                         "Дополнительная информация из долговременной памяти:"
                         if lang == "ru"
                         else "Additional context from long-term memory:"
                     )
-                    slm_facts_str = f"\n\n{header}\n{slm_raw}"
+                    lines = [header]
+                    for f in all_facts[:slm_recall_limit]:
+                        lines.append(f"- {f.get('content', f.get('text', ''))}")
+                    slm_facts_str = "\n" + "\n".join(lines)
 
         # Combine: history first (dialog continuity), SLM facts after (long-term enrichment)
         context = history_str + slm_facts_str
@@ -348,10 +369,6 @@ class BaseModule(TranslationMixin):
             return {"error": self._("Model returned empty response", lang)}
 
         result = self._parse_router_response(router_response, message_text, current_time_str, lang)  # type: ignore[arg-type]
-        if "error" not in result and result.get("action") in ("fact", "rag"):
-            self._save_to_slm_async(
-                message_text, metadata={"session_id": session_id, "type": "user_query"}, user_id=user_id
-            )
         return result
 
     def _parse_router_response(
@@ -375,7 +392,7 @@ class BaseModule(TranslationMixin):
             "[-RAG-]": "rag",
             "[-SEARCH-]": "search",
             "[-VIDEO-]": "video",
-            "[-FACT-]": "fact",
+            "[-REMEMBER-]": "remember",
         }
 
         for marker, action in markers.items():

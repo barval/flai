@@ -45,6 +45,13 @@ The chat model (~2 GiB) stays hot in VRAM permanently.
 
 Strictly sequential — only one GPU task runs at a time.
 
+### Background Tasks
+`fact_extraction_task` and `fact_merge_task` are background tasks that run on the slow worker after chat responses. They are defined in `_BACKGROUND_TASK_TYPES` and have special handling:
+- **Not counted in queue status** — `get_user_requests_status()` excludes them from `processing` and `queued` display.
+- **Not counted in user queue counter** — `_process_single_task()` skips `_decrement_user_queue_count()` for them.
+- **Errors are silently logged** — both `_process_fact_extraction()` and `_process_fact_merge()` are wrapped in try/except so failures never leak to users via SSE.
+- They are added directly to `slow_queue_key` via `redis.rpush()` without going through `add_request()`.
+
 ### Task Signing
 Tasks are HMAC-signed JSON to prevent tampering.
 
@@ -120,6 +127,9 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 - SLM facts are injected into prompt context for BOTH chat and reasoning models.
 - **SLM lazy availability re-check** — `_get_context_for_model()` always calls `slm.get_context()` (no `slm.available` check).
 - **SLM dedup** — `_recall_from_user_db()` deduplicates facts by content (score `limit × 3`, returns unique). Configurable via `SLM_RECALL_LIMIT` (default 7).
+- **Fact extraction** — `_process_fact_extraction()` runs on slow worker after chat responses >20 chars. Calls `call_llamacpp()` with `temperature=0.1`. Wrapped in try/except — failures are logged but never surface to users.
+- **Fact merge** — `_process_fact_merge()` runs on slow worker during sleep mode. Also wrapped in try/except.
+- **Skills list** — `prompts/{ru,en}/skills.txt` is the single source of truth for all capabilities. `format_prompt()` auto-injects `{skills_section}` when the template contains the placeholder.
 - Background import on startup via `slm_import_progress` checkpoint table.
 - Auto-cleaned on last session deletion (`_cleanup_slm_if_empty()` in `db.py`).
 - Per-user SLM files are owned by `appuser (UID 1000)` — `start.sh` runs `chown -R appuser:appuser` on the shared volume.
@@ -216,6 +226,7 @@ Server: `_process_transcribe_task()` creates `type: "image"` task when both `ima
 - `fetchQueueStatus()` builds `newInfo` from server data only (no `pendingRequestIds` race guard).
 - **Multiple ⚡ prevention**: only one session shows ⚡ at a time — the rest show ⏳ with real queue positions from server.
 - **Queue position display**: uses nullish coalescing (`??`) — position 0 (extra processing tasks) shows ⏳ without a number, normal queue positions show ⏳ N.
+- **Background tasks invisible**: `fact_extraction_task` and `fact_merge_task` are filtered out by `_BACKGROUND_TASK_TYPES` in `get_user_requests_status()` — they never trigger ⚡ or ⏳ indicators.
 
 **⚡ recovery after task chain**: `events.js` — after every `clearSessionQueue()` call, `setTimeout(fetchQueueStatus, 500)` is scheduled. This polls the server for the next queued task, restoring ⚡ when the next task moves from queue to processing.
 

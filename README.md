@@ -90,6 +90,9 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | **llama-swap alias deduplication** | Automatic dedup of aliases when multiple modules share the same GGUF file — prevents `duplicate alias` crash |
 | **Chat model auto-reload** | After reasoning/multimodal/embedding/video finishes, chat model is reloaded in a background thread via tiny completion request — next router call is instant |
 | **LTX-Video unconditional restart** | Video container always restarted after generation (no rate-limiting) — guaranteed CUDA context cleanup (~3 GB freed) |
+| **Skills list centralized** | All capabilities text extracted to `prompts/{ru,en}/skills.txt` as single source of truth. `format_prompt()` auto-injects `{skills_section}`. Previously duplicated (and inconsistent) across 4+ locations |
+| **Background task error isolation** | Fact extraction and fact merge errors are silently logged — never leak to users via SSE. Background tasks excluded from ⚡/⏳ queue indicators |
+| **Queue counter stability** | Background tasks no longer drift the user queue counter negative. `get_user_queue_counts()` returns `max(0, ...)` to prevent displays like `📊 -9/0` |
 
 ### Core Components
 

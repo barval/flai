@@ -109,6 +109,21 @@ def api_delete_session(session_id):
         return jsonify({"error": _("Permission denied or session not found")}), 403
     if session.get("current_session") == session_id:
         session.pop("current_session", None)
+
+    # Delete session-specific facts from SLM
+    try:
+        slm = current_app.modules.get("slm")  # type: ignore[attr-defined]
+        if slm and slm.available:
+            # Get session-specific facts and delete them
+            facts = slm.list_facts(limit=100, profile=session["login"])
+            session_facts = [f for f in facts if f.get("metadata", {}).get("session_id") == session_id]
+            for fact in session_facts:
+                slm.delete_fact(fact["id"], profile=session["login"])
+            if session_facts:
+                current_app.logger.info(f"Deleted {len(session_facts)} session-specific facts from SLM")
+    except Exception as e:
+        current_app.logger.warning(f"Failed to delete session facts from SLM: {e}")
+
     return jsonify({"status": "ok"})
 
 

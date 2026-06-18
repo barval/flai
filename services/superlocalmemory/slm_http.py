@@ -7,6 +7,10 @@ For requests with a ``profile`` parameter:
   - /remember saves to both the daemon (shared) AND the user's private DB (async)
 
 For requests without ``profile``: all forwarded to the daemon.
+
+Endpoints:
+  - /cleanup-memories removes orphaned memories for one or all users
+  - A periodic background thread runs every hour to clean orphaned memories automatically
 """
 
 import contextlib
@@ -152,6 +156,42 @@ def _semantic_recall_from_user_db(query: str, limit: int, profile: str) -> list[
     except Exception as e:
         app.logger.warning(f"SLM semantic recall via daemon failed: {e}")
         return None
+
+
+def _cleanup_memories_for_user(profile: str) -> dict:
+    """Remove orphaned rows from ``memories`` table.
+
+    A memory is orphaned when none of its ``atomic_facts`` has
+    ``lifecycle = 'active'``.  Deleting from ``memories`` cascades to
+    ``atomic_facts`` (FK ON DELETE CASCADE), which is safe because all
+    related facts are already archived.
+
+    Returns a dict with counts for logging.
+    """
+    db_path = _user_db_path(profile)
+    if not db_path:
+        return {"deleted": 0, "error": "db not found"}
+
+    try:
+        conn = sqlite3.connect(db_path)
+        before = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
+        cursor = conn.execute(
+            """
+            DELETE FROM memories
+            WHERE memory_id NOT IN (
+                SELECT DISTINCT memory_id
+                FROM atomic_facts
+                WHERE lifecycle = 'active'
+            )
+            """
+        )
+        deleted = cursor.rowcount
+        after = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
+        conn.commit()
+        conn.close()
+        return {"deleted": deleted, "before": before, "after": after}
+    except Exception as e:
+        return {"deleted": 0, "error": str(e)}
 
 
 def _remember_to_user_db(text: str, metadata: dict | None, profile: str) -> None:
@@ -332,11 +372,60 @@ def list_facts():
     return jsonify({"success": True, "data": {"results": []}})
 
 
+@app.route("/cleanup-memories", methods=["POST"])
+def cleanup_memories():
+    """Remove orphaned rows from ``memories`` table for one or all users.
+
+    A memory is orphaned when none of its ``atomic_facts`` has
+    ``lifecycle = 'active'``.
+
+    POST body: ``{"profile": "valery"}`` or ``{}`` (all users).
+    """
+    data = request.get_json(force=True) if request.data else {}
+    profile = data.get("profile")
+
+    if profile:
+        result = _cleanup_memories_for_user(profile)
+        return jsonify({"success": True, "profile": profile, **result})
+
+    # All users
+    results = {}
+    if os.path.isdir(SLM_DATA_DIR):
+        for entry in os.listdir(SLM_DATA_DIR):
+            if os.path.isdir(os.path.join(SLM_DATA_DIR, entry)):
+                results[entry] = _cleanup_memories_for_user(entry)
+
+    total_deleted = sum(r.get("deleted", 0) for r in results.values())
+    return jsonify({"success": True, "total_deleted": total_deleted, "profiles": results})
+
+
 @app.route("/", methods=["GET"])
 def root():
     return jsonify({"service": "superlocalmemory", "daemon_proxy": True})
 
 
+def _periodic_cleanup(interval: int = 3600) -> None:
+    """Background thread: clean orphaned memories every *interval* seconds."""
+    import time
+
+    while True:
+        time.sleep(interval)
+        try:
+            if not os.path.isdir(SLM_DATA_DIR):
+                continue
+            for entry in os.listdir(SLM_DATA_DIR):
+                if os.path.isdir(os.path.join(SLM_DATA_DIR, entry)):
+                    result = _cleanup_memories_for_user(entry)
+                    deleted = result.get("deleted", 0)
+                    if deleted:
+                        app.logger.info(f"Periodic cleanup for {entry}: deleted {deleted} orphaned memories")
+        except Exception as e:
+            app.logger.warning(f"Periodic cleanup failed: {e}")
+
+
 if __name__ == "__main__":
+    cleanup_thread = threading.Thread(target=_periodic_cleanup, args=(3600,), daemon=True)
+    cleanup_thread.start()
+
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8766
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)

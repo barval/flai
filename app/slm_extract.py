@@ -8,8 +8,19 @@ Runs as post-request on slow worker (serialized via _gpu_lock).
 
 import json
 import logging
+import re
 
 logger = logging.getLogger(__name__)
+
+# Queries that should NOT produce facts — user commands, not personal information
+_SKIP_QUERY_PATTERNS = re.compile(
+    r"^(сделай|напиши|нарисуй|покажи|сгенерируй|отредактируй|создай|запусти|видео| "
+    r"make|write|draw|show|generate|edit|create|run|video| "
+    r"который час|сколько время|what time|how many| "
+    r"что ты умеешь|кто ты|what can you|who are you|"
+    r"привет|здравствуй|hello|hi|hey)",
+    re.IGNORECASE,
+)
 
 
 def extract_facts_from_exchange(
@@ -37,6 +48,17 @@ def extract_facts_from_exchange(
     from app.utils import format_prompt
 
     existing_str = "\n".join(f"- {f.get('text', '')}" for f in existing_facts if f.get("text")) if existing_facts else "(нет)"
+
+    # Skip extraction for user commands, greetings, and short queries
+    query_lower = query.strip().lower()
+    if len(query_lower) < 5 or _SKIP_QUERY_PATTERNS.match(query_lower):
+        logger.debug(f"Skipping fact extraction for command/greeting: {query[:50]}")
+        return []
+
+    # Skip if response is too short (likely not informative)
+    if len(response.strip()) < 30:
+        logger.debug("Skipping fact extraction: response too short")
+        return []
 
     prompt = format_prompt(
         "slm_extract.template",
@@ -75,8 +97,12 @@ def extract_facts_from_exchange(
         result_list = []
         for f in facts[:max_facts]:
             if isinstance(f, dict) and f.get("text"):
+                text = f["text"].strip()
+                # Truncate facts longer than 200 chars
+                if len(text) > 200:
+                    text = text[:197] + "..."
                 result_list.append({
-                    "text": f["text"],
+                    "text": text,
                     "category": f.get("category", "context"),
                     "fact_type": f.get("fact_type", "general"),
                 })

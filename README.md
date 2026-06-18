@@ -821,7 +821,7 @@ curl http://localhost:5000/metrics
 - **Video generation (LTX-Video 2B)** — text-to-video and image+text-to-video, separate GPU container
 - **Voice features** — Whisper ASR (faster_whisper) speech-to-text + Piper TTS with male/female voices in EN/RU
 - **RAG document search** — PDF/DOC/DOCX/TXT upload, vector search via Qdrant with configurable chunking
-- **SuperLocalMemory (SLM)** — long-term cross-session memory, daemon mode, per-user SQLite isolation, ~1 ms recall latency
+- **SuperLocalMemory (SLM)** — long-term cross-session memory, daemon mode, per-user SQLite isolation, ~1 ms recall latency, automatic orphaned memories cleanup (hourly background thread)
 - **RAG: generation on slow worker** — fast worker does only search, reasoning model generates answer; prevents GPU contention; RAG prompt uses ONLY context (no hallucination)
 - **5-layer model protection in admin panel** — 3-tier VRAM/RAM classification (🟢 good / 🟡 cpu_offload / 🔴 impossible / ⚠ unknown), server-side validation, background dry-load + auto-rollback, crash-loop watchdog
 - **Camera integration** — IP camera snapshots, multimodal analysis, granular user permissions

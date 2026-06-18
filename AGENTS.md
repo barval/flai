@@ -42,6 +42,10 @@ docker exec flai-web flask cleanup-uploads
 docker exec flai-web flask migrate-messages-format [--dry-run]
 docker exec flai-web flask import-history-to-slm [--force] [user_id]
 
+# SLM cleanup (in container)
+docker exec flai-slm python3 -c "import urllib.request,json; urllib.request.urlopen(urllib.request.Request('http://localhost:8766/cleanup-memories',data=json.dumps({}).encode(),headers={'Content-Type':'application/json'},method='POST'),timeout=30).read().decode()"  # all users
+docker exec flai-slm python3 -c "import urllib.request,json; urllib.request.urlopen(urllib.request.Request('http://localhost:8766/cleanup-memories',data=json.dumps({'profile':'valery'}).encode(),headers={'Content-Type':'application/json'},method='POST'),timeout=30).read().decode()"  # single user
+
 # Dev server (0.0.0.0:5000, debug=True)
 python wsgi.py
 

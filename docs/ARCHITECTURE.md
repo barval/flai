@@ -129,6 +129,7 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 - **SLM dedup** — `_recall_from_user_db()` deduplicates facts by content (score `limit × 3`, returns unique). Configurable via `SLM_RECALL_LIMIT` (default 7).
 - **Fact extraction** — `_process_fact_extraction()` runs on slow worker after chat responses >20 chars. Calls `call_llamacpp()` with `temperature=0.1`. Wrapped in try/except — failures are logged but never surface to users.
 - **Fact merge** — `_process_fact_merge()` runs on slow worker during sleep mode. Also wrapped in try/except.
+- **Memories cleanup** — Daemon writes to both `memories` and `atomic_facts` tables, but only `atomic_facts` is read by the system. `_cleanup_memories_for_user()` removes orphaned `memories` rows (no active `atomic_facts`). `_periodic_cleanup()` runs hourly as a daemon thread. `/cleanup-memories` POST endpoint for manual cleanup.
 - **Skills list** — `prompts/{ru,en}/skills.txt` is the single source of truth for all capabilities. `format_prompt()` auto-injects `{skills_section}` when the template contains the placeholder.
 - Background import on startup via `slm_import_progress` checkpoint table.
 - Auto-cleaned on last session deletion (`_cleanup_slm_if_empty()` in `db.py`).

@@ -179,7 +179,7 @@ def get_users():
                     try:
                         slm_conn = sqlite3.connect(f"file:{slm_db}?mode=ro&immutable=1", uri=True)
                         slm_c = slm_conn.cursor()
-                        slm_c.execute("SELECT COUNT(*) FROM memories")
+                        slm_c.execute("SELECT COUNT(*) FROM atomic_facts WHERE lifecycle = 'active'")
                         u_dict["slm_facts_count"] = slm_c.fetchone()[0]
                         slm_conn.close()
                     except Exception:

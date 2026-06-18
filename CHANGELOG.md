@@ -33,6 +33,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Error header missing "⚠️ system"** — `_build_error_response()` did not include `model_used`/`model_type` in the returned dict, so `finalizeStreamedMessage()` on the client could not render the "⚠️ system" label in the message header. Added both fields to the error response dict.
 - **Multimodal context overflow** — Vision models tokenize images into far more tokens than the 1000-token estimate in `_validate_prompt()`. Updated estimate to 4096. Also increased multimodal model `context_length` from 8192 to 16384 (safe since multimodal and video pipelines never share VRAM). Migration updates existing deployments.
 - **SLM fact merge never executed** — `_start_slm_merge_watcher()` imported `get_all_user_ids` from `app.userdb` but the function did not exist, causing `ImportError` on every watcher tick. Added the function and deduplication guard (`_merge_last_queued`) to prevent duplicate merge tasks during prolonged idle.
+- **SLM fact quality** — Updated `slm_extract.template` (RU/EN): max 200 chars per fact, skip user commands and full LLM responses. Updated `slm_merge.template`: merge semantically similar facts, delete command fragments. Added pre-filter in `slm_extract.py` to skip extraction for commands/greetings. Cleaned 80 garbage facts for user valery (188→108 active).
+- **SLM memories cleanup** — Admin panel now counts active SLM facts via `atomic_facts WHERE lifecycle='active'` instead of raw `memories` table count. Added `_cleanup_memories_for_user()` to remove orphaned `memories` rows (where no `atomic_facts` has `lifecycle='active'`). Added `/cleanup-memories` POST endpoint for manual cleanup. Added `_periodic_cleanup()` daemon thread that runs every hour to clean orphaned memories automatically.
 - **Web search config** — Removed hardcoded `max_results=5` and `MAX_WEB_SEARCH_RESULTS=5000` from tool executor. Both are now configurable via `SEARXNG_MAX_RESULTS` (default 7) and `SEARXNG_MAX_RESULTS_CHARS` (default 7000). RAG char limit configurable via `RAG_MAX_RESULTS_CHARS` (default 5000).
 - **RAG architecture** — RAG on fast worker now does ONLY search (`rag.search()`). Answer generation via reasoning model happens EXCLUSIVELY on slow worker. Prevents GPU contention with LTX-Video.
 - **.env sync rule** — Added explicit documentation that `.env` and `.env.example` must be kept in sync (same sections, same variables; `.env` has real values, `.env.example` has placeholders). Updated AGENTS.md, RELEASE_GUIDE.md, ARCHITECTURE.md.
@@ -52,6 +54,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Dead code cleanup** — Removed `get_gguf_model_info()`, `find_gguf_file()`, `chunk_text_by_sentences()`, `clear_camera_rooms()`, `get_database_type()`, `is_postgresql()`, `close_db()`, `generate_chat_response_stream()`. Removed CSS classes `.capabilities`, `.capability`.
 - **Chat video export** — `saveChatAsHTML()` collects `<video>` elements, fetches video files, converts to base64. Video rendered as `<video controls preload="metadata">`.
 - **Dead torch code cleanup** — Removed all `torch.cuda.empty_cache()` and `torch.cuda.synchronize()` calls (~60 lines). `flai-web` has no CUDA context.
+- **SLM orphaned memories cleanup** — Daemon's `memories` table grows indefinitely but is never read by the system (only `atomic_facts` is used). Added `_cleanup_memories_for_user()` that removes `memories` rows with no active `atomic_facts` (safe via FK CASCADE). Added `/cleanup-memories` POST endpoint and `_periodic_cleanup()` daemon thread (hourly). For valery: 270→70 memories (200 orphaned removed).
 - **Skills list centralized** — All skills/capabilities text extracted to `prompts/{ru,en}/skills.txt` as single source of truth. `format_prompt()` auto-injects `{skills_section}` when the template contains the placeholder. Previously skills were duplicated (and inconsistent) across `chat.template`, `reasoning.template`, `rag.template`, `image_text.template`, and inline Python code in `queue.py`. Now 10 files (8 templates + 2 master copies) always show the same 10 skills.
 - **`_process_chat_with_tools()` skills from master file** — Inline system prompt in `_process_chat_with_tools()` now loads skills via `_load_skills_section()` instead of a hardcoded list that could drift from the templates.
 
@@ -63,6 +66,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 - `camera_rooms` table added. Migration `migrate_name_forms()` regenerates existing room forms with pymorphy3 on startup.
 - `model_vram_estimates` table PK changed from `(module)` to `(module, model_name)`. Idempotent migration in `init_db()`.
+- Admin panel SLM facts count now reflects `atomic_facts WHERE lifecycle='active'` instead of total `memories` rows — may show different numbers for existing deployments.
 
 ---
 

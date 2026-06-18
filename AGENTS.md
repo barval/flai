@@ -147,6 +147,13 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - Secrets in `.env` only.
   - All `marked.parse()` output goes through `DOMPurify.sanitize()` before DOM insertion.
 
+# .env Synchronization Rule
+  - When adding, removing, or changing environment variables in `app/config.py`, **both** `.env` and `.env.example` MUST be updated.
+  - `.env` contains real values (secrets, URLs, enabled features).
+  - `.env.example` contains placeholder values (`your_secret_key_here`) and comments for optional/deactivated services.
+  - Do NOT commit secrets from `.env` into `.env.example`.
+  - Section order and structure must match between the two files.
+
 # Hardware Requirements
 FLAI REQUIRES an **NVIDIA GPU with at least 8 GB VRAM and 16 GB system RAM.** CPU-only mode is not supported. The project automatically adapts to available VRAM (8/12/16+ GB tiers).
 

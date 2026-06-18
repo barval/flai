@@ -260,6 +260,7 @@ def create_app():
         _start_background_slm_import(app)
 
     # Background SLM merge: queue merge task during idle time
+    app._last_task_time = 0  # Allow merge on first idle check after startup
     _start_slm_merge_watcher(app)
 
     # Watchdog: detect llama-swap crash loops and auto-rollback
@@ -661,6 +662,11 @@ def _start_slm_merge_watcher(app: Flask) -> None:
                     if (time.time() - app._last_task_time) < 300:  # 5 min idle threshold
                         continue
 
+                    # Skip if merge was already queued recently
+                    last_queued = getattr(app, "_merge_last_queued", 0)
+                    if (time.time() - last_queued) < 300:
+                        continue
+
                     # Queue merge task for all users
                     from app.userdb import get_all_user_ids
 
@@ -679,6 +685,7 @@ def _start_slm_merge_watcher(app: Flask) -> None:
                         }
                         serialized = app.request_queue._serialize(merge_task)
                         app.request_queue.redis.rpush(app.request_queue.slow_queue_key, serialized)
+                    app._merge_last_queued = time.time()
                     app.logger.info(f"Queued SLM merge for {len(user_ids)} users")
                 except Exception as e:
                     app.logger.warning(f"SLM merge watcher error: {e}")

@@ -709,6 +709,8 @@ class RedisRequestQueue:
             "assistant_timestamp": completion_time,
             "is_error": True,
             "message_id": msg_id,
+            "model_used": "system",
+            "model_type": "system",
         }
 
     @staticmethod
@@ -1372,6 +1374,7 @@ class RedisRequestQueue:
         response_style: str = "neutral",
         user_class: int = 2,
         rag_context: str = "",
+        rag_source: str = "",
         skip_rag: bool = False,
     ) -> dict[str, Any]:
         """Re-queue a reasoning task to the slow queue.
@@ -1388,6 +1391,7 @@ class RedisRequestQueue:
         }
         if rag_context:
             request_data["rag_context"] = rag_context
+            request_data["rag_source"] = rag_source
         if skip_rag:
             request_data["skip_rag"] = True
         new_request_id, position_info = self.add_request(user_id, session_id, request_data, user_class, lang=lang)
@@ -1432,6 +1436,7 @@ class RedisRequestQueue:
 
         # Use pre-computed RAG context from fast worker, or search fresh
         rag_context = request_data.get("rag_context", "")
+        rag_source = request_data.get("rag_source", "")
         skip_rag = request_data.get("skip_rag", False)
         if rag_context:
             self.app.logger.info(f"Using pre-computed RAG context: {len(rag_context)} chars from fast worker")
@@ -1477,6 +1482,7 @@ class RedisRequestQueue:
                             score = scores[i] if i < len(scores) else 0.0
                             context_parts.append(f"[{source_label}: {filename} (score: {score:.2f})]\n{text}")
                         rag_context = "\n\n".join(context_parts)
+                        rag_source = "rag"
                         self.app.logger.info(
                             f"RAG raw context: {len(chunks)} chunks, {len(rag_context)} chars passed to reasoning model"
                         )
@@ -1512,6 +1518,7 @@ class RedisRequestQueue:
             response_style=response_style,
             user_id=user_id,
             rag_context=rag_context,
+            rag_source=rag_source,
         ):
             full_response += token
             if not error_detected:
@@ -2175,6 +2182,7 @@ class RedisRequestQueue:
             lang,
             response_style,
             rag_context=rag_context,
+            rag_source="rag",
         )
 
     def _process_search_task(
@@ -2225,6 +2233,7 @@ class RedisRequestQueue:
             lang,
             response_style,
             rag_context=search_context,
+            rag_source="web_search",
         )
 
     def _process_rag_task_stream(
@@ -2295,6 +2304,7 @@ class RedisRequestQueue:
             lang,
             response_style,
             rag_context=rag_context,
+            rag_source="rag",
         )
 
     def _process_text_task(
@@ -2881,11 +2891,15 @@ class RedisRequestQueue:
             lang = task.get("lang", "ru")
 
             slm = self.app.modules.get("slm")
-            if not slm or not slm.available:
+            if not slm:
+                return {"status": "ok"}
+            if not slm.available:
+                slm.check_availability()
+            if not slm.available:
                 return {"status": "ok"}
 
             from app.slm_merge import merge_facts_for_user
-            merge_facts_for_user(self.app.modules["base"], slm, user_id, lang)
+            merge_facts_for_user(self.app.modules["base"].call_llamacpp, slm, user_id, lang)
 
             return {"status": "ok"}
         except Exception as e:

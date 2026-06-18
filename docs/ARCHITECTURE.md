@@ -95,7 +95,7 @@ SD and LTX-Video use separate GPU contexts.
 
 1. **Chat (gemma-4-E2B, ~3 GiB)** — preloaded at startup, TTL=0. Default model for router and direct responses. Swapped out on demand. After other model finishes (TTL=1s → unloaded), `_preload_chat_model_background()` reloads chat via tiny completion request in a daemon thread.
 
-2. **Multimodal (Qwen3VL-8B, 5 GiB)** — loaded on demand (camera, image analysis, video param gen). TTL=1s → **unloaded 1 second** after the response is sent.
+2. **Multimodal (Qwen3VL-8B, 5 GiB)** — loaded on demand (camera, image analysis, video param gen). TTL=1s → **unloaded 1 second** after the response is sent. Context length 16384 to accommodate vision token counts from dynamic image tiling.
 
 3. **Reasoning (16GB+: gpt-oss-20b Q4_K_M, 12/8GB: gemma-4-E4B Q4_0)** — loaded on demand for complex queries. TTL=1s → unloaded 1 second after response.
 
@@ -276,7 +276,7 @@ MUST be in a subdirectory with `mmproj-*.gguf` (e.g. `Qwen3VL-8B-Instruct-Q4_K_M
 - `app/llama_swap_config.py` — llama-swap YAML generation
 - `app/slm_import.py` — SLM background import
 - `app/model_config.py` — model configuration
-- `app/config.py` — app configuration
+- `app/config.py` — app configuration (env vars loaded here; both `.env` and `.env.example` must be kept in sync)
 - `app/db.py` — database helpers
 - `app/events.py` — SSE event publishing
 - `app/userdb.py` — user database operations

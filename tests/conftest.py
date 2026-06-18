@@ -370,7 +370,7 @@ class _MockDatabase:
                 {
                     "module": "multimodal",
                     "model_name": "Qwen3VL-8B-Instruct-Q4_K_M",
-                    "context_length": 8192,
+                    "context_length": 16384,
                     "temperature": 0.7,
                     "top_p": 0.9,
                     "timeout": 120,

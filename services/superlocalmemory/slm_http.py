@@ -288,6 +288,35 @@ def forget():
     return jsonify({"success": True, "note": "forget not supported via daemon"})
 
 
+@app.route("/delete", methods=["POST"])
+def delete_fact():
+    """Delete a specific fact by ID from the user's private SQLite database."""
+    data = request.get_json(force=True)
+    fact_id = data.get("id", "")
+    profile = data.get("profile")
+
+    if not fact_id or not profile:
+        return jsonify({"success": False, "error": "id and profile required"}), 400
+
+    db_path = _user_db_path(profile)
+    if not db_path:
+        return jsonify({"success": False, "error": "user database not found"}), 404
+
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute(
+            "UPDATE atomic_facts SET lifecycle = 'archived' WHERE fact_id = ? AND lifecycle = 'active'",
+            (fact_id,),
+        )
+        conn.commit()
+        deleted = cursor.rowcount
+        conn.close()
+        return jsonify({"success": True, "deleted": deleted})
+    except Exception as e:
+        app.logger.warning(f"SLM delete_fact failed for {profile}: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/list", methods=["POST"])
 def list_facts():
     """List user's facts — read from per-user DB if profile is provided."""

@@ -30,7 +30,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Queue position** — Removed `pendingRequestIds` race guard from `chat-queue.js`. Queue positions now come exclusively from server data.
 - **Multi-tab session** — Client now sends `session_id` in request body. Server validates (UUID v4 + user ownership). Fixes race conditions between browser tabs.
 - **Error message prefix** — All error messages now start with `"⚠️ "`. Added `_is_llm_error_string()` helper.
+- **Error header missing "⚠️ system"** — `_build_error_response()` did not include `model_used`/`model_type` in the returned dict, so `finalizeStreamedMessage()` on the client could not render the "⚠️ system" label in the message header. Added both fields to the error response dict.
+- **Multimodal context overflow** — Vision models tokenize images into far more tokens than the 1000-token estimate in `_validate_prompt()`. Updated estimate to 4096. Also increased multimodal model `context_length` from 8192 to 16384 (safe since multimodal and video pipelines never share VRAM). Migration updates existing deployments.
+- **SLM fact merge never executed** — `_start_slm_merge_watcher()` imported `get_all_user_ids` from `app.userdb` but the function did not exist, causing `ImportError` on every watcher tick. Added the function and deduplication guard (`_merge_last_queued`) to prevent duplicate merge tasks during prolonged idle.
+- **Web search config** — Removed hardcoded `max_results=5` and `MAX_WEB_SEARCH_RESULTS=5000` from tool executor. Both are now configurable via `SEARXNG_MAX_RESULTS` (default 7) and `SEARXNG_MAX_RESULTS_CHARS` (default 7000). RAG char limit configurable via `RAG_MAX_RESULTS_CHARS` (default 5000).
 - **RAG architecture** — RAG on fast worker now does ONLY search (`rag.search()`). Answer generation via reasoning model happens EXCLUSIVELY on slow worker. Prevents GPU contention with LTX-Video.
+- **.env sync rule** — Added explicit documentation that `.env` and `.env.example` must be kept in sync (same sections, same variables; `.env` has real values, `.env.example` has placeholders). Updated AGENTS.md, RELEASE_GUIDE.md, ARCHITECTURE.md.
 - **userdb.py schema mismatch** — `delete_user()` used `user_id = user["id"]` (INTEGER) against TEXT columns. Fixed to `user_id = login` (TEXT).
 - **test_backups.py** — Added `Babel(flask_app)` to fixture. Fixed `shutil.copytree FileExistsError` via `dirs_exist_ok=True`.
 - **mypy app/utils.py** — 19 → 0 errors via `_gguf_scalar()` helper.

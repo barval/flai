@@ -17,7 +17,7 @@ class SearchModule(TranslationMixin):
         self.logger = logging.getLogger(__name__)
         self.searxng_url = None
         self.timeout = 10
-        self.max_results = 5
+        self.max_results = 7
         self.available = False
 
         if app:
@@ -28,7 +28,7 @@ class SearchModule(TranslationMixin):
         self.searxng_url = app.config.get("SEARXNG_URL") or "http://flai-searxng:8080"
         self.searxng_url = self.searxng_url.rstrip("/")
         self.timeout = app.config.get("SEARXNG_TIMEOUT", 10)
-        self.max_results = app.config.get("SEARXNG_MAX_RESULTS", 5)
+        self.max_results = app.config.get("SEARXNG_MAX_RESULTS", 7)
         self.check_availability()
 
     def check_availability(self) -> bool:

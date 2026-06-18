@@ -80,7 +80,9 @@ def load_config(app):
     # SearXNG web search settings
     app.config["SEARXNG_URL"] = os.getenv("SEARXNG_URL")
     app.config["SEARXNG_TIMEOUT"] = int(os.getenv("SEARXNG_TIMEOUT", 10))
-    app.config["SEARXNG_MAX_RESULTS"] = int(os.getenv("SEARXNG_MAX_RESULTS", 5))
+    app.config["SEARXNG_MAX_RESULTS"] = int(os.getenv("SEARXNG_MAX_RESULTS", 7))
+    app.config["SEARXNG_MAX_RESULTS_CHARS"] = int(os.getenv("SEARXNG_MAX_RESULTS_CHARS", 7000))
+    app.config["RAG_MAX_RESULTS_CHARS"] = int(os.getenv("RAG_MAX_RESULTS_CHARS", 5000))
 
     # Token estimation settings
     app.config["TOKEN_CHARS"] = int(os.getenv("TOKEN_CHARS", 3))

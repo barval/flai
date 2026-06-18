@@ -206,6 +206,14 @@ def delete_user(login):
     return True
 
 
+def get_all_user_ids() -> list[str]:
+    """Return all user logins (used by SLM merge watcher)."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT login FROM users ORDER BY login")
+        return [row["login"] for row in c.fetchall()]
+
+
 def list_users(exclude_admin=True):
     """List all users."""
     with get_db() as conn:

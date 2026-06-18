@@ -90,6 +90,7 @@ Sections to update:
   6. **Quick Start commands** (`### Quick Start`) — update deploy.sh flags if profiles changed
   7. **Docker Compose profiles** — list all available profiles with descriptions
   8. **Configuration** section — update environment variables if added/changed
+  9. **`.env` / `.env.example` sync** — if env vars were added/changed in `app/config.py`, ensure both `.env` and `.env.example` are updated. `.env` has real values; `.env.example` has placeholders and comments. Section order must match.
 
 Format rules:
   - Use tables for structured data (components, benchmarks, tiers)

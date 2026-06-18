@@ -22,8 +22,6 @@ logger = logging.getLogger(__name__)
 
 MAX_TOOL_ITERATIONS = 5
 MAX_EXPRESSION_LENGTH = 200
-MAX_WEB_SEARCH_RESULTS = 5000
-MAX_RAG_RESULTS = 5000
 
 # ── Safe eval for calculator ─────────────────────────────────────────
 
@@ -358,14 +356,16 @@ def _exec_web_search(ctx: dict[str, Any], query: str, lang: str = "ru") -> str:
         with force_locale(lang):
             return _("Web search service unavailable")
 
-    results = search_module.search(query, lang=lang, max_results=5)
+    max_results = app.config.get("SEARXNG_MAX_RESULTS", 7) if app else 7
+    results = search_module.search(query, lang=lang, max_results=max_results)
     if not results:
         with force_locale(lang):
             return _("No results found for query: {query}").format(query=query)
 
     formatted = search_module.format_results_context(results, lang=lang)
-    if len(formatted) > MAX_WEB_SEARCH_RESULTS:
-        formatted = formatted[:MAX_WEB_SEARCH_RESULTS] + "..."
+    max_chars = app.config.get("SEARXNG_MAX_RESULTS_CHARS", 7000) if app else 7000
+    if len(formatted) > max_chars:
+        formatted = formatted[:max_chars] + "..."
     return formatted
 
 
@@ -401,8 +401,9 @@ def _exec_rag_search(ctx: dict[str, Any], query: str, top_k: int = 5) -> str:
         parts.append(f"[{i + 1}. {filename} (score: {score:.2f})]\n{text}")
 
     result = "\n\n".join(parts)
-    if len(result) > MAX_RAG_RESULTS:
-        result = result[:MAX_RAG_RESULTS] + "..."
+    max_rag_chars = app.config.get("RAG_MAX_RESULTS_CHARS", 5000) if app else 5000
+    if len(result) > max_rag_chars:
+        result = result[:max_rag_chars] + "..."
     return result
 
 

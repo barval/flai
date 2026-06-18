@@ -128,9 +128,13 @@ class BaseModule(TranslationMixin):
 
     def _get_context_for_model(
         self, session_id: str, model_type: str, current_query: str, lang: str = "ru", user_id: str | None = None,
-        skip_slm: bool = False,
+        skip_slm: bool = False, rag_context: str = "", rag_source: str = "",
     ) -> str:
-        """Retrieve conversation history + SLM long-term memory with safety margin."""
+        """Retrieve conversation history + SLM long-term memory with safety margin.
+
+        Budget allocation order: query → template overhead → RAG context → SLM facts → history (last).
+        History is trimmed to fit whatever remains after all other components are measured.
+        """
         if not session_id:
             return ""
 
@@ -145,7 +149,12 @@ class BaseModule(TranslationMixin):
         available_tokens = int(max_context_tokens * (self.context_history_percent / 100.0) * self.safety_margin)
         query_tokens = self._estimate_tokens(current_query, model_type, lang)
 
-        # Step 1: Fetch SLM facts first to measure their real size
+        # Step 1: Measure RAG context tokens (internet search results)
+        rag_tokens = 0
+        if rag_context:
+            rag_tokens = self._estimate_tokens(rag_context, model_type, lang)
+
+        # Step 2: Fetch SLM facts first to measure their real size
         all_facts: list[dict[str, Any]] = []
         if not skip_slm:
             slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
@@ -175,7 +184,7 @@ class BaseModule(TranslationMixin):
 
                 all_facts = session_facts + general_facts
 
-        # Step 2: Build SLM string and measure its real token cost
+        # Step 3: Build SLM string and measure its real token cost
         slm_facts_str = ""
         slm_tokens = 0
         if all_facts:
@@ -190,28 +199,34 @@ class BaseModule(TranslationMixin):
             slm_facts_str = "\n" + "\n".join(lines)
             slm_tokens = self._estimate_tokens(slm_facts_str, model_type, lang)
 
-        # Step 3: Calculate history budget with actual SLM size subtracted
-        remaining_for_history = available_tokens - query_tokens - TEMPLATE_OVERHEAD - slm_tokens
+        # Step 4: Calculate history budget — subtract query, template, RAG, and SLM
+        remaining_for_history = available_tokens - query_tokens - TEMPLATE_OVERHEAD - rag_tokens - slm_tokens
 
         if remaining_for_history <= 0:
             self.logger.warning(
-                f"No tokens available for history. Query: {query_tokens}, SLM: {slm_tokens}, "
-                f"Available: {available_tokens}"
+                f"No tokens available for history. Query: {query_tokens}, RAG: {rag_tokens}, "
+                f"SLM: {slm_tokens}, Available: {available_tokens}"
             )
             return slm_facts_str.lstrip() if slm_facts_str else ""
 
-        # Step 4: Load history with SQL-level limit based on remaining budget
+        # Step 5: Load history with SQL-level limit based on remaining budget
         history_msgs = get_session_text_history(session_id, remaining_for_history, max_messages=self.max_messages_limit)
         history_str = self._build_context_prompt(history_msgs, lang) if history_msgs else ""
 
-        # Combine: history first (dialog continuity), SLM facts after (long-term enrichment)
-        context = history_str + slm_facts_str
+        # Combine: RAG context first, then SLM facts, history last (already trimmed)
+        rag_section = ""
+        if rag_context:
+            heading = "Найденная информация из документов:" if lang == "ru" else "Found information from documents:"
+            rag_section = "\n" + heading + "\n" + rag_context
+        context = rag_section + slm_facts_str + history_str
+        history_tokens = self._estimate_tokens(history_str, model_type, lang)
         context_tokens = self._estimate_tokens(context, model_type, lang)
 
         self.logger.info(
-            f"Context loaded: {len(history_msgs)} history msgs, "
+            f"Context loaded: {len(history_msgs)} history msgs ({history_tokens} tokens), "
             f"{len(all_facts)} SLM facts ({slm_tokens} tokens), "
-            f"{context_tokens} tokens ({context_tokens / max_context_tokens * 100:.1f}% of {max_context_tokens})"
+            + (f"{'Web search' if rag_source == 'web_search' else 'RAG'} ({rag_tokens} tokens), " if rag_tokens else "")
+            + f"TOTAL: {context_tokens} tokens ({context_tokens / max_context_tokens * 100:.1f}% of {max_context_tokens})"
         )
 
         return context
@@ -451,19 +466,17 @@ class BaseModule(TranslationMixin):
         response_style: str = "neutral",
         user_id: str | None = None,
         rag_context: str = "",
+        rag_source: str = "",
     ) -> str:
         """Process complex query via reasoning model."""
         response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(session_id, "reasoning", query, lang, user_id=user_id)  # type: ignore[arg-type]
+        context_str = self._get_context_for_model(  # type: ignore[arg-type]
+            session_id, "reasoning", query, lang, user_id=user_id,
+            rag_context=rag_context, rag_source=rag_source,
+        )
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )
-
-        if rag_context:
-            heading = "Найденная информация из документов:" if lang == "ru" else "Found information from documents:"
-            rag_context_str = heading + "\n" + rag_context
-        else:
-            rag_context_str = ""
 
         reasoning_prompt = format_prompt(
             "reasoning.template",
@@ -473,7 +486,7 @@ class BaseModule(TranslationMixin):
                 "response_language": response_language,
                 "conversation_history": context_str,
                 "response_style": style_instruction,
-                "rag_context": rag_context_str,
+                "rag_context": "",
             },
             lang=lang,
         )
@@ -504,19 +517,17 @@ class BaseModule(TranslationMixin):
         response_style: str = "neutral",
         user_id: str | None = None,
         rag_context: str = "",
+        rag_source: str = "",
     ) -> Generator[str, None, None]:
         """Build prompt and stream reasoning model response."""
         response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(session_id, "reasoning", query, lang, user_id=user_id)  # type: ignore[arg-type]
+        context_str = self._get_context_for_model(  # type: ignore[arg-type]
+            session_id, "reasoning", query, lang, user_id=user_id,
+            rag_context=rag_context, rag_source=rag_source,
+        )
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )
-
-        if rag_context:
-            heading = "Найденная информация из документов:" if lang == "ru" else "Found information from documents:"
-            rag_context_str = heading + "\n" + rag_context
-        else:
-            rag_context_str = ""
 
         prompt = format_prompt(
             "reasoning.template",
@@ -526,7 +537,7 @@ class BaseModule(TranslationMixin):
                 "response_language": response_language,
                 "conversation_history": context_str,
                 "response_style": style_instruction,
-                "rag_context": rag_context_str,
+                "rag_context": "",
             },
             lang=lang,
         )

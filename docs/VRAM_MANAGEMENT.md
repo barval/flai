@@ -199,3 +199,7 @@ grep "RAG\|reasoning\|router" docker/logs/flai-web.log  # Debug RAG flow
 docker logs flai-web --tail 100 | grep -E "watchdog|dry_load"  # Model protection events
 curl -s "http://localhost:5000/admin/api/model-estimate?model=gemma-4-E2B-it-Q4_0.gguf&module=chat&ctx_size=8192" | jq '{tier, can_save, ngl_recommended, tier_message}'
 ```
+
+## Configuration
+
+When adding or changing environment variables in `app/config.py`, both `.env` and `.env.example` MUST be updated. `.env` contains real values; `.env.example` has placeholders and comments. Section order must match.

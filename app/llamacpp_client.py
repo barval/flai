@@ -890,7 +890,10 @@ class LlamaCppClient:
                     if part.get("type") == "text":
                         total_tokens += estimate_tokens(part.get("text", ""), model_type, lang)
                     elif part.get("type") == "image_url":
-                        total_tokens += 1000
+                        # Vision models tokenize images into many more tokens than
+                        # a naive estimate. Qwen3VL uses dynamic tiling which can
+                        # produce thousands of vision tokens per image.
+                        total_tokens += 4096
 
         if total_tokens > hard_limit:
             return self._translate("Request too long, please simplify your request", lang)

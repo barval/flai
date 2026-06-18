@@ -193,7 +193,7 @@ def _init_postgresql():
             VALUES
                 ('chat', 'qwen35-4b-instruct-mtp-mxfp4.gguf', 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
                 ('reasoning', 'gpt-oss-20b-Q4_K_M', 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.15),
-                ('multimodal', 'Qwen3VL-8B-Instruct-Q4_K_M', 8192, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
+                ('multimodal', 'Qwen3VL-8B-Instruct-Q4_K_M', 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
                 ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://flai-llamacpp:8033', NULL)
         """)
 
@@ -338,6 +338,14 @@ def _init_postgresql():
         SET temperature = 0.7, top_p = 0.9
         WHERE module = 'chat'
           AND temperature = 0.1 AND top_p = 0.1
+    """)
+
+    # Update multimodal model context_length: 8192→16384
+    # (8192 too small for vision token counts from Qwen3VL)
+    c.execute("""
+        UPDATE model_configs
+        SET context_length = 16384
+        WHERE module = 'multimodal' AND context_length = 8192
     """)
 
     conn.commit()

@@ -74,3 +74,7 @@ Fixed in v9.0:
   - `tests/test_resource_manager.py`: `patch("app.resource_manager.requests.X", new=mock)`.
   - `app/routes/backups.py:restore_backup()`: `dirs_exist_ok=True`.
   - `tests/test_morph.py` **(NEW):** 16 tests for pymorphy3 morphological analysis.
+
+## Configuration
+
+When adding or changing environment variables in `app/config.py`, both `.env` and `.env.example` MUST be updated. `.env` contains real values; `.env.example` has placeholders and comments. Section order must match.

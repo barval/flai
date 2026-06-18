@@ -7,6 +7,7 @@ Conservative merging: only delete exact duplicates and clear contradictions.
 Never merge different hobbies/aspects or facts that could be about different people.
 """
 
+import json
 import logging
 import time
 
@@ -45,11 +46,12 @@ def merge_facts_for_user(llm_call, slm, user_id: str, lang: str = "ru") -> dict:
     try:
         # Get all facts
         facts = slm.list_facts(limit=100, profile=user_id)
+        logger.info(f"Merge for {user_id}: got {len(facts) if facts else 0} facts")
         if not facts or len(facts) < 3:
             return stats
 
         facts_str = "\n".join(
-            f"[{f['id'][:8]}] {f['text']}" for f in facts
+            f"[{f.get('fact_id', f.get('id', ''))[:8]}] {f.get('content', f.get('text', ''))}" for f in facts
         )
 
         # LLM merge decision
@@ -73,7 +75,6 @@ def merge_facts_for_user(llm_call, slm, user_id: str, lang: str = "ru") -> dict:
             return stats
 
         # Parse JSON
-        import json
         start = result.find("{")
         end = result.rfind("}") + 1
         if start == -1 or end <= start:
@@ -82,6 +83,7 @@ def merge_facts_for_user(llm_call, slm, user_id: str, lang: str = "ru") -> dict:
         data = json.loads(result[start:end])
         deletions = data.get("delete", [])
         updates = data.get("update", [])
+        logger.info(f"Merge for {user_id}: LLM decided {len(deletions)} deletions, {len(updates)} updates")
 
         # Apply deletions
         for item in deletions:
@@ -98,7 +100,9 @@ def merge_facts_for_user(llm_call, slm, user_id: str, lang: str = "ru") -> dict:
             new_text = item.get("new_text", "")
             if old_id and new_text:
                 # Get old fact metadata
-                old_fact = next((f for f in facts if f["id"] == old_id), None)
+                old_fact = next(
+                    (f for f in facts if f.get("fact_id", f.get("id")) == old_id), None
+                )
                 if old_fact:
                     metadata = old_fact.get("metadata", {})
                     metadata["merged_from"] = old_id

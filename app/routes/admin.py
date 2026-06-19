@@ -1608,7 +1608,7 @@ def update_model_config(module):
         try:
             from app.llama_swap_config import LlamaSwapConfigGenerator, generate_and_write
 
-            if generate_and_write(current_app):
+            if generate_and_write(current_app, include_preload=True):
                 generator = LlamaSwapConfigGenerator(current_app)
                 generator.signal_reload()
                 current_app.logger.info(f"llama-swap config regenerated after updating {module}")

@@ -27,7 +27,7 @@
 - 🎬 **Video Generation** – create short videos from text or image+text prompts using LTX-Video 2B (distilled, 8-step inference)
 - 🎤 **Voice Transcription** – convert voice messages to text using Whisper ASR (faster_whisper)
 - 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper TTS (male and female voices in English and Russian)
-- 🧠 **Long-term Memory** – cross-session, persistent memory via SuperLocalMemory (SLM). CPU-only, zero-LLM retrieval. Adds relevant facts alongside conversation history. Enable with `--profile with-slm`.
+- 🧠 **Long-term Memory** – cross-session, persistent memory via SuperLocalMemory (SLM). CPU-only, rule-based fact extraction and merging (no LLM). Semantic deduplication via embeddings. Enable with `--profile with-slm`.
 
 ### 📁 Document & Knowledge Management
 - 📚 **RAG with Qdrant** – upload documents (PDF, DOC, DOCX, TXT) and ask questions about their content
@@ -483,7 +483,7 @@ Configuration is loaded from `gunicorn_config.py`, not inline CLI args.
 
 | Setting | Value | Reason |
 |---------|-------|--------|
-| workers | 2 | One for SSE streaming, one for regular requests |
+| workers | 1 | Single gunicorn worker — fixes `_gpu_lock` race condition (threading.Lock is per-process) |
 | worker_class | gevent | Async I/O-optimized worker for concurrent connections |
 | timeout | 900s | Accommodates long operations (image editing up to 15 min) |
 | graceful_timeout | 30s | Graceful worker shutdown |
@@ -821,7 +821,7 @@ curl http://localhost:5000/metrics
 - **Video generation (LTX-Video 2B)** — text-to-video and image+text-to-video, separate GPU container
 - **Voice features** — Whisper ASR (faster_whisper) speech-to-text + Piper TTS with male/female voices in EN/RU
 - **RAG document search** — PDF/DOC/DOCX/TXT upload, vector search via Qdrant with configurable chunking
-- **SuperLocalMemory (SLM)** — long-term cross-session memory, daemon mode, per-user SQLite isolation, ~1 ms recall latency, automatic orphaned memories cleanup (hourly background thread)
+- **SuperLocalMemory (SLM)** — long-term cross-session memory, daemon mode, per-user SQLite isolation, ~1 ms recall latency, rule-based fact extraction and merging (no LLM), semantic deduplication, temporal decay, automatic orphaned memories cleanup
 - **RAG: generation on slow worker** — fast worker does only search, reasoning model generates answer; prevents GPU contention; RAG prompt uses ONLY context (no hallucination)
 - **5-layer model protection in admin panel** — 3-tier VRAM/RAM classification (🟢 good / 🟡 cpu_offload / 🔴 impossible / ⚠ unknown), server-side validation, background dry-load + auto-rollback, crash-loop watchdog
 - **Camera integration** — IP camera snapshots, multimodal analysis, granular user permissions
@@ -829,7 +829,7 @@ curl http://localhost:5000/metrics
 - **Multi-language support** — full interface and AI responses in Russian and English
 - **VRAM management** — `ensure_vram_for_llm()`, auto-unload LTX-Video before SD/video, VRAM freed between every GPU task
 - **Dynamic VRAM estimation** — computed from GGUF metadata (file_size, block_count, ctx) + real measurements stored in DB; admin panel shows color-coded percentage bars
-- **Adaptive model degradation** — iterative `n_gpu_layers` reduction on OOM, per-model-type circuit breakers, reasoning 502 retry with degrade
+- **Adaptive model degradation** — iterative `n_gpu_layers` reduction on OOM, per-model-type circuit breakers, reasoning 500/502 retry with degrade, flash-attn disabled during partial offloading
 - **GPU requirement + 3 hardware tiers** — auto-detect VRAM via `nvidia-smi` in deploy scripts (8/12/16+ GB)
 - **Video VRAM hardening** — try/finally in both video handlers, CUDA flush, timeout 60 s, buffer +3000 MB, no "proceeding anyway"
 - **SSE real-time delivery** — queue results and messages via Server-Sent Events (Redis pub/sub), replacing HTTP polling

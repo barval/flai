@@ -65,6 +65,23 @@ def _extract_error_message(response: Any) -> str:
     return body
 
 
+def _translate_llama_swap_error(msg: str, lang: str = "ru") -> str:
+    """Translate known llama-swap error messages to user-friendly text.
+
+    llama-swap returns raw English errors (e.g., "could not find suitable inference handler
+    for X.gguf"). These are not in .po files, so we map them manually.
+    """
+    lower = msg.lower()
+    if "could not find suitable inference handler for" in lower:
+        # Extract model name: "... for <model_name>" or "... for <model_name>.gguf"
+        parts = msg.rsplit(" for ", 1)
+        model_id = parts[-1].strip().rstrip(".").strip() if len(parts) > 1 else ""
+        # Strip .gguf for display
+        model_display = model_id.removesuffix(".gguf")
+        return _tr("Model '{model}' is not available. Select a different model in admin panel.", lang, model=model_display)
+    return msg
+
+
 def _format_user_error(response: Any, lang: str = "ru") -> str:
     """Build a user-facing error string with the "⚠️ " prefix.
 
@@ -73,7 +90,8 @@ def _format_user_error(response: Any, lang: str = "ru") -> str:
     """
     msg = _extract_error_message(response)
     if msg:
-        return msg if msg.startswith("⚠️") else f"⚠️ {msg}"
+        translated = _translate_llama_swap_error(msg, lang)
+        return translated if translated.startswith("⚠️") else f"⚠️ {translated}"
     status = getattr(response, "status_code", 0) or 0
     return f"⚠️ {_tr('HTTP error {status}', lang, status=status)}"
 
@@ -99,6 +117,78 @@ def _strip_thinking_tags(text: str) -> str:
     text = re.sub(r"<think[\s>][\s\S]*?</think>", "", text)
     text = re.sub(r"<\|channel\|>analysis<\|message\|>[\s\S]*?<\|end\|>", "", text)
     return text.strip()
+
+
+# ── Generic reasoning pattern filter ────────────────────────────────────
+# Some reasoning models (gpt-oss-20b, QwQ, gemma-4) output chain-of-thought
+# as plain text without thinking tags.  These patterns detect common
+# reasoning markers and strip everything up to the actual answer.
+
+_REASONING_MARKERS_RE = re.compile(
+    r"(?:"
+    r"The user (?:asked|is asking|asks|said|wants|wondered)"
+    r"|Пользователь (?:спросил|спрашивает|просит|хочет|говорит|спрашивал)"
+    r"|(?:Analyze|Analyse|Check|Formulate|Identify|Review|Consider|Plan|"
+    r"Анализ|Проверка|Формулировка|Идентификация|Рассмотрение|План) \w+[\s:]+"
+    r"|(?:Self-Correction|Refinement|Коррекция|Уточнение)[\s:]+"
+    r"|(?:I need to|I should|I must|Let me|Let's|"
+    r"Мне нужно|Мне следует|Мне необходимо|Нужно|Следует|Необходимо)"
+    r"|(?:Final Answer(?: Generation)?(?:\s*\([^)]*\))?|Генерация финального ответа|Финальный ответ)[\s:]*"
+    r"|(?:Это (?:вопрос|задача|запрос)|This is a (?:question|task|request))"
+    r"|(?:Ответ (?:должен|должна|будет|стоит)|The answer (?:should|must|will))"
+    r"|(?:Для (?:этого|данного) (?:вопроса|запроса)|For this (?:question|request))"
+    r"|(?:Мой ответ|Моё задание|My (?:answer|task))"
+    r"|(?:использовать инструмент|use tool)"
+    r")",
+    re.IGNORECASE,
+)
+
+# Matches markdown plan lines: "** State ...", "** Answer the ...", "** First ..."
+# These are model-generated meta-instructions that should not be shown to the user.
+_MD_PLAN_LINE_RE = re.compile(r"^\s*\*\*\s+\w", re.MULTILINE)
+
+
+def _strip_generic_reasoning(text: str) -> str:
+    """Strip chain-of-thought reasoning output as plain text (no thinking tags).
+
+    Some reasoning models output step-by-step analysis before the actual answer
+    without wrapping it in `` tags.  This function detects common reasoning
+    markers (e.g. "Analyze Persona:", "Final Answer Generation:") and returns
+    only the text after the last marker.
+
+    Also strips markdown plan lines ("** State the identity...") that some
+    models (gemma-4) generate instead of a real answer.
+
+    If no markers are found AND no markdown plan lines exist,
+    the text is returned unchanged (avoids false positives).
+    """
+    if not text or len(text) < 30:
+        return text
+
+    # Check for known reasoning markers
+    matches = list(_REASONING_MARKERS_RE.finditer(text))
+    if matches:
+        last_match = matches[-1]
+        answer = text[last_match.end():].strip()
+
+        # High marker density in first 200 chars = pure reasoning, no real answer
+        first_200 = text[:200]
+        density = len(list(_REASONING_MARKERS_RE.finditer(first_200)))
+        if density >= 3 and len(answer) < 100:
+            return ""
+
+        # After last marker — if remaining text is short, it's still reasoning
+        if len(answer) < 30:
+            return ""
+        return answer
+
+    # Check for markdown plan lines — if ALL non-empty lines start with "** ",
+    # the model produced only a plan and no real answer.
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if lines and all(_MD_PLAN_LINE_RE.match(ln) for ln in lines):
+        return ""
+
+    return text
 
 
 def _process_stream_chunk(buffer: str, thinking_active: bool) -> tuple[str, str, bool]:
@@ -261,7 +351,9 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                         content = content[: content.index(stop_token)]
 
                 self.circuit_breaker.record_success()
-                return _strip_thinking_tags(content.strip())  # type: ignore[no-any-return]
+                result = _strip_thinking_tags(content.strip())
+                result = _strip_generic_reasoning(result)
+                return result  # type: ignore[no-any-return]
             else:
                 self.circuit_breaker.record_failure()
                 self.logger.error(
@@ -485,6 +577,41 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         except Exception:
             return False
 
+    def call_cpu(
+        self,
+        messages: list[dict],
+        model: str = "merge_cpu",
+        temperature: float = 0.1,
+        max_tokens: int = 1024,
+    ) -> str:
+        """CPU-only LLM call — bypasses VRAM management entirely.
+
+        Used for background tasks (fact_merge) that don't need GPU.
+        The merge_cpu model runs on CPU with a reduced context window.
+        """
+        base_url = self.get_base_url()
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": False,
+        }
+        try:
+            import httpx
+
+            response = httpx.post(
+                f"{base_url}/v1/chat/completions",
+                json=payload,
+                timeout=300,
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data["choices"][0]["message"]["content"]
+        except Exception as e:
+            self.logger.error(f"CPU LLM call failed: {e}")
+            return ""
+
     def chat(
         self,
         messages: list[dict],
@@ -561,10 +688,12 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     except Exception:
                         pass
 
-                    return _strip_thinking_tags(content.strip())  # type: ignore[no-any-return]
+                    result = _strip_thinking_tags(content.strip())
+                    result = _strip_generic_reasoning(result)
+                    return result  # type: ignore[no-any-return]
                 else:
-                    if attempt < max_retries and response.status_code == 502:
-                        self.logger.warning(f"chat 502 on attempt {attempt + 1}, retrying in 5s")
+                    if attempt < max_retries and response.status_code in (500, 502):
+                        self.logger.warning(f"chat {response.status_code} on attempt {attempt + 1}, retrying in 5s")
                         time.sleep(5)
                         continue
                     self._record_llama_failure(model_type)

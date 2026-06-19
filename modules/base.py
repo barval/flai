@@ -117,6 +117,17 @@ class BaseModule(TranslationMixin):
         """Call llama-server with configuration."""
         return self.llamacpp.call(messages, model_type, False, lang, tools=tools, temperature=temperature)  # type: ignore[no-any-return]
 
+    def call_llamacpp_cpu(
+        self, messages: list[dict[str, Any]], model_type: str = "merge", lang: str = "ru",
+        temperature: float | None = None,
+    ) -> str:
+        """CPU-only LLM call — bypasses VRAM management.
+
+        Used for background tasks (fact_merge) that don't need GPU.
+        """
+        temp = temperature if temperature is not None else 0.1
+        return self.llamacpp.call_cpu(messages, temperature=temp)  # type: ignore[no-any-return]
+
     # --- Context handling methods ---
     def _estimate_tokens(self, text: str, model_type: str = "chat", lang: str = "ru") -> int:
         """Token estimation with language and model-specific coefficients."""

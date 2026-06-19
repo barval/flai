@@ -46,6 +46,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Background task errors leaking to users** — `_process_fact_extraction()` and `_process_fact_merge()` were not wrapped in try/except. Any exception (network error, parse error, LLM failure) was caught by `_process_single_task` and published as an SSE error event, causing `⚠️ Ошибка: ...` messages to appear in the user's chat after a successful response.
 - **Phantom ⚡ after chat response** — `fact_extraction_task` (enqueued on slow worker after every chat response >20 chars) had the same `session_id` as the main task. `get_user_requests_status()` reported it as `processing`, causing the lightning bolt to reappear. Background tasks are now excluded from queue status display.
 - **Negative queue counter** — `fact_extraction_task` was added directly to slow queue via `redis.rpush()` without `add_request()`, but `_process_single_task()` always called `_decrement_user_queue_count()` in its `finally` block. After N responses, `user_counts[user_id]` drifted to -N (e.g. `-9`), causing displays like `📊 -9/0`. Fixed by skipping decrement for background tasks and adding `max(0, ...)` guard in `get_user_queue_counts()`.
+- **flash-attn SIGABRT on Blackwell GPUs** — `--flash-attn on` with `--n-gpu-layers > 0` (partial offloading) caused SIGABRT on Blackwell sm_120 GPUs (llama.cpp build 9294). Flash-attn is now disabled when partial offloading (ngl > 0). Effective ngl is computed before the flash-attn logic to ensure correct decision.
+- **500 errors causing unnecessary model degradation** — `LlamaSwapBackend.call()` only retried on 502 but not 500, causing transient llama-swap errors to trigger `degrade_and_reload()` on the first failure. Now retries on both 500 and 502 (`response.status_code in (500, 502)`).
+- **Gunicorn workers 2→1** — `threading.Lock()` (`_gpu_lock`) only works within a single process. With 2 gunicorn gevent workers, GPU tasks could run concurrently across processes. Reduced to 1 worker. Single worker is optimal for GPU-bound workloads.
+- **Preload after fresh YAML** — `generate_and_write()` now accepts `include_preload` parameter. On initial startup: `include_preload=False` (prevents crash from stale on-disk YAML). On admin reload and dry_load: `include_preload=True` (preloads model before first request).
+- **Merge watcher queue flooding** — SLM merge watcher now checks `llen(slow_queue_key) > len(user_ids)` before enqueueing, preventing redundant merge tasks from flooding the queue during prolonged idle.
+- **Generic reasoning output visible to user** — Some models (gemma-4-E2B, gpt-oss-20b) output chain-of-thought as plain text without `<thinking>` tags. `_strip_generic_reasoning()` detects common reasoning markers (e.g. "Analyze Persona:", "Final Answer Generation:") and strips everything up to the actual answer. Applied to ALL model types server-side (queue.py, llamacpp_client.py) and client-side (events.js). Chat and reasoning templates (RU/EN) updated with explicit instruction: "Write ONLY the final answer. Do NOT write reasoning, analysis, thinking steps."
 
 ### 🔧 Improvements
 
@@ -55,6 +61,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Chat video export** — `saveChatAsHTML()` collects `<video>` elements, fetches video files, converts to base64. Video rendered as `<video controls preload="metadata">`.
 - **Dead torch code cleanup** — Removed all `torch.cuda.empty_cache()` and `torch.cuda.synchronize()` calls (~60 lines). `flai-web` has no CUDA context.
 - **SLM orphaned memories cleanup** — Daemon's `memories` table grows indefinitely but is never read by the system (only `atomic_facts` is used). Added `_cleanup_memories_for_user()` that removes `memories` rows with no active `atomic_facts` (safe via FK CASCADE). Added `/cleanup-memories` POST endpoint and `_periodic_cleanup()` daemon thread (hourly). For valery: 270→70 memories (200 orphaned removed).
+- **SLM rule-based fact extraction** — Replaced LLM-based extraction with pattern matching (`app/slm_rules.py`). Scoring by category patterns (preferences, facts, instructions, personality). No GPU usage, ~50-200ms CPU. Semantic deduplication via new `/similarity` endpoint.
+- **SLM rule-based fact merge** — Replaced LLM merge with edit-distance + semantic similarity + temporal decay pipeline. No CPU LLM usage, ~100-500ms. Auto-archives facts older than 90 days with low confidence.
+- **Fact extraction moved to background thread** — `_extract_facts_bg()` runs as `threading.Thread(daemon=True)` instead of enqueueing to slow worker. Eliminates GPU lock contention for fact extraction.
 - **Skills list centralized** — All skills/capabilities text extracted to `prompts/{ru,en}/skills.txt` as single source of truth. `format_prompt()` auto-injects `{skills_section}` when the template contains the placeholder. Previously skills were duplicated (and inconsistent) across `chat.template`, `reasoning.template`, `rag.template`, `image_text.template`, and inline Python code in `queue.py`. Now 10 files (8 templates + 2 master copies) always show the same 10 skills.
 - **`_process_chat_with_tools()` skills from master file** — Inline system prompt in `_process_chat_with_tools()` now loads skills via `_load_skills_section()` instead of a hardcoded list that could drift from the templates.
 
@@ -67,6 +76,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - `camera_rooms` table added. Migration `migrate_name_forms()` regenerates existing room forms with pymorphy3 on startup.
 - `model_vram_estimates` table PK changed from `(module)` to `(module, model_name)`. Idempotent migration in `init_db()`.
 - Admin panel SLM facts count now reflects `atomic_facts WHERE lifecycle='active'` instead of total `memories` rows — may show different numbers for existing deployments.
+- New env vars: `SLM_SIMILARITY_THRESHOLD` (0.85), `SLM_TEMPORAL_DECAY_DAYS` (90), `SLM_MIN_CONFIDENCE_FOR_DECAY` (0.5). `MERGE_CONTEXT_SIZE` and `MERGE_MAX_FIT_FACTS` no longer used (kept for backward compat).
 
 ---
 

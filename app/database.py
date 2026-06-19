@@ -324,7 +324,11 @@ def _init_postgresql():
     """)
 
     # Switch chat model back to Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf (Instruct, ~2 GB)
-    for old_name in ['Qwen3-1.7B-Q8_0.gguf', 'Qwen3-1.7B-Instruct-Q4_K_M', 'Qwen3-4B-Instruct-2507-Q4_K_M']:
+    # Match both with and without .gguf suffix (admin panel may store either form)
+    for old_name in [
+        'Qwen3-1.7B-Q8_0.gguf', 'Qwen3-1.7B-Instruct-Q4_K_M',
+        'Qwen3-4B-Instruct-2507-Q4_K_M', 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf',
+    ]:
         c.execute("""
             UPDATE model_configs
             SET model_name = 'Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf'

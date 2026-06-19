@@ -127,8 +127,10 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 - SLM facts are injected into prompt context for BOTH chat and reasoning models.
 - **SLM lazy availability re-check** — `_get_context_for_model()` always calls `slm.get_context()` (no `slm.available` check).
 - **SLM dedup** — `_recall_from_user_db()` deduplicates facts by content (score `limit × 3`, returns unique). Configurable via `SLM_RECALL_LIMIT` (default 7).
-- **Fact extraction** — `_process_fact_extraction()` runs on slow worker after chat responses >20 chars. Calls `call_llamacpp()` with `temperature=0.1`. Wrapped in try/except — failures are logged but never surface to users.
-- **Fact merge** — `_process_fact_merge()` runs on slow worker during sleep mode. Also wrapped in try/except.
+- **Fact extraction** — background thread (`_extract_facts_bg()`) runs CPU-only after chat responses >20 chars. Uses rule-based pattern matching (`app/slm_rules.py`) — no LLM, no GPU lock. Semantic deduplication via `/similarity` endpoint before saving. Wrapped in try/except — failures are logged but never surface to users.
+- **Fact merge** — `_process_fact_merge()` runs on background queue during sleep mode. Uses rule-based pipeline: fast_cleanup → edit_distance_merge → fragment_merge → semantic_merge (via `/similarity`) → temporal_decay. No LLM, CPU-only.
+- **SLM similarity** — `/similarity` endpoint in `slm_http.py` checks candidate text against existing facts using the daemon's embedding model. Returns cosine similarity score (0.0–1.0). Used by both extraction and merge for deduplication.
+- **Temporal decay** — facts older than `SLM_TEMPORAL_DECAY_DAYS` (default 90) with confidence < `SLM_MIN_CONFIDENCE_FOR_DECAY` (default 0.5) are auto-archived during merge.
 - **Memories cleanup** — Daemon writes to both `memories` and `atomic_facts` tables, but only `atomic_facts` is read by the system. `_cleanup_memories_for_user()` removes orphaned `memories` rows (no active `atomic_facts`). `_periodic_cleanup()` runs hourly as a daemon thread. `/cleanup-memories` POST endpoint for manual cleanup.
 - **Skills list** — `prompts/{ru,en}/skills.txt` is the single source of truth for all capabilities. `format_prompt()` auto-injects `{skills_section}` when the template contains the placeholder.
 - Background import on startup via `slm_import_progress` checkpoint table.
@@ -199,8 +201,8 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 
 `app/queue.py:_process_reasoning_request()` uses `generate_reasoning_response_stream()` instead of `process_reasoning()`. Tokens are published via `_publish_stream_token()`.
 
-- **Server-side** `_strip_thinking_tags()` in `queue.py` removes `<tool_call>` and `<|channel|>analysis<|message|>...<|end|>` blocks before DB save.
-- **Client-side** `_stripThinkingTags()` in `events.js` handles both complete and incomplete (streaming) tags.
+- **Server-side** `_strip_thinking_tags()` in `queue.py` removes `<tool_call>` and `<|channel|>analysis<|message|>...<|end|>` blocks before DB save. `_strip_generic_reasoning()` removes chain-of-thought output as plain text (e.g. "Analyze Persona:", "Final Answer Generation:").
+- **Client-side** `_stripThinkingTags()` in `events.js` handles both complete and incomplete (streaming) tags. `_stripGenericReasoning()` strips generic reasoning patterns in real-time during streaming.
 
 ## Task Cancellation
 
@@ -265,6 +267,7 @@ All `<img>` and `<video>` elements created with `loading = 'lazy'`.
 - All llama.cpp models share a single `llm_fast` group with `swap: true`.
 - `seen_aliases` set in `generate_yaml()` prevents duplicate aliases when multiple modules share the same GGUF file.
 - Config auto-generated from DB at startup into `llama-swap-config/`.
+- `include_preload` parameter controls `hooks.on_startup` preload hook: `False` on initial startup (prevents crash from stale on-disk YAML), `True` on admin reload and dry_load.
 
 ## Multimodal Models
 

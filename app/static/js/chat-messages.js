@@ -1,6 +1,25 @@
 // app/static/js/chat-messages.js
 // Message display and loading functions
 
+var _isLoadingMessages = false;
+
+function isNearBottom(container, threshold) {
+    if (!container) return true;
+    if (threshold === undefined) threshold = 200;
+    return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+}
+
+function scrollToBottom(container) {
+    if (!container || _isLoadingMessages) return;
+    container.scrollTop = container.scrollHeight;
+    requestAnimationFrame(function() {
+        container.scrollTop = container.scrollHeight;
+    });
+    setTimeout(function() {
+        container.scrollTop = container.scrollHeight;
+    }, 100);
+}
+
 /**
  * Show a loading indicator overlay on top of the chat area.
  * This is placed outside the messages container so it's not cleared by innerHTML = ''.
@@ -53,6 +72,7 @@ function loadMessages(sessionId) {
     }
 
     dlog('loadMessages: loading messages for session', sessionId);
+    _isLoadingMessages = true;
 
     // Show loading indicator BEFORE fetch starts
     showMessagesLoadingIndicator();
@@ -241,7 +261,14 @@ function loadMessages(sessionId) {
             hideMessagesLoadingIndicator();
 
             updateMessageCount();
+            _isLoadingMessages = false;
             container.scrollTop = container.scrollHeight;
+            requestAnimationFrame(function() {
+                container.scrollTop = container.scrollHeight;
+            });
+            setTimeout(function() {
+                container.scrollTop = container.scrollHeight;
+            }, 200);
             setNewMessageIndicator(sessionId, false);
             updateLastVisit(sessionId);
         })
@@ -680,7 +707,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     }
 
     container.appendChild(msgDiv);
-    container.scrollTop = container.scrollHeight;
+    if (isNearBottom(container)) scrollToBottom(container);
     updateMessageCount();
     
     // TTS button handler
@@ -730,6 +757,8 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     setTimeout(() => {
         if (window.IS_RELOADING) return;
         addCopyButtonsToMessage(msgDiv);
+        var c = document.getElementById('chat-messages');
+        if (c && isNearBottom(c)) scrollToBottom(c);
     }, 50);
     
     return msgDiv;

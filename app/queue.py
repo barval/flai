@@ -25,6 +25,7 @@ from .db import (
     update_document_index_status,
 )
 from .events import get_events_publisher
+from .llamacpp_client import _strip_generic_reasoning
 from .model_config import get_model_config
 from .tools import MAX_TOOL_ITERATIONS, execute_tool, get_tool_definitions
 from .utils import (
@@ -74,6 +75,48 @@ def _parse_facts_json(llm_response: str) -> list[dict[str, str]]:
         return []
 
 
+def _extract_facts_bg(app, query: str, response: str, session_id: str, user_id: str, lang: str) -> None:
+    """Extract facts from Q&A in a background thread (CPU-only, no GPU lock).
+
+    Called by daemon threads after reasoning/chat responses. Catches all
+    exceptions to prevent silent thread crashes.
+    """
+    try:
+        slm = app.modules.get("slm")
+        if not slm or not slm.available:
+            return
+
+        from app.slm_extract import extract_facts_from_exchange
+
+        existing = slm.list_facts(limit=50, profile=user_id)
+        facts = extract_facts_from_exchange(query, response, existing, lang=lang)
+
+        for fact in facts:
+            try:
+                similarity = slm.check_similarity(fact["text"], profile=user_id)
+                if similarity >= 0.85:
+                    continue
+            except Exception:
+                pass
+
+            slm.remember(
+                fact["text"],
+                metadata={
+                    "session_id": session_id,
+                    "fact_type": fact.get("fact_type", "general"),
+                    "category": fact.get("category", "context"),
+                    "source": "extraction",
+                },
+                profile=user_id,
+            )
+
+        if facts:
+            app.logger.info(f"Background fact extraction: {len(facts)} facts for {user_id}")
+
+    except Exception as e:
+        app.logger.warning(f"Background fact extraction failed: {e}")
+
+
 class RedisRequestQueue:
     """Redis-based request queue with JSON serialization for security."""
 
@@ -89,8 +132,10 @@ class RedisRequestQueue:
         )
         self.queue_key = "request_queue"
         self.slow_queue_key = "slow_request_queue"
+        self.background_queue_key = "background_queue"
         self.processing_key = "processing_requests"
         self.slow_processing_key = "slow_processing_requests"
+        self.background_processing_key = "background_processing"
         self.results_key = "request_results"
         self.user_requests_key = "user_requests"
         # HMAC key for signing serialized data (prevent tampering)
@@ -161,8 +206,10 @@ class RedisRequestQueue:
         task_type = task.get("type", "")
         if task_type in ("index_document", "reindex_all_embeddings"):
             return "slow"  # Indexing can be slow
-        if task_type in ("fact_extraction_task", "fact_merge_task"):
-            return "slow"  # LLM-based extraction/merge is slow
+        if task_type == "fact_merge_task":
+            return "background"  # Background task — runs only in idle, no GPU lock
+        if task_type == "fact_extraction_task":
+            return "slow"  # LLM-based extraction is slow
         # Also check type inside data (for index_document from documents.py)
         request_data = task.get("data", {})
         req_type = request_data.get("type", "text")
@@ -216,7 +263,12 @@ class RedisRequestQueue:
 
         # Classify and route to appropriate queue
         queue_type = self._classify_task(task)
-        queue_key = self.slow_queue_key if queue_type == "slow" else self.queue_key
+        if queue_type == "background":
+            queue_key = self.background_queue_key
+        elif queue_type == "slow":
+            queue_key = self.slow_queue_key
+        else:
+            queue_key = self.queue_key
 
         serialized = self._serialize(task)
 
@@ -633,18 +685,31 @@ class RedisRequestQueue:
         self.app.logger.info("Slow worker started")
         while not self._shutdown_event.is_set():
             try:
-                result = self.redis.blpop(self.slow_queue_key, timeout=5)
-                if not result:
-                    continue
-                _, task_data = result
-                task = self._deserialize(task_data)
-                if task is None:
-                    self.logger.error("Slow worker: failed to deserialize task")
+                # Priority 1: slow queue (user-facing GPU tasks)
+                result = self.redis.blpop(self.slow_queue_key, timeout=1)
+                if result:
+                    _, task_data = result
+                    task = self._deserialize(task_data)
+                    if task is None:
+                        self.logger.error("Slow worker: failed to deserialize task")
+                        continue
+                    with self._gpu_lock:
+                        self._process_single_task(task, self.slow_processing_key)
                     continue
 
-                # GLOBAL LOCK: Only one GPU task runs at a time to prevent OOM
-                with self._gpu_lock:
-                    self._process_single_task(task, self.slow_processing_key)
+                # Priority 2: background queue (only when fast queue is empty)
+                if (self.redis.llen(self.background_queue_key) > 0
+                        and self.redis.llen(self.queue_key) == 0):
+                    result = self.redis.blpop(self.background_queue_key, timeout=5)
+                    if result:
+                        _, task_data = result
+                        task = self._deserialize(task_data)
+                        if task is None:
+                            self.logger.error("Slow worker: failed to deserialize background task")
+                            continue
+                        # Background tasks (CPU merge) — no GPU lock needed
+                        self._process_single_task(task, self.background_processing_key)
+                        continue
 
             except Exception as e:
                 self.logger.error(f"Slow worker error: {e}")
@@ -1530,10 +1595,11 @@ class RedisRequestQueue:
                 break
         reasoning_time = round(time.time() - stream_start, 1)
         full_response = self._strip_thinking_tags(full_response)
+        full_response = _strip_generic_reasoning(full_response)
         if not full_response.strip():
             return self._build_error_response(
                 session_id,
-                "⚠️ " + self.app.modules["base"]._("No response from reasoning model", lang),
+                self.app.modules["base"]._("No response from reasoning model", lang),
                 reasoning_time,
                 lang,
             )
@@ -1550,26 +1616,13 @@ class RedisRequestQueue:
             user_id=user_id,
         )
 
-        # Enqueue fact extraction (post-request on slow worker)
+        # Extract facts in background thread (CPU-only, no GPU lock)
         if full_response.strip() and len(full_response) > 20:
-            task_id = str(uuid.uuid4())
-            extraction_task = {
-                "id": task_id,
-                "user_id": user_id,
-                "session_id": session_id,
-                "type": "fact_extraction_task",
-                "data": {
-                    "query": query,
-                    "response": full_response[:3000],
-                    "session_id": session_id,
-                },
-                "user_class": 2,
-                "lang": lang,
-                "timestamp": time.time(),
-            }
-            serialized = self._serialize(extraction_task)
-            self.redis.rpush(self.slow_queue_key, serialized)
-            self.app.logger.info(f"Fact extraction task enqueued: {task_id}")
+            threading.Thread(
+                target=_extract_facts_bg,
+                args=(self.app, query, full_response[:3000], session_id, user_id, lang),
+                daemon=True,
+            ).start()
 
         return result
 
@@ -2351,7 +2404,8 @@ class RedisRequestQueue:
             return self._process_search_task(query, session_id, user_id, lang, response_style)
         else:
             # Simple query: router classified but did not generate text.
-            # Call chat model with tool calling support.
+            # Call chat model WITHOUT tools — simple queries don't need them
+            # and the extra ~1000 tokens of tool definitions confuse small models.
             return self._process_chat_with_tools(
                 task={"id": uuid.uuid4().hex, "user_id": user_id, "session_id": session_id},
                 query=query,
@@ -2361,6 +2415,7 @@ class RedisRequestQueue:
                 lang=lang,
                 response_style=response_style,
                 stream=False,
+                include_tools=False,
             )
 
     def _process_text_task_stream(
@@ -2471,6 +2526,7 @@ class RedisRequestQueue:
         lang: str,
         response_style: str = "neutral",
         stream: bool = True,
+        include_tools: bool = True,
     ) -> dict[str, Any]:
         """Chat model with tool calling loop.
 
@@ -2502,7 +2558,7 @@ class RedisRequestQueue:
                 f"# ИНСТРУКЦИЯ\n"
                 f"Язык ответа: {response_language}.\n"
                 f"Стиль ответа: {style_instruction}\n"
-                f"Формат ответа: Без рассуждений. Не задавай вопросов. Не пиши о том, чего нет в запросе пользователя.\n"
+                f"Формат ответа: Пиши ТОЛЬКО готовый ответ. Не пиши рассуждений, анализа, шагов мышления, планов. Не объясняй, как ты пришёл к ответу. НЕ начинай ответ со слов «Пользователь спросил/спрашивает/просит», «Мне нужно ответить», «Анализ:», «Формулировка:», «Проверка:», «Коррекция:», «Финальный ответ:» и т.д. Сразу переходи к ответу по существу.\n"
                 f"Задача: Ответь на запрос пользователя. Используй инструменты когда это необходимо — "
                 f"не придумывай ответ, лучше вызови инструмент.\n\n"
                 f"# ПРАВИЛА ИСПОЛЬЗОВАНИЯ ИНСТРУМЕНТОВ\n"
@@ -2533,7 +2589,7 @@ class RedisRequestQueue:
                 f"# INSTRUCTION\n"
                 f"Response language: {response_language}.\n"
                 f"Response style: {style_instruction}\n"
-                f"Response format: Without reasoning. Do not ask questions. Do not write about things not in the user's request.\n"
+                f"Response format: Write ONLY the final answer. Do NOT write reasoning, analysis, thinking steps, or plans. Do NOT explain how you arrived at the answer. Do NOT start with 'The user asked/asks/says...', 'I need to answer...', 'Analyze:', 'Formulate:', 'Check:', 'Self-Correction:', 'Final Answer:' etc. Go straight to the answer.\n"
                 f"Task: Answer the user's request. Use tools when necessary — "
                 f"do not make up answers, call a tool instead.\n\n"
                 f"# TOOL USAGE RULES\n"
@@ -2564,7 +2620,7 @@ class RedisRequestQueue:
             {"role": "system", "content": system_content},
             {"role": "user", "content": query},
         ]
-        tools = get_tool_definitions(lang)
+        tools = get_tool_definitions(lang) if include_tools else None
 
         stream_start = time.time()
         full_response = ""
@@ -2638,6 +2694,10 @@ class RedisRequestQueue:
                     continue
 
                 full_response = response
+                # If strip_generic_reasoning returned empty (model produced only plan/analysis),
+                # fall back to empty and let the empty-response handler at the end deal with it.
+                if not full_response.strip():
+                    self.logger.warning("Chat model returned empty response after reasoning strip")
                 # Check cancel after blocking chat() call — flag may have been set during generation
                 if self._is_task_cancelled(task["id"]):
                     self._publish_stream_event(task, "stream_cancelled")
@@ -2740,7 +2800,17 @@ class RedisRequestQueue:
                         time.sleep(0.01)
 
         if not full_response.strip():
-            full_response = last_tool_result.strip() if last_tool_result.strip() else query
+            if last_tool_result.strip():
+                full_response = last_tool_result.strip()
+            else:
+                return self._build_error_response(
+                    session_id,
+                    self.app.modules["base"]._(
+                        "No response from chat model. Try rephrasing your request.", lang
+                    ),
+                    round(time.time() - stream_start, 1),
+                    lang,
+                )
 
         process_time = round(time.time() - stream_start, 1)
         result = self._save_and_respond(
@@ -2753,26 +2823,13 @@ class RedisRequestQueue:
             user_id=user_id,
         )
 
-        # Enqueue fact extraction (post-request on slow worker)
+        # Extract facts in background thread (CPU-only, no GPU lock)
         if full_response.strip() and len(full_response) > 20:
-            task_id = str(uuid.uuid4())
-            extraction_task = {
-                "id": task_id,
-                "user_id": user_id,
-                "session_id": session_id,
-                "type": "fact_extraction_task",
-                "data": {
-                    "query": query,
-                    "response": full_response[:3000],
-                    "session_id": session_id,
-                },
-                "user_class": 2,
-                "lang": lang,
-                "timestamp": time.time(),
-            }
-            serialized = self._serialize(extraction_task)
-            self.redis.rpush(self.slow_queue_key, serialized)
-            self.app.logger.info(f"Fact extraction task enqueued: {task_id}")
+            threading.Thread(
+                target=_extract_facts_bg,
+                args=(self.app, query, full_response[:3000], session_id, user_id, lang),
+                daemon=True,
+            ).start()
 
         return result
 
@@ -2829,10 +2886,8 @@ class RedisRequestQueue:
         )
 
     def _process_fact_extraction(self, task: dict[str, Any]) -> dict[str, Any]:
-        """Extract facts from Q&A via chat model (runs on slow worker)."""
+        """Extract facts from Q&A via rule-based patterns (CPU-only, no GPU)."""
         try:
-            from app.utils import format_prompt
-
             request_data = task.get("data", {})
             query = request_data.get("query", "")
             response_text = request_data.get("response", "")
@@ -2844,29 +2899,20 @@ class RedisRequestQueue:
             if not slm or not slm.available:
                 return {"status": "ok"}
 
-            # Get existing facts for context
+            from app.slm_extract import extract_facts_from_exchange
+
             existing = slm.list_facts(limit=50, profile=user_id)
-            existing_str = "\n".join(f"- {f.get('text', '')}" for f in existing if f.get("text")) if existing else "(нет)"
+            facts = extract_facts_from_exchange(query, response_text, existing, lang=lang)
 
-            # Post-request to chat model
-            prompt = format_prompt("slm_extract.template", {
-                "existing_facts": existing_str,
-                "query": query,
-                "response": response_text,
-            }, lang=lang)
-
-            if not prompt:
-                return {"status": "ok"}
-
-            result = self.app.modules["base"].call_llamacpp(
-                [{"role": "user", "content": prompt}],
-                model_type="chat", lang=lang,
-                temperature=0.1,
-            )
-
-            # Parse JSON and save
-            facts = _parse_facts_json(result)
             for fact in facts:
+                # Semantic deduplication before saving
+                try:
+                    similarity = slm.check_similarity(fact["text"], profile=user_id)
+                    if similarity >= 0.85:
+                        continue
+                except Exception:
+                    pass
+
                 slm.remember(
                     fact["text"],
                     metadata={
@@ -2884,11 +2930,11 @@ class RedisRequestQueue:
             return {"status": "ok"}
 
     def _process_fact_merge(self, task: dict[str, Any]) -> dict[str, Any]:
-        """LLM-based fact merging (sleep mode)."""
+        """Rule-based fact merging (background, CPU-only — no GPU lock)."""
         try:
             request_data = task.get("data", {})
             user_id = request_data.get("user_id", task["user_id"])
-            lang = task.get("lang", "ru")
+            lang = request_data.get("lang", "ru")
 
             slm = self.app.modules.get("slm")
             if not slm:
@@ -2899,7 +2945,7 @@ class RedisRequestQueue:
                 return {"status": "ok"}
 
             from app.slm_merge import merge_facts_for_user
-            merge_facts_for_user(self.app.modules["base"].call_llamacpp, slm, user_id, lang)
+            merge_facts_for_user(slm, user_id, lang)
 
             return {"status": "ok"}
         except Exception as e:
@@ -3684,6 +3730,13 @@ class RedisRequestQueue:
                     position += 1
 
         return result
+
+    def get_background_status(self) -> dict[str, Any]:
+        """Status of background queue for admin monitoring."""
+        return {
+            "queued": self.redis.llen(self.background_queue_key),
+            "processing": self.redis.hlen(self.background_processing_key),
+        }
 
     def _format_request_info(self, task: dict[str, Any], lang: str = "ru") -> dict[str, Any]:
         type_icons = {

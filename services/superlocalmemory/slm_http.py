@@ -399,6 +399,32 @@ def cleanup_memories():
     return jsonify({"success": True, "total_deleted": total_deleted, "profiles": results})
 
 
+@app.route("/similarity", methods=["POST"])
+def similarity_check():
+    """Return similarity score between candidate text and closest existing fact.
+
+    POST body: ``{"text": "...", "profile": "valery"}``.
+    Returns ``{"success": true, "max_similarity": 0.87, "closest": "..."}``
+    or ``{"success": true, "max_similarity": 0.0, "closest": null}`` when no
+    facts exist yet.
+    """
+    data = request.get_json(force=True) if request.data else {}
+    text = (data.get("text") or "").strip()
+    profile = data.get("profile", "")
+    if not text:
+        return jsonify({"success": False, "error": "text required"}), 400
+
+    results = _semantic_recall_from_user_db(text, limit=1, profile=profile)
+    if not results:
+        return jsonify({"success": True, "max_similarity": 0.0, "closest": None})
+
+    return jsonify({
+        "success": True,
+        "max_similarity": results[0].get("score", 0.0),
+        "closest": results[0].get("content", ""),
+    })
+
+
 @app.route("/", methods=["GET"])
 def root():
     return jsonify({"service": "superlocalmemory", "daemon_proxy": True})

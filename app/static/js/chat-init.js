@@ -435,7 +435,13 @@ window.loadMessages = function(sessionId) {
 
             if (window.IS_RELOADING) return;
 
-            setTimeout(addCopyButtonsToAllCodeBlocks, 100);
+            addCopyButtonsToAllCodeBlocks();
+            var c = document.getElementById('chat-messages');
+            if (c) {
+                c.scrollTop = c.scrollHeight;
+                requestAnimationFrame(function() { c.scrollTop = c.scrollHeight; });
+                setTimeout(function() { c.scrollTop = c.scrollHeight; }, 150);
+            }
         })
         .catch(err => {
             console.error('Error in loadMessages:', err);

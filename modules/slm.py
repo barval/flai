@@ -178,6 +178,34 @@ class SlmModule(TranslationMixin):
             self.logger.warning(f"SLM delete_fact failed: {e}")
             return False
 
+    def check_similarity(self, text: str, profile: str | None = None) -> float:
+        """Check semantic similarity of text against existing facts.
+
+        Uses the SLM daemon's embedding model to find the closest fact
+        and returns its similarity score (0.0–1.0).
+
+        Args:
+            text: Candidate text to check.
+            profile: User ID for per-user database isolation.
+
+        Returns:
+            Similarity score (0.0 = no match, 1.0 = identical).
+        """
+        if not self.available and not self.check_availability():
+            return 0.0
+        payload: dict[str, Any] = {"text": text}
+        if profile:
+            payload["profile"] = profile
+        try:
+            resp = requests.post(f"{self.url}/similarity", json=payload, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get("max_similarity", 0.0)  # type: ignore[no-any-return]
+            return 0.0
+        except Exception as e:
+            self.logger.warning(f"SLM check_similarity failed: {e}")
+            return 0.0
+
     def get_context(self, query: str, lang: str = "ru", limit: int | None = None, profile: str | None = None, semantic: bool = False, min_score: float = 0.3) -> str:
         """Get formatted context string for prompt enrichment.
 

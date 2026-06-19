@@ -176,7 +176,7 @@ All `torch.cuda.empty_cache()` and `torch.cuda.synchronize()` calls removed from
   6. **Real VRAM measurement & storage** (see above).
   7. **Admin panel displays measured vs estimated VRAM** (see above).
   8. **Per-model-type circuit breakers:** Separate CB for chat, reasoning, multimodal, embedding. One model's failures don't block another.
-  9. **Retry for reasoning on 502:** LlamaSwapBackend now retries reasoning requests once on 502, with automatic model degradation on first failure.
+  9. **Retry for reasoning on 500/502:** LlamaSwapBackend now retries reasoning requests once on 500 or 502, with automatic model degradation on first failure.
   10. **Phantom measurement fix** (see above).
   11. **LTX-Video unload optimization** (see above).
 

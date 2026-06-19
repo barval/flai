@@ -402,6 +402,7 @@
 .chat-messages {
     flex: 1 1 0;
     overflow-y: auto;
+    overflow-anchor: none;
     padding: 1rem;
     border: 1px solid #eee;
     border-radius: 8px;

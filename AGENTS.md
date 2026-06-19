@@ -49,7 +49,7 @@ docker exec flai-slm python3 -c "import urllib.request,json; urllib.request.urlo
 # Dev server (0.0.0.0:5000, debug=True)
 python wsgi.py
 
-# Production (gunicorn 2 workers, 900s timeout)
+# Production (gunicorn 1 worker, 900s timeout)
 gunicorn -c gunicorn_config.py wsgi:app
 
 # Docker compose (all profiles)
@@ -66,7 +66,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - **Entrypoint:** `app/__init__.py:create_app()` (Flask)
   - **Blueprints:** `app/routes/` — auth, chat, admin, queue, tts, messages, sessions, documents, backups, events, debug
   - **Modules:** `modules/` — base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm, search, video
-  - **Background tasks:** `app/tasks/` — `dry_load.py`, `health_monitor.py`. Background queue tasks (`fact_extraction_task`, `fact_merge_task`) are excluded from queue status display and user counter.
+  - **Background tasks:** `app/tasks/` — `dry_load.py`, `health_monitor.py`. Fact extraction runs as background thread (CPU-only, rule-based via `app/slm_rules.py`). Fact merge runs on background queue (CPU-only, no LLM). Both excluded from queue status display and user counter.
   - **LLM client:** `app/llamacpp_client.py` with `DirectLlamaBackend` and `LlamaSwapBackend`. Both `call()` and `chat()` accept `temperature` parameter. Router classification uses hardcoded `temperature=0.1`.
   - **Queue:** `app/queue.py:RedisRequestQueue` with **fast worker (CPU) and slow worker (GPU)**
   - **VRAM management:** `app/resource_manager.py`

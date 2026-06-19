@@ -129,7 +129,7 @@ def create_app():
         try:
             from app.llama_swap_config import generate_and_write
 
-            generate_and_write(app)
+            generate_and_write(app, include_preload=True)
             app.logger.info("llama-swap config generated")
         except Exception as e:
             app.logger.warning(f"Could not generate llama-swap config: {e}")
@@ -671,6 +671,14 @@ def _start_slm_merge_watcher(app: Flask) -> None:
                     from app.userdb import get_all_user_ids
 
                     user_ids = get_all_user_ids()
+
+                    # Skip if there are already pending merge tasks in the queue
+                    # (prevents flooding the queue with redundant tasks)
+                    bg_queue_len = app.request_queue.redis.llen(app.request_queue.background_queue_key)
+                    if bg_queue_len and bg_queue_len > len(user_ids):
+                        app.logger.debug(f"SLM merge watcher: background queue has {bg_queue_len} tasks, skipping")
+                        continue
+
                     for user_id in user_ids:
                         task_id = str(__import__("uuid").uuid4())
                         merge_task = {
@@ -684,7 +692,7 @@ def _start_slm_merge_watcher(app: Flask) -> None:
                             "timestamp": time.time(),
                         }
                         serialized = app.request_queue._serialize(merge_task)
-                        app.request_queue.redis.rpush(app.request_queue.slow_queue_key, serialized)
+                        app.request_queue.redis.rpush(app.request_queue.background_queue_key, serialized)
                     app._merge_last_queued = time.time()
                     app.logger.info(f"Queued SLM merge for {len(user_ids)} users")
                 except Exception as e:

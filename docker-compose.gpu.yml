@@ -49,6 +49,7 @@ services:
       - ./app/static/js/admin-models.js:/app/app/static/js/admin-models.js
       - ./app/static/js/chat-queue.js:/app/app/static/js/chat-queue.js
       - ./app/static/js/chat-messages.js:/app/app/static/js/chat-messages.js
+      - ./app/static/css/chat.css:/app/app/static/css/chat.css
       - ./prompts/en/rag.template:/app/prompts/en/rag.template
       - ./prompts/ru/rag.template:/app/prompts/ru/rag.template
       - ./prompts/en/reasoning.template:/app/prompts/en/reasoning.template

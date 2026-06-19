@@ -212,7 +212,7 @@ function _updateProgressElement(taskId, text) {
         chatMessages.appendChild(progressEl);
     }
     progressEl.textContent = text;
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
 }
 
 function _removeProgressElement(taskId) {
@@ -247,7 +247,7 @@ function onVideoStep(data) {
     barContainer.querySelector('.label').textContent = '🎬 ' + data.step + '/' + data.total + ' (' + pct + '%)';
 
     _removeProgressElement(data.task_id);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
 }
 
 // ── image_step ────────────────────────────────────────────────────
@@ -275,7 +275,7 @@ function onImageStep(data) {
     barContainer.querySelector('.label').textContent = '🎨 ' + data.step + '/' + data.total + ' (' + pct + '%)';
 
     _removeProgressElement(data.task_id);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
 }
 
 // ── image_preview ────────────────────────────────────────────────────
@@ -303,7 +303,7 @@ function onImagePreview(data) {
     }
 
     _removeProgressElement(data.task_id);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
 }
 
 // ── thinking tag filter (fallback for --reasoning_format none) ─────────
@@ -324,6 +324,38 @@ function _stripThinkingTags(text) {
     // Remove incomplete opening tag at the end (streaming)
     result = result.replace(/<\|channel\|>analysis<\|message\|>[\s\S]*$/i, '');
     return result;
+}
+
+// ── generic reasoning pattern filter ───────────────────────────────────
+// Some reasoning models output chain-of-thought as plain text without
+// thinking tags.  These patterns detect common reasoning markers and
+// strip everything up to the actual answer.
+
+const _REASONING_MARKERS_RE = /(?:The user (?:is asking|asks|said|wants|wondered)|Пользователь (?:спрашивает|просит|хочет|говорит|спрашивал)|(?:Analyze|Analyse|Check|Formulate|Identify|Review|Consider|Plan|Анализ|Проверка|Формулировка|Идентификация|Рассмотрение|План) \w+[\s:]|(?:Self-Correction|Refinement|Коррекция|Уточнение)[\s:]|(?:I need to|I should|I must|Let me|Let's|Мне нужно|Мне следует|Мне необходимо|Нужно|Следует|Необходимо)|(?:Final Answer(?: Generation)?(?:\s*\([^)]*\))?|Генерация финального ответа|Финальный ответ)[\s:]*)/gi;
+
+function _stripGenericReasoning(text) {
+    if (!text || text.length < 50) return text;
+    const matches = text.match(_REASONING_MARKERS_RE);
+    if (matches && matches.length >= 2) {
+        // Find the last marker and return text after it
+        let lastIdx = -1;
+        let m;
+        _REASONING_MARKERS_RE.lastIndex = 0;
+        while ((m = _REASONING_MARKERS_RE.exec(text)) !== null) {
+            lastIdx = m.index + m[0].length;
+        }
+        if (lastIdx >= 0) {
+            const answer = text.slice(lastIdx).trim();
+            if (answer) return answer;
+        }
+    }
+    // Check for markdown plan lines — if ALL non-empty lines start with "** ",
+    // the model produced only a plan and no real answer.
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length > 0 && lines.every(l => /^\s*\*\*\s+\w/.test(l))) {
+        return '';
+    }
+    return text;
 }
 
 // ── stream_token ─────────────────────────────────────────────────────
@@ -398,11 +430,11 @@ function onStreamToken(data) {
         _showHeaderCancelButton(data.task_id);
     }
 
-    // Update content (strip thinking tags for display)
+    // Update content (strip thinking tags and generic reasoning for display)
     const contentDiv = streamMsg.querySelector('.message-content');
     if (contentDiv) {
-        contentDiv.textContent = _stripThinkingTags(reqInfo.accumulatedContent);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        contentDiv.textContent = _stripGenericReasoning(_stripThinkingTags(reqInfo.accumulatedContent));
+        if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
     }
 
     // Live token/s estimate (every 500ms)
@@ -730,19 +762,21 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
             }
         }
 
-        // Set raw text for copy button (strip thinking tags)
+        // Set raw text for copy button (strip thinking tags and generic reasoning)
         if (result && result.response) {
-            streamMsg.setAttribute('data-raw-text', _stripThinkingTags(result.response));
+            streamMsg.setAttribute('data-raw-text', _stripGenericReasoning(_stripThinkingTags(result.response)));
         }
 
         // Replace content with full rendered markdown (sanitized to prevent XSS)
         var contentDiv = streamMsg.querySelector('.message-content');
+        var chatMessages = document.getElementById('chat-messages');
+        var wasAtBottom = isNearBottom(chatMessages);
         if (contentDiv && result && result.response) {
-            var cleanResponse = _stripThinkingTags(result.response);
+            var cleanResponse = _stripGenericReasoning(_stripThinkingTags(result.response));
             contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(cleanResponse));
         } else if (contentDiv && result && result.error) {
             // Show error in streaming message if no response text
-            contentDiv.innerHTML = DOMPurify.sanitize('⚠️ ' + t('error') + ': ' + result.error);
+            contentDiv.innerHTML = DOMPurify.sanitize(result.error);
         }
 
         // Display file attachments (image, video) from result if present
@@ -786,6 +820,7 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
 
         if (typeof updateLastVisit === 'function') updateLastVisit(currentSessionId);
         if (typeof addCopyButtonsToMessage === 'function') addCopyButtonsToMessage(streamMsg);
+        scrollToBottom(chatMessages);
     } else if (resultSessionId === currentSessionId && data.result?.response) {
         // Fallback: create the message via displayMessage
             window.displayMessage('assistant', data.result.response, null, null, null, null,
@@ -894,7 +929,7 @@ function handleCompletedResult(result, expectedSessionId) {
         if (resultSessionId === currentSessionId) {
             // Error headers intentionally get no ⏱️/🚀/🤖 — pass null for
             // responseTime and modelName='system'.
-            window.displayMessage('assistant', '⚠️ ' + result.error, null, null, null, null,
+            window.displayMessage('assistant', result.error, null, null, null, null,
                 result.assistant_timestamp || new Date().toISOString(), null, 'system',
                 null, null, null, null, result.message_id, null, null, null, 'system');
         }

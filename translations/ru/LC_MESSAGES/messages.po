@@ -97,6 +97,19 @@ msgstr "Не удалось подключиться к llama-swap"
 msgid "Internal error: no response from model"
 msgstr "Внутренняя ошибка: модель не ответила"
 
+#: app/queue.py:1602
+msgid "No response from reasoning model"
+msgstr "Не удалось получить ответ от модели рассуждений"
+
+#: app/queue.py:2808
+msgid "No response from chat model. Try rephrasing your request."
+msgstr "Не удалось получить ответ от модели. Попробуйте переформулировать запрос."
+
+#: app/llamacpp_client.py
+#, python-brace-format
+msgid "Model '{model}' is not available. Select a different model in admin panel."
+msgstr "Модель '{model}' недоступна. Выберите другую модель в панели администратора."
+
 #: app/llamacpp_client.py:768 app/llamacpp_client.py:791
 #: modules/multimodal.py:239 modules/multimodal.py:324
 #: modules/multimodal.py:383 modules/multimodal.py:462

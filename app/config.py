@@ -73,6 +73,17 @@ def load_config(app):
     app.config["SLM_RECALL_LIMIT"] = int(os.getenv("SLM_RECALL_LIMIT", 7))
     app.config["SLM_DATA_DIR"] = "/app/data/slm"
 
+    # SLM Merge settings (background fact cleanup)
+    app.config["MERGE_MAX_FACTS"] = int(os.getenv("MERGE_MAX_FACTS", 100))
+    app.config["MERGE_CONTEXT_SIZE"] = int(os.getenv("MERGE_CONTEXT_SIZE", 4096))
+    app.config["MERGE_FACT_MAX_CHARS"] = int(os.getenv("MERGE_FACT_MAX_CHARS", 120))
+    app.config["MERGE_MAX_FIT_FACTS"] = int(os.getenv("MERGE_MAX_FIT_FACTS", 62))
+
+    # SLM rule-based extraction and merge settings
+    app.config["SLM_SIMILARITY_THRESHOLD"] = float(os.getenv("SLM_SIMILARITY_THRESHOLD", 0.85))
+    app.config["SLM_TEMPORAL_DECAY_DAYS"] = int(os.getenv("SLM_TEMPORAL_DECAY_DAYS", 90))
+    app.config["SLM_MIN_CONFIDENCE_FOR_DECAY"] = float(os.getenv("SLM_MIN_CONFIDENCE_FOR_DECAY", 0.5))
+
     # Piper TTS settings
     app.config["PIPER_URL"] = os.getenv("PIPER_URL")
     app.config["PIPER_TIMEOUT"] = int(os.getenv("PIPER_TIMEOUT", 30))

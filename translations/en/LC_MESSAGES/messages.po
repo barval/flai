@@ -96,6 +96,19 @@ msgstr "Could not connect to llama-swap"
 msgid "Internal error: no response from model"
 msgstr "Internal error: no response from model"
 
+#: app/queue.py:1602
+msgid "No response from reasoning model"
+msgstr "No response from reasoning model"
+
+#: app/queue.py:2808
+msgid "No response from chat model. Try rephrasing your request."
+msgstr "No response from chat model. Try rephrasing your request."
+
+#: app/llamacpp_client.py
+#, python-brace-format
+msgid "Model '{model}' is not available. Select a different model in admin panel."
+msgstr "Model '{model}' is not available. Select a different model in admin panel."
+
 #: app/llamacpp_client.py:768 app/llamacpp_client.py:791
 #: modules/multimodal.py:239 modules/multimodal.py:324
 #: modules/multimodal.py:383 modules/multimodal.py:462

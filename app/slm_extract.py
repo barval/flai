@@ -1,14 +1,17 @@
 # app/slm_extract.py
 """
-LLM-based fact extraction for long-term memory.
+Rule-based fact extraction for long-term memory.
 
-Facts are extracted from Q&A exchanges via chat model (not reasoning).
-Runs as post-request on slow worker (serialized via _gpu_lock).
+Facts are extracted from Q&A exchanges via pattern matching (no LLM).
+Explicit 'remember' requests use regex parsing with LLM fallback.
+
+Runs as background thread (CPU-only, no GPU lock).
 """
 
-import json
 import logging
 import re
+
+from app.slm_rules import extract_facts, extract_from_remember
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +27,6 @@ _SKIP_QUERY_PATTERNS = re.compile(
 
 
 def extract_facts_from_exchange(
-    llm_call,
     query: str,
     response: str,
     existing_facts: list[dict],
@@ -32,143 +34,102 @@ def extract_facts_from_exchange(
     max_facts: int = 5,
 ) -> list[dict]:
     """
-    Extract facts from Q&A via chat model.
+    Extract facts from Q&A exchange using rule-based pattern matching.
 
     Args:
-        llm_call: The call_llamacpp function from base module.
         query: User's question.
         response: Assistant's answer.
-        existing_facts: Existing facts for context.
+        existing_facts: Existing facts for deduplication.
         lang: Language code.
         max_facts: Maximum facts to extract.
 
     Returns:
         List of fact dicts with text, category, fact_type.
     """
-    from app.utils import format_prompt
-
-    existing_str = "\n".join(f"- {f.get('text', '')}" for f in existing_facts if f.get("text")) if existing_facts else "(нет)"
-
-    # Skip extraction for user commands, greetings, and short queries
     query_lower = query.strip().lower()
     if len(query_lower) < 5 or _SKIP_QUERY_PATTERNS.match(query_lower):
         logger.debug(f"Skipping fact extraction for command/greeting: {query[:50]}")
         return []
 
-    # Skip if response is too short (likely not informative)
     if len(response.strip()) < 30:
         logger.debug("Skipping fact extraction: response too short")
         return []
 
-    prompt = format_prompt(
-        "slm_extract.template",
-        {
-            "existing_facts": existing_str,
-            "query": query,
-            "response": response,
-        },
-        lang=lang,
-    )
-
-    if not prompt:
-        logger.warning("Failed to build slm_extract prompt")
-        return []
-
-    try:
-        result = llm_call(
-            [{"role": "user", "content": prompt}],
-            model_type="chat",
-            lang=lang,
-            temperature=0.1,
-        )
-
-        if not result or not isinstance(result, str):
-            return []
-
-        # Parse JSON
-        start = result.find("{")
-        end = result.rfind("}") + 1
-        if start == -1 or end <= start:
-            return []
-
-        data = json.loads(result[start:end])
-        facts = data.get("facts", [])
-
-        result_list = []
-        for f in facts[:max_facts]:
-            if isinstance(f, dict) and f.get("text"):
-                text = f["text"].strip()
-                # Truncate facts longer than 200 chars
-                if len(text) > 200:
-                    text = text[:197] + "..."
-                result_list.append({
-                    "text": text,
-                    "category": f.get("category", "context"),
-                    "fact_type": f.get("fact_type", "general"),
-                })
-        return result_list
-
-    except json.JSONDecodeError:
-        logger.warning("Failed to parse LLM response as JSON")
-        return []
-    except Exception as e:
-        logger.error(f"Fact extraction failed: {e}")
-        return []
+    facts = extract_facts(query, response, existing_facts, lang=lang, max_facts=max_facts)
+    if facts:
+        logger.debug(f"Extracted {len(facts)} facts from exchange")
+    return facts
 
 
 def extract_facts_from_remember(
-    llm_call,
     query: str,
     lang: str = "ru",
+    llm_call=None,
 ) -> list[str]:
     """
-    Extract facts from explicit 'remember' request via chat model.
+    Extract facts from explicit 'remember' request.
+
+    Uses regex parsing first. Falls back to LLM if regex doesn't find
+    a clear fact (e.g. complex conditional instructions).
 
     Args:
-        llm_call: The call_llamacpp function from base module.
         query: User's request (e.g., "Помни, что мой день рождения 15 марта").
         lang: Language code.
+        llm_call: Optional LLM function for complex edge cases. If None,
+                  regex-only extraction is used.
 
     Returns:
         List of fact strings to save.
     """
-    from app.utils import format_prompt
-
-    prompt = format_prompt(
-        "slm_remember.template",
-        {"query": query},
-        lang=lang,
-    )
-
-    if not prompt:
-        logger.warning("Failed to build slm_remember prompt")
+    if not query or not query.strip():
         return []
 
-    try:
-        result = llm_call(
-            [{"role": "user", "content": prompt}],
-            model_type="chat",
-            lang=lang,
-            temperature=0.1,
-        )
+    # Try regex extraction first
+    facts = extract_from_remember(query, lang=lang)
+    if facts:
+        logger.debug(f"Extracted {len(facts)} facts from remember (regex)")
+        return facts
 
-        if not result or not isinstance(result, str):
+    # Fallback to LLM for complex cases (if available)
+    if llm_call:
+        try:
+            from app.utils import format_prompt
+
+            prompt = format_prompt(
+                "slm_remember.template",
+                {"query": query},
+                lang=lang,
+            )
+            if not prompt:
+                return []
+
+            import json
+
+            result = llm_call(
+                [{"role": "user", "content": prompt}],
+                model_type="chat",
+                lang=lang,
+                temperature=0.1,
+            )
+
+            if not result or not isinstance(result, str):
+                return []
+
+            start = result.find("{")
+            end = result.rfind("}") + 1
+            if start == -1 or end <= start:
+                return []
+
+            data = json.loads(result[start:end])
+            if data.get("confirmed"):
+                return data.get("facts", [])
             return []
 
-        # Parse JSON
-        start = result.find("{")
-        end = result.rfind("}") + 1
-        if start == -1 or end <= start:
+        except json.JSONDecodeError:
+            logger.warning("Failed to parse remember LLM response as JSON")
+            return []
+        except Exception as e:
+            logger.warning(f"LLM remember extraction failed: {e}")
             return []
 
-        data = json.loads(result[start:end])
-        if data.get("confirmed"):
-            return data.get("facts", [])
-        return []
-
-    except json.JSONDecodeError:
-        logger.warning("Failed to parse remember response as JSON")
-        return []
-    except Exception as e:
-        logger.error(f"Remember extraction failed: {e}")
-        return []
+    return []

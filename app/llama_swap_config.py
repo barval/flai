@@ -35,6 +35,7 @@ GROUP_SETTINGS = {
     "embedding": {"group": "llm_fast"},
     "reasoning": {"group": "llm_fast"},
     "multimodal": {"group": "llm_fast"},
+    "merge_cpu": {"group": "cpu_only"},
 }
 
 
@@ -248,6 +249,43 @@ class LlamaSwapConfigGenerator:
             self.logger.warning(f"get_ctx_size({module}): invalid ctx {repr(ctx)}, using default")
             return 4096 if module != "reasoning" else 8192
 
+    def build_merge_cpu_entry(self) -> dict[str, Any] | None:
+        """Build CPU-only model entry for fact_merge (same model as chat, runs on CPU)."""
+        config = get_model_config("chat")
+        if not config:
+            self.logger.warning("No chat config for merge_cpu")
+            return None
+
+        model_name = config.get("model_name")
+        model_path = self.get_model_path("chat", model_name)
+        if not model_path:
+            self.logger.warning("No model_path for merge_cpu")
+            return None
+
+        ctx_size = self.app.config.get("MERGE_CONTEXT_SIZE", 4096) if self.app else 4096
+
+        cmd_parts = [
+            "llama-server",
+            "--port", "${PORT}",
+            "-m", model_path,
+            "--host", "0.0.0.0",
+            "--ctx-size", str(ctx_size),
+            "--n-gpu-layers", "0",
+            "--flash-attn", "off",
+            "--jinja",
+        ]
+
+        entry = {
+            "cmd": " ".join(cmd_parts),
+            "ttl": 1,
+            "name": "merge_cpu",
+            "aliases": [model_name] if model_name else [],
+            "group": "cpu_only",
+        }
+
+        self.logger.info(f"Built model entry for merge_cpu: {entry}")
+        return {"merge_cpu": entry}
+
     def build_model_entry(self, module: str, ngl_override: int | None = None) -> dict[str, Any] | None:
         """Build llama-swap model entry from FLAI model config."""
         config = get_model_config(module)
@@ -313,7 +351,7 @@ class LlamaSwapConfigGenerator:
             # RAG chunks can have up to ~550 tokens, so set both to 2048
             cmd_parts.extend(["--batch-size", "2048", "--ubatch-size", "2048"])
 
-        if module == "reasoning":
+        if module in ("reasoning", "chat"):
             cmd_parts.extend(["--reasoning_format", "none"])
 
         if mmproj:
@@ -328,7 +366,14 @@ class LlamaSwapConfigGenerator:
 
             is_cpu = ngl_override is not None and ngl_override == 0
 
-            if config.get("flash_attn") and not is_cpu:
+            # Compute effective ngl BEFORE flash-attn — flash-attn must be
+            # disabled when partial offloading (ngl != -1 and ngl != 0)
+            # because flash-attn CUDA kernels crash (SIGABRT) on Blackwell
+            # GPUs when layers are split between CPU and GPU.
+            ngl = ngl_override if ngl_override is not None else config.get("n_gpu_layers", -1)
+            partial_offload = ngl is not None and ngl > 0
+
+            if config.get("flash_attn") and not is_cpu and not partial_offload:
                 cmd_parts.extend(["--flash-attn", "on"])
 
             # MTP speculative decoding — auto-detected from GGUF metadata
@@ -338,7 +383,6 @@ class LlamaSwapConfigGenerator:
             if gguf_cache.get(model_key, {}).get("supports_mtp"):
                 cmd_parts.extend(["--spec-type", "draft-mtp"])
 
-            ngl = ngl_override if ngl_override is not None else config.get("n_gpu_layers", -1)
             if ngl is not None and ngl >= 0:
                 cmd_parts.extend(["--n-gpu-layers", str(ngl)])
 
@@ -361,11 +405,12 @@ class LlamaSwapConfigGenerator:
 
         return " ".join(cmd_parts)
 
-    def generate_yaml(self, ngl_overrides: dict[str, int] | None = None) -> str:
+    def generate_yaml(self, ngl_overrides: dict[str, int] | None = None, include_preload: bool = True) -> str:
         """Generate full llama-swap YAML configuration.
 
         Args:
             ngl_overrides: Per-module n_gpu_layers override, e.g. {"reasoning": 10}.
+            include_preload: Whether to include on_startup preload hook for chat model.
         """
         ngl_overrides = ngl_overrides or {}
         lines = [
@@ -380,7 +425,11 @@ class LlamaSwapConfigGenerator:
             "llm_fast": {
                 "swap": True,
                 "models": ["chat", "embedding", "reasoning", "multimodal"],
-            }
+            },
+            "cpu_only": {
+                "swap": False,
+                "models": ["merge_cpu"],
+            },
         }
 
         lines.append("groups:")
@@ -395,12 +444,16 @@ class LlamaSwapConfigGenerator:
                 lines.append(f"    models: [{models_list}]")
         lines.append("")
 
-        # Preload chat model at startup via llama-swap hooks (preload: true is NOT a valid model field)
-        lines.append("hooks:")
-        lines.append("  on_startup:")
-        lines.append("    preload:")
-        lines.append('      - "chat"')
-        lines.append("")
+        # Preload chat model at startup via llama-swap hooks
+        # Skipped on initial write_config() to prevent crash when on-disk YAML
+        # contains stale degradation (e.g. --n-gpu-layers from previous session).
+        # Preload is only included on admin-triggered reloads when config is clean.
+        if include_preload:
+            lines.append("hooks:")
+            lines.append("  on_startup:")
+            lines.append("    preload:")
+            lines.append('      - "chat"')
+            lines.append("")
 
         lines.append("models:")
 
@@ -442,10 +495,35 @@ class LlamaSwapConfigGenerator:
                 else:
                     lines.append(f"    {key}: {value}")
 
+        # CPU-only model for background fact_merge (no GPU lock needed)
+        merge_cpu_entry = self.build_merge_cpu_entry()
+        if merge_cpu_entry:
+            model_entry = merge_cpu_entry["merge_cpu"]
+            # Deduplicate aliases — same check as main models loop
+            original_aliases = model_entry.get("aliases", [])
+            model_entry["aliases"] = [a for a in original_aliases if a not in seen_aliases]
+            lines.append("  merge_cpu:")
+            for key, value in model_entry.items():
+                if isinstance(value, str):
+                    lines.append(f'    {key}: "{value}"')
+                elif isinstance(value, bool):
+                    lines.append(f"    {key}: {'true' if value else 'false'}")
+                elif isinstance(value, list):
+                    lines.append(f"    {key}: {value}")
+                else:
+                    lines.append(f"    {key}: {value}")
+
         return "\n".join(lines)
 
-    def write_config(self, path: str | None = None) -> bool:
-        """Write config to file."""
+    def write_config(self, path: str | None = None, include_preload: bool = False) -> bool:
+        """Write config to file.
+
+        Args:
+            path: Optional config file path.
+            include_preload: Whether to include on_startup preload hook.
+                False on initial startup (prevents crash from stale on-disk config).
+                True on admin-triggered reloads.
+        """
         config_path = path or os.path.join(CONFIG_DIR, CONFIG_FILE)
 
         config_dir = os.path.dirname(config_path)
@@ -457,7 +535,7 @@ class LlamaSwapConfigGenerator:
                 self.logger.error(f"Failed to create config directory: {e}")
                 return False
 
-        yaml_content = self.generate_yaml()
+        yaml_content = self.generate_yaml(include_preload=include_preload)
 
         try:
             with open(config_path, "w") as f:
@@ -546,7 +624,7 @@ class LlamaSwapConfigGenerator:
         return True
 
 
-def generate_and_write(app=None) -> bool:
+def generate_and_write(app=None, include_preload: bool = False) -> bool:
     """Generate GPU config and write it."""
     generator = LlamaSwapConfigGenerator(app)
-    return generator.write_config()
+    return generator.write_config(include_preload=include_preload)

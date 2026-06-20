@@ -157,6 +157,16 @@ Changed from `free_before + 3000` to `min(total - 1000, free_before + 3000)`. Or
 ## LTX-Video Unconditional Restart
 `_force_restart_ltx_video()` called after every video task without rate-limiting. Docker handles concurrent restart gracefully. Frees ~3 GB CUDA context from gunicorn worker.
 
+## Video Cancel Checker
+`_start_cancel_checker()` spawns a daemon thread that polls Redis every 2s for `task:cancel:{task_id}`. On detection:
+1. Restarts `flai-ltxvideo` container via Docker socket (`POST /containers/flai-ltxvideo/restart`)
+2. Container receives SIGTERM → CUDA freed
+3. `requests.post()` in `generate_video()` gets ConnectionError
+4. Finally block runs VRAM cleanup (`_cleanup_vram_after_task()`)
+5. Returns `{"status": "cancelled", "error": "..."}` to client
+
+For image gen/edit: only pre/post checks (tasks are fast, no mid-generation interrupt). `_is_task_cancelled()` checked before `generate_image_params()` and before `image._call_wrapper()` / `image.edit_image()`.
+
 ## Dead Torch Code Cleanup
 All `torch.cuda.empty_cache()` and `torch.cuda.synchronize()` calls removed from `app/queue.py`, `app/resource_manager.py`, `modules/video.py` (~60 lines). `flai-web` has no CUDA context — all torch calls were silent no-ops. VRAM cleanup is managed entirely by llama-swap TTL + `_force_restart_ltx_video()`.
 

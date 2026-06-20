@@ -198,6 +198,7 @@ function onTaskProgress(data) {
 
     const label = STAGE_LABELS[data.stage] || data.stage;
     _updateProgressElement(data.task_id, label);
+    _showHeaderCancelButton(data.task_id);
 }
 
 function _updateProgressElement(taskId, text) {
@@ -246,6 +247,7 @@ function onVideoStep(data) {
     barContainer.querySelector('.fill').style.width = pct + '%';
     barContainer.querySelector('.label').textContent = '🎬 ' + data.step + '/' + data.total + ' (' + pct + '%)';
 
+    _showHeaderCancelButton(data.task_id);
     _removeProgressElement(data.task_id);
     if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
 }
@@ -274,6 +276,7 @@ function onImageStep(data) {
     barContainer.querySelector('.fill').style.width = pct + '%';
     barContainer.querySelector('.label').textContent = '🎨 ' + data.step + '/' + data.total + ' (' + pct + '%)';
 
+    _showHeaderCancelButton(data.task_id);
     _removeProgressElement(data.task_id);
     if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
 }
@@ -553,6 +556,8 @@ function restoreStreamingFromSessionStorage() {
 function onResultCompleted(data) {
     if (!data || !data.task_id) return;
     dlog('onResultCompleted:', data.task_id, data.status);
+
+    _hideHeaderCancelButton();
 
     // Clean up progress indicators
     _removeProgressElement(data.task_id);

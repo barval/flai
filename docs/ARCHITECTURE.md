@@ -210,6 +210,8 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 - **Server**: `cancel_task(task_id)` sets Redis flag `task:cancel:{task_id}` with TTL.
 - `_is_task_cancelled(task_id)` checked in every streaming loop iteration.
 - **SSE event**: `stream_cancelled` → updates UI.
+- **Image gen/edit**: pre/post checks before blocking HTTP calls (`_call_wrapper()`, `generate_image_params()`).
+- **Video gen**: background cancel checker thread (`_start_cancel_checker()`) polls every 2s, restarts LTX container on detection. 8 cancel return points across 4 task types.
 
 ## Generation Progress
 
@@ -257,6 +259,13 @@ Server: `_process_transcribe_task()` creates `type: "image"` task when both `ima
 - **Background tasks invisible**: `fact_extraction_task` and `fact_merge_task` are filtered out by `_BACKGROUND_TASK_TYPES` in `get_user_requests_status()` — they never trigger ⚡ or ⏳ indicators.
 
 **⚡ recovery after task chain**: `events.js` — after every `clearSessionQueue()` call, `setTimeout(fetchQueueStatus, 500)` is scheduled. This polls the server for the next queued task, restoring ⚡ when the next task moves from queue to processing.
+
+## Chat Auto-Scroll
+
+- **`_isLoadingMessages` flag** in `chat-messages.js` prevents N competing async scroll callbacks when loading message history.
+- **`isNearBottom()`** threshold = 200px — only auto-scrolls when user is near the bottom of the chat.
+- **`scrollToBottom()`** simplified — single `scrollTo()` call with `behavior: 'smooth'`.
+- **`overflow-anchor: none`** on chat container CSS — prevents browser from auto-scrolling to anchored element during DOM updates.
 
 ## Lazy Loading
 

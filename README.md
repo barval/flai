@@ -93,6 +93,12 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | **Skills list centralized** | All capabilities text extracted to `prompts/{ru,en}/skills.txt` as single source of truth. `format_prompt()` auto-injects `{skills_section}`. Previously duplicated (and inconsistent) across 4+ locations |
 | **Background task error isolation** | Fact extraction and fact merge errors are silently logged — never leak to users via SSE. Background tasks excluded from ⚡/⏳ queue indicators |
 | **Queue counter stability** | Background tasks no longer drift the user queue counter negative. `get_user_queue_counts()` returns `max(0, ...)` to prevent displays like `📊 -9/0` |
+| **Rule-based SLM extraction** | LLM-based fact extraction replaced with pattern matching (CPU-only, ~50-200ms). Semantic deduplication via `/similarity` endpoint. No GPU lock contention |
+| **Rule-based SLM merge** | LLM merge replaced with edit-distance + semantic similarity + temporal decay pipeline. Auto-archives facts older than 90 days |
+| **Task cancellation for all types** | Cancel button for image generation, image editing, and video generation (background cancel checker + container restart). Streaming tasks use Redis flag |
+| **Chat auto-scroll fix** | `_isLoadingMessages` flag prevents N competing async scroll callbacks. `isNearBottom()` threshold=200px. `overflow-anchor: none` for chat container |
+| **Error translation** | llama-swap errors translated to user language via `_translate_llama_swap_error()` |
+| **Double ⚠️ fix** | Server and client no longer both prepend "⚠️ " — server owns the prefix via `_build_error_response()` |
 
 ### Core Components
 
@@ -152,7 +158,7 @@ FLAI **requires** an NVIDIA GPU with CUDA support. CPU-only mode is not supporte
 
 | Feature | 8 GB | 12 GB | 16+ GB |
 |---------|------|-------|--------|
-| Chat (Gemma 4 E2B) | ✅ full speed | ✅ full speed | ✅ full speed |
+| Chat (Qwen3-4B-Instruct-2507) | ✅ full speed | ✅ full speed | ✅ full speed |
 | Reasoning | ✅ Gemma 4 E4B (~4.8 GB) | ✅ Gemma 4 E4B (~4.8 GB) | ✅ gpt-oss-20b (~12 GB) |
 | Multimodal | ⚠️ Qwen3VL-4B (~2.5 GB) recommended | ✅ Qwen3VL-8B (~5.5 GB) | ✅ Qwen3VL-8B (~5.5 GB) |
 | Image gen (SD) | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 |
@@ -280,8 +286,8 @@ nano .env
 mkdir -p services/llamacpp/models
 
 # Chat model (fast responses)
-wget -O services/llamacpp/models/gemma-4-E2B-it-Q4_0.gguf \
-  "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_0.gguf"
+wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-Q4_0.gguf \
+  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_0.gguf"
 
 # Reasoning model (complex tasks)
 wget -O services/llamacpp/models/gemma-4-E4B-it-Q4_0.gguf \
@@ -524,12 +530,13 @@ llama.cpp runs in **router mode** (`--models-dir`), dynamically loading models f
 
 ```
 services/llamacpp/models/
-├── gemma-4-E2B-it-Q4_0.gguf               # Chat
-├── gemma-4-E4B-it-Q4_0.gguf               # Reasoning
-├── bge-m3-Q8_0.gguf                        # Embedding
-└── Qwen3VL-8B-Instruct-Q4_K_M/             # Multimodal (subdirectory!)
+├── Qwen3-4B-Instruct-2507-Q4_0.gguf          # Chat
+├── gemma-4-E4B-it-Q4_0.gguf                   # Reasoning (8/12 GB)
+├── gpt-oss-20b-Q4_K_M.gguf                    # Reasoning (16+ GB)
+├── bge-m3-Q8_0.gguf                            # Embedding
+└── Qwen3VL-8B-Instruct-Q4_K_M/                # Multimodal (subdirectory!)
     ├── Qwen3VL-8B-Instruct-Q4_K_M.gguf
-    └── mmproj-F16.gguf                     # Vision projector
+    └── mmproj-F16.gguf                         # Vision projector
 ```
 
 > ⚠️ **Multimodal models require a subdirectory** with the projector file named `mmproj-*.gguf` inside. The model server auto-discovers and loads it.
@@ -553,6 +560,18 @@ services/llamacpp/models/
 | Timeout (s) | 120 | 120 | 120 | 120 |
 
 > **Note:** Router classification always uses `temperature=0.1` (hardcoded) for deterministic query routing, regardless of admin panel settings.
+
+### Model Selection Guide
+
+| Component | Default | Recommended Alternative | Notes |
+|-----------|---------|------------------------|-------|
+| **Chat** | Qwen3-4B-Instruct-2507 Q4_0 (~2.4 GB) | Qwen3-4B-Instruct-2507 MXFP4 (~2 GB) | Non-reasoning/thinking model. MXFP4 more efficient on Blackwell GPUs (RTX 5060 Ti) |
+| **Reasoning (8/12 GB)** | Gemma 4 E4B Q4_0 (~4.8 GB) | — | Best speed/quality balance for mid-tier GPUs |
+| **Reasoning (16+ GB)** | gpt-oss-20b MXFP4 (~11.5 GB) | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | MoE architecture: ~3B active params, ~118 tok/s |
+| **Multimodal** | Qwen3VL-8B Q4_K_M (~5 GB) | Qwen3VL-8B MXFP4 (~7.7 GB) | Requires subdirectory with `mmproj-*.gguf` |
+| **Embedding** | bge-m3 Q8_0 (~1.5 GB) | — | Single model for all tiers |
+
+> **Context windows:** Chat and reasoning models should use the same context length (recommended 16384). Multimodal needs ≥16384 for vision token counts.
 
 ---
 
@@ -851,7 +870,7 @@ curl http://localhost:5000/metrics
 - **Background SLM import on startup** — incremental import with checkpoint table, daemon thread, CLI: `flask import-history-to-slm`
 - **Piper TTS optimization** — chunked processing for large text synthesis with seamless audio transitions
 - **llama-swap v217** — Blackwell (sm_120) crash fixes
-- **Default chat model** — Gemma 4 E2B Q4_0 (~3 GB), default ctx 8192 → 16384
+- **Default chat model** — Qwen3-4B-Instruct-2507 Q4_0 (~2.4 GB), default ctx 8192 → 16384. MXFP4 variant available for Blackwell GPUs
 - **Reasoning models** — 8/12 GB: Gemma 4 E4B Q4_0 (~4.8 GB), 16 GB+: gpt-oss-20b Q4_K_M (~12 GB)
 - **CLI tools** — `admin-password`, `cleanup-uploads`, `migrate-messages-format` (with `--dry-run`, `--add-emojis`)
 - **Health check & metrics** — `/health` endpoint with service status, `/metrics` for Prometheus
@@ -893,7 +912,7 @@ curl http://localhost:5000/metrics
 
 | Model | Purpose | License | Approx. Size |
 |-------|---------|---------|-------------|
-| **gemma-4-E2B-it-Q4_0.gguf** | Chat (fast responses) | [Apache 2.0](https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF) | ~3 GB |
+| **Qwen3-4B-Instruct-2507-Q4_0.gguf** | Chat (fast responses) | [Apache 2.0](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2.4 GB |
 | **gemma-4-E4B-it-Q4_0.gguf** | Reasoning (8/12 GB) | [Apache 2.0](https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF) | ~4.8 GB |
 | **gpt-oss-20b-Q4_K_M.gguf** | Reasoning (16 GB+) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 GB |
 | **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (image analysis) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5 GB + mmproj ~1.1 GB |
@@ -947,7 +966,7 @@ curl http://localhost:5000/metrics
 
 | Configuration | Approx. Download |
 |---------------|-----------------|
-| Chat only (Qwen3-4B) | ~2.5 GB |
+| Chat only (Qwen3-4B) | ~2.4 GB |
 | Chat + Reasoning | ~14.5 GB |
 | Chat + Multimodal | ~8 GB |
 | Full LLM stack | ~22 GB |

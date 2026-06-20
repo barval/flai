@@ -67,8 +67,8 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - **Blueprints:** `app/routes/` — auth, chat, admin, queue, tts, messages, sessions, documents, backups, events, debug
   - **Modules:** `modules/` — base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm, search, video
   - **Background tasks:** `app/tasks/` — `dry_load.py`, `health_monitor.py`. Fact extraction runs as background thread (CPU-only, rule-based via `app/slm_rules.py`). Fact merge runs on background queue (CPU-only, no LLM). Both excluded from queue status display and user counter.
-  - **LLM client:** `app/llamacpp_client.py` with `DirectLlamaBackend` and `LlamaSwapBackend`. Both `call()` and `chat()` accept `temperature` parameter. Router classification uses hardcoded `temperature=0.1`.
-  - **Queue:** `app/queue.py:RedisRequestQueue` with **fast worker (CPU) and slow worker (GPU)**
+  - **LLM client:** `app/llamacpp_client.py` with `DirectLlamaBackend` and `LlamaSwapBackend`. Both `call()` and `chat()` accept `temperature` parameter. Router classification uses hardcoded `temperature=0.1`. `_translate_llama_swap_error()` translates llama-swap errors to user language.
+  - **Queue:** `app/queue.py:RedisRequestQueue` with **fast worker (CPU) and slow worker (GPU)**. Cancel support for all task types: image gen/edit (pre/post checks), video gen (background checker thread + container restart), streaming tasks (Redis flag).
   - **VRAM management:** `app/resource_manager.py`
   - **Database:** PostgreSQL only via `app/database.py:get_db()`
   - **External services:** llama-swap, Qdrant, SearXNG, Piper (TTS), Whisper (STT), SuperLocalMemory (SLM)
@@ -76,6 +76,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - **Skills master copy:** `prompts/{ru,en}/skills.txt` — single source of truth for all capabilities lists. `format_prompt()` auto-injects `{skills_section}`.
   - **Response styles:** `STYLE_INSTRUCTIONS` in `modules/base.py` — single source of truth for 5 styles (neutral, academic, professional, friendly, funny). Imported by `rag.py` and `multimodal.py`. Style is injected into all prompts via `{response_style}` placeholder.
   - **Context budget:** `_get_context_for_model()` fetches SLM facts first, measures real token cost, then fills remaining budget with conversation history. No hardcoded reserves — actual sizes used throughout.
+  - **Chat auto-scroll:** `_isLoadingMessages` flag in `chat-messages.js` prevents N competing async scroll callbacks. `isNearBottom()` threshold=200px. `overflow-anchor: none` for chat container.
 
 **Full architecture details** → `docs/ARCHITECTURE.md`
 

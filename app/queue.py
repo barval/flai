@@ -1157,6 +1157,10 @@ class RedisRequestQueue:
 
         self._publish_stream_event(task, "task_progress", {"stage": "preparing_gpu"})
 
+        if task and self._is_task_cancelled(task["id"]):
+            self._publish_stream_event(task, "stream_cancelled")
+            return self._build_error_response(session_id, "Task cancelled", 0, lang)
+
         # Wait for guaranteed free VRAM (multimodal model needs ~8GB with KV cache)
         if not self._wait_for_vram(self._get_vram_needed("multimodal")):
             error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang=lang)
@@ -1169,6 +1173,10 @@ class RedisRequestQueue:
         mm_time = round(time.time() - mm_start, 1)
         if error:
             return self._build_error_response(session_id, error, mm_time, lang)
+
+        if task and self._is_task_cancelled(task["id"]):
+            self._publish_stream_event(task, "stream_cancelled")
+            return self._build_error_response(session_id, "Task cancelled", mm_time, lang)
 
         edit_start = time.time()
         if task:
@@ -1287,6 +1295,10 @@ class RedisRequestQueue:
 
         self._publish_stream_event(task, "task_progress", {"stage": "preparing_gpu"})
 
+        if task and self._is_task_cancelled(task["id"]):
+            self._publish_stream_event(task, "stream_cancelled")
+            return self._build_error_response(session_id, "Task cancelled", 0, lang)
+
         # Wait for guaranteed free VRAM (multimodal model needs ~8GB with KV cache)
         if not self._wait_for_vram(self._get_vram_needed("multimodal")):
             error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang=lang)
@@ -1305,6 +1317,10 @@ class RedisRequestQueue:
         mm_time = round(time.time() - mm_start, 1)
         if error:
             return self._build_error_response(session_id, error, mm_time, lang)
+
+        if task and self._is_task_cancelled(task["id"]):
+            self._publish_stream_event(task, "stream_cancelled")
+            return self._build_error_response(session_id, "Task cancelled", mm_time, lang)
 
         gen_start = time.time()
         if task:
@@ -1689,6 +1705,10 @@ class RedisRequestQueue:
             if error:
                 return self._build_error_response(session_id, error, mm_time, lang)
 
+            if task and self._is_task_cancelled(task["id"]):
+                self._publish_stream_event(task, "stream_cancelled")
+                return self._build_error_response(session_id, "Task cancelled", mm_time, lang)
+
             # CRITICAL: Unload multimodal model AFTER params generated but BEFORE video.
             # generate_video_params() loaded Qwen3VL-8B (~5GB) — must free VRAM
             # before LTX-Video pipeline (~8GB) loads, or total > GPU capacity → OOM.
@@ -1706,10 +1726,19 @@ class RedisRequestQueue:
             gen_start = time.time()
             if task:
                 self._publish_stream_event(task, "task_progress", {"stage": "generating_video"})
-            video_result = self.app.modules["video"].generate_video(
-                prompt_data, lang=lang, user_id=user_id, session_id=session_id, task_id=task.get("id") if task else None
-            )
+            cancel_stop = self._start_cancel_checker(task["id"]) if task else None
+            try:
+                video_result = self.app.modules["video"].generate_video(
+                    prompt_data, lang=lang, user_id=user_id, session_id=session_id, task_id=task.get("id") if task else None
+                )
+            finally:
+                if cancel_stop:
+                    cancel_stop.set()
             gen_time = round(time.time() - gen_start, 1)
+
+            if task and self._is_task_cancelled(task["id"]):
+                self._publish_stream_event(task, "stream_cancelled")
+                return self._build_error_response(session_id, "Task cancelled", mm_time + gen_time, lang)
 
             if not video_result["success"]:
                 err_msg = video_result.get("error", "")
@@ -1831,6 +1860,10 @@ class RedisRequestQueue:
             if error:
                 return self._build_error_response(session_id, error, mm_time, lang)
 
+            if task and self._is_task_cancelled(task["id"]):
+                self._publish_stream_event(task, "stream_cancelled")
+                return self._build_error_response(session_id, "Task cancelled", mm_time, lang)
+
             # CRITICAL: Unload multimodal model AFTER params generated but BEFORE video.
             # generate_video_params_from_image() loaded Qwen3VL-8B (~5GB) — must free VRAM
             # before LTX-Video pipeline (~8GB) loads, or total > GPU capacity → OOM.
@@ -1845,15 +1878,24 @@ class RedisRequestQueue:
             gen_start = time.time()
             if task:
                 self._publish_stream_event(task, "task_progress", {"stage": "generating_video"})
-            video_result = self.app.modules["video"].generate_video(
-                prompt_data,
-                image_data=image_data,
-                lang=lang,
-                user_id=user_id,
-                session_id=session_id,
-                task_id=task.get("id") if task else None,
-            )
+            cancel_stop = self._start_cancel_checker(task["id"]) if task else None
+            try:
+                video_result = self.app.modules["video"].generate_video(
+                    prompt_data,
+                    image_data=image_data,
+                    lang=lang,
+                    user_id=user_id,
+                    session_id=session_id,
+                    task_id=task.get("id") if task else None,
+                )
+            finally:
+                if cancel_stop:
+                    cancel_stop.set()
             gen_time = round(time.time() - gen_start, 1)
+
+            if task and self._is_task_cancelled(task["id"]):
+                self._publish_stream_event(task, "stream_cancelled")
+                return self._build_error_response(session_id, "Task cancelled", mm_time + gen_time, lang)
 
             if not video_result["success"]:
                 err_msg = video_result.get("error", "")
@@ -3951,3 +3993,29 @@ class RedisRequestQueue:
     def _is_task_cancelled(self, task_id: str) -> bool:
         """Check if a task has been cancelled (polled by the streaming worker)."""
         return bool(self.redis.exists(f"task:cancel:{task_id}"))
+
+    def _start_cancel_checker(self, task_id: str, interval: float = 2.0) -> "threading.Event":
+        """Start a background thread that polls _is_task_cancelled and restarts
+        the LTX-Video container when cancellation is detected.
+
+        Returns a threading.Event that can be set() to stop the checker.
+        """
+        stop_event = threading.Event()
+
+        def _checker():
+            while not stop_event.is_set():
+                stop_event.wait(interval)
+                if stop_event.is_set():
+                    break
+                if self._is_task_cancelled(task_id):
+                    self.logger.info(f"Cancelling task {task_id} — restarting LTX-Video container")
+                    try:
+                        from app.resource_manager import get_resource_manager
+                        get_resource_manager()._force_restart_ltx_video()
+                    except Exception as e:
+                        self.logger.debug(f"Container restart during cancel: {e}")
+                    return
+
+        t = threading.Thread(target=_checker, daemon=True)
+        t.start()
+        return stop_event

@@ -42,8 +42,8 @@ pybabel update -i translations/messages.pot -d translations
 pybabel compile -d translations  # after editing .po files
 ```
 
-## Translation System Fix (v9.0)
-Removed `.mo` volume mounts that were overriding correct compiled translations with incomplete versions. Docker now properly compiles all translations at build time. All site features work in both Russian and English profiles.
+## Translation System (v9.0+)
+Compiled `.mo` files are baked into the Docker image via `RUN pybabel compile -d translations` in the Dockerfile. For live updates without image rebuild, `docker-compose.gpu.yml` mounts `./translations:/app/translations` as a bind volume. After editing `.po` files, run `pybabel compile -d translations` on the host, then `docker exec flai-web kill -HUP 1` to reload gunicorn. All site features work in both Russian and English profiles.
 
 ## Error Message Prefix
 All error messages displayed to users MUST start with `"⚠️ "`.

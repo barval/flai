@@ -1,5 +1,5 @@
 // app/static/js/events.js
-// Server-Sent Events (SSE) — replaces HTTP polling for real-time updates
+// Server-Sent Events (SSE) - replaces HTTP polling for real-time updates
 
 let eventSource = null;
 let reconnectTimer = null;
@@ -65,7 +65,7 @@ function scheduleReconnect() {
     if (reconnectTimer) clearTimeout(reconnectTimer);
     reconnectTimer = setTimeout(function () {
         connectEventStream();
-        // Full sync after reconnect — may have missed events
+        // Full sync after reconnect - may have missed events
         if (typeof loadSessionsFromServer === 'function') {
             loadSessionsFromServer();
         }
@@ -139,7 +139,7 @@ function handleEvent(event) {
     }
 }
 
-// ── camera_image ────────────────────────────────────────────────────
+// -- camera_image ----------------------------------------------------
 
 function onCameraImage(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
@@ -153,7 +153,7 @@ function onCameraImage(data) {
         data.response_style, null, null, data.model_type);
 }
 
-// ── tool_call / tool_result ─────────────────────────────────────────
+// -- tool_call / tool_result -----------------------------------------
 
 const TOOL_LABELS = {
     get_current_time: '🕐 ' + t('tool_get_current_time'),
@@ -177,7 +177,7 @@ function onToolResult(data) {
     _removeProgressElement(data.task_id);
 }
 
-// ── task_progress ────────────────────────────────────────────────────
+// -- task_progress ----------------------------------------------------
 
 const STAGE_LABELS = {
     preparing_gpu: t('stage_preparing_gpu'),
@@ -223,7 +223,7 @@ function _removeProgressElement(taskId) {
     if (el) el.remove();
 }
 
-// ── video_step ───────────────────────────────────────────────────────
+// -- video_step -------------------------------------------------------
 
 function onVideoStep(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
@@ -252,7 +252,7 @@ function onVideoStep(data) {
     if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
 }
 
-// ── image_step ────────────────────────────────────────────────────
+// -- image_step ----------------------------------------------------
 
 function onImageStep(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
@@ -281,7 +281,7 @@ function onImageStep(data) {
     if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
 }
 
-// ── image_preview ────────────────────────────────────────────────────
+// -- image_preview ----------------------------------------------------
 
 function onImagePreview(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
@@ -309,10 +309,11 @@ function onImagePreview(data) {
     if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
 }
 
-// ── thinking tag filter (fallback for --reasoning_format none) ─────────
-// Handles two formats:
-// - `` blocks (Qwen, DeepSeek, Gemma, QwQ)
-// - `<|channel|>analysis<|message|>...<|end|>` (gpt-oss-20b ChatML reasoning)
+// -- thinking tag filter (fallback for --reasoning_format none) ---------
+// Handles:
+// - <think>...</think> blocks (Qwen, DeepSeek, Gemma, QwQ)
+// - <|channel|>...<|end|> blocks with any channel type (gpt-oss-20b)
+// - Unclosed <|channel|> leftovers (streaming fragments)
 
 function _stripThinkingTags(text) {
     if (!text) return text;
@@ -322,19 +323,19 @@ function _stripThinkingTags(text) {
     result = result.replace(/<think[\s>][\s\S]*?<\/think>/gi, '');
     // Remove incomplete opening tag at the end (streaming: closing tag hasn't arrived yet)
     result = result.replace(/<think[\s>][\s\S]*$/i, '');
-    // Remove complete <|channel|>analysis<|message|>...<|end|> blocks
-    result = result.replace(/<\|channel\|>analysis<\|message\|>[\s\S]*?<\|end\|>/gi, '');
-    // Remove incomplete opening tag at the end (streaming)
-    result = result.replace(/<\|channel\|>analysis<\|message\|>[\s\S]*$/i, '');
+    // Remove complete <|channel|>...<|end|> blocks (any channel type)
+    result = result.replace(/<\|channel\|>[\s\S]*?<\|end\|>/gi, '');
+    // Remove unclosed <|channel|>... to end (streaming fragments)
+    result = result.replace(/<\|channel\|>[\s\S]*$/i, '');
     return result;
 }
 
-// ── generic reasoning pattern filter ───────────────────────────────────
+// -- generic reasoning pattern filter -----------------------------------
 // Some reasoning models output chain-of-thought as plain text without
 // thinking tags.  These patterns detect common reasoning markers and
 // strip everything up to the actual answer.
 
-const _REASONING_MARKERS_RE = /(?:The user (?:is asking|asks|said|wants|wondered)|Пользователь (?:спрашивает|просит|хочет|говорит|спрашивал)|(?:Analyze|Analyse|Check|Formulate|Identify|Review|Consider|Plan|Анализ|Проверка|Формулировка|Идентификация|Рассмотрение|План) \w+[\s:]|(?:Self-Correction|Refinement|Коррекция|Уточнение)[\s:]|(?:I need to|I should|I must|Let me|Let's|Мне нужно|Мне следует|Мне необходимо|Нужно|Следует|Необходимо)|(?:Final Answer(?: Generation)?(?:\s*\([^)]*\))?|Генерация финального ответа|Финальный ответ)[\s:]*)/gi;
+const _REASONING_MARKERS_RE = /(?:The user (?:is asking|asks|said|wants|wondered)|Пользователь (?:спрашивает|просит|хочет|говорит|спрашивал)|(?:Analyze|Analyse|Check|Formulate|Identify|Review|Consider|Plan|Commentary|Анализ|Проверка|Формулировка|Идентификация|Рассмотрение|План|Комментарий) \w+[\s:]|(?:Self-Correction|Refinement|Коррекция|Уточнение)[\s:]|(?:I need to|I should|I must|Let me|Let's|Мне нужно|Мне следует|Мне необходимо|Нужно|Следует|Необходимо)|(?:Final Answer(?: Generation)?(?:\s*\([^)]*\))?|Генерация финального ответа|Финальный ответ)[\s:]*)/gi;
 
 function _stripGenericReasoning(text) {
     if (!text || text.length < 50) return text;
@@ -352,7 +353,7 @@ function _stripGenericReasoning(text) {
             if (answer) return answer;
         }
     }
-    // Check for markdown plan lines — if ALL non-empty lines start with "** ",
+    // Check for markdown plan lines - if ALL non-empty lines start with "** ",
     // the model produced only a plan and no real answer.
     const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
     if (lines.length > 0 && lines.every(l => /^\s*\*\*\s+\w/.test(l))) {
@@ -361,7 +362,7 @@ function _stripGenericReasoning(text) {
     return text;
 }
 
-// ── stream_token ─────────────────────────────────────────────────────
+// -- stream_token -----------------------------------------------------
 
 function onStreamToken(data) {
     if (!data || !data.task_id || !data.token) return;
@@ -369,7 +370,7 @@ function onStreamToken(data) {
 
     let reqInfo = pendingRequestIds[data.task_id];
     if (!reqInfo) {
-        // After page refresh, pendingRequestIds is empty — create entry on first token
+        // After page refresh, pendingRequestIds is empty - create entry on first token
         reqInfo = {
             sessionId: data.session_id,
             timestamp: Date.now(),
@@ -464,7 +465,7 @@ function _saveStreamToSessionStorage(taskId, sessionId, content) {
             timestamp: Date.now()
         }));
     } catch (e) {
-        // sessionStorage full or unavailable — ignore
+        // sessionStorage full or unavailable - ignore
     }
 }
 
@@ -551,7 +552,7 @@ function restoreStreamingFromSessionStorage() {
     }
 }
 
-// ── result_completed ─────────────────────────────────────────────────
+// -- result_completed -------------------------------------------------
 
 function onResultCompleted(data) {
     if (!data || !data.task_id) return;
@@ -569,7 +570,7 @@ function onResultCompleted(data) {
     const reqInfo = pendingRequestIds[data.task_id];
     if (!reqInfo) {
         // After page refresh, pendingRequestIds is empty (in-memory, not persisted).
-        // The result may still carry a valid response — display it and clean up.
+        // The result may still carry a valid response - display it and clean up.
         const existingMsg = document.querySelector('[data-task-id="' + data.task_id + '"]');
         if (existingMsg && existingMsg.hasAttribute('data-streaming')) existingMsg.remove();
         _clearStreamFromSessionStorage(data.task_id);
@@ -603,7 +604,7 @@ function onStreamCancelled(data) {
     if (!data || !data.task_id) return;
     dlog('onStreamCancelled:', data.task_id);
 
-    // The result_completed will follow shortly — let finalizeStreamedMessage handle cleanup.
+    // The result_completed will follow shortly - let finalizeStreamedMessage handle cleanup.
     // Just mark the DOM as cancelled.
     const streamMsg = document.querySelector('.assistant-message[data-streaming="true"]');
     if (streamMsg) {
@@ -840,7 +841,7 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
         setNewMessageIndicator(resultSessionId, true);
     }
 
-    // Cleanup — but don't clear pending request if task was requeued
+    // Cleanup - but don't clear pending request if task was requeued
     if (resultSessionId) {
         setLocalTranscribing(resultSessionId, false);
         clearSessionQueue(resultSessionId);
@@ -898,7 +899,7 @@ function verifyPendingRequests() {
                     clearPendingRequest(reqId);
                     handleErrorResult(data, sessionId);
                 }
-                // 'pending' means still running — leave it in pendingRequestIds
+                // 'pending' means still running - leave it in pendingRequestIds
             })
             .catch(function () { /* ignore network errors */ });
     });
@@ -923,7 +924,7 @@ function handleCompletedResult(result, expectedSessionId) {
         delete newMessageIndicators[resultSessionId];
     }
 
-    // Transcription result — may spawn chained processing
+    // Transcription result - may spawn chained processing
     if (result.transcribed_text !== undefined && result.transcribed_text !== null) {
         handleTranscriptionResult(result, resultSessionId, expectedSessionId);
         return;
@@ -932,7 +933,7 @@ function handleCompletedResult(result, expectedSessionId) {
     // Error result
     if (result.error) {
         if (resultSessionId === currentSessionId) {
-            // Error headers intentionally get no ⏱️/🚀/🤖 — pass null for
+            // Error headers intentionally get no ⏱️/🚀/🤖 - pass null for
             // responseTime and modelName='system'.
             window.displayMessage('assistant', result.error, null, null, null, null,
                 result.assistant_timestamp || new Date().toISOString(), null, 'system',
@@ -990,7 +991,7 @@ function handleCompletedResult(result, expectedSessionId) {
         return;
     }
 
-    // No recognizable payload — clean up anyway
+    // No recognizable payload - clean up anyway
     if (resultSessionId) {
         setLocalTranscribing(resultSessionId, false);
         clearSessionQueue(resultSessionId);
@@ -1014,7 +1015,7 @@ function handleTranscriptionResult(result, resultSessionId, expectedSessionId) {
             window.updateStatusCounter();
             if (typeof fetchQueueStatus === 'function') fetchQueueStatus();
         } else {
-            // Audio file — no further processing, clear ⚡
+            // Audio file - no further processing, clear ⚡
             clearSessionQueue(resultSessionId);
             if (typeof fetchQueueStatus === 'function') fetchQueueStatus();
 
@@ -1076,7 +1077,7 @@ function clearSessionQueue(sessionId) {
     if (typeof updateUIFromQueueStatus === 'function') updateUIFromQueueStatus();
 }
 
-// ── message_new ──────────────────────────────────────────────────────
+// -- message_new ------------------------------------------------------
 
 function onMessageNew(data) {
     if (!data || !data.session_id || !data.message_id) return;
@@ -1152,7 +1153,7 @@ function onMessageNew(data) {
         .catch(function () {});
 }
 
-// ── Progress restore after reconnect / page reload ──────────────────
+// -- Progress restore after reconnect / page reload ------------------
 
 async function restoreTaskProgress() {
     for (const [taskId, info] of Object.entries(pendingRequestIds)) {
@@ -1196,7 +1197,7 @@ async function restoreTaskProgress() {
     }
 }
 
-// ── Initialisation ───────────────────────────────────────────────────
+// -- Initialisation ---------------------------------------------------
 
 document.addEventListener('DOMContentLoaded', function () {
     connectEventStream();

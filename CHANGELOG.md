@@ -4,6 +4,18 @@ All notable changes to FLAI are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- **`<|channel|>` thinking tokens not stripped** — gpt-oss-20b with `--reasoning_format none` unexpectedly generated `<|channel|>commentary<|message|>...<|end|>` instead of the standard `analysis` channel. Server filter `_strip_thinking_tags()` and client filter `_stripThinkingTags()` now strip **any** `<|channel|>...<|end|>` block plus unclosed `<|channel|>` leftovers. Added `Commentary|Комментарий` to `_strip_generic_reasoning()` markers. **Note:** `<|channel|>` is intentionally **not** a stop token — gpt-oss-20b always starts generation with `<|channel|>`, so stopping on it would produce empty responses.
+- **Ruff false positives on JS files** — `ruff check .` reported 3177 errors in `events.js` (ruff cannot parse modern JS). Excluded `"*.js"` from ruff. Replaced non-ASCII dashes (`─`, `—`) with ASCII `-` in `events.js`.
+- **`_strip_generic_reasoning()` returning empty string** — When a small model (Qwen3-4B) produced reasoning markers followed by a short answer (<100 chars), the function returned `""` instead of the answer. Now returns original `text` if parsed answer is empty, never discarding valid responses.
+- **Tool invocation instruction without tools** — System prompt contained "используй инструменты когда это необходимо — не придумывай ответ, лучше вызови инструмент" but tools were `null`, causing models to cite skills instead of answering directly. Both the tool invocation instruction and `time_calc` examples are now conditional on `include_tools=True`.
+- **`expose_tools` parameter** — Separates tool definitions from system prompt content. Category 1 (fast chat) now uses `include_tools=False` (short prompt without time/tool sections) + `expose_tools=True` (model can still call tools). Fixes date calculations like "когда ближайшее 16 число выпадает на четверг?" returning wrong year.
+- **Emoji missing from stage messages** — Transition from hardcoded emoji in `STAGE_LABELS` (v9.0) to i18n via `t()` lost emoji in all 9 stage messages (⏳ 🔍 🎬 🎨 ✏️ 🧠 📹). Restored in `.po` files for both RU and EN locales. Added bind mount `./translations:/app/translations` in `docker-compose.gpu.yml` so `.mo` changes persist through container restarts.
+- **Router system message missing 3 categories** — System message in `modules/base.py:369` only listed SIMPLE/REASONING/IMAGE/VIDEO/CAMERA but omitted SEARCH, RAG, and REMEMBER. Router (Qwen3-4B) frequently misclassified search queries (e.g., "Найди описание и цену смартфона Poco X8 Pro в DNS") as category 1, causing chat model to hallucinate answers instead of performing web search. Updated to explicitly list all 8 categories from `base_text.template`.
+
 ## [v9.0] — 2026-06-16
 
 ### ✨ New Features

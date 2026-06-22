@@ -745,12 +745,13 @@ class RedisRequestQueue:
 
         Primary filtering happens in llamacpp_client.py at the backend level.
         This is a safety net for responses saved to DB.
-        Handles: `` and `<|channel|>analysis<|message|>...<|end|>`.
+        Handles: <think>...</think> and <|channel|>... blocks (any channel type).
         """
         if not text or ("<think" not in text and "<|channel|>" not in text):
             return text
         text = re.sub(r"<think[\s>][\s\S]*?</think>", "", text)
-        text = re.sub(r"<\|channel\|>analysis<\|message\|>[\s\S]*?<\|end\|>", "", text)
+        text = re.sub(r"<\|channel\|>[\s\S]*?<\|end\|>", "", text)
+        text = re.sub(r"<\|channel\|>[\s\S]*$", "", text)
         return text.strip()
 
     def _build_success_response(

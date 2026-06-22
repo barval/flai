@@ -201,8 +201,8 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 
 `app/queue.py:_process_reasoning_request()` uses `generate_reasoning_response_stream()` instead of `process_reasoning()`. Tokens are published via `_publish_stream_token()`.
 
-- **Server-side** `_strip_thinking_tags()` in `queue.py` removes `<tool_call>` and `<|channel|>analysis<|message|>...<|end|>` blocks before DB save. `_strip_generic_reasoning()` removes chain-of-thought output as plain text (e.g. "Analyze Persona:", "Final Answer Generation:").
-- **Client-side** `_stripThinkingTags()` in `events.js` handles both complete and incomplete (streaming) tags. `_stripGenericReasoning()` strips generic reasoning patterns in real-time during streaming.
+- **Server-side** `_strip_thinking_tags()` in `llamacpp_client.py` removes `<think>...</think>` blocks and any `<|channel|>...` reasoning tokens (both complete `<|channel|>...<|end|>` and unclosed streaming leftovers). `_strip_generic_reasoning()` removes chain-of-thought output as plain text (e.g. "Analyze Persona:", "Final Answer Generation:"). Identical duplicate in `queue.py` for DB safety net.
+- **Client-side** `_stripThinkingTags()` in `events.js` handles both complete and incomplete (streaming) `<think>`/`<|channel|>` tags. `_stripGenericReasoning()` strips generic reasoning patterns in real-time during streaming.
 
 ## Task Cancellation
 

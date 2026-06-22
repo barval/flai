@@ -71,6 +71,7 @@ exclude = [
     "venv",
     ".venv",
     "translations",
+    "*.js",
 ]
 
 [tool.ruff.lint]

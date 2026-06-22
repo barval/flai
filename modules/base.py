@@ -366,7 +366,7 @@ class BaseModule(TranslationMixin):
         router_messages = [
             {
                 "role": "system",
-                "content": "STRICT CLASSIFICATION RULES — You are a query classifier. Output ONLY the result. No explanations, no extra text. SIMPLE queries (greetings, who-are-you, current time) → answer directly WITHOUT any marker. COMPLEX queries (code, math, writing) → use [-REASONING-]. IMAGE/VIDEO/CAMERA → use the appropriate marker. Never output [-REASONING-] for greetings or who-are-you questions. Never copy markers from examples into your response except when the query matches that category.",
+                "content": "STRICT CLASSIFICATION RULES — You are a query classifier. Output ONLY the result. No explanations, no extra text. SIMPLE queries (greetings, who-are-you, time, skills) → answer WITHOUT any marker. IMAGE generation → use [-IMAGE-]. VIDEO generation → use [-VIDEO-]. CAMERA/snapshot → use [-CAMERA-]. DOCUMENT search → use [-RAG-]. WEB search (news, prices, latest info) → use [-SEARCH-]. COMPLEX tasks (code, writing, reasoning) → use [-REASONING-]. REMEMBER requests → use [-REMEMBER-]. Never output reasoning markers for simple queries.",
             },
             {"role": "user", "content": prompt},
         ]

@@ -45,6 +45,7 @@ services:
       - ./modules/video.py:/app/modules/video.py
       - ./modules/sd_cpp.py:/app/modules/sd_cpp.py
       - ./modules/base.py:/app/modules/base.py
+      - ./modules/tts.py:/app/modules/tts.py
       - ./app/static/js/events.js:/app/app/static/js/events.js
       - ./app/static/js/admin-models.js:/app/app/static/js/admin-models.js
       - ./app/static/js/chat-queue.js:/app/app/static/js/chat-queue.js

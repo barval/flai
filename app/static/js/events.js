@@ -312,8 +312,9 @@ function onImagePreview(data) {
 // -- thinking tag filter (fallback for --reasoning_format none) ---------
 // Handles:
 // - <think>...</think> blocks (Qwen, DeepSeek, Gemma, QwQ)
-// - <|channel|>...<|end|> blocks with any channel type (gpt-oss-20b)
-// - Unclosed <|channel|> leftovers (streaming fragments)
+// - <|channel|>analysis<|message|>...<|end|> — reasoning, stripped entirely
+// - <|channel|>commentary<|message|>...ANSWER...<|end|> — unwrapped (answer kept)
+// - Malformed <|channel|>... (no <|message|>) — stripped (broken reasoning leftovers)
 
 function _stripThinkingTags(text) {
     if (!text) return text;
@@ -323,10 +324,13 @@ function _stripThinkingTags(text) {
     result = result.replace(/<think[\s>][\s\S]*?<\/think>/gi, '');
     // Remove incomplete opening tag at the end (streaming: closing tag hasn't arrived yet)
     result = result.replace(/<think[\s>][\s\S]*$/i, '');
-    // Remove complete <|channel|>...<|end|> blocks (any channel type)
-    result = result.replace(/<\|channel\|>[\s\S]*?<\|end\|>/gi, '');
-    // Remove unclosed <|channel|>... to end (streaming fragments)
-    result = result.replace(/<\|channel\|>[\s\S]*$/i, '');
+    // Strip <|channel|>analysis<|message|>...<|end|> reasoning blocks
+    result = result.replace(/<\|channel\|>analysis<\|message\|>[\s\S]*?<\|end\|>/gi, '');
+    result = result.replace(/<\|channel\|>analysis<\|message\|>[\s\S]*$/i, '');
+    // Unwrap <|channel|>commentary<|message|>...<|end|> — keep inner content
+    result = result.replace(/<\|channel\|>commentary<\|message\|>([\s\S]*?)<\|end\|>/gi, '$1');
+    // Strip malformed <|channel|>... without <|message|>
+    result = result.replace(/<\|channel\|>[^<]*$/i, '');
     return result;
 }
 
@@ -335,7 +339,7 @@ function _stripThinkingTags(text) {
 // thinking tags.  These patterns detect common reasoning markers and
 // strip everything up to the actual answer.
 
-const _REASONING_MARKERS_RE = /(?:The user (?:is asking|asks|said|wants|wondered)|Пользователь (?:спрашивает|просит|хочет|говорит|спрашивал)|(?:Analyze|Analyse|Check|Formulate|Identify|Review|Consider|Plan|Commentary|Анализ|Проверка|Формулировка|Идентификация|Рассмотрение|План|Комментарий) \w+[\s:]|(?:Self-Correction|Refinement|Коррекция|Уточнение)[\s:]|(?:I need to|I should|I must|Let me|Let's|Мне нужно|Мне следует|Мне необходимо|Нужно|Следует|Необходимо)|(?:Final Answer(?: Generation)?(?:\s*\([^)]*\))?|Генерация финального ответа|Финальный ответ)[\s:]*)/gi;
+const _REASONING_MARKERS_RE = /(?:The user (?:is asking|asks|said|wants|wondered)|Пользователь (?:спрашивает|просит|хочет|говорит|спрашивал)|(?:Analyze|Analyse|Check|Formulate|Identify|Review|Consider|Plan|Commentary) \w+[\s:]|(?:Self-Correction|Refinement)[\s:]|(?:I need to|I should|I must|Let me|Let's|Мне нужно|Мне следует|Мне необходимо)|(?:Final Answer(?: Generation)?(?:\s*\([^)]*\))?|Генерация финального ответа|Финальный ответ)[\s:]*)/gi;
 
 function _stripGenericReasoning(text) {
     if (!text || text.length < 50) return text;

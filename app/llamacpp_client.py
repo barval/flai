@@ -98,27 +98,34 @@ def _format_user_error(response: Any, lang: str = "ru") -> str:
 
 # ── Thinking tag filters ──────────────────────────────────────────────
 # Models like Qwen, DeepSeek, Gemma use: <think>...</think>
-# gpt-oss-20b uses:  <|channel|>analysis<|message|>...<|end|>
-#                    <|channel|>commentary<|message|>...<|end|>  etc.
+# gpt-oss-20b uses:  <|channel|>analysis<|message|>...<|end|>  (reasoning)
+#                    <|channel|>commentary<|message|>...<|end|>  (actual answer)
+# Only the `analysis` channel is thinking — `commentary` IS the answer.
 # These filters strip reasoning blocks from both streaming and non-streaming output.
 
-_THINK_OPEN_RE = re.compile(r"<think[\s>]|<\|channel\|>")
+_THINK_OPEN_RE = re.compile(r"<think[\s>]|<\|channel\|>analysis<\|message\|>")
 _THINK_CLOSE_RE = re.compile(r"</think>|<\|end\|>")
 
 
 def _strip_thinking_tags(text: str) -> str:
-    """Remove complete thinking/reasoning blocks from model output.
+    """Remove thinking/reasoning blocks from model output and unwrap answer channels.
 
     Handles:
     - <think>...</think> blocks (Qwen, DeepSeek, Gemma, QwQ)
-    - <|channel|>...<|end|> blocks with any channel type (gpt-oss-20b)
-    - Unclosed <|channel|> leftovers (streaming fragments / --reasoning_format none misses)
+    - <|channel|>analysis<|message|>...<|end|> — reasoning, stripped entirely
+    - <|channel|>commentary<|message|>...ANSWER...<|end|> — unwrapped (answer kept)
+    - Malformed <|channel|>... (no <|message|>) — stripped (broken reasoning leftovers)
     """
     if not text or ("<think" not in text and "<|channel|>" not in text):
         return text
     text = re.sub(r"<think[\s>][\s\S]*?</think>", "", text)
-    text = re.sub(r"<\|channel\|>[\s\S]*?<\|end\|>", "", text)
-    text = re.sub(r"<\|channel\|>[\s\S]*$", "", text)
+    # Strip <|channel|>analysis<|message|>...<|end|> reasoning blocks
+    text = re.sub(r"<\|channel\|>analysis<\|message\|>[\s\S]*?<\|end\|>", "", text)
+    text = re.sub(r"<\|channel\|>analysis<\|message\|>[\s\S]*$", "", text)
+    # Unwrap <|channel|>commentary<|message|>...<|end|> — keep inner content
+    text = re.sub(r"<\|channel\|>commentary<\|message\|>([\s\S]*?)<\|end\|>", r"\1", text)
+    # Strip malformed <|channel|>... without <|message|> (e.g. <|channel|>commentary to=...)
+    text = re.sub(r"<\|channel\|>[^<]*$", "", text)
     return text.strip()
 
 
@@ -131,11 +138,10 @@ _REASONING_MARKERS_RE = re.compile(
     r"(?:"
     r"The user (?:asked|is asking|asks|said|wants|wondered)"
     r"|Пользователь (?:спросил|спрашивает|просит|хочет|говорит|спрашивал)"
-    r"|(?:Analyze|Analyse|Check|Formulate|Identify|Review|Consider|Plan|Commentary|"
-    r"Анализ|Проверка|Формулировка|Идентификация|Рассмотрение|План|Комментарий) \w+[\s:]+"
-    r"|(?:Self-Correction|Refinement|Коррекция|Уточнение)[\s:]+"
+    r"|(?:Analyze|Analyse|Check|Formulate|Identify|Review|Consider|Plan|Commentary) \w+[\s:]+"
+    r"|(?:Self-Correction|Refinement)[\s:]+"
     r"|(?:I need to|I should|I must|Let me|Let's|"
-    r"Мне нужно|Мне следует|Мне необходимо|Нужно|Следует|Необходимо)"
+    r"Мне нужно|Мне следует|Мне необходимо)"
     r"|(?:Final Answer(?: Generation)?(?:\s*\([^)]*\))?|Генерация финального ответа|Финальный ответ)[\s:]*"
     r"|(?:Это (?:вопрос|задача|запрос)|This is a (?:question|task|request))"
     r"|(?:Ответ (?:должен|должна|будет|стоит)|The answer (?:should|must|will))"
@@ -174,7 +180,7 @@ def _strip_generic_reasoning(text: str) -> str:
 
     # Check for known reasoning markers
     matches = list(_REASONING_MARKERS_RE.finditer(text))
-    if matches:
+    if len(matches) >= 2:
         last_match = matches[-1]
         answer = text[last_match.end():].strip()
 

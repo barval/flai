@@ -201,8 +201,10 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 
 `app/queue.py:_process_reasoning_request()` uses `generate_reasoning_response_stream()` instead of `process_reasoning()`. Tokens are published via `_publish_stream_token()`.
 
-- **Server-side** `_strip_thinking_tags()` in `llamacpp_client.py` removes `<think>...</think>` blocks and any `<|channel|>...` reasoning tokens (both complete `<|channel|>...<|end|>` and unclosed streaming leftovers). `_strip_generic_reasoning()` removes chain-of-thought output as plain text (e.g. "Analyze Persona:", "Final Answer Generation:"). Identical duplicate in `queue.py` for DB safety net.
-- **Client-side** `_stripThinkingTags()` in `events.js` handles both complete and incomplete (streaming) `<think>`/`<|channel|>` tags. `_stripGenericReasoning()` strips generic reasoning patterns in real-time during streaming.
+- **Server-side** `_strip_thinking_tags()` in `llamacpp_client.py` handles three patterns: (1) `<think>...</think>` blocks are removed entirely; (2) `<|channel|>analysis<|message|>...<|end|>` (reasoning) is stripped entirely; (3) `<|channel|>commentary<|message|>...<|end|>` (actual answer) is **unwrapped** — tags removed, inner content kept. Malformed `<|channel|>...` without `<|message|>` is stripped. `_strip_generic_reasoning()` removes plain-text chain-of-thought (e.g. "Analyze Persona:", "Final Answer Generation:"). Server-side strip is now sufficient — `_strip_generic_reasoning()` was removed from `queue.py` (client-side filtering in `events.js` handles display).
+- **Client-side** `_stripThinkingTags()` in `events.js` mirrors server logic (though currently unused — server-side filtering is sufficient). `_stripGenericReasoning()` strips generic reasoning patterns in real-time during streaming.
+
+**Anti-hallucination for web search**: `_get_context_for_model()` prepends web search results with a prominent heading ("Результаты поиска в интернете — ИСПОЛЬЗУЙ ТОЛЬКО ЭТИ ДАННЫЕ") so the reasoning model treats them as authoritative. `reasoning.template` (ru + en) contains explicit rules: "opирайся ТОЛЬКО на предоставленный контекст. Не выдумывай факты."
 
 ## Task Cancellation
 
@@ -297,3 +299,4 @@ MUST be in a subdirectory with `mmproj-*.gguf` (e.g. `Qwen3VL-8B-Instruct-Q4_K_M
 - `app/cli.py` — Flask CLI commands
 - `app/cameradb.py` — camera rooms CRUD
 - `app/morph.py` — Russian morphology
+- `app/utils.py` — shared utilities: `clean_markdown_for_tts()` strips markdown before TTS synthesis, `estimate_tokens()` estimates token count, `chunk_text()` splits text, `_gguf_scalar()` extracts Python scalars from GGUF reader fields, `translate_sd_error()` translates sd.cpp errors

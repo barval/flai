@@ -25,7 +25,6 @@ from .db import (
     update_document_index_status,
 )
 from .events import get_events_publisher
-from .llamacpp_client import _strip_generic_reasoning
 from .model_config import get_model_config
 from .tools import MAX_TOOL_ITERATIONS, execute_tool, get_tool_definitions
 from .utils import (
@@ -745,13 +744,19 @@ class RedisRequestQueue:
 
         Primary filtering happens in llamacpp_client.py at the backend level.
         This is a safety net for responses saved to DB.
-        Handles: <think>...</think> and <|channel|>... blocks (any channel type).
+        Handles:
+        - <think>...</think> blocks
+        - <|channel|>analysis<|message|>...<|end|> — reasoning, stripped entirely
+        - <|channel|>commentary<|message|>...ANSWER...<|end|> — unwrapped (answer kept)
+        - Malformed <|channel|>... (no <|message|>) — stripped
         """
         if not text or ("<think" not in text and "<|channel|>" not in text):
             return text
         text = re.sub(r"<think[\s>][\s\S]*?</think>", "", text)
-        text = re.sub(r"<\|channel\|>[\s\S]*?<\|end\|>", "", text)
-        text = re.sub(r"<\|channel\|>[\s\S]*$", "", text)
+        text = re.sub(r"<\|channel\|>analysis<\|message\|>[\s\S]*?<\|end\|>", "", text)
+        text = re.sub(r"<\|channel\|>analysis<\|message\|>[\s\S]*$", "", text)
+        text = re.sub(r"<\|channel\|>commentary<\|message\|>([\s\S]*?)<\|end\|>", r"\1", text)
+        text = re.sub(r"<\|channel\|>[^<]*$", "", text)
         return text.strip()
 
     def _build_success_response(
@@ -1488,7 +1493,6 @@ class RedisRequestQueue:
                 break
         reasoning_time = round(time.time() - stream_start, 1)
         full_response = self._strip_thinking_tags(full_response)
-        full_response = _strip_generic_reasoning(full_response)
         if not full_response.strip():
             return self._build_error_response(
                 session_id,

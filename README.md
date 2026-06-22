@@ -99,6 +99,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | **Chat auto-scroll fix** | `_isLoadingMessages` flag prevents N competing async scroll callbacks. `isNearBottom()` threshold=200px. `overflow-anchor: none` for chat container |
 | **Error translation** | llama-swap errors translated to user language via `_translate_llama_swap_error()` |
 | **Double ⚠️ fix** | Server and client no longer both prepend "⚠️ " — server owns the prefix via `_build_error_response()` |
+| **TTS markdown cleanup** | `**bold**`, `*italic*`, `[links]` and other markdown formatting stripped before TTS synthesis — no more "звезда-звезда" in spoken responses. Handles sentence-split fragments (`**НН.РУ**` → `НН.РУ`). Exponent notation (`3**2=9`) preserved |
 
 ### Core Components
 

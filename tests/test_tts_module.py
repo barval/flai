@@ -114,3 +114,118 @@ class TestTTSModule:
 
             assert result is False
             assert module.available is False
+
+
+class TestCleanMarkdownForTTS:
+    """Tests for clean_markdown_for_tts() markdown stripping."""
+
+    def test_plain_text_preserved(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("Hello world") == "Hello world"
+
+    def test_empty_string(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("") == ""
+
+    def test_bold(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("**bold**") == "bold"
+
+    def test_italic(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("*italic*") == "italic"
+
+    def test_bold_italic(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("***bold italic***") == "bold italic"
+
+    def test_link(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("[text](url)") == "text"
+
+    def test_image_removed(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("![alt](img.jpg)") == ""
+
+    def test_inline_code(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("text `code` here") == "text code here"
+
+    def test_fenced_code_block_removed(self):
+        from app.utils import clean_markdown_for_tts
+        text = "before\n```\ncode block\n```\nafter"
+        assert clean_markdown_for_tts(text) == "before\n\nafter"
+
+    def test_heading(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("## Title") == "Title"
+
+    def test_blockquote(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("> quote") == "quote"
+
+    def test_unordered_list(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("- item") == "item"
+
+    def test_ordered_list(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("1. item") == "item"
+
+    def test_strikethrough(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("~~strike~~") == "strike"
+
+    def test_html_tags(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("<b>text</b>") == "text"
+
+    def test_exponentiation_preserved(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("3**2=9") == "3**2=9"
+
+    def test_math_expression_preserved(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("2+2*2=?") == "2+2*2=?"
+
+    def test_orphaned_bold_start_rus(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("**НН.") == "НН."
+
+    def test_orphaned_bold_end_rus(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("РУ**") == "РУ"
+
+    def test_orphaned_bold_start_eng(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("**New") == "New"
+
+    def test_orphaned_bold_end_eng(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("York**") == "York"
+
+    def test_underscore_variable_preserved(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("some_var") == "some_var"
+
+    def test_underscore_italic_with_boundaries(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("text _italic_ word") == "text italic word"
+
+    def test_mixed_formatting(self):
+        from app.utils import clean_markdown_for_tts
+        text = "**bold** and *italic* and `code`"
+        assert clean_markdown_for_tts(text) == "bold and italic and code"
+
+    def test_thematic_break(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("---") == ""
+
+    def test_multiple_whitespace_collapsed(self):
+        from app.utils import clean_markdown_for_tts
+        assert clean_markdown_for_tts("hello    world") == "hello world"
+
+    def test_nested_formatting(self):
+        from app.utils import clean_markdown_for_tts
+        text = "**bold *and italic* text**"
+        assert clean_markdown_for_tts(text) == "bold and italic text"

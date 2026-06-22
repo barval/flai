@@ -216,7 +216,16 @@ class BaseModule(TranslationMixin):
         # Combine: RAG context first, then SLM facts, history last (already trimmed)
         rag_section = ""
         if rag_context:
-            heading = "Найденная информация из документов:" if lang == "ru" else "Found information from documents:"
+            if rag_source == "web_search":
+                heading = (
+                    "Результаты поиска в интернете — ИСПОЛЬЗУЙ ТОЛЬКО ЭТИ ДАННЫЕ для ответа. "
+                    "Не выдумывай факты, не используй свои знания."
+                    if lang == "ru"
+                    else "Web search results — USE ONLY THIS DATA to answer. "
+                    "Do not fabricate facts, do not use your own knowledge."
+                )
+            else:
+                heading = "Найденная информация из документов:" if lang == "ru" else "Found information from documents:"
             rag_section = "\n" + heading + "\n" + rag_context
         context = rag_section + slm_facts_str + history_str
         history_tokens = self._estimate_tokens(history_str, model_type, lang)
@@ -474,7 +483,6 @@ class BaseModule(TranslationMixin):
                 "response_language": response_language,
                 "conversation_history": context_str,
                 "response_style": style_instruction,
-                "rag_context": "",
             },
             lang=lang,
         )
@@ -525,7 +533,6 @@ class BaseModule(TranslationMixin):
                 "response_language": response_language,
                 "conversation_history": context_str,
                 "response_style": style_instruction,
-                "rag_context": "",
             },
             lang=lang,
         )

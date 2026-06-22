@@ -1540,10 +1540,6 @@ msgstr "Запрос слишком длинный, пожалуйста, упр
 msgid "Error loading prompt template"
 msgstr "Ошибка загрузки шаблона промпта"
 
-#: modules/base.py:426
-msgid "No additional information from documents."
-msgstr "Дополнительной информации из документов нет."
-
 #: modules/cam.py:268 modules/cam.py:383
 msgid "CCTV service unavailable"
 msgstr "Сервис видеонаблюдения недоступен"
@@ -1777,6 +1773,66 @@ msgstr "Ищу в документах..."
 #: app/static/js/events.js
 msgid "tool_camera_snapshot"
 msgstr "Получаю снимок..."
+
+#: app/queue.py
+msgid "Task cancelled"
+msgstr "Задача отменена"
+
+#: app/queue.py
+msgid "Image editing failed"
+msgstr "Редактирование изображения не удалось"
+
+#: app/templates/chat.html
+msgid "Cleaning GPU..."
+msgstr "⏳ Очистка GPU..."
+
+#: app/templates/chat.html
+msgid "Analyzing request..."
+msgstr "🔍 Анализирую запрос..."
+
+#: app/templates/chat.html
+msgid "Analyzing image..."
+msgstr "🔍 Анализирую изображение..."
+
+#: app/templates/chat.html
+msgid "Analyzing prompt..."
+msgstr "🔍 Анализирую промпт..."
+
+#: app/templates/chat.html
+msgid "Generating video..."
+msgstr "🎬 Генерирую видео..."
+
+#: app/templates/chat.html
+msgid "Generating image..."
+msgstr "🎨 Генерирую изображение..."
+
+#: app/templates/chat.html
+msgid "Editing image..."
+msgstr "✏️ Редактирую изображение..."
+
+#: app/templates/chat.html
+msgid "Loading reasoning model..."
+msgstr "🧠 Загружаю модель рассуждений..."
+
+#: app/templates/chat.html
+msgid "Capturing snapshot..."
+msgstr "📹 Делаю снимок..."
+
+#: app/templates/chat.html
+msgid "Step"
+msgstr "Шаг"
+
+#: app/templates/chat.html
+msgid "minute_abbr"
+msgstr "м"
+
+#: app/templates/chat.html
+msgid "second_abbr"
+msgstr "с"
+
+#: app/templates/chat.html
+msgid "timer_zero"
+msgstr "0с"
 
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"

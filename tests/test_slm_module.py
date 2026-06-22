@@ -103,29 +103,6 @@ class TestSlmModuleOperations:
         results = module.recall("pets")
         assert results == []
 
-    def test_get_context_with_results(self, module):
-        with patch.object(module, "recall") as mock_recall:
-            mock_recall.return_value = [
-                {"text": "User likes cats", "score": 0.95},
-                {"text": "User prefers dogs", "score": 0.82},
-            ]
-            context = module.get_context("pets", lang="ru")
-            assert "Контекст из долговременной памяти" in context
-            assert "User likes cats" in context
-
-    def test_get_context_empty(self, module):
-        with patch.object(module, "recall") as mock_recall:
-            mock_recall.return_value = []
-            context = module.get_context("pets")
-            assert context == ""
-
-    def test_get_context_english(self, module):
-        with patch.object(module, "recall") as mock_recall:
-            mock_recall.return_value = [{"text": "User likes cats", "score": 0.95}]
-            context = module.get_context("pets", lang="en")
-            assert "Relevant context from long-term memory" in context
-            assert "User likes cats" in context
-
     def test_remember_with_profile(self, module):
         with patch("modules.slm.requests.post") as mock_post:
             mock_post.return_value.status_code = 200
@@ -208,13 +185,3 @@ class TestSlmModuleOperations:
             assert results == []
             call_kwargs = mock_post.call_args[1]
             assert call_kwargs["json"]["profile"] == "dave"
-
-    def test_get_context_with_profile(self, module):
-        with patch.object(module, "recall") as mock_recall:
-            mock_recall.return_value = [{"content": "User likes birds", "score": 0.90}]
-            context = module.get_context("pets", lang="ru", profile="eve")
-            assert "Контекст из долговременной памяти" in context
-            assert "User likes birds" in context
-            assert mock_recall.call_count == 1
-            call_kwargs = mock_recall.call_args[1]
-            assert call_kwargs["profile"] == "eve"

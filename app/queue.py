@@ -53,28 +53,6 @@ def _parse_remember_json(llm_response: str) -> list[str]:
         return []
 
 
-def _parse_facts_json(llm_response: str) -> list[dict[str, str]]:
-    """Parse extract response JSON: {"facts": [{"text": ..., "category": ..., "fact_type": ...}, ...]}"""
-    try:
-        start = llm_response.find("{")
-        end = llm_response.rfind("}") + 1
-        if start == -1 or end <= start:
-            return []
-        data = json.loads(llm_response[start:end])
-        facts = data.get("facts", [])
-        result = []
-        for f in facts:
-            if isinstance(f, dict) and f.get("text"):
-                result.append({
-                    "text": f["text"],
-                    "category": f.get("category", "context"),
-                    "fact_type": f.get("fact_type", "general"),
-                })
-        return result
-    except Exception:
-        return []
-
-
 def _extract_facts_bg(app, query: str, response: str, session_id: str, user_id: str, lang: str) -> None:
     """Extract facts from Q&A in a background thread (CPU-only, no GPU lock).
 
@@ -345,38 +323,6 @@ class RedisRequestQueue:
         """Remove request ID from user's set after completion."""
         self.redis.srem(f"{self.user_requests_key}:{user_id}", request_id)
 
-    def _recover_stale_tasks(self):
-        """Recover tasks stuck in 'processing' state from a previous crash."""
-        for queue_key, processing_key in [
-            (self.queue_key, self.processing_key),
-            (self.slow_queue_key, self.slow_processing_key),
-        ]:
-            try:
-                processing_tasks = self.redis.hgetall(processing_key)
-                if not processing_tasks:
-                    continue
-
-                recovered = 0
-                for task_id_b, task_data_b in processing_tasks.items():
-                    task_id = task_id_b.decode() if isinstance(task_id_b, bytes) else task_id_b
-                    task_data = task_data_b.decode() if isinstance(task_data_b, bytes) else task_data_b
-
-                    task = self._deserialize(task_data)
-                    if task is None:
-                        self.logger.warning(f"Recovery: corrupted task {task_id}, removing")
-                        self.redis.hdel(processing_key, task_id)
-                        continue
-
-                    self.redis.rpush(queue_key, task_data)
-                    self.redis.hdel(processing_key, task_id)
-                    recovered += 1
-                    self.logger.info(f"Recovery: re-queued stale task {task_id}")
-
-                if recovered > 0:
-                    self.app.logger.info(f"Queue recovery ({queue_key}): re-queued {recovered} stale task(s)")
-            except Exception as e:
-                self.logger.warning(f"Queue recovery failed for {queue_key}: {e}")
-
     def _get_model_for_task(self, task: dict[str, Any]) -> str:
         """Determine which llama.cpp model a task will need."""
         task_type = task.get("type", "")
@@ -410,76 +356,6 @@ class RedisRequestQueue:
             return "chat"
 
         return "chat"
-
-    def _peek_next_task_model(self) -> tuple[str, bool]:
-        """Peek at the next task in both queues and determine what model it needs."""
-        for q_key in [self.queue_key, self.slow_queue_key]:
-            queue_len = self.redis.llen(q_key)
-            if queue_len > 0:
-                task_data = self.redis.lindex(q_key, 0)
-                if task_data:
-                    task = self._deserialize(task_data)
-                    if task:
-                        return self._get_model_for_task(task), True
-        return "none", False
-
-    def _get_current_loaded_model(self) -> str | None:
-        """Query llama.cpp to find which model is currently loaded in VRAM."""
-        # Try direct llama-server first, fall back to llama-swap /running
-        llamacpp_url = self.app.config.get("LLAMACPP_URL")
-        swap_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
-
-        try:
-            import requests as req
-
-            # Direct llama-server: /v1/models returns full model list
-            if llamacpp_url:
-                resp = req.get(f"{llamacpp_url.rstrip('/')}/v1/models", timeout=5)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    for model in data.get("data", []):
-                        if model.get("status", {}).get("value") == "loaded":
-                            model_id = model.get("id", "")
-                            from .model_config import get_model_config
-
-                            for module_type in ("chat", "reasoning", "multimodal", "embedding"):
-                                config = get_model_config(module_type)
-                                if config and config.get("model_name") in model_id:
-                                    return module_type
-                            if any(x in model_id.lower() for x in ("vl", "vision", "multimodal")):
-                                return "multimodal"
-                            if any(x in model_id.lower() for x in ("oss", "reason", "gemma-4")):
-                                return "reasoning"
-                            if any(x in model_id.lower() for x in ("bge", "embed")):
-                                return "embedding"
-                            return "chat"
-                    return None
-
-            # Fallback: llama-swap /running endpoint
-            resp = req.get(f"{swap_url.rstrip('/')}/running", timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                models = data.get("running", [])
-                if models:
-                    from .model_config import get_model_config
-
-                    for module_type in ("chat", "reasoning", "multimodal", "embedding"):
-                        config = get_model_config(module_type)
-                        model_name = config.get("model_name", "") if config else ""
-                        if model_name and any(model_name in m.get("cmd", "") for m in models):
-                            return module_type
-                    first_model = models[0].get("model", "")
-                    if any(x in first_model for x in ("vl", "vision", "multimodal")):
-                        return "multimodal"
-                    if any(x in first_model for x in ("oss", "reason", "gemma-4")):
-                        return "reasoning"
-                    if any(x in first_model for x in ("bge", "embed")):
-                        return "embedding"
-                    return "chat"
-            return None
-        except Exception as e:
-            self.app.logger.debug(f"Failed to query current model: {e}")
-            return None
 
     def _cleanup_vram_after_task(self, task: dict[str, Any]) -> None:
         """Free VRAM after a GPU-using task completes.
@@ -1159,7 +1035,7 @@ class RedisRequestQueue:
 
         if task and self._is_task_cancelled(task["id"]):
             self._publish_stream_event(task, "stream_cancelled")
-            return self._build_error_response(session_id, "Task cancelled", 0, lang)
+            return self._build_error_response(session_id, self.app.modules["base"]._("Task cancelled", lang=lang), 0, lang)
 
         # Wait for guaranteed free VRAM (multimodal model needs ~8GB with KV cache)
         if not self._wait_for_vram(self._get_vram_needed("multimodal")):
@@ -1176,7 +1052,7 @@ class RedisRequestQueue:
 
         if task and self._is_task_cancelled(task["id"]):
             self._publish_stream_event(task, "stream_cancelled")
-            return self._build_error_response(session_id, "Task cancelled", mm_time, lang)
+            return self._build_error_response(session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time, lang)
 
         edit_start = time.time()
         if task:
@@ -1193,7 +1069,7 @@ class RedisRequestQueue:
 
         if not image_result["success"]:
             return self._build_error_response(
-                session_id, image_result.get("error", "Image editing failed"), mm_time + edit_time, lang
+                session_id, image_result.get("error", self.app.modules["base"]._("Image editing failed", lang=lang)), mm_time + edit_time, lang
             )
 
         # Show resize notice if image was downscaled for editing
@@ -1297,7 +1173,7 @@ class RedisRequestQueue:
 
         if task and self._is_task_cancelled(task["id"]):
             self._publish_stream_event(task, "stream_cancelled")
-            return self._build_error_response(session_id, "Task cancelled", 0, lang)
+            return self._build_error_response(session_id, self.app.modules["base"]._("Task cancelled", lang=lang), 0, lang)
 
         # Wait for guaranteed free VRAM (multimodal model needs ~8GB with KV cache)
         if not self._wait_for_vram(self._get_vram_needed("multimodal")):
@@ -1320,7 +1196,7 @@ class RedisRequestQueue:
 
         if task and self._is_task_cancelled(task["id"]):
             self._publish_stream_event(task, "stream_cancelled")
-            return self._build_error_response(session_id, "Task cancelled", mm_time, lang)
+            return self._build_error_response(session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time, lang)
 
         gen_start = time.time()
         if task:
@@ -1707,7 +1583,7 @@ class RedisRequestQueue:
 
             if task and self._is_task_cancelled(task["id"]):
                 self._publish_stream_event(task, "stream_cancelled")
-                return self._build_error_response(session_id, "Task cancelled", mm_time, lang)
+                return self._build_error_response(session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time, lang)
 
             # CRITICAL: Unload multimodal model AFTER params generated but BEFORE video.
             # generate_video_params() loaded Qwen3VL-8B (~5GB) — must free VRAM
@@ -1738,7 +1614,7 @@ class RedisRequestQueue:
 
             if task and self._is_task_cancelled(task["id"]):
                 self._publish_stream_event(task, "stream_cancelled")
-                return self._build_error_response(session_id, "Task cancelled", mm_time + gen_time, lang)
+                return self._build_error_response(session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time + gen_time, lang)
 
             if not video_result["success"]:
                 err_msg = video_result.get("error", "")
@@ -1862,7 +1738,7 @@ class RedisRequestQueue:
 
             if task and self._is_task_cancelled(task["id"]):
                 self._publish_stream_event(task, "stream_cancelled")
-                return self._build_error_response(session_id, "Task cancelled", mm_time, lang)
+                return self._build_error_response(session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time, lang)
 
             # CRITICAL: Unload multimodal model AFTER params generated but BEFORE video.
             # generate_video_params_from_image() loaded Qwen3VL-8B (~5GB) — must free VRAM
@@ -1895,7 +1771,7 @@ class RedisRequestQueue:
 
             if task and self._is_task_cancelled(task["id"]):
                 self._publish_stream_event(task, "stream_cancelled")
-                return self._build_error_response(session_id, "Task cancelled", mm_time + gen_time, lang)
+                return self._build_error_response(session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time + gen_time, lang)
 
             if not video_result["success"]:
                 err_msg = video_result.get("error", "")
@@ -2458,6 +2334,7 @@ class RedisRequestQueue:
                 response_style=response_style,
                 stream=False,
                 include_tools=False,
+                expose_tools=True,
             )
 
     def _process_text_task_stream(
@@ -2511,6 +2388,7 @@ class RedisRequestQueue:
                 user_id,
                 lang,
                 response_style,
+                expose_tools=True,
             )
 
         # Explicit remember request — process through LLM and save to SLM
@@ -2569,12 +2447,18 @@ class RedisRequestQueue:
         response_style: str = "neutral",
         stream: bool = True,
         include_tools: bool = True,
+        expose_tools: bool | None = None,
     ) -> dict[str, Any]:
         """Chat model with tool calling loop.
 
         Calls the chat model with tools. If the model returns tool_calls,
         executes them and feeds results back. Repeats until the model
         returns a final content response (max MAX_TOOL_ITERATIONS rounds).
+
+        ``include_tools`` controls whether tool/time_calc instructions are
+        included in the system prompt.
+        ``expose_tools`` controls whether tool definitions are passed to the
+        model.  If None, defaults to ``include_tools``.
         """
         from modules.base import STYLE_INSTRUCTIONS
 
@@ -2596,29 +2480,38 @@ class RedisRequestQueue:
         )
 
         if lang == "ru":
-            system_content = (
+            task_instruction = (
+                "Задача: Ответь на запрос пользователя."
+                if not include_tools else
+                "Задача: Ответь на запрос пользователя. Используй инструменты когда это необходимо — не придумывай ответ, лучше вызови инструмент."
+            )
+            system_parts = [
                 f"# ИНСТРУКЦИЯ\n"
                 f"Язык ответа: {response_language}.\n"
                 f"Стиль ответа: {style_instruction}\n"
                 f"Формат ответа: Пиши ТОЛЬКО готовый ответ. Не пиши рассуждений, анализа, шагов мышления, планов. Не объясняй, как ты пришёл к ответу. НЕ начинай ответ со слов «Пользователь спросил/спрашивает/просит», «Мне нужно ответить», «Анализ:», «Формулировка:», «Проверка:», «Коррекция:», «Финальный ответ:» и т.д. Сразу переходи к ответу по существу.\n"
-                f"Задача: Ответь на запрос пользователя. Используй инструменты когда это необходимо — "
-                f"не придумывай ответ, лучше вызови инструмент.\n\n"
-                f"# ПРАВИЛА ИСПОЛЬЗОВАНИЯ ИНСТРУМЕНТОВ\n"
-                f"1. После получения результата инструмента — используй его напрямую в ответе.\n"
-                f"2. НЕ ПЕРЕСЧЫТЫВАЙ результат инструмента самостоятельно.\n"
-                f"3. НЕ ПРИДУМЫВАЙ ответ вместо использования результата инструмента.\n"
-                f"4. Если инструмент вернул число — ответь этим числом.\n\n"
-                f"# ВЫБОР ОПЕРАЦИИ time_calc\n"
-                f"ВНИМАТЕЛЬНО выбирай операцию по запросу:\n"
-                f"- 'до понедельника/вторника/.../ближайшей пятницы' → days_until_weekday\n"
-                f"- 'до 30 июня/до конкретной даты' → days_until_date\n"
-                f"- 'до конца года/месяца/лета/зимы' → days_until_end_of\n"
-                f"- 'назад закончилась весна/лето' → days_since_end_of\n"
-                f"- 'какой день недели' → day_of_week\n"
-                f"- 'между 11 и 15 июня' → days_between\n"
-                f"- 'через 5 дней какая дата' → add_days\n"
-                f"- 'какое сегодня число' → format_date\n\n"
-                f"# РОЛЬ\n"
+                f"{task_instruction}",
+            ]
+            if include_tools:
+                system_parts.append(
+                    "\n\n# ПРАВИЛА ИСПОЛЬЗОВАНИЯ ИНСТРУМЕНТОВ\n"
+                    "1. После получения результата инструмента — используй его напрямую в ответе.\n"
+                    "2. НЕ ПЕРЕСЧЫТЫВАЙ результат инструмента самостоятельно.\n"
+                    "3. НЕ ПРИДУМЫВАЙ ответ вместо использования результата инструмента.\n"
+                    "4. Если инструмент вернул число — ответь этим числом.\n\n"
+                    "# ВЫБОР ОПЕРАЦИИ time_calc\n"
+                    "ВНИМАТЕЛЬНО выбирай операцию по запросу:\n"
+                    "- 'до понедельника/вторника/.../ближайшей пятницы' → days_until_weekday\n"
+                    "- 'до 30 июня/до конкретной даты' → days_until_date\n"
+                    "- 'до конца года/месяца/лета/зимы' → days_until_end_of\n"
+                    "- 'назад закончилась весна/лето' → days_since_end_of\n"
+                    "- 'какой день недели' → day_of_week\n"
+                    "- 'между 11 и 15 июня' → days_between\n"
+                    "- 'через 5 дней какая дата' → add_days\n"
+                    "- 'какое сегодня число' → format_date"
+                )
+            system_parts.append(
+                f"\n\n# РОЛЬ\n"
                 f"Ты персональный ассистент на основе искусственного интеллекта 'Полностью Локальный ИИ (ПЛИИ)'.\n\n"
                 f"# НАВЫКИ\n"
                 f"{_load_skills_section(lang)}\n\n"
@@ -2626,30 +2519,40 @@ class RedisRequestQueue:
                 f"# ИСТОРИЯ ДИАЛОГА\n"
                 f"{context_str}"
             )
+            system_content = "".join(system_parts)
         else:
-            system_content = (
+            task_instruction = (
+                "Task: Answer the user's request."
+                if not include_tools else
+                "Task: Answer the user's request. Use tools when necessary — do not make up answers, call a tool instead."
+            )
+            system_parts = [
                 f"# INSTRUCTION\n"
                 f"Response language: {response_language}.\n"
                 f"Response style: {style_instruction}\n"
                 f"Response format: Write ONLY the final answer. Do NOT write reasoning, analysis, thinking steps, or plans. Do NOT explain how you arrived at the answer. Do NOT start with 'The user asked/asks/says...', 'I need to answer...', 'Analyze:', 'Formulate:', 'Check:', 'Self-Correction:', 'Final Answer:' etc. Go straight to the answer.\n"
-                f"Task: Answer the user's request. Use tools when necessary — "
-                f"do not make up answers, call a tool instead.\n\n"
-                f"# TOOL USAGE RULES\n"
-                f"1. After receiving a tool result — use it directly in your answer.\n"
-                f"2. Do NOT recalculate the tool result yourself.\n"
-                f"3. Do NOT make up an answer instead of using the tool result.\n"
-                f"4. If a tool returns a number — answer with that number.\n\n"
-                f"# TIME_CALC OPERATION SELECTION\n"
-                f"Choose the operation carefully based on the query:\n"
-                f"- 'until Monday/Tuesday/.../next Friday' → days_until_weekday\n"
-                f"- 'until June 30/until specific date' → days_until_date\n"
-                f"- 'until end of year/month/summer/winter' → days_until_end_of\n"
-                f"- 'days since spring/summer ended' → days_since_end_of\n"
-                f"- 'what day of week is it' → day_of_week\n"
-                f"- 'between June 11 and 15' → days_between\n"
-                f"- 'what date in 5 days' → add_days\n"
-                f"- 'what is today date' → format_date\n\n"
-                f"# ROLE\n"
+                f"{task_instruction}",
+            ]
+            if include_tools:
+                system_parts.append(
+                    "\n\n# TOOL USAGE RULES\n"
+                    "1. After receiving a tool result — use it directly in your answer.\n"
+                    "2. Do NOT recalculate the tool result yourself.\n"
+                    "3. Do NOT make up an answer instead of using the tool result.\n"
+                    "4. If a tool returns a number — answer with that number.\n\n"
+                    "# TIME_CALC OPERATION SELECTION\n"
+                    "Choose the operation carefully based on the query:\n"
+                    "- 'until Monday/Tuesday/.../next Friday' → days_until_weekday\n"
+                    "- 'until June 30/until specific date' → days_until_date\n"
+                    "- 'until end of year/month/summer/winter' → days_until_end_of\n"
+                    "- 'days since spring/summer ended' → days_since_end_of\n"
+                    "- 'what day of week is it' → day_of_week\n"
+                    "- 'between June 11 and 15' → days_between\n"
+                    "- 'what date in 5 days' → add_days\n"
+                    "- 'what is today date' → format_date"
+                )
+            system_parts.append(
+                f"\n\n# ROLE\n"
                 f"You are a personal assistant based on artificial intelligence 'Fully Local AI (FLAI)'.\n\n"
                 f"# SKILLS\n"
                 f"{_load_skills_section(lang)}\n\n"
@@ -2657,12 +2560,13 @@ class RedisRequestQueue:
                 f"# CONVERSATION HISTORY\n"
                 f"{context_str}"
             )
+            system_content = "".join(system_parts)
 
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_content},
             {"role": "user", "content": query},
         ]
-        tools = get_tool_definitions(lang) if include_tools else None
+        tools = get_tool_definitions(lang) if (expose_tools if expose_tools is not None else include_tools) else None
 
         stream_start = time.time()
         full_response = ""
@@ -3582,7 +3486,8 @@ class RedisRequestQueue:
         update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=indexing_started_at)
         rag = self.app.modules.get("rag")
         if not rag or not rag.available:
-            error_msg = "RAG module unavailable"
+            with force_locale("en"):
+                error_msg = self.app.modules["base"]._("RAG module unavailable")
             update_document_index_status(doc_id, INDEX_STATUS_FAILED)
             self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
             return {"success": False, "error": error_msg, "doc_id": doc_id}
@@ -3620,7 +3525,9 @@ class RedisRequestQueue:
         rag = self.app.modules.get("rag")
         if not rag or not rag.available:
             self.app.logger.error("RAG module not available for reindexing")
-            return {"success": False, "error": "RAG module unavailable"}
+            with force_locale("en"):
+                error_msg = self.app.modules["base"]._("RAG module unavailable")
+            return {"success": False, "error": error_msg}
 
         batch_size = 50
         offset = 0
@@ -3772,13 +3679,6 @@ class RedisRequestQueue:
                     position += 1
 
         return result
-
-    def get_background_status(self) -> dict[str, Any]:
-        """Status of background queue for admin monitoring."""
-        return {
-            "queued": self.redis.llen(self.background_queue_key),
-            "processing": self.redis.hlen(self.background_processing_key),
-        }
 
     def _format_request_info(self, task: dict[str, Any], lang: str = "ru") -> dict[str, Any]:
         type_icons = {

@@ -81,16 +81,6 @@ class RagModule:
             self.available = False
             app.logger.error(f"Failed to connect to Qdrant: {e}")
 
-    def _get_embedding_model(self) -> str | None:
-        """Retrieve embedding model name from database."""
-        config = get_model_config("embedding")
-        return config.get("model_name") if config else None
-
-    def _get_embedding_url(self) -> str | None:
-        """Retrieve service URL for embedding from database."""
-        config = get_model_config("embedding")
-        return config.get("service_url") if config else None
-
     def _get_collection_name(self, user_id: str) -> str:
         """Return collection name for a specific user."""
         return f"{self.collection_name_prefix}{user_id}"

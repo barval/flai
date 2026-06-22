@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.events import EventsPublisher, get_events_publisher, init_events_publisher, reset_events_publisher
+from app.events import EventsPublisher, get_events_publisher, init_events_publisher
 
 # ── EventsPublisher unit tests ──────────────────────────────────────────
 
@@ -77,7 +77,8 @@ class TestEventsPublisher:
 
 class TestPublisherSingleton:
     def setup_method(self):
-        reset_events_publisher()
+        import app.events as events_mod
+        events_mod._publisher = None
 
     def test_get_without_app_returns_none(self):
         assert get_events_publisher() is None

@@ -180,15 +180,15 @@ function onToolResult(data) {
 // ── task_progress ────────────────────────────────────────────────────
 
 const STAGE_LABELS = {
-    preparing_gpu: '⏳ Очистка GPU...',
-    analyzing: '🔍 Анализ запроса...',
-    analyzing_image: '🔍 Анализ изображения...',
-    analyzing_prompt: '🔍 Анализ промпта...',
-    generating_video: '🎬 Генерация видео...',
-    generating_image: '🎨 Генерация изображения...',
-    editing_image: '✏️ Редактирование изображения...',
-    loading_reasoning_model: '🧠 Загрузка модели рассуждений...',
-    capturing_snapshot: '📹 Получение снимка...',
+    preparing_gpu: t('stage_preparing_gpu'),
+    analyzing: t('stage_analyzing'),
+    analyzing_image: t('stage_analyzing_image'),
+    analyzing_prompt: t('stage_analyzing_prompt'),
+    generating_video: t('stage_generating_video'),
+    generating_image: t('stage_generating_image'),
+    editing_image: t('stage_editing_image'),
+    loading_reasoning_model: t('stage_loading_reasoning'),
+    capturing_snapshot: t('stage_capturing_snapshot'),
 };
 
 function onTaskProgress(data) {
@@ -302,7 +302,7 @@ function onImagePreview(data) {
 
     previewContainer.querySelector('img').src = 'data:image/png;base64,' + data.image_b64;
     if (data.total !== undefined) {
-        previewContainer.querySelector('.step-label').textContent = 'Шаг ' + data.step + '/' + data.total;
+        previewContainer.querySelector('.step-label').textContent = t('step') + ' ' + data.step + '/' + data.total;
     }
 
     _removeProgressElement(data.task_id);

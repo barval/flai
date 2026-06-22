@@ -150,28 +150,4 @@ def validate_model_config_update(data: dict[str, Any] | None, module: str) -> di
     return updates
 
 
-def validate_session_create(data: dict[str, Any] | None) -> dict[str, Any]:
-    """Validate session creation input.
 
-    Args:
-        data: JSON data from request
-
-    Returns:
-        Validated data dict with 'title' field
-
-    Raises:
-        ValidationError: If validation fails
-    """
-    if data is None or not isinstance(data, dict):
-        raise ValidationError("Invalid JSON data")
-
-    if "title" in data and data["title"] is not None:
-        title = data["title"]
-        if not isinstance(title, str) or len(title) > 200:
-            raise ValidationError("Title must be a string up to 200 characters")
-        if re.search(r"[<>&$]", title):
-            raise ValidationError("Title contains invalid characters")
-    else:
-        data["title"] = "New Session"
-
-    return data

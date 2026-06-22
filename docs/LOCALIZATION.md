@@ -22,7 +22,7 @@ Passing `{status}` kwargs directly to `gettext()` silently returns the unformatt
 Always call `gettext(key)` without kwargs, then apply `result.format(**kwargs)` manually.
 
 **Examples**:
-- `app/llamacpp_client.py:26`
+- `app/llamacpp_client.py:28`
 - `app/mixins.py:9`
 
 ```python
@@ -48,7 +48,7 @@ Removed `.mo` volume mounts that were overriding correct compiled translations w
 ## Error Message Prefix
 All error messages displayed to users MUST start with `"⚠️ "`.
 
-`_build_error_response()` adds this prefix automatically. However, error strings from `call_llamacpp()` (e.g., `"GPU memory unavailable"`, `"HTTP error 500"`) were returned as plain strings through `process_reasoning()`, `generate_chat_response_stream()`, and `rag.generate_answer()` — ending up in `_save_and_respond()` without the `"⚠️ "` prefix.
+`_build_error_response()` adds this prefix automatically. However, error strings from `call_llamacpp()` (e.g., `"GPU memory unavailable"`, `"HTTP error 500"`) were returned as plain strings through `process_reasoning()` and `rag.generate_answer()` — ending up in `_save_and_respond()` without the `"⚠️ "` prefix.
 
 Fix: Added `_is_llm_error_string()` helper and routed detected errors through `_build_error_response()` in all affected code paths:
   - `_process_reasoning_request`

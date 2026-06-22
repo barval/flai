@@ -6,7 +6,6 @@ This module reads FLAI model configurations from the database and generates
 a YAML configuration file for llama-swap proxy.
 """
 
-import json
 import logging
 import os
 from typing import Any
@@ -48,10 +47,6 @@ class LlamaSwapConfigGenerator:
         # Per-model degradation tracking: {module: step_index}
         self._degradations: dict[str, int] = {}
 
-    def get_degradation_step(self, module: str) -> int:
-        """Get current degradation step index for a module."""
-        return self._degradations.get(module, 0)
-
     def degrade_model(self, module: str) -> int | None:
         """Move to next degradation step for a model. Returns new ngl or None if CPU-only."""
         current = self._degradations.get(module, 0)
@@ -67,11 +62,6 @@ class LlamaSwapConfigGenerator:
         new_ngl = 0 if fraction == 0.0 else max(1, int(original_ngl * fraction))
         self.logger.warning(f"{module}: degraded to n_gpu_layers={new_ngl} (step {next_step}, {fraction * 100:.0f}%)")
         return new_ngl
-
-    def reset_degradation(self, module: str):
-        """Reset degradation for a model (after successful recovery)."""
-        self._degradations.pop(module, None)
-        self.logger.info(f"{module}: degradation reset")
 
     def _get_original_ngl(self, module: str) -> int | None:
         """Get the original (non-degraded) n_gpu_layers for a module.
@@ -101,22 +91,6 @@ class LlamaSwapConfigGenerator:
             return ngl  # type: ignore[no-any-return]
         except Exception:
             return None
-
-    def _get_committed_ngl(self, module: str) -> tuple[int | None, bool]:
-        """Get the committed n_gpu_layers for a module, accounting for degradation.
-
-        Returns (ngl, is_degraded).
-        """
-        step = self._degradations.get(module)
-        if step is None or step == 0:
-            return None, False
-        fraction = DEGRADATION_STEPS[step]
-        original = self._get_original_ngl(module)
-        if original is None:
-            return None, False
-        if fraction == 0.0:
-            return 0, True
-        return max(1, int(original * fraction)), True
 
     def get_model_path(self, module: str, model_name: str) -> str | None:
         """Get full path to GGUF model file."""
@@ -191,23 +165,6 @@ class LlamaSwapConfigGenerator:
 
         self.logger.warning(f"No mmproj found in {base_dir}")
         return None
-
-    def get_aliases(self, module: str) -> list[str]:
-        """Get model aliases from config."""
-        config = get_model_config(module)
-        if not config:
-            return []
-
-        aliases_raw = config.get("aliases")
-        if not aliases_raw:
-            return []
-
-        try:
-            if isinstance(aliases_raw, list):
-                return aliases_raw
-            return json.loads(aliases_raw)  # type: ignore[no-any-return]
-        except (json.JSONDecodeError, TypeError):
-            return []
 
     def get_ttl(self, module: str) -> int:
         """Get TTL for model from config or use default."""

@@ -1,6 +1,5 @@
 """Tests for llama-swap configuration generator."""
 
-import json
 import os
 import tempfile
 from unittest.mock import MagicMock, patch
@@ -137,26 +136,6 @@ class TestGetTtl:
         assert gen.get_ttl("chat") == 999
 
 
-class TestGetAliases:
-    @patch("app.llama_swap_config.get_model_config")
-    def test_no_aliases(self, mock_get_config):
-        mock_get_config.return_value = {}
-        gen = LlamaSwapConfigGenerator()
-        assert gen.get_aliases("chat") == []
-
-    @patch("app.llama_swap_config.get_model_config")
-    def test_aliases_json_string(self, mock_get_config):
-        mock_get_config.return_value = {"aliases": json.dumps(["model-a", "model-b"])}
-        gen = LlamaSwapConfigGenerator()
-        assert gen.get_aliases("chat") == ["model-a", "model-b"]
-
-    @patch("app.llama_swap_config.get_model_config")
-    def test_aliases_list(self, mock_get_config):
-        mock_get_config.return_value = {"aliases": ["a", "b"]}
-        gen = LlamaSwapConfigGenerator()
-        assert gen.get_aliases("chat") == ["a", "b"]
-
-
 class TestGetCtxSize:
     @patch("app.llama_swap_config.get_model_config")
     def test_no_config(self, mock_get_config):
@@ -288,7 +267,7 @@ class TestBuildCmd:
         mock_get_rm.return_value = mock_rm
         gen = LlamaSwapConfigGenerator()
         cmd = gen.build_cmd("chat", "/models/test.gguf")
-        assert "--flash-attn on" in cmd
+        assert "--flash-attn" not in cmd
         assert "--n-gpu-layers 10" in cmd
         assert "--kv-offload" in cmd
 

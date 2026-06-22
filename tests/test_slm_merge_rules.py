@@ -1,8 +1,6 @@
 # tests/test_slm_merge_rules.py
 """Tests for rule-based fact merging (app/slm_merge.py)."""
 
-from unittest.mock import MagicMock
-
 
 class TestFastCleanup:
     """Test deterministic cleanup (existing fast_cleanup)."""
@@ -181,31 +179,3 @@ class TestTemporalDecay:
         ]
         to_delete = temporal_decay(facts, decay_days=90, min_confidence=0.5)
         assert "a" in to_delete
-
-
-class TestShouldRunMerge:
-    """Test merge scheduling logic."""
-
-    def test_returns_false_without_last_task(self):
-        from app.slm_merge import should_run_merge
-
-        app = MagicMock(spec=[])  # no _last_task_time
-        assert should_run_merge(app) is False
-
-    def test_returns_false_recent_task(self):
-        import time
-
-        from app.slm_merge import should_run_merge
-
-        app = MagicMock()
-        app._last_task_time = time.time()  # just now
-        assert should_run_merge(app) is False
-
-    def test_returns_true_idle_enough(self):
-        import time
-
-        from app.slm_merge import should_run_merge
-
-        app = MagicMock()
-        app._last_task_time = time.time() - 400  # > 5 min
-        assert should_run_merge(app) is True

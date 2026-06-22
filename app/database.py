@@ -197,7 +197,7 @@ def _init_postgresql():
                 ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://flai-llamacpp:8033', NULL)
         """)
 
-    # model_vram_estimates — хранит вычисленную оценку и реальные замеры VRAM для каждой модели
+    # model_vram_estimates — stores computed estimates and actual VRAM measurements per model
     c.execute("""
         CREATE TABLE IF NOT EXISTS model_vram_estimates (
             module TEXT NOT NULL,

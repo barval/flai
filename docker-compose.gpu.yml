@@ -56,6 +56,8 @@ services:
       - ./prompts/ru/reasoning.template:/app/prompts/ru/reasoning.template
       - ./prompts/en/base_text.template:/app/prompts/en/base_text.template
       - ./prompts/ru/base_text.template:/app/prompts/ru/base_text.template
+      # Mount translations directory (compiled .mo files)
+      - ./translations:/app/translations
     runtime: nvidia
     group_add:
       - "988"  # Docker socket group — needed for `docker restart` from inside container

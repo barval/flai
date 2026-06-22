@@ -14,28 +14,17 @@ All operations are CPU-only, no GPU lock.
 """
 
 import logging
-import time
 from datetime import UTC, datetime, timedelta
 
 from app.slm_rules import _levenshtein_ratio, _normalize_text
 
 logger = logging.getLogger(__name__)
 
-MERGE_IDLE_THRESHOLD = 300  # 5 minutes
-
-# Merge thresholds (read from config at runtime, these are fallbacks)
 _DEFAULT_SIMILARITY_THRESHOLD = 0.85
 _DEFAULT_TEMPORAL_DECAY_DAYS = 90
 _DEFAULT_MIN_CONFIDENCE_FOR_DECAY = 0.5
 _DEFAULT_LEVENSHTEIN_THRESHOLD = 0.25
 _DEFAULT_FRAGMENT_RATIO = 0.7
-
-
-def should_run_merge(app) -> bool:
-    """Check if enough time has passed since last task to run merge."""
-    if not hasattr(app, "_last_task_time"):
-        return False
-    return (time.time() - app._last_task_time) > MERGE_IDLE_THRESHOLD
 
 
 def fast_cleanup(facts: list[dict]) -> tuple[list[str], list[dict]]:
@@ -75,7 +64,7 @@ def fast_cleanup(facts: list[dict]) -> tuple[list[str], list[dict]]:
 
         is_fragment = False
         for existing_content in seen.values():
-            if normalized in existing_content and len(normalized) < len(existing_content) * 0.8:
+            if normalized in existing_content.lower() and len(normalized) < len(existing_content) * 0.8:
                 to_delete.append(fid)
                 is_fragment = True
                 break

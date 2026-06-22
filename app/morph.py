@@ -14,9 +14,9 @@ import pymorphy3
 logger = logging.getLogger(__name__)
 
 # Key cases for camera room name recognition:
-#   nomn (именит.) — "гостиная", "кухня"            (базовая форма)
-#   accs (винит.)  — "покажи гостиную", "сняй кухню" (что показать/снять)
-#   loct (предл.)  — "что в гостиной", "на кухне"     (где находится)
+#   nomn (nominative) — "gostinaya", "kukhnya"            (base form)
+#   accs (accusative) — "pokazhi gostinuyu", "snyay kukhnyu" (what to show/capture)
+#   loct (locative)   — "chto v gostinoye", "na kukhne"     (where it is located)
 _TARGET_CASES = ("nomn", "accs", "loct")
 
 # Gender gramemes for adjective filtering
@@ -39,18 +39,6 @@ def _extract_gramemes(tag_str: str) -> set[str]:
         for g in part.split(","):
             gramemes.add(g)
     return gramemes
-
-
-def _parse_tag_case(parse_result) -> str | None:
-    """Extract the case grameme from a pymorphy3 Parse result tag.
-
-    Returns None if no case found (e.g. verbs, adverbs).
-    """
-    gramemes = _extract_gramemes(str(parse_result.tag))
-    for case in _TARGET_CASES:
-        if case in gramemes:
-            return case
-    return None
 
 
 def generate_room_name_forms(name: str) -> list[str]:
@@ -97,8 +85,8 @@ def generate_room_name_forms(name: str) -> list[str]:
                 gender = g
                 break
 
-    # Build forms in canonical order: nomn → accs → loct.
-    # For masculine inanimate nouns, nomn == accs (e.g. "тамбур" both cases).
+    # Build forms in canonical order: nomn -> accs -> loct.
+    # For masculine inanimate nouns, nomn == accs (e.g. "tambour" both cases).
     # We skip the duplicate rather than picking a plural form.
     forms: list[str] = []
     nomn_word: str | None = None

@@ -244,6 +244,9 @@ cd flai
 # + Web search (SearXNG)
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
 
+# Full stack
+./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
+
 # Run tests after deployment
 ./deploy.sh --download-models --with-image-gen --run-tests
 ```
@@ -459,7 +462,7 @@ LTX_VIDEO_TIMEOUT=600           # Max video generation time (seconds)
 
 **Service Retry Settings:**
 ```bash
-SERVICE_RETRY_ATTEMPTS=15
+SERVICE_RETRY_ATTEMPTS=5
 SERVICE_RETRY_DELAY=2
 ```
 
@@ -865,7 +868,7 @@ curl http://localhost:5000/metrics
 - **Multi-tab session support** — client sends `session_id` in request body, server validates ownership; no cookie race conditions
 - **CUDA context cleanup after video** — `_pipeline = None` + `empty_cache()` + `gc.collect()` (safe, no SIGSEGV)
 - **PostgreSQL 18** — migrated from 16 with zero data loss
-- **TTL-based VRAM optimization** — non-chat models unload immediately (TTL=0s), chat stays hot (600s)
+- **TTL-based VRAM optimization** — chat model stays hot permanently (TTL=0), non-chat models unload 1s after response (TTL=1s)
 - **PDF extraction via pdftotext** — accurate text positioning for complex layouts (resumes, tables, multi-column)
 - **Background SLM import on startup** — incremental import with checkpoint table, daemon thread, CLI: `flask import-history-to-slm`
 - **Piper TTS optimization** — chunked processing for large text synthesis with seamless audio transitions

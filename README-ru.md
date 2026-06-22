@@ -244,6 +244,9 @@ cd flai
 # + Поиск в интернете (SearXNG)
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
 
+# Полный стек
+./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
+
 # Запуск тестов после развёртывания
 ./deploy.sh --download-models --with-image-gen --run-tests
 ```
@@ -462,7 +465,7 @@ LTX_VIDEO_TIMEOUT=600           # Макс. время генерации вид
 
 **Повторные попытки подключения:**
 ```bash
-SERVICE_RETRY_ATTEMPTS=15
+SERVICE_RETRY_ATTEMPTS=5
 SERVICE_RETRY_DELAY=2
 ```
 

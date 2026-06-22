@@ -68,31 +68,6 @@ class CircuitBreaker:
             # HALF_OPEN: allow one request
             return True
 
-    def get_state(self) -> dict:
-        """Get circuit breaker state info."""
-        with self._lock:
-            return {
-                "state": self.state,
-                "failure_count": self.failure_count,
-                "failure_threshold": self.failure_threshold,
-                "recovery_timeout": self.recovery_timeout,
-                "last_failure_time": self.last_failure_time,
-            }
-
-    def __enter__(self):
-        if not self.can_execute():
-            raise CircuitBreakerOpenError(
-                f"Circuit breaker is {self.state}. "
-                f"Failures: {self.failure_count}/{self.failure_threshold}. "
-                f"Retry after {self.recovery_timeout}s."
-            )
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type is not None:
-            self.record_failure()
-        else:
-            self.record_success()
-
 
 class CircuitBreakerOpenError(Exception):
     """Raised when circuit breaker is open and request is blocked."""

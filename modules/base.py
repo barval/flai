@@ -117,17 +117,6 @@ class BaseModule(TranslationMixin):
         """Call llama-server with configuration."""
         return self.llamacpp.call(messages, model_type, False, lang, tools=tools, temperature=temperature)  # type: ignore[no-any-return]
 
-    def call_llamacpp_cpu(
-        self, messages: list[dict[str, Any]], model_type: str = "merge", lang: str = "ru",
-        temperature: float | None = None,
-    ) -> str:
-        """CPU-only LLM call — bypasses VRAM management.
-
-        Used for background tasks (fact_merge) that don't need GPU.
-        """
-        temp = temperature if temperature is not None else 0.1
-        return self.llamacpp.call_cpu(messages, temperature=temp)  # type: ignore[no-any-return]
-
     # --- Context handling methods ---
     def _estimate_tokens(self, text: str, model_type: str = "chat", lang: str = "ru") -> int:
         """Token estimation with language and model-specific coefficients."""
@@ -265,18 +254,6 @@ class BaseModule(TranslationMixin):
         slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
         if slm and slm.available:
             slm.remember(text, metadata=metadata, profile=user_id)
-
-    def _save_to_slm_async(self, text: str, metadata: dict[str, Any] | None = None, user_id: str | None = None) -> None:
-        """Save a fact to SLM in a background thread — does not block the response."""
-        import threading
-
-        t = threading.Thread(
-            target=self._save_to_slm,
-            args=(text,),
-            kwargs={"metadata": metadata, "user_id": user_id},
-            daemon=True,
-        )
-        t.start()
 
     def _build_camera_prompt_section(self, lang: str = "ru") -> str:
         """Build the camera classification section for the router prompt.

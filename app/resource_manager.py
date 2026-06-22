@@ -734,14 +734,6 @@ class ResourceManager:
         )
         return peak_mb
 
-    def ensure_vram_for_llm(self, model_type: str = "chat") -> bool:
-        """Ensure sufficient VRAM for the requested LLM model type.
-        Delegates to ensure_vram_for() which handles unloading + polling.
-        """
-        if not self.hardware.cuda_detected:
-            return True
-        return self.ensure_vram_for(model_type)
-
     def ensure_vram_for_reasoning(self, needed_mb: int | None = None) -> bool:
         """Ensure sufficient VRAM for reasoning model.
         Delegates to ensure_vram_for() with dynamic VRAM estimate.

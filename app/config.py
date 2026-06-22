@@ -27,13 +27,18 @@ def load_config(app):
 
     # llama.cpp server settings
     app.config["LLAMACPP_URL"] = os.getenv("LLAMACPP_URL")
-    app.config["LLAMACP_BACKEND"] = os.getenv("LLAMACP_BACKEND", "llamacpp")
+    app.config["LLAMACP_BACKEND"] = os.getenv("LLAMACP_BACKEND", "llama-swap")
     app.config["LLAMA_SWAP_URL"] = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
     # stable-diffusion.cpp settings (uses sd-wrapper HTTP API)
     app.config["SD_MODEL_TYPE"] = os.getenv("SD_MODEL_TYPE", "z_image_turbo")
     app.config["SD_EDIT_MODEL_TYPE"] = os.getenv("SD_EDIT_MODEL_TYPE", "flux-2-klein-4b")
     app.config["SD_WRAPPER_URL"] = os.getenv("SD_WRAPPER_URL", "http://flai-sd:7861")
     app.config["SD_CPP_TIMEOUT"] = int(os.getenv("SD_CPP_TIMEOUT", 900))  # 15 min for editing
+    # SD default generation parameters
+    app.config["SD_CPP_DEFAULT_WIDTH"] = int(os.getenv("SD_CPP_DEFAULT_WIDTH", 1024))
+    app.config["SD_CPP_DEFAULT_HEIGHT"] = int(os.getenv("SD_CPP_DEFAULT_HEIGHT", 1024))
+    app.config["SD_CPP_DEFAULT_CFG_SCALE"] = float(os.getenv("SD_CPP_DEFAULT_CFG_SCALE", 1.0))
+    app.config["SD_CPP_DEFAULT_STEPS"] = int(os.getenv("SD_CPP_DEFAULT_STEPS", 10))
 
     # LTX-Video settings (uses ltx-wrapper HTTP API)
     app.config["LTX_VIDEO_WRAPPER_URL"] = os.getenv("LTX_VIDEO_WRAPPER_URL")

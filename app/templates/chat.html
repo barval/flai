@@ -206,7 +206,20 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'tool_time_calc': {{ _('tool_time_calc')|tojson }},
     'tool_web_search': {{ _('tool_web_search')|tojson }},
     'tool_rag_search': {{ _('tool_rag_search')|tojson }},
-    'tool_camera_snapshot': {{ _('tool_camera_snapshot')|tojson }}
+    'tool_camera_snapshot': {{ _('tool_camera_snapshot')|tojson }},
+    'stage_preparing_gpu': {{ _('Cleaning GPU...')|tojson }},
+    'stage_analyzing': {{ _('Analyzing request...')|tojson }},
+    'stage_analyzing_image': {{ _('Analyzing image...')|tojson }},
+    'stage_analyzing_prompt': {{ _('Analyzing prompt...')|tojson }},
+    'stage_generating_video': {{ _('Generating video...')|tojson }},
+    'stage_generating_image': {{ _('Generating image...')|tojson }},
+    'stage_editing_image': {{ _('Editing image...')|tojson }},
+    'stage_loading_reasoning': {{ _('Loading reasoning model...')|tojson }},
+    'stage_capturing_snapshot': {{ _('Capturing snapshot...')|tojson }},
+    'step': {{ _('Step')|tojson }},
+    'minute_abbr': {{ _('minute_abbr')|tojson }},
+    'second_abbr': {{ _('second_abbr')|tojson }},
+    'timer_zero': {{ _('timer_zero')|tojson }}
 });
 window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
 function t(key) {

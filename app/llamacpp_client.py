@@ -161,6 +161,10 @@ def _strip_generic_reasoning(text: str) -> str:
 
     If no markers are found AND no markdown plan lines exist,
     the text is returned unchanged (avoids false positives).
+
+    If the text is identified as reasoning but stripping would leave an empty
+    or very short answer, the original text is returned instead of an empty
+    string — better to show raw reasoning than to error out on the user.
     """
     if not text or len(text) < 30:
         return text
@@ -172,21 +176,22 @@ def _strip_generic_reasoning(text: str) -> str:
         answer = text[last_match.end():].strip()
 
         # High marker density in first 200 chars = pure reasoning, no real answer
+        # If stripping would leave empty, return original text instead of erroring out
         first_200 = text[:200]
         density = len(list(_REASONING_MARKERS_RE.finditer(first_200)))
         if density >= 3 and len(answer) < 100:
-            return ""
+            return text
 
         # After last marker — if remaining text is short, it's still reasoning
         if len(answer) < 30:
-            return ""
+            return text
         return answer
 
     # Check for markdown plan lines — if ALL non-empty lines start with "** ",
     # the model produced only a plan and no real answer.
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     if lines and all(_MD_PLAN_LINE_RE.match(ln) for ln in lines):
-        return ""
+        return text
 
     return text
 

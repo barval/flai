@@ -101,7 +101,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
 # 3. Error Messages
   - **All error messages displayed to users MUST start with "⚠️ ".**
   - `_build_error_response()` adds this prefix automatically.
-  - For code paths that bypass it (e.g., string errors from `call_llamacpp()`), use `_is_llm_error_string()` check and route through `_build_error_response()`.
+  - For code paths that bypass it (e.g., string errors from `call_llamacpp()`), use `_is_llm_error_string()` (in `app/queue.py:782`) check and route through `_build_error_response()`.
   - Raw `str(e)` must NEVER be returned to the user.
 
 # 4. Git — No Autonomous Commits

@@ -506,30 +506,6 @@ def update_session_visit(user_id, session_id):
         )
 
 
-def get_user_file_count(user_id):
-    """Count all files associated with a user."""
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute(
-            """
-        SELECT DISTINCT m.file_path
-        FROM messages m
-        JOIN chat_sessions cs ON m.session_id = cs.id
-        WHERE cs.user_id = %s AND m.file_path IS NOT NULL AND m.file_path != ''
-        """,
-            (user_id,),
-        )
-        return len(c.fetchall())
-
-
-def get_user_document_count(user_id):
-    """Count all documents uploaded by a user."""
-    with get_db() as conn:
-        c = conn.cursor()
-        c.execute("SELECT COUNT(*) as cnt FROM documents WHERE user_id = %s", (user_id,))
-        return c.fetchone()["cnt"]
-
-
 # Index status constants
 INDEX_STATUS_PENDING = "pending"
 INDEX_STATUS_INDEXING = "indexing"

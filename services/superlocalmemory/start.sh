@@ -27,6 +27,10 @@ for i in $(seq 1 30); do
     sleep 1
 done
 
+# Warm up embedding model — first recall loads sentence-transformers into RAM.
+# Subsequent recalls (via daemon) will be served from hot memory (~300-800ms).
+curl -s "http://localhost:8765/recall?q=warmup&limit=1&fast=true" >/dev/null 2>&1 &
+
 # Re-chown after daemon may have created new files in the shared volume
 if [ -d /app/data/slm ]; then
     chown -R appuser:appuser /app/data/slm 2>/dev/null || true

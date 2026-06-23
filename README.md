@@ -18,6 +18,8 @@
 
 ### 🤖 Core AI Capabilities
 - 💬 **Intelligent Chat** – smart request routing (fast models for simple queries, powerful models for complex reasoning)
+- 🛠 **Tool Calling** – native OpenAI-compatible tool calling: calculator, current time, date/time calculations, web search, document search (RAG), camera snapshots — all via llama.cpp `--jinja` + Qwen3
+- 🌐 **Web Search** – real-time internet search via self-hosted SearXNG metasearch engine: news, weather, exchange rates, prices, latest events
 - 🧠 **Advanced Reasoning** – dedicated model for calculations, code generation, creative writing (streaming responses)
 - 🔍 **Multimodal Analysis** – upload images and ask questions about their content (llama.cpp + mmproj)
 - 🎨 **Image Generation** – create images from text using stable-diffusion.cpp with automatic prompt optimization
@@ -25,7 +27,7 @@
 - 🎬 **Video Generation** – create short videos from text or image+text prompts using LTX-Video 2B (distilled, 8-step inference)
 - 🎤 **Voice Transcription** – convert voice messages to text using Whisper ASR (faster_whisper)
 - 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper TTS (male and female voices in English and Russian)
-- 🧠 **Long-term Memory** – cross-session, persistent memory via SuperLocalMemory (SLM). CPU-only, zero-LLM retrieval. Adds relevant facts alongside conversation history. Enable with `--profile with-slm`.
+- 🧠 **Long-term Memory** – cross-session, persistent memory via SuperLocalMemory (SLM). CPU-only, rule-based fact extraction and merging (no LLM). Semantic deduplication via embeddings
 
 ### 📁 Document & Knowledge Management
 - 📚 **RAG with Qdrant** – upload documents (PDF, DOC, DOCX, TXT) and ask questions about their content
@@ -77,36 +79,27 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v8.9
+### What's New in v9.0
 
-| v8.9+ (New) | Notes |
-|-------------|-------|
-| **Video: 240 frames @ 24 fps** | Default video length increased from 8s to 10s (240 frames @ 24fps). VRAM-capped mode: 120 frames @ 24fps (5 sec) |
-| **Video: 768×512 resolution** | Landscape video resolution reduced from 896×512 to 768×512 for better VRAM headroom on 16GB GPUs |
-| **3-tier model protection** | Admin panel blocks saving models that won't fit in VRAM/RAM (🟢 good / 🟡 cpu_offload / 🔴 impossible / ⚠ unknown) |
-| **Dry-load + auto-rollback** | After saving a model config, background test verifies it loads. On failure → auto-rollback to fallback model |
-| **Crash-loop watchdog** | Monitors llama-swap models every 60s. 3 failures in 5 min → auto-rollback to fallback |
-| **RAG on slow worker** | RAG generation moved to slow worker (was on fast worker, caused GPU contention with LTX-Video) |
-| **RAG context in reasoning** | Reasoning model now receives document context from RAG search |
-| **Multi-tab session fix** | Client sends `session_id` in request body; server validates ownership. No more cookie race conditions |
-| **Streaming reasoning** | Reasoning model now streams responses token-by-token instead of returning the full response at once |
-| **Generation progress bars** | Visual progress indicators for video, image, and reasoning generation via SSE events |
-| **Task cancellation** | Cancel any in-progress streaming task with the `■` button in real time |
-| **Thinking tag filtering** | Automatic removal of `<tool_call>` and `<\|channel\|>` reasoning blocks from model output (client + server) |
-| **Camera rooms CRUD** | Full camera management in admin panel: sync from API, enable/disable, thumbnail previews |
-| **Russian morphological analysis** | pymorphy3 for recognizing all grammatical declensions of camera room names in queries |
-| **Combined voice + image** | Record voice message while an image is already attached — both sent together |
-| **DOMPurify XSS protection** | All markdown HTML sanitized before DOM insertion to prevent XSS attacks |
-| **Lazy loading images** | Images and videos in messages load lazily for faster initial rendering |
-| **Run HTML button** | Execute HTML code blocks directly from chat in a new browser tab |
-| **Copy message text** | One-click copy of full assistant message text |
-| **Stream recovery** | Progress bars and streaming state restored after page reload or SSE reconnect |
-| **MTP factor in VRAM estimation** | Multi-Token Prediction draft layers (+15% VRAM) accounted for in model fit calculations |
-| **GGUF fallback reading** | Admin panel reads model metadata directly from GGUF files when cache is empty |
-| **Qwen3-4B MXFP4 migration** | Auto-migration of old chat models to Qwen3-4B-Instruct-2507-MXFP4_MOE |
-| **Dead code cleanup** | Removed unused functions (`get_gguf_model_info`, `find_gguf_file`, `chunk_text_by_sentences`, etc.) and CSS classes |
-| **Faster retries** | llama.cpp retry sleep reduced from 5s to 2s; VRAM polling from 1s to 0.5s |
-| **Chat export includes videos** | Generated videos are now embedded in exported HTML files as base64 |
+| Feature | Notes |
+|---------|-------|
+| **Tool Calling** | Native OpenAI-compatible tool calling: calculator, current time, date/time calculations, web search, document search (RAG), camera snapshots — all via llama.cpp `--jinja` + Qwen3 |
+| **Web Search (SearXNG)** | Self-hosted metasearch engine for real-time internet queries: news, weather, exchange rates, prices. Docker profile `with-search` |
+| **Date/Time calculations** | 9 operations via Pendulum: days until weekday/date/period end, days between dates, next weekday on specific day, add days, format date. Full Russian/English support |
+| **Chat model stays hot permanently** | Chat model preload at startup via llama-swap `hooks.on_startup`, never unloaded by TTL (only swapped when another model needs VRAM). Background preload after every non-chat task eliminates cold starts |
+| **llama-swap alias deduplication** | Automatic dedup of aliases when multiple modules share the same GGUF file — prevents `duplicate alias` crash |
+| **Chat model auto-reload** | After reasoning/multimodal/embedding/video finishes, chat model is reloaded in a background thread via tiny completion request — next router call is instant |
+| **LTX-Video unconditional restart** | Video container always restarted after generation (no rate-limiting) — guaranteed CUDA context cleanup (~3 GB freed) |
+| **Skills list centralized** | All capabilities text extracted to `prompts/{ru,en}/skills.txt` as single source of truth. `format_prompt()` auto-injects `{skills_section}`. Previously duplicated (and inconsistent) across 4+ locations |
+| **Background task error isolation** | Fact extraction and fact merge errors are silently logged — never leak to users via SSE. Background tasks excluded from ⚡/⏳ queue indicators |
+| **Queue counter stability** | Background tasks no longer drift the user queue counter negative. `get_user_queue_counts()` returns `max(0, ...)` to prevent displays like `📊 -9/0` |
+| **Rule-based SLM extraction** | LLM-based fact extraction replaced with pattern matching (CPU-only, ~50-200ms). Semantic deduplication via `/similarity` endpoint. No GPU lock contention |
+| **Rule-based SLM merge** | LLM merge replaced with edit-distance + semantic similarity + temporal decay pipeline. Auto-archives facts older than 90 days |
+| **Task cancellation for all types** | Cancel button for image generation, image editing, and video generation (background cancel checker + container restart). Streaming tasks use Redis flag |
+| **Chat auto-scroll fix** | `_isLoadingMessages` flag prevents N competing async scroll callbacks. `isNearBottom()` threshold=200px. `overflow-anchor: none` for chat container |
+| **Error translation** | llama-swap errors translated to user language via `_translate_llama_swap_error()` |
+| **Double ⚠️ fix** | Server and client no longer both prepend "⚠️ " — server owns the prefix via `_build_error_response()` |
+| **TTS markdown cleanup** | `**bold**`, `*italic*`, `[links]` and other markdown formatting stripped before TTS synthesis — no more "звезда-звезда" in spoken responses. Handles sentence-split fragments (`**НН.РУ**` → `НН.РУ`). Exponent notation (`3**2=9`) preserved |
 
 ### Core Components
 
@@ -166,8 +159,8 @@ FLAI **requires** an NVIDIA GPU with CUDA support. CPU-only mode is not supporte
 
 | Feature | 8 GB | 12 GB | 16+ GB |
 |---------|------|-------|--------|
-| Chat (Qwen3-4B) | ✅ full speed | ✅ full speed | ✅ full speed |
-| Reasoning | ⚠️ Qwen3-4B-Thinking (~2.5 GB) | ✅ Qwen3-8B-Thinking (~5 GB) | ✅ gpt-oss-20b (~12 GB, ngl=16+) |
+| Chat (Qwen3-4B-Instruct-2507) | ✅ full speed | ✅ full speed | ✅ full speed |
+| Reasoning | ✅ Gemma 4 E4B (~4.8 GB) | ✅ Gemma 4 E4B (~4.8 GB) | ✅ gpt-oss-20b (~12 GB) |
 | Multimodal | ⚠️ Qwen3VL-4B (~2.5 GB) recommended | ✅ Qwen3VL-8B (~5.5 GB) | ✅ Qwen3VL-8B (~5.5 GB) |
 | Image gen (SD) | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 |
 | Image edit (Flux) | ✅ up to 768px long side | ✅ up to 1024px long side | ✅ up to 1024px long side |
@@ -182,16 +175,26 @@ FLAI **requires** an NVIDIA GPU with CUDA support. CPU-only mode is not supporte
 
 Real-world performance measured with llama.cpp (llama-swap on-demand loading, Flash Attention, q4_0 KV cache):
 
-| Model | Type | Quant | Size | VRAM | Prompt | Generation | Notes |
+| Model | Type | Quant | File | VRAM | Prompt | Generation | Notes |
 |-------|------|-------|------|------|--------|------------|-------|
-| **Qwen3-4B-Instruct-2507** | Chat | MXFP4 (MoE) | 2.0 GB | 3668 MB | 1307 t/s | **127.4 t/s** | Current chat model |
-| Qwen3.5-4B-Instruct-MTP | Chat | MXFP4 + MTP | 2.5 GB | 4042 MB | 664 t/s | 108.2 t/s | MTP adds overhead |
-| **gpt-oss-20b** | Reasoning | MXFP4 (MoE) | 11.5 GB | 12255 MB | 1100 t/s | **120.5 t/s** | Current reasoning model |
-| Qwen3.5-9B-MTP-Q4_K_M | Reasoning | Q4_K_M + MTP | 5.5 GB | 6717 MB | 431 t/s | 66.1 t/s | 45% slower |
-| Qwen3.5-9B-Q8_0 | Reasoning | Q8_0 | 8.9 GB | 9719 MB | 472 t/s | 42.8 t/s | 65% slower |
-| gemma-4-12B-it-qat | Reasoning | QAT Q4_K_XL | 6.3 GB | 8090 MB | 520 t/s | 49.2 t/s | 59% slower |
+| **gemma-4-E2B-it-Q4_0** | Chat | Q4_0 | 3.0 GB | 2123 MB | 1471 t/s | **168.1 t/s** | **Current chat model** — ultra-lightweight edge model |
+| Qwen3-4B-Instruct-2507 | Chat | MXFP4 (MoE) | 2.0 GB | 3186 MB | 3943 t/s | 127.7 t/s | Alternative chat model — fastest prompt processing |
+| Qwen3.5-4B-Instruct-MTP | Chat | MXFP4 + MTP | 2.5 GB | 4042 MB | 664 t/s | 108.2 t/s | MTP adds overhead on 128-bit bus |
+| **gemma-4-E2B-it-QAT** | Chat | QAT Q4_0 | 3.2 GB | 2123 MB | 1471 t/s | **168.1 t/s** | Fastest model — ultra-lightweight edge model |
+| **gemma-4-E4B-it-QAT** | Chat | QAT Q4_0 | 4.9 GB | 3481 MB | 1182 t/s | **99.8 t/s** | Edge model — best speed/quality balance |
+| Qwen3.5-9B-UD-Q4_K_XL | Chat | Dynamic 4-bit | 5.6 GB | 6213 MB | 565 t/s | 63.2 t/s | Candidate chat model |
+| **gemma-4-E4B-it-Q4_0** | Reasoning | Q4_0 | 4.8 GB | 3481 MB | 1182 t/s | **99.8 t/s** | **Current reasoning model** — best speed/quality balance |
+| gpt-oss-20b | Reasoning | MXFP4 (MoE) | 11.5 GB | 11663 MB | 1087 t/s | 118.2 t/s | Alternative reasoning — MoE 3B active |
+| **Qwen3.6-35B-A3B** | Reasoning | Q2_K_XL | 12 GB | 12356 MB | 497 t/s | **106.2 t/s** | MoE 35B (3B active) — strong alternative |
+| Qwen3.5-9B-MTP-Q4_K_M | Reasoning | Q4_K_M + MTP | 5.5 GB | 6717 MB | 431 t/s | 66.1 t/s | Dense 9B — 45% slower than MoE |
+| Qwen3.5-9B-Q8_0 | Reasoning | Q8_0 | 8.9 GB | 9719 MB | 472 t/s | 42.8 t/s | Dense 9B — 65% slower, high quality |
+| gemma-4-12B-it-qat | Reasoning | QAT Q4_K_XL | 6.3 GB | 7591 MB | 1102 t/s | 48.7 t/s | Dense 12B — 62% slower |
+| **Qwen3VL-8B-Instruct** | Multimodal | Q4_K_M | 4.7 GB | 5292 MB | 2318 t/s | **73.1 t/s** | Vision model — current (fastest) |
+| Qwen3VL-8B-Instruct-MXFP4 | Multimodal | MXFP4_MOE-Q6_K | 7.7 GB | 8222 MB | 2099 t/s | 46.7 t/s | Vision model — hybrid MXFP4 (deprecated) |
 
-> **Why gpt-oss-20b wins as reasoning model:** Despite being a "20B" model, gpt-oss-20b uses Mixture-of-Experts (MoE) with 32 experts — only ~3B parameters are active per token. This gives it 3B-level compute cost with 20B-level knowledge. On RTX 5060 Ti, it generates **120 tok/s** vs 66 tok/s for dense Qwen3.5-9B — nearly **2× faster** while using the same memory bandwidth.
+> **Why gpt-oss-20b wins as reasoning model:** Despite being a "20B" model, gpt-oss-20b uses Mixture-of-Experts (MoE) with 32 experts — only ~3B parameters are active per token. This gives it 3B-level compute cost with 20B-level knowledge. On RTX 5060 Ti, it generates **118 tok/s** vs 63 tok/s for dense Qwen3.5-9B — nearly **2× faster** while using the same memory bandwidth.
+
+> **Qwen3.6-35B-A3B as reasoning alternative:** MoE architecture (35B total, ~3B active) delivers **106 tok/s** — only 10% slower than gpt-oss-20b. Strong candidate if gpt-oss-20b quality is insufficient.
 
 > **Why MTP doesn't help on 128-bit GPUs:** Multi-Token Prediction (MTP) predicts draft tokens with a small head, then verifies them in parallel. On high-bandwidth GPUs (256/512-bit), this yields 1.4–2.2× speedup. On RTX 5060 Ti's 128-bit bus (448 GB/s), the draft model's extra memory reads saturate the already-limited bandwidth. Qwen3.5-4B-MTP is **15% slower** than Qwen3-4B without MTP; Qwen3.5-9B-MTP shows no meaningful speedup over a plain Q4_K_M of the same size.
 
@@ -230,7 +233,7 @@ cd flai
 # + Voice (Whisper ASR + Piper TTS)
 ./deploy.sh --download-models --with-image-gen --with-voice
 
-# Everything including RAG (Qdrant)
+# + RAG (Qdrant)
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag
 
 # + Video generation (LTX-Video)
@@ -238,6 +241,12 @@ cd flai
 
 # + Long-term memory (SuperLocalMemory)
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm
+
+# + Web search (SearXNG)
+./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
+
+# Full stack
+./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
 
 # Run tests after deployment
 ./deploy.sh --download-models --with-image-gen --run-tests
@@ -281,12 +290,12 @@ nano .env
 mkdir -p services/llamacpp/models
 
 # Chat model (fast responses)
-wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf \
-  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf"
+wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-Q4_0.gguf \
+  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_0.gguf"
 
 # Reasoning model (complex tasks)
-wget -O services/llamacpp/models/gpt-oss-20b-Q4_K_M.gguf \
-  "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q4_K_M.gguf"
+wget -O services/llamacpp/models/gemma-4-E4B-it-Q4_0.gguf \
+  "https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_0.gguf"
 
 # Multimodal model (image analysis) — must be in subdirectory with mmproj
 mkdir -p services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M
@@ -366,8 +375,11 @@ docker compose -f docker-compose.gpu.yml --profile with-video up -d
 # With long-term memory (SuperLocalMemory)
 docker compose -f docker-compose.gpu.yml --profile with-slm up -d
 
-# Full stack: chat + images + voice + RAG + video + long-term memory
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm up -d
+# With web search (SearXNG)
+docker compose -f docker-compose.gpu.yml --profile with-search up -d
+
+# Full stack: chat + images + voice + RAG + video + long-term memory + web search
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm --profile with-search up -d
 ```
 
 > ⏱️ **First build takes time**: stable-diffusion.cpp is compiled from source (~5-10 minutes). Subsequent builds use the cache.
@@ -451,7 +463,7 @@ LTX_VIDEO_TIMEOUT=600           # Max video generation time (seconds)
 
 **Service Retry Settings:**
 ```bash
-SERVICE_RETRY_ATTEMPTS=15
+SERVICE_RETRY_ATTEMPTS=5
 SERVICE_RETRY_DELAY=2
 ```
 
@@ -481,7 +493,7 @@ Configuration is loaded from `gunicorn_config.py`, not inline CLI args.
 
 | Setting | Value | Reason |
 |---------|-------|--------|
-| workers | 2 | One for SSE streaming, one for regular requests |
+| workers | 1 | Single gunicorn worker — fixes `_gpu_lock` race condition (threading.Lock is per-process) |
 | worker_class | gevent | Async I/O-optimized worker for concurrent connections |
 | timeout | 900s | Accommodates long operations (image editing up to 15 min) |
 | graceful_timeout | 30s | Graceful worker shutdown |
@@ -490,8 +502,8 @@ Configuration is loaded from `gunicorn_config.py`, not inline CLI args.
 ### Docker Compose Profiles
 
 ```bash
-# Start all services (chat + images + voice + RAG + video + long-term memory)
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm up -d
+# Start all services (chat + images + voice + RAG + video + long-term memory + web search)
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm --profile with-search up -d
 
 # Chat + voice only
 docker compose -f docker-compose.gpu.yml --profile with-voice up -d
@@ -522,12 +534,13 @@ llama.cpp runs in **router mode** (`--models-dir`), dynamically loading models f
 
 ```
 services/llamacpp/models/
-├── Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf     # Chat
-├── gpt-oss-20b-Q4_K_M.gguf                  # Reasoning
-├── bge-m3-Q8_0.gguf                        # Embedding
-└── Qwen3VL-8B-Instruct-Q4_K_M/             # Multimodal (subdirectory!)
+├── Qwen3-4B-Instruct-2507-Q4_0.gguf          # Chat
+├── gemma-4-E4B-it-Q4_0.gguf                   # Reasoning (8/12 GB)
+├── gpt-oss-20b-Q4_K_M.gguf                    # Reasoning (16+ GB)
+├── bge-m3-Q8_0.gguf                            # Embedding
+└── Qwen3VL-8B-Instruct-Q4_K_M/                # Multimodal (subdirectory!)
     ├── Qwen3VL-8B-Instruct-Q4_K_M.gguf
-    └── mmproj-F16.gguf                     # Vision projector
+    └── mmproj-F16.gguf                         # Vision projector
 ```
 
 > ⚠️ **Multimodal models require a subdirectory** with the projector file named `mmproj-*.gguf` inside. The model server auto-discovers and loads it.
@@ -544,11 +557,25 @@ services/llamacpp/models/
 
 | Parameter | Chat | Reasoning | Multimodal | Embedding |
 |-----------|------|-----------|------------|-----------|
-| Context Length | 16384 | 16384 | 8192 | 512 |
-| Temperature | 0.1 | 0.7 | 0.7 | – |
-| Top P | 0.1 | 0.9 | 0.9 | – |
+| Context Length | 16384 | 16384 | 16384 | 512 |
+| Temperature | 0.7 | 0.7 | 0.7 | – |
+| Top P | 0.9 | 0.9 | 0.9 | – |
 | Repeat Penalty | 1.1 | 1.15 | 1.1 | – |
 | Timeout (s) | 120 | 120 | 120 | 120 |
+
+> **Note:** Router classification always uses `temperature=0.1` (hardcoded) for deterministic query routing, regardless of admin panel settings.
+
+### Model Selection Guide
+
+| Component | Default | Recommended Alternative | Notes |
+|-----------|---------|------------------------|-------|
+| **Chat** | Qwen3-4B-Instruct-2507 Q4_0 (~2.4 GB) | Qwen3-4B-Instruct-2507 MXFP4 (~2 GB) | Non-reasoning/thinking model. MXFP4 more efficient on Blackwell GPUs (RTX 5060 Ti) |
+| **Reasoning (8/12 GB)** | Gemma 4 E4B Q4_0 (~4.8 GB) | — | Best speed/quality balance for mid-tier GPUs |
+| **Reasoning (16+ GB)** | gpt-oss-20b MXFP4 (~11.5 GB) | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | MoE architecture: ~3B active params, ~118 tok/s |
+| **Multimodal** | Qwen3VL-8B Q4_K_M (~5 GB) | Qwen3VL-8B MXFP4 (~7.7 GB) | Requires subdirectory with `mmproj-*.gguf` |
+| **Embedding** | bge-m3 Q8_0 (~1.5 GB) | — | Single model for all tiers |
+
+> **Context windows:** Chat and reasoning models should use the same context length (recommended 16384). Multimodal needs ≥16384 for vision token counts.
 
 ---
 
@@ -800,6 +827,14 @@ curl http://localhost:5000/metrics
 
 ### ✅ Completed
 
+- **Tool Calling system** — `app/tools.py`: calculator, current time, date/time calculations (9 ops via Pendulum), web search (SearXNG), document search (RAG), camera snapshots. OpenAI tools API with streaming tool_call accumulation
+- **Web Search module (SearXNG)** — self-hosted metasearch engine, Docker profile `with-search`, router category 7 for internet queries
+- **Chat model stays hot** — preload at startup via `hooks.on_startup`, TTL=0 (never unloaded), background reload after every non-chat task, no cold starts
+- **llama-swap alias dedup** — prevents `duplicate alias` crash when multiple modules share the same GGUF file
+- **LTX-Video unconditional restart** — video container always restarted after generation, guaranteed CUDA context cleanup
+- **TTL correction** — chat=0 (never unload), non-chat=1 (unload after 1s idle). Previous values were inverted
+- **Dead torch code cleanup** — removed all `torch.cuda.empty_cache()` calls from flai-web (~60 lines), pure llama-swap TTL management
+
 - **llama.cpp router mode** (`--models-dir`) — single llama-server with dynamic model switching
 - **llama-swap backend** — dynamic model management, auto-generated config from DB, GPU VRAM optimization
 - **OpenAI-compatible API** (`/v1/chat/completions`, `/v1/embeddings`)
@@ -809,7 +844,7 @@ curl http://localhost:5000/metrics
 - **Video generation (LTX-Video 2B)** — text-to-video and image+text-to-video, separate GPU container
 - **Voice features** — Whisper ASR (faster_whisper) speech-to-text + Piper TTS with male/female voices in EN/RU
 - **RAG document search** — PDF/DOC/DOCX/TXT upload, vector search via Qdrant with configurable chunking
-- **SuperLocalMemory (SLM)** — long-term cross-session memory, daemon mode, per-user SQLite isolation, ~1 ms recall latency
+- **SuperLocalMemory (SLM)** — long-term cross-session memory, daemon mode, per-user SQLite isolation, ~1 ms recall latency, rule-based fact extraction and merging (no LLM), semantic deduplication, temporal decay, automatic orphaned memories cleanup
 - **RAG: generation on slow worker** — fast worker does only search, reasoning model generates answer; prevents GPU contention; RAG prompt uses ONLY context (no hallucination)
 - **5-layer model protection in admin panel** — 3-tier VRAM/RAM classification (🟢 good / 🟡 cpu_offload / 🔴 impossible / ⚠ unknown), server-side validation, background dry-load + auto-rollback, crash-loop watchdog
 - **Camera integration** — IP camera snapshots, multimodal analysis, granular user permissions
@@ -817,7 +852,7 @@ curl http://localhost:5000/metrics
 - **Multi-language support** — full interface and AI responses in Russian and English
 - **VRAM management** — `ensure_vram_for_llm()`, auto-unload LTX-Video before SD/video, VRAM freed between every GPU task
 - **Dynamic VRAM estimation** — computed from GGUF metadata (file_size, block_count, ctx) + real measurements stored in DB; admin panel shows color-coded percentage bars
-- **Adaptive model degradation** — iterative `n_gpu_layers` reduction on OOM, per-model-type circuit breakers, reasoning 502 retry with degrade
+- **Adaptive model degradation** — iterative `n_gpu_layers` reduction on OOM, per-model-type circuit breakers, reasoning 500/502 retry with degrade, flash-attn disabled during partial offloading
 - **GPU requirement + 3 hardware tiers** — auto-detect VRAM via `nvidia-smi` in deploy scripts (8/12/16+ GB)
 - **Video VRAM hardening** — try/finally in both video handlers, CUDA flush, timeout 60 s, buffer +3000 MB, no "proceeding anyway"
 - **SSE real-time delivery** — queue results and messages via Server-Sent Events (Redis pub/sub), replacing HTTP polling
@@ -834,13 +869,13 @@ curl http://localhost:5000/metrics
 - **Multi-tab session support** — client sends `session_id` in request body, server validates ownership; no cookie race conditions
 - **CUDA context cleanup after video** — `_pipeline = None` + `empty_cache()` + `gc.collect()` (safe, no SIGSEGV)
 - **PostgreSQL 18** — migrated from 16 with zero data loss
-- **TTL-based VRAM optimization** — non-chat models unload immediately (TTL=0s), chat stays hot (600s)
+- **TTL-based VRAM optimization** — chat model stays hot permanently (TTL=0), non-chat models unload 1s after response (TTL=1s)
 - **PDF extraction via pdftotext** — accurate text positioning for complex layouts (resumes, tables, multi-column)
 - **Background SLM import on startup** — incremental import with checkpoint table, daemon thread, CLI: `flask import-history-to-slm`
 - **Piper TTS optimization** — chunked processing for large text synthesis with seamless audio transitions
 - **llama-swap v217** — Blackwell (sm_120) crash fixes
-- **Default chat model upgraded** — Qwen3-4B MXFP4_MOE (~2 GB), default ctx 8192 → 16384
-- **Deploy scripts: VRAM tier detection** — auto-select reasoning model: 16 GB+ → gpt-oss-20b, 12 GB → Qwen3-8B-Thinking, 8 GB → Qwen3-4B-Thinking
+- **Default chat model** — Qwen3-4B-Instruct-2507 Q4_0 (~2.4 GB), default ctx 8192 → 16384. MXFP4 variant available for Blackwell GPUs
+- **Reasoning models** — 8/12 GB: Gemma 4 E4B Q4_0 (~4.8 GB), 16 GB+: gpt-oss-20b Q4_K_M (~12 GB)
 - **CLI tools** — `admin-password`, `cleanup-uploads`, `migrate-messages-format` (with `--dry-run`, `--add-emojis`)
 - **Health check & metrics** — `/health` endpoint with service status, `/metrics` for Prometheus
 - **File size display** — shown in chat headers for all file types
@@ -881,8 +916,9 @@ curl http://localhost:5000/metrics
 
 | Model | Purpose | License | Approx. Size |
 |-------|---------|---------|-------------|
-| **Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf** | Chat (fast responses) | [Qwen License](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2 GB |
-| **gpt-oss-20b-Q4_K_M** | Reasoning (complex tasks) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 GB |
+| **Qwen3-4B-Instruct-2507-Q4_0.gguf** | Chat (fast responses) | [Apache 2.0](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2.4 GB |
+| **gemma-4-E4B-it-Q4_0.gguf** | Reasoning (8/12 GB) | [Apache 2.0](https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF) | ~4.8 GB |
+| **gpt-oss-20b-Q4_K_M.gguf** | Reasoning (16 GB+) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 GB |
 | **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (image analysis) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5 GB + mmproj ~1.1 GB |
 | **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~1.5 GB |
 
@@ -934,7 +970,7 @@ curl http://localhost:5000/metrics
 
 | Configuration | Approx. Download |
 |---------------|-----------------|
-| Chat only (Qwen3-4B) | ~2.5 GB |
+| Chat only (Qwen3-4B) | ~2.4 GB |
 | Chat + Reasoning | ~14.5 GB |
 | Chat + Multimodal | ~8 GB |
 | Full LLM stack | ~22 GB |

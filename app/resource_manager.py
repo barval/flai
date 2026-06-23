@@ -486,17 +486,7 @@ class ResourceManager:
         with contextlib.suppress(Exception):
             self.unload_video_pipeline()
 
-        # 3. Flush CUDA cache
-        try:
-            import torch
-
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
-        except ImportError:
-            pass
-
-        # 4+5. Poll /running + nvidia-smi until VRAM sufficient
+        # 3+4. Poll /running + nvidia-smi until VRAM sufficient
         deadline = time.time() + timeout
         while time.time() < deadline:
             try:
@@ -639,15 +629,6 @@ class ResourceManager:
             if attempt < 2:
                 time.sleep(2)
 
-        try:
-            import torch
-
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
-                logger.info("CUDA cache cleared after LTX-Video unload failure")
-        except ImportError:
-            pass
         return False
 
     def _maybe_restart_ltx_video(self) -> None:
@@ -667,16 +648,11 @@ class ResourceManager:
     def _force_restart_ltx_video(self) -> None:
         """Force-restart LTX-Video to free CUDA context overhead (~3 GB).
 
-        Called from ensure_vram_for() when VRAM is still insufficient after
-        unload_video_pipeline(). The gunicorn worker inside flai-ltxvideo holds
-        a CUDA context that survives /v1/unload — only a container restart
-        releases it. Rate-limited to 1 restart per 3 minutes.
+        Called after every video generation task completes. The gunicorn worker
+        inside flai-ltxvideo holds a CUDA context that survives /v1/unload —
+        only a container restart releases it. Unconditional: Docker handles
+        concurrent restart gracefully (returns error if already restarting).
         """
-        if time.time() - self._ltx_restart_initiated_at < 180:
-            logger.debug("LTX-Video restart rate-limited — skipping")
-            return
-        self._ltx_restart_initiated_at = time.time()
-
         logger.warning("Force-restarting LTX-Video container to free CUDA context")
         self._restart_ltx_container()
 
@@ -757,14 +733,6 @@ class ResourceManager:
             f"(transformer={transformer_bytes // 1024**2}MB, upscaler={upscaler_bytes // 1024**2}MB)"
         )
         return peak_mb
-
-    def ensure_vram_for_llm(self, model_type: str = "chat") -> bool:
-        """Ensure sufficient VRAM for the requested LLM model type.
-        Delegates to ensure_vram_for() which handles unloading + polling.
-        """
-        if not self.hardware.cuda_detected:
-            return True
-        return self.ensure_vram_for(model_type)
 
     def ensure_vram_for_reasoning(self, needed_mb: int | None = None) -> bool:
         """Ensure sufficient VRAM for reasoning model.

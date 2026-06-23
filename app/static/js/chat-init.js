@@ -435,7 +435,13 @@ window.loadMessages = function(sessionId) {
 
             if (window.IS_RELOADING) return;
 
-            setTimeout(addCopyButtonsToAllCodeBlocks, 100);
+            addCopyButtonsToAllCodeBlocks();
+            var c = document.getElementById('chat-messages');
+            if (c) {
+                c.scrollTop = c.scrollHeight;
+                requestAnimationFrame(function() { c.scrollTop = c.scrollHeight; });
+                setTimeout(function() { c.scrollTop = c.scrollHeight; }, 150);
+            }
         })
         .catch(err => {
             console.error('Error in loadMessages:', err);
@@ -443,10 +449,10 @@ window.loadMessages = function(sessionId) {
         });
 };
 
-window.displayMessage = function(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize) {
+window.displayMessage = function(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType) {
     if (window.IS_RELOADING) return;
     
-    const result = originalDisplayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize);
+    const result = originalDisplayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType);
     
     const messages = document.getElementById('chat-messages');
     if (messages) {
@@ -546,7 +552,16 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     document.getElementById('save-chat-button').addEventListener('click', saveChatAsHTML);
-    
+
+    document.getElementById('cancel-stream-header').addEventListener('click', function () {
+        var taskId = this.dataset.taskId;
+        if (!taskId) return;
+        this.disabled = true;
+        this.textContent = '\u23f3';
+        this.title = t('cancelling');
+        fetchWithCSRF('/api/cancel_task/' + taskId, { method: 'POST' }).catch(function () {});
+    });
+
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') closeImageModal();
     });

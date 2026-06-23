@@ -39,6 +39,11 @@ class SdCppModule(TranslationMixin):
         self.timeout = app.config.get("SD_CPP_TIMEOUT", 300)
         self.model_type = app.config.get("SD_MODEL_TYPE", "z_image_turbo")
 
+        self.default_width = app.config.get("SD_CPP_DEFAULT_WIDTH", 1024)
+        self.default_height = app.config.get("SD_CPP_DEFAULT_HEIGHT", 1024)
+        self.default_cfg_scale = app.config.get("SD_CPP_DEFAULT_CFG_SCALE", 1.0)
+        self.default_steps = app.config.get("SD_CPP_DEFAULT_STEPS", 10)
+
         self.logger.info(
             f"SdCppModule initialized with wrapper URL: {self.wrapper_url}, "
             f"model_type: {self.model_type}, timeout: {self.timeout}s"
@@ -91,32 +96,6 @@ class SdCppModule(TranslationMixin):
             self.logger.error(f"Error connecting to sd-wrapper: {str(e)}")
             self.available = False
             return False
-
-    def generate_image(self, user_query, start_time=None, lang="ru"):
-        """Generate image from user query."""
-        # Always re-check availability
-        self.logger.info(f"Checking sd-wrapper availability... (current available={self.available})")
-        was_available = self.available
-        self.check_availability()
-        if was_available != self.available:
-            self.logger.info(f"sd-wrapper availability changed: {was_available} -> {self.available}")
-
-        if not self.available:
-            return {"success": False, "error": self._("Image generation service unavailable", lang)}
-
-        if not self.multimodal_module or not self.multimodal_module.available:
-            return {
-                "success": False,
-                "error": self._("Multimodal module unavailable (required for parameter generation)", lang),
-            }
-
-        # Generate parameters via multimodal module
-        prompt_data, error = self.multimodal_module.generate_image_params(user_query, lang=lang)
-
-        if error:
-            return {"success": False, "error": error}
-
-        return self._call_wrapper(prompt_data, lang)
 
     @staticmethod
     def _estimate_sd_vram_mb(model_type: str) -> int:
@@ -185,8 +164,8 @@ class SdCppModule(TranslationMixin):
             self.logger.info("SD will use CPU mode")
 
         # Cap resolution for low VRAM tiers (8 GB) to prevent OOM
-        width = prompt_data.get("width", 1024)
-        height = prompt_data.get("height", 1024)
+        width = prompt_data.get("width", self.default_width)
+        height = prompt_data.get("height", self.default_height)
         total_vram = rm.hardware.total_vram_mb
         if total_vram > 0 and total_vram < 10000:
             max_dim = 1024
@@ -211,10 +190,10 @@ class SdCppModule(TranslationMixin):
             preview_url = f"{self.app.config.get('PREFERRED_URL', 'http://flai-web:5000')}/api/queue/internal/sd_step"
             payload = {
                 "prompt": prompt_data.get("prompt", ""),
-                "steps": prompt_data.get("steps", 10),
+                "steps": prompt_data.get("steps", self.default_steps),
                 "width": width,
                 "height": height,
-                "cfg_scale": prompt_data.get("cfg_scale", 1.0),
+                "cfg_scale": prompt_data.get("cfg_scale", self.default_cfg_scale),
                 "flow_shift": prompt_data.get("flow_shift", 2.0),
                 "use_gpu": use_gpu,
                 "user_id": user_id,
@@ -353,8 +332,8 @@ class SdCppModule(TranslationMixin):
             "edit_prompt": edit_prompt_data.get("edit_prompt", ""),
             "image_data": image_base64,
             "strength": edit_prompt_data.get("strength", 0.7),
-            "width": edit_prompt_data.get("width", 1024),
-            "height": edit_prompt_data.get("height", 1024),
+            "width": edit_prompt_data.get("width", self.default_width),
+            "height": edit_prompt_data.get("height", self.default_height),
             "use_gpu": use_gpu,
             "preview_url": f"{self.app.config.get('PREFERRED_URL', 'http://flai-web:5000')}/api/queue/internal/sd_step",
             "task_id": task_id,

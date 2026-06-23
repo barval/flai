@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 8.9\n"
+"Project-Id-Version: FLAI 9.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-06-10 21:33+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -95,6 +95,19 @@ msgstr "Could not connect to llama-swap"
 #: app/llamacpp_client.py:442
 msgid "Internal error: no response from model"
 msgstr "Internal error: no response from model"
+
+#: app/queue.py:1602
+msgid "No response from reasoning model"
+msgstr "No response from reasoning model"
+
+#: app/queue.py:2808
+msgid "No response from chat model. Try rephrasing your request."
+msgstr "No response from chat model. Try rephrasing your request."
+
+#: app/llamacpp_client.py
+#, python-brace-format
+msgid "Model '{model}' is not available. Select a different model in admin panel."
+msgstr "Model '{model}' is not available. Select a different model in admin panel."
 
 #: app/llamacpp_client.py:768 app/llamacpp_client.py:791
 #: modules/multimodal.py:239 modules/multimodal.py:324
@@ -217,21 +230,37 @@ msgstr "Camera snapshot: {room_name}"
 msgid "No relevant documents found"
 msgstr "No relevant documents found"
 
+#: modules/search.py
+msgid "Web search result"
+msgstr "Web search result"
+
+#: modules/search.py
+msgid "Web search is not available"
+msgstr "Web search is not available"
+
+#: modules/search.py
+msgid "No web search results found"
+msgstr "No web search results found"
+
+#: modules/search.py
+msgid "Web search failed"
+msgstr "Web search failed"
+
 #: app/queue.py:2365
 msgid "Unknown request type"
 msgstr "Unknown request type"
 
 #: app/queue.py:2427 app/queue.py:2590
 msgid "Image editing request was empty"
-msgstr ""
+msgstr "Image editing request was empty"
 
 #: app/queue.py:2445 app/queue.py:2616
 msgid "Video request was empty"
-msgstr ""
+msgstr "Video request was empty"
 
 #: app/queue.py:2455
 msgid "Failed to process image request. Please try again."
-msgstr ""
+msgstr "Failed to process image request. Please try again."
 
 #: app/queue.py:2459 app/queue.py:2501
 msgid "Invalid image"
@@ -316,7 +345,7 @@ msgstr "Image editing timeout ({timeout}s)"
 
 #: app/routes/admin.py:50 app/routes/backups.py:64
 msgid "Forbidden"
-msgstr ""
+msgstr "Forbidden"
 
 #: app/routes/admin.py:223 app/templates/admin.html:250
 msgid "Missing fields"
@@ -363,20 +392,20 @@ msgstr "Missing \"model\" parameter"
 
 #: app/routes/admin.py:689
 msgid "⚠ Partial CPU offload needed"
-msgstr ""
+msgstr "⚠ Partial CPU offload needed"
 
 #: app/routes/admin.py:944
 msgid "Missing url"
-msgstr ""
+msgstr "Missing url"
 
 #: app/routes/admin.py:996 app/routes/admin.py:1309
 msgid "Missing \"url\" parameter"
-msgstr ""
+msgstr "Missing \"url\" parameter"
 
 #: app/routes/admin.py:1025 app/routes/admin.py:1451
 #, python-brace-format
 msgid "llama-server returned {status}"
-msgstr ""
+msgstr "llama-server returned {status}"
 
 #: app/routes/admin.py:1641
 msgid "Request queue not available"
@@ -408,15 +437,15 @@ msgstr "Invalid login or password"
 
 #: app/routes/auth.py:92
 msgid "Invalid language"
-msgstr ""
+msgstr "Invalid language"
 
 #: app/routes/auth.py:102
 msgid "Invalid voice gender"
-msgstr ""
+msgstr "Invalid voice gender"
 
 #: app/routes/auth.py:112
 msgid "Invalid theme"
-msgstr ""
+msgstr "Invalid theme"
 
 #: app/routes/auth.py:123
 msgid "Invalid response style"
@@ -448,7 +477,7 @@ msgstr "Error restoring backup"
 
 #: app/routes/backups.py:339 app/routes/documents.py:168
 msgid "File not found"
-msgstr ""
+msgstr "File not found"
 
 #: app/routes/documents.py:37 app/routes/documents.py:45
 #: modules/multimodal.py:103
@@ -457,7 +486,7 @@ msgstr "Unsupported file type"
 
 #: app/routes/documents.py:50
 msgid "File type does not match extension"
-msgstr ""
+msgstr "File type does not match extension"
 
 #: app/routes/documents.py:58 app/routes/documents.py:65
 #: app/routes/documents.py:150 app/routes/documents.py:180
@@ -488,7 +517,7 @@ msgstr "Maximum file size {max_size} MB"
 
 #: app/routes/documents.py:112
 msgid "Invalid file path"
-msgstr ""
+msgstr "Invalid file path"
 
 #: app/routes/documents.py:153 app/routes/documents.py:183
 msgid "Document not found"
@@ -497,13 +526,13 @@ msgstr "Document not found"
 #: app/routes/documents.py:164 app/routes/documents.py:200
 #: app/templates/chat.html:127
 msgid "Permission denied"
-msgstr ""
+msgstr "Permission denied"
 
 #: app/routes/messages.py:29 app/routes/sessions.py:47
 #: app/routes/sessions.py:78 app/routes/sessions.py:121
 #: app/routes/sessions.py:137 app/templates/chat.html:128
 msgid "Session not found"
-msgstr ""
+msgstr "Session not found"
 
 #: app/routes/messages.py:157 app/templates/chat.html:114
 msgid "Empty message"
@@ -538,7 +567,7 @@ msgstr "Task not found"
 
 #: app/routes/sessions.py:28 app/routes/sessions.py:103
 msgid "Session not found or access denied"
-msgstr ""
+msgstr "Session not found or access denied"
 
 #: app/routes/sessions.py:109
 msgid "Permission denied or session not found"
@@ -757,19 +786,19 @@ msgstr "Create backup"
 
 #: app/templates/admin.html:153 app/templates/admin.html:383
 msgid "Filename"
-msgstr ""
+msgstr "Filename"
 
 #: app/templates/admin.html:154 app/templates/admin.html:384
 msgid "Type"
-msgstr ""
+msgstr "Type"
 
 #: app/templates/admin.html:155 app/templates/admin.html:385
 msgid "Size"
-msgstr ""
+msgstr "Size"
 
 #: app/templates/admin.html:156 app/templates/admin.html:386
 msgid "Created"
-msgstr ""
+msgstr "Created"
 
 #: app/templates/admin.html:166 app/templates/admin.html:369
 msgid "No backups found"
@@ -871,11 +900,11 @@ msgstr "-- Select model --"
 
 #: app/templates/admin.html:296 app/templates/chat.html:109
 msgid "Loading..."
-msgstr ""
+msgstr "Loading..."
 
 #: app/templates/admin.html:297
 msgid "No llama-server URL provided"
-msgstr ""
+msgstr "No llama-server URL provided"
 
 #: app/templates/admin.html:298
 msgid "Context Length"
@@ -911,11 +940,11 @@ msgstr "Max context length:"
 
 #: app/templates/admin.html:306
 msgid "from GGUF file"
-msgstr ""
+msgstr "from GGUF file"
 
 #: app/templates/admin.html:307
 msgid "from known models"
-msgstr ""
+msgstr "from known models"
 
 #: app/templates/admin.html:308
 msgid "Embedding length:"
@@ -1188,7 +1217,7 @@ msgstr "Logout"
 
 #: app/templates/base.html:78 app/templates/chat.html:167
 msgid "footer_text"
-msgstr "Fully Local AI (FLAI) v8.9 (c) 2026 Valery Barsukov"
+msgstr "Fully Local AI (FLAI) v9.0 (c) 2026 Valery Barsukov"
 
 #: app/templates/chat.html:14 app/templates/chat.html:178
 msgid "New document"
@@ -1274,11 +1303,11 @@ msgstr "Your requests in queue / Total in queue"
 
 #: app/templates/chat.html:137
 msgid "Warning"
-msgstr ""
+msgstr "Warning"
 
 #: app/templates/chat.html:138
 msgid "Info"
-msgstr ""
+msgstr "Info"
 
 #: app/templates/chat.html:139
 msgid "user"
@@ -1370,7 +1399,7 @@ msgstr "Your browser does not support audio recording"
 
 #: app/templates/chat.html:162
 msgid "secure_context_required"
-msgstr ""
+msgstr "secure_context_required"
 "Voice recording requires a secure connection (HTTPS). Try opening the "
 "site via HTTPS or localhost."
 
@@ -1445,7 +1474,7 @@ msgstr "Document upload failed"
 
 #: app/templates/chat.html:184
 msgid "Supported formats: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB"
-msgstr ""
+msgstr "Supported formats: PDF, DOC, DOCX, TXT, MD, ODT, RTF, CSV, JSON, EPUB"
 
 #: app/templates/chat.html:185
 msgid "minutes_abbr"
@@ -1505,10 +1534,6 @@ msgstr "Request too long, please simplify your request"
 #: modules/multimodal.py:452 modules/multimodal.py:548
 msgid "Error loading prompt template"
 msgstr "Error loading prompt template"
-
-#: modules/base.py:426
-msgid "No additional information from documents."
-msgstr ""
 
 #: modules/cam.py:268 modules/cam.py:383
 msgid "CCTV service unavailable"
@@ -1574,11 +1599,11 @@ msgstr "Multimodal module unavailable (required for parameter generation)"
 
 #: modules/sd_cpp.py:248
 msgid "sd-wrapper returned no image data"
-msgstr ""
+msgstr "sd-wrapper returned no image data"
 
 #: modules/sd_cpp.py:265
 msgid "sd-wrapper returned no image"
-msgstr ""
+msgstr "sd-wrapper returned no image"
 
 #: modules/sd_cpp.py:272
 #, python-brace-format
@@ -1587,7 +1612,7 @@ msgstr "Image generation timeout ({timeout}s)"
 
 #: modules/sd_cpp.py:275
 msgid "Could not connect to sd-wrapper"
-msgstr ""
+msgstr "Could not connect to sd-wrapper"
 
 #: modules/sd_cpp.py:388
 msgid "Edit result has no image data."
@@ -1617,7 +1642,7 @@ msgstr ""
 
 #: modules/video.py:295
 msgid "ltx-wrapper returned no video data"
-msgstr ""
+msgstr "ltx-wrapper returned no video data"
 
 #: modules/video.py:323
 #, python-brace-format
@@ -1631,7 +1656,164 @@ msgstr "Video generation timeout ({timeout}s)"
 
 #: modules/video.py:331
 msgid "Could not connect to video generation service"
-msgstr ""
+msgstr "Could not connect to video generation service"
+
+#: app/tools.py
+msgid "Current time unavailable"
+msgstr "Current time unavailable"
+
+#: app/tools.py
+msgid "Division by zero"
+msgstr "Division by zero"
+
+#: app/tools.py
+msgid "Calculation error: {error}"
+msgstr "Calculation error: {error}"
+
+#: app/tools.py
+msgid "Web search service unavailable"
+msgstr "Web search service unavailable"
+
+#: app/tools.py
+msgid "No results found for query: {query}"
+msgstr "No results found for query: {query}"
+
+#: app/tools.py
+msgid "Document search service unavailable"
+msgstr "Document search service unavailable"
+
+#: app/tools.py
+msgid "User not identified for document search"
+msgstr "User not identified for document search"
+
+#: app/tools.py
+msgid "Document search error: {error}"
+msgstr "Document search error: {error}"
+
+#: app/tools.py
+msgid "No relevant documents found for query: {query}"
+msgstr "No relevant documents found for query: {query}"
+
+#: app/tools.py
+msgid "CCTV service unavailable"
+msgstr "CCTV service unavailable"
+
+#: app/tools.py
+msgid "Unknown tool: {tool}"
+msgstr "Unknown tool: {tool}"
+
+#: app/tools.py
+msgid "Tool execution error: {error}"
+msgstr "Tool execution error: {error}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "No date text provided"
+msgstr "No date text provided"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Cannot parse date: {text}"
+msgstr "Cannot parse date: {text}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Date calculation error: {error}"
+msgstr "Date calculation error: {error}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Unknown time_calc operation: {op}"
+msgstr "Unknown time_calc operation: {op}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Both from_time and to_time are required"
+msgstr "Both from_time and to_time are required"
+
+#: app/static/js/events.js
+msgid "tool_get_current_time"
+msgstr "Getting time..."
+
+#: app/static/js/events.js
+msgid "tool_calculator"
+msgstr "Calculating..."
+
+#: app/static/js/events.js
+msgid "tool_time_calc"
+msgstr "Calculating date..."
+
+#: app/static/js/events.js
+msgid "tool_web_search"
+msgstr "Searching the web..."
+
+#: app/static/js/events.js
+msgid "tool_rag_search"
+msgstr "Searching documents..."
+
+#: app/static/js/events.js
+msgid "tool_camera_snapshot"
+msgstr "Getting snapshot..."
+
+#: app/queue.py
+msgid "Task cancelled"
+msgstr "Task cancelled"
+
+#: app/queue.py
+msgid "Image editing failed"
+msgstr "Image editing failed"
+
+#: app/templates/chat.html
+msgid "Cleaning GPU..."
+msgstr "⏳ Cleaning GPU..."
+
+#: app/templates/chat.html
+msgid "Analyzing request..."
+msgstr "🔍 Analyzing request..."
+
+#: app/templates/chat.html
+msgid "Analyzing image..."
+msgstr "🔍 Analyzing image..."
+
+#: app/templates/chat.html
+msgid "Analyzing prompt..."
+msgstr "🔍 Analyzing prompt..."
+
+#: app/templates/chat.html
+msgid "Generating video..."
+msgstr "🎬 Generating video..."
+
+#: app/templates/chat.html
+msgid "Generating image..."
+msgstr "🎨 Generating image..."
+
+#: app/templates/chat.html
+msgid "Editing image..."
+msgstr "✏️ Editing image..."
+
+#: app/templates/chat.html
+msgid "Loading reasoning model..."
+msgstr "🧠 Loading reasoning model..."
+
+#: app/templates/chat.html
+msgid "Capturing snapshot..."
+msgstr "📹 Capturing snapshot..."
+
+#: app/templates/chat.html
+msgid "Step"
+msgstr "Step"
+
+#: app/templates/chat.html
+msgid "minute_abbr"
+msgstr "m"
+
+#: app/templates/chat.html
+msgid "second_abbr"
+msgstr "s"
+
+#: app/templates/chat.html
+msgid "timer_zero"
+msgstr "0s"
 
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Supported formats: PDF, DOC, DOCX, TXT"

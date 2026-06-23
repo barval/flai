@@ -309,11 +309,31 @@ def load_prompt_template(template_name: str, lang: str = "ru") -> str | None:
         return None
 
 
+def _load_skills_section(lang: str = "ru") -> str:
+    """Load skills list from the master copy file."""
+    skills_path = os.path.join(PROMPTS_DIR, lang, "skills.txt")
+    try:
+        with open(skills_path, encoding="utf-8") as f:
+            return f.read().rstrip("\n")
+    except FileNotFoundError:
+        if lang != "ru":
+            return _load_skills_section("ru")
+        current_app.logger.error(f"Skills file not found: {skills_path}")
+        return ""
+
+
 def format_prompt(template_name: str, variables: dict[str, Any], lang: str = "ru") -> str | None:
-    """Load template and substitute variables."""
+    """Load template and substitute variables.
+
+    If the template contains ``{skills_section}`` and the caller did not
+    provide it, it is automatically loaded from ``prompts/{lang}/skills.txt``.
+    """
     template = load_prompt_template(template_name, lang)
     if not template:
         return None
+    # Auto-inject skills if the template uses {skills_section}
+    if "{skills_section}" in template and "skills_section" not in variables:
+        variables["skills_section"] = _load_skills_section(lang)
     try:
         return template.format(**variables)
     except KeyError as e:
@@ -538,118 +558,6 @@ def extract_text_from_file(file_path: str) -> str | None:
             return None
     except Exception:
         return None
-
-
-def scan_gguf_models(models_dir: str = "/models") -> dict[str, Any]:
-    """Scan all GGUF files in directory and extract metadata.
-
-    Args:
-        models_dir: Directory containing GGUF model files
-
-    Returns:
-        Dict mapping model_name -> metadata dict
-    """
-    import glob
-
-    result: dict = {}
-
-    try:
-        from gguf import GGUFReader
-    except ImportError:
-        return result
-
-    if not os.path.exists(models_dir):
-        return result
-
-    gguf_patterns = [
-        os.path.join(models_dir, "*.gguf"),
-        os.path.join(models_dir, "*", "*.gguf"),
-    ]
-
-    gguf_files = set()
-    for pattern in gguf_patterns:
-        gguf_files.update(glob.glob(pattern, recursive=True))
-
-    for gguf_path in sorted(gguf_files):
-        try:
-            model_name = os.path.basename(gguf_path)
-            if model_name.endswith(".gguf"):
-                model_name = model_name[:-5]
-
-            reader = GGUFReader(gguf_path)
-            fields = reader.fields
-
-            info = {
-                "context_length": None,
-                "embedding_length": None,
-                "architecture": None,
-                "block_count": None,
-                "expert_count": None,
-                "file_size_mb": None,
-                "supports_mtp": False,
-            }
-
-            for key in fields:
-                if key.endswith(".context_length") and info["context_length"] is None:
-                    val = _gguf_scalar(fields[key].parts[-1])
-                    if val is not None:
-                        info["context_length"] = int(val)  # type: ignore[assignment]
-                        break
-
-            for key in fields:
-                if key.endswith(".block_count") and info["block_count"] is None:
-                    val = _gguf_scalar(fields[key].parts[-1])
-                    if val is not None:
-                        info["block_count"] = int(val)  # type: ignore[assignment]
-                        break
-
-            for key in fields:
-                if key.endswith(".embedding_length") and info["embedding_length"] is None:
-                    val = _gguf_scalar(fields[key].parts[-1])
-                    if val is not None:
-                        info["embedding_length"] = int(val)  # type: ignore[assignment]
-                        break
-
-            for key in fields:
-                if key.endswith(".expert_count") and info["expert_count"] is None:
-                    val = _gguf_scalar(fields[key].parts[-1])
-                    if val is not None:
-                        info["expert_count"] = int(val)  # type: ignore[assignment]
-                        break
-
-            if "general.architecture" in fields:
-                raw = _gguf_scalar(fields["general.architecture"].parts[-1])
-                if isinstance(raw, (bytes, bytearray)):
-                    info["architecture"] = raw.decode("utf-8", errors="replace")  # type: ignore[assignment]
-                else:
-                    info["architecture"] = str(raw)  # type: ignore[assignment]
-
-            # MTP: {arch}.nextn_predict_layers > 0 means model supports MTP
-            arch = info.get("architecture")
-            if arch:
-                mtp_key = f"{arch}.nextn_predict_layers"
-                if mtp_key in fields:
-                    val = _gguf_scalar(fields[mtp_key].parts[-1])
-                    if val is not None and int(val) > 0:
-                        info["supports_mtp"] = True
-
-            if "general.size_label" in fields:
-                raw = _gguf_scalar(fields["general.size_label"].parts[-1])
-                if isinstance(raw, (bytes, bytearray)):
-                    info["size_label"] = raw.decode("utf-8", errors="replace")  # type: ignore[assignment]
-                else:
-                    info["size_label"] = str(raw)  # type: ignore[assignment]
-
-            if gguf_path and os.path.exists(gguf_path):
-                info["file_size_mb"] = os.path.getsize(gguf_path) / (1024 * 1024)  # type: ignore[assignment]
-
-            if info["context_length"] or info["embedding_length"] or info["architecture"]:
-                result[model_name] = info
-
-        except Exception:
-            continue
-
-    return result
 
 
 def _pdf_to_markdown(text: str) -> str:
@@ -1436,3 +1344,66 @@ def _sd_error_translation_markers() -> None:
     gettext("No editing instructions provided.")
     gettext("No source image provided.")
     gettext("Image editing timeout ({timeout}s)")
+
+
+def clean_markdown_for_tts(text: str) -> str:
+    """Strip markdown formatting from text before TTS synthesis.
+
+    Removes common markdown constructs (bold, italic, code, links,
+    images, headings, quotes, lists, etc.) leaving only the text
+    content for natural speech synthesis.
+
+    Args:
+        text: Input text that may contain markdown formatting.
+
+    Returns:
+        Clean text with markdown removed, suitable for TTS.
+    """
+    if not text:
+        return text
+
+    # 1. Fenced code blocks — remove entirely
+    text = re.sub(r'```[\s\S]*?```', '', text)
+    # 2. Inline code — keep content
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    # 3. Images — remove entirely
+    text = re.sub(r'!\[.*?\]\(.*?\)', '', text)
+    # 4. Links — keep only display text
+    text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
+    # 5. Auto-links <url> — remove
+    text = re.sub(r'<https?://[^>]+>', '', text)
+    # 6. Bold-italic ***...*** — before ** and *
+    text = re.sub(r'\*\*\*(.+?)\*\*\*', r'\1', text)
+    # 7. Bold **...**
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    # 8. Italic *...*
+    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    # 8b. Strip orphaned ** adjacent to letters
+    #     (survives after sentence-split fragments like **НН. / РУ**)
+    text = re.sub(r'(?<=[a-zA-Zа-яА-ЯёЁ])\*\*|\*\*(?=[a-zA-Zа-яА-ЯёЁ])', '', text)
+    # 9. Underline-bold __...__ (word-boundary guarded)
+    text = re.sub(r'\b__(.+?)__\b', r'\1', text)
+    # 10. Underline-italic _..._ (word-boundary guarded)
+    text = re.sub(r'\b_(.+?)_\b', r'\1', text)
+    # 11. Strikethrough ~~...~~
+    text = re.sub(r'~~(.+?)~~', r'\1', text)
+    # 12. HTML tags
+    text = re.sub(r'</?[^>]+>', '', text)
+    # 13. Headings
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    # 14. Blockquotes
+    text = re.sub(r'^>\s+', '', text, flags=re.MULTILINE)
+    # 15. Unordered lists (-, *, +)
+    text = re.sub(r'^[\s]*[-*+]\s+', '', text, flags=re.MULTILINE)
+    # 16. Ordered lists (1., 1), etc.)
+    text = re.sub(r'^[\s]*\d+[.)]\s+', '', text, flags=re.MULTILINE)
+    # 17. Thematic breaks (---, ***, ___)
+    text = re.sub(r'^[\s]*[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
+    # 18. Collapse multiple newlines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    # 19. Collapse multiple spaces/tabs
+    text = re.sub(r'[ \t]+', ' ', text)
+    # 20. Trim leading/trailing whitespace
+    text = text.strip()
+
+    return text

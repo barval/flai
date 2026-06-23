@@ -191,13 +191,13 @@ def _init_postgresql():
         c.execute("""
             INSERT INTO model_configs (module, model_name, context_length, temperature, top_p, timeout, service_url, repeat_penalty)
             VALUES
-                ('chat', 'qwen35-4b-instruct-mtp-mxfp4.gguf', 16384, 0.1, 0.1, 120, 'http://flai-llamacpp:8033', 1.1),
+                ('chat', 'qwen35-4b-instruct-mtp-mxfp4.gguf', 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
                 ('reasoning', 'gpt-oss-20b-Q4_K_M', 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.15),
-                ('multimodal', 'Qwen3VL-8B-Instruct-Q4_K_M', 8192, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
+                ('multimodal', 'Qwen3VL-8B-Instruct-Q4_K_M', 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
                 ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://flai-llamacpp:8033', NULL)
         """)
 
-    # model_vram_estimates — хранит вычисленную оценку и реальные замеры VRAM для каждой модели
+    # model_vram_estimates — stores computed estimates and actual VRAM measurements per model
     c.execute("""
         CREATE TABLE IF NOT EXISTS model_vram_estimates (
             module TEXT NOT NULL,
@@ -324,12 +324,33 @@ def _init_postgresql():
     """)
 
     # Switch chat model back to Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf (Instruct, ~2 GB)
-    for old_name in ['Qwen3-1.7B-Q8_0.gguf', 'Qwen3-1.7B-Instruct-Q4_K_M', 'Qwen3-4B-Instruct-2507-Q4_K_M']:
+    # Match both with and without .gguf suffix (admin panel may store either form)
+    for old_name in [
+        'Qwen3-1.7B-Q8_0.gguf', 'Qwen3-1.7B-Instruct-Q4_K_M',
+        'Qwen3-4B-Instruct-2507-Q4_K_M', 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf',
+    ]:
         c.execute("""
             UPDATE model_configs
             SET model_name = 'Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf'
             WHERE module = 'chat' AND model_name = %s
         """, (old_name,))
+
+    # Update chat model defaults: temperature 0.1→0.7, top_p 0.1→0.9
+    # (old values were for router classification, not suitable for chat responses)
+    c.execute("""
+        UPDATE model_configs
+        SET temperature = 0.7, top_p = 0.9
+        WHERE module = 'chat'
+          AND temperature = 0.1 AND top_p = 0.1
+    """)
+
+    # Update multimodal model context_length: 8192→16384
+    # (8192 too small for vision token counts from Qwen3VL)
+    c.execute("""
+        UPDATE model_configs
+        SET context_length = 16384
+        WHERE module = 'multimodal' AND context_length = 8192
+    """)
 
     conn.commit()
     conn.close()

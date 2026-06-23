@@ -58,37 +58,6 @@ function switchView(view) {
     }
 }
 
-// Live timer — updates elapsed time display every second without server requests
-let documentLiveTimer = null;
-function startLiveDocumentTimer() {
-    stopLiveDocumentTimer();
-    documentLiveTimer = setInterval(() => {
-        const indexingDocs = document.querySelectorAll('.document-item[data-indexing-start]');
-        indexingDocs.forEach(el => {
-            const startVal = el.dataset.indexingStart;
-            if (!startVal || startVal === '') return;
-            const startTime = parseInt(startVal, 10);
-            if (isNaN(startTime) || startTime <= 0) return;
-            const elapsed = Math.floor((Date.now() - startTime * 1000) / 1000);
-            if (isNaN(elapsed) || elapsed < 0) return;
-            const mins = Math.floor(elapsed / 60);
-            const secs = elapsed % 60;
-            const timeStr = mins > 0 ? `${mins}м ${secs}с` : `${secs}с`;
-            const timerEl = el.querySelector('.doc-live-timer');
-            if (timerEl) {
-                timerEl.textContent = ` ⏱️ ${timeStr}`;
-            }
-        });
-    }, 1000);
-}
-
-function stopLiveDocumentTimer() {
-    if (documentLiveTimer) {
-        clearInterval(documentLiveTimer);
-        documentLiveTimer = null;
-    }
-}
-
 function loadDocuments(showLoading = true) {
     if (showLoading) {
         // Optional: show a loading indicator
@@ -173,7 +142,7 @@ function updateDocumentsList(documents) {
                 const elapsed = Math.floor((Date.now() - startTime.getTime()) / 1000);
                 const mins = Math.floor(elapsed / 60);
                 const secs = elapsed % 60;
-                const timeStr = mins > 0 ? `${mins}м ${secs}с` : `${secs}с`;
+                const timeStr = mins > 0 ? `${mins}${t('minute_abbr')} ${secs}${t('second_abbr')}` : `${secs}${t('second_abbr')}`;
                 statusIndicator = ` ⏱️ ${timeStr}`;
             }
         } else if (isPending) {

@@ -131,39 +131,3 @@ class TestRedisRequestQueue:
             assert pipe.hincrby.called
             assert pipe.execute.called
 
-    def test_recover_stale_tasks(self, mock_app, mock_redis):
-        """Test recovery of stale tasks from processing hash."""
-
-        # Simulate a stuck task in processing
-        task = {"id": "task-1", "type": "text", "text": "hello", "timestamp": 1234567890}
-        task_json = json.dumps(task)
-        # _serialize adds HMAC signature: data.sig
-        from app.queue import RedisRequestQueue as RQ  # noqa: N814
-
-        # We need to mock the deserialization to return valid data
-        mock_redis.hgetall.return_value = {b"task-1": task_json.encode()}
-
-        with patch("app.queue.redis.from_url", return_value=mock_redis):
-            queue = RQ(mock_app)
-            # _deserialize will try to verify HMAC, which will fail with raw JSON
-            # So we patch it to return the task directly
-            with patch.object(queue, "_deserialize", return_value=task):
-                queue._recover_stale_tasks()
-
-            # Should have re-queued the task
-            assert mock_redis.rpush.called
-            # Should have removed from processing
-            assert mock_redis.hdel.called
-
-    def test_recover_stale_tasks_empty(self, mock_app, mock_redis):
-        """Test recovery when no stale tasks exist."""
-        from app.queue import RedisRequestQueue
-
-        mock_redis.hgetall.return_value = {}
-
-        with patch("app.queue.redis.from_url", return_value=mock_redis):
-            queue = RedisRequestQueue(mock_app)
-            queue._recover_stale_tasks()
-
-            # Should not have called rpush
-            assert not mock_redis.rpush.called

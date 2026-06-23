@@ -17,49 +17,60 @@ from app.utils import (
 
 STYLE_INSTRUCTIONS = {
     "ru": {
-        "neutral": "Без особого стиля.",
+        "neutral": (
+            "Отвечай нейтральным ясным языком. Не проявляй лишних эмоций и не старайся быть формальным — "
+            "просто давай точный и полезный ответ по существу."
+        ),
         "academic": (
             "Отвечай в формальном академическом стиле. Используй точную терминологию, "
             "строгие формулировки и логически структурированные аргументы. "
-            "Избегай разговорных выражений. При необходимости ссылайся на факты."
+            "Ссылайся на факты и источники, когда уместно. "
+            "НЕ используй разговорные выражения, сленг, эмодзи и обращения на 'ты'."
         ),
         "professional": (
             "Отвечай в профессиональном деловом стиле. Будь чётким, конкретным и по делу. "
-            "Используй ясные формулировки. Избегай лишних эмоций и воды."
+            "Используй ясные формулировки и структурированные списки при необходимости. "
+            "НЕ используй эмодзи, шутки, разговорные выражения и лишние эмоции."
         ),
         "friendly": (
-            "Отвечай в тёплом дружеском стиле. Будь приветлив и располагай к общению. "
-            "Используй естественный разговорный тон. Покажи эмпатию и заботу о пользователе. "
-            "Можно использовать эмодзи, если они уместны и помогают выразить эмоцию."
+            "Отвечай в тёплом дружеском стиле. Обращайся на 'ты', будь приветлив и располагай к общению. "
+            "Используй естественный разговорный тон, показывай эмпатию и заботу. "
+            "Эмодзи уместны, если усиливают эмоцию. "
+            "НЕ отвечай сухо, формально или как в инструкции — это должно ощущаться как живой разговор."
         ),
         "funny": (
-            "Отвечай с юмором и остроумием. Будь игрив и занимателен. "
-            "Используй шутки, метафоры и неожиданные сравнения, но не забывай "
-            "давать полезную информацию по существу вопроса. "
-            "Эмодзи приветствуются, если они к месту и усиливают эффект."
+            "Отвечай с юмором и остроумием. Будь игрив, используй шутки, метафоры и неожиданные сравнения. "
+            "Эмодзи приветствуются, если усиливают эффект. "
+            "Всегда давай полезную информацию по существу вопроса — юмор не заменяет содержание. "
+            "НЕ отвечай серьёзно или сухо — шутка или ирония должны быть заметны."
         ),
     },
     "en": {
-        "neutral": "Default style.",
+        "neutral": (
+            "Answer in clear, neutral language. No extra emotions, no formality — just a precise, useful answer."
+        ),
         "academic": (
             "Answer in a formal academic style. Use precise terminology, "
             "rigorous wording, and logically structured arguments. "
-            "Avoid colloquial expressions. Reference facts where appropriate."
+            "Reference facts and sources where appropriate. "
+            "Do NOT use colloquial expressions, slang, emojis, or informal tone."
         ),
         "professional": (
             "Answer in a professional business-like style. Be clear, specific, and to the point. "
-            "Use straightforward wording. Avoid unnecessary emotions or fluff."
+            "Use straightforward wording and structured lists when helpful. "
+            "Do NOT use emojis, jokes, colloquial expressions, or unnecessary emotions."
         ),
         "friendly": (
-            "Answer in a warm, friendly style. Be welcoming and approachable. "
-            "Use a natural conversational tone. Show empathy and care for the user. "
-            "You may use emojis when they are appropriate and help convey emotion."
+            "Answer in a warm, friendly style. Be welcoming, approachable, and conversational. "
+            "Show empathy and care for the user. Use a natural tone as if talking to a friend. "
+            "Emojis are welcome when they convey genuine emotion. "
+            "Do NOT sound dry, formal, or robotic — this should feel like a real human conversation."
         ),
         "funny": (
-            "Answer with humor and wit. Be playful and entertaining. "
-            "Use jokes, metaphors, and unexpected comparisons, "
-            "but still provide useful information on the topic. "
-            "Emojis are welcome when they fit the context and enhance the effect."
+            "Answer with humor, wit, and playfulness. Use jokes, metaphors, and unexpected comparisons. "
+            "Emojis are welcome when they enhance the effect. "
+            "Always provide useful, on-topic information — humor should not replace substance. "
+            "Do NOT answer seriously or dryly — the joke or irony should be noticeable."
         ),
     },
 }
@@ -100,10 +111,11 @@ class BaseModule(TranslationMixin):
         return get_model_config(model_type)  # type: ignore[no-any-return]
 
     def call_llamacpp(
-        self, messages: list[dict[str, Any]], model_type: str = "chat", lang: str = "ru"
+        self, messages: list[dict[str, Any]], model_type: str = "chat", lang: str = "ru",
+        tools: list[dict[str, Any]] | None = None, temperature: float | None = None,
     ) -> str | dict[str, Any]:
         """Call llama-server with configuration."""
-        return self.llamacpp.call(messages, model_type, False, lang)  # type: ignore[no-any-return]
+        return self.llamacpp.call(messages, model_type, False, lang, tools=tools, temperature=temperature)  # type: ignore[no-any-return]
 
     # --- Context handling methods ---
     def _estimate_tokens(self, text: str, model_type: str = "chat", lang: str = "ru") -> int:
@@ -116,9 +128,13 @@ class BaseModule(TranslationMixin):
 
     def _get_context_for_model(
         self, session_id: str, model_type: str, current_query: str, lang: str = "ru", user_id: str | None = None,
-        skip_slm: bool = False,
+        skip_slm: bool = False, rag_context: str = "", rag_source: str = "",
     ) -> str:
-        """Retrieve conversation history + SLM long-term memory with safety margin."""
+        """Retrieve conversation history + SLM long-term memory with safety margin.
+
+        Budget allocation order: query → template overhead → RAG context → SLM facts → history (last).
+        History is trimmed to fit whatever remains after all other components are measured.
+        """
         if not session_id:
             return ""
 
@@ -128,51 +144,98 @@ class BaseModule(TranslationMixin):
 
         max_context_tokens = model_config.get("context_length", 32768)
         slm_recall_limit = self.app.config.get("SLM_RECALL_LIMIT", 3) if hasattr(self, "app") and self.app else 3
-        slm_reserve = slm_recall_limit * 70  # ~70 tokens per fact
 
         # Apply safety margin to available tokens
         available_tokens = int(max_context_tokens * (self.context_history_percent / 100.0) * self.safety_margin)
-
         query_tokens = self._estimate_tokens(current_query, model_type, lang)
-        remaining_for_history = available_tokens - query_tokens - TEMPLATE_OVERHEAD - slm_reserve
 
-        if remaining_for_history <= 0:
-            self.logger.warning(
-                f"No tokens available for history. Query: {query_tokens}, Available: {available_tokens}"
-            )
-            return ""
+        # Step 1: Measure RAG context tokens (internet search results)
+        rag_tokens = 0
+        if rag_context:
+            rag_tokens = self._estimate_tokens(rag_context, model_type, lang)
 
-        # Load history with SQL-level limit
-        history_msgs = get_session_text_history(session_id, remaining_for_history, max_messages=self.max_messages_limit)
-        history_str = self._build_context_prompt(history_msgs, lang) if history_msgs else ""
-
-        # SLM: load long-term memory facts (for both chat and reasoning models)
-        slm_facts_str = ""
+        # Step 2: Fetch SLM facts first to measure their real size
+        all_facts: list[dict[str, Any]] = []
         if not skip_slm:
             slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
             if slm:
-                slm_raw = slm.get_context(
+                # Two-phase recall: session-specific first (priority), then general
+                session_facts: list[dict[str, Any]] = []
+                general_facts: list[dict[str, Any]] = []
+
+                # Phase 1: Session-specific facts
+                if session_id:
+                    session_facts_raw = slm.recall(
+                        current_query,
+                        limit=slm_recall_limit,
+                        profile=user_id,
+                        semantic=True,
+                    )
+                    session_facts = [f for f in session_facts_raw if f.get("metadata", {}).get("fact_type") == "session_specific"]
+
+                # Phase 2: General facts
+                general_facts_raw = slm.recall(
                     current_query,
-                    lang,
                     limit=slm_recall_limit,
                     profile=user_id,
                     semantic=True,
                 )
-                if slm_raw:
-                    header = (
-                        "Дополнительная информация из долговременной памяти:"
-                        if lang == "ru"
-                        else "Additional context from long-term memory:"
-                    )
-                    slm_facts_str = f"\n\n{header}\n{slm_raw}"
+                general_facts = [f for f in general_facts_raw if f.get("metadata", {}).get("fact_type") != "session_specific"]
 
-        # Combine: history first (dialog continuity), SLM facts after (long-term enrichment)
-        context = history_str + slm_facts_str
+                all_facts = session_facts + general_facts
+
+        # Step 3: Build SLM string and measure its real token cost
+        slm_facts_str = ""
+        slm_tokens = 0
+        if all_facts:
+            header = (
+                "Дополнительная информация из долговременной памяти:"
+                if lang == "ru"
+                else "Additional context from long-term memory:"
+            )
+            lines = [header]
+            for f in all_facts[:slm_recall_limit]:
+                lines.append(f"- {f.get('content', f.get('text', ''))}")
+            slm_facts_str = "\n" + "\n".join(lines)
+            slm_tokens = self._estimate_tokens(slm_facts_str, model_type, lang)
+
+        # Step 4: Calculate history budget — subtract query, template, RAG, and SLM
+        remaining_for_history = available_tokens - query_tokens - TEMPLATE_OVERHEAD - rag_tokens - slm_tokens
+
+        if remaining_for_history <= 0:
+            self.logger.warning(
+                f"No tokens available for history. Query: {query_tokens}, RAG: {rag_tokens}, "
+                f"SLM: {slm_tokens}, Available: {available_tokens}"
+            )
+            return slm_facts_str.lstrip() if slm_facts_str else ""
+
+        # Step 5: Load history with SQL-level limit based on remaining budget
+        history_msgs = get_session_text_history(session_id, remaining_for_history, max_messages=self.max_messages_limit)
+        history_str = self._build_context_prompt(history_msgs, lang) if history_msgs else ""
+
+        # Combine: RAG context first, then SLM facts, history last (already trimmed)
+        rag_section = ""
+        if rag_context:
+            if rag_source == "web_search":
+                heading = (
+                    "Результаты поиска в интернете — ИСПОЛЬЗУЙ ТОЛЬКО ЭТИ ДАННЫЕ для ответа. "
+                    "Не выдумывай факты, не используй свои знания."
+                    if lang == "ru"
+                    else "Web search results — USE ONLY THIS DATA to answer. "
+                    "Do not fabricate facts, do not use your own knowledge."
+                )
+            else:
+                heading = "Найденная информация из документов:" if lang == "ru" else "Found information from documents:"
+            rag_section = "\n" + heading + "\n" + rag_context
+        context = rag_section + slm_facts_str + history_str
+        history_tokens = self._estimate_tokens(history_str, model_type, lang)
         context_tokens = self._estimate_tokens(context, model_type, lang)
 
         self.logger.info(
-            f"Context loaded: {len(history_msgs)} history msgs, "
-            f"{context_tokens} tokens ({context_tokens / max_context_tokens * 100:.1f}% of {max_context_tokens})"
+            f"Context loaded: {len(history_msgs)} history msgs ({history_tokens} tokens), "
+            f"{len(all_facts)} SLM facts ({slm_tokens} tokens), "
+            + (f"{'Web search' if rag_source == 'web_search' else 'RAG'} ({rag_tokens} tokens), " if rag_tokens else "")
+            + f"TOTAL: {context_tokens} tokens ({context_tokens / max_context_tokens * 100:.1f}% of {max_context_tokens})"
         )
 
         return context
@@ -200,18 +263,6 @@ class BaseModule(TranslationMixin):
         slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
         if slm and slm.available:
             slm.remember(text, metadata=metadata, profile=user_id)
-
-    def _save_to_slm_async(self, text: str, metadata: dict[str, Any] | None = None, user_id: str | None = None) -> None:
-        """Save a fact to SLM in a background thread — does not block the response."""
-        import threading
-
-        t = threading.Thread(
-            target=self._save_to_slm,
-            args=(text,),
-            kwargs={"metadata": metadata, "user_id": user_id},
-            daemon=True,
-        )
-        t.start()
 
     def _build_camera_prompt_section(self, lang: str = "ru") -> str:
         """Build the camera classification section for the router prompt.
@@ -324,13 +375,13 @@ class BaseModule(TranslationMixin):
         router_messages = [
             {
                 "role": "system",
-                "content": "STRICT CLASSIFICATION RULES — You are a query classifier. Output ONLY the result. No explanations, no extra text. SIMPLE queries (greetings, who-are-you, current time) → answer directly WITHOUT any marker. COMPLEX queries (code, math, writing) → use [-REASONING-]. IMAGE/VIDEO/CAMERA → use the appropriate marker. Never output [-REASONING-] for greetings or who-are-you questions. Never copy markers from examples into your response except when the query matches that category.",
+                "content": "STRICT CLASSIFICATION RULES — You are a query classifier. Output ONLY the result. No explanations, no extra text. SIMPLE queries (greetings, who-are-you, time, skills) → answer WITHOUT any marker. IMAGE generation → use [-IMAGE-]. VIDEO generation → use [-VIDEO-]. CAMERA/snapshot → use [-CAMERA-]. DOCUMENT search → use [-RAG-]. WEB search (news, prices, latest info) → use [-SEARCH-]. COMPLEX tasks (code, writing, reasoning) → use [-REASONING-]. REMEMBER requests → use [-REMEMBER-]. Never output reasoning markers for simple queries.",
             },
             {"role": "user", "content": prompt},
         ]
 
         self.logger.info(f"Sending request to router: {message_text[:100]}...")
-        router_response = self.call_llamacpp(router_messages, model_type="chat", lang=lang)
+        router_response = self.call_llamacpp(router_messages, model_type="chat", lang=lang, temperature=0.1)
         self.logger.info(f"Router response: {router_response}")
 
         # Retry once if router produced a garbled response (rare model inference glitch)
@@ -339,7 +390,7 @@ class BaseModule(TranslationMixin):
             and router_response.strip().startswith('{"error"')
         ):
             self.logger.warning(f"Router returned error, retrying once: {router_response[:100]}")
-            router_response = self.call_llamacpp(router_messages, model_type="chat", lang=lang)
+            router_response = self.call_llamacpp(router_messages, model_type="chat", lang=lang, temperature=0.1)
             self.logger.info(f"Router retry response: {router_response}")
 
         if router_response is None:
@@ -347,10 +398,6 @@ class BaseModule(TranslationMixin):
             return {"error": self._("Model returned empty response", lang)}
 
         result = self._parse_router_response(router_response, message_text, current_time_str, lang)  # type: ignore[arg-type]
-        if "error" not in result and result.get("action") in ("fact", "rag"):
-            self._save_to_slm_async(
-                message_text, metadata={"session_id": session_id, "type": "user_query"}, user_id=user_id
-            )
         return result
 
     def _parse_router_response(
@@ -372,8 +419,9 @@ class BaseModule(TranslationMixin):
             "[-CAMERA-]": "camera",
             "[-REASONING-]": "reasoning",
             "[-RAG-]": "rag",
+            "[-SEARCH-]": "search",
             "[-VIDEO-]": "video",
-            "[-FACT-]": "fact",
+            "[-REMEMBER-]": "remember",
         }
 
         for marker, action in markers.items():
@@ -400,7 +448,7 @@ class BaseModule(TranslationMixin):
                 else:
                     processed = parts[1].strip() if len(parts) > 1 else ""
                     processed = processed.split("\n")[0].strip()
-                    if original_query and len(processed) > len(original_query) * 1.5:
+                    if original_query and (not processed or len(processed) > len(original_query) * 1.5):
                         processed = original_query
                 return {"action": action, "query": processed, "needs_reasoning": (action == "reasoning")}
 
@@ -415,15 +463,17 @@ class BaseModule(TranslationMixin):
         response_style: str = "neutral",
         user_id: str | None = None,
         rag_context: str = "",
+        rag_source: str = "",
     ) -> str:
         """Process complex query via reasoning model."""
         response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(session_id, "reasoning", query, lang, user_id=user_id)  # type: ignore[arg-type]
+        context_str = self._get_context_for_model(  # type: ignore[arg-type]
+            session_id, "reasoning", query, lang, user_id=user_id,
+            rag_context=rag_context, rag_source=rag_source,
+        )
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )
-
-        rag_context_str = rag_context if rag_context else self._("No additional information from documents.", lang)
 
         reasoning_prompt = format_prompt(
             "reasoning.template",
@@ -433,7 +483,6 @@ class BaseModule(TranslationMixin):
                 "response_language": response_language,
                 "conversation_history": context_str,
                 "response_style": style_instruction,
-                "rag_context": rag_context_str,
             },
             lang=lang,
         )
@@ -455,47 +504,6 @@ class BaseModule(TranslationMixin):
 
     # ── Streaming methods ──────────────────────────────────────────────
 
-    def generate_chat_response_stream(
-        self,
-        query: str,
-        current_time_str: str,
-        lang: str = "ru",
-        session_id: str | None = None,
-        response_style: str = "neutral",
-        user_id: str | None = None,
-        skip_slm: bool = False,
-    ) -> Generator[str, None, None]:
-        """Build prompt and stream chat model response."""
-        response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(session_id, "chat", query, lang, user_id=user_id, skip_slm=skip_slm)  # type: ignore[arg-type]
-        style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
-            response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
-        )
-
-        prompt = format_prompt(
-            "chat.template",
-            {
-                "current_time_str": current_time_str,
-                "user_query": query,
-                "response_language": response_language,
-                "conversation_history": context_str,
-                "response_style": style_instruction,
-            },
-            lang=lang,
-        )
-
-        if not prompt:
-            yield "⚠️ " + self._("Error loading prompt template", lang)
-            return
-
-        error = self._validate_final_prompt(prompt, "chat", lang)
-        if error:
-            yield "⚠️ " + error
-            return
-
-        self.logger.info(f"Streaming chat response for query: {query[:100]}...")
-        yield from self.llamacpp.chat_stream([{"role": "user", "content": prompt}], model_type="chat", lang=lang)
-
     def generate_reasoning_response_stream(
         self,
         query: str,
@@ -505,15 +513,17 @@ class BaseModule(TranslationMixin):
         response_style: str = "neutral",
         user_id: str | None = None,
         rag_context: str = "",
+        rag_source: str = "",
     ) -> Generator[str, None, None]:
         """Build prompt and stream reasoning model response."""
         response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(session_id, "reasoning", query, lang, user_id=user_id)  # type: ignore[arg-type]
+        context_str = self._get_context_for_model(  # type: ignore[arg-type]
+            session_id, "reasoning", query, lang, user_id=user_id,
+            rag_context=rag_context, rag_source=rag_source,
+        )
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
         )
-
-        rag_context_str = rag_context if rag_context else self._("No additional information from documents.", lang)
 
         prompt = format_prompt(
             "reasoning.template",
@@ -523,7 +533,6 @@ class BaseModule(TranslationMixin):
                 "response_language": response_language,
                 "conversation_history": context_str,
                 "response_style": style_instruction,
-                "rag_context": rag_context_str,
             },
             lang=lang,
         )

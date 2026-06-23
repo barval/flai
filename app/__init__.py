@@ -129,7 +129,7 @@ def create_app():
         try:
             from app.llama_swap_config import generate_and_write
 
-            generate_and_write(app)
+            generate_and_write(app, include_preload=True)
             app.logger.info("llama-swap config generated")
         except Exception as e:
             app.logger.warning(f"Could not generate llama-swap config: {e}")
@@ -242,11 +242,26 @@ def create_app():
     else:
         app.logger.info("TTS module disabled (PIPER_URL not set)")
 
+    if app.config.get("SEARXNG_URL"):
+        from modules.search import SearchModule
+
+        modules["search"] = SearchModule(app)
+        if modules["search"].available:
+            app.logger.info("Web search module enabled (SearXNG)")
+        else:
+            app.logger.warning("Web search module configured but SearXNG not available")
+    else:
+        app.logger.info("Web search module disabled (SEARXNG_URL not set)")
+
     app.modules = modules
 
     # Background SLM import: process unimported messages without blocking startup
     if modules.get("slm") and modules["slm"].available:
         _start_background_slm_import(app)
+
+    # Background SLM merge: queue merge task during idle time
+    app._last_task_time = 0  # Allow merge on first idle check after startup
+    _start_slm_merge_watcher(app)
 
     # Watchdog: detect llama-swap crash loops and auto-rollback
     if app.config.get("LLAMACP_BACKEND") == "llama-swap":
@@ -295,6 +310,8 @@ def create_app():
     app.cli.add_command(cli.cleanup_uploads)
     app.cli.add_command(cli.migrate_messages_format)
     app.cli.add_command(cli.import_history_to_slm)
+    app.cli.add_command(cli.cleanup_slm)
+    app.cli.add_command(cli.reset_slm_checkpoint)
 
     # Additional camera routes
     if "cam" in modules:
@@ -550,7 +567,7 @@ def create_app():
         # System metrics
         metrics_output.append("# HELP flai_web_info Web service information")
         metrics_output.append("# TYPE flai_web_info gauge")
-        metrics_output.append('flai_web_info{version="8.9"} 1')
+        metrics_output.append('flai_web_info{version="9.0"} 1')
 
         # Queue metrics
         try:
@@ -629,3 +646,59 @@ def _start_background_slm_import(app: Flask) -> None:
     thread = threading.Thread(target=_run_import, daemon=True, name="slm-import")
     thread.start()
     app.logger.info("Background SLM import thread started")
+
+
+def _start_slm_merge_watcher(app: Flask) -> None:
+    """Start a background thread that queues SLM merge during idle time."""
+    import threading
+    import time
+
+    def _watcher() -> None:
+        with app.app_context():
+            while True:
+                time.sleep(60)  # Check every minute
+                try:
+                    if not hasattr(app, "_last_task_time"):
+                        continue
+                    if (time.time() - app._last_task_time) < 300:  # 5 min idle threshold
+                        continue
+
+                    # Skip if merge was already queued recently
+                    last_queued = getattr(app, "_merge_last_queued", 0)
+                    if (time.time() - last_queued) < 300:
+                        continue
+
+                    # Queue merge task for all users
+                    from app.userdb import get_all_user_ids
+
+                    user_ids = get_all_user_ids()
+
+                    # Skip if there are already pending merge tasks in the queue
+                    # (prevents flooding the queue with redundant tasks)
+                    bg_queue_len = app.request_queue.redis.llen(app.request_queue.background_queue_key)
+                    if bg_queue_len and bg_queue_len > len(user_ids):
+                        app.logger.debug(f"SLM merge watcher: background queue has {bg_queue_len} tasks, skipping")
+                        continue
+
+                    for user_id in user_ids:
+                        task_id = str(__import__("uuid").uuid4())
+                        merge_task = {
+                            "id": task_id,
+                            "user_id": user_id,
+                            "session_id": "system",
+                            "type": "fact_merge_task",
+                            "data": {"user_id": user_id},
+                            "user_class": 0,
+                            "lang": "ru",
+                            "timestamp": time.time(),
+                        }
+                        serialized = app.request_queue._serialize(merge_task)
+                        app.request_queue.redis.rpush(app.request_queue.background_queue_key, serialized)
+                    app._merge_last_queued = time.time()
+                    app.logger.info(f"Queued SLM merge for {len(user_ids)} users")
+                except Exception as e:
+                    app.logger.warning(f"SLM merge watcher error: {e}")
+
+    thread = threading.Thread(target=_watcher, daemon=True, name="slm-merge-watcher")
+    thread.start()
+    app.logger.info("SLM merge watcher started")

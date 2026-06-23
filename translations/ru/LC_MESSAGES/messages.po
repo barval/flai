@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 8.9\n"
+"Project-Id-Version: FLAI 9.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-06-10 21:33+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -96,6 +96,19 @@ msgstr "Не удалось подключиться к llama-swap"
 #: app/llamacpp_client.py:442
 msgid "Internal error: no response from model"
 msgstr "Внутренняя ошибка: модель не ответила"
+
+#: app/queue.py:1602
+msgid "No response from reasoning model"
+msgstr "Не удалось получить ответ от модели рассуждений"
+
+#: app/queue.py:2808
+msgid "No response from chat model. Try rephrasing your request."
+msgstr "Не удалось получить ответ от модели. Попробуйте переформулировать запрос."
+
+#: app/llamacpp_client.py
+#, python-brace-format
+msgid "Model '{model}' is not available. Select a different model in admin panel."
+msgstr "Модель '{model}' недоступна. Выберите другую модель в панели администратора."
 
 #: app/llamacpp_client.py:768 app/llamacpp_client.py:791
 #: modules/multimodal.py:239 modules/multimodal.py:324
@@ -217,6 +230,22 @@ msgstr "Снимок с камеры: {room_name}"
 #: app/queue.py:2056 app/queue.py:2062
 msgid "No relevant documents found"
 msgstr "Не найдено релевантных документов"
+
+#: modules/search.py
+msgid "Web search result"
+msgstr "Результат поиска"
+
+#: modules/search.py
+msgid "Web search is not available"
+msgstr "Веб-поиск недоступен"
+
+#: modules/search.py
+msgid "No web search results found"
+msgstr "Результаты веб-поиска не найдены"
+
+#: modules/search.py
+msgid "Web search failed"
+msgstr "Ошибка веб-поиска"
 
 #: app/queue.py:2365
 msgid "Unknown request type"
@@ -1193,7 +1222,7 @@ msgstr "Выйти"
 
 #: app/templates/base.html:78 app/templates/chat.html:167
 msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v8.9 (c) 2026 Барсуков Валерий"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v9.0 (c) 2026 Барсуков Валерий"
 
 #: app/templates/chat.html:14 app/templates/chat.html:178
 msgid "New document"
@@ -1511,10 +1540,6 @@ msgstr "Запрос слишком длинный, пожалуйста, упр
 msgid "Error loading prompt template"
 msgstr "Ошибка загрузки шаблона промпта"
 
-#: modules/base.py:426
-msgid "No additional information from documents."
-msgstr "Дополнительной информации из документов нет."
-
 #: modules/cam.py:268 modules/cam.py:383
 msgid "CCTV service unavailable"
 msgstr "Сервис видеонаблюдения недоступен"
@@ -1639,6 +1664,175 @@ msgstr "Превышено время ожидания генерации вид
 #: modules/video.py:331
 msgid "Could not connect to video generation service"
 msgstr "Не удалось подключиться к сервису генерации видео"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Current time unavailable"
+msgstr "Текущее время недоступно"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Division by zero"
+msgstr "Деление на ноль"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Calculation error: {error}"
+msgstr "Ошибка вычисления: {error}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Web search service unavailable"
+msgstr "Сервис веб-поиска недоступен"
+
+#: app/tools.py
+#, python-brace-format
+msgid "No results found for query: {query}"
+msgstr "Результаты не найдены для запроса: {query}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Document search service unavailable"
+msgstr "Сервис поиска в документах недоступен"
+
+#: app/tools.py
+#, python-brace-format
+msgid "User not identified for document search"
+msgstr "Пользователь не идентифицирован для поиска в документах"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Document search error: {error}"
+msgstr "Ошибка поиска в документах: {error}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "No relevant documents found for query: {query}"
+msgstr "Релевантные документы не найдены для запроса: {query}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "CCTV service unavailable"
+msgstr "Сервис видеонаблюдения недоступен"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Unknown tool: {tool}"
+msgstr "Неизвестный инструмент: {tool}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Tool execution error: {error}"
+msgstr "Ошибка выполнения инструмента: {error}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "No date text provided"
+msgstr "Не указан текст даты"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Cannot parse date: {text}"
+msgstr "Не удалось распознать дату: {text}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Date calculation error: {error}"
+msgstr "Ошибка вычисления даты: {error}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Unknown time_calc operation: {op}"
+msgstr "Неизвестная операция time_calc: {op}"
+
+#: app/tools.py
+#, python-brace-format
+msgid "Both from_time and to_time are required"
+msgstr "Необходимо указать оба времени: от и до"
+
+#: app/static/js/events.js
+msgid "tool_get_current_time"
+msgstr "Получаю время..."
+
+#: app/static/js/events.js
+msgid "tool_calculator"
+msgstr "Вычисляю..."
+
+#: app/static/js/events.js
+msgid "tool_time_calc"
+msgstr "Рассчитываю дату..."
+
+#: app/static/js/events.js
+msgid "tool_web_search"
+msgstr "Ищу в интернете..."
+
+#: app/static/js/events.js
+msgid "tool_rag_search"
+msgstr "Ищу в документах..."
+
+#: app/static/js/events.js
+msgid "tool_camera_snapshot"
+msgstr "Получаю снимок..."
+
+#: app/queue.py
+msgid "Task cancelled"
+msgstr "Задача отменена"
+
+#: app/queue.py
+msgid "Image editing failed"
+msgstr "Редактирование изображения не удалось"
+
+#: app/templates/chat.html
+msgid "Cleaning GPU..."
+msgstr "⏳ Очистка GPU..."
+
+#: app/templates/chat.html
+msgid "Analyzing request..."
+msgstr "🔍 Анализирую запрос..."
+
+#: app/templates/chat.html
+msgid "Analyzing image..."
+msgstr "🔍 Анализирую изображение..."
+
+#: app/templates/chat.html
+msgid "Analyzing prompt..."
+msgstr "🔍 Анализирую промпт..."
+
+#: app/templates/chat.html
+msgid "Generating video..."
+msgstr "🎬 Генерирую видео..."
+
+#: app/templates/chat.html
+msgid "Generating image..."
+msgstr "🎨 Генерирую изображение..."
+
+#: app/templates/chat.html
+msgid "Editing image..."
+msgstr "✏️ Редактирую изображение..."
+
+#: app/templates/chat.html
+msgid "Loading reasoning model..."
+msgstr "🧠 Загружаю модель рассуждений..."
+
+#: app/templates/chat.html
+msgid "Capturing snapshot..."
+msgstr "📹 Делаю снимок..."
+
+#: app/templates/chat.html
+msgid "Step"
+msgstr "Шаг"
+
+#: app/templates/chat.html
+msgid "minute_abbr"
+msgstr "м"
+
+#: app/templates/chat.html
+msgid "second_abbr"
+msgstr "с"
+
+#: app/templates/chat.html
+msgid "timer_zero"
+msgstr "0с"
 
 #~ msgid "Supported formats: PDF, DOC, DOCX, TXT"
 #~ msgstr "Поддерживаемые форматы: PDF, DOC, DOCX, TXT"

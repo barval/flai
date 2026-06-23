@@ -111,18 +111,6 @@ class TestSdCppModuleGenerate:
                 assert "image_data" in result
                 assert "file_name" in result
 
-    def test_generate_image_unavailable(self, mock_app, mock_multimodal):
-        from modules.sd_cpp import SdCppModule
-
-        with patch("modules.sd_cpp.requests.get") as mock_get:
-            mock_get.side_effect = Exception("Connection error")
-            module = SdCppModule(mock_app)
-            module.set_multimodal_module(mock_multimodal)
-
-            result = module.generate_image("test prompt")
-            assert result["success"] is False
-            assert "error" in result
-
     def test_generate_image_api_error(self, mock_app, mock_multimodal):
         from modules.sd_cpp import SdCppModule
 

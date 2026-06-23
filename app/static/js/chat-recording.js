@@ -44,7 +44,7 @@ voiceBtn.classList.add('recording');
 // Change send button to show recording status with timer
 const sendButton = document.getElementById('send-button');
 sendButton.disabled = true;
-sendButton.innerHTML = '<span>' + t('recording') + '</span><span class="record-timer">0с</span>';
+sendButton.innerHTML = '<span>' + t('recording') + '</span><span class="record-timer">' + t('timer_zero') + '</span>';
 sendButton.classList.add('recording-mode');
 // Start timer
 recordSeconds = 0;

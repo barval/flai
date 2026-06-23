@@ -1,6 +1,25 @@
 // app/static/js/chat-messages.js
 // Message display and loading functions
 
+var _isLoadingMessages = false;
+
+function isNearBottom(container, threshold) {
+    if (!container) return true;
+    if (threshold === undefined) threshold = 200;
+    return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+}
+
+function scrollToBottom(container) {
+    if (!container || _isLoadingMessages) return;
+    container.scrollTop = container.scrollHeight;
+    requestAnimationFrame(function() {
+        container.scrollTop = container.scrollHeight;
+    });
+    setTimeout(function() {
+        container.scrollTop = container.scrollHeight;
+    }, 100);
+}
+
 /**
  * Show a loading indicator overlay on top of the chat area.
  * This is placed outside the messages container so it's not cleared by innerHTML = ''.
@@ -53,6 +72,7 @@ function loadMessages(sessionId) {
     }
 
     dlog('loadMessages: loading messages for session', sessionId);
+    _isLoadingMessages = true;
 
     // Show loading indicator BEFORE fetch starts
     showMessagesLoadingIndicator();
@@ -241,7 +261,14 @@ function loadMessages(sessionId) {
             hideMessagesLoadingIndicator();
 
             updateMessageCount();
+            _isLoadingMessages = false;
             container.scrollTop = container.scrollHeight;
+            requestAnimationFrame(function() {
+                container.scrollTop = container.scrollHeight;
+            });
+            setTimeout(function() {
+                container.scrollTop = container.scrollHeight;
+            }, 200);
             setNewMessageIndicator(sessionId, false);
             updateLastVisit(sessionId);
         })
@@ -262,7 +289,30 @@ function getResponseStyleEmoji(style) {
     return map[style] || '';
 }
 
-function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize) {
+var MODEL_EMOJI = {
+    chat: '\u{1F4AC}',
+    reasoning: '\u{1F9E0}',
+    image_gen: '\u{1F58C}\u{FE0F}',
+    image_edit: '\u{1F3A8}',
+    video: '\u{1F3A5}',
+    multimodal: '\u{1F5BC}\u{FE0F}',
+    camera: '\u{1F4F9}',
+    system: '\u26A0\u{FE0F}',
+    whisper: '\u{1F3A4}',
+};
+
+function getModelEmoji(modelType) {
+    return (modelType && MODEL_EMOJI[modelType]) ? MODEL_EMOJI[modelType] + ' ' : '';
+}
+
+function ensureGgufExtension(modelName) {
+    if (modelName && !modelName.includes('.gguf') && modelName !== 'system' && modelName !== 'whisper' && modelName !== 'camera') {
+        return modelName + '.gguf';
+    }
+    return modelName;
+}
+
+function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType) {
     if (window.IS_RELOADING) {
         dlog('displayMessage: Skipping - IS_RELOADING');
         return;
@@ -428,8 +478,9 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         const isSystemError = modelName === 'system';
 
         if (modelName) {
-            const shortModel = modelName.split('/').pop() || modelName;
-            headerExtra += ' <span class="text-muted">| ' + escapeHtml(shortModel) + '</span>';
+            const shortModel = ensureGgufExtension(modelName.split('/').pop() || modelName);
+            const emoji = getModelEmoji(modelType);
+            headerExtra += ' <span class="text-muted">| ' + emoji + escapeHtml(shortModel) + '</span>';
         }
 
         let duration = null;
@@ -478,8 +529,9 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         const isSystemError = modelName === 'system';
 
         if (modelName) {
-            const shortModel = modelName.split('/').pop() || modelName;
-            headerExtraHTML += ' <span class="text-muted">| ' + escapeHtml(shortModel) + '</span>';
+            const shortModel = ensureGgufExtension(modelName.split('/').pop() || modelName);
+            const emoji = getModelEmoji(modelType);
+            headerExtraHTML += ' <span class="text-muted">| ' + emoji + escapeHtml(shortModel) + '</span>';
         }
 
         let duration = null;
@@ -655,7 +707,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     }
 
     container.appendChild(msgDiv);
-    container.scrollTop = container.scrollHeight;
+    if (isNearBottom(container)) scrollToBottom(container);
     updateMessageCount();
     
     // TTS button handler
@@ -705,6 +757,8 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
     setTimeout(() => {
         if (window.IS_RELOADING) return;
         addCopyButtonsToMessage(msgDiv);
+        var c = document.getElementById('chat-messages');
+        if (c && isNearBottom(c)) scrollToBottom(c);
     }, 50);
     
     return msgDiv;

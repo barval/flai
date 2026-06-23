@@ -156,32 +156,54 @@ class SlmModule(TranslationMixin):
             self.logger.warning(f"SLM list failed: {e}")
             return []
 
-    def get_context(self, query: str, lang: str = "ru", limit: int | None = None, profile: str | None = None, semantic: bool = False, min_score: float = 0.3) -> str:
-        """Get formatted context string for prompt enrichment.
-
-        Returns a multi-line string with relevant facts from long-term memory,
-        or an empty string if SLM is unavailable or no facts found.
+    def delete_fact(self, fact_id: str, profile: str | None = None) -> bool:
+        """Delete a specific fact by ID.
 
         Args:
-            query: The user's current query.
-            lang: Language code for the header text.
-            limit: Max facts to include.
+            fact_id: The ID of the fact to delete.
             profile: User ID for per-user database isolation.
-            semantic: If True, use full semantic search (slower but more relevant).
-            min_score: Minimum score threshold — facts below this are filtered out.
 
         Returns:
-            Formatted context string ready for injection into a prompt.
+            True if deleted successfully.
         """
-        facts = self.recall(query, limit=limit, profile=profile, semantic=semantic)
-        if not facts:
-            return ""
-        facts = [f for f in facts if f.get("score", 0) >= min_score]
-        if not facts:
-            return ""
+        if not self.available:
+            return False
+        payload: dict[str, Any] = {"id": fact_id}
+        if profile:
+            payload["profile"] = profile
+        try:
+            resp = requests.post(f"{self.url}/delete", json=payload, timeout=30)
+            return resp.status_code == 200
+        except Exception as e:
+            self.logger.warning(f"SLM delete_fact failed: {e}")
+            return False
 
-        header = "Relevant context from long-term memory:" if lang == "en" else "Контекст из долговременной памяти:"
-        lines = [header]
-        for f in facts:
-            lines.append(f"- {f.get('content', f.get('text', ''))}")
-        return "\n".join(lines)
+    def check_similarity(self, text: str, profile: str | None = None) -> float:
+        """Check semantic similarity of text against existing facts.
+
+        Uses the SLM daemon's embedding model to find the closest fact
+        and returns its similarity score (0.0–1.0).
+
+        Args:
+            text: Candidate text to check.
+            profile: User ID for per-user database isolation.
+
+        Returns:
+            Similarity score (0.0 = no match, 1.0 = identical).
+        """
+        if not self.available and not self.check_availability():
+            return 0.0
+        payload: dict[str, Any] = {"text": text}
+        if profile:
+            payload["profile"] = profile
+        try:
+            resp = requests.post(f"{self.url}/similarity", json=payload, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get("max_similarity", 0.0)  # type: ignore[no-any-return]
+            return 0.0
+        except Exception as e:
+            self.logger.warning(f"SLM check_similarity failed: {e}")
+            return 0.0
+
+

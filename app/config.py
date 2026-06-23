@@ -27,13 +27,18 @@ def load_config(app):
 
     # llama.cpp server settings
     app.config["LLAMACPP_URL"] = os.getenv("LLAMACPP_URL")
-    app.config["LLAMACP_BACKEND"] = os.getenv("LLAMACP_BACKEND", "llamacpp")
+    app.config["LLAMACP_BACKEND"] = os.getenv("LLAMACP_BACKEND", "llama-swap")
     app.config["LLAMA_SWAP_URL"] = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
     # stable-diffusion.cpp settings (uses sd-wrapper HTTP API)
     app.config["SD_MODEL_TYPE"] = os.getenv("SD_MODEL_TYPE", "z_image_turbo")
     app.config["SD_EDIT_MODEL_TYPE"] = os.getenv("SD_EDIT_MODEL_TYPE", "flux-2-klein-4b")
     app.config["SD_WRAPPER_URL"] = os.getenv("SD_WRAPPER_URL", "http://flai-sd:7861")
     app.config["SD_CPP_TIMEOUT"] = int(os.getenv("SD_CPP_TIMEOUT", 900))  # 15 min for editing
+    # SD default generation parameters
+    app.config["SD_CPP_DEFAULT_WIDTH"] = int(os.getenv("SD_CPP_DEFAULT_WIDTH", 1024))
+    app.config["SD_CPP_DEFAULT_HEIGHT"] = int(os.getenv("SD_CPP_DEFAULT_HEIGHT", 1024))
+    app.config["SD_CPP_DEFAULT_CFG_SCALE"] = float(os.getenv("SD_CPP_DEFAULT_CFG_SCALE", 1.0))
+    app.config["SD_CPP_DEFAULT_STEPS"] = int(os.getenv("SD_CPP_DEFAULT_STEPS", 10))
 
     # LTX-Video settings (uses ltx-wrapper HTTP API)
     app.config["LTX_VIDEO_WRAPPER_URL"] = os.getenv("LTX_VIDEO_WRAPPER_URL")
@@ -73,9 +78,27 @@ def load_config(app):
     app.config["SLM_RECALL_LIMIT"] = int(os.getenv("SLM_RECALL_LIMIT", 7))
     app.config["SLM_DATA_DIR"] = "/app/data/slm"
 
+    # SLM Merge settings (background fact cleanup)
+    app.config["MERGE_MAX_FACTS"] = int(os.getenv("MERGE_MAX_FACTS", 100))
+    app.config["MERGE_CONTEXT_SIZE"] = int(os.getenv("MERGE_CONTEXT_SIZE", 4096))
+    app.config["MERGE_FACT_MAX_CHARS"] = int(os.getenv("MERGE_FACT_MAX_CHARS", 120))
+    app.config["MERGE_MAX_FIT_FACTS"] = int(os.getenv("MERGE_MAX_FIT_FACTS", 62))
+
+    # SLM rule-based extraction and merge settings
+    app.config["SLM_SIMILARITY_THRESHOLD"] = float(os.getenv("SLM_SIMILARITY_THRESHOLD", 0.85))
+    app.config["SLM_TEMPORAL_DECAY_DAYS"] = int(os.getenv("SLM_TEMPORAL_DECAY_DAYS", 90))
+    app.config["SLM_MIN_CONFIDENCE_FOR_DECAY"] = float(os.getenv("SLM_MIN_CONFIDENCE_FOR_DECAY", 0.5))
+
     # Piper TTS settings
     app.config["PIPER_URL"] = os.getenv("PIPER_URL")
     app.config["PIPER_TIMEOUT"] = int(os.getenv("PIPER_TIMEOUT", 30))
+
+    # SearXNG web search settings
+    app.config["SEARXNG_URL"] = os.getenv("SEARXNG_URL")
+    app.config["SEARXNG_TIMEOUT"] = int(os.getenv("SEARXNG_TIMEOUT", 10))
+    app.config["SEARXNG_MAX_RESULTS"] = int(os.getenv("SEARXNG_MAX_RESULTS", 7))
+    app.config["SEARXNG_MAX_RESULTS_CHARS"] = int(os.getenv("SEARXNG_MAX_RESULTS_CHARS", 7000))
+    app.config["RAG_MAX_RESULTS_CHARS"] = int(os.getenv("RAG_MAX_RESULTS_CHARS", 5000))
 
     # Token estimation settings
     app.config["TOKEN_CHARS"] = int(os.getenv("TOKEN_CHARS", 3))

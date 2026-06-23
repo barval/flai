@@ -1,6 +1,5 @@
 """Tests for llama-swap configuration generator."""
 
-import json
 import os
 import tempfile
 from unittest.mock import MagicMock, patch
@@ -18,7 +17,7 @@ def _mock_config(module, **overrides):
             "module": "chat",
             "model_name": "Qwen3-4B-Instruct-2507-Q4_K_M",
             "context_length": 8192,
-            "temperature": 0.1,
+            "temperature": 0.7,
             "timeout": 120,
             "service_url": "http://flai-llamacpp:8033",
             "ttl": None,
@@ -137,26 +136,6 @@ class TestGetTtl:
         assert gen.get_ttl("chat") == 999
 
 
-class TestGetAliases:
-    @patch("app.llama_swap_config.get_model_config")
-    def test_no_aliases(self, mock_get_config):
-        mock_get_config.return_value = {}
-        gen = LlamaSwapConfigGenerator()
-        assert gen.get_aliases("chat") == []
-
-    @patch("app.llama_swap_config.get_model_config")
-    def test_aliases_json_string(self, mock_get_config):
-        mock_get_config.return_value = {"aliases": json.dumps(["model-a", "model-b"])}
-        gen = LlamaSwapConfigGenerator()
-        assert gen.get_aliases("chat") == ["model-a", "model-b"]
-
-    @patch("app.llama_swap_config.get_model_config")
-    def test_aliases_list(self, mock_get_config):
-        mock_get_config.return_value = {"aliases": ["a", "b"]}
-        gen = LlamaSwapConfigGenerator()
-        assert gen.get_aliases("chat") == ["a", "b"]
-
-
 class TestGetCtxSize:
     @patch("app.llama_swap_config.get_model_config")
     def test_no_config(self, mock_get_config):
@@ -208,7 +187,7 @@ class TestBuildModelEntry:
         assert "cmd" in entry["chat"]
         assert "ttl" in entry["chat"]
         assert "aliases" in entry["chat"]
-        assert entry["chat"].get("preload") is True
+        assert "preload" not in entry["chat"]
 
     @patch("app.llama_swap_config.get_model_config")
     @patch("app.llama_swap_config.os.path.exists")
@@ -222,7 +201,7 @@ class TestBuildModelEntry:
         gen = LlamaSwapConfigGenerator()
         entry = gen.build_model_entry("chat")
         assert entry["chat"].get("group") == "llm_fast"
-        assert entry["chat"].get("preload") is True
+        assert "preload" not in entry["chat"]
 
     @patch("app.llama_swap_config.get_model_config")
     @patch("app.llama_swap_config.os.path.exists")
@@ -288,7 +267,7 @@ class TestBuildCmd:
         mock_get_rm.return_value = mock_rm
         gen = LlamaSwapConfigGenerator()
         cmd = gen.build_cmd("chat", "/models/test.gguf")
-        assert "--flash-attn on" in cmd
+        assert "--flash-attn" not in cmd
         assert "--n-gpu-layers 10" in cmd
         assert "--kv-offload" in cmd
 
@@ -365,7 +344,8 @@ class TestGenerateYaml:
         assert "embedding:" in yaml_str
         assert "reasoning:" in yaml_str
         assert "multimodal:" in yaml_str
-        assert "preload: true" in yaml_str
+        assert "hooks:" in yaml_str
+        assert '      - "chat"' in yaml_str
         assert "llama-server" in yaml_str
 
     @patch("app.llama_swap_config.get_model_config")

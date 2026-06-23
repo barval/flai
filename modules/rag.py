@@ -22,6 +22,7 @@ from app.utils import (
     format_prompt,
     get_current_time_in_timezone,
 )
+from modules.base import STYLE_INSTRUCTIONS
 
 
 class RagModule:
@@ -79,16 +80,6 @@ class RagModule:
         except Exception as e:
             self.available = False
             app.logger.error(f"Failed to connect to Qdrant: {e}")
-
-    def _get_embedding_model(self) -> str | None:
-        """Retrieve embedding model name from database."""
-        config = get_model_config("embedding")
-        return config.get("model_name") if config else None
-
-    def _get_embedding_url(self) -> str | None:
-        """Retrieve service URL for embedding from database."""
-        config = get_model_config("embedding")
-        return config.get("service_url") if config else None
 
     def _get_collection_name(self, user_id: str) -> str:
         """Return collection name for a specific user."""
@@ -420,23 +411,9 @@ class RagModule:
         response_language = "Russian" if lang == "ru" else "English"
 
         # 5. Format prompt using template
-        style_map = {
-            "ru": {
-                "neutral": "Без особого стиля.",
-                "academic": "Отвечай в формальном академическом стиле. Используй точную терминологию, строгие формулировки и логически структурированные аргументы. Избегай разговорных выражений. При необходимости ссылайся на факты.",
-                "professional": "Отвечай в профессиональном деловом стиле. Будь чётким, конкретным и по делу. Используй ясные формулировки. Избегай лишних эмоций и воды.",
-                "friendly": "Отвечай в тёплом дружеском стиле. Будь приветлив и располагай к общению. Используй естественный разговорный тон. Покажи эмпатию и заботу о пользователе. Можно использовать эмодзи, если они уместны и помогают выразить эмоцию.",
-                "funny": "Отвечай с юмором и остроумием. Будь игрив и занимателен. Используй шутки, метафоры и неожиданные сравнения, но не забывай давать полезную информацию по существу вопроса. Эмодзи приветствуются, если они к месту и усиливают эффект.",
-            },
-            "en": {
-                "neutral": "Default style.",
-                "academic": "Answer in a formal academic style. Use precise terminology, rigorous wording, and logically structured arguments. Avoid colloquial expressions. Reference facts where appropriate.",
-                "professional": "Answer in a professional business-like style. Be clear, specific, and to the point. Use straightforward wording. Avoid unnecessary emotions or fluff.",
-                "friendly": "Answer in a warm, friendly style. Be welcoming and approachable. Use a natural conversational tone. Show empathy and care for the user. You may use emojis when they are appropriate and help convey emotion.",
-                "funny": "Answer with humor and wit. Be playful and entertaining. Use jokes, metaphors, and unexpected comparisons, but still provide useful information on the topic. Emojis are welcome when they fit the context and enhance the effect.",
-            },
-        }
-        style_instruction = style_map.get(lang, style_map["ru"]).get(response_style, style_map["ru"]["neutral"])
+        style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
+            response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
+        )
 
         prompt = format_prompt(
             "rag.template",

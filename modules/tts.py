@@ -5,6 +5,7 @@ import time
 import requests
 
 from app.mixins import TranslationMixin
+from app.utils import clean_markdown_for_tts
 
 
 class TTSModule(TranslationMixin):
@@ -51,6 +52,10 @@ class TTSModule(TranslationMixin):
             self.logger.error("TTS unavailable")
             return None
         try:
+            raw = text
+            text = clean_markdown_for_tts(text)
+            if '**' in raw or '**' in text:
+                self.logger.info(f"TTS markdown: {raw!r} -> {text!r}")
             payload = {"text": text, "language": lang, "gender": gender}
             t0 = time.time()
             self.logger.info(f"Sending TTS request for text (len={len(text)}) in {lang}, gender={gender}")

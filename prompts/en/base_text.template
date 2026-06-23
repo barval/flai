@@ -5,13 +5,14 @@ Classify the user's query into one category below. Output ONLY the result, no ex
 
 ## MAIN RULE: QUESTION vs STATEMENT
 If text contains "?" or is a question — it is a QUESTION.
-BUT: questions about cameras/rooms (category 5) have PRIORITY over category 1.
-Questions about documents/people (category 6) also have priority over category 1.
+BUT: questions about cameras/rooms (category 4) have PRIORITY over category 1.
+Questions about documents/people (category 5) also have priority over category 1.
+Questions requiring current internet information (category 6) also have priority over category 1.
+Requests to write code/text, create HTML pages, applications, scripts (category 7) also have priority over category 1.
 Only simple questions (greetings, about yourself, time, skills) → category 1.
-If text is a statement or instruction (no "?") — it is a FACT → category 2.
 
 ## 1. SIMPLE QUERY — output query unchanged
-Any QUESTION: greeting, question about yourself, skills, time, or any other question.
+Any QUESTION: greeting, question about yourself, skills, time, calculations, or any other question.
 Output the query unchanged, without any marker.
 - "Hello" → "Hello"
 - "Who are you?" → "Who are you?"
@@ -21,24 +22,11 @@ Output the query unchanged, without any marker.
 - "What day is it?" → "What day is it?"
 - "What's new?" → "What's new?"
 - "Can you help?" → "Can you help?"
+- "What is 2+2*2?" → "What is 2+2*2?"
+- "Calculate 15 * 37 + 128" → "Calculate 15 * 37 + 128"
+- "Compute square root of 144" → "Compute square root of 144"
 
-## 2. FACT OR INSTRUCTION (output with marker)
-Only STATEMENTS and INSTRUCTIONS (NOT questions!):
-- "My name is John" → "[-FACT-] My name is John"
-- "I am 45 years old" → "[-FACT-] I am 45 years old"
-- "I work as a programmer" → "[-FACT-] I work as a programmer"
-- "Document was approved on 17.04.2005" → "[-FACT-] Document was approved on 17.04.2005"
-- "Use only libtest=1.0.0" → "[-FACT-] Use only libtest=1.0.0"
-- "Vasily doesn't eat dairy" → "[-FACT-] Vasily doesn't eat dairy"
-- "Remember: I am vegetarian" → "[-FACT-] Remember: I am vegetarian"
-- "Save address: 10 Pushkin St" → "[-FACT-] Save address: 10 Pushkin St"
-- "Write down wifi password: mypassword123" → "[-FACT-] Write down wifi password: mypassword123"
-QUESTIONS are NOT facts (category 1):
-- "Who are you?" → question, NOT a fact
-- "What can you do?" → question, NOT a fact
-- "How old is John?" → question, NOT a fact
-
-## 3. IMAGE GENERATION REQUEST (Just output)
+## 2. IMAGE GENERATION REQUEST (Just output)
 If the query asks to draw/generate/create an IMAGE (picture, photo, illustration, drawing).
 IMPORTANT: Do not confuse with requests to create code, text, files, programs — those are NOT images!
 Action: Output [-IMAGE-] and the query text unchanged.
@@ -48,7 +36,7 @@ Examples:
 - Query: "Generate an image of a cat"
   Response: "[-IMAGE-] Generate an image of a cat"
 
-## 4. VIDEO GENERATION REQUEST (Just output)
+## 3. VIDEO GENERATION REQUEST (Just output)
 If the query asks to create/generate a VIDEO (clip, animation, footage).
 IMPORTANT: Do not confuse with image generation — if the query explicitly says «video» or «animation», use [-VIDEO-].
 Action: Output [-VIDEO-] and the query text unchanged.
@@ -60,8 +48,10 @@ Examples:
 
 {camera_section}
 
-## 6. DOCUMENT SEARCH REQUEST (output unchanged with marker)
-If the query asks to search documents, files, find information about people, biography, resume, age, addresses, dates, events, facts — and this fact may be in uploaded documents.
+## 5. DOCUMENT SEARCH REQUEST (output unchanged with marker)
+If the query asks to search information about people, biography, resume, age, addresses, dates, events, facts — and this fact may be in uploaded documents.
+FORBIDDEN: requests to WRITE/CREATE files, code, HTML pages, scripts, or applications — these are NOT document searches! Use category 7 instead.
+FORBIDDEN: requests about websites, URLs, domains, links (http:// or https://) — these are NOT document searches! Use category 6 instead.
 Action: Output [-RAG-] and the query text unchanged.
 Examples:
 - Query: "Find in documents about climate"
@@ -72,11 +62,56 @@ Examples:
   Response: "[-RAG-] What's in the resume?"
 - Query: "What is the company address?"
   Response: "[-RAG-] What is the company address?"
+NOT category 5 (use category 7 instead):
+- "Write an HTML file" → category 7, NOT 5
+- "Create a Python script" → category 7, NOT 5
 
-## 7. COMPLEX QUERY (only if NOT document search)
-Everything else: calculations, code/text writing, story creation. Output marker and query.
+## 6. WEB SEARCH REQUEST (output unchanged with marker)
+If the query requires current information from the internet: news, weather, stock prices, latest events, releases, prices, statistics, information about websites, domains, URLs — any data that needs online search.
+IMPORTANT: Do not confuse with document search (category 5) — that is information from uploaded files. Category 6 is FRESH information from the internet.
+Action: Output [-SEARCH-] and the query text unchanged.
+Examples:
+- Query: "Weather in Moscow"
+  Response: "[-SEARCH-] Weather in Moscow"
+- Query: "Dollar exchange rate today"
+  Response: "[-SEARCH-] Dollar exchange rate today"
+- Query: "Latest AI news"
+  Response: "[-SEARCH-] Latest AI news"
+- Query: "How much does iPhone 16 cost"
+  Response: "[-SEARCH-] How much does iPhone 16 cost"
+- Query: "what is example.com about"
+  Response: "[-SEARCH-] what is example.com about"
+- Query: "tell me about habr.com"
+  Response: "[-SEARCH-] tell me about habr.com"
+- Query: "information about wikipedia.org"
+  Response: "[-SEARCH-] information about wikipedia.org"
+- Query: "what domain is https://github.com"
+  Response: "[-SEARCH-] what domain is https://github.com"
+
+## 7. COMPLEX QUERY (only if NOT document search, NOT web search, and NOT calculations)
+Only complex tasks: code/text writing, story creation, complex reasoning, creating HTML pages, applications, scripts.
+DO NOT include: simple math calculations (category 1), search (categories 5-6).
 - Query: "Write a story about spring"
   Response: "[-REASONING-] Write a story about spring"
+- Query: "Write Python code"
+  Response: "[-REASONING-] Write Python code"
+- Query: "Create an HTML page with animation"
+  Response: "[-REASONING-] Create an HTML page with animation"
+- Query: "Write an app in a single HTML file"
+  Response: "[-REASONING-] Write an app in a single HTML file"
+
+## 8. EXPLICIT REMEMBER REQUEST (output with marker)
+If the user EXPLICITLY asks to remember/save/record information.
+Keywords: "remember", "don't forget", "save that", "write down", "запомни", "сохрани", "не забудь".
+Action: Output [-REMEMBER-] and the query text unchanged.
+Examples:
+- "Remember: I am vegetarian" → "[-REMEMBER-] Remember: I am vegetarian"
+- "Save address: 10 Pushkin St" → "[-REMEMBER-] Save address: 10 Pushkin St"
+- "Don't forget I have a cat named Murzik" → "[-REMEMBER-] Don't forget I have a cat named Murzik"
+- "Запомни: я вегетарианец" → "[-REMEMBER-] Запомни: я вегетарианец"
+NOT category 8:
+- "My name is John" → statement, NOT a remember request (category 1)
+- "I work as a programmer" → statement, NOT a remember request (category 1)
 
 # INPUT DATA
 Role: "You are a personal assistant 'Fully Local AI (FLAI)'."

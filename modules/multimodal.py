@@ -13,6 +13,7 @@ from app.db import get_session_text_history
 from app.llamacpp_client import LlamaCppClient
 from app.mixins import TranslationMixin
 from app.utils import build_context_prompt, estimate_tokens, format_prompt
+from modules.base import STYLE_INSTRUCTIONS
 
 
 class MultimodalModule(TranslationMixin):
@@ -165,23 +166,9 @@ class MultimodalModule(TranslationMixin):
     ) -> str | None:
         """Build the prompt text for image processing. Returns None on error."""
         response_language = "Russian" if lang == "ru" else "English"
-        style_map = {
-            "ru": {
-                "neutral": "Без особого стиля.",
-                "academic": "Отвечай в формальном академическом стиле. Используй точную терминологию, строгие формулировки и логически структурированные аргументы. Избегай разговорных выражений. При необходимости ссылайся на факты.",
-                "professional": "Отвечай в профессиональном деловом стиле. Будь чётким, конкретным и по делу. Используй ясные формулировки. Избегай лишних эмоций и воды.",
-                "friendly": "Отвечай в тёплом дружеском стиле. Будь приветлив и располагай к общению. Используй естественный разговорный тон. Покажи эмпатию и заботу о пользователе. Можно использовать эмодзи, если они уместны и помогают выразить эмоцию.",
-                "funny": "Отвечай с юмором и остроумием. Будь игрив и занимателен. Используй шутки, метафоры и неожиданные сравнения, но не забывай давать полезную информацию по существу вопроса. Эмодзи приветствуются, если они к месту и усиливают эффект.",
-            },
-            "en": {
-                "neutral": "Default style.",
-                "academic": "Answer in a formal academic style. Use precise terminology, rigorous wording, and logically structured arguments. Avoid colloquial expressions. Reference facts where appropriate.",
-                "professional": "Answer in a professional business-like style. Be clear, specific, and to the point. Use straightforward wording. Avoid unnecessary emotions or fluff.",
-                "friendly": "Answer in a warm, friendly style. Be welcoming and approachable. Use a natural conversational tone. Show empathy and care for the user. You may use emojis when they are appropriate and help convey emotion.",
-                "funny": "Answer with humor and wit. Be playful and entertaining. Use jokes, metaphors, and unexpected comparisons, but still provide useful information on the topic. Emojis are welcome when they fit the context and enhance the effect.",
-            },
-        }
-        style_instruction = style_map.get(lang, style_map["ru"]).get(response_style, style_map["ru"]["neutral"])
+        style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
+            response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
+        )
 
         context_str = self._get_context_for_model(session_id, user_text, lang)  # type: ignore[arg-type]
 

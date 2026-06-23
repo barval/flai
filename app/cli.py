@@ -238,3 +238,70 @@ def import_history_to_slm(dry_run, force, user_id):
 
     if dry_run:
         click.echo("(dry-run, no changes made)")
+
+
+@click.command("cleanup-slm")
+@click.option("--user", "user_id", required=True, help="User ID to cleanup")
+@click.option("--dry-run", is_flag=True, help="Count without deleting")
+@with_appcontext
+def cleanup_slm(user_id, dry_run):
+    """Remove junk facts (model responses) from SLM for a user."""
+    from app.slm_merge import _is_model_response
+
+    slm = current_app.modules.get("slm")
+    if not slm or not slm.available:
+        click.echo("SLM module not available")
+        return
+
+    facts = slm.list_facts(limit=100, profile=user_id)
+    if not facts:
+        click.echo(f"No facts found for user: {user_id}")
+        return
+
+    junk = [f for f in facts if _is_model_response(f.get("content", ""))]
+
+    click.echo(f"User: {user_id}")
+    click.echo(f"Total facts: {len(facts)}")
+    click.echo(f"Junk (model responses): {len(junk)}")
+    click.echo(f"Real facts remaining: {len(facts) - len(junk)}")
+
+    if junk:
+        click.echo("\nJunk facts to remove:")
+        for f in junk[:20]:
+            content = f.get("content", "")
+            click.echo(f"  - {content[:80]}...")
+
+    if dry_run:
+        click.echo("\n(dry-run, no changes made)")
+        return
+
+    removed = 0
+    for f in junk:
+        fid = f.get("fact_id") or f.get("id")
+        if fid:
+            slm.delete_fact(fid, user_id)
+            removed += 1
+
+    click.echo(f"\nRemoved {removed} junk facts.")
+
+
+@click.command("reset-slm-checkpoint")
+@click.argument("user_id", required=False)
+@with_appcontext
+def reset_slm_checkpoint(user_id):
+    """Reset SLM import checkpoints so next import re-processes all messages.
+
+    If USER_ID is provided, resets only that user's checkpoint.
+    Without USER_ID, resets all users' checkpoints.
+    """
+    from app.database import get_db
+
+    with get_db() as conn:
+        c = conn.cursor()
+        if user_id:
+            c.execute("DELETE FROM slm_import_progress WHERE user_id = %s", (user_id,))
+            click.echo(f"Reset checkpoint for user: {user_id}")
+        else:
+            c.execute("DELETE FROM slm_import_progress")
+            click.echo("Reset checkpoints for all users")
+        conn.commit()

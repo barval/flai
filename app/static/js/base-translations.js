@@ -15,8 +15,3 @@ window.TRANSLATIONS['loading'] = 'Loading...';
 window.CURRENT_LANG = 'ru';
 window.CURRENT_VOICE_GENDER = 'male';
 window.CURRENT_THEME = 'light';
-
-// Debug logging helper
-function logTranslationsLoaded() {
-    dlog('Base TRANSLATIONS loaded:', window.TRANSLATIONS);
-}

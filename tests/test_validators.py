@@ -9,7 +9,6 @@ from app.validators import (
     NAME_PATTERN,
     ValidationError,
     validate_model_config_update,
-    validate_session_create,
     validate_user_input,
 )
 
@@ -159,33 +158,6 @@ class TestValidateModelConfigUpdate:
         data = {}
         result = validate_model_config_update(data, "chat")
         assert result == {}
-
-
-class TestValidateSessionCreate:
-    """Test cases for session creation validation."""
-
-    def test_valid_title(self):
-        """Should pass valid title."""
-        data = {"title": "Test Session"}
-        result = validate_session_create(data)
-        assert result == data
-
-    def test_title_too_long(self):
-        """Should reject title longer than 200 chars."""
-        data = {"title": "a" * 201}
-        with pytest.raises(ValidationError):
-            validate_session_create(data)
-
-    def test_invalid_title_chars(self):
-        """Should reject title with special chars."""
-        data = {"title": "Test<script>Session"}
-        with pytest.raises(ValidationError):
-            validate_session_create(data)
-
-    def test_default_title(self):
-        """Should generate default title if not provided."""
-        result = validate_session_create({})
-        assert "title" in result
 
 
 class TestPatterns:

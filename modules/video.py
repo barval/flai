@@ -342,16 +342,5 @@ class VideoModule(TranslationMixin):
                 time.sleep(2)
                 rm.unload_llamacpp_model(llamacpp_url)
 
-            # Clear CUDA cache to prevent fragmentation after video generation
-            try:
-                import torch
-
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    torch.cuda.synchronize()
-                    self.logger.info("CUDA cache cleared after video generation")
-            except ImportError:
-                pass
-
             time.sleep(1)
             rm.log_gpu_memory("video-post-cleanup")

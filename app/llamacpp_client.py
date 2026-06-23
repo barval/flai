@@ -65,6 +65,23 @@ def _extract_error_message(response: Any) -> str:
     return body
 
 
+def _translate_llama_swap_error(msg: str, lang: str = "ru") -> str:
+    """Translate known llama-swap error messages to user-friendly text.
+
+    llama-swap returns raw English errors (e.g., "could not find suitable inference handler
+    for X.gguf"). These are not in .po files, so we map them manually.
+    """
+    lower = msg.lower()
+    if "could not find suitable inference handler for" in lower:
+        # Extract model name: "... for <model_name>" or "... for <model_name>.gguf"
+        parts = msg.rsplit(" for ", 1)
+        model_id = parts[-1].strip().rstrip(".").strip() if len(parts) > 1 else ""
+        # Strip .gguf for display
+        model_display = model_id.removesuffix(".gguf")
+        return _tr("Model '{model}' is not available. Select a different model in admin panel.", lang, model=model_display)
+    return msg
+
+
 def _format_user_error(response: Any, lang: str = "ru") -> str:
     """Build a user-facing error string with the "⚠️ " prefix.
 
@@ -73,14 +90,17 @@ def _format_user_error(response: Any, lang: str = "ru") -> str:
     """
     msg = _extract_error_message(response)
     if msg:
-        return msg if msg.startswith("⚠️") else f"⚠️ {msg}"
+        translated = _translate_llama_swap_error(msg, lang)
+        return translated if translated.startswith("⚠️") else f"⚠️ {translated}"
     status = getattr(response, "status_code", 0) or 0
     return f"⚠️ {_tr('HTTP error {status}', lang, status=status)}"
 
 
 # ── Thinking tag filters ──────────────────────────────────────────────
 # Models like Qwen, DeepSeek, Gemma use: <think>...</think>
-# gpt-oss-20b uses:  <|channel|>analysis<|message|>...<|end|>
+# gpt-oss-20b uses:  <|channel|>analysis<|message|>...<|end|>  (reasoning)
+#                    <|channel|>commentary<|message|>...<|end|>  (actual answer)
+# Only the `analysis` channel is thinking — `commentary` IS the answer.
 # These filters strip reasoning blocks from both streaming and non-streaming output.
 
 _THINK_OPEN_RE = re.compile(r"<think[\s>]|<\|channel\|>analysis<\|message\|>")
@@ -88,17 +108,101 @@ _THINK_CLOSE_RE = re.compile(r"</think>|<\|end\|>")
 
 
 def _strip_thinking_tags(text: str) -> str:
-    """Remove complete thinking/reasoning blocks from model output.
+    """Remove thinking/reasoning blocks from model output and unwrap answer channels.
 
-    Handles two formats:
-    - `` blocks (Qwen, DeepSeek, Gemma, QwQ)
-    - `<|channel|>analysis<|message|>...<|end|>` (gpt-oss-20b ChatML reasoning)
+    Handles:
+    - <think>...</think> blocks (Qwen, DeepSeek, Gemma, QwQ)
+    - <|channel|>analysis<|message|>...<|end|> — reasoning, stripped entirely
+    - <|channel|>commentary<|message|>...ANSWER...<|end|> — unwrapped (answer kept)
+    - Malformed <|channel|>... (no <|message|>) — stripped (broken reasoning leftovers)
     """
     if not text or ("<think" not in text and "<|channel|>" not in text):
         return text
     text = re.sub(r"<think[\s>][\s\S]*?</think>", "", text)
+    # Strip <|channel|>analysis<|message|>...<|end|> reasoning blocks
     text = re.sub(r"<\|channel\|>analysis<\|message\|>[\s\S]*?<\|end\|>", "", text)
+    text = re.sub(r"<\|channel\|>analysis<\|message\|>[\s\S]*$", "", text)
+    # Unwrap <|channel|>commentary<|message|>...<|end|> — keep inner content
+    text = re.sub(r"<\|channel\|>commentary<\|message\|>([\s\S]*?)<\|end\|>", r"\1", text)
+    # Strip malformed <|channel|>... without <|message|> (e.g. <|channel|>commentary to=...)
+    text = re.sub(r"<\|channel\|>[^<]*$", "", text)
     return text.strip()
+
+
+# ── Generic reasoning pattern filter ────────────────────────────────────
+# Some reasoning models (gpt-oss-20b, QwQ, gemma-4) output chain-of-thought
+# as plain text without thinking tags.  These patterns detect common
+# reasoning markers and strip everything up to the actual answer.
+
+_REASONING_MARKERS_RE = re.compile(
+    r"(?:"
+    r"The user (?:asked|is asking|asks|said|wants|wondered)"
+    r"|Пользователь (?:спросил|спрашивает|просит|хочет|говорит|спрашивал)"
+    r"|(?:Analyze|Analyse|Check|Formulate|Identify|Review|Consider|Plan|Commentary) \w+[\s:]+"
+    r"|(?:Self-Correction|Refinement)[\s:]+"
+    r"|(?:I need to|I should|I must|Let me|Let's|"
+    r"Мне нужно|Мне следует|Мне необходимо)"
+    r"|(?:Final Answer(?: Generation)?(?:\s*\([^)]*\))?|Генерация финального ответа|Финальный ответ)[\s:]*"
+    r"|(?:Это (?:вопрос|задача|запрос)|This is a (?:question|task|request))"
+    r"|(?:Ответ (?:должен|должна|будет|стоит)|The answer (?:should|must|will))"
+    r"|(?:Для (?:этого|данного) (?:вопроса|запроса)|For this (?:question|request))"
+    r"|(?:Мой ответ|Моё задание|My (?:answer|task))"
+    r"|(?:использовать инструмент|use tool)"
+    r")",
+    re.IGNORECASE,
+)
+
+# Matches markdown plan lines: "** State ...", "** Answer the ...", "** First ..."
+# These are model-generated meta-instructions that should not be shown to the user.
+_MD_PLAN_LINE_RE = re.compile(r"^\s*\*\*\s+\w", re.MULTILINE)
+
+
+def _strip_generic_reasoning(text: str) -> str:
+    """Strip chain-of-thought reasoning output as plain text (no thinking tags).
+
+    Some reasoning models output step-by-step analysis before the actual answer
+    without wrapping it in `` tags.  This function detects common reasoning
+    markers (e.g. "Analyze Persona:", "Final Answer Generation:") and returns
+    only the text after the last marker.
+
+    Also strips markdown plan lines ("** State the identity...") that some
+    models (gemma-4) generate instead of a real answer.
+
+    If no markers are found AND no markdown plan lines exist,
+    the text is returned unchanged (avoids false positives).
+
+    If the text is identified as reasoning but stripping would leave an empty
+    or very short answer, the original text is returned instead of an empty
+    string — better to show raw reasoning than to error out on the user.
+    """
+    if not text or len(text) < 30:
+        return text
+
+    # Check for known reasoning markers
+    matches = list(_REASONING_MARKERS_RE.finditer(text))
+    if len(matches) >= 2:
+        last_match = matches[-1]
+        answer = text[last_match.end():].strip()
+
+        # High marker density in first 200 chars = pure reasoning, no real answer
+        # If stripping would leave empty, return original text instead of erroring out
+        first_200 = text[:200]
+        density = len(list(_REASONING_MARKERS_RE.finditer(first_200)))
+        if density >= 3 and len(answer) < 100:
+            return text
+
+        # After last marker — if remaining text is short, it's still reasoning
+        if len(answer) < 30:
+            return text
+        return answer
+
+    # Check for markdown plan lines — if ALL non-empty lines start with "** ",
+    # the model produced only a plan and no real answer.
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if lines and all(_MD_PLAN_LINE_RE.match(ln) for ln in lines):
+        return text
+
+    return text
 
 
 def _process_stream_chunk(buffer: str, thinking_active: bool) -> tuple[str, str, bool]:
@@ -149,13 +253,29 @@ class AbstractLlamaBackend:
         raise NotImplementedError
 
     def chat(
-        self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
-    ) -> str:
+        self,
+        messages: list[dict],
+        model: str,
+        config: dict,
+        timeout: int,
+        lang: str,
+        model_type: str = "chat",
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
+    ) -> str | dict[str, Any]:
         raise NotImplementedError
 
     def chat_stream(
-        self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
-    ) -> Generator[str, None, None]:
+        self,
+        messages: list[dict],
+        model: str,
+        config: dict,
+        timeout: int,
+        lang: str,
+        model_type: str = "chat",
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
+    ) -> Generator[str | dict[str, Any], None, None]:
         raise NotImplementedError
 
     def get_embeddings(self, texts: list[str], model: str, config: dict, timeout: int) -> list[list[float]] | None:
@@ -189,24 +309,34 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             return False
 
     def chat(
-        self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
-    ) -> str:
+        self,
+        messages: list[dict],
+        model: str,
+        config: dict,
+        timeout: int,
+        lang: str,
+        model_type: str = "chat",
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
+    ) -> str | dict[str, Any]:
         base_url = self.get_base_url()
         context = config.get("context_length", 4096)
-        temperature = config.get("temperature", 0.7)
+        temp = temperature if temperature is not None else config.get("temperature", 0.7)
         top_p = config.get("top_p", 0.9)
         repeat_penalty = config.get("repeat_penalty", 1.1)
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
             "stream": False,
             "max_tokens": context,
-            "temperature": temperature,
+            "temperature": temp,
             "top_p": top_p,
             "repeat_penalty": repeat_penalty,
             "stop": ["</s>", "<|eot_id|>"],
         }
+        if tools:
+            payload["tools"] = tools
 
         if not self.circuit_breaker.can_execute():
             return _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
@@ -219,16 +349,25 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                 if not choices:
                     return _tr("Model returned empty response", lang)
 
-                content = choices[0].get("message", {}).get("content", "")
+                message = choices[0].get("message", {})
+                content = message.get("content", "")
+                tool_calls = message.get("tool_calls")
+
                 if content is None:
-                    return _tr("Model returned empty response", lang)
+                    content = ""
+
+                if tool_calls:
+                    self.circuit_breaker.record_success()
+                    return {"content": content, "tool_calls": tool_calls}
 
                 for stop_token in ["</s>", "<|eot_id|>"]:
                     if stop_token in content:
                         content = content[: content.index(stop_token)]
 
                 self.circuit_breaker.record_success()
-                return _strip_thinking_tags(content.strip())  # type: ignore[no-any-return]
+                result = _strip_thinking_tags(content.strip())
+                result = _strip_generic_reasoning(result)
+                return result  # type: ignore[no-any-return]
             else:
                 self.circuit_breaker.record_failure()
                 self.logger.error(
@@ -250,24 +389,34 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             return _tr("Error", lang) + f": {str(e)}"
 
     def chat_stream(
-        self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
-    ) -> Generator[str, None, None]:
+        self,
+        messages: list[dict],
+        model: str,
+        config: dict,
+        timeout: int,
+        lang: str,
+        model_type: str = "chat",
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
+    ) -> Generator[str | dict[str, Any], None, None]:
         base_url = self.get_base_url()
         context = config.get("context_length", 4096)
-        temperature = config.get("temperature", 0.7)
+        temp = temperature if temperature is not None else config.get("temperature", 0.7)
         top_p = config.get("top_p", 0.9)
         repeat_penalty = config.get("repeat_penalty", 1.1)
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
             "stream": True,
             "max_tokens": context,
-            "temperature": temperature,
+            "temperature": temp,
             "top_p": top_p,
             "repeat_penalty": repeat_penalty,
             "stop": ["</s>", "<|eot_id|>"],
         }
+        if tools:
+            payload["tools"] = tools
 
         if not self.circuit_breaker.can_execute():
             yield _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
@@ -289,6 +438,8 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             # from any model type (Qwen, DeepSeek, gpt-oss, etc.)
             _thinking_active = False
             _stream_buffer = ""
+            # Accumulate tool calls from streaming chunks
+            _tool_calls_by_index: dict[int, dict[str, Any]] = {}
 
             for line in response.iter_lines():
                 if not line:
@@ -310,11 +461,39 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                         )
                         if output:
                             yield output
+                    # Accumulate tool call deltas
+                    tc_deltas = delta.get("tool_calls")
+                    if tc_deltas:
+                        for tc_delta in tc_deltas:
+                            idx = tc_delta.get("index", 0)
+                            if idx not in _tool_calls_by_index:
+                                func = tc_delta.get("function", {})
+                                _tool_calls_by_index[idx] = {
+                                    "id": tc_delta.get("id", ""),
+                                    "type": "function",
+                                    "function": {
+                                        "name": func.get("name", ""),
+                                        "arguments": func.get("arguments", ""),
+                                    },
+                                }
+                            else:
+                                tc = _tool_calls_by_index[idx]
+                                func_delta = tc_delta.get("function", {})
+                                if func_delta.get("name"):
+                                    tc["function"]["name"] += func_delta["name"]
+                                if func_delta.get("arguments"):
+                                    tc["function"]["arguments"] += func_delta["arguments"]
+                                if tc_delta.get("id"):
+                                    tc["id"] = tc_delta["id"]
                 except json.JSONDecodeError:
                     continue
             # Flush remaining buffer (non-thinking tail)
             if _stream_buffer and not _thinking_active:
                 yield _stream_buffer
+            # If tool calls were accumulated, yield them as a dict
+            if _tool_calls_by_index:
+                tool_calls = [_tool_calls_by_index[i] for i in sorted(_tool_calls_by_index.keys())]
+                yield {"type": "tool_calls", "tool_calls": tool_calls}
         except requests.exceptions.Timeout:
             self.circuit_breaker.record_failure()
             yield _tr(
@@ -412,25 +591,70 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         except Exception:
             return False
 
-    def chat(
-        self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
+    def call_cpu(
+        self,
+        messages: list[dict],
+        model: str = "merge_cpu",
+        temperature: float = 0.1,
+        max_tokens: int = 1024,
     ) -> str:
+        """CPU-only LLM call — bypasses VRAM management entirely.
+
+        Used for background tasks (fact_merge) that don't need GPU.
+        The merge_cpu model runs on CPU with a reduced context window.
+        """
         base_url = self.get_base_url()
-        temperature = config.get("temperature", 0.7)
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": False,
+        }
+        try:
+            import httpx
+
+            response = httpx.post(
+                f"{base_url}/v1/chat/completions",
+                json=payload,
+                timeout=300,
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data["choices"][0]["message"]["content"]
+        except Exception as e:
+            self.logger.error(f"CPU LLM call failed: {e}")
+            return ""
+
+    def chat(
+        self,
+        messages: list[dict],
+        model: str,
+        config: dict,
+        timeout: int,
+        lang: str,
+        model_type: str = "chat",
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
+    ) -> str | dict[str, Any]:
+        base_url = self.get_base_url()
+        temp = temperature if temperature is not None else config.get("temperature", 0.7)
         top_p = config.get("top_p", 0.9)
         repeat_penalty = config.get("repeat_penalty", 1.1)
 
         model_name = model
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": model_name,
             "messages": messages,
             "stream": False,
-            "temperature": temperature,
+            "temperature": temp,
             "top_p": top_p,
             "repeat_penalty": repeat_penalty,
             "stop": ["</s>", "<|eot_id|>"],
         }
+        if tools:
+            payload["tools"] = tools
 
         self.logger.info(f"LlamaSwapBackend request: model={model}, payload keys={list(payload.keys())}")
 
@@ -451,9 +675,16 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     if not choices:
                         return _tr("Model returned empty response", lang)
 
-                    content = choices[0].get("message", {}).get("content", "")
+                    message = choices[0].get("message", {})
+                    content = message.get("content", "")
+                    tool_calls = message.get("tool_calls")
+
                     if content is None:
-                        return _tr("Model returned empty response", lang)
+                        content = ""
+
+                    if tool_calls:
+                        cb.record_success()
+                        return {"content": content, "tool_calls": tool_calls}  # type: ignore[return-value]
 
                     for stop_token in ["</s>", "<|eot_id|>"]:
                         if stop_token in content:
@@ -471,10 +702,12 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     except Exception:
                         pass
 
-                    return _strip_thinking_tags(content.strip())  # type: ignore[no-any-return]
+                    result = _strip_thinking_tags(content.strip())
+                    result = _strip_generic_reasoning(result)
+                    return result  # type: ignore[no-any-return]
                 else:
-                    if attempt < max_retries and response.status_code == 502:
-                        self.logger.warning(f"chat 502 on attempt {attempt + 1}, retrying in 5s")
+                    if attempt < max_retries and response.status_code in (500, 502):
+                        self.logger.warning(f"chat {response.status_code} on attempt {attempt + 1}, retrying in 5s")
                         time.sleep(5)
                         continue
                     self._record_llama_failure(model_type)
@@ -513,23 +746,33 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         return _tr("Internal error: no response from model", lang)
 
     def chat_stream(
-        self, messages: list[dict], model: str, config: dict, timeout: int, lang: str, model_type: str = "chat"
-    ) -> Generator[str, None, None]:
+        self,
+        messages: list[dict],
+        model: str,
+        config: dict,
+        timeout: int,
+        lang: str,
+        model_type: str = "chat",
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
+    ) -> Generator[str | dict[str, Any], None, None]:
         base_url = self.get_base_url()
-        temperature = config.get("temperature", 0.7)
+        temp = temperature if temperature is not None else config.get("temperature", 0.7)
         top_p = config.get("top_p", 0.9)
         repeat_penalty = config.get("repeat_penalty", 1.1)
         model_name = model
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": model_name,
             "messages": messages,
             "stream": True,
-            "temperature": temperature,
+            "temperature": temp,
             "top_p": top_p,
             "repeat_penalty": repeat_penalty,
             "stop": ["</s>", "<|eot_id|>"],
         }
+        if tools:
+            payload["tools"] = tools
 
         max_retries = 1 if model_type in ("multimodal", "reasoning", "chat") else 0
         response = None
@@ -591,6 +834,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     # from any model type (Qwen, DeepSeek, gpt-oss, etc.)
                     _thinking_active = False
                     _stream_buffer = ""
+                    # Accumulate tool calls from streaming chunks
+                    _tool_calls_by_index: dict[int, dict[str, Any]] = {}
 
                     for line in response.iter_lines():
                         if not line:
@@ -612,11 +857,46 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                                 )
                                 if output:
                                     yield output
+                            # Accumulate tool call deltas
+                            tc_deltas = delta.get("tool_calls")
+                            if tc_deltas:
+                                for tc_delta in tc_deltas:
+                                    idx = tc_delta.get("index", 0)
+                                    if idx not in _tool_calls_by_index:
+                                        func = tc_delta.get("function", {})
+                                        _tool_calls_by_index[idx] = {
+                                            "id": tc_delta.get("id", ""),
+                                            "type": "function",
+                                            "function": {
+                                                "name": func.get("name", ""),
+                                                "arguments": func.get("arguments", ""),
+                                            },
+                                        }
+                                    else:
+                                        tc = _tool_calls_by_index[idx]
+                                        func_delta = tc_delta.get("function", {})
+                                        if func_delta.get("name"):
+                                            tc["function"]["name"] += func_delta["name"]
+                                        if func_delta.get("arguments"):
+                                            tc["function"]["arguments"] += func_delta["arguments"]
+                                        if tc_delta.get("id"):
+                                            tc["id"] = tc_delta["id"]
                         except json.JSONDecodeError:
                             continue
-                    # Flush remaining buffer (non-thinking tail)
-                    if _stream_buffer and not _thinking_active:
-                        yield _stream_buffer
+                    # Flush remaining buffer
+                    if _stream_buffer:
+                        if _thinking_active:
+                            # Stream ended inside <|channel|>analysis block (no <|end|>).
+                            # Strip opening tag, yield whatever remains.
+                            _stream_buffer = re.sub(
+                                r"^.*?<\|channel\|>analysis<\|message\|>", "", _stream_buffer
+                            )
+                        if _stream_buffer:
+                            yield _stream_buffer
+                    # If tool calls were accumulated, yield them as a dict
+                    if _tool_calls_by_index:
+                        tool_calls = [_tool_calls_by_index[i] for i in sorted(_tool_calls_by_index.keys())]
+                        yield {"type": "tool_calls", "tool_calls": tool_calls}
                     break  # success, exit retry loop
                 except requests.exceptions.Timeout:
                     if attempt < max_retries:
@@ -760,7 +1040,10 @@ class LlamaCppClient:
                     if part.get("type") == "text":
                         total_tokens += estimate_tokens(part.get("text", ""), model_type, lang)
                     elif part.get("type") == "image_url":
-                        total_tokens += 1000
+                        # Vision models tokenize images into many more tokens than
+                        # a naive estimate. Qwen3VL uses dynamic tiling which can
+                        # produce thousands of vision tokens per image.
+                        total_tokens += 4096
 
         if total_tokens > hard_limit:
             return self._translate("Request too long, please simplify your request", lang)
@@ -842,7 +1125,10 @@ class LlamaCppClient:
             self._active_model_type = None
         return ok
 
-    def chat(self, messages: list[dict], model_type: str = "chat", lang: str = "ru", validate: bool = True) -> str:
+    def chat(
+        self, messages: list[dict], model_type: str = "chat", lang: str = "ru", validate: bool = True,
+        tools: list[dict] | None = None, temperature: float | None = None,
+    ) -> str | dict[str, Any]:
         if validate:
             error = self._validate_prompt(messages, model_type, lang)
             if error:
@@ -860,11 +1146,12 @@ class LlamaCppClient:
             return self._translate("Model for {model_type} not configured", lang, model_type=model_type)
 
         timeout = config.get("timeout", 300)
-        return self.backend.chat(messages, model, config, timeout, lang, model_type=model_type)  # type: ignore[no-any-return]
+        return self.backend.chat(messages, model, config, timeout, lang, model_type=model_type, tools=tools, temperature=temperature)  # type: ignore[no-any-return]
 
     def chat_stream(
-        self, messages: list[dict], model_type: str = "chat", lang: str = "ru", validate: bool = True
-    ) -> Generator[str, None, None]:
+        self, messages: list[dict], model_type: str = "chat", lang: str = "ru", validate: bool = True,
+        tools: list[dict] | None = None, temperature: float | None = None,
+    ) -> Generator[str | dict[str, Any], None, None]:
         if validate:
             error = self._validate_prompt(messages, model_type, lang)
             if error:
@@ -886,7 +1173,7 @@ class LlamaCppClient:
             return
 
         timeout = config.get("timeout", 600)
-        yield from self.backend.chat_stream(messages, model, config, timeout, lang, model_type=model_type)
+        yield from self.backend.chat_stream(messages, model, config, timeout, lang, model_type=model_type, tools=tools, temperature=temperature)
 
     def chat_with_image(self, text: str, image_base64: str, model_type: str = "multimodal", lang: str = "ru") -> str:
         image_content = image_base64 if image_base64.startswith("data:") else f"data:image/jpeg;base64,{image_base64}"
@@ -897,7 +1184,7 @@ class LlamaCppClient:
                 "content": [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": image_content}}],
             }
         ]
-        return self.chat(messages, model_type=model_type, lang=lang)
+        return self.chat(messages, model_type=model_type, lang=lang)  # type: ignore[return-value]
 
     def chat_with_image_stream(
         self, text: str, image_base64: str, model_type: str = "multimodal", lang: str = "ru"
@@ -911,7 +1198,7 @@ class LlamaCppClient:
                 "content": [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": image_content}}],
             }
         ]
-        yield from self.chat_stream(messages, model_type=model_type, lang=lang)
+        yield from self.chat_stream(messages, model_type=model_type, lang=lang)  # type: ignore[misc]
 
     def get_embeddings(
         self, texts: list[str], model_type: str = "embedding", lang: str = "ru"
@@ -941,10 +1228,12 @@ class LlamaCppClient:
         stream: bool = False,
         lang: str = "ru",
         validate: bool = True,
-    ) -> str | dict[str, Any] | Generator[str, None, None]:
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
+    ) -> str | dict[str, Any] | Generator[str | dict[str, Any], None, None]:
         if stream:
-            return self.chat_stream(messages, model_type=model_type, lang=lang, validate=validate)
-        return self.chat(messages, model_type=model_type, lang=lang, validate=validate)
+            return self.chat_stream(messages, model_type=model_type, lang=lang, validate=validate, tools=tools, temperature=temperature)
+        return self.chat(messages, model_type=model_type, lang=lang, validate=validate, tools=tools, temperature=temperature)
 
     def unload_all_models(self) -> bool:
         return self.backend.unload_all_models()  # type: ignore[no-any-return]

@@ -1,9 +1,35 @@
 // app/static/js/events.js
-// Server-Sent Events (SSE) — replaces HTTP polling for real-time updates
+// Server-Sent Events (SSE) - replaces HTTP polling for real-time updates
 
 let eventSource = null;
 let reconnectTimer = null;
 let pendingRequestIds = {};  // requestId -> { sessionId, timestamp }
+
+function _showHeaderCancelButton(taskId) {
+    var saveBtn = document.getElementById('save-chat-button');
+    var cancelBtn = document.getElementById('cancel-stream-header');
+    if (saveBtn) saveBtn.style.display = 'none';
+    if (cancelBtn) {
+        cancelBtn.style.display = 'inline-flex';
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = '\u25a0';
+        cancelBtn.title = t('stop_generating');
+        cancelBtn.dataset.taskId = taskId;
+    }
+}
+
+function _hideHeaderCancelButton() {
+    var saveBtn = document.getElementById('save-chat-button');
+    var cancelBtn = document.getElementById('cancel-stream-header');
+    if (cancelBtn) {
+        cancelBtn.style.display = 'none';
+        cancelBtn.disabled = false;
+        cancelBtn.textContent = '\u25a0';
+        cancelBtn.title = t('stop_generating');
+        delete cancelBtn.dataset.taskId;
+    }
+    if (saveBtn) saveBtn.style.display = '';
+}
 
 function connectEventStream() {
     if (eventSource) {
@@ -39,7 +65,7 @@ function scheduleReconnect() {
     if (reconnectTimer) clearTimeout(reconnectTimer);
     reconnectTimer = setTimeout(function () {
         connectEventStream();
-        // Full sync after reconnect — may have missed events
+        // Full sync after reconnect - may have missed events
         if (typeof loadSessionsFromServer === 'function') {
             loadSessionsFromServer();
         }
@@ -82,6 +108,12 @@ function handleEvent(event) {
         case 'camera_image':
             onCameraImage(event.data);
             break;
+        case 'tool_call':
+            onToolCall(event.data);
+            break;
+        case 'tool_result':
+            onToolResult(event.data);
+            break;
         case 'task_progress':
             onTaskProgress(event.data);
             break;
@@ -107,7 +139,7 @@ function handleEvent(event) {
     }
 }
 
-// ── camera_image ────────────────────────────────────────────────────
+// -- camera_image ----------------------------------------------------
 
 function onCameraImage(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
@@ -118,21 +150,45 @@ function onCameraImage(data) {
         data.assistant_timestamp || new Date().toISOString(),
         data.response_time, data.model_used,
         null, null, null, null, data.message_id,
-        data.response_style);
+        data.response_style, null, null, data.model_type);
 }
 
-// ── task_progress ────────────────────────────────────────────────────
+// -- tool_call / tool_result -----------------------------------------
+
+const TOOL_LABELS = {
+    get_current_time: '🕐 ' + t('tool_get_current_time'),
+    calculator: '🔢 ' + t('tool_calculator'),
+    time_calc: '📅 ' + t('tool_time_calc'),
+    web_search: '🌐 ' + t('tool_web_search'),
+    rag_search: '📚 ' + t('tool_rag_search'),
+    camera_snapshot: '📹 ' + t('tool_camera_snapshot'),
+};
+
+function onToolCall(data) {
+    if (!data || !data.session_id || data.session_id !== currentSessionId) return;
+    dlog('onToolCall:', data.tool_name);
+    const label = TOOL_LABELS[data.tool_name] || (`🔧 ${data.tool_name}...`);
+    _updateProgressElement(data.task_id, label);
+}
+
+function onToolResult(data) {
+    if (!data || !data.session_id || data.session_id !== currentSessionId) return;
+    dlog('onToolResult:', data.tool_name);
+    _removeProgressElement(data.task_id);
+}
+
+// -- task_progress ----------------------------------------------------
 
 const STAGE_LABELS = {
-    preparing_gpu: '⏳ Очистка GPU...',
-    analyzing: '🔍 Анализ запроса...',
-    analyzing_image: '🔍 Анализ изображения...',
-    analyzing_prompt: '🔍 Анализ промпта...',
-    generating_video: '🎬 Генерация видео...',
-    generating_image: '🎨 Генерация изображения...',
-    editing_image: '✏️ Редактирование изображения...',
-    loading_reasoning_model: '🧠 Загрузка модели рассуждений...',
-    capturing_snapshot: '📹 Получение снимка...',
+    preparing_gpu: t('stage_preparing_gpu'),
+    analyzing: t('stage_analyzing'),
+    analyzing_image: t('stage_analyzing_image'),
+    analyzing_prompt: t('stage_analyzing_prompt'),
+    generating_video: t('stage_generating_video'),
+    generating_image: t('stage_generating_image'),
+    editing_image: t('stage_editing_image'),
+    loading_reasoning_model: t('stage_loading_reasoning'),
+    capturing_snapshot: t('stage_capturing_snapshot'),
 };
 
 function onTaskProgress(data) {
@@ -142,6 +198,7 @@ function onTaskProgress(data) {
 
     const label = STAGE_LABELS[data.stage] || data.stage;
     _updateProgressElement(data.task_id, label);
+    _showHeaderCancelButton(data.task_id);
 }
 
 function _updateProgressElement(taskId, text) {
@@ -156,7 +213,7 @@ function _updateProgressElement(taskId, text) {
         chatMessages.appendChild(progressEl);
     }
     progressEl.textContent = text;
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
 }
 
 function _removeProgressElement(taskId) {
@@ -166,7 +223,7 @@ function _removeProgressElement(taskId) {
     if (el) el.remove();
 }
 
-// ── video_step ───────────────────────────────────────────────────────
+// -- video_step -------------------------------------------------------
 
 function onVideoStep(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
@@ -190,11 +247,12 @@ function onVideoStep(data) {
     barContainer.querySelector('.fill').style.width = pct + '%';
     barContainer.querySelector('.label').textContent = '🎬 ' + data.step + '/' + data.total + ' (' + pct + '%)';
 
+    _showHeaderCancelButton(data.task_id);
     _removeProgressElement(data.task_id);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
 }
 
-// ── image_step ────────────────────────────────────────────────────
+// -- image_step ----------------------------------------------------
 
 function onImageStep(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
@@ -218,11 +276,12 @@ function onImageStep(data) {
     barContainer.querySelector('.fill').style.width = pct + '%';
     barContainer.querySelector('.label').textContent = '🎨 ' + data.step + '/' + data.total + ' (' + pct + '%)';
 
+    _showHeaderCancelButton(data.task_id);
     _removeProgressElement(data.task_id);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
 }
 
-// ── image_preview ────────────────────────────────────────────────────
+// -- image_preview ----------------------------------------------------
 
 function onImagePreview(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
@@ -243,17 +302,19 @@ function onImagePreview(data) {
 
     previewContainer.querySelector('img').src = 'data:image/png;base64,' + data.image_b64;
     if (data.total !== undefined) {
-        previewContainer.querySelector('.step-label').textContent = 'Шаг ' + data.step + '/' + data.total;
+        previewContainer.querySelector('.step-label').textContent = t('step') + ' ' + data.step + '/' + data.total;
     }
 
     _removeProgressElement(data.task_id);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
 }
 
-// ── thinking tag filter (fallback for --reasoning_format none) ─────────
-// Handles two formats:
-// - `` blocks (Qwen, DeepSeek, Gemma, QwQ)
-// - `<|channel|>analysis<|message|>...<|end|>` (gpt-oss-20b ChatML reasoning)
+// -- thinking tag filter (fallback for --reasoning_format none) ---------
+// Handles:
+// - <think>...</think> blocks (Qwen, DeepSeek, Gemma, QwQ)
+// - <|channel|>analysis<|message|>...<|end|> — reasoning, stripped entirely
+// - <|channel|>commentary<|message|>...ANSWER...<|end|> — unwrapped (answer kept)
+// - Malformed <|channel|>... (no <|message|>) — stripped (broken reasoning leftovers)
 
 function _stripThinkingTags(text) {
     if (!text) return text;
@@ -263,14 +324,49 @@ function _stripThinkingTags(text) {
     result = result.replace(/<think[\s>][\s\S]*?<\/think>/gi, '');
     // Remove incomplete opening tag at the end (streaming: closing tag hasn't arrived yet)
     result = result.replace(/<think[\s>][\s\S]*$/i, '');
-    // Remove complete <|channel|>analysis<|message|>...<|end|> blocks
+    // Strip <|channel|>analysis<|message|>...<|end|> reasoning blocks
     result = result.replace(/<\|channel\|>analysis<\|message\|>[\s\S]*?<\|end\|>/gi, '');
-    // Remove incomplete opening tag at the end (streaming)
     result = result.replace(/<\|channel\|>analysis<\|message\|>[\s\S]*$/i, '');
+    // Unwrap <|channel|>commentary<|message|>...<|end|> — keep inner content
+    result = result.replace(/<\|channel\|>commentary<\|message\|>([\s\S]*?)<\|end\|>/gi, '$1');
+    // Strip malformed <|channel|>... without <|message|>
+    result = result.replace(/<\|channel\|>[^<]*$/i, '');
     return result;
 }
 
-// ── stream_token ─────────────────────────────────────────────────────
+// -- generic reasoning pattern filter -----------------------------------
+// Some reasoning models output chain-of-thought as plain text without
+// thinking tags.  These patterns detect common reasoning markers and
+// strip everything up to the actual answer.
+
+const _REASONING_MARKERS_RE = /(?:The user (?:is asking|asks|said|wants|wondered)|Пользователь (?:спрашивает|просит|хочет|говорит|спрашивал)|(?:Analyze|Analyse|Check|Formulate|Identify|Review|Consider|Plan|Commentary) \w+[\s:]|(?:Self-Correction|Refinement)[\s:]|(?:I need to|I should|I must|Let me|Let's|Мне нужно|Мне следует|Мне необходимо)|(?:Final Answer(?: Generation)?(?:\s*\([^)]*\))?|Генерация финального ответа|Финальный ответ)[\s:]*)/gi;
+
+function _stripGenericReasoning(text) {
+    if (!text || text.length < 50) return text;
+    const matches = text.match(_REASONING_MARKERS_RE);
+    if (matches && matches.length >= 2) {
+        // Find the last marker and return text after it
+        let lastIdx = -1;
+        let m;
+        _REASONING_MARKERS_RE.lastIndex = 0;
+        while ((m = _REASONING_MARKERS_RE.exec(text)) !== null) {
+            lastIdx = m.index + m[0].length;
+        }
+        if (lastIdx >= 0) {
+            const answer = text.slice(lastIdx).trim();
+            if (answer) return answer;
+        }
+    }
+    // Check for markdown plan lines - if ALL non-empty lines start with "** ",
+    // the model produced only a plan and no real answer.
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length > 0 && lines.every(l => /^\s*\*\*\s+\w/.test(l))) {
+        return '';
+    }
+    return text;
+}
+
+// -- stream_token -----------------------------------------------------
 
 function onStreamToken(data) {
     if (!data || !data.task_id || !data.token) return;
@@ -278,7 +374,7 @@ function onStreamToken(data) {
 
     let reqInfo = pendingRequestIds[data.task_id];
     if (!reqInfo) {
-        // After page refresh, pendingRequestIds is empty — create entry on first token
+        // After page refresh, pendingRequestIds is empty - create entry on first token
         reqInfo = {
             sessionId: data.session_id,
             timestamp: Date.now(),
@@ -332,31 +428,21 @@ function onStreamToken(data) {
         indicatorSpan.textContent = '⚡ ' + t('generating');
         headerDiv.appendChild(indicatorSpan);
 
-        const cancelBtn = document.createElement('button');
-        cancelBtn.className = 'cancel-stream-button';
-        cancelBtn.title = t('stop_generating');
-        cancelBtn.textContent = '■';
-        cancelBtn.addEventListener('click', function () {
-            cancelBtn.disabled = true;
-            cancelBtn.textContent = '⏳';
-            cancelBtn.title = t('cancelling');
-            fetchWithCSRF('/api/cancel_task/' + data.task_id, { method: 'POST' }).catch(function () {});
-        });
-        headerDiv.appendChild(cancelBtn);
-
         streamMsg.appendChild(headerDiv);
 
         // Content div
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
         streamMsg.appendChild(contentDiv);
+
+        _showHeaderCancelButton(data.task_id);
     }
 
-    // Update content (strip thinking tags for display)
+    // Update content (strip thinking tags and generic reasoning for display)
     const contentDiv = streamMsg.querySelector('.message-content');
     if (contentDiv) {
-        contentDiv.textContent = _stripThinkingTags(reqInfo.accumulatedContent);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        contentDiv.textContent = _stripGenericReasoning(_stripThinkingTags(reqInfo.accumulatedContent));
+        if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
     }
 
     // Live token/s estimate (every 500ms)
@@ -383,7 +469,7 @@ function _saveStreamToSessionStorage(taskId, sessionId, content) {
             timestamp: Date.now()
         }));
     } catch (e) {
-        // sessionStorage full or unavailable — ignore
+        // sessionStorage full or unavailable - ignore
     }
 }
 
@@ -441,24 +527,14 @@ function restoreStreamingFromSessionStorage() {
             indicatorSpan.textContent = '⚡ ' + t('generating');
             headerDiv.appendChild(indicatorSpan);
 
-            var cancelBtn = document.createElement('button');
-            cancelBtn.className = 'cancel-stream-button';
-            cancelBtn.title = t('stop_generating');
-            cancelBtn.textContent = '■';
-            cancelBtn.addEventListener('click', function () {
-                cancelBtn.disabled = true;
-                cancelBtn.textContent = '⏳';
-                cancelBtn.title = t('cancelling');
-                fetchWithCSRF('/api/cancel_task/' + taskId, { method: 'POST' }).catch(function () {});
-            });
-            headerDiv.appendChild(cancelBtn);
-
             msgDiv.appendChild(headerDiv);
 
             var contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
             contentDiv.textContent = saved.content;
             msgDiv.appendChild(contentDiv);
+
+            _showHeaderCancelButton(taskId);
 
             // Re-register in pendingRequestIds
             if (!pendingRequestIds[taskId]) {
@@ -480,11 +556,13 @@ function restoreStreamingFromSessionStorage() {
     }
 }
 
-// ── result_completed ─────────────────────────────────────────────────
+// -- result_completed -------------------------------------------------
 
 function onResultCompleted(data) {
     if (!data || !data.task_id) return;
     dlog('onResultCompleted:', data.task_id, data.status);
+
+    _hideHeaderCancelButton();
 
     // Clean up progress indicators
     _removeProgressElement(data.task_id);
@@ -496,7 +574,7 @@ function onResultCompleted(data) {
     const reqInfo = pendingRequestIds[data.task_id];
     if (!reqInfo) {
         // After page refresh, pendingRequestIds is empty (in-memory, not persisted).
-        // The result may still carry a valid response — display it and clean up.
+        // The result may still carry a valid response - display it and clean up.
         const existingMsg = document.querySelector('[data-task-id="' + data.task_id + '"]');
         if (existingMsg && existingMsg.hasAttribute('data-streaming')) existingMsg.remove();
         _clearStreamFromSessionStorage(data.task_id);
@@ -530,23 +608,23 @@ function onStreamCancelled(data) {
     if (!data || !data.task_id) return;
     dlog('onStreamCancelled:', data.task_id);
 
-    // The result_completed will follow shortly — let finalizeStreamedMessage handle cleanup.
+    // The result_completed will follow shortly - let finalizeStreamedMessage handle cleanup.
     // Just mark the DOM as cancelled.
     const streamMsg = document.querySelector('.assistant-message[data-streaming="true"]');
     if (streamMsg) {
-        // Update header: remove cancel button, show cancelled label
-        const cancelBtn = streamMsg.querySelector('.cancel-stream-button');
-        if (cancelBtn) cancelBtn.remove();
+        // Update header: show cancelled label
         const indicator = streamMsg.querySelector('.streaming-indicator');
         if (indicator) {
             indicator.className = 'cancelled-label';
             indicator.textContent = '⚠️ ' + t('cancelled');
         }
     }
+    _hideHeaderCancelButton();
     _clearStreamFromSessionStorage(data.task_id);
 }
 
 function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
+    _hideHeaderCancelButton();
     const resultSessionId = data.result?.session_id || data.session_id || expectedSessionId;
     const taskId = data.task_id || reqInfo.taskId;
 
@@ -567,8 +645,6 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
             displayedMessageIds.add(data.result.message_id);
         }
         // Remove streaming-only elements
-        var cancelBtn = streamMsg.querySelector('.cancel-stream-button');
-        if (cancelBtn) cancelBtn.remove();
         var indicator = streamMsg.querySelector('.streaming-indicator');
         if (indicator) indicator.remove();
         var cancelledLabel = streamMsg.querySelector('.cancelled-label');
@@ -588,10 +664,11 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
 
                 // Model name
                 if (result.model_used) {
-                    var shortModel = result.model_used.split('/').pop() || result.model_used;
+                    var shortModel = ensureGgufExtension(result.model_used.split('/').pop() || result.model_used);
+                    var emoji = getModelEmoji(result.model_type);
                     var modelSpan = document.createElement('span');
                     modelSpan.className = 'text-muted';
-                    modelSpan.textContent = ' | ' + shortModel;
+                    modelSpan.textContent = ' | ' + emoji + shortModel;
                     newHeader.appendChild(modelSpan);
                 }
 
@@ -695,19 +772,21 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
             }
         }
 
-        // Set raw text for copy button (strip thinking tags)
+        // Set raw text for copy button (strip thinking tags and generic reasoning)
         if (result && result.response) {
-            streamMsg.setAttribute('data-raw-text', _stripThinkingTags(result.response));
+            streamMsg.setAttribute('data-raw-text', _stripGenericReasoning(_stripThinkingTags(result.response)));
         }
 
         // Replace content with full rendered markdown (sanitized to prevent XSS)
         var contentDiv = streamMsg.querySelector('.message-content');
+        var chatMessages = document.getElementById('chat-messages');
+        var wasAtBottom = isNearBottom(chatMessages);
         if (contentDiv && result && result.response) {
-            var cleanResponse = _stripThinkingTags(result.response);
+            var cleanResponse = _stripGenericReasoning(_stripThinkingTags(result.response));
             contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(cleanResponse));
         } else if (contentDiv && result && result.error) {
             // Show error in streaming message if no response text
-            contentDiv.innerHTML = DOMPurify.sanitize('⚠️ ' + t('error') + ': ' + result.error);
+            contentDiv.innerHTML = DOMPurify.sanitize(result.error);
         }
 
         // Display file attachments (image, video) from result if present
@@ -751,6 +830,7 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
 
         if (typeof updateLastVisit === 'function') updateLastVisit(currentSessionId);
         if (typeof addCopyButtonsToMessage === 'function') addCopyButtonsToMessage(streamMsg);
+        scrollToBottom(chatMessages);
     } else if (resultSessionId === currentSessionId && data.result?.response) {
         // Fallback: create the message via displayMessage
             window.displayMessage('assistant', data.result.response, null, null, null, null,
@@ -758,14 +838,14 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
                 data.result.response_time, data.result.model_used,
                 null, null, null, null, data.result.message_id,
                 data.result.response_style, data.result.completion_tokens,
-                data.result.file_size);
+                data.result.file_size, data.result.model_type);
     }
 
     if (resultSessionId && resultSessionId !== currentSessionId) {
         setNewMessageIndicator(resultSessionId, true);
     }
 
-    // Cleanup — but don't clear pending request if task was requeued
+    // Cleanup - but don't clear pending request if task was requeued
     if (resultSessionId) {
         setLocalTranscribing(resultSessionId, false);
         clearSessionQueue(resultSessionId);
@@ -823,7 +903,7 @@ function verifyPendingRequests() {
                     clearPendingRequest(reqId);
                     handleErrorResult(data, sessionId);
                 }
-                // 'pending' means still running — leave it in pendingRequestIds
+                // 'pending' means still running - leave it in pendingRequestIds
             })
             .catch(function () { /* ignore network errors */ });
     });
@@ -848,7 +928,7 @@ function handleCompletedResult(result, expectedSessionId) {
         delete newMessageIndicators[resultSessionId];
     }
 
-    // Transcription result — may spawn chained processing
+    // Transcription result - may spawn chained processing
     if (result.transcribed_text !== undefined && result.transcribed_text !== null) {
         handleTranscriptionResult(result, resultSessionId, expectedSessionId);
         return;
@@ -857,11 +937,11 @@ function handleCompletedResult(result, expectedSessionId) {
     // Error result
     if (result.error) {
         if (resultSessionId === currentSessionId) {
-            // Error headers intentionally get no ⏱️/🚀/🤖 — pass null for
+            // Error headers intentionally get no ⏱️/🚀/🤖 - pass null for
             // responseTime and modelName='system'.
-            window.displayMessage('assistant', '⚠️ ' + result.error, null, null, null, null,
+            window.displayMessage('assistant', result.error, null, null, null, null,
                 result.assistant_timestamp || new Date().toISOString(), null, 'system',
-                null, null, null, null, result.message_id, null);
+                null, null, null, null, result.message_id, null, null, null, 'system');
         }
         if (resultSessionId) setLocalTranscribing(resultSessionId, false);
         clearSessionQueue(resultSessionId);
@@ -903,7 +983,7 @@ function handleCompletedResult(result, expectedSessionId) {
                     result.assistant_timestamp || new Date().toISOString(), responseTime, modelUsed,
                     null, null, null, null, result.message_id,
                     result.response_style, result.completion_tokens,
-                    result.file_size);
+                    result.file_size, result.model_type);
                 if (typeof updateLastVisit === 'function') updateLastVisit(currentSessionId);
             } else {
                 setNewMessageIndicator(resultSessionId, true);
@@ -915,7 +995,7 @@ function handleCompletedResult(result, expectedSessionId) {
         return;
     }
 
-    // No recognizable payload — clean up anyway
+    // No recognizable payload - clean up anyway
     if (resultSessionId) {
         setLocalTranscribing(resultSessionId, false);
         clearSessionQueue(resultSessionId);
@@ -930,7 +1010,7 @@ function handleTranscriptionResult(result, resultSessionId, expectedSessionId) {
             var transcribedContent = JSON.stringify({prefix: '🎤 ' + t('transcribed') + ': ', text: transcribedText});
             window.displayMessage('assistant', transcribedContent, null, null, null, null,
                 result.assistant_timestamp || new Date().toISOString(), result.response_time, 'whisper',
-                null, null, null, null, result.transcribed_message_id, null);
+                null, null, null, null, result.transcribed_message_id, null, null, null, 'whisper');
             if (result.transcribed_message_id) displayedMessageIds.add(result.transcribed_message_id);
         }
         if (result.request_id) {
@@ -939,7 +1019,7 @@ function handleTranscriptionResult(result, resultSessionId, expectedSessionId) {
             window.updateStatusCounter();
             if (typeof fetchQueueStatus === 'function') fetchQueueStatus();
         } else {
-            // Audio file — no further processing, clear ⚡
+            // Audio file - no further processing, clear ⚡
             clearSessionQueue(resultSessionId);
             if (typeof fetchQueueStatus === 'function') fetchQueueStatus();
 
@@ -969,7 +1049,7 @@ function handleCameraResult(result, resultSessionId) {
             window.displayMessage('assistant', msg.response, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                 msg.assistant_timestamp, msg.response_time, msg.model_used,
                 null, null, null, null, msg.message_id, msg.response_style,
-                msg.completion_tokens, msg.file_size);
+                msg.completion_tokens, msg.file_size, msg.model_type);
         }
         if (typeof updateLastVisit === 'function') updateLastVisit(currentSessionId);
     } else if (cameraSessionId) {
@@ -985,7 +1065,7 @@ function handleErrorResult(data, expectedSessionId) {
     if (errorSessionId === currentSessionId) {
         const errorMsg = data.result?.error || data.error || t('unknown_error');
         window.displayMessage('assistant', '⚠️ ' + t('error') + ': ' + errorMsg, null, null, null, null,
-            new Date().toISOString(), null, 'system', null, null, null, null, null, null);
+            new Date().toISOString(), null, 'system', null, null, null, null, null, null, null, null, 'system');
     }
     if (errorSessionId) {
         setLocalTranscribing(errorSessionId, false);
@@ -1001,7 +1081,7 @@ function clearSessionQueue(sessionId) {
     if (typeof updateUIFromQueueStatus === 'function') updateUIFromQueueStatus();
 }
 
-// ── message_new ──────────────────────────────────────────────────────
+// -- message_new ------------------------------------------------------
 
 function onMessageNew(data) {
     if (!data || !data.session_id || !data.message_id) return;
@@ -1035,7 +1115,7 @@ function onMessageNew(data) {
                 msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                 msg.timestamp, responseTime, msg.model_name,
                 msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
-                msg.response_style, msg.completion_tokens
+                msg.response_style, msg.completion_tokens, null, msg.model_type
             );
             if (sessionsData[data.session_id]) {
                 sessionsData[data.session_id].message_count = (sessionsData[data.session_id].message_count || 0) + 1;
@@ -1065,7 +1145,7 @@ function onMessageNew(data) {
                         msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                         msg.timestamp, responseTime, msg.model_name,
                         msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
-                        msg.response_style, msg.completion_tokens
+                        msg.response_style, msg.completion_tokens, null, msg.model_type
                     );
                     if (sessionsData[data.session_id]) {
                         sessionsData[data.session_id].message_count = (sessionsData[data.session_id].message_count || 0) + 1;
@@ -1077,7 +1157,7 @@ function onMessageNew(data) {
         .catch(function () {});
 }
 
-// ── Progress restore after reconnect / page reload ──────────────────
+// -- Progress restore after reconnect / page reload ------------------
 
 async function restoreTaskProgress() {
     for (const [taskId, info] of Object.entries(pendingRequestIds)) {
@@ -1121,7 +1201,7 @@ async function restoreTaskProgress() {
     }
 }
 
-// ── Initialisation ───────────────────────────────────────────────────
+// -- Initialisation ---------------------------------------------------
 
 document.addEventListener('DOMContentLoaded', function () {
     connectEventStream();

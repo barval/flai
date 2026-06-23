@@ -25,6 +25,8 @@ services:
       - ./llama-swap-config:/config
       # Mount docker socket for GPU detection
       - /var/run/docker.sock:/var/run/docker.sock
+      # Mount SLM named volume for backup/restore (read-only)
+      - slm_data:/app/data/slm-readonly:ro
       # Persistent code mounts (survive restart)
       - ./app/llamacpp_client.py:/app/app/llamacpp_client.py
       - ./app/llama_swap_config.py:/app/app/llama_swap_config.py
@@ -33,25 +35,35 @@ services:
       - ./app/utils.py:/app/app/utils.py
       - ./app/database.py:/app/app/database.py
       - ./app/db.py:/app/app/db.py
+      - ./app/cli.py:/app/app/cli.py
+      - ./app/slm_rules.py:/app/app/slm_rules.py
+      - ./app/slm_import.py:/app/app/slm_import.py
+      - ./app/slm_merge.py:/app/app/slm_merge.py
       - ./app/routes/admin.py:/app/app/routes/admin.py
       - ./app/routes/queue.py:/app/app/routes/queue.py
       - ./app/routes/messages.py:/app/app/routes/messages.py
+      - ./app/routes/sessions.py:/app/app/routes/sessions.py
       - ./app/static/js/chat-init.js:/app/app/static/js/chat-init.js
       - ./app/static/js/chat-recording.js:/app/app/static/js/chat-recording.js
       - ./app/static/js/chat-constants.js:/app/app/static/js/chat-constants.js
       - ./app/__init__.py:/app/app/__init__.py
       - ./modules/video.py:/app/modules/video.py
       - ./modules/sd_cpp.py:/app/modules/sd_cpp.py
+      - ./modules/base.py:/app/modules/base.py
+      - ./modules/tts.py:/app/modules/tts.py
       - ./app/static/js/events.js:/app/app/static/js/events.js
       - ./app/static/js/admin-models.js:/app/app/static/js/admin-models.js
       - ./app/static/js/chat-queue.js:/app/app/static/js/chat-queue.js
       - ./app/static/js/chat-messages.js:/app/app/static/js/chat-messages.js
+      - ./app/static/css/chat.css:/app/app/static/css/chat.css
       - ./prompts/en/rag.template:/app/prompts/en/rag.template
       - ./prompts/ru/rag.template:/app/prompts/ru/rag.template
       - ./prompts/en/reasoning.template:/app/prompts/en/reasoning.template
       - ./prompts/ru/reasoning.template:/app/prompts/ru/reasoning.template
       - ./prompts/en/base_text.template:/app/prompts/en/base_text.template
       - ./prompts/ru/base_text.template:/app/prompts/ru/base_text.template
+      # Mount translations directory (compiled .mo files)
+      - ./translations:/app/translations
     runtime: nvidia
     group_add:
       - "988"  # Docker socket group — needed for `docker restart` from inside container
@@ -308,6 +320,36 @@ services:
         max-file: "3"
     profiles:
       - with-voice
+
+  # ============================================================
+  # SEARXNG (Optional - Web Search)
+  # ============================================================
+  searxng:
+    image: searxng/searxng:latest
+    container_name: flai-searxng
+    volumes:
+      - ./searxng:/etc/searxng
+    environment:
+      - SEARXNG_BASE_URL=http://flai-searxng:8080
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    profiles:
+      - with-search
 
   # ============================================================
   # SUPERLOCALMEMORY (Optional - Long-term memory)

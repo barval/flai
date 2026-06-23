@@ -165,6 +165,16 @@ def create_backup():
                                 arcname = os.path.relpath(filepath, os.path.join(project_root, "data"))
                                 tar.add(filepath, arcname=arcname)
 
+                # Include SLM named volume (primary storage for SLM daemon)
+                slm_named_vol = "/app/data/slm-readonly"
+                if os.path.isdir(slm_named_vol):
+                    for root, dirs, files in os.walk(slm_named_vol):
+                        dirs[:] = [d for d in dirs if d != ".cache"]
+                        for fname in files:
+                            filepath = os.path.join(root, fname)
+                            arcname = os.path.relpath(filepath, slm_named_vol)
+                            tar.add(filepath, arcname=f"slm_named/{arcname}")
+
             # 3. Metadata with checksum
             meta = {
                 "type": backup_type,
@@ -302,6 +312,16 @@ def restore_backup():
                             logger.info(f"Restored directory: {dir_name}")
                         except (PermissionError, OSError) as e:
                             logger.warning(f"Partial restore of {dir_name}: {e}. Some files could not be overwritten.")
+
+                # Restore SLM named volume (primary storage for SLM daemon)
+                slm_named_src = os.path.join(tmpdir, "slm_named")
+                slm_named_dst = "/app/data/slm-readonly"
+                if os.path.exists(slm_named_src) and os.path.isdir(slm_named_dst):
+                    try:
+                        shutil.copytree(slm_named_src, slm_named_dst, dirs_exist_ok=True)
+                        logger.info("Restored SLM named volume")
+                    except (PermissionError, OSError) as e:
+                        logger.warning(f"Partial restore of SLM named volume: {e}")
 
         logger.info(f"Backup restored: {filename}")
 

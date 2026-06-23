@@ -1,9 +1,9 @@
 # ── Worker configuration ──
 # Single worker with multiple threads is optimal for I/O-bound
 # operations (waiting for AI model responses).
-# Adding more workers increases RAM usage without improving throughput
-# since all requests ultimately wait for the same llama.cpp server.
-workers = 2  # 2 workers for SSE + regular requests
+# Multiple workers cause GPU race conditions — _gpu_lock (threading.Lock)
+# only works within one process, not between gunicorn workers.
+workers = 1
 worker_class = "gevent"
 
 # ── Network ──

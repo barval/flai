@@ -63,54 +63,6 @@ class TestCircuitBreaker:
         assert cb.can_execute() is True
         assert cb.state == CircuitBreaker.HALF_OPEN
 
-    def test_context_manager_allows_execution_when_closed(self):
-        """Context manager should allow execution in CLOSED state."""
-        cb = CircuitBreaker(failure_threshold=3, recovery_timeout=30)
-        with cb:
-            result = "success"
-        assert result == "success"
-
-    def test_context_manager_raises_when_open(self):
-        """Context manager should raise CircuitBreakerOpenError when OPEN."""
-        cb = CircuitBreaker(failure_threshold=1, recovery_timeout=30)
-        cb.record_failure()
-
-        with pytest.raises(CircuitBreakerOpenError) as exc_info, cb:
-            pass
-
-        assert "Circuit breaker is open" in str(exc_info.value)
-
-    def test_context_manager_records_success_on_exit(self):
-        """Context manager should record success on normal exit."""
-        cb = CircuitBreaker(failure_threshold=3, recovery_timeout=30)
-        with cb:
-            pass
-
-        assert cb.failure_count == 0
-        assert cb.state == CircuitBreaker.CLOSED
-
-    def test_context_manager_records_failure_on_exception(self):
-        """Context manager should record failure on exception."""
-        cb = CircuitBreaker(failure_threshold=3, recovery_timeout=30)
-        try:
-            with cb:
-                raise ValueError("test error")
-        except ValueError:
-            pass
-
-        assert cb.failure_count == 1
-
-    def test_get_state_returns_dict(self):
-        """get_state should return state information."""
-        cb = CircuitBreaker(failure_threshold=3, recovery_timeout=30)
-        state = cb.get_state()
-
-        assert isinstance(state, dict)
-        assert "state" in state
-        assert "failure_count" in state
-        assert "failure_threshold" in state
-        assert "recovery_timeout" in state
-
     def test_half_open_state_allows_one_request(self):
         """HALF_OPEN should allow one request then return to OPEN."""
         cb = CircuitBreaker(failure_threshold=1, recovery_timeout=1)

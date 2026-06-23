@@ -45,9 +45,3 @@ def init_events_publisher(app):
     publisher = get_events_publisher(app)
     app.events_publisher = publisher
     return publisher
-
-
-def reset_events_publisher():
-    """Reset the singleton (used in tests)."""
-    global _publisher
-    _publisher = None

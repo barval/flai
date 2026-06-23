@@ -268,35 +268,20 @@ class TestUnloadVideoPipelineDockerRestart:
             assert abs(rm._ltx_restart_initiated_at - (time.time() - 60)) < 1.0
 
     def test_docker_socket_unavailable_fails_safely(self, rm):
-        """Docker socket down → log error, don't raise."""
-        with (
-            _patch_sleep(),
-            patch("app.resource_manager.requests.get") as mock_get,
-            patch("app.resource_manager.requests.post") as mock_post,
-        ):
-            mock_get.return_value = _mock_response(200, {"pipeline_loaded": True})
+        """Docker CLI not available → log error, don't raise."""
+        with patch("subprocess.run", side_effect=FileNotFoundError("docker not found")):
+            # Should not raise
+            rm._maybe_restart_ltx_video()
 
-            import requests as req
-
-            mock_post.side_effect = req.exceptions.ReadTimeout("Read timed out")
-
-            with (
-                patch.object(rm, "_poll_vram"),
-                # Docker socket: connection refused
-                patch("requests.post", side_effect=ConnectionError("Docker socket down")),
-            ):
-                # Should not raise
-                rm._maybe_restart_ltx_video()
-
-            # Restart was attempted but failed — last-init time still updated
-            assert rm._ltx_restart_initiated_at > 0
-            # Counter NOT reset (we couldn't restart)
-            assert rm._ltx_unload_consecutive_timeouts == 0  # this counter is in rm, not in this scope
+        # Restart was attempted but failed — last-init time still updated
+        assert rm._ltx_restart_initiated_at > 0
+        # Counter NOT reset (we couldn't restart)
+        assert rm._ltx_unload_consecutive_timeouts == 0
 
     def test_docker_socket_success_resets_state(self, rm):
         """Successful docker restart resets counter and cache."""
-        with patch("requests.post") as mock_docker_post:
-            mock_docker_post.return_value = _mock_response(204)
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
             rm._ltx_unload_consecutive_timeouts = 3
             rm._last_ltx_unload_at = time.time()
 

@@ -380,9 +380,29 @@
     background-color: #f0f0f0;
 }
 
+.cancel-stream-header {
+    background: none;
+    border: 1px solid #e74c3c;
+    border-radius: 4px;
+    padding: 0.3rem 0.6rem;
+    cursor: pointer;
+    font-size: 1rem;
+    color: #e74c3c;
+    transition: background-color 0.15s, color 0.15s;
+}
+.cancel-stream-header:hover {
+    background-color: #e74c3c;
+    color: #fff;
+}
+.cancel-stream-header:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .chat-messages {
     flex: 1 1 0;
     overflow-y: auto;
+    overflow-anchor: none;
     padding: 1rem;
     border: 1px solid #eee;
     border-radius: 8px;
@@ -440,29 +460,6 @@
     color: #f39c12;
     font-size: 0.8rem;
     font-weight: 600;
-}
-
-.cancel-stream-button {
-    background: none;
-    border: 1px solid #e74c3c;
-    color: #e74c3c;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    padding: 0 8px;
-    margin-left: auto;
-    line-height: 1.8;
-    min-width: 32px;
-    min-height: 32px;
-    transition: background 0.15s, color 0.15s;
-}
-.cancel-stream-button:hover {
-    background: #e74c3c;
-    color: #fff;
-}
-.cancel-stream-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
 }
 
 .cancelled-label {

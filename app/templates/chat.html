@@ -60,6 +60,7 @@
                 </div></h2>
             <div class="context-info-container">
                 <div id="context-info" class="context-info">{{ _('Messages') }}: 0</div>
+                <button id="cancel-stream-header" class="cancel-stream-header" style="display:none" title="{{ _('stop_generating') }}">■</button>
                 <button id="save-chat-button" class="save-chat-button" title="{{ _('Save as HTML') }}">💾</button>
             </div>
         </div>
@@ -199,7 +200,26 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'generating': {{ _('generating')|tojson }},
     'stop_generating': {{ _('stop_generating')|tojson }},
     'cancelling': {{ _('cancelling')|tojson }},
-    'cancelled': {{ _('cancelled')|tojson }}
+    'cancelled': {{ _('cancelled')|tojson }},
+    'tool_get_current_time': {{ _('tool_get_current_time')|tojson }},
+    'tool_calculator': {{ _('tool_calculator')|tojson }},
+    'tool_time_calc': {{ _('tool_time_calc')|tojson }},
+    'tool_web_search': {{ _('tool_web_search')|tojson }},
+    'tool_rag_search': {{ _('tool_rag_search')|tojson }},
+    'tool_camera_snapshot': {{ _('tool_camera_snapshot')|tojson }},
+    'stage_preparing_gpu': {{ _('Cleaning GPU...')|tojson }},
+    'stage_analyzing': {{ _('Analyzing request...')|tojson }},
+    'stage_analyzing_image': {{ _('Analyzing image...')|tojson }},
+    'stage_analyzing_prompt': {{ _('Analyzing prompt...')|tojson }},
+    'stage_generating_video': {{ _('Generating video...')|tojson }},
+    'stage_generating_image': {{ _('Generating image...')|tojson }},
+    'stage_editing_image': {{ _('Editing image...')|tojson }},
+    'stage_loading_reasoning': {{ _('Loading reasoning model...')|tojson }},
+    'stage_capturing_snapshot': {{ _('Capturing snapshot...')|tojson }},
+    'step': {{ _('Step')|tojson }},
+    'minute_abbr': {{ _('minute_abbr')|tojson }},
+    'second_abbr': {{ _('second_abbr')|tojson }},
+    'timer_zero': {{ _('timer_zero')|tojson }}
 });
 window.CURRENT_LANG = '{{ session.get("language", "ru") }}';
 function t(key) {

@@ -14,6 +14,7 @@ All operations are CPU-only, no GPU lock.
 """
 
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 
 from app.slm_rules import _levenshtein_ratio, _normalize_text
@@ -284,11 +285,37 @@ def temporal_decay(
     return to_delete
 
 
+_MODEL_RESPONSE_PATTERNS = re.compile(
+    r"(?:^|\s)(?:как я могу|вот |пожалуйста|ваш ответ|я подготовил|я нашёл"
+    r"|я могу помочь|готов помочь|для вашего|на основе|вот ваш"
+    r"|how can i|here is|here.s|your answer|i can help|ready to help|based on)",
+    re.IGNORECASE,
+)
+
+_MODEL_CONTENT_PATTERNS = re.compile(
+    r"(?:Последние новости|Запуск \w|EU AI Act|Соглашение|Крупный скандал"
+    r"|Apple объявила|Государственная программа|Новые модели|Успешное испытание"
+    r"|Санкция от|Новые стандарты|GPT-?\d|PaLM|Gemini|Siri|DeepMind)",
+    re.IGNORECASE,
+)
+
+
+def _is_model_response(fact_text: str) -> bool:
+    """Check if a fact is a model response, not a user fact."""
+    if not fact_text:
+        return False
+    return bool(
+        _MODEL_RESPONSE_PATTERNS.search(fact_text[:60])
+        or _MODEL_CONTENT_PATTERNS.search(fact_text[:200])
+    )
+
+
 def merge_facts_for_user(slm, user_id: str, lang: str = "ru") -> dict:
     """
     Merge facts for a user: rule-based pipeline (no LLM).
 
     Pipeline:
+      0. model_response_cleanup — remove model responses that are not user facts
       1. fast_cleanup — exact duplicates, fragments, short garbage
       2. edit_distance_merge — Levenshtein near-duplicates
       3. fragment_merge — stricter substring detection
@@ -319,6 +346,21 @@ def merge_facts_for_user(slm, user_id: str, lang: str = "ru") -> dict:
         facts = slm.list_facts(limit=current_app.config.get("MERGE_MAX_FACTS", 100), profile=user_id)
         logger.info(f"Merge for {user_id}: got {len(facts) if facts else 0} facts")
         if not facts or len(facts) < 3:
+            return stats
+
+        # Step 0: Remove model responses that are not user facts
+        model_junk = [f for f in facts if _is_model_response(f.get("content", ""))]
+        for f in model_junk:
+            fid = f.get("fact_id") or f.get("id")
+            if fid:
+                slm.archive_fact(fid, user_id) if hasattr(slm, "archive_fact") else slm.delete_fact(fid, user_id)
+                stats["fast_deleted"] += 1
+        remaining = [f for f in facts if f not in model_junk]
+        if model_junk:
+            logger.info(f"Merge for {user_id}: model_response_cleanup removed {len(model_junk)} facts")
+        facts = remaining
+
+        if len(facts) < 3:
             return stats
 
         # Step 1: Fast cleanup (exact duplicates, fragments, garbage)

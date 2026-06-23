@@ -35,9 +35,14 @@ services:
       - ./app/utils.py:/app/app/utils.py
       - ./app/database.py:/app/app/database.py
       - ./app/db.py:/app/app/db.py
+      - ./app/cli.py:/app/app/cli.py
+      - ./app/slm_rules.py:/app/app/slm_rules.py
+      - ./app/slm_import.py:/app/app/slm_import.py
+      - ./app/slm_merge.py:/app/app/slm_merge.py
       - ./app/routes/admin.py:/app/app/routes/admin.py
       - ./app/routes/queue.py:/app/app/routes/queue.py
       - ./app/routes/messages.py:/app/app/routes/messages.py
+      - ./app/routes/sessions.py:/app/app/routes/sessions.py
       - ./app/static/js/chat-init.js:/app/app/static/js/chat-init.js
       - ./app/static/js/chat-recording.js:/app/app/static/js/chat-recording.js
       - ./app/static/js/chat-constants.js:/app/app/static/js/chat-constants.js

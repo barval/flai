@@ -310,6 +310,7 @@ def create_app():
     app.cli.add_command(cli.cleanup_uploads)
     app.cli.add_command(cli.migrate_messages_format)
     app.cli.add_command(cli.import_history_to_slm)
+    app.cli.add_command(cli.cleanup_slm)
     app.cli.add_command(cli.reset_slm_checkpoint)
 
     # Additional camera routes

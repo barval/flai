@@ -177,14 +177,6 @@ def _score_sentence(sentence: str, lang: str) -> tuple[float, str]:
     if not sentence.rstrip().endswith("?"):
         score += 0.05
 
-    # Has verb-like structure (heuristic: contains я/я + verb or I + verb)
-    if lang == "ru":
-        if re.search(r"\bя\s+\S+(?:ю|е|у|и|л|ла|ло|ли)\b", sentence):
-            score += 0.10
-    else:
-        if re.search(r"\bi\s+\w+", sentence, re.IGNORECASE):
-            score += 0.10
-
     return min(score, 1.0), category
 
 
@@ -228,6 +220,25 @@ def _levenshtein_ratio(s1: str, s2: str) -> float:
     return 1.0 - distance / max(len1, len2)
 
 
+# ── Model response filter ────────────────────────────────────────────────
+# Detect typical assistant outputs that should NOT be stored as user facts.
+
+_MODEL_RESPONSE_PATTERNS = re.compile(
+    r"(^как я могу|^вот |^пожалуйста|^ваш ответ|^я подготовил|^я нашёл"
+    r"|^я могу помочь|^готов помочь|^для вашего|^на основе|^вот ваш)"
+    r"|(^how can i|^here is|^here's|^your answer|i can help|^ready to help|^based on)",
+    re.IGNORECASE,
+)
+
+# News / fabricated content patterns — model-generated "facts" that are not about the user
+_MODEL_CONTENT_PATTERNS = re.compile(
+    r"(Последние новости|Запуск \w|EU AI Act|Соглашение|Крупный скандал"
+    r"|Apple объявила|Государственная программа|Новые модели|Успешное испытание"
+    r"|Санкция от|Новые стандарты|GPT-?\d|PaLM|Gemini|Siri|DeepMind)",
+    re.IGNORECASE,
+)
+
+
 # ── Main extraction ─────────────────────────────────────────────────────
 
 def extract_facts(
@@ -254,10 +265,16 @@ def extract_facts(
     if len(query_lower) < 5 or _SKIP_QUERY_PATTERNS.match(query_lower):
         return []
 
-    if len(response.strip()) < 30:
+    # Skip model's self-referential or news-hallucination responses
+    resp_lower = response.strip().lower()
+    if _MODEL_RESPONSE_PATTERNS.match(resp_lower[:60]):
+        return []
+    if _MODEL_CONTENT_PATTERNS.search(resp_lower[:200]):
         return []
 
-    sentences = _split_sentences(response)
+    # Extract facts from the USER's query, not the model's response
+    # User statements about themselves ("я работаю программистом") contain real facts.
+    sentences = _split_sentences(query)
     if not sentences:
         return []
 
@@ -265,7 +282,7 @@ def extract_facts(
     scored: list[tuple[float, str, str]] = []
     for s in sentences:
         score, category = _score_sentence(s, lang)
-        if score >= 0.40:
+        if score >= 0.50:
             scored.append((score, s, category))
 
     if not scored:

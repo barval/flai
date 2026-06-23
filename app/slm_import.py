@@ -6,6 +6,7 @@ so repeated runs only process new messages since the last checkpoint.
 """
 
 import logging
+import re
 import time
 from typing import Any
 
@@ -49,7 +50,7 @@ def _get_users_with_messages() -> list[str]:
             """SELECT DISTINCT cs.user_id
                FROM chat_sessions cs
                JOIN messages m ON m.session_id = cs.id
-               WHERE m.role IN ('user', 'assistant')
+               WHERE m.role = 'user'
                ORDER BY cs.user_id"""
         )
         return [row["user_id"] for row in c.fetchall()]
@@ -78,6 +79,23 @@ def _extract_clean_text(content: str, model_name: str | None = None) -> str | No
     if len(text) > 2000:
         text = text[:2000]
     return text
+
+
+def _extract_user_quotes_from_assistant(content: str) -> list[str]:
+    """Extract user quotes from assistant responses.
+
+    If the model explicitly quoted the user (e.g. "Вы сказали: ..."),
+    the quoted text is a real fact about the user.
+    """
+    if not content or len(content) < 15:
+        return []
+    quotes = re.findall(
+        r'(?:Вы\s+(?:сказали|упоминали|говорили|писали|предлагали)[,:]?\s*'
+        r'[""«](.+?)[""»])',
+        content,
+        re.IGNORECASE,
+    )
+    return [q.strip()[:200] for q in quotes if len(q.strip()) >= 5]
 
 
 def import_user_messages(
@@ -129,12 +147,29 @@ def import_user_messages(
         session_id = row["session_id"]
         model_name = row.get("model_name")
 
+        last_id = msg_id
+
+        # Only import user messages — assistant responses are not user facts
+        if role == "assistant":
+            # Exception: extract direct user quotes from assistant responses
+            # e.g. "Вы сказали: 'я люблю Python'" → import "я люблю Python"
+            if not dry_run:
+                quotes = _extract_user_quotes_from_assistant(content)
+                for quote in quotes:
+                    slm.remember(
+                        quote,
+                        metadata={"session_id": session_id, "message_id": msg_id,
+                                   "role": "user_quote", "source": "auto_import"},
+                        profile=user_id,
+                    )
+                    imported += 1
+            skipped += 1
+            continue
+
         text = _extract_clean_text(content, model_name)
         if text is None:
             skipped += 1
             continue
-
-        last_id = msg_id
 
         if dry_run:
             continue

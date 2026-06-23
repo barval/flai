@@ -173,16 +173,18 @@ class TestExtractFacts:
     def test_extract_preference(self):
         from app.slm_rules import extract_facts
 
-        response = "Отлично! Мне нравится ваш выбор. Python — это отличный язык для программирования."
-        result = extract_facts("Какой язык лучше?", response, [], lang="ru", max_facts=3)
+        query = "Мне нравится Python. Какой язык лучше?"
+        response = "Отлично! Python — отличный выбор для старта."
+        result = extract_facts(query, response, [], lang="ru", max_facts=3)
         assert len(result) >= 1
         assert any("Python" in f["text"] or "нравится" in f["text"] for f in result)
 
     def test_extract_fact(self):
         from app.slm_rules import extract_facts
 
-        response = "Понял. Я работаю инженером в компании Яндекс уже 3 года и занимаюсь разработкой."
-        result = extract_facts("Где ты работаешь?", response, [], lang="ru", max_facts=3)
+        query = "Я работаю инженером в компании Яндекс уже 3 года и занимаюсь разработкой."
+        response = "Понял, спасибо за информацию!"
+        result = extract_facts(query, response, [], lang="ru", max_facts=3)
         assert len(result) >= 1
         assert any("инженер" in f["text"] or "работаю" in f["text"] for f in result)
 
@@ -207,8 +209,9 @@ class TestExtractFacts:
     def test_category_assignment(self):
         from app.slm_rules import extract_facts
 
-        response = "Всегда используй формат JSON для ответов. Это важно для парсинга."
-        result = extract_facts("Как отвечать?", response, [], lang="ru", max_facts=3)
+        query = "Всегда используй формат JSON для ответов. Это важно для парсинга."
+        response = "Хорошо, буду использовать JSON."
+        result = extract_facts(query, response, [], lang="ru", max_facts=3)
         assert any(f["category"] == "instruction" for f in result)
 
 

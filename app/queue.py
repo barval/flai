@@ -753,8 +753,7 @@ class RedisRequestQueue:
         if not text or ("<think" not in text and "<|channel|>" not in text):
             return text
         text = re.sub(r"<think[\s>][\s\S]*?</think>", "", text)
-        text = re.sub(r"<\|channel\|>analysis<\|message\|>[\s\S]*?<\|end\|>", "", text)
-        text = re.sub(r"<\|channel\|>analysis<\|message\|>[\s\S]*$", "", text)
+        text = re.sub(r"<\|channel\|>analysis<\|message\|>(?:[\s\S]*?<\|end\|>)?", "", text)
         text = re.sub(r"<\|channel\|>commentary<\|message\|>([\s\S]*?)<\|end\|>", r"\1", text)
         text = re.sub(r"<\|channel\|>[^<]*$", "", text)
         return text.strip()

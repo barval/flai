@@ -883,9 +883,16 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                                             tc["id"] = tc_delta["id"]
                         except json.JSONDecodeError:
                             continue
-                    # Flush remaining buffer (non-thinking tail)
-                    if _stream_buffer and not _thinking_active:
-                        yield _stream_buffer
+                    # Flush remaining buffer
+                    if _stream_buffer:
+                        if _thinking_active:
+                            # Stream ended inside <|channel|>analysis block (no <|end|>).
+                            # Strip opening tag, yield whatever remains.
+                            _stream_buffer = re.sub(
+                                r"^.*?<\|channel\|>analysis<\|message\|>", "", _stream_buffer
+                            )
+                        if _stream_buffer:
+                            yield _stream_buffer
                     # If tool calls were accumulated, yield them as a dict
                     if _tool_calls_by_index:
                         tool_calls = [_tool_calls_by_index[i] for i in sorted(_tool_calls_by_index.keys())]

@@ -51,6 +51,7 @@ Examples:
 ## 5. DOCUMENT SEARCH REQUEST (output unchanged with marker)
 If the query asks to search information about people, biography, resume, age, addresses, dates, events, facts — and this fact may be in uploaded documents.
 FORBIDDEN: requests to WRITE/CREATE files, code, HTML pages, scripts, or applications — these are NOT document searches! Use category 7 instead.
+FORBIDDEN: requests about websites, URLs, domains, links (http:// or https://) — these are NOT document searches! Use category 6 instead.
 Action: Output [-RAG-] and the query text unchanged.
 Examples:
 - Query: "Find in documents about climate"
@@ -66,7 +67,7 @@ NOT category 5 (use category 7 instead):
 - "Create a Python script" → category 7, NOT 5
 
 ## 6. WEB SEARCH REQUEST (output unchanged with marker)
-If the query requires current information from the internet: news, weather, stock prices, latest events, releases, prices, statistics, or any data that needs online search.
+If the query requires current information from the internet: news, weather, stock prices, latest events, releases, prices, statistics, information about websites, domains, URLs — any data that needs online search.
 IMPORTANT: Do not confuse with document search (category 5) — that is information from uploaded files. Category 6 is FRESH information from the internet.
 Action: Output [-SEARCH-] and the query text unchanged.
 Examples:
@@ -78,6 +79,14 @@ Examples:
   Response: "[-SEARCH-] Latest AI news"
 - Query: "How much does iPhone 16 cost"
   Response: "[-SEARCH-] How much does iPhone 16 cost"
+- Query: "what is example.com about"
+  Response: "[-SEARCH-] what is example.com about"
+- Query: "tell me about habr.com"
+  Response: "[-SEARCH-] tell me about habr.com"
+- Query: "information about wikipedia.org"
+  Response: "[-SEARCH-] information about wikipedia.org"
+- Query: "what domain is https://github.com"
+  Response: "[-SEARCH-] what domain is https://github.com"
 
 ## 7. COMPLEX QUERY (only if NOT document search, NOT web search, and NOT calculations)
 Only complex tasks: code/text writing, story creation, complex reasoning, creating HTML pages, applications, scripts.

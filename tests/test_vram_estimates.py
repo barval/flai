@@ -193,7 +193,7 @@ class TestUpsertVramEstimate:
             for _ in range(22):
                 upsert_vram_estimate(
                     module="reasoning",
-                    model_name="gpt-oss-20b-Q4_K_M",
+                    model_name="gpt-oss-20b-mxfp4",
                     context_length=16384,
                     n_gpu_layers=24,
                     estimated_mb=9209,
@@ -208,7 +208,7 @@ class TestUpsertVramEstimate:
                 estimated_mb=9500,
             )
 
-        old = store[("reasoning", "gpt-oss-20b-Q4_K_M")]
+        old = store[("reasoning", "gpt-oss-20b-mxfp4")]
         new = store[("reasoning", "Qwen3-Next-Reasoning-Q4.gguf")]
 
         # Old model: keeps all its measurements intact
@@ -281,7 +281,7 @@ class TestGetVramEstimate:
         with patch("app.database.get_db", _make_db(store)):
             upsert_vram_estimate(
                 module="reasoning",
-                model_name="gpt-oss-20b-Q4_K_M",
+                model_name="gpt-oss-20b-mxfp4",
                 context_length=16384,
                 n_gpu_layers=24,
                 estimated_mb=9209,
@@ -294,11 +294,11 @@ class TestGetVramEstimate:
                 n_gpu_layers=24,
                 estimated_mb=9500,
             )
-            measured = get_vram_estimate("reasoning", model_name="gpt-oss-20b-Q4_K_M")
+            measured = get_vram_estimate("reasoning", model_name="gpt-oss-20b-mxfp4")
             new = get_vram_estimate("reasoning", model_name="Qwen3-Next-Reasoning-Q4.gguf")
 
         assert measured is not None
-        assert measured["model_name"] == "gpt-oss-20b-Q4_K_M"
+        assert measured["model_name"] == "gpt-oss-20b-mxfp4"
         assert measured["measured_vram_mb"] is not None
         assert measured["measurement_count"] == 1
 
@@ -316,7 +316,7 @@ class TestGetVramEstimate:
             for _ in range(22):
                 upsert_vram_estimate(
                     module="reasoning",
-                    model_name="gpt-oss-20b-Q4_K_M",
+                    model_name="gpt-oss-20b-mxfp4",
                     context_length=16384,
                     n_gpu_layers=24,
                     estimated_mb=9209,
@@ -368,7 +368,7 @@ class TestAdminModelEstimateFilter:
         with patch("app.database.get_db", _make_db(store)):
             upsert_vram_estimate(
                 module="reasoning",
-                model_name="gpt-oss-20b-Q4_K_M",
+                model_name="gpt-oss-20b-mxfp4",
                 context_length=16384,
                 n_gpu_layers=24,
                 estimated_mb=9209,

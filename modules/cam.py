@@ -20,7 +20,7 @@ class CamModule(TranslationMixin):
     replaced by dynamic ``_load_rooms_from_db()``.
     """
 
-    def __init__(self, app=None):
+    def __init__(self, app=None) -> None:
         self.logger = logging.getLogger(__name__)
         self.camera_api_url = None
         self.available = False

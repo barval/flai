@@ -43,7 +43,7 @@ class SearchModule(TranslationMixin):
                 self.logger.info(f"SearXNG available at {self.searxng_url}")
             else:
                 self.logger.warning(f"SearXNG health check failed: {resp.status_code}")
-            return self.available
+            return self.available  # type: ignore[no-any-return]
         except Exception as e:
             self.logger.warning(f"SearXNG not available: {e}")
             self.available = False

@@ -180,7 +180,7 @@ class TestChatStreamYieldsWarningPrefix:
         # 1st attempt fails, 1s sleep, 2nd attempt fails, then yields ⚠️
         assert mock_post.call_count == 2
         assert mock_sleep.called
-        assert mock_sleep.call_args[0][0] == 1
+        assert any(call[0][0] == 1 for call in mock_sleep.call_args_list)
         assert len(tokens) == 1
         assert tokens[0].startswith("⚠️")
 

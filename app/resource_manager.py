@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class HardwareInfo:
     """Detected hardware capabilities."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.total_vram_mb: int = 0
         self.available_vram_mb: int = 0
         self.total_ram_mb: int = 0
@@ -46,7 +46,7 @@ class ResourceManager:
         # config['can_run_parallel'] -> whether fast-worker can proceed
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.hardware = HardwareInfo()
         self._lock = threading.Lock()
         self._sd_busy = False  # True while sd-cli is actively using GPU
@@ -315,7 +315,7 @@ class ResourceManager:
         # Degradation: ensure model fits in available VRAM BEFORE loading
         # Iteratively reduce n_gpu_layers if estimated VRAM exceeds capacity
         if result["n_gpu_layers"] != 0 and block_count:
-            effective_ngl = result["n_gpu_layers"]
+            effective_ngl: int = result["n_gpu_layers"]  # type: ignore[assignment]
             if effective_ngl == -1:
                 effective_ngl = block_count
             while effective_ngl > 0:
@@ -340,12 +340,13 @@ class ResourceManager:
 
         # n_cpu_moe: for MoE models that don't fully fit — offload experts proportionally
         is_moe = expert_count > 0
-        if is_moe and result["n_gpu_layers"] != -1 and result["n_gpu_layers"] > 0:
+        ngl: int = result["n_gpu_layers"]  # type: ignore[assignment]
+        if is_moe and ngl != -1 and ngl > 0:
             # Model is MoE and partially offloaded — offload some experts to CPU
-            partial_ratio = 1.0 - (result["n_gpu_layers"] / block_count) if (block_count and block_count > 0) else 0.5
+            partial_ratio = 1.0 - (ngl / block_count) if (block_count and block_count > 0) else 0.5
             result["n_cpu_moe"] = max(1, int(expert_count * partial_ratio))
             if "warning" in result and result["warning"]:
-                result["warning"] += f"; {result['n_cpu_moe']}/{expert_count} experts on CPU"
+                result["warning"] = f"{result['warning']}; {result['n_cpu_moe']}/{expert_count} experts on CPU"
             else:
                 result["warning"] = f"{result['n_cpu_moe']}/{expert_count} experts on CPU"
 

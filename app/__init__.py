@@ -675,7 +675,7 @@ def _start_slm_merge_watcher(app: Flask) -> None:
 
                     # Skip if there are already pending merge tasks in the queue
                     # (prevents flooding the queue with redundant tasks)
-                    bg_queue_len = app.request_queue.redis.llen(app.request_queue.background_queue_key)
+                    bg_queue_len = app.request_queue.redis.llen(app.request_queue.background_queue_key)  # type: ignore[attr-defined]
                     if bg_queue_len and bg_queue_len > len(user_ids):
                         app.logger.debug(f"SLM merge watcher: background queue has {bg_queue_len} tasks, skipping")
                         continue
@@ -692,9 +692,9 @@ def _start_slm_merge_watcher(app: Flask) -> None:
                             "lang": "ru",
                             "timestamp": time.time(),
                         }
-                        serialized = app.request_queue._serialize(merge_task)
-                        app.request_queue.redis.rpush(app.request_queue.background_queue_key, serialized)
-                    app._merge_last_queued = time.time()
+                        serialized = app.request_queue._serialize(merge_task)  # type: ignore[attr-defined]
+                        app.request_queue.redis.rpush(app.request_queue.background_queue_key, serialized)  # type: ignore[attr-defined]
+                    app._merge_last_queued = time.time()  # type: ignore[attr-defined]
                     app.logger.info(f"Queued SLM merge for {len(user_ids)} users")
                 except Exception as e:
                     app.logger.warning(f"SLM merge watcher error: {e}")

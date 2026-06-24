@@ -1407,3 +1407,38 @@ def clean_markdown_for_tts(text: str) -> str:
     text = text.strip()
 
     return text
+
+
+# ── GPU architecture detection ──
+
+_BLACKWELL_PATTERNS = [
+    "rtx 5060", "rtx 5070", "rtx 5080", "rtx 5090",
+    "rtx pro 6000 blackwell", "blackwell",
+    "b100", "b200", "gb200", "gb10",
+]
+_gpu_is_blackwell: bool | None = None
+
+
+def is_blackwell_gpu() -> bool:
+    """Detect whether the system has a Blackwell-architecture NVIDIA GPU.
+
+    Returns True for RTX 50xx, RTX PRO 6000 Blackwell, B100/200, GB200/10.
+    Result is cached after first call.
+    Returns False if nvidia-smi is unavailable or GPU is unknown.
+    """
+    global _gpu_is_blackwell
+    if _gpu_is_blackwell is not None:
+        return _gpu_is_blackwell
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            name = result.stdout.strip().lower()
+            _gpu_is_blackwell = any(p in name for p in _BLACKWELL_PATTERNS)
+        else:
+            _gpu_is_blackwell = False
+    except Exception:
+        _gpu_is_blackwell = False
+    return _gpu_is_blackwell

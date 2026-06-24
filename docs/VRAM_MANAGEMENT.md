@@ -105,15 +105,17 @@ TIER_RAM_HEADROOM_MB = 2048   # 2GB reserved for OS + other processes
 ```
 
 ### Fallback Models
-Used by dry_load + watchdog:
+Used by dry_load + watchdog. Architecture-aware: MXFP4 on Blackwell GPUs (native FP4), Q4_0/Q4_K_M on others.
 
 ```python
-FALLBACK_MODELS = {
-    "chat":       "gemma-4-E2B-it-Q4_0",
-    "reasoning":  "gemma-4-E4B-it-Q4_0",
-    "multimodal": "Qwen3VL-8B-Instruct-Q4_K_M",
-    "embedding":  "bge-m3-Q8_0",
-}
+FALLBACK_MODELS()  # returns:
+# Blackwell GPUs (RTX 5060+):
+#   {"chat": "Qwen3-4B-Instruct-2507-MXFP4_MOE",
+#    "reasoning": "gpt-oss-20b-mxfp4", ...}
+# Other GPUs (Ampere, Ada Lovelace):
+#   {"chat": "Qwen3-4B-Instruct-2507-Q4_0",
+#    "reasoning": "gpt-oss-20b-Q4_K_M", ...}
+# Both tiers use the same multimodal / embedding models.
 ```
 
 ### GGUF Fallback Reading
@@ -207,7 +209,7 @@ watch -n 1 nvidia-smi          # Real-time VRAM tracking
 docker logs flai-web --tail 50 | grep GPU  # Log GPU-related events
 grep "RAG\|reasoning\|router" docker/logs/flai-web.log  # Debug RAG flow
 docker logs flai-web --tail 100 | grep -E "watchdog|dry_load"  # Model protection events
-curl -s "http://localhost:5000/admin/api/model-estimate?model=gemma-4-E2B-it-Q4_0.gguf&module=chat&ctx_size=8192" | jq '{tier, can_save, ngl_recommended, tier_message}'
+curl -s "http://localhost:5000/admin/api/model-estimate?model=Qwen3-4B-Instruct-2507-Q4_0.gguf&module=chat&ctx_size=8192" | jq '{tier, can_save, ngl_recommended, tier_message}'
 ```
 
 ## Configuration

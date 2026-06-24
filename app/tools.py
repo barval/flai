@@ -86,11 +86,11 @@ def _eval_node(node: ast.AST) -> Any:
         right = _eval_node(node.right)
         return _SAFE_BINOPS[op_type](left, right)
     if isinstance(node, ast.UnaryOp):
-        op_type = type(node.op)
-        if op_type not in _SAFE_UNARYOPS:
-            raise ValueError(f"Unsupported unary operator: {op_type.__name__}")
+        unary_op_type = type(node.op)
+        if unary_op_type not in _SAFE_UNARYOPS:
+            raise ValueError(f"Unsupported unary operator: {unary_op_type.__name__}")
         operand = _eval_node(node.operand)
-        return _SAFE_UNARYOPS[op_type](operand)
+        return _SAFE_UNARYOPS[unary_op_type](operand)
     if isinstance(node, ast.Call):
         if not isinstance(node.func, ast.Name):
             raise ValueError("Only direct function calls are allowed")
@@ -98,7 +98,7 @@ def _eval_node(node: ast.AST) -> Any:
         if func_name not in _SAFE_FUNCTIONS:
             raise ValueError(f"Unknown function: {func_name}")
         args = [_eval_node(arg) for arg in node.args]
-        kwargs = {kw.arg: _eval_node(kw.value) for kw in node.keywords}
+        kwargs = {str(kw.arg): _eval_node(kw.value) for kw in node.keywords}
         return _SAFE_FUNCTIONS[func_name](*args, **kwargs)
     if isinstance(node, ast.Name):
         if node.id in _SAFE_CONSTANTS:
@@ -124,7 +124,7 @@ def safe_eval(expression: str) -> float | int | tuple | list:
         raise ValueError("Empty expression")
     tree = ast.parse(expression, mode="eval")
     result = _eval_node(tree.body)
-    return result
+    return result  # type: ignore[no-any-return]
 
 
 # ── Tool definitions (OpenAI format for llama.cpp) ───────────────────
@@ -322,7 +322,7 @@ def _exec_get_current_time(ctx: dict[str, Any]) -> str:
         return time_str
     lang = ctx.get("lang", "ru")
     with force_locale(lang):
-        return _("Current time unavailable")
+        return str(_("Current time unavailable"))
 
 
 def _exec_calculator(ctx: dict[str, Any], expression: str) -> str:
@@ -337,15 +337,15 @@ def _exec_calculator(ctx: dict[str, Any], expression: str) -> str:
     except ZeroDivisionError:
         lang = ctx.get("lang", "ru")
         with force_locale(lang):
-            return _("Division by zero")
+            return str(_("Division by zero"))
     except ValueError as e:
         lang = ctx.get("lang", "ru")
         with force_locale(lang):
-            return _("Calculation error: {error}").format(error=str(e))
+            return str(_("Calculation error: {error}").format(error=str(e)))
     except Exception as e:
         lang = ctx.get("lang", "ru")
         with force_locale(lang):
-            return _("Calculation error: {error}").format(error=str(e))
+            return str(_("Calculation error: {error}").format(error=str(e)))
 
 
 def _exec_web_search(ctx: dict[str, Any], query: str, lang: str = "ru") -> str:
@@ -354,19 +354,19 @@ def _exec_web_search(ctx: dict[str, Any], query: str, lang: str = "ru") -> str:
     search_module = app.modules.get("search") if app else None
     if not search_module or not search_module.available:
         with force_locale(lang):
-            return _("Web search service unavailable")
+            return str(_("Web search service unavailable"))
 
     max_results = app.config.get("SEARXNG_MAX_RESULTS", 7) if app else 7
     results = search_module.search(query, lang=lang, max_results=max_results)
     if not results:
         with force_locale(lang):
-            return _("No results found for query: {query}").format(query=query)
+            return str(_("No results found for query: {query}").format(query=query))
 
     formatted = search_module.format_results_context(results, lang=lang)
     max_chars = app.config.get("SEARXNG_MAX_RESULTS_CHARS", 7000) if app else 7000
     if len(formatted) > max_chars:
         formatted = formatted[:max_chars] + "..."
-    return formatted
+    return formatted  # type: ignore[no-any-return]
 
 
 def _exec_rag_search(ctx: dict[str, Any], query: str, top_k: int = 5) -> str:
@@ -377,21 +377,21 @@ def _exec_rag_search(ctx: dict[str, Any], query: str, top_k: int = 5) -> str:
     rag_module = app.modules.get("rag") if app else None
     if not rag_module or not rag_module.available:
         with force_locale(lang):
-            return _("Document search service unavailable")
+            return str(_("Document search service unavailable"))
     if not user_id:
         with force_locale(lang):
-            return _("User not identified for document search")
+            return str(_("User not identified for document search"))
 
     try:
         chunks, scores = rag_module.search(user_id, query, top_k=top_k)
     except Exception as e:
         logger.error(f"RAG search tool failed: {e}")
         with force_locale(lang):
-            return _("Document search error: {error}").format(error=str(e))
+            return str(_("Document search error: {error}").format(error=str(e)))
 
     if not chunks:
         with force_locale(lang):
-            return _("No relevant documents found for query: {query}").format(query=query)
+            return str(_("No relevant documents found for query: {query}").format(query=query))
 
     parts = []
     for i, chunk in enumerate(chunks):
@@ -418,7 +418,7 @@ def _exec_camera_snapshot(ctx: dict[str, Any], room: str) -> dict[str, Any]:
             return {"success": False, "error": _("CCTV service unavailable")}
 
     result = cam_module.get_snapshot(user_id, room, lang=lang)
-    return result
+    return result  # type: ignore[no-any-return]
 
 
 # ── Time calculation helpers ────────────────────────────────────────
@@ -443,7 +443,7 @@ def _parse_date_param(date_str: str, tz: str = "Europe/Moscow") -> pendulum.Date
 
     if not date_str or date_str.lower() == "today":
         return pendulum.now(tz).start_of("day")
-    return pendulum.parse(date_str, exact=True)
+    return pendulum.parse(date_str, exact=True)  # type: ignore[return-value]
 
 
 def _format_date_result(dt: pendulum.DateTime, fmt: str, lang: str = "ru") -> str:
@@ -478,14 +478,14 @@ def _exec_time_calc(
         if operation == "days_until_weekday":
             if not weekday:
                 with force_locale(lang):
-                    return _("Date calculation error: {error}").format(error="weekday is required")
+                    return str(_("Date calculation error: {error}").format(error="weekday is required"))
             weekday_lower = weekday.lower()
             weekday_num = _WEEKDAY_MAP_RU.get(weekday_lower)
             if weekday_num is None:
                 weekday_num = _WEEKDAY_MAP_EN.get(weekday_lower)
             if weekday_num is None:
                 with force_locale(lang):
-                    return _("Date calculation error: {error}").format(error=f"unknown weekday: {weekday}")
+                    return str(_("Date calculation error: {error}").format(error=f"unknown weekday: {weekday}"))
             d = _parse_date_param(date, tz)
             days_ahead = (weekday_num - d.weekday()) % 7
             if days_ahead == 0:
@@ -501,7 +501,7 @@ def _exec_time_calc(
         elif operation == "days_until_end_of":
             if not period:
                 with force_locale(lang):
-                    return _("Date calculation error: {error}").format(error="period is required")
+                    return str(_("Date calculation error: {error}").format(error="period is required"))
             now = pendulum.now(tz)
             today = now.start_of("day")
             year, month = now.year, now.month
@@ -548,10 +548,10 @@ def _exec_time_calc(
                     end = target_start.add(days=6)
                 except (ValueError, IndexError):
                     with force_locale(lang):
-                        return _("Date calculation error: {error}").format(error=f"invalid week number: {period}")
+                        return str(_("Date calculation error: {error}").format(error=f"invalid week number: {period}"))
             else:
                 with force_locale(lang):
-                    return _("Date calculation error: {error}").format(error=f"unknown period: {period}")
+                    return str(_("Date calculation error: {error}").format(error=f"unknown period: {period}"))
 
             diff = (end - today).in_days()
             return str(diff)
@@ -559,7 +559,7 @@ def _exec_time_calc(
         elif operation == "days_since_end_of":
             if not period:
                 with force_locale(lang):
-                    return _("Date calculation error: {error}").format(error="period is required")
+                    return str(_("Date calculation error: {error}").format(error="period is required"))
             now = pendulum.now(tz)
             today = now.start_of("day")
             year, month = now.year, now.month
@@ -605,10 +605,10 @@ def _exec_time_calc(
                     end = target_start.add(days=6)
                 except (ValueError, IndexError):
                     with force_locale(lang):
-                        return _("Date calculation error: {error}").format(error=f"invalid week number: {period}")
+                        return str(_("Date calculation error: {error}").format(error=f"invalid week number: {period}"))
             else:
                 with force_locale(lang):
-                    return _("Date calculation error: {error}").format(error=f"unknown period: {period}")
+                    return str(_("Date calculation error: {error}").format(error=f"unknown period: {period}"))
 
             diff = (today - end).in_days()
             return str(diff)
@@ -616,14 +616,14 @@ def _exec_time_calc(
         elif operation == "find_next_weekday_on_day":
             if not weekday or not day:
                 with force_locale(lang):
-                    return _("Date calculation error: {error}").format(error="weekday and day are required")
+                    return str(_("Date calculation error: {error}").format(error="weekday and day are required"))
             weekday_lower = weekday.lower()
             weekday_num = _WEEKDAY_MAP_RU.get(weekday_lower)
             if weekday_num is None:
                 weekday_num = _WEEKDAY_MAP_EN.get(weekday_lower)
             if weekday_num is None:
                 with force_locale(lang):
-                    return _("Date calculation error: {error}").format(error=f"unknown weekday: {weekday}")
+                    return str(_("Date calculation error: {error}").format(error=f"unknown weekday: {weekday}"))
             now = pendulum.now(tz).start_of("day")
             current = now
             for _day_offset in range(366):
@@ -633,7 +633,7 @@ def _exec_time_calc(
                     return current.format("MMMM D, YYYY, dddd", locale="en")
                 current = current.add(days=1)
             with force_locale(lang):
-                return _("Date calculation error: {error}").format(error="no matching date found in next year")
+                return str(_("Date calculation error: {error}").format(error="no matching date found in next year"))
 
         elif operation == "day_of_week":
             d = _parse_date_param(date, tz)
@@ -658,15 +658,15 @@ def _exec_time_calc(
 
         else:
             with force_locale(lang):
-                return _("Unknown time_calc operation: {op}").format(op=operation)
+                return str(_("Unknown time_calc operation: {op}").format(op=operation))
 
     except ValueError as e:
         with force_locale(lang):
-            return _("Date calculation error: {error}").format(error=str(e))
+            return str(_("Date calculation error: {error}").format(error=str(e)))
     except Exception as e:
         logger.error(f"time_calc failed: {e}")
         with force_locale(lang):
-            return _("Date calculation error: {error}").format(error=str(e))
+            return str(_("Date calculation error: {error}").format(error=str(e)))
 
 
 # ── Tool dispatch ────────────────────────────────────────────────────
@@ -696,7 +696,7 @@ def execute_tool(tool_name: str, arguments: dict[str, Any], context: dict[str, A
     if not executor:
         lang = context.get("lang", "ru")
         with force_locale(lang):
-            return _("Unknown tool: {tool}").format(tool=tool_name)
+            return str(_("Unknown tool: {tool}").format(tool=tool_name))
 
     try:
         result = executor(context, **arguments)
@@ -707,4 +707,4 @@ def execute_tool(tool_name: str, arguments: dict[str, Any], context: dict[str, A
         logger.error(f"Tool '{tool_name}' execution failed: {e}")
         lang = context.get("lang", "ru")
         with force_locale(lang):
-            return _("Tool execution error: {error}").format(error=str(e))
+            return str(_("Tool execution error: {error}").format(error=str(e)))

@@ -195,7 +195,7 @@ def semantic_merge(
     slm = None
     try:
         if current_app:
-            slm = current_app.modules.get("slm")
+            slm = current_app.modules.get("slm")  # type: ignore[attr-defined]
     except RuntimeError:
         pass
 

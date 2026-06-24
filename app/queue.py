@@ -46,7 +46,7 @@ def _parse_remember_json(llm_response: str) -> list[str]:
             return []
         data = json.loads(llm_response[start:end])
         if data.get("confirmed"):
-            return data.get("facts", [])
+            return data.get("facts", [])  # type: ignore[no-any-return]
         return []
     except Exception:
         return []
@@ -1036,7 +1036,7 @@ class RedisRequestQueue:
         self._unload_llamacpp_models()
         self._unload_video_pipeline()
 
-        self._publish_stream_event(task, "task_progress", {"stage": "preparing_gpu"})
+        self._publish_stream_event(task, "task_progress", {"stage": "preparing_gpu"})  # type: ignore[arg-type]
 
         if task and self._is_task_cancelled(task["id"]):
             self._publish_stream_event(task, "stream_cancelled")
@@ -1174,7 +1174,7 @@ class RedisRequestQueue:
         self._unload_llamacpp_models()
         self._unload_video_pipeline()
 
-        self._publish_stream_event(task, "task_progress", {"stage": "preparing_gpu"})
+        self._publish_stream_event(task, "task_progress", {"stage": "preparing_gpu"})  # type: ignore[arg-type]
 
         if task and self._is_task_cancelled(task["id"]):
             self._publish_stream_event(task, "stream_cancelled")

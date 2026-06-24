@@ -467,8 +467,8 @@ class BaseModule(TranslationMixin):
     ) -> str:
         """Process complex query via reasoning model."""
         response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(  # type: ignore[arg-type]
-            session_id, "reasoning", query, lang, user_id=user_id,
+        context_str = self._get_context_for_model(
+            session_id or "", "reasoning", query, lang, user_id=user_id,
             rag_context=rag_context, rag_source=rag_source,
         )
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
@@ -499,8 +499,8 @@ class BaseModule(TranslationMixin):
         response = self.call_llamacpp(
             [{"role": "user", "content": reasoning_prompt}], model_type="reasoning", lang=lang
         )
-        self.logger.info(f"Reasoning model response: {response[:100]}...")  # type: ignore[index]
-        return response  # type: ignore[return-value]
+        self.logger.info(f"Reasoning model response: {str(response)[:100]}...")
+        return str(response)
 
     # ── Streaming methods ──────────────────────────────────────────────
 
@@ -517,8 +517,8 @@ class BaseModule(TranslationMixin):
     ) -> Generator[str, None, None]:
         """Build prompt and stream reasoning model response."""
         response_language = "Russian" if lang == "ru" else "English"
-        context_str = self._get_context_for_model(  # type: ignore[arg-type]
-            session_id, "reasoning", query, lang, user_id=user_id,
+        context_str = self._get_context_for_model(
+            session_id or "", "reasoning", query, lang, user_id=user_id,
             rag_context=rag_context, rag_source=rag_source,
         )
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(

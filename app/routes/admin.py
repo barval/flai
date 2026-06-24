@@ -528,12 +528,12 @@ def _classify_model_fit(
                 if arch:
                     bc_key = f"{arch}.block_count"
                     if bc_key in reader.fields:
-                        val = reader.fields[bc_key].parts[-1]
-                        if hasattr(val, "tolist"):
-                            arr = val.tolist()
-                            if isinstance(arr, list) and len(arr) == 1:
-                                val = arr[0]
-                        block_count = int(val) if val is not None else None
+                        raw_val = reader.fields[bc_key].parts[-1]
+                        if hasattr(raw_val, "tolist"):
+                            arr = raw_val.tolist()
+                            block_count = int(arr[0]) if isinstance(arr, list) and len(arr) == 1 else int(raw_val)  # type: ignore[arg-type]
+                        else:
+                            block_count = int(raw_val) if raw_val is not None else None
             except Exception:
                 pass
 

@@ -27,13 +27,14 @@ class TestDryLoad:
 
     def test_fallback_models_dict_has_all_modules(self):
         """FALLBACK_MODELS has fallback for every module type."""
-        from app.tasks.dry_load import FALLBACK_MODELS
+        from app.tasks.dry_load import get_fallback_models
 
-        assert "chat" in FALLBACK_MODELS
-        assert "reasoning" in FALLBACK_MODELS
-        assert "multimodal" in FALLBACK_MODELS
-        assert "embedding" in FALLBACK_MODELS
-        for module, fallback in FALLBACK_MODELS.items():
+        models = get_fallback_models()
+        assert "chat" in models
+        assert "reasoning" in models
+        assert "multimodal" in models
+        assert "embedding" in models
+        for module, fallback in models.items():
             assert fallback, f"Empty fallback for {module}"
 
 

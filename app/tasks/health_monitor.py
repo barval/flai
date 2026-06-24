@@ -112,9 +112,9 @@ def get_ltx_video_oom_count() -> int:
 
 def _auto_rollback(app: Any, module: str) -> bool:
     """Roll back to the fallback model.  Returns True on success."""
-    from app.tasks.dry_load import FALLBACK_MODELS, _rollback
+    from app.tasks.dry_load import _rollback, get_fallback_models
 
-    fallback = FALLBACK_MODELS.get(module)
+    fallback = get_fallback_models().get(module)
     if not fallback:
         logger.error(f"watchdog: no fallback for module={module}")
         return False

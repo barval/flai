@@ -177,19 +177,19 @@ Real-world performance measured with llama.cpp (llama-swap on-demand loading, Fl
 
 | Model | Type | Quant | File | VRAM | Prompt | Generation | Notes |
 |-------|------|-------|------|------|--------|------------|-------|
-| **gemma-4-E2B-it-Q4_0** | Chat | Q4_0 | 3.0 GB | 2123 MB | 1471 t/s | **168.1 t/s** | **Current chat model** — ultra-lightweight edge model |
-| Qwen3-4B-Instruct-2507 | Chat | MXFP4 (MoE) | 2.0 GB | 3186 MB | 3943 t/s | 127.7 t/s | Alternative chat model — fastest prompt processing |
+| gemma-4-E2B-it-Q4_0 | Chat | Q4_0 | 3.0 GB | 2123 MB | 1471 t/s | 168.1 t/s | Ultra-lightweight edge model |
+| **Qwen3-4B-Instruct-2507** | Chat | MXFP4 (MoE) | 2.0 GB | 3186 MB | 3943 t/s | 127.7 t/s | **Current chat model** — fastest MoE prompt processing |
 | Qwen3.5-4B-Instruct-MTP | Chat | MXFP4 + MTP | 2.5 GB | 4042 MB | 664 t/s | 108.2 t/s | MTP adds overhead on 128-bit bus |
 | **gemma-4-E2B-it-QAT** | Chat | QAT Q4_0 | 3.2 GB | 2123 MB | 1471 t/s | **168.1 t/s** | Fastest model — ultra-lightweight edge model |
 | **gemma-4-E4B-it-QAT** | Chat | QAT Q4_0 | 4.9 GB | 3481 MB | 1182 t/s | **99.8 t/s** | Edge model — best speed/quality balance |
 | Qwen3.5-9B-UD-Q4_K_XL | Chat | Dynamic 4-bit | 5.6 GB | 6213 MB | 565 t/s | 63.2 t/s | Candidate chat model |
-| **gemma-4-E4B-it-Q4_0** | Reasoning | Q4_0 | 4.8 GB | 3481 MB | 1182 t/s | **99.8 t/s** | **Current reasoning model** — best speed/quality balance |
-| gpt-oss-20b | Reasoning | MXFP4 (MoE) | 11.5 GB | 11663 MB | 1087 t/s | 118.2 t/s | Alternative reasoning — MoE 3B active |
+| gemma-4-E4B-it-Q4_0 | Reasoning | Q4_0 | 4.8 GB | 3481 MB | 1182 t/s | 99.8 t/s | Best speed/quality balance |
+| **gpt-oss-20b** | Reasoning | MXFP4 (MoE) | 11.5 GB | 11663 MB | 1087 t/s | 118.2 t/s | **Current reasoning model** — MoE 3B active |
 | **Qwen3.6-35B-A3B** | Reasoning | Q2_K_XL | 12 GB | 12356 MB | 497 t/s | **106.2 t/s** | MoE 35B (3B active) — strong alternative |
 | Qwen3.5-9B-MTP-Q4_K_M | Reasoning | Q4_K_M + MTP | 5.5 GB | 6717 MB | 431 t/s | 66.1 t/s | Dense 9B — 45% slower than MoE |
 | Qwen3.5-9B-Q8_0 | Reasoning | Q8_0 | 8.9 GB | 9719 MB | 472 t/s | 42.8 t/s | Dense 9B — 65% slower, high quality |
 | gemma-4-12B-it-qat | Reasoning | QAT Q4_K_XL | 6.3 GB | 7591 MB | 1102 t/s | 48.7 t/s | Dense 12B — 62% slower |
-| **Qwen3VL-8B-Instruct** | Multimodal | Q4_K_M | 4.7 GB | 5292 MB | 2318 t/s | **73.1 t/s** | Vision model — current (fastest) |
+| **Qwen3VL-8B-Instruct** | Multimodal | Q4_K_M | 4.7 GB | 5292 MB | 2318 t/s | **73.1 t/s** | **Current multimodal model** — fastest vision model |
 | Qwen3VL-8B-Instruct-MXFP4 | Multimodal | MXFP4_MOE-Q6_K | 7.7 GB | 8222 MB | 2099 t/s | 46.7 t/s | Vision model — hybrid MXFP4 (deprecated) |
 
 > **Why gpt-oss-20b wins as reasoning model:** Despite being a "20B" model, gpt-oss-20b uses Mixture-of-Experts (MoE) with 32 experts — only ~3B parameters are active per token. This gives it 3B-level compute cost with 20B-level knowledge. On RTX 5060 Ti, it generates **118 tok/s** vs 63 tok/s for dense Qwen3.5-9B — nearly **2× faster** while using the same memory bandwidth.
@@ -290,8 +290,8 @@ nano .env
 mkdir -p services/llamacpp/models
 
 # Chat model (fast responses)
-wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-Q4_0.gguf \
-  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_0.gguf"
+wget -O services/llamacpp/models/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf \
+  "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf"
 
 # Reasoning model (complex tasks)
 wget -O services/llamacpp/models/gemma-4-E4B-it-Q4_0.gguf \
@@ -534,14 +534,18 @@ llama.cpp runs in **router mode** (`--models-dir`), dynamically loading models f
 
 ```
 services/llamacpp/models/
-├── Qwen3-4B-Instruct-2507-Q4_0.gguf          # Chat
+├── Qwen3-4B-Instruct-2507-Q4_0.gguf          # Chat (non-Blackwell)
+├── Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf     # Chat (Blackwell only)
 ├── gemma-4-E4B-it-Q4_0.gguf                   # Reasoning (8/12 GB)
-├── gpt-oss-20b-Q4_K_M.gguf                    # Reasoning (16+ GB)
+├── gpt-oss-20b-Q4_K_M.gguf                    # Reasoning (16+ GB, non-Blackwell)
+├── gpt-oss-20b-mxfp4.gguf                     # Reasoning (16+ GB, Blackwell only)
 ├── bge-m3-Q8_0.gguf                            # Embedding
 └── Qwen3VL-8B-Instruct-Q4_K_M/                # Multimodal (subdirectory!)
     ├── Qwen3VL-8B-Instruct-Q4_K_M.gguf
     └── mmproj-F16.gguf                         # Vision projector
 ```
+
+> **Architecture-aware download:** The deploy scripts automatically detect Blackwell GPUs (RTX 5060+) and download MXFP4 variants for native FP4 acceleration. On other GPUs (Ampere, Ada Lovelace), standard Q4_0/Q4_K_M quantizations are downloaded for optimal performance.
 
 > ⚠️ **Multimodal models require a subdirectory** with the projector file named `mmproj-*.gguf` inside. The model server auto-discovers and loads it.
 
@@ -569,9 +573,9 @@ services/llamacpp/models/
 
 | Component | Default | Recommended Alternative | Notes |
 |-----------|---------|------------------------|-------|
-| **Chat** | Qwen3-4B-Instruct-2507 Q4_0 (~2.4 GB) | Qwen3-4B-Instruct-2507 MXFP4 (~2 GB) | Non-reasoning/thinking model. MXFP4 more efficient on Blackwell GPUs (RTX 5060 Ti) |
+| **Chat** | Qwen3-4B-Instruct-2507 Q4_0 (~2.4 GB) | Qwen3-4B-Instruct-2507 MXFP4 (~2 GB) | Non-reasoning/thinking model. Auto-detected: MXFP4 on Blackwell (native FP4), Q4_0 on other GPUs |
 | **Reasoning (8/12 GB)** | Gemma 4 E4B Q4_0 (~4.8 GB) | — | Best speed/quality balance for mid-tier GPUs |
-| **Reasoning (16+ GB)** | gpt-oss-20b MXFP4 (~11.5 GB) | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | MoE architecture: ~3B active params, ~118 tok/s |
+| **Reasoning (16+ GB)** | gpt-oss-20b mxfp4/Q4_K_M (~12 GB) | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | MoE architecture: ~3B active params, ~118 tok/s. Auto-detected: mxfp4 on Blackwell, Q4_K_M on other GPUs |
 | **Multimodal** | Qwen3VL-8B Q4_K_M (~5 GB) | Qwen3VL-8B MXFP4 (~7.7 GB) | Requires subdirectory with `mmproj-*.gguf` |
 | **Embedding** | bge-m3 Q8_0 (~1.5 GB) | — | Single model for all tiers |
 
@@ -874,8 +878,8 @@ curl http://localhost:5000/metrics
 - **Background SLM import on startup** — incremental import with checkpoint table, daemon thread, CLI: `flask import-history-to-slm`
 - **Piper TTS optimization** — chunked processing for large text synthesis with seamless audio transitions
 - **llama-swap v217** — Blackwell (sm_120) crash fixes
-- **Default chat model** — Qwen3-4B-Instruct-2507 Q4_0 (~2.4 GB), default ctx 8192 → 16384. MXFP4 variant available for Blackwell GPUs
-- **Reasoning models** — 8/12 GB: Gemma 4 E4B Q4_0 (~4.8 GB), 16 GB+: gpt-oss-20b Q4_K_M (~12 GB)
+- **Default chat model** — Qwen3-4B-Instruct-2507 Q4_0 (~2.4 GB), default ctx 8192 → 16384. MXFP4 variant auto-detected on Blackwell GPUs (RTX 5060+), Q4_0 on other architectures
+- **Reasoning models** — 8/12 GB: Gemma 4 E4B Q4_0 (~4.8 GB), 16 GB+: gpt-oss-20b mxfp4 on Blackwell / Q4_K_M on other GPUs (~12 GB)
 - **CLI tools** — `admin-password`, `cleanup-uploads`, `migrate-messages-format` (with `--dry-run`, `--add-emojis`)
 - **Health check & metrics** — `/health` endpoint with service status, `/metrics` for Prometheus
 - **File size display** — shown in chat headers for all file types
@@ -916,9 +920,11 @@ curl http://localhost:5000/metrics
 
 | Model | Purpose | License | Approx. Size |
 |-------|---------|---------|-------------|
-| **Qwen3-4B-Instruct-2507-Q4_0.gguf** | Chat (fast responses) | [Apache 2.0](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2.4 GB |
+| **Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf** | Chat (Blackwell) | [Apache 2.0](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2.0 GB |
+| **Qwen3-4B-Instruct-2507-Q4_0.gguf** | Chat (other GPUs) | [Apache 2.0](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) | ~2.4 GB |
 | **gemma-4-E4B-it-Q4_0.gguf** | Reasoning (8/12 GB) | [Apache 2.0](https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF) | ~4.8 GB |
-| **gpt-oss-20b-Q4_K_M.gguf** | Reasoning (16 GB+) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 GB |
+| **gpt-oss-20b-mxfp4.gguf** | Reasoning (16 GB+, Blackwell) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 GB |
+| **gpt-oss-20b-Q4_K_M.gguf** | Reasoning (16 GB+, other GPUs) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 GB |
 | **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (image analysis) | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5 GB + mmproj ~1.1 GB |
 | **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~1.5 GB |
 

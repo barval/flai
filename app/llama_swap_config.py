@@ -41,7 +41,7 @@ GROUP_SETTINGS = {
 class LlamaSwapConfigGenerator:
     """Generator for llama-swap configuration from FLAI model_configs."""
 
-    def __init__(self, app=None):
+    def __init__(self, app=None) -> None:
         self.app = app
         self.logger = logging.getLogger(__name__)
         # Per-model degradation tracking: {module: step_index}

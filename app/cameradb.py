@@ -55,7 +55,7 @@ def populate_from_camera_api(camera_api_url: str, timeout: int = 15) -> list[str
         logger.warning(f"Error calling camera API: {e}")
         return []
 
-    codes = []
+    codes: list[str] = []
     for code, name in rooms.items():
         code = code.lower().strip()
         name = name.strip()
@@ -93,7 +93,7 @@ def delete_cameras_not_in(codes: list[str]) -> int:
             "DELETE FROM camera_rooms WHERE code != ALL(%s)",
             (codes,),
         )
-        count = c.rowcount
+        count = c.rowcount or 0
         conn.commit()
     if count:
         logger.info(f"Removed {count} stale camera rooms")

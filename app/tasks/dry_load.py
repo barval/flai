@@ -19,13 +19,28 @@ logger = logging.getLogger(__name__)
 DRY_LOAD_TIMEOUT_S = 30
 DRY_LOAD_POLL_INTERVAL_S = 1
 
-# Fallback model names per module (verified working on RTX 5060 Ti 16GB)
-FALLBACK_MODELS: dict[str, str] = {
+# Fallback model names per module — architecture-aware
+# MXFP4 variants used on Blackwell GPUs (native FP4 tensor cores),
+# standard Q4_0/Q4_K_M on all other NVIDIA GPUs.
+_FALLBACK_BLACKWELL: dict[str, str] = {
     "chat": "Qwen3-4B-Instruct-2507-MXFP4_MOE",
     "reasoning": "gpt-oss-20b-mxfp4",
     "multimodal": "Qwen3VL-8B-Instruct-Q4_K_M",
     "embedding": "bge-m3-Q8_0",
 }
+_FALLBACK_UNIVERSAL: dict[str, str] = {
+    "chat": "Qwen3-4B-Instruct-2507-Q4_0",
+    "reasoning": "gpt-oss-20b-Q4_K_M",
+    "multimodal": "Qwen3VL-8B-Instruct-Q4_K_M",
+    "embedding": "bge-m3-Q8_0",
+}
+
+
+def get_fallback_models() -> dict[str, str]:
+    """Return fallback models dict appropriate for the current GPU architecture."""
+    from app.utils import is_blackwell_gpu
+
+    return _FALLBACK_BLACKWELL if is_blackwell_gpu() else _FALLBACK_UNIVERSAL
 
 
 def _trigger_load(swap_url: str, module: str) -> bool:
@@ -82,7 +97,7 @@ def _rollback(app: Any, module: str, failed_model: str) -> bool:
     from app.database import get_db
     from app.model_config import invalidate_model_config_cache
 
-    fallback = FALLBACK_MODELS.get(module)
+    fallback = get_fallback_models().get(module)
     if not fallback:
         logger.error(f"No fallback model for module={module}")
         return False

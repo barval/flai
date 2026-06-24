@@ -18,7 +18,7 @@ def _delete_session_facts_from_slm(session_id: str, user_id: str) -> None:
     (or is a substring of) a user message from the session.
     """
     try:
-        slm = current_app.modules.get("slm")
+        slm = current_app.modules.get("slm")  # type: ignore[attr-defined]
         if not slm or not slm.available:
             return
 

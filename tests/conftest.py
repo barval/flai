@@ -344,13 +344,18 @@ class _MockDatabase:
             self._result(None, rowcount=1)
             return
 
-        # INTO model_configs (seed from init_db – no params, multi-row)
-        if "INTO MODEL_CONFIGS" in sql_u and not params:
+        # INTO model_configs (seed from init_db)
+        if "INTO MODEL_CONFIGS" in sql_u:
+            if params:
+                chat_model, reasoning_model = params
+            else:
+                chat_model = "Qwen3-4B-Instruct-2507-MXFP4_MOE"
+                reasoning_model = "gpt-oss-20b-mxfp4"
             defaults = [
                 {
                     "module": "chat",
-                    "model_name": "Qwen3-4B-Instruct-2507-Q4_K_M",
-                    "context_length": 8192,
+                    "model_name": chat_model,
+                    "context_length": 16384,
                     "temperature": 0.7,
                     "top_p": 0.9,
                     "timeout": 120,
@@ -359,8 +364,8 @@ class _MockDatabase:
                 },
                 {
                     "module": "reasoning",
-                    "model_name": "gpt-oss-20b-Q4_K_M",
-                    "context_length": 8192,
+                    "model_name": reasoning_model,
+                    "context_length": 16384,
                     "temperature": 0.7,
                     "top_p": 0.9,
                     "timeout": 120,

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### ✨ Features
+
+- **Blackwell-aware model deployment** — Chat and reasoning models are now auto-selected based on GPU architecture. MXFP4 variants (`Qwen3-4B-Instruct-2507-MXFP4_MOE`, `gpt-oss-20b-mxfp4`) are downloaded/configured on Blackwell GPUs (RTX 5060+, native FP4 tensor cores). Standard Q4_0/Q4_K_M quantizations are used on other NVIDIA GPUs (Ampere, Ada Lovelace) for optimal prefill performance. Detection via `nvidia-smi --query-gpu=name`. Covers: deploy scripts (`deploy.sh`, `deploy-ru.sh`), seed DB (`app/database.py`), fallback models (`app/tasks/dry_load.py`), and `is_blackwell_gpu()` utility (`app/utils.py`).
+
 ### 🐛 Bug Fixes
 
 - **`<|channel|>` thinking tokens: `analysis` stripped, `commentary` unwrapped** — gpt-oss-20b uses two channel types: `analysis<|message|>` for reasoning (strip entirely) and `commentary<|message|>` for the actual answer (unwrap — keep content, remove tags). Previous fix stripped all `<|channel|>` blocks, killing search results that gpt-oss-20b delivers via `commentary`. Now `_THINK_OPEN_RE` is specific to `analysis<|message|>` only; `_strip_thinking_tags()` unwraps `commentary` blocks and strips malformed `<|channel|>...` without `<|message|>`. `<|channel|>` is intentionally **not** a stop token — gpt-oss-20b always starts generation with it.

@@ -36,7 +36,7 @@ def _mock_config(module, **overrides):
         },
         "reasoning": {
             "module": "reasoning",
-            "model_name": "gpt-oss-20b-Q4_K_M",
+            "model_name": "gpt-oss-20b-mxfp4",
             "context_length": 8192,
             "temperature": 0.7,
             "timeout": 120,

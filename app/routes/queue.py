@@ -1,4 +1,7 @@
 # app/routes/queue.py
+from typing import Any
+
+import flask
 from flask import Blueprint, current_app, jsonify, request, session
 from flask_babel import gettext as _
 
@@ -106,7 +109,7 @@ def api_sd_step():
 
 
 @bp.route("/progress/<task_id>", methods=["GET"])
-def api_task_progress(task_id):
+def api_task_progress(task_id: str) -> flask.Response | tuple[flask.Response, int]:
     """Return latest persisted progress state for a task (for restore after reconnect)."""
     if "login" not in session:
         return jsonify({"error": _("Not authorized")}), 401
@@ -118,7 +121,7 @@ def api_task_progress(task_id):
     if not data:
         return jsonify({"progress": None})
 
-    progress: dict = {"type": data.get("type", "task_progress")}
+    progress: dict[str, Any] = {"type": data.get("type", "task_progress")}
     if data.get("stage"):
         progress["stage"] = data["stage"]
     if data.get("step"):

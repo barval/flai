@@ -537,7 +537,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
 class LlamaSwapBackend(AbstractLlamaBackend):
     """Connection via llama-swap proxy."""
 
-    def __init__(self, app=None):
+    def __init__(self, app=None) -> None:
         super().__init__(app)
         # Separate circuit breakers per model type — prevents one model's failures
         # (e.g., reasoning OOM) from blocking another model (e.g., chat).
@@ -621,7 +621,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
             )
             response.raise_for_status()
             data = response.json()
-            return data["choices"][0]["message"]["content"]
+            return str(data["choices"][0]["message"]["content"])
         except Exception as e:
             self.logger.error(f"CPU LLM call failed: {e}")
             return ""

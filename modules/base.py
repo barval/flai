@@ -111,8 +111,12 @@ class BaseModule(TranslationMixin):
         return get_model_config(model_type)  # type: ignore[no-any-return]
 
     def call_llamacpp(
-        self, messages: list[dict[str, Any]], model_type: str = "chat", lang: str = "ru",
-        tools: list[dict[str, Any]] | None = None, temperature: float | None = None,
+        self,
+        messages: list[dict[str, Any]],
+        model_type: str = "chat",
+        lang: str = "ru",
+        tools: list[dict[str, Any]] | None = None,
+        temperature: float | None = None,
     ) -> str | dict[str, Any]:
         """Call llama-server with configuration."""
         return self.llamacpp.call(messages, model_type, False, lang, tools=tools, temperature=temperature)  # type: ignore[no-any-return]
@@ -141,8 +145,15 @@ class BaseModule(TranslationMixin):
         return build_context_prompt(history, lang)
 
     def _get_context_for_model(
-        self, session_id: str, model_type: str, current_query: str, lang: str = "ru", user_id: str | None = None,
-        skip_slm: bool = False, rag_context: str = "", rag_source: str = "",
+        self,
+        session_id: str,
+        model_type: str,
+        current_query: str,
+        lang: str = "ru",
+        user_id: str | None = None,
+        skip_slm: bool = False,
+        rag_context: str = "",
+        rag_source: str = "",
     ) -> str:
         """Retrieve conversation history + SLM long-term memory with safety margin.
 
@@ -185,7 +196,9 @@ class BaseModule(TranslationMixin):
                         profile=user_id,
                         semantic=True,
                     )
-                    session_facts = [f for f in session_facts_raw if f.get("metadata", {}).get("fact_type") == "session_specific"]
+                    session_facts = [
+                        f for f in session_facts_raw if f.get("metadata", {}).get("fact_type") == "session_specific"
+                    ]
 
                 # Phase 2: General facts
                 general_facts_raw = slm.recall(
@@ -194,7 +207,9 @@ class BaseModule(TranslationMixin):
                     profile=user_id,
                     semantic=True,
                 )
-                general_facts = [f for f in general_facts_raw if f.get("metadata", {}).get("fact_type") != "session_specific"]
+                general_facts = [
+                    f for f in general_facts_raw if f.get("metadata", {}).get("fact_type") != "session_specific"
+                ]
 
                 all_facts = session_facts + general_facts
 
@@ -401,10 +416,7 @@ class BaseModule(TranslationMixin):
         self.logger.info(f"Router response: {router_response}")
 
         # Retry once if router produced a garbled response (rare model inference glitch)
-        if (
-            isinstance(router_response, str)
-            and router_response.strip().startswith('{"error"')
-        ):
+        if isinstance(router_response, str) and router_response.strip().startswith('{"error"'):
             self.logger.warning(f"Router returned error, retrying once: {router_response[:100]}")
             router_response = self.call_llamacpp(router_messages, model_type="chat", lang=lang, temperature=0.1)
             self.logger.info(f"Router retry response: {router_response}")
@@ -484,8 +496,13 @@ class BaseModule(TranslationMixin):
         """Process complex query via reasoning model."""
         response_language = "Russian" if lang == "ru" else "English"
         context_str = self._get_context_for_model(
-            session_id or "", "reasoning", query, lang, user_id=user_id,
-            rag_context=rag_context, rag_source=rag_source,
+            session_id or "",
+            "reasoning",
+            query,
+            lang,
+            user_id=user_id,
+            rag_context=rag_context,
+            rag_source=rag_source,
         )
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
@@ -534,8 +551,13 @@ class BaseModule(TranslationMixin):
         """Build prompt and stream reasoning model response."""
         response_language = "Russian" if lang == "ru" else "English"
         context_str = self._get_context_for_model(
-            session_id or "", "reasoning", query, lang, user_id=user_id,
-            rag_context=rag_context, rag_source=rag_source,
+            session_id or "",
+            "reasoning",
+            query,
+            lang,
+            user_id=user_id,
+            rag_context=rag_context,
+            rag_source=rag_source,
         )
         style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
             response_style, STYLE_INSTRUCTIONS[lang]["neutral"]

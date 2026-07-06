@@ -95,10 +95,7 @@ class SearchModule(TranslationMixin):
             if fetch_urls:
                 self.logger.debug(f"Fetching page content for {len(fetch_urls)} results (short/poor snippets)")
                 with ThreadPoolExecutor(max_workers=3) as executor:
-                    future_map = {
-                        executor.submit(self._fetch_page_content, url, 8): idx
-                        for idx, url in fetch_urls
-                    }
+                    future_map = {executor.submit(self._fetch_page_content, url, 8): idx for idx, url in fetch_urls}
                     for future in as_completed(future_map):
                         idx = future_map[future]
                         fetched = future.result()
@@ -131,9 +128,14 @@ class SearchModule(TranslationMixin):
             Extracted text content, or empty string on failure.
         """
         try:
-            resp = requests.get(url, timeout=timeout, headers={
-                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
-            }, allow_redirects=True)
+            resp = requests.get(
+                url,
+                timeout=timeout,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+                },
+                allow_redirects=True,
+            )
             resp.raise_for_status()
             extracted = trafilatura.extract(resp.content)
             if extracted:

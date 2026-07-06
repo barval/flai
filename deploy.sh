@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v9.0 — Single-Server Deployment Script
+# FLAI v9.1 — Single-Server Deployment Script
 
 set -euo pipefail
 

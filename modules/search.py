@@ -5,6 +5,7 @@ import logging
 import time
 
 import requests
+import trafilatura
 from requests.exceptions import Timeout as RequestsTimeout
 
 from app.mixins import TranslationMixin
@@ -76,21 +77,59 @@ class SearchModule(TranslationMixin):
             )
             resp.raise_for_status()
             data = resp.json()
-            results = data.get("results", [])
+            raw_results = data.get("results", [])
             elapsed = round(time.time() - start_time, 2)
             self.logger.info(
-                f"SearXNG search: '{query[:60]}...' → {len(results)} results in {elapsed}s"
+                f"SearXNG search: '{query[:60]}...' → {len(raw_results)} results in {elapsed}s"
             )
-            return [
-                {"title": r.get("title", ""), "url": r.get("url", ""), "content": r.get("content", "")}
-                for r in results[:limit]
-            ]
+
+            results = []
+            for r in raw_results[:limit]:
+                title = r.get("title", "")
+                url = r.get("url", "")
+                content = r.get("content", "") or ""
+                if not content.strip() and url:
+                    fetched = self._fetch_page_content(url)
+                    if fetched:
+                        content = fetched
+                results.append({"title": title, "url": url, "content": content})
+
+            if results and not any(r["content"].strip() for r in results):
+                self.logger.warning(
+                    f"All {len(results)} search results have empty content after page fetch"
+                )
+
+            return results
         except RequestsTimeout:
             self.logger.warning(f"SearXNG search timeout ({self.timeout}s): {query[:60]}...")
             return []
         except Exception as e:
             self.logger.error(f"SearXNG search failed: {e}")
             return []
+
+    def _fetch_page_content(self, url: str, timeout: int = 10) -> str:
+        """Download a page and extract readable text via trafilatura.
+
+        Args:
+            url: Page URL to fetch.
+            timeout: Request timeout in seconds.
+
+        Returns:
+            Extracted text content, or empty string on failure.
+        """
+        try:
+            resp = requests.get(url, timeout=timeout, headers={"User-Agent": "Mozilla/5.0"}, allow_redirects=True)
+            resp.raise_for_status()
+            text = trafilatura.extract(resp.content)
+            if text:
+                text = text.strip()
+                if text:
+                    self.logger.debug(f"Fetched page content ({len(text)} chars): {url[:80]}...")
+                    return text
+            self.logger.debug(f"No content extracted from: {url[:80]}...")
+        except Exception as e:
+            self.logger.debug(f"Failed to fetch page content from {url[:80]}...: {e}")
+        return ""
 
     def format_results_context(self, results: list[dict], lang: str = "ru") -> str:
         """Format search results into a context string for the reasoning model.

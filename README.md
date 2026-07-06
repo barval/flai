@@ -79,27 +79,11 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v9.0
+### What's New in v9.1
 
 | Feature | Notes |
 |---------|-------|
-| **Tool Calling** | Native OpenAI-compatible tool calling: calculator, current time, date/time calculations, web search, document search (RAG), camera snapshots — all via llama.cpp `--jinja` + Qwen3 |
-| **Web Search (SearXNG)** | Self-hosted metasearch engine for real-time internet queries: news, weather, exchange rates, prices. Docker profile `with-search` |
-| **Date/Time calculations** | 9 operations via Pendulum: days until weekday/date/period end, days between dates, next weekday on specific day, add days, format date. Full Russian/English support |
-| **Chat model stays hot permanently** | Chat model preload at startup via llama-swap `hooks.on_startup`, never unloaded by TTL (only swapped when another model needs VRAM). Background preload after every non-chat task eliminates cold starts |
-| **llama-swap alias deduplication** | Automatic dedup of aliases when multiple modules share the same GGUF file — prevents `duplicate alias` crash |
-| **Chat model auto-reload** | After reasoning/multimodal/embedding/video finishes, chat model is reloaded in a background thread via tiny completion request — next router call is instant |
-| **LTX-Video unconditional restart** | Video container always restarted after generation (no rate-limiting) — guaranteed CUDA context cleanup (~3 GB freed) |
-| **Skills list centralized** | All capabilities text extracted to `prompts/{ru,en}/skills.txt` as single source of truth. `format_prompt()` auto-injects `{skills_section}`. Previously duplicated (and inconsistent) across 4+ locations |
-| **Background task error isolation** | Fact extraction and fact merge errors are silently logged — never leak to users via SSE. Background tasks excluded from ⚡/⏳ queue indicators |
-| **Queue counter stability** | Background tasks no longer drift the user queue counter negative. `get_user_queue_counts()` returns `max(0, ...)` to prevent displays like `📊 -9/0` |
-| **Rule-based SLM extraction** | LLM-based fact extraction replaced with pattern matching (CPU-only, ~50-200ms). Semantic deduplication via `/similarity` endpoint. No GPU lock contention |
-| **Rule-based SLM merge** | LLM merge replaced with edit-distance + semantic similarity + temporal decay pipeline. Auto-archives facts older than 90 days |
-| **Task cancellation for all types** | Cancel button for image generation, image editing, and video generation (background cancel checker + container restart). Streaming tasks use Redis flag |
-| **Chat auto-scroll fix** | `_isLoadingMessages` flag prevents N competing async scroll callbacks. `isNearBottom()` threshold=200px. `overflow-anchor: none` for chat container |
-| **Error translation** | llama-swap errors translated to user language via `_translate_llama_swap_error()` |
-| **Double ⚠️ fix** | Server and client no longer both prepend "⚠️ " — server owns the prefix via `_build_error_response()` |
-| **TTS markdown cleanup** | `**bold**`, `*italic*`, `[links]` and other markdown formatting stripped before TTS synthesis — no more "звезда-звезда" in spoken responses. Handles sentence-split fragments (`**НН.РУ**` → `НН.РУ`). Exponent notation (`3**2=9`) preserved |
+
 
 ### Core Components
 

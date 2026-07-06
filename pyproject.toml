@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "flai"
-version = "9.0.0"
+version = "9.1.0"
 description = "Fully Local AI — a personal AI assistant that runs entirely on your hardware"
 readme = "README.md"
 license = {text = "MIT"}
@@ -22,7 +22,7 @@ dependencies = [
     "gunicorn==21.2.0",
     "gevent>=23.9.0",
     "Pillow>=10.1.0",
-    "pytz==2023.3",
+    "pytz>=2023.3",
     "redis==5.0.1",
     "Flask-Babel>=3.0",
     "qdrant-client==1.9.1",
@@ -37,6 +37,7 @@ dependencies = [
     "nvidia-ml-py>=12",
     "pymorphy3>=2.0.6",
     "pendulum>=3.0.0",
+    "trafilatura>=2.0.0",
 ]
 
 [project.optional-dependencies]

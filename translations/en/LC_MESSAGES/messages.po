@@ -1217,7 +1217,7 @@ msgstr "Logout"
 
 #: app/templates/base.html:78 app/templates/chat.html:167
 msgid "footer_text"
-msgstr "Fully Local AI (FLAI) v9.0 (c) 2026 Valery Barsukov"
+msgstr "Fully Local AI (FLAI) v9.1 (c) 2026 Valery Barsukov"
 
 #: app/templates/chat.html:14 app/templates/chat.html:178
 msgid "New document"

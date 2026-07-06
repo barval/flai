@@ -2186,10 +2186,12 @@ class RedisRequestQueue:
                     search_time,
                     lang,
                 )
-            search_context = search.format_results_context(results, lang=lang)
+            base = self.app.modules.get("base")
+            search_max_chars = base.get_search_context_limit() if base and hasattr(base, "get_search_context_limit") else 10000
+            search_context = search.format_results_context(results, lang=lang, max_chars=search_max_chars)
             self.app.logger.info(
                 f"Web search: '{query[:60]}...' → {len(results)} results, "
-                f"{len(search_context)} chars — requeueing to slow worker ({search_time}s)"
+                f"{len(search_context)} chars (limit {search_max_chars}) — requeueing to slow worker ({search_time}s)"
             )
         except Exception as e:
             search_time = round(time.time() - search_start, 1)

@@ -1,6 +1,8 @@
-# Testing — FLAI v9.0
+# Testing — FLAI v9.1
 
 This document describes the testing infrastructure, fixtures, mocking strategy, and known test issues. Read it when writing or running tests.
+
+> **v9.1 change:** `_fetch_page_content()` in `tests/test_search_module.py` is tested implicitly via existing search tests (no new tests needed — existing tests mock `requests` and do not trigger page fetch). `test_search_sends_correct_params` verifies correct POST parameters. All 15 search module tests pass.
 
 ## Test Structure
 

@@ -1,6 +1,8 @@
-# Release Guide — FLAI v9.0
+# Release Guide — FLAI v9.1
 
 This document describes the process of releasing a new version, updating READMEs, and maintaining documentation. Read it when preparing a new release.
+
+> **v9.1 release steps:** Version bump from 9.0 to 9.1 everywhere (pyproject.toml, deploy scripts, docs, metrics). Added `trafilatura>=2.0.0` to core dependencies. Unpinned `pytz==2023.3` to `pytz>=2023.3` (required by trafilatura's transitive dep `dateparser`). Simplified Docker volumes — 35 individual file mounts replaced with 3 directory mounts (`./app:/app/app`, `./modules:/app/modules`, `./prompts:/app/prompts`), added `PYTHONDONTWRITEBYTECODE=1`. Enhanced web search: parallel page fetching for short snippets, softened prompt instructions. Fixed budget overflow: `format_results_context()` truncates to 2K per-result + dynamic total, `_get_context_for_model()` returns RAG+SLM without history when budget exceeded. (Note: explicit `categories=general,news` was added then removed — caused DuckDuckGo rate limiting.)
 
 ## Release Documentation Process
 

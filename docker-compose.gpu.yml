@@ -16,53 +16,16 @@ services:
     env_file:
       - .env
     volumes:
-      # Mount application data directory
       - ./data:/app/data
       - ./.env:/app/.env:ro
-      # Mount models directory for GGUF metadata reading
       - ./services/llamacpp/models:/models:ro
-      # Mount llama-swap config
       - ./llama-swap-config:/config
-      # Mount docker socket for GPU detection
       - /var/run/docker.sock:/var/run/docker.sock
-      # Mount SLM named volume for backup/restore (read-only)
       - slm_data:/app/data/slm-readonly:ro
-      # Persistent code mounts (survive restart)
-      - ./app/llamacpp_client.py:/app/app/llamacpp_client.py
-      - ./app/llama_swap_config.py:/app/app/llama_swap_config.py
-      - ./app/queue.py:/app/app/queue.py
-      - ./app/resource_manager.py:/app/app/resource_manager.py
-      - ./app/utils.py:/app/app/utils.py
-      - ./app/database.py:/app/app/database.py
-      - ./app/db.py:/app/app/db.py
-      - ./app/cli.py:/app/app/cli.py
-      - ./app/slm_rules.py:/app/app/slm_rules.py
-      - ./app/slm_import.py:/app/app/slm_import.py
-      - ./app/slm_merge.py:/app/app/slm_merge.py
-      - ./app/routes/admin.py:/app/app/routes/admin.py
-      - ./app/routes/queue.py:/app/app/routes/queue.py
-      - ./app/routes/messages.py:/app/app/routes/messages.py
-      - ./app/routes/sessions.py:/app/app/routes/sessions.py
-      - ./app/static/js/chat-init.js:/app/app/static/js/chat-init.js
-      - ./app/static/js/chat-recording.js:/app/app/static/js/chat-recording.js
-      - ./app/static/js/chat-constants.js:/app/app/static/js/chat-constants.js
-      - ./app/__init__.py:/app/app/__init__.py
-      - ./modules/video.py:/app/modules/video.py
-      - ./modules/sd_cpp.py:/app/modules/sd_cpp.py
-      - ./modules/base.py:/app/modules/base.py
-      - ./modules/tts.py:/app/modules/tts.py
-      - ./app/static/js/events.js:/app/app/static/js/events.js
-      - ./app/static/js/admin-models.js:/app/app/static/js/admin-models.js
-      - ./app/static/js/chat-queue.js:/app/app/static/js/chat-queue.js
-      - ./app/static/js/chat-messages.js:/app/app/static/js/chat-messages.js
-      - ./app/static/css/chat.css:/app/app/static/css/chat.css
-      - ./prompts/en/rag.template:/app/prompts/en/rag.template
-      - ./prompts/ru/rag.template:/app/prompts/ru/rag.template
-      - ./prompts/en/reasoning.template:/app/prompts/en/reasoning.template
-      - ./prompts/ru/reasoning.template:/app/prompts/ru/reasoning.template
-      - ./prompts/en/base_text.template:/app/prompts/en/base_text.template
-      - ./prompts/ru/base_text.template:/app/prompts/ru/base_text.template
-      # Mount translations directory (compiled .mo files)
+      # Directory mounts for hot-reloading (no rebuild needed)
+      - ./app:/app/app
+      - ./modules:/app/modules
+      - ./prompts:/app/prompts
       - ./translations:/app/translations
     runtime: nvidia
     group_add:
@@ -71,6 +34,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - PYTHONDONTWRITEBYTECODE=1
     networks:
       - flai_network
     restart: unless-stopped

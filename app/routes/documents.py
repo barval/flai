@@ -100,12 +100,12 @@ def api_upload_document():
     user_folder = os.path.join(documents_folder, session["login"])
     os.makedirs(user_folder, exist_ok=True)
 
-    # Безопасное имя: UUID + оригинальное расширение
+    # Safe name: UUID + original extension
     safe_ext = os.path.splitext(filename)[1].lower()
     safe_filename = f"{doc_id}{safe_ext}"
     file_path = os.path.join(user_folder, safe_filename)
 
-    # Двойная проверка, что путь не выходит за пределы DOCUMENTS_FOLDER
+    # Double-check path does not escape DOCUMENTS_FOLDER
     real_file_path = os.path.realpath(file_path)
     real_user_folder = os.path.realpath(user_folder)
     if not real_file_path.startswith(real_user_folder + os.sep):

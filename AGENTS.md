@@ -75,7 +75,8 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - **LLM backend:** `LLAMACP_BACKEND=llama-swap` (default) or `llamacpp` (direct)
   - **Skills master copy:** `prompts/{ru,en}/skills.txt` — single source of truth for all capabilities lists. `format_prompt()` auto-injects `{skills_section}`.
   - **Response styles:** `STYLE_INSTRUCTIONS` in `modules/base.py` — single source of truth for 5 styles (neutral, academic, professional, friendly, funny). Imported by `rag.py` and `multimodal.py`. Style is injected into all prompts via `{response_style}` placeholder.
-  - **Context budget:** `_get_context_for_model()` fetches SLM facts first, measures real token cost, then fills remaining budget with conversation history. No hardcoded reserves — actual sizes used throughout.
+  - **Web search content extraction:** `_fetch_page_content()` in `modules/search.py` downloads pages with short/poor SearXNG snippets (<300 chars) via HTTP in parallel (`ThreadPoolExecutor`, max 3 workers) and extracts readable text using `trafilatura`. Instructions softened from «USE ONLY THIS DATA» to «use as primary source» in both `modules/base.py` and `prompts/{ru,en}/reasoning.template`. Configurable per-page timeout (8s default via `requests.get`). Depends on `trafilatura>=2.0.0`. (Explicit `categories=general,news` was removed — caused DuckDuckGo rate limiting on SearXNG.)
+  - **Context budget:** `_get_context_for_model()` fetches SLM facts first, measures real token cost, then fills remaining budget with conversation history. No hardcoded reserves — actual sizes used throughout. Search content is truncated to 2 000 chars per result and a dynamic total computed from the reasoning model's `context_length` via `get_search_context_limit()` (~30% of effective budget, ~11 K chars for 16 K context). When budget is still exceeded, RAG+SLM is returned without history (never dropped).
   - **Chat auto-scroll:** `_isLoadingMessages` flag in `chat-messages.js` prevents N competing async scroll callbacks. `isNearBottom()` threshold=200px. `overflow-anchor: none` for chat container.
   - **TTS markdown cleanup:** `clean_markdown_for_tts()` in `app/utils.py` strips markdown formatting before Piper TTS synthesis. Handles orphaned `**` fragments from sentence-split at `.` inside URLs. Called in `modules/tts.py:synthesize()`.
 
@@ -127,6 +128,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - Every import must be used; every translation key must appear in the UI.
   - Remove any leftover debug prints, commented-out blocks, or obsolete TODOs.
   - All CSS in `app/static/css/`, JS in `app/static/js/`. No inline styles, no CDN.
+  - **Docker dev workflow:** `./app`, `./modules`, and `./prompts` are bind-mounted as directories in `docker-compose.gpu.yml`. All changes to Python/JS/CSS/prompt files take effect immediately on container restart (no rebuild). `PYTHONDONTWRITEBYTECODE=1` is set to prevent `__pycache__` on host.
   - Always write clean, self-documenting code; add comments only when necessary.
 
 # Localization (i18n)
@@ -173,4 +175,4 @@ FLAI REQUIRES an **NVIDIA GPU with at least 8 GB VRAM and 16 GB system RAM.** CP
 # Known Issues (fix on sight)
   - **Unit test speed:** `CamModule` has 5×2s init retries, making `test_cam.py` ~10s per fixture.
   - **Load tests** (`tests/load/`) excluded from pytest collection (require locust fixtures).
-  - All other historical issues were fixed in v9.0. See `CHANGELOG.md` for details.
+  - All other historical issues were fixed in v9.1. See `CHANGELOG.md` for details.

@@ -1,8 +1,10 @@
-# Architecture — FLAI v9.0
+# Architecture — FLAI v9.1
 
 This document describes the internal architecture of FLAI in detail. Read it when modifying core logic, queue, modules, or data flow.
 
 For critical rules and commands, see the root `AGENTS.md`.
+
+> **v9.1 change:** Web search module (`modules/search.py`) gained `_fetch_page_content()` — downloads pages with empty SearXNG snippets and extracts readable text via `trafilatura`. Later enhanced: `_fetch_page_content()` runs in parallel via `ThreadPoolExecutor` for short snippets (<300 chars), and instructions softened from «USE ONLY THIS DATA» to «use this data as your primary source» in both `modules/base.py` and prompt templates. `format_results_context()` truncates per-result to 2 000 chars and caps total dynamically via `get_search_context_limit()` (~30% of effective budget, ~11 K chars for 16 K context). `_get_context_for_model()` returns RAG+SLM without history (instead of empty) when budget is exceeded. Depends on `trafilatura>=2.0.0`. Docker volumes simplified: `./app`, `./modules`, `./prompts` now mounted as directories instead of 35 individual file mounts; `PYTHONDONTWRITEBYTECODE=1` added. (Explicit `categories=general,news` was later removed — caused DuckDuckGo rate limiting.)
 
 ## Entrypoint & Structure
 

@@ -1,6 +1,8 @@
-# VRAM Management — FLAI v9.0
+# VRAM Management — FLAI v9.1
 
 This document describes the VRAM management system, GPU queue rules, and model protection mechanisms. Read it when modifying `resource_manager.py`, `queue.py`, video/multimodal pipelines, or admin model configuration.
+
+> **v9.1 change:** Web search page content extraction (`_fetch_page_content()` in `modules/search.py`) runs on CPU only (HTTP requests + trafilatura text extraction). No GPU/VRAM impact.
 
 For critical rules summary, see the root `AGENTS.md`.
 

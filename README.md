@@ -83,6 +83,8 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 | Feature | Notes |
 |---------|-------|
+| **Web search improvements** | Pages with short snippets (<300 chars) are fetched in parallel (ThreadPoolExecutor, max 3 workers) for full text extraction via trafilatura. Instructions softened from «USE ONLY THIS DATA» to «use as primary source», allowing the model to supplement with its knowledge when search data is insufficient. Content is truncated to 2 000 chars per result and capped dynamically (~30% of effective context budget) to fit context. |
+| **Docker volumes simplified** | 35 individual file mounts replaced with 3 directory mounts (`./app:/app/app`, `./modules:/app/modules`, `./prompts:/app/prompts`) for hot-reloading. `PYTHONDONTWRITEBYTECODE=1` prevents `__pycache__` on host. |
 
 
 ### Core Components

@@ -118,6 +118,20 @@ class BaseModule(TranslationMixin):
         return self.llamacpp.call(messages, model_type, False, lang, tools=tools, temperature=temperature)  # type: ignore[no-any-return]
 
     # --- Context handling methods ---
+    def get_search_context_limit(self) -> int:
+        """Compute max chars for search context based on reasoning model's context window.
+
+        Uses ~30% of the effective context budget (after margins) to leave room
+        for template, history, and SLM facts. Assumes ~3.5 chars/token for Russian.
+        Falls back to 10 000 if config is unavailable.
+        """
+        config = self._get_model_config("reasoning")
+        if not config:
+            return 10000
+        ctx = config.get("context_length", 16384)
+        budget = int(ctx * (self.context_history_percent / 100.0) * self.safety_margin)
+        return int(budget * 0.30 * 3.5)
+
     def _estimate_tokens(self, text: str, model_type: str = "chat", lang: str = "ru") -> int:
         """Token estimation with language and model-specific coefficients."""
         return estimate_tokens(text, model_type, lang, self.token_chars)
@@ -199,34 +213,36 @@ class BaseModule(TranslationMixin):
             slm_facts_str = "\n" + "\n".join(lines)
             slm_tokens = self._estimate_tokens(slm_facts_str, model_type, lang)
 
-        # Step 4: Calculate history budget — subtract query, template, RAG, and SLM
+        # Step 4: Build RAG section (needed before budget check for fallback)
+        rag_section = ""
+        if rag_context:
+            if rag_source == "web_search":
+                heading = (
+                    "Результаты поиска в интернете — используй эти данные как основной источник. "
+                    "Если данных недостаточно, можешь дополнить ответ своими знаниями, но не выдумывай факты."
+                    if lang == "ru"
+                    else "Web search results — use this data as your primary source. "
+                    "If the data is insufficient, you may supplement with your own knowledge, but do not fabricate facts."
+                )
+            else:
+                heading = "Найденная информация из документов:" if lang == "ru" else "Found information from documents:"
+            rag_section = "\n" + heading + "\n" + rag_context
+
+        # Step 5: Calculate history budget — subtract query, template, RAG, and SLM
         remaining_for_history = available_tokens - query_tokens - TEMPLATE_OVERHEAD - rag_tokens - slm_tokens
 
         if remaining_for_history <= 0:
             self.logger.warning(
                 f"No tokens available for history. Query: {query_tokens}, RAG: {rag_tokens}, "
-                f"SLM: {slm_tokens}, Available: {available_tokens}"
+                f"SLM: {slm_tokens}, Available: {available_tokens} — returning RAG+SLM without history"
             )
-            return slm_facts_str.lstrip() if slm_facts_str else ""
+            context = rag_section + slm_facts_str
+            return context.lstrip()
 
-        # Step 5: Load history with SQL-level limit based on remaining budget
+        # Step 6: Load history with SQL-level limit based on remaining budget
         history_msgs = get_session_text_history(session_id, remaining_for_history, max_messages=self.max_messages_limit)
         history_str = self._build_context_prompt(history_msgs, lang) if history_msgs else ""
 
-        # Combine: RAG context first, then SLM facts, history last (already trimmed)
-        rag_section = ""
-        if rag_context:
-            if rag_source == "web_search":
-                heading = (
-                    "Результаты поиска в интернете — ИСПОЛЬЗУЙ ТОЛЬКО ЭТИ ДАННЫЕ для ответа. "
-                    "Не выдумывай факты, не используй свои знания."
-                    if lang == "ru"
-                    else "Web search results — USE ONLY THIS DATA to answer. "
-                    "Do not fabricate facts, do not use your own knowledge."
-                )
-            else:
-                heading = "Найденная информация из документов:" if lang == "ru" else "Found information from documents:"
-            rag_section = "\n" + heading + "\n" + rag_context
         context = rag_section + slm_facts_str + history_str
         history_tokens = self._estimate_tokens(history_str, model_type, lang)
         context_tokens = self._estimate_tokens(context, model_type, lang)

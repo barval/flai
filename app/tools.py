@@ -362,10 +362,9 @@ def _exec_web_search(ctx: dict[str, Any], query: str, lang: str = "ru") -> str:
         with force_locale(lang):
             return str(_("No results found for query: {query}").format(query=query))
 
-    formatted = search_module.format_results_context(results, lang=lang)
-    max_chars = app.config.get("SEARXNG_MAX_RESULTS_CHARS", 7000) if app else 7000
-    if len(formatted) > max_chars:
-        formatted = formatted[:max_chars] + "..."
+    base = app.modules.get("base") if app else None
+    search_max_chars = base.get_search_context_limit() if base and hasattr(base, "get_search_context_limit") else 7000
+    formatted = search_module.format_results_context(results, lang=lang, max_chars=search_max_chars)
     return formatted  # type: ignore[no-any-return]
 
 

@@ -1485,34 +1485,40 @@ class RedisRequestQueue:
         current_time_str = get_current_time_in_timezone(self.app)
         stream_start = time.time()
         full_response = ""
-        error_detected = False
-        for token in self.app.modules["base"].generate_reasoning_response_stream(
-            query,
-            current_time_str,
-            lang=lang,
-            session_id=session_id,
-            response_style=response_style,
-            user_id=user_id,
-            rag_context=rag_context,
-            rag_source=rag_source,
-        ):
-            full_response += token
-            if not error_detected:
-                if self._is_llm_error_string(full_response):
-                    error_detected = True
-                else:
-                    self._publish_stream_token(task, token)
-            if self._is_task_cancelled(task["id"]):
+        for attempt in range(2):
+            full_response = ""
+            error_detected = False
+            for token in self.app.modules["base"].generate_reasoning_response_stream(
+                query,
+                current_time_str,
+                lang=lang,
+                session_id=session_id,
+                response_style=response_style,
+                user_id=user_id,
+                rag_context=rag_context,
+                rag_source=rag_source,
+            ):
+                full_response += token
+                if not error_detected:
+                    if self._is_llm_error_string(full_response):
+                        error_detected = True
+                    else:
+                        self._publish_stream_token(task, token)
+                if self._is_task_cancelled(task["id"]):
+                    break
+            reasoning_time = round(time.time() - stream_start, 1)
+            full_response = self._strip_thinking_tags(full_response)
+            if full_response.strip():
                 break
-        reasoning_time = round(time.time() - stream_start, 1)
-        full_response = self._strip_thinking_tags(full_response)
-        if not full_response.strip():
-            return self._build_error_response(
-                session_id,
-                self.app.modules["base"]._("No response from reasoning model", lang),
-                reasoning_time,
-                lang,
-            )
+            if attempt == 0 and not self._is_task_cancelled(task["id"]):
+                self.app.logger.warning(f"Reasoning model returned empty output (attempt {attempt + 1}), retrying once")
+            else:
+                return self._build_error_response(
+                    session_id,
+                    self.app.modules["base"]._("No response from reasoning model", lang),
+                    reasoning_time,
+                    lang,
+                )
         if self._is_llm_error_string(full_response):
             return self._build_error_response(session_id, full_response, reasoning_time, lang)
 

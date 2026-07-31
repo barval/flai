@@ -196,13 +196,6 @@
     flex-shrink: 0;
 }
 
-.session-title-text {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-}
-
 .session-date,
 .document-date {
     font-size: 0.75rem;
@@ -364,8 +357,7 @@
     border-radius: 12px;
 }
 
-.save-chat-button,
-.clear-context-button {
+.save-chat-button {
     background: none;
     border: 1px solid #ddd;
     border-radius: 4px;
@@ -375,12 +367,12 @@
     transition: background-color 0.3s;
 }
 
-.save-chat-button:hover,
-.clear-context-button:hover {
+.save-chat-button:hover {
     background-color: #f0f0f0;
 }
 
 .cancel-stream-header {
+    display: none;
     background: none;
     border: 1px solid #e74c3c;
     border-radius: 4px;
@@ -771,8 +763,7 @@ video {
     margin: 1em 0;
 }
 
-.copy-code-button,
-.copy-transcript-button {
+.copy-code-button {
     position: absolute;
     top: 8px;
     right: 8px;
@@ -794,15 +785,13 @@ video {
     backdrop-filter: blur(2px);
 }
 
-.copy-code-button:hover,
-.copy-transcript-button:hover {
+.copy-code-button:hover {
     opacity: 1;
     background-color: #3498db;
     transform: scale(1.05);
 }
 
-.copy-code-button.copied,
-.copy-transcript-button.copied {
+.copy-code-button.copied {
     background-color: #27ae60;
     opacity: 1;
 }
@@ -980,8 +969,7 @@ video {
         width: 100%;
     }
     
-    .copy-code-button,
-    .copy-transcript-button {
+    .copy-code-button {
         width: 28px;
         height: 28px;
         font-size: 14px;

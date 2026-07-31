@@ -1,6 +1,8 @@
-# Release Guide — FLAI v9.1
+# Release Guide — FLAI v9.2
 
 This document describes the process of releasing a new version, updating READMEs, and maintaining documentation. Read it when preparing a new release.
+
+> **v9.2 release steps:** Version bump from 9.1 to 9.2 everywhere (pyproject.toml, deploy scripts, docs, metrics, `.po` headers/footers). Reasoning task now retries once when the model returns empty output (thinking-only) instead of showing «No response from reasoning model» — in `app/queue.py:_process_reasoning_task()`.
 
 > **v9.1 release steps:** Version bump from 9.0 to 9.1 everywhere (pyproject.toml, deploy scripts, docs, metrics). Added `trafilatura>=2.0.0` to core dependencies. Unpinned `pytz==2023.3` to `pytz>=2023.3` (required by trafilatura's transitive dep `dateparser`). Simplified Docker volumes — 35 individual file mounts replaced with 3 directory mounts (`./app:/app/app`, `./modules:/app/modules`, `./prompts:/app/prompts`), added `PYTHONDONTWRITEBYTECODE=1`. Enhanced web search: parallel page fetching for short snippets, softened prompt instructions. Fixed budget overflow: `format_results_context()` truncates to 2K per-result + dynamic total, `_get_context_for_model()` returns RAG+SLM without history when budget exceeded. (Note: explicit `categories=general,news` was added then removed — caused DuckDuckGo rate limiting.)
 
@@ -51,6 +53,9 @@ When releasing a new version:
   - `AGENTS.md`: version title `# AGENTS.md — FLAI vX.Y`
   - `README.md`: `### What's New in vX.Y`
   - `README-ru.md`: Russian equivalent section header
+  - `translations/{en,ru}/LC_MESSAGES/messages.po`: `Project-Id-Version` header and footer string
+  - `deploy.sh`, `deploy-ru.sh`: version string in headers, success messages, and usage text
+  - `docs/*.md`: version in titles and change notes
 
 ### 2. Update "What's New" section in both READMEs:
   - Add new features to the table

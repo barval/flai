@@ -3,47 +3,6 @@
 const originalLoadMessages = loadMessages;
 const originalDisplayMessage = displayMessage;
 
-function isDuplicateMessage(msg) {
-    const messages = document.querySelectorAll(`.${msg.role}-message`);
-    for (let el of messages) {
-        // Check by messageId (priority)
-        if (el.dataset.messageId && msg.id && el.dataset.messageId === String(msg.id)) {
-            return true;
-        }
-        // Check by tempId
-        if (el.dataset.tempId && msg.timestamp) {
-            const tempId = `temp-${msg.timestamp}`;
-            if (el.dataset.tempId === tempId) {
-                return true;
-            }
-        }
-        // FIX: Check by filename for audio/image files (reliable duplicate detection)
-        if (msg.file_name && el.dataset.fileName === msg.file_name) {
-            return true;
-        }
-        // FIX: For audio files, skip content check because client has base64 data
-        // while server returns message without base64 in content field
-        const isAudio = msg.file_type?.startsWith('audio/') || 
-                       msg.file_name?.match(/\.(webm|mp3|wav|ogg)$/);
-        
-        if (!isAudio) {
-            // Check by content and timestamp (fallback) only for text messages
-            if (el.dataset.rawText === msg.content &&
-                Math.abs(new Date(el.dataset.timestamp) - new Date(msg.timestamp)) < 2000) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-
-
-
-
-
-
-
 async function sendMessage() {
     // FIX: Always reset isSending flag at the start
     if (isSending) {

@@ -9,7 +9,7 @@
   [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
   [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 
-[English](README.md) | [Русский](README-ru.md)
+[English](README.md) | [Russian](README-ru.md)
 </div>
 
 ---
@@ -79,12 +79,11 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v9.1
+### What's New in v9.2
 
 | Feature | Notes |
 |---------|-------|
-| **Web search improvements** | Pages with short snippets (<300 chars) are fetched in parallel (ThreadPoolExecutor, max 3 workers) for full text extraction via trafilatura. Instructions softened from «USE ONLY THIS DATA» to «use as primary source», allowing the model to supplement with its knowledge when search data is insufficient. Content is truncated to 2 000 chars per result and capped dynamically (~30% of effective context budget) to fit context. |
-| **Docker volumes simplified** | 35 individual file mounts replaced with 3 directory mounts (`./app:/app/app`, `./modules:/app/modules`, `./prompts:/app/prompts`) for hot-reloading. `PYTHONDONTWRITEBYTECODE=1` prevents `__pycache__` on host. |
+| **Reasoning task retry-on-empty** | If the reasoning model (gpt-oss-20b) returns only thinking blocks (empty answer after stripping), the task is retried once automatically. The model is already loaded on retry, so the second attempt is fast. Eliminates random «No response from reasoning model» errors caused by a cold model producing analysis without a final answer. No retry on cancellation or real model errors. |
 
 
 ### Core Components
@@ -725,7 +724,7 @@ The admin panel includes a **Cameras** tab with full CRUD operations:
 - **Sync** – import camera list from room-snapshot-api (`/rooms` endpoint)
 - **Enable/Disable** – toggle individual cameras on/off
 - **Thumbnail previews** – lazy-loaded camera snapshots with localStorage caching
-- **Russian name recognition** – pymorphy3 morphological analysis generates all grammatical declensions (именительный, винительный, предложный падежи) for each room name, so the AI recognizes "покажи гостиную", "что в гостиной", "на кухне" etc.
+- **Russian name recognition** – pymorphy3 morphological analysis generates all grammatical declensions (nominative, accusative, prepositional cases) for each room name, so the AI recognizes phrases like "show me the living room", "what is in the living room", "in the kitchen" etc.
 
 Camera room data is stored in the `camera_rooms` database table (code, name_forms, enabled, sort_order).
 
@@ -817,6 +816,7 @@ curl http://localhost:5000/metrics
 
 ### ✅ Completed
 
+- **Reasoning retry-on-empty** — when the reasoning model returns thinking-only output (no final answer), the task is retried once automatically; fixes random «No response from reasoning model» errors on cold model loads
 - **Tool Calling system** — `app/tools.py`: calculator, current time, date/time calculations (9 ops via Pendulum), web search (SearXNG), document search (RAG), camera snapshots. OpenAI tools API with streaming tool_call accumulation
 - **Web Search module (SearXNG)** — self-hosted metasearch engine, Docker profile `with-search`, router category 7 for internet queries
 - **Chat model stays hot** — preload at startup via `hooks.on_startup`, TTL=0 (never unloaded), background reload after every non-chat task, no cold starts

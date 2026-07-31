@@ -1,52 +1,52 @@
-# Room Snapshot API — Руководство по развёртыванию
+# Room Snapshot API — Deployment Guide
 
-## Обзор
+## Overview
 
-Сервис **Room Snapshot API** предоставляет HTTP-доступ к снимкам IP-камер для приложения FLAI.
-Код сервиса находится в поддиректории `room-snapshot-api/` (клонируется из отдельного репозитория).
+The **Room Snapshot API** service provides HTTP access to IP camera snapshots for the FLAI application.
+The service code lives in the `room-snapshot-api/` subdirectory (cloned from a separate repository).
 
-**Два варианта развёртывания:**
+**Two deployment options:**
 
-1. **Локальное** — на том же сервере что и FLAI
-2. **Удалённое** — на отдельном сервере
+1. **Local** — on the same server as FLAI
+2. **Remote** — on a separate server
 
-## Структура файлов
+## File Structure
 
 ```
 services/room-snapshot-api/
-├── README.md                           ← Этот файл
-├── deploy.sh                           ← Скрипт развёртывания
-├── docker-compose-local.yml            ← Локальный docker-compose
-├── docker-compose-remote.yml           ← Удалённый docker-compose
-└── room-snapshot-api/                  ← Код сервиса (клон репозитория)
+├── README.md                           ← This file
+├── deploy.sh                           ← Deployment script
+├── docker-compose-local.yml            ← Local docker-compose
+├── docker-compose-remote.yml           ← Remote docker-compose
+└── room-snapshot-api/                  ← Service code (repository clone)
     ├── Dockerfile
     ├── app/
-    ├── config/cameras.conf             ← Конфигурация камер
+    ├── config/cameras.conf             ← Camera configuration
     ├── requirements.txt
     └── .env
 ```
 
-## Быстрый старт
+## Quick Start
 
-### 1. Клонирование кода сервиса (если ещё не клонирован)
+### 1. Clone the service code (if not already cloned)
 
 ```bash
 cd /home/GIT/GITEA/BARVAL-MY/flai/services/room-snapshot-api
 git clone https://github.com/barval/room-snapshot-api.git room-snapshot-api
 ```
 
-### 2. Настройка камер
+### 2. Configure cameras
 
-Отредактируйте `room-snapshot-api/config/cameras.conf`:
+Edit `room-snapshot-api/config/cameras.conf`:
 
 ```conf
-# Формат: код=ip:порт:название
-spa=192.168.131.101:554/stream1:Спальня
-gos=192.168.131.102:554/stream1:Гостиная
-kab=192.168.131.103:554/stream1:Кабинет
+# Format: code=ip:port:name
+spa=192.168.131.101:554/stream1:Bedroom
+gos=192.168.131.102:554/stream1:Living room
+kab=192.168.131.103:554/stream1:Office
 ```
 
-В `room-snapshot-api/.env` укажите `RTSP_AUTH` — логин:пароль от камер:
+Set `RTSP_AUTH` (camera login:password) in `room-snapshot-api/.env`:
 
 ```bash
 cp room-snapshot-api/.env.example room-snapshot-api/.env
@@ -58,175 +58,175 @@ RTSP_AUTH="admin:password"
 FLASK_DEBUG=false
 ```
 
-### 3. Развёртывание
+### 3. Deploy
 
-Скрипт `deploy.sh` автоматизирует весь процесс:
+The `deploy.sh` script automates the whole process:
 
 ```bash
-# Локальное развёртывание (на том же сервере что и FLAI)
+# Local deployment (on the same server as FLAI)
 ./deploy.sh local
 
-# Удалённое развёртывание (отдельный сервер)
+# Remote deployment (separate server)
 ./deploy.sh remote
 ```
 
-Полезные команды:
+Useful commands:
 
 ```bash
-./deploy.sh status     # Показать статус сервиса
-./deploy.sh logs       # Просмотр логов в реальном времени
-./deploy.sh restart    # Перезапуск
-./deploy.sh stop       # Остановка
+./deploy.sh status     # Show service status
+./deploy.sh logs       # View logs in real time
+./deploy.sh restart    # Restart
+./deploy.sh stop       # Stop
 ```
 
-Скрипт автоматически:
-- Создаёт `.env` с безопасным `SECRET_KEY` (если отсутствует или дефолтный)
-- Проверяет/создаёт Docker-сеть `flai_flai_network` (для локального режима)
-- Собирает и запускает контейнер
-- Ждёт готовности сервиса (до 15 попыток, проверка `/health`)
-- Выводит статус, JSON health-ответа и дальнейшие инструкции
+The script automatically:
+- Creates `.env` with a secure `SECRET_KEY` (if missing or default)
+- Checks/creates the `flai_flai_network` Docker network (for local mode)
+- Builds and starts the container
+- Waits for the service to be ready (up to 15 attempts, `/health` check)
+- Prints the status, JSON health response, and further instructions
 
-### 4. Подключение к FLAI
+### 4. Connect to FLAI
 
-В `.env` основного приложения FLAI укажите:
+In the main FLAI application `.env`:
 
 ```bash
-# Локальное развёртывание (Docker-сеть, внутренний порт 5000)
+# Local deployment (Docker network, internal port 5000)
 CAMERA_API_URL=http://flai-room-snapshot-api:5000
 CAMERA_ENABLED=true
 CAMERA_API_TIMEOUT=15
 CAMERA_CHECK_INTERVAL=30
 ```
 
-Перезапустите FLAI:
+Restart FLAI:
 
 ```bash
 docker compose -f docker-compose.gpu.yml restart web
 ```
 
-## Порты
+## Ports
 
-| Порт | Назначение |
-|------|------------|
-| `5000` | Внутренний порт контейнера (для Docker-сети) |
-| `5005` | Внешний порт (маппинг на хост) |
+| Port  | Purpose                            |
+|-------|------------------------------------|
+| `5000`| Container internal port (Docker network) |
+| `5005`| External port (host mapping)       |
 
-> **Важно**: При подключении из контейнера FLAI через Docker-сеть используйте порт **5000**.
-> При подключении с хоста (curl, браузер) — порт **5005**.
+> **Important**: When connecting from the FLAI container via the Docker network use port **5000**.
+> When connecting from the host (curl, browser) — port **5005**.
 
-## Эндпоинты API
+## API Endpoints
 
-| Эндпоинт | Метод | Описание |
-|----------|-------|----------|
-| `/health` | GET | Проверка работоспособности |
-| `/rooms` | GET | Список доступных камер |
-| `/rooms/<код>` | GET | Информация о конкретной камере |
-| `/snapshot/<код>` | GET | Снимок с камеры (JPEG) |
-| `/info` | GET | Информация об API |
+| Endpoint    | Method | Description                 |
+|-------------|--------|-----------------------------|
+| `/health`   | GET    | Health check                |
+| `/rooms`    | GET    | List of available cameras   |
+| `/rooms/<code>` | GET | Info about a specific camera |
+| `/snapshot/<code>` | GET | Camera snapshot (JPEG) |
+| `/info`     | GET    | API info                    |
 
-### Примеры
+### Examples
 
 ```bash
-# Проверка здоровья
+# Health check
 curl http://localhost:5005/health
 
-# Список камер
+# List of cameras
 curl http://localhost:5005/rooms
 
-# Сохранить снимок
+# Save a snapshot
 curl http://localhost:5005/snapshot/gos -o gos.jpg
 
-# Информация о камере
+# Camera info
 curl http://localhost:5005/rooms/gos
 ```
 
-## Мониторинг
+## Monitoring
 
 ```bash
-# Логи
+# Logs
 ./deploy.sh logs
 
-# Статус контейнера
+# Container status
 docker ps --filter name=room-snapshot-api
 
-# Потребление ресурсов
+# Resource usage
 docker stats flai-room-snapshot-api
 ```
 
-## Устранение неполадок
+## Troubleshooting
 
-### Контейнер не запускается
+### Container does not start
 
 ```bash
-# Логи
+# Logs
 docker compose -f docker-compose-local.yml logs --tail=50
 
-# Проверить наличие конфига камер
+# Check camera config exists
 ls -la room-snapshot-api/config/cameras.conf
 
-# Проверить .env
+# Check .env
 cat room-snapshot-api/.env
 ```
 
-### Не удаётся получить снимок
+### Cannot get a snapshot
 
-1. Проверьте доступность камеры: `ping IP_КАМЕРЫ`
-2. Проверьте логи: `./deploy.sh logs`
-3. Убедитесь в правильности `RTSP_AUTH` в `.env`
-4. Проверьте формат `cameras.conf` (код=ip:порт:название)
+1. Check camera reachability: `ping CAMERA_IP`
+2. Check the logs: `./deploy.sh logs`
+3. Verify `RTSP_AUTH` in `.env`
+4. Check the `cameras.conf` format (code=ip:port:name)
 
-### FLAI не видит камеры
+### FLAI does not see cameras
 
-1. Убедитесь что `CAMERA_API_URL` в `.env` FLAI указывает на порт **5000** (не 5005)
-2. Проверьте что контейнеры в одной Docker-сети:
+1. Make sure `CAMERA_API_URL` in FLAI's `.env` points to port **5000** (not 5005)
+2. Check that the containers are on the same Docker network:
    ```bash
    docker network inspect flai_flai_network
    ```
-3. Проверьте из контейнера FLAI:
+3. Check from the FLAI container:
    ```bash
    docker exec flai-web python3 -c "import requests; r=requests.get('http://flai-room-snapshot-api:5000/health'); print(r.json())"
    ```
 
-### Сервис не отвечает на порту 5005
+### Service does not respond on port 5005
 
 ```bash
-# Проверить контейнер
+# Check container
 docker ps --filter name=room-snapshot-api
 
-# Проверить маппинг портов
+# Check port mapping
 docker port flai-room-snapshot-api
 
-# Проверить health
+# Check health
 curl http://localhost:5005/health
 ```
 
-## Безопасность
+## Security
 
-### Чек-лист продакшена
+### Production checklist
 
-- [ ] Надёжный `SECRET_KEY` (генерируется автоматически скриптом deploy.sh)
+- [ ] Secure `SECRET_KEY` (generated automatically by deploy.sh)
 - [ ] `FLASK_DEBUG=false`
-- [ ] Фаервол: доступ к порту 5005 только от FLAI-сервера
-- [ ] HTTPS через reverse proxy (nginx)
-- [ ] Актуальные прошивки камер
-- [ ] Регулярные обновления безопасности
+- [ ] Firewall: access to port 5005 only from the FLAI server
+- [ ] HTTPS via reverse proxy (nginx)
+- [ ] Up-to-date camera firmware
+- [ ] Regular security updates
 
-### Фаервол (удалённое развёртывание)
+### Firewall (remote deployment)
 
 ```bash
-# Разрешить доступ только с сервера FLAI
+# Allow access only from the FLAI server
 sudo ufw allow from <flai-server-ip> to any port 5005
 
-# Запретить остальным
+# Deny everyone else
 sudo ufw deny 5005/tcp
 ```
 
-## Бэкап конфигурации
+## Configuration Backup
 
 ```bash
-# Бэкап конфига камер
+# Backup camera config
 tar -czf camera-config-backup.tar.gz room-snapshot-api/config/
 
-# Бэкап .env
+# Backup .env
 cp room-snapshot-api/.env room-snapshot-api/.env.backup
 ```

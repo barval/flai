@@ -1,4 +1,4 @@
-# AGENTS.md — FLAI v9.1
+# AGENTS.md — FLAI v9.2
 
 > **Read this file first.** It contains the project's constitution: commands, critical rules, and hard constraints.
 > For deep technical details, see the `docs/` directory.
@@ -68,7 +68,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - **Modules:** `modules/` — base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm, search, video
   - **Background tasks:** `app/tasks/` — `dry_load.py`, `health_monitor.py`. Fact extraction runs as background thread (CPU-only, rule-based via `app/slm_rules.py`). Fact merge runs on background queue (CPU-only, no LLM). Both excluded from queue status display and user counter.
   - **LLM client:** `app/llamacpp_client.py` with `DirectLlamaBackend` and `LlamaSwapBackend`. Both `call()` and `chat()` accept `temperature` parameter. Router classification uses hardcoded `temperature=0.1`. `_translate_llama_swap_error()` translates llama-swap errors to user language. `_strip_generic_reasoning()` threshold `>=2` markers (synced with JS client), overbroad Russian patterns removed to prevent false positives.
-  - **Queue:** `app/queue.py:RedisRequestQueue` with **fast worker (CPU) and slow worker (GPU)**. Cancel support for all task types: image gen/edit (pre/post checks), video gen (background checker thread + container restart), streaming tasks (Redis flag).
+  - **Queue:** `app/queue.py:RedisRequestQueue` with **fast worker (CPU) and slow worker (GPU)**. Cancel support for all task types: image gen/edit (pre/post checks), video gen (background checker thread + container restart), streaming tasks (Redis flag). Reasoning tasks retry once when the model returns empty output (thinking-only after `_strip_thinking_tags()`) — `_process_reasoning_task()` loops the generation up to 2 attempts; the retry is fast because the first attempt already loaded the model just-in-time. No retry on task cancellation or on genuine LLM error strings.
   - **VRAM management:** `app/resource_manager.py`
   - **Database:** PostgreSQL only via `app/database.py:get_db()`
   - **External services:** llama-swap, Qdrant, SearXNG, Piper (TTS), Whisper (STT), SuperLocalMemory (SLM)
@@ -113,10 +113,10 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - **NEVER make ANY changes to files without direct user approval.** Each file change (create, edit, delete) requires explicit plan approval. Exception: only when the user explicitly said "do it" or "execute".
 
 # 5. Documentation Language
-  - **AGENTS.md and all `docs/*.md` must be written in English only.**
+  - **AGENTS.md, `CHANGELOG.md`, `README.md`, and all `docs/*.md` must be written in English only.** No Cyrillic allowed, including historical entries.
   - All code comments and log messages must be in English.
   - All user-facing messages (UI, notifications, errors) must use the selected user language (i18n).
-  - The only exception: `deploy-ru.sh` and `README-ru.md` may contain Russian.
+  - The only exceptions: `deploy-ru.sh`, `README-ru.md`, and `LICENSE-ru` may contain Russian.
 
   ---
 
@@ -175,4 +175,4 @@ FLAI REQUIRES an **NVIDIA GPU with at least 8 GB VRAM and 16 GB system RAM.** CP
 # Known Issues (fix on sight)
   - **Unit test speed:** `CamModule` has 5×2s init retries, making `test_cam.py` ~10s per fixture.
   - **Load tests** (`tests/load/`) excluded from pytest collection (require locust fixtures).
-  - All other historical issues were fixed in v9.1. See `CHANGELOG.md` for details.
+  - All other historical issues were fixed in v9.2. See `CHANGELOG.md` for details.

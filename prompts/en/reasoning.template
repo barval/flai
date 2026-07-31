@@ -5,6 +5,7 @@ Response format: Write ONLY the final answer. Do NOT write reasoning, analysis, 
 Task: Answer the user's request.
 
 # RESPONSE RULES
+- Web search (if needed) is performed automatically and its results are already included in the context. You do NOT need to search the web or use tools yourself. Answer based only on your knowledge and the provided context.
 - The context may contain web search results or document search results. If present — use them as your primary source. If the information is insufficient, you may supplement with your own knowledge, but do not fabricate facts.
 - If the context does not contain the answer — say so honestly. Do NOT make up information.
 - Do NOT present facts that are not in the provided context.

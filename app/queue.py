@@ -1497,6 +1497,9 @@ class RedisRequestQueue:
                 user_id=user_id,
                 rag_context=rag_context,
                 rag_source=rag_source,
+                # Attempt 0 already loaded the model (and VRAM is confirmed);
+                # skip the unload/reload on the retry to avoid ~20s dead time.
+                ensure_vram=(attempt == 0),
             ):
                 full_response += token
                 if not error_detected:

@@ -547,8 +547,13 @@ class BaseModule(TranslationMixin):
         user_id: str | None = None,
         rag_context: str = "",
         rag_source: str = "",
+        ensure_vram: bool = True,
     ) -> Generator[str, None, None]:
-        """Build prompt and stream reasoning model response."""
+        """Build prompt and stream reasoning model response.
+
+        ensure_vram=False reuses an already-loaded reasoning model (used by the
+        empty-output retry in queue.py to avoid an unload/reload between attempts).
+        """
         response_language = "Russian" if lang == "ru" else "English"
         context_str = self._get_context_for_model(
             session_id or "",
@@ -585,4 +590,9 @@ class BaseModule(TranslationMixin):
             return
 
         self.logger.info(f"Streaming reasoning response for query: {query[:100]}...")
-        yield from self.llamacpp.chat_stream([{"role": "user", "content": prompt}], model_type="reasoning", lang=lang)
+        yield from self.llamacpp.chat_stream(
+            [{"role": "user", "content": prompt}],
+            model_type="reasoning",
+            lang=lang,
+            ensure_vram=ensure_vram,
+        )

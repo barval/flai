@@ -4,6 +4,18 @@ All notable changes to FLAI are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### 🐛 Bug Fixes
+
+- **Streaming output freezes during generation (answer appears all at once)** — the server was publishing tokens correctly (Redis pub/sub), but the client main thread was the bottleneck: `onStreamToken()` in `app/static/js/events.js` performed a synchronous sessionStorage write and a full-buffer regex strip + `scrollToBottom` on every token. With ~330 KB of combined output (thinking attempt + answer) this was O(n²), freezing the browser tab and keeping the «⚡ Генерация...» indicator stuck. Fixed: rendering is throttled to 120 ms and sessionStorage writes to 500 ms (capped to the last 16 KB) via `STREAM_RENDER_INTERVAL` / `STREAM_SAVE_INTERVAL` / `STREAM_SAVE_MAX_LEN`.
+- **Reasoning retry reloads the model (dead time between attempts)** — the empty-output retry in `_process_reasoning_task()` (`app/queue.py`) called `chat_stream()` which re-ran `_ensure_vram()`, unloading and reloading the reasoning model (~20 s dead time). Fixed: `ensure_vram=False` is passed on the retry attempt (model already loaded), added the flag to `chat_stream()` in `app/llamacpp_client.py` and `generate_reasoning_response_stream()` in `modules/base.py`.
+- **Reasoning model returns only thinking (root cause found)** — gpt-oss-20b-mxfp4 is a tool-use-trained reasoning model. When the reasoning prompt mentioned web search (the «В контексте могут быть результаты поиска» rule plus the skills section listing web search), the model entered a tool-call path during its `analysis` channel, and generation was cut off at the `analysis→commentary` channel switch (`finish_reason: stop` right after `<|end|><|channel|>commentary to=`) — leaving only an `analysis` block, which `_strip_thinking_tags()` removes → «No response from reasoning model». Reproduced directly against llama-swap: 25% empty without a trigger, 75% empty with a realistic prompt (history + skills mentioning search), and 0% empty after adding an explicit «do NOT search the web or use tools» rule. Fixed: `prompts/{ru,en}/reasoning.template` now state that web search is performed automatically and its results are already in the context, and that the model must not search or use tools itself. Verified: 12/12 OK without search context and 6/6 OK with search results in context (answers still correctly use the provided results).
+
+### 🔧 Improvements
+
+- **`--reasoning-budget` considered** — evaluated `--reasoning_format auto/deepseek` and `--reasoning-budget 2000` for the reasoning model during diagnosis. Not adopted: the prompt fix removes the root cause, and the current `--reasoning_format none` config stays unchanged.
+
 ## [v9.2] — 2026-07-31
 
 ### 🐛 Bug Fixes

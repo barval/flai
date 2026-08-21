@@ -60,7 +60,7 @@
                 </div></h2>
             <div class="context-info-container">
                 <div id="context-info" class="context-info">{{ _('Messages') }}: 0</div>
-                <button id="cancel-stream-header" class="cancel-stream-header" style="display:none" title="{{ _('stop_generating') }}">■</button>
+                <button id="cancel-stream-header" class="cancel-stream-header" title="{{ _('stop_generating') }}">■</button>
                 <button id="save-chat-button" class="save-chat-button" title="{{ _('Save as HTML') }}">💾</button>
             </div>
         </div>
@@ -135,6 +135,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'messages': {{ _("Messages")|tojson }},
     'your_requests': {{ _("Your requests in queue / Total in queue")|tojson }},
     'error': {{ _("Error")|tojson }},
+    'server_error_invalid_response': {{ _("Server error: received invalid response")|tojson }},
     'warning': {{ _("Warning")|tojson }},
     'info': {{ _("Info")|tojson }},
     'user': {{ _("user")|tojson }},

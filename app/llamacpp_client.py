@@ -78,7 +78,9 @@ def _translate_llama_swap_error(msg: str, lang: str = "ru") -> str:
         model_id = parts[-1].strip().rstrip(".").strip() if len(parts) > 1 else ""
         # Strip .gguf for display
         model_display = model_id.removesuffix(".gguf")
-        return _tr("Model '{model}' is not available. Select a different model in admin panel.", lang, model=model_display)
+        return _tr(
+            "Model '{model}' is not available. Select a different model in admin panel.", lang, model=model_display
+        )
     return msg
 
 
@@ -182,7 +184,7 @@ def _strip_generic_reasoning(text: str) -> str:
     matches = list(_REASONING_MARKERS_RE.finditer(text))
     if len(matches) >= 2:
         last_match = matches[-1]
-        answer = text[last_match.end():].strip()
+        answer = text[last_match.end() :].strip()
 
         # High marker density in first 200 chars = pure reasoning, no real answer
         # If stripping would leave empty, return original text instead of erroring out
@@ -219,15 +221,15 @@ def _process_stream_chunk(buffer: str, thinking_active: bool) -> tuple[str, str,
         if thinking_active:
             close_match = _THINK_CLOSE_RE.search(buffer)
             if close_match:
-                buffer = buffer[close_match.end():]
+                buffer = buffer[close_match.end() :]
                 thinking_active = False
             else:
                 break
         else:
             open_match = _THINK_OPEN_RE.search(buffer)
             if open_match:
-                output += buffer[:open_match.start()]
-                buffer = buffer[open_match.start():]
+                output += buffer[: open_match.start()]
+                buffer = buffer[open_match.start() :]
                 thinking_active = True
             else:
                 safe_len = max(len(buffer) - 30, 0)
@@ -367,7 +369,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                 self.circuit_breaker.record_success()
                 result = _strip_thinking_tags(content.strip())
                 result = _strip_generic_reasoning(result)
-                return result  # type: ignore[no-any-return]
+                return result
             else:
                 self.circuit_breaker.record_failure()
                 self.logger.error(
@@ -457,7 +459,8 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                     if content:
                         _stream_buffer += content
                         output, _stream_buffer, _thinking_active = _process_stream_chunk(
-                            _stream_buffer, _thinking_active,
+                            _stream_buffer,
+                            _thinking_active,
                         )
                         if output:
                             yield output
@@ -547,9 +550,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
     def _get_circuit_breaker(self, model_type: str) -> CircuitBreaker:
         """Get or create a circuit breaker for the given model type."""
         if model_type not in self._circuit_breakers:
-            self._circuit_breakers[model_type] = CircuitBreaker(
-                failure_threshold=3, recovery_timeout=60
-            )
+            self._circuit_breakers[model_type] = CircuitBreaker(failure_threshold=3, recovery_timeout=60)
         return self._circuit_breakers[model_type]
 
     def _degrade_model_if_needed(self, model_type: str):
@@ -697,6 +698,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                         ngl = config.get("n_gpu_layers", -1)
                         ctx_size = config.get("context_length", 4096)
                         from app.resource_manager import get_resource_manager
+
                         rm = get_resource_manager()
                         rm.measure_model_vram(model_type, model_name, ctx_size, ngl)
                     except Exception:
@@ -704,7 +706,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
 
                     result = _strip_thinking_tags(content.strip())
                     result = _strip_generic_reasoning(result)
-                    return result  # type: ignore[no-any-return]
+                    return result
                 else:
                     if attempt < max_retries and response.status_code in (500, 502):
                         self.logger.warning(f"chat {response.status_code} on attempt {attempt + 1}, retrying in 5s")
@@ -801,15 +803,10 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                                 is_image_load_400 = "failed to load image" in err_msg
                             except Exception:
                                 is_image_load_400 = False
-                        if attempt < max_retries and (
-                            response.status_code == 502
-                            or is_image_load_400
-                        ):
+                        if attempt < max_retries and (response.status_code == 502 or is_image_load_400):
                             delay = 5 if response.status_code == 502 else 1
                             reason = "502" if response.status_code == 502 else "image-load-400"
-                            self.logger.warning(
-                                f"chat_stream {reason} on attempt {attempt + 1}, retrying in {delay}s"
-                            )
+                            self.logger.warning(f"chat_stream {reason} on attempt {attempt + 1}, retrying in {delay}s")
                             time.sleep(delay)
                             continue
                         self._record_llama_failure(model_type)
@@ -825,6 +822,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                         ngl = config.get("n_gpu_layers", -1)
                         ctx_size = config.get("context_length", 4096)
                         from app.resource_manager import get_resource_manager
+
                         rm = get_resource_manager()
                         rm.measure_model_vram(model_type, model_name, ctx_size, ngl)
                     except Exception:
@@ -853,7 +851,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                             if content:
                                 _stream_buffer += content
                                 output, _stream_buffer, _thinking_active = _process_stream_chunk(
-                                    _stream_buffer, _thinking_active,
+                                    _stream_buffer,
+                                    _thinking_active,
                                 )
                                 if output:
                                     yield output
@@ -888,9 +887,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                         if _thinking_active:
                             # Stream ended inside <|channel|>analysis block (no <|end|>).
                             # Strip opening tag, yield whatever remains.
-                            _stream_buffer = re.sub(
-                                r"^.*?<\|channel\|>analysis<\|message\|>", "", _stream_buffer
-                            )
+                            _stream_buffer = re.sub(r"^.*?<\|channel\|>analysis<\|message\|>", "", _stream_buffer)
                         if _stream_buffer:
                             yield _stream_buffer
                     # If tool calls were accumulated, yield them as a dict
@@ -977,6 +974,7 @@ class LlamaCppClient:
         self.available = False
         self.app = app
         self._active_model_type = None
+        self.backend: AbstractLlamaBackend
 
         backend_type = os.getenv("LLAMACP_BACKEND", "llamacpp")
 
@@ -1107,8 +1105,7 @@ class LlamaCppClient:
                             if free >= needed:
                                 self._active_model_type = model_type
                                 self.logger.debug(
-                                    f"VRAM skip: {model_type} already loaded, "
-                                    f"{free}MB free >= {needed}MB needed"
+                                    f"VRAM skip: {model_type} already loaded, {free}MB free >= {needed}MB needed"
                                 )
                                 return True
         except Exception:
@@ -1126,8 +1123,13 @@ class LlamaCppClient:
         return ok
 
     def chat(
-        self, messages: list[dict], model_type: str = "chat", lang: str = "ru", validate: bool = True,
-        tools: list[dict] | None = None, temperature: float | None = None,
+        self,
+        messages: list[dict],
+        model_type: str = "chat",
+        lang: str = "ru",
+        validate: bool = True,
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
     ) -> str | dict[str, Any]:
         if validate:
             error = self._validate_prompt(messages, model_type, lang)
@@ -1146,11 +1148,19 @@ class LlamaCppClient:
             return self._translate("Model for {model_type} not configured", lang, model_type=model_type)
 
         timeout = config.get("timeout", 300)
-        return self.backend.chat(messages, model, config, timeout, lang, model_type=model_type, tools=tools, temperature=temperature)  # type: ignore[no-any-return]
+        return self.backend.chat(
+            messages, model, config, timeout, lang, model_type=model_type, tools=tools, temperature=temperature
+        )
 
     def chat_stream(
-        self, messages: list[dict], model_type: str = "chat", lang: str = "ru", validate: bool = True,
-        tools: list[dict] | None = None, temperature: float | None = None,
+        self,
+        messages: list[dict],
+        model_type: str = "chat",
+        lang: str = "ru",
+        validate: bool = True,
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
+        ensure_vram: bool = True,
     ) -> Generator[str | dict[str, Any], None, None]:
         if validate:
             error = self._validate_prompt(messages, model_type, lang)
@@ -1158,7 +1168,7 @@ class LlamaCppClient:
                 yield error
                 return
 
-        if not self._ensure_vram(model_type):
+        if ensure_vram and not self._ensure_vram(model_type):
             yield _tr("GPU memory unavailable. Please try again.", lang)
             return
 
@@ -1173,7 +1183,9 @@ class LlamaCppClient:
             return
 
         timeout = config.get("timeout", 600)
-        yield from self.backend.chat_stream(messages, model, config, timeout, lang, model_type=model_type, tools=tools, temperature=temperature)
+        yield from self.backend.chat_stream(
+            messages, model, config, timeout, lang, model_type=model_type, tools=tools, temperature=temperature
+        )
 
     def chat_with_image(self, text: str, image_base64: str, model_type: str = "multimodal", lang: str = "ru") -> str:
         image_content = image_base64 if image_base64.startswith("data:") else f"data:image/jpeg;base64,{image_base64}"
@@ -1198,7 +1210,7 @@ class LlamaCppClient:
                 "content": [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": image_content}}],
             }
         ]
-        yield from self.chat_stream(messages, model_type=model_type, lang=lang)  # type: ignore[misc]
+        yield from self.chat_stream(messages, model_type=model_type, lang=lang, ensure_vram=False)  # type: ignore[misc]
 
     def get_embeddings(
         self, texts: list[str], model_type: str = "embedding", lang: str = "ru"
@@ -1232,11 +1244,15 @@ class LlamaCppClient:
         temperature: float | None = None,
     ) -> str | dict[str, Any] | Generator[str | dict[str, Any], None, None]:
         if stream:
-            return self.chat_stream(messages, model_type=model_type, lang=lang, validate=validate, tools=tools, temperature=temperature)
-        return self.chat(messages, model_type=model_type, lang=lang, validate=validate, tools=tools, temperature=temperature)
+            return self.chat_stream(
+                messages, model_type=model_type, lang=lang, validate=validate, tools=tools, temperature=temperature
+            )
+        return self.chat(
+            messages, model_type=model_type, lang=lang, validate=validate, tools=tools, temperature=temperature
+        )
 
     def unload_all_models(self) -> bool:
-        return self.backend.unload_all_models()  # type: ignore[no-any-return]
+        return self.backend.unload_all_models()
 
     def get_running_models(self) -> list[str]:
-        return self.backend.get_running_models()  # type: ignore[no-any-return]
+        return self.backend.get_running_models()

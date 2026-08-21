@@ -29,10 +29,10 @@ class CamModule(TranslationMixin):
         self.timeout = 15
 
         # Populated by _load_rooms_from_db()
-        self.room_names: dict[str, str] = {}          # code → primary name
+        self.room_names: dict[str, str] = {}  # code → primary name
         self.room_name_forms: dict[str, list[str]] = {}  # code → all name forms
-        self.room_name_keys: dict[str, str] = {}      # code → translation key
-        self.room_codes: dict[str, str] = {}           # name_form → code
+        self.room_name_keys: dict[str, str] = {}  # code → translation key
+        self.room_codes: dict[str, str] = {}  # name_form → code
 
         if app:
             self.init_app(app)
@@ -258,10 +258,7 @@ class CamModule(TranslationMixin):
 
         Used by the router prompt builder to generate camera classification rules.
         """
-        return [
-            (code, self.room_name_forms.get(code, []))
-            for code in sorted(self.room_names.keys())
-        ]
+        return [(code, self.room_name_forms.get(code, [])) for code in sorted(self.room_names.keys())]
 
     def get_snapshot(self, user_login, room_code, lang="ru"):
         self.check_availability()

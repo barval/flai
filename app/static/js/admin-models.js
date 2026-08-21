@@ -776,7 +776,7 @@ function initChunksSection() {
                 }
                 statusEl.textContent = '✅';
             } else {
-                alert(t('Error') + ': ' + (result.error || t('unknown_error')));
+                alert(t('error') + ': ' + (result.error || t('unknown_error')));
                 statusEl.textContent = '❌';
             }
         } catch (err) {

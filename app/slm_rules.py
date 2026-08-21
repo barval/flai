@@ -131,6 +131,7 @@ def _split_sentences(text: str) -> list[str]:
 
 # ── Scoring ─────────────────────────────────────────────────────────────
 
+
 def _score_sentence(sentence: str, lang: str) -> tuple[float, str]:
     """
     Score a sentence by pattern matches.
@@ -212,9 +213,7 @@ def _levenshtein_ratio(s1: str, s2: str) -> float:
         prev, matrix[0] = matrix[0], i
         for j in range(1, len2 + 1):
             cost = 0 if s1[i - 1] == s2[j - 1] else 1
-            prev, matrix[j] = matrix[j], min(
-                matrix[j] + 1, matrix[j - 1] + 1, prev + cost
-            )
+            prev, matrix[j] = matrix[j], min(matrix[j] + 1, matrix[j - 1] + 1, prev + cost)
 
     distance = matrix[len2]
     return 1.0 - distance / max(len1, len2)
@@ -240,6 +239,7 @@ _MODEL_CONTENT_PATTERNS = re.compile(
 
 
 # ── Main extraction ─────────────────────────────────────────────────────
+
 
 def extract_facts(
     query: str,
@@ -321,66 +321,12 @@ def extract_facts(
             continue
 
         seen_norms.add(norm)
-        results.append({
-            "text": text,
-            "category": category,
-            "fact_type": "general",
-        })
+        results.append(
+            {
+                "text": text,
+                "category": category,
+                "fact_type": "general",
+            }
+        )
 
     return results
-
-
-def extract_from_remember(query: str, lang: str = "ru") -> list[str]:
-    """
-    Extract facts from explicit 'remember' request using regex.
-
-    Handles patterns like:
-      - "Помни, что X"
-      - "Запомни: X"
-      - "Remember that X"
-      - "Remember: X"
-
-    Falls back to the full text if no prefix matched.
-
-    Args:
-        query: User's remember request.
-        lang: Language code.
-
-    Returns:
-        List of fact strings.
-    """
-    if not query or not query.strip():
-        return []
-
-    text = query.strip()
-
-    # Russian prefixes
-    ru_prefixes = [
-        r"^помни[,\s]+что\s+",
-        r"^запомни[,:]\s*",
-        r"^запомни[,\s]+что\s+",
-    ]
-    for prefix in ru_prefixes:
-        match = re.match(prefix, text, re.IGNORECASE)
-        if match:
-            fact = text[match.end():].strip()
-            if fact and len(fact) >= 5:
-                return [fact[:200]]
-
-    # English prefixes
-    en_prefixes = [
-        r"^remember\s+that\s+",
-        r"^remember[,:]\s*",
-    ]
-    for prefix in en_prefixes:
-        match = re.match(prefix, text, re.IGNORECASE)
-        if match:
-            fact = text[match.end():].strip()
-            if fact and len(fact) >= 5:
-                return [fact[:200]]
-
-    # Fallback: use the full text as one fact
-    if len(text) >= 5:
-        return [text[:200]]
-
-    return []

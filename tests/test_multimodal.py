@@ -392,11 +392,14 @@ class TestValidateImageFormat:
     def test_validate_heic_rejected(self, module):
         """HEIC images pass Pillow but fail llama.cpp's stb_image decoder."""
         # Bypass the TranslationMixin in this test so the placeholder is rendered
-        with patch.object(
-            module,
-            "_",
-            side_effect=lambda key, lang="ru", **kw: key.format(**kw) if kw else key,
-        ), patch("modules.multimodal.Image.open") as mock_open:
+        with (
+            patch.object(
+                module,
+                "_",
+                side_effect=lambda key, lang="ru", **kw: key.format(**kw) if kw else key,
+            ),
+            patch("modules.multimodal.Image.open") as mock_open,
+        ):
             self._patch_image_open(mock_open, fmt="HEIC")
             encoded = base64.b64encode(b"fake-heic").decode()
             is_valid, error = module.validate_image(encoded, "image/heic", "test.heic", 1024)
@@ -405,11 +408,14 @@ class TestValidateImageFormat:
 
     def test_validate_avif_rejected(self, module):
         """AVIF images pass Pillow but fail llama.cpp's stb_image decoder."""
-        with patch.object(
-            module,
-            "_",
-            side_effect=lambda key, lang="ru", **kw: key.format(**kw) if kw else key,
-        ), patch("modules.multimodal.Image.open") as mock_open:
+        with (
+            patch.object(
+                module,
+                "_",
+                side_effect=lambda key, lang="ru", **kw: key.format(**kw) if kw else key,
+            ),
+            patch("modules.multimodal.Image.open") as mock_open,
+        ):
             self._patch_image_open(mock_open, fmt="AVIF")
             encoded = base64.b64encode(b"fake-avif").decode()
             is_valid, error = module.validate_image(encoded, "image/avif", "test.avif", 1024)

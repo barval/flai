@@ -124,7 +124,7 @@
                     <!-- Data loaded via JS -->
                 </tbody>
             </table>
-            <div id="no-cameras-msg" class="no-backups" style="display:none;">
+            <div id="no-cameras-msg" class="no-backups">
                 {{ _('No cameras configured') }}
             </div>
         </div>
@@ -313,6 +313,7 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'no': {{ _('no')|tojson }},
     'MB': {{ _('MB')|tojson }},
     'timeout_fetching_model_info': {{ _('timeout_fetching_model_info')|tojson }},
+    'model_cannot_be_saved': {{ _('This model cannot be saved (not enough VRAM/RAM). Choose a smaller model.')|tojson }},
     // Validation messages
     'Please select a model first.': {{ _('Please select a model first.')|tojson }},
     'Context length must be at least 512.': {{ _('Context length must be at least 512.')|tojson }},

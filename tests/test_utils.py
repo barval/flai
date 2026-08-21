@@ -93,9 +93,7 @@ def test_convert_to_supported_format_jpeg_passthrough():
     buf = io.BytesIO()
     img.save(buf, format="JPEG")
     img_data = base64.b64encode(buf.getvalue()).decode("utf-8")
-    new_data, new_type, new_name, converted = convert_to_supported_format_if_needed(
-        img_data, "image/jpeg", "test.jpg"
-    )
+    new_data, new_type, new_name, converted = convert_to_supported_format_if_needed(img_data, "image/jpeg", "test.jpg")
     assert not converted
     assert new_data == img_data
     assert new_type == "image/jpeg"
@@ -109,9 +107,7 @@ def test_convert_to_supported_format_webp_to_jpeg():
     buf = io.BytesIO()
     img.save(buf, format="WEBP")
     img_data = base64.b64encode(buf.getvalue()).decode("utf-8")
-    new_data, new_type, new_name, converted = convert_to_supported_format_if_needed(
-        img_data, "image/webp", "test.webp"
-    )
+    new_data, new_type, new_name, converted = convert_to_supported_format_if_needed(img_data, "image/webp", "test.webp")
     assert converted
     assert new_type == "image/jpeg"
     assert new_name.endswith(".jpg")
@@ -129,9 +125,7 @@ def test_convert_to_supported_format_rgba_to_jpeg():
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     img_data = base64.b64encode(buf.getvalue()).decode("utf-8")
-    new_data, new_type, new_name, converted = convert_to_supported_format_if_needed(
-        img_data, "image/png", "test.png"
-    )
+    new_data, new_type, new_name, converted = convert_to_supported_format_if_needed(img_data, "image/png", "test.png")
     # PNG is already in the supported set, so no conversion needed
     assert not converted
     assert new_data == img_data
@@ -145,9 +139,7 @@ def test_convert_to_supported_format_strips_data_uri():
     img.save(buf, format="WEBP")
     raw = base64.b64encode(buf.getvalue()).decode("utf-8")
     data_uri = f"data:image/webp;base64,{raw}"
-    new_data, new_type, new_name, converted = convert_to_supported_format_if_needed(
-        data_uri, "image/webp", "test.webp"
-    )
+    new_data, new_type, new_name, converted = convert_to_supported_format_if_needed(data_uri, "image/webp", "test.webp")
     assert converted
     assert new_type == "image/jpeg"
 

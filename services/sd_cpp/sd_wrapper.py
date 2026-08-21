@@ -149,8 +149,20 @@ def _validate_use_gpu(use_gpu: bool) -> bool:
     return use_gpu and _check_cuda()
 
 
-def _build_generate_cmd(prompt, steps, width, height, cfg_scale, seed, flow_shift, sampler, use_gpu, offload_level=0,
-                        preview_path=None, preview_interval=2):
+def _build_generate_cmd(
+    prompt,
+    steps,
+    width,
+    height,
+    cfg_scale,
+    seed,
+    flow_shift,
+    sampler,
+    use_gpu,
+    offload_level=0,
+    preview_path=None,
+    preview_interval=2,
+):
     """Build sd-cli command for image generation with specified offload level.
 
     offload_level:
@@ -203,8 +215,17 @@ def _build_generate_cmd(prompt, steps, width, height, cfg_scale, seed, flow_shif
     return cmd
 
 
-def _run_sd_cli(cmd, log_path, timeout=300, preview_path=None, preview_url=None,
-                 user_id=None, session_id=None, task_id=None, total_steps=None):
+def _run_sd_cli(
+    cmd,
+    log_path,
+    timeout=300,
+    preview_path=None,
+    preview_url=None,
+    user_id=None,
+    session_id=None,
+    task_id=None,
+    total_steps=None,
+):
     """Run sd-cli subprocess and return (result_dict, tail_log).
 
     Pipes stdout to parse step progress in real-time and POSTs to preview_url.
@@ -312,20 +333,37 @@ def generate_image(data):
     session_id = data.get("session_id")
     task_id = data.get("task_id")
 
-    offload_levels = range(4) if use_gpu else [3]
+    start_level = int(data.get("start_offload_level", 0)) if use_gpu else 3
+    offload_levels = range(start_level, 4)
 
     for level in offload_levels:
         cmd = _build_generate_cmd(
-            prompt, steps, width, height, cfg_scale, seed, flow_shift, sampler, use_gpu, offload_level=level,
+            prompt,
+            steps,
+            width,
+            height,
+            cfg_scale,
+            seed,
+            flow_shift,
+            sampler,
+            use_gpu,
+            offload_level=level,
             preview_path=preview_path,
         )
 
         logger.info(f" Running generate (offload_level={level}): {' '.join(cmd[:12])}...")
 
-        result, log_tail = _run_sd_cli(cmd, "/tmp/sd_cli_output.log", timeout=300,
-                                       preview_path=preview_path, preview_url=preview_url,
-                                       user_id=user_id, session_id=session_id, task_id=task_id,
-                                       total_steps=steps)
+        result, log_tail = _run_sd_cli(
+            cmd,
+            "/tmp/sd_cli_output.log",
+            timeout=300,
+            preview_path=preview_path,
+            preview_url=preview_url,
+            user_id=user_id,
+            session_id=session_id,
+            task_id=task_id,
+            total_steps=steps,
+        )
         if isinstance(result, dict):
             return result
         if log_tail and _is_oom_error(log_tail):
@@ -412,7 +450,8 @@ def _edit_image_impl(data):
         src_path = src_tmp.name
 
     try:
-        offload_levels = range(4) if use_gpu else [3]
+        start_level = int(data.get("start_offload_level", 0)) if use_gpu else 3
+        offload_levels = range(start_level, 4)
         for level in offload_levels:
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as out_tmp:
                 output_path = out_tmp.name

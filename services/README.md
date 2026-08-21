@@ -147,8 +147,8 @@ Provides HTTP access to IP camera snapshots for the FLAI camera module.
 2. **Configure cameras** in `room-snapshot-api/config/cameras.conf`:
    ```conf
    # Format: code=ip:port:name
-   spa=192.168.1.101:554:Спальня
-   gos=192.168.1.102:554:Гостиная
+   spa=192.168.1.101:554:Bedroom
+   gos=192.168.1.102:554:Living room
    ```
 
 3. **Set RTSP credentials** in `room-snapshot-api/.env`:

@@ -173,6 +173,7 @@ class TestTemporalDecay:
         import time
 
         from app.slm_merge import temporal_decay
+
         old_ts = int(time.time()) - (100 * 86400)  # 100 days ago
         facts = [
             {"fact_id": "a", "content": "Old fact", "created_at": old_ts, "score": 0.2},

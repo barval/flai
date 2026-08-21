@@ -130,4 +130,3 @@ class TestRedisRequestQueue:
             assert pipe.rpush.called
             assert pipe.hincrby.called
             assert pipe.execute.called
-

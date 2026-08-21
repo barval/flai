@@ -271,6 +271,11 @@ function onImageStep(data) {
         barContainer.setAttribute('data-task-id', data.task_id);
         barContainer.innerHTML = '<div class="fill"></div><span class="label"></span>';
         chatMessages.appendChild(barContainer);
+    } else {
+        // Safety net: ignore step reset from OOM retry (e.g. 10/10 -> 1/10)
+        const prev = barContainer.querySelector('.label').textContent;
+        const m = prev.match(/(\d+)\/(\d+)/);
+        if (m && data.total === parseInt(m[2]) && data.step < parseInt(m[1])) return;
     }
 
     barContainer.querySelector('.fill').style.width = pct + '%';
@@ -367,6 +372,14 @@ function _stripGenericReasoning(text) {
 }
 
 // -- stream_token -----------------------------------------------------
+// Per-token DOM renders and sessionStorage writes are throttled:
+// a fast stream of thousands of tokens must not block the main thread
+// with a full-buffer strip + full-buffer storage write on every token
+// (O(n^2) work — froze the UI and made long answers appear all at once).
+
+const STREAM_RENDER_INTERVAL = 120;  // ms between content re-renders
+const STREAM_SAVE_INTERVAL = 500;    // ms between sessionStorage writes
+const STREAM_SAVE_MAX_LEN = 16384;   // max chars persisted for recovery
 
 function onStreamToken(data) {
     if (!data || !data.task_id || !data.token) return;
@@ -380,7 +393,9 @@ function onStreamToken(data) {
             timestamp: Date.now(),
             accumulatedContent: '',
             streamStartTime: Date.now(),
-            lastSpeedUpdate: Date.now()
+            lastSpeedUpdate: Date.now(),
+            lastRender: 0,
+            lastSave: 0
         };
         pendingRequestIds[data.task_id] = reqInfo;
     }
@@ -393,8 +408,17 @@ function onStreamToken(data) {
     }
     reqInfo.accumulatedContent += data.token;
 
-    // Save to sessionStorage for recovery after page reload
-    _saveStreamToSessionStorage(data.task_id, data.session_id, reqInfo.accumulatedContent);
+    var now = Date.now();
+
+    // Persist to sessionStorage for recovery after page reload (throttled,
+    // capped — keeps a fast long stream from hogging the main thread).
+    if (now - reqInfo.lastSave >= STREAM_SAVE_INTERVAL) {
+        reqInfo.lastSave = now;
+        var persistContent = reqInfo.accumulatedContent.length > STREAM_SAVE_MAX_LEN
+            ? reqInfo.accumulatedContent.slice(-STREAM_SAVE_MAX_LEN)
+            : reqInfo.accumulatedContent;
+        _saveStreamToSessionStorage(data.task_id, data.session_id, persistContent);
+    }
 
     // Only update DOM for active session
     if (data.session_id !== currentSessionId) return;
@@ -438,15 +462,19 @@ function onStreamToken(data) {
         _showHeaderCancelButton(data.task_id);
     }
 
-    // Update content (strip thinking tags and generic reasoning for display)
-    const contentDiv = streamMsg.querySelector('.message-content');
-    if (contentDiv) {
-        contentDiv.textContent = _stripGenericReasoning(_stripThinkingTags(reqInfo.accumulatedContent));
-        if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
+    // Update content (strip thinking tags and generic reasoning for display).
+    // Throttled: the strip runs over the whole accumulated buffer, so doing it
+    // on every token is O(n^2) and starves the renderer on long responses.
+    if (now - reqInfo.lastRender >= STREAM_RENDER_INTERVAL) {
+        reqInfo.lastRender = now;
+        const contentDiv = streamMsg.querySelector('.message-content');
+        if (contentDiv) {
+            contentDiv.textContent = _stripGenericReasoning(_stripThinkingTags(reqInfo.accumulatedContent));
+            if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
+        }
     }
 
     // Live token/s estimate (every 500ms)
-    var now = Date.now();
     if (!indicatorSpan) {
         indicatorSpan = streamMsg.querySelector('.streaming-indicator');
     }

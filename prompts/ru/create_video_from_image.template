@@ -15,9 +15,9 @@
    - Если сомневаешься — используй 768×512 (ландшафт).
 4. **Количество кадров**: 240 (≈10 секунд при 24fps), 120 (≈5 секунд)
    - fps: 24
-4. **Negative prompt**: `worst quality, inconsistent motion, blurry, jittery, distorted, flickering, watermark, text, logo, deformed, ugly, oversaturated, underexposed, pixelated, static, frozen, noise, grain`
-5. **Запрещено**: добавлять комментарии, пояснения или любые символы кроме JSON.
-6. **Если запрос неполный**: логически дополни на основе изображения, но всегда сохраняй ключевое действие из запроса как основу промпта.
+5. **Negative prompt**: `worst quality, inconsistent motion, blurry, jittery, distorted, flickering, watermark, text, logo, deformed, ugly, oversaturated, underexposed, pixelated, static, frozen, noise, grain`
+6. **Запрещено**: добавлять комментарии, пояснения или любые символы кроме JSON.
+7. **Если запрос неполный**: логически дополни на основе изображения, но всегда сохраняй ключевое действие из запроса как основу промпта.
 
 ## Выведи результат строго в JSON-формате, без пояснений:
 

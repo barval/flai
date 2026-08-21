@@ -1,4 +1,5 @@
 # app/queue.py
+import ast
 import contextlib
 import hashlib
 import hmac
@@ -3947,7 +3948,10 @@ class RedisRequestQueue:
         try:
             data = json.loads(json_text)
         except json.JSONDecodeError:
-            return None
+            try:
+                data = ast.literal_eval(json_text)
+            except (ValueError, SyntaxError):
+                return None
 
         # Format 1: JSON has "name" and "arguments" keys
         if "name" in data and "arguments" in data:

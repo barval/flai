@@ -418,11 +418,13 @@ def similarity_check():
     if not results:
         return jsonify({"success": True, "max_similarity": 0.0, "closest": None})
 
-    return jsonify({
-        "success": True,
-        "max_similarity": results[0].get("score", 0.0),
-        "closest": results[0].get("content", ""),
-    })
+    return jsonify(
+        {
+            "success": True,
+            "max_similarity": results[0].get("score", 0.0),
+            "closest": results[0].get("content", ""),
+        }
+    )
 
 
 @app.route("/", methods=["GET"])

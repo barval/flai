@@ -48,8 +48,10 @@ class TestCamModule:
     @pytest.fixture
     def cam_module(self, mock_app):
         """Create CamModule with mock app."""
-        with patch("modules.cam.CamModule.check_availability") as mock_check, \
-             patch("app.cameradb.get_all_camera_rooms", return_value=_mock_camera_rooms()):
+        with (
+            patch("modules.cam.CamModule.check_availability") as mock_check,
+            patch("app.cameradb.get_all_camera_rooms", return_value=_mock_camera_rooms()),
+        ):
             mock_check.return_value = False
             module = CamModule(mock_app)
             module.available = False
@@ -57,8 +59,10 @@ class TestCamModule:
 
     def test_initialization(self, mock_app):
         """Should initialize with app config."""
-        with patch("modules.cam.CamModule.check_availability") as mock_check, \
-             patch("app.cameradb.get_all_camera_rooms", return_value=_mock_camera_rooms()):
+        with (
+            patch("modules.cam.CamModule.check_availability") as mock_check,
+            patch("app.cameradb.get_all_camera_rooms", return_value=_mock_camera_rooms()),
+        ):
             mock_check.return_value = False
             module = CamModule(mock_app)
             assert module.camera_api_url == "http://test-camera:5000"
@@ -91,8 +95,10 @@ class TestCameraPermissions:
     @pytest.fixture
     def cam_module(self):
         """Create module for testing."""
-        with patch("modules.cam.CamModule.check_availability") as mock_check, \
-             patch("app.cameradb.get_all_camera_rooms", return_value=_mock_camera_rooms()):
+        with (
+            patch("modules.cam.CamModule.check_availability") as mock_check,
+            patch("app.cameradb.get_all_camera_rooms", return_value=_mock_camera_rooms()),
+        ):
             mock_check.return_value = False
             app = MagicMock()
             app.config = {
@@ -150,8 +156,10 @@ class TestCheckAvailability:
     @pytest.fixture
     def cam_module_no_url(self):
         """Create module without camera URL."""
-        with patch("modules.cam.CamModule.check_availability") as mock_check, \
-             patch("app.cameradb.get_all_camera_rooms", return_value=[]):
+        with (
+            patch("modules.cam.CamModule.check_availability") as mock_check,
+            patch("app.cameradb.get_all_camera_rooms", return_value=[]),
+        ):
             mock_check.return_value = False
             app = MagicMock()
             app.config = {}
@@ -164,8 +172,7 @@ class TestCheckAvailability:
 
     def test_check_availability_returns_cached(self):
         """Should return cached result if within interval."""
-        with patch("modules.cam.requests.get") as mock_get, \
-             patch("app.cameradb.get_all_camera_rooms", return_value=[]):
+        with patch("modules.cam.requests.get") as mock_get, patch("app.cameradb.get_all_camera_rooms", return_value=[]):
             mock_get.side_effect = Exception("No connection")
             app = MagicMock()
             app.config = {"CAMERA_API_URL": "http://test:5000"}
@@ -183,8 +190,10 @@ class TestRoomNames:
 
     def test_all_room_codes_defined(self):
         """All room codes should be defined when loaded from DB."""
-        with patch("modules.cam.CamModule.check_availability") as mock_check, \
-             patch("app.cameradb.get_all_camera_rooms", return_value=_mock_camera_rooms()):
+        with (
+            patch("modules.cam.CamModule.check_availability") as mock_check,
+            patch("app.cameradb.get_all_camera_rooms", return_value=_mock_camera_rooms()),
+        ):
             mock_check.return_value = False
             app = MagicMock()
             app.config = {
@@ -198,8 +207,10 @@ class TestRoomNames:
 
     def test_room_name_keys_dynamic(self):
         """Room name translation keys should be generated dynamically."""
-        with patch("modules.cam.CamModule.check_availability") as mock_check, \
-             patch("app.cameradb.get_all_camera_rooms", return_value=_mock_camera_rooms()):
+        with (
+            patch("modules.cam.CamModule.check_availability") as mock_check,
+            patch("app.cameradb.get_all_camera_rooms", return_value=_mock_camera_rooms()),
+        ):
             mock_check.return_value = False
             app = MagicMock()
             app.config = {
@@ -216,8 +227,10 @@ class TestGetRoomCodeDeclensions:
 
     @pytest.fixture
     def cam_module(self):
-        with patch("modules.cam.CamModule.check_availability") as mock_check, \
-             patch("app.cameradb.get_all_camera_rooms", return_value=_mock_camera_rooms()):
+        with (
+            patch("modules.cam.CamModule.check_availability") as mock_check,
+            patch("app.cameradb.get_all_camera_rooms", return_value=_mock_camera_rooms()),
+        ):
             mock_check.return_value = False
             app = MagicMock()
             app.config = {"CAMERA_API_URL": "http://test:5000"}
@@ -244,10 +257,17 @@ class TestGetRoomCodeDeclensions:
     def test_extended_name_forms(self):
         """Test with extended name forms (multiple declensions)."""
         extended_rooms = [
-            {"code": "gos", "name_forms": ["гостиная", "гостиной", "гостиную", "living room"], "enabled": True, "sort_order": 0},
+            {
+                "code": "gos",
+                "name_forms": ["гостиная", "гостиной", "гостиную", "living room"],
+                "enabled": True,
+                "sort_order": 0,
+            },
         ]
-        with patch("modules.cam.CamModule.check_availability") as mock_check, \
-             patch("app.cameradb.get_all_camera_rooms", return_value=extended_rooms):
+        with (
+            patch("modules.cam.CamModule.check_availability") as mock_check,
+            patch("app.cameradb.get_all_camera_rooms", return_value=extended_rooms),
+        ):
             mock_check.return_value = False
             app = MagicMock()
             app.config = {"CAMERA_API_URL": "http://test:5000"}
@@ -266,8 +286,10 @@ class TestConfigParameters:
 
     def test_timeout_from_config(self):
         """Should load timeout from config."""
-        with patch("modules.cam.CamModule.check_availability") as mock_check, \
-             patch("app.cameradb.get_all_camera_rooms", return_value=[]):
+        with (
+            patch("modules.cam.CamModule.check_availability") as mock_check,
+            patch("app.cameradb.get_all_camera_rooms", return_value=[]),
+        ):
             mock_check.return_value = False
             app = MagicMock()
             app.config = {
@@ -279,8 +301,10 @@ class TestConfigParameters:
 
     def test_check_interval_from_config(self):
         """Should load check interval from config."""
-        with patch("modules.cam.CamModule.check_availability") as mock_check, \
-             patch("app.cameradb.get_all_camera_rooms", return_value=[]):
+        with (
+            patch("modules.cam.CamModule.check_availability") as mock_check,
+            patch("app.cameradb.get_all_camera_rooms", return_value=[]),
+        ):
             mock_check.return_value = False
             app = MagicMock()
             app.config = {
@@ -292,8 +316,10 @@ class TestConfigParameters:
 
     def test_default_values(self):
         """Should have correct defaults."""
-        with patch("modules.cam.CamModule.check_availability") as mock_check, \
-             patch("app.cameradb.get_all_camera_rooms", return_value=[]):
+        with (
+            patch("modules.cam.CamModule.check_availability") as mock_check,
+            patch("app.cameradb.get_all_camera_rooms", return_value=[]),
+        ):
             mock_check.return_value = False
             app = MagicMock()
             app.config = {

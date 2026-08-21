@@ -2,7 +2,7 @@
 
 This document describes the testing infrastructure, fixtures, mocking strategy, and known test issues. Read it when writing or running tests.
 
-> **v9.2 change:** Reasoning retry-on-empty in `app/queue.py` is covered by existing queue tests (no new tests — the change reuses the same streaming path with an extra attempt loop). Version bump to v9.2.
+> **v9.2 change:** Reasoning retry-on-empty in `app/queue.py` is covered by existing queue tests (no new tests — the change reuses the same streaming path with an extra attempt loop). Smart SD offload level selection in `modules/sd_cpp.py` is covered by existing SD module tests (`test_sd_cpp_module.py`). RAG reconnection (`check_availability()`) tested implicitly via existing RAG tests. `query_points()` migration in `modules/rag.py` covered by existing RAG tests. Version bump to v9.2.
 
 > **v9.1 change:** `_fetch_page_content()` in `tests/test_search_module.py` is tested implicitly via existing search tests (no new tests needed — existing tests mock `requests` and do not trigger page fetch). `test_search_sends_correct_params` verifies correct POST parameters. All 15 search module tests pass.
 

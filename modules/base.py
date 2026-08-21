@@ -184,32 +184,16 @@ class BaseModule(TranslationMixin):
         if not skip_slm:
             slm = self.app.modules.get("slm") if hasattr(self, "app") and self.app else None
             if slm:
-                # Two-phase recall: session-specific first (priority), then general
-                session_facts: list[dict[str, Any]] = []
-                general_facts: list[dict[str, Any]] = []
-
-                # Phase 1: Session-specific facts
-                if session_id:
-                    session_facts_raw = slm.recall(
-                        current_query,
-                        limit=slm_recall_limit,
-                        profile=user_id,
-                        semantic=True,
-                    )
-                    session_facts = [
-                        f for f in session_facts_raw if f.get("metadata", {}).get("fact_type") == "session_specific"
-                    ]
-
-                # Phase 2: General facts
-                general_facts_raw = slm.recall(
+                # Single recall with doubled limit, then local filter by type
+                raw_facts = slm.recall(
                     current_query,
-                    limit=slm_recall_limit,
+                    limit=slm_recall_limit * 2,
                     profile=user_id,
                     semantic=True,
                 )
-                general_facts = [
-                    f for f in general_facts_raw if f.get("metadata", {}).get("fact_type") != "session_specific"
-                ]
+
+                session_facts = [f for f in raw_facts if f.get("metadata", {}).get("fact_type") == "session_specific"]
+                general_facts = [f for f in raw_facts if f.get("metadata", {}).get("fact_type") != "session_specific"]
 
                 all_facts = session_facts + general_facts
 
@@ -312,7 +296,7 @@ class BaseModule(TranslationMixin):
 
         if lang == "ru":
             lines = [
-                "## 5. ЗАПРОС НА ПРОСМОТР КАМЕРЫ (ПРИОРИТЕТ — Даже если есть «?»)",
+                "## 4. ЗАПРОС НА ПРОСМОТР КАМЕРЫ (ПРИОРИТЕТ — Даже если есть «?»)",
                 "Если запрос содержит:",
                 "  (а) упоминание любой комнаты из списка ниже, И",
                 "  (б) любой вариант просьбы показать/посмотреть/узнать о комнате",
@@ -336,7 +320,7 @@ class BaseModule(TranslationMixin):
             lines.append('  - "Покажи гараж" → Покажи гараж')
         else:
             lines = [
-                "## 5. CAMERA VIEW REQUEST (PRIORITY — even with '?')",
+                "## 4. CAMERA VIEW REQUEST (PRIORITY — even with '?')",
                 "If the query contains:",
                 "  (a) mention of any room from the list below, AND",
                 "  (b) any variant of asking to show/view/check the room",

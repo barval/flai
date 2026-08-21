@@ -274,114 +274,166 @@ class TestExecuteTool:
 
     def test_time_calc_days_until_weekday(self):
         """Test days_until_weekday operation."""
-        result = execute_tool("time_calc", {
-            "operation": "days_until_weekday",
-            "weekday": "понедельник",
-            "date": "2026-06-11",
-        }, {"lang": "ru"})
+        result = execute_tool(
+            "time_calc",
+            {
+                "operation": "days_until_weekday",
+                "weekday": "понедельник",
+                "date": "2026-06-11",
+            },
+            {"lang": "ru"},
+        )
         assert result == "4"
 
     def test_time_calc_days_between(self):
         """Test days_between operation."""
-        result = execute_tool("time_calc", {
-            "operation": "days_between",
-            "from_date": "2026-06-11",
-            "to_date": "2026-06-15",
-        }, {"lang": "ru"})
+        result = execute_tool(
+            "time_calc",
+            {
+                "operation": "days_between",
+                "from_date": "2026-06-11",
+                "to_date": "2026-06-15",
+            },
+            {"lang": "ru"},
+        )
         assert result == "4"
 
     def test_time_calc_add_days(self):
         """Test add_days operation."""
-        result = execute_tool("time_calc", {
-            "operation": "add_days",
-            "date": "2026-06-11",
-            "days": 3,
-        }, {"lang": "ru"})
+        result = execute_tool(
+            "time_calc",
+            {
+                "operation": "add_days",
+                "date": "2026-06-11",
+                "days": 3,
+            },
+            {"lang": "ru"},
+        )
         assert result is not None
 
     def test_time_calc_day_of_week(self):
         """Test day_of_week operation."""
-        result = execute_tool("time_calc", {
-            "operation": "day_of_week",
-            "date": "2026-06-11",
-        }, {"lang": "ru"})
+        result = execute_tool(
+            "time_calc",
+            {
+                "operation": "day_of_week",
+                "date": "2026-06-11",
+            },
+            {"lang": "ru"},
+        )
         assert result.lower() in ("четверг", "thursday")
 
     def test_time_calc_days_until(self):
         """Test days_until_weekday for Monday from Friday."""
-        result = execute_tool("time_calc", {
-            "operation": "days_until_weekday",
-            "weekday": "понедельник",
-            "date": "2026-06-12",
-        }, {"lang": "ru"})
+        result = execute_tool(
+            "time_calc",
+            {
+                "operation": "days_until_weekday",
+                "weekday": "понедельник",
+                "date": "2026-06-12",
+            },
+            {"lang": "ru"},
+        )
         assert result == "3"
 
     def test_time_calc_format_date(self):
         """Test format_date operation."""
-        result = execute_tool("time_calc", {
-            "operation": "format_date",
-            "date": "2026-06-11",
-            "format": "iso",
-        }, {"lang": "ru"})
+        result = execute_tool(
+            "time_calc",
+            {
+                "operation": "format_date",
+                "date": "2026-06-11",
+                "format": "iso",
+            },
+            {"lang": "ru"},
+        )
         assert result == "2026-06-11"
 
     def test_time_calc_days_until_date(self):
         """Test days_until_date with fixed dates."""
-        result = execute_tool("time_calc", {
-            "operation": "days_between",
-            "from_date": "2026-06-12",
-            "to_date": "2026-06-30",
-        }, {"lang": "ru"})
+        result = execute_tool(
+            "time_calc",
+            {
+                "operation": "days_between",
+                "from_date": "2026-06-12",
+                "to_date": "2026-06-30",
+            },
+            {"lang": "ru"},
+        )
         assert result == "18"
 
     def test_time_calc_days_until_end_of_year(self):
         """Test days_until_end_of for year period."""
-        result = execute_tool("time_calc", {
-            "operation": "days_until_end_of",
-            "period": "year",
-        }, {"lang": "ru"})
+        result = execute_tool(
+            "time_calc",
+            {
+                "operation": "days_until_end_of",
+                "period": "year",
+            },
+            {"lang": "ru"},
+        )
         assert result is not None
         assert int(result) > 0
 
     def test_time_calc_days_until_end_of_quarter(self):
         """Test days_until_end_of for quarter period."""
-        result = execute_tool("time_calc", {
-            "operation": "days_until_end_of",
-            "period": "quarter",
-        }, {"lang": "ru"})
+        result = execute_tool(
+            "time_calc",
+            {
+                "operation": "days_until_end_of",
+                "period": "quarter",
+            },
+            {"lang": "ru"},
+        )
         assert result is not None
         assert int(result) > 0
 
     def test_time_calc_days_until_end_of_spring(self):
         """Test days_until_end_of for spring period."""
-        result = execute_tool("time_calc", {
-            "operation": "days_until_end_of",
-            "period": "spring",
-        }, {"lang": "ru"})
+        result = execute_tool(
+            "time_calc",
+            {
+                "operation": "days_until_end_of",
+                "period": "spring",
+            },
+            {"lang": "ru"},
+        )
         assert result is not None
 
     def test_time_calc_days_until_end_of_summer(self):
         """Test days_until_end_of for summer period (meteorological: ends Aug 31)."""
-        result = execute_tool("time_calc", {
-            "operation": "days_until_end_of",
-            "period": "summer",
-        }, {"lang": "ru"})
+        result = execute_tool(
+            "time_calc",
+            {
+                "operation": "days_until_end_of",
+                "period": "summer",
+            },
+            {"lang": "ru"},
+        )
         assert result is not None
         assert int(result) > 0
 
     def test_time_calc_unknown_period(self):
         """Test days_until_end_of with unknown period returns error."""
-        result = execute_tool("time_calc", {
-            "operation": "days_until_end_of",
-            "period": "nonexistent",
-        }, {"lang": "ru"})
+        result = execute_tool(
+            "time_calc",
+            {
+                "operation": "days_until_end_of",
+                "period": "nonexistent",
+            },
+            {"lang": "ru"},
+        )
         assert "error" in result.lower() or "ошибка" in result.lower()
 
     def test_time_calc_unknown_operation(self):
         """Test unknown operation returns error."""
-        result = execute_tool("time_calc", {
-            "operation": "nonexistent",
-        }, {"lang": "ru"})
+        result = execute_tool(
+            "time_calc",
+            {
+                "operation": "nonexistent",
+            },
+            {"lang": "ru"},
+        )
         assert "unknown" in result.lower() or "неизвестн" in result.lower()
 
     def test_time_calc_web_search_unavailable(self, app):
@@ -402,6 +454,7 @@ class TestExecuteTool:
             result = execute_tool("camera_snapshot", {"room": "gos"}, {"app": app, "lang": "ru"})
             # Result is JSON string
             import json
+
             data = json.loads(result)
             assert data.get("success") is False
 

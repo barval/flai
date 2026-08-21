@@ -93,13 +93,16 @@ def api_sd_step():
             r = redis_lib.from_url(current_app.config["REDIS_URL"], decode_responses=True)
             key = f"task_progress:{task_id}"
             pipe = r.pipeline()
-            pipe.hset(key, mapping={
-                "type": "image_step",
-                "step": str(step),
-                "total": str(total),
-                "percent": str(percent),
-                "timestamp": str(__import__("time").time()),
-            })
+            pipe.hset(
+                key,
+                mapping={
+                    "type": "image_step",
+                    "step": str(step),
+                    "total": str(total),
+                    "percent": str(percent),
+                    "timestamp": str(__import__("time").time()),
+                },
+            )
             pipe.expire(key, 1800)
             pipe.execute()
         except Exception:

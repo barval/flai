@@ -148,6 +148,3 @@ def validate_model_config_update(data: dict[str, Any] | None, module: str) -> di
         raise ValidationError("; ".join(errors))
 
     return updates
-
-
-

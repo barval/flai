@@ -271,6 +271,11 @@ function onImageStep(data) {
         barContainer.setAttribute('data-task-id', data.task_id);
         barContainer.innerHTML = '<div class="fill"></div><span class="label"></span>';
         chatMessages.appendChild(barContainer);
+    } else {
+        // Safety net: ignore step reset from OOM retry (e.g. 10/10 -> 1/10)
+        const prev = barContainer.querySelector('.label').textContent;
+        const m = prev.match(/(\d+)\/(\d+)/);
+        if (m && data.total === parseInt(m[2]) && data.step < parseInt(m[1])) return;
     }
 
     barContainer.querySelector('.fill').style.width = pct + '%';

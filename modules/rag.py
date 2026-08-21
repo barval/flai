@@ -71,15 +71,45 @@ class RagModule:
             app.logger.warning("QDRANT_URL not set, RAG module disabled")
             self.available = False
             return
+
+        # Retry initial connection (Qdrant may still be starting)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                self.qdrant_client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
+                self.qdrant_client.get_collections()
+                self.available = True
+                app.logger.info(f"RagModule initialized with Qdrant at {qdrant_url}, top_k={self.top_k}")
+                return
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    delay = 5
+                    app.logger.warning(f"Qdrant not ready (attempt {attempt + 1}/{max_retries}), retry in {delay}s...")
+                    time.sleep(delay)
+                else:
+                    self.available = False
+                    app.logger.error(f"Failed to connect to Qdrant after {max_retries} attempts: {e}")
+
+    def check_availability(self) -> bool:
+        """Check if Qdrant is reachable. Reconnect if previously unavailable."""
+        if self.available and self.qdrant_client:
+            return True
+
+        qdrant_url = current_app.config.get("QDRANT_URL")
+        qdrant_api_key = current_app.config.get("QDRANT_API_KEY")
+        if not qdrant_url:
+            return False
+
         try:
             self.qdrant_client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
-            # Test connection
             self.qdrant_client.get_collections()
             self.available = True
-            app.logger.info(f"RagModule initialized with Qdrant at {qdrant_url}, top_k={self.top_k}")
+            self.logger.info(f"RagModule: reconnected to Qdrant at {qdrant_url}")
+            return True
         except Exception as e:
             self.available = False
-            app.logger.error(f"Failed to connect to Qdrant: {e}")
+            self.logger.warning(f"RagModule: reconnection failed: {e}")
+            return False
 
     def _get_collection_name(self, user_id: str) -> str:
         """Return collection name for a specific user."""
@@ -127,7 +157,7 @@ class RagModule:
         Extract text from document, chunk it, generate embeddings and store in Qdrant.
         Returns (success, message).
         """
-        if not self.available:
+        if not self.check_availability():
             return False, "RAG service unavailable"
         self.logger.info(f"index_document: starting for doc_id={doc_id}, file_path={file_path}")
 
@@ -205,7 +235,7 @@ class RagModule:
 
     def delete_document(self, doc_id: str, user_id: str) -> bool:
         """Delete all points belonging to a document from the index."""
-        if not self.available:
+        if not self.check_availability():
             return False
         collection_name = self._get_collection_name(user_id)
         try:
@@ -231,7 +261,7 @@ class RagModule:
 
         Simplified: single direct query to Qdrant.
         """
-        if not self.available:
+        if not self.check_availability():
             return [], []
         top_k = top_k or self.top_k
 
@@ -243,14 +273,15 @@ class RagModule:
 
         collection_name = self._get_collection_name(user_id)
         try:
-            search_result = self.qdrant_client.search(
+            result = self.qdrant_client.query_points(
                 collection_name=collection_name,
-                query_vector=query_emb,
+                query=query_emb,
                 query_filter=models.Filter(
                     must=[models.FieldCondition(key="user_id", match=models.MatchValue(value=user_id))]
                 ),
                 limit=top_k,
             )
+            search_result = result.points
         except Exception as e:
             self.logger.warning(f"Search failed for query '{query[:30]}...': {e}")
             return [], []

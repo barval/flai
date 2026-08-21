@@ -8,6 +8,7 @@ After admin saves a new model config, this module:
 4. On failure: rolls back to fallback model
 5. On success: unloads the test model (it'll be loaded on next user request)
 """
+
 import contextlib
 import logging
 import threading
@@ -124,10 +125,7 @@ def _rollback(app: Any, module: str, failed_model: str) -> bool:
 
             gen = LlamaSwapConfigGenerator(app_obj)
             gen.signal_reload()
-            logger.warning(
-                f"Auto-rollback: {module} reverted to {fallback} "
-                f"(was {failed_model})"
-            )
+            logger.warning(f"Auto-rollback: {module} reverted to {fallback} (was {failed_model})")
             return True
         return False
     except Exception as e:
@@ -170,13 +168,9 @@ def _dry_load_worker(app: Any, module: str, new_model: str) -> None:
 
         # 3. Load failed — rollback
         if not success:
-            logger.warning(
-                f"dry_load: {module}/{new_model} failed to load — rolling back"
-            )
+            logger.warning(f"dry_load: {module}/{new_model} failed to load — rolling back")
         else:
-            logger.warning(
-                f"dry_load: {module}/{new_model} didn't reach 'running' state — rolling back"
-            )
+            logger.warning(f"dry_load: {module}/{new_model} didn't reach 'running' state — rolling back")
         _rollback(app, module, new_model)
 
 
@@ -196,6 +190,4 @@ def schedule_dry_load(app: Any, module: str, new_model: str) -> None:
         name=f"dry-load-{module}",
     )
     thread.start()
-    logger.info(
-        f"dry_load: scheduled for module={module} model={new_model}"
-    )
+    logger.info(f"dry_load: scheduled for module={module} model={new_model}")

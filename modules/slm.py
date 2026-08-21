@@ -76,7 +76,9 @@ class SlmModule(TranslationMixin):
             self.logger.warning(f"SLM remember failed: {e}")
             return False
 
-    def recall(self, query: str, limit: int | None = None, profile: str | None = None, semantic: bool = False) -> list[dict[str, Any]]:
+    def recall(
+        self, query: str, limit: int | None = None, profile: str | None = None, semantic: bool = False
+    ) -> list[dict[str, Any]]:
         """Retrieve relevant facts from long-term memory.
 
         Args:
@@ -99,7 +101,7 @@ class SlmModule(TranslationMixin):
             resp = requests.post(
                 f"{self.url}/recall",
                 json=payload,
-                timeout=15 if not semantic else 30,
+                timeout=15,
             )
             if resp.status_code == 200:
                 data = resp.json()
@@ -205,5 +207,3 @@ class SlmModule(TranslationMixin):
         except Exception as e:
             self.logger.warning(f"SLM check_similarity failed: {e}")
             return 0.0
-
-

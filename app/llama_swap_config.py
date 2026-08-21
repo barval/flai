@@ -23,9 +23,9 @@ DEGRADATION_STEPS = [0.75, 0.50, 0.25, 0.0]
 
 DEFAULT_TTL = {
     # llama-swap: ttl=0 means "never unload", ttl=N means "unload after N seconds idle"
-    "chat": 0,        # never unload — only swap: true removes it when another model needs VRAM
-    "embedding": 1,   # unload 1 second after response (fast: ~500 MB, reload is instant)
-    "reasoning": 1,   # unload 1 second after response
+    "chat": 0,  # never unload — only swap: true removes it when another model needs VRAM
+    "embedding": 1,  # unload 1 second after response (fast: ~500 MB, reload is instant)
+    "reasoning": 1,  # unload 1 second after response
     "multimodal": 1,  # unload 1 second after response
 }
 
@@ -223,12 +223,18 @@ class LlamaSwapConfigGenerator:
 
         cmd_parts = [
             "llama-server",
-            "--port", "${PORT}",
-            "-m", model_path,
-            "--host", "0.0.0.0",
-            "--ctx-size", str(ctx_size),
-            "--n-gpu-layers", "0",
-            "--flash-attn", "off",
+            "--port",
+            "${PORT}",
+            "-m",
+            model_path,
+            "--host",
+            "0.0.0.0",
+            "--ctx-size",
+            str(ctx_size),
+            "--n-gpu-layers",
+            "0",
+            "--flash-attn",
+            "off",
             "--jinja",
         ]
 
@@ -335,6 +341,7 @@ class LlamaSwapConfigGenerator:
 
             # MTP speculative decoding — auto-detected from GGUF metadata
             from app.utils import get_gguf_models_cached
+
             gguf_cache = get_gguf_models_cached("/models")
             model_key = os.path.basename(model_path).replace(".gguf", "") if model_path else ""
             if gguf_cache.get(model_key, {}).get("supports_mtp"):

@@ -237,14 +237,15 @@ def qdrant_direct_search(user_id: str):
     from qdrant_client import models
 
     try:
-        results = rag.qdrant_client.search(
+        result = rag.qdrant_client.query_points(
             collection_name=collection_name,
-            query_vector=emb,
+            query=emb,
             query_filter=models.Filter(
                 must=[models.FieldCondition(key="user_id", match=models.MatchValue(value=user_id))]
             ),
             limit=limit,
         )
+        results = result.points
 
         return jsonify(
             {

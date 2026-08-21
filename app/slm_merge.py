@@ -304,10 +304,7 @@ def _is_model_response(fact_text: str) -> bool:
     """Check if a fact is a model response, not a user fact."""
     if not fact_text:
         return False
-    return bool(
-        _MODEL_RESPONSE_PATTERNS.search(fact_text[:60])
-        or _MODEL_CONTENT_PATTERNS.search(fact_text[:200])
-    )
+    return bool(_MODEL_RESPONSE_PATTERNS.search(fact_text[:60]) or _MODEL_CONTENT_PATTERNS.search(fact_text[:200]))
 
 
 def merge_facts_for_user(slm, user_id: str, lang: str = "ru") -> dict:
@@ -392,6 +389,7 @@ def merge_facts_for_user(slm, user_id: str, lang: str = "ru") -> dict:
         # Step 4: Semantic merge (embedding similarity via daemon)
         try:
             from flask import current_app
+
             sim_threshold = current_app.config.get("SLM_SIMILARITY_THRESHOLD", _DEFAULT_SIMILARITY_THRESHOLD)
         except (ImportError, KeyError):
             sim_threshold = _DEFAULT_SIMILARITY_THRESHOLD
@@ -410,6 +408,7 @@ def merge_facts_for_user(slm, user_id: str, lang: str = "ru") -> dict:
         # Step 5: Temporal decay (old low-confidence facts)
         try:
             from flask import current_app
+
             decay_days = current_app.config.get("SLM_TEMPORAL_DECAY_DAYS", _DEFAULT_TEMPORAL_DECAY_DAYS)
             min_conf = current_app.config.get("SLM_MIN_CONFIDENCE_FOR_DECAY", _DEFAULT_MIN_CONFIDENCE_FOR_DECAY)
         except (ImportError, KeyError):
@@ -426,8 +425,11 @@ def merge_facts_for_user(slm, user_id: str, lang: str = "ru") -> dict:
                 logger.info(f"Merge for {user_id}: temporal_decay removed {len(decay_dups)} facts")
 
         stats["deleted"] = (
-            stats["fast_deleted"] + stats["edit_deleted"] + stats["fragment_deleted"]
-            + stats["semantic_deleted"] + stats["decay_deleted"]
+            stats["fast_deleted"]
+            + stats["edit_deleted"]
+            + stats["fragment_deleted"]
+            + stats["semantic_deleted"]
+            + stats["decay_deleted"]
         )
         logger.info(f"Merge for {user_id}: total removed {stats['deleted']} facts")
         return stats

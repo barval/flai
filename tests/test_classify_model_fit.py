@@ -6,6 +6,7 @@ Three tiers:
 - cpu_offload: needs partial CPU offload (degrade n_gpu_layers)
 - impossible: doesn't fit even with full CPU offload (not enough RAM)
 """
+
 from unittest.mock import patch
 
 from app.routes.admin import _classify_model_fit
@@ -76,8 +77,10 @@ class TestClassifyModelFit:
         """15 GB model on 16 GB RAM system: doesn't fit anywhere → impossible."""
         mock_cache.return_value = HUGE_MODEL
         # 15 GB > 85% of 16 GB VRAM (13.6 GB) AND > 70% of 16 GB RAM - 2 GB (9.2 GB)
-        with patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)), \
-             patch("app.routes.admin._get_total_ram_mb", return_value=16384):
+        with (
+            patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.routes.admin._get_total_ram_mb", return_value=16384),
+        ):
             result = _classify_model_fit(
                 model_name="VeryLargeModel.gguf",
                 context_length=8192,
@@ -101,8 +104,10 @@ class TestClassifyModelFit:
             }
         }
         mock_cache.return_value = very_huge
-        with patch("app.routes.admin._get_total_ram_mb", return_value=16384), \
-             patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)):
+        with (
+            patch("app.routes.admin._get_total_ram_mb", return_value=16384),
+            patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)),
+        ):
             result = _classify_model_fit(
                 model_name="Llama-3.1-70B-Q4_K_M.gguf",
                 context_length=8192,
@@ -148,8 +153,10 @@ class TestClassifyModelFit:
         """For cpu_offload tier, ngl scales with VRAM budget."""
         mock_cache.return_value = MEDIUM_MODEL
         # Force RAM to be huge so model can fit with CPU offload
-        with patch("app.routes.admin._get_total_ram_mb", return_value=64000), \
-             patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)):
+        with (
+            patch("app.routes.admin._get_total_ram_mb", return_value=64000),
+            patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)),
+        ):
             result = _classify_model_fit(
                 model_name="Qwen3.5-9B-Q8_0.gguf",
                 context_length=131072,  # very large ctx
@@ -159,9 +166,7 @@ class TestClassifyModelFit:
         # → tier should be cpu_offload
         if result["tier"] == "cpu_offload":
             assert 1 <= result["ngl_recommended"] < 32
-            assert result["ngl_recommended"] + (
-                result["ngl_total"] - result["ngl_recommended"]
-            ) == result["ngl_total"]
+            assert result["ngl_recommended"] + (result["ngl_total"] - result["ngl_recommended"]) == result["ngl_total"]
 
 
 class TestClassifyEdgeCases:

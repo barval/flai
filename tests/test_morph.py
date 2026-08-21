@@ -11,8 +11,8 @@ class TestGenerateRoomNameForms:
         """Masculine inanimate — nomn == accs, only 2 forms."""
         forms = generate_room_name_forms("тамбур")
         assert forms[0] == "тамбур"  # nomn
-        assert "тамбуре" in forms     # loct
-        assert len(forms) == 2        # accs deduplicated
+        assert "тамбуре" in forms  # loct
+        assert len(forms) == 2  # accs deduplicated
 
     def test_prihozhaya(self):
         """Feminine noun on -ая — 3 distinct forms."""
@@ -41,9 +41,9 @@ class TestGenerateRoomNameForms:
     def test_detskaya(self):
         """Adjective used as noun — must return feminine forms only."""
         forms = generate_room_name_forms("детская")
-        assert forms[0] == "детская"   # nomn femn
-        assert forms[1] == "детскую"   # accs femn
-        assert forms[2] == "детской"   # loct femn
+        assert forms[0] == "детская"  # nomn femn
+        assert forms[1] == "детскую"  # accs femn
+        assert forms[2] == "детской"  # loct femn
         # Must NOT contain masculine forms
         assert "детский" not in forms
         assert "детского" not in forms

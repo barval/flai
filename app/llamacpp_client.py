@@ -369,7 +369,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                 self.circuit_breaker.record_success()
                 result = _strip_thinking_tags(content.strip())
                 result = _strip_generic_reasoning(result)
-                return result  # type: ignore[no-any-return]
+                return result
             else:
                 self.circuit_breaker.record_failure()
                 self.logger.error(
@@ -706,7 +706,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
 
                     result = _strip_thinking_tags(content.strip())
                     result = _strip_generic_reasoning(result)
-                    return result  # type: ignore[no-any-return]
+                    return result
                 else:
                     if attempt < max_retries and response.status_code in (500, 502):
                         self.logger.warning(f"chat {response.status_code} on attempt {attempt + 1}, retrying in 5s")
@@ -974,6 +974,7 @@ class LlamaCppClient:
         self.available = False
         self.app = app
         self._active_model_type = None
+        self.backend: AbstractLlamaBackend
 
         backend_type = os.getenv("LLAMACP_BACKEND", "llamacpp")
 
@@ -1149,7 +1150,7 @@ class LlamaCppClient:
         timeout = config.get("timeout", 300)
         return self.backend.chat(
             messages, model, config, timeout, lang, model_type=model_type, tools=tools, temperature=temperature
-        )  # type: ignore[no-any-return]
+        )
 
     def chat_stream(
         self,
@@ -1209,7 +1210,7 @@ class LlamaCppClient:
                 "content": [{"type": "text", "text": text}, {"type": "image_url", "image_url": {"url": image_content}}],
             }
         ]
-        yield from self.chat_stream(messages, model_type=model_type, lang=lang)  # type: ignore[misc]
+        yield from self.chat_stream(messages, model_type=model_type, lang=lang, ensure_vram=False)  # type: ignore[misc]
 
     def get_embeddings(
         self, texts: list[str], model_type: str = "embedding", lang: str = "ru"
@@ -1251,7 +1252,7 @@ class LlamaCppClient:
         )
 
     def unload_all_models(self) -> bool:
-        return self.backend.unload_all_models()  # type: ignore[no-any-return]
+        return self.backend.unload_all_models()
 
     def get_running_models(self) -> list[str]:
-        return self.backend.get_running_models()  # type: ignore[no-any-return]
+        return self.backend.get_running_models()

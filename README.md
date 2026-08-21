@@ -83,7 +83,14 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 | Feature | Notes |
 |---------|-------|
-| **Reasoning task retry-on-empty** | If the reasoning model (gpt-oss-20b) returns only thinking blocks (empty answer after stripping), the task is retried once automatically. The model is already loaded on retry, so the second attempt is fast. Eliminates random «No response from reasoning model» errors caused by a cold model producing analysis without a final answer. No retry on cancellation or real model errors. |
+| **Critical dependency updates** | CVE-2026-25645 (`requests` 2.31→≥2.33) and CVE-2025-71176 (`pytest` 7.4→≥9.0). Also upgraded: `gunicorn`→26.1, `redis`→8.x, `qdrant-client`→1.19, `pytest-cov`→7.x |
+| **RAG reconnection** | `RagModule` now retries 3× with 5s delay at startup and reconnects per-request if Qdrant was previously unavailable — no more permanent «RAG disabled» after container restarts |
+| **SLM recall latency halved** | Two sequential `slm.recall()` calls merged into one; cold start penalty reduced from ~39s to ~25s, semantic timeout 30s→15s |
+| **Image generation OOM prevention** | sd-wrapper selects optimal offload level based on available VRAM (model weights + VAE decode buffer), skipping levels guaranteed to OOM — no more double progress bars on 16 GB GPUs |
+| **Reasoning task retry-on-empty** | If the reasoning model returns only thinking blocks (empty answer after stripping), the task is retried once automatically. The model is already loaded on retry, so the second attempt is fast. No retry on cancellation or real model errors. |
+| **Streaming output freeze fix** | Token rendering throttled to 120 ms, sessionStorage writes to 500 ms — eliminates browser tab freezing during long generations |
+| **Router: document search fixed** | Category numbering mismatch resolved; queries like "Кто такой X?" now correctly route to `[-RAG-]` instead of `[-SEARCH-]` |
+| **Tool calls: single-quote JSON** | Small LLMs (Qwen3-4B) outputting Python-style dicts with single quotes are now parsed via `ast.literal_eval()` fallback |
 
 
 ### Core Components
@@ -816,6 +823,16 @@ curl http://localhost:5000/metrics
 
 ### ✅ Completed
 
+- **Critical dependency updates** — CVE-2026-25645 (`requests` 2.31→≥2.33) and CVE-2025-71176 (`pytest` 7.4→≥9.0); also `gunicorn`→26.1, `redis`→8.x, `qdrant-client`→1.19, `pytest-cov`→7.x
+- **RAG reconnection** — `RagModule` retries 3× at startup and reconnects per-request; no more permanent «RAG disabled» after Qdrant container restarts
+- **SLM recall latency halved** — two sequential `slm.recall()` calls merged into one; cold start ~39s→~25s, semantic timeout 30s→15s
+- **Image generation OOM prevention** — sd-wrapper selects optimal offload level from VRAM budget (model weights + VAE decode buffer); no double progress bars on 16 GB GPUs
+- **Streaming output freeze fix** — token rendering throttled to 120 ms, sessionStorage to 500 ms; eliminates browser tab freezing during long generations
+- **Router: document search fixed** — category numbering mismatch resolved; person-name queries route to `[-RAG-]` instead of `[-SEARCH-]`
+- **Tool calls: single-quote JSON** — `ast.literal_eval()` fallback for small LLMs outputting Python-style dicts
+- **Camera VRAM fix** — `chat_with_image_stream()` passes `ensure_vram=False`; eliminates redundant VRAM check when queue already guaranteed availability
+- **VRAM regression fix** — `ensure_vram_for()` returns True immediately when needed model is already loaded; stale `measured_vram_mb` reset
+- **Qdrant v1.19.0 migration** — client `search()`→`query_points()`; clean start with new segment format; document re-indexed
 - **Reasoning retry-on-empty** — when the reasoning model returns thinking-only output (no final answer), the task is retried once automatically; fixes random «No response from reasoning model» errors on cold model loads
 - **Tool Calling system** — `app/tools.py`: calculator, current time, date/time calculations (9 ops via Pendulum), web search (SearXNG), document search (RAG), camera snapshots. OpenAI tools API with streaming tool_call accumulation
 - **Web Search module (SearXNG)** — self-hosted metasearch engine, Docker profile `with-search`, router category 7 for internet queries

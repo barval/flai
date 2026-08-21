@@ -197,14 +197,17 @@ def _init_postgresql():
         else:
             chat_model = "Qwen3-4B-Instruct-2507-Q4_0.gguf"
             reasoning_model = "gpt-oss-20b-Q4_K_M"
-        c.execute("""
+        c.execute(
+            """
             INSERT INTO model_configs (module, model_name, context_length, temperature, top_p, timeout, service_url, repeat_penalty)
             VALUES
                 ('chat', %s, 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
                 ('reasoning', %s, 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.15),
                 ('multimodal', 'Qwen3VL-8B-Instruct-Q4_K_M', 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
                 ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://flai-llamacpp:8033', NULL)
-        """, (chat_model, reasoning_model))
+        """,
+            (chat_model, reasoning_model),
+        )
 
     # model_vram_estimates — stores computed estimates and actual VRAM measurements per model
     c.execute("""
@@ -335,14 +338,19 @@ def _init_postgresql():
     # Switch chat model back to Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf (Instruct, ~2 GB)
     # Match both with and without .gguf suffix (admin panel may store either form)
     for old_name in [
-        'Qwen3-1.7B-Q8_0.gguf', 'Qwen3-1.7B-Instruct-Q4_K_M',
-        'Qwen3-4B-Instruct-2507-Q4_K_M', 'Qwen3-4B-Instruct-2507-Q4_K_M.gguf',
+        "Qwen3-1.7B-Q8_0.gguf",
+        "Qwen3-1.7B-Instruct-Q4_K_M",
+        "Qwen3-4B-Instruct-2507-Q4_K_M",
+        "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
     ]:
-        c.execute("""
+        c.execute(
+            """
             UPDATE model_configs
             SET model_name = 'Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf'
             WHERE module = 'chat' AND model_name = %s
-        """, (old_name,))
+        """,
+            (old_name,),
+        )
 
     # Update chat model defaults: temperature 0.1→0.7, top_p 0.1→0.9
     # (old values were for router classification, not suitable for chat responses)
@@ -368,6 +376,7 @@ def _init_postgresql():
 
 # ── VRAM estimates helpers ──────────────────────────────────────
 
+
 def get_vram_estimate(
     module: str,
     model_name: str | None = None,
@@ -387,8 +396,7 @@ def get_vram_estimate(
             )
         else:
             c.execute(
-                "SELECT * FROM model_vram_estimates WHERE module = %s "
-                "ORDER BY updated_at DESC LIMIT 1",
+                "SELECT * FROM model_vram_estimates WHERE module = %s ORDER BY updated_at DESC LIMIT 1",
                 (module,),
             )
         row = c.fetchone()
@@ -429,10 +437,10 @@ def upsert_vram_estimate(
                 new_weight = 1
                 total_weight = old_weight + new_weight
                 avg_mb = (
-                    (existing.get("measured_vram_mb") or 0) * old_weight +
-                    measured_mb * new_weight
+                    (existing.get("measured_vram_mb") or 0) * old_weight + measured_mb * new_weight
                 ) // total_weight
-                c.execute("""
+                c.execute(
+                    """
                     UPDATE model_vram_estimates
                     SET model_name = %s, context_length = %s, n_gpu_layers = %s,
                         estimated_vram_mb = COALESCE(%s, estimated_vram_mb),
@@ -441,25 +449,37 @@ def upsert_vram_estimate(
                         last_measured_at = NOW(),
                         updated_at = NOW()
                     WHERE module = %s AND model_name = %s
-                """, (model_name, context_length, n_gpu_layers,
-                     estimated_mb, avg_mb, new_count, module, model_name))
+                """,
+                    (model_name, context_length, n_gpu_layers, estimated_mb, avg_mb, new_count, module, model_name),
+                )
             else:
-                c.execute("""
+                c.execute(
+                    """
                     UPDATE model_vram_estimates
                     SET model_name = %s, context_length = %s, n_gpu_layers = %s,
                         estimated_vram_mb = COALESCE(%s, estimated_vram_mb),
                         updated_at = NOW()
                     WHERE module = %s AND model_name = %s
-                """, (model_name, context_length, n_gpu_layers,
-                     estimated_mb, module, model_name))
+                """,
+                    (model_name, context_length, n_gpu_layers, estimated_mb, module, model_name),
+                )
         else:
-            c.execute("""
+            c.execute(
+                """
                 INSERT INTO model_vram_estimates
                     (module, model_name, context_length, n_gpu_layers,
                      estimated_vram_mb, measured_vram_mb,
                      measurement_count, last_measured_at, updated_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
-            """, (module, model_name, context_length, n_gpu_layers,
-                 estimated_mb, measured_mb,
-                 1 if measured_mb is not None else 0))
+            """,
+                (
+                    module,
+                    model_name,
+                    context_length,
+                    n_gpu_layers,
+                    estimated_mb,
+                    measured_mb,
+                    1 if measured_mb is not None else 0,
+                ),
+            )
         conn.commit()

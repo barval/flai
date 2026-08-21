@@ -54,7 +54,7 @@ class TTSModule(TranslationMixin):
         try:
             raw = text
             text = clean_markdown_for_tts(text)
-            if '**' in raw or '**' in text:
+            if "**" in raw or "**" in text:
                 self.logger.info(f"TTS markdown: {raw!r} -> {text!r}")
             payload = {"text": text, "language": lang, "gender": gender}
             t0 = time.time()

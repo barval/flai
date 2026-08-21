@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <td>${formatDate(backup.created_at)}</td>
                         <td class="actions-cell">
                             <button class="btn-success" onclick="restoreBackup('${escapeHtml(backup.filename)}')" title="${t('restore')}">${t('restore')}</button>
-                            <a href="/admin/api/backups/${encodeURIComponent(backup.filename)}/download" class="btn-warning" title="${t('download')}" style="text-decoration:none;padding:5px 10px;border-radius:4px;color:white;display:inline-block;">${t('download')}</a>
+                            <a href="/admin/api/backups/${encodeURIComponent(backup.filename)}/download" class="btn-warning" title="${t('download')}">${t('download')}</a>
                             <button class="btn-danger" onclick="deleteBackup('${escapeHtml(backup.filename)}')" title="${t('delete')}">${t('delete')}</button>
                         </td>
                     `;

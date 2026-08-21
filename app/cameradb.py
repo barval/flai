@@ -21,9 +21,7 @@ def get_all_camera_rooms(enabled_only: bool = True) -> list[dict]:
     with get_db() as conn:
         c = conn.cursor()
         if enabled_only:
-            c.execute(
-                "SELECT * FROM camera_rooms WHERE enabled = TRUE ORDER BY sort_order, code"
-            )
+            c.execute("SELECT * FROM camera_rooms WHERE enabled = TRUE ORDER BY sort_order, code")
         else:
             c.execute("SELECT * FROM camera_rooms ORDER BY sort_order, code")
         return [dict(row) for row in c.fetchall()]

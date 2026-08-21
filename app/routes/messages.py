@@ -69,6 +69,7 @@ def send_message():
     if body_session_id:
         try:
             import uuid
+
             uuid.UUID(body_session_id, version=4)
             with db.get_db() as conn:
                 c = conn.cursor()

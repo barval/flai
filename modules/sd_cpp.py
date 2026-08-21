@@ -106,6 +106,50 @@ class SdCppModule(TranslationMixin):
         }
         return estimates.get(model_type, 8000)
 
+    @staticmethod
+    def _estimate_total_sd_vram(model_type: str, width: int, height: int, offload_level: int) -> int:
+        """Estimate total VRAM needed: model weights + VAE decode buffer.
+
+        Model weights are measured from sd-cli output at each offload level.
+        VAE decode buffer scales linearly with output pixel area.
+        """
+        # Weights measured from sd-cli logs (stable-diffusion.cpp:1682)
+        model_sizes = {
+            "z_image_turbo": {"diffusion": 6273, "vae": 160, "text_encoder": 3555},
+            "flux-2-klein-4b": {"diffusion": 4200, "vae": 321, "text_encoder": 3555},
+        }
+        sizes = model_sizes.get(model_type, {"diffusion": 6000, "vae": 160, "text_encoder": 3555})
+
+        # VAE decode buffer: 6657 MB at 1024x1024 (measured on RTX 5060 Ti)
+        base_vae_buffer = 6657
+        pixel_ratio = (width * height) / (1024 * 1024)
+        vae_buffer = int(base_vae_buffer * pixel_ratio)
+
+        if offload_level == 0:
+            model_vram = sizes["diffusion"] + sizes["vae"] + sizes["text_encoder"]
+        elif offload_level == 1:
+            model_vram = sizes["diffusion"] + sizes["vae"]
+        else:
+            model_vram = 0
+
+        return model_vram + vae_buffer
+
+    def _choose_start_offload_level(self, rm, width: int, height: int) -> int:
+        """Choose the lowest offload_level that fits in available VRAM."""
+        available = rm.hardware.available_vram_mb
+        for level in (0, 1, 2, 3):
+            needed = self._estimate_total_sd_vram(self.model_type, width, height, level)
+            if available >= needed:
+                self.logger.info(
+                    f"VRAM budget: {available}MB free, level {level} needs {needed}MB — starting at offload_level={level}"
+                )
+                return level
+        self.logger.warning(
+            f"VRAM budget: {available}MB free, even level 3 needs "
+            f"{self._estimate_total_sd_vram(self.model_type, width, height, 3)}MB"
+        )
+        return 3
+
     def _resolve_use_gpu(self, rm) -> bool:
         """Determine use_gpu flag with VRAM check. Falls back to CPU if VRAM insufficient."""
         if not rm.hardware.cuda_detected:
@@ -156,12 +200,6 @@ class SdCppModule(TranslationMixin):
 
         # Check VRAM availability after LLM unload
         use_gpu = self._resolve_use_gpu(rm)
-        if use_gpu:
-            self.logger.info(
-                f"VRAM: {rm.hardware.available_vram_mb}MB available, ~{self._estimate_sd_vram_mb(self.model_type)}MB needed — using GPU"
-            )
-        else:
-            self.logger.info("SD will use CPU mode")
 
         # Cap resolution for low VRAM tiers (8 GB) to prevent OOM
         width = prompt_data.get("width", self.default_width)
@@ -175,6 +213,9 @@ class SdCppModule(TranslationMixin):
                 width, height = int(width * ratio), int(height * ratio)
                 self.logger.info(f"VRAM tier 8GB: capped resolution from {old_w}×{old_h} to {width}×{height}")
 
+        # Smart offload level: skip levels that won't fit in VRAM
+        start_level = self._choose_start_offload_level(rm, width, height) if use_gpu else 3
+
         rm.mark_sd_busy()
 
         try:
@@ -182,6 +223,7 @@ class SdCppModule(TranslationMixin):
                 f"Sending request to sd-wrapper ({self.model_type}), "
                 f"cfg_scale={prompt_data.get('cfg_scale', 'auto')}, "
                 f"steps={prompt_data.get('steps', 'auto')}, "
+                f"offload_level={start_level}, "
                 f"timeout: {self.timeout}s"
             )
             self.logger.info(f"sd.cpp prompt: '{prompt_data.get('prompt', '')[:100]}...'")
@@ -196,6 +238,7 @@ class SdCppModule(TranslationMixin):
                 "cfg_scale": prompt_data.get("cfg_scale", self.default_cfg_scale),
                 "flow_shift": prompt_data.get("flow_shift", 2.0),
                 "use_gpu": use_gpu,
+                "start_offload_level": start_level,
                 "user_id": user_id,
                 "session_id": session_id,
                 "task_id": task_id,
@@ -258,8 +301,15 @@ class SdCppModule(TranslationMixin):
         finally:
             rm.mark_sd_idle()
 
-    def edit_image(self, edit_prompt_data: dict[str, Any], image_base64: str, lang: str = "ru",
-                   task_id: str | None = None, user_id: str | None = None, session_id: str | None = None) -> dict[str, Any]:
+    def edit_image(
+        self,
+        edit_prompt_data: dict[str, Any],
+        image_base64: str,
+        lang: str = "ru",
+        task_id: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
         """Edit an existing image using Flux.2 Klein 4B model.
         Before starting, unloads llama.cpp model from VRAM to avoid OOM.
         Resizes large images to max 1024px to fit 16GB VRAM.
@@ -292,12 +342,6 @@ class SdCppModule(TranslationMixin):
 
         # Check VRAM availability after LLM unload
         use_gpu = self._resolve_use_gpu(rm)
-        if use_gpu:
-            self.logger.info(
-                f"VRAM: {rm.hardware.available_vram_mb}MB available, ~{self._estimate_sd_vram_mb(self.model_type)}MB needed — using GPU"
-            )
-        else:
-            self.logger.info("SD edit will use CPU mode")
 
         # Resize large images to avoid OOM — larger cap for 16GB+, tighter for 8GB
         total_vram = rm.hardware.total_vram_mb
@@ -323,9 +367,17 @@ class SdCppModule(TranslationMixin):
         except Exception as e:
             self.logger.warning(f"Edit: failed to resize image: {e}")
 
+        # Smart offload level for edit
+        if use_gpu:
+            edit_w = min(edit_prompt_data.get("width", self.default_width), max_edit_size)
+            edit_h = min(edit_prompt_data.get("height", self.default_height), max_edit_size)
+            start_level = self._choose_start_offload_level(rm, edit_w, edit_h)
+        else:
+            start_level = 3
+
         rm.mark_sd_busy()
 
-        self.logger.info(f"Sending edit request to sd-wrapper, timeout: {self.timeout}s")
+        self.logger.info(f"Sending edit request to sd-wrapper, offload_level={start_level}, timeout: {self.timeout}s")
         self.logger.info(f"sd.cpp edit prompt: '{edit_prompt_data.get('edit_prompt', '')[:100]}...'")
 
         payload = {
@@ -335,6 +387,7 @@ class SdCppModule(TranslationMixin):
             "width": edit_prompt_data.get("width", self.default_width),
             "height": edit_prompt_data.get("height", self.default_height),
             "use_gpu": use_gpu,
+            "start_offload_level": start_level,
             "preview_url": f"{self.app.config.get('PREFERRED_URL', 'http://flai-web:5000')}/api/queue/internal/sd_step",
             "task_id": task_id,
             "user_id": user_id,

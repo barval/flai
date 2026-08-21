@@ -204,18 +204,15 @@
     color: #ffffff;
 }
 /* ===== COPY BUTTONS ===== */
-.dark-theme .copy-code-button,
-.dark-theme .copy-transcript-button {
+.dark-theme .copy-code-button {
     background-color: rgba(200,200,200,0.8);
     color: #333;
 }
-.dark-theme .copy-code-button:hover,
-.dark-theme .copy-transcript-button:hover {
+.dark-theme .copy-code-button:hover {
     background-color: #3498db;
     color: white;
 }
-.dark-theme .copy-code-button.copied,
-.dark-theme .copy-transcript-button.copied {
+.dark-theme .copy-code-button.copied {
     background-color: #27ae60;
     color: white;
 }
@@ -287,14 +284,12 @@
 .dark-theme .new-session-button:hover {
     background-color: #1f6a9a;
 }
-.dark-theme .save-chat-button,
-.dark-theme .clear-context-button {
+.dark-theme .save-chat-button {
     background-color: #3a3a3a;
     color: #ecf0f1;
     border-color: #555;
 }
-.dark-theme .save-chat-button:hover,
-.dark-theme .clear-context-button:hover {
+.dark-theme .save-chat-button:hover {
     background-color: #4a4a4a;
 }
 .dark-theme .cancel-stream-header {

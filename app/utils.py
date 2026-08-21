@@ -1363,46 +1363,46 @@ def clean_markdown_for_tts(text: str) -> str:
         return text
 
     # 1. Fenced code blocks — remove entirely
-    text = re.sub(r'```[\s\S]*?```', '', text)
+    text = re.sub(r"```[\s\S]*?```", "", text)
     # 2. Inline code — keep content
-    text = re.sub(r'`([^`]+)`', r'\1', text)
+    text = re.sub(r"`([^`]+)`", r"\1", text)
     # 3. Images — remove entirely
-    text = re.sub(r'!\[.*?\]\(.*?\)', '', text)
+    text = re.sub(r"!\[.*?\]\(.*?\)", "", text)
     # 4. Links — keep only display text
-    text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
     # 5. Auto-links <url> — remove
-    text = re.sub(r'<https?://[^>]+>', '', text)
+    text = re.sub(r"<https?://[^>]+>", "", text)
     # 6. Bold-italic ***...*** — before ** and *
-    text = re.sub(r'\*\*\*(.+?)\*\*\*', r'\1', text)
+    text = re.sub(r"\*\*\*(.+?)\*\*\*", r"\1", text)
     # 7. Bold **...**
-    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
     # 8. Italic *...*
-    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    text = re.sub(r"\*(.+?)\*", r"\1", text)
     # 8b. Strip orphaned ** adjacent to letters
     #     (survives after sentence-split fragments like **НН. / РУ**)
-    text = re.sub(r'(?<=[a-zA-Zа-яА-ЯёЁ])\*\*|\*\*(?=[a-zA-Zа-яА-ЯёЁ])', '', text)
+    text = re.sub(r"(?<=[a-zA-Zа-яА-ЯёЁ])\*\*|\*\*(?=[a-zA-Zа-яА-ЯёЁ])", "", text)
     # 9. Underline-bold __...__ (word-boundary guarded)
-    text = re.sub(r'\b__(.+?)__\b', r'\1', text)
+    text = re.sub(r"\b__(.+?)__\b", r"\1", text)
     # 10. Underline-italic _..._ (word-boundary guarded)
-    text = re.sub(r'\b_(.+?)_\b', r'\1', text)
+    text = re.sub(r"\b_(.+?)_\b", r"\1", text)
     # 11. Strikethrough ~~...~~
-    text = re.sub(r'~~(.+?)~~', r'\1', text)
+    text = re.sub(r"~~(.+?)~~", r"\1", text)
     # 12. HTML tags
-    text = re.sub(r'</?[^>]+>', '', text)
+    text = re.sub(r"</?[^>]+>", "", text)
     # 13. Headings
-    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
     # 14. Blockquotes
-    text = re.sub(r'^>\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r"^>\s+", "", text, flags=re.MULTILINE)
     # 15. Unordered lists (-, *, +)
-    text = re.sub(r'^[\s]*[-*+]\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r"^[\s]*[-*+]\s+", "", text, flags=re.MULTILINE)
     # 16. Ordered lists (1., 1), etc.)
-    text = re.sub(r'^[\s]*\d+[.)]\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r"^[\s]*\d+[.)]\s+", "", text, flags=re.MULTILINE)
     # 17. Thematic breaks (---, ***, ___)
-    text = re.sub(r'^[\s]*[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r"^[\s]*[-*_]{3,}\s*$", "", text, flags=re.MULTILINE)
     # 18. Collapse multiple newlines
-    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
     # 19. Collapse multiple spaces/tabs
-    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r"[ \t]+", " ", text)
     # 20. Trim leading/trailing whitespace
     text = text.strip()
 
@@ -1412,9 +1412,16 @@ def clean_markdown_for_tts(text: str) -> str:
 # ── GPU architecture detection ──
 
 _BLACKWELL_PATTERNS = [
-    "rtx 5060", "rtx 5070", "rtx 5080", "rtx 5090",
-    "rtx pro 6000 blackwell", "blackwell",
-    "b100", "b200", "gb200", "gb10",
+    "rtx 5060",
+    "rtx 5070",
+    "rtx 5080",
+    "rtx 5090",
+    "rtx pro 6000 blackwell",
+    "blackwell",
+    "b100",
+    "b200",
+    "gb200",
+    "gb10",
 ]
 _gpu_is_blackwell: bool | None = None
 
@@ -1432,7 +1439,9 @@ def is_blackwell_gpu() -> bool:
     try:
         result = subprocess.run(
             ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         if result.returncode == 0:
             name = result.stdout.strip().lower()

@@ -35,6 +35,7 @@ logger = logging.getLogger("ltx-wrapper")
 _redis = None
 try:
     import redis as redis_lib
+
     _redis = redis_lib.from_url(os.environ.get("REDIS_URL", "redis://flai-redis:6379/0"))
     _redis.ping()
     logger.info("Redis connected for progress publishing")
@@ -386,29 +387,35 @@ def run_inference(
         try:
             step_num = step + 1
             pct = round(step_num / total_steps * 100)
-            payload = json.dumps({
-                "type": "video_step",
-                "data": {
-                    "session_id": session_id,
-                    "task_id": task_id,
-                    "step": step_num,
-                    "total": total_steps,
-                    "percent": pct,
+            payload = json.dumps(
+                {
+                    "type": "video_step",
+                    "data": {
+                        "session_id": session_id,
+                        "task_id": task_id,
+                        "step": step_num,
+                        "total": total_steps,
+                        "percent": pct,
+                    },
+                    "timestamp": time.time(),
                 },
-                "timestamp": time.time(),
-            }, ensure_ascii=False)
+                ensure_ascii=False,
+            )
             _redis.publish(f"user:events:{user_id}", payload)
             # Persist progress for restore after reconnect
             if task_id:
                 key = f"task_progress:{task_id}"
                 pipe = _redis.pipeline()
-                pipe.hset(key, mapping={
-                    "type": "video_step",
-                    "step": str(step_num),
-                    "total": str(total_steps),
-                    "percent": str(pct),
-                    "timestamp": str(time.time()),
-                })
+                pipe.hset(
+                    key,
+                    mapping={
+                        "type": "video_step",
+                        "step": str(step_num),
+                        "total": str(total_steps),
+                        "percent": str(pct),
+                        "timestamp": str(time.time()),
+                    },
+                )
                 pipe.expire(key, 1800)
                 pipe.execute()
         except Exception:

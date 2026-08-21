@@ -78,6 +78,7 @@ class TestEventsPublisher:
 class TestPublisherSingleton:
     def setup_method(self):
         import app.events as events_mod
+
         events_mod._publisher = None
 
     def test_get_without_app_returns_none(self):

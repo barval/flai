@@ -11,6 +11,8 @@ Questions requiring current internet information (category 6) also have priority
 Requests to write code/text, create HTML pages, applications, scripts (category 7) also have priority over category 1.
 Only simple questions (greetings, about yourself, time, skills) → category 1.
 
+IMPORTANT NAME RULE: If the query contains a PERSON'S FIRST + LAST NAME ("Who is John Smith?", "Tell me about Jane Doe", "What do you know about Bob Brown?") — this is ALWAYS category 5 (document search), NOT category 6 (internet). The user may have documents about any person.
+
 ## 1. SIMPLE QUERY — output query unchanged
 Any QUESTION: greeting, question about yourself, skills, time, calculations, or any other question.
 Output the query unchanged, without any marker.
@@ -49,26 +51,22 @@ Examples:
 {camera_section}
 
 ## 5. DOCUMENT SEARCH REQUEST (output unchanged with marker)
-If the query asks to search information about people, biography, resume, age, addresses, dates, events, facts — and this fact may be in uploaded documents.
+If the query asks about a SPECIFIC PERSON (first + last name), biography, resume, age, addresses, dates, events, facts — that may be in uploaded documents.
 FORBIDDEN: requests to WRITE/CREATE files, code, HTML pages, scripts, or applications — these are NOT document searches! Use category 7 instead.
 FORBIDDEN: requests about websites, URLs, domains, links (http:// or https://) — these are NOT document searches! Use category 6 instead.
 Action: Output [-RAG-] and the query text unchanged.
 Examples:
-- Query: "Find in documents about climate"
-  Response: "[-RAG-] Find in documents about climate"
-- Query: "How old is John Smith?"
-  Response: "[-RAG-] How old is John Smith?"
-- Query: "What's in the resume?"
-  Response: "[-RAG-] What's in the resume?"
-- Query: "What is the company address?"
-  Response: "[-RAG-] What is the company address?"
-NOT category 5 (use category 7 instead):
-- "Write an HTML file" → category 7, NOT 5
-- "Create a Python script" → category 7, NOT 5
+- "Who is John Smith?" → "[-RAG-] Who is John Smith?"
+- "Tell me about Jane Doe" → "[-RAG-] Tell me about Jane Doe"
+- "How old is John Smith?" → "[-RAG-] How old is John Smith?"
+- "What's in the resume?" → "[-RAG-] What's in the resume?"
+- "What is the company address?" → "[-RAG-] What is the company address?"
+- "Find in documents about climate" → "[-RAG-] Find in documents about climate"
 
 ## 6. WEB SEARCH REQUEST (output unchanged with marker)
 If the query requires current information from the internet: news, weather, stock prices, latest events, releases, prices, statistics, information about websites, domains, URLs — any data that needs online search.
 IMPORTANT: Do not confuse with document search (category 5) — that is information from uploaded files. Category 6 is FRESH information from the internet.
+IMPORTANT: If the query contains a PERSON'S FIRST + LAST NAME — this is category 5, NOT 6! The user's documents may contain information about any person.
 Action: Output [-SEARCH-] and the query text unchanged.
 Examples:
 - Query: "Weather in Moscow"

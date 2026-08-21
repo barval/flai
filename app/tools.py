@@ -312,6 +312,7 @@ def get_tool_definitions(lang: str = "ru") -> list[dict[str, Any]]:
 
 # ── Tool executors ───────────────────────────────────────────────────
 
+
 def _exec_get_current_time(ctx: dict[str, Any]) -> str:
     """Get current time using the app's timezone settings."""
     from app.utils import get_current_time_in_timezone
@@ -362,10 +363,9 @@ def _exec_web_search(ctx: dict[str, Any], query: str, lang: str = "ru") -> str:
         with force_locale(lang):
             return str(_("No results found for query: {query}").format(query=query))
 
-    formatted = search_module.format_results_context(results, lang=lang)
-    max_chars = app.config.get("SEARXNG_MAX_RESULTS_CHARS", 7000) if app else 7000
-    if len(formatted) > max_chars:
-        formatted = formatted[:max_chars] + "..."
+    base = app.modules.get("base") if app else None
+    search_max_chars = base.get_search_context_limit() if base and hasattr(base, "get_search_context_limit") else 7000
+    formatted = search_module.format_results_context(results, lang=lang, max_chars=search_max_chars)
     return formatted  # type: ignore[no-any-return]
 
 
@@ -424,14 +424,36 @@ def _exec_camera_snapshot(ctx: dict[str, Any], room: str) -> dict[str, Any]:
 # ── Time calculation helpers ────────────────────────────────────────
 
 _WEEKDAY_MAP_RU = {
-    "понедельник": 0, "вторник": 1, "среда": 2, "четверг": 3,
-    "пятница": 4, "суббота": 5, "воскресенье": 6,
-    "пн": 0, "вт": 1, "ср": 2, "чт": 3, "пт": 4, "сб": 5, "вс": 6,
+    "понедельник": 0,
+    "вторник": 1,
+    "среда": 2,
+    "четверг": 3,
+    "пятница": 4,
+    "суббота": 5,
+    "воскресенье": 6,
+    "пн": 0,
+    "вт": 1,
+    "ср": 2,
+    "чт": 3,
+    "пт": 4,
+    "сб": 5,
+    "вс": 6,
 }
 _WEEKDAY_MAP_EN = {
-    "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
-    "friday": 4, "saturday": 5, "sunday": 6,
-    "mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6,
+    "monday": 0,
+    "tuesday": 1,
+    "wednesday": 2,
+    "thursday": 3,
+    "friday": 4,
+    "saturday": 5,
+    "sunday": 6,
+    "mon": 0,
+    "tue": 1,
+    "wed": 2,
+    "thu": 3,
+    "fri": 4,
+    "sat": 5,
+    "sun": 6,
 }
 _WEEKDAY_NAMES_RU = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
 _WEEKDAY_NAMES_EN = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]

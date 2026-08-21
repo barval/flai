@@ -373,16 +373,6 @@ body.dark-theme .cam-spinner {
     color: #888;
 }
 
-.modal .form-group .form-row {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-}
-
-.modal .form-group .form-row .form-group {
-    margin-bottom: 0;
-}
-
 /* Modals */
 .modal {
     display: none;
@@ -447,17 +437,6 @@ body.dark-theme .cam-spinner {
     border-radius: 4px;
     cursor: pointer;
 }
-.refresh-button {
-    padding: 8px 16px;
-    background-color: #3498db;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-.refresh-button:hover {
-    background-color: #2980b9;
-}
 
 /* Model cards */
 .models-container {
@@ -496,26 +475,6 @@ body.dark-theme .model-card h3 {
 }
 body.dark-theme .model-card .model-desc {
     color: #bdc3c7;
-}
-.models-list .section-header {
-    background-color: #ecf0f1;
-    border: 1px solid #bdc3c7;
-    border-radius: 8px;
-    padding: 12px 16px;
-    margin-bottom: 15px;
-    margin-top: 10px;
-}
-.models-list .section-header span {
-    font-size: 1.1em;
-    font-weight: 600;
-    color: #2c3e50;
-}
-body.dark-theme .models-list .section-header {
-    background-color: #3d566e;
-    border-color: #4a6278;
-}
-body.dark-theme .models-list .section-header span {
-    color: #ecf0f1;
 }
 .model-card .module-name {
     font-size: 1.2em;
@@ -921,6 +880,8 @@ body.admin-page .voice-gender-switcher {
     border-radius: 4px;
     cursor: pointer;
     font-size: 13px;
+    text-decoration: none;
+    display: inline-block;
 }
 .btn-warning:hover {
     background-color: #e67e22;

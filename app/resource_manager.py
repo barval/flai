@@ -320,7 +320,12 @@ class ResourceManager:
                 effective_ngl = block_count
             while effective_ngl > 0:
                 ratio = min(1.0, effective_ngl / block_count) if block_count > 0 else 1.0
-                est_weights = max(file_size_mb or needed, 100) * ratio * (0.95 if expert_count > 0 else 1.0) * (1.15 if supports_mtp else 1.0)
+                est_weights = (
+                    max(file_size_mb or needed, 100)
+                    * ratio
+                    * (0.95 if expert_count > 0 else 1.0)
+                    * (1.15 if supports_mtp else 1.0)
+                )
                 est_kv = ctx_size * 0.12  # q4_0: ~0.12 MB per token (matches get_vram_needed_mb)
                 est_overhead = max(400, int((file_size_mb or needed) * 0.05 + ctx_size * 0.002))
                 est_total = est_weights + est_kv + est_overhead
@@ -441,14 +446,14 @@ class ResourceManager:
     def ensure_vram_for(self, model_type: str, needed_mb: int | None = None, timeout: int = 15) -> bool:
         """Ensure VRAM is available for the given model type.
 
-        1. Unload ALL llama.cpp models via llama-swap
-        2. Unload video pipeline
-        3. Flush CUDA cache
+        1. If the needed model is already loaded — return True immediately
+        2. Unload ALL llama.cpp models via llama-swap
+        3. Unload video pipeline
         4. Poll /running until 0 models remain
         5. Poll nvidia-smi until needed_mb is free
 
-        Returns True only when VRAM is confirmed available.
-        NEVER proceeds if VRAM is insufficient — returns False on timeout.
+        Returns True when the model is already loaded or VRAM is confirmed available.
+        Returns False on timeout (model not loaded and VRAM insufficient).
         """
         if needed_mb is None:
             needed_mb = self.get_vram_needed_mb(model_type)
@@ -467,15 +472,11 @@ class ResourceManager:
                     config = get_model_config(model_type)
                     model_name = config.get("model_name", "") if config else ""
                     if model_name and model_name in cmd:
-                        # Needed model already loaded — just verify VRAM
-                        self._poll_vram()
-                        free = self.hardware.available_vram_mb
-                        if free >= needed_mb:
-                            logger.info(
-                                f"ensure_vram_for [{model_type}]: model already loaded, "
-                                f"{free}MB free >= {needed_mb}MB needed — OK"
-                            )
-                            return True
+                        # Needed model already loaded — VRAM is already allocated,
+                        # no unload/reload needed. Skip VRAM threshold check which
+                        # can be inflated by stale measured_vram_mb estimates.
+                        logger.info(f"ensure_vram_for [{model_type}]: model already loaded — skipping")
+                        return True
         except Exception:
             pass
 

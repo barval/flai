@@ -90,7 +90,7 @@ def _extract_user_quotes_from_assistant(content: str) -> list[str]:
     if not content or len(content) < 15:
         return []
     quotes = re.findall(
-        r'(?:Вы\s+(?:сказали|упоминали|говорили|писали|предлагали)[,:]?\s*'
+        r"(?:Вы\s+(?:сказали|упоминали|говорили|писали|предлагали)[,:]?\s*"
         r'[""«](.+?)[""»])',
         content,
         re.IGNORECASE,
@@ -158,8 +158,12 @@ def import_user_messages(
                 for quote in quotes:
                     slm.remember(
                         quote,
-                        metadata={"session_id": session_id, "message_id": msg_id,
-                                   "role": "user_quote", "source": "auto_import"},
+                        metadata={
+                            "session_id": session_id,
+                            "message_id": msg_id,
+                            "role": "user_quote",
+                            "source": "auto_import",
+                        },
                         profile=user_id,
                     )
                     imported += 1

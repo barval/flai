@@ -375,9 +375,7 @@ class TestAdminModelEstimateFilter:
                 measured_mb=9200,
             )
             # Direct call with the new model name returns None
-            result = get_vram_estimate(
-                "reasoning", model_name="Qwen3-Next-Reasoning-Q4.gguf"
-            )
+            result = get_vram_estimate("reasoning", model_name="Qwen3-Next-Reasoning-Q4.gguf")
             assert result is None
 
     def test_get_vram_estimate_with_model_name_signature(self):

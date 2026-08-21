@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 9.0\n"
+"Project-Id-Version: FLAI 9.2\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-06-10 21:33+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -175,10 +175,6 @@ msgstr "Source"
 msgid "Reasoning model unavailable: GPU memory check failed. Try again."
 msgstr "Reasoning model unavailable: GPU memory check failed. Try again."
 
-#: app/queue.py:1397
-msgid "Reasoning failed: GPU memory exhausted. Please simplify your request."
-msgstr "Reasoning failed: GPU memory exhausted. Please simplify your request."
-
 #: app/queue.py:1436 app/queue.py:1578
 msgid "Video generation module unavailable"
 msgstr "Video generation module unavailable"
@@ -224,11 +220,6 @@ msgstr "Camera module unavailable"
 #, python-brace-format
 msgid "Camera snapshot: {room_name}"
 msgstr "Camera snapshot: {room_name}"
-
-#: app/queue.py:1958 app/queue.py:1988 app/queue.py:1994 app/queue.py:2026
-#: app/queue.py:2056 app/queue.py:2062
-msgid "No relevant documents found"
-msgstr "No relevant documents found"
 
 #: modules/search.py
 msgid "Web search result"
@@ -1217,7 +1208,7 @@ msgstr "Logout"
 
 #: app/templates/base.html:78 app/templates/chat.html:167
 msgid "footer_text"
-msgstr "Fully Local AI (FLAI) v9.0 (c) 2026 Valery Barsukov"
+msgstr "Fully Local AI (FLAI) v9.2 (c) 2026 Valery Barsukov"
 
 #: app/templates/chat.html:14 app/templates/chat.html:178
 msgid "New document"
@@ -1589,14 +1580,6 @@ msgstr "Could not find JSON in model response"
 msgid "JSON parsing error: {error}"
 msgstr "JSON parsing error: {error}"
 
-#: modules/sd_cpp.py:105
-msgid "Image generation service unavailable"
-msgstr "Image generation service unavailable"
-
-#: modules/sd_cpp.py:110
-msgid "Multimodal module unavailable (required for parameter generation)"
-msgstr "Multimodal module unavailable (required for parameter generation)"
-
 #: modules/sd_cpp.py:248
 msgid "sd-wrapper returned no image data"
 msgstr "sd-wrapper returned no image data"
@@ -1695,26 +1678,12 @@ msgid "No relevant documents found for query: {query}"
 msgstr "No relevant documents found for query: {query}"
 
 #: app/tools.py
-msgid "CCTV service unavailable"
-msgstr "CCTV service unavailable"
-
-#: app/tools.py
 msgid "Unknown tool: {tool}"
 msgstr "Unknown tool: {tool}"
 
 #: app/tools.py
 msgid "Tool execution error: {error}"
 msgstr "Tool execution error: {error}"
-
-#: app/tools.py
-#, python-brace-format
-msgid "No date text provided"
-msgstr "No date text provided"
-
-#: app/tools.py
-#, python-brace-format
-msgid "Cannot parse date: {text}"
-msgstr "Cannot parse date: {text}"
 
 #: app/tools.py
 #, python-brace-format
@@ -1725,11 +1694,6 @@ msgstr "Date calculation error: {error}"
 #, python-brace-format
 msgid "Unknown time_calc operation: {op}"
 msgstr "Unknown time_calc operation: {op}"
-
-#: app/tools.py
-#, python-brace-format
-msgid "Both from_time and to_time are required"
-msgstr "Both from_time and to_time are required"
 
 #: app/static/js/events.js
 msgid "tool_get_current_time"
@@ -1926,8 +1890,8 @@ msgstr "0s"
 #~ msgid "your_requests"
 #~ msgstr "Your requests in queue / Total in queue"
 
-#~ msgid "server_error_invalid_response"
-#~ msgstr "Server error: received invalid response"
+msgid "server_error_invalid_response"
+msgstr "Server error: received invalid response"
 
 #~ msgid "recording"
 #~ msgstr "Recording"
@@ -1978,11 +1942,11 @@ msgstr "0s"
 #~ msgid "room_balcony"
 #~ msgstr "balcony"
 
-#~ msgid "model_cannot_be_saved"
-#~ msgstr ""
-#~ "This model cannot be saved (not "
-#~ "enough VRAM/RAM). Choose a smaller "
-#~ "model."
+msgid "model_cannot_be_saved"
+msgstr ""
+"This model cannot be saved (not "
+"enough VRAM/RAM). Choose a smaller "
+"model."
 
 #~ msgid "Name forms"
 #~ msgstr "Name forms"

@@ -7,6 +7,7 @@ Verifies that:
 - Direct chat/chat_stream with HTTP 400 yields "⚠️ Failed to load image or audio file"
   (not a generic "HTTP error 400")
 """
+
 import json
 from unittest.mock import MagicMock, patch
 
@@ -21,9 +22,7 @@ class TestExtractErrorMessage:
 
     def test_extracts_message_from_nested_error(self):
         resp = MagicMock()
-        resp.json.return_value = {
-            "error": {"code": 400, "message": "Failed to load image or audio file"}
-        }
+        resp.json.return_value = {"error": {"code": 400, "message": "Failed to load image or audio file"}}
         resp.text = json.dumps(resp.json.return_value)
         assert _extract_error_message(resp) == "Failed to load image or audio file"
 
@@ -105,6 +104,7 @@ class TestChatStreamYieldsWarningPrefix:
             mock_post.return_value = mock_response
 
             from app.llamacpp_client import LlamaSwapBackend
+
             backend = LlamaSwapBackend()
             cb = MagicMock()
             cb.can_execute.return_value = True
@@ -132,6 +132,7 @@ class TestChatStreamYieldsWarningPrefix:
             mock_post.return_value = mock_response
 
             from app.llamacpp_client import LlamaSwapBackend
+
             backend = LlamaSwapBackend()
             cb = MagicMock()
             cb.can_execute.return_value = True
@@ -152,17 +153,18 @@ class TestChatStreamYieldsWarningPrefix:
 
     def test_chat_stream_image_load_400_retries_once(self):
         """HTTP 400 with 'Failed to load image' triggers a 3s retry, then yields ⚠️."""
-        with patch("app.llamacpp_client.requests.post") as mock_post, \
-             patch("app.llamacpp_client.time.sleep") as mock_sleep:
+        with (
+            patch("app.llamacpp_client.requests.post") as mock_post,
+            patch("app.llamacpp_client.time.sleep") as mock_sleep,
+        ):
             mock_response = MagicMock()
             mock_response.status_code = 400
-            mock_response.json.return_value = {
-                "error": {"message": "Failed to load image or audio file"}
-            }
+            mock_response.json.return_value = {"error": {"message": "Failed to load image or audio file"}}
             mock_response.text = json.dumps(mock_response.json.return_value)
             mock_post.return_value = mock_response
 
             from app.llamacpp_client import LlamaSwapBackend
+
             backend = LlamaSwapBackend()
             cb = MagicMock()
             cb.can_execute.return_value = True
@@ -186,8 +188,10 @@ class TestChatStreamYieldsWarningPrefix:
 
     def test_chat_stream_non_image_400_does_not_retry(self):
         """HTTP 400 WITHOUT 'Failed to load image' does NOT trigger a retry."""
-        with patch("app.llamacpp_client.requests.post") as mock_post, \
-             patch("app.llamacpp_client.time.sleep") as mock_sleep:
+        with (
+            patch("app.llamacpp_client.requests.post") as mock_post,
+            patch("app.llamacpp_client.time.sleep") as mock_sleep,
+        ):
             mock_response = MagicMock()
             mock_response.status_code = 400
             mock_response.json.return_value = {"error": {"message": "Invalid request body"}}
@@ -195,6 +199,7 @@ class TestChatStreamYieldsWarningPrefix:
             mock_post.return_value = mock_response
 
             from app.llamacpp_client import LlamaSwapBackend
+
             backend = LlamaSwapBackend()
             cb = MagicMock()
             cb.can_execute.return_value = True

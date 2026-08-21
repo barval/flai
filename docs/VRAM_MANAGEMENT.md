@@ -1,6 +1,10 @@
-# VRAM Management — FLAI v9.0
+# VRAM Management — FLAI v9.2
 
 This document describes the VRAM management system, GPU queue rules, and model protection mechanisms. Read it when modifying `resource_manager.py`, `queue.py`, video/multimodal pipelines, or admin model configuration.
+
+> **v9.2 change:** (1) `ensure_vram_for()` in `app/resource_manager.py` returns `True` immediately when the needed model is already loaded — skips the VRAM threshold check and avoids unload/reload cycles when llama-swap preloaded models (TTL). (2) `chat_with_image_stream()` in `app/llamacpp_client.py` passes `ensure_vram=False` to `chat_stream()` — eliminates redundant VRAM check when the queue has already guaranteed VRAM via `_wait_for_vram()`. (3) Smart SD offload level selection: `modules/sd_cpp.py` computes model weights + VAE decode buffer (empirically measured at ~6657 MB for 1024×1024, scales linearly with pixel area) and selects the lowest offload level fitting in available VRAM. `services/sd_cpp/sd_wrapper.py` accepts `start_offload_level` parameter to skip levels guaranteed to OOM. On 16 GB GPUs: starts at offload_level=1 (clip on CPU, ~13 GB total). On 24 GB+: starts at level 0 (maximum speed). Client-side safety in `onImageStep()` ignores backward step resets.
+
+> **v9.1 change:** Web search page content extraction (`_fetch_page_content()` in `modules/search.py`) runs on CPU only (HTTP requests + trafilatura text extraction). No GPU/VRAM impact.
 
 For critical rules summary, see the root `AGENTS.md`.
 

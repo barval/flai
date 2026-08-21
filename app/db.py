@@ -159,9 +159,7 @@ def get_session_messages(
                                 item["file_data"] = None
                         msg_dict["content"] = json.dumps(parsed, ensure_ascii=False)
                 except Exception as e:
-                    current_app.logger.debug(
-                        f"Failed to parse content JSON for message {msg_dict.get('id')}: {e}"
-                    )
+                    current_app.logger.debug(f"Failed to parse content JSON for message {msg_dict.get('id')}: {e}")
             messages.append(msg_dict)
 
         # Read file sizes from disk for messages with file_path
@@ -731,9 +729,13 @@ def get_session_text_history(session_id, max_tokens=None, max_messages=None):
         if skip_next:
             skip_next = False
             continue
-        if i + 1 < len(messages) and messages[i + 1]["role"] == "assistant" and _has_marker(messages[i + 1].get("content", "")):
-                skip_next = True
-                continue
+        if (
+            i + 1 < len(messages)
+            and messages[i + 1]["role"] == "assistant"
+            and _has_marker(messages[i + 1].get("content", ""))
+        ):
+            skip_next = True
+            continue
         filtered.append(msg)
 
     messages = filtered

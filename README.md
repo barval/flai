@@ -9,7 +9,7 @@
   [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
   [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 
-[English](README.md) | [Русский](README-ru.md)
+[English](README.md) | [Russian](README-ru.md)
 </div>
 
 ---
@@ -79,27 +79,19 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v9.0
+### What's New in v9.2
 
 | Feature | Notes |
 |---------|-------|
-| **Tool Calling** | Native OpenAI-compatible tool calling: calculator, current time, date/time calculations, web search, document search (RAG), camera snapshots — all via llama.cpp `--jinja` + Qwen3 |
-| **Web Search (SearXNG)** | Self-hosted metasearch engine for real-time internet queries: news, weather, exchange rates, prices. Docker profile `with-search` |
-| **Date/Time calculations** | 9 operations via Pendulum: days until weekday/date/period end, days between dates, next weekday on specific day, add days, format date. Full Russian/English support |
-| **Chat model stays hot permanently** | Chat model preload at startup via llama-swap `hooks.on_startup`, never unloaded by TTL (only swapped when another model needs VRAM). Background preload after every non-chat task eliminates cold starts |
-| **llama-swap alias deduplication** | Automatic dedup of aliases when multiple modules share the same GGUF file — prevents `duplicate alias` crash |
-| **Chat model auto-reload** | After reasoning/multimodal/embedding/video finishes, chat model is reloaded in a background thread via tiny completion request — next router call is instant |
-| **LTX-Video unconditional restart** | Video container always restarted after generation (no rate-limiting) — guaranteed CUDA context cleanup (~3 GB freed) |
-| **Skills list centralized** | All capabilities text extracted to `prompts/{ru,en}/skills.txt` as single source of truth. `format_prompt()` auto-injects `{skills_section}`. Previously duplicated (and inconsistent) across 4+ locations |
-| **Background task error isolation** | Fact extraction and fact merge errors are silently logged — never leak to users via SSE. Background tasks excluded from ⚡/⏳ queue indicators |
-| **Queue counter stability** | Background tasks no longer drift the user queue counter negative. `get_user_queue_counts()` returns `max(0, ...)` to prevent displays like `📊 -9/0` |
-| **Rule-based SLM extraction** | LLM-based fact extraction replaced with pattern matching (CPU-only, ~50-200ms). Semantic deduplication via `/similarity` endpoint. No GPU lock contention |
-| **Rule-based SLM merge** | LLM merge replaced with edit-distance + semantic similarity + temporal decay pipeline. Auto-archives facts older than 90 days |
-| **Task cancellation for all types** | Cancel button for image generation, image editing, and video generation (background cancel checker + container restart). Streaming tasks use Redis flag |
-| **Chat auto-scroll fix** | `_isLoadingMessages` flag prevents N competing async scroll callbacks. `isNearBottom()` threshold=200px. `overflow-anchor: none` for chat container |
-| **Error translation** | llama-swap errors translated to user language via `_translate_llama_swap_error()` |
-| **Double ⚠️ fix** | Server and client no longer both prepend "⚠️ " — server owns the prefix via `_build_error_response()` |
-| **TTS markdown cleanup** | `**bold**`, `*italic*`, `[links]` and other markdown formatting stripped before TTS synthesis — no more "звезда-звезда" in spoken responses. Handles sentence-split fragments (`**НН.РУ**` → `НН.РУ`). Exponent notation (`3**2=9`) preserved |
+| **Critical dependency updates** | CVE-2026-25645 (`requests` 2.31→≥2.33) and CVE-2025-71176 (`pytest` 7.4→≥9.0). Also upgraded: `gunicorn`→26.1, `redis`→8.x, `qdrant-client`→1.19, `pytest-cov`→7.x |
+| **RAG reconnection** | `RagModule` now retries 3× with 5s delay at startup and reconnects per-request if Qdrant was previously unavailable — no more permanent «RAG disabled» after container restarts |
+| **SLM recall latency halved** | Two sequential `slm.recall()` calls merged into one; cold start penalty reduced from ~39s to ~25s, semantic timeout 30s→15s |
+| **Image generation OOM prevention** | sd-wrapper selects optimal offload level based on available VRAM (model weights + VAE decode buffer), skipping levels guaranteed to OOM — no more double progress bars on 16 GB GPUs |
+| **Reasoning task retry-on-empty** | If the reasoning model returns only thinking blocks (empty answer after stripping), the task is retried once automatically. The model is already loaded on retry, so the second attempt is fast. No retry on cancellation or real model errors. |
+| **Streaming output freeze fix** | Token rendering throttled to 120 ms, sessionStorage writes to 500 ms — eliminates browser tab freezing during long generations |
+| **Router: document search fixed** | Category numbering mismatch resolved; queries like "Кто такой X?" now correctly route to `[-RAG-]` instead of `[-SEARCH-]` |
+| **Tool calls: single-quote JSON** | Small LLMs (Qwen3-4B) outputting Python-style dicts with single quotes are now parsed via `ast.literal_eval()` fallback |
+
 
 ### Core Components
 
@@ -739,7 +731,7 @@ The admin panel includes a **Cameras** tab with full CRUD operations:
 - **Sync** – import camera list from room-snapshot-api (`/rooms` endpoint)
 - **Enable/Disable** – toggle individual cameras on/off
 - **Thumbnail previews** – lazy-loaded camera snapshots with localStorage caching
-- **Russian name recognition** – pymorphy3 morphological analysis generates all grammatical declensions (именительный, винительный, предложный падежи) for each room name, so the AI recognizes "покажи гостиную", "что в гостиной", "на кухне" etc.
+- **Russian name recognition** – pymorphy3 morphological analysis generates all grammatical declensions (nominative, accusative, prepositional cases) for each room name, so the AI recognizes phrases like "show me the living room", "what is in the living room", "in the kitchen" etc.
 
 Camera room data is stored in the `camera_rooms` database table (code, name_forms, enabled, sort_order).
 
@@ -831,6 +823,17 @@ curl http://localhost:5000/metrics
 
 ### ✅ Completed
 
+- **Critical dependency updates** — CVE-2026-25645 (`requests` 2.31→≥2.33) and CVE-2025-71176 (`pytest` 7.4→≥9.0); also `gunicorn`→26.1, `redis`→8.x, `qdrant-client`→1.19, `pytest-cov`→7.x
+- **RAG reconnection** — `RagModule` retries 3× at startup and reconnects per-request; no more permanent «RAG disabled» after Qdrant container restarts
+- **SLM recall latency halved** — two sequential `slm.recall()` calls merged into one; cold start ~39s→~25s, semantic timeout 30s→15s
+- **Image generation OOM prevention** — sd-wrapper selects optimal offload level from VRAM budget (model weights + VAE decode buffer); no double progress bars on 16 GB GPUs
+- **Streaming output freeze fix** — token rendering throttled to 120 ms, sessionStorage to 500 ms; eliminates browser tab freezing during long generations
+- **Router: document search fixed** — category numbering mismatch resolved; person-name queries route to `[-RAG-]` instead of `[-SEARCH-]`
+- **Tool calls: single-quote JSON** — `ast.literal_eval()` fallback for small LLMs outputting Python-style dicts
+- **Camera VRAM fix** — `chat_with_image_stream()` passes `ensure_vram=False`; eliminates redundant VRAM check when queue already guaranteed availability
+- **VRAM regression fix** — `ensure_vram_for()` returns True immediately when needed model is already loaded; stale `measured_vram_mb` reset
+- **Qdrant v1.19.0 migration** — client `search()`→`query_points()`; clean start with new segment format; document re-indexed
+- **Reasoning retry-on-empty** — when the reasoning model returns thinking-only output (no final answer), the task is retried once automatically; fixes random «No response from reasoning model» errors on cold model loads
 - **Tool Calling system** — `app/tools.py`: calculator, current time, date/time calculations (9 ops via Pendulum), web search (SearXNG), document search (RAG), camera snapshots. OpenAI tools API with streaming tool_call accumulation
 - **Web Search module (SearXNG)** — self-hosted metasearch engine, Docker profile `with-search`, router category 7 for internet queries
 - **Chat model stays hot** — preload at startup via `hooks.on_startup`, TTL=0 (never unloaded), background reload after every non-chat task, no cold starts

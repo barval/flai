@@ -161,7 +161,7 @@ function updateDocumentsList(documents) {
         let embeddingLine = '';
         if (displayModel) {
             // Use a fixed icon '🔄' for the embedding model line, with no status-dependent class.
-            embeddingLine = `<div class="document-embedding"><span class="document-status-icon" style="margin-right:4px;">🔄</span> ${displayModel}</div>`;
+            embeddingLine = `<div class="document-embedding"><span class="document-status-icon">🔄</span> ${displayModel}</div>`;
         }
 
         html += `

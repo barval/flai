@@ -1,4 +1,5 @@
 # app/queue.py
+import ast
 import contextlib
 import hashlib
 import hmac
@@ -573,8 +574,7 @@ class RedisRequestQueue:
                     continue
 
                 # Priority 2: background queue (only when fast queue is empty)
-                if (self.redis.llen(self.background_queue_key) > 0
-                        and self.redis.llen(self.queue_key) == 0):
+                if self.redis.llen(self.background_queue_key) > 0 and self.redis.llen(self.queue_key) == 0:
                     result = self.redis.blpop(self.background_queue_key, timeout=5)
                     if result:
                         _, task_data = result
@@ -1040,7 +1040,9 @@ class RedisRequestQueue:
 
         if task and self._is_task_cancelled(task["id"]):
             self._publish_stream_event(task, "stream_cancelled")
-            return self._build_error_response(session_id, self.app.modules["base"]._("Task cancelled", lang=lang), 0, lang)
+            return self._build_error_response(
+                session_id, self.app.modules["base"]._("Task cancelled", lang=lang), 0, lang
+            )
 
         # Wait for guaranteed free VRAM (multimodal model needs ~8GB with KV cache)
         if not self._wait_for_vram(self._get_vram_needed("multimodal")):
@@ -1057,7 +1059,9 @@ class RedisRequestQueue:
 
         if task and self._is_task_cancelled(task["id"]):
             self._publish_stream_event(task, "stream_cancelled")
-            return self._build_error_response(session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time, lang)
+            return self._build_error_response(
+                session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time, lang
+            )
 
         edit_start = time.time()
         if task:
@@ -1074,7 +1078,10 @@ class RedisRequestQueue:
 
         if not image_result["success"]:
             return self._build_error_response(
-                session_id, image_result.get("error", self.app.modules["base"]._("Image editing failed", lang=lang)), mm_time + edit_time, lang
+                session_id,
+                image_result.get("error", self.app.modules["base"]._("Image editing failed", lang=lang)),
+                mm_time + edit_time,
+                lang,
             )
 
         # Show resize notice if image was downscaled for editing
@@ -1178,7 +1185,9 @@ class RedisRequestQueue:
 
         if task and self._is_task_cancelled(task["id"]):
             self._publish_stream_event(task, "stream_cancelled")
-            return self._build_error_response(session_id, self.app.modules["base"]._("Task cancelled", lang=lang), 0, lang)
+            return self._build_error_response(
+                session_id, self.app.modules["base"]._("Task cancelled", lang=lang), 0, lang
+            )
 
         # Wait for guaranteed free VRAM (multimodal model needs ~8GB with KV cache)
         if not self._wait_for_vram(self._get_vram_needed("multimodal")):
@@ -1201,7 +1210,9 @@ class RedisRequestQueue:
 
         if task and self._is_task_cancelled(task["id"]):
             self._publish_stream_event(task, "stream_cancelled")
-            return self._build_error_response(session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time, lang)
+            return self._build_error_response(
+                session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time, lang
+            )
 
         gen_start = time.time()
         if task:
@@ -1414,7 +1425,11 @@ class RedisRequestQueue:
             if rag_answer is not None:
                 if self._is_llm_error_string(rag_answer):
                     return self._build_error_response(session_id, rag_answer, rag_time, lang)
-                model_name = rag_model if rag_model and rag_model.endswith(".gguf") else (rag_model + ".gguf" if rag_model else "")
+                model_name = (
+                    rag_model
+                    if rag_model and rag_model.endswith(".gguf")
+                    else (rag_model + ".gguf" if rag_model else "")
+                )
                 model_used = model_name + " (RAG)" if model_name else "unknown (RAG)"
                 self.app.logger.info(f"RAG answered in reasoning request: {query[:50]}...")
                 return self._save_and_respond(
@@ -1471,34 +1486,43 @@ class RedisRequestQueue:
         current_time_str = get_current_time_in_timezone(self.app)
         stream_start = time.time()
         full_response = ""
-        error_detected = False
-        for token in self.app.modules["base"].generate_reasoning_response_stream(
-            query,
-            current_time_str,
-            lang=lang,
-            session_id=session_id,
-            response_style=response_style,
-            user_id=user_id,
-            rag_context=rag_context,
-            rag_source=rag_source,
-        ):
-            full_response += token
-            if not error_detected:
-                if self._is_llm_error_string(full_response):
-                    error_detected = True
-                else:
-                    self._publish_stream_token(task, token)
-            if self._is_task_cancelled(task["id"]):
+        for attempt in range(2):
+            full_response = ""
+            error_detected = False
+            for token in self.app.modules["base"].generate_reasoning_response_stream(
+                query,
+                current_time_str,
+                lang=lang,
+                session_id=session_id,
+                response_style=response_style,
+                user_id=user_id,
+                rag_context=rag_context,
+                rag_source=rag_source,
+                # Attempt 0 already loaded the model (and VRAM is confirmed);
+                # skip the unload/reload on the retry to avoid ~20s dead time.
+                ensure_vram=(attempt == 0),
+            ):
+                full_response += token
+                if not error_detected:
+                    if self._is_llm_error_string(full_response):
+                        error_detected = True
+                    else:
+                        self._publish_stream_token(task, token)
+                if self._is_task_cancelled(task["id"]):
+                    break
+            reasoning_time = round(time.time() - stream_start, 1)
+            full_response = self._strip_thinking_tags(full_response)
+            if full_response.strip():
                 break
-        reasoning_time = round(time.time() - stream_start, 1)
-        full_response = self._strip_thinking_tags(full_response)
-        if not full_response.strip():
-            return self._build_error_response(
-                session_id,
-                self.app.modules["base"]._("No response from reasoning model", lang),
-                reasoning_time,
-                lang,
-            )
+            if attempt == 0 and not self._is_task_cancelled(task["id"]):
+                self.app.logger.warning(f"Reasoning model returned empty output (attempt {attempt + 1}), retrying once")
+            else:
+                return self._build_error_response(
+                    session_id,
+                    self.app.modules["base"]._("No response from reasoning model", lang),
+                    reasoning_time,
+                    lang,
+                )
         if self._is_llm_error_string(full_response):
             return self._build_error_response(session_id, full_response, reasoning_time, lang)
 
@@ -1587,7 +1611,9 @@ class RedisRequestQueue:
 
             if task and self._is_task_cancelled(task["id"]):
                 self._publish_stream_event(task, "stream_cancelled")
-                return self._build_error_response(session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time, lang)
+                return self._build_error_response(
+                    session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time, lang
+                )
 
             # CRITICAL: Unload multimodal model AFTER params generated but BEFORE video.
             # generate_video_params() loaded Qwen3VL-8B (~5GB) — must free VRAM
@@ -1609,7 +1635,11 @@ class RedisRequestQueue:
             cancel_stop = self._start_cancel_checker(task["id"]) if task else None
             try:
                 video_result = self.app.modules["video"].generate_video(
-                    prompt_data, lang=lang, user_id=user_id, session_id=session_id, task_id=task.get("id") if task else None
+                    prompt_data,
+                    lang=lang,
+                    user_id=user_id,
+                    session_id=session_id,
+                    task_id=task.get("id") if task else None,
                 )
             finally:
                 if cancel_stop:
@@ -1618,7 +1648,9 @@ class RedisRequestQueue:
 
             if task and self._is_task_cancelled(task["id"]):
                 self._publish_stream_event(task, "stream_cancelled")
-                return self._build_error_response(session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time + gen_time, lang)
+                return self._build_error_response(
+                    session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time + gen_time, lang
+                )
 
             if not video_result["success"]:
                 err_msg = video_result.get("error", "")
@@ -1742,7 +1774,9 @@ class RedisRequestQueue:
 
             if task and self._is_task_cancelled(task["id"]):
                 self._publish_stream_event(task, "stream_cancelled")
-                return self._build_error_response(session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time, lang)
+                return self._build_error_response(
+                    session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time, lang
+                )
 
             # CRITICAL: Unload multimodal model AFTER params generated but BEFORE video.
             # generate_video_params_from_image() loaded Qwen3VL-8B (~5GB) — must free VRAM
@@ -1775,7 +1809,9 @@ class RedisRequestQueue:
 
             if task and self._is_task_cancelled(task["id"]):
                 self._publish_stream_event(task, "stream_cancelled")
-                return self._build_error_response(session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time + gen_time, lang)
+                return self._build_error_response(
+                    session_id, self.app.modules["base"]._("Task cancelled", lang=lang), mm_time + gen_time, lang
+                )
 
             if not video_result["success"]:
                 err_msg = video_result.get("error", "")
@@ -2108,7 +2144,12 @@ class RedisRequestQueue:
         if not rag or not rag.available:
             self.app.logger.warning("RAG not available — falling back to reasoning")
             return self._requeue_reasoning_task(
-                query, session_id, user_id, lang, response_style, skip_rag=True,
+                query,
+                session_id,
+                user_id,
+                lang,
+                response_style,
+                skip_rag=True,
             )
 
         # Step 1: RAG search only (embedding ~500MB — safe on fast worker)
@@ -2138,15 +2179,23 @@ class RedisRequestQueue:
                     f"for query: {query[:100]}... — falling back to reasoning"
                 )
                 return self._requeue_reasoning_task(
-                    query, session_id, user_id, lang, response_style, skip_rag=True,
+                    query,
+                    session_id,
+                    user_id,
+                    lang,
+                    response_style,
+                    skip_rag=True,
                 )
         except Exception as e:
             self.logger.error(f"RAG search failed: {e}")
-            self.app.logger.warning(
-                f"RAG search failed, falling back to reasoning: {e}"
-            )
+            self.app.logger.warning(f"RAG search failed, falling back to reasoning: {e}")
             return self._requeue_reasoning_task(
-                query, session_id, user_id, lang, response_style, skip_rag=True,
+                query,
+                session_id,
+                user_id,
+                lang,
+                response_style,
+                skip_rag=True,
             )
 
         # Step 2: Re-queue to slow worker for reasoning model generation
@@ -2186,10 +2235,14 @@ class RedisRequestQueue:
                     search_time,
                     lang,
                 )
-            search_context = search.format_results_context(results, lang=lang)
+            base = self.app.modules.get("base")
+            search_max_chars = (
+                base.get_search_context_limit() if base and hasattr(base, "get_search_context_limit") else 10000
+            )
+            search_context = search.format_results_context(results, lang=lang, max_chars=search_max_chars)
             self.app.logger.info(
                 f"Web search: '{query[:60]}...' → {len(results)} results, "
-                f"{len(search_context)} chars — requeueing to slow worker ({search_time}s)"
+                f"{len(search_context)} chars (limit {search_max_chars}) — requeueing to slow worker ({search_time}s)"
             )
         except Exception as e:
             search_time = round(time.time() - search_start, 1)
@@ -2230,7 +2283,12 @@ class RedisRequestQueue:
         if not rag or not rag.available:
             self.app.logger.warning("RAG not available — falling back to reasoning")
             return self._requeue_reasoning_task(
-                query, session_id, user_id, lang, response_style, skip_rag=True,
+                query,
+                session_id,
+                user_id,
+                lang,
+                response_style,
+                skip_rag=True,
             )
 
         # Step 1: RAG search only (embedding ~500MB — safe on fast worker)
@@ -2260,15 +2318,23 @@ class RedisRequestQueue:
                     f"for query: {query[:100]}... — falling back to reasoning"
                 )
                 return self._requeue_reasoning_task(
-                    query, session_id, user_id, lang, response_style, skip_rag=True,
+                    query,
+                    session_id,
+                    user_id,
+                    lang,
+                    response_style,
+                    skip_rag=True,
                 )
         except Exception as e:
             self.logger.error(f"RAG search failed: {e}")
-            self.app.logger.warning(
-                f"RAG search failed, falling back to reasoning: {e}"
-            )
+            self.app.logger.warning(f"RAG search failed, falling back to reasoning: {e}")
             return self._requeue_reasoning_task(
-                query, session_id, user_id, lang, response_style, skip_rag=True,
+                query,
+                session_id,
+                user_id,
+                lang,
+                response_style,
+                skip_rag=True,
             )
 
         # Step 2: Re-queue to slow worker for reasoning model generation
@@ -2311,7 +2377,9 @@ class RedisRequestQueue:
         query = router_result["query"]
 
         if action_type == "reasoning":
-            return self._requeue_reasoning_task(query, session_id, user_id, lang, response_style, user_class=user_class, skip_rag=True)
+            return self._requeue_reasoning_task(
+                query, session_id, user_id, lang, response_style, user_class=user_class, skip_rag=True
+            )
         elif action_type == "image":
             return self._requeue_image_task(query, session_id, user_id, lang, response_style, user_class=user_class)
         elif action_type == "video":
@@ -2486,8 +2554,8 @@ class RedisRequestQueue:
         if lang == "ru":
             task_instruction = (
                 "Задача: Ответь на запрос пользователя."
-                if not include_tools else
-                "Задача: Ответь на запрос пользователя. Используй инструменты когда это необходимо — не придумывай ответ, лучше вызови инструмент."
+                if not include_tools
+                else "Задача: Ответь на запрос пользователя. Используй инструменты когда это необходимо — не придумывай ответ, лучше вызови инструмент."
             )
             system_parts = [
                 f"# ИНСТРУКЦИЯ\n"
@@ -2527,8 +2595,8 @@ class RedisRequestQueue:
         else:
             task_instruction = (
                 "Task: Answer the user's request."
-                if not include_tools else
-                "Task: Answer the user's request. Use tools when necessary — do not make up answers, call a tool instead."
+                if not include_tools
+                else "Task: Answer the user's request. Use tools when necessary — do not make up answers, call a tool instead."
             )
             system_parts = [
                 f"# INSTRUCTION\n"
@@ -2755,9 +2823,7 @@ class RedisRequestQueue:
             else:
                 return self._build_error_response(
                     session_id,
-                    self.app.modules["base"]._(
-                        "No response from chat model. Try rephrasing your request.", lang
-                    ),
+                    self.app.modules["base"]._("No response from chat model. Try rephrasing your request.", lang),
                     round(time.time() - stream_start, 1),
                     lang,
                 )
@@ -2800,19 +2866,32 @@ class RedisRequestQueue:
         if not slm or not slm.available:
             # SLM not available — just answer normally
             return self._process_chat_with_tools(
-                task, query, current_time_str, session_id, user_id, lang, response_style,
+                task,
+                query,
+                current_time_str,
+                session_id,
+                user_id,
+                lang,
+                response_style,
             )
 
         # LLM processing to extract the essence of the request
         prompt = format_prompt("slm_remember.template", {"query": query}, lang=lang)
         if not prompt:
             return self._process_chat_with_tools(
-                task, query, current_time_str, session_id, user_id, lang, response_style,
+                task,
+                query,
+                current_time_str,
+                session_id,
+                user_id,
+                lang,
+                response_style,
             )
 
         result = self.app.modules["base"].call_llamacpp(
             [{"role": "user", "content": prompt}],
-            model_type="chat", lang=lang,
+            model_type="chat",
+            lang=lang,
             temperature=0.1,
         )
 
@@ -2832,7 +2911,13 @@ class RedisRequestQueue:
 
         # Answer via chat model (confirmation)
         return self._process_chat_with_tools(
-            task, query, current_time_str, session_id, user_id, lang, response_style,
+            task,
+            query,
+            current_time_str,
+            session_id,
+            user_id,
+            lang,
+            response_style,
         )
 
     def _process_fact_extraction(self, task: dict[str, Any]) -> dict[str, Any]:
@@ -2895,6 +2980,7 @@ class RedisRequestQueue:
                 return {"status": "ok"}
 
             from app.slm_merge import merge_facts_for_user
+
             merge_facts_for_user(slm, user_id, lang)
 
             return {"status": "ok"}
@@ -3862,7 +3948,10 @@ class RedisRequestQueue:
         try:
             data = json.loads(json_text)
         except json.JSONDecodeError:
-            return None
+            try:
+                data = ast.literal_eval(json_text)
+            except (ValueError, SyntaxError):
+                return None
 
         # Format 1: JSON has "name" and "arguments" keys
         if "name" in data and "arguments" in data:
@@ -3915,6 +4004,7 @@ class RedisRequestQueue:
                     self.logger.info(f"Cancelling task {task_id} — restarting LTX-Video container")
                     try:
                         from app.resource_manager import get_resource_manager
+
                         get_resource_manager()._force_restart_ltx_video()
                     except Exception as e:
                         self.logger.debug(f"Container restart during cancel: {e}")

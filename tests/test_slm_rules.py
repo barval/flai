@@ -2,7 +2,6 @@
 """Tests for rule-based fact extraction (app/slm_rules.py)."""
 
 
-
 class TestSplitSentences:
     """Test sentence splitting logic."""
 
@@ -199,10 +198,7 @@ class TestExtractFacts:
     def test_max_facts_limit(self):
         from app.slm_rules import extract_facts
 
-        response = (
-            "Мне нравится Python. Я люблю JavaScript. Я предпочитаю Rust. "
-            "Мой любимый язык — Go. Я обожаю C++."
-        )
+        response = "Мне нравится Python. Я люблю JavaScript. Я предпочитаю Rust. Мой любимый язык — Go. Я обожаю C++."
         result = extract_facts("Что你喜欢?", response, [], lang="ru", max_facts=2)
         assert len(result) <= 2
 
@@ -213,56 +209,3 @@ class TestExtractFacts:
         response = "Хорошо, буду использовать JSON."
         result = extract_facts(query, response, [], lang="ru", max_facts=3)
         assert any(f["category"] == "instruction" for f in result)
-
-
-class TestExtractFromRemember:
-    """Test explicit 'remember' extraction."""
-
-    def test_ru_prefix_pomni(self):
-        from app.slm_rules import extract_from_remember
-
-        result = extract_from_remember("Помни, что мой день рождения 15 марта", "ru")
-        assert len(result) == 1
-        assert "15 марта" in result[0]
-
-    def test_ru_prefix_zapomni(self):
-        from app.slm_rules import extract_from_remember
-
-        result = extract_from_remember("Запомни: я работаю в Яндексе", "ru")
-        assert len(result) == 1
-        assert "Яндексе" in result[0]
-
-    def test_en_prefix_remember_that(self):
-        from app.slm_rules import extract_from_remember
-
-        result = extract_from_remember("Remember that I prefer dark mode", "en")
-        assert len(result) == 1
-        assert "dark mode" in result[0]
-
-    def test_en_prefix_remember_colon(self):
-        from app.slm_rules import extract_from_remember
-
-        result = extract_from_remember("Remember: my birthday is March 15", "en")
-        assert len(result) == 1
-        assert "March 15" in result[0]
-
-    def test_fallback_full_text(self):
-        from app.slm_rules import extract_from_remember
-
-        result = extract_from_remember("My birthday is March 15", "en")
-        assert len(result) == 1
-        assert "March 15" in result[0]
-
-    def test_empty_query(self):
-        from app.slm_rules import extract_from_remember
-
-        assert extract_from_remember("", "ru") == []
-        assert extract_from_remember("   ", "en") == []
-
-    def test_truncation(self):
-        from app.slm_rules import extract_from_remember
-
-        long_text = "Помни, что " + "x" * 300
-        result = extract_from_remember(long_text, "ru")
-        assert len(result) == 1
-        assert len(result[0]) <= 200

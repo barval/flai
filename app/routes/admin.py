@@ -470,9 +470,9 @@ def _get_total_ram_mb() -> int:
 
 
 # Thresholds for tier classification (tuned for 8/12/16+ GB GPU tiers)
-TIER_VRAM_GOOD_PCT = 0.85      # vram_needed / total_vram <= this => good
-TIER_RAM_SAFETY_PCT = 0.70     # (file+kv) / system_ram <= this => possible
-TIER_RAM_HEADROOM_MB = 2048    # 2GB OS/other reserved
+TIER_VRAM_GOOD_PCT = 0.85  # vram_needed / total_vram <= this => good
+TIER_RAM_SAFETY_PCT = 0.70  # (file+kv) / system_ram <= this => possible
+TIER_RAM_HEADROOM_MB = 2048  # 2GB OS/other reserved
 
 
 def _classify_model_fit(
@@ -574,9 +574,7 @@ def _classify_model_fit(
     if vram_full_mb <= vram_budget:
         tier = "good"
         ngl_recommended = ngl_total
-        message = _("✓ Fits in VRAM: {vram} MB / {total} MB").format(
-            vram=vram_full_mb, total=total_vram
-        )
+        message = _("✓ Fits in VRAM: {vram} MB / {total} MB").format(vram=vram_full_mb, total=total_vram)
         can_save = True
     else:
         # Try to find the largest ngl where both VRAM and RAM fit.
@@ -603,8 +601,7 @@ def _classify_model_fit(
             tier = "impossible"
             ngl_recommended = 0
             message = _(
-                "✗ Model cannot be loaded. Needs {needed} MB RAM "
-                "(file + KV cache), available {total} MB."
+                "✗ Model cannot be loaded. Needs {needed} MB RAM (file + KV cache), available {total} MB."
             ).format(needed=needed, total=total_ram)
             can_save = False
         else:
@@ -616,11 +613,8 @@ def _classify_model_fit(
             cpu_layers = ngl_total - ngl_recommended
             tier = "cpu_offload"
             message = _(
-                "⚠ Partial CPU offload: {ngl}/{total_layers} layers on GPU, "
-                "{cpu} on RAM. ~5-10× slower."
-            ).format(
-                ngl=ngl_recommended, total_layers=ngl_total, cpu=cpu_layers
-            )
+                "⚠ Partial CPU offload: {ngl}/{total_layers} layers on GPU, {cpu} on RAM. ~5-10× slower."
+            ).format(ngl=ngl_recommended, total_layers=ngl_total, cpu=cpu_layers)
             can_save = True
 
     return {
@@ -676,6 +670,7 @@ def model_vram_estimate():
     # immediately — skip expensive GGUF file parsing and filesystem walks.
     try:
         from app.database import get_vram_estimate
+
         db_est = get_vram_estimate(module, model_name=model_name)
         if db_est and db_est.get("measured_vram_mb"):
             measured_mb = int(db_est["measured_vram_mb"])
@@ -688,33 +683,35 @@ def model_vram_estimate():
                 if tier == "good"
                 else _("⚠ Partial CPU offload needed").format()
             )
-            return jsonify({
-                "status": "measured",
-                "vram_mb": measured_mb,
-                "total_vram_mb": total_vram,
-                "vram_percent": vram_pct,
-                "vram_source": "measured",
-                "measured_vram_mb": measured_mb,
-                "measurement_count": measurement_count,
-                "measured_ctx": measured_ctx,
-                "ram_mb": measured_mb,
-                "total_ram_mb": total_ram,
-                "ram_percent": round(measured_mb / total_ram * 100) if total_ram else 0,
-                "has_gpu": total_vram is not None and total_vram > 0,
-                "file_size_mb": round(cached.get("file_size_mb", 0), 1) if cached.get("file_size_mb") else None,
-                "block_count": cached.get("block_count"),
-                "expert_count": cached.get("expert_count"),
-                "parameter_count": cached.get("parameter_count"),
-                "ngl": cached.get("block_count"),
-                "context_length": ctx_size,
-                "tier": tier,
-                "can_save": True,
-                "ngl_recommended": cached.get("block_count"),
-                "tier_message": tier_msg,
-                "system_ram_mb": total_ram,
-                "arch_max_ctx": cached.get("context_length"),
-                "details": None,
-            })
+            return jsonify(
+                {
+                    "status": "measured",
+                    "vram_mb": measured_mb,
+                    "total_vram_mb": total_vram,
+                    "vram_percent": vram_pct,
+                    "vram_source": "measured",
+                    "measured_vram_mb": measured_mb,
+                    "measurement_count": measurement_count,
+                    "measured_ctx": measured_ctx,
+                    "ram_mb": measured_mb,
+                    "total_ram_mb": total_ram,
+                    "ram_percent": round(measured_mb / total_ram * 100) if total_ram else 0,
+                    "has_gpu": total_vram is not None and total_vram > 0,
+                    "file_size_mb": round(cached.get("file_size_mb", 0), 1) if cached.get("file_size_mb") else None,
+                    "block_count": cached.get("block_count"),
+                    "expert_count": cached.get("expert_count"),
+                    "parameter_count": cached.get("parameter_count"),
+                    "ngl": cached.get("block_count"),
+                    "context_length": ctx_size,
+                    "tier": tier,
+                    "can_save": True,
+                    "ngl_recommended": cached.get("block_count"),
+                    "tier_message": tier_msg,
+                    "system_ram_mb": total_ram,
+                    "arch_max_ctx": cached.get("context_length"),
+                    "details": None,
+                }
+            )
     except Exception:
         pass
 
@@ -853,6 +850,7 @@ def model_vram_estimate():
         measured_ctx = None
         try:
             from app.database import get_vram_estimate
+
             db_est = get_vram_estimate(module, model_name=model_name)
             if db_est:
                 measured_vram_mb = db_est.get("measured_vram_mb")
@@ -864,6 +862,7 @@ def model_vram_estimate():
         # Save computed estimate to DB for future reference
         try:
             from app.database import upsert_vram_estimate
+
             upsert_vram_estimate(
                 module=module,
                 model_name=model_name,
@@ -1540,11 +1539,13 @@ def update_model_config(module):
             context_length=int(new_ctx),
         )
         if not tier_info["can_save"]:
-            return jsonify({
-                "error": tier_info["message"],
-                "tier": tier_info["tier"],
-                "details": tier_info,
-            }), 400
+            return jsonify(
+                {
+                    "error": tier_info["message"],
+                    "tier": tier_info["tier"],
+                    "details": tier_info,
+                }
+            ), 400
 
     old_model = None
     if module == "embedding":

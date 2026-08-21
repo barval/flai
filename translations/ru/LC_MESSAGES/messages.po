@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 9.0\n"
+"Project-Id-Version: FLAI 9.2\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-06-10 21:33+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -178,10 +178,6 @@ msgstr ""
 "Модель рассуждения недоступна: проверка памяти GPU не удалась. Попробуйте"
 " снова."
 
-#: app/queue.py:1397
-msgid "Reasoning failed: GPU memory exhausted. Please simplify your request."
-msgstr "Рассуждение не удалось: память GPU исчерпана. Упростите запрос."
-
 #: app/queue.py:1436 app/queue.py:1578
 msgid "Video generation module unavailable"
 msgstr "Модуль генерации видео недоступен"
@@ -225,11 +221,6 @@ msgstr "Модуль камер недоступен"
 #, python-brace-format
 msgid "Camera snapshot: {room_name}"
 msgstr "Снимок с камеры: {room_name}"
-
-#: app/queue.py:1958 app/queue.py:1988 app/queue.py:1994 app/queue.py:2026
-#: app/queue.py:2056 app/queue.py:2062
-msgid "No relevant documents found"
-msgstr "Не найдено релевантных документов"
 
 #: modules/search.py
 msgid "Web search result"
@@ -1222,7 +1213,7 @@ msgstr "Выйти"
 
 #: app/templates/base.html:78 app/templates/chat.html:167
 msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v9.0 (c) 2026 Барсуков Валерий"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v9.2 (c) 2026 Барсуков Валерий"
 
 #: app/templates/chat.html:14 app/templates/chat.html:178
 msgid "New document"
@@ -1596,14 +1587,6 @@ msgstr "Не удалось найти JSON в ответе модели"
 msgid "JSON parsing error: {error}"
 msgstr "Ошибка парсинга JSON: {error}"
 
-#: modules/sd_cpp.py:105
-msgid "Image generation service unavailable"
-msgstr "Сервис генерации изображений недоступен"
-
-#: modules/sd_cpp.py:110
-msgid "Multimodal module unavailable (required for parameter generation)"
-msgstr "Мультимодальный модуль недоступен (требуется для генерации параметров)"
-
 #: modules/sd_cpp.py:248
 msgid "sd-wrapper returned no image data"
 msgstr "sd-wrapper не вернул данные изображения"
@@ -1712,11 +1695,6 @@ msgstr "Релевантные документы не найдены для з�
 
 #: app/tools.py
 #, python-brace-format
-msgid "CCTV service unavailable"
-msgstr "Сервис видеонаблюдения недоступен"
-
-#: app/tools.py
-#, python-brace-format
 msgid "Unknown tool: {tool}"
 msgstr "Неизвестный инструмент: {tool}"
 
@@ -1727,16 +1705,6 @@ msgstr "Ошибка выполнения инструмента: {error}"
 
 #: app/tools.py
 #, python-brace-format
-msgid "No date text provided"
-msgstr "Не указан текст даты"
-
-#: app/tools.py
-#, python-brace-format
-msgid "Cannot parse date: {text}"
-msgstr "Не удалось распознать дату: {text}"
-
-#: app/tools.py
-#, python-brace-format
 msgid "Date calculation error: {error}"
 msgstr "Ошибка вычисления даты: {error}"
 
@@ -1744,11 +1712,6 @@ msgstr "Ошибка вычисления даты: {error}"
 #, python-brace-format
 msgid "Unknown time_calc operation: {op}"
 msgstr "Неизвестная операция time_calc: {op}"
-
-#: app/tools.py
-#, python-brace-format
-msgid "Both from_time and to_time are required"
-msgstr "Необходимо указать оба времени: от и до"
 
 #: app/static/js/events.js
 msgid "tool_get_current_time"
@@ -1946,8 +1909,8 @@ msgstr "0с"
 #~ msgid "your_requests"
 #~ msgstr "Ваши запросы в очереди / Всего в очереди"
 
-#~ msgid "server_error_invalid_response"
-#~ msgstr "Ошибка сервера: получен некорректный ответ"
+msgid "server_error_invalid_response"
+msgstr "Ошибка сервера: получен некорректный ответ"
 
 #~ msgid "recording"
 #~ msgstr "Запись"
@@ -1998,11 +1961,11 @@ msgstr "0с"
 #~ msgid "room_balcony"
 #~ msgstr "балкон"
 
-#~ msgid "model_cannot_be_saved"
-#~ msgstr ""
-#~ "Эта модель не может быть сохранена "
-#~ "(недостаточно VRAM/RAM). Выберите модель "
-#~ "меньшего размера."
+msgid "model_cannot_be_saved"
+msgstr ""
+"Эта модель не может быть сохранена "
+"(недостаточно VRAM/RAM). Выберите модель "
+"меньшего размера."
 
 #~ msgid "Name forms"
 #~ msgstr "Формы имён"

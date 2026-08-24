@@ -17,6 +17,17 @@ import requests
 from PIL import Image
 
 from app.mixins import TranslationMixin
+from modules.base import wait_for_service
+
+# Defaults shared with multimodal.py video parameter generation
+DEFAULT_VIDEO_NEGATIVE_PROMPT = "worst quality, inconsistent motion, blurry, jittery, distorted"
+DEFAULT_VIDEO_PARAMS = {
+    "negative_prompt": DEFAULT_VIDEO_NEGATIVE_PROMPT,
+    "width": 768,
+    "height": 512,
+    "num_frames": 240,
+    "frame_rate": 24,
+}
 
 
 class VideoModule(TranslationMixin):
@@ -45,21 +56,7 @@ class VideoModule(TranslationMixin):
             f"model: {self.model_type}, timeout: {self.timeout}s"
         )
 
-        max_retries = 1
-        retry_delay = 1
-
-        for attempt in range(1, max_retries + 1):
-            if self.check_availability():
-                break
-            if attempt < max_retries:
-                self.logger.warning(
-                    f"ltx-wrapper not ready (attempt {attempt}/{max_retries}), retrying in {retry_delay}s..."
-                )
-                import time
-
-                time.sleep(retry_delay)
-            else:
-                self.logger.warning(f"ltx-wrapper not available after {max_retries} attempts")
+        self.available = wait_for_service(self.check_availability, self.logger, "ltx-wrapper", retries=1, delay=1)
 
         if self.available:
             self.logger.info(f"VideoModule initialized and available. Timeout: {self.timeout}s")
@@ -257,13 +254,11 @@ class VideoModule(TranslationMixin):
         try:
             payload = {
                 "prompt": prompt_data.get("prompt", ""),
-                "negative_prompt": prompt_data.get(
-                    "negative_prompt", "worst quality, inconsistent motion, blurry, jittery, distorted"
-                ),
-                "width": prompt_data.get("width", 768),
-                "height": prompt_data.get("height", 512),
-                "num_frames": prompt_data.get("num_frames", 240),
-                "frame_rate": prompt_data.get("frame_rate", 24),
+                "negative_prompt": prompt_data.get("negative_prompt", DEFAULT_VIDEO_NEGATIVE_PROMPT),
+                "width": prompt_data.get("width", DEFAULT_VIDEO_PARAMS["width"]),
+                "height": prompt_data.get("height", DEFAULT_VIDEO_PARAMS["height"]),
+                "num_frames": prompt_data.get("num_frames", DEFAULT_VIDEO_PARAMS["num_frames"]),
+                "frame_rate": prompt_data.get("frame_rate", DEFAULT_VIDEO_PARAMS["frame_rate"]),
                 "seed": prompt_data.get("seed", -1),
                 "image_data": image_data,
                 "user_id": user_id,

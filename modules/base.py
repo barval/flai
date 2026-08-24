@@ -1,6 +1,7 @@
 # modules/base.py
 import logging
-from collections.abc import Generator
+import time
+from collections.abc import Callable, Generator
 from typing import Any
 
 from app.db import get_session_text_history
@@ -74,6 +75,39 @@ STYLE_INSTRUCTIONS = {
         ),
     },
 }
+
+
+def get_style_instruction(lang: str, response_style: str) -> str:
+    """Look up the style instruction for a language/style pair (neutral fallback)."""
+    styles = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"])
+    return styles.get(response_style, styles["neutral"])
+
+
+def response_language_name(lang: str) -> str:
+    """Human-readable language name used in prompts."""
+    return "Russian" if lang == "ru" else "English"
+
+
+def wait_for_service(
+    check_fn: Callable[[], bool],
+    logger: logging.Logger,
+    service_name: str,
+    retries: int,
+    delay: float,
+) -> bool:
+    """Retry ``check_fn`` until it succeeds or retries are exhausted.
+
+    Used during module init for services that may start slower than the
+    web app. Returns True on the first successful check, False otherwise.
+    """
+    for attempt in range(1, retries + 1):
+        if check_fn():
+            return True
+        if attempt < retries:
+            logger.warning(f"{service_name} not ready (attempt {attempt}/{retries}), retrying in {delay}s...")
+            time.sleep(delay)
+    logger.warning(f"{service_name} not available after {retries} attempts")
+    return False
 
 
 class BaseModule(TranslationMixin):
@@ -359,10 +393,8 @@ class BaseModule(TranslationMixin):
         Router only classifies the query; conversation context is handled
         by the downstream chat/reasoning model.
         """
-        response_language = "Russian" if lang == "ru" else "English"
-        style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
-            response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
-        )
+        response_language = response_language_name(lang)
+        style_instruction = get_style_instruction(lang, response_style)
 
         camera_section = self._build_camera_prompt_section(lang)
 
@@ -478,7 +510,7 @@ class BaseModule(TranslationMixin):
         rag_source: str = "",
     ) -> str:
         """Process complex query via reasoning model."""
-        response_language = "Russian" if lang == "ru" else "English"
+        response_language = response_language_name(lang)
         context_str = self._get_context_for_model(
             session_id or "",
             "reasoning",
@@ -488,9 +520,7 @@ class BaseModule(TranslationMixin):
             rag_context=rag_context,
             rag_source=rag_source,
         )
-        style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
-            response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
-        )
+        style_instruction = get_style_instruction(lang, response_style)
 
         reasoning_prompt = format_prompt(
             "reasoning.template",
@@ -538,7 +568,7 @@ class BaseModule(TranslationMixin):
         ensure_vram=False reuses an already-loaded reasoning model (used by the
         empty-output retry in queue.py to avoid an unload/reload between attempts).
         """
-        response_language = "Russian" if lang == "ru" else "English"
+        response_language = response_language_name(lang)
         context_str = self._get_context_for_model(
             session_id or "",
             "reasoning",
@@ -548,9 +578,7 @@ class BaseModule(TranslationMixin):
             rag_context=rag_context,
             rag_source=rag_source,
         )
-        style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
-            response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
-        )
+        style_instruction = get_style_instruction(lang, response_style)
 
         prompt = format_prompt(
             "reasoning.template",

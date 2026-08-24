@@ -1213,7 +1213,7 @@ msgstr "Выйти"
 
 #: app/templates/base.html:78 app/templates/chat.html:167
 msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v9.2 (c) 2026 Барсуков Валерий"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v9.3 (c) 2026 Барсуков Валерий"
 
 #: app/templates/chat.html:14 app/templates/chat.html:178
 msgid "New document"

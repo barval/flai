@@ -16,6 +16,7 @@ from typing import Any
 import requests
 
 from app.mixins import TranslationMixin
+from modules.base import wait_for_service
 
 
 class SdCppModule(TranslationMixin):
@@ -50,21 +51,13 @@ class SdCppModule(TranslationMixin):
         )
 
         # Initial availability check with reduced retries (don't block startup)
-        max_retries = 1
-        retry_delay = 1
-
-        for attempt in range(1, max_retries + 1):
-            if self.check_availability():
-                break
-            if attempt < max_retries:
-                self.logger.warning(
-                    f"sd-wrapper not ready (attempt {attempt}/{max_retries}), retrying in {retry_delay}s..."
-                )
-                import time
-
-                time.sleep(retry_delay)
-            else:
-                self.logger.warning(f"sd-wrapper not available after {max_retries} attempts")
+        self.available = wait_for_service(
+            self.check_availability,
+            self.logger,
+            "sd-wrapper",
+            retries=1,
+            delay=1,
+        )
 
         if self.available:
             self.logger.info(f"SdCppModule initialized and available. Timeout: {self.timeout}s")

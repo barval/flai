@@ -183,7 +183,7 @@ class TestSSEEndpoint:
                 chunks.append(chunk.decode())
             data = "".join(chunks)
 
-            assert ": heartbeat" in data
+            assert "event: ping" in data
             assert '"msg_id": 42' in data
             assert '"type": "message_new"' in data
 

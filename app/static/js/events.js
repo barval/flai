@@ -5,6 +5,51 @@ let eventSource = null;
 let reconnectTimer = null;
 let pendingRequestIds = {};  // requestId -> { sessionId, timestamp }
 
+// Liveness tracking: the server sends a "ping" event at least every 20s.
+// If nothing arrives for SSE_WATCHDOG_TIMEOUT_MS, the connection is considered
+// dead (e.g. silently dropped by a reverse proxy) and is force-reconnected.
+const SSE_WATCHDOG_TIMEOUT_MS = 45000;
+const SSE_RECONCILE_INTERVAL_MS = 5000;
+let lastSseActivity = 0;
+let sseWatchdogTimer = null;
+let sseReconcileTimer = null;
+
+function _touchSseActivity() {
+    lastSseActivity = Date.now();
+}
+
+function startSseWatchdog() {
+    if (sseWatchdogTimer) return;
+    _touchSseActivity();
+    sseWatchdogTimer = setInterval(function () {
+        if (!eventSource) return;
+        if (Date.now() - lastSseActivity > SSE_WATCHDOG_TIMEOUT_MS) {
+            dlog('SSE watchdog: no activity for ' + SSE_WATCHDOG_TIMEOUT_MS + 'ms, forcing reconnect');
+            disconnectEventStream();
+            scheduleReconnect();
+        }
+    }, 5000);
+}
+
+function stopSseWatchdog() {
+    if (sseWatchdogTimer) {
+        clearInterval(sseWatchdogTimer);
+        sseWatchdogTimer = null;
+    }
+}
+
+// Periodic reconciliation: recovers UI state even when SSE events were lost.
+// fetchQueueStatus() refreshes lightning/hourglass icons; verifyPendingRequests()
+// re-fetches results of pending tasks from the server (no-op when nothing pending).
+function startSseReconcile() {
+    if (sseReconcileTimer) return;
+    sseReconcileTimer = setInterval(function () {
+        if (window.IS_RELOADING) return;
+        if (typeof fetchQueueStatus === 'function') fetchQueueStatus();
+        if (typeof verifyPendingRequests === 'function') verifyPendingRequests();
+    }, SSE_RECONCILE_INTERVAL_MS);
+}
+
 function _showHeaderCancelButton(taskId) {
     var saveBtn = document.getElementById('save-chat-button');
     var cancelBtn = document.getElementById('cancel-stream-header');
@@ -43,9 +88,15 @@ function connectEventStream() {
 
     eventSource.addEventListener('connected', function () {
         dlog('SSE connected');
+        _touchSseActivity();
+    });
+
+    eventSource.addEventListener('ping', function () {
+        _touchSseActivity();
     });
 
     eventSource.onmessage = function (e) {
+        _touchSseActivity();
         try {
             const event = JSON.parse(e.data);
             handleEvent(event);
@@ -93,6 +144,10 @@ function disconnectEventStream() {
         reconnectTimer = null;
     }
 }
+
+// Auto-start watchdog and reconcile timers (module-level, once).
+startSseWatchdog();
+startSseReconcile();
 
 function handleEvent(event) {
     switch (event.type) {
@@ -155,20 +210,27 @@ function onCameraImage(data) {
 
 // -- tool_call / tool_result -----------------------------------------
 
-const TOOL_LABELS = {
-    get_current_time: '🕐 ' + t('tool_get_current_time'),
-    calculator: '🔢 ' + t('tool_calculator'),
-    time_calc: '📅 ' + t('tool_time_calc'),
-    web_search: '🌐 ' + t('tool_web_search'),
-    rag_search: '📚 ' + t('tool_rag_search'),
-    camera_snapshot: '📹 ' + t('tool_camera_snapshot'),
+// Translation labels are resolved lazily (at render time), NOT at script load:
+// header.js defines t() AFTER this file executes, so calling t() here would
+// throw "t is not defined" and abort the rest of this script (SSE init included).
+const TOOL_META = {
+    get_current_time: ['🕐', 'tool_get_current_time'],
+    calculator: ['🔢', 'tool_calculator'],
+    time_calc: ['📅', 'tool_time_calc'],
+    web_search: ['🌐', 'tool_web_search'],
+    rag_search: ['📚', 'tool_rag_search'],
+    camera_snapshot: ['📹', 'tool_camera_snapshot'],
 };
+
+function getToolLabel(toolName) {
+    const meta = TOOL_META[toolName];
+    return meta ? meta[0] + ' ' + t(meta[1]) : ('🔧 ' + toolName + '...');
+}
 
 function onToolCall(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
     dlog('onToolCall:', data.tool_name);
-    const label = TOOL_LABELS[data.tool_name] || (`🔧 ${data.tool_name}...`);
-    _updateProgressElement(data.task_id, label);
+    _updateProgressElement(data.task_id, getToolLabel(data.tool_name));
 }
 
 function onToolResult(data) {
@@ -179,25 +241,30 @@ function onToolResult(data) {
 
 // -- task_progress ----------------------------------------------------
 
-const STAGE_LABELS = {
-    preparing_gpu: t('stage_preparing_gpu'),
-    analyzing: t('stage_analyzing'),
-    analyzing_image: t('stage_analyzing_image'),
-    analyzing_prompt: t('stage_analyzing_prompt'),
-    generating_video: t('stage_generating_video'),
-    generating_image: t('stage_generating_image'),
-    editing_image: t('stage_editing_image'),
-    loading_reasoning_model: t('stage_loading_reasoning'),
-    capturing_snapshot: t('stage_capturing_snapshot'),
+// Keys resolved lazily via t() — see TOOL_META comment above.
+const STAGE_LABEL_KEYS = {
+    preparing_gpu: 'stage_preparing_gpu',
+    analyzing: 'stage_analyzing',
+    analyzing_image: 'stage_analyzing_image',
+    analyzing_prompt: 'stage_analyzing_prompt',
+    generating_video: 'stage_generating_video',
+    generating_image: 'stage_generating_image',
+    editing_image: 'stage_editing_image',
+    loading_reasoning_model: 'stage_loading_reasoning',
+    capturing_snapshot: 'stage_capturing_snapshot',
 };
+
+function getStageLabel(stage) {
+    const key = STAGE_LABEL_KEYS[stage];
+    return key ? t(key) : stage;
+}
 
 function onTaskProgress(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
     if (!data.stage) return;
     dlog('onTaskProgress:', data.stage);
 
-    const label = STAGE_LABELS[data.stage] || data.stage;
-    _updateProgressElement(data.task_id, label);
+    _updateProgressElement(data.task_id, getStageLabel(data.stage));
     _showHeaderCancelButton(data.task_id);
 }
 
@@ -399,6 +466,12 @@ function onStreamToken(data) {
         };
         pendingRequestIds[data.task_id] = reqInfo;
     }
+    // Entries pre-registered by trackPendingRequest() (send flow) carry only
+    // {sessionId, timestamp} - initialize missing throttle fields here, or
+    // "now - undefined" is NaN and both throttles below never fire
+    // (symptom: streaming indicator ticks but content stays empty until done).
+    if (reqInfo.lastRender === undefined) reqInfo.lastRender = 0;
+    if (reqInfo.lastSave === undefined) reqInfo.lastSave = 0;
 
     // Accumulate content
     if (!reqInfo.accumulatedContent) {
@@ -702,20 +775,7 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
 
                 // Response time
                 if (result.response_time) {
-                    var duration = null;
-                    if (typeof result.response_time === 'object') {
-                        if (result.response_time.mm_time && result.response_time.gen_time) {
-                            duration = (parseFloat(result.response_time.mm_time) + parseFloat(result.response_time.gen_time)).toFixed(1);
-                        } else if (result.response_time.router && result.response_time.chat) {
-                            duration = (parseFloat(result.response_time.router) + parseFloat(result.response_time.chat)).toFixed(1);
-                        } else if (result.response_time.mm_time) {
-                            duration = parseFloat(result.response_time.mm_time).toFixed(1);
-                        } else if (result.response_time.gen_time) {
-                            duration = parseFloat(result.response_time.gen_time).toFixed(1);
-                        }
-                    } else if (typeof result.response_time === 'number' || !isNaN(parseFloat(result.response_time))) {
-                        duration = parseFloat(result.response_time).toFixed(1);
-                    }
+                    var duration = formatResponseDuration(result.response_time);
                     if (duration) {
                         var langSuffix = t('seconds_suffix');
                         var timeSpan = document.createElement('span');

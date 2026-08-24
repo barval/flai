@@ -48,18 +48,15 @@ class CamModule(TranslationMixin):
         self.logger.info(f"Initializing CamModule with Camera API URL: {self.camera_api_url}")
 
         # Initial availability check with retries (camera service may start slower than web app)
-        for attempt in range(1, self.max_init_retries + 1):
-            if self.check_availability(force=True):
-                break
-            if attempt < self.max_init_retries:
-                self.logger.warning(
-                    f"Camera API not ready (attempt {attempt}/{self.max_init_retries}), retrying in {self.init_retry_delay}s..."
-                )
-                import time
+        from modules.base import wait_for_service
 
-                time.sleep(self.init_retry_delay)
-            else:
-                self.logger.warning(f"Camera API not available after {self.max_init_retries} attempts")
+        self.available = wait_for_service(
+            lambda: self.check_availability(force=True),
+            self.logger,
+            "Camera API",
+            retries=self.max_init_retries,
+            delay=self.init_retry_delay,
+        )
 
         # Load room definitions from DB AFTER availability check
         # (populate_from_camera_api needs self.available to be True)

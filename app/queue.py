@@ -26,11 +26,12 @@ from .db import (
     update_document_index_status,
 )
 from .events import get_events_publisher
+from .llamacpp_client import _strip_thinking_tags
 from .model_config import get_model_config
 from .tools import MAX_TOOL_ITERATIONS, execute_tool, get_tool_definitions
 from .utils import (
-    _load_skills_section,
     estimate_tokens,
+    format_prompt,
     get_current_time_in_timezone,
     get_current_time_in_timezone_for_db,
     save_uploaded_file,
@@ -744,19 +745,8 @@ class RedisRequestQueue:
 
         Primary filtering happens in llamacpp_client.py at the backend level.
         This is a safety net for responses saved to DB.
-        Handles:
-        - <think>...</think> blocks
-        - <|channel|>analysis<|message|>...<|end|> — reasoning, stripped entirely
-        - <|channel|>commentary<|message|>...ANSWER...<|end|> — unwrapped (answer kept)
-        - Malformed <|channel|>... (no <|message|>) — stripped
         """
-        if not text or ("<think" not in text and "<|channel|>" not in text):
-            return text
-        text = re.sub(r"<think[\s>][\s\S]*?</think>", "", text)
-        text = re.sub(r"<\|channel\|>analysis<\|message\|>(?:[\s\S]*?<\|end\|>)?", "", text)
-        text = re.sub(r"<\|channel\|>commentary<\|message\|>([\s\S]*?)<\|end\|>", r"\1", text)
-        text = re.sub(r"<\|channel\|>[^<]*$", "", text)
-        return text.strip()
+        return _strip_thinking_tags(text)
 
     def _build_success_response(
         self,
@@ -2358,56 +2348,18 @@ class RedisRequestQueue:
         response_style: str = "neutral",
         user_class: int = 2,
     ) -> dict[str, Any]:
-        """Handle text request — routes through base module router."""
-        router_start = time.time()
-        router_result = self.app.modules["base"].process_message(
+        """Handle text request (non-streaming) — routes through base module router."""
+        return self._route_text_action(
             message_text,
+            session_id,
+            user_id,
             current_time_str,
-            lang=lang,
-            session_id=session_id,
-            response_style=response_style,
-            user_id=user_id,
+            lang,
+            response_style,
+            user_class=user_class,
+            task=None,
+            stream=False,
         )
-        router_time = round(time.time() - router_start, 1)
-
-        if "error" in router_result:
-            return self._build_error_response(session_id, router_result["error"], router_time, lang)
-
-        action_type = router_result["action"]
-        query = router_result["query"]
-
-        if action_type == "reasoning":
-            return self._requeue_reasoning_task(
-                query, session_id, user_id, lang, response_style, user_class=user_class, skip_rag=True
-            )
-        elif action_type == "image":
-            return self._requeue_image_task(query, session_id, user_id, lang, response_style, user_class=user_class)
-        elif action_type == "video":
-            return self._requeue_video_task(query, session_id, user_id, lang, response_style, user_class=user_class)
-        elif action_type == "camera":
-            return self._process_camera_task(
-                query, session_id, user_id, message_text, current_time_str, lang, response_style
-            )
-        elif action_type == "rag":
-            return self._process_rag_task(query, session_id, user_id, lang, response_style)
-        elif action_type == "search":
-            return self._process_search_task(query, session_id, user_id, lang, response_style)
-        else:
-            # Simple query: router classified but did not generate text.
-            # Call chat model WITHOUT tools — simple queries don't need them
-            # and the extra ~1000 tokens of tool definitions confuse small models.
-            return self._process_chat_with_tools(
-                task={"id": uuid.uuid4().hex, "user_id": user_id, "session_id": session_id},
-                query=query,
-                current_time_str=current_time_str,
-                session_id=session_id,
-                user_id=user_id,
-                lang=lang,
-                response_style=response_style,
-                stream=False,
-                include_tools=False,
-                expose_tools=True,
-            )
 
     def _process_text_task_stream(
         self,
@@ -2420,6 +2372,37 @@ class RedisRequestQueue:
         response_style: str = "neutral",
     ) -> dict[str, Any]:
         """Handle text request with streaming for the final LLM response."""
+        return self._route_text_action(
+            message_text,
+            session_id,
+            user_id,
+            current_time_str,
+            lang,
+            response_style,
+            user_class=task.get("user_class", 2),
+            task=task,
+            stream=True,
+        )
+
+    def _route_text_action(
+        self,
+        message_text: str,
+        session_id: str,
+        user_id: str,
+        current_time_str: str,
+        lang: str,
+        response_style: str,
+        user_class: int,
+        task: dict[str, Any] | None,
+        stream: bool,
+    ) -> dict[str, Any]:
+        """Shared text-request dispatcher — single router call, then route.
+
+        Streaming and non-streaming paths keep their historical differences:
+        non-streaming handles simple/remember/unknown queries through a lean
+        chat prompt; streaming has explicit remember handling and streams the
+        final LLM answer.
+        """
         router_start = time.time()
         router_result = self.app.modules["base"].process_message(
             message_text,
@@ -2437,76 +2420,136 @@ class RedisRequestQueue:
         action_type = router_result["action"]
         query = router_result["query"]
 
-        # Reasoning — re-queue to slow worker (reasoning model, ~10 GiB VRAM).
+        # Synthetic task for legacy non-streaming paths that never receive one
+        effective_task = task or {"id": uuid.uuid4().hex, "user_id": user_id, "session_id": session_id}
+
         if action_type == "reasoning":
             return self._requeue_reasoning_task(
-                query,
-                session_id,
-                user_id,
-                lang,
-                response_style,
-                user_class=task.get("user_class", 2),
-                skip_rag=True,
+                query, session_id, user_id, lang, response_style, user_class=user_class, skip_rag=True
             )
-
-        # Simple query: router classified but did not generate text.
-        # Use chat model with tool calling support.
-        if action_type == "none":
-            return self._process_chat_with_tools(
-                task,
-                query,
-                current_time_str,
-                session_id,
-                user_id,
-                lang,
-                response_style,
-                expose_tools=True,
+        if action_type == "image":
+            return self._requeue_image_task(query, session_id, user_id, lang, response_style, user_class=user_class)
+        if action_type == "video":
+            return self._requeue_video_task(query, session_id, user_id, lang, response_style, user_class=user_class)
+        if action_type == "camera":
+            if stream:
+                return self._process_camera_task_stream(
+                    task or effective_task,
+                    query,
+                    session_id,
+                    user_id,
+                    message_text,
+                    current_time_str,
+                    lang,
+                    response_style,
+                )
+            return self._process_camera_task(
+                query, session_id, user_id, message_text, current_time_str, lang, response_style
             )
-
-        # Explicit remember request — process through LLM and save to SLM
-        if action_type == "remember":
-            return self._process_remember_task(
-                task,
-                query,
-                current_time_str,
-                session_id,
-                user_id,
-                lang,
-                response_style,
-            )
-
-        # Stream-aware actions — dispatch directly, no second router call
         if action_type == "rag":
-            return self._process_rag_task_stream(task, query, session_id, user_id, lang, response_style)
-
+            if stream:
+                return self._process_rag_task_stream(
+                    task or effective_task, query, session_id, user_id, lang, response_style
+                )
+            return self._process_rag_task(query, session_id, user_id, lang, response_style)
         if action_type == "search":
             return self._process_search_task(query, session_id, user_id, lang, response_style)
 
-        if action_type == "image":
-            return self._requeue_image_task(
-                query, session_id, user_id, lang, response_style, user_class=task.get("user_class", 2)
+        if stream:
+            # Explicit remember request — process through LLM and save to SLM
+            if action_type == "remember":
+                return self._process_remember_task(
+                    task or effective_task,
+                    query,
+                    current_time_str,
+                    session_id,
+                    user_id,
+                    lang,
+                    response_style,
+                )
+            # Simple query: chat model with tool calling support
+            if action_type == "none":
+                return self._process_chat_with_tools(
+                    task or effective_task,
+                    query,
+                    current_time_str,
+                    session_id,
+                    user_id,
+                    lang,
+                    response_style,
+                    expose_tools=True,
+                )
+            # Unknown action — safe fallback that still avoids a second router call
+            return self._save_and_respond(
+                session_id,
+                query,
+                self._get_model_name("chat") or "unknown",
+                router_time,
+                extra={"model_type": "chat"},
+                response_style=response_style,
+                user_id=user_id,
             )
 
-        if action_type == "video":
-            return self._requeue_video_task(
-                query, session_id, user_id, lang, response_style, user_class=task.get("user_class", 2)
-            )
-
-        if action_type == "camera":
-            return self._process_camera_task_stream(
-                task, query, session_id, user_id, message_text, current_time_str, lang, response_style
-            )
-
-        # Unknown action — safe fallback that still avoids a second router call
-        return self._save_and_respond(
-            session_id,
-            query,
-            self._get_model_name("chat") or "unknown",
-            router_time,
-            extra={"model_type": "chat"},
-            response_style=response_style,
+        # Non-streaming path (legacy behaviour): simple, remember and unknown
+        # actions all go through the lean chat prompt without tool instructions.
+        # Tool definitions stay exposed so calculator/time tools remain usable.
+        return self._process_chat_with_tools(
+            task=effective_task,
+            query=query,
+            current_time_str=current_time_str,
+            session_id=session_id,
             user_id=user_id,
+            lang=lang,
+            response_style=response_style,
+            stream=False,
+            include_tools=False,
+            expose_tools=True,
         )
+
+    def _run_tool_calls(
+        self,
+        task: dict[str, Any],
+        messages: list[dict[str, Any]],
+        tool_calls: list[dict[str, Any]],
+        user_id: str,
+        lang: str,
+        assistant_content: str = "",
+        log_label: str = "Tool call",
+    ) -> str:
+        """Execute tool calls and append assistant/tool messages to history.
+
+        Publishes tool_call/tool_result stream events. Returns the last raw
+        tool result so the caller can use it as a fallback answer.
+        """
+        messages.append({"role": "assistant", "content": assistant_content, "tool_calls": tool_calls})
+        last_tool_result = ""
+        for tc in tool_calls:
+            tc_id = tc.get("id", "")
+            func = tc.get("function", {})
+            tool_name = func.get("name", "")
+            try:
+                arguments = json.loads(func.get("arguments", "{}"))
+            except json.JSONDecodeError:
+                arguments = {}
+
+            self._publish_stream_event(task, "tool_call", {"tool_name": tool_name, "arguments": arguments})
+            self.logger.info(f"{log_label}: {tool_name}({arguments})")
+
+            tool_context = {"app": self.app, "user_id": user_id, "lang": lang}
+            tool_result = execute_tool(tool_name, arguments, tool_context)
+            last_tool_result = tool_result
+
+            self.logger.info(f"Tool result: {tool_result[:200]}")
+            self._publish_stream_event(
+                task,
+                "tool_result",
+                {
+                    "tool_name": tool_name,
+                    "result_preview": tool_result[:200] + "..." if len(tool_result) > 200 else tool_result,
+                },
+            )
+            messages.append({"role": "tool", "tool_call_id": tc_id, "content": tool_result})
+        return last_tool_result
 
     def _process_chat_with_tools(
         self,
@@ -2532,13 +2575,14 @@ class RedisRequestQueue:
         ``expose_tools`` controls whether tool definitions are passed to the
         model.  If None, defaults to ``include_tools``.
         """
-        from modules.base import STYLE_INSTRUCTIONS
+        from modules.base import get_style_instruction, response_language_name
 
         base = self.app.modules["base"]
         llamacpp = base.llamacpp
+        stream_start = time.time()
 
         # Build system + user messages for tool calling
-        response_language = "Russian" if lang == "ru" else "English"
+        response_language = response_language_name(lang)
         context_str = base._get_context_for_model(  # noqa: SLF001
             session_id,
             "chat",
@@ -2547,92 +2591,28 @@ class RedisRequestQueue:
             user_id=user_id,
             skip_slm=False,
         )
-        style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
-            response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
-        )
+        style_instruction = get_style_instruction(lang, response_style)
 
-        if lang == "ru":
-            task_instruction = (
-                "Задача: Ответь на запрос пользователя."
-                if not include_tools
-                else "Задача: Ответь на запрос пользователя. Используй инструменты когда это необходимо — не придумывай ответ, лучше вызови инструмент."
+        # System prompt from language-specific templates:
+        # chat.template — with tool usage rules, chat_simple.template — without.
+        chat_template = "chat.template" if include_tools else "chat_simple.template"
+        system_content = format_prompt(
+            chat_template,
+            {
+                "response_language": response_language,
+                "style_instruction": style_instruction,
+                "current_time_str": current_time_str,
+                "context_str": context_str,
+            },
+            lang=lang,
+        )
+        if not system_content:
+            return self._build_error_response(
+                session_id,
+                self.app.modules["base"]._("Error loading prompt template", lang),
+                round(time.time() - stream_start, 1),
+                lang,
             )
-            system_parts = [
-                f"# ИНСТРУКЦИЯ\n"
-                f"Язык ответа: {response_language}.\n"
-                f"Стиль ответа: {style_instruction}\n"
-                f"Формат ответа: Пиши ТОЛЬКО готовый ответ. Не пиши рассуждений, анализа, шагов мышления, планов. Не объясняй, как ты пришёл к ответу. НЕ начинай ответ со слов «Пользователь спросил/спрашивает/просит», «Мне нужно ответить», «Анализ:», «Формулировка:», «Проверка:», «Коррекция:», «Финальный ответ:» и т.д. Сразу переходи к ответу по существу.\n"
-                f"{task_instruction}",
-            ]
-            if include_tools:
-                system_parts.append(
-                    "\n\n# ПРАВИЛА ИСПОЛЬЗОВАНИЯ ИНСТРУМЕНТОВ\n"
-                    "1. После получения результата инструмента — используй его напрямую в ответе.\n"
-                    "2. НЕ ПЕРЕСЧЫТЫВАЙ результат инструмента самостоятельно.\n"
-                    "3. НЕ ПРИДУМЫВАЙ ответ вместо использования результата инструмента.\n"
-                    "4. Если инструмент вернул число — ответь этим числом.\n\n"
-                    "# ВЫБОР ОПЕРАЦИИ time_calc\n"
-                    "ВНИМАТЕЛЬНО выбирай операцию по запросу:\n"
-                    "- 'до понедельника/вторника/.../ближайшей пятницы' → days_until_weekday\n"
-                    "- 'до 30 июня/до конкретной даты' → days_until_date\n"
-                    "- 'до конца года/месяца/лета/зимы' → days_until_end_of\n"
-                    "- 'назад закончилась весна/лето' → days_since_end_of\n"
-                    "- 'какой день недели' → day_of_week\n"
-                    "- 'между 11 и 15 июня' → days_between\n"
-                    "- 'через 5 дней какая дата' → add_days\n"
-                    "- 'какое сегодня число' → format_date"
-                )
-            system_parts.append(
-                f"\n\n# РОЛЬ\n"
-                f"Ты персональный ассистент на основе искусственного интеллекта 'Полностью Локальный ИИ (ПЛИИ)'.\n\n"
-                f"# НАВЫКИ\n"
-                f"{_load_skills_section(lang)}\n\n"
-                f"Текущее время (сейчас): {current_time_str}.\n\n"
-                f"# ИСТОРИЯ ДИАЛОГА\n"
-                f"{context_str}"
-            )
-            system_content = "".join(system_parts)
-        else:
-            task_instruction = (
-                "Task: Answer the user's request."
-                if not include_tools
-                else "Task: Answer the user's request. Use tools when necessary — do not make up answers, call a tool instead."
-            )
-            system_parts = [
-                f"# INSTRUCTION\n"
-                f"Response language: {response_language}.\n"
-                f"Response style: {style_instruction}\n"
-                f"Response format: Write ONLY the final answer. Do NOT write reasoning, analysis, thinking steps, or plans. Do NOT explain how you arrived at the answer. Do NOT start with 'The user asked/asks/says...', 'I need to answer...', 'Analyze:', 'Formulate:', 'Check:', 'Self-Correction:', 'Final Answer:' etc. Go straight to the answer.\n"
-                f"{task_instruction}",
-            ]
-            if include_tools:
-                system_parts.append(
-                    "\n\n# TOOL USAGE RULES\n"
-                    "1. After receiving a tool result — use it directly in your answer.\n"
-                    "2. Do NOT recalculate the tool result yourself.\n"
-                    "3. Do NOT make up an answer instead of using the tool result.\n"
-                    "4. If a tool returns a number — answer with that number.\n\n"
-                    "# TIME_CALC OPERATION SELECTION\n"
-                    "Choose the operation carefully based on the query:\n"
-                    "- 'until Monday/Tuesday/.../next Friday' → days_until_weekday\n"
-                    "- 'until June 30/until specific date' → days_until_date\n"
-                    "- 'until end of year/month/summer/winter' → days_until_end_of\n"
-                    "- 'days since spring/summer ended' → days_since_end_of\n"
-                    "- 'what day of week is it' → day_of_week\n"
-                    "- 'between June 11 and 15' → days_between\n"
-                    "- 'what date in 5 days' → add_days\n"
-                    "- 'what is today date' → format_date"
-                )
-            system_parts.append(
-                f"\n\n# ROLE\n"
-                f"You are a personal assistant based on artificial intelligence 'Fully Local AI (FLAI)'.\n\n"
-                f"# SKILLS\n"
-                f"{_load_skills_section(lang)}\n\n"
-                f"Current time (now): {current_time_str}.\n\n"
-                f"# CONVERSATION HISTORY\n"
-                f"{context_str}"
-            )
-            system_content = "".join(system_parts)
 
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_content},
@@ -2640,16 +2620,59 @@ class RedisRequestQueue:
         ]
         tools = get_tool_definitions(lang) if (expose_tools if expose_tools is not None else include_tools) else None
 
-        stream_start = time.time()
         full_response = ""
         last_tool_result = ""
-        streamed = False
 
         for iteration in range(MAX_TOOL_ITERATIONS):
             if self._is_task_cancelled(task["id"]):
                 break
 
-            # Call chat model with tools (non-streaming for tool detection)
+            if stream:
+                # Real streaming: tokens are published to the client as they
+                # arrive; native tool calls come as a terminal dict chunk.
+                iteration_text = ""
+                error_detected = False
+                stream_tool_calls: list[dict[str, Any]] | None = None
+                for chunk in llamacpp.chat_stream(messages, model_type="chat", lang=lang, tools=tools):
+                    if isinstance(chunk, dict):
+                        if chunk.get("type") == "tool_calls":
+                            stream_tool_calls = chunk["tool_calls"]
+                        break
+                    iteration_text += chunk
+                    if not error_detected:
+                        if self._is_llm_error_string(iteration_text):
+                            error_detected = True
+                        else:
+                            self._publish_stream_token(task, chunk)
+                    if self._is_task_cancelled(task["id"]):
+                        break
+
+                if error_detected:
+                    return self._build_error_response(
+                        session_id,
+                        iteration_text,
+                        round(time.time() - stream_start, 1),
+                        lang,
+                    )
+
+                if stream_tool_calls:
+                    last_tool_result = self._run_tool_calls(task, messages, stream_tool_calls, user_id, lang)
+                    self.logger.info(
+                        f"Tool calling iteration {iteration + 1}: "
+                        f"executed {len(stream_tool_calls)} tools: "
+                        f"{[tc.get('function', {}).get('name', '?') for tc in stream_tool_calls]}"
+                    )
+                    continue
+
+                full_response = iteration_text
+                # If reasoning stripping left nothing (model produced only plan/analysis),
+                # let the empty-response handler at the end deal with it.
+                if not full_response.strip():
+                    self.logger.warning("Chat model returned empty response after reasoning strip")
+                elif self._is_task_cancelled(task["id"]):
+                    self._publish_stream_event(task, "stream_cancelled")
+                break
+
             response = llamacpp.chat(messages, model_type="chat", lang=lang, tools=tools)
 
             # If response is an error string
@@ -2665,50 +2688,14 @@ class RedisRequestQueue:
                 # Detect raw JSON tool call in text (small models sometimes output tool calls as text)
                 parsed_tool_call = self._try_parse_text_tool_call(response)
                 if parsed_tool_call:
-                    tool_calls = [parsed_tool_call]
-                    messages.append(
-                        {
-                            "role": "assistant",
-                            "content": "",
-                            "tool_calls": tool_calls,
-                        }
+                    last_tool_result = self._run_tool_calls(
+                        task,
+                        messages,
+                        [parsed_tool_call],
+                        user_id,
+                        lang,
+                        log_label="Tool call (text-parsed)",
                     )
-                    for tc in tool_calls:
-                        tc_id = tc.get("id", "")
-                        func = tc.get("function", {})
-                        tool_name = func.get("name", "")
-                        try:
-                            arguments = json.loads(func.get("arguments", "{}"))
-                        except json.JSONDecodeError:
-                            arguments = {}
-                        self._publish_stream_event(
-                            task,
-                            "tool_call",
-                            {
-                                "tool_name": tool_name,
-                                "arguments": arguments,
-                            },
-                        )
-                        self.logger.info(f"Tool call (text-parsed): {tool_name}({arguments})")
-                        tool_context = {"app": self.app, "user_id": user_id, "lang": lang}
-                        tool_result = execute_tool(tool_name, arguments, tool_context)
-                        last_tool_result = tool_result
-                        self.logger.info(f"Tool result: {tool_result[:200]}")
-                        self._publish_stream_event(
-                            task,
-                            "tool_result",
-                            {
-                                "tool_name": tool_name,
-                                "result_preview": tool_result[:200] + "..." if len(tool_result) > 200 else tool_result,
-                            },
-                        )
-                        messages.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": tc_id,
-                                "content": tool_result,
-                            }
-                        )
                     continue
 
                 full_response = response
@@ -2719,81 +2706,15 @@ class RedisRequestQueue:
                 # Check cancel after blocking chat() call — flag may have been set during generation
                 if self._is_task_cancelled(task["id"]):
                     self._publish_stream_event(task, "stream_cancelled")
-                    break
-                # Stream the final response to client
-                for i, char in enumerate(full_response):
-                    if i % 20 == 0 and self._is_task_cancelled(task["id"]):
-                        self._publish_stream_event(task, "stream_cancelled")
-                        break
-                    self._publish_stream_token(task, char)
-                    if i % 20 == 19:
-                        time.sleep(0.01)
-                streamed = True
                 break
 
             # If response is a dict with tool_calls
             if isinstance(response, dict) and response.get("tool_calls"):
                 tool_calls = response["tool_calls"]
                 content = response.get("content", "")
-
-                # Add assistant message with tool_calls to history
-                messages.append(
-                    {
-                        "role": "assistant",
-                        "content": content,
-                        "tool_calls": tool_calls,
-                    }
+                last_tool_result = self._run_tool_calls(
+                    task, messages, tool_calls, user_id, lang, assistant_content=content
                 )
-
-                # Execute each tool
-                for tc in tool_calls:
-                    tc_id = tc.get("id", "")
-                    func = tc.get("function", {})
-                    tool_name = func.get("name", "")
-                    try:
-                        arguments = json.loads(func.get("arguments", "{}"))
-                    except json.JSONDecodeError:
-                        arguments = {}
-
-                    # Publish tool_call event
-                    self._publish_stream_event(
-                        task,
-                        "tool_call",
-                        {
-                            "tool_name": tool_name,
-                            "arguments": arguments,
-                        },
-                    )
-
-                    self.logger.info(f"Tool call: {tool_name}({arguments})")
-
-                    # Execute tool
-                    tool_context = {"app": self.app, "user_id": user_id, "lang": lang}
-                    tool_result = execute_tool(tool_name, arguments, tool_context)
-                    last_tool_result = tool_result
-
-                    self.logger.info(f"Tool result: {tool_result[:200]}")
-
-                    # Publish tool_result event
-                    result_preview = tool_result[:200] + "..." if len(tool_result) > 200 else tool_result
-                    self._publish_stream_event(
-                        task,
-                        "tool_result",
-                        {
-                            "tool_name": tool_name,
-                            "result_preview": result_preview,
-                        },
-                    )
-
-                    # Add tool result to messages
-                    messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tc_id,
-                            "content": tool_result,
-                        }
-                    )
-
                 self.logger.info(
                     f"Tool calling iteration {iteration + 1}: "
                     f"executed {len(tool_calls)} tools: {[tc.get('function', {}).get('name', '?') for tc in tool_calls]}"
@@ -2803,19 +2724,6 @@ class RedisRequestQueue:
             # No tool_calls — final content response
             full_response = response if isinstance(response, str) else str(response)
             break
-
-        # Stream final response if not already streamed
-        if stream and full_response and not streamed:
-            if self._is_task_cancelled(task["id"]):
-                self._publish_stream_event(task, "stream_cancelled")
-            else:
-                for i, char in enumerate(full_response):
-                    if i % 20 == 0 and self._is_task_cancelled(task["id"]):
-                        self._publish_stream_event(task, "stream_cancelled")
-                        break
-                    self._publish_stream_token(task, char)
-                    if i % 20 == 19:
-                        time.sleep(0.01)
 
         if not full_response.strip():
             if last_tool_result.strip():
@@ -2860,8 +2768,6 @@ class RedisRequestQueue:
         response_style: str = "neutral",
     ) -> dict[str, Any]:
         """Process explicit 'remember this' request via LLM and save to SLM."""
-        from app.utils import format_prompt
-
         slm = self.app.modules.get("slm")
         if not slm or not slm.available:
             # SLM not available — just answer normally

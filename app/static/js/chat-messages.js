@@ -467,54 +467,6 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
             }
         }
     }
-    
-    let headerHTML = '<span class="message-header">📅 ' + timeDisplay;
-
-    if (role === 'assistant') {
-        let headerExtra = '';
-
-        // Error replies (model_name='system') intentionally get a minimal
-        // header — no ⏱️/🚀/🤖 decorations.
-        const isSystemError = modelName === 'system';
-
-        if (modelName) {
-            const shortModel = ensureGgufExtension(modelName.split('/').pop() || modelName);
-            const emoji = getModelEmoji(modelType);
-            headerExtra += ' <span class="text-muted">| ' + emoji + escapeHtml(shortModel) + '</span>';
-        }
-
-        let duration = null;
-        if (responseTime && !isSystemError) {
-            if (typeof responseTime === 'object') {
-                if (responseTime.mm_time && responseTime.gen_time) {
-                    duration = (parseFloat(responseTime.mm_time) + parseFloat(responseTime.gen_time)).toFixed(1);
-                } else if (responseTime.router && responseTime.chat) {
-                    duration = (parseFloat(responseTime.router) + parseFloat(responseTime.chat)).toFixed(1);
-                } else if (responseTime.mm_time) {
-                    duration = parseFloat(responseTime.mm_time).toFixed(1);
-                } else if (responseTime.gen_time) {
-                    duration = parseFloat(responseTime.gen_time).toFixed(1);
-                }
-            } else if (typeof responseTime === 'number' || !isNaN(parseFloat(responseTime))) {
-                duration = parseFloat(responseTime).toFixed(1);
-            }
-        }
-
-        if (duration) {
-            const langSuffix = t('seconds_suffix');
-            headerExtra += ' <span class="text-muted">| ⏱️ ' + duration + langSuffix + ' |</span>';
-        }
-
-        // TTS button
-        headerExtra += ' <button class="tts-button" title="' + t('speak') + '">🗣️</button>';
-
-        // Copy message button
-        headerExtra += ' <button class="copy-message-button" title="' + t('copy_text') + '">📋</button>';
-
-        headerHTML += headerExtra;
-    }
-
-    headerHTML += '</span>';
 
     // Create header element safely using DOM methods
     const headerDiv = document.createElement('span');
@@ -536,19 +488,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
 
         let duration = null;
         if (responseTime && !isSystemError) {
-            if (typeof responseTime === 'object') {
-                if (responseTime.mm_time && responseTime.gen_time) {
-                    duration = (parseFloat(responseTime.mm_time) + parseFloat(responseTime.gen_time)).toFixed(1);
-                } else if (responseTime.router && responseTime.chat) {
-                    duration = (parseFloat(responseTime.router) + parseFloat(responseTime.chat)).toFixed(1);
-                } else if (responseTime.mm_time) {
-                    duration = parseFloat(responseTime.mm_time).toFixed(1);
-                } else if (responseTime.gen_time) {
-                    duration = parseFloat(responseTime.gen_time).toFixed(1);
-                }
-            } else if (typeof responseTime === 'number' || !isNaN(parseFloat(responseTime))) {
-                duration = parseFloat(responseTime).toFixed(1);
-            }
+            duration = formatResponseDuration(responseTime);
         }
 
         if (duration && !isSystemError) {

@@ -303,13 +303,7 @@ function deleteSession(sessionId, sessionTitle, sessionDate) {
         date: sessionDate
     });
     if (!confirm(confirmMessage)) return;
-    
-    for (let [id, req] of Object.entries(pendingRequests)) {
-        if (req.sessionId === sessionId && !req.processed) {
-            pendingRequests[id].processed = true;
-        }
-    }
-    
+
     delete newMessageIndicators[sessionId];
     delete localTranscribingSessions[sessionId];
 

@@ -3,6 +3,7 @@ import base64
 import json
 import logging
 import os
+import re
 from collections.abc import Generator
 from io import BytesIO
 from typing import Any
@@ -13,7 +14,18 @@ from app.db import get_session_text_history
 from app.llamacpp_client import LlamaCppClient
 from app.mixins import TranslationMixin
 from app.utils import build_context_prompt, estimate_tokens, format_prompt
-from modules.base import STYLE_INSTRUCTIONS
+from modules.base import get_style_instruction, response_language_name
+from modules.video import DEFAULT_VIDEO_PARAMS
+
+_JSON_OBJECT_RE = re.compile(r"\{\{\{[\s\S]*?\}\}\}|\{[\s\S]*\}")
+
+
+class ModelResponseError(Exception):
+    """Model response could not be parsed; carries a user-facing message."""
+
+    def __init__(self, user_message: str):
+        super().__init__(user_message)
+        self.user_message = user_message
 
 
 class MultimodalModule(TranslationMixin):
@@ -165,10 +177,8 @@ class MultimodalModule(TranslationMixin):
         response_style: str,
     ) -> str | None:
         """Build the prompt text for image processing. Returns None on error."""
-        response_language = "Russian" if lang == "ru" else "English"
-        style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
-            response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
-        )
+        response_language = response_language_name(lang)
+        style_instruction = get_style_instruction(lang, response_style)
 
         context_str = self._get_context_for_model(session_id, user_text, lang)  # type: ignore[arg-type]
 
@@ -311,28 +321,18 @@ class MultimodalModule(TranslationMixin):
             return None, self._("GPU memory unavailable. Please try again.", lang)
 
         try:
-            import re
+            prompt_data = self._parse_model_json(response, lang, "prompt_data")
+        except ModelResponseError as e:
+            return None, e.user_message
 
-            # Try triple braces first, then plain JSON
-            json_match = re.search(r"\{\{\{[\s\S]*?\}\}\}|\{[\s\S]*\}", response)
-            if json_match:
-                json_str = json_match.group()
-                prompt_data = json.loads(json_str)
-                self.logger.info(f"Parsed prompt_data: {prompt_data}")
+        # Ensure prompt exists
+        if "prompt" not in prompt_data or not prompt_data["prompt"].strip():
+            prompt_data["prompt"] = user_query
+            self.logger.warning(f"No prompt in response, using original query: {user_query}")
+        if "negative_prompt" not in prompt_data:
+            prompt_data["negative_prompt"] = ""
 
-                # Ensure prompt exists
-                if "prompt" not in prompt_data or not prompt_data["prompt"].strip():
-                    prompt_data["prompt"] = user_query
-                    self.logger.warning(f"No prompt in response, using original query: {user_query}")
-                if "negative_prompt" not in prompt_data:
-                    prompt_data["negative_prompt"] = ""
-
-                return prompt_data, None
-            else:
-                return None, self._("Could not find JSON in model response", lang)
-        except Exception as e:
-            self.logger.error(f"JSON parsing error: {str(e)}")
-            return None, self._("JSON parsing error: {error}", lang, error=str(e))
+        return prompt_data, None
 
     def generate_video_params(
         self, user_query: str, lang: str = "ru", response_style: str = "neutral"
@@ -370,54 +370,34 @@ class MultimodalModule(TranslationMixin):
             return None, self._("GPU memory unavailable. Please try again.", lang)
 
         try:
-            import re
+            prompt_data = self._parse_model_json(response, lang, "video prompt_data")
+        except ModelResponseError as e:
+            return None, e.user_message
 
-            json_match = re.search(r"\{\{\{[\s\S]*?\}\}\}|\{[\s\S]*\}", response)
-            if json_match:
-                json_str = json_match.group()
-                prompt_data = json.loads(json_str)
-                self.logger.info(f"Parsed video prompt_data: {prompt_data}")
+        # Warn if generated params are oversized for current VRAM.
+        # Heuristic: total pixels × frames vs available VRAM.
+        # 240 frames at 768×512 (92 weight) on 6 GB+ free = OK (default).
+        # Triggers only for extreme requests (e.g. 1000+ frames at 4K).
+        try:
+            from app.resource_manager import get_resource_manager
 
-                # Warn if generated params are oversized for current VRAM.
-                # Heuristic: total pixels × frames vs available VRAM.
-                # 240 frames at 768×512 (92 weight) on 6 GB+ free = OK (default).
-                # Triggers only for extreme requests (e.g. 1000+ frames at 4K).
-                try:
-                    from app.resource_manager import get_resource_manager
+            free = get_resource_manager().hardware.available_vram_mb
+        except Exception:
+            free = 0
+        if isinstance(free, int) and free > 0:
+            w = int(prompt_data.get("width", 768))
+            h = int(prompt_data.get("height", 512))
+            nf = int(prompt_data.get("num_frames", 240))
+            weight = (w * h * nf) / 1_000_000
+            if weight > free * 10:
+                self.logger.warning(
+                    f"Video params oversized: {w}×{h}×{nf}f ({weight:.1f}M px·frames) "
+                    f"for {free}MB free VRAM. May trigger OOM. Consider reducing num_frames."
+                )
 
-                    free = get_resource_manager().hardware.available_vram_mb
-                except Exception:
-                    free = 0
-                if isinstance(free, int) and free > 0:
-                    w = int(prompt_data.get("width", 768))
-                    h = int(prompt_data.get("height", 512))
-                    nf = int(prompt_data.get("num_frames", 240))
-                    weight = (w * h * nf) / 1_000_000
-                    if weight > free * 10:
-                        self.logger.warning(
-                            f"Video params oversized: {w}×{h}×{nf}f ({weight:.1f}M px·frames) "
-                            f"for {free}MB free VRAM. May trigger OOM. Consider reducing num_frames."
-                        )
+        self._apply_video_param_defaults(prompt_data, user_query)
 
-                if "prompt" not in prompt_data or not prompt_data["prompt"].strip():
-                    prompt_data["prompt"] = user_query
-                if "negative_prompt" not in prompt_data:
-                    prompt_data["negative_prompt"] = "worst quality, inconsistent motion, blurry, jittery, distorted"
-                if "width" not in prompt_data:
-                    prompt_data["width"] = 768
-                if "height" not in prompt_data:
-                    prompt_data["height"] = 512
-                if "num_frames" not in prompt_data:
-                    prompt_data["num_frames"] = 240
-                if "frame_rate" not in prompt_data:
-                    prompt_data["frame_rate"] = 24
-
-                return prompt_data, None
-            else:
-                return None, self._("Could not find JSON in model response", lang)
-        except Exception as e:
-            self.logger.error(f"JSON parsing error: {str(e)}")
-            return None, self._("JSON parsing error: {error}", lang, error=str(e))
+        return prompt_data, None
 
     def generate_video_params_from_image(
         self, user_query: str, image_base64: str, lang: str = "ru", response_style: str = "neutral"
@@ -449,51 +429,55 @@ class MultimodalModule(TranslationMixin):
             return None, self._("GPU memory unavailable. Please try again.", lang)
 
         try:
-            import re
+            prompt_data = self._parse_model_json(response, lang, "video-from-image prompt_data")
+        except ModelResponseError as e:
+            return None, e.user_message
 
-            json_match = re.search(r"\{\{\{[\s\S]*?\}\}\}|\{[\s\S]*\}", response)
-            if json_match:
-                json_str = json_match.group()
-                prompt_data = json.loads(json_str)
-                self.logger.info(f"Parsed video-from-image prompt_data: {prompt_data}")
+        self._apply_video_param_defaults(prompt_data, user_query)
 
-                if "prompt" not in prompt_data or not prompt_data["prompt"].strip():
-                    prompt_data["prompt"] = user_query
-                if "negative_prompt" not in prompt_data:
-                    prompt_data["negative_prompt"] = "worst quality, inconsistent motion, blurry, jittery, distorted"
-                if "width" not in prompt_data:
-                    prompt_data["width"] = 768
-                if "height" not in prompt_data:
-                    prompt_data["height"] = 512
-                if "num_frames" not in prompt_data:
-                    prompt_data["num_frames"] = 240
-                if "frame_rate" not in prompt_data:
-                    prompt_data["frame_rate"] = 24
-
-                # Override width/height to match source image aspect ratio
-                try:
-                    img = Image.open(BytesIO(base64.b64decode(image_base64)))
-                    w, h = img.size
-                    aspect = w / h
-                    if aspect > 1.2:
-                        prompt_data["width"], prompt_data["height"] = 768, 512
-                    elif aspect < 0.8:
-                        prompt_data["width"], prompt_data["height"] = 512, 768
-                    else:
-                        prompt_data["width"], prompt_data["height"] = 512, 512
-                    self.logger.info(
-                        f"Video aspect ratio adjusted to match source image: "
-                        f"{w}x{h} (ratio={aspect:.2f}) → {prompt_data['width']}x{prompt_data['height']}"
-                    )
-                except Exception as e:
-                    self.logger.warning(f"Failed to detect image aspect ratio: {e}")
-
-                return prompt_data, None
+        # Override width/height to match source image aspect ratio
+        try:
+            img = Image.open(BytesIO(base64.b64decode(image_base64)))
+            w, h = img.size
+            aspect = w / h
+            if aspect > 1.2:
+                prompt_data["width"], prompt_data["height"] = 768, 512
+            elif aspect < 0.8:
+                prompt_data["width"], prompt_data["height"] = 512, 768
             else:
-                return None, self._("Could not find JSON in model response", lang)
+                prompt_data["width"], prompt_data["height"] = 512, 512
+            self.logger.info(
+                f"Video aspect ratio adjusted to match source image: "
+                f"{w}x{h} (ratio={aspect:.2f}) → {prompt_data['width']}x{prompt_data['height']}"
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to detect image aspect ratio: {e}")
+
+        return prompt_data, None
+
+    def _parse_model_json(self, response: str, lang: str, log_label: str) -> dict[str, Any]:
+        """Extract the first JSON object from a model response.
+
+        Tries triple-brace blocks first, then plain JSON. Raises
+        ModelResponseError with a user-facing message on failure.
+        """
+        json_match = _JSON_OBJECT_RE.search(response)
+        if not json_match:
+            raise ModelResponseError(self._("Could not find JSON in model response", lang))
+        try:
+            data: dict[str, Any] = json.loads(json_match.group())
         except Exception as e:
             self.logger.error(f"JSON parsing error: {str(e)}")
-            return None, self._("JSON parsing error: {error}", lang, error=str(e))
+            raise ModelResponseError(self._("JSON parsing error: {error}", lang, error=str(e))) from e
+        self.logger.info(f"Parsed {log_label}: {data}")
+        return data
+
+    def _apply_video_param_defaults(self, prompt_data: dict[str, Any], user_query: str) -> None:
+        """Fill missing video generation parameters with shared defaults."""
+        if "prompt" not in prompt_data or not str(prompt_data.get("prompt", "")).strip():
+            prompt_data["prompt"] = user_query
+        for key, value in DEFAULT_VIDEO_PARAMS.items():
+            prompt_data.setdefault(key, value)
 
     def _call_multimodal(self, messages: list[dict[str, Any]], lang: str = "ru") -> str:
         """Call multimodal model via llama.cpp client (delegates to LlamaCppClient)."""
@@ -546,27 +530,18 @@ class MultimodalModule(TranslationMixin):
             return None, self._("GPU memory unavailable. Please try again.", lang)
 
         try:
-            import re
+            edit_data = self._parse_model_json(response, lang, "edit params (raw)")
+        except ModelResponseError as e:
+            return None, e.user_message
 
-            # Try triple braces first, then plain JSON
-            json_match = re.search(r"\{\{\{[\s\S]*?\}\}\}|\{[\s\S]*\}", response)
-            if json_match:
-                json_str = json_match.group()
-                edit_data = json.loads(json_str)
-
-                result = {
-                    "edit_prompt": edit_data.get("edit_prompt", user_query),
-                    "strength": float(edit_data.get("strength", 0.7)),
-                    "mask": edit_data.get("mask", ""),
-                    "preserve": edit_data.get("preserve", ""),
-                }
-                self.logger.info(f"Parsed edit params: {result}")
-                return result, None
-            else:
-                return None, self._("Could not find JSON in model response", lang)
-        except Exception as e:
-            self.logger.error(f"JSON parsing error: {str(e)}")
-            return None, self._("JSON parsing error: {error}", lang, error=str(e))
+        result = {
+            "edit_prompt": edit_data.get("edit_prompt", user_query),
+            "strength": float(edit_data.get("strength", 0.7)),
+            "mask": edit_data.get("mask", ""),
+            "preserve": edit_data.get("preserve", ""),
+        }
+        self.logger.info(f"Parsed edit params: {result}")
+        return result, None
 
     def check_availability(self) -> bool:
         """Check module availability."""

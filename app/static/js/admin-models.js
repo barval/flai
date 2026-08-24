@@ -717,11 +717,6 @@ function onSaveConfig(event) {
     });
 }
 
-function escapeHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
 function updateChunksLimits(maxTopK) {
     const ragTopKInput = document.getElementById('rag-top-k');
     const ragTopKInputContainer = ragTopKInput ? ragTopKInput.parentElement : null;

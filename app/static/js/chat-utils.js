@@ -30,9 +30,29 @@ function decodeHtmlEntities(text) {
     return textarea.value;
 }
 
-function escapeHtml(text) {
-    if (!text) return '';
-    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// Calculate response duration string from response_time (object or scalar).
+// Returns "12.3" or null. Shared by chat-messages.js and events.js.
+function formatResponseDuration(responseTime) {
+    if (!responseTime) return null;
+    if (typeof responseTime === 'object') {
+        if (responseTime.mm_time && responseTime.gen_time) {
+            return (parseFloat(responseTime.mm_time) + parseFloat(responseTime.gen_time)).toFixed(1);
+        }
+        if (responseTime.router && responseTime.chat) {
+            return (parseFloat(responseTime.router) + parseFloat(responseTime.chat)).toFixed(1);
+        }
+        if (responseTime.mm_time) {
+            return parseFloat(responseTime.mm_time).toFixed(1);
+        }
+        if (responseTime.gen_time) {
+            return parseFloat(responseTime.gen_time).toFixed(1);
+        }
+        return null;
+    }
+    if (typeof responseTime === 'number' || !isNaN(parseFloat(responseTime))) {
+        return parseFloat(responseTime).toFixed(1);
+    }
+    return null;
 }
 
 function formatFullDateTime(ts) {

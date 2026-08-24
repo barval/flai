@@ -27,8 +27,9 @@ def event_stream():
                     data = msg["data"]
                     yield f"data: {data}\n\n"
                 else:
-                    # Heartbeat to keep connection alive through proxies
-                    yield ": heartbeat\n\n"
+                    # Heartbeat as a real event so the client JS can measure
+                    # connection liveness (comments are invisible to EventSource)
+                    yield "event: ping\ndata: {}\n\n"
         except GeneratorExit:
             pass
         finally:

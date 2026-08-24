@@ -68,21 +68,15 @@ class AudioModule(TranslationMixin):
         self.logger.info(f"Initializing AudioModule with Whisper URL: {self.whisper_api_url}")
 
         # Initial availability check with retries (Whisper may start slower than web app)
-        max_retries = app.config.get("SERVICE_RETRY_ATTEMPTS", 5)
-        retry_delay = app.config.get("SERVICE_RETRY_DELAY", 2)  # seconds
+        from modules.base import wait_for_service
 
-        for attempt in range(1, max_retries + 1):
-            if self.check_availability():
-                break
-            if attempt < max_retries:
-                self.logger.warning(
-                    f"Whisper API not ready (attempt {attempt}/{max_retries}), retrying in {retry_delay}s..."
-                )
-                import time
-
-                time.sleep(retry_delay)
-            else:
-                self.logger.warning(f"Whisper API not available after {max_retries} attempts")
+        self.available = wait_for_service(
+            self.check_availability,
+            self.logger,
+            "Whisper API",
+            retries=app.config.get("SERVICE_RETRY_ATTEMPTS", 5),
+            delay=app.config.get("SERVICE_RETRY_DELAY", 2),
+        )
 
         if self.available:
             self.logger.info(

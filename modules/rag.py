@@ -22,7 +22,7 @@ from app.utils import (
     format_prompt,
     get_current_time_in_timezone,
 )
-from modules.base import STYLE_INSTRUCTIONS
+from modules.base import get_style_instruction, response_language_name
 
 
 class RagModule:
@@ -439,12 +439,10 @@ class RagModule:
 
         # 4. Get current time and response language
         current_time_str = get_current_time_in_timezone(current_app)
-        response_language = "Russian" if lang == "ru" else "English"
+        response_language = response_language_name(lang)
 
         # 5. Format prompt using template
-        style_instruction = STYLE_INSTRUCTIONS.get(lang, STYLE_INSTRUCTIONS["ru"]).get(
-            response_style, STYLE_INSTRUCTIONS[lang]["neutral"]
-        )
+        style_instruction = get_style_instruction(lang, response_style)
 
         prompt = format_prompt(
             "rag.template",

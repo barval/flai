@@ -590,6 +590,10 @@ class RedisRequestQueue:
                 if task is None:
                     self.logger.error("Fast worker: failed to deserialize task")
                     continue
+                self.app.logger.info(
+                    f"Fast worker: dequeued task {str(task.get('id'))[:12]} "
+                    f"(type={task.get('data', {}).get('type') or task.get('type', '')})"
+                )
 
                 # GPU tasks must serialize with slow worker
                 model = self._get_model_for_task(task)
@@ -616,6 +620,10 @@ class RedisRequestQueue:
                     if task is None:
                         self.logger.error("Slow worker: failed to deserialize task")
                         continue
+                    self.app.logger.info(
+                        f"Slow worker: dequeued task {str(task.get('id'))[:12]} "
+                        f"(type={task.get('data', {}).get('type') or task.get('type', '')})"
+                    )
                     with self._gpu_lock:
                         self._process_single_task(task, self.slow_processing_key)
                     continue
@@ -2248,6 +2256,9 @@ class RedisRequestQueue:
         Searches SearXNG on the fast worker (CPU-only HTTP call),
         then re-queues to the slow worker for reasoning model synthesis.
         """
+        self.app.logger.info(
+            f"Process web search task: query='{query[:120]}' lang={lang} user={user_id} session={session_id}"
+        )
         search = self.app.modules.get("search")
         if not search or not search.available:
             return self._build_error_response(

@@ -264,6 +264,10 @@ def send_message():
         request_id, position_info = current_app.request_queue.add_request(
             user_id, session_id, request_data, user_class, lang=session.get("language", "ru")
         )
+        current_app.logger.info(
+            f"send_message: queued request_id={request_id} type={request_type} "
+            f"queue={position_info.get('queue_type')} pos={position_info.get('position')}"
+        )
         response_data = {
             "status": "queued",
             "request_id": request_id,

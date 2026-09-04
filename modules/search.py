@@ -65,6 +65,7 @@ class SearchModule(TranslationMixin):
         if not self.available:
             self.check_availability()
         if not self.available:
+            self.logger.warning(f"SearXNG search skipped: not available (query='{query[:120]}')")
             return []
 
         limit = max_results or self.max_results
@@ -80,7 +81,25 @@ class SearchModule(TranslationMixin):
             data = resp.json()
             raw_results = data.get("results", [])
             elapsed = round(time.time() - start_time, 2)
-            self.logger.info(f"SearXNG search: '{query[:60]}...' → {len(raw_results)} results in {elapsed}s")
+            self.logger.info(
+                f"SearXNG search: '{query[:120]}' → {len(raw_results)} results in {elapsed}s "
+                f"(language={lang}, limit={limit})"
+            )
+
+            # Diagnose transient engine failures (CAPTCHA / rate limiting) early —
+            # these are the top cause of "0 results" and are invisible to callers.
+            unresponsive = data.get("unresponsive_engines") or []
+            if unresponsive:
+                reasons = "; ".join(f"{name}: {reason}" for name, reason, *_ in unresponsive)
+                if not raw_results:
+                    self.logger.warning(
+                        f"SearXNG returned 0 results for '{query[:120]}' — all engines failed: {reasons}"
+                    )
+                else:
+                    self.logger.warning(
+                        f"SearXNG partial engine failures for '{query[:120]}': {reasons} "
+                        f"({len(raw_results)} results returned)"
+                    )
 
             results: list[dict] = []
             fetch_urls = []

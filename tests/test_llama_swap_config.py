@@ -13,17 +13,6 @@ from app.llama_swap_config import (
 
 def _mock_config(module, **overrides):
     configs = {
-        "chat": {
-            "module": "chat",
-            "model_name": "Qwen3-4B-Instruct-2507-Q4_K_M",
-            "context_length": 8192,
-            "temperature": 0.7,
-            "timeout": 120,
-            "service_url": "http://flai-llamacpp:8033",
-            "ttl": None,
-            "model_path": None,
-            "aliases": None,
-        },
         "embedding": {
             "module": "embedding",
             "model_name": "bge-m3-Q8_0",
@@ -75,27 +64,27 @@ class TestGetModelPath:
     def test_no_config(self, mock_get_config):
         mock_get_config.return_value = None
         gen = LlamaSwapConfigGenerator()
-        path = gen.get_model_path("chat", "test-model")
+        path = gen.get_model_path("multimodal", "test-model")
         assert path is None
 
     @patch("app.llama_swap_config.get_model_config")
     def test_model_path_in_config(self, mock_get_config):
-        mock_get_config.return_value = _mock_config("chat", model_path="/models/custom.gguf")
+        mock_get_config.return_value = _mock_config("multimodal", model_path="/models/custom.gguf")
         gen = LlamaSwapConfigGenerator()
-        path = gen.get_model_path("chat", "Qwen3-4B-Instruct-2507-Q4_K_M")
+        path = gen.get_model_path("multimodal", "Qwen3-4B-Instruct-2507-Q4_K_M")
         assert path == "/models/custom.gguf"
 
     @patch("app.llama_swap_config.get_model_config")
     def test_model_path_relative(self, mock_get_config):
-        mock_get_config.return_value = _mock_config("chat", model_path="subdir/model.gguf")
+        mock_get_config.return_value = _mock_config("multimodal", model_path="subdir/model.gguf")
         gen = LlamaSwapConfigGenerator()
-        path = gen.get_model_path("chat", "Qwen3-4B-Instruct-2507-Q4_K_M")
+        path = gen.get_model_path("multimodal", "Qwen3-4B-Instruct-2507-Q4_K_M")
         assert "/models/subdir/model.gguf" in path
 
     @patch("app.llama_swap_config.get_model_config")
     @patch("app.llama_swap_config.os.path.exists")
     def test_direct_gguf(self, mock_exists, mock_get_config):
-        mock_get_config.return_value = _mock_config("chat", model_path=None)
+        mock_get_config.return_value = _mock_config("multimodal", model_path=None)
 
         def exists_side_effect(p):
             return p == "/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
@@ -103,13 +92,13 @@ class TestGetModelPath:
         mock_exists.side_effect = exists_side_effect
 
         gen = LlamaSwapConfigGenerator()
-        path = gen.get_model_path("chat", "Qwen3-4B-Instruct-2507-Q4_K_M")
+        path = gen.get_model_path("multimodal", "Qwen3-4B-Instruct-2507-Q4_K_M")
         assert path == "/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 
     @patch("app.llama_swap_config.get_model_config")
     @patch("app.llama_swap_config.os.path.exists")
     def test_gguf_extension_stripping(self, mock_exists, mock_get_config):
-        mock_get_config.return_value = _mock_config("chat", model_path=None)
+        mock_get_config.return_value = _mock_config("multimodal", model_path=None)
 
         def exists_side_effect(p):
             return p == "/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
@@ -117,7 +106,7 @@ class TestGetModelPath:
         mock_exists.side_effect = exists_side_effect
 
         gen = LlamaSwapConfigGenerator()
-        path = gen.get_model_path("chat", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf")
+        path = gen.get_model_path("multimodal", "Qwen3-4B-Instruct-2507-Q4_K_M.gguf")
         assert path == "/models/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 
 
@@ -126,14 +115,14 @@ class TestGetTtl:
     def test_default_ttl(self, mock_get_config):
         mock_get_config.return_value = None
         gen = LlamaSwapConfigGenerator()
-        assert gen.get_ttl("chat") == DEFAULT_TTL["chat"]
+        assert gen.get_ttl("multimodal") == DEFAULT_TTL["multimodal"]
         assert gen.get_ttl("unknown") == 300
 
     @patch("app.llama_swap_config.get_model_config")
     def test_custom_ttl(self, mock_get_config):
         mock_get_config.return_value = {"ttl": 999}
         gen = LlamaSwapConfigGenerator()
-        assert gen.get_ttl("chat") == 999
+        assert gen.get_ttl("multimodal") == 999
 
 
 class TestGetCtxSize:
@@ -141,21 +130,21 @@ class TestGetCtxSize:
     def test_no_config(self, mock_get_config):
         mock_get_config.return_value = None
         gen = LlamaSwapConfigGenerator()
-        assert gen.get_ctx_size("chat") == 4096
+        assert gen.get_ctx_size("multimodal") == 4096
         assert gen.get_ctx_size("reasoning") == 8192
 
     @patch("app.llama_swap_config.get_model_config")
     def test_config_ctx(self, mock_get_config):
         mock_get_config.return_value = {"context_length": 16384}
         gen = LlamaSwapConfigGenerator()
-        assert gen.get_ctx_size("chat") == 16384
+        assert gen.get_ctx_size("multimodal") == 16384
 
     @patch("app.llama_swap_config.get_model_config")
     def test_none_ctx_uses_default(self, mock_get_config):
         mock_get_config.return_value = {"context_length": None}
         gen = LlamaSwapConfigGenerator()
         assert gen.get_ctx_size("embedding") == 2048
-        assert gen.get_ctx_size("chat") == 4096
+        assert gen.get_ctx_size("multimodal") == 8192
 
 
 class TestBuildModelEntry:
@@ -163,13 +152,13 @@ class TestBuildModelEntry:
     def test_no_config(self, mock_get_config):
         mock_get_config.return_value = None
         gen = LlamaSwapConfigGenerator()
-        assert gen.build_model_entry("chat") is None
+        assert gen.build_model_entry("multimodal") is None
 
     @patch("app.llama_swap_config.get_model_config")
     def test_no_model_name(self, mock_get_config):
         mock_get_config.return_value = {"model_name": ""}
         gen = LlamaSwapConfigGenerator()
-        assert gen.build_model_entry("chat") is None
+        assert gen.build_model_entry("multimodal") is None
 
     @patch("app.llama_swap_config.get_model_config")
     @patch("app.llama_swap_config.os.path.exists")
@@ -181,13 +170,13 @@ class TestBuildModelEntry:
         mock_exists.return_value = True
 
         gen = LlamaSwapConfigGenerator()
-        entry = gen.build_model_entry("chat")
+        entry = gen.build_model_entry("multimodal")
         assert entry is not None
-        assert "chat" in entry
-        assert "cmd" in entry["chat"]
-        assert "ttl" in entry["chat"]
-        assert "aliases" in entry["chat"]
-        assert "preload" not in entry["chat"]
+        assert "multimodal" in entry
+        assert "cmd" in entry["multimodal"]
+        assert "ttl" in entry["multimodal"]
+        assert "aliases" in entry["multimodal"]
+        assert "preload" not in entry["multimodal"]
 
     @patch("app.llama_swap_config.get_model_config")
     @patch("app.llama_swap_config.os.path.exists")
@@ -199,9 +188,9 @@ class TestBuildModelEntry:
         mock_exists.return_value = True
 
         gen = LlamaSwapConfigGenerator()
-        entry = gen.build_model_entry("chat")
-        assert entry["chat"].get("group") == "llm_fast"
-        assert "preload" not in entry["chat"]
+        entry = gen.build_model_entry("multimodal")
+        assert entry["multimodal"].get("group") == "llm_fast"
+        assert "preload" not in entry["multimodal"]
 
     @patch("app.llama_swap_config.get_model_config")
     @patch("app.llama_swap_config.os.path.exists")
@@ -230,7 +219,7 @@ class TestBuildCmd:
         }
         mock_get_rm.return_value = mock_rm
         gen = LlamaSwapConfigGenerator()
-        cmd = gen.build_cmd("chat", "/models/test.gguf")
+        cmd = gen.build_cmd("multimodal", "/models/test.gguf")
         assert cmd.startswith("llama-server")
         assert "--port ${PORT}" in cmd
         assert "-m /models/test.gguf" in cmd
@@ -251,7 +240,7 @@ class TestBuildCmd:
         }
         mock_get_rm.return_value = mock_rm
         gen = LlamaSwapConfigGenerator()
-        cmd = gen.build_cmd("chat", "/models/test.gguf")
+        cmd = gen.build_cmd("multimodal", "/models/test.gguf")
         assert "--flash-attn" not in cmd
 
     @patch("app.resource_manager.get_resource_manager")
@@ -266,7 +255,7 @@ class TestBuildCmd:
         }
         mock_get_rm.return_value = mock_rm
         gen = LlamaSwapConfigGenerator()
-        cmd = gen.build_cmd("chat", "/models/test.gguf")
+        cmd = gen.build_cmd("multimodal", "/models/test.gguf")
         assert "--flash-attn" not in cmd
         assert "--n-gpu-layers 10" in cmd
         assert "--kv-offload" in cmd
@@ -317,8 +306,8 @@ class TestBuildCmd:
         }
         mock_get_rm.return_value = mock_rm
         gen = LlamaSwapConfigGenerator()
-        cmd = gen.build_cmd("chat", "/models/test.gguf")
-        assert "--ctx-size 4096" in cmd
+        cmd = gen.build_cmd("multimodal", "/models/test.gguf")
+        assert "--ctx-size 8192" in cmd
         assert "--flash-attn on" in cmd
 
 
@@ -340,26 +329,25 @@ class TestGenerateYaml:
         assert "groups:" in yaml_str
         assert "llm_fast:" in yaml_str
         assert "models:" in yaml_str
-        assert "chat:" in yaml_str
         assert "embedding:" in yaml_str
         assert "reasoning:" in yaml_str
         assert "multimodal:" in yaml_str
         assert "hooks:" in yaml_str
-        assert '      - "chat"' in yaml_str
+        assert '      - "multimodal"' in yaml_str
         assert "llama-server" in yaml_str
 
     @patch("app.llama_swap_config.get_model_config")
     @patch("app.llama_swap_config.os.path.exists")
     def test_missing_config_skips_module(self, mock_exists, mock_get_config):
         def config_side_effect(m):
-            return _mock_config(m, model_path=None) if m == "chat" else None
+            return _mock_config(m, model_path=None) if m == "multimodal" else None
 
         mock_get_config.side_effect = config_side_effect
         mock_exists.return_value = True
 
         gen = LlamaSwapConfigGenerator()
         yaml_str = gen.generate_yaml()
-        assert "chat:" in yaml_str
+        assert "multimodal:" in yaml_str
         assert "embedding:" not in yaml_str
         assert "reasoning:" not in yaml_str
 
@@ -420,7 +408,7 @@ class TestMmprojPath:
     @patch("app.llama_swap_config.get_model_config")
     def test_non_multimodal_returns_none(self, mock_get_config):
         gen = LlamaSwapConfigGenerator()
-        assert gen.get_mmproj_path("chat", "/models/test.gguf") is None
+        assert gen.get_mmproj_path("reasoning", "/models/test.gguf") is None
 
     @patch("app.llama_swap_config.get_model_config")
     @patch("glob.glob")

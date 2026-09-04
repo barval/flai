@@ -484,7 +484,7 @@ def create_app():
                 if not service_url:
                     from app.model_config import get_model_config
 
-                    llamacpp_config = get_model_config("chat")
+                    llamacpp_config = get_model_config("multimodal")
                     if llamacpp_config:
                         service_url = llamacpp_config.get("service_url")
                 if not service_url:
@@ -567,7 +567,7 @@ def create_app():
         # System metrics
         metrics_output.append("# HELP flai_web_info Web service information")
         metrics_output.append("# TYPE flai_web_info gauge")
-        metrics_output.append('flai_web_info{version="9.3"} 1')
+        metrics_output.append('flai_web_info{version="10.0"} 1')
 
         # Queue metrics
         try:

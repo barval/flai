@@ -14,7 +14,7 @@ class TestDryLoad:
         with patch.object(dry_load.threading, "Thread") as mock_thread_cls:
             mock_thread = MagicMock()
             mock_thread_cls.return_value = mock_thread
-            dry_load.schedule_dry_load(MagicMock(), "chat", "Qwen3-4B.gguf")
+            dry_load.schedule_dry_load(MagicMock(), "multimodal", "Qwen3-4B.gguf")
             mock_thread_cls.assert_called_once()
             mock_thread.start.assert_called_once()
 
@@ -23,7 +23,7 @@ class TestDryLoad:
         from app.tasks import dry_load
 
         with patch.object(dry_load.threading, "Thread") as mock_thread_cls:
-            dry_load.schedule_dry_load(MagicMock(), "chat", "")
+            dry_load.schedule_dry_load(MagicMock(), "multimodal", "")
             mock_thread_cls.assert_not_called()
 
     def test_fallback_models_dict_has_all_modules(self):
@@ -31,9 +31,8 @@ class TestDryLoad:
         from app.tasks.dry_load import get_fallback_models
 
         models = get_fallback_models()
-        assert "chat" in models
-        assert "reasoning" in models
         assert "multimodal" in models
+        assert "reasoning" in models
         assert "embedding" in models
         for module, fallback in models.items():
             assert fallback, f"Empty fallback for {module}"
@@ -48,12 +47,12 @@ class TestTriggerLoad:
         from app.tasks.dry_load import _trigger_load
 
         mock_post.return_value = MagicMock(status_code=200)
-        result = _trigger_load("http://swap:8080", "chat")
+        result = _trigger_load("http://swap:8080", "multimodal")
         assert result is True
         mock_post.assert_called_once()
         call_args = mock_post.call_args
         assert "chat/completions" in call_args.args[0]
-        assert call_args.kwargs["json"]["model"] == "chat"
+        assert call_args.kwargs["json"]["model"] == "multimodal"
 
     @patch("requests.post")
     def test_trigger_load_http_error(self, mock_post):
@@ -61,7 +60,7 @@ class TestTriggerLoad:
         from app.tasks.dry_load import _trigger_load
 
         mock_post.return_value = MagicMock(status_code=500)
-        result = _trigger_load("http://swap:8080", "chat")
+        result = _trigger_load("http://swap:8080", "multimodal")
         assert result is False
 
     @patch("requests.post", side_effect=ConnectionError("boom"))
@@ -69,7 +68,7 @@ class TestTriggerLoad:
         """Network exception → return False."""
         from app.tasks.dry_load import _trigger_load
 
-        result = _trigger_load("http://swap:8080", "chat")
+        result = _trigger_load("http://swap:8080", "multimodal")
         assert result is False
 
 
@@ -83,9 +82,9 @@ class TestCheckRunning:
 
         mock_get.return_value = MagicMock(
             status_code=200,
-            json=lambda: {"running": [{"name": "chat", "model_id": "Qwen3"}]},
+            json=lambda: {"running": [{"name": "multimodal", "model_id": "Qwen3"}]},
         )
-        assert _check_running("http://swap:8080", "chat") is True
+        assert _check_running("http://swap:8080", "multimodal") is True
 
     @patch("requests.get")
     def test_check_running_not_found(self, mock_get):
@@ -96,7 +95,7 @@ class TestCheckRunning:
             status_code=200,
             json=lambda: {"running": [{"name": "reasoning"}]},
         )
-        assert _check_running("http://swap:8080", "chat") is False
+        assert _check_running("http://swap:8080", "multimodal") is False
 
     @patch("requests.get")
     def test_check_running_http_error(self, mock_get):
@@ -104,11 +103,11 @@ class TestCheckRunning:
         from app.tasks.dry_load import _check_running
 
         mock_get.return_value = MagicMock(status_code=503)
-        assert _check_running("http://swap:8080", "chat") is False
+        assert _check_running("http://swap:8080", "multimodal") is False
 
     @patch("requests.get", side_effect=ConnectionError)
     def test_check_running_network_error(self, mock_get):
         """Network exception → False."""
         from app.tasks.dry_load import _check_running
 
-        assert _check_running("http://swap:8080", "chat") is False
+        assert _check_running("http://swap:8080", "multimodal") is False

@@ -640,7 +640,7 @@ def model_vram_estimate():
     For unloaded models: estimates from GGUF metadata + formula.
     """
     model_name = request.args.get("model", "")
-    module = request.args.get("module", "chat")
+    module = request.args.get("module", "multimodal")
     ctx_size = request.args.get("ctx_size", 8192, type=int)
     ngl_param = request.args.get("ngl", type=int)
     cache_type = request.args.get("cache_type", "q4_0")
@@ -1005,7 +1005,6 @@ def llamacpp_models():
                 models = all_items  # All model IDs are valid
             else:
                 exclude_keys = {
-                    "chat",
                     "embedding",
                     "multimodal",
                     "reasoning",
@@ -1105,8 +1104,8 @@ def llamacpp_model_info(name):
         # Use cached metadata if available (skip slow file reading)
         if cached:
             # Check model type by name FIRST (more reliable)
-            model_type = "chat"
-            display_arch = "Chat"
+            model_type = "multimodal"
+            display_arch = "Multimodal"
             name_lower = name.lower()
 
             # Check by name patterns
@@ -1239,7 +1238,7 @@ def llamacpp_model_info(name):
                 "qwen3vl",
             }
 
-            model_type = "chat"
+            model_type = "multimodal"
             display_arch = "LLM"
 
             if any(a in arch for a in embedding_archs) or is_embedding or "bert" in arch:
@@ -1272,7 +1271,7 @@ def llamacpp_model_info(name):
                     model_type = "reasoning"
                     display_arch = "Reasoning"
                 else:
-                    display_arch = "Chat"
+                    display_arch = "Multimodal"
 
             # Override with base name check for specific cases
             name_lower = name.lower()

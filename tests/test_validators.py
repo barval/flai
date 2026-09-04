@@ -126,7 +126,7 @@ class TestValidateModelConfigUpdate:
     def test_valid_config(self):
         """Should pass valid config."""
         data = {"model_name": "qwen", "temperature": 0.7}
-        result = validate_model_config_update(data, "chat")
+        result = validate_model_config_update(data, "multimodal")
         assert result == data
 
     def test_invalid_module_type(self):
@@ -139,24 +139,24 @@ class TestValidateModelConfigUpdate:
         """Should reject invalid temperature."""
         data = {"temperature": 3.0}
         with pytest.raises(ValidationError):
-            validate_model_config_update(data, "chat")
+            validate_model_config_update(data, "multimodal")
 
     def test_invalid_context_length(self):
         """Should reject invalid context length."""
         data = {"context_length": 100}
         with pytest.raises(ValidationError):
-            validate_model_config_update(data, "chat")
+            validate_model_config_update(data, "multimodal")
 
     def test_invalid_timeout(self):
         """Should reject invalid timeout."""
         data = {"timeout": 5000}
         with pytest.raises(ValidationError):
-            validate_model_config_update(data, "chat")
+            validate_model_config_update(data, "multimodal")
 
     def test_empty_fields(self):
         """Should allow empty fields for partial updates."""
         data = {}
-        result = validate_model_config_update(data, "chat")
+        result = validate_model_config_update(data, "multimodal")
         assert result == {}
 
 
@@ -184,4 +184,4 @@ class TestPatterns:
 
     def test_module_types(self):
         """MODULE_TYPES should contain all types."""
-        assert {"chat", "reasoning", "multimodal", "embedding"} == MODULE_TYPES
+        assert {"reasoning", "multimodal", "embedding"} == MODULE_TYPES

@@ -4,6 +4,30 @@ All notable changes to FLAI are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v10.0] — 2026-09-04
+
+### 🏗️ Architecture
+
+- **Two-model architecture: multimodal (always resident) + reasoning (on-demand)** — the standalone "chat" model (Qwen3-4B-Instruct-2507) was removed. The multimodal model (Qwen3VL-8B-Instruct-Q4_K_M) is now the single chat model serving all three roles: LLM router, text chat, and vision (image analysis + image editing). It stays resident in VRAM indefinitely (`ttl=0`, `preload: on_startup`). When a reasoning task runs, the multimodal model is temporarily evicted; after the reasoning response, multimodal is reloaded synchronously before the response is returned to the user. Reasoning model (gpt-oss-20b or user-configurable) uses `ttl=1` and is unloaded 1 second after the last response. Embedding model (bge-m3) unchanged.
+- **Model config `module` types reduced to 3: `multimodal`, `reasoning`, `embedding`** — `chat` removed from `MODULE_TYPES` in `app/validators.py`. Database self-healing: `DELETE FROM model_configs WHERE module = 'chat'` runs at startup to clean stale rows from pre-v10.0 backups.
+- **Admin panel simplified** — removed the separate "Chat Model" card from the models page (`app/static/js/admin-models.js`). The multimodal model card shows the combined chat/router/vision role.
+
+### ✨ Features
+
+- **Synchronous multimodal reload after reasoning** — after a reasoning task completes, `_preload_multimodal_sync()` in `app/queue.py` sends a completion request to llama-swap and waits (up to 60 s) for the multimodal model to reach running state, ensuring the next router call is instant (no cold start). Replaces the previous background-thread preload.
+- **Multimodal model is always resident (`ttl=0`, preload on startup)** — `app/llama_swap_config.py` generates `on_startup` hook that preloads the multimodal model into VRAM at container start, so the first user request gets an instant response.
+
+### 🔧 Improvements
+
+- **Removed VRAM unload/reload from camera and image-chat paths** — `_process_camera_task()`, `_process_camera_task_stream()`, `_process_image_chat_task()`, and `_process_image_chat_task_stream()` in `app/queue.py` no longer unload/reload the multimodal model before/after processing, since multimodal is always resident.
+- **Removed measured-VRAM inflation from `get_vram_needed_mb()`** — `app/resource_manager.py` no longer adds 1000 MB safety margin on top of measured VRAM, which caused stale `measured_vram_mb` values to exceed free VRAM and trigger infinite unload/reload loops. Now uses only estimated VRAM (file_size × 1.2).
+- **Deploy scripts updated** — `deploy.sh` and `deploy-ru.sh` no longer download the standalone Qwen3-4B chat model. Minimal llama-swap config generates multimodal as `default_model: multimodal` with `ttl: 0`. SD text encoder (Qwen3-4B) still downloaded separately for stable-diffusion.cpp.
+
+### 🐛 Bug Fixes
+
+- **Router proximity block (`-PROXIMITY-`) silently broken** — after the v9.3 release, the proximity detection (contact list matching in `_proximity_router.py`) was not being called because the base module's `_call_router()` method had an incorrect module lookup path. Fixed: corrected the proximity router invocation chain.
+- **Tool-service text sanitization** — raw LLM output containing tool-call artifacts was displayed to users. Added `_sanitize_tool_text()` in `app/queue.py` to strip orphaned tool markers from user-facing text.
+
 ## [v9.2] — 2026-08-19
 
 ### 🔒 Security

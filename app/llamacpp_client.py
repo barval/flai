@@ -268,7 +268,7 @@ class AbstractLlamaBackend:
         config: dict,
         timeout: int,
         lang: str,
-        model_type: str = "chat",
+        model_type: str = "multimodal",
         tools: list[dict] | None = None,
         temperature: float | None = None,
     ) -> str | dict[str, Any]:
@@ -281,7 +281,7 @@ class AbstractLlamaBackend:
         config: dict,
         timeout: int,
         lang: str,
-        model_type: str = "chat",
+        model_type: str = "multimodal",
         tools: list[dict] | None = None,
         temperature: float | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
@@ -324,7 +324,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         config: dict,
         timeout: int,
         lang: str,
-        model_type: str = "chat",
+        model_type: str = "multimodal",
         tools: list[dict] | None = None,
         temperature: float | None = None,
     ) -> str | dict[str, Any]:
@@ -404,7 +404,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         config: dict,
         timeout: int,
         lang: str,
-        model_type: str = "chat",
+        model_type: str = "multimodal",
         tools: list[dict] | None = None,
         temperature: float | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
@@ -641,7 +641,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         config: dict,
         timeout: int,
         lang: str,
-        model_type: str = "chat",
+        model_type: str = "multimodal",
         tools: list[dict] | None = None,
         temperature: float | None = None,
     ) -> str | dict[str, Any]:
@@ -666,7 +666,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
 
         self.logger.info(f"LlamaSwapBackend request: model={model}, payload keys={list(payload.keys())}")
 
-        max_retries = 1 if model_type in ("multimodal", "reasoning", "chat") else 0
+        max_retries = 1 if model_type in ("multimodal", "reasoning") else 0
 
         for attempt in range(max_retries + 1):
             cb = self._get_circuit_breaker(model_type)
@@ -761,7 +761,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         config: dict,
         timeout: int,
         lang: str,
-        model_type: str = "chat",
+        model_type: str = "multimodal",
         tools: list[dict] | None = None,
         temperature: float | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
@@ -800,7 +800,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
             # end-of-thinking tag and switch to the actual answer in time.
             payload["reasoning_budget"] = max(1024, int(ctx * 0.4))
 
-        max_retries = 1 if model_type in ("multimodal", "reasoning", "chat") else 0
+        max_retries = 1 if model_type in ("multimodal", "reasoning") else 0
         response = None
 
         try:
@@ -1018,7 +1018,8 @@ class LlamaCppClient:
 
     def check_availability(self) -> bool:
         self.available = self.backend.check_availability()
-        # If chat model is preloaded, mark it as active to skip full ensure_vram on first request
+        # If multimodal (the always-resident chat model) is preloaded, mark it as
+        # active to skip full ensure_vram on the first request.
         if self.available and self._active_model_type is None:
             try:
                 swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
@@ -1027,11 +1028,11 @@ class LlamaCppClient:
                     models = resp.json().get("running", [])
                     from app.model_config import get_model_config
 
-                    config = get_model_config("chat")
+                    config = get_model_config("multimodal")
                     model_name = config.get("model_name", "") if config else ""
                     if model_name and any(model_name in m.get("cmd", "") for m in models):
-                        self._active_model_type = "chat"
-                        self.logger.info("check_availability: chat model preloaded, marked as active")
+                        self._active_model_type = "multimodal"
+                        self.logger.info("check_availability: multimodal model preloaded, marked as active")
             except Exception:
                 pass
         if self.available:
@@ -1079,27 +1080,28 @@ class LlamaCppClient:
         """Ensure enough VRAM before a model call.
 
         Hybrid strategy:
-        - For chat: skip if already active (router→response same instance, ~0ms)
+        - For multimodal (always-resident chat model): skip if already active
         - For other types: stateless /running check (safe across workers, ~300ms)
         - Fallback: full unload + reload via ResourceManager
         """
-        # === Chat skip: router and response go through same base.py.llamacpp instance ===
-        if model_type == "chat" and self._active_model_type == "chat":
+        # === Multimodal skip: multimodal is the router+chat model. When active,
+        #     same instance serves router→response without unload/reload ===
+        if model_type == "multimodal" and self._active_model_type == "multimodal":
             # Quick sanity check: verify the model is actually still loaded
             try:
                 swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
                 resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=2)
                 if resp.status_code == 200:
                     models = resp.json().get("running", [])
-                    config = get_model_config("chat")
+                    config = get_model_config("multimodal")
                     model_name = config.get("model_name", "") if config else ""
                     if model_name and any(model_name in m.get("cmd", "") for m in models):
-                        self.logger.debug("VRAM skip: chat model already active")
+                        self.logger.debug("VRAM skip: multimodal model already active")
                         return True
             except Exception:
                 pass
             # Model was unloaded externally — clear flag and fall through to full ensure_vram
-            self.logger.debug("VRAM skip failed: chat model not in /running — full reload needed")
+            self.logger.debug("VRAM skip failed: multimodal model not in /running — full reload needed")
             self._active_model_type = None
 
         # === Stateless check: verify model is loaded via llama-swap + nvidia-smi ===
@@ -1149,7 +1151,7 @@ class LlamaCppClient:
     def chat(
         self,
         messages: list[dict],
-        model_type: str = "chat",
+        model_type: str = "multimodal",
         lang: str = "ru",
         validate: bool = True,
         tools: list[dict] | None = None,
@@ -1179,7 +1181,7 @@ class LlamaCppClient:
     def chat_stream(
         self,
         messages: list[dict],
-        model_type: str = "chat",
+        model_type: str = "multimodal",
         lang: str = "ru",
         validate: bool = True,
         tools: list[dict] | None = None,
@@ -1260,7 +1262,7 @@ class LlamaCppClient:
     def call(
         self,
         messages: list[dict],
-        model_type: str = "chat",
+        model_type: str = "multimodal",
         stream: bool = False,
         lang: str = "ru",
         validate: bool = True,

@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 9.2\n"
+"Project-Id-Version: FLAI 10.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-06-10 21:33+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -1213,7 +1213,7 @@ msgstr "Выйти"
 
 #: app/templates/base.html:78 app/templates/chat.html:167
 msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v9.3 (c) 2026 Барсуков Валерий"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v10.0 (c) 2026 Барсуков Валерий"
 
 #: app/templates/chat.html:14 app/templates/chat.html:178
 msgid "New document"

@@ -344,7 +344,7 @@ class RedisRequestQueue:
             return "none"
 
         if file_type and file_type.startswith("audio/"):
-            return "chat"
+            return "multimodal"
 
         if req_type == "image" and file_type and file_type.startswith("image/"):
             return "multimodal"
@@ -354,17 +354,17 @@ class RedisRequestQueue:
             return "reasoning"
 
         if req_type == "text":
-            return "chat"
+            return "multimodal"
 
-        return "chat"
+        return "multimodal"
 
     def _cleanup_vram_after_task(self, task: dict[str, Any]) -> None:
         """Free VRAM after a GPU-using task completes.
 
         Only unloads LTX-Video pipeline and restarts its container for video tasks.
-        Non-chat llama.cpp models (reasoning, multimodal, embedding) are NOT unloaded
-        here — their TTL=0 makes llama-swap unload them automatically after the response.
-        Chat model is NEVER unloaded here — it stays hot permanently (TTL=1 year).
+        llama.cpp models (reasoning, embedding) are NOT unloaded here — llama-swap
+        unloads them after their TTL. The multimodal model (router + chat + vision)
+        is reloaded in the background so the next router call is instant.
         """
         try:
             from app.resource_manager import get_resource_manager
@@ -382,18 +382,18 @@ class RedisRequestQueue:
                 module = self.app.modules.get(module_name)
                 if module and hasattr(module, "llamacpp"):
                     module.llamacpp.reset_active_model()
-            # Preload chat model in background so the next router call is instant
+            # Preload multimodal model in background so the next router call is instant
             self._preload_chat_model_background()
         except Exception as e:
             self.logger.debug(f"VRAM cleanup after task: {e}")
 
     def _preload_chat_model_background(self) -> None:
-        """Trigger chat model loading in llama-swap via a background thread.
+        """Trigger multimodal model loading in llama-swap via a background thread.
 
-        After a non-chat model finishes, llama-swap unloads it (TTL=0) and
-        the chat model is no longer in VRAM. This sends a tiny chat completion
-        request in a daemon thread to trigger llama-swap to load the chat model,
-        so the next router call doesn't suffer a cold start (~20-30s).
+        After a reasoning task, llama-swap unloads the reasoning model and the
+        multimodal (router + chat + vision) model is no longer in VRAM. This sends a
+        tiny multimodal completion request in a daemon thread to trigger llama-swap
+        to load it, so the next router call doesn't suffer a cold start.
         """
         try:
             import requests as req
@@ -402,15 +402,15 @@ class RedisRequestQueue:
 
             swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080").rstrip("/")
 
-            # Skip if chat model is already loaded
+            # Skip if multimodal model is already loaded
             try:
                 resp = req.get(f"{swap_url}/running", timeout=2)
                 if resp.status_code == 200:
                     running = resp.json().get("running", [])
-                    config = get_model_config("chat")
+                    config = get_model_config("multimodal")
                     model_name = config.get("model_name", "") if config else ""
                     if model_name and any(model_name in m.get("cmd", "") for m in running):
-                        self.logger.debug("Chat model already loaded, skipping preload")
+                        self.logger.debug("Multimodal model already loaded, skipping preload")
                         return
             except Exception:
                 pass
@@ -420,23 +420,69 @@ class RedisRequestQueue:
                     resp = req.post(
                         f"{swap_url}/v1/chat/completions",
                         json={
-                            "model": "chat",
+                            "model": "multimodal",
                             "messages": [{"role": "user", "content": "hi"}],
                             "max_tokens": 1,
                         },
                         timeout=60,
                     )
                     if resp.status_code == 200:
-                        self.logger.info("Chat model preloaded in background after non-chat task")
+                        self.logger.info("Multimodal model preloaded in background after non-multimodal task")
                     else:
-                        self.logger.debug(f"Chat preload returned {resp.status_code}")
+                        self.logger.debug(f"Multimodal preload returned {resp.status_code}")
                 except Exception as e:
-                    self.logger.debug(f"Background chat preload failed: {e}")
+                    self.logger.debug(f"Background multimodal preload failed: {e}")
 
             thread = threading.Thread(target=_do_preload, daemon=True)
             thread.start()
         except Exception as e:
-            self.logger.debug(f"Chat preload setup failed: {e}")
+            self.logger.debug(f"Multimodal preload setup failed: {e}")
+
+    def _preload_multimodal_sync(self, timeout: int = 60) -> None:
+        """Synchronously ensure the multimodal model is resident in VRAM.
+
+        Used at the end of a reasoning task — the user requires that after the
+        reasoning answer the multimodal (router + chat + vision) model is loaded
+        back immediately, so the next router call is instant. Blocks up to
+        ``timeout`` seconds while llama-swap swaps the model in.
+        """
+        try:
+            import requests as req
+
+            from app.model_config import get_model_config
+
+            swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080").rstrip("/")
+
+            resp = req.post(
+                f"{swap_url}/v1/chat/completions",
+                json={
+                    "model": "multimodal",
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "max_tokens": 1,
+                },
+                timeout=timeout,
+            )
+            if resp.status_code != 200:
+                self.logger.debug(f"Multimodal sync preload returned {resp.status_code}")
+                return
+
+            config = get_model_config("multimodal")
+            model_name = config.get("model_name", "") if config else ""
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                try:
+                    check = req.get(f"{swap_url}/running", timeout=2)
+                    if check.status_code == 200:
+                        running = check.json().get("running", [])
+                        if model_name and any(model_name in m.get("cmd", "") for m in running):
+                            self.logger.info("Multimodal model reloaded synchronously after reasoning")
+                            return
+                except Exception:
+                    pass
+                time.sleep(1)
+            self.logger.debug("Multimodal sync preload timed out before reaching 'running' state")
+        except Exception as e:
+            self.logger.debug(f"Multimodal sync preload failed: {e}")
 
     def _process_single_task(self, task: dict[str, Any], processing_key: str) -> None:
         """Process a single task: move to processing, execute, store result, cleanup."""
@@ -547,7 +593,7 @@ class RedisRequestQueue:
 
                 # GPU tasks must serialize with slow worker
                 model = self._get_model_for_task(task)
-                if model in ("chat", "multimodal", "reasoning", "embedding"):
+                if model in ("multimodal", "reasoning", "embedding"):
                     with self._gpu_lock:
                         self._process_single_task(task, self.processing_key)
                 else:
@@ -1534,6 +1580,12 @@ class RedisRequestQueue:
                 daemon=True,
             ).start()
 
+        # The user requires the multimodal (router + chat + vision) model to be
+        # loaded back immediately after the reasoning answer, so the next router
+        # call doesn't hit a cold start. llama-swap unloads reasoning after its
+        # TTL; reload multimodal synchronously before responding.
+        self._preload_multimodal_sync()
+
         return result
 
     def _process_video_request(self, task: dict[str, Any]) -> dict[str, Any]:
@@ -1959,14 +2011,8 @@ class RedisRequestQueue:
 
         messages = [first_message]
         if message_text and "multimodal" in self.app.modules and self.app.modules["multimodal"].available:
-            self._unload_llamacpp_models()
-            self._unload_video_pipeline()
-            if not self._wait_for_vram(self._get_vram_needed("multimodal")):
-                error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang=lang)
-                return {
-                    "messages": [self._build_error_response(session_id, error_msg, 0, lang)],
-                    "session_id": session_id,
-                }
+            # Multimodal model is always resident (router + chat + vision) — no
+            # VRAM unload/wait needed; it directly answers on the camera snapshot.
             mm_start = time.time()
             bot_reply, error = self.app.modules["multimodal"].process_image_with_text(
                 camera_result["image_data"],
@@ -2076,12 +2122,7 @@ class RedisRequestQueue:
             },
         )
 
-        # Stream description from multimodal model
-        self._unload_llamacpp_models()
-        self._unload_video_pipeline()
-        if not self._wait_for_vram(self._get_vram_needed("multimodal")):
-            error_msg = self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang=lang)
-            return self._build_error_response(session_id, error_msg, 0, lang)
+        # Stream description from multimodal model (always resident — no VRAM wait)
         stream_start = time.time()
         full_response = ""
         error_detected = False
@@ -2483,9 +2524,9 @@ class RedisRequestQueue:
             return self._save_and_respond(
                 session_id,
                 query,
-                self._get_model_name("chat") or "unknown",
+                self._get_model_name("multimodal") or "unknown",
                 router_time,
-                extra={"model_type": "chat"},
+                extra={"model_type": "multimodal"},
                 response_style=response_style,
                 user_id=user_id,
             )
@@ -2602,7 +2643,7 @@ class RedisRequestQueue:
         response_language = response_language_name(lang)
         context_str = base._get_context_for_model(  # noqa: SLF001
             session_id,
-            "chat",
+            "multimodal",
             query,
             lang,
             user_id=user_id,
@@ -2650,7 +2691,7 @@ class RedisRequestQueue:
                 iteration_text = ""
                 error_detected = False
                 stream_tool_calls: list[dict[str, Any]] | None = None
-                for chunk in llamacpp.chat_stream(messages, model_type="chat", lang=lang, tools=tools):
+                for chunk in llamacpp.chat_stream(messages, model_type="multimodal", lang=lang, tools=tools):
                     if isinstance(chunk, dict):
                         if chunk.get("type") == "tool_calls":
                             stream_tool_calls = chunk["tool_calls"]
@@ -2690,7 +2731,7 @@ class RedisRequestQueue:
                     self._publish_stream_event(task, "stream_cancelled")
                 break
 
-            response = llamacpp.chat(messages, model_type="chat", lang=lang, tools=tools)
+            response = llamacpp.chat(messages, model_type="multimodal", lang=lang, tools=tools)
 
             # If response is an error string
             if isinstance(response, str):
@@ -2759,9 +2800,9 @@ class RedisRequestQueue:
         result = self._save_and_respond(
             session_id,
             full_response,
-            self._get_model_name("chat") or "unknown",
+            self._get_model_name("multimodal") or "unknown",
             process_time,
-            extra={"model_type": "chat"},
+            extra={"model_type": "multimodal"},
             response_style=response_style,
             user_id=user_id,
         )
@@ -2815,7 +2856,7 @@ class RedisRequestQueue:
 
         result = self.app.modules["base"].call_llamacpp(
             [{"role": "user", "content": prompt}],
-            model_type="chat",
+            model_type="multimodal",
             lang=lang,
             temperature=0.1,
         )
@@ -3026,23 +3067,15 @@ class RedisRequestQueue:
             file_size = int((len(file_data) * 3) / 4) if file_data else 0
             is_valid, error = self.app.modules["multimodal"].validate_image(file_data, file_type, file_name, file_size)
             if is_valid:
-                self._unload_llamacpp_models()
-                self._unload_video_pipeline()
-                if not self._wait_for_vram(self._get_vram_needed("multimodal")):
-                    bot_reply = "⚠️ " + self.app.modules["base"]._(
-                        "GPU memory unavailable. Try again in a moment.", lang
-                    )
-                    process_time = round(time.time() - process_start, 1)
-                    is_error = True
-                else:
-                    bot_reply, error = self.app.modules["multimodal"].process_image_with_text(
-                        file_data,
-                        message_text,
-                        current_time_str,
-                        lang=lang,
-                        session_id=session_id,
-                        response_style=response_style,
-                    )
+                # Multimodal model is always resident — no VRAM unload/wait needed.
+                bot_reply, error = self.app.modules["multimodal"].process_image_with_text(
+                    file_data,
+                    message_text,
+                    current_time_str,
+                    lang=lang,
+                    session_id=session_id,
+                    response_style=response_style,
+                )
                 process_time = round(time.time() - process_start, 1)
                 if error:
                     bot_reply = f"⚠️ {error}"
@@ -3152,20 +3185,7 @@ class RedisRequestQueue:
                 response_style=response_style,
             )
 
-        self._unload_llamacpp_models()
-        self._unload_video_pipeline()
-        if not self._wait_for_vram(self._get_vram_needed("multimodal")):
-            bot_reply = "⚠️ " + self.app.modules["base"]._("GPU memory unavailable. Try again in a moment.", lang)
-            process_time = round(time.time() - process_start, 1)
-            return self._save_and_respond(
-                session_id,
-                bot_reply,
-                "system",
-                process_time,
-                is_error=True,
-                extra={"model_type": "system"},
-                response_style=response_style,
-            )
+        # Multimodal model is always resident — no VRAM unload/wait needed.
         stream_gen = self.app.modules["multimodal"].process_image_with_text_stream(
             file_data,
             message_text,

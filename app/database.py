@@ -186,27 +186,22 @@ def _init_postgresql():
     c.execute("CREATE INDEX IF NOT EXISTS idx_documents_index_status ON documents(index_status)")
 
     # Seed default model_configs if not present — architecture-aware
-    # MXFP4 on Blackwell GPUs (native FP4), Q4_0/Q4_K_M on others
+    # MXFP4 on Blackwell GPUs (native FP4), Q4_0/Q4_K_M on others.
+    # v10.0: multimodal model is the single chat model (router + chat + vision).
     c.execute("SELECT COUNT(*) as cnt FROM model_configs")
     if c.fetchone()["cnt"] == 0:
         from app.utils import is_blackwell_gpu
 
-        if is_blackwell_gpu():
-            chat_model = "Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf"
-            reasoning_model = "gpt-oss-20b-mxfp4"
-        else:
-            chat_model = "Qwen3-4B-Instruct-2507-Q4_0.gguf"
-            reasoning_model = "gpt-oss-20b-Q4_K_M"
+        reasoning_model = "gpt-oss-20b-mxfp4" if is_blackwell_gpu() else "gpt-oss-20b-Q4_K_M"
         c.execute(
             """
             INSERT INTO model_configs (module, model_name, context_length, temperature, top_p, timeout, service_url, repeat_penalty)
             VALUES
-                ('chat', %s, 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
-                ('reasoning', %s, 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.15),
                 ('multimodal', 'Qwen3VL-8B-Instruct-Q4_K_M', 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
+                ('reasoning', %s, 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.15),
                 ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://flai-llamacpp:8033', NULL)
         """,
-            (chat_model, reasoning_model),
+            (reasoning_model,),
         )
 
     # model_vram_estimates — stores computed estimates and actual VRAM measurements per model
@@ -335,31 +330,10 @@ def _init_postgresql():
         $migrate$
     """)
 
-    # Switch chat model back to Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf (Instruct, ~2 GB)
-    # Match both with and without .gguf suffix (admin panel may store either form)
-    for old_name in [
-        "Qwen3-1.7B-Q8_0.gguf",
-        "Qwen3-1.7B-Instruct-Q4_K_M",
-        "Qwen3-4B-Instruct-2507-Q4_K_M",
-        "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
-    ]:
-        c.execute(
-            """
-            UPDATE model_configs
-            SET model_name = 'Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf'
-            WHERE module = 'chat' AND model_name = %s
-        """,
-            (old_name,),
-        )
-
-    # Update chat model defaults: temperature 0.1→0.7, top_p 0.1→0.9
-    # (old values were for router classification, not suitable for chat responses)
-    c.execute("""
-        UPDATE model_configs
-        SET temperature = 0.7, top_p = 0.9
-        WHERE module = 'chat'
-          AND temperature = 0.1 AND top_p = 0.1
-    """)
+    # v10.0: chat module was merged into multimodal (single chat model).
+    # Drop any stray 'chat' row (including from restored pre-v10.0 backups) so
+    # the codebase can never fall back to a chat-only configuration.
+    c.execute("DELETE FROM model_configs WHERE module = 'chat'")
 
     # Update multimodal model context_length: 8192→16384
     # (8192 too small for vision token counts from Qwen3VL)

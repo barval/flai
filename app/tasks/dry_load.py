@@ -24,13 +24,11 @@ DRY_LOAD_POLL_INTERVAL_S = 1
 # MXFP4 variants used on Blackwell GPUs (native FP4 tensor cores),
 # standard Q4_0/Q4_K_M on all other NVIDIA GPUs.
 _FALLBACK_BLACKWELL: dict[str, str] = {
-    "chat": "Qwen3-4B-Instruct-2507-MXFP4_MOE",
     "reasoning": "gpt-oss-20b-mxfp4",
     "multimodal": "Qwen3VL-8B-Instruct-Q4_K_M",
     "embedding": "bge-m3-Q8_0",
 }
 _FALLBACK_UNIVERSAL: dict[str, str] = {
-    "chat": "Qwen3-4B-Instruct-2507-Q4_0",
     "reasoning": "gpt-oss-20b-Q4_K_M",
     "multimodal": "Qwen3VL-8B-Instruct-Q4_K_M",
     "embedding": "bge-m3-Q8_0",

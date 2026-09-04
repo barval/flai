@@ -346,15 +346,11 @@ class _MockDatabase:
 
         # INTO model_configs (seed from init_db)
         if "INTO MODEL_CONFIGS" in sql_u:
-            if params:
-                chat_model, reasoning_model = params
-            else:
-                chat_model = "Qwen3-4B-Instruct-2507-MXFP4_MOE"
-                reasoning_model = "gpt-oss-20b-mxfp4"
+            reasoning_model = params[0] if params else "gpt-oss-20b-mxfp4"
             defaults = [
                 {
-                    "module": "chat",
-                    "model_name": chat_model,
+                    "module": "multimodal",
+                    "model_name": "Qwen3VL-8B-Instruct-Q4_K_M",
                     "context_length": 16384,
                     "temperature": 0.7,
                     "top_p": 0.9,
@@ -373,16 +369,6 @@ class _MockDatabase:
                     "repeat_penalty": 1.15,
                 },
                 {
-                    "module": "multimodal",
-                    "model_name": "Qwen3VL-8B-Instruct-Q4_K_M",
-                    "context_length": 16384,
-                    "temperature": 0.7,
-                    "top_p": 0.9,
-                    "timeout": 120,
-                    "service_url": "http://flai-llamacpp:8033",
-                    "repeat_penalty": 1.1,
-                },
-                {
                     "module": "embedding",
                     "model_name": "bge-m3-Q8_0",
                     "context_length": 512,
@@ -394,7 +380,7 @@ class _MockDatabase:
                 },
             ]
             self._model_configs = defaults
-            self._result(None, rowcount=4)
+            self._result(None, rowcount=len(defaults))
             return
 
         # INTO chat_sessions

@@ -79,18 +79,15 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v9.2
+### What's New in v10.0
 
 | Feature | Notes |
 |---------|-------|
-| **Critical dependency updates** | CVE-2026-25645 (`requests` 2.31→≥2.33) and CVE-2025-71176 (`pytest` 7.4→≥9.0). Also upgraded: `gunicorn`→26.1, `redis`→8.x, `qdrant-client`→1.19, `pytest-cov`→7.x |
-| **RAG reconnection** | `RagModule` now retries 3× with 5s delay at startup and reconnects per-request if Qdrant was previously unavailable — no more permanent «RAG disabled» after container restarts |
-| **SLM recall latency halved** | Two sequential `slm.recall()` calls merged into one; cold start penalty reduced from ~39s to ~25s, semantic timeout 30s→15s |
-| **Image generation OOM prevention** | sd-wrapper selects optimal offload level based on available VRAM (model weights + VAE decode buffer), skipping levels guaranteed to OOM — no more double progress bars on 16 GB GPUs |
-| **Reasoning task retry-on-empty** | If the reasoning model returns only thinking blocks (empty answer after stripping), the task is retried once automatically. The model is already loaded on retry, so the second attempt is fast. No retry on cancellation or real model errors. |
-| **Streaming output freeze fix** | Token rendering throttled to 120 ms, sessionStorage writes to 500 ms — eliminates browser tab freezing during long generations |
-| **Router: document search fixed** | Category numbering mismatch resolved; queries like "Кто такой X?" now correctly route to `[-RAG-]` instead of `[-SEARCH-]` |
-| **Tool calls: single-quote JSON** | Small LLMs (Qwen3-4B) outputting Python-style dicts with single quotes are now parsed via `ast.literal_eval()` fallback |
+| **Two-model architecture** | Standalone "chat" model (Qwen3-4B) removed. Multimodal model (Qwen3VL-8B-Instruct) is now the single chat/router/vision model — always resident in VRAM (`ttl=0`, preload). After reasoning tasks, multimodal is reloaded synchronously before responding. |
+| **Admin panel simplified** | Separate "Chat Model" card removed from the models page. Multimodal model shows combined chat/router/vision role. |
+| **DB self-healing** | Stale chat model rows from v9.x backups are auto-deleted at startup (`DELETE FROM model_configs WHERE module = 'chat'`). |
+| **Sync multimodal reload** | After reasoning completes, `_preload_multimodal_sync()` waits up to 60 s for multimodal to reach running state — no cold-start delay on next request. |
+| **Simplified deploy scripts** | `deploy.sh` / `deploy-ru.sh` no longer download the standalone Qwen3-4B chat model. Minimal llama-swap config uses multimodal as default. |
 
 
 ### Core Components

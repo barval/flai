@@ -142,7 +142,7 @@ def _watchdog_loop(app: Any) -> None:
 
                 for model in running:
                     module = model.get("name", "")
-                    if not module or module not in ("chat", "reasoning", "multimodal", "embedding"):
+                    if not module or module not in ("reasoning", "multimodal", "embedding"):
                         continue
 
                     # Try a health check

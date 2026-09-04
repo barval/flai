@@ -86,7 +86,7 @@ class TestBaseModule:
             from modules.base import BaseModule
 
             module = BaseModule(test_app)
-            config = module._get_model_config("chat")
+            config = module._get_model_config("multimodal")
 
             assert config is not None
             assert "model_name" in config

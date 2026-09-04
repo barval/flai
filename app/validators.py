@@ -6,7 +6,7 @@ from typing import Any
 # Whitelist patterns
 LOGIN_PATTERN = re.compile(r"^[a-zA-Z0-9_\-]{3,50}$")
 NAME_PATTERN = re.compile(r"^[a-zA-Zа-яА-ЯёЁ0-9_\s\-]{2,100}$")
-MODULE_TYPES = {"chat", "reasoning", "multimodal", "embedding"}
+MODULE_TYPES = {"multimodal", "reasoning", "embedding"}
 
 
 class ValidationError(Exception):
@@ -76,7 +76,7 @@ def validate_model_config_update(data: dict[str, Any] | None, module: str) -> di
 
     Args:
         data: JSON data from request
-        module: Module type (chat, reasoning, multimodal, embedding)
+        module: Module type (multimodal, reasoning, embedding)
 
     Returns:
         Validated updates dict

@@ -24,7 +24,7 @@ class TestModelConfig:
     def test_get_model_config_returns_cached(self):
         """Should return cached data when updated_at matches DB."""
         cached_data = {"model_name": "test-model", "temperature": 0.7, "updated_at": _NOW}
-        model_config._MODEL_CONFIG_CACHE["chat"] = {"data": cached_data, "_updated_at": _NOW}
+        model_config._MODEL_CONFIG_CACHE["multimodal"] = {"data": cached_data, "_updated_at": _NOW}
 
         with patch("app.model_config.get_db") as mock_get_db:
             mock_conn = MagicMock()
@@ -33,11 +33,11 @@ class TestModelConfig:
             mock_conn.cursor.return_value = mock_cursor
             mock_get_db.return_value.__enter__.return_value = mock_conn
 
-            result = model_config.get_model_config("chat")
+            result = model_config.get_model_config("multimodal")
             assert result == cached_data
             # Only the lightweight updated_at check was executed
             mock_cursor.execute.assert_called_once_with(
-                "SELECT updated_at FROM model_configs WHERE module = %s", ("chat",)
+                "SELECT updated_at FROM model_configs WHERE module = %s", ("multimodal",)
             )
 
     def test_get_model_config_returns_none_for_missing(self):
@@ -49,12 +49,12 @@ class TestModelConfig:
             mock_conn.cursor.return_value = mock_cursor
             mock_get_db.return_value.__enter__.return_value = mock_conn
 
-            result = model_config.get_model_config("chat")
+            result = model_config.get_model_config("multimodal")
             assert result is None
 
     def test_get_model_config_queries_database(self):
         """Should query database if not in cache."""
-        db_row = {"module": "chat", "model_name": "qwen", "temperature": 0.7, "updated_at": _NOW}
+        db_row = {"module": "multimodal", "model_name": "qwen", "temperature": 0.7, "updated_at": _NOW}
         with patch("app.model_config.get_db") as mock_get_db:
             mock_conn = MagicMock()
             mock_cursor = MagicMock()
@@ -62,7 +62,7 @@ class TestModelConfig:
             mock_conn.cursor.return_value = mock_cursor
             mock_get_db.return_value.__enter__.return_value = mock_conn
 
-            result = model_config.get_model_config("chat")
+            result = model_config.get_model_config("multimodal")
 
             assert result == db_row
             # exec SELECT * because cache was empty
@@ -70,7 +70,7 @@ class TestModelConfig:
 
     def test_get_model_config_caches_result(self):
         """Should cache database result and reuse on subsequent calls."""
-        db_row = {"module": "chat", "model_name": "qwen", "updated_at": _NOW}
+        db_row = {"module": "multimodal", "model_name": "qwen", "updated_at": _NOW}
 
         with patch("app.model_config.get_db") as mock_get_db:
             mock_conn = MagicMock()
@@ -79,8 +79,8 @@ class TestModelConfig:
             mock_conn.cursor.return_value = mock_cursor
             mock_get_db.return_value.__enter__.return_value = mock_conn
 
-            model_config.get_model_config("chat")
-            model_config.get_model_config("chat")
+            model_config.get_model_config("multimodal")
+            model_config.get_model_config("multimodal")
 
             # First call: SELECT * (cache miss)
             # Second call: SELECT updated_at (cache hit, matches)
@@ -101,9 +101,9 @@ class TestModelConfig:
             mock_conn.cursor.return_value = mock_cursor
             mock_get_db.return_value.__enter__.return_value = mock_conn
 
-            model_config._MODEL_CONFIG_CACHE["chat"] = {"data": old_row, "_updated_at": _NOW}
+            model_config._MODEL_CONFIG_CACHE["multimodal"] = {"data": old_row, "_updated_at": _NOW}
 
-            result = model_config.get_model_config("chat")
+            result = model_config.get_model_config("multimodal")
             assert result["model_name"] == "new-model"
 
     def test_get_model_config_deleted_row(self):
@@ -115,25 +115,25 @@ class TestModelConfig:
             mock_conn.cursor.return_value = mock_cursor
             mock_get_db.return_value.__enter__.return_value = mock_conn
 
-            model_config._MODEL_CONFIG_CACHE["chat"] = {"data": {"model": "old"}, "_updated_at": _NOW}
+            model_config._MODEL_CONFIG_CACHE["multimodal"] = {"data": {"model": "old"}, "_updated_at": _NOW}
 
-            result = model_config.get_model_config("chat")
+            result = model_config.get_model_config("multimodal")
             assert result is None
-            assert "chat" not in model_config._MODEL_CONFIG_CACHE
+            assert "multimodal" not in model_config._MODEL_CONFIG_CACHE
 
     def test_invalidate_model_config_cache_specific(self):
         """Should invalidate specific module cache."""
-        model_config._MODEL_CONFIG_CACHE["chat"] = {"data": {"model": "a"}, "_updated_at": _NOW}
+        model_config._MODEL_CONFIG_CACHE["multimodal"] = {"data": {"model": "a"}, "_updated_at": _NOW}
         model_config._MODEL_CONFIG_CACHE["embedding"] = {"data": {"model": "b"}, "_updated_at": _NOW}
 
-        model_config.invalidate_model_config_cache("chat")
+        model_config.invalidate_model_config_cache("multimodal")
 
-        assert "chat" not in model_config._MODEL_CONFIG_CACHE
+        assert "multimodal" not in model_config._MODEL_CONFIG_CACHE
         assert "embedding" in model_config._MODEL_CONFIG_CACHE
 
     def test_invalidate_model_config_cache_all(self):
         """Should invalidate all cache if no module specified."""
-        model_config._MODEL_CONFIG_CACHE["chat"] = {"data": {"model": "a"}, "_updated_at": _NOW}
+        model_config._MODEL_CONFIG_CACHE["multimodal"] = {"data": {"model": "a"}, "_updated_at": _NOW}
         model_config._MODEL_CONFIG_CACHE["embedding"] = {"data": {"model": "b"}, "_updated_at": _NOW}
 
         model_config.invalidate_model_config_cache()
@@ -142,12 +142,12 @@ class TestModelConfig:
 
     def test_get_model_config_fallback_on_db_error(self):
         """Should return cached data on DB error."""
-        model_config._MODEL_CONFIG_CACHE["chat"] = {"data": {"model_name": "fallback"}, "_updated_at": _NOW}
+        model_config._MODEL_CONFIG_CACHE["multimodal"] = {"data": {"model_name": "fallback"}, "_updated_at": _NOW}
 
         with patch("app.model_config.get_db") as mock_get_db:
             mock_get_db.return_value.__enter__.side_effect = Exception("DB error")
 
-            result = model_config.get_model_config("chat")
+            result = model_config.get_model_config("multimodal")
             assert result == {"model_name": "fallback"}
 
     def test_get_model_config_returns_none_on_db_error_no_cache(self):
@@ -155,13 +155,13 @@ class TestModelConfig:
         with patch("app.model_config.get_db") as mock_get_db:
             mock_get_db.return_value.__enter__.side_effect = Exception("DB error")
 
-            result = model_config.get_model_config("chat")
+            result = model_config.get_model_config("multimodal")
             assert result is None
 
     def test_reload_all_model_configs(self):
         """Should reload all configs from DB."""
         rows = [
-            {"module": "chat", "model_name": "chat-model", "updated_at": _NOW},
+            {"module": "multimodal", "model_name": "chat-model", "updated_at": _NOW},
             {"module": "reasoning", "model_name": "reason-model", "updated_at": _NOW},
         ]
 
@@ -175,7 +175,7 @@ class TestModelConfig:
             result = model_config.reload_all_model_configs()
 
             assert len(result) == 2
-            assert "chat" in model_config._MODEL_CONFIG_CACHE
+            assert "multimodal" in model_config._MODEL_CONFIG_CACHE
             assert "reasoning" in model_config._MODEL_CONFIG_CACHE
 
 
@@ -195,14 +195,14 @@ class TestModelConfigNoUpdatedAt:
             mock_cursor = MagicMock()
             mock_cursor.fetchone.side_effect = [
                 {"updated_at": _NOW},  # freshness check
-                {"module": "chat", "model_name": "m1", "updated_at": _NOW},  # full read
+                {"module": "multimodal", "model_name": "m1", "updated_at": _NOW},  # full read
             ]
             mock_conn.cursor.return_value = mock_cursor
             mock_get_db.return_value.__enter__.return_value = mock_conn
 
-            model_config._MODEL_CONFIG_CACHE["chat"] = {"data": {"model": "old"}}
+            model_config._MODEL_CONFIG_CACHE["multimodal"] = {"data": {"model": "old"}}
 
-            result = model_config.get_model_config("chat")
+            result = model_config.get_model_config("multimodal")
             assert result["model_name"] == "m1"
             # Should have executed SELECT * (not just updated_at)
             args = mock_cursor.execute.call_args

@@ -138,7 +138,7 @@ class BaseModule(TranslationMixin):
         else:
             self.logger.warning("BaseModule initialized, but llama-server is unavailable")
 
-    def _get_model_config(self, model_type: str = "chat") -> dict[str, Any] | None:
+    def _get_model_config(self, model_type: str = "multimodal") -> dict[str, Any] | None:
         """Retrieve model configuration from database."""
         from app.model_config import get_model_config
 
@@ -147,7 +147,7 @@ class BaseModule(TranslationMixin):
     def call_llamacpp(
         self,
         messages: list[dict[str, Any]],
-        model_type: str = "chat",
+        model_type: str = "multimodal",
         lang: str = "ru",
         tools: list[dict[str, Any]] | None = None,
         temperature: float | None = None,
@@ -170,7 +170,7 @@ class BaseModule(TranslationMixin):
         budget = int(ctx * (self.context_history_percent / 100.0) * self.safety_margin)
         return int(budget * 0.30 * 3.5)
 
-    def _estimate_tokens(self, text: str, model_type: str = "chat", lang: str = "ru") -> int:
+    def _estimate_tokens(self, text: str, model_type: str = "multimodal", lang: str = "ru") -> int:
         """Token estimation with language and model-specific coefficients."""
         return estimate_tokens(text, model_type, lang, self.token_chars)
 
@@ -289,7 +289,7 @@ class BaseModule(TranslationMixin):
 
         return context
 
-    def _validate_final_prompt(self, prompt: str, model_type: str = "chat", lang: str = "ru") -> str | None:
+    def _validate_final_prompt(self, prompt: str, model_type: str = "multimodal", lang: str = "ru") -> str | None:
         """
         Validate final prompt before sending to llama-server.
         Returns None if valid, error message string if invalid.
@@ -415,7 +415,7 @@ class BaseModule(TranslationMixin):
             return {"error": self._("Error loading prompt template", lang)}
 
         # Validate final prompt before sending
-        error = self._validate_final_prompt(prompt, "chat", lang)
+        error = self._validate_final_prompt(prompt, "multimodal", lang)
         if error:
             return {"error": error}
 
@@ -428,13 +428,13 @@ class BaseModule(TranslationMixin):
         ]
 
         self.logger.info(f"Sending request to router: {message_text[:100]}...")
-        router_response = self.call_llamacpp(router_messages, model_type="chat", lang=lang, temperature=0.1)
+        router_response = self.call_llamacpp(router_messages, model_type="multimodal", lang=lang, temperature=0.1)
         self.logger.info(f"Router response: {router_response}")
 
         # Retry once if router produced a garbled response (rare model inference glitch)
         if isinstance(router_response, str) and router_response.strip().startswith('{"error"'):
             self.logger.warning(f"Router returned error, retrying once: {router_response[:100]}")
-            router_response = self.call_llamacpp(router_messages, model_type="chat", lang=lang, temperature=0.1)
+            router_response = self.call_llamacpp(router_messages, model_type="multimodal", lang=lang, temperature=0.1)
             self.logger.info(f"Router retry response: {router_response}")
 
         if router_response is None:

@@ -174,8 +174,6 @@ def estimate_parameters_from_filename(filename: str) -> str:
 # Token estimation coefficients for different languages and model types
 # Format: (model_type, language) -> characters per token
 TOKEN_COEFFICIENTS = {
-    ("chat", "ru"): 2.2,
-    ("chat", "en"): 3.5,
     ("reasoning", "ru"): 2.0,
     ("reasoning", "en"): 3.2,
     ("multimodal", "ru"): 2.5,
@@ -850,13 +848,15 @@ def chunk_text_recursive(
     return merged
 
 
-def estimate_tokens(text: str, model_type: str = "chat", lang: str = "ru", token_chars: float | None = None) -> int:
+def estimate_tokens(
+    text: str, model_type: str = "multimodal", lang: str = "ru", token_chars: float | None = None
+) -> int:
     """
     Estimate tokens based on characters per token with language and model-specific coefficients.
 
     Args:
         text: Input text to estimate
-        model_type: Type of model ('chat', 'reasoning', 'multimodal', 'embedding')
+        model_type: Type of model ('multimodal', 'reasoning', 'embedding')
         lang: Language code ('ru', 'en')
         token_chars: Override coefficient (if None, uses predefined coefficients)
 
@@ -891,7 +891,7 @@ def build_context_prompt(history: list[dict[str, str]], lang: str = "ru") -> str
 
 
 def validate_prompt_size(
-    prompt: str, model_config: dict[str, Any], model_type: str = "chat", lang: str = "ru"
+    prompt: str, model_config: dict[str, Any], model_type: str = "multimodal", lang: str = "ru"
 ) -> tuple[bool, int, int]:
     """
     Validate that prompt fits within model's context window with safety margin.

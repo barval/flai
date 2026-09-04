@@ -95,7 +95,7 @@ class TestComputeConfig:
         mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="nvidia-smi not found")
         rm = ResourceManager()
         rm.detect_hardware()
-        cfg = rm.compute_llamacpp_config("chat")
+        cfg = rm.compute_llamacpp_config("multimodal")
 
         assert cfg["n_gpu_layers"] == 0
         assert cfg["flash_attn"] is False
@@ -114,7 +114,7 @@ class TestComputeConfig:
         )
         rm = ResourceManager()
         rm.detect_hardware()
-        cfg = rm.compute_llamacpp_config("chat")
+        cfg = rm.compute_llamacpp_config("multimodal")
 
         assert cfg["n_gpu_layers"] == -1
         assert cfg["flash_attn"] is True
@@ -132,7 +132,7 @@ class TestComputeConfig:
         )
         rm = ResourceManager()
         rm.detect_hardware()
-        cfg = rm.compute_llamacpp_config("chat")
+        cfg = rm.compute_llamacpp_config("multimodal")
 
         assert cfg["flash_attn"] is True
         assert cfg["offload_kqv"] is True or cfg["n_gpu_layers"] == -1
@@ -149,7 +149,7 @@ class TestComputeConfig:
         )
         rm = ResourceManager()
         rm.detect_hardware()
-        cfg = rm.compute_llamacpp_config("chat")
+        cfg = rm.compute_llamacpp_config("multimodal")
 
         assert cfg["flash_attn"] is True
         assert cfg["offload_kqv"] is True
@@ -169,7 +169,7 @@ class TestComputeConfig:
         )
         rm = ResourceManager()
         rm.detect_hardware()
-        cfg = rm.compute_llamacpp_config("chat")
+        cfg = rm.compute_llamacpp_config("multimodal")
 
         assert cfg["n_gpu_layers"] == 0
         assert cfg["flash_attn"] is True
@@ -211,7 +211,7 @@ class TestComputeConfig:
         rm = ResourceManager()
         rm.detect_hardware()
         # Should not raise NameError on any model type
-        for mt in ["chat", "multimodal", "reasoning", "embedding"]:
+        for mt in ["multimodal", "reasoning", "embedding"]:
             cfg = rm.compute_llamacpp_config(mt)
             assert "n_gpu_layers" in cfg
             assert cfg["n_gpu_layers"] is not None
@@ -238,7 +238,7 @@ class TestComputeConfig:
             }
             rm = ResourceManager()
             rm.detect_hardware()
-            cfg = rm.compute_llamacpp_config("chat")
+            cfg = rm.compute_llamacpp_config("multimodal")
             assert cfg["ctx_size"] == 16384
 
         with patch("app.model_config.get_model_config") as mock_cfg:
@@ -269,7 +269,7 @@ class TestComputeConfig:
             }
             rm = ResourceManager()
             rm.detect_hardware()
-            cfg = rm.compute_llamacpp_config("chat")
+            cfg = rm.compute_llamacpp_config("multimodal")
             # 8GB tier caps ctx_size to 4096 regardless of DB config
             assert cfg["ctx_size"] == 4096
 

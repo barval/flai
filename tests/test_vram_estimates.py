@@ -225,7 +225,7 @@ class TestUpsertVramEstimate:
         store: dict = {}
         with patch("app.database.get_db", _make_db(store)):
             upsert_vram_estimate(
-                module="chat",
+                module="multimodal",
                 model_name="Qwen3-4B.gguf",
                 context_length=16384,
                 n_gpu_layers=28,
@@ -233,14 +233,14 @@ class TestUpsertVramEstimate:
                 measured_mb=2400,
             )
             upsert_vram_estimate(
-                module="chat",
+                module="multimodal",
                 model_name="Qwen3-4B.gguf",
                 context_length=16384,
                 n_gpu_layers=28,
                 estimated_mb=2500,
                 measured_mb=2600,
             )
-        row = store[("chat", "Qwen3-4B.gguf")]
+        row = store[("multimodal", "Qwen3-4B.gguf")]
         assert row["measurement_count"] == 2
         # weighted average of [2400, 2600] → ≈ 2466
         assert 2450 <= row["measured_vram_mb"] <= 2470
@@ -251,7 +251,7 @@ class TestUpsertVramEstimate:
         with patch("app.database.get_db", _make_db(store)):
             # First insert with no measurement
             upsert_vram_estimate(
-                module="chat",
+                module="multimodal",
                 model_name="Qwen3-4B.gguf",
                 context_length=8192,
                 n_gpu_layers=28,
@@ -259,13 +259,13 @@ class TestUpsertVramEstimate:
             )
             # Now adjust context — should not touch measurements (still 0)
             upsert_vram_estimate(
-                module="chat",
+                module="multimodal",
                 model_name="Qwen3-4B.gguf",
                 context_length=16384,
                 n_gpu_layers=28,
                 estimated_mb=2500,
             )
-        row = store[("chat", "Qwen3-4B.gguf")]
+        row = store[("multimodal", "Qwen3-4B.gguf")]
         assert row["context_length"] == 16384
         assert row["estimated_vram_mb"] == 2500
         assert row["measurement_count"] == 0

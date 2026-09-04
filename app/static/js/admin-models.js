@@ -54,7 +54,6 @@ function renderModelCards() {
     }
 
     const modules = [
-        { id: 'chat', name: 'Chat', config: currentModelConfigs.chat || {} },
         { id: 'reasoning', name: 'Reasoning', config: currentModelConfigs.reasoning || {} },
         { id: 'multimodal', name: 'Multimodal', config: currentModelConfigs.multimodal || {} },
         { id: 'embedding', name: 'Embedding', config: currentModelConfigs.embedding || {} }

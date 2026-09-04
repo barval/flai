@@ -231,7 +231,6 @@ class ResourceManager:
 
         # Fallback to approximate sizes if cache data unavailable
         model_vram = {
-            "chat": 2500,
             "multimodal": 5000,
             "reasoning": 10000,
             "embedding": 2000,
@@ -387,12 +386,12 @@ class ResourceManager:
 
         # Fallback block_count when GGUF metadata missing
         if block_count == 0:
-            default_blocks = {"chat": 28, "reasoning": 40, "multimodal": 36, "embedding": 12}
+            default_blocks = {"reasoning": 40, "multimodal": 36, "embedding": 12}
             block_count = default_blocks.get(model_type, 30)
 
         # Fallback file_size when GGUF metadata missing
         if file_size_mb == 0:
-            default_sizes = {"chat": 2500, "reasoning": 12000, "multimodal": 5000, "embedding": 2000}
+            default_sizes = {"reasoning": 12000, "multimodal": 5000, "embedding": 2000}
             file_size_mb = default_sizes.get(model_type, 3000)
 
         # n_gpu_layers from the same logic used for llama-swap config
@@ -421,23 +420,14 @@ class ResourceManager:
 
         total = int(weights_mb + kv_mb + overhead)
 
-        # Prefer measured VRAM from model_vram_estimates when available —
-        # far more accurate than GGUF formula (e.g. multimodal measured 10367 MB
-        # vs formula 6178 MB, chat 5733 vs 4410). Adds 1 GB safety margin
-        # to keep headroom for CUDA fragmentation and temporary buffers.
-        # The table stores rows under either the actual file name (e.g.
-        # "Qwen3-4B-Instruct-2507-MXFP4_MOE.gguf") or the module name
-        # (e.g. "chat") — try most-recent record for the module first
-        # (newer measurement), then exact model_name match.
-        try:
-            from app.database import get_vram_estimate
-
-            measured = get_vram_estimate(model_type) or get_vram_estimate(model_type, model_name)
-            if measured and measured.get("measured_vram_mb"):
-                measured_mb = int(measured["measured_vram_mb"])
-                total = max(total, measured_mb + 1000)
-        except Exception:
-            pass
+        # NOTE: measured VRAM from model_vram_estimates is intentionally NOT used
+        # here. In the pre-v10.0 architecture multiple llama.cpp models were often
+        # co-resident, so the "measured" value attributed the GPU-wide usage of
+        # several loaded models to a single module (e.g. multimodal ≈ 10367 MB when
+        # the chat model was also resident). This inflated estimate made
+        # ensure_vram_for() reserve too much and caused spurious partial offloads.
+        # Since v10.0 keeps only ONE llama.cpp model resident at a time (multimodal
+        # XOR reasoning), the GGUF formula above is accurate and reliable.
 
         return max(total, 100)
 

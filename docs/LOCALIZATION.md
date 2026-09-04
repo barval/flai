@@ -1,8 +1,10 @@
-# Localization (i18n) — FLAI v9.2
+# Localization (i18n) — FLAI v10.0
 
 This document describes the localization system, Flask-Babel usage, and rules for translating READMEs. Read it when adding user-facing strings or updating README files.
 
-> **v9.2 change:** No new i18n keys added. Version bump to v9.2 in `.po` headers and footer strings only.
+> **v10.0 note:** Version bump to v10.0 in `.po` headers and footer strings only. No new i18n keys — the removed chat model card in the admin panel was already untranslated.
+
+> **Note (v9.2):** No new i18n keys added. Version bump to v9.2 in `.po` headers and footer strings only.
 
 > **v9.1 change:** No new i18n keys added. The web search content extraction feature (`trafilatura`) uses English-only log messages in `modules/search.py`.
 

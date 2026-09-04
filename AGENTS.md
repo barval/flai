@@ -1,4 +1,4 @@
-# AGENTS.md — FLAI v9.2
+# AGENTS.md — FLAI v10.0
 
 > **Read this file first.** It contains the project's constitution: commands, critical rules, and hard constraints.
 > For deep technical details, see the `docs/` directory.
@@ -62,7 +62,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 ```
 
 ## Architecture Overview
-FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVIDIA GPU (8/12/16+ GB)**. It orchestrates multiple models (chat, reasoning, multimodal, embedding, SD, LTX-Video) through a strict GPU queue with VRAM-aware scheduling.
+FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVIDIA GPU (8/12/16+ GB)**. It orchestrates multiple models (multimodal, reasoning, embedding, SD, LTX-Video) through a strict GPU queue with VRAM-aware scheduling.
   - **Entrypoint:** `app/__init__.py:create_app()` (Flask)
   - **Blueprints:** `app/routes/` — auth, chat, admin, queue, tts, messages, sessions, documents, backups, events, debug
   - **Modules:** `modules/` — base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm, search, video

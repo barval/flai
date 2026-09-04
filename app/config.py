@@ -97,18 +97,18 @@ def load_config(app):
     app.config["SEARXNG_URL"] = os.getenv("SEARXNG_URL")
     app.config["SEARXNG_TIMEOUT"] = int(os.getenv("SEARXNG_TIMEOUT", 10))
     app.config["SEARXNG_MAX_RESULTS"] = int(os.getenv("SEARXNG_MAX_RESULTS", 7))
-    app.config["SEARXNG_MAX_RESULTS_CHARS"] = int(os.getenv("SEARXNG_MAX_RESULTS_CHARS", 7000))
+    app.config["SEARXNG_MAX_RESULTS_CHARS"] = int(os.getenv("SEARXNG_MAX_RESULTS_CHARS", 5000))
     app.config["RAG_MAX_RESULTS_CHARS"] = int(os.getenv("RAG_MAX_RESULTS_CHARS", 5000))
 
     # Token estimation settings
     app.config["TOKEN_CHARS"] = int(os.getenv("TOKEN_CHARS", 3))
-    app.config["CONTEXT_HISTORY_PERCENT"] = int(os.getenv("CONTEXT_HISTORY_PERCENT", 75))
+    app.config["CONTEXT_HISTORY_PERCENT"] = int(os.getenv("CONTEXT_HISTORY_PERCENT", 80))
 
     # NEW: Context safety margin (use only 85% of calculated capacity)
     app.config["CONTEXT_SAFETY_MARGIN"] = float(os.getenv("CONTEXT_SAFETY_MARGIN", 0.85))
 
     # NEW: Maximum messages to load from history
-    app.config["MAX_HISTORY_MESSAGES"] = int(os.getenv("MAX_HISTORY_MESSAGES", 30))
+    app.config["MAX_HISTORY_MESSAGES"] = int(os.getenv("MAX_HISTORY_MESSAGES", 15))
 
     # NEW: Enable token estimation debugging
     app.config["DEBUG_TOKEN_ESTIMATION"] = os.getenv("DEBUG_TOKEN_ESTIMATION", "false").lower() == "true"

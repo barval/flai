@@ -2506,6 +2506,23 @@ class RedisRequestQueue:
             expose_tools=True,
         )
 
+    def _sanitize_tool_service_text(self, text: str) -> str:
+        """Remove pseudo-service tool output that the small chat model sometimes
+        fabricates (e.g. "Operation: get_current_time\\nResult: 14:28:51...")
+        instead of answering directly. Retains the actual result content."""
+        if not text:
+            return text
+        # Match "Operation: <tool>" optionally followed by "Result: <value>"
+        # and strip the prefixes, keeping only the meaningful value(s).
+        lines = text.splitlines()
+        cleaned = [
+            line
+            for line in lines
+            if not re.match(r"^\s*(Операция|Результат|Инструмент|Operation|Result|Tool)\s*[:：]", line)
+        ]
+        cleaned_text = "\n".join(cleaned).strip()
+        return cleaned_text if cleaned_text else text
+
     def _run_tool_calls(
         self,
         task: dict[str, Any],
@@ -2735,6 +2752,8 @@ class RedisRequestQueue:
                     round(time.time() - stream_start, 1),
                     lang,
                 )
+
+        full_response = self._sanitize_tool_service_text(full_response)
 
         process_time = round(time.time() - stream_start, 1)
         result = self._save_and_respond(

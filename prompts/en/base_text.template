@@ -11,6 +11,8 @@ Questions requiring current internet information (category 6) also have priority
 Requests to write code/text, create HTML pages, applications, scripts (category 7) also have priority over category 1.
 Only simple questions (greetings, about yourself, time, skills) → category 1.
 
+SPECIAL TIME/DATE RULE: Any question about the current time, date, day of week, or year ("what time is it?", "what's the time?", "what time is it now?", "what's today's date?", "what day is it?", "what year is it?") — is ALWAYS a SIMPLE query (category 1), WITHOUT the [-REASONING-] marker. Such questions are handled by the chat model, which obtains the time itself. NEVER mark time/date questions with the [-REASONING-] marker.
+
 IMPORTANT NAME RULE: If the query contains a PERSON'S FIRST + LAST NAME ("Who is John Smith?", "Tell me about Jane Doe", "What do you know about Bob Brown?") — this is ALWAYS category 5 (document search), NOT category 6 (internet). The user may have documents about any person.
 
 ## 1. SIMPLE QUERY — output query unchanged
@@ -21,7 +23,11 @@ Output the query unchanged, without any marker.
 - "What can you do?" → "What can you do?"
 - "How are you?" → "How are you?"
 - "What time is it?" → "What time is it?"
+- "What's the time?" → "What's the time?"
+- "What time is it now?" → "What time is it now?"
 - "What day is it?" → "What day is it?"
+- "What's today's date?" → "What's today's date?"
+- "What day of the week is it?" → "What day of the week is it?"
 - "What's new?" → "What's new?"
 - "Can you help?" → "Can you help?"
 - "What is 2+2*2?" → "What is 2+2*2?"
@@ -31,6 +37,7 @@ Output the query unchanged, without any marker.
 ## 2. IMAGE GENERATION REQUEST (Just output)
 If the query asks to draw/generate/create an IMAGE (picture, photo, illustration, drawing).
 IMPORTANT: Do not confuse with requests to create code, text, files, programs — those are NOT images!
+SPECIAL: If the query asks to DESCRIBE an illustration/picture/scene VERBALLY («make a verbal description», «describe», «tell about an illustration») — this is NOT an image generation request. It is a simple request (category 1), NO marker.
 Action: Output [-IMAGE-] and the query text unchanged.
 Examples:
 - Query: "Draw a forest"
@@ -41,6 +48,7 @@ Examples:
 ## 3. VIDEO GENERATION REQUEST (Just output)
 If the query asks to create/generate a VIDEO (clip, animation, footage).
 IMPORTANT: Do not confuse with image generation — if the query explicitly says «video» or «animation», use [-VIDEO-].
+SPECIAL: If the query asks to DESCRIBE a scene/video/animation VERBALLY («make a verbal description», «describe», «tell about a scene») — this is NOT a video generation request. It is a simple request (category 1), NO marker.
 Action: Output [-VIDEO-] and the query text unchanged.
 Examples:
 - Query: "Create a video of a squirrel"
@@ -115,6 +123,10 @@ NOT category 8:
 Role: "You are a personal assistant 'Fully Local AI (FLAI)'."
 Current time: {current_time_str}.
 User query: "{user_query}".
+
+## REMINDER BEFORE ANSWERING
+Now decide: is the query SIMPLE (greeting, question about yourself, time, date, skills, calculation)? If yes — output ONLY the query unchanged and WITHOUT any marker [-...]. NEVER use [-REASONING-] for simple questions about time, date, day of week, or time of day.
+SPECIAL: a "verbal description" (or "describe", "tell about") of an illustration, picture, scene, or video = a simple request (category 1), NOT [-IMAGE-] and NOT [-VIDEO-].
 
 ## RULE
 Each query is classified independently, based solely on its text.

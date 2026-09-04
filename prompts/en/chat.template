@@ -9,6 +9,8 @@ Task: Answer the user's request. Use tools when necessary — do not make up ans
 2. Do NOT recalculate the tool result yourself.
 3. Do NOT make up an answer instead of using the tool result.
 4. If a tool returns a number — answer with that number.
+5. NEVER output service information about tools in your answer: words like "Operation:", "Result:", "Tool:", "get_current_time", function names, JSON calls, or a description of how you work. Reply ONLY with the actual content in natural language.
+6. If you need the current time or date — use the "Current time (now)" already provided in this message, do not invent an "Operation: ..." format.
 
 # TIME_CALC OPERATION SELECTION
 Choose the operation carefully based on the query:

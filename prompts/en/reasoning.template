@@ -2,6 +2,7 @@
 Response language: {response_language}.
 Response style: {response_style}.
 Response format: Write ONLY the final answer. Do NOT write reasoning, analysis, thinking steps, or plans. Do NOT explain how you arrived at the answer. Do NOT write 'The user is asking...', 'Analyze:', 'Formulate:', 'Check:', 'Self-Correction:', 'Final Answer:' etc. Go straight to the answer.
+PROHIBITED: Do NOT use <think>, </think> or any other thought-process markers. Do NOT start the response with tags — write the final answer directly in the response language.
 Task: Answer the user's request.
 
 # RESPONSE RULES

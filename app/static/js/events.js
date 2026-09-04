@@ -503,6 +503,10 @@ function onStreamToken(data) {
     let indicatorSpan = null;
 
     if (!streamMsg) {
+        // Remove task-progress indicator ("Загружаю модель...") once
+        // the first stream_token arrives — the model is now responding.
+        _removeProgressElement(data.task_id);
+
         // Create new message element with proper structure
         streamMsg = document.createElement('div');
         streamMsg.className = 'assistant-message bot-message';
@@ -689,6 +693,26 @@ function onResultCompleted(data) {
     }
 
     const expectedSessionId = reqInfo.sessionId;
+
+    // Re-queue case (RAG/video/image): the task completed but spawned a new queue
+    // entry with a different request_id. The old streaming message in the DOM is
+    // just an intermediate placeholder — remove it so the new task's streaming
+    // message doesn't create a duplicate.
+    if (data.result && data.result.status === 'queued' && data.result.request_id) {
+        const oldMsg = document.querySelector('.assistant-message[data-task-id="' + data.task_id + '"]');
+        if (oldMsg) oldMsg.remove();
+        _clearStreamFromSessionStorage(data.task_id);
+        clearPendingRequest(data.task_id);
+        trackPendingRequest(data.result.request_id, expectedSessionId);
+        // Keep processing=true locally — don't call fetchQueueStatus() here
+        // because it rebuilds sessionQueueInfo from scratch. If the server
+        // hasn't registered the new reasoning task yet, it would overwrite
+        // processing=true with false, causing ⚡ to flicker off in the sidebar.
+        // The normal 5s poll will sync with the server shortly.
+        sessionQueueInfo[expectedSessionId] = { processing: true, queued: 0, queue_position: 0, has_transcribing: false };
+        if (typeof updateStatusCounter === 'function') updateStatusCounter();
+        return;
+    }
 
     // Handle streamed completion differently
     if (reqInfo.accumulatedContent !== undefined) {

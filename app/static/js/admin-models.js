@@ -6,6 +6,17 @@ let currentModelConfigs = {};
 let modelDetails = {};
 let modelListCache = {};
 
+// Parse a fetch Response as JSON, producing a readable error message when the
+// server returns HTML (e.g. a 500 debug page) instead of JSON.
+async function safeJson(resp) {
+    const text = await resp.text();
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        throw new Error('HTTP ' + resp.status + ' ' + resp.statusText + (text ? ' — ' + text.slice(0, 120) : ''));
+    }
+}
+
 function initAdminTabs() {
     const tabs = document.querySelectorAll('.admin-tab');
     tabs.forEach(tab => {
@@ -759,7 +770,7 @@ function initChunksSection() {
                     rag_threshold_reasoning: thresholdReasoning
                 })
             });
-            const result = await response.json();
+            const result = await safeJson(response);
             if (result.ok) {
                 if (result.reindex_triggered) {
                     alert(t('chunks_saved'));
@@ -802,7 +813,7 @@ document.addEventListener('DOMContentLoaded', function() {
             this.textContent = '🔄 ' + t('Loading...');
             try {
                 const resp = await fetchWithCSRF('/admin/api/refresh-gguf-cache', { method: 'POST' });
-                const data = await resp.json();
+                const data = await safeJson(resp);
                 if (data.status === 'ok') {
                     modelDetails = {};
                     modelListCache = {};

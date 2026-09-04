@@ -871,7 +871,7 @@ def estimate_tokens(text: str, model_type: str = "chat", lang: str = "ru", token
 
     # Apply safety margin to estimation
     estimated = len(text) / coeff + 1
-    return int(estimated * SAFETY_MARGIN)
+    return int(estimated)
 
 
 def build_context_prompt(history: list[dict[str, str]], lang: str = "ru") -> str:
@@ -1216,27 +1216,52 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
             for pattern in gguf_patterns:
                 for f in glob.glob(pattern, recursive=True):
                     if os.path.basename(f) == model_name + ".gguf":
-                        # Scan from file
-                        scanned: dict[str, Any]
+                        # Scan from file. Initialize scanned BEFORE the try:
+                        # GGUFReader may fail on files with unknown quant types
+                        # (e.g. PrismML ternary dtype 42) - the model must still
+                        # land in the cache with size-only metadata.
+                        scanned: dict[str, Any] = {
+                            "context_length": None,
+                            "embedding_length": None,
+                            "architecture": None,
+                            "block_count": None,
+                            "expert_count": None,
+                            "head_count": None,
+                            "head_count_kv": None,
+                            "key_length": None,
+                            "value_length": None,
+                            "parameter_count": None,
+                            "supports_mtp": False,
+                            "file_size_mb": os.path.getsize(f) / (1024 * 1024),
+                        }
                         try:
                             from gguf import GGUFReader
+                            from gguf.constants import GGML_QUANT_SIZES, GGMLQuantizationType
 
-                            reader = GGUFReader(f)
+                            # Forward-compat: add unknown quant types so GGUFReader
+                            # can at least parse KV metadata (architecture, context_length)
+                            # even if it doesn't know the exact tensor data layout.
+                            # The scanner only reads fields[], not tensor data.
+                            for _dt in range(42, 64):
+                                if _dt not in GGMLQuantizationType._value2member_map_:
+                                    _m = int.__new__(GGMLQuantizationType, _dt)
+                                    _m._name_ = f"UNKNOWN_{_dt}"
+                                    _m._value_ = _dt
+                                    GGMLQuantizationType._member_map_[_dt] = _m  # type: ignore[index]
+                                    GGMLQuantizationType._value2member_map_[_dt] = _m
+                                    GGML_QUANT_SIZES[_m] = (1, 1)
+
+                            # _build_tensors() loads actual tensor data (requires correct
+                            # block_size/type_size). We only need KV metadata from fields[],
+                            # which is populated before _build_tensors runs. Patching it to
+                            # a no-op avoids reshape failures on unknown quant types.
+                            orig_build_tensors = GGUFReader._build_tensors
+                            GGUFReader._build_tensors = lambda self, *a, **kw: None  # type: ignore[method-assign]
+                            try:
+                                reader = GGUFReader(f)
+                            finally:
+                                GGUFReader._build_tensors = orig_build_tensors  # type: ignore[method-assign]
                             fields = reader.fields
-                            scanned = {
-                                "context_length": None,
-                                "embedding_length": None,
-                                "architecture": None,
-                                "block_count": None,
-                                "expert_count": None,
-                                "head_count": None,
-                                "head_count_kv": None,
-                                "key_length": None,
-                                "value_length": None,
-                                "parameter_count": None,
-                                "supports_mtp": False,
-                                "file_size_mb": os.path.getsize(f) / (1024 * 1024),
-                            }
                             arch_prefix = None
                             for key in fields:
                                 if key.endswith(".context_length") and scanned["context_length"] is None:
@@ -1286,15 +1311,13 @@ def sync_gguf_models_cache(models_dir: str = "/models") -> dict[str, Any]:
                                         val = _gguf_scalar(fields[mtp_key].parts[-1])
                                         if val is not None and int(val) > 0:
                                             scanned["supports_mtp"] = True
-                        except Exception:
-                            pass
-                        if (
-                            scanned.get("context_length")
-                            or scanned.get("embedding_length")
-                            or scanned.get("architecture")
-                        ):
-                            save_gguf_model_to_cache(model_name, scanned)
-                            cached[model_name] = scanned
+                        except Exception as e:
+                            logger.warning(f"GGUF metadata scan failed for {model_name}: {e}. Caching size-only entry.")
+                        # Cache whatever we got (size-only if the reader failed)
+                        # so the admin panel lists the file with unknown tier
+                        # instead of "metadata not found".
+                        save_gguf_model_to_cache(model_name, scanned)
+                        cached[model_name] = scanned
                         break
 
     return cached

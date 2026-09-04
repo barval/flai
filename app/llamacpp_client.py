@@ -81,6 +81,10 @@ def _translate_llama_swap_error(msg: str, lang: str = "ru") -> str:
         return _tr(
             "Model '{model}' is not available. Select a different model in admin panel.", lang, model=model_display
         )
+    if "upstream command exited prematurely" in lower:
+        return _tr("Model crashed during startup. Check model file compatibility and GPU memory.", lang)
+    if "no slot available" in lower:
+        return _tr("Server is busy. All slots are occupied. Please try again shortly.", lang)
     return msg
 
 
@@ -120,7 +124,10 @@ def _strip_thinking_tags(text: str) -> str:
     """
     if not text or ("<think" not in text and "<|channel|>" not in text):
         return text
+    # Strip closed <think> blocks first
     text = re.sub(r"<think[\s>][\s\S]*?</think>", "", text)
+    # Strip unclosed <think> blocks (model exhausted tokens on thinking, never produced answer)
+    text = re.sub(r"<think[\s>][\s\S]*$", "", text)
     # Strip <|channel|>analysis<|message|>...<|end|> reasoning blocks
     text = re.sub(r"<\|channel\|>analysis<\|message\|>[\s\S]*?<\|end\|>", "", text)
     text = re.sub(r"<\|channel\|>analysis<\|message\|>[\s\S]*$", "", text)
@@ -775,6 +782,23 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         }
         if tools:
             payload["tools"] = tools
+
+        # Allow reasoning model to use the full context window.
+        # With --reasoning_format deepseek, llama.cpp splits output into
+        # reasoning_content (thinking) and content (answer). The thinking can
+        # be very long — capping max_tokens too low starves the answer.
+        # _validate_final_prompt() already ensures the prompt fits within 95%
+        # of context, so llama.cpp will stop generation at the context limit.
+        if model_type == "reasoning":
+            ctx = config.get("context_length", 4096)
+            # Let the model use the full context window for generation
+            payload["max_tokens"] = ctx
+            # Cap the thinking/reasoning token budget. With --reasoning_format
+            # deepseek, a complex task can spend the ENTIRE context on
+            # reasoning_content and never produce an answer (empty content).
+            # Enforcing a thinking budget makes llama.cpp inject the
+            # end-of-thinking tag and switch to the actual answer in time.
+            payload["reasoning_budget"] = max(1024, int(ctx * 0.4))
 
         max_retries = 1 if model_type in ("multimodal", "reasoning", "chat") else 0
         response = None

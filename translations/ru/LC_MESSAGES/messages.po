@@ -2041,3 +2041,9 @@ msgstr ""
 #~ msgid "Refresh backup list"
 #~ msgstr "Обновить список резервных копий"
 
+
+msgid "Model crashed during startup. Check model file compatibility and GPU memory."
+msgstr "Модель аварийно завершилась при запуске. Проверьте совместимость файла модели и память GPU."
+
+msgid "Server is busy. All slots are occupied. Please try again shortly."
+msgstr "Сервер занят. Все слоты заняты. Попробуйте снова через несколько секунд."

@@ -163,7 +163,10 @@ def create_backup():
                             for fname in files:
                                 filepath = os.path.join(root, fname)
                                 arcname = os.path.relpath(filepath, os.path.join(project_root, "data"))
-                                tar.add(filepath, arcname=arcname)
+                                try:
+                                    tar.add(filepath, arcname=arcname)
+                                except (PermissionError, OSError) as e:
+                                    logger.warning(f"Skipping file in backup: {filepath}: {e}")
 
                 # Include SLM named volume (primary storage for SLM daemon)
                 slm_named_vol = "/app/data/slm-readonly"
@@ -173,7 +176,10 @@ def create_backup():
                         for fname in files:
                             filepath = os.path.join(root, fname)
                             arcname = os.path.relpath(filepath, slm_named_vol)
-                            tar.add(filepath, arcname=f"slm_named/{arcname}")
+                            try:
+                                tar.add(filepath, arcname=f"slm_named/{arcname}")
+                            except (PermissionError, OSError) as e:
+                                logger.warning(f"Skipping file in backup: {filepath}: {e}")
 
             # 3. Metadata with checksum
             meta = {
@@ -181,7 +187,7 @@ def create_backup():
                 "created_at": datetime.now().isoformat(),
                 "database_type": "postgresql",
                 "tables": tables,
-                "version": "8.9",
+                "version": "10.0",
             }
             with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as tmp:
                 json.dump(meta, tmp, indent=2, ensure_ascii=False)

@@ -5,128 +5,44 @@ Classify the user's query into one category below. Output ONLY the result, no ex
 
 ## MAIN RULE: QUESTION vs STATEMENT
 If text contains "?" or is a question — it is a QUESTION.
-BUT: questions about cameras/rooms (category 4) have PRIORITY over category 1.
-Questions about documents/people (category 5) also have priority over category 1.
-Questions requiring current internet information (category 6) also have priority over category 1.
-Requests to write code/text, create HTML pages, applications, scripts (category 7) also have priority over category 1.
+BUT: questions about cameras/rooms (category 4), documents/people (category 5), internet (category 6), code (category 7) have PRIORITY over category 1.
 Only simple questions (greetings, about yourself, time, skills) → category 1.
 
-SPECIAL TIME/DATE RULE: Any question about the current time, date, day of week, or year ("what time is it?", "what's the time?", "what time is it now?", "what's today's date?", "what day is it?", "what year is it?") — is ALWAYS a SIMPLE query (category 1), WITHOUT the [-REASONING-] marker. Such questions are handled by the chat model, which obtains the time itself. NEVER mark time/date questions with the [-REASONING-] marker.
+SPECIAL TIME/DATE RULE: Any question about current time, date, day of week — is ALWAYS a SIMPLE query (category 1), WITHOUT the [-REASONING-] marker.
 
-IMPORTANT NAME RULE: If the query contains a PERSON'S FIRST + LAST NAME ("Who is John Smith?", "Tell me about Jane Doe", "What do you know about Bob Brown?") — this is ALWAYS category 5 (document search), NOT category 6 (internet). The user may have documents about any person.
+IMPORTANT NAME RULE: If the query contains a PERSON'S FIRST + LAST NAME — this is ALWAYS category 5 (document search), NOT category 6.
 
 ## 1. SIMPLE QUERY — output query unchanged
-Any QUESTION: greeting, question about yourself, skills, time, calculations, or any other question.
-Output the query unchanged, without any marker.
-- "Hello" → "Hello"
-- "Who are you?" → "Who are you?"
-- "What can you do?" → "What can you do?"
-- "How are you?" → "How are you?"
-- "What time is it?" → "What time is it?"
-- "What's the time?" → "What's the time?"
-- "What time is it now?" → "What time is it now?"
-- "What day is it?" → "What day is it?"
-- "What's today's date?" → "What's today's date?"
-- "What day of the week is it?" → "What day of the week is it?"
-- "What's new?" → "What's new?"
-- "Can you help?" → "Can you help?"
-- "What is 2+2*2?" → "What is 2+2*2?"
-- "Calculate 15 * 37 + 128" → "Calculate 15 * 37 + 128"
-- "Compute square root of 144" → "Compute square root of 144"
+Any QUESTION: greeting, about yourself, skills, time, calculations. No marker.
 
-## 2. IMAGE GENERATION REQUEST (Just output)
-If the query asks to draw/generate/create an IMAGE (picture, photo, illustration, drawing).
-IMPORTANT: Do not confuse with requests to create code, text, files, programs — those are NOT images!
-SPECIAL: If the query asks to DESCRIBE an illustration/picture/scene VERBALLY («make a verbal description», «describe», «tell about an illustration») — this is NOT an image generation request. It is a simple request (category 1), NO marker.
-Action: Output [-IMAGE-] and the query text unchanged.
-Examples:
-- Query: "Draw a forest"
-  Response: "[-IMAGE-] Draw a forest"
-- Query: "Generate an image of a cat"
-  Response: "[-IMAGE-] Generate an image of a cat"
+## 2. IMAGE GENERATION — [-IMAGE-] and query
+Request to draw/generate/create an image. Do not confuse with describing images.
 
-## 3. VIDEO GENERATION REQUEST (Just output)
-If the query asks to create/generate a VIDEO (clip, animation, footage).
-IMPORTANT: Do not confuse with image generation — if the query explicitly says «video» or «animation», use [-VIDEO-].
-SPECIAL: If the query asks to DESCRIBE a scene/video/animation VERBALLY («make a verbal description», «describe», «tell about a scene») — this is NOT a video generation request. It is a simple request (category 1), NO marker.
-Action: Output [-VIDEO-] and the query text unchanged.
-Examples:
-- Query: "Create a video of a squirrel"
-  Response: "[-VIDEO-] Create a video of a squirrel"
-- Query: "Make a sunset animation"
-  Response: "[-VIDEO-] Make a sunset animation"
+## 3. VIDEO GENERATION — [-VIDEO-] and query
+Request to create/generate video. Do not confuse with describing scenes.
 
 {camera_section}
 
-## 5. DOCUMENT SEARCH REQUEST (output unchanged with marker)
-If the query asks about a SPECIFIC PERSON (first + last name), biography, resume, age, addresses, dates, events, facts — that may be in uploaded documents.
-FORBIDDEN: requests to WRITE/CREATE files, code, HTML pages, scripts, or applications — these are NOT document searches! Use category 7 instead.
-FORBIDDEN: requests about websites, URLs, domains, links (http:// or https://) — these are NOT document searches! Use category 6 instead.
-Action: Output [-RAG-] and the query text unchanged.
-Examples:
-- "Who is John Smith?" → "[-RAG-] Who is John Smith?"
-- "Tell me about Jane Doe" → "[-RAG-] Tell me about Jane Doe"
-- "How old is John Smith?" → "[-RAG-] How old is John Smith?"
-- "What's in the resume?" → "[-RAG-] What's in the resume?"
-- "What is the company address?" → "[-RAG-] What is the company address?"
-- "Find in documents about climate" → "[-RAG-] Find in documents about climate"
+## 5. DOCUMENT SEARCH — [-RAG-] and query
+Specific person (first + last name), biography, resume, facts from uploaded documents.
+FORBIDDEN: file/code creation → category 7. URLs/websites → category 6.
 
-## 6. WEB SEARCH REQUEST (output unchanged with marker)
-If the query requires current information from the internet: news, weather, stock prices, latest events, releases, prices, statistics, information about websites, domains, URLs — any data that needs online search.
-IMPORTANT: Do not confuse with document search (category 5) — that is information from uploaded files. Category 6 is FRESH information from the internet.
-IMPORTANT: If the query contains a PERSON'S FIRST + LAST NAME — this is category 5, NOT 6! The user's documents may contain information about any person.
-Action: Output [-SEARCH-] and the query text unchanged.
-Examples:
-- Query: "Weather in Moscow"
-  Response: "[-SEARCH-] Weather in Moscow"
-- Query: "Dollar exchange rate today"
-  Response: "[-SEARCH-] Dollar exchange rate today"
-- Query: "Latest AI news"
-  Response: "[-SEARCH-] Latest AI news"
-- Query: "How much does iPhone 16 cost"
-  Response: "[-SEARCH-] How much does iPhone 16 cost"
-- Query: "what is example.com about"
-  Response: "[-SEARCH-] what is example.com about"
-- Query: "tell me about habr.com"
-  Response: "[-SEARCH-] tell me about habr.com"
-- Query: "information about wikipedia.org"
-  Response: "[-SEARCH-] information about wikipedia.org"
-- Query: "what domain is https://github.com"
-  Response: "[-SEARCH-] what domain is https://github.com"
+## 6. WEB SEARCH — [-SEARCH-] and query
+Current information: news, weather, prices, statistics, websites, URLs.
+IMPORTANT: Person's name → category 5, NOT 6.
 
-## 7. COMPLEX QUERY (only if NOT document search, NOT web search, and NOT calculations)
-Only complex tasks: code/text writing, story creation, complex reasoning, creating HTML pages, applications, scripts.
-DO NOT include: simple math calculations (category 1), search (categories 5-6).
-- Query: "Write a story about spring"
-  Response: "[-REASONING-] Write a story about spring"
-- Query: "Write Python code"
-  Response: "[-REASONING-] Write Python code"
-- Query: "Create an HTML page with animation"
-  Response: "[-REASONING-] Create an HTML page with animation"
-- Query: "Write an app in a single HTML file"
-  Response: "[-REASONING-] Write an app in a single HTML file"
+## 7. COMPLEX QUERY — [-REASONING-] and query
+Only: code/text writing, HTML pages, apps, scripts, complex reasoning.
+DO NOT include: simple calculations (category 1), search (categories 5-6).
 
-## 8. EXPLICIT REMEMBER REQUEST (output with marker)
-If the user EXPLICITLY asks to remember/save/record information.
-Keywords: "remember", "don't forget", "save that", "write down", "запомни", "сохрани", "не забудь".
-Action: Output [-REMEMBER-] and the query text unchanged.
-Examples:
-- "Remember: I am vegetarian" → "[-REMEMBER-] Remember: I am vegetarian"
-- "Save address: 10 Pushkin St" → "[-REMEMBER-] Save address: 10 Pushkin St"
-- "Don't forget I have a cat named Murzik" → "[-REMEMBER-] Don't forget I have a cat named Murzik"
-- "Запомни: я вегетарианец" → "[-REMEMBER-] Запомни: я вегетарианец"
-NOT category 8:
-- "My name is John" → statement, NOT a remember request (category 1)
-- "I work as a programmer" → statement, NOT a remember request (category 1)
+## 8. REMEMBER — [-REMEMBER-] and query
+Only EXPLICIT requests: "remember", "don't forget", "save that", "запомни", "сохрани".
+NOT a request: "My name is John" (statement, category 1).
 
 # INPUT DATA
 Role: "You are a personal assistant 'Fully Local AI (FLAI)'."
 Current time: {current_time_str}.
 User query: "{user_query}".
 
-## REMINDER BEFORE ANSWERING
-Now decide: is the query SIMPLE (greeting, question about yourself, time, date, skills, calculation)? If yes — output ONLY the query unchanged and WITHOUT any marker [-...]. NEVER use [-REASONING-] for simple questions about time, date, day of week, or time of day.
-SPECIAL: a "verbal description" (or "describe", "tell about") of an illustration, picture, scene, or video = a simple request (category 1), NOT [-IMAGE-] and NOT [-VIDEO-].
-
-## RULE
+# RULE
 Each query is classified independently, based solely on its text.

@@ -412,6 +412,8 @@ def _estimate_model_vram(
     ctx_size: int = 8192,
     cache_type: str = "q4_0",
     supports_mtp: bool = False,
+    mmproj_size_mb: float = 0,
+    kv_per_token: float | None = None,
 ) -> dict:
     """Estimate VRAM usage for a model with given parameters.
 
@@ -425,31 +427,53 @@ def _estimate_model_vram(
     ratio = min(1.0, ngl / block_count) if block_count > 0 else 1.0
     model_vram = file_size_mb * ratio * moe_factor * mtp_factor
 
-    # KV cache estimate — calibrated against empirical measurements
-    # Per-token KV cache (MB) with q4_0 compression, averaged across model sizes
-    if cache_type in ("q4_0", "q4_1"):
-        kv_per_token_mb = 0.04
-    elif cache_type in ("q8_0",):
-        kv_per_token_mb = 0.08
-    else:  # f16 default
-        kv_per_token_mb = 0.16
-    kv_cache_mb = ctx_size * kv_per_token_mb
+    # KV cache estimate — calibrated against empirical measurements.
+    # Per-token KV cache (MB) with q4_0 compression, averaged across model sizes.
+    # The caller may pass the per-module calibrated value (see KV_PER_TOKEN_MB in
+    # resource_manager.py); otherwise fall back to the old generic constants.
+    if kv_per_token is None:
+        if cache_type in ("q4_0", "q4_1"):
+            kv_per_token = 0.04
+        elif cache_type in ("q8_0",):
+            kv_per_token = 0.08
+        else:  # f16 default
+            kv_per_token = 0.16
+    kv_cache_mb = ctx_size * kv_per_token
 
     # Compute buffers (scratch space)
     compute_mb = 400
 
-    total_mb = model_vram + kv_cache_mb + compute_mb
+    # mmproj (vision encoder) is resident in VRAM regardless of n_gpu_layers
+    total_mb = model_vram + kv_cache_mb + compute_mb + mmproj_size_mb
 
     return {
         "model_vram_mb": round(model_vram, 1),
         "kv_cache_mb": round(kv_cache_mb, 1),
         "compute_mb": compute_mb,
+        "mmproj_mb": round(mmproj_size_mb, 1),
         "total_mb": round(total_mb, 1),
         "ngl": ngl,
         "ratio": round(ratio, 3),
         "moe_factor": moe_factor,
         "mtp_factor": mtp_factor,
     }
+
+
+def _kv_per_token_for_module(module: str, cache_type: str = "q4_0") -> float:
+    """Return the calibrated per-token KV cache cost (MB) for a module.
+
+    Uses the same per-module values as resource_manager.KV_PER_TOKEN_MB so that
+    the admin estimate and the runtime VRAM accounting agree.
+    """
+    from app.resource_manager import KV_PER_TOKEN_MB
+
+    if module in KV_PER_TOKEN_MB:
+        return KV_PER_TOKEN_MB[module]
+    if cache_type in ("q4_0", "q4_1"):
+        return 0.04
+    if cache_type in ("q8_0",):
+        return 0.08
+    return 0.16
 
 
 def _get_total_ram_mb() -> int:
@@ -480,6 +504,7 @@ def _classify_model_fit(
     context_length: int,
     file_size_mb: float | None = None,
     block_count: int | None = None,
+    module: str = "multimodal",
 ) -> dict:
     """Classify whether a model can be loaded and in what mode.
 
@@ -556,6 +581,9 @@ def _classify_model_fit(
     file_mb = float(file_size_mb)
 
     # 1. Compute VRAM needed for current context (with full GPU offload)
+    from app.utils import get_mmproj_size_mb
+
+    mmproj_mb = get_mmproj_size_mb(model_name) if module == "multimodal" else 0
     est = _estimate_model_vram(
         file_size_mb=file_mb,
         block_count=block_count,
@@ -563,6 +591,8 @@ def _classify_model_fit(
         expert_count=cached.get("expert_count") or 0,
         ctx_size=max(int(context_length), 1),
         supports_mtp=cached.get("supports_mtp", False),
+        mmproj_size_mb=mmproj_mb,
+        kv_per_token=_kv_per_token_for_module(module),
     )
     vram_full_mb = int(est["total_mb"])
     kv_cache_mb = int(est["kv_cache_mb"])
@@ -582,14 +612,15 @@ def _classify_model_fit(
         # weights_on_ram = file × (1 - ngl/ngl_total) = file - weights_on_gpu
         # kv is in VRAM (or partially in RAM; we treat as VRAM-side for safety)
         # overhead (compute buffers) is on GPU.
+        # mmproj (vision encoder) is always resident in VRAM, regardless of ngl.
         # Find ngl_max such that:
-        #   weights_on_gpu + kv + overhead <= vram_budget
+        #   weights_on_gpu + kv + overhead + mmproj <= vram_budget
         #   file - weights_on_gpu + overhead <= ram_budget
         # Solving for weights_on_gpu:
-        #   weights_on_gpu <= vram_budget - kv - overhead
+        #   weights_on_gpu <= vram_budget - kv - overhead - mmproj
         #   file - weights_on_gpu <= ram_budget - overhead
         #   weights_on_gpu >= file - (ram_budget - overhead)
-        vram_for_weights = vram_budget - kv_cache_mb - 400
+        vram_for_weights = vram_budget - kv_cache_mb - 400 - mmproj_mb
         ram_for_weights = ram_budget - 400
         max_gpu_weights = min(vram_for_weights, file_mb)
         # We need: file_mb - gpu_weights <= ram_for_weights → gpu_weights >= file_mb - ram_for_weights
@@ -630,6 +661,96 @@ def _classify_model_fit(
         "arch_max_ctx": arch_max_ctx,
         "message": message,
     }
+
+
+# Known multimodal (vision) GGUF architectures — mirrors the classification
+# already used by the model-info endpoint.
+_MULTIMODAL_ARCHS = {
+    "vision",
+    "vl",
+    "llava",
+    "minicpmv",
+    "mllama",
+    "internvl",
+    "phi3-vision",
+    "qwen2_vl",
+    "qwen_vl",
+    "qwen2.5_vl",
+    "glm4_v",
+    "idefics",
+    "paligemma",
+    "siglip",
+    "qwen3vl",
+}
+
+# Common distinguished substrings in vision model filenames.
+_MULTIMODAL_NAME_HINTS = (
+    "-vl",
+    "vl-",
+    "vision",
+    "qwen3v",
+    "qwen2_vl",
+    "qwen_vl",
+    "mmproj",
+    "multimodal",
+)
+
+
+def _model_has_vision_hint(model_name: str) -> bool:
+    """Check whether a model is vision-capable by filename or GGUF metadata."""
+    if not model_name:
+        return False
+    name_lower = model_name.lower().replace(".gguf", "")
+
+    # 1. Strong filename hints (e.g. Qwen3VL-*, qwen2-vl-*, ...).
+    if any(h in name_lower for h in _MULTIMODAL_NAME_HINTS):
+        return True
+
+    # 2. GGUF architecture from cache (most reliable — read from the model file).
+    try:
+        from app.utils import get_gguf_models_cached
+
+        cache = get_gguf_models_cached("/models")
+        meta = cache.get(name_lower, {})
+        arch = (meta.get("architecture") or "").lower()
+        if arch and any(a in arch for a in _MULTIMODAL_ARCHS):
+            return True
+        # Direct metadata marker some model types expose.
+        if meta.get("has_vision"):
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+def _validate_multimodal_model(model_name: str) -> tuple[bool, str]:
+    """Validate that a model assigned to the multimodal module is vision-capable.
+
+    A plain chat model without mmproj would silently break vision/image-handling
+    (the router, chat and image QA all use this module). Presence of an mmproj
+    file next to the model is the strongest signal, filename/GGUF-architecture
+    hints are the fallback.
+
+    Returns (ok, reason).
+    """
+    # 1. mmproj file next to the model — authoritative.
+    from app.utils import get_mmproj_size_mb
+
+    mmproj_mb = get_mmproj_size_mb(model_name)
+    if mmproj_mb > 0:
+        return True, ""
+
+    # 2. Filename / GGUF architecture hints.
+    if _model_has_vision_hint(model_name):
+        return True, ""
+
+    hint = _(
+        "Selected model looks like a plain chat model (no vision encoder/mmproj found "
+        "next to it). The multimodal module needs a vision model such as Qwen3VL, "
+        "Qwen2-VL, LLaVA, MiniCPM-V, etc."
+    )
+    return False, hint
 
 
 @bp.route("/api/model-estimate", methods=["GET"])
@@ -804,6 +925,7 @@ def model_vram_estimate():
         context_length=ctx_size,
         file_size_mb=file_size_mb,
         block_count=block_count,
+        module=module,
     )
     if loaded_model and used_vram is not None and total_vram is not None:
         # Actual VRAM usage
@@ -831,6 +953,8 @@ def model_vram_estimate():
         }
     elif file_size_mb and block_count:
         # Estimate
+        from app.utils import get_mmproj_size_mb
+
         est = _estimate_model_vram(
             file_size_mb=file_size_mb,
             block_count=block_count,
@@ -839,6 +963,8 @@ def model_vram_estimate():
             ctx_size=max(ctx_size, 1),
             cache_type=cache_type,
             supports_mtp=cached.get("supports_mtp", False),
+            mmproj_size_mb=get_mmproj_size_mb(model_name) if module == "multimodal" else 0,
+            kv_per_token=_kv_per_token_for_module(module, cache_type),
         )
         has_gpu = total_vram is not None and total_vram > 0
         vram_pct = round(est["total_mb"] / total_vram * 100) if has_gpu and total_vram > 0 else 0
@@ -1536,6 +1662,7 @@ def update_model_config(module):
         tier_info = _classify_model_fit(
             model_name=new_model_name,
             context_length=int(new_ctx),
+            module=module,
         )
         if not tier_info["can_save"]:
             return jsonify(
@@ -1545,6 +1672,15 @@ def update_model_config(module):
                     "details": tier_info,
                 }
             ), 400
+
+    # ── Multimodality requirement ──
+    # The multimodal module must run a vision model: a plain chat model without
+    # mmproj would break router/vision/image handling silently. Reject it here
+    # server-side (defense in depth; the UI also blocks it client-side).
+    if new_model_name and module == "multimodal":
+        ok_multimodal, reason = _validate_multimodal_model(new_model_name)
+        if not ok_multimodal:
+            return jsonify({"error": reason}), 400
 
     old_model = None
     if module == "embedding":

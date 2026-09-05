@@ -603,6 +603,16 @@ function validateModelConfig(module, card) {
 
     if (module === 'embedding') return true;
 
+    // Multimodal module requires a vision model — block plain chat models.
+    if (module === 'multimodal') {
+        const serviceUrl = typeof LLAMA_SWAP_URL !== 'undefined' ? LLAMA_SWAP_URL : 'http://flai-llamaswap:8080';
+        const info = modelDetails[`${serviceUrl}:${modelName}`] || modelDetails[modelName];
+        if (info && info.model_type === 'text') {
+            alert(t('multimodal_model_must_be_vision'));
+            return false;
+        }
+    }
+
     // Block save if the tier indicator marked the model as impossible/unknown
     const saveBtn = card.querySelector('.save-button');
     if (saveBtn && saveBtn.disabled) {

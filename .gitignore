@@ -58,6 +58,10 @@ target/
 *.swo
 .opencode/
 
+# graphify
+graphify-out/
+.opencode/
+
 # System files
 .DS_Store
 Thumbs.db
@@ -98,3 +102,4 @@ __pycache__/
 *.lzo
 
 # Pip build artifacts
+

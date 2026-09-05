@@ -1356,6 +1356,50 @@ def get_gguf_models_cached(models_dir: str = "/models") -> dict[str, Any]:
     return _gguf_models_cache
 
 
+# Cache of resolved mmproj sizes per model_name (avoids repeated filesystem walks)
+_mmproj_size_cache: dict[str, int] = {}
+
+
+def get_mmproj_size_mb(model_name: str) -> int:
+    """Return the file size of the mmproj (vision encoder) for a multimodal model.
+
+    The mmproj file sits next to the main GGUF model and is loaded fully into
+    VRAM by llama-server (no partial offload is configured), so VRAM estimates
+    for the multimodal module must account for it.
+
+    Reuses the existing path resolution from LlamaSwapConfigGenerator
+    (get_model_path + get_mmproj_path) as the single source of truth instead of
+    duplicating the filesystem search logic.
+
+    Args:
+        model_name: Model name from model_configs (may or may not have .gguf).
+
+    Returns:
+        Size of the mmproj file in MiB, or 0 if no mmproj is present.
+    """
+    if not model_name:
+        return 0
+    key = model_name.replace(".gguf", "")
+    if key in _mmproj_size_cache:
+        return _mmproj_size_cache[key]
+
+    size_mb = 0
+    try:
+        from app.llama_swap_config import LlamaSwapConfigGenerator
+
+        gen = LlamaSwapConfigGenerator()
+        model_path = gen.get_model_path("multimodal", model_name)
+        if model_path:
+            mmproj_path = gen.get_mmproj_path("multimodal", model_path)
+            if mmproj_path and os.path.exists(mmproj_path):
+                size_mb = int(os.path.getsize(mmproj_path) / (1024 * 1024))
+    except Exception:
+        size_mb = 0
+
+    _mmproj_size_cache[key] = size_mb
+    return size_mb
+
+
 # ── i18n markers for pybabel extract (used by translate_sd_error) ──
 def _sd_error_translation_markers() -> None:
     """Placeholder — never called. Marks SD error strings for pybabel extraction."""

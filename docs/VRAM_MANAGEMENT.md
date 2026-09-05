@@ -18,8 +18,23 @@ Computes VRAM needed from:
 - GGUF metadata (`file_size`, `block_count`)
 - DB config (`context_length`)
 - `n_gpu_layers`
+- mmproj size for the multimodal module (vision encoder)
 
-**Formula**: `file_size × (ngl/block_count) × moe + ctx_size × kv_factor + overhead`
+**Formula**: `file_size × (ngl/block_count) × moe × mtp + ctx_size × kv_factor + overhead + mmproj`
+
+**Per-module KV calibration** (`KV_PER_TOKEN_MB` in `resource_manager.py`): the old single-value 0.12 MB/token overestimated VRAM for reasoning (+636 MB vs measured) and under-counted multimodal because it ignored the mmproj entirely (−751 MB). Calibrated per module against empirical measurements on RTX 5060 Ti (q4_0 KV cache):
+
+| Module | MB/token | Derivation |
+|--------|----------|------------|
+| multimodal | 0.10 | (7912 − 4795 weights − 1105 mmproj − 400 overhead) / 16384 ctx ≈ 0.098 |
+| reasoning  | 0.08 | (13084 − 11135 weights − 619 overhead) / 16384 ctx ≈ 0.081 |
+| embedding  | 0.05 | conservative for an embedding model |
+
+Verification: multimodal formula → 7938 vs 7912 measured (−0.3%), reasoning → 13065 vs 13084 (+0.15%).
+
+**mmproj accounting:** llama-server loads the mmproj (vision encoder) file fully into VRAM — `--n-gpu-layers-mmproj` is not configured, so it is a fixed constant independent of `n_gpu_layers`. `get_mmproj_size_mb()` in `app/utils.py` resolves the path via `LlamaSwapConfigGenerator` (`get_model_path` + `get_mmproj_path`) and returns the file size; `0` when no mmproj is present. It is subtracted from the model's VRAM budget (`available_for_model`), added to the "needs more VRAM" and 16 GB branch checks, and added to the degradation-loop estimate.
+
+**`.gguf` key fix:** GGUF metadata is cached under model names **without** the `.gguf` suffix, but `model_configs.model_name` keeps it. All cache lookups strip the suffix first; pre-fix the lookup silently missed the entry and `_get_original_ngl()` fell back to default layer counts, defeating n_gpu_layers degradation.
 
 **No hardcoded constants.** Uses actual model file size, layer count, and context window from DB.
 
@@ -34,9 +49,12 @@ Computes VRAM needed from:
 ## Dynamic VRAM Estimation
 
 `_estimate_model_vram()` in `app/routes/admin.py`:
-- Accepts `supports_mtp: bool`
+- Accepts `supports_mtp: bool`, `mmproj_size_mb`, and `kv_per_token` (per-module calibrated value; falls back to the old generic q4_0/q8_0/f16 constants when not provided)
 - Formula: `mtp_factor = 1.15 if supports_mtp else 1.0`
 - MTP draft prediction layers add ~15% overhead to model weights in VRAM
+- Return dict includes `mmproj_mb` alongside `model_vram_mb`, `kv_cache_mb`, `compute_mb`, `total_mb`
+
+Tier classification (`_classify_model_fit(..., module="multimodal")`) subtracts `mmproj_mb` from the VRAM budget for GPU weights, and the KV token cost is selected per module via `_kv_per_token_for_module()` (mirrors `KV_PER_TOKEN_MB`). Callers pass the `module` through `model_vram_estimate()` and `update_model_config()`.
 
 ### Real VRAM Measurement
 

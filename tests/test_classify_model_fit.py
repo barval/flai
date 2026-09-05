@@ -207,3 +207,57 @@ class TestClassifyEdgeCases:
         assert "total_vram_mb" in result
         assert "system_ram_mb" in result
         assert result["file_mb"] == 2400.0
+
+
+class TestClassifyMmproj:
+    """mmproj (vision encoder) must shrink the VRAM budget for the multimodal module."""
+
+    _BIG_VL = {
+        "Qwen3VL-13B-Instruct-Q8_0": {
+            "context_length": 262144,
+            "file_size_mb": 12500,
+            "block_count": 40,
+            "expert_count": 0,
+        }
+    }
+
+    @patch("app.utils.get_gguf_models_cached")
+    @patch("app.utils.get_mmproj_size_mb")
+    def test_mmproj_pushes_medium_model_to_cpu_offload(self, mock_mmproj, mock_cache):
+        """A 12.5 GB model at small ctx fits in the 85% VRAM budget by itself,
+        but adding a 1.1 GB mmproj pushes it over the edge — a mmproj must never
+        be silently ignored in tier classification."""
+        mock_cache.return_value = self._BIG_VL
+        mock_mmproj.return_value = 1105
+        with (
+            patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.routes.admin._get_total_ram_mb", return_value=16384),
+        ):
+            # 12.5 GB + ~0.4 GB KV @ 4K ctx + 1.1 GB mmproj ≈ 14 GB > 13.86 GB (85%)
+            result = _classify_model_fit(
+                model_name="Qwen3VL-13B-Instruct-Q8_0.gguf",
+                context_length=4096,
+                module="multimodal",
+            )
+        assert result["tier"] == "cpu_offload"
+        assert result["can_save"] is True
+        assert mock_mmproj.call_count >= 1
+
+    @patch("app.utils.get_gguf_models_cached")
+    @patch("app.utils.get_mmproj_size_mb")
+    def test_non_multimodal_module_ignores_mmproj(self, mock_mmproj, mock_cache):
+        """Embedding/reasoning modules must not add mmproj to the VRAM estimate."""
+        mock_cache.return_value = MEDIUM_MODEL
+        mock_mmproj.return_value = 1105
+        with (
+            patch("app.routes.admin._get_actual_vram_mb", return_value=(0, 16311)),
+            patch("app.routes.admin._get_total_ram_mb", return_value=16384),
+        ):
+            result = _classify_model_fit(
+                model_name="Qwen3.5-9B-Q8_0.gguf",
+                context_length=8192,
+                module="embedding",
+            )
+        # 9 GB fits in 85% of 16GB (13.6 GB) → good tier, no offload needed
+        assert result["tier"] == "good"
+        assert result["can_save"] is True

@@ -21,6 +21,18 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+# Per-module KV cache cost (MB per token, q4_0 quantization) — calibrated
+# against nvidia-smi measurements on RTX 5060 Ti at ctx=16384:
+#   multimodal: (7912 − 4795(weights) − 1105(mmproj) − 400(overhead)) / 16384 ≈ 0.098
+#   reasoning:  (13084 − 11135(weights·moe) − 619(overhead)) / 16384 ≈ 0.081
+# Old single-value 0.12 produced −751 MB error for multimodal (missing mmproj)
+# and +636 MB for reasoning.
+KV_PER_TOKEN_MB: dict[str, float] = {
+    "multimodal": 0.10,
+    "reasoning": 0.08,
+    "embedding": 0.05,
+}
+
 
 class HardwareInfo:
     """Detected hardware capabilities."""
@@ -220,7 +232,7 @@ class ResourceManager:
         if model_name:
             try:
                 gguf_cache = get_gguf_models_cached("/models")
-                model_info = gguf_cache.get(model_name, {})
+                model_info = gguf_cache.get(model_name.replace(".gguf", ""), {})
                 if model_info:
                     file_size_mb = model_info.get("file_size_mb")
                     block_count = model_info.get("block_count")
@@ -240,6 +252,13 @@ class ResourceManager:
         needed = int(file_size_mb * 1.2) if file_size_mb is not None else model_vram.get(model_type, 3000)
         if supports_mtp:
             needed = int(needed * 1.15)
+
+        # mmproj (vision encoder) is loaded fully into VRAM by llama-server and
+        # does NOT scale with n_gpu_layers — account for it as a fixed constant
+        # for the multimodal module.
+        from app.utils import get_mmproj_size_mb
+
+        mmproj_mb = get_mmproj_size_mb(model_name) if (model_type == "multimodal" and model_name) else 0
 
         # How much VRAM to reserve for other operations (sd-cli, overhead)
         reserve = 2000  # 2GB safety margin
@@ -266,9 +285,11 @@ class ResourceManager:
             return result
 
         # Calculate n_gpu_layers based on available VRAM and model requirements
+        # mmproj always occupies VRAM (independent of n_gpu_layers), so it shrinks
+        # the budget available for the main model layers.
+        available_for_model = max(0, total_vram - reserve - mmproj_mb)
         if block_count is not None and block_count > 0:
             # Distribute layers proportionally based on available VRAM
-            available_for_model = max(0, total_vram - reserve)
             if needed > 0 and available_for_model > 0:
                 layer_ratio = min(1.0, available_for_model / needed)
                 result["n_gpu_layers"] = max(1, int(block_count * layer_ratio))
@@ -279,9 +300,9 @@ class ResourceManager:
                     result["warning"] = (
                         f"Model partially offloaded ({result['n_gpu_layers']}/{block_count} layers on GPU)"
                     )
-        elif needed + reserve > total_vram:
+        elif needed + reserve + mmproj_mb > total_vram:
             # Model doesn't fit fully — reduce layers based on estimate
-            result["n_gpu_layers"] = max(10, int((total_vram - reserve) / needed * 32))
+            result["n_gpu_layers"] = max(10, int(available_for_model / needed * 32))
             result["offload_kqv"] = True
             result["cache_capacity"] = 2048
             result["warning"] = (
@@ -293,9 +314,9 @@ class ResourceManager:
             result["cache_capacity"] = 8192
         elif total_vram >= 16000:
             # 16GB (RTX 4060 Ti / 4070) — tight
-            if result["n_gpu_layers"] == -1 and needed + reserve > total_vram:
+            if result["n_gpu_layers"] == -1 and needed + reserve + mmproj_mb > total_vram:
                 # Override if we didn't catch it above
-                result["n_gpu_layers"] = max(10, int((total_vram - reserve) / needed * 32))
+                result["n_gpu_layers"] = max(10, int(available_for_model / needed * 32))
                 result["offload_kqv"] = True
                 result["cache_capacity"] = 2048
         elif total_vram >= 8000:
@@ -325,9 +346,9 @@ class ResourceManager:
                     * (0.95 if expert_count > 0 else 1.0)
                     * (1.15 if supports_mtp else 1.0)
                 )
-                est_kv = ctx_size * 0.12  # q4_0: ~0.12 MB per token (matches get_vram_needed_mb)
+                est_kv = ctx_size * KV_PER_TOKEN_MB.get(model_type, 0.12)  # matches get_vram_needed_mb
                 est_overhead = max(400, int((file_size_mb or needed) * 0.05 + ctx_size * 0.002))
-                est_total = est_weights + est_kv + est_overhead
+                est_total = est_weights + est_kv + est_overhead + mmproj_mb
                 if est_total <= available_for_model or effective_ngl == 0:
                     break
                 effective_ngl = max(0, effective_ngl - max(1, block_count // 8))
@@ -410,15 +431,19 @@ class ResourceManager:
         ratio = min(1.0, ngl / block_count) if (block_count or 0) > 0 else 1.0
         weights_mb = (file_size_mb or 0) * ratio * moe_factor * mtp_factor
 
-        # KV cache estimate (q4_0: ~0.12 MB per token including CUDA overhead)
-        # Actual measured on RTX 5060 Ti: chat 0.05, multimodal 0.18, reasoning 0.12 MB/token.
-        # Old 0.35 was 3-7x too high, causing ensure_vram_for to fail with generous margin.
-        kv_per_token = 0.12
+        # KV cache estimate (q4_0), calibrated per module on RTX 5060 Ti.
+        # See KV_PER_TOKEN_MB module docstring for derivation.
+        kv_per_token = KV_PER_TOKEN_MB.get(model_type, 0.12)
         kv_mb = ctx_size * kv_per_token
 
         overhead = max(400, int(file_size_mb * 0.05 + ctx_size * 0.002))
 
-        total = int(weights_mb + kv_mb + overhead)
+        # mmproj (vision encoder) is resident in VRAM regardless of n_gpu_layers.
+        from app.utils import get_mmproj_size_mb
+
+        mmproj_mb = get_mmproj_size_mb(model_name) if (model_type == "multimodal" and model_name) else 0
+
+        total = int(weights_mb + kv_mb + overhead + mmproj_mb)
 
         # NOTE: measured VRAM from model_vram_estimates is intentionally NOT used
         # here. In the pre-v10.0 architecture multiple llama.cpp models were often

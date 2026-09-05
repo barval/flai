@@ -308,6 +308,84 @@ class TestGpuGating:
         assert rm._sd_busy is False
 
 
+class TestMmprojAccounting:
+    """mmproj (vision encoder) is a fixed VRAM cost independent of n_gpu_layers.
+
+    llama-server loads the mmproj fully into VRAM (no partial offload is
+    configured), so the multimodal module budget is reduced by the mmproj size
+    and every VRAM formula must account for it.
+    """
+
+    _BIG_MODEL = {"Qwen3VL-13B-Instruct-Q8_0": {"file_size_mb": 12000, "block_count": 40}}
+    _VL_MODEL = {"Qwen3VL-8B-Instruct-Q4_K_M": {"file_size_mb": 4795, "block_count": 36}}
+
+    def _rm_teardown(self, rm):
+        if hasattr(rm, "hardware"):
+            rm.hardware = HardwareInfo()
+
+    @patch("os.cpu_count", return_value=8)
+    @patch(
+        "builtins.open", new_callable=mock_open, read_data="MemTotal:       32768000 kB\nMemAvailable:   16384000 kB\n"
+    )
+    @patch("subprocess.run")
+    @patch("app.utils.get_gguf_models_cached")
+    @patch("app.model_config.get_model_config")
+    @patch("app.utils.get_mmproj_size_mb")
+    def test_mmproj_reduces_ngl_on_16gb(self, mock_mmproj, mock_cfg, mock_cache, mock_run, mock_file, mock_cpu):
+        """On 16GB a big multimodal model gets fewer GPU layers when mmproj exists."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="NVIDIA GeForce RTX 4060 Ti, 16384, 2048, 14336\n",
+        )
+        mock_cache.return_value = self._BIG_MODEL
+        mock_cfg.return_value = {
+            "model_name": "Qwen3VL-13B-Instruct-Q8_0.gguf",
+            "context_length": 16384,
+        }
+        rm = ResourceManager()
+        rm.detect_hardware()
+
+        mock_mmproj.return_value = 1105
+        cfg_with_mmproj = rm.compute_llamacpp_config("multimodal")
+
+        mock_mmproj.return_value = 0
+        cfg_without_mmproj = rm.compute_llamacpp_config("multimodal")
+
+        assert cfg_with_mmproj["n_gpu_layers"] < cfg_without_mmproj["n_gpu_layers"]
+        self._rm_teardown(rm)
+
+    @patch("os.cpu_count", return_value=8)
+    @patch(
+        "builtins.open", new_callable=mock_open, read_data="MemTotal:       32768000 kB\nMemAvailable:   16384000 kB\n"
+    )
+    @patch("subprocess.run")
+    @patch("app.utils.get_gguf_models_cached")
+    @patch("app.model_config.get_model_config")
+    @patch("app.utils.get_mmproj_size_mb")
+    def test_get_vram_needed_mb_includes_mmproj(self, mock_mmproj, mock_cfg, mock_cache, mock_run, mock_file, mock_cpu):
+        """get_vram_needed_mb total grows by the mmproj size for multimodal."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="NVIDIA GeForce RTX 4090, 24564, 2048, 22516\n",
+        )
+        mock_cache.return_value = self._VL_MODEL
+        mock_cfg.return_value = {
+            "model_name": "Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+            "context_length": 16384,
+        }
+        rm = ResourceManager()
+        rm.detect_hardware()
+
+        mock_mmproj.return_value = 1105
+        with_mmproj = rm.get_vram_needed_mb("multimodal", ctx_size=16384)
+
+        mock_mmproj.return_value = 0
+        without_mmproj = rm.get_vram_needed_mb("multimodal", ctx_size=16384)
+
+        assert with_mmproj - without_mmproj == 1105
+        self._rm_teardown(rm)
+
+
 class TestUnloadModel:
     @patch("requests.post")
     @patch("app.resource_manager.os.getenv")

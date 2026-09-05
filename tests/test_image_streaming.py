@@ -301,19 +301,29 @@ class TestImageStreamErrorModelName:
         assert mock_save.call_args.kwargs.get("is_error") is True
 
     def test_gpu_memory_unavailable_uses_system(self, q):
-        """When VRAM wait times out, the error reply must be saved with
-        model_name='system'."""
+        """The image-chat stream path must NOT wait for VRAM.
+
+        v10.0 keeps the multimodal model always resident, so the old v9.x
+        behavior (call _wait_for_vram, timeout -> reply with model_name='system')
+        no longer exists. This test guards against accidentally restoring the
+        VRAM wait: a valid model must stream without any VRAM synchronization.
+        """
         m = MagicMock()
         m.available = True
         m.validate_image.return_value = (True, None)
+        m.process_image_with_text_stream = lambda *args, **kwargs: iter(["ok"])
+
         q.app.modules["multimodal"] = m
 
         with (
             patch.object(q, "_save_and_respond") as mock_save,
-            patch.object(q, "_unload_llamacpp_models", return_value=True),
-            patch.object(q, "_unload_video_pipeline", return_value=True),
-            patch.object(q, "_wait_for_vram", return_value=False),
+            patch.object(q, "_publish_stream_token") as mock_pub,
+            patch.object(q, "_is_task_cancelled", return_value=False),
+            patch.object(q, "_wait_for_vram") as mock_wait,
+            patch.object(q, "_unload_llamacpp_models") as mock_unload_llm,
+            patch.object(q, "_unload_video_pipeline") as mock_unload_video,
         ):
+            mock_save.return_value = {"session_id": "s1"}
             task = {"id": "t1", "data": {}}
             q._process_image_chat_task_stream(
                 task,
@@ -328,8 +338,10 @@ class TestImageStreamErrorModelName:
                 "neutral",
             )
 
+        mock_wait.assert_not_called()
+        mock_unload_llm.assert_not_called()
+        mock_unload_video.assert_not_called()
+        # Streamed success is saved via _save_and_respond, not errored through system
         mock_save.assert_called_once()
-        assert mock_save.call_args.args[2] == "system", (
-            f"Expected model_name='system', got {mock_save.call_args.args[2]!r}"
-        )
-        assert mock_save.call_args.kwargs.get("is_error") is True
+        assert mock_save.call_args.args[2] != "system"
+        assert mock_pub.called

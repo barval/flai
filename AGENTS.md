@@ -69,7 +69,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - **Background tasks:** `app/tasks/` — `dry_load.py`, `health_monitor.py`. Fact extraction runs as background thread (CPU-only, rule-based via `app/slm_rules.py`). Fact merge runs on background queue (CPU-only, no LLM). Both excluded from queue status display and user counter.
   - **LLM client:** `app/llamacpp_client.py` with `DirectLlamaBackend` and `LlamaSwapBackend`. Both `call()` and `chat()` accept `temperature` parameter. Router classification uses hardcoded `temperature=0.1`. `_translate_llama_swap_error()` translates llama-swap errors to user language. `_strip_generic_reasoning()` threshold `>=2` markers (synced with JS client), overbroad Russian patterns removed to prevent false positives.
   - **Queue:** `app/queue.py:RedisRequestQueue` with **fast worker (CPU) and slow worker (GPU)**. Cancel support for all task types: image gen/edit (pre/post checks), video gen (background checker thread + container restart), streaming tasks (Redis flag). Reasoning tasks retry once when the model returns empty output (thinking-only after `_strip_thinking_tags()`) — `_process_reasoning_task()` loops the generation up to 2 attempts; the retry is fast because the first attempt already loaded the model just-in-time. No retry on task cancellation or on genuine LLM error strings.
-  - **VRAM management:** `app/resource_manager.py`
+  - **VRAM management:** `app/resource_manager.py` — per-module KV cache cost (`KV_PER_TOKEN_MB`) and the multimodal mmproj (vision encoder) size are included in `compute_llamacpp_config()`, `get_vram_needed_mb()`, and the admin estimate chain (`_estimate_model_vram()` → `_classify_model_fit()`). GGUF metadata cache lookups strip the `.gguf` suffix (cache stores names without it).
   - **Database:** PostgreSQL only via `app/database.py:get_db()`
   - **External services:** llama-swap, Qdrant, SearXNG, Piper (TTS), Whisper (STT), SuperLocalMemory (SLM)
   - **LLM backend:** `LLAMACP_BACKEND=llama-swap` (default) or `llamacpp` (direct)
@@ -103,7 +103,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
 # 3. Error Messages
   - **All error messages displayed to users MUST start with "⚠️ ".**
   - `_build_error_response()` adds this prefix automatically.
-  - For code paths that bypass it (e.g., string errors from `call_llamacpp()`), use `_is_llm_error_string()` (in `app/queue.py:782`) check and route through `_build_error_response()`.
+  - For code paths that bypass it (e.g., string errors from `call_llamacpp()`), use `_is_llm_error_string()` (in `app/queue.py:712`) check and route through `_build_error_response()`.
   - Raw `str(e)` must NEVER be returned to the user.
 
 # 4. Git — No Autonomous Commits
@@ -175,4 +175,4 @@ FLAI REQUIRES an **NVIDIA GPU with at least 8 GB VRAM and 16 GB system RAM.** CP
 # Known Issues (fix on sight)
   - **Unit test speed:** `CamModule` has 5×2s init retries, making `test_cam.py` ~10s per fixture.
   - **Load tests** (`tests/load/`) excluded from pytest collection (require locust fixtures).
-  - All other historical issues were fixed in v9.2. See `CHANGELOG.md` for details.
+  - All other historical issues were fixed in v10.0. See `CHANGELOG.md` for details.

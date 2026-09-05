@@ -80,7 +80,7 @@ class LlamaSwapConfigGenerator:
                     model_name = mc.get("model_name")
                     if model_name:
                         cache = get_gguf_models_cached("/models")
-                        info = cache.get(model_name, {})
+                        info = cache.get(model_name.replace(".gguf", ""), {})
                         block_count = info.get("block_count")
                         if block_count:
                             return block_count  # type: ignore[no-any-return]

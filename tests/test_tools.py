@@ -2,7 +2,9 @@
 """Unit tests for app/tools.py — Tool Calling registry and executors."""
 
 import math
+from unittest.mock import patch
 
+import pendulum
 import pytest
 
 from app.tools import (
@@ -363,55 +365,56 @@ class TestExecuteTool:
         assert result == "18"
 
     def test_time_calc_days_until_end_of_year(self):
-        """Test days_until_end_of for year period."""
-        result = execute_tool(
-            "time_calc",
-            {
-                "operation": "days_until_end_of",
-                "period": "year",
-            },
-            {"lang": "ru"},
-        )
-        assert result is not None
-        assert int(result) > 0
+        """Test days_until_end_of for year period with a fixed 'now'."""
+        with patch("app.tools.pendulum.now", return_value=pendulum.datetime(2026, 4, 15, 12, 0, tz="Europe/Moscow")):
+            result = execute_tool(
+                "time_calc",
+                {
+                    "operation": "days_until_end_of",
+                    "period": "year",
+                },
+                {"lang": "ru"},
+            )
+        assert result == "260"
 
     def test_time_calc_days_until_end_of_quarter(self):
-        """Test days_until_end_of for quarter period."""
-        result = execute_tool(
-            "time_calc",
-            {
-                "operation": "days_until_end_of",
-                "period": "quarter",
-            },
-            {"lang": "ru"},
-        )
-        assert result is not None
-        assert int(result) > 0
+        """Test days_until_end_of for quarter period with a fixed 'now'."""
+        with patch("app.tools.pendulum.now", return_value=pendulum.datetime(2026, 4, 15, 12, 0, tz="Europe/Moscow")):
+            result = execute_tool(
+                "time_calc",
+                {
+                    "operation": "days_until_end_of",
+                    "period": "quarter",
+                },
+                {"lang": "ru"},
+            )
+        assert result == "76"
 
     def test_time_calc_days_until_end_of_spring(self):
-        """Test days_until_end_of for spring period."""
-        result = execute_tool(
-            "time_calc",
-            {
-                "operation": "days_until_end_of",
-                "period": "spring",
-            },
-            {"lang": "ru"},
-        )
-        assert result is not None
+        """Test days_until_end_of for spring period with a fixed 'now'."""
+        with patch("app.tools.pendulum.now", return_value=pendulum.datetime(2026, 4, 15, 12, 0, tz="Europe/Moscow")):
+            result = execute_tool(
+                "time_calc",
+                {
+                    "operation": "days_until_end_of",
+                    "period": "spring",
+                },
+                {"lang": "ru"},
+            )
+        assert result == "46"
 
     def test_time_calc_days_until_end_of_summer(self):
-        """Test days_until_end_of for summer period (meteorological: ends Aug 31)."""
-        result = execute_tool(
-            "time_calc",
-            {
-                "operation": "days_until_end_of",
-                "period": "summer",
-            },
-            {"lang": "ru"},
-        )
-        assert result is not None
-        assert int(result) > 0
+        """Test days_until_end_of for summer period (meteorological: ends Aug 31) with a fixed 'now'."""
+        with patch("app.tools.pendulum.now", return_value=pendulum.datetime(2026, 4, 15, 12, 0, tz="Europe/Moscow")):
+            result = execute_tool(
+                "time_calc",
+                {
+                    "operation": "days_until_end_of",
+                    "period": "summer",
+                },
+                {"lang": "ru"},
+            )
+        assert result == "138"
 
     def test_time_calc_unknown_period(self):
         """Test days_until_end_of with unknown period returns error."""

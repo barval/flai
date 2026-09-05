@@ -1967,6 +1967,18 @@ msgstr ""
 "(недостаточно VRAM/RAM). Выберите модель "
 "меньшего размера."
 
+msgid "multimodal_model_must_be_vision"
+msgstr "Для мультимодального модуля нужна Vision-модель (с mmproj), а не простая чат-модель."
+
+msgid ""
+"Selected model looks like a plain chat model (no vision encoder/mmproj found "
+"next to it). The multimodal module needs a vision model such as Qwen3VL, "
+"Qwen2-VL, LLaVA, MiniCPM-V, etc."
+msgstr ""
+"Выбранная модель похожа на простую чат-модель (рядом с ней нет "
+"vision-энкодера/mmproj). Мультимодальному модулю нужна Vision-модель, "
+"например Qwen3VL, Qwen2-VL, LLaVA, MiniCPM-V и т.п."
+
 #~ msgid "Name forms"
 #~ msgstr "Формы имён"
 

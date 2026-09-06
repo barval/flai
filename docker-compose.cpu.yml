@@ -1,0 +1,433 @@
+# docker-compose.cpu.yml
+# CPU-only version (no GPU required)
+# Full functionality same as GPU — just slower.
+# All timeouts are increased to compensate for CPU speed.
+services:
+  # ============================================================
+  # WEB APPLICATION (Required)
+  # ============================================================
+  web:
+    build: .
+    container_name: flai-web
+    ports:
+      - "5000:5000"
+    depends_on:
+      - redis
+      - postgres
+      - llama-swap
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+      - ./services/llamacpp/models:/models:ro
+      - ./llama-swap-config:/config
+      - /var/run/docker.sock:/var/run/docker.sock
+      - slm_data:/app/data/slm-readonly:ro
+      # Directory mounts for hot-reloading (no rebuild needed)
+      - ./app:/app/app
+      - ./modules:/app/modules
+      - ./prompts:/app/prompts
+      - ./translations:/app/translations
+    group_add:
+      - "988"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - PYTHONDONTWRITEBYTECODE=1
+      - FLAI_PLATFORM=cpu
+      - SD_CPP_TIMEOUT=1800
+      - LLM_TIMEOUT=600
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '8.0'
+          memory: 32G
+        reservations:
+          cpus: '2.0'
+          memory: 4G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ============================================================
+  # REDIS (Required - Request Queue)
+  # ============================================================
+  redis:
+    image: redis:8.4.2-alpine
+    container_name: flai-redis
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ============================================================
+  # LLAMA-SWAP (Required - LLM Proxy, CPU mode)
+  # ============================================================
+  llama-swap:
+    image: ghcr.io/mostlygeek/llama-swap:cpu
+    container_name: flai-llamaswap
+    volumes:
+      - ./services/llamacpp/models:/models:ro
+      - ./llama-swap-config:/config
+    networks:
+      - flai_network
+    restart: unless-stopped
+    command: -config /config/llama-swap.yaml -watch-config
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '8.0'
+          memory: 16G
+        reservations:
+          cpus: '2.0'
+          memory: 4G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ============================================================
+  # STABLE-DIFFUSION.CPP (Optional - Image Generation, CPU mode)
+  # ============================================================
+  sd_cpp:
+    build:
+      context: ./services/sd_cpp
+      dockerfile: Dockerfile.sd_cpp
+      args:
+        SD_BACKEND: cpu
+    container_name: flai-sd
+    volumes:
+      - ./services/sd_cpp/models/diffusion_models:/app/models/diffusion_models
+      - ./services/sd_cpp/models/vae:/app/models/vae
+      - ./services/sd_cpp/models/text_encoders:/app/models/text_encoders
+      - ./services/sd_cpp/outputs:/app/outputs
+      - ./services/sd_cpp/sd_wrapper.py:/app/sd_wrapper.py:ro
+    environment:
+      - SD_BACKEND=cpu
+      - SD_CLI_TIMEOUT=3600
+    deploy:
+      resources:
+        limits:
+          cpus: '8.0'
+          memory: 16G
+        reservations:
+          cpus: '2.0'
+          memory: 4G
+    networks:
+      - flai_network
+    restart: unless-stopped
+    entrypoint: ["python3", "/app/sd_wrapper.py"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7861/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    profiles:
+      - with-image-gen
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ============================================================
+  # LTX-VIDEO (Optional - Video Generation, CPU mode)
+  # ============================================================
+  ltxvideo:
+    build:
+      context: ./services/ltx_video
+      dockerfile: Dockerfile.ltx_video
+      args:
+        LTX_BACKEND: cpu
+        LTX_BASE_IMAGE: python:3.11-slim
+    container_name: flai-ltxvideo
+    volumes:
+      - ./services/ltx_video/models:/app/models:rw
+      - ./services/llamacpp/models:/models:ro
+    environment:
+      - LTX_MODELS_DIR=/app/models
+      - LTX_DEFAULT_MODEL=ltxv-2b-0.9.8-distilled.safetensors
+      - LTX_DEFAULT_UPSCALER=ltxv-spatial-upscaler-0.9.8.safetensors
+      - LTX_PIPELINE_CONFIG=ltxv-2b-0.9.8-distilled.yaml
+      - LTX_TEXT_ENCODER_PATH=/app/models/t5_encoder
+      - LTX_DEVICE=cpu
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7872/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s
+    deploy:
+      resources:
+        limits:
+          cpus: '8.0'
+          memory: 32G
+        reservations:
+          cpus: '2.0'
+          memory: 4G
+    profiles:
+      - with-video
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ============================================================
+  # WHISPER (Optional - Speech Recognition)
+  # ============================================================
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:v1.9.1
+    container_name: flai-whisper
+    environment:
+      - ASR_MODEL=medium
+      - ASR_ENGINE=faster_whisper
+      - ASR_DEVICE=cpu
+    volumes:
+      - ./data/hf-cache/hub:/root/.cache/whisper
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/docs"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    profiles:
+      - with-voice
+
+  # ============================================================
+  # PIPER TTS (Optional - Speech Synthesis)
+  # ============================================================
+  piper:
+    build:
+      context: ./services/piper
+      dockerfile: Dockerfile.piper
+    container_name: flai-piper
+    volumes:
+      - ./services/piper/piper_models:/app/models
+    environment:
+      - PIPER_MODEL_DIR=/app/models
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8888/health')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    profiles:
+      - with-voice
+
+  # ============================================================
+  # SEARXNG (Optional - Web Search)
+  # ============================================================
+  searxng:
+    image: searxng/searxng:latest
+    container_name: flai-searxng
+    volumes:
+      - ./searxng:/etc/searxng
+    environment:
+      - SEARXNG_BASE_URL=http://flai-searxng:8080
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    profiles:
+      - with-search
+
+  # ============================================================
+  # SUPERLOCALMEMORY (Optional - Long-term memory)
+  # ============================================================
+  superlocalmemory:
+    build:
+      context: ./services/superlocalmemory
+      dockerfile: Dockerfile.slm
+    container_name: flai-slm
+    environment:
+      - SLM_MODE=a
+      - SLM_PORT=8765
+      - SLM_HOST=0.0.0.0
+    volumes:
+      - slm_data:/root/.superlocalmemory
+      - ./data/slm/:/app/data/slm/
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8766/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    profiles:
+      - with-slm
+
+  # ============================================================
+  # QDRANT (Optional - Vector DB for RAG)
+  # ============================================================
+  qdrant:
+    image: qdrant/qdrant:v1.19.0
+    container_name: flai-qdrant
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY}
+      - QDRANT__SERVICE__ENABLE_TLS=0
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    profiles:
+      - with-rag
+
+  # ============================================================
+  # POSTGRESQL (Required - Application DB)
+  # ============================================================
+  postgres:
+    image: postgres:18-alpine
+    container_name: flai-postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-flai}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-flai_password}
+      - POSTGRES_DB=${POSTGRES_DB:-flai}
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flai"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+networks:
+  flai_network:
+    name: flai_network
+    driver: bridge
+
+volumes:
+  redis_data:
+  postgres_data:
+  qdrant_data:
+  slm_data:

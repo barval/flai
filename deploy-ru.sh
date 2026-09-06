@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v10.0 — Скрипт развёртывания на одном сервере
+# FLAI v11.0 — Скрипт развёртывания на одном сервере
 
 set -euo pipefail
 
@@ -72,7 +72,7 @@ generate_llama_swap_config() {
 
     info "Генерирую минимальный конфиг llama-swap..."
 
-    # v10.0: мультимодальная модель — единственная чат-модель (роутер + чат + vision).
+    # v11.0: мультимодальная модель — единственная чат-модель (роутер + чат + vision).
     # Всегда загружена (ttl=0). Отдельной чат-модели больше нет.
     local MULTIMODAL_MODEL="Qwen3VL-8B-Instruct-Q4_K_M"
 
@@ -268,7 +268,7 @@ download_sd_cpp_models() {
         warn "flux2_ae.safetensors уже есть — пропускаю."
     fi
 
-    # Кодировщик текста (Qwen3-4B используется как текстовый кодировщик для SD; НЕ чат-модель в v10.0)
+    # Кодировщик текста (Qwen3-4B используется как текстовый кодировщик для SD; НЕ чат-модель в v11.0)
     if [[ ! -f "$TXT_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
         info "Скачиваю Qwen3-4B-Instruct-2507-Q4_K_M.gguf (кодировщик текста)..."
         HF_DOWNLOAD "unsloth/Qwen3-4B-Instruct-2507-GGUF" \
@@ -392,21 +392,28 @@ build_and_launch() {
     [[ "$WITH_SEARCH" == "true" ]] && PROFILE="$PROFILE --profile with-search"
 
     COMPOSE_FILE="docker-compose.gpu.yml"
-    info "Режим GPU — используется GPU compose файл."
-
-    # Определяем уровень VRAM
-    local VRAM_MB=0
-    if command -v nvidia-smi &>/dev/null; then
-        VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
-    fi
-    if [[ "$VRAM_MB" -ge 16000 ]]; then
-        info "VRAM: ${VRAM_MB}MB (уровень: 16GB+) — полная производительность (gpt-oss-20b рассуждения)"
-    elif [[ "$VRAM_MB" -ge 12000 ]]; then
-        info "VRAM: ${VRAM_MB}MB (уровень: 12GB) — хорошая посадка (Gemma 4 E4B рассуждения)"
-    elif [[ "$VRAM_MB" -ge 8000 ]]; then
-        info "VRAM: ${VRAM_MB}MB (уровень: 8GB) — тесно (Gemma 4 E4B рассуждения)"
+    if [[ "${FLAI_PLATFORM:-}" == "cpu" ]] || ! command -v nvidia-smi &>/dev/null; then
+        COMPOSE_FILE="docker-compose.cpu.yml"
+        info "Режим CPU — используется CPU compose файл (GPU не требуется)."
     else
-        warn "VRAM: ${VRAM_MB}MB — менее 8GB минимума. Производительность будет сильно ограничена."
+        info "Режим GPU — используется GPU compose файл."
+    fi
+
+    # Определяем уровень VRAM (только в режиме GPU)
+    local VRAM_MB=0
+    if [[ "$COMPOSE_FILE" == "docker-compose.gpu.yml" ]] && command -v nvidia-smi &>/dev/null; then
+        VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+        if [[ "$VRAM_MB" -ge 16000 ]]; then
+            info "VRAM: ${VRAM_MB}MB (уровень: 16GB+) — полная производительность (gpt-oss-20b рассуждения)"
+        elif [[ "$VRAM_MB" -ge 12000 ]]; then
+            info "VRAM: ${VRAM_MB}MB (уровень: 12GB) — хорошая посадка (Gemma 4 E4B рассуждения)"
+        elif [[ "$VRAM_MB" -ge 8000 ]]; then
+            info "VRAM: ${VRAM_MB}MB (уровень: 8GB) — тесно (Gemma 4 E4B рассуждения)"
+        else
+            warn "VRAM: ${VRAM_MB}MB — менее 8GB минимума. Производительность будет сильно ограничена."
+        fi
+    elif [[ "$COMPOSE_FILE" == "docker-compose.cpu.yml" ]]; then
+        info "Режим только CPU — производительность зависит от ядер CPU и объёма RAM."
     fi
 
     # Удаляем старые контейнеры во избежание конфликтов
@@ -425,7 +432,7 @@ build_and_launch() {
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "недоступен")
     if [[ "$STATUS" == "ok" ]]; then
-        info "FLAI v10.0 запущен! Откройте http://localhost:5000 в браузере."
+        info "FLAI v11.0 запущен! Откройте http://localhost:5000 в браузере."
     else
         warn "Проверка здоровья: $STATUS — проверьте 'docker compose logs' для деталей."
     fi
@@ -441,7 +448,7 @@ run_tests() {
 # ── Справка ──
 usage() {
     cat <<'USAGE'
-FLAI v10.0 — Скрипт развёртывания
+FLAI v11.0 — Скрипт развёртывания
 
 Использование: ./deploy-ru.sh [ОПЦИИ]
 
@@ -451,8 +458,9 @@ FLAI v10.0 — Скрипт развёртывания
   --with-image-gen    Развернуть stable-diffusion.cpp для генерации/редактирования
                       (по умолчанию: отключено, используйте этот флаг для включения)
   --with-video        Развернуть LTX-Video для генерации видео
-  --with-slm          Развернуть SuperLocalMemory для долговременной памяти
-                      (по умолчанию: отключено, используйте этот флаг для включения)
+--with-slm          Развернуть SuperLocalMemory для долговременной памяти
+                      (по умолчанию: выключено, используйте флаг для включения)
+  --cpu               Принудительный режим только CPU (GPU не требуется)
   --download-models   Скачать GGUF/safetensors модели из HuggingFace
   --run-tests         Запустить тесты после развёртывания
   --help, -h          Показать эту справку
@@ -483,6 +491,7 @@ WITH_SLM=false
 WITH_SEARCH=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
+FLAI_PLATFORM="${FLAI_PLATFORM:-}"
 
 for arg in "$@"; do
     case "$arg" in
@@ -492,6 +501,7 @@ for arg in "$@"; do
         --with-video)     WITH_VIDEO=true ;;
         --with-slm)       WITH_SLM=true ;;
         --with-search)    WITH_SEARCH=true ;;
+        --cpu)            FLAI_PLATFORM=cpu ;;
         --download-models) DOWNLOAD_MODELS=true ;;
         --run-tests)      RUN_TESTS=true ;;
         --help|-h)        usage; exit 0 ;;
@@ -501,7 +511,7 @@ done
 # ── Основной запуск ──
 main() {
     echo "============================================"
-    echo "  FLAI v10.0 — Скрипт развёртывания"
+    echo "  FLAI v11.0 — Скрипт развёртывания"
     echo "============================================"
     echo ""
 

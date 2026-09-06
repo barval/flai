@@ -28,6 +28,9 @@ def load_config(app):
     # llama.cpp server settings
     app.config["LLAMACPP_URL"] = os.getenv("LLAMACPP_URL")
     app.config["LLAMACP_BACKEND"] = os.getenv("LLAMACP_BACKEND", "llama-swap")
+    # Compute platform override (nvidia | amd | intel | cpu) — detected
+    # automatically when empty; see app/platform_detect.py
+    app.config["FLAI_PLATFORM"] = os.getenv("FLAI_PLATFORM", "")
     app.config["LLAMA_SWAP_URL"] = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
     # stable-diffusion.cpp settings (uses sd-wrapper HTTP API)
     app.config["SD_MODEL_TYPE"] = os.getenv("SD_MODEL_TYPE", "z_image_turbo")

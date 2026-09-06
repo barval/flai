@@ -323,7 +323,7 @@ def get_stats():
 def get_hardware():
     """Return hardware information for memory estimation.
 
-    Gets GPU info via NVML (NVIDIA Management Library).
+    GPU info via platform_detect (vendor-agnostic: nvidia/amd/intel/cpu).
     """
     try:
         hw = {
@@ -333,6 +333,7 @@ def get_hardware():
             "available_vram_mb": 0,
             "total_ram_mb": 0,
             "available_ram_mb": 0,
+            "platform": "cpu",
         }
 
         from app.resource_manager import get_resource_manager
@@ -342,27 +343,16 @@ def get_hardware():
         hw["total_ram_mb"] = rm_hw.get("total_ram_mb", 0)
         hw["available_ram_mb"] = rm_hw.get("available_ram_mb", 0)
 
-        try:
-            import pynvml
-
-            pynvml.nvmlInit()
-            count = pynvml.nvmlDeviceGetCount()
-            if count > 0:
-                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-                name = pynvml.nvmlDeviceGetName(handle)
-                mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
-                hw["gpu_name"] = name.decode() if isinstance(name, bytes) else name
-                hw["cuda_detected"] = True
-                hw["total_vram_mb"] = mem.total // (1024 * 1024)
-                hw["available_vram_mb"] = mem.free // (1024 * 1024)
-                logger.info(
-                    f"GPU via NVML: {hw['gpu_name']}, {hw['total_vram_mb']}MB, {hw['available_vram_mb']}MB free"
-                )
-            else:
-                logger.warning("NVML: no GPU devices found")
-            pynvml.nvmlShutdown()
-        except Exception as e:
-            logger.warning(f"NVML GPU detection failed: {e}")
+        hw["platform"] = rm_hw.get("platform", "cpu")
+        hw["gpu_name"] = rm_hw.get("gpu_name")
+        hw["cuda_detected"] = rm_hw.get("cuda_detected", False)
+        hw["total_vram_mb"] = rm_hw.get("total_vram_mb", 0)
+        hw["available_vram_mb"] = rm_hw.get("available_vram_mb", 0)
+        if hw["gpu_name"]:
+            logger.info(
+                f"GPU via platform_detect: {hw['gpu_name']} ({hw['platform']}), "
+                f"{hw['total_vram_mb']}MB, {hw['available_vram_mb']}MB free"
+            )
 
         return jsonify(hw)
     except Exception as e:
@@ -386,19 +376,15 @@ def _find_gguf_path(name: str, models_dir: str = "/models") -> str | None:
 
 
 def _get_actual_vram_mb() -> tuple[int | None, int | None]:
-    """Return (used_vram_mb, total_vram_mb) from nvidia-smi, or (None, None)."""
+    """Return (used_vram_mb, total_vram_mb) from platform_detect, or (None, None)."""
     try:
-        import subprocess
+        from app.platform_detect import get_platform_info
+        from app.resource_manager import get_resource_manager
 
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0:
-            parts = result.stdout.strip().split(",")
-            return int(parts[0].strip()), int(parts[1].strip())
+        rm = get_resource_manager()
+        info = get_platform_info(rm.hardware.platform)
+        if info.total_vram_mb > 0:
+            return info.used_vram_mb, info.total_vram_mb
     except Exception:
         pass
     return None, None
@@ -757,7 +743,7 @@ def _validate_multimodal_model(model_name: str) -> tuple[bool, str]:
 def model_vram_estimate():
     """Return VRAM/RAM estimate for a model.
 
-    For loaded models (via llama-swap): returns actual nvidia-smi usage.
+    For loaded models (via llama-swap): returns actual platform VRAM usage.
     For unloaded models: estimates from GGUF metadata + formula.
     """
     model_name = request.args.get("model", "")

@@ -64,6 +64,9 @@ SD_CLI = "/usr/local/bin/sd-cli"
 _lock = threading.Lock()
 
 # ── CUDA detection ──
+# Preferred backend is baked into the image (SD_BACKEND build arg) — cuda maps
+# to nvidia-smi live check, vulkan/cpu are treated as non-CUDA.
+_DEFAULT_BACKEND = os.environ.get("SD_BACKEND", "cuda")
 _CUDA_AVAILABLE: bool | None = None
 
 
@@ -71,7 +74,9 @@ def _check_cuda() -> bool:
     global _CUDA_AVAILABLE
     if _CUDA_AVAILABLE is not None:
         return _CUDA_AVAILABLE
-    if shutil.which("nvidia-smi"):
+    if _DEFAULT_BACKEND != "cuda":
+        _CUDA_AVAILABLE = False
+    elif shutil.which("nvidia-smi"):
         try:
             result = subprocess.run(["nvidia-smi"], capture_output=True, timeout=10)
             _CUDA_AVAILABLE = result.returncode == 0
@@ -79,8 +84,16 @@ def _check_cuda() -> bool:
             _CUDA_AVAILABLE = False
     else:
         _CUDA_AVAILABLE = False
-    logger.info(f"CUDA detected: {_CUDA_AVAILABLE}")
+    logger.info(f"CUDA detection result: {_CUDA_AVAILABLE} (backend={_DEFAULT_BACKEND})")
     return _CUDA_AVAILABLE
+
+
+def _cli_timeout(default_s: int) -> int:
+    """Allow larger timeouts for slow CPU generation via SD_CLI_TIMEOUT / SD_EDIT_TIMEOUT env."""
+    try:
+        return int(os.environ.get("SD_CLI_TIMEOUT", default_s))
+    except ValueError:
+        return default_s
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -165,6 +178,9 @@ def _build_generate_cmd(
 ):
     """Build sd-cli command for image generation with specified offload level.
 
+    Backend-aware flags: CUDA builds use `--rng cuda` and flash-attention,
+    CPU/Vulkan builds fall back to the cross-platform `--rng std_default`.
+
     offload_level:
         0 — all on GPU
         1 — clip/text encoder on CPU (--clip-on-cpu)
@@ -173,6 +189,7 @@ def _build_generate_cmd(
     preview_path: path to write preview images (enables --preview tae)
     preview_interval: steps between preview updates (default 2)
     """
+    cuda = _check_cuda()
     cmd = [
         SD_CLI,
         "--diffusion-model",
@@ -194,21 +211,24 @@ def _build_generate_cmd(
         "--seed",
         str(seed),
         "--rng",
-        "cuda",
-        "--diffusion-fa",
+        "cuda" if cuda else "std_default",
         "--flow-shift",
         str(flow_shift),
     ]
 
+    if cuda:
+        cmd.append("--diffusion-fa")
+
     if preview_path:
         cmd.extend(["--preview", "tae", "--preview-path", preview_path, "--preview-interval", str(preview_interval)])
 
-    if offload_level == 1:
-        cmd.append("--clip-on-cpu")
-    elif offload_level == 2:
-        cmd.extend(["--clip-on-cpu", "--vae-on-cpu"])
-    elif offload_level >= 3:
-        cmd.append("--offload-to-cpu")
+    if cuda:
+        if offload_level == 1:
+            cmd.append("--clip-on-cpu")
+        elif offload_level == 2:
+            cmd.extend(["--clip-on-cpu", "--vae-on-cpu"])
+        elif offload_level >= 3:
+            cmd.append("--offload-to-cpu")
 
     if sampler:
         cmd.extend(["--sampler", sampler])
@@ -356,7 +376,7 @@ def generate_image(data):
         result, log_tail = _run_sd_cli(
             cmd,
             "/tmp/sd_cli_output.log",
-            timeout=300,
+            timeout=300 if _check_cuda() else _cli_timeout(1800),
             preview_path=preview_path,
             preview_url=preview_url,
             user_id=user_id,
@@ -410,19 +430,22 @@ def _build_edit_cmd(edit_prompt, src_path, use_gpu, offload_level=0, strength=0.
         src_path,
         "--seed",
         "-1",
-        "--rng",
-        "cuda",
-        "--diffusion-fa",
         "--strength",
         str(strength),
     ]
 
-    if offload_level == 1:
-        cmd.append("--clip-on-cpu")
-    elif offload_level == 2:
-        cmd.extend(["--clip-on-cpu", "--vae-on-cpu"])
-    elif offload_level >= 3:
-        cmd.extend(["--offload-to-cpu", "--vae-on-cpu", "--clip-on-cpu"])
+    cuda = _check_cuda()
+    cmd.extend(["--rng", "cuda" if cuda else "std_default"])
+    if cuda:
+        cmd.append("--diffusion-fa")
+
+    if cuda:
+        if offload_level == 1:
+            cmd.append("--clip-on-cpu")
+        elif offload_level == 2:
+            cmd.extend(["--clip-on-cpu", "--vae-on-cpu"])
+        elif offload_level >= 3:
+            cmd.extend(["--offload-to-cpu", "--vae-on-cpu", "--clip-on-cpu"])
 
     cmd.extend(["--cache-mode", "ucache"])
     return cmd
@@ -463,6 +486,7 @@ def _edit_image_impl(data):
 
             proc = None
             start_time = time.time()
+            edit_timeout = 900 if _check_cuda() else _cli_timeout(5400)
             try:
                 with open("/tmp/sd_cli_edit_output.log", "a") as log_file:
                     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0)
@@ -500,7 +524,7 @@ def _edit_image_impl(data):
                                                 except Exception as e:
                                                     logger.warning(f"Failed to post edit step progress: {e}")
                                     stdout_buf = b""
-                        if time.time() - start_time > 900:
+                        if time.time() - start_time > edit_timeout:
                             proc.kill()
                             proc.wait()
                             return {"error": "sd-cli edit timeout"}

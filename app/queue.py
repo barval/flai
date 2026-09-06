@@ -6,7 +6,6 @@ import hmac
 import json
 import os
 import re
-import subprocess
 import threading
 import time
 import uuid
@@ -919,16 +918,14 @@ class RedisRequestQueue:
             self.logger.debug(f"Failed to check llama-swap: {e}")
 
     def _check_vram_ready(self, needed_mb: int) -> bool:
-        """Verify that sufficient free VRAM is available by polling nvidia-smi again."""
+        """Verify that sufficient free VRAM is available by polling platform_detect."""
         try:
-            out = subprocess.run(
-                ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if out.returncode == 0:
-                free = int(out.stdout.strip().split("\n")[0].strip())
+            from app.platform_detect import query_free_vram_mb
+            from app.resource_manager import get_resource_manager
+
+            rm = get_resource_manager()
+            free = query_free_vram_mb(rm.hardware.platform)
+            if free is not None:
                 ready = free >= needed_mb
                 if not ready:
                     self.logger.warning(f"VRAM check failed after unload: {free}MB free, need {needed_mb}MB")
@@ -1036,19 +1033,15 @@ class RedisRequestQueue:
                         time.sleep(1)
                         continue
                     # len(running) == 0
-                    out = subprocess.run(
-                        ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-                        capture_output=True,
-                        text=True,
-                        timeout=5,
-                    )
-                    if out.returncode == 0:
-                        free = int(out.stdout.strip().split("\n")[0].strip())
-                        if free >= needed_mb:
-                            self.logger.info(
-                                f"VRAM check OK: {free}MB free, 0 LLM models loaded (needed={needed_mb}MB)"
-                            )
-                            return True
+                    from app.platform_detect import query_free_vram_mb
+                    from app.resource_manager import get_resource_manager
+
+                    rm = get_resource_manager()
+                    free = query_free_vram_mb(rm.hardware.platform)
+                    if free is not None and free >= needed_mb:
+                        self.logger.info(f"VRAM check OK: {free}MB free, 0 LLM models loaded (needed={needed_mb}MB)")
+                        return True
+                    if free is not None:
                         self.logger.info(f"VRAM: {free}MB free, need {needed_mb}MB — waiting for CUDA dealloc...")
 
                 self.app.logger.info(f"VRAM: waiting... (needed={needed_mb}MB, timeout={timeout}s)")

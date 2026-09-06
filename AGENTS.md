@@ -1,4 +1,4 @@
-# AGENTS.md — FLAI v10.0
+# AGENTS.md — FLAI v11.0
 
 > **Read this file first.** It contains the project's constitution: commands, critical rules, and hard constraints.
 > For deep technical details, see the `docs/` directory.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v10.0 — Single-Server Deployment Script
+# FLAI v11.0 — Single-Server Deployment Script
 
 set -euo pipefail
 
@@ -73,7 +73,7 @@ generate_llama_swap_config() {
 
     info "Generating minimal llama-swap config..."
 
-    # v10.0: the multimodal model is the single chat model (router + chat + vision).
+    # v11.0: the multimodal model is the single chat model (router + chat + vision).
     # It is always resident (ttl=0). No separate chat-only model exists anymore.
     local MULTIMODAL_MODEL="Qwen3VL-8B-Instruct-Q4_K_M"
 
@@ -274,7 +274,7 @@ download_sd_cpp_models() {
         warn "flux2_ae.safetensors already exists — skipping."
     fi
 
-    # Text encoder (Qwen3-4B acts as the SD text encoder; NOT the chat model in v10.0)
+    # Text encoder (Qwen3-4B acts as the SD text encoder; NOT the chat model in v11.0)
     if [[ ! -f "$TXT_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
         info "Downloading Qwen3-4B-Instruct-2507-Q4_K_M.gguf (text encoder)..."
         HF_DOWNLOAD "unsloth/Qwen3-4B-Instruct-2507-GGUF" \
@@ -398,21 +398,28 @@ build_and_launch() {
     [[ "$WITH_SEARCH" == "true" ]] && PROFILE="$PROFILE --profile with-search"
 
     COMPOSE_FILE="docker-compose.gpu.yml"
-    info "GPU mode — using GPU compose file."
-
-    # Detect GPU VRAM tier
-    local VRAM_MB=0
-    if command -v nvidia-smi &>/dev/null; then
-        VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
-    fi
-    if [[ "$VRAM_MB" -ge 16000 ]]; then
-        info "GPU VRAM: ${VRAM_MB}MB (tier: 16GB+) — full performance (gpt-oss-20b reasoning)"
-    elif [[ "$VRAM_MB" -ge 12000 ]]; then
-        info "GPU VRAM: ${VRAM_MB}MB (tier: 12GB) — good fit (Gemma 4 E4B reasoning)"
-    elif [[ "$VRAM_MB" -ge 8000 ]]; then
-        info "GPU VRAM: ${VRAM_MB}MB (tier: 8GB) — tight fit (Gemma 4 E4B reasoning)"
+    if [[ "${FLAI_PLATFORM:-}" == "cpu" ]] || ! command -v nvidia-smi &>/dev/null; then
+        COMPOSE_FILE="docker-compose.cpu.yml"
+        info "CPU mode — using CPU compose file (no GPU required)."
     else
-        warn "GPU VRAM: ${VRAM_MB}MB — below 8GB minimum. Performance will be severely limited."
+        info "GPU mode — using GPU compose file."
+    fi
+
+    # Detect GPU VRAM tier (GPU mode only)
+    local VRAM_MB=0
+    if [[ "$COMPOSE_FILE" == "docker-compose.gpu.yml" ]] && command -v nvidia-smi &>/dev/null; then
+        VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
+        if [[ "$VRAM_MB" -ge 16000 ]]; then
+            info "GPU VRAM: ${VRAM_MB}MB (tier: 16GB+) — full performance (gpt-oss-20b reasoning)"
+        elif [[ "$VRAM_MB" -ge 12000 ]]; then
+            info "GPU VRAM: ${VRAM_MB}MB (tier: 12GB) — good fit (Gemma 4 E4B reasoning)"
+        elif [[ "$VRAM_MB" -ge 8000 ]]; then
+            info "GPU VRAM: ${VRAM_MB}MB (tier: 8GB) — tight fit (Gemma 4 E4B reasoning)"
+        else
+            warn "GPU VRAM: ${VRAM_MB}MB — below 8GB minimum. Performance will be severely limited."
+        fi
+    elif [[ "$COMPOSE_FILE" == "docker-compose.cpu.yml" ]]; then
+        info "CPU-only mode — performance depends on CPU cores and RAM."
     fi
 
     # Clean up old containers to avoid runtime conflicts
@@ -431,7 +438,7 @@ build_and_launch() {
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "unreachable")
     if [[ "$STATUS" == "ok" ]]; then
-        info "FLAI v10.0 is running! Open http://localhost:5000 in your browser."
+        info "FLAI v11.0 is running! Open http://localhost:5000 in your browser."
     else
         warn "Health check returned: $STATUS — check 'docker compose logs' for details."
     fi
@@ -447,7 +454,7 @@ run_tests() {
 # ── Usage ──
 usage() {
     cat <<'USAGE'
-FLAI v10.0 — Deployment Script
+FLAI v11.0 — Deployment Script
 
 Usage: ./deploy.sh [OPTIONS]
 
@@ -459,6 +466,7 @@ Options:
   --with-video        Deploy LTX-Video for video generation
   --with-slm          Deploy SuperLocalMemory for long-term memory
                       (default: disabled, use this flag to enable)
+  --cpu               Force CPU-only mode (no GPU required)
   --download-models   Download GGUF/safetensors models from HuggingFace
   --run-tests         Run unit tests after deployment
   --help, -h          Show this help message
@@ -489,6 +497,7 @@ WITH_SLM=false
 WITH_SEARCH=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
+FLAI_PLATFORM="${FLAI_PLATFORM:-}"
 
 for arg in "$@"; do
     case "$arg" in
@@ -498,6 +507,7 @@ for arg in "$@"; do
         --with-video)     WITH_VIDEO=true ;;
         --with-slm)       WITH_SLM=true ;;
         --with-search)    WITH_SEARCH=true ;;
+        --cpu)            FLAI_PLATFORM=cpu ;;
         --download-models) DOWNLOAD_MODELS=true ;;
         --run-tests)      RUN_TESTS=true ;;
         --help|-h)        usage; exit 0 ;;
@@ -507,7 +517,7 @@ done
 # ── Main ──
 main() {
     echo "============================================"
-    echo "  FLAI v10.0 — Deployment Script"
+    echo "  FLAI v11.0 — Deployment Script"
     echo "============================================"
     echo ""
 

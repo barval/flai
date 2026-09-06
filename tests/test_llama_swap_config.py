@@ -260,6 +260,30 @@ class TestBuildCmd:
         assert "--n-gpu-layers 10" in cmd
         assert "--kv-offload" in cmd
 
+    @patch("app.utils.get_gguf_models_cached")
+    @patch("app.resource_manager.get_resource_manager")
+    @patch("app.llama_swap_config.get_model_config")
+    def test_cpu_cmd_disables_gpu_only_flags(self, mock_get_config, mock_get_rm, mock_gguf):
+        mock_get_config.return_value = {"context_length": 8192}
+        mock_rm = MagicMock()
+        mock_rm.compute_llamacpp_config.return_value = {
+            "flash_attn": True,
+            "n_gpu_layers": 0,
+            "offload_kqv": True,
+            "cache_type_k": "q4_0",
+            "cache_type_v": "q4_0",
+        }
+        mock_get_rm.return_value = mock_rm
+        mock_gguf.return_value = {"test": {"supports_mtp": True}}
+        gen = LlamaSwapConfigGenerator()
+        cmd = gen.build_cmd("reasoning", "/models/test.gguf")
+        assert "--n-gpu-layers 0" in cmd
+        assert "--flash-attn" not in cmd
+        assert "--kv-offload" not in cmd
+        assert "--cache-type-k" not in cmd
+        assert "--cache-type-v" not in cmd
+        assert "--spec-type" not in cmd
+
     @patch("app.resource_manager.get_resource_manager")
     @patch("app.llama_swap_config.get_model_config")
     def test_embedding_cmd(self, mock_get_config, mock_get_rm):

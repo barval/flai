@@ -4,6 +4,25 @@ All notable changes to FLAI are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v11.0] — 2026-09-06
+
+### 🏗️ Multi-Platform GPU Support (In Progress)
+
+- **Hardware detection abstraction** — new `app/platform_detect.py` detects the compute platform in order: environment override (`FLAI_PLATFORM`), CUDA (`nvidia-smi`), ROCm (AMD), then CPU fallback. Each probe returns VRAM, VRAM used, PCI bus, and driver version. The selected platform is exposed in the `/api/hardware` admin endpoint. AMD/Intel platforms return VRAM=0 and `cuda_detected=False`, which automatically switches the resource manager into CPU-planning mode.
+- **NVML dependency removed** — `nvidia-ml-py` replaced by direct `nvidia-smi` parsing in `platform_detect.py` (`_nvidia_probe`).
+
+### ✨ CPU-Only Mode
+
+- **New `docker-compose.cpu.yml`** — identical service stack to the GPU version (web, redis, postgres, llama-swap, SD, LTX, Whisper, Piper, SearXNG, SLM, Qdrant) without NVIDIA runtime, using CPU builds of all models. All timeouts are increased (`SD_CPP_TIMEOUT=1800`, `LLM_TIMEOUT=600`, `SD_CLI_TIMEOUT=3600`).
+- **SD (stable-diffusion.cpp) CPU/Vulkan builds** — `Dockerfile.sd_cpp` now has `SD_BACKEND` build arg (`cuda`|`vulkan`|`cpu`), multi-stage build/runtime bases, `ca-certificates` for git clone. `sd_wrapper.py` is backend-aware: uses `--rng std_default` on non-CUDA, skips `--diffusion-fa` and offload flags, applies `SD_CLI_TIMEOUT` (defaults: generate 1800 s, edit 5400 s on CPU).
+- **LTX-Video CPU build** — `Dockerfile.ltx_video` now has `LTX_BACKEND` and `LTX_BASE_IMAGE` build args (`python:3.11-slim` + official CPU wheels for CPU, nightly cu128 for CUDA). `ltx_wrapper.py` guards all `torch.cuda.*` calls, uses `LTX_DEVICE=cpu` defaults (256×384, 49 frames, 16 fps — the CUDA defaults are 512×768, 240, 24), reports `device` in metadata.
+- **LLM CPU config** — `LlamaSwapConfigGenerator.build_cmd()` now treats `n_gpu_layers=0` as CPU: skips `--flash-attn`, `--kv-offload`, `--cache-type-k/v`, and MTP speculative decoding. Uses `ghcr.io/mostlygeek/llama-swap:cpu` image.
+- **Deploy scripts** — `deploy.sh`/`deploy-ru.sh` accept `--cpu` and auto-select `docker-compose.cpu.yml` when NVIDIA is not detected.
+
+### 🧪 Tests
+
+- **`tests/test_platform_detect.py`** — 14 tests covering NVIDIA, AMD, Intel, and CPU detect paths, including the AMD heuristic that treats values ≤ 1e9 as MB.
+
 ## [v10.0] — 2026-09-04
 
 ### 🏗️ Architecture

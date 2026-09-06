@@ -1104,7 +1104,7 @@ class LlamaCppClient:
             self.logger.debug("VRAM skip failed: multimodal model not in /running — full reload needed")
             self._active_model_type = None
 
-        # === Stateless check: verify model is loaded via llama-swap + nvidia-smi ===
+        # === Stateless check: verify model is loaded via llama-swap + platform ===
         try:
             swap_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
             resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=3)
@@ -1114,19 +1114,12 @@ class LlamaCppClient:
                     config = get_model_config(model_type)
                     model_name = config.get("model_name", "") if config else ""
                     if model_name and model_name in models[0].get("cmd", ""):
-                        import subprocess
+                        from app.platform_detect import query_free_vram_mb
+                        from app.resource_manager import get_resource_manager
 
-                        out = subprocess.run(
-                            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-                            capture_output=True,
-                            text=True,
-                            timeout=5,
-                        )
-                        if out.returncode == 0:
-                            free = int(out.stdout.strip().split("\n")[0].strip())
-                            from app.resource_manager import get_resource_manager
-
-                            rm = get_resource_manager()
+                        rm = get_resource_manager()
+                        free = query_free_vram_mb(rm.hardware.platform)
+                        if free is not None:
                             needed = rm.get_vram_needed_mb(model_type)
                             if free >= needed:
                                 self._active_model_type = model_type

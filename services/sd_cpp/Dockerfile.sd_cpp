@@ -1,16 +1,36 @@
-# Dockerfile for stable-diffusion.cpp with CUDA 13 support
-# Clones leejet/stable-diffusion.cpp and builds from source
+# Dockerfile for stable-diffusion.cpp with selectable backend
+# Builds for CUDA (default), Vulkan, or pure CPU via the SD_BACKEND build arg:
+#
+#   docker build --build-arg SD_BACKEND=cuda   -f services/sd_cpp/Dockerfile.sd_cpp -t flai-sd_cpp .
+#   docker build --build-arg SD_BACKEND=vulkan -f services/sd_cpp/Dockerfile.sd_cpp -t flai-sd_cpp .
+#   docker build --build-arg SD_BACKEND=cpu    -f services/sd_cpp/Dockerfile.sd_cpp -t flai-sd_cpp .
 
+ARG SD_BACKEND=cuda
 ARG CUDA_VERSION=13.0.1
 ARG UBUNTU_VERSION=24.04
 
-FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION} AS build
+# ── Build stage ──
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION} AS build_cuda
+
+FROM ubuntu:${UBUNTU_VERSION} AS build_vulkan
+
+FROM ubuntu:${UBUNTU_VERSION} AS build_cpu
+
+FROM build_${SD_BACKEND} AS build
+
+ARG SD_BACKEND
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     git \
     ccache \
     cmake \
+    ca-certificates \
+    && if [ "${SD_BACKEND}" = "cuda" ]; then \
+         true; \
+       elif [ "${SD_BACKEND}" = "vulkan" ]; then \
+         apt-get install -y --no-install-recommends libvulkan-dev glslc spirv-headers; \
+       fi \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /sd.cpp
@@ -18,17 +38,37 @@ WORKDIR /sd.cpp
 # Clone the official repository at runtime
 RUN git clone --depth 1 --recurse-submodules https://github.com/leejet/stable-diffusion.cpp.git .
 
-ARG CUDACXX=/usr/local/cuda/bin/nvcc
-RUN cmake . -B ./build -DSD_CUDA=ON && \
+ARG SD_BACKEND
+RUN if [ "${SD_BACKEND}" = "cuda" ]; then \
+        cmake . -B ./build -DSD_CUDA=ON -DCUDACXX=/usr/local/cuda/bin/nvcc; \
+    elif [ "${SD_BACKEND}" = "vulkan" ]; then \
+        cmake . -B ./build -DSD_VULKAN=ON; \
+    else \
+        cmake . -B ./build; \
+    fi && \
     cmake --build ./build --config Release -j$(nproc)
 
-FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu${UBUNTU_VERSION} AS runtime
+# ── Runtime stage ──
+FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu${UBUNTU_VERSION} AS runtime_cuda
 
-RUN apt-get update && \
-    apt-get install --yes --no-install-recommends libgomp1 curl python3 python3-requests && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+FROM ubuntu:${UBUNTU_VERSION} AS runtime_vulkan
 
-# Copy sd-cli built in the build stage (linked against same CUDA version)
+FROM ubuntu:${UBUNTU_VERSION} AS runtime_cpu
+
+ARG SD_BACKEND
+FROM runtime_${SD_BACKEND} AS runtime
+
+ARG SD_BACKEND
+ENV SD_BACKEND=${SD_BACKEND}
+
+RUN apt-get update && apt-get install --yes --no-install-recommends \
+    libgomp1 curl python3 python3-requests adduser \
+    && if [ "${SD_BACKEND}" = "vulkan" ]; then \
+         apt-get install --yes --no-install-recommends libvulkan1; \
+       fi \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Copy sd-cli built in the build stage (self-contained, no CUDA libs needed on host)
 COPY --from=build /sd.cpp/build/bin/sd-cli /usr/local/bin/sd-cli
 COPY --from=build /sd.cpp/build/bin/sd-server /usr/local/bin/sd-server
 

@@ -52,6 +52,11 @@ DEFAULT_UPSCALER = os.environ.get("LTX_DEFAULT_UPSCALER", "ltxv-spatial-upscaler
 TEXT_ENCODER_PATH = os.environ.get("LTX_TEXT_ENCODER_PATH", "PixArt-alpha/PixArt-XL-2-1024-MS")
 HF_HOME = os.environ.get("HF_HOME", "/app/models/huggingface")
 DEVICE = os.environ.get("LTX_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
+IS_CUDA = DEVICE == "cuda" and torch.cuda.is_available()
+
+# CPU-mode defaults — much smaller/lighter than the CUDA defaults to keep
+# inference time reasonable on systems without a GPU.
+CPU_DEFAULTS = {"height": 256, "width": 384, "num_frames": 49, "frame_rate": 16}
 
 os.environ["HF_HOME"] = HF_HOME
 os.environ["HF_HUB_CACHE"] = os.path.join(HF_HOME, "hub")
@@ -202,7 +207,11 @@ def ensure_pipeline():
 
         transformer = transformer.to(DEVICE)
         vae = vae.to(DEVICE)
-        logger.info("Transformer and VAE on GPU; text_encoder on CPU (VRAM optimization)")
+        logger.info(
+            "Transformer and VAE on GPU; text_encoder on CPU (VRAM optimization)"
+            if IS_CUDA
+            else f"All components on CPU (device: {DEVICE})"
+        )
 
         submodel_dict = {
             "transformer": transformer,
@@ -244,9 +253,10 @@ def ensure_pipeline():
         import gc
 
         gc.collect()
-        torch.cuda.empty_cache()
-        free_mem, total_mem = torch.cuda.mem_get_info()
-        logger.info(f"VRAM after init: {free_mem / 1024**3:.1f} GiB free / {total_mem / 1024**3:.1f} GiB total")
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            free_mem, total_mem = torch.cuda.mem_get_info()
+            logger.info(f"VRAM after init: {free_mem / 1024**3:.1f} GiB free / {total_mem / 1024**3:.1f} GiB total")
 
         if config.get("pipeline_type") == "multi-scale" and _upscaler_path:
             logger.info(f"Loading spatial upscaler: {_upscaler_path}")
@@ -474,6 +484,7 @@ def run_inference(
         "padded_height": height_padded,
         "padded_width": width_padded,
         "padded_frames": num_frames_padded,
+        "device": DEVICE,
     }
 
     return mp4_bytes, seed, metadata
@@ -558,7 +569,12 @@ def unload_pipeline():
             torch.cuda.empty_cache()
         except Exception as e:
             logger.warning(f"CUDA cleanup during unload failed: {e}")
-    free_mem, total_mem = torch.cuda.mem_get_info()
+    free_mem, total_mem = (0, 0)
+    if torch.cuda.is_available():
+        try:
+            free_mem, total_mem = torch.cuda.mem_get_info()
+        except Exception as e:
+            logger.warning(f"VRAM query during unload failed: {e}")
     logger.info(f"Pipeline unloaded — VRAM: {free_mem / 1024**3:.1f} GiB free / {total_mem / 1024**3:.1f} GiB total")
     return jsonify({"status": "ok", "freed": True, "free_mb": free_mem // 1024**2})
 
@@ -578,10 +594,10 @@ def generate_video():
             return jsonify({"error": "Missing 'prompt'"}), 400
 
         negative_prompt = data.get("negative_prompt", "worst quality, inconsistent motion, blurry, jittery, distorted")
-        height = int(data.get("height", 512))
-        width = int(data.get("width", 768))
-        num_frames = int(data.get("num_frames", 240))
-        frame_rate = int(data.get("frame_rate", 24))
+        height = int(data.get("height", CPU_DEFAULTS["height"] if not IS_CUDA else 512))
+        width = int(data.get("width", CPU_DEFAULTS["width"] if not IS_CUDA else 768))
+        num_frames = int(data.get("num_frames", CPU_DEFAULTS["num_frames"] if not IS_CUDA else 240))
+        frame_rate = int(data.get("frame_rate", CPU_DEFAULTS["frame_rate"] if not IS_CUDA else 24))
         seed = int(data.get("seed", -1))
         image_data = data.get("image_data")
         user_id = data.get("user_id")

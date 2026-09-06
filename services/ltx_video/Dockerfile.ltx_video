@@ -1,7 +1,16 @@
-# Dockerfile for LTX-Video inference server with CUDA
-# Uses PyTorch base image with CUDA 12.4
+# Dockerfile for LTX-Video inference server
+# Parameterized by LTX_BACKEND: cuda (default) or cpu.
+#
+# Build:
+#   CUDA: docker build -f services/ltx_video/Dockerfile.ltx_video -t flai-ltxvideo .
+#   CPU:  docker build --build-arg LTX_BACKEND=cpu \
+#          --build-arg LTX_BASE_IMAGE=python:3.11-slim \
+#          -f services/ltx_video/Dockerfile.ltx_video -t flai-ltxvideo-cpu .
 
-FROM pytorch/pytorch:2.5.0-cuda12.4-cudnn9-runtime
+ARG LTX_BACKEND=cuda
+ARG LTX_BASE_IMAGE=pytorch/pytorch:2.5.0-cuda12.4-cudnn9-runtime
+
+FROM ${LTX_BASE_IMAGE}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -25,10 +34,18 @@ RUN pip install --no-cache-dir \
     av \
     redis
 
-# Install PyTorch with CUDA 12.8 for RTX 5060 Ti (sm_120) support.
+# Install the right PyTorch build for the selected backend.
+# CUDA: nightly cu128 for RTX 5060 Ti (sm_120) support.
+# CPU:  official CPU wheels from the pytorch.org index.
 # Must be AFTER ltx-video install, otherwise pip downgrades torch.
-RUN pip install --no-cache-dir --force-reinstall --pre torch --index-url https://download.pytorch.org/whl/nightly/cu128 && \
-    pip install --no-cache-dir --force-reinstall --pre --no-deps torchvision --index-url https://download.pytorch.org/whl/nightly/cu128
+ARG LTX_BACKEND
+RUN if [ "${LTX_BACKEND}" = "cpu" ]; then \
+        pip install --no-cache-dir --force-reinstall torch --index-url https://download.pytorch.org/whl/cpu && \
+        pip install --no-cache-dir --force-reinstall --no-deps torchvision --index-url https://download.pytorch.org/whl/cpu; \
+    else \
+        pip install --no-cache-dir --force-reinstall --pre torch --index-url https://download.pytorch.org/whl/nightly/cu128 && \
+        pip install --no-cache-dir --force-reinstall --pre --no-deps torchvision --index-url https://download.pytorch.org/whl/nightly/cu128; \
+    fi
 
 # Create directories
 RUN mkdir -p /app/models \

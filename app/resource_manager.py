@@ -40,11 +40,13 @@ class HardwareInfo:
     def __init__(self) -> None:
         self.total_vram_mb: int = 0
         self.available_vram_mb: int = 0
+        self.used_vram_mb: int = 0
         self.total_ram_mb: int = 0
         self.available_ram_mb: int = 0
         self.cpu_count: int = 0
         self.gpu_name: str = "unknown"
         self.cuda_detected: bool = False
+        self.platform: str = "cpu"
 
 
 class ResourceManager:
@@ -85,42 +87,29 @@ class ResourceManager:
         hw.total_ram_mb = self._detect_total_ram_mb()
         hw.available_ram_mb = self._detect_available_ram_mb()
 
-        # Detect GPU via nvidia-smi
+        # Detect GPU via platform_detect (vendor-agnostic: nvidia/amd/intel/cpu)
         try:
-            result = subprocess.run(
-                [
-                    "nvidia-smi",
-                    "--query-gpu=name,memory.total,memory.used,memory.free",
-                    "--format=csv,noheader,nounits",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode == 0:
-                lines = result.stdout.strip().split("\n")
-                if lines:
-                    parts = lines[0].split(",")
-                    hw.gpu_name = parts[0].strip()
-                    hw.total_vram_mb = int(parts[1].strip())
-                    used = int(parts[2].strip())
-                    hw.available_vram_mb = int(parts[3].strip())
-                    hw.cuda_detected = True
-                    logger.info(
-                        f"GPU detected: {hw.gpu_name}, "
-                        f"VRAM: {hw.total_vram_mb}MB total, "
-                        f"{hw.available_vram_mb}MB available, "
-                        f"{used}MB used"
-                    )
-                else:
-                    logger.warning("nvidia-smi returned empty output")
+            from app.platform_detect import get_platform_info
+
+            info = get_platform_info()
+            hw.platform = info.platform
+            hw.gpu_name = info.gpu_name
+            hw.total_vram_mb = info.total_vram_mb
+            hw.used_vram_mb = info.used_vram_mb
+            hw.available_vram_mb = info.available_vram_mb
+            hw.cuda_detected = info.cuda_detected
+            if hw.cuda_detected:
+                logger.info(
+                    f"GPU detected: {hw.gpu_name} ({hw.platform}), "
+                    f"VRAM: {hw.total_vram_mb}MB total, "
+                    f"{hw.available_vram_mb}MB available, "
+                    f"{hw.used_vram_mb}MB used"
+                )
             else:
-                logger.warning(f"nvidia-smi failed: {result.stderr.strip()}")
-        except FileNotFoundError:
-            logger.info("nvidia-smi not found — running CPU-only mode")
-            hw.cuda_detected = False
+                logger.info(f"No GPU detected ({hw.platform}) — running CPU-only mode")
         except Exception as e:
             logger.warning(f"GPU detection failed: {e}")
+            hw.platform = "cpu"
             hw.cuda_detected = False
 
         self.hardware = hw
@@ -134,17 +123,14 @@ class ResourceManager:
         self._poll_vram()
 
     def _poll_vram(self):
-        """Query nvidia-smi for available VRAM and update hardware info."""
+        """Query available VRAM via platform_detect and update hardware info."""
         try:
-            result = subprocess.run(
-                ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0:
-                free = int(result.stdout.strip().split("\n")[0].strip())
-                self.hardware.available_vram_mb = free
+            from app.platform_detect import get_platform_info
+
+            info = get_platform_info(self.hardware.platform)
+            if info.total_vram_mb > 0:
+                self.hardware.available_vram_mb = info.available_vram_mb
+                self.hardware.used_vram_mb = info.used_vram_mb
         except Exception:
             pass
         # Reschedule next poll to keep available_vram_mb fresh (Bug A6 fix)
@@ -465,7 +451,7 @@ class ResourceManager:
         2. Unload ALL llama.cpp models via llama-swap
         3. Unload video pipeline
         4. Poll /running until 0 models remain
-        5. Poll nvidia-smi until needed_mb is free
+        5. Poll platform VRAM until needed_mb is free
 
         Returns True when the model is already loaded or VRAM is confirmed available.
         Returns False on timeout (model not loaded and VRAM insufficient).
@@ -503,7 +489,7 @@ class ResourceManager:
         with contextlib.suppress(Exception):
             self.unload_video_pipeline()
 
-        # 3+4. Poll /running + nvidia-smi until VRAM sufficient
+        # 3+4. Poll /running + platform VRAM until sufficient
         deadline = time.time() + timeout
         while time.time() < deadline:
             try:
@@ -874,6 +860,7 @@ class ResourceManager:
         status = {
             "gpu_name": self.hardware.gpu_name,
             "cuda_detected": self.hardware.cuda_detected,
+            "platform": self.hardware.platform,
             "total_vram_mb": self.hardware.total_vram_mb,
             "available_vram_mb": self.hardware.available_vram_mb,
             "total_ram_mb": self.hardware.total_ram_mb,
@@ -919,19 +906,16 @@ class ResourceManager:
                         f"loaded models: {loaded}"
                     )
         except Exception:
-            # Fallback: raw nvidia-smi
+            # Fallback: query via platform_detect
             try:
-                out = subprocess.check_output(
-                    ["nvidia-smi", "--query-gpu=memory.total,memory.free", "--format=csv,noheader,nounits"],
-                    timeout=10,
-                ).decode()
-                parts = out.strip().split(", ")
-                if len(parts) >= 2:
-                    total = int(parts[0].strip())
-                    free = int(parts[1].strip())
+                from app.platform_detect import query_vram
+
+                used, total = query_vram(self.hardware.platform)
+                if total and total > 0:
+                    free = max(0, total - used) if used is not None else total
                     result = {"total_mb": total, "free_mb": free}
                     logger.info(
-                        f"GPU memory [nvidia-smi{' after ' + tag if tag else ''}]: {free}MB free / {total}MB total"
+                        f"GPU memory [platform_detect{' after ' + tag if tag else ''}]: {free}MB free / {total}MB total"
                     )
             except Exception:
                 logger.warning("Could not query GPU memory")

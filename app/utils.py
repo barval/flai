@@ -1498,23 +1498,20 @@ def is_blackwell_gpu() -> bool:
 
     Returns True for RTX 50xx, RTX PRO 6000 Blackwell, B100/200, GB200/10.
     Result is cached after first call.
-    Returns False if nvidia-smi is unavailable or GPU is unknown.
+    Returns False if no NVIDIA GPU is detected or the GPU is unknown.
     """
     global _gpu_is_blackwell
     if _gpu_is_blackwell is not None:
         return _gpu_is_blackwell
     try:
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader,nounits"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode == 0:
-            name = result.stdout.strip().lower()
-            _gpu_is_blackwell = any(p in name for p in _BLACKWELL_PATTERNS)
-        else:
+        from app.platform_detect import get_platform_info
+
+        info = get_platform_info()
+        if info.platform != "nvidia":
             _gpu_is_blackwell = False
+        else:
+            name = info.gpu_name.lower()
+            _gpu_is_blackwell = any(p in name for p in _BLACKWELL_PATTERNS)
     except Exception:
         _gpu_is_blackwell = False
     return _gpu_is_blackwell

@@ -18,7 +18,6 @@ striprtf>=0.0.26
 ebooklib>=0.17
 gguf>=0.10.0
 psycopg2-binary>=2.9.9
-nvidia-ml-py>=12
 pymorphy3>=2.0.6
 pendulum>=3.0.0
 trafilatura>=2.0.0

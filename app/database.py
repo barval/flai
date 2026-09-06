@@ -187,7 +187,7 @@ def _init_postgresql():
 
     # Seed default model_configs if not present — architecture-aware
     # MXFP4 on Blackwell GPUs (native FP4), Q4_0/Q4_K_M on others.
-    # v10.0: multimodal model is the single chat model (router + chat + vision).
+    # v11.0: multimodal model is the single chat model (router + chat + vision).
     c.execute("SELECT COUNT(*) as cnt FROM model_configs")
     if c.fetchone()["cnt"] == 0:
         from app.utils import is_blackwell_gpu

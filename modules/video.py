@@ -1,9 +1,9 @@
 # modules/video.py
 """
-Module for video generation via LTX-Video.
+Module for video generation via Wan2.2-TI2V-5B-Turbo.
 
-Uses ltx-wrapper HTTP API (ltx_wrapper.py running in ltxvideo container)
-which runs LTX-Video pipeline natively with PyTorch.
+Uses the sd-wrapper HTTP API (sd_wrapper.py running in the flai-sd container)
+which runs sd-cli -M vid_gen natively with the Wan2.2 pipeline.
 """
 
 import base64
@@ -24,20 +24,20 @@ DEFAULT_VIDEO_NEGATIVE_PROMPT = "worst quality, inconsistent motion, blurry, jit
 DEFAULT_VIDEO_PARAMS = {
     "negative_prompt": DEFAULT_VIDEO_NEGATIVE_PROMPT,
     "width": 768,
-    "height": 512,
-    "num_frames": 240,
+    "height": 448,
+    "num_frames": 121,
     "frame_rate": 24,
 }
 
 # RAM budgeting for CPU generation (no VRAM to rely on).
-# Measured: 384×256×49 peaked at ~19.2 GiB cgroup usage (~17400 MB static
-# models + ~2.2 GiB activations). Activations scale ~linearly with latent volume
-# (spatial//32 × spatial//32 × temporal//8), fit to that measurement with margin.
-VIDEO_RAM_STATIC_MB = 17_400
-VIDEO_RAM_ACTIVATIONS_MB_PER_UNIT = 3.0
+# Wan2.2-TI2V-5B-Turbo: diffusion Q4_K_M ~3.6 GB + UMT5-XXL ~6 GB + VAE ~1.5 GB
+# ≈ 11 GB static. Activations scale ~linearly with latent volume
+# (spatial//32 × spatial//32 × temporal//4).
+VIDEO_RAM_STATIC_MB = 11_000
+VIDEO_RAM_ACTIVATIONS_MB_PER_UNIT = 2.0
 VIDEO_RAM_SAFETY_MARGIN_MB = 1024
 
-MAX_VIDEO_SOURCE_SIZE = 768
+MAX_VIDEO_SOURCE_SIZE = 832
 
 
 def resize_video_source_image(
@@ -73,11 +73,12 @@ def resize_video_source_image(
 
 
 class VideoModule(TranslationMixin):
-    """Module for video generation via LTX-Video wrapper."""
+    """Module for video generation via Wan2.2 (sd-wrapper)."""
 
     CPU_FALLBACK_PARAMS: list[dict[str, int]] = [
-        {"width": 384, "height": 256, "num_frames": 120, "frame_rate": 12},
-        {"width": 256, "height": 192, "num_frames": 57, "frame_rate": 6},
+        {"width": 384, "height": 256, "num_frames": 81, "frame_rate": 24},
+        {"width": 320, "height": 192, "num_frames": 57, "frame_rate": 24},
+        {"width": 256, "height": 160, "num_frames": 49, "frame_rate": 24},
     ]
 
     def __init__(self, app=None):
@@ -85,7 +86,7 @@ class VideoModule(TranslationMixin):
         self.wrapper_url = None
         self.available = False
         self.timeout = 600
-        self.model_type = "ltxv-2b-0.9.8-distilled"
+        self.model_type = "wan2.2-ti2v-5b-turbo"
         self.multimodal_module = None
 
         if app:
@@ -94,23 +95,22 @@ class VideoModule(TranslationMixin):
     def init_app(self, app):
         """Initialize module with Flask app"""
         self.app = app
-        self.wrapper_url = app.config.get("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
-        self.timeout = app.config.get("LTX_VIDEO_TIMEOUT", 600)
-        self.model_type = app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
+        self.wrapper_url = app.config.get("VIDEO_WRAPPER_URL", "http://flai-sd:7861")
+        self.timeout = app.config.get("VIDEO_TIMEOUT", 600)
+        self.model_type = app.config.get("VIDEO_MODEL", "wan2.2-ti2v-5b-turbo")
 
         self.logger.info(
             f"VideoModule initialized with wrapper URL: {self.wrapper_url}, "
             f"model: {self.model_type}, timeout: {self.timeout}s"
         )
 
-        self.available = wait_for_service(self.check_availability, self.logger, "ltx-wrapper", retries=1, delay=1)
+        self.available = wait_for_service(self.check_availability, self.logger, "sd-wrapper", retries=1, delay=1)
 
         if self.available:
             self.logger.info(f"VideoModule initialized and available. Timeout: {self.timeout}s")
         else:
             self.logger.warning(
-                f"VideoModule initialized, but ltx-wrapper unavailable ({self.wrapper_url}). "
-                "Will retry on each request."
+                f"VideoModule initialized, but sd-wrapper unavailable ({self.wrapper_url}). Will retry on each request."
             )
 
     def set_multimodal_module(self, multimodal_module):
@@ -118,9 +118,9 @@ class VideoModule(TranslationMixin):
         self.multimodal_module = multimodal_module
 
     def check_availability(self):
-        """Check ltx-wrapper availability."""
+        """Check sd-wrapper availability."""
         if not self.wrapper_url:
-            self.logger.error("LTX_VIDEO_WRAPPER_URL not configured")
+            self.logger.error("VIDEO_WRAPPER_URL not configured")
             return False
 
         try:
@@ -129,22 +129,21 @@ class VideoModule(TranslationMixin):
                 self.available = True
                 return True
             else:
-                self.logger.warning(f"ltx-wrapper returned status {response.status_code}")
+                self.logger.warning(f"sd-wrapper returned status {response.status_code}")
                 self.available = False
                 return False
         except Exception as e:
-            self.logger.error(f"Error connecting to ltx-wrapper: {e}")
+            self.logger.error(f"Error connecting to sd-wrapper: {e}")
             self.available = False
             return False
 
     @staticmethod
     def _estimate_video_vram_mb() -> int:
-        """Dynamic VRAM estimate for LTX-Video model in MB.
+        """Dynamic VRAM estimate for the video model in MB.
 
-        Reads the measured peak from model_vram_estimates (10+ measurements
-        stored by resource_manager.measure_video_vram_peak). On our hardware
-        the actual peak is ~3057 MB, not the 8000 MB the hardcoded value
-        assumed. Falls back to 8000 MB if the DB query fails.
+        Reads the estimate from resource_manager.estimate_video_vram_needed()
+        (measured peaks / per-model constants). Falls back to 8000 MB if the
+        lookup fails.
         """
         try:
             from app.resource_manager import get_resource_manager
@@ -155,14 +154,14 @@ class VideoModule(TranslationMixin):
 
     @classmethod
     def estimate_peak_ram_mb(cls, width: int, height: int, num_frames: int) -> int:
-        """Estimate peak container RAM for a video generation on CPU (MB).
+        """Estimate peak container RAM for a Wan video generation on CPU (MB).
 
-        LTX latent volume: spatial /32 each axis, temporal (+8 → +1 frame).
-        Static model footprint dominates (~17.4 GB); activations grow ~linearly
-        with latent volume — calibrated against a 384×256×49 probe (19.2 GiB peak).
+        Wan latent volume: spatial /32 each axis, temporal (frames-1)//4+1.
+        Static model footprint dominates (~11 GB); activations grow ~linearly
+        with latent volume.
         """
         spatial = max(1, width // 32) * max(1, height // 32)
-        temporal = max(1, (num_frames - 2) // 8 + 1)
+        temporal = max(1, (num_frames - 1) // 4 + 1)
         units = spatial * temporal
         return int(VIDEO_RAM_STATIC_MB + units * VIDEO_RAM_ACTIVATIONS_MB_PER_UNIT)
 
@@ -184,8 +183,8 @@ class VideoModule(TranslationMixin):
 
         available_mb = int(rm._detect_available_ram_mb())
         req_width = int(prompt_data.get("width", 768))
-        req_height = int(prompt_data.get("height", 512))
-        req_frames = int(prompt_data.get("num_frames", 240))
+        req_height = int(prompt_data.get("height", 448))
+        req_frames = int(prompt_data.get("num_frames", 121))
 
         if self.estimate_peak_ram_mb(req_width, req_height, req_frames) + VIDEO_RAM_SAFETY_MARGIN_MB <= available_mb:
             return {}, None, None
@@ -210,9 +209,8 @@ class VideoModule(TranslationMixin):
     def _resolve_use_gpu(self, rm) -> bool:
         """Determine if GPU can be used. Returns False if VRAM insufficient.
 
-        Buffer reduced 3000->1000 MB: measured ltx-video peak is 3057 MB,
-        +1 GB for KV cache = 4057 MB threshold. With 1000 MB safety margin
-        we no longer false-trigger "forcing CPU" on 16 GB GPUs.
+        Uses a 1000 MB safety margin above the estimated video peak so we do
+        not false-trigger "forcing CPU" on 16 GB GPUs.
         """
         if not rm.hardware.cuda_detected:
             return False
@@ -233,7 +231,7 @@ class VideoModule(TranslationMixin):
         session_id: str | None = None,
         task_id: str | None = None,
     ) -> dict[str, Any]:
-        """Generate video via ltx-wrapper.
+        """Generate video via the Wan sd-wrapper.
         Before starting, unloads llama.cpp model from VRAM to avoid OOM.
         """
         from app.resource_manager import get_resource_manager
@@ -244,13 +242,13 @@ class VideoModule(TranslationMixin):
         rm.unload_llamacpp_model(llamacpp_url)
 
         if rm.hardware.platform == "cpu":
-            # CPU platform: no GPU memory to manage — ltx-wrapper runs on device=cpu.
+            # CPU platform: no GPU memory to manage — sd-wrapper runs with te=cpu.
             self.logger.info("Video generation on CPU platform — skipping the VRAM gate")
         else:
             # CRITICAL: Verify llama-swap has NO models loaded (not just VRAM check).
             # A VRAM-only check with threshold ~10GB can pass while multimodal
             # (~5GB) is still loaded on a 15GB GPU (15-5=10 ≥ 10 → false positive).
-            # Threshold = measured ltx-video peak + 1 GB safety margin, consistent
+            # Threshold = video pipeline estimate + 1 GB safety margin, consistent
             # with _resolve_use_gpu() below.
             swap_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
             deadline = time.time() + 15
@@ -300,35 +298,24 @@ class VideoModule(TranslationMixin):
 
         rm.mark_video_busy()
 
-        # Cap video resolution ONLY when VRAM is insufficient.
-        # Default policy: 240 frames at 768×512 (10-sec video @ 24fps).
-        # Cap to 120 frames at 512×512 only if:
-        #   (a) total_vram_mb < 10000 (8/10 GB tier GPU), OR
-        #   (b) available_vram_mb < 6000 (12+ GB tier, fragmented after multimodal unload)
+        # Wan preset chain: max 121 frames, dimensions multiples of 32.
+        prompt_data["num_frames"] = min(int(prompt_data.get("num_frames", 121)), 121)
+        w = int(prompt_data.get("width", 768))
+        h = int(prompt_data.get("height", 448))
+        prompt_data["width"] = max(32, (w // 32) * 32)
+        prompt_data["height"] = max(32, (h // 32) * 32)
+
+        # Cap to the first degradation preset (640×384@121) only on low-VRAM
+        # tiers (total VRAM < 10000 MB, i.e. 8/10 GB GPUs).
         total_vram = rm.hardware.total_vram_mb
         if isinstance(total_vram, int) and total_vram > 0 and total_vram < 10000:
-            old_w = prompt_data.get("width", 768)
-            old_h = prompt_data.get("height", 512)
-            old_frames = prompt_data.get("num_frames", 240)
-            prompt_data["width"] = min(old_w, 512)
-            prompt_data["height"] = min(old_h, 512)
-            prompt_data["num_frames"] = min(old_frames, 120)
-            if (old_w, old_h, old_frames) != (prompt_data["width"], prompt_data["height"], prompt_data["num_frames"]):
+            old_w = prompt_data["width"]
+            old_h = prompt_data["height"]
+            prompt_data["width"] = min(old_w, 640)
+            prompt_data["height"] = min(old_h, 384)
+            if (old_w, old_h) != (prompt_data["width"], prompt_data["height"]):
                 self.logger.info(
-                    f"VRAM tier 8GB: capped video from {old_w}×{old_h}×{old_frames}f "
-                    f"to {prompt_data['width']}×{prompt_data['height']}×{prompt_data['num_frames']}f"
-                )
-        elif isinstance(rm.hardware.available_vram_mb, int) and 0 < rm.hardware.available_vram_mb < 6000:
-            old_frames = prompt_data.get("num_frames", 240)
-            old_w = prompt_data.get("width", 768)
-            old_h = prompt_data.get("height", 512)
-            prompt_data["width"] = min(old_w, 512)
-            prompt_data["height"] = min(old_h, 512)
-            prompt_data["num_frames"] = min(old_frames, 120)
-            if (old_w, old_h, old_frames) != (prompt_data["width"], prompt_data["height"], prompt_data["num_frames"]):
-                self.logger.info(
-                    f"VRAM soft-cap (available={rm.hardware.available_vram_mb}MB): "
-                    f"reduced video from {old_w}×{old_h}×{old_frames}f "
+                    f"VRAM tier 8GB: capped video from {old_w}×{old_h}×{prompt_data['num_frames']}f "
                     f"to {prompt_data['width']}×{prompt_data['height']}×{prompt_data['num_frames']}f"
                 )
 
@@ -351,7 +338,7 @@ class VideoModule(TranslationMixin):
             }
 
             self.logger.info(
-                f"Sending request to ltx-wrapper ({self.model_type}), "
+                f"Sending request to sd-wrapper ({self.model_type}), "
                 f"width={payload['width']}, height={payload['height']}, "
                 f"frames={payload['num_frames']}, timeout: {self.timeout}s"
             )
@@ -367,7 +354,7 @@ class VideoModule(TranslationMixin):
                 result = response.json()
                 if "error" in result:
                     err_msg = result["error"]
-                    self.logger.error(f"ltx-wrapper error: {err_msg}")
+                    self.logger.error(f"sd-wrapper error: {err_msg}")
                     return {"success": False, "error": err_msg}
 
                 if not result.get("video_data"):
@@ -375,7 +362,7 @@ class VideoModule(TranslationMixin):
 
                 filename = result.get(
                     "file_name",
-                    f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.mp4",
+                    f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.webm",
                 )
 
                 return {
@@ -383,7 +370,7 @@ class VideoModule(TranslationMixin):
                     "video_data": result["video_data"],
                     "file_name": filename,
                     "file_size": result.get("file_size", 0),
-                    "file_type": "video/mp4",
+                    "file_type": result.get("file_type", "video/webm"),
                     "generation_time": result.get("generation_time", 0),
                     "seed": result.get("seed", 0),
                     "metadata": result.get("metadata", {}),
@@ -393,14 +380,14 @@ class VideoModule(TranslationMixin):
                 }
             else:
                 error_body = response.text[:500]
-                self.logger.error(f"ltx-wrapper error: {response.status_code} - {error_body}")
+                self.logger.error(f"sd-wrapper error: {response.status_code} - {error_body}")
                 try:
                     err_data = response.json()
                     err_msg = err_data.get("error", error_body)
                 except Exception:
                     err_msg = error_body
                 if "Internal Server Error" in err_msg:
-                    # Gunicorn served its default HTML error page (worker crashed).
+                    # The wrapper served its default HTML error page (worker crashed).
                     # Do not leak raw English text to the user — use the localized key.
                     err_msg = self._("Internal server error", lang)
                 template = self._("Video generation failed: {error}", lang)
@@ -413,7 +400,7 @@ class VideoModule(TranslationMixin):
         except requests.exceptions.ConnectionError:
             return {"success": False, "error": self._("Could not connect to video generation service", lang)}
         except Exception as e:
-            self.logger.error(f"Error calling ltx-wrapper: {e}")
+            self.logger.error(f"Error calling sd-wrapper: {e}")
             return {"success": False, "error": f"{self._('Error', lang)}: {str(e)}"}
         finally:
             rm.mark_video_idle()

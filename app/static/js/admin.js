@@ -373,7 +373,7 @@ function loadHardware() {
         rows.push([t('CPU'), (data.cpu_name || '—') + (data.cpu_count ? ' · ' + data.cpu_count + ' ' + t('CPU cores') : ''), true]);
 
         tbody.innerHTML = rows.map(function(row) {
-            const nowrap = row[2] ? ' nowrap' : '';
+            const nowrap = row[2] ? ' class="nowrap"' : '';
             return '<tr' + nowrap + '><td class="hw-label">' + row[0] + '</td><td class="hw-value">' + row[1] + '</td></tr>';
         }).join('');
     })

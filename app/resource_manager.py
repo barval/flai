@@ -14,7 +14,6 @@ import os
 import subprocess
 import threading
 import time
-from pathlib import Path
 from typing import Any
 
 import requests
@@ -32,6 +31,17 @@ KV_PER_TOKEN_MB: dict[str, float] = {
     "reasoning": 0.08,
     "embedding": 0.05,
 }
+
+
+def get_vram_estimate(module: str, model_name: str | None = None) -> dict | None:
+    """Lazy delegate to app.database.get_vram_estimate.
+
+    Kept at module level so estimate_video_vram_needed() resolves the name from
+    module globals (testable via monkeypatch) while the DB import stays lazy.
+    """
+    from app.database import get_vram_estimate as _impl
+
+    return _impl(module, model_name)
 
 
 class HardwareInfo:
@@ -718,62 +728,27 @@ class ResourceManager:
             logger.error(f"Failed to restart flai-ltxvideo: {e}")
 
     def estimate_video_vram_needed(self) -> int:
-        """VRAM threshold for LTX-Video pipeline loading.
+        """VRAM threshold for Wan2.2 video pipeline loading.
 
         Resolution order:
-          1. Measured peak from previous successful gen (model_vram_estimates table)
-          2. Query ltxvideo's /v1/vram_info endpoint for component file sizes
-             (text_encoder stays on CPU per ltx_wrapper.py:159)
-          3. Compute from local filesystem (if /app/models is mounted)
-          4. Env var LTX_VIDEO_VRAM_MB fallback (default 8500)
+          1. Measured peak from previous successful gen (model_vram_estimates
+             table) — accepted ONLY when the stored row holds a Wan-named model
+             (module "ltx-video" keeps legacy LTX rows distinct)
+          2. Wan2.2 floor of 8000 MB (diffusion ~3.4GB + VAE ~1.4GB + buffers;
+             measured peak ~15 GB even with offload, so 8 GB cards are gated
+             out and 12/16 GB cards rely on the wrapper's OOM-retry/offload)
         """
         try:
-            from app.database import get_vram_estimate
-
             measured = get_vram_estimate("ltx-video")
             if measured and measured.get("measured_vram_mb"):
-                return int(measured["measured_vram_mb"])
+                name = measured.get("model_name") or ""
+                if name.startswith("wan") or name == "wan2.2-ti2v-5b-turbo":
+                    return int(measured["measured_vram_mb"])
         except Exception as e:
             logger.debug(f"Could not load measured VRAM for ltx-video: {e}")
 
-        # Try querying ltxvideo for component sizes (works without /app/models mount)
-        try:
-            ltx_url = os.getenv("LTX_VIDEO_WRAPPER_URL", "http://flai-ltxvideo:7872")
-            resp = requests.get(f"{ltx_url.rstrip('/')}/v1/vram_info", timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                sizes = data.get("component_sizes_mb", {})
-                transformer_mb = sizes.get("transformer", 0)
-                upscaler_mb = sizes.get("upscaler", 0)
-                if transformer_mb > 0:
-                    persistent_mb = transformer_mb + upscaler_mb
-                    peak_mb = int(persistent_mb * 1.15)
-                    logger.info(
-                        f"LTX-Video estimated peak VRAM (from ltxvideo): {peak_mb} MB "
-                        f"(transformer={transformer_mb}MB, upscaler={upscaler_mb}MB)"
-                    )
-                    return peak_mb
-        except Exception as e:
-            logger.debug(f"Could not query ltxvideo /v1/vram_info: {e}")
-
-        # Fallback: compute from local filesystem
-        models_dir = Path(os.getenv("LTX_MODELS_DIR", "/app/models"))
-        transformer_path = models_dir / "ltxv-2b-0.9.8-distilled.safetensors"
-        upscaler_path = models_dir / "ltxv-spatial-upscaler-0.9.8.safetensors"
-
-        transformer_bytes = transformer_path.stat().st_size if transformer_path.exists() else 0
-        upscaler_bytes = upscaler_path.stat().st_size if upscaler_path.exists() else 0
-
-        if transformer_bytes == 0:
-            return int(os.getenv("LTX_VIDEO_VRAM_MB", "8500"))
-
-        persistent_bytes = transformer_bytes + upscaler_bytes
-        peak_mb = int(persistent_bytes * 1.15 // (1024 * 1024))
-        logger.info(
-            f"LTX-Video estimated peak VRAM (from local fs): {peak_mb} MB "
-            f"(transformer={transformer_bytes // 1024**2}MB, upscaler={upscaler_bytes // 1024**2}MB)"
-        )
-        return peak_mb
+        # Fallback floor for Wan2.2 (diffusion ~3.4GB + VAE ~1.4GB + buffers).
+        return 8000
 
     def ensure_vram_for_reasoning(self, needed_mb: int | None = None) -> bool:
         """Ensure sufficient VRAM for reasoning model.

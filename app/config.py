@@ -43,7 +43,12 @@ def load_config(app):
     app.config["SD_CPP_DEFAULT_CFG_SCALE"] = float(os.getenv("SD_CPP_DEFAULT_CFG_SCALE", 1.0))
     app.config["SD_CPP_DEFAULT_STEPS"] = int(os.getenv("SD_CPP_DEFAULT_STEPS", 10))
 
-    # LTX-Video settings (uses ltx-wrapper HTTP API)
+    # Video generation (Wan2.2 via sd-cpp wrapper). Legacy LTX_VIDEO_* keys
+    # remain for resource_manager/queue compatibility but are inactive.
+    app.config["VIDEO_WRAPPER_URL"] = os.getenv("VIDEO_WRAPPER_URL", "http://flai-sd:7861")
+    app.config["VIDEO_MODEL"] = os.getenv("VIDEO_MODEL", "wan2.2-ti2v-5b-turbo")
+    app.config["VIDEO_TIMEOUT"] = int(os.getenv("VIDEO_TIMEOUT", 600))
+    # legacy
     app.config["LTX_VIDEO_WRAPPER_URL"] = os.getenv("LTX_VIDEO_WRAPPER_URL")
     app.config["LTX_VIDEO_MODEL"] = os.getenv("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
     app.config["LTX_VIDEO_TIMEOUT"] = int(os.getenv("LTX_VIDEO_TIMEOUT", 600))

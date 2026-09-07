@@ -705,13 +705,20 @@ def _generate_video_impl(data):
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as src_tmp:
                 src_tmp.write(base64.b64decode(image_data))
                 src_path = src_tmp.name
-            _snap_image_to_multiple_of_32(src_path)
+            w2, h2 = _snap_image_to_multiple_of_32(src_path)
+            if w2 is not None and h2 is not None:
+                width, height = w2, h2
+                logger.info(f" Wan I2V: using snapped source dims {width}x{height} from init image")
 
         with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as out_tmp:
             output_path = out_tmp.name
 
-        offload_levels = range(3, 4) if not use_gpu else range(0, 4)
+        # build_wan_video_cmd() has no offload_level, so intermediate levels 1-2
+        # re-run the identical command. Try all-GPU once (level 0), then jump
+        # straight to the --offload-to-cpu fallback (level 3) on OOM.
+        offload_levels = [0, 3] if use_gpu else [3]
         for level in offload_levels:
+            attempt_start = time.time()
             cmd = build_wan_video_cmd(
                 prompt,
                 negative_prompt,
@@ -745,7 +752,7 @@ def _generate_video_impl(data):
                                     log_file.write(line)
                                     log_file.flush()
                                     stdout_buf = b""
-                        if time.time() - start_time > video_timeout:
+                        if time.time() - attempt_start > video_timeout:
                             proc.kill()
                             proc.wait()
                             return {"error": "sd-cli video timeout"}

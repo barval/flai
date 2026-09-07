@@ -130,31 +130,46 @@ All services run on one machine with GPU sharing:
 
 ### GPU Requirement
 
-FLAI runs on a **NVIDIA GPU with CUDA support** (recommended for full speed). Starting from **v11.0**, a **CPU-only mode** is also supported — LLM inference, image generation, and video generation all run without a GPU, just much slower.
+FLAI ships with two deployment modes:
+
+- **GPU mode (NVIDIA)** — full-speed inference on CUDA GPUs. The whole stack (llama.cpp, stable-diffusion.cpp, LTX-Video) runs with CUDA builds and the NVIDIA Container Toolkit. This is the primary, recommended mode.
+- **CPU-only mode** — the same feature set runs entirely on the CPU (LLM, image, and video generation). Everything is slower, but no GPU is needed at all.
+
+> ⚠️ **AMD and Intel GPUs are not supported by the official compose stack.** The prebuilt images are CUDA-only (`llama-swap:cuda`, CUDA versions of sd.cpp and LTX). Unofficial ROCm (AMD) or Vulkan (AMD/Intel) builds of llama.cpp could work outside this project, but they are not covered by FLAI's resource manager, VRAM accounting, or deployment scripts. If you have an AMD/Intel GPU and want guaranteed behaviour, run the **CPU-only mode** instead.
 
 ### Hardware Tiers
 
 | Component | Tier 1 (Minimal) | Tier 2 (Moderate) | Tier 3 (Full) | CPU-only |
 |-----------|-----------------|-------------------|---------------|----------|
 | **GPU VRAM** | 8 GB | 12 GB | 16+ GB | — (no GPU) |
-| **RAM** | 16 GB | 16 GB | 16 GB | 32+ GB |
-| **CPU** | 4+ cores | 4+ cores | 6+ cores | 8+ cores |
+| **RAM (minimum)** | 16 GB | 24 GB | 24 GB | 24 GB |
+| **RAM (recommended)** | 24 GB | 32 GB | 32 GB | 48 GB |
+| **CPU** | 4+ cores | 6+ cores | 6+ cores | 8+ cores (12 recommended) |
 | **Storage** | 60 GB | 80+ GB SSD | 100+ GB SSD NVMe | 100+ GB SSD NVMe |
+
+> **RAM budget (how it was calculated):** in GPU mode only *one* llama.cpp model lives in memory at a time (llama-swap unloads the previous one), so system RAM holds the operating system + PostgreSQL/Redis + the web app (~6–8 GB) plus a safety margin. Reasoning on an 8 GB GPU requires partial CPU offload of layer weights, which adds ~10 GB of RAM for the in-RAM layers. Video generation runs in a separate container and needs its own headroom — on GPU that is modest, on CPU it dominates:
+>
+> | Mode | RAM without video | RAM with video generation |
+> |------|-------------------|---------------------------|
+> | 8 GB GPU | 16–24 GB | 24–32 GB |
+> | 12 GB GPU | 24–32 GB | 32–40 GB |
+> | 16 GB GPU | 24–32 GB | 32–48 GB |
+> | CPU-only | 24–32 GB | 48 GB (64 GB for 240-frame clips) |
 
 #### What works at each tier
 
 | Feature | 8 GB | 12 GB | 16+ GB | CPU-only |
 |---------|------|-------|--------|----------|
-| Chat + Multimodal (Qwen3VL, always resident) | ⚠️ Qwen3VL-4B (~2.5 GB) recommended | ✅ Qwen3VL-8B (~5.5 GB) | ✅ Qwen3VL-8B (~5.5 GB) | ⚠️ slower |
-| Reasoning | ✅ Gemma 4 E4B (~4.8 GB) | ✅ Gemma 4 E4B (~4.8 GB) | ✅ gpt-oss-20b (~12 GB) | ⚠️ slower |
+| Chat + Multimodal (Qwen3VL) | ✅ Qwen3VL-8B (~5.9 GB incl. mmproj) | ✅ Qwen3VL-8B | ✅ Qwen3VL-8B | ⚠️ ~3.7 tok/s |
+| Reasoning | ⚠️ Qwen3.6-35B partial offload (~15–20 tok/s) | ✅ Qwen3.6-35B-A3B (~70–90 tok/s) | ✅ Qwen3.6-35B-A3B (106 tok/s) | ⚠️ ~9.5 tok/s |
 | Image gen (SD) | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 | ⚠️ slower |
 | Image edit (Flux) | ✅ up to 768px long side | ✅ up to 1024px long side | ✅ up to 1024px long side | ⚠️ slower |
-| Video gen (LTX-Video) | ⚠️ 512×512×120 frames | ✅ 768×512×240 frames | ✅ 768×512×240 frames | ⚠️ 256×384×49 frames |
+| Video gen (LTX-Video) | ⚠️ 512×512×120 frames | ✅ 768×512×240 frames | ✅ 768×512×240 frames | ⚠️ adaptive memory cascade (384×256×120 → 256×192×57) |
 | Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 | RAG (Qdrant) | ✅ | ✅ | ✅ | ✅ |
 | SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 
-> **VRAM management:** All LLM models (multimodal, reasoning, embedding) share VRAM via llama-swap — only one is loaded at a time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. The system dynamically adjusts `n_gpu_layers` based on available VRAM.
+> **VRAM management:** All LLM models (multimodal, reasoning, embedding) share VRAM via llama-swap — only one is loaded at a time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. The system dynamically adjusts `n_gpu_layers` based on available VRAM. **CPU-only video:** before generation the worker checks free RAM (`MemAvailable`); if the requested 768×512×240 does not fit it progressively degrades to 384×256×120 @ 12 fps, then 256×192×57 @ 6 fps, notifying the user with the exact chosen format and stopping with a clear message when even the smallest step is impossible.
 
 ### Model Benchmarks (RTX 5060 Ti 16 GB)
 
@@ -171,17 +186,28 @@ Real-world performance measured with llama.cpp (llama-swap on-demand loading, Fl
 | **Qwen3VL-8B-Instruct** | Multimodal | Q4_K_M | 4.7 GB | 5292 MB | 2318 t/s | **73.1 t/s** | **Current multimodal model** — fastest vision model |
 | Qwen3VL-8B-Instruct-MXFP4 | Multimodal | MXFP4_MOE-Q6_K | 7.7 GB | 8222 MB | 2099 t/s | 46.7 t/s | Vision model — hybrid MXFP4 (deprecated) |
 
-> **Why gpt-oss-20b wins as reasoning model:** Despite being a "20B" model, gpt-oss-20b uses Mixture-of-Experts (MoE) with 32 experts — only ~3B parameters are active per token. This gives it 3B-level compute cost with 20B-level knowledge. On RTX 5060 Ti, it generates **118 tok/s** vs 63 tok/s for dense Qwen3.5-9B — nearly **2× faster** while using the same memory bandwidth.
+> **Current stack: CPU vs GPU (the three models FLAI ships with).**
 
-> **Qwen3.6-35B-A3B as reasoning alternative:** MoE architecture (35B total, ~3B active) delivers **106 tok/s** — only 10% slower than gpt-oss-20b. Strong candidate if gpt-oss-20b quality is insufficient.
+The CPU column was measured **live on the current server** (12-core CPU-only deployment, llama.cpp CPU builds, `n_gpu_layers=0`). The 16 GB column was measured on an RTX 5060 Ti 16 GB (Blackwell, 448 GB/s). The 8/12 GB columns are **estimates** for typical cards of that class — real throughput scales with the card's memory bandwidth and generation, so treat them as guidance, not guarantees.
+
+| Model | Role | File | CPU 12C (measured) | GPU 8 GB* | GPU 12 GB* | GPU 16 GB (measured) |
+|-------|------|------|--------------------|-----------|-----------|----------------------|
+| **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (chat/router/vision) | 4.7 GB + mmproj 1.1 GB | **3.7 tok/s** (generation) | 25–35 tok/s | 45–60 tok/s | **73.1 tok/s** |
+| **Qwen3.6-35B-A3B-UD-Q2_K_XL** | Reasoning | 12 GB | **9.5 tok/s** (generation) | 15–20 tok/s (partial CPU offload) | 70–90 tok/s | **106.2 tok/s** |
+| **bge-m3-Q8_0** | Embedding | 0.6 GB | **~1020 tok/s** (warm, 20 ms/doc) | 1.5–2.5 k tok/s | 2.5–4 k tok/s | ~4 k tok/s |
+
+> **Read the CPU row as follows:** a typical chat answer (~200 tokens) from the multimodal model takes ~55 s on CPU vs ~3 s on a 16 GB GPU; a reasoning answer takes ~21 s on CPU vs ~2 s on GPU. Embedding/vector indexing is the least affected (bge-m3 is small and fast even on CPU).
+
+> **Why gpt-oss-20b wins as reasoning model:** Despite being a "20B" model, gpt-oss-20b uses Mixture-of-Experts (MoE) with 32 experts — only ~3B parameters are active per token. This gives it 3B-level compute cost with 20B-level knowledge. On RTX 5060 Ti, it generates **118 tok/s** vs 63 tok/s for dense Qwen3.5-9B — nearly **2× faster** while using the same memory bandwidth.
 
 > **Why MTP doesn't help on 128-bit GPUs:** Multi-Token Prediction (MTP) predicts draft tokens with a small head, then verifies them in parallel. On high-bandwidth GPUs (256/512-bit), this yields 1.4–2.2× speedup. On RTX 5060 Ti's 128-bit bus (448 GB/s), the draft model's extra memory reads saturate the already-limited bandwidth. MTP accordingly provides no meaningful speedup over a plain Q4_K_M of the same size, so MTP variants are not used.
 
 > **MXFP4 on Blackwell:** RTX 5060 Ti (Blackwell GB206) has 5th-gen Tensor cores with native FP4 hardware support. MXFP4 models achieve near-Q4_K_M quality at similar file sizes while benefiting from Blackwell's optimized FP4 pathways. 
 
 ### Software Prerequisites
-- Linux server (an **NVIDIA GPU** with CUDA is recommended, but not required starting from v11.0)
-- For GPU mode: **NVIDIA drivers** + **NVIDIA Container Toolkit** installed
+- Linux server
+- **GPU mode (NVIDIA):** NVIDIA drivers + **NVIDIA Container Toolkit** installed, plus an NVIDIA GPU with 8 GB+ VRAM
+- **CPU-only mode:** no NVIDIA tooling required — plain Docker is enough
 - Docker Engine ≥ 20.10
 - Docker Compose ≥ 2.0
 - Internet connection (only for initial model downloads)
@@ -229,6 +255,12 @@ cd flai
 # Run tests after deployment
 ./deploy.sh --download-models --with-image-gen --run-tests
 ```
+
+> **CPU-only deployment (no NVIDIA GPU):** add the `--cpu` flag. Nominal `docker-compose.cpu.yml` is selected automatically when `nvidia-smi` is not found, but `--cpu` forces it.
+>
+> ```bash
+> ./deploy.sh --cpu --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
+> ```
 
 ### Option B: Manual Deployment
 
@@ -361,6 +393,8 @@ docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with
 #### CPU-only mode (no GPU required)
 
 For systems without an NVIDIA GPU, use `docker-compose.cpu.yml` instead. It runs the **same full feature set** — just slower. Use `docker-compose.cpu.yml` in all the commands above (e.g. `docker compose -f docker-compose.cpu.yml up -d`). All timeout values are already increased for CPU speed.
+
+> ⚠️ **AMD / Intel GPU owners:** the official images are CUDA-only, so use the CPU-only mode above. There is no supported ROCm/Vulkan path.
 
 ### 4. Set Admin Password
 

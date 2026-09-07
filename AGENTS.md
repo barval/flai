@@ -163,7 +163,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - Section order and structure must match between the two files.
 
 # Hardware Requirements
-FLAI REQUIRES an **NVIDIA GPU with at least 8 GB VRAM and 16 GB system RAM.** CPU-only mode is not supported. The project automatically adapts to available VRAM (8/12/16+ GB tiers).
+FLAI has two deployment modes: **GPU mode** (NVIDIA, recommended, 8/12/16+ GB VRAM tiers, 16 GB+ RAM matching the tier table in README) and **CPU-only mode** (no GPU, 24 GB+ RAM, 12+ cores recommended; ~2.5–25× slower depending on the task). The project automatically adapts to available VRAM (8/12/16+ GB tiers) and, on CPU, degrades video to smaller formats when RAM is insufficient.
 
 # If You Encounter an Unknown Error
   1. **DO NOT try to fix it blindly or change the architecture.**

@@ -154,6 +154,12 @@ function handleEvent(event) {
         case 'result_completed':
             onResultCompleted(event.data);
             break;
+        case 'notice':
+            if (event.data && event.data.message && typeof originalDisplayMessage === 'function') {
+                originalDisplayMessage('assistant', event.data.message, null, null, null, null,
+                    'notice-' + (event.data.task_id || Date.now()));
+            }
+            break;
         case 'stream_token':
             onStreamToken(event.data);
             break;

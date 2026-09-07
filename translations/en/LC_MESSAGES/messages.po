@@ -1632,6 +1632,19 @@ msgstr "ltx-wrapper returned no video data"
 msgid "Video generation failed: {error}"
 msgstr "Video generation failed: {error}"
 
+#: modules/video.py:377
+#, python-brace-format
+msgid "Not enough memory. Generating at lower resolution: {params}."
+msgstr "Not enough memory. Generating at lower resolution: {params}."
+
+#: modules/video.py:384
+msgid "Not enough memory. Generation is not possible even at lower resolution."
+msgstr "Not enough memory. Generation is not possible even at lower resolution."
+
+#: modules/video.py:385
+msgid "fps"
+msgstr "fps"
+
 #: modules/video.py:328
 #, python-brace-format
 msgid "Video generation timeout ({timeout}s)"
@@ -1728,8 +1741,8 @@ msgid "Image editing failed"
 msgstr "Image editing failed"
 
 #: app/templates/chat.html
-msgid "Cleaning GPU..."
-msgstr "⏳ Cleaning GPU..."
+msgid "Preparing resources..."
+msgstr "⏳ Preparing resources..."
 
 #: app/templates/chat.html
 msgid "Analyzing request..."

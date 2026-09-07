@@ -274,6 +274,36 @@ class TestComputeConfig:
             assert cfg["ctx_size"] == 4096
 
 
+class TestEnsureVramForCpu:
+    """ensure_vram_for must short-circuit on CPU platform (no GPU memory to wait for)."""
+
+    def _rm_cpu(self):
+        rm = ResourceManager()
+        rm.hardware.platform = "cpu"
+        rm.hardware.cuda_detected = False
+        rm.hardware.available_vram_mb = 0
+        return rm
+
+    @patch("app.resource_manager.requests.get")
+    @patch.object(ResourceManager, "unload_llamacpp_model")
+    @patch.object(ResourceManager, "unload_video_pipeline")
+    def test_cpu_platform_returns_true(self, mock_unload_video, mock_unload_llm, mock_get):
+        rm = self._rm_cpu()
+        assert rm.ensure_vram_for("multimodal") is True
+        mock_get.assert_not_called()
+        mock_unload_llm.assert_not_called()
+        mock_unload_video.assert_not_called()
+
+    @patch("app.resource_manager.requests.get")
+    @patch.object(ResourceManager, "unload_llamacpp_model")
+    @patch.object(ResourceManager, "unload_video_pipeline")
+    def test_cpu_platform_skips_vram_poll(self, mock_unload_video, mock_unload_llm, mock_get):
+        rm = self._rm_cpu()
+        with patch.object(rm, "_poll_vram") as mock_poll:
+            assert rm.ensure_vram_for("multimodal") is True
+        mock_poll.assert_not_called()
+
+
 class TestGpuGating:
     def test_initial_not_busy(self):
         rm = ResourceManager()

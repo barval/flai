@@ -141,6 +141,6 @@ class TestBuildErrorResponseOmitsResponseTime:
             "_build_error_response must not include response_time in the client-facing "
             "dict (avoids ⏱️ in the error message header)"
         )
-        assert result["error"] == "Image format WEBP not supported"
+        assert result["error"] == "⚠️ Image format WEBP not supported"
         assert result["is_error"] is True
         assert result["message_id"] == 99

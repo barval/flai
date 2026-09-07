@@ -225,6 +225,19 @@ Replaces v8.8 cap-only approach.
   - `modules/multimodal.py`: warning threshold `weight > free * 10` (240 frames = 92 weight, 6000 MB free = no spurious warning; fires only for extreme requests like 1000+ frames at 4K).
   - `ltx_wrapper.py`: `num_frames_padded = ((nf - 2) // 8 + 1) * 8 + 1` — both 120→121 and 240→241 are padded by +1 frame.
 
+## CPU-Only Video: RAM Cascade (v11.0)
+
+In CPU-only mode (`docker-compose.cpu.yml`, no GPU) the video container (`ltxvideo`) is limited by **system RAM, not VRAM**. The worker runs a pre-flight memory plan before any generation:
+
+- `estimate_peak_ram_mb(width, height, num_frames)` in `modules/video.py`: `peak_mb ≈ 17400 + units × 3.0`, with `units = (w//32)·(h//32)·(((frames−2)//8)+1)` and a +1024 MB safety margin. Calibrated against a measured 19.25 GB peak for 384×256×49.
+- `_plan_cpu_video()` in `app/queue.py` reads `/proc/meminfo` `MemAvailable` (with a hard minimum below swap) and picks the largest step that fits:
+  1. requested resolution (default 768×512×240 @ 24 fps),
+  2. **384×256×120 @ 12 fps**,
+  3. **256×192×57 @ 6 fps**.
+  If even the last step doesn't fit, the task fails with a clear ⚠️ message — a model is never allowed to OOM.
+- The user is notified of the exact chosen format via an SSE `notice` event plus a saved assistant message (`model_name="system"`), sent *before* generation starts. The `fps` translation key maps to «к/с» in Russian.
+- Text-to-video and image-to-video paths share the same planner; image sources are pre-resized to ≤768 px before planning (`resize_video_source_image()`), so the resize notice is emitted before the degradation notice.
+
 ## Monitoring Commands
 ```bash
 watch -n 1 nvidia-smi          # Real-time VRAM tracking

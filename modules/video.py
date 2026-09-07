@@ -29,9 +29,56 @@ DEFAULT_VIDEO_PARAMS = {
     "frame_rate": 24,
 }
 
+# RAM budgeting for CPU generation (no VRAM to rely on).
+# Measured: 384×256×49 peaked at ~19.2 GiB cgroup usage (~17400 MB static
+# models + ~2.2 GiB activations). Activations scale ~linearly with latent volume
+# (spatial//32 × spatial//32 × temporal//8), fit to that measurement with margin.
+VIDEO_RAM_STATIC_MB = 17_400
+VIDEO_RAM_ACTIVATIONS_MB_PER_UNIT = 3.0
+VIDEO_RAM_SAFETY_MARGIN_MB = 1024
+
+MAX_VIDEO_SOURCE_SIZE = 768
+
+
+def resize_video_source_image(
+    image_data: str | None, max_size: int = MAX_VIDEO_SOURCE_SIZE
+) -> tuple[str | None, dict[str, Any]]:
+    """Downscale a base64 source image when its longer side exceeds ``max_size``.
+
+    Returns (image_data, resized_info) where resized_info mirrors the resize
+    metadata used for user-facing notices.
+    """
+    resized_info: dict[str, Any] = {"resized": False, "original_size": None, "new_size": None}
+    if not image_data:
+        return image_data, resized_info
+    try:
+        img_bytes = base64.b64decode(image_data)
+        img = Image.open(BytesIO(img_bytes))
+        w, h = img.size
+        if max(w, h) > max_size:
+            ratio = max_size / max(w, h)
+            new_w, new_h = int(w * ratio), int(h * ratio)
+            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)  # type: ignore[assignment]
+            if img.mode in ("RGBA", "LA", "P"):
+                rgb_img = Image.new("RGB", img.size, (255, 255, 255))
+                rgb_img.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
+                img = rgb_img  # type: ignore[assignment]
+            buf = BytesIO()
+            img.save(buf, format="JPEG", quality=90)
+            image_data = base64.b64encode(buf.getvalue()).decode("utf-8")
+            resized_info = {"resized": True, "original_size": (w, h), "new_size": (new_w, new_h)}
+    except Exception:
+        pass
+    return image_data, resized_info
+
 
 class VideoModule(TranslationMixin):
     """Module for video generation via LTX-Video wrapper."""
+
+    CPU_FALLBACK_PARAMS: list[dict[str, int]] = [
+        {"width": 384, "height": 256, "num_frames": 120, "frame_rate": 12},
+        {"width": 256, "height": 192, "num_frames": 57, "frame_rate": 6},
+    ]
 
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
@@ -106,6 +153,60 @@ class VideoModule(TranslationMixin):
         except Exception:
             return 8000
 
+    @classmethod
+    def estimate_peak_ram_mb(cls, width: int, height: int, num_frames: int) -> int:
+        """Estimate peak container RAM for a video generation on CPU (MB).
+
+        LTX latent volume: spatial /32 each axis, temporal (+8 → +1 frame).
+        Static model footprint dominates (~17.4 GB); activations grow ~linearly
+        with latent volume — calibrated against a 384×256×49 probe (19.2 GiB peak).
+        """
+        spatial = max(1, width // 32) * max(1, height // 32)
+        temporal = max(1, (num_frames - 2) // 8 + 1)
+        units = spatial * temporal
+        return int(VIDEO_RAM_STATIC_MB + units * VIDEO_RAM_ACTIVATIONS_MB_PER_UNIT)
+
+    def plan_cpu_generation(
+        self, prompt_data: dict[str, Any], lang: str = "ru"
+    ) -> tuple[dict[str, Any] | None, str | None, str | None]:
+        """Decide video parameters on CPU based on available RAM.
+
+        Returns (override, notice, error):
+          - ({}, None, None)        → proceed with requested params
+          - (fallback_params, notice, None) → degrade to smaller resolution + notice
+          - (None, None, error)     → impossible even with fallback
+        """
+        from app.resource_manager import get_resource_manager
+
+        rm = get_resource_manager()
+        if rm.hardware.platform != "cpu":
+            return {}, None, None
+
+        available_mb = int(rm._detect_available_ram_mb())
+        req_width = int(prompt_data.get("width", 768))
+        req_height = int(prompt_data.get("height", 512))
+        req_frames = int(prompt_data.get("num_frames", 240))
+
+        if self.estimate_peak_ram_mb(req_width, req_height, req_frames) + VIDEO_RAM_SAFETY_MARGIN_MB <= available_mb:
+            return {}, None, None
+
+        for fb in self.CPU_FALLBACK_PARAMS:
+            if self.estimate_peak_ram_mb(fb["width"], fb["height"], fb["num_frames"]) + VIDEO_RAM_SAFETY_MARGIN_MB <= (
+                available_mb
+            ):
+                fps_units = self._("fps", lang)
+                params = f"{fb['width']}×{fb['height']}×{fb['num_frames']}, {fb.get('frame_rate', 24)} {fps_units}"
+                notice = self._("Not enough memory. Generating at lower resolution: {params}.", lang).format(
+                    params=params
+                )
+                return dict(fb), notice, None
+
+        error = self._(
+            "Not enough memory. Generation is not possible even at lower resolution.",
+            lang,
+        )
+        return None, None, error
+
     def _resolve_use_gpu(self, rm) -> bool:
         """Determine if GPU can be used. Returns False if VRAM insufficient.
 
@@ -142,56 +243,60 @@ class VideoModule(TranslationMixin):
         llamacpp_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
         rm.unload_llamacpp_model(llamacpp_url)
 
-        # CRITICAL: Verify llama-swap has NO models loaded (not just VRAM check).
-        # A VRAM-only check with threshold ~10GB can pass while multimodal
-        # (~5GB) is still loaded on a 15GB GPU (15-5=10 ≥ 10 → false positive).
-        # Threshold = measured ltx-video peak + 1 GB safety margin, consistent
-        # with _resolve_use_gpu() below.
-        swap_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
-        deadline = time.time() + 15
-        video_needed = rm.estimate_video_vram_needed() + 1000
-        while time.time() < deadline:
-            rm._poll_vram()
-            try:
-                resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=5)
-                loaded = resp.json().get("running", []) if resp.status_code == 200 else ["?"]
-            except Exception:
-                loaded = ["?"]
-            free = rm.hardware.available_vram_mb
-            if not isinstance(free, int):
-                free = 0
-            if len(loaded) == 0 and free >= video_needed:
-                self.logger.info(f"VRAM ready: {free}MB free, 0 LLM models loaded, need ≥{video_needed}MB")
-                break
-            self.logger.info(
-                f"VRAM: {free}MB free, {len(loaded)} LLM model(s) loaded, "
-                f"need ≥{video_needed}MB — waiting for full unload..."
-            )
-            time.sleep(2)
+        if rm.hardware.platform == "cpu":
+            # CPU platform: no GPU memory to manage — ltx-wrapper runs on device=cpu.
+            self.logger.info("Video generation on CPU platform — skipping the VRAM gate")
         else:
-            err_msg = self._(
-                "Video generation requires GPU; available VRAM ({free} MB) "
-                "is below safe threshold ({need} MB). Please try again later or simplify the request.",
-                lang,
-            ).format(free=free, need=video_needed)
-            self.logger.warning(f"VRAM wait timeout (15s) — free={free}MB, models={loaded}")
-            return {"success": False, "error": err_msg}
+            # CRITICAL: Verify llama-swap has NO models loaded (not just VRAM check).
+            # A VRAM-only check with threshold ~10GB can pass while multimodal
+            # (~5GB) is still loaded on a 15GB GPU (15-5=10 ≥ 10 → false positive).
+            # Threshold = measured ltx-video peak + 1 GB safety margin, consistent
+            # with _resolve_use_gpu() below.
+            swap_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
+            deadline = time.time() + 15
+            video_needed = rm.estimate_video_vram_needed() + 1000
+            while time.time() < deadline:
+                rm._poll_vram()
+                try:
+                    resp = requests.get(f"{swap_url.rstrip('/')}/running", timeout=5)
+                    loaded = resp.json().get("running", []) if resp.status_code == 200 else ["?"]
+                except Exception:
+                    loaded = ["?"]
+                free = rm.hardware.available_vram_mb
+                if not isinstance(free, int):
+                    free = 0
+                if len(loaded) == 0 and free >= video_needed:
+                    self.logger.info(f"VRAM ready: {free}MB free, 0 LLM models loaded, need ≥{video_needed}MB")
+                    break
+                self.logger.info(
+                    f"VRAM: {free}MB free, {len(loaded)} LLM model(s) loaded, "
+                    f"need ≥{video_needed}MB — waiting for full unload..."
+                )
+                time.sleep(2)
+            else:
+                err_msg = self._(
+                    "Video generation requires GPU; available VRAM ({free} MB) "
+                    "is below safe threshold ({need} MB). Please try again later or simplify the request.",
+                    lang,
+                ).format(free=free, need=video_needed)
+                self.logger.warning(f"VRAM wait timeout (15s) — free={free}MB, models={loaded}")
+                return {"success": False, "error": err_msg}
 
-        use_gpu = self._resolve_use_gpu(rm)
-        if not use_gpu:
-            err_msg = self._(
-                "Video generation requires GPU; available VRAM ({free} MB) "
-                "is below safe threshold ({need} MB). Please try again later or simplify the request.",
-                lang,
-            ).format(
-                free=rm.hardware.available_vram_mb,
-                need=int(self._estimate_video_vram_mb() + 1000),
+            use_gpu = self._resolve_use_gpu(rm)
+            if not use_gpu:
+                err_msg = self._(
+                    "Video generation requires GPU; available VRAM ({free} MB) "
+                    "is below safe threshold ({need} MB). Please try again later or simplify the request.",
+                    lang,
+                ).format(
+                    free=rm.hardware.available_vram_mb,
+                    need=int(self._estimate_video_vram_mb() + 1000),
+                )
+                self.logger.warning(f"Video generation skipped: {err_msg}")
+                return {"success": False, "error": err_msg}
+            self.logger.info(
+                f"VRAM: {rm.hardware.available_vram_mb}MB available, ~{self._estimate_video_vram_mb()}MB needed — using GPU"
             )
-            self.logger.warning(f"Video generation skipped: {err_msg}")
-            return {"success": False, "error": err_msg}
-        self.logger.info(
-            f"VRAM: {rm.hardware.available_vram_mb}MB available, ~{self._estimate_video_vram_mb()}MB needed — using GPU"
-        )
 
         rm.mark_video_busy()
 
@@ -228,28 +333,7 @@ class VideoModule(TranslationMixin):
                 )
 
         # Resize large source images to avoid OOM and reduce network transfer
-        max_video_inpaint_size = 768
-        resized_info: dict[str, Any] = {"resized": False, "original_size": None, "new_size": None}
-        if image_data:
-            try:
-                img_bytes = base64.b64decode(image_data)
-                img = Image.open(BytesIO(img_bytes))
-                w, h = img.size
-                if w > max_video_inpaint_size or h > max_video_inpaint_size:
-                    ratio = max_video_inpaint_size / max(w, h)
-                    new_w, new_h = int(w * ratio), int(h * ratio)
-                    img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)  # type: ignore[assignment]
-                    if img.mode in ("RGBA", "LA", "P"):
-                        rgb_img = Image.new("RGB", img.size, (255, 255, 255))
-                        rgb_img.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
-                        img = rgb_img  # type: ignore[assignment]
-                    buf = BytesIO()
-                    img.save(buf, format="JPEG", quality=90)
-                    image_data = base64.b64encode(buf.getvalue()).decode("utf-8")
-                    resized_info = {"resized": True, "original_size": (w, h), "new_size": (new_w, new_h)}
-                    self.logger.info(f"Video source image resized from {w}x{h} to {new_w}x{new_h}")
-            except Exception as e:
-                self.logger.warning(f"Failed to resize video source image: {e}")
+        image_data, resized_info = resize_video_source_image(image_data)
 
         try:
             payload = {
@@ -315,6 +399,10 @@ class VideoModule(TranslationMixin):
                     err_msg = err_data.get("error", error_body)
                 except Exception:
                     err_msg = error_body
+                if "Internal Server Error" in err_msg:
+                    # Gunicorn served its default HTML error page (worker crashed).
+                    # Do not leak raw English text to the user — use the localized key.
+                    err_msg = self._("Internal server error", lang)
                 template = self._("Video generation failed: {error}", lang)
                 return {"success": False, "error": template.format(error=err_msg)}
 

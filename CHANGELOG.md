@@ -19,6 +19,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **LLM CPU config** — `LlamaSwapConfigGenerator.build_cmd()` now treats `n_gpu_layers=0` as CPU: skips `--flash-attn`, `--kv-offload`, `--cache-type-k/v`, and MTP speculative decoding. Uses `ghcr.io/mostlygeek/llama-swap:cpu` image.
 - **Deploy scripts** — `deploy.sh`/`deploy-ru.sh` accept `--cpu` and auto-select `docker-compose.cpu.yml` when NVIDIA is not detected.
 
+### 🎬 Adaptive Video Resolution on CPU (Memory-First)
+
+- **Pre-flight RAM planning for video** — new `plan_cpu_generation()` + `estimate_peak_ram_mb()` in `modules/video.py` estimate the peak LTX memory footprint (`peak_mb ≈ 17400 + units × 3.0`, `units = (w//32)·(h//32)·(frames//8+1)`, +1024 MB safety). The video worker checks free RAM (`MemAvailable`) and, when the requested 768×512×240 clip does not fit, degrades it through a fixed cascade: **384×256×120 @ 12 fps → 256×192×57 @ 6 fps**. The user is notified with the exact chosen format (SSE `notice` + saved assistant message with `system` model name), and generation stops with a clear ⚠️ message when even the smallest step is impossible — nothing ever attempts to run out of memory.
+- **Source-image pre-resize for image→video** — `resize_video_source_image()` in `modules/video.py` (max side 768 px, alpha-flattening) is applied in the worker *before* the RAM plan so the resize notice is emitted before the degradation notice; the inline logic previously living in `generate_video()` is now shared.
+- **Cascade units** — frame rate is reduced together with resolution (12/6 fps) so the generated clips stay readable, and a `fps`→«к/с» translation key was added.
+
 ### 🧪 Tests
 
 - **`tests/test_platform_detect.py`** — 14 tests covering NVIDIA, AMD, Intel, and CPU detect paths, including the AMD heuristic that treats values ≤ 1e9 as MB.

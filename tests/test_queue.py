@@ -4,6 +4,7 @@
 import hashlib
 import hmac
 import json
+import time
 from unittest.mock import Mock, patch
 
 import pytest
@@ -130,3 +131,46 @@ class TestRedisRequestQueue:
             assert pipe.rpush.called
             assert pipe.hincrby.called
             assert pipe.execute.called
+
+    def test_processing_ttl_covers_task_timeouts(self, mock_app, mock_redis):
+        """processing_ttl must cover the longest configured task timeout (CPU builds).
+
+        Otherwise long image/video tasks outlive the slow_processing_requests hash
+        TTL and the lightning bolt disappears from the sidebar mid-task.
+        """
+        from app.queue import RedisRequestQueue
+
+        mock_app.config.update(
+            {
+                "QUEUE_MAX_WAIT_TIME": 300,
+                "SD_CLI_TIMEOUT": 3600,
+                "LLM_TIMEOUT": 600,
+                "LTX_VIDEO_TIMEOUT": 600,
+                "SD_CPP_TIMEOUT": 1800,
+            }
+        )
+
+        with patch("app.queue.redis.from_url", return_value=mock_redis):
+            queue = RedisRequestQueue(mock_app)
+            queue._process_request = Mock(return_value={"session_id": "s1"})  # type: ignore[method-assign]
+            queue._publish_result_event = Mock()  # type: ignore[method-assign]
+            queue._cleanup_user_request = Mock()  # type: ignore[method-assign]
+            queue._decrement_user_queue_count = Mock()  # type: ignore[method-assign]
+            queue._cleanup_vram_after_task = Mock()  # type: ignore[method-assign]
+
+            task = {"id": "t1", "user_id": "u1", "session_id": "s1", "type": "text", "timestamp": time.time()}
+            queue._process_single_task(task, "slow_processing_requests")
+
+        # First expire call is on slow_processing_requests (processing TTL).
+        ttl_calls = [c.args[1] for c in mock_redis.expire.call_args_list]
+        assert len(ttl_calls) >= 1
+        assert (
+            ttl_calls[0]
+            >= max(
+                mock_app.config["SD_CLI_TIMEOUT"],
+                mock_app.config["LLM_TIMEOUT"],
+                mock_app.config["LTX_VIDEO_TIMEOUT"],
+                mock_app.config["SD_CPP_TIMEOUT"],
+            )
+            + 120
+        )

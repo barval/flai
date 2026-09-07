@@ -489,7 +489,16 @@ class RedisRequestQueue:
         if not task_id:
             return
 
-        processing_ttl = self.app.config.get("QUEUE_MAX_WAIT_TIME", 300) + 60
+        processing_ttl = max(
+            self.app.config.get("QUEUE_MAX_WAIT_TIME", 300) + 60,
+            max(
+                self.app.config.get("SD_CLI_TIMEOUT", 900),
+                self.app.config.get("LLM_TIMEOUT", 600),
+                self.app.config.get("LTX_VIDEO_TIMEOUT", 600),
+                self.app.config.get("SD_CPP_TIMEOUT", 900),
+            )
+            + 120,
+        )
         self.redis.hset(processing_key, task_id, self._serialize({**task, "moved_at": time.time()}))
         self.redis.expire(processing_key, processing_ttl)
 
@@ -698,7 +707,7 @@ class RedisRequestQueue:
             session_id, "assistant", prefix + error, model_name="system", response_time=str(process_time)
         )
         return {
-            "error": error,
+            "error": prefix + error,
             "session_id": session_id,
             "assistant_timestamp": completion_time,
             "is_error": True,
@@ -924,6 +933,8 @@ class RedisRequestQueue:
             from app.resource_manager import get_resource_manager
 
             rm = get_resource_manager()
+            if rm.hardware.platform == "cpu":
+                return True
             free = query_free_vram_mb(rm.hardware.platform)
             if free is not None:
                 ready = free >= needed_mb
@@ -951,9 +962,14 @@ class RedisRequestQueue:
         rm = get_resource_manager()
         llamacpp_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
         min_free = rm.estimate_video_vram_needed()
-        deadline = time.time() + timeout
 
         self._unload_llamacpp_models()
+
+        if rm.hardware.platform == "cpu":
+            self.logger.info("VRAM skip: CPU platform — no GPU memory to wait for")
+            return True
+
+        deadline = time.time() + timeout
 
         while time.time() < deadline:
             rm._poll_vram()
@@ -1007,6 +1023,36 @@ class RedisRequestQueue:
 
         return success
 
+    def _plan_cpu_video(
+        self, task: dict[str, Any] | None, prompt_data: dict[str, Any] | None, lang: str, session_id: str
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """On CPU-only hosts, downgrade video params when RAM is insufficient.
+
+        Called AFTER the multimodal model was unloaded, so available RAM reflects
+        real headroom. Publishes a chat notice and returns None when generation
+        is impossible even at the fallback resolution.
+        """
+        video_module = self.app.modules.get("video")
+        if not prompt_data or not video_module:
+            return prompt_data, None
+
+        override, notice, error = video_module.plan_cpu_generation(prompt_data, lang=lang)
+        if error:
+            return None, error
+
+        if override:
+            prompt_data = {**prompt_data, **override}
+
+        if notice:
+            if task:
+                self._publish_stream_event(task, "notice", {"message": notice})
+            try:
+                save_message(session_id, "assistant", notice, model_name="system", response_time="0")
+            except Exception:
+                self.logger.warning("Failed to persist video memory notice", exc_info=True)
+
+        return prompt_data, None
+
     def _wait_for_vram(self, needed_mb: int = 6000, timeout: int = 30) -> bool:
         """Block until at least ``needed_mb`` MB of VRAM is free AND no LLM tasks are running.
 
@@ -1015,6 +1061,13 @@ class RedisRequestQueue:
         Returns True on success, False if still insufficient after timeout.
         """
         self._unload_llamacpp_models()
+        from app.resource_manager import get_resource_manager
+
+        rm = get_resource_manager()
+        if rm.hardware.platform == "cpu":
+            self.logger.info("VRAM skip: CPU platform — no GPU memory to wait for")
+            return True
+
         deadline = time.time() + timeout
         swap_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
 
@@ -1672,6 +1725,10 @@ class RedisRequestQueue:
                 )
                 return self._build_error_response(session_id, error_msg, mm_time, lang)
 
+            prompt_data, cpu_error = self._plan_cpu_video(task, prompt_data, lang, session_id)
+            if cpu_error:
+                return self._build_error_response(session_id, cpu_error, 0, lang)
+
             gen_start = time.time()
             if task:
                 self._publish_stream_event(task, "task_progress", {"stage": "generating_video"})
@@ -1831,6 +1888,42 @@ class RedisRequestQueue:
                     "GPU memory unavailable after unloading LLM. Try again.", lang=lang
                 )
                 return self._build_error_response(session_id, error_msg, mm_time, lang)
+
+            # Resize the source image up-front so the resize notice reaches the
+            # user BEFORE the memory-degradation decision below.
+            if image_data:
+                from modules.video import MAX_VIDEO_SOURCE_SIZE, resize_video_source_image
+
+                resized_image, resized_meta = resize_video_source_image(image_data)
+                if resized_image is not None:
+                    image_data = resized_image
+                if resized_meta.get("resized"):
+                    orig_w, orig_h = resized_meta["original_size"]
+                    new_w, new_h = resized_meta["new_size"]
+                    with force_locale(lang):
+                        resize_text = (
+                            self.app.modules["base"]
+                            ._(
+                                "Maximum resolution for video is {max_w}×{max_h}. "
+                                "The image has been resized from {orig_w}×{orig_h} to {new_w}×{new_h}.",
+                                lang=lang,
+                            )
+                            .format(
+                                max_w=MAX_VIDEO_SOURCE_SIZE,
+                                max_h=MAX_VIDEO_SOURCE_SIZE,
+                                orig_w=orig_w,
+                                orig_h=orig_h,
+                                new_w=new_w,
+                                new_h=new_h,
+                            )
+                        )
+                    save_message(session_id, "assistant", resize_text, model_name="system", response_time="0")
+                    if task:
+                        self._publish_stream_event(task, "notice", {"message": resize_text})
+
+            prompt_data, cpu_error = self._plan_cpu_video(task, prompt_data, lang, session_id)
+            if cpu_error:
+                return self._build_error_response(session_id, cpu_error, 0, lang)
 
             gen_start = time.time()
             if task:

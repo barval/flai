@@ -113,6 +113,52 @@ class TestVideoModuleGenerate:
             assert result["video_data"] == mock_b64
             assert result["file_type"] == "video/mp4"
 
+    def test_generate_video_cpu_platform_skips_vram_check(self, mock_app):
+        """CPU platform must skip the VRAM gate and proceed straight to ltx-wrapper.
+
+        Regression: on CPU builds available_vram_mb is always 0, so the
+        llama-swap wait-loop used to reject video generation with
+        "requires GPU" even though ltx-wrapper runs fine on device=cpu.
+        """
+        from modules.video import VideoModule
+
+        mock_b64 = base64.b64encode(b"fake mp4 data").decode("utf-8")
+
+        with (
+            patch("modules.video.requests.get") as mock_get,
+            patch("modules.video.requests.post") as mock_post,
+            patch("app.resource_manager.get_resource_manager") as mock_rm,
+        ):
+            mock_get.return_value = MagicMock(status_code=200)
+            mock_post.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {
+                    "success": True,
+                    "video_data": mock_b64,
+                    "file_name": "test_video.mp4",
+                    "file_size": 1024,
+                    "file_type": "video/mp4",
+                    "generation_time": 120.0,
+                    "seed": 12345,
+                    "metadata": {},
+                },
+            )
+            mock_rm_instance = MagicMock()
+            mock_rm_instance.hardware.platform = "cpu"
+            mock_rm_instance.hardware.cuda_detected = False
+            mock_rm_instance.hardware.available_vram_mb = 0
+            mock_rm_instance.hardware.total_vram_mb = 0
+            mock_rm_instance.estimate_video_vram_needed.return_value = 3867
+            mock_rm.return_value = mock_rm_instance
+
+            module = VideoModule(mock_app)
+            result = module.generate_video({"prompt": "test video prompt"})
+
+            assert result["success"] is True
+            assert result["video_data"] == mock_b64
+            # CPU path must not poll VRAM / query llama-swap running state.
+            mock_rm_instance._poll_vram.assert_not_called()
+
     def test_generate_video_unavailable(self, mock_app):
         from modules.video import VideoModule
 
@@ -142,6 +188,43 @@ class TestVideoModuleGenerate:
             result = module.generate_video({"prompt": "test"})
             assert result["success"] is False
             assert "error" in result
+
+    def test_generate_video_gunicorn_error_localized(self, mock_app):
+        """Raw gunicorn 'Internal Server Error' must not reach the user.
+
+        Regression: gunicorn replies with an English HTML body when the
+        ltx-wrapper worker crashes; it used to be interpolated verbatim
+        into the localized 'Video generation failed: {error}' template.
+        """
+        from modules.video import VideoModule
+
+        with (
+            patch("modules.video.requests.get") as mock_get,
+            patch("modules.video.requests.post") as mock_post,
+            patch("app.resource_manager.get_resource_manager") as mock_rm,
+        ):
+            mock_get.return_value = MagicMock(status_code=200)
+
+            def bad_json():
+                raise ValueError("Not JSON — gunicorn HTML error page")
+
+            response_500 = MagicMock(
+                status_code=500,
+                text=("<html><title>Internal Server Error</title><h1><p>Internal Server Error</p></h1>"),
+            )
+            response_500.json = bad_json
+            mock_post.return_value = response_500
+            mock_rm_instance = MagicMock()
+            mock_rm_instance.hardware.cuda_detected = True
+            mock_rm_instance.hardware.available_vram_mb = 12000
+            mock_rm_instance.estimate_video_vram_needed.return_value = 8500
+            mock_rm.return_value = mock_rm_instance
+
+            module = VideoModule(mock_app)
+            result = module.generate_video({"prompt": "test"}, lang="ru")
+
+            assert result["success"] is False
+            assert "Internal Server Error" not in result["error"]
 
     def test_generate_video_timeout(self, mock_app):
         from modules.video import VideoModule
@@ -305,6 +388,90 @@ class TestVideoModuleLowVram:
             result = module.generate_video({"prompt": "test", "width": 512, "height": 512, "num_frames": 120})
 
         assert result["success"] is True
+
+
+@pytest.mark.unit
+class TestVideoModuleMemoryPlanning:
+    """CPU video generation: fall back to lower resolution when RAM is tight."""
+
+    @pytest.fixture
+    def cpu_rm(self):
+        from types import SimpleNamespace
+
+        rm = MagicMock()
+        rm.hardware = SimpleNamespace(platform="cpu", cuda_detected=False)
+        return rm
+
+    def test_plan_large_ram_no_degradation(self, cpu_rm):
+        from modules.video import VideoModule
+
+        cpu_rm._detect_available_ram_mb.return_value = 56000
+        with patch("app.resource_manager.get_resource_manager", return_value=cpu_rm):
+            module = VideoModule()
+            prompt_data = {"width": 768, "height": 512, "num_frames": 240}
+            override, notice, error = module.plan_cpu_generation(prompt_data, lang="ru")
+
+        assert override == {}
+        assert notice is None
+        assert error is None
+
+    def test_plan_medium_ram_falls_back(self, cpu_rm):
+        from modules.video import VideoModule
+
+        cpu_rm._detect_available_ram_mb.return_value = 30000
+        with patch("app.resource_manager.get_resource_manager", return_value=cpu_rm):
+            module = VideoModule()
+            prompt_data = {"width": 768, "height": 512, "num_frames": 240}
+            override, notice, error = module.plan_cpu_generation(prompt_data, lang="ru")
+
+        assert error is None
+        assert notice is not None
+        assert "lower resolution" in notice
+        assert "384×256×120" in notice
+        assert override == VideoModule.CPU_FALLBACK_PARAMS[0]
+
+    def test_plan_second_fallback_lower_frames(self, cpu_rm):
+        from modules.video import VideoModule
+
+        cpu_rm._detect_available_ram_mb.return_value = 20000
+        with patch("app.resource_manager.get_resource_manager", return_value=cpu_rm):
+            module = VideoModule()
+            prompt_data = {"width": 768, "height": 512, "num_frames": 240}
+            override, notice, error = module.plan_cpu_generation(prompt_data, lang="ru")
+
+        assert error is None
+        assert notice is not None
+        assert "256×192×57" in notice
+        assert override == VideoModule.CPU_FALLBACK_PARAMS[1]
+
+    def test_plan_low_ram_impossible(self, cpu_rm):
+        from modules.video import VideoModule
+
+        cpu_rm._detect_available_ram_mb.return_value = 19000
+        with patch("app.resource_manager.get_resource_manager", return_value=cpu_rm):
+            module = VideoModule()
+            prompt_data = {"width": 768, "height": 512, "num_frames": 240}
+            override, notice, error = module.plan_cpu_generation(prompt_data, lang="ru")
+
+        assert override is None
+        assert notice is None
+        assert error is not None
+        assert "not possible" in error
+
+    def test_plan_non_cpu_platform_skipped(self, cpu_rm):
+        from modules.video import VideoModule
+
+        cpu_rm.hardware.platform = "nvidia"
+        cpu_rm.hardware.cuda_detected = True
+        cpu_rm._detect_available_ram_mb.return_value = 20000
+        with patch("app.resource_manager.get_resource_manager", return_value=cpu_rm):
+            module = VideoModule()
+            prompt_data = {"width": 768, "height": 512, "num_frames": 240}
+            override, notice, error = module.plan_cpu_generation(prompt_data, lang="ru")
+
+        assert override == {}
+        assert notice is None
+        assert error is None
 
 
 @pytest.mark.unit

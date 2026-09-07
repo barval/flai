@@ -459,6 +459,11 @@ class ResourceManager:
         if needed_mb is None:
             needed_mb = self.get_vram_needed_mb(model_type)
 
+        # CPU platform has no GPU memory to manage — nothing to wait for.
+        if self.hardware.platform == "cpu":
+            logger.info(f"ensure_vram_for [{model_type}]: CPU platform — no GPU memory to wait for")
+            return True
+
         llamacpp_url = os.getenv("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
 
         # 1. Check if needed model is already loaded — skip unload if so

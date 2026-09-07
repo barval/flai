@@ -462,6 +462,41 @@ class TestUnloadModel:
         assert result is False
 
 
+class TestRefreshRuntime:
+    @patch(
+        "app.resource_manager.ResourceManager._detect_available_ram_mb",
+        return_value=6000,
+    )
+    @patch(
+        "app.resource_manager.ResourceManager._detect_total_ram_mb",
+        return_value=16000,
+    )
+    @patch(
+        "app.resource_manager.ResourceManager._detect_cpu_name",
+        return_value="AMD Ryzen 5 7500F",
+    )
+    @patch("os.cpu_count", return_value=12)
+    @patch("app.platform_detect.get_platform_info")
+    def test_refresh_runtime_re_reads_resources(self, mock_gpi, mock_cpu, mock_cpu_name, mock_total, mock_avail):
+        """refresh_runtime() must refresh RAM/CPU (and VRAM) on demand."""
+        rm = ResourceManager()
+        rm.hardware = HardwareInfo()
+        rm.hardware.available_ram_mb = 8000  # stale startup value
+        rm.hardware.total_ram_mb = 16000
+        rm.hardware.cpu_count = 8
+        rm.hardware.cpu_name = ""
+        mock_gpi.return_value = MagicMock(total_vram_mb=16311, available_vram_mb=12000, used_vram_mb=4000)
+        rm.hardware.platform = "nvidia"
+
+        rm.refresh_runtime()
+
+        assert rm.hardware.available_ram_mb == 6000
+        assert rm.hardware.total_ram_mb == 16000
+        assert rm.hardware.cpu_count == 12
+        assert rm.hardware.cpu_name == "AMD Ryzen 5 7500F"
+        assert rm.hardware.available_vram_mb == 12000
+
+
 class TestGetStatus:
     @patch("os.cpu_count", return_value=8)
     @patch(

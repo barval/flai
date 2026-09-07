@@ -1217,7 +1217,7 @@ msgstr "VRAM"
 
 #: app/templates/admin.html:413
 msgid "RAM"
-msgstr "ОЗУ"
+msgstr "RAM"
 
 #: app/templates/admin.html:414
 msgid "total"

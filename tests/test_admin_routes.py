@@ -290,6 +290,7 @@ class TestAdminHardware:
         assert data["available_ram_mb"] == 17000
         assert data["cpu_count"] == 12
         assert data["cpu_name"] == "Intel Core i7-13700K"
+        fake_rm.refresh_runtime.assert_called_once()
 
     @pytest.mark.integration
     def test_admin_panel_renders_hardware_tab(self, admin_client):

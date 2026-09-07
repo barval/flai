@@ -141,6 +141,26 @@ class ResourceManager:
             self._vram_poll_timer.daemon = True
             self._vram_poll_timer.start()
 
+    def refresh_runtime(self) -> None:
+        """Re-read runtime resource stats (RAM, VRAM, CPU) on demand.
+
+        Called by the admin Hardware tab refresh button so that stale
+        startup-time values (notably available RAM) are updated live.
+        """
+        self.hardware.cpu_count = os.cpu_count() or 1
+        self.hardware.cpu_name = self._detect_cpu_name()
+        self.hardware.total_ram_mb = self._detect_total_ram_mb()
+        self.hardware.available_ram_mb = self._detect_available_ram_mb()
+        try:
+            from app.platform_detect import get_platform_info
+
+            info = get_platform_info(self.hardware.platform)
+            if info.total_vram_mb > 0:
+                self.hardware.available_vram_mb = info.available_vram_mb
+                self.hardware.used_vram_mb = info.used_vram_mb
+        except Exception:
+            pass
+
     def _detect_total_ram_mb(self) -> int:
         """Get total system RAM in MB."""
         try:

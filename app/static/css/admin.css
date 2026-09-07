@@ -1096,6 +1096,9 @@ body.dark-theme .hardware-card h3 {
     color: #7f8c8d;
     width: 40%;
 }
+.hardware-table tr.nowrap td {
+    white-space: nowrap;
+}
 .hardware-table .hw-value {
     color: #2c3e50;
 }

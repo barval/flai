@@ -341,6 +341,7 @@ def get_hardware():
         from app.resource_manager import get_resource_manager
 
         rm = get_resource_manager()
+        rm.refresh_runtime()
         rm_hw = rm.get_status()
         hw["total_ram_mb"] = rm_hw.get("total_ram_mb", 0)
         hw["available_ram_mb"] = rm_hw.get("available_ram_mb", 0)

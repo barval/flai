@@ -370,11 +370,12 @@ function loadHardware() {
         }
         rows.push([t('CPU cores'), data.cpu_count]);
         rows.push([t('RAM'), formatMemMb(data.total_ram_mb) + '/' + formatMemMb(data.available_ram_mb) + ' ' + t('GB') + ' (' + t('total') + '/' + t('available') + ')']);
-        rows.push([t('CPU'), (data.cpu_name || '—') + (data.cpu_count ? ' · ' + data.cpu_count + ' ' + t('CPU cores') : '')]);
+        rows.push([t('CPU'), (data.cpu_name || '—') + (data.cpu_count ? ' · ' + data.cpu_count + ' ' + t('CPU cores') : ''), true]);
 
-        tbody.innerHTML = rows.map(([label, value]) =>
-            '<tr><td class="hw-label">' + label + '</td><td class="hw-value">' + value + '</td></tr>'
-        ).join('');
+        tbody.innerHTML = rows.map(function(row) {
+            const nowrap = row[2] ? ' nowrap' : '';
+            return '<tr' + nowrap + '><td class="hw-label">' + row[0] + '</td><td class="hw-value">' + row[1] + '</td></tr>';
+        }).join('');
     })
     .catch(err => console.error('Error fetching hardware:', err));
 }

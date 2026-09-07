@@ -1771,12 +1771,12 @@ class RedisRequestQueue:
                 from app.resource_manager import get_resource_manager
 
                 rm = get_resource_manager()
-                video_model_name = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
+                video_model_name = self.app.config.get("VIDEO_MODEL", "wan2.2-ti2v-5b-turbo")
                 rm.measure_video_vram_peak(video_model_name)
             except Exception as e:
                 self.logger.debug(f"Video VRAM measurement failed: {e}")
 
-            video_model = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
+            video_model = self.app.config.get("VIDEO_MODEL", "wan2.2-ti2v-5b-turbo")
             template = self.app.modules["base"]._("Video generated from request: {query}", lang=lang)
             prefix = "🎬 " + template.replace("{query}", "")
             message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
@@ -1968,7 +1968,7 @@ class RedisRequestQueue:
                 from app.resource_manager import get_resource_manager
 
                 rm = get_resource_manager()
-                video_model_name = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
+                video_model_name = self.app.config.get("VIDEO_MODEL", "wan2.2-ti2v-5b-turbo")
                 rm.measure_video_vram_peak(video_model_name)
             except Exception as e:
                 self.logger.debug(f"Video VRAM measurement failed: {e}")
@@ -1995,7 +1995,7 @@ class RedisRequestQueue:
                 )
                 resize_notice = resize_text
 
-            video_model = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
+            video_model = self.app.config.get("VIDEO_MODEL", "wan2.2-ti2v-5b-turbo")
             template = self.app.modules["base"]._("Video generated from request: {query}", lang=lang)
             prefix = "🎬 " + template.replace("{query}", "")
             message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)

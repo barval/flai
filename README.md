@@ -168,7 +168,7 @@ FLAI ships with two deployment modes:
 | Reasoning | ⚠️ Qwen3.6-35B partial offload (~15–20 tok/s) | ✅ Qwen3.6-35B-A3B (~70–90 tok/s) | ✅ Qwen3.6-35B-A3B (106 tok/s) | ⚠️ ~9.5 tok/s |
 | Image gen (SD) | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 | ⚠️ slower |
 | Image edit (Flux) | ✅ up to 768px long side | ✅ up to 1024px long side | ✅ up to 1024px long side | ⚠️ slower |
-| Video gen (Wan2.2-TI2V-5B-Turbo) | ⚠️ gated out (needs ~9 GB free VRAM) | ✅ 768×448×121 default (wrapper offload) | ✅ 768×448×121 default, up to 832×480×121 | ⚠️ adaptive RAM cascade (384×256×81 → 320×192×57 → 256×160×49) |
+| Video gen (Wan2.2-TI2V-5B-Turbo) | ⚠️ gated out (needs ~9 GB free VRAM) | ⚠️ 640×384 or smaller (measured peak ~15 GB @ 640×384); may fall back to CPU offload | ✅ 768×448×121 default, up to 832×480×121 | ⚠️ adaptive RAM cascade (384×256×81 → 320×192×57 → 256×160×49) |
 | Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 | RAG (Qdrant) | ✅ | ✅ | ✅ | ✅ |
 | SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
@@ -244,7 +244,7 @@ cd flai
 # + RAG (Qdrant)
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag
 
-# + Video generation (Wan2.2 via sd-cpp)
+# + Video generation (provisions legacy LTX models; Wan2.2 is manual — see note)
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video
 
 # + Long-term memory (SuperLocalMemory)
@@ -259,6 +259,8 @@ cd flai
 # Run tests after deployment
 ./deploy.sh --download-models --with-image-gen --run-tests
 ```
+
+> ⚠️ **Note:** the `--with-video` profile currently provisions the **legacy (inactive) LTX-Video** models via `deploy.sh` — video itself runs on **Wan2.2-TI2V-5B-Turbo**, which `deploy.sh` does **not** download. The Wan files (all Apache-2.0): `wan2.2-ti2v-5b-turbo-Q4_K_M.gguf` (~3.44 GB), `umt5-xxl-encoder-Q8_0.gguf` (~6 GB), `Wan2.2_VAE.safetensors` (~1.41 GB). Download them manually — see the *Video Generation Models* block below.
 
 > **CPU-only deployment (no NVIDIA GPU):** add the `--cpu` flag. Nominal `docker-compose.cpu.yml` is selected automatically when `nvidia-smi` is not found, but `--cpu` forces it.
 >
@@ -356,6 +358,8 @@ wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
 #### Video Generation Models (Wan2.2-TI2V-5B-Turbo)
 
 Since v11.1 video generation runs **Wan2.2-TI2V-5B-Turbo** (Apache-2.0) through the stable-diffusion.cpp wrapper, so the files live in the sd-cpp model directories:
+
+> ⚠️ **Note:** `deploy.sh --with-video` does **not** download the Wan2.2 files below — it only provisions the legacy (inactive) LTX-Video models. Download all three manually (all Apache-2.0): `wan2.2-ti2v-5b-turbo-Q4_K_M.gguf` (~3.44 GB), `umt5-xxl-encoder-Q8_0.gguf` (~6 GB), `Wan2.2_VAE.safetensors` (~1.41 GB).
 
 ```bash
 # Diffusion transformer (Q4_K_M; the hub filename is Wan2_2-TI2V-5B-Turbo-Q4_K_M.gguf,
@@ -682,7 +686,7 @@ Since v11.1 the project uses **Wan2.2-TI2V-5B-Turbo** (Apache-2.0, distilled 4-s
 
 Video generation runs **inside the stable-diffusion.cpp container** (`flai-sd`, port 7861). Before generating, the llama.cpp LLM is unloaded from VRAM and free VRAM is polled until the estimated Wan peak + 1 GB is available (VRAM floor 8 GB; the top presets additionally rely on the wrapper's offload ladder / OOM-retry). The UMT5-XXL text encoder (~6 GB) stays on CPU. Output is **WebM**.
 
-- **Default**: 768×448, 121 frames, 24 fps (~5 s). GPU degradation chain: 832×480 → 768×448 → 640×384 (121 frames). On **CPU-only mode** the worker checks free RAM (`MemAvailable`) first and degrades through 384×256×81 → 320×192×57 → 256×160×49, notifying the user of the exact chosen format.
+- **Default**: 768×448, 121 frames, 24 fps (~5 s). GPU preset targets: 832×480, 768×448, 640×384 (all @ 121 frames); the 640×384 target is auto-applied for low-VRAM (<10 GB) tiers. On **CPU-only mode** the worker checks free RAM (`MemAvailable`) first and degrades at runtime through 384×256/81 → 320×192/57 → 256×160/49, notifying the user of the exact chosen format.
 - **Source image resize:** Images for image-to-video are downscaled to **832px** on the longest side before being sent to the sd-wrapper (reduces VRAM and network payload); the wrapper snaps the canvas to multiples of 32 (Wan VAE constraint). A system notice shows the original vs resized dimensions.
 - **Legacy:** the LTX-Video container (`--profile with-video`) is inactive since v11.1 and no longer required for generation.
 

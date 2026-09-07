@@ -4,6 +4,8 @@ This document describes the internal architecture of FLAI in detail. Read it whe
 
 For critical rules and commands, see the root `AGENTS.md`.
 
+> **v11.1 change:** Video generation backend is now **Wan2.2-TI2V-5B-Turbo** (Apache-2.0, distilled, 4-step) running through the existing **stable-diffusion.cpp** wrapper — `modules/video.py:VideoModule` posts to `VIDEO_WRAPPER_URL` (`http://flai-sd:7861`), where `sd_wrapper.py` runs `sd-cli -M vid_gen`. One model serves both T2V and I2V, max 121 frames (~5 s @ 24 fps), WebM output. Default 768×448×121; GPU degradation 832×480 → 768×448 → 640×384 (121 frames); CPU RAM cascade 384×256×81 → 320×192×57 → 256×160×49. Config: `VIDEO_WRAPPER_URL`, `VIDEO_MODEL`, `VIDEO_TIMEOUT`. VRAM estimate floor 8000 MB; CPU RAM planner static ≈ 11 GB + linear activation term. **LTX-Video is inactive/legacy** — the `ltxvideo` service, `LTX_VIDEO_*` env keys, and the LTX branches in `resource_manager.py`/`queue.py` remain in the repo but no longer generate video.
+
 > **v10.0 change:** Two-model architecture: multimodal (Qwen3VL-8B-Instruct, always resident, `ttl=0`, `preload: on_startup`) + reasoning (on-demand, `ttl=1`). The standalone "chat" model (Qwen3-4B) was removed. Multimodal = LLM router + text chat + vision (image analysis + editing). After a reasoning task, `_preload_multimodal_sync()` reloads the multimodal model synchronously before responding. VRAM management simplified: only one llama.cpp model resident at a time (multimodal XOR reasoning), except embedding runs on a separate CPU/low-VRAM slot. `ensure_vram_for_reasoning()` evicts multimodal; after reasoning, multimodal is reloaded. `app/queue.py` no longer unloads/reloads multimodal in camera or image-chat paths (always resident). `MODULE_TYPES` reduced to `{multimodal, reasoning, embedding}`.
 
 > **v9.1 change:** Web search module (`modules/search.py`) gained `_fetch_page_content()` — downloads pages with empty SearXNG snippets and extracts readable text via `trafilatura`. Later enhanced: `_fetch_page_content()` runs in parallel via `ThreadPoolExecutor` for short snippets (<300 chars), and instructions softened from «USE ONLY THIS DATA» to «use this data as your primary source» in both `modules/base.py` and prompt templates. `format_results_context()` truncates per-result to 2 000 chars and caps total dynamically via `get_search_context_limit()` (~30% of effective budget, ~11 K chars for 16 K context). `_get_context_for_model()` returns RAG+SLM without history (instead of empty) when budget is exceeded. Depends on `trafilatura>=2.0.0`. Docker volumes simplified: `./app`, `./modules`, `./prompts` now mounted as directories instead of 35 individual file mounts; `PYTHONDONTWRITEBYTECODE=1` added. (Explicit `categories=general,news` was later removed — caused DuckDuckGo rate limiting.)
@@ -42,8 +44,8 @@ The chat model (~2 GiB) stays hot in VRAM permanently.
 
 ### Slow Worker (GPU-heavy)
 - Multimodal (Qwen3VL-8B)
-- SD (Stable Diffusion)
-- LTX-Video
+- SD (Stable Diffusion, image gen/edit)
+- **Video (Wan2.2-TI2V-5B-Turbo via sd-cpp wrapper; LTX-Video inactive/legacy)**
 - **Reasoning** (16GB+: gpt-oss-20b MXFP4 on Blackwell / Q4_K_M on other, 12/8GB: gemma-4-E4B)
 - **RAG generation** (via reasoning model)
 
@@ -93,7 +95,7 @@ All llama.cpp models share a single `llm_fast` group with `swap: true` in llama-
 
 Chat model preloaded at startup via `hooks.on_startup.preload: ["chat"]`. After every non-chat task, chat model is reloaded in a background thread (`_preload_chat_model_background()`) to eliminate cold starts.
 
-SD and LTX-Video use separate GPU contexts.
+SD (image gen/edit) and Wan2.2 video generation share the sd-cpp container (`flai-sd`) — a GPU context separate from llama.cpp. The legacy LTX-Video container remains in the stack but is inactive.
 
 ### Sequence of Models
 
@@ -105,14 +107,14 @@ SD and LTX-Video use separate GPU contexts.
 
 4. **Embedding (bge-m3 Q8_0, 0.5 GiB)** — TTL=1s → unloaded 1 second after use.
 
-5. **SD / LTX-Video** — before generation, llama-swap is asked to unload all models via `POST /api/models/unload` (implemented in `resource_manager.py:unload_llamacpp_model()`). This frees ~3-4 GiB VRAM (chat). LTX-Video container is **always** restarted after video generation (`_force_restart_ltx_video()`, no rate-limiting) to free CUDA context (~3 GB). Chat model is then reloaded via `_preload_chat_model_background()`.
+5. **Image / video generation (sd-cpp: SD image gen/edit + Wan2.2-TI2V-5B-Turbo)** — before a video generation, llama-swap is asked to unload all models via `POST /api/models/unload` (implemented in `resource_manager.py:unload_llamacpp_model()`), freeing ~5 GiB VRAM (multimodal). VRAM is then polled until the estimated Wan peak + 1 GB is free (`estimate_video_vram_needed()`, floor 8000 MB). Generation runs `sd-cli -M vid_gen` inside the `flai-sd` container. After the task the legacy LTX unload/restart helpers (`unload_video_pipeline()`, `_force_restart_ltx_video()`) are still invoked but target the **inactive** `flai-ltxvideo` container. The multimodal model is then reloaded via `_preload_chat_model_background()`.
 
 ### Example: Video Generation Request
 router (chat) → [-VIDEO-] → multimodal loads (chat swapped out)
 → multimodal generates video params → multimodal unloads (TTL=1s)
-→ video pipeline loads (full VRAM available) → video generated
-→ container restart (CUDA context freed)
-→ _preload_chat_model_background() → chat reloaded
+→ sd-wrapper (Wan2.2) generates the video in the flai-sd container with full VRAM
+→ llama.cpp models are unloaded again
+→ _preload_chat_model_background() → multimodal reloaded
 → next user request is instant
 
 
@@ -217,7 +219,7 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 - `_is_task_cancelled(task_id)` checked in every streaming loop iteration.
 - **SSE event**: `stream_cancelled` → updates UI.
 - **Image gen/edit**: pre/post checks before blocking HTTP calls (`_call_wrapper()`, `generate_image_params()`).
-- **Video gen**: background cancel checker thread (`_start_cancel_checker()`) polls every 2s, restarts LTX container on detection. 8 cancel return points across 4 task types.
+- **Video gen**: background cancel checker thread (`_start_cancel_checker()`) polls every 2s; on detection it force-restarts the (now legacy/inactive) `flai-ltxvideo` container — the original cancel mechanism of the LTX backend. 8 cancel return points across 4 task types.
 
 ## Generation Progress
 

@@ -62,7 +62,7 @@ locust -f tests/load/locustfile.py --host http://localhost:5000
 ```
 
 ## Architecture Overview
-FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVIDIA GPU (8/12/16+ GB)**. It orchestrates multiple models (multimodal, reasoning, embedding, SD, LTX-Video) through a strict GPU queue with VRAM-aware scheduling.
+FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVIDIA GPU (8/12/16+ GB)**. It orchestrates multiple models (multimodal, reasoning, embedding, SD image gen/edit, Wan2.2 video via sd-cpp wrapper) through a strict GPU queue with VRAM-aware scheduling. LTX-Video is legacy/inactive since v11.1 (video now runs as Wan2.2-TI2V-5B-Turbo inside the sd-cpp container).
   - **Entrypoint:** `app/__init__.py:create_app()` (Flask)
   - **Blueprints:** `app/routes/` — auth, chat, admin, queue, tts, messages, sessions, documents, backups, events, debug
   - **Modules:** `modules/` — base/router, multimodal, sd_cpp, cam, rag, audio, tts, slm, search, video

@@ -24,7 +24,7 @@
 - 🔍 **Multimodal Analysis** – upload images and ask questions about their content (llama.cpp + mmproj)
 - 🎨 **Image Generation** – create images from text using stable-diffusion.cpp with automatic prompt optimization
 - ✏️ **Image Editing** – upload an image and ask to edit it (Flux.2 Klein 4B model: change colors, remove objects, stylize)
-- 🎬 **Video Generation** – create short videos from text or image+text prompts using LTX-Video 2B (distilled, 8-step inference)
+- 🎬 **Video Generation** – create short videos from text or image+text prompts using Wan2.2-TI2V-5B-Turbo (Apache-2.0, T2V + I2V, up to ~5 s @ 24 fps)
 - 🎤 **Voice Transcription** – convert voice messages to text using Whisper ASR (faster_whisper)
 - 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper TTS (male and female voices in English and Russian)
 - 🧠 **Long-term Memory** – cross-session, persistent memory via SuperLocalMemory (SLM). CPU-only, rule-based fact extraction and merging (no LLM). Semantic deduplication via embeddings
@@ -94,8 +94,8 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 |-----------|---------|------------|--------------|
 | **Flask Web** | Web interface, routing, API | Python | 5000 |
 | **llama-swap** | Dynamic LLM model routing & management (llama.cpp proxy) | Go + llama.cpp | 8080 |
-| **stable-diffusion.cpp** | Image generation (Z_image_turbo) and editing (Flux.2 Klein 4B) | C++ + CUDA | 7861 |
-| **LTX-Video** | Video generation (text-to-video / image+text-to-video) | Python + PyTorch | 7872 |
+| **stable-diffusion.cpp** | Image generation (Z_image_turbo), image editing (Flux.2 Klein 4B), and video generation (Wan2.2-TI2V-5B-Turbo) | C++ + CUDA | 7861 |
+| **LTX-Video** | Video generation — legacy/inactive since v11.1 | Python + PyTorch | 7872 |
 | **Whisper ASR** | Speech-to-text transcription | faster_whisper | 9000 |
 | **Piper TTS** | Text-to-speech synthesis | ONNX + Piper | 8888 |
 | **Qdrant** | Vector database for RAG | Rust | 6333 |
@@ -113,17 +113,20 @@ All services run on one machine with GPU sharing:
 ┌───────────────────────────────────────────────────────────────┐
 │                       FLAI Web (Flask)                        │
 │           Redis Queue → Model Router → Response               │
-└──────┬──────────┬────────────┬──────────────┬─────────────────┘
-       │          │            │              │
-       ▼          ▼            ▼              ▼
-   llama-swap  sd.cpp      LTX-Video    Whisper/Piper/Qdrant
-   :8080       :7861       :7872        (separate containers)
+└──────┬──────────┬──────────────────────┬──────────────────────┘
+       │          │                      │
+       ▼          ▼                      ▼
+   llama-swap   sd.cpp            Whisper/Piper/Qdrant
+   :8080        :7861             (separate containers)
    (dynamic model routing via llama-swap)
+
+   sd.cpp serves image generation/editing AND video (Wan2.2-TI2V-5B-Turbo);
+   LTX-Video is legacy/inactive since v11.1
 ```
 
 **Dynamic Model Routing**: llama-swap acts as a proxy to llama.cpp, dynamically loading/unloading GGUF models on demand. Only one model occupies VRAM at a time, with automatic switching based on request type. Model configuration is managed via the admin panel and stored in the database.
 
-> 🎬 **Video generation** uses a **separate GPU container** (`ltxvideo`) with its own VRAM context. Before each video generation, the llama.cpp LLM model is automatically unloaded from VRAM to free memory for the video pipeline (transformer + VAE ≈ 6 GiB). After generation, CUDA cache is cleared, LLM processes are re-unloaded, and the pipeline is reset (`_pipeline = None`) for lazy reinit on the next request. The T5 text encoder stays on CPU to conserve VRAM.
+> 🎬 **Video generation** runs **Wan2.2-TI2V-5B-Turbo** (Apache-2.0) inside the same **sd-cpp container** (`flai-sd`) that serves image generation. Before each video generation the llama.cpp LLM model is unloaded from VRAM and free VRAM is polled until the estimated Wan peak + 1 GB is available (VRAM floor 8 GB). The UMT5-XXL text encoder (~6 GB) stays on CPU (`te=cpu`). Output is WebM, up to 121 frames (~5 s @ 24 fps). The old LTX-Video container is retained but inactive.
 
 ---
 
@@ -133,10 +136,10 @@ All services run on one machine with GPU sharing:
 
 FLAI ships with two deployment modes:
 
-- **GPU mode (NVIDIA)** — full-speed inference on CUDA GPUs. The whole stack (llama.cpp, stable-diffusion.cpp, LTX-Video) runs with CUDA builds and the NVIDIA Container Toolkit. This is the primary, recommended mode.
+- **GPU mode (NVIDIA)** — full-speed inference on CUDA GPUs. The whole stack (llama.cpp and stable-diffusion.cpp — images + Wan2.2 video) runs with CUDA builds and the NVIDIA Container Toolkit. This is the primary, recommended mode.
 - **CPU-only mode** — the same feature set runs entirely on the CPU (LLM, image, and video generation). Everything is slower, but no GPU is needed at all.
 
-> ⚠️ **AMD and Intel GPUs are not supported by the official compose stack.** The prebuilt images are CUDA-only (`llama-swap:cuda`, CUDA versions of sd.cpp and LTX). Unofficial ROCm (AMD) or Vulkan (AMD/Intel) builds of llama.cpp could work outside this project, but they are not covered by FLAI's resource manager, VRAM accounting, or deployment scripts. If you have an AMD/Intel GPU and want guaranteed behaviour, run the **CPU-only mode** instead.
+> ⚠️ **AMD and Intel GPUs are not supported by the official compose stack.** The prebuilt images are CUDA-only (`llama-swap:cuda`, CUDA build of stable-diffusion.cpp). Unofficial ROCm (AMD) or Vulkan (AMD/Intel) builds of llama.cpp could work outside this project, but they are not covered by FLAI's resource manager, VRAM accounting, or deployment scripts. If you have an AMD/Intel GPU and want guaranteed behaviour, run the **CPU-only mode** instead.
 
 ### Hardware Tiers
 
@@ -155,7 +158,7 @@ FLAI ships with two deployment modes:
 > | 8 GB GPU | 16–24 GB | 24–32 GB |
 > | 12 GB GPU | 24–32 GB | 32–40 GB |
 > | 16 GB GPU | 24–32 GB | 32–48 GB |
-> | CPU-only | 24–32 GB | 48 GB (64 GB for 240-frame clips) |
+> | CPU-only | 24–32 GB | 32–48 GB (default 768×448×121 needs ~33 GB) |
 
 #### What works at each tier
 
@@ -165,12 +168,12 @@ FLAI ships with two deployment modes:
 | Reasoning | ⚠️ Qwen3.6-35B partial offload (~15–20 tok/s) | ✅ Qwen3.6-35B-A3B (~70–90 tok/s) | ✅ Qwen3.6-35B-A3B (106 tok/s) | ⚠️ ~9.5 tok/s |
 | Image gen (SD) | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 | ⚠️ slower |
 | Image edit (Flux) | ✅ up to 768px long side | ✅ up to 1024px long side | ✅ up to 1024px long side | ⚠️ slower |
-| Video gen (LTX-Video) | ⚠️ 512×512×120 frames | ✅ 768×512×240 frames | ✅ 768×512×240 frames | ⚠️ adaptive memory cascade (384×256×120 → 256×192×57) |
+| Video gen (Wan2.2-TI2V-5B-Turbo) | ⚠️ gated out (needs ~9 GB free VRAM) | ✅ 768×448×121 default (wrapper offload) | ✅ 768×448×121 default, up to 832×480×121 | ⚠️ adaptive RAM cascade (384×256×81 → 320×192×57 → 256×160×49) |
 | Voice (Whisper + TTS) | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 | RAG (Qdrant) | ✅ | ✅ | ✅ | ✅ |
 | SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 
-> **VRAM management:** All LLM models (multimodal, reasoning, embedding) share VRAM via llama-swap — only one is loaded at a time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. The system dynamically adjusts `n_gpu_layers` based on available VRAM. **CPU-only video:** before generation the worker checks free RAM (`MemAvailable`); if the requested 768×512×240 does not fit it progressively degrades to 384×256×120 @ 12 fps, then 256×192×57 @ 6 fps, notifying the user with the exact chosen format and stopping with a clear message when even the smallest step is impossible.
+> **VRAM management:** All LLM models (multimodal, reasoning, embedding) share VRAM via llama-swap — only one is loaded at a time. Image generation and video (Wan2.2-TI2V-5B-Turbo) run in the sd-cpp container; the video path unloads the LLM first and waits until the estimated Wan peak + 1 GB is free (VRAM floor 8 GB). The system dynamically adjusts `n_gpu_layers` based on available VRAM. **CPU-only video:** before generation the worker checks free RAM (`MemAvailable`); if the requested 768×448×121 does not fit it progressively degrades to 384×256×81, then 320×192×57, then 256×160×49, notifying the user with the exact chosen format and stopping with a clear message when even the smallest step is impossible.
 
 ### Model Benchmarks (RTX 5060 Ti 16 GB)
 
@@ -241,7 +244,7 @@ cd flai
 # + RAG (Qdrant)
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag
 
-# + Video generation (LTX-Video)
+# + Video generation (Wan2.2 via sd-cpp)
 ./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video
 
 # + Long-term memory (SuperLocalMemory)
@@ -350,19 +353,29 @@ wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
 
 > ⚠️ **Important**: Multimodal models **must** be placed in a subdirectory named after the model, with the `mmproj-*.gguf` file inside. The llama.cpp router automatically discovers and loads the projector.
 
-#### Video Generation Models (LTX-Video 2B)
+#### Video Generation Models (Wan2.2-TI2V-5B-Turbo)
+
+Since v11.1 video generation runs **Wan2.2-TI2V-5B-Turbo** (Apache-2.0) through the stable-diffusion.cpp wrapper, so the files live in the sd-cpp model directories:
 
 ```bash
-# Create models directory
-mkdir -p services/ltx_video/models
+# Diffusion transformer (Q4_K_M; the hub filename is Wan2_2-TI2V-5B-Turbo-Q4_K_M.gguf,
+# stored locally under the name the sd-wrapper expects)
+hf download hum-ma/Wan2.2-TI2V-5B-Turbo-GGUF Wan2_2-TI2V-5B-Turbo-Q4_K_M.gguf \
+  --local-dir services/sd_cpp/models/diffusion_models
+mv services/sd_cpp/models/diffusion_models/Wan2_2-TI2V-5B-Turbo-Q4_K_M.gguf \
+   services/sd_cpp/models/diffusion_models/wan2.2-ti2v-5b-turbo-Q4_K_M.gguf
 
-# Diffusion transformer + VAE checkpoint
-wget -O services/ltx_video/models/ltxv-2b-0.9.8-distilled.safetensors \
-  "https://huggingface.co/Lightricks/LTX-Video/resolve/main/ltxv-2b-0.9.8-distilled.safetensors"
+# Text encoder (UMT5-XXL, stays on CPU during generation)
+hf download city96/umt5-xxl-encoder-gguf umt5-xxl-encoder-Q8_0.gguf \
+  --local-dir services/sd_cpp/models/text_encoders
 
-# T5 text encoder (run the download script)
-bash services/ltx_video/download-t5-encoder.sh
+# VAE
+hf download QuantStack/Wan2.2-TI2V-5B-GGUF VAE/Wan2.2_VAE.safetensors \
+  --local-dir /tmp/wan_vae
+mv /tmp/wan_vae/VAE/Wan2.2_VAE.safetensors services/sd_cpp/models/vae/
 ```
+
+The legacy LTX-Video models (`services/ltx_video/models/`) are no longer required.
 
 ### 3. Build and Start Services
 
@@ -461,8 +474,9 @@ PIPER_URL=http://flai-piper:8888/tts
 QDRANT_URL=http://flai-qdrant:6333
 QDRANT_API_KEY=your_qdrant_api_key
 CAMERA_API_URL=http://flai-room-snapshot-api:5000
- LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872  # LTX-Video video generation
- SLM_URL=http://flai-slm:8766                      # SuperLocalMemory long-term memory
+VIDEO_WRAPPER_URL=http://flai-sd:7861           # Video generation (Wan2.2 via sd-wrapper)
+LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872 # LTX-Video — legacy, inactive since v11.1
+SLM_URL=http://flai-slm:8766                    # SuperLocalMemory long-term memory
  ```
 
 **Image & Video Defaults:**
@@ -473,7 +487,9 @@ SD_CPP_DEFAULT_CFG_SCALE=1.0    # 1.0 for flow-matching models (Z_image_turbo)
 SD_CPP_DEFAULT_STEPS=10         # 10 for Z_image_turbo
 SD_CPP_TIMEOUT=900
 MAX_IMAGE_SIZE=1536             # Resize uploaded images to 1536px on longest side
-LTX_VIDEO_TIMEOUT=600           # Max video generation time (seconds)
+VIDEO_MODEL=wan2.2-ti2v-5b-turbo # Video model (Wan2.2 via sd-wrapper)
+VIDEO_TIMEOUT=600                # Max video generation time (seconds)
+LTX_VIDEO_TIMEOUT=600            # LTX-Video — legacy, inactive since v11.1
 ```
 
 **Service Retry Settings:**
@@ -656,38 +672,40 @@ SD_CPP_DEFAULT_STEPS=10
 
 ---
 
-## 🎬 Video Generation (LTX-Video 2B)
+## 🎬 Video Generation (Wan2.2-TI2V-5B-Turbo)
 
-The project uses **LTX-Video 2B 0.9.8 distilled** for video generation:
+Since v11.1 the project uses **Wan2.2-TI2V-5B-Turbo** (Apache-2.0, distilled 4-step Turbo) for video generation. A single model serves both **text-to-video** and **image-to-video**:
 
 | Model | Steps | Frame Rate | Resolution | Notes |
 |-------|-------|-----------|------------|-------|
-| **LTX-Video 2B distilled** | 8 | 24 fps | up to 768×1344 | Distilled, single GPU (~6 GB VRAM) |
+| **Wan2.2-TI2V-5B-Turbo** | 4 | 24 fps | up to 832×480, max 121 frames (~5 s) | Apache-2.0; T2V + I2V; runs via stable-diffusion.cpp (`sd-cli -M vid_gen`) |
 
-Video generation runs in a **separate GPU container** (via `--profile with-video`). Before generating, the llama.cpp LLM is automatically unloaded from VRAM to free memory. After generation, CUDA cache is cleared, LLM processes are re-unloaded, and the CUDA primary context is reset (`cuDevicePrimaryCtxReset`) to release all GPU memory back to the driver. The T5 text encoder (~8.9 GB in bf16) stays on CPU.
+Video generation runs **inside the stable-diffusion.cpp container** (`flai-sd`, port 7861). Before generating, the llama.cpp LLM is unloaded from VRAM and free VRAM is polled until the estimated Wan peak + 1 GB is available (VRAM floor 8 GB; the top presets additionally rely on the wrapper's offload ladder / OOM-retry). The UMT5-XXL text encoder (~6 GB) stays on CPU. Output is **WebM**.
 
-**Source image resize:** Images for video-from-image are resized to **768px** on the longest side before being sent to the LTX pipeline (reduces VRAM and network payload). A system notice shows the original vs resized dimensions.
+- **Default**: 768×448, 121 frames, 24 fps (~5 s). GPU degradation chain: 832×480 → 768×448 → 640×384 (121 frames). On **CPU-only mode** the worker checks free RAM (`MemAvailable`) first and degrades through 384×256×81 → 320×192×57 → 256×160×49, notifying the user of the exact chosen format.
+- **Source image resize:** Images for image-to-video are downscaled to **832px** on the longest side before being sent to the sd-wrapper (reduces VRAM and network payload); the wrapper snaps the canvas to multiples of 32 (Wan VAE constraint). A system notice shows the original vs resized dimensions.
+- **Legacy:** the LTX-Video container (`--profile with-video`) is inactive since v11.1 and no longer required for generation.
 
-**Aspect ratio matching:** When generating video from an image, the output video resolution is automatically adjusted to match the source image's aspect ratio: square images → 512×512, wide images (w/h > 1.2) → 768×512 landscape, tall images (w/h < 0.8) → 512×768 portrait.
-
-**Required models:**
-1. `ltxv-2b-0.9.8-distilled.safetensors` (~5.9 GB) — diffusion transformer + VAE
-2. `PixArt-alpha/PixArt-XL-2-1024-MS` text encoder / tokenizer — T5-XXL encoder (~18 GB on disk in float32, ~8.9 GB in VRAM in bf16)
+**Required models** (in `services/sd_cpp/models/`, all Apache-2.0):
+1. `wan2.2-ti2v-5b-turbo-Q4_K_M.gguf` (~3.44 GB) — diffusion transformer
+2. `umt5-xxl-encoder-Q8_0.gguf` (~6 GB) — text encoder (CPU)
+3. `Wan2.2_VAE.safetensors` (~1.41 GB) — VAE
 
 ```bash
-# Download via deploy script
-./deploy.sh --download-models --with-video
-
-# Or manually:
-bash services/ltx_video/download-t5-encoder.sh
+# Video runs through the sd-cpp service, so start it together with image generation:
+./deploy.sh --download-models --with-image-gen
+# or: docker compose -f docker-compose.gpu.yml --profile with-image-gen up -d
+# Model files: see "Video Generation Models" in the download section above.
 ```
 
 **Configuration:**
 ```bash
-LTX_VIDEO_WRAPPER_URL=http://flai-ltxvideo:7872
-LTX_VIDEO_MODEL=ltxv-2b-0.9.8-distilled
-LTX_VIDEO_TIMEOUT=600
+VIDEO_WRAPPER_URL=http://flai-sd:7861   # sd-wrapper (video generation endpoint)
+VIDEO_MODEL=wan2.2-ti2v-5b-turbo
+VIDEO_TIMEOUT=600
 ```
+
+> The legacy LTX config keys (`LTX_VIDEO_WRAPPER_URL`, `LTX_VIDEO_MODEL`, `LTX_VIDEO_TIMEOUT`) are inactive since v11.1.
 
 ---
 
@@ -853,7 +871,7 @@ curl http://localhost:5000/metrics
 ### 🔄 In Progress
 - **Multi-platform GPU support** — extend FLAI to run on non-NVIDIA machines:
   - CPU-only mode for the full stack
-  - AMD / Intel via Vulkan for llama.cpp and stable-diffusion.cpp, ROCm for LTX-Video
+  - AMD / Intel via Vulkan for llama.cpp and stable-diffusion.cpp
   - Unified Docker Compose with per-platform profiles and env-driven deploy scripts
 - Advanced RAG: metadata filtering, hybrid search
 - Mobile-responsive UI optimizations
@@ -897,8 +915,9 @@ curl http://localhost:5000/metrics
 
 | Model | Purpose | License | Approx. Size |
 |-------|---------|---------|-------------|
-| **ltxv-2b-0.9.8-distilled.safetensors** | LTX-Video 2B diffusion transformer + VAE | [LTX-Video License](https://huggingface.co/Lightricks/LTX-Video) | ~5.9 GB |
-| **PixArt T5-XXL (text_encoder)** | T5 text encoder for LTX-Video | [PixArt License](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS) | ~18 GB (disk, float32) |
+| **wan2.2-ti2v-5b-turbo-Q4_K_M.gguf** | Wan2.2-TI2V-5B-Turbo diffusion transformer (video generation) | [Apache 2.0](https://huggingface.co/hum-ma/Wan2.2-TI2V-5B-Turbo-GGUF) | ~3.44 GB |
+| **umt5-xxl-encoder-Q8_0.gguf** | Text encoder for Wan2.2 (runs on CPU) | [Apache 2.0](https://huggingface.co/city96/umt5-xxl-encoder-gguf) | ~6 GB |
+| **Wan2.2_VAE.safetensors** | VAE for Wan2.2 | [Apache 2.0](https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF) | ~1.41 GB |
 
 ### Long-term Memory Models
 
@@ -931,8 +950,8 @@ curl http://localhost:5000/metrics
 | + Image generation | ~29 GB |
 | + Image editing | ~32 GB |
 | + Voice (TTS + Whisper) | ~35 GB |
-| + Video generation (LTX-Video + T5 encoder) | ~59 GB *(T5 encoder ~18 GB on disk in float32)* |
-| + Long-term memory (SLM embedding model) | ~59.5 GB *(SLM adds ~500 MB)* |
+| + Video generation (Wan2.2-TI2V-5B-Turbo: diffusion ~3.4 GB + UMT5 ~6 GB + VAE ~1.4 GB) | ~46 GB |
+| + Long-term memory (SLM embedding model) | ~46.5 GB *(SLM adds ~500 MB)* |
 
 > **Note**: After downloading models, FLAI works completely offline. No external scripts or modules are loaded at runtime.
 

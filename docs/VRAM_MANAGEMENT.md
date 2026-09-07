@@ -238,6 +238,43 @@ In CPU-only mode (`docker-compose.cpu.yml`, no GPU) the video container (`ltxvid
 - The user is notified of the exact chosen format via an SSE `notice` event plus a saved assistant message (`model_name="system"`), sent *before* generation starts. The `fps` translation key maps to «к/с» in Russian.
 - Text-to-video and image-to-video paths share the same planner; image sources are pre-resized to ≤768 px before planning (`resize_video_source_image()`), so the resize notice is emitted before the degradation notice.
 
+## Wan2.2-TI2V-5B-Turbo Video Backend (v11.1)
+
+Since v11.1, video generation runs **Wan2.2-TI2V-5B-Turbo** (Apache-2.0) inside the sd-cpp container (`flai-sd`, via `sd-cli -M vid_gen`). This section is the **current** budget. The LTX-Video sections above document the inactive/legacy backend and are preserved for history.
+
+**Model footprint (GPU mode):**
+
+| File | Size | Where it lives |
+|------|------|----------------|
+| `wan2.2-ti2v-5b-turbo-Q4_K_M.gguf` (diffusion) | ~3.44 GB | GPU VRAM |
+| `umt5-xxl-encoder-Q8_0.gguf` (text encoder) | ~6 GB | **RAM** — pinned to CPU via `--backend te=cpu` |
+| `Wan2.2_VAE.safetensors` | ~1.41 GB | GPU VRAM during decode |
+
+**GPU budget** — `estimate_video_vram_needed()` (resource_manager.py) returns the measured row for the Wan-named model (`wan2.2-ti2v-5b-turbo`) from `model_vram_estimates`, or a **floor of 8000 MB** when none exists:
+
+| Preset | Frames | Design est. GPU | Note |
+|--------|--------|-----------------|------|
+| 640×384 | 121 | ~7.5 GB | auto-cap target for low-VRAM tiers |
+| 768×448 | 121 | ~10 GB | default |
+| 832×480 | 121 | ~11.5 GB | relies on VAE tiling |
+
+Empirically the measured peak on RTX 5060 Ti was ~15 GB (14,963 MiB) on 640×384×81 **even with `--offload-to-cpu`**, so the design numbers above are optimistic. Consequences:
+
+- **8 GB cards are gated out** — free VRAM after the llama.cpp unload never reaches the floor + 1 GB margin, so `generate_video()` returns a clear error before anything tries to OOM. The 640×384 cap (total VRAM < 10000 MB) stays as defense for borderline 8–10 GB hypotheticals.
+- **12/16 GB cards pass the gate** and rely on the sd-wrapper's offload ladder + per-attempt OOM retry to actually fit the top presets.
+
+**CPU RAM budget** (`modules/video.py`) — no VRAM to rely on, so the planner estimates container RAM. Static model footprint ≈ 11 GB (diffusion 3.6 + UMT5 6 + VAE 1.5) plus activations that scale with the Wan latent volume (spatial /32 each axis, temporal (frames−1)//4+1):
+
+`peak_mb ≈ 11000 + (w//32)·(h//32)·((frames−1)//4+1) × 2.0`, +1024 MB safety.
+
+| Preset | Frames | Est. RAM (incl. safety) |
+|--------|--------|-------------------------|
+| 384×256 | 81 | ~16 GB |
+| 320×192 | 57 | ~13.5 GB |
+| 256×160 | 49 | ~13 GB |
+
+`plan_cpu_generation()` picks the largest cascade step that fits `MemAvailable`, notifying the user of the chosen format. The sd_cpp compose memory limit is **16 G** (raised from 10 G in v11.1) so the UMT5 + diffusion + VAE fit in RAM.
+
 ## Monitoring Commands
 ```bash
 watch -n 1 nvidia-smi          # Real-time VRAM tracking

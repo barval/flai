@@ -263,8 +263,8 @@ class TestGenerateVideoParams:
         result, error = module_with_mock_llamacpp.generate_video_params("make a video")
         assert result is not None
         assert result["width"] == 768
-        assert result["height"] == 512
-        assert result["num_frames"] == 240
+        assert result["height"] == 448
+        assert result["num_frames"] == 121
         assert result["frame_rate"] == 24
         assert "negative_prompt" in result
 

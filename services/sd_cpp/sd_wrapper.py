@@ -58,6 +58,17 @@ EDIT_VAE = "/app/models/vae/flux2_ae.safetensors"
 EDIT_LLM = "/app/models/text_encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
 EDIT_DEFAULT_STRENGTH = 0.7
 
+# ── Wan2.2-TI2V-5B-Turbo video model (sd-cli -M vid_gen) ──
+# Ref: https://github.com/leejet/stable-diffusion.cpp/blob/master/docs/wan.md
+WAN_DIFFUSION_MODEL = "/app/models/diffusion_models/wan2.2-ti2v-5b-turbo-Q4_K_M.gguf"
+WAN_VAE = "/app/models/vae/Wan2.2_VAE.safetensors"
+WAN_T5 = "/app/models/text_encoders/umt5-xxl-encoder-Q8_0.gguf"
+# Turbo is distilled / CFG-free: CFG > 1.0 aborts; exactly 4 steps.
+WAN_CFG_SCALE = 1.0
+WAN_STEPS = 4
+WAN_FLOW_SHIFT = 3.0
+WAN_SAMPLER = "euler"
+
 SD_CLI = "/usr/local/bin/sd-cli"
 
 # Lock to serialize generation (one at a time)
@@ -110,6 +121,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_generation()
         elif path == "/v1/images/edits":
             self._handle_edit()
+        elif path == "/v1/video/generations":
+            self._handle_video_generation()
         else:
             self.send_error(404, "Not found")
 
@@ -138,6 +151,20 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         result = edit_image(data)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(result).encode())
+
+    def _handle_video_generation(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length)
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self.send_error(400, "Invalid JSON")
+            return
+        result = generate_video(data)
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
@@ -395,6 +422,64 @@ def generate_image(data):
     return {"error": "Insufficient VRAM for image generation. Try disabling GPU or reducing image size."}
 
 
+def build_wan_video_cmd(
+    prompt,
+    negative_prompt,
+    width,
+    height,
+    num_frames,
+    frame_rate,
+    seed,
+    init_img_path=None,
+):
+    """Build sd-cli command for Wan2.2-TI2V-5B-Turbo video generation.
+
+    The UMT5-XXL text encoder (--t5xxl) is ~6 GB and is pinned to CPU
+    (--backend te=cpu); only the ~3.4 GB diffusion model + VAE live on GPU.
+    """
+    cuda = _check_cuda()
+    cmd = [
+        SD_CLI,
+        "-M",
+        "vid_gen",
+        "--diffusion-model",
+        WAN_DIFFUSION_MODEL,
+        "--vae",
+        WAN_VAE,
+        "--t5xxl",
+        WAN_T5,
+        "-p",
+        prompt,
+        "--cfg-scale",
+        str(WAN_CFG_SCALE),
+        "--steps",
+        str(WAN_STEPS),
+        "--sampling-method",
+        WAN_SAMPLER,
+        "--video-frames",
+        str(num_frames),
+        "--fps",
+        str(frame_rate),
+        "-W",
+        str(width),
+        "-H",
+        str(height),
+        "--seed",
+        str(seed),
+        "--flow-shift",
+        str(WAN_FLOW_SHIFT),
+        "--backend",
+        "te=cpu",
+    ]
+    if negative_prompt:
+        cmd.extend(["-n", negative_prompt])
+    if cuda:
+        cmd.append("--diffusion-fa")
+    if init_img_path:
+        cmd.extend(["--init-img", init_img_path])
+    return cmd
+
+
 def edit_image(data):
     """Edit an existing image using Flux.2 Klein 4B model."""
     with _lock:
@@ -571,6 +656,136 @@ def _edit_image_impl(data):
         if os.path.exists(src_path):
             with contextlib.suppress(Exception):
                 os.remove(src_path)
+
+
+def _snap_image_to_multiple_of_32(image_path):
+    """Downscale so the longer side fits MAX_VIDEO_SOURCE_SIZE and both dims are % 32 == 0."""
+    try:
+        from PIL import Image
+
+        img = Image.open(image_path)
+        w, h = img.size
+        max_side = 832
+        scale = min(1.0, max_side / max(w, h))
+        w2, h2 = max(32, int(w * scale) // 32 * 32), max(32, int(h * scale) // 32 * 32)
+        if (w, h) != (w2, h2):
+            img = img.resize((w2, h2), Image.LANCZOS)
+            img.save(image_path)
+        return w2, h2
+    except Exception as e:
+        logger.warning(f"Image prep failed for video init image: {e}")
+        return None, None
+
+
+def generate_video(data):
+    """Generate a video via sd-cli (Wan2.2-TI2V-5B-Turbo). Returns JSON-serializable dict."""
+    with _lock:
+        return _generate_video_impl(data)
+
+
+def _generate_video_impl(data):
+    prompt = data.get("prompt", "")
+    negative_prompt = data.get("negative_prompt", "")
+    width = int(data.get("width", 768))
+    height = int(data.get("height", 448))
+    num_frames = int(data.get("num_frames", 121))
+    frame_rate = int(data.get("frame_rate", 24))
+    seed = int(data.get("seed", -1))
+    image_data = data.get("image_data") or ""
+    use_gpu = _validate_use_gpu(data.get("use_gpu", False))
+
+    if not prompt:
+        return {"error": "No prompt provided"}
+
+    start_time = time.time()
+    src_path = None
+    output_path = None
+    try:
+        if image_data:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as src_tmp:
+                src_tmp.write(base64.b64decode(image_data))
+                src_path = src_tmp.name
+            _snap_image_to_multiple_of_32(src_path)
+
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as out_tmp:
+            output_path = out_tmp.name
+
+        offload_levels = range(3, 4) if not use_gpu else range(0, 4)
+        for level in offload_levels:
+            cmd = build_wan_video_cmd(
+                prompt,
+                negative_prompt,
+                width,
+                height,
+                num_frames,
+                frame_rate,
+                seed,
+                init_img_path=src_path,
+            )
+            if not use_gpu or level >= 3:
+                cmd.append("--offload-to-cpu")
+            cmd.extend(["-o", output_path])
+
+            logger.info(f" Running wan video gen: {' '.join(cmd[:12])}...")
+
+            video_timeout = 900 if _check_cuda() else _cli_timeout(5400)
+            proc = None
+            try:
+                with open("/tmp/sd_cli_video_output.log", "a") as log_file:
+                    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0)
+                    stdout_buf = b""
+                    while proc.poll() is None:
+                        ready, _, _ = select.select([proc.stdout], [], [], 0.5)
+                        if ready:
+                            byte = proc.stdout.read(1)
+                            if byte:
+                                stdout_buf += byte
+                                if byte in (b"\r", b"\n"):
+                                    line = stdout_buf.decode(errors="replace")
+                                    log_file.write(line)
+                                    log_file.flush()
+                                    stdout_buf = b""
+                        if time.time() - start_time > video_timeout:
+                            proc.kill()
+                            proc.wait()
+                            return {"error": "sd-cli video timeout"}
+                    remaining = proc.stdout.read()
+                    if remaining:
+                        log_file.write(remaining.decode(errors="replace"))
+                        log_file.flush()
+                if proc.returncode != 0:
+                    with open("/tmp/sd_cli_video_output.log") as f:
+                        log_tail = f.read()[-2000:]
+                    if _is_oom_error(log_tail):
+                        logger.warning(f" sd-cli video OOM at level={level}, retrying")
+                        continue
+                    logger.info(f" sd-cli video failed (rc={proc.returncode}): {log_tail[:300]}")
+                    return {"error": "Video generation failed"}
+                if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+                    return {"error": "Video generation produced empty output"}
+                with open(output_path, "rb") as f:
+                    video_bytes = f.read()
+                gen_time = round(time.time() - start_time, 1)
+                logger.info(f" Video completed: {len(video_bytes)} bytes in {gen_time}s")
+                return {
+                    "video_data": base64.b64encode(video_bytes).decode(),
+                    "file_name": "wan_video.webm",
+                    "file_type": "video/webm",
+                    "generation_time": gen_time,
+                    "seed": seed,
+                }
+            except subprocess.TimeoutExpired:
+                return {"error": "sd-cli video timeout"}
+            except Exception as e:
+                return {"error": str(e)}
+        return {"error": "Insufficient VRAM for video generation."}
+    finally:
+        if src_path and os.path.exists(src_path):
+            with contextlib.suppress(Exception):
+                os.remove(src_path)
+        if output_path and os.path.exists(output_path):
+            with contextlib.suppress(Exception):
+                os.remove(output_path)
 
 
 class BlockingHTTPServer(HTTPServer):

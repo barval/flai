@@ -15,7 +15,7 @@ from app.llamacpp_client import LlamaCppClient
 from app.mixins import TranslationMixin
 from app.utils import build_context_prompt, estimate_tokens, format_prompt
 from modules.base import get_style_instruction, response_language_name
-from modules.video import DEFAULT_VIDEO_PARAMS
+from modules.video import DEFAULT_VIDEO_PARAMS, sanitize_video_params
 
 _JSON_OBJECT_RE = re.compile(r"\{\{\{[\s\S]*?\}\}\}|\{[\s\S]*\}")
 
@@ -376,7 +376,7 @@ class MultimodalModule(TranslationMixin):
 
         # Warn if generated params are oversized for current VRAM.
         # Heuristic: total pixels × frames vs available VRAM.
-        # 240 frames at 768×512 (92 weight) on 6 GB+ free = OK (default).
+        # 121 frames at 768×448 (42 weight) on 6 GB+ free = OK (default).
         # Triggers only for extreme requests (e.g. 1000+ frames at 4K).
         try:
             from app.resource_manager import get_resource_manager
@@ -386,8 +386,8 @@ class MultimodalModule(TranslationMixin):
             free = 0
         if isinstance(free, int) and free > 0:
             w = int(prompt_data.get("width", 768))
-            h = int(prompt_data.get("height", 512))
-            nf = int(prompt_data.get("num_frames", 240))
+            h = int(prompt_data.get("height", 448))
+            nf = int(prompt_data.get("num_frames", 121))
             weight = (w * h * nf) / 1_000_000
             if weight > free * 10:
                 self.logger.warning(
@@ -435,15 +435,17 @@ class MultimodalModule(TranslationMixin):
 
         self._apply_video_param_defaults(prompt_data, user_query)
 
-        # Override width/height to match source image aspect ratio
+        # Override width/height to match source image aspect ratio.
+        # Wan preset dims (all multiples of 32): landscape 832×480,
+        # portrait 480×832, square 512×512.
         try:
             img = Image.open(BytesIO(base64.b64decode(image_base64)))
             w, h = img.size
             aspect = w / h
             if aspect > 1.2:
-                prompt_data["width"], prompt_data["height"] = 768, 512
+                prompt_data["width"], prompt_data["height"] = 832, 480
             elif aspect < 0.8:
-                prompt_data["width"], prompt_data["height"] = 512, 768
+                prompt_data["width"], prompt_data["height"] = 480, 832
             else:
                 prompt_data["width"], prompt_data["height"] = 512, 512
             self.logger.info(
@@ -478,6 +480,8 @@ class MultimodalModule(TranslationMixin):
             prompt_data["prompt"] = user_query
         for key, value in DEFAULT_VIDEO_PARAMS.items():
             prompt_data.setdefault(key, value)
+        sanitized = sanitize_video_params(prompt_data)
+        prompt_data.update(sanitized)
 
     def _call_multimodal(self, messages: list[dict[str, Any]], lang: str = "ru") -> str:
         """Call multimodal model via llama.cpp client (delegates to LlamaCppClient)."""

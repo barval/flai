@@ -38,6 +38,14 @@ class TestVideoModuleWanPresets:
         assert DEFAULT_VIDEO_PARAMS["num_frames"] == 121
         assert DEFAULT_VIDEO_PARAMS["frame_rate"] == 24
 
+    def test_sanitize_video_params_enforces_wan_constraints(self):
+        from modules.video import sanitize_video_params
+
+        out = sanitize_video_params({"width": 1000, "height": 500, "num_frames": 300})
+        assert out["num_frames"] == 121
+        assert out["width"] % 32 == 0
+        assert out["height"] % 32 == 0
+
     def test_init_uses_video_wrapper_url(self, mock_app):
         from modules.video import VideoModule
 

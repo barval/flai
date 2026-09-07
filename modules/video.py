@@ -72,6 +72,21 @@ def resize_video_source_image(
     return image_data, resized_info
 
 
+def sanitize_video_params(prompt_data: dict[str, Any]) -> dict[str, Any]:
+    """Enforce Wan2.2 constraints: num_frames<=121, dims % 32 == 0.
+
+    num_frames is also snapped to the 4k+1 sequence the Wan temporal
+    pipeline accepts (1, 5, 9, ... 121). Returns a new dict; does not mutate
+    the input.
+    """
+    d = dict(prompt_data)
+    d["num_frames"] = min(int(d.get("num_frames", 121)), 121)
+    d["num_frames"] = max(1, (d["num_frames"] - 1) // 4 * 4 + 1)
+    for axis in ("width", "height"):
+        d[axis] = max(32, int(d.get(axis, {axis: 768, "height": 448}[axis])) // 32 * 32)
+    return d
+
+
 class VideoModule(TranslationMixin):
     """Module for video generation via Wan2.2 (sd-wrapper)."""
 

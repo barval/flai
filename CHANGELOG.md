@@ -25,9 +25,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Source-image pre-resize for image→video** — `resize_video_source_image()` in `modules/video.py` (max side 768 px, alpha-flattening) is applied in the worker *before* the RAM plan so the resize notice is emitted before the degradation notice; the inline logic previously living in `generate_video()` is now shared.
 - **Cascade units** — frame rate is reduced together with resolution (12/6 fps) so the generated clips stay readable, and a `fps`→«к/с» translation key was added.
 
+### 🖥️ Admin Hardware Tab
+
+- **First admin tab «Hardware» / «Оборудование»** — a new tab (before «Users») in the admin panel showing the compute platform (`nvidia`/`amd`/`intel`/`cpu`), GPU name (or «GPU not detected»), VRAM total/available in GB, CPU core count, and RAM total/available. Backed by the existing `/admin/api/hardware` endpoint, which now also exposes `cpu_count`. Rendered client-side by `loadHardware()` in `app/static/js/admin.js`; styled in `admin.css` with light/dark theme support. All labels are localized (`.po` updated and `.mo` recompiled).
+
 ### 🧪 Tests
 
 - **`tests/test_platform_detect.py`** — 14 tests covering NVIDIA, AMD, Intel, and CPU detect paths, including the AMD heuristic that treats values ≤ 1e9 as MB.
+- **`tests/test_admin_routes.py::TestAdminHardware`** — 3 tests: full hardware payload (platform, GPU, VRAM, RAM, `cpu_count`), CPU-platform defaults, and that the Hardware tab renders as the first admin tab before «Users».
 
 ## [v10.0] — 2026-09-04
 

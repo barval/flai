@@ -70,6 +70,7 @@
 - 🔑 **Camera Permissions** – control which users can access which cameras (Optional)
 - 🤖 **Model Management** – select and configure GGUF models for multimodal, reasoning, and embedding directly from the admin panel
 - 💾 **Backup & Restore** – create and restore full or user-only backups directly from the admin interface
+- 🖥 **Hardware Overview** – first admin tab showing compute platform (`nvidia`/`amd`/`intel`/`cpu`), GPU name, VRAM (total/available), CPU cores, and RAM (total/available)
 - 📈 **System Monitoring** – view database sizes and system statistics
 - 🔧 **CLI Tools** – manage admin password via Flask CLI command
 

@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadUsers();
     setupModals();
     setupSortableHeaders();
+    loadHardware();
 
     // Admin stats: refresh periodically (SSE is chat-specific, not used here)
     setInterval(refreshStats, 30000);
@@ -329,4 +330,47 @@ function refreshStats() {
         document.getElementById('documents-db-size').textContent = documentsMb + ' ' + t('mb');
     })
     .catch(err => console.error('Error fetching stats:', err));
+}
+
+function formatMemMb(mb) {
+    if (!mb) return '0';
+    return (mb / 1024).toFixed(1);
+}
+
+function loadHardware() {
+    const tbody = document.getElementById('hardware-tbody');
+    if (!tbody) return;
+    fetch('/admin/api/hardware', { credentials: 'same-origin' })
+    .then(response => response.json())
+    .then(data => {
+        if (!data || data.error) {
+            console.error('Error fetching hardware:', data && data.error);
+            return;
+        }
+        const platformLabels = {
+            nvidia: 'NVIDIA',
+            amd: 'AMD',
+            intel: 'Intel',
+            cpu: 'CPU'
+        };
+        const platform = data.platform || 'cpu';
+        const gpuName = data.gpu_name || t('GPU not detected');
+        const requested = (data.total_vram_mb ? data.total_vram_mb : 0) / 1024;
+        const rows = [
+            [t('Platform'), platformLabels[platform] || platform],
+            [t('GPU'), gpuName],
+            [t('VRAM'), requested > 0
+                ? formatMemMb(data.total_vram_mb) + '/' + formatMemMb(data.available_vram_mb) + ' ' + t('GB') + ' (' + t('total') + '/' + t('available') + ')'
+                : '—']
+        ];
+        if (data.cpu_count) {
+            rows.push([t('CPU cores'), data.cpu_count]);
+        }
+        rows.push([t('RAM'), formatMemMb(data.total_ram_mb) + '/' + formatMemMb(data.available_ram_mb) + ' ' + t('GB') + ' (' + t('total') + '/' + t('available') + ')']);
+
+        tbody.innerHTML = rows.map(([label, value]) =>
+            '<tr><td class="hw-label">' + label + '</td><td class="hw-value">' + value + '</td></tr>'
+        ).join('');
+    })
+    .catch(err => console.error('Error fetching hardware:', err));
 }

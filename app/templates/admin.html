@@ -6,7 +6,8 @@
     
     <!-- Tab navigation -->
     <div class="admin-tabs">
-        <button class="admin-tab active" data-tab="users">{{ _('Users') }}</button>
+        <button class="admin-tab active" data-tab="hardware">{{ _('Hardware') }}</button>
+        <button class="admin-tab" data-tab="users">{{ _('Users') }}</button>
         <button class="admin-tab" data-tab="models">{{ _('Models') }}</button>
         {% if camera_enabled %}
         <button class="admin-tab" data-tab="cameras">{{ _('Cameras') }}</button>
@@ -14,8 +15,22 @@
         <button class="admin-tab" data-tab="backups">{{ _('Backups') }}</button>
     </div>
 
+    <!-- Hardware tab content -->
+    <div id="hardware-tab" class="admin-tab-content active">
+        <div class="hardware-container">
+            <div class="hardware-card">
+                <h3>{{ _('Hardware') }}</h3>
+                <table class="hardware-table">
+                    <tbody id="hardware-tbody">
+                        <!-- Data loaded via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <!-- Users tab content -->
-    <div id="users-tab" class="admin-tab-content active">
+    <div id="users-tab" class="admin-tab-content">
         <!-- Fixed header: button + db info (don't scroll with table) -->
         <div class="users-tab-header">
             <button id="add-user-button" class="add-user-button">➕ {{ _('Add user') }}</button>
@@ -398,7 +413,18 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'Camera list updated': {{ _('Camera list updated')|tojson }},
     'Cameras synced': {{ _('Cameras synced: {count}')|tojson }},
     'Camera unavailable': {{ _('Camera unavailable')|tojson }},
-    'Sync error': {{ _('Error syncing cameras')|tojson }}
+    'Sync error': {{ _('Error syncing cameras')|tojson }},
+    // Hardware tab translations
+    'Hardware': {{ _('Hardware')|tojson }},
+    'Platform': {{ _('Platform')|tojson }},
+    'GPU': {{ _('GPU')|tojson }},
+    'GPU not detected': {{ _('GPU not detected')|tojson }},
+    'CPU cores': {{ _('CPU cores')|tojson }},
+    'VRAM': {{ _('VRAM')|tojson }},
+    'RAM': {{ _('RAM')|tojson }},
+    'total': {{ _('total')|tojson }},
+    'available': {{ _('available')|tojson }},
+    'GB': {{ _('GB')|tojson }}
 });
 {% if config.get('DEBUG_TRANSLATIONS') %}
 if (window.DEBUG_JS) console.log('Admin TRANSLATIONS merged:', window.TRANSLATIONS);

@@ -333,6 +333,7 @@ def get_hardware():
             "available_vram_mb": 0,
             "total_ram_mb": 0,
             "available_ram_mb": 0,
+            "cpu_count": 0,
             "platform": "cpu",
         }
 
@@ -342,6 +343,7 @@ def get_hardware():
         rm_hw = rm.get_status()
         hw["total_ram_mb"] = rm_hw.get("total_ram_mb", 0)
         hw["available_ram_mb"] = rm_hw.get("available_ram_mb", 0)
+        hw["cpu_count"] = rm_hw.get("cpu_count", 0)
 
         hw["platform"] = rm_hw.get("platform", "cpu")
         hw["gpu_name"] = rm_hw.get("gpu_name")

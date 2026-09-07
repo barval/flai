@@ -241,6 +241,94 @@ class TestAdminStats:
 
 
 @pytest.mark.integration
+class TestAdminHardware:
+    """Test admin hardware endpoint."""
+
+    @pytest.fixture
+    def admin_client(self, client, test_app):
+        """Create admin client."""
+        with test_app.app_context():
+            from app.userdb import create_user, get_user_by_login, update_password
+
+            if get_user_by_login("admin"):
+                update_password("admin", "adminpass")
+            else:
+                create_user("admin", "adminpass", "Admin User", is_admin=True)
+
+        client.post("/login", data={"login": "admin", "password": "adminpass"})
+        return client
+
+    @pytest.mark.integration
+    def test_get_hardware(self, admin_client):
+        """Test returning hardware info includes platform, GPU, CPU and RAM."""
+        from app.resource_manager import ResourceManager
+
+        status = {
+            "gpu_name": "NVIDIA GeForce RTX 5060 Ti",
+            "cuda_detected": True,
+            "platform": "nvidia",
+            "total_vram_mb": 16311,
+            "available_vram_mb": 10000,
+            "total_ram_mb": 32456,
+            "available_ram_mb": 17000,
+            "cpu_count": 12,
+        }
+        fake_rm = MagicMock(spec=ResourceManager)
+        fake_rm.get_status.return_value = status
+
+        with patch("app.resource_manager.get_resource_manager", return_value=fake_rm):
+            response = admin_client.get("/admin/api/hardware")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["platform"] == "nvidia"
+        assert data["gpu_name"] == "NVIDIA GeForce RTX 5060 Ti"
+        assert data["total_vram_mb"] == 16311
+        assert data["available_vram_mb"] == 10000
+        assert data["total_ram_mb"] == 32456
+        assert data["available_ram_mb"] == 17000
+        assert data["cpu_count"] == 12
+
+    @pytest.mark.integration
+    def test_admin_panel_renders_hardware_tab(self, admin_client):
+        """Test admin panel renders the Hardware tab as the first one."""
+        response = admin_client.get("/admin/")
+        assert response.status_code == 200
+        html = response.get_data(as_text=True)
+        first_tab = html.index('data-tab="hardware"')
+        users_tab = html.index('data-tab="users"')
+        assert first_tab < users_tab
+
+    @pytest.mark.integration
+    def test_get_hardware_cpu_platform(self, admin_client):
+        """Test hardware endpoint defaults on a CPU-only host."""
+        from app.resource_manager import ResourceManager
+
+        status = {
+            "gpu_name": None,
+            "cuda_detected": False,
+            "platform": "cpu",
+            "total_vram_mb": 0,
+            "available_vram_mb": 0,
+            "total_ram_mb": 65536,
+            "available_ram_mb": 40000,
+            "cpu_count": 24,
+        }
+        fake_rm = MagicMock(spec=ResourceManager)
+        fake_rm.get_status.return_value = status
+
+        with patch("app.resource_manager.get_resource_manager", return_value=fake_rm):
+            response = admin_client.get("/admin/api/hardware")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["platform"] == "cpu"
+        assert data["gpu_name"] is None
+        assert data["total_vram_mb"] == 0
+        assert data["cpu_count"] == 24
+
+
+@pytest.mark.integration
 class TestAdminModelManagement:
     """Test admin model management endpoints."""
 

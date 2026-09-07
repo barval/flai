@@ -1191,6 +1191,46 @@ msgstr "Камер синхронизировано: {count}"
 msgid "Error syncing cameras"
 msgstr "Ошибка синхронизации камер"
 
+#: app/templates/admin.html:7
+msgid "Hardware"
+msgstr "Оборудование"
+
+#: app/templates/admin.html:406
+msgid "Platform"
+msgstr "Платформа"
+
+#: app/templates/admin.html:409
+msgid "GPU"
+msgstr "GPU"
+
+#: app/templates/admin.html:410
+msgid "GPU not detected"
+msgstr "GPU не обнаружен"
+
+#: app/templates/admin.html:411
+msgid "CPU cores"
+msgstr "Ядер CPU"
+
+#: app/templates/admin.html:412
+msgid "VRAM"
+msgstr "VRAM"
+
+#: app/templates/admin.html:413
+msgid "RAM"
+msgstr "ОЗУ"
+
+#: app/templates/admin.html:414
+msgid "total"
+msgstr "всего"
+
+#: app/templates/admin.html:415
+msgid "available"
+msgstr "доступно"
+
+#: app/templates/admin.html:416
+msgid "GB"
+msgstr "ГБ"
+
 #: app/templates/base.html:7 app/templates/base.html:25
 msgid "FLAI"
 msgstr "ПЛИИ"

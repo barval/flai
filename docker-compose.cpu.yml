@@ -129,6 +129,7 @@ services:
   # STABLE-DIFFUSION.CPP (Optional - Image Generation, CPU mode)
   # ============================================================
   sd_cpp:
+    image: flai-sd_cpp:cpu
     build:
       context: ./services/sd_cpp
       dockerfile: Dockerfile.sd_cpp
@@ -174,6 +175,7 @@ services:
   # LTX-VIDEO (Optional - Video Generation, CPU mode)
   # ============================================================
   ltxvideo:
+    image: flai-ltxvideo:cpu
     build:
       context: ./services/ltx_video
       dockerfile: Dockerfile.ltx_video

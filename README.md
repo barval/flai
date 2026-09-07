@@ -395,6 +395,8 @@ docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with
 
 For systems without an NVIDIA GPU, use `docker-compose.cpu.yml` instead. It runs the **same full feature set** — just slower. Use `docker-compose.cpu.yml` in all the commands above (e.g. `docker compose -f docker-compose.cpu.yml up -d`). All timeout values are already increased for CPU speed.
 
+> 🔄 **Switching between GPU and CPU is instant — no rebuild needed.** Image-generation and video images are tagged per backend and **coexist** in the local registry: `flai-sd_cpp:cuda` / `flai-sd_cpp:cpu` and `flai-ltxvideo:cuda` / `flai-ltxvideo:cpu`. Re-running `./deploy.sh` (GPU) or `./deploy.sh --cpu` (CPU) simply switches compose files and reuses the already-built image of the matching tag — ideal for quick CPU sanity checks even on a GPU machine.
+
 > ⚠️ **AMD / Intel GPU owners:** the official images are CUDA-only, so use the CPU-only mode above. There is no supported ROCm/Vulkan path.
 
 ### 4. Set Admin Password
@@ -629,8 +631,14 @@ Editing uses separate model files and runs independently from generation — no 
 The `sd_cpp` service is **built from source** during first `docker compose up`:
 1. Clones `https://github.com/leejet/stable-diffusion.cpp`
 2. Initializes git submodules (`ggml`, `thirdparty/*`)
-3. Compiles with CUDA 13.0.1 (`cmake -DSD_CUDA=ON`)
+3. Compiles with CUDA 13.0.1 (`cmake -DSD_CUDA=ON`) or without CUDA for CPU
 4. Produces `sd-server` and `sd-cli` binaries
+
+Each compose file builds **its own tagged image** via the `SD_BACKEND` build arg (see `Dockerfile.sd_cpp`):
+- `docker-compose.gpu.yml` → `flai-sd_cpp:cuda` (`SD_BACKEND=cuda`)
+- `docker-compose.cpu.yml` → `flai-sd_cpp:cpu` (`SD_BACKEND=cpu`; optional `vulkan` variant supported)
+
+Because the tags differ, GPU and CPU images can live side by side — switching between the stacks (see «CPU-only mode» above) does not require rebuilding.
 
 > ⏱️ **First build**: ~5-10 minutes depending on CPU. Subsequent builds use Docker cache.
 

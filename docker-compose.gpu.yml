@@ -125,9 +125,12 @@ services:
   # STABLE-DIFFUSION.CPP (Optional - Image Generation)
   # ============================================================
   sd_cpp:
+    image: flai-sd_cpp:cuda
     build:
       context: ./services/sd_cpp
       dockerfile: Dockerfile.sd_cpp
+      args:
+        SD_BACKEND: cuda
     container_name: flai-sd
     volumes:
       - ./services/sd_cpp/models/diffusion_models:/app/models/diffusion_models
@@ -170,9 +173,12 @@ services:
   # LTX-VIDEO (Optional - Video Generation)
   # ============================================================
   ltxvideo:
+    image: flai-ltxvideo:cuda
     build:
       context: ./services/ltx_video
       dockerfile: Dockerfile.ltx_video
+      args:
+        LTX_BACKEND: cuda
     container_name: flai-ltxvideo
     volumes:
       - ./services/ltx_video/models:/app/models:rw

@@ -1,11 +1,13 @@
 # Dockerfile for LTX-Video inference server
 # Parameterized by LTX_BACKEND: cuda (default) or cpu.
+# Each backend is tagged separately so GPU and CPU images coexist (see
+# docker-compose.gpu.yml / docker-compose.cpu.yml) — switching stacks never
+# rebuilds:
 #
-# Build:
-#   CUDA: docker build -f services/ltx_video/Dockerfile.ltx_video -t flai-ltxvideo .
+#   CUDA: docker build -f services/ltx_video/Dockerfile.ltx_video -t flai-ltxvideo:cuda .
 #   CPU:  docker build --build-arg LTX_BACKEND=cpu \
 #          --build-arg LTX_BASE_IMAGE=python:3.11-slim \
-#          -f services/ltx_video/Dockerfile.ltx_video -t flai-ltxvideo-cpu .
+#          -f services/ltx_video/Dockerfile.ltx_video -t flai-ltxvideo:cpu .
 
 ARG LTX_BACKEND=cuda
 ARG LTX_BASE_IMAGE=pytorch/pytorch:2.5.0-cuda12.4-cudnn9-runtime

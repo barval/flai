@@ -1,9 +1,12 @@
 # Dockerfile for stable-diffusion.cpp with selectable backend
-# Builds for CUDA (default), Vulkan, or pure CPU via the SD_BACKEND build arg:
+# Builds for CUDA (default), Vulkan, or pure CPU via the SD_BACKEND build arg.
+# Each backend is tagged separately so GPU and CPU images coexist (see
+# docker-compose.gpu.yml / docker-compose.cpu.yml) — switching stacks never
+# rebuilds:
 #
-#   docker build --build-arg SD_BACKEND=cuda   -f services/sd_cpp/Dockerfile.sd_cpp -t flai-sd_cpp .
-#   docker build --build-arg SD_BACKEND=vulkan -f services/sd_cpp/Dockerfile.sd_cpp -t flai-sd_cpp .
-#   docker build --build-arg SD_BACKEND=cpu    -f services/sd_cpp/Dockerfile.sd_cpp -t flai-sd_cpp .
+#   docker build --build-arg SD_BACKEND=cuda   -f services/sd_cpp/Dockerfile.sd_cpp -t flai-sd_cpp:cuda .
+#   docker build --build-arg SD_BACKEND=vulkan -f services/sd_cpp/Dockerfile.sd_cpp -t flai-sd_cpp:vulkan .
+#   docker build --build-arg SD_BACKEND=cpu    -f services/sd_cpp/Dockerfile.sd_cpp -t flai-sd_cpp:cpu .
 
 ARG SD_BACKEND=cuda
 ARG CUDA_VERSION=13.0.1

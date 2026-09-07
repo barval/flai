@@ -467,6 +467,10 @@ Options:
   --with-slm          Deploy SuperLocalMemory for long-term memory
                       (default: disabled, use this flag to enable)
   --cpu               Force CPU-only mode (no GPU required)
+
+Switching between GPU and CPU is instant (no rebuild): images are tagged per
+backend (flai-sd_cpp:cuda/cpu, flai-ltxvideo:cuda/cpu) and coexist locally.
+Simply re-run ./deploy.sh (GPU) or ./deploy.sh --cpu (CPU) to switch.
   --download-models   Download GGUF/safetensors models from HuggingFace
   --run-tests         Run unit tests after deployment
   --help, -h          Show this help message

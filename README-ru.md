@@ -400,6 +400,8 @@ docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with
 
 Для систем без NVIDIA GPU используйте `docker-compose.cpu.yml`. Он запускает **тот же полный набор функций** — просто медленнее. Замените `docker-compose.gpu.yml` на `docker-compose.cpu.yml` во всех командах выше (например, `docker compose -f docker-compose.cpu.yml up -d`). Все значения таймаутов уже увеличены под производительность CPU.
 
+> 🔄 **Переключение между GPU и CPU происходит мгновенно — пересборка не требуется.** Образы генерации изображений и видео тегируются по бэкенду и **сосуществуют** в локальном реестре: `flai-sd_cpp:cuda` / `flai-sd_cpp:cpu` и `flai-ltxvideo:cuda` / `flai-ltxvideo:cpu`. Повторный запуск `./deploy.sh` (GPU) или `./deploy.sh --cpu` (CPU) просто переключает compose-файл и переиспользует уже собранный образ нужного тега — удобно для быстрой проверки на CPU даже при наличии GPU.
+
 > ⚠️ **Владельцы GPU AMD/Intel:** официальные образы только CUDA, поэтому используйте описанный выше режим только CPU. Поддерживаемого пути ROCm/Vulkan нет.
 
 ### 4. Установка пароля администратора
@@ -629,8 +631,14 @@ services/llamacpp/models/
 Сервис `sd_cpp` **собирается из исходников** при первом запуске:
 1. Клонирует `https://github.com/leejet/stable-diffusion.cpp`
 2. Инициализирует git-подмодули (`ggml`, `thirdparty/*`)
-3. Компилирует с CUDA 13.0.1 (`cmake -DSD_CUDA=ON`)
+3. Компилирует с CUDA 13.0.1 (`cmake -DSD_CUDA=ON`) или без CUDA для CPU
 4. Создаёт бинарные файлы `sd-server` и `sd-cli`
+
+Каждый compose-файл собирает **свой образ с собственным тегом** через build-аргумент `SD_BACKEND` (см. `Dockerfile.sd_cpp`):
+- `docker-compose.gpu.yml` → `flai-sd_cpp:cuda` (`SD_BACKEND=cuda`)
+- `docker-compose.cpu.yml` → `flai-sd_cpp:cpu` (`SD_BACKEND=cpu`; поддерживается вариант `vulkan`)
+
+Так как теги различаются, образы GPU и CPU могут существовать одновременно — переключение между стеками (см. «Режим только CPU» выше) не требует пересборки.
 
 > ⏱️ **Первая сборка**: ~5-10 минут в зависимости от ЦПУ. Последующие сборки используют кеш Docker.
 

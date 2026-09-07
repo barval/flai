@@ -157,6 +157,7 @@ function handleEvent(event) {
         case 'notice':
             if (event.data && event.data.message && typeof originalDisplayMessage === 'function') {
                 originalDisplayMessage('assistant', event.data.message, null, null, null, null,
+                    new Date().toISOString(), 0, 'system', null, null, null, null,
                     'notice-' + (event.data.task_id || Date.now()));
             }
             break;

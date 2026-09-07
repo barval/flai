@@ -1053,15 +1053,24 @@ body.dark-theme .modal .form-group select {
 }
 
 /* Hardware card */
-.hardware-container {
-    max-width: 640px;
-}
 .hardware-card {
+    max-width: 640px;
     background-color: #fff;
     border: 1px solid #ddd;
     border-radius: 8px;
     padding: 16px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.hardware-header {
+    margin-bottom: 10px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: #fff;
+    padding: 4px 0;
+}
+body.dark-theme .hardware-header {
+    background-color: #1e1e1e;
 }
 .hardware-card h3 {
     margin-top: 0;

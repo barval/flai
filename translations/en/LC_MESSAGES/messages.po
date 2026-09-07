@@ -1190,6 +1190,10 @@ msgstr "Error syncing cameras"
 msgid "Hardware"
 msgstr "Hardware"
 
+#: app/templates/admin.html:64
+msgid "Update hardware list"
+msgstr "Update hardware list"
+
 #: app/templates/admin.html:406
 msgid "Platform"
 msgstr "Platform"
@@ -1197,10 +1201,6 @@ msgstr "Platform"
 #: app/templates/admin.html:409
 msgid "GPU"
 msgstr "GPU"
-
-#: app/templates/admin.html:410
-msgid "GPU not detected"
-msgstr "GPU not detected"
 
 #: app/templates/admin.html:411
 msgid "CPU cores"

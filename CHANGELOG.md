@@ -27,7 +27,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### 🖥️ Admin Hardware Tab
 
-- **First admin tab «Hardware» / «Оборудование»** — a new tab (before «Users») in the admin panel showing the compute platform (`nvidia`/`amd`/`intel`/`cpu`), GPU name (or «GPU not detected»), VRAM total/available in GB, CPU core count, and RAM total/available. Backed by the existing `/admin/api/hardware` endpoint, which now also exposes `cpu_count`. Rendered client-side by `loadHardware()` in `app/static/js/admin.js`; styled in `admin.css` with light/dark theme support. All labels are localized (`.po` updated and `.mo` recompiled).
+- **First admin tab «Hardware» / «Оборудование»** — a new tab (before «Users») in the admin panel showing the compute platform (`nvidia`/`amd`/`intel`/`cpu`), GPU, VRAM, CPU cores, RAM, and CPU model. Backed by `/admin/api/hardware`, which now also exposes `cpu_count` and `cpu_name` (CPU model read from `/proc/cpuinfo` in `ResourceManager._detect_cpu_name()`). Rendered client-side by `loadHardware()` in `app/static/js/admin.js`; styled in `admin.css` with light/dark theme support. All labels are localized (`.po` updated and `.mo` recompiled).
+- **Tab header replaced by a refresh button** — the static «Hardware» heading was replaced with an «Update hardware list» / «Обновить список оборудования» button (same style as «Update model list»), which re-fetches `/admin/api/hardware`.
+- **CPU-only presentation** — when the platform is `cpu` (or no GPU is detected), the GPU and VRAM rows show «—»; a dedicated CPU row (below RAM) displays the CPU model name and core count.
 
 ### 🧪 Tests
 

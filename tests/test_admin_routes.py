@@ -272,6 +272,7 @@ class TestAdminHardware:
             "total_ram_mb": 32456,
             "available_ram_mb": 17000,
             "cpu_count": 12,
+            "cpu_name": "Intel Core i7-13700K",
         }
         fake_rm = MagicMock(spec=ResourceManager)
         fake_rm.get_status.return_value = status
@@ -288,16 +289,18 @@ class TestAdminHardware:
         assert data["total_ram_mb"] == 32456
         assert data["available_ram_mb"] == 17000
         assert data["cpu_count"] == 12
+        assert data["cpu_name"] == "Intel Core i7-13700K"
 
     @pytest.mark.integration
     def test_admin_panel_renders_hardware_tab(self, admin_client):
-        """Test admin panel renders the Hardware tab as the first one."""
+        """Test admin panel renders the Hardware tab as the first one with a refresh button."""
         response = admin_client.get("/admin/")
         assert response.status_code == 200
         html = response.get_data(as_text=True)
         first_tab = html.index('data-tab="hardware"')
         users_tab = html.index('data-tab="users"')
         assert first_tab < users_tab
+        assert "refresh-hardware-btn" in html
 
     @pytest.mark.integration
     def test_get_hardware_cpu_platform(self, admin_client):
@@ -313,6 +316,7 @@ class TestAdminHardware:
             "total_ram_mb": 65536,
             "available_ram_mb": 40000,
             "cpu_count": 24,
+            "cpu_name": "AMD Ryzen 9 7950X",
         }
         fake_rm = MagicMock(spec=ResourceManager)
         fake_rm.get_status.return_value = status
@@ -326,6 +330,7 @@ class TestAdminHardware:
         assert data["gpu_name"] is None
         assert data["total_vram_mb"] == 0
         assert data["cpu_count"] == 24
+        assert data["cpu_name"] == "AMD Ryzen 9 7950X"
 
 
 @pytest.mark.integration

@@ -44,6 +44,7 @@ class HardwareInfo:
         self.total_ram_mb: int = 0
         self.available_ram_mb: int = 0
         self.cpu_count: int = 0
+        self.cpu_name: str = ""
         self.gpu_name: str = "unknown"
         self.cuda_detected: bool = False
         self.platform: str = "cpu"
@@ -82,6 +83,7 @@ class ResourceManager:
         """Detect VRAM, RAM, CPU at startup."""
         hw = self.hardware
         hw.cpu_count = os.cpu_count() or 1
+        hw.cpu_name = self._detect_cpu_name()
 
         # Detect RAM
         hw.total_ram_mb = self._detect_total_ram_mb()
@@ -169,6 +171,17 @@ class ResourceManager:
                 return avail if avail > 0 else total
         except Exception:
             return 4096  # Assume 4GB free
+
+    def _detect_cpu_name(self) -> str:
+        """Get CPU model name from /proc/cpuinfo."""
+        try:
+            with open("/proc/cpuinfo") as f:
+                for line in f:
+                    if line.lower().startswith("model name"):
+                        return line.split(":", 1)[1].strip()
+        except Exception:
+            pass
+        return ""
 
     # Safety caps removed — iterative degradation in compute_llamacpp_config()
     # dynamically computes n_gpu_layers from actual model file_size, block_count,
@@ -871,6 +884,7 @@ class ResourceManager:
             "total_ram_mb": self.hardware.total_ram_mb,
             "available_ram_mb": self.hardware.available_ram_mb,
             "cpu_count": self.hardware.cpu_count,
+            "cpu_name": self.hardware.cpu_name,
             "sd_busy": self._sd_busy,
             "video_busy": self._video_busy,
         }

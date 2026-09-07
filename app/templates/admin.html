@@ -18,8 +18,10 @@
     <!-- Hardware tab content -->
     <div id="hardware-tab" class="admin-tab-content active">
         <div class="hardware-container">
+            <div class="hardware-header">
+                <button id="refresh-hardware-btn" class="add-user-button" title="{{ _('Update hardware list') }}">🔄 {{ _('Update hardware list') }}</button>
+            </div>
             <div class="hardware-card">
-                <h3>{{ _('Hardware') }}</h3>
                 <table class="hardware-table">
                     <tbody id="hardware-tbody">
                         <!-- Data loaded via JS -->
@@ -416,9 +418,9 @@ window.CAMERA_ROOMS = {{ camera_rooms|tojson }};
     'Sync error': {{ _('Error syncing cameras')|tojson }},
     // Hardware tab translations
     'Hardware': {{ _('Hardware')|tojson }},
+    'Update hardware list': {{ _('Update hardware list')|tojson }},
     'Platform': {{ _('Platform')|tojson }},
     'GPU': {{ _('GPU')|tojson }},
-    'GPU not detected': {{ _('GPU not detected')|tojson }},
     'CPU cores': {{ _('CPU cores')|tojson }},
     'VRAM': {{ _('VRAM')|tojson }},
     'RAM': {{ _('RAM')|tojson }},

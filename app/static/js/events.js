@@ -796,7 +796,7 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
 
                 // Model name
                 if (result.model_used) {
-                    var shortModel = ensureGgufExtension(result.model_used.split('/').pop() || result.model_used);
+                    var shortModel = result.model_used.split('/').pop() || result.model_used;
                     var emoji = getModelEmoji(result.model_type);
                     var modelSpan = document.createElement('span');
                     modelSpan.className = 'text-muted';

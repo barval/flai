@@ -704,7 +704,12 @@ class RedisRequestQueue:
         completion_time = get_current_time_in_timezone_for_db(self.app)
         prefix = "" if error.startswith("⚠️") else "⚠️ "
         msg_id = save_message(
-            session_id, "assistant", prefix + error, model_name="system", response_time=str(process_time)
+            session_id,
+            "assistant",
+            prefix + error,
+            model_name="system",
+            response_time=str(process_time),
+            model_type="system",
         )
         return {
             "error": prefix + error,
@@ -887,6 +892,7 @@ class RedisRequestQueue:
             response_style=response_style,
             user_id=user_id,
             completion_tokens=completion_tokens,
+            model_type=(extra or {}).get("model_type"),
         )
         result = self._build_success_response(
             session_id, text, model_name, process_time, message_id=msg_id, extra=extra

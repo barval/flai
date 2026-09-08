@@ -111,7 +111,7 @@ def get_session_messages(
             SELECT id, role, content, file_type, file_name, file_path,
                    CASE WHEN file_path IS NOT NULL THEN NULL ELSE file_data END AS file_data,
                    timestamp, model_name, response_time, mm_time, gen_time,
-                   mm_model, gen_model, response_style, completion_tokens
+                   mm_model, gen_model, response_style, completion_tokens, model_type
             FROM messages
             WHERE session_id = %s AND timestamp > %s
             ORDER BY timestamp ASC, id ASC
@@ -125,7 +125,7 @@ def get_session_messages(
             SELECT id, role, content, file_type, file_name, file_path,
                    CASE WHEN file_path IS NOT NULL THEN NULL ELSE file_data END AS file_data,
                    timestamp, model_name, response_time, mm_time, gen_time,
-                   mm_model, gen_model, response_style, completion_tokens
+                   mm_model, gen_model, response_style, completion_tokens, model_type
             FROM messages
             WHERE session_id = %s
             ORDER BY timestamp ASC, id ASC
@@ -260,7 +260,7 @@ def _publish_message_event(session_id, message_id, role, user_id=None):
                     SELECT id, role, content, file_type, file_name, file_path,
                            CASE WHEN file_path IS NOT NULL THEN NULL ELSE file_data END AS file_data,
                            timestamp, model_name, response_time, mm_time, gen_time,
-                           mm_model, gen_model, response_style, completion_tokens
+                           mm_model, gen_model, response_style, completion_tokens, model_type
                     FROM messages WHERE id = %s AND session_id = %s
                     """,
                     (message_id, session_id),
@@ -317,6 +317,7 @@ def save_message(
     user_id=None,
     response_style=None,
     completion_tokens=None,
+    model_type=None,
 ):
     """Save a message to the database.
 
@@ -345,8 +346,8 @@ def save_message(
         INSERT INTO messages (
             session_id, role, content, file_data, file_type, file_name, file_path,
             model_name, timestamp, response_time, mm_time, gen_time,
-            mm_model, gen_model, response_style, completion_tokens
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            mm_model, gen_model, response_style, completion_tokens, model_type
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
             (
                 session_id,
@@ -365,6 +366,7 @@ def save_message(
                 gen_model,
                 response_style,
                 completion_tokens,
+                model_type,
             ),
         )
         message_id = c.lastrowid

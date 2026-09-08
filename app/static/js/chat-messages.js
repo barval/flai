@@ -247,7 +247,8 @@ function loadMessages(sessionId) {
                             msg.id,
                             msg.response_style,
                             msg.completion_tokens,
-                            msg.file_size
+                            msg.file_size,
+                            msg.model_type
                         );
                         lastUserMessage = null;
                         }
@@ -303,13 +304,6 @@ var MODEL_EMOJI = {
 
 function getModelEmoji(modelType) {
     return (modelType && MODEL_EMOJI[modelType]) ? MODEL_EMOJI[modelType] + ' ' : '';
-}
-
-function ensureGgufExtension(modelName) {
-    if (modelName && !modelName.includes('.gguf') && modelName !== 'system' && modelName !== 'whisper' && modelName !== 'camera') {
-        return modelName + '.gguf';
-    }
-    return modelName;
 }
 
 function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType) {
@@ -481,7 +475,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         const isSystemError = modelName === 'system';
 
         if (modelName) {
-            const shortModel = ensureGgufExtension(modelName.split('/').pop() || modelName);
+            const shortModel = modelName.split('/').pop() || modelName;
             const emoji = getModelEmoji(modelType);
             headerExtraHTML += ' <span class="text-muted">| ' + emoji + escapeHtml(shortModel) + '</span>';
         }

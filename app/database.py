@@ -293,6 +293,16 @@ def _init_postgresql():
         END
         $migrate$
     """)
+    c.execute("""
+        DO $migrate$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                          WHERE table_name = 'messages' AND column_name = 'model_type') THEN
+                ALTER TABLE messages ADD COLUMN model_type TEXT;
+            END IF;
+        END
+        $migrate$
+    """)
 
     # camera_rooms — configurable camera/room definitions (single source of truth)
     c.execute("""

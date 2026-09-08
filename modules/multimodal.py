@@ -435,26 +435,10 @@ class MultimodalModule(TranslationMixin):
 
         self._apply_video_param_defaults(prompt_data, user_query)
 
-        # Override width/height to match source image aspect ratio.
-        # Wan preset dims (all multiples of 32): landscape 832×480,
-        # portrait 480×832, square 512×512.
-        try:
-            img = Image.open(BytesIO(base64.b64decode(image_base64)))
-            w, h = img.size
-            aspect = w / h
-            if aspect > 1.2:
-                prompt_data["width"], prompt_data["height"] = 832, 480
-            elif aspect < 0.8:
-                prompt_data["width"], prompt_data["height"] = 480, 832
-            else:
-                prompt_data["width"], prompt_data["height"] = 512, 512
-            self.logger.info(
-                f"Video aspect ratio adjusted to match source image: "
-                f"{w}x{h} (ratio={aspect:.2f}) → {prompt_data['width']}x{prompt_data['height']}"
-            )
-        except Exception as e:
-            self.logger.warning(f"Failed to detect image aspect ratio: {e}")
-
+        # The width/height/frame preset for image-to-video is chosen by
+        # VideoModule from the source image aspect (GPU 768×448 / 448×768 /
+        # 512×512, or the CPU RAM cascade). The values above are placeholders
+        # overwritten there, so do not hardcode an aspect here.
         return prompt_data, None
 
     def _parse_model_json(self, response: str, lang: str, log_label: str) -> dict[str, Any]:

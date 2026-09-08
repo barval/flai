@@ -672,25 +672,6 @@ def _edit_image_impl(data):
                 os.remove(src_path)
 
 
-def _snap_image_to_multiple_of_32(image_path):
-    """Downscale so the longer side fits MAX_VIDEO_SOURCE_SIZE and both dims are % 32 == 0."""
-    try:
-        from PIL import Image
-
-        img = Image.open(image_path)
-        w, h = img.size
-        max_side = 832
-        scale = min(1.0, max_side / max(w, h))
-        w2, h2 = max(32, int(w * scale) // 32 * 32), max(32, int(h * scale) // 32 * 32)
-        if (w, h) != (w2, h2):
-            img = img.resize((w2, h2), Image.LANCZOS)
-            img.save(image_path)
-        return w2, h2
-    except Exception as e:
-        logger.warning(f"Image prep failed for video init image: {e}")
-        return None, None
-
-
 def generate_video(data):
     """Generate a video via sd-cli (Wan2.2-TI2V-5B-Turbo). Returns JSON-serializable dict."""
     with _lock:
@@ -718,10 +699,6 @@ def _generate_video_impl(data):
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as src_tmp:
                 src_tmp.write(base64.b64decode(image_data))
                 src_path = src_tmp.name
-            w2, h2 = _snap_image_to_multiple_of_32(src_path)
-            if w2 is not None and h2 is not None:
-                width, height = w2, h2
-                logger.info(f" Wan I2V: using snapped source dims {width}x{height} from init image")
 
         with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as out_tmp:
             output_path = out_tmp.name
@@ -788,8 +765,9 @@ def _generate_video_impl(data):
                 logger.info(f" Video completed: {len(video_bytes)} bytes in {gen_time}s")
                 return {
                     "video_data": base64.b64encode(video_bytes).decode(),
-                    "file_name": "wan_video.webm",
+                    "file_name": time.strftime("%Y-%m-%d_%H-%M-%S") + ".webm",
                     "file_type": "video/webm",
+                    "file_size": len(video_bytes),
                     "generation_time": gen_time,
                     "seed": seed,
                 }

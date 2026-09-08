@@ -783,3 +783,104 @@ class TestVideoModuleHealth:
             mock_get.return_value = MagicMock(status_code=503)
             module = VideoModule(app)
             assert module.check_availability() is False
+
+
+@pytest.mark.unit
+class TestI2VPresets:
+    """I2V: aspect-class detection, preset picking, center-crop helper."""
+
+    def test_detect_aspect_class(self):
+        from modules.video import VideoModule
+
+        assert VideoModule._detect_aspect_class(768, 448) == "landscape"
+        assert VideoModule._detect_aspect_class(448, 768) == "portrait"
+        assert VideoModule._detect_aspect_class(512, 512) == "square"
+        assert VideoModule._detect_aspect_class(1300, 1000) == "landscape"
+        assert VideoModule._detect_aspect_class(1000, 1300) == "portrait"
+
+    def test_gpu_presets_are_fixed_by_aspect(self):
+        from modules.video import VideoModule
+
+        module = VideoModule.__new__(VideoModule)
+        p, notice, error = module.pick_i2v_preset(1600, 900, platform="gpu")
+        assert (p["width"], p["height"], p["num_frames"]) == (768, 448, 121)
+        assert notice is None and error is None
+        p, _, _ = module.pick_i2v_preset(900, 1600, platform="gpu")
+        assert (p["width"], p["height"]) == (448, 768)
+        p, _, _ = module.pick_i2v_preset(1000, 1000, platform="gpu")
+        assert (p["width"], p["height"]) == (512, 512)
+
+    def test_cpu_cascade_degrades_by_ram(self):
+        from modules.video import VideoModule
+
+        module = VideoModule.__new__(VideoModule)
+
+        # Enough RAM for the best landscape step (384x256x81 ≈ 15 GB) -> no notice.
+        with patch("app.resource_manager.get_resource_manager") as mock_rm:
+            rm = MagicMock()
+            rm._detect_available_ram_mb.return_value = 40000
+            mock_rm.return_value = rm
+            p, notice, error = module.pick_i2v_preset(1600, 900, platform="cpu")
+            assert (p["width"], p["height"]) == (384, 256)
+            assert notice is None and error is None
+
+        # Only enough for the smallest portrait step (160x256x49) -> notice.
+        with patch("app.resource_manager.get_resource_manager") as mock_rm:
+            rm = MagicMock()
+            rm._detect_available_ram_mb.return_value = 13500
+            mock_rm.return_value = rm
+            p, notice, error = module.pick_i2v_preset(900, 1600, platform="cpu")
+            assert (p["width"], p["height"]) == (160, 256)
+            assert notice is not None and error is None
+
+        # Portrait best (256x384x81) fits 24 GB but not 16 GB.
+        with patch("app.resource_manager.get_resource_manager") as mock_rm:
+            rm = MagicMock()
+            rm._detect_available_ram_mb.return_value = 24000
+            mock_rm.return_value = rm
+            p, notice, error = module.pick_i2v_preset(900, 1600, platform="cpu")
+            assert (p["width"], p["height"]) == (256, 384)
+            assert notice is None and error is None
+
+        # Not even the smallest step fits -> error.
+        with patch("app.resource_manager.get_resource_manager") as mock_rm:
+            rm = MagicMock()
+            rm._detect_available_ram_mb.return_value = 11000
+            mock_rm.return_value = rm
+            p, notice, error = module.pick_i2v_preset(1600, 900, platform="cpu")
+            assert error is not None
+
+    def test_center_crop_to_preset(self):
+        from io import BytesIO
+
+        from PIL import Image
+
+        from modules.video import center_crop_image_to_preset
+
+        img = Image.new("RGB", (1600, 900), (120, 40, 200))
+        buf = BytesIO()
+        img.save(buf, format="JPEG")
+        b64 = base64.b64encode(buf.getvalue()).decode()
+
+        cropped, orig, new = center_crop_image_to_preset(b64, 768, 448)
+        assert orig == (1600, 900)
+        assert new == (768, 448)
+        out = Image.open(BytesIO(base64.b64decode(cropped)))
+        assert out.size == (768, 448)
+
+    def test_center_crop_portrait_small_image(self):
+        from io import BytesIO
+
+        from PIL import Image
+
+        from modules.video import center_crop_image_to_preset
+
+        img = Image.new("RGB", (400, 700), (200, 40, 120))
+        buf = BytesIO()
+        img.save(buf, format="JPEG")
+        b64 = base64.b64encode(buf.getvalue()).decode()
+
+        cropped, orig, new = center_crop_image_to_preset(b64, 448, 768)
+        assert new == (448, 768)
+        out = Image.open(BytesIO(base64.b64decode(cropped)))
+        assert out.size == (448, 768)

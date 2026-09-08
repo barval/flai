@@ -37,7 +37,7 @@ VIDEO_RAM_STATIC_MB = 11_000
 VIDEO_RAM_ACTIVATIONS_MB_PER_UNIT = 2.0
 VIDEO_RAM_SAFETY_MARGIN_MB = 1024
 
-MAX_VIDEO_SOURCE_SIZE = 832
+MAX_VIDEO_SOURCE_SIZE = 768
 
 
 def resize_video_source_image(
@@ -72,6 +72,53 @@ def resize_video_source_image(
     return image_data, resized_info
 
 
+def center_crop_image_to_preset(
+    image_data: str, width: int, height: int, max_source_size: int = MAX_VIDEO_SOURCE_SIZE
+) -> tuple[str, tuple[int, int], tuple[int, int]]:
+    """Downscale to <= max_source_size longest side, then center-crop and
+    resize the image to exactly width×height (the Wan preset).
+
+    Returns (re-encoded base64 image, original_size, new_size). Output matches
+    the preset dims exactly so sd-cli's --init-img lines up with -W/-H.
+    """
+    try:
+        img_bytes = base64.b64decode(image_data)
+        img = Image.open(BytesIO(img_bytes))
+        orig_w, orig_h = img.size
+        if img.mode in ("RGBA", "LA", "P"):
+            rgb_img = Image.new("RGB", img.size, (255, 255, 255))
+            rgb_img.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
+            img = rgb_img  # type: ignore[assignment]
+
+        # 1. Downscale to <= max_source_size on the longest side (proportional).
+        if max(orig_w, orig_h) > max_source_size:
+            ratio = max_source_size / max(orig_w, orig_h)
+            img = img.resize((int(orig_w * ratio), int(orig_h * ratio)), Image.Resampling.LANCZOS)  # type: ignore[assignment]
+
+        # 2. Center-crop to the exact preset aspect.
+        cw, ch = img.size
+        target_ratio = width / height
+        cur_ratio = cw / ch
+        if cur_ratio > target_ratio:
+            new_w = int(ch * target_ratio)
+            left = (cw - new_w) // 2
+            img = img.crop((left, 0, left + new_w, ch))  # type: ignore[assignment]
+        elif cur_ratio < target_ratio:
+            new_h = int(cw / target_ratio)
+            top = (ch - new_h) // 2
+            img = img.crop((0, top, cw, top + new_h))  # type: ignore[assignment]
+
+        # 3. Resize to the exact preset dimensions.
+        if img.size != (width, height):
+            img = img.resize((width, height), Image.Resampling.LANCZOS)  # type: ignore[assignment]
+
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        return base64.b64encode(buf.getvalue()).decode("utf-8"), (orig_w, orig_h), (width, height)
+    except Exception:
+        return image_data, (0, 0), (0, 0)
+
+
 def sanitize_video_params(prompt_data: dict[str, Any]) -> dict[str, Any]:
     """Enforce Wan2.2 constraints: num_frames<=121, dims % 32 == 0.
 
@@ -95,6 +142,36 @@ class VideoModule(TranslationMixin):
         {"width": 320, "height": 192, "num_frames": 57, "frame_rate": 24},
         {"width": 256, "height": 160, "num_frames": 49, "frame_rate": 24},
     ]
+
+    # Aspect-class presets for image-to-video (I2V). The source image is
+    # first downscaled to <= MAX_VIDEO_SOURCE_SIZE on its longest side, then
+    # center-cropped to the chosen preset's aspect. Frame counts are the
+    # Wan 4k+1 sequence; all dims are multiples of 32.
+    GPU_ASPECT_PRESETS: dict[str, dict[str, int]] = {
+        "landscape": {"width": 768, "height": 448, "num_frames": 121, "frame_rate": 24},
+        "portrait": {"width": 448, "height": 768, "num_frames": 121, "frame_rate": 24},
+        "square": {"width": 512, "height": 512, "num_frames": 121, "frame_rate": 24},
+    }
+
+    # CPU cascades per aspect class: each list is ordered best -> smallest,
+    # tried in order until the RAM estimate fits available memory.
+    CPU_ASPECT_PRESETS: dict[str, list[dict[str, int]]] = {
+        "landscape": [
+            {"width": 384, "height": 256, "num_frames": 81, "frame_rate": 24},
+            {"width": 320, "height": 192, "num_frames": 57, "frame_rate": 24},
+            {"width": 256, "height": 160, "num_frames": 49, "frame_rate": 24},
+        ],
+        "portrait": [
+            {"width": 256, "height": 384, "num_frames": 81, "frame_rate": 24},
+            {"width": 192, "height": 320, "num_frames": 57, "frame_rate": 24},
+            {"width": 160, "height": 256, "num_frames": 49, "frame_rate": 24},
+        ],
+        "square": [
+            {"width": 256, "height": 256, "num_frames": 81, "frame_rate": 24},
+            {"width": 224, "height": 224, "num_frames": 57, "frame_rate": 24},
+            {"width": 192, "height": 192, "num_frames": 49, "frame_rate": 24},
+        ],
+    }
 
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
@@ -179,6 +256,52 @@ class VideoModule(TranslationMixin):
         temporal = max(1, (num_frames - 1) // 4 + 1)
         units = spatial * temporal
         return int(VIDEO_RAM_STATIC_MB + units * VIDEO_RAM_ACTIVATIONS_MB_PER_UNIT)
+
+    @staticmethod
+    def _detect_aspect_class(width: int, height: int) -> str:
+        """Map a source image aspect to a Wan preset class."""
+        if width <= 0 or height <= 0:
+            return "landscape"
+        aspect = width / height
+        if aspect > 1.2:
+            return "landscape"
+        if aspect < 0.8:
+            return "portrait"
+        return "square"
+
+    def pick_i2v_preset(
+        self, src_width: int, src_height: int, platform: str = "gpu", lang: str = "ru"
+    ) -> tuple[dict[str, int], str | None, str | None]:
+        """Pick the I2V preset (Wan dims + frames) for a source image.
+
+        GPU: fixed 768×448 / 448×768 / 512×512 @121.
+        CPU: aspect cascade degraded to fit available RAM.
+
+        Returns (preset, notice|None, error|None).
+        """
+        cls = self._detect_aspect_class(src_width, src_height)
+        if platform == "cpu":
+            from app.resource_manager import get_resource_manager
+
+            rm = get_resource_manager()
+            available_mb = int(rm._detect_available_ram_mb())
+            cascade = self.CPU_ASPECT_PRESETS[cls]
+            for preset in cascade:
+                if (
+                    self.estimate_peak_ram_mb(preset["width"], preset["height"], preset["num_frames"])
+                    + VIDEO_RAM_SAFETY_MARGIN_MB
+                    <= available_mb
+                ):
+                    if preset is not cascade[0]:
+                        notice = self._("Not enough memory. Generating at lower resolution: {params}.", lang).format(
+                            params=f"{preset['width']}×{preset['height']}×{preset['num_frames']}, "
+                            f"{preset.get('frame_rate', 24)} {self._('fps', lang)}"
+                        )
+                        return dict(preset), notice, None
+                    return dict(preset), None, None
+            error = self._("Not enough memory. Generation is not possible even at lower resolution.", lang)
+            return dict(cascade[-1]), None, error
+        return dict(self.GPU_ASPECT_PRESETS[cls]), None, None
 
     def plan_cpu_generation(
         self, prompt_data: dict[str, Any], lang: str = "ru"
@@ -314,25 +437,60 @@ class VideoModule(TranslationMixin):
 
         rm.mark_video_busy()
 
-        # Wan preset chain: max 121 frames (4k+1 snapping), dims % 32 == 0.
-        prompt_data = sanitize_video_params(prompt_data)
+        i2v_notice: str | None = None
 
-        # Cap to the first degradation preset (640×384@121) only on low-VRAM
-        # tiers (total VRAM < 10000 MB, i.e. 8/10 GB GPUs).
-        total_vram = rm.hardware.total_vram_mb
-        if isinstance(total_vram, int) and total_vram > 0 and total_vram < 10000:
-            old_w = prompt_data["width"]
-            old_h = prompt_data["height"]
-            prompt_data["width"] = min(old_w, 640)
-            prompt_data["height"] = min(old_h, 384)
-            if (old_w, old_h) != (prompt_data["width"], prompt_data["height"]):
-                self.logger.info(
-                    f"VRAM tier 8GB: capped video from {old_w}×{old_h}×{prompt_data['num_frames']}f "
-                    f"to {prompt_data['width']}×{prompt_data['height']}×{prompt_data['num_frames']}f"
-                )
+        # I2V: pick the preset from the source image aspect (GPU fixed presets
+        # or CPU RAM cascade), downscale to <= max source size and center-crop
+        # the image to the preset aspect. The wrapper no longer derives dims.
+        if image_data:
+            try:
+                img = Image.open(BytesIO(base64.b64decode(image_data)))
+                src_w, src_h = img.size
+            except Exception as e:
+                self.logger.warning(f"Failed to read source image for I2V: {e}")
+                src_w, src_h = 0, 0
+            platform = "cpu" if rm.hardware.platform == "cpu" else "gpu"
+            i2v_preset, i2v_notice, i2v_error = self.pick_i2v_preset(src_w, src_h, platform=platform, lang=lang)
+            if i2v_error:
+                return {"success": False, "error": i2v_error}
+            prompt_data["width"] = i2v_preset["width"]
+            prompt_data["height"] = i2v_preset["height"]
+            prompt_data["num_frames"] = i2v_preset["num_frames"]
+            prompt_data["frame_rate"] = i2v_preset.get("frame_rate", 24)
+            image_data, orig_size, new_size = center_crop_image_to_preset(
+                image_data, prompt_data["width"], prompt_data["height"]
+            )
+            resized_info = {
+                "resized": max(src_w, src_h) > MAX_VIDEO_SOURCE_SIZE,
+                "original_size": orig_size,
+                "new_size": new_size,
+            }
+            if i2v_notice:
+                self.logger.info(f"I2V preset notice: {i2v_notice}")
+            self.logger.info(
+                f"I2V: source {src_w}x{src_h} -> preset {prompt_data['width']}x{prompt_data['height']}"
+                f"x{prompt_data['num_frames']}, cropped image {orig_size} -> {new_size}"
+            )
+        else:
+            # Wan preset chain: max 121 frames (4k+1 snapping), dims % 32 == 0.
+            prompt_data = sanitize_video_params(prompt_data)
 
-        # Resize large source images to avoid OOM and reduce network transfer
-        image_data, resized_info = resize_video_source_image(image_data)
+            # Cap to the first degradation preset (640×384@121) only on low-VRAM
+            # tiers (total VRAM < 10000 MB, i.e. 8/10 GB GPUs).
+            total_vram = rm.hardware.total_vram_mb
+            if isinstance(total_vram, int) and total_vram > 0 and total_vram < 10000:
+                old_w = prompt_data["width"]
+                old_h = prompt_data["height"]
+                prompt_data["width"] = min(old_w, 640)
+                prompt_data["height"] = min(old_h, 384)
+                if (old_w, old_h) != (prompt_data["width"], prompt_data["height"]):
+                    self.logger.info(
+                        f"VRAM tier 8GB: capped video from {old_w}×{old_h}×{prompt_data['num_frames']}f "
+                        f"to {prompt_data['width']}×{prompt_data['height']}×{prompt_data['num_frames']}f"
+                    )
+
+            # Resize large T2V source images (none in practice) defensively.
+            image_data, resized_info = resize_video_source_image(image_data)
 
         try:
             payload = {
@@ -390,6 +548,7 @@ class VideoModule(TranslationMixin):
                     "resized": resized_info["resized"],
                     "original_size": resized_info["original_size"],
                     "new_size": resized_info["new_size"],
+                    **({"notice": i2v_notice} if image_data and i2v_notice else {}),
                 }
             else:
                 error_body = response.text[:500]

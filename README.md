@@ -587,7 +587,7 @@ services/llamacpp/models/
 
 | Component | Default | Recommended Alternative | Notes |
 |-----------|---------|------------------------|-------|
-| **Chat/router/vision** | Qwen3VL-8B Q4_K_M (~5.5 GB) | Qwen3VL-8B MXFP4 (~7.7 GB) | Single multimodal model serves all three roles; always resident. On 8 GB use Qwen3VL-4B (~2.5 GB). Requires subdirectory with `mmproj-*.gguf` |
+| **Chat/router/vision** | Qwen3VL-8B Q4_K_M (~5.5 GB) | — | Single multimodal model serves all three roles; always resident. Requires subdirectory with `mmproj-*.gguf` |
 | **Reasoning** | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | gpt-oss-20b mxfp4/Q4_K_M (~12 GB) | MoE architecture: ~3B active params, ~106 tok/s. Current reasoning model on all tiers; 8 GB uses partial CPU offload |
 | **Embedding** | bge-m3 Q8_0 (~1.5 GB) | — | Single model for all tiers |
 

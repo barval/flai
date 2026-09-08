@@ -33,6 +33,7 @@ def test_build_wan_video_cmd_t2v(monkeypatch, tmp_path):
     assert "--steps" in cmd and cmd[cmd.index("--steps") + 1] == "4"
     assert "--video-frames" in cmd and cmd[cmd.index("--video-frames") + 1] == "81"
     assert "--backend" in cmd and cmd[cmd.index("--backend") + 1] == "te=cpu"
+    assert "--offload-to-cpu" in cmd
     assert "--init-img" not in cmd
 
 
@@ -52,4 +53,5 @@ def test_build_wan_video_cmd_i2v(monkeypatch, tmp_path):
         seed=5,
         init_img_path="/tmp/src.png",
     )
+    assert "--offload-to-cpu" in cmd
     assert "--init-img" in cmd and cmd[cmd.index("--init-img") + 1] == "/tmp/src.png"

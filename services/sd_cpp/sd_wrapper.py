@@ -435,7 +435,12 @@ def build_wan_video_cmd(
     """Build sd-cli command for Wan2.2-TI2V-5B-Turbo video generation.
 
     The UMT5-XXL text encoder (--t5xxl) is ~6 GB and is pinned to CPU
-    (--backend te=cpu); only the ~3.4 GB diffusion model + VAE live on GPU.
+    (--backend te=cpu). Diffusion weights are kept in RAM via
+    --offload-to-cpu: sd-cli streams them to the GPU per segment for the
+    denoise steps (still GPU-compute, ~3 s/step), then frees VRAM so the
+    Wan VAE decode (~14 GB peak at 640x384x81) can run. Without offload
+    the diffusion weights (~3.3 GB) stay resident and VAE decode OOMs on
+    a 16 GB card.
     """
     cuda = _check_cuda()
     cmd = [
@@ -470,6 +475,15 @@ def build_wan_video_cmd(
         str(WAN_FLOW_SHIFT),
         "--backend",
         "te=cpu",
+        "--offload-to-cpu",
+        # Spatial + temporal VAE tiling: the Wan video VAE decode for one
+        # frame is ~57 MB per 1k pixels (e.g. 768x448x121 needs ~19.6 GB as a
+        # single graph). Tiling the latent (16x16 tiles) makes every preset up
+        # to 832x480x121 fit a 16 GB card at the cost of slower decode.
+        "--vae-tiling",
+        "--vae-tile-size",
+        "16x16",
+        "--temporal-tiling",
     ]
     if negative_prompt:
         cmd.extend(["-n", negative_prompt])
@@ -692,7 +706,6 @@ def _generate_video_impl(data):
     frame_rate = int(data.get("frame_rate", 24))
     seed = int(data.get("seed", -1))
     image_data = data.get("image_data") or ""
-    use_gpu = _validate_use_gpu(data.get("use_gpu", False))
 
     if not prompt:
         return {"error": "No prompt provided"}
@@ -713,10 +726,11 @@ def _generate_video_impl(data):
         with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as out_tmp:
             output_path = out_tmp.name
 
-        # build_wan_video_cmd() has no offload_level, so intermediate levels 1-2
-        # re-run the identical command. Try all-GPU once (level 0), then jump
-        # straight to the --offload-to-cpu fallback (level 3) on OOM.
-        offload_levels = [0, 3] if use_gpu else [3]
+        # build_wan_video_cmd() already pins the text encoder to CPU and
+        # streams diffusion weights from RAM (--offload-to-cpu), so the
+        # all-GPU attempt is the only one needed; a single run avoids
+        # re-encoding the prompt on every OOM retry.
+        offload_levels = [0]
         for level in offload_levels:
             attempt_start = time.time()
             cmd = build_wan_video_cmd(
@@ -729,8 +743,6 @@ def _generate_video_impl(data):
                 seed,
                 init_img_path=src_path,
             )
-            if not use_gpu or level >= 3:
-                cmd.append("--offload-to-cpu")
             cmd.extend(["-o", output_path])
 
             logger.info(f" Running wan video gen: {' '.join(cmd[:12])}...")

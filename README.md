@@ -179,13 +179,20 @@ FLAI ships with two deployment modes:
 
 ### Model Benchmarks (RTX 5060 Ti 16 GB)
 
-Real-world performance measured with llama.cpp (llama-swap on-demand loading, Flash Attention, q4_0 KV cache):
+All numbers are **synthetic `llama-bench` measurements** (llama.cpp build 10603) on an RTX 5060 Ti 16 GB (Blackwell, 448 GB/s): Flash Attention on, q4_0 KV cache, all layers on GPU (`-ngl -1`). Two metrics are reported: **Prompt (pp512)** — throughput for processing a 512-token prompt — and **Generation (tg128)** — throughput for generating 128 tokens, averaged over 3 repetitions after a warmup run. File sizes are the GGUF file sizes. Real-world throughput differs: the FLAI system prompt and chat history enlarge the prompt, and llama-swap shares VRAM between loaded models.
 
-| Model | Type | Quant | File | VRAM | Prompt | Generation | Notes |
-|-------|------|-------|------|------|--------|------------|-------|
-| gpt-oss-20b | Reasoning | MXFP4 (MoE) | 11.5 GB | 11663 MB | 1087 t/s | 118.2 t/s | Fast but outdated — MoE 3B active |
-| **Qwen3.6-35B-A3B** | Reasoning | Q2_K_XL | 12 GB | 12356 MB | 497 t/s | **106.2 t/s** | **Current reasoning model** — MoE 35B (3B active) |
-| **Qwen3VL-8B-Instruct** | Multimodal | Q4_K_M | 4.7 GB | 5292 MB | 2318 t/s | **73.1 t/s** | **Current multimodal model** — fastest vision model |
+| Model | Type | Quant | File | Prompt (pp512) | Generation (tg128) | Notes |
+|-------|------|-------|------|----------------|--------------------|-------|
+| **Qwen3.6-35B-A3B** | Reasoning | UD Q2_K_XL (MoE) | 11.44 GiB | 1594 t/s | **107.5 t/s** | **Current reasoning model** — MoE 35B (3B active) |
+| gpt-oss-20b | Reasoning | MXFP4 (MoE) | 11.27 GiB | 2052 t/s | 120.1 t/s | Fast but outdated — MoE 3B active |
+| gemma-4-26B-A4B-it | Reasoning | UD Q2_K_XL (MoE) | 9.81 GiB | 2749 t/s | 104.5 t/s | MoE 26B (4B active) |
+| Qwen3-4B-Instruct-2507 | Reasoning | Q4_K_M | 2.32 GiB | 5520 t/s | 119.0 t/s | Dense 4B — SD text encoder |
+| Ternary-Bonsai-27B | Reasoning | Q2_g64 | 7.05 GiB | 993 t/s | 43.3 t/s | Ternary 27B |
+| gemma-4-12B-it-qat | Reasoning | QAT Q4_K_XL | 6.24 GiB | 2310 t/s | 48.3 t/s | Dense 12B |
+| Qwen3.8-27B | Reasoning | UD Q2_K_XL | 9.14 GiB | 763 t/s | 33.2 t/s | Dense 27B |
+| Muse-Glimmer-30B | Reasoning | UD Q2_K_XL | 11.58 GiB | 664 t/s | 26.1 t/s | Dense 30B |
+| **Qwen3VL-8B-Instruct** | Multimodal | Q4_K_M | 4.68 GiB | 3343 t/s | **74.8 t/s** | **Current multimodal model** — fastest vision model |
+| bge-m3-Q8_0 | Embedding | Q8_0 | 0.60 GiB | 31500 t/s | 550 t/s | Embedding (RAG) only |
 
 > **Current stack: CPU vs GPU (the three models FLAI uses by default).**
 
@@ -201,7 +208,7 @@ The CPU column was measured **live on the current server** (12-core CPU-only dep
 
 > **Why MoE models win as reasoning models:** Despite "20B+" parameters, these models use the Mixture-of-Experts (MoE) architecture with several experts — only a small number of parameters (~3B) is active per token. This gives the compute cost of a 3B model with the "knowledge" of a 20B+ model. MoE models are always faster than dense models of the same size.
 
-> **Qwen3.6-35B-A3B for reasoning:** MoE architecture (35B total, ~3B active) delivers **106 tok/s** — only 10% slower than gpt-oss-20b. The best option when gpt-oss-20b quality is not enough.
+> **Qwen3.6-35B-A3B for reasoning:** MoE architecture (35B total, ~3B active) delivers **107.5 t/s** — only 10% slower than gpt-oss-20b. The best option when gpt-oss-20b quality is not enough.
 
 > **Why MTP doesn't help on 128-bit GPUs:** Multi-Token Prediction (MTP) predicts draft tokens with a small head, then verifies them in parallel. On high-bandwidth GPUs (256/512-bit), this yields 1.4–2.2× speedup. On RTX 5060 Ti's 128-bit bus (448 GB/s), the draft model's extra memory reads saturate the already-limited bandwidth. MTP accordingly provides no meaningful speedup over a plain Q4_K_M of the same size, so MTP variants are not used.
 

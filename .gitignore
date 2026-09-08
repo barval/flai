@@ -62,6 +62,9 @@ target/
 graphify-out/
 .opencode/
 
+# superpowers
+docs/superpowers/
+
 # System files
 .DS_Store
 Thumbs.db

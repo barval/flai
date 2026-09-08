@@ -1,0 +1,11 @@
+pipeline_type: standard
+checkpoint_path: "ltxv-2b-0.9.8-distilled.safetensors"
+stg_mode: "attention_values"
+text_encoder_model_name_or_path: "PixArt-alpha/PixArt-XL-2-1024-MS"
+precision: "bfloat16"
+sampler: "LinearQuadratic"
+prompt_enhancement_words_threshold: 120
+stochastic_sampling: false
+offload_to_cpu: true
+num_inference_steps: 8
+guidance_scale: 1.5

@@ -25,7 +25,8 @@ services/llamacpp/models/
 services/piper/models/
 services/piper/piper_models/
 services/sd_cpp/models/
-services/ltx_video/models/
+services/ltx_video/models/*.safetensors
+services/ltx_video/models/*.bin
 services/room-snapshot-api/room-snapshot-api/
 
 # Generated config (dynamically created at startup from DB)

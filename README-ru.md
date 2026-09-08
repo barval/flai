@@ -557,11 +557,8 @@ llama.cpp работает в **режиме роутера** (`--models-dir`), 
 services/llamacpp/models/
 ├── Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf             # Рассуждения (все уровни)
 ├── bge-m3-Q8_0.gguf                            # Эмбеддинг
-├── Qwen3VL-8B-Instruct-Q4_K_M/                 # Мультимодальность (поддиректория!) — чат/роутер/vision
-│   ├── Qwen3VL-8B-Instruct-Q4_K_M.gguf
-│   └── mmproj-F16.gguf                         # Визион-проектор
-└── Qwen3VL-4B-Instruct-Q4_K_M/                 # Мультимодальность (8 ГБ, поддиректория!)
-    ├── Qwen3VL-4B-Instruct-Q4_K_M.gguf
+└── Qwen3VL-8B-Instruct-Q4_K_M/                 # Мультимодальность (поддиректория!) — чат/роутер/vision
+    ├── Qwen3VL-8B-Instruct-Q4_K_M.gguf
     └── mmproj-F16.gguf                         # Визион-проектор
 ```
 

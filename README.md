@@ -556,9 +556,6 @@ services/llamacpp/models/
 ├── Qwen3VL-8B-Instruct-Q4_K_M/                 # Multimodal (subdirectory!) — chat/router/vision
 │   ├── Qwen3VL-8B-Instruct-Q4_K_M.gguf
 │   └── mmproj-F16.gguf                         # Vision projector
-└── Qwen3VL-4B-Instruct-Q4_K_M/                 # Multimodal (8 GB tier, subdirectory!)
-    ├── Qwen3VL-4B-Instruct-Q4_K_M.gguf
-    └── mmproj-F16.gguf                         # Vision projector
 ```
 
 > ⚠️ **Multimodal models require a subdirectory** with the projector file named `mmproj-*.gguf` inside. The model server auto-discovers and loads it.

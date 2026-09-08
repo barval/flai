@@ -1459,6 +1459,7 @@ def llamacpp_model_info(name):
                 "Qwen3-4B-Instruct-2507-Q4_K_M": {"arch": "qwen3", "params": "~4B", "ctx": 32768, "emb": 2560},
                 "gemma-4-26B-A4B-it-MXFP4_MOE": {"arch": "gemma", "params": "~26B (MoE)", "ctx": 32768, "emb": 4608},
                 "gpt-oss-20b-Q4_K_M": {"arch": "gpt-oss", "params": "~20B", "ctx": 32768, "emb": 5120},
+                "Qwen3.6-35B-A3B-UD-Q2_K_XL": {"arch": "qwen3", "params": "~35B (MoE)", "ctx": 262144, "emb": 2048},
                 "Qwen3VL-8B-Instruct-Q4_K_M": {"arch": "qwen3-vl", "params": "~8B", "ctx": 32768, "emb": 4096},
                 "bge-m3-Q8_0": {"arch": "bge", "params": "~567M", "ctx": 8192, "emb": 1024},
             }

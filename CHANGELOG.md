@@ -4,7 +4,7 @@ All notable changes to FLAI are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [v11.1] — 2026-09-07
+## [v11.0] — 2026-09-06
 
 ### 🔄 Instant GPU ↔ CPU Switching (No Rebuild)
 
@@ -13,8 +13,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   - `docker-compose.cpu.yml` → `flai-sd_cpp:cpu` / `flai-ltxvideo:cpu`
 - **Why**: before this change both stacks wrote into the shared `flai-sd_cpp:latest` / `flai-ltxvideo:latest` tags — switching CPU↔GPU silently reused the wrong (CPU-built) binary, e.g. image edit running on CPU despite a pass-through GPU.
 - **Docs & scripts** — README.md/README-ru.md (CPU-only mode + build sections), Dockerfile headers, and `deploy.sh`/`deploy-ru.sh` usage now document instant switching via `./deploy.sh`/`./deploy.sh --cpu`.
-
-## [v11.0] — 2026-09-06
 
 ### 🏗️ Multi-Platform GPU Support (In Progress)
 

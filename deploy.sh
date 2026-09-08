@@ -119,50 +119,20 @@ download_llamacpp_models() {
     info "Downloading llama.cpp models..."
     local MODEL_DIR="services/llamacpp/models"
     local VRAM_MB=0
-    local IS_BLACKWELL=false
-    local REASONING_MODEL=""
 
     # Detect GPU VRAM for model selection
     if command -v nvidia-smi &>/dev/null; then
         VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
     fi
 
-    # Detect Blackwell architecture — MXFP4 only on Blackwell GPUs (native FP4 tensor cores)
-    if command -v nvidia-smi &>/dev/null; then
-        local GPU_NAME
-        GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
-        if [[ "${GPU_NAME,,}" =~ (rtx 5060|rtx 5070|rtx 5080|rtx 5090|blackwell|b100|b200|gb200|gb10) ]]; then
-            IS_BLACKWELL=true
-        fi
-    fi
-
-    if [[ "$IS_BLACKWELL" == true ]]; then
-        REASONING_MODEL="gpt-oss-20b-mxfp4"
+    # Reasoning model — Qwen3.6-35B-A3B on all tiers (8 GB uses partial CPU offload)
+    if [[ ! -f "$MODEL_DIR/Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf" ]]; then
+        info "Downloading Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf (reasoning)..."
+        HF_DOWNLOAD "unsloth/Qwen3.6-35B-A3B-GGUF" \
+            "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf" \
+            "$MODEL_DIR/Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf"
     else
-        REASONING_MODEL="gpt-oss-20b-Q4_K_M"
-    fi
-
-    # Reasoning model — select based on VRAM
-    if [[ "$VRAM_MB" -ge 16000 ]]; then
-        # 16GB+ — full model (architecture-dependent quantization)
-        if [[ ! -f "$MODEL_DIR/${REASONING_MODEL}.gguf" ]]; then
-            info "Downloading ${REASONING_MODEL}.gguf (reasoning, 16GB+ tier)..."
-            HF_DOWNLOAD "unsloth/gpt-oss-20b-GGUF" \
-                "${REASONING_MODEL}.gguf" \
-                "$MODEL_DIR/${REASONING_MODEL}.gguf"
-        else
-            warn "${REASONING_MODEL}.gguf already exists — skipping."
-        fi
-    else
-        # 12GB and 8GB — Gemma 4 E4B Q4_0 (~4.8 GB)
-        if [[ ! -f "$MODEL_DIR/gemma-4-E4B-it-Q4_0.gguf" ]]; then
-            info "Downloading gemma-4-E4B-it-Q4_0.gguf (reasoning)..."
-            HF_DOWNLOAD "unsloth/gemma-4-E4B-it-GGUF" \
-                "gemma-4-E4B-it-Q4_0.gguf" \
-                "$MODEL_DIR/gemma-4-E4B-it-Q4_0.gguf"
-        else
-            warn "gemma-4-E4B-it-Q4_0.gguf already exists — skipping."
-        fi
+        warn "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf already exists — skipping."
     fi
 
     # Multimodal model — select based on VRAM
@@ -410,11 +380,11 @@ build_and_launch() {
     if [[ "$COMPOSE_FILE" == "docker-compose.gpu.yml" ]] && command -v nvidia-smi &>/dev/null; then
         VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
         if [[ "$VRAM_MB" -ge 16000 ]]; then
-            info "GPU VRAM: ${VRAM_MB}MB (tier: 16GB+) — full performance (gpt-oss-20b reasoning)"
+            info "GPU VRAM: ${VRAM_MB}MB (tier: 16GB+) — full performance (Qwen3.6-35B-A3B reasoning)"
         elif [[ "$VRAM_MB" -ge 12000 ]]; then
-            info "GPU VRAM: ${VRAM_MB}MB (tier: 12GB) — good fit (Gemma 4 E4B reasoning)"
+            info "GPU VRAM: ${VRAM_MB}MB (tier: 12GB) — good fit (Qwen3.6-35B-A3B reasoning)"
         elif [[ "$VRAM_MB" -ge 8000 ]]; then
-            info "GPU VRAM: ${VRAM_MB}MB (tier: 8GB) — tight fit (Gemma 4 E4B reasoning)"
+            info "GPU VRAM: ${VRAM_MB}MB (tier: 8GB) — tight fit (Qwen3.6-35B-A3B reasoning, partial CPU offload)"
         else
             warn "GPU VRAM: ${VRAM_MB}MB — below 8GB minimum. Performance will be severely limited."
         fi
@@ -479,9 +449,7 @@ Model Download Sizes (approximate):
   llama.cpp:
     Qwen3VL-8B-Instruct Q4_K_M (multimodal=chat, 12GB+)  ~5.5 GB
     Qwen3VL-4B-Instruct Q4_K_M (multimodal=chat, 8GB)     ~2.5 GB
-    Gemma 4 E4B Q4_0 (reasoning, 8/12GB)                  ~4.8 GB
-    gpt-oss-20b MXFP4 (reasoning, 16GB+, Blackwell)        ~12 GB
-    gpt-oss-20b Q4_K_M (reasoning, 16GB+, other)           ~12 GB
+    Qwen3.6-35B-A3B UD-Q2_K_XL (reasoning, all tiers)       ~12 GB
     bge-m3 Q8_0 (embeddings)                               ~1.5 GB
   Image generation (Z-Image Turbo)   ~6.5 GB
   Image editing (Flux.2 Klein 4B)    ~5 GB

@@ -20,26 +20,16 @@ logger = logging.getLogger(__name__)
 DRY_LOAD_TIMEOUT_S = 30
 DRY_LOAD_POLL_INTERVAL_S = 1
 
-# Fallback model names per module — architecture-aware
-# MXFP4 variants used on Blackwell GPUs (native FP4 tensor cores),
-# standard Q4_0/Q4_K_M on all other NVIDIA GPUs.
-_FALLBACK_BLACKWELL: dict[str, str] = {
-    "reasoning": "gpt-oss-20b-mxfp4",
-    "multimodal": "Qwen3VL-8B-Instruct-Q4_K_M",
-    "embedding": "bge-m3-Q8_0",
-}
-_FALLBACK_UNIVERSAL: dict[str, str] = {
-    "reasoning": "gpt-oss-20b-Q4_K_M",
+_FALLBACK_MODELS: dict[str, str] = {
+    "reasoning": "Qwen3.6-35B-A3B-UD-Q2_K_XL",
     "multimodal": "Qwen3VL-8B-Instruct-Q4_K_M",
     "embedding": "bge-m3-Q8_0",
 }
 
 
 def get_fallback_models() -> dict[str, str]:
-    """Return fallback models dict appropriate for the current GPU architecture."""
-    from app.utils import is_blackwell_gpu
-
-    return _FALLBACK_BLACKWELL if is_blackwell_gpu() else _FALLBACK_UNIVERSAL
+    """Return the fallback models dict used for rollback after a failed dry-load."""
+    return _FALLBACK_MODELS
 
 
 def _trigger_load(swap_url: str, module: str) -> bool:

@@ -85,7 +85,12 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | Feature | Notes |
 |---------|-------|
 | **Multi-platform GPU support (in progress)** | Architecture moved toward running on NVIDIA, AMD, Intel and CPU-only machines. New `app/platform_detect.py` abstracts GPU detection (probes `nvidia-smi` / `rocm-smi` / `vulkaninfo`) and exposes a vendor-agnostic VRAM query API; `FLAI_PLATFORM` env var allows an explicit override. All VRAM polling and GPU detection now goes through this abstraction. |
-| **Compute platform in admin API** | `/api/hardware` now reports the detected platform (`nvidia` / `amd` / `intel` / `cpu`) alongside GPU name and VRAM. |
+| **Instant GPU ↔ CPU switching (no rebuild)** | Backend-tagged images — each compose file pins its own image tag (`flai-sd_cpp:cuda/cpu`, `flai-ltxvideo:cuda/cpu`), so GPU and CPU builds coexist and switching stacks needs no rebuild. Re-run `./deploy.sh` (GPU) or `./deploy.sh --cpu` (CPU) to switch. |
+| **CPU-only mode** | New `docker-compose.cpu.yml` with the same service stack (web, redis, postgres, llama-swap, SD, LTX, Whisper, Piper, SearXNG, SLM, Qdrant) using CPU builds of all models; timeouts are increased (`SD_CPP_TIMEOUT=1800`, `LLM_TIMEOUT=600`, `SD_CLI_TIMEOUT=3600`). `deploy.sh`/`deploy-ru.sh` accept `--cpu` and auto-select the CPU compose file when no NVIDIA GPU is detected. |
+| **Adaptive video resolution on CPU (memory-first)** | Pre-flight RAM planning (`plan_cpu_generation()` in `modules/video.py`) estimates the peak LTX memory footprint and, when the requested 768×512×240 clip does not fit, degrades it through a fixed cascade: 384×256×120 @ 12 fps → 256×192×57 @ 6 fps. The user is notified with the exact chosen format, and generation stops with a clear ⚠️ message when even the smallest step is impossible. |
+| **Admin Hardware tab** | First admin tab «Hardware» / «Оборудование» (before «Users») showing compute platform (`nvidia` / `amd` / `intel` / `cpu`), GPU, VRAM, CPU cores, RAM, and CPU model. |
+| **Compute platform in admin API** | `/api/hardware` now reports the detected platform (`nvidia` / `amd` / `intel` / `cpu`) alongside GPU name and VRAM. Also exposes `cpu_count` and `cpu_name`. |
+| **LTX-Video generation tuning** | LTX-Video pipeline tuned: `sampler: LinearQuadratic`, `guidance_scale: 1.5`, and the pipeline config YAML is now committed to the repository (tracked by git instead of being gitignored). |
 
 
 ### Core Components
@@ -178,16 +183,11 @@ Real-world performance measured with llama.cpp (llama-swap on-demand loading, Fl
 
 | Model | Type | Quant | File | VRAM | Prompt | Generation | Notes |
 |-------|------|-------|------|------|--------|------------|-------|
-| gemma-4-E4B-it-Q4_0 | Reasoning | Q4_0 | 4.8 GB | 3481 MB | 1182 t/s | 99.8 t/s | Best speed/quality balance |
-| **gpt-oss-20b** | Reasoning | MXFP4 (MoE) | 11.5 GB | 11663 MB | 1087 t/s | 118.2 t/s | **Current reasoning model** — MoE 3B active |
-| **Qwen3.6-35B-A3B** | Reasoning | Q2_K_XL | 12 GB | 12356 MB | 497 t/s | **106.2 t/s** | MoE 35B (3B active) — strong alternative |
-| Qwen3.5-9B-MTP-Q4_K_M | Reasoning | Q4_K_M + MTP | 5.5 GB | 6717 MB | 431 t/s | 66.1 t/s | Dense 9B — 45% slower than MoE |
-| Qwen3.5-9B-Q8_0 | Reasoning | Q8_0 | 8.9 GB | 9719 MB | 472 t/s | 42.8 t/s | Dense 9B — 65% slower, high quality |
-| gemma-4-12B-it-qat | Reasoning | QAT Q4_K_XL | 6.3 GB | 7591 MB | 1102 t/s | 48.7 t/s | Dense 12B — 62% slower |
+| gpt-oss-20b | Reasoning | MXFP4 (MoE) | 11.5 GB | 11663 MB | 1087 t/s | 118.2 t/s | Fast but outdated — MoE 3B active |
+| **Qwen3.6-35B-A3B** | Reasoning | Q2_K_XL | 12 GB | 12356 MB | 497 t/s | **106.2 t/s** | **Current reasoning model** — MoE 35B (3B active) |
 | **Qwen3VL-8B-Instruct** | Multimodal | Q4_K_M | 4.7 GB | 5292 MB | 2318 t/s | **73.1 t/s** | **Current multimodal model** — fastest vision model |
-| Qwen3VL-8B-Instruct-MXFP4 | Multimodal | MXFP4_MOE-Q6_K | 7.7 GB | 8222 MB | 2099 t/s | 46.7 t/s | Vision model — hybrid MXFP4 (deprecated) |
 
-> **Current stack: CPU vs GPU (the three models FLAI ships with).**
+> **Current stack: CPU vs GPU (the three models FLAI uses by default).**
 
 The CPU column was measured **live on the current server** (12-core CPU-only deployment, llama.cpp CPU builds, `n_gpu_layers=0`). The 16 GB column was measured on an RTX 5060 Ti 16 GB (Blackwell, 448 GB/s). The 8/12 GB columns are **estimates** for typical cards of that class — real throughput scales with the card's memory bandwidth and generation, so treat them as guidance, not guarantees.
 
@@ -199,7 +199,9 @@ The CPU column was measured **live on the current server** (12-core CPU-only dep
 
 > **Read the CPU row as follows:** a typical chat answer (~200 tokens) from the multimodal model takes ~55 s on CPU vs ~3 s on a 16 GB GPU; a reasoning answer takes ~21 s on CPU vs ~2 s on GPU. Embedding/vector indexing is the least affected (bge-m3 is small and fast even on CPU).
 
-> **Why gpt-oss-20b wins as reasoning model:** Despite being a "20B" model, gpt-oss-20b uses Mixture-of-Experts (MoE) with 32 experts — only ~3B parameters are active per token. This gives it 3B-level compute cost with 20B-level knowledge. On RTX 5060 Ti, it generates **118 tok/s** vs 63 tok/s for dense Qwen3.5-9B — nearly **2× faster** while using the same memory bandwidth.
+> **Why MoE models win as reasoning models:** Despite "20B+" parameters, these models use the Mixture-of-Experts (MoE) architecture with several experts — only a small number of parameters (~3B) is active per token. This gives the compute cost of a 3B model with the "knowledge" of a 20B+ model. MoE models are always faster than dense models of the same size.
+
+> **Qwen3.6-35B-A3B for reasoning:** MoE architecture (35B total, ~3B active) delivers **106 tok/s** — only 10% slower than gpt-oss-20b. The best option when gpt-oss-20b quality is not enough.
 
 > **Why MTP doesn't help on 128-bit GPUs:** Multi-Token Prediction (MTP) predicts draft tokens with a small head, then verifies them in parallel. On high-bandwidth GPUs (256/512-bit), this yields 1.4–2.2× speedup. On RTX 5060 Ti's 128-bit bus (448 GB/s), the draft model's extra memory reads saturate the already-limited bandwidth. MTP accordingly provides no meaningful speedup over a plain Q4_K_M of the same size, so MTP variants are not used.
 
@@ -219,7 +221,7 @@ The CPU column was measured **live on the current server** (12-core CPU-only dep
 
 ## 🚀 Quick Start
 
-> 💡 **Note**: You must have the **NVIDIA drivers** and **NVIDIA Container Toolkit** installed.
+> 💡 **Note**: For GPU deployment, you must have the **NVIDIA drivers** and **NVIDIA Container Toolkit** installed.
 
 ### Option A: Automated Deployment (Recommended)
 
@@ -308,8 +310,8 @@ wget -O services/llamacpp/models/Qwen3VL-8B-Instruct-Q4_K_M/mmproj-F16.gguf \
   "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/mmproj-Qwen3VL-8B-Instruct-F16.gguf"
 
 # Reasoning model (complex tasks)
-wget -O services/llamacpp/models/gemma-4-E4B-it-Q4_0.gguf \
-  "https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF/resolve/main/gemma-4-E4B-it-Q4_0.gguf"
+wget -O services/llamacpp/models/Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf \
+  "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main/Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf"
 
 # Embedding model (RAG)
 wget -O services/llamacpp/models/bge-m3-Q8_0.gguf \
@@ -549,19 +551,15 @@ llama.cpp runs in **router mode** (`--models-dir`), dynamically loading models f
 
 ```
 services/llamacpp/models/
-├── gemma-4-E4B-it-Q4_0.gguf                   # Reasoning (8/12 GB)
-├── gpt-oss-20b-Q4_K_M.gguf                    # Reasoning (16+ GB, non-Blackwell)
-├── gpt-oss-20b-mxfp4.gguf                     # Reasoning (16+ GB, Blackwell only)
+├── Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf             # Reasoning (all tiers)
 ├── bge-m3-Q8_0.gguf                            # Embedding
-├── Qwen3VL-8B-Instruct-Q4_K_M/                # Multimodal (subdirectory!) — chat/router/vision
+├── Qwen3VL-8B-Instruct-Q4_K_M/                 # Multimodal (subdirectory!) — chat/router/vision
 │   ├── Qwen3VL-8B-Instruct-Q4_K_M.gguf
 │   └── mmproj-F16.gguf                         # Vision projector
-└── Qwen3VL-4B-Instruct-Q4_K_M/                # Multimodal (8 GB tier, subdirectory!)
+└── Qwen3VL-4B-Instruct-Q4_K_M/                 # Multimodal (8 GB tier, subdirectory!)
     ├── Qwen3VL-4B-Instruct-Q4_K_M.gguf
     └── mmproj-F16.gguf                         # Vision projector
 ```
-
-> **Architecture-aware download:** The deploy scripts automatically detect Blackwell GPUs (RTX 5060+) and download MXFP4 variants for native FP4 acceleration. On other GPUs (Ampere, Ada Lovelace), standard Q4_0/Q4_K_M quantizations are downloaded for optimal performance.
 
 > ⚠️ **Multimodal models require a subdirectory** with the projector file named `mmproj-*.gguf` inside. The model server auto-discovers and loads it.
 
@@ -590,8 +588,7 @@ services/llamacpp/models/
 | Component | Default | Recommended Alternative | Notes |
 |-----------|---------|------------------------|-------|
 | **Chat/router/vision** | Qwen3VL-8B Q4_K_M (~5.5 GB) | Qwen3VL-8B MXFP4 (~7.7 GB) | Single multimodal model serves all three roles; always resident. On 8 GB use Qwen3VL-4B (~2.5 GB). Requires subdirectory with `mmproj-*.gguf` |
-| **Reasoning (8/12 GB)** | Gemma 4 E4B Q4_0 (~4.8 GB) | — | Best speed/quality balance for mid-tier GPUs |
-| **Reasoning (16+ GB)** | gpt-oss-20b mxfp4/Q4_K_M (~12 GB) | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | MoE architecture: ~3B active params, ~118 tok/s. Auto-detected: mxfp4 on Blackwell, Q4_K_M on other GPUs |
+| **Reasoning** | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | gpt-oss-20b mxfp4/Q4_K_M (~12 GB) | MoE architecture: ~3B active params, ~106 tok/s. Current reasoning model on all tiers; 8 GB uses partial CPU offload |
 | **Embedding** | bge-m3 Q8_0 (~1.5 GB) | — | Single model for all tiers |
 
 > **Context windows:** Multimodal and reasoning models should use the same context length (recommended 16384). Multimodal needs ≥16384 for vision token counts.
@@ -872,9 +869,7 @@ curl http://localhost:5000/metrics
 
 | Model | Purpose | License | Approx. Size |
 |-------|---------|---------|-------------|
-| **gemma-4-E4B-it-Q4_0.gguf** | Reasoning (8/12 GB) | [Apache 2.0](https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF) | ~4.8 GB |
-| **gpt-oss-20b-mxfp4.gguf** | Reasoning (16 GB+, Blackwell) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 GB |
-| **gpt-oss-20b-Q4_K_M.gguf** | Reasoning (16 GB+, other GPUs) | [OpenAI License](https://huggingface.co/unsloth/gpt-oss-20b-GGUF) | ~12 GB |
+| **Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf** | Reasoning (all tiers) | [Qwen License](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) | ~12 GB |
 | **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal — chat/router/vision | [Qwen License](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF) | ~5.5 GB + mmproj ~1.1 GB |
 | **bge-m3-Q8_0** | Embedding (RAG) | [MIT License](https://huggingface.co/gpustack/bge-m3-GGUF) | ~1.5 GB |
 
@@ -926,8 +921,8 @@ curl http://localhost:5000/metrics
 
 | Configuration | Approx. Download |
 |---------------|-----------------|
-| Minimal (Qwen3VL-4B + Gemma 4 E4B + bge-m3, 8 GB tier) | ~10 GB |
-| Full LLM stack (Qwen3VL-8B + gpt-oss-20b + bge-m3) | ~20 GB |
+| Minimal (Qwen3VL-4B + Qwen3.6-35B-A3B + bge-m3, 8 GB tier) | ~16 GB |
+| Full LLM stack (Qwen3VL-8B + Qwen3.6-35B-A3B + bge-m3) | ~20 GB |
 | + Image generation | ~29 GB |
 | + Image editing | ~32 GB |
 | + Voice (TTS + Whisper) | ~35 GB |

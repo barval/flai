@@ -185,14 +185,11 @@ def _init_postgresql():
     c.execute("CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_documents_index_status ON documents(index_status)")
 
-    # Seed default model_configs if not present — architecture-aware
-    # MXFP4 on Blackwell GPUs (native FP4), Q4_0/Q4_K_M on others.
+    # Seed default model_configs if not present.
     # v11.0: multimodal model is the single chat model (router + chat + vision).
     c.execute("SELECT COUNT(*) as cnt FROM model_configs")
     if c.fetchone()["cnt"] == 0:
-        from app.utils import is_blackwell_gpu
-
-        reasoning_model = "gpt-oss-20b-mxfp4" if is_blackwell_gpu() else "gpt-oss-20b-Q4_K_M"
+        reasoning_model = "Qwen3.6-35B-A3B-UD-Q2_K_XL"
         c.execute(
             """
             INSERT INTO model_configs (module, model_name, context_length, temperature, top_p, timeout, service_url, repeat_penalty)

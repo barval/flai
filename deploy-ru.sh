@@ -118,49 +118,19 @@ download_llamacpp_models() {
     info "Скачиваю модели llama.cpp..."
     local MODEL_DIR="services/llamacpp/models"
     local VRAM_MB=0
-    local IS_BLACKWELL=false
-    local REASONING_MODEL=""
 
     if command -v nvidia-smi &>/dev/null; then
         VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
     fi
 
-    # Определяем архитектуру GPU — MXFP4 только на Blackwell (аппаратные FP4 тензорные ядра)
-    if command -v nvidia-smi &>/dev/null; then
-        local GPU_NAME
-        GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
-        if [[ "${GPU_NAME,,}" =~ (rtx 5060|rtx 5070|rtx 5080|rtx 5090|blackwell|b100|b200|gb200|gb10) ]]; then
-            IS_BLACKWELL=true
-        fi
-    fi
-
-    if [[ "$IS_BLACKWELL" == true ]]; then
-        REASONING_MODEL="gpt-oss-20b-mxfp4"
+    # Модель рассуждений — Qwen3.6-35B-A3B на всех уровнях (8 ГБ — частичный CPU offload)
+    if [[ ! -f "$MODEL_DIR/Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf" ]]; then
+        info "Скачиваю Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf (рассуждения)..."
+        HF_DOWNLOAD "unsloth/Qwen3.6-35B-A3B-GGUF" \
+            "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf" \
+            "$MODEL_DIR/Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf"
     else
-        REASONING_MODEL="gpt-oss-20b-Q4_K_M"
-    fi
-
-    # Модель рассуждений — выбор по VRAM и архитектуре
-    if [[ "$VRAM_MB" -ge 16000 ]]; then
-        # 16GB+ — полная модель (квантизация зависит от архитектуры)
-        if [[ ! -f "$MODEL_DIR/${REASONING_MODEL}.gguf" ]]; then
-            info "Скачиваю ${REASONING_MODEL}.gguf (рассуждения, уровень 16GB+)..."
-            HF_DOWNLOAD "unsloth/gpt-oss-20b-GGUF" \
-                "${REASONING_MODEL}.gguf" \
-                "$MODEL_DIR/${REASONING_MODEL}.gguf"
-        else
-            warn "${REASONING_MODEL}.gguf уже есть — пропускаю."
-        fi
-    else
-        # 12GB и 8GB — Gemma 4 E4B Q4_0 (~4,8 ГБ)
-        if [[ ! -f "$MODEL_DIR/gemma-4-E4B-it-Q4_0.gguf" ]]; then
-            info "Скачиваю gemma-4-E4B-it-Q4_0.gguf (рассуждения)..."
-            HF_DOWNLOAD "unsloth/gemma-4-E4B-it-GGUF" \
-                "gemma-4-E4B-it-Q4_0.gguf" \
-                "$MODEL_DIR/gemma-4-E4B-it-Q4_0.gguf"
-        else
-            warn "gemma-4-E4B-it-Q4_0.gguf уже есть — пропускаю."
-        fi
+        warn "Qwen3.6-35B-A3B-UD-Q2_K_XL.gguf уже есть — пропускаю."
     fi
 
     # Мультимодальная модель — выбор по VRAM
@@ -404,11 +374,11 @@ build_and_launch() {
     if [[ "$COMPOSE_FILE" == "docker-compose.gpu.yml" ]] && command -v nvidia-smi &>/dev/null; then
         VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | tr -d ' ')
         if [[ "$VRAM_MB" -ge 16000 ]]; then
-            info "VRAM: ${VRAM_MB}MB (уровень: 16GB+) — полная производительность (gpt-oss-20b рассуждения)"
+            info "VRAM: ${VRAM_MB}MB (уровень: 16GB+) — полная производительность (Qwen3.6-35B-A3B рассуждения)"
         elif [[ "$VRAM_MB" -ge 12000 ]]; then
-            info "VRAM: ${VRAM_MB}MB (уровень: 12GB) — хорошая посадка (Gemma 4 E4B рассуждения)"
+            info "VRAM: ${VRAM_MB}MB (уровень: 12GB) — хорошая посадка (Qwen3.6-35B-A3B рассуждения)"
         elif [[ "$VRAM_MB" -ge 8000 ]]; then
-            info "VRAM: ${VRAM_MB}MB (уровень: 8GB) — тесно (Gemma 4 E4B рассуждения)"
+            info "VRAM: ${VRAM_MB}MB (уровень: 8GB) — тесно (Qwen3.6-35B-A3B рассуждения, частичный CPU offload)"
         else
             warn "VRAM: ${VRAM_MB}MB — менее 8GB минимума. Производительность будет сильно ограничена."
         fi
@@ -474,9 +444,7 @@ FLAI v11.0 — Скрипт развёртывания
   llama.cpp:
     Qwen3VL-8B-Instruct Q4_K_M (мультимодальная=чат, 12GB+) ~5,5 ГБ
     Qwen3VL-4B-Instruct Q4_K_M (мультимодальная=чат, 8GB)    ~2,5 ГБ
-    Gemma 4 E4B Q4_0 (рассуждения, 8/12ГБ)                  ~4,8 ГБ
-    gpt-oss-20b MXFP4 (рассуждения, 16ГБ+, Blackwell)         ~12 ГБ
-    gpt-oss-20b Q4_K_M (рассуждения, 16ГБ+, другие)           ~12 ГБ
+    Qwen3.6-35B-A3B UD-Q2_K_XL (рассуждения, все уровни)      ~12 ГБ
     bge-m3 Q8_0 (эмбеддинги)                                  ~1,5 ГБ
   Генерация изображений (Z-Image Turbo) ~6,5 ГБ
   Редактирование (Flux.2 Klein 4B)    ~5 ГБ

@@ -47,7 +47,9 @@ def load_config(app):
     # remain for resource_manager/queue compatibility but are inactive.
     app.config["VIDEO_WRAPPER_URL"] = os.getenv("VIDEO_WRAPPER_URL", "http://flai-sd:7861")
     app.config["VIDEO_MODEL"] = os.getenv("VIDEO_MODEL", "wan2.2-ti2v-5b-turbo")
-    app.config["VIDEO_TIMEOUT"] = int(os.getenv("VIDEO_TIMEOUT", 600))
+    app.config["VIDEO_TIMEOUT"] = int(
+        os.getenv("VIDEO_TIMEOUT", 1200)
+    )  # >= wrapper GPU attempt (900) + fallback headroom
     # legacy
     app.config["LTX_VIDEO_WRAPPER_URL"] = os.getenv("LTX_VIDEO_WRAPPER_URL")
     app.config["LTX_VIDEO_MODEL"] = os.getenv("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")

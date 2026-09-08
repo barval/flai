@@ -494,7 +494,7 @@ class RedisRequestQueue:
             max(
                 self.app.config.get("SD_CLI_TIMEOUT", 900),
                 self.app.config.get("LLM_TIMEOUT", 600),
-                self.app.config.get("LTX_VIDEO_TIMEOUT", 600),
+                self.app.config.get("VIDEO_TIMEOUT", 1200),
                 self.app.config.get("SD_CPP_TIMEOUT", 900),
             )
             + 120,

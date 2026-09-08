@@ -1670,9 +1670,9 @@ msgstr ""
 "Генерация видео требует GPU; доступная VRAM ({free} MB) ниже безопасного "
 "порога ({need} MB). Попробуйте позже или упростите запрос."
 
-#: modules/video.py:295
-msgid "ltx-wrapper returned no video data"
-msgstr "ltx-wrapper не вернул видео данные"
+#: modules/video.py:374
+msgid "video service returned no video data"
+msgstr "Сервис генерации видео не вернул данные"
 
 #: modules/video.py:323
 #, python-brace-format

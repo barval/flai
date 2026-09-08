@@ -554,6 +554,20 @@ class TestEstimateVideoVram:
             result = rm.estimate_video_vram_needed()
             assert result == 12500
 
+    @pytest.mark.unit
+    def test_wan_measured_below_floor_is_clamped_to_8000(self):
+        """A near-zero Wan measurement (sd-cli exits before VRAM is measured)
+        must not collapse the estimate below the 8000 MB Wan floor."""
+        with patch("app.database.get_vram_estimate") as mock_get:
+            mock_get.return_value = {
+                "measured_vram_mb": 1000,
+                "model_name": "wan2.2-ti2v-5b-turbo",
+                "module": "ltx-video",
+            }
+            rm = ResourceManager()
+            result = rm.estimate_video_vram_needed()
+            assert result == 8000
+
     def test_ignores_ltx_measured_row(self):
         """A legacy LTX-named measurement must NOT be used (Wan floor applies)."""
         with patch("app.database.get_vram_estimate") as mock_get:

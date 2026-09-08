@@ -743,7 +743,7 @@ class ResourceManager:
             if measured and measured.get("measured_vram_mb"):
                 name = measured.get("model_name") or ""
                 if name.startswith("wan") or name == "wan2.2-ti2v-5b-turbo":
-                    return int(measured["measured_vram_mb"])
+                    return max(int(measured["measured_vram_mb"]), 8000)
         except Exception as e:
             logger.debug(f"Could not load measured VRAM for ltx-video: {e}")
 

@@ -100,7 +100,7 @@ class VideoModule(TranslationMixin):
         self.logger = logging.getLogger(__name__)
         self.wrapper_url = None
         self.available = False
-        self.timeout = 600
+        self.timeout = 1200
         self.model_type = "wan2.2-ti2v-5b-turbo"
         self.multimodal_module = None
 
@@ -111,7 +111,7 @@ class VideoModule(TranslationMixin):
         """Initialize module with Flask app"""
         self.app = app
         self.wrapper_url = app.config.get("VIDEO_WRAPPER_URL", "http://flai-sd:7861")
-        self.timeout = app.config.get("VIDEO_TIMEOUT", 600)
+        self.timeout = app.config.get("VIDEO_TIMEOUT", 1200)
         self.model_type = app.config.get("VIDEO_MODEL", "wan2.2-ti2v-5b-turbo")
 
         self.logger.info(
@@ -252,6 +252,7 @@ class VideoModule(TranslationMixin):
         from app.resource_manager import get_resource_manager
 
         rm = get_resource_manager()
+        use_gpu = False
 
         llamacpp_url = self.app.config.get("LLAMA_SWAP_URL", "http://flai-llamaswap:8080")
         rm.unload_llamacpp_model(llamacpp_url)
@@ -313,12 +314,8 @@ class VideoModule(TranslationMixin):
 
         rm.mark_video_busy()
 
-        # Wan preset chain: max 121 frames, dimensions multiples of 32.
-        prompt_data["num_frames"] = min(int(prompt_data.get("num_frames", 121)), 121)
-        w = int(prompt_data.get("width", 768))
-        h = int(prompt_data.get("height", 448))
-        prompt_data["width"] = max(32, (w // 32) * 32)
-        prompt_data["height"] = max(32, (h // 32) * 32)
+        # Wan preset chain: max 121 frames (4k+1 snapping), dims % 32 == 0.
+        prompt_data = sanitize_video_params(prompt_data)
 
         # Cap to the first degradation preset (640×384@121) only on low-VRAM
         # tiers (total VRAM < 10000 MB, i.e. 8/10 GB GPUs).
@@ -346,6 +343,7 @@ class VideoModule(TranslationMixin):
                 "num_frames": prompt_data.get("num_frames", DEFAULT_VIDEO_PARAMS["num_frames"]),
                 "frame_rate": prompt_data.get("frame_rate", DEFAULT_VIDEO_PARAMS["frame_rate"]),
                 "seed": prompt_data.get("seed", -1),
+                "use_gpu": use_gpu,
                 "image_data": image_data,
                 "user_id": user_id,
                 "session_id": session_id,
@@ -373,7 +371,7 @@ class VideoModule(TranslationMixin):
                     return {"success": False, "error": err_msg}
 
                 if not result.get("video_data"):
-                    return {"success": False, "error": self._("ltx-wrapper returned no video data", lang)}
+                    return {"success": False, "error": self._("video service returned no video data", lang)}
 
                 filename = result.get(
                     "file_name",

@@ -302,6 +302,44 @@ class TestVideoModuleGenerate:
             assert result["video_data"] == mock_b64
             # CPU path must not poll VRAM / query llama-swap running state.
             mock_rm_instance._poll_vram.assert_not_called()
+            # CPU platform must advertise use_gpu=False so the wrapper runs full CPU offload.
+            sent_payload = mock_post.call_args.kwargs["json"]
+            assert sent_payload["use_gpu"] is False
+
+    def test_payload_sends_use_gpu_true_on_gpu(self, mock_app):
+        """GPU platform with enough free VRAM must advertise use_gpu=True to the wrapper."""
+        from modules.video import VideoModule
+
+        mock_b64 = base64.b64encode(b"fake webm data").decode("utf-8")
+        with (
+            patch("modules.video.requests.get") as mock_get,
+            patch("modules.video.requests.post") as mock_post,
+            patch("app.resource_manager.get_resource_manager") as mock_rm,
+        ):
+            running_resp = MagicMock(status_code=200)
+            running_resp.json.return_value = {"running": []}
+            mock_get.return_value = running_resp
+            mock_post.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {
+                    "video_data": mock_b64,
+                    "file_name": "wan_video.webm",
+                    "file_type": "video/webm",
+                },
+            )
+            mock_rm_instance = MagicMock()
+            mock_rm_instance.hardware.cuda_detected = True
+            mock_rm_instance.hardware.available_vram_mb = 14000
+            mock_rm_instance.hardware.total_vram_mb = 16384
+            mock_rm_instance.estimate_video_vram_needed.return_value = 8000
+            mock_rm.return_value = mock_rm_instance
+
+            module = VideoModule(mock_app)
+            result = module.generate_video({"prompt": "test video", "width": 768, "height": 448, "num_frames": 81})
+
+            assert result["success"] is True
+            sent_payload = mock_post.call_args.kwargs["json"]
+            assert sent_payload["use_gpu"] is True
 
     def test_generate_video_unavailable(self, mock_app):
         import requests

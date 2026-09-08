@@ -145,7 +145,7 @@ class TestRedisRequestQueue:
                 "QUEUE_MAX_WAIT_TIME": 300,
                 "SD_CLI_TIMEOUT": 3600,
                 "LLM_TIMEOUT": 600,
-                "LTX_VIDEO_TIMEOUT": 600,
+                "VIDEO_TIMEOUT": 1200,
                 "SD_CPP_TIMEOUT": 1800,
             }
         )
@@ -169,7 +169,7 @@ class TestRedisRequestQueue:
             >= max(
                 mock_app.config["SD_CLI_TIMEOUT"],
                 mock_app.config["LLM_TIMEOUT"],
-                mock_app.config["LTX_VIDEO_TIMEOUT"],
+                mock_app.config["VIDEO_TIMEOUT"],
                 mock_app.config["SD_CPP_TIMEOUT"],
             )
             + 120

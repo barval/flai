@@ -1663,9 +1663,9 @@ msgstr ""
 "Video generation requires GPU; available VRAM ({free} MB) is below safe "
 "threshold ({need} MB). Please try again later or simplify the request."
 
-#: modules/video.py:295
-msgid "ltx-wrapper returned no video data"
-msgstr "ltx-wrapper returned no video data"
+#: modules/video.py:374
+msgid "video service returned no video data"
+msgstr "video service returned no video data"
 
 #: modules/video.py:323
 #, python-brace-format

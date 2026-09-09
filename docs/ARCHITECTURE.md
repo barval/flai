@@ -198,6 +198,8 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 - Docker profile `with-search`.
 - Config: `SEARXNG_URL`, `SEARXNG_TIMEOUT`, `SEARXNG_MAX_RESULTS`.
 - Router category 7 (`[-SEARCH-]`) in `prompts/{en,ru}/base_text.template`.
+- **Engine roster** — `searxng/settings.yml` enables `google news`, `bing news`, `yahoo news`, `yahoo`, `bing`, `mojeek`, `marginalia`, `presearch`, `qwant`, `yandex`, and `swisscows news` in addition to the default `google cse` and `duckduckgo`, improving resilience when individual engines fail. Engine names/status are restored by the container image build; edits require `docker exec flai-searxng chown` first if the file is root-owned.
+- **Retry + soft error** — `_process_search_task()` (fast worker, CPU-only) retries the query once when SearXNG returns 0 results. If both attempts are empty, the user receives a soft localized notification («Search services are temporarily unavailable. Please try again in a few minutes.») instead of a hard «No web search results found» error.
 
 ## Streaming Reasoning
 

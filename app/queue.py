@@ -2360,12 +2360,17 @@ class RedisRequestQueue:
         search_start = time.time()
         try:
             results = search.search(query, lang=lang)
+            if not results:
+                self.app.logger.warning(f"SearXNG returned 0 results for: {query[:100]}... — retrying once")
+                results = search.search(query, lang=lang)
             search_time = round(time.time() - search_start, 1)
             if not results:
-                self.app.logger.warning(f"SearXNG returned 0 results for: {query[:100]}...")
+                self.app.logger.warning(f"SearXNG returned 0 results after retry for: {query[:100]}...")
                 return self._build_error_response(
                     session_id,
-                    self.app.modules["base"]._("No web search results found", lang),
+                    self.app.modules["base"]._(
+                        "Search services are temporarily unavailable. Please try again in a few minutes.", lang
+                    ),
                     search_time,
                     lang,
                 )

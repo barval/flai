@@ -12,3 +12,24 @@ server:
 
 ui:
   static_use_hash: true
+
+engines:
+  - name: google news
+  - name: bing news
+  - name: yahoo news
+  - name: yahoo
+    disabled: false
+  - name: bing
+    disabled: false
+  - name: mojeek
+    disabled: false
+  - name: marginalia
+    disabled: false
+  - name: presearch
+    disabled: false
+  - name: qwant
+    disabled: false
+  - name: yandex
+    disabled: false
+  - name: swisscows news
+    disabled: false

@@ -39,6 +39,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Tab header replaced by a refresh button** — the static «Hardware» heading was replaced with an «Update hardware list» / «Обновить список оборудования» button (same style as «Update model list»), which re-fetches `/admin/api/hardware`.
 - **CPU-only presentation** — when the platform is `cpu` (or no GPU is detected), the GPU and VRAM rows show «—»; a dedicated CPU row (below RAM) displays the CPU model name and core count.
 
+### 🌐 Web Search Improvements
+
+- **Expanded SearXNG engine roster** — new engines enabled in `searxng/settings.yml`: `google news`, `bing news`, `yahoo news`, `yahoo`, `bing`, `mojeek`, `marginalia`, `presearch`, `qwant`, `yandex`, and `swisscows news` (each with `disabled: false`), alongside the default `google cse` and `duckduckgo`. The broader roster makes search results far more resilient when individual engines are down, CAPTCHA-gated, or rate-limited.
+- **Automatic retry on empty results** — `_process_search_task()` in `app/queue.py` (lines ~2360–2376) now retries the SearXNG query once when the first attempt returns 0 results. The retry is cheap because no model is loaded on the fast worker (CPU-only HTTP call).
+- **Soft notification instead of hard error** — when both attempts return empty, the user gets a gentle «Search services are temporarily unavailable. Please try again in a few minutes.» message (new `msgid` added to both `translations/{ru,en}/LC_MESSAGES/messages.po` and recompiled to `.mo`) instead of the previous abrupt «No web search results found» error.
+
 ### 🧪 Tests
 
 - **`tests/test_platform_detect.py`** — 14 tests covering NVIDIA, AMD, Intel, and CPU detect paths, including the AMD heuristic that treats values ≤ 1e9 as MB.

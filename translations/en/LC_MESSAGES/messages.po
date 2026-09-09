@@ -229,9 +229,9 @@ msgstr "Web search result"
 msgid "Web search is not available"
 msgstr "Web search is not available"
 
-#: modules/search.py
-msgid "No web search results found"
-msgstr "No web search results found"
+#: app/queue.py
+msgid "Search services are temporarily unavailable. Please try again in a few minutes."
+msgstr "Search services are temporarily unavailable due to limits on external search engines. Please try your request again in a few minutes."
 
 #: modules/search.py
 msgid "Web search failed"

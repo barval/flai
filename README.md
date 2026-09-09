@@ -91,6 +91,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | **Admin Hardware tab** | First admin tab «Hardware» / «Оборудование» (before «Users») showing compute platform (`nvidia` / `amd` / `intel` / `cpu`), GPU, VRAM, CPU cores, RAM, and CPU model. |
 | **Compute platform in admin API** | `/api/hardware` now reports the detected platform (`nvidia` / `amd` / `intel` / `cpu`) alongside GPU name and VRAM. Also exposes `cpu_count` and `cpu_name`. |
 | **LTX-Video generation tuning** | LTX-Video pipeline tuned: `sampler: LinearQuadratic`, `guidance_scale: 1.5`, and the pipeline config YAML is now committed to the repository (tracked by git instead of being gitignored). |
+| **Web search improvements** | SearXNG engine roster expanded (google news, bing news, yahoo news, yahoo, bing, mojeek, marginalia, presearch, qwant, yandex, swisscows news) for more resilient results. A search returning 0 results is now retried once automatically; if still empty, the user gets a soft «Search services are temporarily unavailable. Please try again in a few minutes.» notice instead of a hard error. |
 
 
 ### Core Components

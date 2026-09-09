@@ -230,9 +230,9 @@ msgstr "Результат поиска"
 msgid "Web search is not available"
 msgstr "Веб-поиск недоступен"
 
-#: modules/search.py
-msgid "No web search results found"
-msgstr "Результаты веб-поиска не найдены"
+#: app/queue.py
+msgid "Search services are temporarily unavailable. Please try again in a few minutes."
+msgstr "Поисковые сервисы временно недоступны из-за ограничений внешних поисковиков. Пожалуйста, попробуйте повторить запрос через несколько минут."
 
 #: modules/search.py
 msgid "Web search failed"

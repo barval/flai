@@ -433,6 +433,14 @@ function _stripGenericReasoning(text) {
         }
         if (lastIdx >= 0) {
             const answer = text.slice(lastIdx).trim();
+            // High marker density in first 200 chars = pure reasoning, no real answer
+            const first200 = text.slice(0, 200);
+            _REASONING_MARKERS_RE.lastIndex = 0;
+            let density = 0;
+            while (_REASONING_MARKERS_RE.exec(first200) !== null) density++;
+            if (density >= 3 && answer.length < 100) return text;
+            // After last marker — if remaining text is short, it's still reasoning
+            if (answer.length < 30) return text;
             if (answer) return answer;
         }
     }

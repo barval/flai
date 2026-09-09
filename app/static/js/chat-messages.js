@@ -475,7 +475,7 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         const isSystemError = modelName === 'system';
 
         if (modelName) {
-            const shortModel = modelName.split('/').pop() || modelName;
+            const shortModel = (modelName.split('/').pop() || modelName).replace(/\.gguf$/i, '');
             const emoji = getModelEmoji(modelType);
             headerExtraHTML += ' <span class="text-muted">| ' + emoji + escapeHtml(shortModel) + '</span>';
         }

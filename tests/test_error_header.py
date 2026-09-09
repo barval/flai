@@ -114,6 +114,61 @@ class TestSaveAndRespondOmitsHeaderFieldsOnError:
         assert "completion_tokens" in result
 
 
+class TestRagModelUsedOmitsGgufSuffix:
+    """RAG answers must not expose a '.gguf' storage extension in the
+    model_used string sent to the client — the file suffix is an internal
+    storage detail, not part of the model name shown in the header."""
+
+    @pytest.fixture
+    def q(self, test_app):
+        from app.queue import RedisRequestQueue
+
+        with (
+            patch("redis.from_url", return_value=MagicMock()),
+            patch.object(RedisRequestQueue, "__init__", lambda self, app: None),
+        ):
+            q = RedisRequestQueue(test_app)
+            q.app = test_app
+            q.logger = test_app.logger
+            return q
+
+    def test_rag_answer_model_used_strips_gguf(self, q):
+        """_process_reasoning_request must pass model_used WITHOUT .gguf
+        to _save_and_respond when RAG answers directly."""
+        task = {
+            "data": {"text": "Что в документации?"},
+            "session_id": "s1",
+            "user_id": "u1",
+            "lang": "ru",
+        }
+        captured = {}
+
+        with (
+            patch.object(q, "_log_gpu_state_before_op"),
+            patch.object(q, "_publish_stream_event"),
+            patch.object(q, "_try_rag_answer", return_value=("содержимое", "Qwen3-4B.gguf")),
+            patch.object(q, "_is_llm_error_string", return_value=False),
+            patch.object(
+                q,
+                "_save_and_respond",
+                side_effect=lambda *args, **kwargs: (
+                    captured.update(
+                        model_used=args[2],
+                        session_id=args[0],
+                        is_error=kwargs,
+                    )
+                    or {"status": "ok"}
+                ),
+            ),
+        ):
+            q._process_reasoning_request(task)
+
+        assert captured["model_used"] == "Qwen3-4B (RAG)", (
+            "model_used must not contain '.gguf' — the file suffix is a storage detail,"
+            f" got: {captured['model_used']!r}"
+        )
+
+
 class TestBuildErrorResponseOmitsResponseTime:
     """_build_error_response must not return response_time in the dict
     sent to the client (it stays in DB via save_message for analytics)."""

@@ -1521,11 +1521,7 @@ class RedisRequestQueue:
             if rag_answer is not None:
                 if self._is_llm_error_string(rag_answer):
                     return self._build_error_response(session_id, rag_answer, rag_time, lang)
-                model_name = (
-                    rag_model
-                    if rag_model and rag_model.endswith(".gguf")
-                    else (rag_model + ".gguf" if rag_model else "")
-                )
+                model_name = rag_model.replace(".gguf", "") if rag_model else ""
                 model_used = model_name + " (RAG)" if model_name else "unknown (RAG)"
                 self.app.logger.info(f"RAG answered in reasoning request: {query[:50]}...")
                 return self._save_and_respond(

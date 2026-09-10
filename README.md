@@ -16,7 +16,7 @@
 
 <p align="center">
   <a href="https://gitea.prits.top/barval-my/flai/raw/branch/master/docs/flai_english.mp4">
-    <img src="docs/flai_english.png" width="640" alt="FLAI video overview">
+    <img src="docs/flai_english.png" width="720" alt="FLAI video overview">
   </a>
 </p>
 

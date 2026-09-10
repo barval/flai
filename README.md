@@ -12,6 +12,10 @@
 [English](README.md) | [Russian](README-ru.md)
 </div>
 
+### 🎬 Video Overview
+
+<video controls src="docs/flai_english.mp4" style="max-width:100%"></video>
+
 ---
 
 ## ✨ Features

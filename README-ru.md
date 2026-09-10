@@ -16,7 +16,7 @@
 
 <p align="center">
   <a href="https://raw.githubusercontent.com/barval/flai/main/docs/flai_russian.mp4">
-    <img src="docs/flai_russian.png" width="480" alt="Видеообзор FLAI">
+    <img src="docs/flai_russian.png" width="640" alt="Видеообзор FLAI">
   </a>
 </p>
 

@@ -15,7 +15,7 @@
 ### 🎬 Video Overview
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/barval/flai/main/docs/flai_english.mp4">
+  <a href="https://github.com/user-attachments/assets/82458976-08af-4c74-a891-4c63f6818426">
     <img src="docs/flai_english.png" width="720" alt="FLAI video overview">
   </a>
 </p>

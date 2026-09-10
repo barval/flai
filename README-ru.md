@@ -14,7 +14,11 @@
 
 ### 🎬 Видеообзор
 
-[![Видеообзор FLAI](docs/flai_russian.png)](docs/flai_russian.mp4)
+<p align="center">
+  <a href="https://gitea.prits.ru/barval-my/flai/raw/branch/master/docs/flai_russian.mp4">
+    <img src="docs/flai_russian.png" width="480" alt="Видеообзор FLAI">
+  </a>
+</p>
 
 ---
 

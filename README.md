@@ -14,7 +14,11 @@
 
 ### 🎬 Video Overview
 
-[![FLAI video overview](docs/flai_english.png)](docs/flai_english.mp4)
+<p align="center">
+  <a href="https://raw.githubusercontent.com/barval/flai/main/docs/flai_english.mp4">
+    <img src="docs/flai_english.png" width="480" alt="FLAI video overview">
+  </a>
+</p>
 
 ---
 

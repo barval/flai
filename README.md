@@ -14,7 +14,7 @@
 
 ### 🎬 Video Overview
 
-<video controls src="docs/flai_english.mp4" style="max-width:100%"></video>
+[![FLAI video overview](docs/flai_english.png)](docs/flai_english.mp4)
 
 ---
 

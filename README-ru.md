@@ -14,7 +14,7 @@
 
 ### 🎬 Видеообзор
 
-<video controls src="docs/flai_russian.mp4" style="max-width:100%"></video>
+[![Видеообзор FLAI](docs/flai_russian.png)](docs/flai_russian.mp4)
 
 ---
 

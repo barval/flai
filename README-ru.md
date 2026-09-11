@@ -235,45 +235,40 @@ git clone https://github.com/barval/flai.git
 cd flai
 
 # Только мультимодальная + llama.cpp
-./deploy.sh --download-models
+./deploy-ru.sh --download-models
 
 # + Генерация/редактирование изображений
-./deploy.sh --download-models --with-image-gen
+./deploy-ru.sh --download-models --with-image-gen
 
 # + Голос (Whisper ASR + Piper TTS)
-./deploy.sh --download-models --with-image-gen --with-voice
+./deploy-ru.sh --download-models --with-image-gen --with-voice
 
 # + RAG (Qdrant)
-./deploy.sh --download-models --with-image-gen --with-voice --with-rag
+./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag
 
 # + Генерация видео (скрипт ставит легаси LTX-модели; Wan2.2 — вручную, см. примечание)
-./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video
+./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag --with-video
 
 # + Долговременная память (SuperLocalMemory)
-./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm
+./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm
 
 # + Поиск в интернете (SearXNG)
-./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
+./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
 
 # Полный стек
-./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
+./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
 
 # Запуск тестов после развёртывания
-./deploy.sh --download-models --with-image-gen --run-tests
+./deploy-ru.sh --download-models --with-image-gen --run-tests
 ```
 
-> ⚠️ **Примечание:** профиль `--with-video` сейчас скачивает через `deploy.sh` унаследованные (неактивные) модели **LTX-Video**, а само видео работает на **Wan2.2-TI2V-5B-Turbo**, который `deploy.sh` **не** скачивает. Файлы Wan (все Apache-2.0): `wan2.2-ti2v-5b-turbo-Q4_K_M.gguf` (~3,44 ГБ), `umt5-xxl-encoder-Q8_0.gguf` (~6 ГБ), `Wan2.2_VAE.safetensors` (~1,41 ГБ). Скачайте их вручную — см. блок «Модели генерации видео» ниже.
+> ⚠️ **Примечание:** профиль `--with-video` сейчас скачивает через `deploy-ru.sh` унаследованные (неактивные) модели **LTX-Video**, а само видео работает на **Wan2.2-TI2V-5B-Turbo**, который `deploy-ru.sh` **не** скачивает. Файлы Wan (все Apache-2.0): `wan2.2-ti2v-5b-turbo-Q4_K_M.gguf` (~3,44 ГБ), `umt5-xxl-encoder-Q8_0.gguf` (~6 ГБ), `Wan2.2_VAE.safetensors` (~1,41 ГБ). Скачайте их вручную — см. блок «Модели генерации видео» ниже.
 
 > **Развёртывание только на CPU (без NVIDIA GPU):** добавьте флаг `--cpu`. Номинальный `docker-compose.cpu.yml` выбирается автоматически, если `nvidia-smi` не найден, но `--cpu` принудительно включает его.
 >
 > ```bash
-> ./deploy.sh --cpu --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
+> ./deploy-ru.sh --cpu --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
 > ```
-
-Также доступна русская версия скрипта:
-```bash
-./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
-```
 
 > **Параметры шифрования и аутентификации генерируются автоматически:** скрипт копирует `.env.example` в `.env` и сам подставляет случайные безопасные значения `SECRET_KEY` и `QDRANT_API_KEY` — вручную редактировать `.env` нужно только если вы хотите изменить тайм-часовую зону, URL-ы API или прочие параметры. Если первый запуск прервался после создания `.env`, повторный запуск той же команды пропустит пересоздание файла и продолжит с загрузки моделей.
 
@@ -366,7 +361,7 @@ wget -O services/sd_cpp/models/vae/flux2_ae.safetensors \
 
 Начиная с v11.1 генерация видео работает на **Wan2.2-TI2V-5B-Turbo** (Apache-2.0) через обёртку stable-diffusion.cpp, поэтому файлы лежат в каталогах моделей sd-cpp:
 
-> ⚠️ **Примечание:** `deploy.sh --with-video` **не** скачивает файлы Wan2.2 ниже — он ставит только унаследованные (неактивные) модели LTX-Video. Все три файла нужно скачать вручную (все Apache-2.0): `wan2.2-ti2v-5b-turbo-Q4_K_M.gguf` (~3,44 ГБ), `umt5-xxl-encoder-Q8_0.gguf` (~6 ГБ), `Wan2.2_VAE.safetensors` (~1,41 ГБ).
+> ⚠️ **Примечание:** `deploy-ru.sh --with-video` **не** скачивает файлы Wan2.2 ниже — он ставит только унаследованные (неактивные) модели LTX-Video. Все три файла нужно скачать вручную (все Apache-2.0): `wan2.2-ti2v-5b-turbo-Q4_K_M.gguf` (~3,44 ГБ), `umt5-xxl-encoder-Q8_0.gguf` (~6 ГБ), `Wan2.2_VAE.safetensors` (~1,41 ГБ).
 
 ```bash
 # Диффузионный трансформер (Q4_K_M; на hub файл называется Wan2_2-TI2V-5B-Turbo-Q4_K_M.gguf,
@@ -419,7 +414,7 @@ docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with
 
 Для систем без NVIDIA GPU используйте `docker-compose.cpu.yml`. Он запускает **тот же полный набор функций** — просто медленнее. Замените `docker-compose.gpu.yml` на `docker-compose.cpu.yml` во всех командах выше (например, `docker compose -f docker-compose.cpu.yml up -d`). Все значения таймаутов уже увеличены под производительность CPU.
 
-> 🔄 **Переключение между GPU и CPU происходит мгновенно — пересборка не требуется.** Образы генерации изображений и видео тегируются по бэкенду и **сосуществуют** в локальном реестре: `flai-sd_cpp:cuda` / `flai-sd_cpp:cpu` и `flai-ltxvideo:cuda` / `flai-ltxvideo:cpu`. Повторный запуск `./deploy.sh` (GPU) или `./deploy.sh --cpu` (CPU) просто переключает compose-файл и переиспользует уже собранный образ нужного тега — удобно для быстрой проверки на CPU даже при наличии GPU.
+> 🔄 **Переключение между GPU и CPU происходит мгновенно — пересборка не требуется.** Образы генерации изображений и видео тегируются по бэкенду и **сосуществуют** в локальном реестре: `flai-sd_cpp:cuda` / `flai-sd_cpp:cpu` и `flai-ltxvideo:cuda` / `flai-ltxvideo:cpu`. Повторный запуск `./deploy-ru.sh` (GPU) или `./deploy-ru.sh --cpu` (CPU) просто переключает compose-файл и переиспользует уже собранный образ нужного тега — удобно для быстрой проверки на CPU даже при наличии GPU.
 
 > ⚠️ **Владельцы GPU AMD/Intel:** официальные образы только CUDA, поэтому используйте описанный выше режим только CPU. Поддерживаемого пути ROCm/Vulkan нет.
 
@@ -698,7 +693,7 @@ SD_CPP_DEFAULT_STEPS=10
 
 ```bash
 # Видео работает через сервис sd-cpp — запускайте его вместе с генерацией изображений:
-./deploy.sh --download-models --with-image-gen
+./deploy-ru.sh --download-models --with-image-gen
 # или: docker compose -f docker-compose.gpu.yml --profile with-image-gen up -d
 # Файлы моделей: см. «Модели генерации видео» в разделе загрузки выше.
 ```

@@ -363,13 +363,13 @@ except Exception as e:
 
 # ── Build & Launch ──
 build_and_launch() {
-    local PROFILE=""
-    [[ "$WITH_IMAGE_GEN" == "true" ]] && PROFILE="$PROFILE --profile with-image-gen"
-    [[ "$WITH_VOICE" == "true" ]] && PROFILE="$PROFILE --profile with-voice"
-    [[ "$WITH_RAG" == "true" ]]    && PROFILE="$PROFILE --profile with-rag"
-    [[ "$WITH_VIDEO" == "true" ]]  && PROFILE="$PROFILE --profile with-video"
-    [[ "$WITH_SLM" == "true" ]]    && PROFILE="$PROFILE --profile with-slm"
-    [[ "$WITH_SEARCH" == "true" ]] && PROFILE="$PROFILE --profile with-search"
+    PROFILES=""
+    [[ "$WITH_IMAGE_GEN" == "true" ]] && PROFILES="$PROFILES --profile with-image-gen"
+    [[ "$WITH_VOICE" == "true" ]] && PROFILES="$PROFILES --profile with-voice"
+    [[ "$WITH_RAG" == "true" ]]    && PROFILES="$PROFILES --profile with-rag"
+    [[ "$WITH_VIDEO" == "true" ]]  && PROFILES="$PROFILES --profile with-video"
+    [[ "$WITH_SLM" == "true" ]]    && PROFILES="$PROFILES --profile with-slm"
+    [[ "$WITH_SEARCH" == "true" ]] && PROFILES="$PROFILES --profile with-search"
 
     COMPOSE_FILE="docker-compose.gpu.yml"
     if [[ "${FLAI_PLATFORM:-}" == "cpu" ]] || ! command -v nvidia-smi &>/dev/null; then
@@ -401,10 +401,10 @@ build_and_launch() {
     docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
 
     info "Building Docker images..."
-    docker compose -f "$COMPOSE_FILE" $PROFILE build
+    docker compose -f "$COMPOSE_FILE" $PROFILES build
 
     info "Starting services..."
-    docker compose -f "$COMPOSE_FILE" $PROFILE up -d
+    docker compose -f "$COMPOSE_FILE" $PROFILES up -d
 
     info "Waiting for services to start..."
     sleep 10
@@ -474,6 +474,7 @@ WITH_SEARCH=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
 FLAI_PLATFORM="${FLAI_PLATFORM:-}"
+PROFILES=""
 
 for arg in "$@"; do
     case "$arg" in
@@ -531,7 +532,7 @@ main() {
     echo "  3. Log in as admin on the login page"
     echo ""
     echo "  Useful commands:"
-    echo "  Start:    docker compose -f $COMPOSE_FILE up -d"
+    echo "  Start:    docker compose -f $COMPOSE_FILE$PROFILES up -d"
     echo "  Logs:     docker compose -f $COMPOSE_FILE logs -f"
     echo "  Stop:     docker compose -f $COMPOSE_FILE down --remove-orphans"
     echo "============================================"

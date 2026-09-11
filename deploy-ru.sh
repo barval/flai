@@ -483,6 +483,11 @@ build_and_launch() {
     info "Ожидаю запуск сервисов..."
     sleep 10
 
+    # Компилируем .mo файлы переводов (bind-mount перекрывает .mo из образа)
+    info "Компилирую переводы..."
+    docker exec flai-web pybabel compile -d /app/translations 2>/dev/null || \
+        info "pybabel недоступен — переводы могут быть на английском."
+
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "недоступен")
     if [[ "$STATUS" == "ok" ]]; then

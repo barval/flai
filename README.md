@@ -282,6 +282,8 @@ cd flai
 > ./deploy.sh --cpu --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
 > ```
 
+> **Environment keys are generated automatically:** the script copies `.env.example` to `.env` and fills in `SECRET_KEY` and `QDRANT_API_KEY` with secure random values itself — you only need to edit `.env` manually to set your timezone, API URLs, or other preferences. If the first run is interrupted after `.env` was created, re-running the same command skips reconfiguration and continues with the downloads.
+
 ### Option B: Manual Deployment
 
 If you prefer step-by-step control:

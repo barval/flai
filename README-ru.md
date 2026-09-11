@@ -94,7 +94,7 @@
 |-------------|------------|
 | **Мультиплатформенная поддержка GPU (в работе)** | Архитектура движется к работе на NVIDIA, AMD, Intel и CPU-only машинах. Новый модуль `app/platform_detect.py` абстрагирует определение GPU (прозондирует `nvidia-smi` / `rocm-smi` / `vulkaninfo`) и предоставляет вендор-независимый API запросов VRAM; переменная `FLAI_PLATFORM` позволяет явно задать платформу. Весь поллинг VRAM и определение GPU теперь идут через эту абстракцию. |
 | **Мгновенное переключение GPU↔CPU (без пересборки)** | Образы с backend-тегами — каждый compose-файл закрепляет свой тег образа (`flai-sd_cpp:cuda/cpu`, `flai-ltxvideo:cuda/cpu`), поэтому GPU- и CPU-сборки сосуществуют, и для переключения стека пересборка не нужна. Повторно запустите `./deploy-ru.sh` (GPU) или `./deploy-ru.sh --cpu` (CPU). |
-| **Режим только CPU** | Новый `docker-compose.cpu.yml` с тем же стеком сервисов (web, redis, postgres, llama-swap, SD, LTX, Whisper, Piper, SearXNG, SLM, Qdrant) на CPU-сборках всех моделей; таймауты увеличены (`SD_CPP_TIMEOUT=1800`, `LLM_TIMEOUT=600`, `SD_CLI_TIMEOUT=3600`). `deploy.sh`/`deploy-ru.sh` принимают `--cpu` и автоматически выбирают CPU compose-файл, если NVIDIA GPU не обнаружен. |
+| **Режим только CPU** | Новый `docker-compose.cpu.yml` с тем же стеком сервисов (web, redis, postgres, llama-swap, SD, LTX, Whisper, Piper, SearXNG, SLM, Qdrant) на CPU-сборках всех моделей; таймауты увеличены (`SD_CPP_TIMEOUT=1800`, `LLM_TIMEOUT=600`, `SD_CLI_TIMEOUT=3600`). `deploy-ru.sh`/`deploy-ru.sh` принимают `--cpu` и автоматически выбирают CPU compose-файл, если NVIDIA GPU не обнаружен. |
 | **Адаптивное разрешение видео на CPU (память прежде всего)** | Предварительное планирование RAM (`plan_cpu_generation()` в `modules/video.py`) оценивает пиковую память LTX и, если запрошенный клип 768×512×240 не помещается, снижает его по фиксированному каскаду: 384×256×120 @ 12 к/с → 256×192×57 @ 6 к/с. Пользователь уведомляется о выбранном формате, а при невозможности даже минимального шага генерация останавливается с чётким сообщением ⚠️. |
 | **Вкладка «Оборудование» в админке** | Первая вкладка админ-панели «Hardware» / «Оборудование» (перед «Пользователями») показывает платформу (`nvidia` / `amd` / `intel` / `cpu`), GPU, VRAM, ядра CPU, RAM и модель CPU. |
 | **Платформа в админ-API** | `/api/hardware` теперь сообщает определённую платформу (`nvidia` / `amd` / `intel` / `cpu`) наряду с именем GPU и VRAM, а также `cpu_count` и `cpu_name`. |
@@ -250,43 +250,38 @@ git clone https://github.com/barval/flai.git
 cd flai
 
 # Только мультимодальная + llama.cpp
-./deploy.sh --download-models
+./deploy-ru.sh --download-models
 
 # + Генерация/редактирование изображений
-./deploy.sh --download-models --with-image-gen
+./deploy-ru.sh --download-models --with-image-gen
 
 # + Голос (Whisper ASR + Piper TTS)
-./deploy.sh --download-models --with-image-gen --with-voice
+./deploy-ru.sh --download-models --with-image-gen --with-voice
 
 # + RAG (Qdrant)
-./deploy.sh --download-models --with-image-gen --with-voice --with-rag
+./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag
 
 # + Генерация видео (LTX-Video)
-./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video
+./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag --with-video
 
 # + Долговременная память (SuperLocalMemory)
-./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm
+./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm
 
 # + Поиск в интернете (SearXNG)
-./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
+./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
 
 # Полный стек
-./deploy.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
+./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
 
 # Запуск тестов после развёртывания
-./deploy.sh --download-models --with-image-gen --run-tests
+./deploy-ru.sh --download-models --with-image-gen --run-tests
 ```
 
 > **Развёртывание только на CPU (без NVIDIA GPU):** добавьте флаг `--cpu`. Номинальный `docker-compose.cpu.yml` выбирается автоматически, если `nvidia-smi` не найден, но `--cpu` принудительно включает его.
 >
 > ```bash
-> ./deploy.sh --cpu --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
+> ./deploy-ru.sh --cpu --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
 > ```
-
-Также доступна русская версия скрипта:
-```bash
-./deploy-ru.sh --download-models --with-image-gen --with-voice --with-rag --with-video --with-slm --with-search
-```
 
 > **Параметры шифрования и аутентификации генерируются автоматически:** скрипт копирует `.env.example` в `.env` и сам подставляет случайные безопасные значения `SECRET_KEY` и `QDRANT_API_KEY` — вручную редактировать `.env` нужно только если вы хотите изменить тайм-часовую зону, URL-ы API или прочие параметры. Если первый запуск прервался после создания `.env`, повторный запуск той же команды пропустит пересоздание файла и продолжит с загрузки моделей.
 
@@ -420,7 +415,7 @@ docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with
 
 Для систем без NVIDIA GPU используйте `docker-compose.cpu.yml`. Он запускает **тот же полный набор функций** — просто медленнее. Замените `docker-compose.gpu.yml` на `docker-compose.cpu.yml` во всех командах выше (например, `docker compose -f docker-compose.cpu.yml up -d`). Все значения таймаутов уже увеличены под производительность CPU.
 
-> 🔄 **Переключение между GPU и CPU происходит мгновенно — пересборка не требуется.** Образы генерации изображений и видео тегируются по бэкенду и **сосуществуют** в локальном реестре: `flai-sd_cpp:cuda` / `flai-sd_cpp:cpu` и `flai-ltxvideo:cuda` / `flai-ltxvideo:cpu`. Повторный запуск `./deploy.sh` (GPU) или `./deploy.sh --cpu` (CPU) просто переключает compose-файл и переиспользует уже собранный образ нужного тега — удобно для быстрой проверки на CPU даже при наличии GPU.
+> 🔄 **Переключение между GPU и CPU происходит мгновенно — пересборка не требуется.** Образы генерации изображений и видео тегируются по бэкенду и **сосуществуют** в локальном реестре: `flai-sd_cpp:cuda` / `flai-sd_cpp:cpu` и `flai-ltxvideo:cuda` / `flai-ltxvideo:cpu`. Повторный запуск `./deploy-ru.sh` (GPU) или `./deploy-ru.sh --cpu` (CPU) просто переключает compose-файл и переиспользует уже собранный образ нужного тега — удобно для быстрой проверки на CPU даже при наличии GPU.
 
 > ⚠️ **Владельцы GPU AMD/Intel:** официальные образы только CUDA, поэтому используйте описанный выше режим только CPU. Поддерживаемого пути ROCm/Vulkan нет.
 
@@ -687,7 +682,7 @@ SD_CPP_DEFAULT_STEPS=10
 
 ```bash
 # Загрузка через скрипт развёртывания
-./deploy.sh --download-models --with-video
+./deploy-ru.sh --download-models --with-video
 
 # Или вручную:
 bash services/ltx_video/download-t5-encoder.sh

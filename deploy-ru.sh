@@ -357,13 +357,13 @@ except Exception as e:
 
 # ── Сборка и запуск ──
 build_and_launch() {
-    local PROFILE=""
-    [[ "$WITH_IMAGE_GEN" == "true" ]] && PROFILE="$PROFILE --profile with-image-gen"
-    [[ "$WITH_VOICE" == "true" ]] && PROFILE="$PROFILE --profile with-voice"
-    [[ "$WITH_RAG" == "true" ]]    && PROFILE="$PROFILE --profile with-rag"
-    [[ "$WITH_VIDEO" == "true" ]]  && PROFILE="$PROFILE --profile with-video"
-    [[ "$WITH_SLM" == "true" ]]    && PROFILE="$PROFILE --profile with-slm"
-    [[ "$WITH_SEARCH" == "true" ]] && PROFILE="$PROFILE --profile with-search"
+    PROFILES=""
+    [[ "$WITH_IMAGE_GEN" == "true" ]] && PROFILES="$PROFILES --profile with-image-gen"
+    [[ "$WITH_VOICE" == "true" ]] && PROFILES="$PROFILES --profile with-voice"
+    [[ "$WITH_RAG" == "true" ]]    && PROFILES="$PROFILES --profile with-rag"
+    [[ "$WITH_VIDEO" == "true" ]]  && PROFILES="$PROFILES --profile with-video"
+    [[ "$WITH_SLM" == "true" ]]    && PROFILES="$PROFILES --profile with-slm"
+    [[ "$WITH_SEARCH" == "true" ]] && PROFILES="$PROFILES --profile with-search"
 
     COMPOSE_FILE="docker-compose.gpu.yml"
     if [[ "${FLAI_PLATFORM:-}" == "cpu" ]] || ! command -v nvidia-smi &>/dev/null; then
@@ -395,10 +395,10 @@ build_and_launch() {
     docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
 
     info "Собираю Docker-образы..."
-    docker compose -f "$COMPOSE_FILE" $PROFILE build
+    docker compose -f "$COMPOSE_FILE" $PROFILES build
 
     info "Запускаю сервисы..."
-    docker compose -f "$COMPOSE_FILE" $PROFILE up -d
+    docker compose -f "$COMPOSE_FILE" $PROFILES up -d
 
     info "Ожидаю запуск сервисов..."
     sleep 10
@@ -469,6 +469,7 @@ WITH_SEARCH=false
 DOWNLOAD_MODELS=false
 RUN_TESTS=false
 FLAI_PLATFORM="${FLAI_PLATFORM:-}"
+PROFILES=""
 
 for arg in "$@"; do
     case "$arg" in
@@ -526,7 +527,7 @@ main() {
     echo "  3. Войдите как admin на странице входа"
     echo ""
     echo "  Полезные команды:"
-    echo "  Запуск:     docker compose -f $COMPOSE_FILE up -d"
+    echo "  Запуск:     docker compose -f $COMPOSE_FILE$PROFILES up -d"
     echo "  Логи:       docker compose -f $COMPOSE_FILE logs -f"
     echo "  Остановка:  docker compose -f $COMPOSE_FILE down --remove-orphans"
     echo "============================================"

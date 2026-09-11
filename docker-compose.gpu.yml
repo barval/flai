@@ -96,7 +96,7 @@ services:
   # LLAMA-SWAP (Required - LLM Proxy, router mode)
   # ============================================================
   llama-swap:
-    image: ghcr.io/mostlygeek/llama-swap:cuda
+    image: ${LLAMA_SWAP_IMAGE:-ghcr.io/mostlygeek/llama-swap:cuda}
     container_name: flai-llamaswap
     volumes:
       - ./services/llamacpp/models:/models:ro
@@ -131,6 +131,8 @@ services:
       dockerfile: Dockerfile.sd_cpp
       args:
         SD_BACKEND: cuda
+        CUDA_VERSION: ${CUDA_VERSION_SD:-13.0.1}
+        UBUNTU_VERSION: ${UBUNTU_VERSION_SD:-24.04}
     container_name: flai-sd
     volumes:
       - ./services/sd_cpp/models/diffusion_models:/app/models/diffusion_models

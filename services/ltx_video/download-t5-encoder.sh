@@ -20,8 +20,6 @@
 #       ├── spiece.model
 #       └── tokenizer_config.json
 
-set -e
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TARGET_DIR="$SCRIPT_DIR/models/t5_encoder"
 HF_REPO="PixArt-alpha/PixArt-XL-2-1024-MS"
@@ -69,7 +67,12 @@ print_success() {
 
 try_snapshot_download() {
     if ! python3 -c "import huggingface_hub" 2>/dev/null; then
-        return 1
+        info "Устанавливаю Python-пакет huggingface_hub (для скачивания T5)..."
+        pip3 install --break-system-packages --quiet huggingface_hub 2>/dev/null \
+            || pip3 install --user --quiet huggingface_hub 2>/dev/null \
+            || pip3 install --quiet huggingface_hub 2>/dev/null \
+            || warn "pip недоступен — пробую другие методы."
+        python3 -c "import huggingface_hub" 2>/dev/null || return 1
     fi
 
     echo "--- Method 1: huggingface_hub snapshot_download ---"
@@ -209,6 +212,4 @@ echo "Downloading T5 text encoder ($HF_REPO)..."
 echo "Target: $TARGET_DIR"
 echo ""
 
-try_snapshot_download
-try_git_lfs
-print_manual_instructions
+try_snapshot_download || try_git_lfs || print_manual_instructions

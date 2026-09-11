@@ -353,12 +353,20 @@ download_whisper_models() {
         -v "$(pwd)/$CACHE_DIR:/cache" \
         python:3.11-slim \
         bash -c "
-pip install -q huggingface_hub && hf download \
-    Systran/faster-whisper-medium \
-    --cache-dir /cache \
-    --exclude '*.h5' \
-    --exclude '*.ot' \
-    --exclude '*.msgpack'
+pip install -q huggingface_hub && python3 -c '
+from huggingface_hub import snapshot_download
+import sys
+try:
+    path = snapshot_download(
+        \"Systran/faster-whisper-medium\",
+        cache_dir=\"/cache\",
+        ignore_patterns=[\"*.h5\", \"*.ot\", \"*.msgpack\"]
+    )
+    print(f\"OK: скачано в {path}\")
+except Exception as e:
+    print(f\"Ошибка: {e}\")
+    sys.exit(1)
+'
 " && info "Модель Whisper успешно скачана." || warn "Не удалось скачать модель Whisper. ASR будет недоступен."
 }
 

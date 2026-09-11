@@ -301,6 +301,11 @@ class RedisRequestQueue:
         slow_proc = self.redis.hlen(self.slow_processing_key)
         total = fast_total + slow_total + fast_proc + slow_proc
         if total == 0:
+            # Reset user counter to prevent stale "1/1" display after all
+            # tasks finish (race between blpop and hset to processing creates
+            # a window where total=0 but user_count>0 in the hash).
+            user_count_key = f"{self.queue_key}:user_counts"
+            self.redis.hset(user_count_key, user_id, 0)
             return 0, 0
 
         user_count_key = f"{self.queue_key}:user_counts"
@@ -318,10 +323,6 @@ class RedisRequestQueue:
         pipe.hincrby(user_count_key, user_id, -1)
         pipe.hincrby(user_count_key, "__total__", -1)
         pipe.execute()
-
-    def _cleanup_user_request(self, user_id: str, request_id: str):
-        """Remove request ID from user's set after completion."""
-        self.redis.srem(f"{self.user_requests_key}:{user_id}", request_id)
 
     def _get_model_for_task(self, task: dict[str, Any]) -> str:
         """Determine which llama.cpp model a task will need."""
@@ -524,11 +525,14 @@ class RedisRequestQueue:
                 ),
             )
             self.redis.expire(self.results_key, result_ttl)
-            self.redis.hdel(processing_key, task_id)
+            pipe = self.redis.pipeline()
+            pipe.hdel(processing_key, task_id)
             user_id = task.get("user_id")
             if user_id:
-                self._cleanup_user_request(user_id, task_id)
-                self._decrement_user_queue_count(user_id)
+                pipe.srem(f"{self.user_requests_key}:{user_id}", task_id)
+                pipe.hincrby(f"{self.queue_key}:user_counts", user_id, -1)
+                pipe.hincrby(f"{self.queue_key}:user_counts", "__total__", -1)
+            pipe.execute()
             self._publish_result_event(task, "error", {"error": error_text, "session_id": task.get("session_id")})
             return
 
@@ -564,15 +568,15 @@ class RedisRequestQueue:
             self.redis.expire(self.results_key, self.app.config.get("REDIS_RESULT_TTL", 3600))
             self._publish_result_event(task, "error", {"error": str(e), "session_id": task.get("session_id")})
         finally:
-            self.redis.hdel(processing_key, task_id)
+            pipe = self.redis.pipeline()
+            pipe.hdel(processing_key, task_id)
             user_id = task.get("user_id")
             if user_id:
-                self._cleanup_user_request(user_id, task_id)
-                # Don't decrement for background tasks — they were never
-                # incremented via add_request(), so decrementing causes
-                # the user counter to drift negative.
+                pipe.srem(f"{self.user_requests_key}:{user_id}", task_id)
                 if task.get("type") not in self._BACKGROUND_TASK_TYPES:
-                    self._decrement_user_queue_count(user_id)
+                    pipe.hincrby(f"{self.queue_key}:user_counts", user_id, -1)
+                    pipe.hincrby(f"{self.queue_key}:user_counts", "__total__", -1)
+            pipe.execute()
 
         # Skip VRAM cleanup if task was requeued — next worker needs current GPU state.
         # E.g.: image_chat → [-VIDEO-] → requeue → slow worker uses same multimodal model.

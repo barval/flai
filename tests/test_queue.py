@@ -154,8 +154,8 @@ class TestRedisRequestQueue:
             queue = RedisRequestQueue(mock_app)
             queue._process_request = Mock(return_value={"session_id": "s1"})  # type: ignore[method-assign]
             queue._publish_result_event = Mock()  # type: ignore[method-assign]
-            queue._cleanup_user_request = Mock()  # type: ignore[method-assign]
-            queue._decrement_user_queue_count = Mock()  # type: ignore[method-assign]
+            queue._publish_result_event = Mock()  # type: ignore[method-assign]
+            queue._ready_for_task = Mock(return_value=True)  # type: ignore[method-assign]
             queue._cleanup_vram_after_task = Mock()  # type: ignore[method-assign]
 
             task = {"id": "t1", "user_id": "u1", "session_id": "s1", "type": "text", "timestamp": time.time()}

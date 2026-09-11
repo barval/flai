@@ -73,6 +73,18 @@ validate_env() {
     fi
 }
 
+# ── Включение опций в .env ──
+enable_env_features() {
+    if [[ "$WITH_SEARCH" == "true" ]] && grep -q '^# SEARXNG_URL=' .env 2>/dev/null; then
+        info "Включаю веб-поиск (SearXNG) в .env..."
+        sed -i 's|^# SEARXNG_URL=|SEARXNG_URL=|' .env
+    fi
+    if [[ "$WITH_SLM" == "true" ]] && grep -q '^# SLM_URL=' .env 2>/dev/null; then
+        info "Включаю долговременную память (SLM) в .env..."
+        sed -i 's|^# SLM_URL=|SLM_URL=|' .env
+    fi
+}
+
 # ── Генерация минимального конфига llama-swap ──
 generate_llama_swap_config() {
     local CONFIG_DIR="llama-swap-config"
@@ -583,6 +595,7 @@ main() {
     setup_env
     validate_env
     generate_llama_swap_config
+    enable_env_features
     resolve_stack
 
     show_start_hints

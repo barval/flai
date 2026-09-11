@@ -70,6 +70,18 @@ validate_env() {
     fi
 }
 
+# ── Enable features in .env ──
+enable_env_features() {
+    if [[ "$WITH_SEARCH" == "true" ]] && grep -q '^# SEARXNG_URL=' .env 2>/dev/null; then
+        info "Enabling web search (SearXNG) in .env..."
+        sed -i 's|^# SEARXNG_URL=|SEARXNG_URL=|' .env
+    fi
+    if [[ "$WITH_SLM" == "true" ]] && grep -q '^# SLM_URL=' .env 2>/dev/null; then
+        info "Enabling long-term memory (SLM) in .env..."
+        sed -i 's|^# SLM_URL=|SLM_URL=|' .env
+    fi
+}
+
 # ── Generate minimal llama-swap config ──
 generate_llama_swap_config() {
     local CONFIG_DIR="llama-swap-config"
@@ -586,6 +598,7 @@ main() {
     setup_env
     validate_env
     generate_llama_swap_config
+    enable_env_features
     resolve_stack
 
     show_start_hints

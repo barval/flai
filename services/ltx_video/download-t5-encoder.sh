@@ -99,11 +99,21 @@ try_docker_download() {
         -v "$TARGET_DIR:/app/models/t5_encoder" \
         python:3.11-slim \
         bash -c "
-pip install -q huggingface_hub && hf download \
-    PixArt-alpha/PixArt-XL-2-1024-MS \
-    --local-dir /app/models/t5_encoder \
-    --include 'text_encoder/*' \
-    --include 'tokenizer/*'
+pip install -q huggingface_hub && python3 -c '
+from huggingface_hub import snapshot_download
+import sys
+try:
+    path = snapshot_download(
+        \"PixArt-alpha/PixArt-XL-2-1024-MS\",
+        local_dir=\"/app/models/t5_encoder\",
+        allow_patterns=[\"text_encoder/*\", \"tokenizer/*\"],
+        max_workers=1,
+    )
+    print(f\"OK: скачано в {path}\")
+except Exception as e:
+    print(f\"Ошибка: {e}\")
+    sys.exit(1)
+'
 "
 
     if [ $? -eq 0 ] && [ -f "$TARGET_DIR/text_encoder/config.json" ]; then

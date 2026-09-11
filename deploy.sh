@@ -38,7 +38,9 @@ setup_env() {
     info "Creating .env from .env.example..."
     cp .env.example .env
     SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || openssl rand -hex 32)
-    sed -i "s/SECRET_KEY=.*/SECRET_KEY=$SECRET/" .env
+    sed -i "s|^SECRET_KEY=.*|SECRET_KEY=$SECRET|" .env
+    QDRANT_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || openssl rand -hex 32)
+    sed -i "s|^QDRANT_API_KEY=.*|QDRANT_API_KEY=$QDRANT_KEY|" .env
     info ".env created. Edit it to set models, URLs, and preferences."
 }
 
@@ -58,7 +60,9 @@ validate_env() {
     local errors=0
     grep -qP '^SECRET_KEY=\S+' .env 2>/dev/null || { warn "SECRET_KEY is not set in .env"; errors=1; }
     grep -qP '^DATABASE_URL=\S+' .env 2>/dev/null || { warn "DATABASE_URL is not set in .env"; errors=1; }
-    [[ "$errors" -eq 1 ]] && warn "Edit .env with your settings before proceeding."
+    if [[ "$errors" -ge 1 ]]; then
+        warn "Edit .env with your settings before proceeding."
+    fi
 }
 
 # ── Generate minimal llama-swap config ──

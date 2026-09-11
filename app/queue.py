@@ -324,6 +324,10 @@ class RedisRequestQueue:
         pipe.hincrby(user_count_key, "__total__", -1)
         pipe.execute()
 
+    def _cleanup_user_request(self, user_id: str, request_id: str):
+        """Remove request ID from user's set after completion."""
+        self.redis.srem(f"{self.user_requests_key}:{user_id}", request_id)
+
     def _get_model_for_task(self, task: dict[str, Any]) -> str:
         """Determine which llama.cpp model a task will need."""
         task_type = task.get("type", "")

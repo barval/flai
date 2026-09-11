@@ -357,7 +357,7 @@ download_whisper_models() {
         -v "$(pwd)/$CACHE_DIR:/cache" \
         python:3.11-slim \
         bash -c "
-pip install -q huggingface_hub && huggingface-cli download \
+pip install -q huggingface_hub && hf download \
     Systran/faster-whisper-medium \
     --cache-dir /cache \
     --resume-download \

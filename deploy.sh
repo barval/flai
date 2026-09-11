@@ -351,36 +351,28 @@ download_whisper_models() {
         return 0
     fi
 
-    if ! python3 -c "import huggingface_hub" >/dev/null 2>&1; then
-        info "Installing Python package huggingface_hub (needed for Whisper download)..."
-        pip3 install --break-system-packages --quiet huggingface_hub 2>/dev/null \
-            || pip3 install --user --quiet huggingface_hub 2>/dev/null \
-            || pip3 install --quiet huggingface_hub 2>/dev/null \
-            || warn "Could not install huggingface_hub via pip."
-    fi
-    if ! python3 -c "import huggingface_hub" >/dev/null 2>&1; then
-        warn "huggingface_hub missing — Whisper model must be downloaded manually."
-        warn "  pip3 install huggingface_hub"
-        return 0
-    fi
-
+    # Download using Docker (no host pip install)
     info "Downloading ~1.5 GB — this may take several minutes..."
-    python3 -c "
+    docker run --rm \
+        -v "$(pwd)/$CACHE_DIR:/cache" \
+        -e HF_HUB_DOWNLOAD_TIMEOUT=600 \
+        python:3.11-slim \
+        bash -c "
+pip install -q huggingface_hub && python3 -c '
 from huggingface_hub import snapshot_download
-import os, sys
-
-os.environ['HF_HUB_DOWNLOAD_TIMEOUT'] = '600'
+import sys
 try:
     path = snapshot_download(
-        'Systran/faster-whisper-medium',
-        cache_dir='$CACHE_DIR',
-        ignore_patterns=['*.h5', '*.ot', '*.msgpack']
+        \"Systran/faster-whisper-medium\",
+        cache_dir=\"/cache\",
+        ignore_patterns=[\"*.h5\", \"*.ot\", \"*.msgpack\"]
     )
-    print(f'OK: model downloaded to {path}')
+    print(f\"OK: model downloaded to {path}\")
 except Exception as e:
-    print(f'ERROR: {e}')
+    print(f\"ERROR: {e}\")
     sys.exit(1)
-" && info "Whisper model downloaded successfully." || warn "Failed to download Whisper model. ASR will be unavailable."
+'
+" 2>&1 | tail -5 && info "Whisper model downloaded successfully." || warn "Failed to download Whisper model. ASR will be unavailable."
 }
 
 # ── CUDA detection & compatible image selection ──

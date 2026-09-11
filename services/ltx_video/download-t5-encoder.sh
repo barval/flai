@@ -103,8 +103,7 @@ pip install -q huggingface_hub && hf download \
     PixArt-alpha/PixArt-XL-2-1024-MS \
     --local-dir /app/models/t5_encoder \
     --include 'text_encoder/*' \
-    --include 'tokenizer/*' \
-    --resume-download
+    --include 'tokenizer/*'
 "
 
     if [ $? -eq 0 ] && [ -f "$TARGET_DIR/text_encoder/config.json" ]; then

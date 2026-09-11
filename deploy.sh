@@ -360,8 +360,9 @@ download_whisper_models() {
 pip install -q huggingface_hub && hf download \
     Systran/faster-whisper-medium \
     --cache-dir /cache \
-    --resume-download \
-    --exclude '*.h5' '*.ot' '*.msgpack'
+    --exclude '*.h5' \
+    --exclude '*.ot' \
+    --exclude '*.msgpack'
 " && info "Whisper model downloaded successfully." || warn "Failed to download Whisper model. ASR will be unavailable."
 }
 

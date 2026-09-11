@@ -99,7 +99,7 @@ try_docker_download() {
         -v "$TARGET_DIR:/app/models/t5_encoder" \
         python:3.11-slim \
         bash -c "
-pip install -q huggingface_hub && huggingface-cli download \
+pip install -q huggingface_hub && hf download \
     PixArt-alpha/PixArt-XL-2-1024-MS \
     --local-dir /app/models/t5_encoder \
     --include 'text_encoder/*' \

@@ -525,6 +525,57 @@ QUEUE_MAX_WAIT_TIME=300
 DEBUG_API_ENABLED=false   # Установите 'true' только для разработки/тестирования
 ```
 
+### Доступ по домену и HTTPS (reverse proxy)
+
+По умолчанию интерфейс открывается по адресу `http://<IP-сервера>:5000` — веб-сервис публикует порт `5000` (`"5000:5000"` в `docker-compose.gpu.yml` / `docker-compose.cpu.yml`), gunicorn слушает `0.0.0.0:5000`.
+
+Чтобы повесить интерфейс на собственный домен, поставьте перед FLAI reverse proxy (nginx, Caddy, Traefik). Приложение доверяет прокси-заголовкам (`ProxyFix`: `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-For`), поэтому редиректы и `url_for` автоматически подставят ваш домен и схему HTTPS.
+
+**Шаг 1.** (опционально) Закрыть прямой доступ к порту 5000: в `docker-compose.gpu.yml` / `docker-compose.cpu.yml` замените `"5000:5000"` на `"127.0.0.1:5000:5000"` и перезапустите `docker compose -f docker-compose.gpu.yml up -d flai-web`.
+
+**Шаг 2.** В `.env`:
+```bash
+# Установите в true ТОЛЬКО за reverse proxy (nginx) с HTTPS — включает Secure-флаг для session-cookie
+HTTPS_ENABLED=true
+```
+
+**Шаг 3.** Пример конфигурации nginx (`/etc/nginx/sites-available/flai`):
+```nginx
+server {
+    listen 80;
+    server_name flai.example.ru;
+
+    # Не меньше, чем MAX_CONTENT_LENGTH_MB из .env (по умолчанию 50 МБ)
+    client_max_body_size 200m;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;      # обязательно для SSE-стриминга ответов
+        proxy_read_timeout 900s;  # >= timeout gunicorn (900s)
+    }
+}
+```
+```bash
+sudo ln -s /etc/nginx/sites-available/flai /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+# HTTPS:
+sudo certbot --nginx -d flai.example.ru
+```
+
+**Шаг 4.** Либо то же самое на **Caddy** (`Caddyfile`) — сертификаты выпускаются автоматически:
+```
+flai.example.ru {
+    reverse_proxy 127.0.0.1:5000
+}
+```
+
+После этого открывайте `https://flai.example.ru`.
+
 ### Конфигурация Docker
 
 **Настройки Gunicorn (gunicorn_config.py):**

@@ -521,6 +521,57 @@ QUEUE_MAX_WAIT_TIME=300
 DEBUG_API_ENABLED=false   # Set to 'true' only for development/testing
 ```
 
+### Domain Access and HTTPS (Reverse Proxy)
+
+By default the web interface is available at `http://<server-ip>:5000` — the web service publishes port `5000` (`"5000:5000"` in `docker-compose.gpu.yml` / `docker-compose.cpu.yml`) and Gunicorn listens on `0.0.0.0:5000`.
+
+To serve FLAI under your own domain, put a reverse proxy (nginx, Caddy, Traefik) in front of it. The app trusts proxy headers (`ProxyFix`: `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-For`), so redirects and `url_for` automatically pick up your domain and the HTTPS scheme.
+
+**Step 1.** (optional) Close direct access to port 5000: in `docker-compose.gpu.yml` / `docker-compose.cpu.yml` change `"5000:5000"` to `"127.0.0.1:5000:5000"` and restart with `docker compose -f docker-compose.gpu.yml up -d flai-web`.
+
+**Step 2.** In `.env`:
+```bash
+# Set to 'true' ONLY behind an HTTPS reverse proxy (nginx) — enables the Secure flag for session cookies
+HTTPS_ENABLED=true
+```
+
+**Step 3.** Example nginx configuration (`/etc/nginx/sites-available/flai`):
+```nginx
+server {
+    listen 80;
+    server_name flai.example.com;
+
+    # Must be >= MAX_CONTENT_LENGTH_MB from .env (default 50 MB)
+    client_max_body_size 200m;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;      # required for SSE response streaming
+        proxy_read_timeout 900s;  # >= gunicorn timeout (900s)
+    }
+}
+```
+```bash
+sudo ln -s /etc/nginx/sites-available/flai /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+# HTTPS:
+sudo certbot --nginx -d flai.example.com
+```
+
+**Step 4.** Alternatively, the same with **Caddy** (`Caddyfile`) — certificates are issued automatically:
+```
+flai.example.com {
+    reverse_proxy 127.0.0.1:5000
+}
+```
+
+You can now open `https://flai.example.com`.
+
 ### Docker Configuration
 
 **Gunicorn Settings (gunicorn_config.py):**

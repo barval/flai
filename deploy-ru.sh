@@ -277,7 +277,7 @@ download_ltx_video_models() {
 
     if [[ ! -d "$VIDEO_DIR/t5_encoder/text_encoder" ]]; then
         info "Скачиваю T5 text encoder (PixArt T5-XXL, ~18 ГБ на диске)…"
-        if bash "$SCRIPT_DIR/services/ltx_video/download-t5-encoder.sh"; then
+        if LANG=ru bash "$SCRIPT_DIR/services/ltx_video/download-t5-encoder.sh"; then
             info "T5 text encoder успешно скачан."
         else
             warn "Не удалось скачать T5 text encoder — видео останется без него."
@@ -347,38 +347,28 @@ download_whisper_models() {
         return 0
     fi
 
-    # Скачивание через huggingface_hub (Python)
-    if ! python3 -c "import huggingface_hub" >/dev/null 2>&1; then
-        info "Устанавливаю Python-пакет huggingface_hub (нужен для скачивания Whisper)..."
-        pip3 install --break-system-packages --quiet huggingface_hub 2>/dev/null \
-            || pip3 install --user --quiet huggingface_hub 2>/dev/null \
-            || pip3 install --quiet huggingface_hub 2>/dev/null \
-            || warn "Не удалось установить huggingface_hub через pip."
-    fi
-    if ! python3 -c "import huggingface_hub" >/dev/null 2>&1; then
-        warn "huggingface_hub отсутствует — модель Whisper будет скачана вручную."
-        warn "  pip3 install huggingface_hub"
-        return 0
-    fi
-
-    # Скачивание через huggingface_hub (Python)
+    # Скачивание в Docker-контейнере (без установки на хост)
     info "Скачиваю ~1.5 ГБ — это может занять несколько минут..."
-    python3 -c "
+    docker run --rm \
+        -v "$(pwd)/$CACHE_DIR:/cache" \
+        -e HF_HUB_DOWNLOAD_TIMEOUT=600 \
+        python:3.11-slim \
+        bash -c "
+pip install -q huggingface_hub && python3 -c '
 from huggingface_hub import snapshot_download
-import os, sys
-
-os.environ['HF_HUB_DOWNLOAD_TIMEOUT'] = '600'
+import sys
 try:
     path = snapshot_download(
-        'Systran/faster-whisper-medium',
-        cache_dir='$CACHE_DIR',
-        ignore_patterns=['*.h5', '*.ot', '*.msgpack']
+        \"Systran/faster-whisper-medium\",
+        cache_dir=\"/cache\",
+        ignore_patterns=[\"*.h5\", \"*.ot\", \"*.msgpack\"]
     )
-    print(f'OK: модель скачана в {path}')
+    print(f\"OK: model downloaded to {path}\")
 except Exception as e:
-    print(f'ERROR: {e}')
+    print(f\"ERROR: {e}\")
     sys.exit(1)
-" && info "Модель Whisper успешно скачана." || warn "Не удалось скачать модель Whisper. ASR будет недоступен."
+'
+" 2>&1 | tail -5 && info "Модель Whisper успешно скачана." || warn "Не удалось скачать модель Whisper. ASR будет недоступен."
 }
 
 # ── Определение CUDA и выбор совместимых образов ──

@@ -79,7 +79,7 @@
             {% if '(c)' in footer_text %}
                 {% set parts = footer_text.split('(c)', 1) %}
                 <div class="footer-line1">{{ parts[0].strip() }}</div>
-                <div class="footer-line2">(c){{ parts[1].strip() }}</div>
+                <div class="footer-line2">(c) {{ parts[1].strip() }}</div>
             {% else %}
                 <div class="footer-line1">{{ footer_text }}</div>
             {% endif %}

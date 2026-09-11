@@ -73,15 +73,29 @@ validate_env() {
     fi
 }
 
-# ── Включение опций в .env ──
+# ── Включение/отключение опций в .env ──
 enable_env_features() {
-    if [[ "$WITH_SEARCH" == "true" ]] && grep -q '^# SEARXNG_URL=' .env 2>/dev/null; then
-        info "Включаю веб-поиск (SearXNG) в .env..."
-        sed -i 's|^# SEARXNG_URL=|SEARXNG_URL=|' .env
+    if [[ "$WITH_SEARCH" == "true" ]]; then
+        if grep -q '^# SEARXNG_URL=' .env 2>/dev/null; then
+            info "Включаю веб-поиск (SearXNG) в .env..."
+            sed -i 's|^# SEARXNG_URL=|SEARXNG_URL=|' .env
+        fi
+    else
+        if grep -q '^SEARXNG_URL=' .env 2>/dev/null; then
+            info "Отключаю веб-поиск (SearXNG) в .env..."
+            sed -i 's|^SEARXNG_URL=|# SEARXNG_URL=|' .env
+        fi
     fi
-    if [[ "$WITH_SLM" == "true" ]] && grep -q '^# SLM_URL=' .env 2>/dev/null; then
-        info "Включаю долговременную память (SLM) в .env..."
-        sed -i 's|^# SLM_URL=|SLM_URL=|' .env
+    if [[ "$WITH_SLM" == "true" ]]; then
+        if grep -q '^# SLM_URL=' .env 2>/dev/null; then
+            info "Включаю долговременную память (SLM) в .env..."
+            sed -i 's|^# SLM_URL=|SLM_URL=|' .env
+        fi
+    else
+        if grep -q '^SLM_URL=' .env 2>/dev/null; then
+            info "Отключаю долговременную память (SLM) в .env..."
+            sed -i 's|^SLM_URL=|# SLM_URL=|' .env
+        fi
     fi
 }
 

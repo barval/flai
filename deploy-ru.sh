@@ -38,7 +38,9 @@ setup_env() {
     info "Создаю .env из .env.example..."
     cp .env.example .env
     SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || openssl rand -hex 32)
-    sed -i "s/SECRET_KEY=.*/SECRET_KEY=$SECRET/" .env
+    sed -i "s|^SECRET_KEY=.*|SECRET_KEY=$SECRET|" .env
+    QDRANT_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || openssl rand -hex 32)
+    sed -i "s|^QDRANT_API_KEY=.*|QDRANT_API_KEY=$QDRANT_KEY|" .env
     info ".env создан. Отредактируйте его для настройки моделей, URL и параметров."
 }
 
@@ -58,7 +60,9 @@ validate_env() {
     local errors=0
     grep -qP '^SECRET_KEY=\S+' .env 2>/dev/null || { warn "SECRET_KEY не задан в .env"; errors=1; }
     grep -qP '^DATABASE_URL=\S+' .env 2>/dev/null || { warn "DATABASE_URL не задан в .env"; errors=1; }
-    [[ "$errors" -eq 1 ]] && warn "Отредактируйте .env перед продолжением."
+    if [[ "$errors" -ge 1 ]]; then
+        warn "Отредактируйте .env перед продолжением."
+    fi
 }
 
 # ── Генерация минимального конфига llama-swap ──

@@ -21,7 +21,12 @@ check_prereqs() {
     if ! command -v nvidia-smi &>/dev/null; then
         warn "No NVIDIA GPU detected — GPU acceleration will not be available."
     fi
-    if docker info 2>/dev/null | grep -q "Runtimes.*nvidia"; then
+    if ! docker info >/dev/null 2>&1; then
+        warn "No access to the Docker daemon."
+        warn "If the user is not in the 'docker' group, add him:"
+        warn "  sudo usermod -aG docker $USER && newgrp docker"
+        warn "Then re-run this script."
+    elif docker info 2>/dev/null | grep -q "Runtimes.*nvidia"; then
         info "NVIDIA Docker runtime detected."
     elif command -v nvidia-smi &>/dev/null; then
         warn "nvidia-smi found, but nvidia-container-runtime not detected in Docker."
@@ -277,7 +282,11 @@ download_ltx_video_models() {
     # T5 text encoder (PixArt T5 ≈ 8.9 GB)
     if [[ ! -d "$VIDEO_DIR/t5_encoder/text_encoder" ]]; then
         info "Downloading T5 text encoder (PixArt T5-XXL, ~18 GB on disk)…"
-        bash "$SCRIPT_DIR/services/ltx_video/download-t5-encoder.sh"
+        if bash "$SCRIPT_DIR/services/ltx_video/download-t5-encoder.sh"; then
+            info "T5 text encoder downloaded."
+        else
+            warn "Failed to download T5 text encoder — video will run without it."
+        fi
     else
         warn "T5 text encoder already exists — skipping."
     fi
@@ -342,6 +351,19 @@ download_whisper_models() {
         return 0
     fi
 
+    if ! python3 -c "import huggingface_hub" >/dev/null 2>&1; then
+        info "Installing Python package huggingface_hub (needed for Whisper download)..."
+        pip3 install --break-system-packages --quiet huggingface_hub 2>/dev/null \
+            || pip3 install --user --quiet huggingface_hub 2>/dev/null \
+            || pip3 install --quiet huggingface_hub 2>/dev/null \
+            || warn "Could not install huggingface_hub via pip."
+    fi
+    if ! python3 -c "import huggingface_hub" >/dev/null 2>&1; then
+        warn "huggingface_hub missing — Whisper model must be downloaded manually."
+        warn "  pip3 install huggingface_hub"
+        return 0
+    fi
+
     info "Downloading ~1.5 GB — this may take several minutes..."
     python3 -c "
 from huggingface_hub import snapshot_download
@@ -361,8 +383,47 @@ except Exception as e:
 " && info "Whisper model downloaded successfully." || warn "Failed to download Whisper model. ASR will be unavailable."
 }
 
-# ── Build & Launch ──
-build_and_launch() {
+# ── CUDA detection & compatible image selection ──
+detect_cuda() {
+    CUDA_VERSION_SD=""
+    UBUNTU_VERSION_SD=""
+    LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:cuda"
+
+    if ! command -v nvidia-smi &>/dev/null; then
+        return 0
+    fi
+
+    local cuda_full cuda_major cuda_minor
+    cuda_full=$(nvidia-smi 2>/dev/null | grep -oP 'CUDA Version: \K[0-9.]+' | head -1 || true)
+    if [[ -z "$cuda_full" ]]; then
+        return 0
+    fi
+    cuda_major="${cuda_full%%.*}"
+    cuda_minor="${cuda_full#*.}"
+    cuda_minor="${cuda_minor%%.*}"
+
+    if [[ "$cuda_major" -ge 13 ]]; then
+        CUDA_VERSION_SD="13.0.1"
+        UBUNTU_VERSION_SD="24.04"
+        LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:cuda13"
+        info "CUDA driver ${cuda_full}: using CUDA 13 images."
+    elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 8 ]]; then
+        CUDA_VERSION_SD="12.8.1"; UBUNTU_VERSION_SD="24.04"
+    elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 6 ]]; then
+        CUDA_VERSION_SD="12.6.3"; UBUNTU_VERSION_SD="24.04"
+    elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 4 ]]; then
+        CUDA_VERSION_SD="12.4.1"; UBUNTU_VERSION_SD="22.04"
+    else
+        CUDA_VERSION_SD="12.2.2"; UBUNTU_VERSION_SD="22.04"
+        warn "CUDA driver ${cuda_full} is outdated. For LTX-Video update the driver:"
+        warn "  https://www.nvidia.com/Download/index.aspx  (minimum: CUDA 12.4 / driver 550.54.14)"
+    fi
+
+    export CUDA_VERSION_SD UBUNTU_VERSION_SD LLAMA_SWAP_IMAGE
+}
+
+# ── Stack resolution (COMPOSE_FILE, PROFILES) ──
+resolve_stack() {
     PROFILES=""
     [[ "$WITH_IMAGE_GEN" == "true" ]] && PROFILES="$PROFILES --profile with-image-gen"
     [[ "$WITH_VOICE" == "true" ]] && PROFILES="$PROFILES --profile with-voice"
@@ -378,7 +439,33 @@ build_and_launch() {
     else
         info "GPU mode — using GPU compose file."
     fi
+    detect_cuda
+}
 
+# ── Start hints (printed BEFORE the build) ──
+show_start_hints() {
+    echo ""
+    echo "============================================"
+    info "Start-up hints:"
+    echo "============================================"
+    echo "  Web UI:     http://localhost:5000"
+    echo "  Health:     http://localhost:5000/health"
+    echo ""
+    echo "  How to start:"
+    echo "  1. Open http://localhost:5000 in a browser (LAN: http://<server-IP>:5000)"
+    echo "  2. Set the admin password:"
+    echo "       docker exec flai-web flask admin-password YourStrongPassword"
+    echo "  3. Log in as admin at the sign-in page"
+    echo ""
+    echo "  Useful commands:"
+    echo "  Start:      docker compose -f $COMPOSE_FILE$PROFILES up -d"
+    echo "  Logs:       docker compose -f $COMPOSE_FILE logs -f"
+    echo "  Stop:       docker compose -f $COMPOSE_FILE down --remove-orphans"
+    echo "============================================"
+}
+
+# ── Build & Launch ──
+build_and_launch() {
     # Detect GPU VRAM tier (GPU mode only)
     local VRAM_MB=0
     if [[ "$COMPOSE_FILE" == "docker-compose.gpu.yml" ]] && command -v nvidia-smi &>/dev/null; then
@@ -503,6 +590,9 @@ main() {
     setup_env
     validate_env
     generate_llama_swap_config
+    resolve_stack
+
+    show_start_hints
 
     if [[ "$DOWNLOAD_MODELS" == "true" ]]; then
         download_llamacpp_models
@@ -512,7 +602,11 @@ main() {
         [[ "$WITH_VOICE" == "true" ]] && download_whisper_models
     fi
 
-    build_and_launch
+    if build_and_launch; then
+        :
+    else
+        warn "Build/launch interrupted. Check the output above and the hints."
+    fi
 
     if [[ "$RUN_TESTS" == "true" ]]; then
         run_tests

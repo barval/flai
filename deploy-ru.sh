@@ -21,7 +21,15 @@ check_prereqs() {
     if ! command -v nvidia-smi &>/dev/null; then
         warn "Видеокарта NVIDIA не обнаружена — ускорение на GPU будет недоступно."
     fi
-    if docker info 2>/dev/null | grep -q "Runtimes.*nvidia"; then
+
+    # Проверка доступа к Docker Daemon (если прав нет — подсказываем как исправить)
+    if ! docker info >/dev/null 2>&1; then
+        warn "Нет доступа к Docker Daemon."
+        warn "Добавьте пользователя в группу docker и перезайдите:"
+        warn "  sudo usermod -aG docker '$USER'"
+        warn "  newgrp docker"
+        warn "  (или запустите скрипт с sudo)"
+    elif docker info 2>/dev/null | grep -q "Runtimes.*nvidia"; then
         info "NVIDIA Docker runtime обнаружен."
     elif command -v nvidia-smi &>/dev/null; then
         warn "nvidia-smi найден, но nvidia-container-runtime не обнаружен в Docker."
@@ -269,7 +277,11 @@ download_ltx_video_models() {
 
     if [[ ! -d "$VIDEO_DIR/t5_encoder/text_encoder" ]]; then
         info "Скачиваю T5 text encoder (PixArt T5-XXL, ~18 ГБ на диске)…"
-        bash "$SCRIPT_DIR/services/ltx_video/download-t5-encoder.sh"
+        if bash "$SCRIPT_DIR/services/ltx_video/download-t5-encoder.sh"; then
+            info "T5 text encoder успешно скачан."
+        else
+            warn "Не удалось скачать T5 text encoder — видео останется без него."
+        fi
     else
         warn "T5 text encoder уже есть — пропускаю."
     fi
@@ -336,6 +348,20 @@ download_whisper_models() {
     fi
 
     # Скачивание через huggingface_hub (Python)
+    if ! python3 -c "import huggingface_hub" >/dev/null 2>&1; then
+        info "Устанавливаю Python-пакет huggingface_hub (нужен для скачивания Whisper)..."
+        pip3 install --break-system-packages --quiet huggingface_hub 2>/dev/null \
+            || pip3 install --user --quiet huggingface_hub 2>/dev/null \
+            || pip3 install --quiet huggingface_hub 2>/dev/null \
+            || warn "Не удалось установить huggingface_hub через pip."
+    fi
+    if ! python3 -c "import huggingface_hub" >/dev/null 2>&1; then
+        warn "huggingface_hub отсутствует — модель Whisper будет скачана вручную."
+        warn "  pip3 install huggingface_hub"
+        return 0
+    fi
+
+    # Скачивание через huggingface_hub (Python)
     info "Скачиваю ~1.5 ГБ — это может занять несколько минут..."
     python3 -c "
 from huggingface_hub import snapshot_download
@@ -355,8 +381,47 @@ except Exception as e:
 " && info "Модель Whisper успешно скачана." || warn "Не удалось скачать модель Whisper. ASR будет недоступен."
 }
 
-# ── Сборка и запуск ──
-build_and_launch() {
+# ── Определение CUDA и выбор совместимых образов ──
+detect_cuda() {
+    CUDA_VERSION_SD=""
+    UBUNTU_VERSION_SD=""
+    LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:cuda"
+
+    if ! command -v nvidia-smi &>/dev/null; then
+        return 0
+    fi
+
+    local cuda_full cuda_major cuda_minor
+    cuda_full=$(nvidia-smi 2>/dev/null | grep -oP 'CUDA Version: \K[0-9.]+' | head -1 || true)
+    if [[ -z "$cuda_full" ]]; then
+        return 0
+    fi
+    cuda_major="${cuda_full%%.*}"
+    cuda_minor="${cuda_full#*.}"
+    cuda_minor="${cuda_minor%%.*}"
+
+    if [[ "$cuda_major" -ge 13 ]]; then
+        CUDA_VERSION_SD="13.0.1"
+        UBUNTU_VERSION_SD="24.04"
+        LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:cuda13"
+        info "CUDA драйвер ${cuda_full}: использую CUDA 13 образы."
+    elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 8 ]]; then
+        CUDA_VERSION_SD="12.8.1"; UBUNTU_VERSION_SD="24.04"
+    elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 6 ]]; then
+        CUDA_VERSION_SD="12.6.3"; UBUNTU_VERSION_SD="24.04"
+    elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 4 ]]; then
+        CUDA_VERSION_SD="12.4.1"; UBUNTU_VERSION_SD="22.04"
+    else
+        CUDA_VERSION_SD="12.2.2"; UBUNTU_VERSION_SD="22.04"
+        warn "Драйвер CUDA ${cuda_full} устарел. Для LTX-Video обновите драйвер:"
+        warn "  https://www.nvidia.com/Download/index.aspx  (минимум: CUDA 12.4 / driver 550.54.14)"
+    fi
+
+    export CUDA_VERSION_SD UBUNTU_VERSION_SD LLAMA_SWAP_IMAGE
+}
+
+# ── Определение стека (COMPOSE_FILE, PROFILES) ──
+resolve_stack() {
     PROFILES=""
     [[ "$WITH_IMAGE_GEN" == "true" ]] && PROFILES="$PROFILES --profile with-image-gen"
     [[ "$WITH_VOICE" == "true" ]] && PROFILES="$PROFILES --profile with-voice"
@@ -372,7 +437,33 @@ build_and_launch() {
     else
         info "Режим GPU — используется GPU compose файл."
     fi
+    detect_cuda
+}
 
+# ── Подсказки по запуску (показываются ДО сборки) ──
+show_start_hints() {
+    echo ""
+    echo "============================================"
+    info "Подсказки по запуску:"
+    echo "============================================"
+    echo "  Веб-интерфейс: http://localhost:5000"
+    echo "  Здоровье:      http://localhost:5000/health"
+    echo ""
+    echo "  Как начать:"
+    echo "  1. Откройте интерфейс в браузере: http://localhost:5000 (в сети — http://<IP-сервера>:5000)"
+    echo "  2. Установите пароль администратора:"
+    echo "       docker exec flai-web flask admin-password ВашНадёжныйПароль"
+    echo "  3. Войдите как admin на странице входа"
+    echo ""
+    echo "  Полезные команды:"
+    echo "  Запуск:     docker compose -f $COMPOSE_FILE$PROFILES up -d"
+    echo "  Логи:       docker compose -f $COMPOSE_FILE logs -f"
+    echo "  Остановка:  docker compose -f $COMPOSE_FILE down --remove-orphans"
+    echo "============================================"
+}
+
+# ── Сборка и запуск ──
+build_and_launch() {
     # Определяем уровень VRAM (только в режиме GPU)
     local VRAM_MB=0
     if [[ "$COMPOSE_FILE" == "docker-compose.gpu.yml" ]] && command -v nvidia-smi &>/dev/null; then
@@ -498,6 +589,9 @@ main() {
     setup_env
     validate_env
     generate_llama_swap_config
+    resolve_stack
+
+    show_start_hints
 
     if [[ "$DOWNLOAD_MODELS" == "true" ]]; then
         download_llamacpp_models
@@ -507,7 +601,11 @@ main() {
         [[ "$WITH_VOICE" == "true" ]] && download_whisper_models
     fi
 
-    build_and_launch
+    if build_and_launch; then
+        :
+    else
+        warn "Сборка/запуск прерваны. Проверьте вывод выше и подсказки."
+    fi
 
     if [[ "$RUN_TESTS" == "true" ]]; then
         run_tests

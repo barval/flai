@@ -355,24 +355,14 @@ download_whisper_models() {
     info "Downloading ~1.5 GB — this may take several minutes..."
     docker run --rm \
         -v "$(pwd)/$CACHE_DIR:/cache" \
-        -e HF_HUB_DOWNLOAD_TIMEOUT=600 \
         python:3.11-slim \
         bash -c "
-pip install -q huggingface_hub && python3 -c '
-from huggingface_hub import snapshot_download
-import sys
-try:
-    path = snapshot_download(
-        \"Systran/faster-whisper-medium\",
-        cache_dir=\"/cache\",
-        ignore_patterns=[\"*.h5\", \"*.ot\", \"*.msgpack\"]
-    )
-    print(f\"OK: model downloaded to {path}\")
-except Exception as e:
-    print(f\"ERROR: {e}\")
-    sys.exit(1)
-'
-" 2>&1 | tail -5 && info "Whisper model downloaded successfully." || warn "Failed to download Whisper model. ASR will be unavailable."
+pip install -q huggingface_hub && huggingface-cli download \
+    Systran/faster-whisper-medium \
+    --cache-dir /cache \
+    --resume-download \
+    --exclude '*.h5' '*.ot' '*.msgpack'
+" && info "Whisper model downloaded successfully." || warn "Failed to download Whisper model. ASR will be unavailable."
 }
 
 # ── CUDA detection & compatible image selection ──

@@ -487,6 +487,11 @@ build_and_launch() {
     info "Waiting for services to start..."
     sleep 10
 
+    # Compile .mo translation files (bind-mount overrides .mo from image)
+    info "Compiling translations..."
+    docker exec flai-web pybabel compile -d /app/translations 2>/dev/null || \
+        info "pybabel not available — translations may stay English."
+
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "unreachable")
     if [[ "$STATUS" == "ok" ]]; then

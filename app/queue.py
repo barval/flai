@@ -505,7 +505,7 @@ class RedisRequestQueue:
             max(
                 self.app.config.get("SD_CLI_TIMEOUT", 900),
                 self.app.config.get("LLM_TIMEOUT", 600),
-                self.app.config.get("VIDEO_TIMEOUT", 1200),
+                self.app.config.get("LTX_VIDEO_TIMEOUT", 600),
                 self.app.config.get("SD_CPP_TIMEOUT", 900),
             )
             + 120,
@@ -1554,11 +1554,7 @@ class RedisRequestQueue:
             if rag_answer is not None:
                 if self._is_llm_error_string(rag_answer):
                     return self._build_error_response(session_id, rag_answer, rag_time, lang)
-                model_name = (
-                    rag_model
-                    if rag_model and rag_model.endswith(".gguf")
-                    else (rag_model + ".gguf" if rag_model else "")
-                )
+                model_name = rag_model.replace(".gguf", "") if rag_model else ""
                 model_used = model_name + " (RAG)" if model_name else "unknown (RAG)"
                 self.app.logger.info(f"RAG answered in reasoning request: {query[:50]}...")
                 return self._save_and_respond(
@@ -1810,12 +1806,12 @@ class RedisRequestQueue:
                 from app.resource_manager import get_resource_manager
 
                 rm = get_resource_manager()
-                video_model_name = self.app.config.get("VIDEO_MODEL", "wan2.2-ti2v-5b-turbo")
+                video_model_name = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
                 rm.measure_video_vram_peak(video_model_name)
             except Exception as e:
                 self.logger.debug(f"Video VRAM measurement failed: {e}")
 
-            video_model = self.app.config.get("VIDEO_MODEL", "wan2.2-ti2v-5b-turbo")
+            video_model = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
             template = self.app.modules["base"]._("Video generated from request: {query}", lang=lang)
             prefix = "🎬 " + template.replace("{query}", "")
             message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
@@ -1930,13 +1926,41 @@ class RedisRequestQueue:
                 )
                 return self._build_error_response(session_id, error_msg, mm_time, lang)
 
-            # I2V image prep (downscale <=768 + center-crop to the aspect preset)
-            # is done inside VideoModule.generate_video, which returns the
-            # crop info + optional RAM notice on success.
+            # Resize the source image up-front so the resize notice reaches the
+            # user BEFORE the memory-degradation decision below.
+            if image_data:
+                from modules.video import MAX_VIDEO_SOURCE_SIZE, resize_video_source_image
 
-            # I2V: CPU/RAM degradation happens inside VideoModule, which picks
-            # the aspect-correct preset (source image aspect + RAM cascade) and
-            # returns a "notice" on success. No separate plan here.
+                resized_image, resized_meta = resize_video_source_image(image_data)
+                if resized_image is not None:
+                    image_data = resized_image
+                if resized_meta.get("resized"):
+                    orig_w, orig_h = resized_meta["original_size"]
+                    new_w, new_h = resized_meta["new_size"]
+                    with force_locale(lang):
+                        resize_text = (
+                            self.app.modules["base"]
+                            ._(
+                                "Maximum resolution for video is {max_w}×{max_h}. "
+                                "The image has been resized from {orig_w}×{orig_h} to {new_w}×{new_h}.",
+                                lang=lang,
+                            )
+                            .format(
+                                max_w=MAX_VIDEO_SOURCE_SIZE,
+                                max_h=MAX_VIDEO_SOURCE_SIZE,
+                                orig_w=orig_w,
+                                orig_h=orig_h,
+                                new_w=new_w,
+                                new_h=new_h,
+                            )
+                        )
+                    save_message(session_id, "assistant", resize_text, model_name="system", response_time="0")
+                    if task:
+                        self._publish_stream_event(task, "notice", {"message": resize_text})
+
+            prompt_data, cpu_error = self._plan_cpu_video(task, prompt_data, lang, session_id)
+            if cpu_error:
+                return self._build_error_response(session_id, cpu_error, 0, lang)
 
             gen_start = time.time()
             if task:
@@ -1981,7 +2005,7 @@ class RedisRequestQueue:
                 from app.resource_manager import get_resource_manager
 
                 rm = get_resource_manager()
-                video_model_name = self.app.config.get("VIDEO_MODEL", "wan2.2-ti2v-5b-turbo")
+                video_model_name = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
                 rm.measure_video_vram_peak(video_model_name)
             except Exception as e:
                 self.logger.debug(f"Video VRAM measurement failed: {e}")
@@ -2008,14 +2032,7 @@ class RedisRequestQueue:
                 )
                 resize_notice = resize_text
 
-            # I2V RAM-degradation notice (CPU cascade fell below its best step)
-            i2v_notice = video_result.get("notice")
-            if i2v_notice:
-                save_message(session_id, "assistant", i2v_notice, model_name="system", response_time="0")
-                if task:
-                    self._publish_stream_event(task, "notice", {"message": i2v_notice})
-
-            video_model = self.app.config.get("VIDEO_MODEL", "wan2.2-ti2v-5b-turbo")
+            video_model = self.app.config.get("LTX_VIDEO_MODEL", "ltxv-2b-0.9.8-distilled")
             template = self.app.modules["base"]._("Video generated from request: {query}", lang=lang)
             prefix = "🎬 " + template.replace("{query}", "")
             message_text = json.dumps({"prefix": prefix, "text": query}, ensure_ascii=False)
@@ -2376,12 +2393,17 @@ class RedisRequestQueue:
         search_start = time.time()
         try:
             results = search.search(query, lang=lang)
+            if not results:
+                self.app.logger.warning(f"SearXNG returned 0 results for: {query[:100]}... — retrying once")
+                results = search.search(query, lang=lang)
             search_time = round(time.time() - search_start, 1)
             if not results:
-                self.app.logger.warning(f"SearXNG returned 0 results for: {query[:100]}...")
+                self.app.logger.warning(f"SearXNG returned 0 results after retry for: {query[:100]}...")
                 return self._build_error_response(
                     session_id,
-                    self.app.modules["base"]._("No web search results found", lang),
+                    self.app.modules["base"]._(
+                        "Search services are temporarily unavailable. Please try again in a few minutes.", lang
+                    ),
                     search_time,
                     lang,
                 )

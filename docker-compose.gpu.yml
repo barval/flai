@@ -255,9 +255,52 @@ services:
         max-file: "3"
     profiles:
       - with-voice
+      - with-voice-piper
+      - with-voice-kokoro
 
   # ============================================================
-  # PIPER TTS (Optional - Speech Synthesis)
+  # KOKORO TTS (Optional - Speech Synthesis, selectable backend)
+  # ============================================================
+  kokoro:
+    build:
+      context: ./services/kokoro
+      dockerfile: Dockerfile.kokoro
+    container_name: flai-kokoro
+    volumes:
+      - ./services/kokoro/models:/app/models
+      - ./services/kokoro/voices:/app/voices
+      - ./services/kokoro/espeak-data:/app/espeak-data
+      - ./services/kokoro/ru_g2p.py:/app/ru_g2p.py
+    environment:
+      - KOKORO_MODEL_DIR=/app/models
+      - KOKORO_VOICES_DIR=/app/voices
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8888/health')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 6G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    profiles:
+      - with-voice-kokoro
+
+  # ============================================================
+  # PIPER TTS (Optional - Speech Synthesis, selectable backend)
   # ============================================================
   piper:
     build:
@@ -281,7 +324,7 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 512M
+          memory: 1G
         reservations:
           cpus: '0.5'
           memory: 256M
@@ -292,6 +335,7 @@ services:
         max-file: "3"
     profiles:
       - with-voice
+      - with-voice-piper
 
   # ============================================================
   # SEARXNG (Optional - Web Search)

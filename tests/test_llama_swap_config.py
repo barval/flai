@@ -453,13 +453,13 @@ class TestMmprojPath:
 class TestGetOriginalNgl:
     @patch("app.llama_swap_config.get_model_config")
     @patch("app.utils.get_gguf_models_cached")
-    @patch("app.resource_manager.ResourceManager")
-    def test_gguf_suffix_removed_when_looking_up_block_count(self, mock_rm_cls, mock_cache, mock_get_config):
+    @patch("app.resource_manager.get_resource_manager")
+    def test_gguf_suffix_removed_when_looking_up_block_count(self, mock_rm, mock_cache, mock_get_config):
         """Regression: get_gguf_models_cached keys are stored without the .gguf
-        suffix, but model_name_from DB may include it. Pre-fix the lookup missed
+        suffix, but model_name from DB may include it. Pre-fix the lookup missed
         the entry and fell back to defaults, keeping n_gpu_layers=-1 in the
         degraded (0%) scenario even though the model has known block_count."""
-        mock_rm_cls.return_value.compute_llamacpp_config.return_value = {"n_gpu_layers": -1}
+        mock_rm.return_value.compute_llamacpp_config.return_value = {"n_gpu_layers": -1}
         mock_cache.return_value = {"Qwen3VL-8B-Instruct-Q4_K_M": {"block_count": 36}}
         mock_get_config.return_value = {"model_name": "Qwen3VL-8B-Instruct-Q4_K_M.gguf"}
         gen = LlamaSwapConfigGenerator()

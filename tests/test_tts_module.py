@@ -1,5 +1,4 @@
-# tests/test_tts_module.py
-"""Tests for TTS module (Piper text-to-speech)."""
+"""Tests for TTS module (Kokoro TTS with Piper fallback)."""
 
 from unittest.mock import MagicMock, Mock, patch
 
@@ -12,51 +11,136 @@ class TestTTSModule:
 
     @pytest.fixture
     def mock_app(self):
-        """Create mock Flask app."""
+        """Create mock Flask app with Kokoro URL."""
         app = Mock()
-        app.config = {"PIPER_URL": "http://test-piper:8888/tts", "PIPER_API_TIMEOUT": 30}
+        app.config = {
+            "KOKORO_URL": "http://test-kokoro:8888/tts",
+            "KOKORO_TIMEOUT": 60,
+            "PIPER_URL": None,
+            "PIPER_TIMEOUT": 30,
+        }
         app.logger = Mock()
         return app
 
-    def test_init_with_available_piper(self, mock_app):
-        """Test module initialization when Piper is available."""
+    def test_init_with_available_kokoro(self, mock_app):
+        """Test module initialization when Kokoro is available."""
         from modules.tts import TTSModule
 
-        with patch("modules.tts.requests.get") as mock_get:
+        with patch("modules.tts.requests.head") as mock_head:
             mock_response = MagicMock()
             mock_response.status_code = 200
-            mock_get.return_value = mock_response
+            mock_head.return_value = mock_response
 
             module = TTSModule(mock_app)
 
-            # Module should be available when mock returns 200
-            # Note: availability is checked during init
-            assert module.tts_url == "http://test-piper:8888/tts"
-            assert module.timeout == 30
+            assert module.tts_url == "http://test-kokoro:8888/tts"
+            assert module.backend == "kokoro"
+            assert module.timeout == 60
 
-    def test_init_with_unavailable_piper(self, mock_app):
-        """Test module initialization when Piper is unavailable."""
+    def test_init_with_unavailable_kokoro(self, mock_app):
+        """Test module initialization when Kokoro is unavailable."""
         from modules.tts import TTSModule
 
-        with patch("modules.tts.requests.get") as mock_get:
-            mock_get.side_effect = Exception("Connection error")
+        with patch("modules.tts.requests.head") as mock_head:
+            mock_head.side_effect = Exception("Connection error")
 
             module = TTSModule(mock_app)
 
             assert module.available is False
 
-    def test_synthesize_returns_none_when_unavailable(self, mock_app):
-        """Test synthesize returns None when Piper is unavailable."""
+    def test_init_falls_back_to_piper(self, mock_app):
+        """Test module falls back to Piper when Kokoro URL is not set."""
+        mock_app.config = {
+            "KOKORO_URL": None,
+            "KOKORO_TIMEOUT": 60,
+            "PIPER_URL": "http://test-piper:8888/tts",
+            "PIPER_TIMEOUT": 30,
+        }
         from modules.tts import TTSModule
 
-        with patch("modules.tts.requests.get") as mock_get:
-            mock_get.side_effect = Exception("Connection error")
+        with patch("modules.tts.requests.head") as mock_head:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_head.return_value = mock_response
 
             module = TTSModule(mock_app)
 
-            audio_bytes = module.synthesize("Hello world", "en", "male")
+            assert module.backend == "piper"
+            assert module.tts_url == "http://test-piper:8888/tts"
 
-            assert audio_bytes is None
+    def test_synthesize_returns_none_when_unavailable(self, mock_app):
+        """Test synthesize returns None when TTS is unavailable."""
+        from modules.tts import TTSModule
+
+        with patch("modules.tts.requests.head") as mock_head:
+            mock_head.side_effect = Exception("Connection error")
+
+            module = TTSModule(mock_app)
+
+            audio_bytes, mime = module.synthesize("Hello world", "en", "male")
+
+            assert audio_bytes is None and mime is None
+
+    def test_synthesize_with_kokoro_backend(self, mock_app):
+        """Test synthesize sends correct payload to Kokoro backend."""
+        from modules.tts import TTSModule
+
+        with patch("modules.tts.requests.head") as mock_head:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_head.return_value = mock_response
+
+            module = TTSModule(mock_app)
+            module.available = True
+
+        with patch("modules.tts.requests.post") as mock_post:
+            mock_audio = MagicMock()
+            mock_audio.status_code = 200
+            mock_audio.headers = {"content-type": "audio/wav"}
+            mock_audio.content = b"fake_audio_data"
+            mock_post.return_value = mock_audio
+
+            from modules.tts import GENDER_VOICE_MAP
+
+            result, mime = module.synthesize("Test text", "en", "female")
+
+            # Check that post was called with voice name, not gender
+            call_kwargs = mock_post.call_args[1]
+            assert call_kwargs["json"]["voice"] == GENDER_VOICE_MAP[("en", "female")]
+            assert call_kwargs["json"]["language"] == "en"
+            assert result == b"fake_audio_data"
+
+    def test_synthesize_with_piper_backend(self, mock_app):
+        """Test synthesize sends correct payload to Piper backend."""
+        mock_app.config = {
+            "KOKORO_URL": None,
+            "KOKORO_TIMEOUT": 60,
+            "PIPER_URL": "http://test-piper:8888/tts",
+            "PIPER_TIMEOUT": 30,
+        }
+        from modules.tts import TTSModule
+
+        with patch("modules.tts.requests.head") as mock_head:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_head.return_value = mock_response
+
+            module = TTSModule(mock_app)
+            module.available = True
+
+        with patch("modules.tts.requests.post") as mock_post:
+            mock_audio = MagicMock()
+            mock_audio.status_code = 200
+            mock_audio.headers = {"content-type": "audio/mpeg"}
+            mock_audio.content = b"fake_mp3_data"
+            mock_post.return_value = mock_audio
+
+            result, mime = module.synthesize("Test text", "en", "male")
+
+            # Piper backend uses gender, not voice
+            call_kwargs = mock_post.call_args[1]
+            assert call_kwargs["json"]["gender"] == "male"
+            assert result == b"fake_mp3_data"
 
     def test_synthesize_returns_none_on_timeout(self, mock_app):
         """Test synthesize returns None on timeout."""
@@ -64,37 +148,44 @@ class TestTTSModule:
 
         from modules.tts import TTSModule
 
-        with patch("modules.tts.requests.get") as mock_get:
-            mock_get.side_effect = requests.exceptions.Timeout()
-
-            module = TTSModule(mock_app)
-
-            audio_bytes = module.synthesize("Hello world", "en", "male")
-
-            assert audio_bytes is None
-
-    def test_check_availability_with_success(self, mock_app):
-        """Test check_availability returns True when Piper is healthy."""
-        from modules.tts import TTSModule
-
-        with patch("modules.tts.requests.get") as mock_get:
+        with patch("modules.tts.requests.head") as mock_head:
             mock_response = MagicMock()
             mock_response.status_code = 200
-            mock_get.return_value = mock_response
+            mock_head.return_value = mock_response
 
             module = TTSModule(mock_app)
-            # Force re-check — should be True after successful check
-            module.check_availability()
-            assert module.tts_url == "http://test-piper:8888/tts"
+            module.available = True
+
+        with patch("modules.tts.requests.post") as mock_post:
+            mock_post.side_effect = requests.exceptions.Timeout()
+
+            audio_bytes, mime = module.synthesize("Hello world", "en", "male")
+
+            assert audio_bytes is None and mime is None
+
+    def test_check_availability_with_success(self, mock_app):
+        """Test check_availability returns True when Kokoro is healthy."""
+        from modules.tts import TTSModule
+
+        with patch("modules.tts.requests.head") as mock_head:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_head.return_value = mock_response
+
+            module = TTSModule(mock_app)
+            result = module.check_availability()
+
+            assert result is True
+            assert module.available is True
 
     def test_check_availability_with_failure(self, mock_app):
-        """Test check_availability returns False when Piper is unhealthy."""
+        """Test check_availability returns False when Kokoro is unhealthy."""
         from modules.tts import TTSModule
 
-        with patch("modules.tts.requests.get") as mock_get:
+        with patch("modules.tts.requests.head") as mock_head:
             mock_response = MagicMock()
             mock_response.status_code = 503
-            mock_get.return_value = mock_response
+            mock_head.return_value = mock_response
 
             module = TTSModule(mock_app)
             result = module.check_availability()
@@ -102,18 +193,25 @@ class TestTTSModule:
             assert result is False
             assert module.available is False
 
-    def test_check_availability_with_exception(self, mock_app):
-        """Test check_availability handles exceptions gracefully."""
-        from modules.tts import TTSModule
+    def test_voice_resolution(self, mock_app):
+        """Test voice name resolution from lang+gender."""
+        from modules.tts import GENDER_VOICE_MAP, TTSModule
 
-        with patch("modules.tts.requests.get") as mock_get:
-            mock_get.side_effect = Exception("Connection error")
+        with patch("modules.tts.requests.head") as mock_head:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_head.return_value = mock_response
 
             module = TTSModule(mock_app)
-            result = module.check_availability()
 
-            assert result is False
-            assert module.available is False
+            # Default mappings
+            assert GENDER_VOICE_MAP[("ru", "male")] == "dima"
+            assert GENDER_VOICE_MAP[("ru", "female")] == "sveta"
+            assert GENDER_VOICE_MAP[("en", "male")] == "am_liam"
+            assert GENDER_VOICE_MAP[("en", "female")] == "af_heart"
+
+            # Explicit voice overrides gender mapping
+            assert module._resolve_voice("ru", "male", "masha") == "masha"
 
 
 class TestCleanMarkdownForTTS:

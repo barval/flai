@@ -16,10 +16,12 @@ Endpoints:
 import contextlib
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
 import threading
+import time as _time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -28,6 +30,450 @@ from flask import Flask, jsonify, request
 
 DAEMON_URL = "http://localhost:8765"
 SLM_DATA_DIR = "/app/data/slm"
+
+# ── Hybrid recall (keyword → semantic → latest) ────────────────────────
+# Borrowed technique from mem0 v3: keyword-first fast path avoids the
+# daemon's 300-800 ms embedding call on most turns.
+
+_SLH_KEYWORD_THRESHOLD = float(os.environ.get("SLM_HYBRID_KEYWORD_THRESHOLD", "0.4"))
+_SLH_RECENT_BOOST = float(os.environ.get("SLM_HYBRID_RECENT_BOOST", "1.5"))
+
+_STOPWORDS_RU = frozenset(
+    {
+        "и",
+        "в",
+        "во",
+        "не",
+        "что",
+        "он",
+        "на",
+        "я",
+        "с",
+        "со",
+        "как",
+        "а",
+        "то",
+        "все",
+        "она",
+        "так",
+        "его",
+        "но",
+        "да",
+        "ты",
+        "к",
+        "у",
+        "же",
+        "вы",
+        "за",
+        "бы",
+        "по",
+        "только",
+        "её",
+        "мне",
+        "было",
+        "вот",
+        "от",
+        "меня",
+        "ещё",
+        "нет",
+        "о",
+        "из",
+        "ему",
+        "теперь",
+        "когда",
+        "даже",
+        "ли",
+        "если",
+        "уже",
+        "или",
+        "ни",
+        "быть",
+        "был",
+        "него",
+        "до",
+        "вас",
+        "нибудь",
+        "опять",
+        "уж",
+        "вам",
+        "ведь",
+        "там",
+        "потом",
+        "себя",
+        "ничего",
+        "ей",
+        "может",
+        "они",
+        "тут",
+        "где",
+        "есть",
+        "надо",
+        "ней",
+        "для",
+        "мы",
+        "тебя",
+        "их",
+        "чем",
+        "была",
+        "сам",
+        "чтоб",
+        "без",
+        "будто",
+        "чего",
+        "раз",
+        "тоже",
+        "себе",
+        "под",
+        "будет",
+        "ж",
+        "тогда",
+        "кто",
+        "этот",
+        "того",
+        "потому",
+        "этого",
+        "какой",
+        "совсем",
+        "ним",
+        "здесь",
+        "этом",
+        "один",
+        "почти",
+        "мой",
+        "тем",
+        "чтобы",
+        "нее",
+        "сейчас",
+        "были",
+        "куда",
+        "зачем",
+        "всех",
+        "никогда",
+        "можно",
+        "при",
+        "наконец",
+        "два",
+        "об",
+        "другой",
+        "хоть",
+        "после",
+        "над",
+        "больше",
+        "тот",
+        "через",
+        "эти",
+        "нас",
+        "про",
+        "всего",
+        "них",
+        "какая",
+        "много",
+        "разве",
+        "три",
+        "эту",
+        "моя",
+        "впрочем",
+        "хорошо",
+        "свою",
+        "этой",
+        "перед",
+        "иногда",
+        "лучше",
+        "чуть",
+        "том",
+        "нельзя",
+        "такой",
+        "им",
+        "более",
+        "всегда",
+        "конечно",
+        "всю",
+        "между",
+    }
+)
+
+_STOPWORDS_EN = frozenset(
+    {
+        "i",
+        "me",
+        "my",
+        "myself",
+        "we",
+        "our",
+        "ours",
+        "ourselves",
+        "you",
+        "your",
+        "yours",
+        "yourself",
+        "yourselves",
+        "he",
+        "him",
+        "his",
+        "himself",
+        "she",
+        "her",
+        "hers",
+        "herself",
+        "it",
+        "its",
+        "itself",
+        "they",
+        "them",
+        "their",
+        "theirs",
+        "themselves",
+        "what",
+        "which",
+        "who",
+        "whom",
+        "this",
+        "that",
+        "these",
+        "those",
+        "am",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "having",
+        "do",
+        "does",
+        "did",
+        "doing",
+        "a",
+        "an",
+        "the",
+        "and",
+        "but",
+        "if",
+        "or",
+        "because",
+        "as",
+        "until",
+        "while",
+        "of",
+        "at",
+        "by",
+        "for",
+        "with",
+        "about",
+        "against",
+        "between",
+        "into",
+        "through",
+        "during",
+        "before",
+        "after",
+        "above",
+        "below",
+        "to",
+        "from",
+        "up",
+        "down",
+        "in",
+        "out",
+        "on",
+        "off",
+        "over",
+        "under",
+        "again",
+        "further",
+        "then",
+        "once",
+        "here",
+        "there",
+        "when",
+        "where",
+        "why",
+        "how",
+        "all",
+        "both",
+        "each",
+        "few",
+        "more",
+        "most",
+        "other",
+        "some",
+        "such",
+        "no",
+        "nor",
+        "not",
+        "only",
+        "own",
+        "same",
+        "so",
+        "than",
+        "too",
+        "very",
+        "s",
+        "t",
+        "can",
+        "will",
+        "just",
+        "don",
+        "should",
+        "now",
+        "d",
+        "ll",
+        "m",
+        "o",
+        "re",
+        "ve",
+        "y",
+        "ain",
+        "aren",
+        "couldn",
+        "didn",
+        "doesn",
+        "hadn",
+        "hasn",
+        "haven",
+        "isn",
+        "ma",
+        "mightn",
+        "mustn",
+        "needn",
+        "shan",
+        "shouldn",
+        "wasn",
+        "weren",
+        "won",
+        "wouldn",
+    }
+)
+
+_TOKEN_RE = re.compile(r"[a-zа-яё0-9]{2,}", re.I)
+
+_TEMPORAL_WINDOWS = [
+    (re.compile(r"\b(вчера|yesterday)\b", re.I), 2, 1),
+    (re.compile(r"\b(позавчера|day before yesterday)\b", re.I), 3, 2),
+    (re.compile(r"\b(на днях)\b", re.I), 5, 0),
+    (re.compile(r"\b(недавно|в последнее время|recently|lately)\b", re.I), 30, 0),
+    (re.compile(r"\b(на прошлой неделе|last week)\b", re.I), 14, 7),
+    (re.compile(r"\b(на этой неделе|this week)\b", re.I), 7, 0),
+]
+
+
+def _tokenize(text: str) -> list[str]:
+    """Lowercase alphanumeric tokens >= 2 chars, excluding stopwords."""
+    lang = "ru" if any("\u0400" <= c <= "\u04ff" for c in text) else "en"
+    stops = _STOPWORDS_RU if lang == "ru" else _STOPWORDS_EN
+    return [m.group().lower() for m in _TOKEN_RE.finditer(text) if m.group().lower() not in stops]
+
+
+def _keyword_score(query_tokens: list[str], content: str) -> float:
+    """Fraction of query tokens found in content (0.0–1.0)."""
+    if not query_tokens:
+        return 0.0
+    content_lower = content.lower()
+    matched = sum(1 for t in query_tokens if t in content_lower)
+    return matched / len(query_tokens)
+
+
+def _recency_boost(created_at: int) -> float:
+    """Newer facts get a slight score bonus (1.0–1.3)."""
+    if not created_at or created_at <= 0:
+        return 1.0
+    now_ts = int(_time.time())
+    age_days = max(1.0, (now_ts - created_at) / 86400.0)
+    return 1.0 + 0.3 * (1.0 / (1.0 + age_days / 7.0))
+
+
+def _time_window_from_query(query: str) -> tuple[int, int] | None:
+    """Return (start_epoch, end_epoch) if temporal cue detected, else None."""
+    now = int(_time.time())
+    for pat, back_start, back_end in _TEMPORAL_WINDOWS:
+        if pat.search(query):
+            return (now - back_start * 86400, now - back_end * 86400)
+    if re.search(r"\b(сегодня|today)\b", query, re.I):
+        import datetime as _dt
+
+        today_start = int(_dt.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).timestamp())
+        return (today_start, now)
+    return None
+
+
+def _hybrid_recall_from_user_db(query: str, limit: int, profile: str) -> list[dict] | None:
+    """Keyword scan → semantic fallback → latest facts for per-user DB.
+
+    When the per-user DB is missing, falls back to the daemon semantic path
+    (then latest facts) so profile recall keeps working.
+
+    Returns list of dicts with 'content', 'score', 'confidence',
+    'fact_id', 'created_at' keys, or None if no data source is available.
+    """
+    db_path = _user_db_path(profile)
+    if not db_path:
+        # User DB unavailable (not yet populated) — fall back to the daemon
+        # semantic path so profile recall keeps working, then latest facts.
+        sem = _semantic_recall_from_user_db(query, limit, profile)
+        if sem:
+            return sem
+        return _recall_from_user_db(profile, limit)
+
+    query_tokens = _tokenize(query)
+    if not query_tokens:
+        return None
+
+    time_window = _time_window_from_query(query)
+
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro&immutable=1", uri=True)
+        sql = (
+            "SELECT content, confidence, fact_id, created_at "
+            "FROM atomic_facts "
+            "WHERE lifecycle = 'active' AND LENGTH(content) <= 200"
+        )
+        params: list[int] = []
+        if time_window:
+            sql += " AND created_at >= ? AND created_at <= ?"
+            params.extend([time_window[0], time_window[1]])
+        sql += " ORDER BY created_at DESC LIMIT 500"
+        rows = conn.execute(sql, params).fetchall()
+        conn.close()
+    except Exception as e:
+        app.logger.warning(f"Hybrid recall DB error for {profile}: {e}")
+        return None
+
+    if not rows:
+        if time_window:
+            sem = _semantic_recall_from_user_db(query, limit, profile)
+            if sem:
+                return sem
+        return _recall_from_user_db(profile, limit)
+
+    scored: list[tuple[float, str, float, str, int]] = []
+    for r in rows:
+        content = (r[0] or "").strip()
+        kw = _keyword_score(query_tokens, content)
+        if kw < _SLH_KEYWORD_THRESHOLD:
+            continue
+        combined = min(kw * _recency_boost(r[3]), 1.0)
+        if combined >= _SLH_KEYWORD_THRESHOLD:
+            scored.append((combined, content, r[1] if r[1] is not None else 0.5, r[2], r[3]))
+
+    if scored:
+        scored.sort(key=lambda x: x[0], reverse=True)
+        min_score = float(os.environ.get("SLM_MIN_SCORE", "0.3"))
+        return [
+            {"content": s[1], "score": s[0], "confidence": s[2], "fact_id": s[3], "created_at": s[4]}
+            for s in scored[:limit]
+            if s[0] >= min_score
+        ]
+
+    sem = _semantic_recall_from_user_db(query, limit, profile)
+    if sem:
+        return sem
+
+    return _recall_from_user_db(profile, limit)
+
 
 app = Flask(__name__)
 
@@ -296,7 +742,7 @@ def recall():
             if not results:
                 results = _recall_from_user_db(profile, limit)
         else:
-            results = _recall_from_user_db(profile, limit)
+            results = _hybrid_recall_from_user_db(query, limit, profile)
         # profile set → read ONLY from user DB, never fall through to daemon
         return jsonify({"success": True, "data": {"results": results or []}})
 

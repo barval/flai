@@ -236,11 +236,11 @@ def create_app():
 
     from modules.tts import TTSModule
 
-    if app.config.get("PIPER_URL"):
+    if app.config.get("KOKORO_URL") or app.config.get("PIPER_URL"):
         modules["tts"] = TTSModule(app)
         app.logger.info("TTS module enabled")
     else:
-        app.logger.info("TTS module disabled (PIPER_URL not set)")
+        app.logger.info("TTS module disabled (no TTS URL set)")
 
     if app.config.get("SEARXNG_URL"):
         from modules.search import SearchModule
@@ -567,7 +567,7 @@ def create_app():
         # System metrics
         metrics_output.append("# HELP flai_web_info Web service information")
         metrics_output.append("# TYPE flai_web_info gauge")
-        metrics_output.append('flai_web_info{version="11.0"} 1')
+        metrics_output.append('flai_web_info{version="11.2"} 1')
 
         # Queue metrics
         try:

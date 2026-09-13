@@ -123,6 +123,16 @@ class RedisRequestQueue:
         self._gpu_lock = threading.Lock()
         self._video_unload_lock = threading.Lock()
 
+        # Clean stale processing entries from previous runs (e.g. after container restart).
+        # Workers are recreated — old in-flight tasks are orphaned and would show ⚡ forever.
+        for stale_key in (self.processing_key, self.slow_processing_key, self.background_processing_key):
+            stale_count = self.redis.hlen(stale_key)
+            if stale_count:
+                self.redis.delete(stale_key)
+                self.app.logger.info(f"Cleaned {stale_count} stale entries from {stale_key}")
+        # Reset user counts — tasks were orphaned above, counts would be inflated.
+        self.redis.delete(f"{self.queue_key}:user_counts")
+
         self.start_worker()
 
     def _serialize(self, data: dict) -> str:
@@ -1166,6 +1176,11 @@ class RedisRequestQueue:
         edit_start = time.time()
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "editing_image"})
+
+        # Unload multimodal model before SD — frees ~7.5GB VRAM for diffusion
+        self._unload_llamacpp_models()
+        self._unload_video_pipeline()
+
         image_result = self.app.modules["image"].edit_image(
             edit_data,
             file_data,
@@ -1177,6 +1192,7 @@ class RedisRequestQueue:
         edit_time = round(time.time() - edit_start, 1)
 
         if not image_result["success"]:
+            self._preload_multimodal_sync()
             return self._build_error_response(
                 session_id,
                 image_result.get("error", self.app.modules["base"]._("Image editing failed", lang=lang)),
@@ -1205,6 +1221,9 @@ class RedisRequestQueue:
                 session_id, "assistant", resize_text, model_name="system", response_time="0"
             )
             resize_notice = resize_text
+
+        # Reload multimodal model for next interaction
+        self._preload_multimodal_sync()
 
         template = self.app.modules["base"]._("Image edited from request: {query}", lang=lang)
         prefix = "🎨 " + template.replace("{query}", "")
@@ -1317,6 +1336,11 @@ class RedisRequestQueue:
         gen_start = time.time()
         if task:
             self._publish_stream_event(task, "task_progress", {"stage": "generating_image"})
+
+        # Unload multimodal model before SD — frees ~7.5GB VRAM for diffusion
+        self._unload_llamacpp_models()
+        self._unload_video_pipeline()
+
         image_result = self.app.modules["image"]._call_wrapper(
             prompt_data,
             lang=lang,
@@ -1327,10 +1351,15 @@ class RedisRequestQueue:
         gen_time = round(time.time() - gen_start, 1)
 
         if not image_result["success"]:
+            # Reload multimodal for next request even on failure
+            self._preload_multimodal_sync()
             return self._build_error_response(session_id, image_result["error"], mm_time + gen_time, lang)
 
         # Unload video pipeline after SD generation — frees VRAM for subsequent LLM
         self._unload_video_pipeline()
+
+        # Reload multimodal model for next interaction
+        self._preload_multimodal_sync()
 
         sd_model = self.app.config.get("SD_MODEL_TYPE", "z_image_turbo")
         template = self.app.modules["base"]._("Image generated from request: {query}", lang=lang)
@@ -1831,6 +1860,8 @@ class RedisRequestQueue:
             # Prevents VRAM leak when generation fails or returns early.
             self._unload_video_pipeline()
             self._unload_llamacpp_models()
+            # Reload multimodal model for next interaction
+            self._preload_multimodal_sync()
 
     def _process_video_gen_task_from_image(
         self,
@@ -2052,6 +2083,8 @@ class RedisRequestQueue:
             # Prevents VRAM leak when generation fails or returns early.
             self._unload_video_pipeline()
             self._unload_llamacpp_models()
+            # Reload multimodal model for next interaction
+            self._preload_multimodal_sync()
 
     def _process_camera_task(
         self,

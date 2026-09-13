@@ -1,4 +1,4 @@
-# AGENTS.md — FLAI v11.0
+# AGENTS.md — FLAI v11.2
 
 > **Read this file first.** It contains the project's constitution: commands, critical rules, and hard constraints.
 > For deep technical details, see the `docs/` directory.
@@ -54,7 +54,7 @@ gunicorn -c gunicorn_config.py wsgi:app
 
 # Docker compose (all profiles)
 docker compose -f docker-compose.gpu.yml \
-  --profile with-image-gen --profile with-voice --profile with-rag \
+  --profile with-image-gen --profile with-voice-piper --profile with-rag \
   --profile with-video --profile with-slm --profile with-search up -d
 
 # Load test
@@ -71,7 +71,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - **Queue:** `app/queue.py:RedisRequestQueue` with **fast worker (CPU) and slow worker (GPU)**. Cancel support for all task types: image gen/edit (pre/post checks), video gen (background checker thread + container restart), streaming tasks (Redis flag). Reasoning tasks retry once when the model returns empty output (thinking-only after `_strip_thinking_tags()`) — `_process_reasoning_task()` loops the generation up to 2 attempts; the retry is fast because the first attempt already loaded the model just-in-time. No retry on task cancellation or on genuine LLM error strings.
   - **VRAM management:** `app/resource_manager.py` — per-module KV cache cost (`KV_PER_TOKEN_MB`) and the multimodal mmproj (vision encoder) size are included in `compute_llamacpp_config()`, `get_vram_needed_mb()`, and the admin estimate chain (`_estimate_model_vram()` → `_classify_model_fit()`). GGUF metadata cache lookups strip the `.gguf` suffix (cache stores names without it).
   - **Database:** PostgreSQL only via `app/database.py:get_db()`
-  - **External services:** llama-swap, Qdrant, SearXNG, Piper (TTS), Whisper (STT), SuperLocalMemory (SLM)
+  - **External services:** llama-swap, Qdrant, SearXNG, Piper (TTS, default) / Kokoro (TTS, selectable backend), Whisper (STT), SuperLocalMemory (SLM)
   - **LLM backend:** `LLAMACP_BACKEND=llama-swap` (default) or `llamacpp` (direct)
   - **Skills master copy:** `prompts/{ru,en}/skills.txt` — single source of truth for all capabilities lists. `format_prompt()` auto-injects `{skills_section}`.
   - **Response styles:** `STYLE_INSTRUCTIONS` in `modules/base.py` — single source of truth for 5 styles (neutral, academic, professional, friendly, funny). Imported by `rag.py` and `multimodal.py`. Style is injected into all prompts via `{response_style}` placeholder.
@@ -79,7 +79,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - **SearXNG engine roster & retry:** `searxng/settings.yml` enables google news, bing news, yahoo news, yahoo, bing, mojeek, marginalia, presearch, qwant, yandex, swisscows news on top of default google cse/duckduckgo. `_process_search_task()` in `app/queue.py` retries once when a search returns 0 results; if still empty, the user gets a soft localized «Search services are temporarily unavailable. Please try again in a few minutes.» notice (msgid in both `.po` files) instead of the old «No web search results found» hard error.
   - **Context budget:** `_get_context_for_model()` fetches SLM facts first, measures real token cost, then fills remaining budget with conversation history. No hardcoded reserves — actual sizes used throughout. Search content is truncated to 2 000 chars per result and a dynamic total computed from the reasoning model's `context_length` via `get_search_context_limit()` (~30% of effective budget, ~11 K chars for 16 K context). When budget is still exceeded, RAG+SLM is returned without history (never dropped).
   - **Chat auto-scroll:** `_isLoadingMessages` flag in `chat-messages.js` prevents N competing async scroll callbacks. `isNearBottom()` threshold=200px. `overflow-anchor: none` for chat container.
-  - **TTS markdown cleanup:** `clean_markdown_for_tts()` in `app/utils.py` strips markdown formatting before Piper TTS synthesis. Handles orphaned `**` fragments from sentence-split at `.` inside URLs. Called in `modules/tts.py:synthesize()`.
+  - **TTS markdown cleanup:** `clean_markdown_for_tts()` in `app/utils.py` strips markdown formatting before TTS synthesis (Piper or Kokoro). Handles orphaned `**` fragments from sentence-split at `.` inside URLs. Called in `modules/tts.py:synthesize()`.
 
 **Full architecture details** → `docs/ARCHITECTURE.md`
 

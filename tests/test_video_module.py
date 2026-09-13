@@ -415,6 +415,25 @@ class TestVideoModuleMemoryPlanning:
         assert notice is None
         assert error is None
 
+    def test_plan_container_cap_limits_budget(self, cpu_rm):
+        from modules.video import VideoModule
+
+        # Host has plenty of RAM, but the ltxvideo container cap (32 GB) is the
+        # binding constraint: 768×512×240 (~53 GB peak) must degrade.
+        cpu_rm._detect_available_ram_mb.return_value = 56000
+        with (
+            patch("app.resource_manager.get_resource_manager", return_value=cpu_rm),
+            patch.dict("os.environ", {"LTX_VIDEO_RAM_LIMIT_MB": "32768"}),
+        ):
+            module = VideoModule()
+            prompt_data = {"width": 768, "height": 512, "num_frames": 240}
+            override, notice, error = module.plan_cpu_generation(prompt_data, lang="ru")
+
+        assert error is None
+        assert notice is not None
+        assert "384×256×120" in notice
+        assert override == VideoModule.CPU_FALLBACK_PARAMS[0]
+
     def test_plan_medium_ram_falls_back(self, cpu_rm):
         from modules.video import VideoModule
 

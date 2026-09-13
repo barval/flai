@@ -105,7 +105,8 @@ class TestSessionSummary:
         assert res == "Compact summary."
         args, kwargs = module.llamacpp.chat.call_args
         assert args[0][0]["role"] == "user"
-        assert args[1] == "qwen3vl"
+        assert kwargs.get("model_type") == "multimodal"
+        assert kwargs.get("lang") == "ru"
         assert kwargs.get("temperature") == 0.3
         expected = format_prompt(
             "summarize.template", {"session_messages": "User: Привет", "previous_summary": ""}, lang="ru"
@@ -120,3 +121,10 @@ class TestSessionSummary:
 
         res = module._summarize_session_history([{"role": "user", "content": "hi"}], lang="ru")
         assert res == "From dict"
+
+    def test_summarize_rejects_error_strings(self, module):
+        module._get_model_config = MagicMock(return_value={"model_name": "qwen3vl"})
+        module.llamacpp = MagicMock()
+        module.llamacpp.chat.return_value = "⚠️ Request too long, please simplify your request"
+
+        assert module._summarize_session_history([{"role": "user", "content": "hi"}], lang="ru") is None

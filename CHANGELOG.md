@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Larger context windows**: multimodal model `context_length` raised 16384→**32768**, reasoning 16384→**24576** (with the current re-quantized reasoning GGUF both windows now fit fully on the GPU, no layer offload). New seed defaults in `app/database.py`.
 - **Real tokenizer calibration**: `usage.prompt_tokens` from llama-server/llama-swap responses now feeds a per-model char/token calibrator (`app/utils.py`), converging `estimate_tokens()` onto the real tokenizer instead of the static heuristic. `estimate_tokens()` prefers the calibrated median when available (min 3 samples). Enabled both backends, streaming (via `stream_options.include_usage`) and non-streaming.
 - **Rolling session summaries**: when the token budget trims old history, the trimmed prefix is folded into a compact per-session summary (multimodal model, new `prompts/{ru,en}/summarize.template`) stored in `chat_sessions.summary`/`summary_upto_id`. Stored summaries are injected into the context, so long sessions keep the thread. Regeneration is guarded per session and cached (no repeat GPU work).
+
+### 🔧 Fixes (v11.3)
+
+- **Session summarization call signature**: `_summarize_session_history()` called the `LlamaCppClient` facade with the backend signature, failing with "got multiple values for argument 'temperature'". Now uses `chat(messages, model_type=..., lang=..., temperature=0.3)`. Error strings (e.g. prompt-too-long) are rejected instead of being stored as summary text.
 - **History no longer capped by message count** — trimmed strictly by the real token budget (`SESSION_SUMMARY_MAX_FETCH` window, default 120).
 - **Timestamps removed from history** in `build_context_prompt` (~5 tokens of junk per message gone; current time is already in the system prompt).
 - **Margins rebalanced** via `.env`: `CONTEXT_HISTORY_PERCENT` 75→85, `CONTEXT_SAFETY_MARGIN` 0.85→0.88 (usable ≈ 75% of window vs 63.75%) — safe because the estimate now tracks the real tokenizer.

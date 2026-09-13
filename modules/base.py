@@ -226,7 +226,6 @@ class BaseModule(TranslationMixin):
             config = self._get_model_config("multimodal")
             if not config or not config.get("model_name"):
                 return None
-            model = config["model_name"]
             lines = []
             for m in messages:
                 role = "User" if m.get("role") == "user" else "Assistant"
@@ -247,16 +246,19 @@ class BaseModule(TranslationMixin):
                 return None
             response = self.llamacpp.chat(
                 [{"role": "user", "content": prompt}],
-                model,
-                config,
-                120,
-                lang,
-                "multimodal",
+                model_type="multimodal",
+                lang=lang,
+                validate=True,
+                tools=None,
                 temperature=0.3,
             )
             if isinstance(response, dict):
                 response = response.get("content", "")
             if isinstance(response, str) and response.strip():
+                from app.queue import RedisRequestQueue
+
+                if RedisRequestQueue._is_llm_error_string(response):
+                    return None
                 summary = response.strip()
                 max_len = (
                     self.app.config.get("SESSION_SUMMARY_MAX_CHARS", 1500)

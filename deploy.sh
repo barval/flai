@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v11.2 — Single-Server Deployment Script
+# FLAI v11.3 — Single-Server Deployment Script
 
 set -euo pipefail
 
@@ -572,7 +572,7 @@ build_and_launch() {
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "unreachable")
     if [[ "$STATUS" == "ok" ]]; then
-        info "FLAI v11.2 is running! Open http://localhost:5000 in your browser."
+        info "FLAI v11.3 is running! Open http://localhost:5000 in your browser."
     else
         warn "Health check returned: $STATUS — check 'docker compose logs' for details."
     fi
@@ -588,7 +588,7 @@ run_tests() {
 # ── Usage ──
 usage() {
     cat <<'USAGE'
-FLAI v11.2 — Deployment Script
+FLAI v11.3 — Deployment Script
 
 Usage: ./deploy.sh [OPTIONS]
 
@@ -669,7 +669,7 @@ VOICE_BACKEND=""
 # ── Main ──
 main() {
     echo "============================================"
-    echo "  FLAI v11.2 — Deployment Script"
+    echo "  FLAI v11.3 — Deployment Script"
     echo "============================================"
     echo ""
 

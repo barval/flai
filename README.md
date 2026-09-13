@@ -88,16 +88,11 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v11.2
+### What's New in v11.3
 
 | Feature | Notes |
 |---------|-------|
-| **Selectable TTS backend: Piper (default) or Kokoro** | Voice deployment now chooses ONE backend: `--with-voice-piper` (Piper — lightweight, ~0.2 GB models) or `--with-voice-kokoro` (Kokoro — higher quality, ~6 GB RAM). `--with-voice` is kept as an alias for Piper. Compose profiles: `with-voice-piper` / `with-voice-kokoro` (both include Whisper ASR). Deploy scripts download only the selected backend's models and toggle the matching `.env` URL. |
-| **Kokoro-82M TTS engine** | New `services/kokoro/` — Flask HTTP API wrapping Kokoro-82M (82M params, ElevenLabs-level quality): `POST /tts`, `GET /health`, `GET /voices`. Docker image: python:3.11-slim + torch CPU. |
-| **Russian voices with correct stress** | Studio-actor voices from `zaakirio/kokoro-ru`: `sveta` (female, WER 2.50% vs Piper 4.38%), `dima` (male). Lexical stress via RUAccent + acute-aware espeak-ng data (за́мок vs замо́к), ё restoration, vowel reduction (akanye) and orthoepic rules (солнце→сонце, final –ого→-ово). |
-| **English voices** | `af_heart` (US female), `am_liam` (US male) from `hexgrad/Kokoro-82M`. |
-| **Dual-backend TTS module** | `modules/tts.py` uses whichever backend URL is active (`KOKORO_URL` or `PIPER_URL`); `/api/tts/synthesize` accepts an optional `voice` name alongside `lang`/`gender`. |
-| **Voice UX refinements** | Kokoro cold-start warmup: the first Russian phrase after deployment takes ~2 s instead of ~56 s (`KOKORO_WARMUP_G2P`, `KOKORO_G2P_IDLE_TIMEOUT`, `KOKORO_TIMEOUT=120` — see Kokoro tuning parameters below). The frontend sends the voice gender explicitly with every synthesis request, so switching gender and immediately playing no longer risks the previous voice. |
+| **v11.3 — context & retrieval quality** | In development: smarter context-budgeting for message history, higher-quality RAG and web search, and tighter SLM long-term memory — the goal is sharp retrieval results and long chat sessions that keep the thread without losing the meaning of earlier exchanges. |
 
 ### Core Components
 
@@ -952,6 +947,7 @@ curl http://localhost:5000/metrics
 ## 🗺️ Roadmap
 
 ### 🔄 In Progress
+- **v11.3 — context & retrieval quality** — smarter context-budgeting for message history, higher-quality RAG and web search, tighter SLM long-term memory: sharp retrieval results and long chat sessions that keep the thread without losing the meaning of earlier exchanges
 - **Multi-platform GPU support** — extend FLAI to run on non-NVIDIA machines:
   - CPU-only mode for the full stack
   - AMD / Intel via Vulkan for llama.cpp and stable-diffusion.cpp, ROCm for LTX-Video

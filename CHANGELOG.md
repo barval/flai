@@ -4,6 +4,12 @@ All notable changes to FLAI are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v11.3] — Unreleased
+
+### ✨ Planned
+
+- **Context & retrieval quality** — smarter context-budgeting for message history, higher-quality RAG and web search, tighter SLM long-term memory. Goal: sharp retrieval results and long chat sessions that keep the thread without losing the meaning of earlier exchanges.
+
 ## [v11.2] — 2026-09-11
 
 ### ✨ TTS: Piper → Kokoro-82M

@@ -74,6 +74,9 @@ target/
 *.swo
 .opencode/
 
+# Superpowers session notes (plans/specs, not part of the codebase)
+docs/superpowers/
+
 # graphify
 graphify-out/
 .opencode/

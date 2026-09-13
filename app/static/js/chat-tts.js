@@ -17,6 +17,17 @@ let ttsIsGenerating = false;  // Background synthesis in progress
 // These are already declared in chat-constants.js — reuse them
 // currentAudio, currentTTSButton, currentPlayingSessionId, currentTTSMessageText
 
+// Current voice gender from the header toggle. Sent explicitly with every
+// synthesize request: a stale session cookie (race right after
+// /set-voice-gender) must never make playback use the previous gender.
+// Returns undefined when the toggle is absent — the server then falls back
+// to session["voice_gender"].
+function getVoiceGender() {
+    const btn = document.getElementById('voice-gender-toggle');
+    if (!btn) return undefined;
+    return btn.classList.contains('female') ? 'female' : 'male';
+}
+
 function setTTSButtonState(button, state) {
     if (state === 'playing') {
         button.innerHTML = '🗣️';
@@ -117,7 +128,8 @@ async function synthesizeInBackground(sentences, lang, startIndex) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     text: sentences[i],
-                    lang: lang
+                    lang: lang,
+                    gender: getVoiceGender()
                 }),
                 signal: ttsAbortController.signal
             });
@@ -130,7 +142,8 @@ async function synthesizeInBackground(sentences, lang, startIndex) {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         text: sentences[i],
-                        lang: lang
+                        lang: lang,
+                        gender: getVoiceGender()
                     }),
                     signal: ttsAbortController.signal
                 });
@@ -360,6 +373,7 @@ async function playTTS(button, messageElement) {
             try {
                 const requestBody = { text: sentences[i] };
                 if (lang) requestBody.lang = lang;
+                requestBody.gender = getVoiceGender();
                 const response = await fetchWithCSRF('/api/tts/synthesize', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

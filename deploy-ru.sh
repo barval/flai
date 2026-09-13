@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v11.0 — Скрипт развёртывания на одном сервере
+# FLAI v11.2 — Скрипт развёртывания на одном сервере
 
 set -euo pipefail
 
@@ -97,6 +97,34 @@ enable_env_features() {
             sed -i 's|^SLM_URL=|# SLM_URL=|' .env
         fi
     fi
+    if [[ "$VOICE_BACKEND" == "kokoro" ]]; then
+        if grep -q '^# KOKORO_URL=' .env 2>/dev/null; then
+            info "Включаю TTS (Kokoro) в .env..."
+            sed -i 's|^# KOKORO_URL=|KOKORO_URL=|' .env
+        fi
+        if grep -q '^PIPER_URL=' .env 2>/dev/null; then
+            info "Отключаю TTS (Piper) в .env..."
+            sed -i 's|^PIPER_URL=|# PIPER_URL=|' .env
+        fi
+    elif [[ "$VOICE_BACKEND" == "piper" ]]; then
+        if grep -q '^# PIPER_URL=' .env 2>/dev/null; then
+            info "Включаю TTS (Piper) в .env..."
+            sed -i 's|^# PIPER_URL=|PIPER_URL=|' .env
+        fi
+        if grep -q '^KOKORO_URL=' .env 2>/dev/null; then
+            info "Отключаю TTS (Kokoro) в .env..."
+            sed -i 's|^KOKORO_URL=|# KOKORO_URL=|' .env
+        fi
+    else
+        if grep -q '^KOKORO_URL=' .env 2>/dev/null; then
+            info "Отключаю TTS (Kokoro) в .env..."
+            sed -i 's|^KOKORO_URL=|# KOKORO_URL=|' .env
+        fi
+        if grep -q '^PIPER_URL=' .env 2>/dev/null; then
+            info "Отключаю TTS (Piper) в .env..."
+            sed -i 's|^PIPER_URL=|# PIPER_URL=|' .env
+        fi
+    fi
 }
 
 # ── Генерация минимального конфига llama-swap ──
@@ -110,7 +138,7 @@ generate_llama_swap_config() {
 
     info "Генерирую минимальный конфиг llama-swap..."
 
-    # v11.0: мультимодальная модель — единственная чат-модель (роутер + чат + vision).
+    # v11.2: мультимодальная модель — единственная чат-модель (роутер + чат + vision).
     # Всегда загружена (ttl=0). Отдельной чат-модели больше нет.
     local MULTIMODAL_MODEL="Qwen3VL-8B-Instruct-Q4_K_M"
 
@@ -276,7 +304,7 @@ download_sd_cpp_models() {
         warn "flux2_ae.safetensors уже есть — пропускаю."
     fi
 
-    # Кодировщик текста (Qwen3-4B используется как текстовый кодировщик для SD; НЕ чат-модель в v11.0)
+    # Кодировщик текста (Qwen3-4B используется как текстовый кодировщик для SD; НЕ чат-модель в v11.2)
     if [[ ! -f "$TXT_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
         info "Скачиваю Qwen3-4B-Instruct-2507-Q4_K_M.gguf (кодировщик текста)..."
         HF_DOWNLOAD "unsloth/Qwen3-4B-Instruct-2507-GGUF" \
@@ -315,48 +343,70 @@ download_ltx_video_models() {
 
 # ── Модели TTS (синтез речи) ──
 download_tts_models() {
-    info "Скачиваю модели TTS (Piper)..."
-    local TTS_DIR="services/piper/piper_models"
-    mkdir -p "$TTS_DIR"
+    if [[ "$VOICE_BACKEND" == "kokoro" ]]; then
+        download_kokoro_models
+    elif [[ "$VOICE_BACKEND" == "piper" ]]; then
+        download_piper_models
+    else
+        info "Бэкенд TTS не выбран — пропускаю скачивание моделей TTS."
+    fi
+}
+
+download_kokoro_models() {
+    local KOKORO_DIR="services/kokoro"
+
+    info "Скачиваю модели Kokoro-82M TTS..."
+    if [[ -d "$KOKORO_DIR/models" && -f "$KOKORO_DIR/models/kokoro-ru-v2-base.pth" ]]; then
+        info "Модели Kokoro уже скачаны."
+    else
+        mkdir -p "$KOKORO_DIR/models" "$KOKORO_DIR/voices" "$KOKORO_DIR/espeak-data"
+        bash "$KOKORO_DIR/download-model.sh"
+    fi
+}
+
+download_piper_models() {
+    info "Скачиваю модели Piper TTS..."
+    local PIPER_DIR="services/piper/piper_models"
+    mkdir -p "$PIPER_DIR"
     # Английский (мужской)
-    if [[ ! -f "$TTS_DIR/en_US-ryan-medium.onnx" ]]; then
+    if [[ ! -f "$PIPER_DIR/en_US-ryan-medium.onnx" ]]; then
         info "Скачиваю en_US-ryan-medium.onnx..."
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "en/en_US/ryan/medium/en_US-ryan-medium.onnx" \
-            "$TTS_DIR/en_US-ryan-medium.onnx"
+            "$PIPER_DIR/en_US-ryan-medium.onnx"
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "en/en_US/ryan/medium/en_US-ryan-medium.onnx.json" \
-            "$TTS_DIR/en_US-ryan-medium.onnx.json"
+            "$PIPER_DIR/en_US-ryan-medium.onnx.json"
     fi
     # Английский (женский)
-    if [[ ! -f "$TTS_DIR/en_US-ljspeech-medium.onnx" ]]; then
+    if [[ ! -f "$PIPER_DIR/en_US-ljspeech-medium.onnx" ]]; then
         info "Скачиваю en_US-ljspeech-medium.onnx..."
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx" \
-            "$TTS_DIR/en_US-ljspeech-medium.onnx"
+            "$PIPER_DIR/en_US-ljspeech-medium.onnx"
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json" \
-            "$TTS_DIR/en_US-ljspeech-medium.onnx.json"
+            "$PIPER_DIR/en_US-ljspeech-medium.onnx.json"
     fi
     # Русский (мужской)
-    if [[ ! -f "$TTS_DIR/ru_RU-dmitri-medium.onnx" ]]; then
+    if [[ ! -f "$PIPER_DIR/ru_RU-dmitri-medium.onnx" ]]; then
         info "Скачиваю ru_RU-dmitri-medium.onnx..."
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx" \
-            "$TTS_DIR/ru_RU-dmitri-medium.onnx"
+            "$PIPER_DIR/ru_RU-dmitri-medium.onnx"
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json" \
-            "$TTS_DIR/ru_RU-dmitri-medium.onnx.json"
+            "$PIPER_DIR/ru_RU-dmitri-medium.onnx.json"
     fi
     # Русский (женский)
-    if [[ ! -f "$TTS_DIR/ru_RU-irina-medium.onnx" ]]; then
+    if [[ ! -f "$PIPER_DIR/ru_RU-irina-medium.onnx" ]]; then
         info "Скачиваю ru_RU-irina-medium.onnx..."
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx" \
-            "$TTS_DIR/ru_RU-irina-medium.onnx"
+            "$PIPER_DIR/ru_RU-irina-medium.onnx"
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json" \
-            "$TTS_DIR/ru_RU-irina-medium.onnx.json"
+            "$PIPER_DIR/ru_RU-irina-medium.onnx.json"
     fi
 }
 
@@ -439,7 +489,8 @@ detect_cuda() {
 resolve_stack() {
     PROFILES=""
     [[ "$WITH_IMAGE_GEN" == "true" ]] && PROFILES="$PROFILES --profile with-image-gen"
-    [[ "$WITH_VOICE" == "true" ]] && PROFILES="$PROFILES --profile with-voice"
+    [[ "$VOICE_BACKEND" == "piper" ]]  && PROFILES="$PROFILES --profile with-voice-piper"
+    [[ "$VOICE_BACKEND" == "kokoro" ]] && PROFILES="$PROFILES --profile with-voice-kokoro"
     [[ "$WITH_RAG" == "true" ]]    && PROFILES="$PROFILES --profile with-rag"
     [[ "$WITH_VIDEO" == "true" ]]  && PROFILES="$PROFILES --profile with-video"
     [[ "$WITH_SLM" == "true" ]]    && PROFILES="$PROFILES --profile with-slm"
@@ -517,7 +568,7 @@ build_and_launch() {
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "недоступен")
     if [[ "$STATUS" == "ok" ]]; then
-        info "FLAI v11.0 запущен! Откройте http://localhost:5000 в браузере."
+        info "FLAI v11.2 запущен! Откройте http://localhost:5000 в браузере."
     else
         warn "Проверка здоровья: $STATUS — проверьте 'docker compose logs' для деталей."
     fi
@@ -533,12 +584,15 @@ run_tests() {
 # ── Справка ──
 usage() {
     cat <<'USAGE'
-FLAI v11.0 — Скрипт развёртывания
+FLAI v11.2 — Скрипт развёртывания
 
 Использование: ./deploy-ru.sh [ОПЦИИ]
 
 Опции:
-  --with-voice        Развернуть Whisper ASR + Piper TTS
+  --with-voice        Развернуть Whisper ASR + TTS (бэкенд Piper, выбор по умолчанию)
+  --with-voice-piper  Развернуть Whisper ASR + Piper TTS (то же, что --with-voice)
+  --with-voice-kokoro Развернуть Whisper ASR + Kokoro TTS (лучше качество, ~6 ГБ RAM)
+                      (взаимоисключающ с --with-voice-piper)
   --with-rag          Развернуть Qdrant для RAG (поиск по документам)
   --with-image-gen    Развернуть stable-diffusion.cpp для генерации/редактирования
                       (по умолчанию: отключено, используйте этот флаг для включения)
@@ -566,12 +620,14 @@ FLAI v11.0 — Скрипт развёртывания
   Видео (LTX-Video 2B)                ~5,9 ГБ
   T5 text encoder (PixArt T5-XXL)     ~18 ГБ (на диске, float32)
   TTS (Piper)                         ~0,2 ГБ
+  TTS (Kokoro)                        ~1 ГБ
   SLM embedding model                ~0,5 ГБ (предзагружается при сборке Docker-образа)
 USAGE
 }
 
 # ── Разбор аргументов ──
-WITH_VOICE=false
+VOICE_PIPER=false
+VOICE_KOKORO=false
 WITH_RAG=false
 WITH_IMAGE_GEN=false
 WITH_VIDEO=false
@@ -584,23 +640,33 @@ PROFILES=""
 
 for arg in "$@"; do
     case "$arg" in
-        --with-voice)     WITH_VOICE=true ;;
-        --with-rag)       WITH_RAG=true ;;
-        --with-image-gen) WITH_IMAGE_GEN=true ;;
-        --with-video)     WITH_VIDEO=true ;;
-        --with-slm)       WITH_SLM=true ;;
-        --with-search)    WITH_SEARCH=true ;;
-        --cpu)            FLAI_PLATFORM=cpu ;;
-        --download-models) DOWNLOAD_MODELS=true ;;
-        --run-tests)      RUN_TESTS=true ;;
-        --help|-h)        usage; exit 0 ;;
+        --with-voice|--with-voice-piper) VOICE_PIPER=true ;;
+        --with-voice-kokoro)             VOICE_KOKORO=true ;;
+        --with-rag)                      WITH_RAG=true ;;
+        --with-image-gen)                WITH_IMAGE_GEN=true ;;
+        --with-video)                    WITH_VIDEO=true ;;
+        --with-slm)                      WITH_SLM=true ;;
+        --with-search)                   WITH_SEARCH=true ;;
+        --cpu)                           FLAI_PLATFORM=cpu ;;
+        --download-models)               DOWNLOAD_MODELS=true ;;
+        --run-tests)                     RUN_TESTS=true ;;
+        --help|-h)                       usage; exit 0 ;;
     esac
 done
+
+if [[ "$VOICE_PIPER" == "true" && "$VOICE_KOKORO" == "true" ]]; then
+    error "--with-voice-piper и --with-voice-kokoro взаимоисключающие — выберите один бэкенд TTS."
+    exit 1
+fi
+
+VOICE_BACKEND=""
+[[ "$VOICE_PIPER" == "true" ]] && VOICE_BACKEND="piper"
+[[ "$VOICE_KOKORO" == "true" ]] && VOICE_BACKEND="kokoro"
 
 # ── Основной запуск ──
 main() {
     echo "============================================"
-    echo "  FLAI v11.0 — Скрипт развёртывания"
+    echo "  FLAI v11.2 — Скрипт развёртывания"
     echo "============================================"
     echo ""
 
@@ -619,7 +685,7 @@ main() {
         download_sd_cpp_models
         download_tts_models
         [[ "$WITH_VIDEO" == "true" ]] && download_ltx_video_models
-        [[ "$WITH_VOICE" == "true" ]] && download_whisper_models
+        [[ "$VOICE_BACKEND" != "" ]] && download_whisper_models
     fi
 
     if build_and_launch; then

@@ -223,7 +223,6 @@ class BaseModule(TranslationMixin):
                     current_query,
                     limit=slm_recall_limit * 2,
                     profile=user_id,
-                    semantic=True,
                 )
 
                 session_facts = [f for f in raw_facts if f.get("metadata", {}).get("fact_type") == "session_specific"]

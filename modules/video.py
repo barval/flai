@@ -8,6 +8,7 @@ which runs LTX-Video pipeline natively with PyTorch.
 
 import base64
 import logging
+import os
 import time
 from datetime import datetime
 from io import BytesIO
@@ -171,6 +172,9 @@ class VideoModule(TranslationMixin):
     ) -> tuple[dict[str, Any] | None, str | None, str | None]:
         """Decide video parameters on CPU based on available RAM.
 
+        Budget = min(host free RAM, ltxvideo container memory cap). The cap is
+        read from LTX_VIDEO_RAM_LIMIT_MB (set in the CPU compose file).
+
         Returns (override, notice, error):
           - ({}, None, None)        → proceed with requested params
           - (fallback_params, notice, None) → degrade to smaller resolution + notice
@@ -182,7 +186,14 @@ class VideoModule(TranslationMixin):
         if rm.hardware.platform != "cpu":
             return {}, None, None
 
-        available_mb = int(rm._detect_available_ram_mb())
+        # Generation happens in the ltxvideo container, so the binding
+        # constraint is the SMALLER of host free RAM and that container's
+        # memory cap (LTX_VIDEO_RAM_LIMIT_MB from docker-compose.cpu.yml).
+        # A plan fitting host RAM but exceeding the container cap would end in
+        # an OOM-kill of the container despite available host memory.
+        host_available_mb = int(rm._detect_available_ram_mb())
+        container_limit_mb = int(os.environ.get("LTX_VIDEO_RAM_LIMIT_MB", str(host_available_mb)))
+        available_mb = min(host_available_mb, container_limit_mb)
         req_width = int(prompt_data.get("width", 768))
         req_height = int(prompt_data.get("height", 512))
         req_frames = int(prompt_data.get("num_frames", 240))

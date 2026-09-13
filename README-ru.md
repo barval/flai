@@ -34,7 +34,7 @@
 - ✏️ **Редактирование изображений** – загрузите изображение и попросите изменить его (модель Flux.2 Klein 4B)
 - 🎬 **Генерация видео** – создавайте короткие видео из текста или изображения+текста с помощью LTX-Video 2B (дистиллированная, 8 шагов)
 - 🎤 **Распознавание речи** – преобразование голосовых сообщений в текст через Whisper ASR (faster_whisper)
-- 🗣️ **Синтез речи** – озвучивание ответов через Piper TTS (мужской и женский голоса на русском и английском)
+- 🗣️ **Синтез речи** – озвучивание ответов через Piper или Kokoro TTS (бэкенд выбирается при развёртывании)
 - 🧠 **Долговременная память** – кросс-сессионная память через SuperLocalMemory (SLM). Только CPU, rule-based извлечение и слияние фактов (без LLM). Семантическая дедупликация.
 
 ### 📁 Управление документами и знаниями
@@ -88,20 +88,15 @@
 
 ПЛИИ — модульное Flask-приложение, оркестрирующее сервисы на экосистеме llama.cpp.
 
-### Что нового в v11.0
+### Что нового в v11.2
 
 | Возможность | Примечания |
 |-------------|------------|
-| **Мультиплатформенная поддержка GPU (в работе)** | Архитектура движется к работе на NVIDIA, AMD, Intel и CPU-only машинах. Новый модуль `app/platform_detect.py` абстрагирует определение GPU (прозондирует `nvidia-smi` / `rocm-smi` / `vulkaninfo`) и предоставляет вендор-независимый API запросов VRAM; переменная `FLAI_PLATFORM` позволяет явно задать платформу. Весь поллинг VRAM и определение GPU теперь идут через эту абстракцию. |
-| **Мгновенное переключение GPU↔CPU (без пересборки)** | Образы с backend-тегами — каждый compose-файл закрепляет свой тег образа (`flai-sd_cpp:cuda/cpu`, `flai-ltxvideo:cuda/cpu`), поэтому GPU- и CPU-сборки сосуществуют, и для переключения стека пересборка не нужна. Повторно запустите `./deploy-ru.sh` (GPU) или `./deploy-ru.sh --cpu` (CPU). |
-| **Режим только CPU** | Новый `docker-compose.cpu.yml` с тем же стеком сервисов (web, redis, postgres, llama-swap, SD, LTX, Whisper, Piper, SearXNG, SLM, Qdrant) на CPU-сборках всех моделей; таймауты увеличены (`SD_CPP_TIMEOUT=1800`, `LLM_TIMEOUT=600`, `SD_CLI_TIMEOUT=3600`). `deploy-ru.sh`/`deploy-ru.sh` принимают `--cpu` и автоматически выбирают CPU compose-файл, если NVIDIA GPU не обнаружен. |
-| **Адаптивное разрешение видео на CPU (память прежде всего)** | Предварительное планирование RAM (`plan_cpu_generation()` в `modules/video.py`) оценивает пиковую память LTX и, если запрошенный клип 768×512×240 не помещается, снижает его по фиксированному каскаду: 384×256×120 @ 12 к/с → 256×192×57 @ 6 к/с. Пользователь уведомляется о выбранном формате, а при невозможности даже минимального шага генерация останавливается с чётким сообщением ⚠️. |
-| **Вкладка «Оборудование» в админке** | Первая вкладка админ-панели «Hardware» / «Оборудование» (перед «Пользователями») показывает платформу (`nvidia` / `amd` / `intel` / `cpu`), GPU, VRAM, ядра CPU, RAM и модель CPU. |
-| **Платформа в админ-API** | `/api/hardware` теперь сообщает определённую платформу (`nvidia` / `amd` / `intel` / `cpu`) наряду с именем GPU и VRAM, а также `cpu_count` и `cpu_name`. |
-| **Улучшение генерации видео (LTX-Video)** | Пайплайн LTX-Video настроен: `sampler: LinearQuadratic`, `guidance_scale: 1.5`, а конфиг YAML пайплайна теперь в репозитории (отслеживается git вместо игнорирования). |
-| **Улучшение поиска в интернете** | Расширен состав движков SearXNG (google news, bing news, yahoo news, yahoo, bing, mojeek, marginalia, presearch, qwant, yandex, swisscows news) — поиск стал заметно устойчивее к сбоям отдельных движков. Если поиск вернул 0 результатов, запрос автоматически повторяется один раз; если и повтор пуст, пользователь получает мягкое уведомление «Поисковые сервисы временно недоступны из-за ограничений внешних поисковиков. Пожалуйста, попробуйте повторить запрос через несколько минут.» вместо жёсткой ошибки. |
-| **Видеообзор** | Встроенный видеоролик с обзором платформы в начале этого README (см. 🎬 Видеообзор). |
-
+| **Выбираемый бэкенд TTS: Piper (по умолчанию) или Kokoro** | При развёртывании голоса выбирается ОДИН бэкенд: `--with-voice-piper` (Piper — лёгкий, ~0,2 ГБ моделей) или `--with-voice-kokoro` (Kokoro — качественнее, ~6 ГБ RAM). `--with-voice` сохранён как алиас к Piper. Профили compose: `with-voice-piper` / `with-voice-kokoro` (оба включают Whisper ASR). Скрипты деплоя качают модели только выбранного бэкенда и переключают соответствующий URL в `.env`. |
+| **Движок Kokoro-82M** | Новый `services/kokoro/` — Flask HTTP API поверх Kokoro-82M (82M параметров, качество уровня ElevenLabs): `POST /tts`, `GET /health`, `GET /voices`. Docker-образ: python:3.11-slim + torch CPU. |
+| **Русские голоса с корректным ударением** | Студийные голоса из `zaakirio/kokoro-ru`: `sveta` (женский, WER 2,50% против 4,38% у Piper), `dima` (мужской). Лексические ударения через RUAccent + espeak-ng с акутами (за́мок vs замо́к), восстановление ё, аканье и орфоэпия (солнце→сонце, –ого→-ово). |
+| **Английские голоса** | `af_heart` (женский, US), `am_liam` (мужской, US) из `hexgrad/Kokoro-82M`. |
+| **Двухбэкендный модуль TTS** | `modules/tts.py` использует тот бэкенд, чей URL активен (`KOKORO_URL` или `PIPER_URL`); `/api/tts/synthesize` принимает опциональное имя голоса `voice` вместе с `lang`/`gender`. |
 
 ### Основные компоненты
 
@@ -112,7 +107,7 @@
 | **stable-diffusion.cpp** | Генерация изображений (Z_image_turbo) и редактирование (Flux.2 Klein 4B) | C++ + CUDA | 7861 |
 | **LTX-Video** | Генерация видео (text-to-video / image+text-to-video) | Python + PyTorch | 7872 |
 | **Whisper ASR** | Распознавание речи | faster_whisper | 9000 |
-| **Piper TTS** | Синтез речи | ONNX + Piper | 8888 |
+| **Piper / Kokoro TTS** | Синтез речи (бэкенд выбирается при развёртывании: Piper по умолчанию, Kokoro качественнее) | ONNX + Piper / Kokoro-82M | 8888 |
 | **SuperLocalMemory** | Долговременная кросс-сессионная память на пользователя (демон + HTTP-прокси) | Python + SQLite | 8766 |
 | **Qdrant** | Векторная база данных для RAG | Rust | 6333 |
 | **Redis** | Управление очередью запросов | C | 6379 |
@@ -171,6 +166,8 @@
 > | GPU 12 ГБ | 24–32 ГБ | 32–40 ГБ |
 > | GPU 16 ГБ | 24–32 ГБ | 32–48 ГБ |
 > | Только CPU | 24–32 ГБ | 48 ГБ (64 ГБ для роликов на 240 кадров) |
+>
+> Голосовые функции опциональны (`--with-voice-piper` / `--with-voice-kokoro`): Whisper ASR добавляет ~1 ГБ ОЗУ плюс выбранный бэкенд — Piper до ~0,5 ГБ (голоса грузятся лениво, по мере использования) или Kokoro ~1,6 ГБ в простое и до ~6 ГБ при русской фразе (его контейнерный лимит 6 ГБ). Цифры CPU-режима для видео предполагают, что контейнеру LTX-Video доступно до 64 ГБ (его лимит в `docker-compose.cpu.yml`); предварительный планировщик ограничивает генерацию по *меньшему* из двух значений — свободной ОЗУ хоста и этого лимита, поэтому ролик 768×512×240 (~53 ГБ пик) реально требует хост на 64 ГБ.
 
 #### Что работает на каждом уровне
 
@@ -185,7 +182,7 @@
 | RAG (Qdrant) | ✅ | ✅ | ✅ | ✅ |
 | SLM долговременная память | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 
-> **Управление VRAM:** Все LLM-модели (мультимодальная, рассуждения, эмбеддинг) разделяют VRAM через llama-swap — одновременно загружена только одна. SD и LTX-Video используют отдельные GPU-контексты с авто-выгрузкой LLM перед генерацией. Система динамически подстраивает `n_gpu_layers` под доступную VRAM. **Видео на CPU:** перед генерацией воркер проверяет свободную RAM (`MemAvailable`); если запрошенные 768×512×240 не помещаются — прогрессивно деградирует до 384×256×120 @ 12 кадр/с, затем до 256×192×57 @ 6 кадр/с, уведомляя пользователя точным выбранным форматом, и останавливается с понятным сообщением, если невозможна даже минимальная ступень.
+> **Управление VRAM:** Все LLM-модели (мультимодальная, рассуждения, эмбеддинг) разделяют VRAM через llama-swap — одновременно загружена только одна. SD и LTX-Video используют отдельные GPU-контексты с авто-выгрузкой LLM перед генерацией. Система динамически подстраивает `n_gpu_layers` под доступную VRAM. **Видео на CPU:** перед генерацией воркер проверяет свободную RAM (`MemAvailable`) с учётом собственного лимита памяти контейнера LTX-Video (`LTX_VIDEO_RAM_LIMIT_MB`); если запрошенные 768×512×240 не помещаются — прогрессивно деградирует до 384×256×120 @ 12 кадр/с, затем до 256×192×57 @ 6 кадр/с, уведомляя пользователя точным выбранным форматом, и останавливается с понятным сообщением, если невозможна даже минимальная ступень.
 
 ### Бенчмарки моделей (RTX 5060 Ti 16 ГБ)
 
@@ -255,7 +252,10 @@ cd flai
 # + Генерация/редактирование изображений
 ./deploy-ru.sh --download-models --with-image-gen
 
-# + Голос (Whisper ASR + Piper TTS)
+# + Голос: Whisper ASR + TTS. Выберите ОДИН бэкенд:
+#   --with-voice-piper    Piper TTS (выбор по умолчанию, лёгкий, ~0,2 ГБ моделей)
+#   --with-voice-kokoro   Kokoro TTS (качественнее, ~6 ГБ RAM)
+#   (--with-voice — алиас к Piper)
 ./deploy-ru.sh --download-models --with-image-gen --with-voice
 
 # + RAG (Qdrant)
@@ -398,8 +398,11 @@ docker compose -f docker-compose.gpu.yml up -d
 # С генерацией изображений
 docker compose -f docker-compose.gpu.yml --profile with-image-gen up -d
 
-# С голосовыми функциями
-docker compose -f docker-compose.gpu.yml --profile with-voice up -d
+# С голосовыми функциями — выберите ОДИН бэкенд:
+#   --profile with-voice-piper    Piper TTS (по умолчанию)
+#   --profile with-voice-kokoro   Kokoro TTS (качественнее)
+#   (--profile with-voice — алиас к Piper)
+docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d
 
 # С генерацией видео
 docker compose -f docker-compose.gpu.yml --profile with-video up -d
@@ -411,7 +414,7 @@ docker compose -f docker-compose.gpu.yml --profile with-slm up -d
 docker compose -f docker-compose.gpu.yml --profile with-search up -d
 
 # Полный стек: мультимодальная + изображения + голос + RAG + видео + память + поиск
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm --profile with-search up -d
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice-piper --profile with-rag --profile with-video --profile with-slm --profile with-search up -d
 ```
 
 > ⏱️ **Первая сборка занимает время**: stable-diffusion.cpp компилируется из исходников (~5-10 минут). Последующие сборки используют кеш Docker.
@@ -450,7 +453,7 @@ docker exec flai-web flask admin-password ВашНадёжныйПароль123
 - 🎬 **Генерировать видео** — создавать короткие видео из текста или изображения
 - ✏️ **Редактировать изображения** — загрузить и изменить (цвета, объекты, стилизация)
 - 🎤 **Отправлять голосовые сообщения** — распознавание речи через Whisper ASR
-- 🗣️ **Слушать ответы** — синтез речи через Piper TTS (мужской/женский, EN/RU)
+- 🗣️ **Слушать ответы** — синтез речи через Piper (по умолчанию) или Kokoro TTS (мужской/женский, EN/RU)
 - 📚 **Искать по документам** — загружать PDF/DOC/TXT и задавать вопросы (RAG)
 - 🗂️ **Управлять сессиями чата** — несколько диалогов с авто-озаглавливанием
 - 💾 **Экспортировать диалоги** — сохранять как HTML с встроенными медиа
@@ -594,10 +597,10 @@ flai.example.ru {
 
 ```bash
 # Запуск всех сервисов (мультимодальная + изображения + голос + RAG + видео + память + поиск)
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm --profile with-search up -d
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice-piper --profile with-rag --profile with-video --profile with-slm --profile with-search up -d
 
-# Чат + голос (без изображений и видео)
-docker compose -f docker-compose.gpu.yml --profile with-voice up -d
+# Чат + голос (Piper; для Kokoro — with-voice-kokoro)
+docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d
 
 # Генерация видео
 docker compose -f docker-compose.gpu.yml --profile with-video up -d
@@ -760,8 +763,8 @@ LTX_VIDEO_TIMEOUT=600
 Использует `onerahmet/openai-whisper-asr-webservice` (движок faster_whisper).
 
 ```bash
-# Включить голосовые функции
-docker compose -f docker-compose.gpu.yml --profile with-voice up -d
+# Включить голосовые функции (Whisper ASR; выберите ОДИН профиль TTS — with-voice-piper или with-voice-kokoro)
+docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d
 ```
 
 ### Piper TTS
@@ -780,6 +783,31 @@ curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx \
 curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx \
   "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx"
 ```
+
+### Kokoro TTS
+
+Более качественный бэкенд (уровень ElevenLabs). Выбирается флагом `--with-voice-kokoro` / профилем `--profile with-voice-kokoro`. Модели скачиваются одной командой `services/kokoro/download-model.sh` (скрипт деплоя запускает её автоматически):
+
+```bash
+bash services/kokoro/download-model.sh
+```
+
+### Выбор бэкенда: Piper vs Kokoro
+
+| Параметр | Piper (по умолчанию) | Kokoro |
+|----------|----------------------|--------|
+| Модели на диске | ~0,24 ГБ (4 голоса medium) | ~0,95 ГБ (3 файла моделей + голоса + espeak-data) |
+| Лимит памяти сервиса | 512 МБ | 6 ГБ |
+| RAM в простое (нет TTS-активности) | ~200–300 МБ | ~1,6 ГБ (лёгкий воркер, RUAccent не загружен) |
+| RAM при активных сессиях | ~500 МБ (кеш всех 4 голосов) | ~3–5,5 ГБ (RUAccent + модель в воркере; пик на длинных фразах) |
+| Качество русского | Хорошее (WER 4,38%) | Выше (WER 2,50%, студийные актёры) |
+| Русские голоса | `dmitri` (муж.), `irina` (жен.) | `dima` (муж.), `sveta` (жен.) |
+| Русское произношение | фонемы espeak-ng, без настоящих ударений | RUAccent: лексические ударения, ё, аканье, орфоэпия |
+| Первая фраза (свежий контейнер) | ~0,8 с | EN ~2,9 с; **RU ~10–11,5 с** |
+| Последующие фразы (в той же сессии) | ~0,7–0,8 с | RU ~1,1 с |
+| Холодный старт после простоя | нет — голоса остаются в кеше | **только для RU:** через ≥5 мин без русского G2P-воркер RUAccent (~3,1 ГБ) автоматически убивается ради возврата RAM; следующая русская фраза перезагружает его (~10–11,5 с). На EN не влияет. |
+
+> **Замечания по памяти (замерено):** Piper кеширует каждый использованный голос в памяти — при загрузке всех 4 голосов занято ~497 МиБ, вплотную к лимиту 512 МБ. Воркер Kokoro возвращает ~3,1 ГБ ОС через 300 с без русского TTS, поэтому после тихого периода одна первая русская фраза будет медленнее (затем ~1,1 с на последующие).
 
 ---
 

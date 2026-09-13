@@ -1,4 +1,4 @@
-# Architecture — FLAI v11.0
+# Architecture — FLAI v11.2
 
 This document describes the internal architecture of FLAI in detail. Read it when modifying core logic, queue, modules, or data flow.
 
@@ -77,11 +77,12 @@ PostgreSQL only via `app/database.py:get_db()` context manager (psycopg2 RealDic
 - `services/qdrant/` — vector DB for RAG
 - `services/openai-whisper/` — speech-to-text
 - `services/piper/` — text-to-speech
+- `services/kokoro/` — text-to-speech (higher-quality alternative, selected at deploy time)
 - `services/superlocalmemory/` — long-term memory (SLM)
 - `services/llamacpp/` — llama.cpp servers
 - `llama-swap` — Docker image `ghcr.io/mostlygeek/llama-swap:cuda` (no local service directory)
 
-**Docker compose profiles**: `with-image-gen`, `with-voice`, `with-rag`, `with-video`, `with-slm`, `with-search`.
+**Docker compose profiles**: `with-image-gen`, `with-voice-piper`, `with-voice-kokoro`, `with-rag`, `with-video`, `with-slm`, `with-search`. (`with-voice` is kept as an alias for `with-voice-piper`.)
 
 ## Model Lifecycle on a Single Consumer GPU
 

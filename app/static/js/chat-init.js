@@ -518,6 +518,10 @@ document.addEventListener('DOMContentLoaded', function() {
         this.disabled = true;
         this.textContent = '\u23f3';
         this.title = t('cancelling');
+        // Stop any TTS playback that may be running in the browser
+        if (typeof window.resetTtsState === 'function') {
+            window.resetTtsState();
+        }
         fetchWithCSRF('/api/cancel_task/' + taskId, { method: 'POST' }).catch(function () {});
     });
 

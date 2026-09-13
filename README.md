@@ -34,7 +34,7 @@
 - ✏️ **Image Editing** – upload an image and ask to edit it (Flux.2 Klein 4B model: change colors, remove objects, stylize)
 - 🎬 **Video Generation** – create short videos from text or image+text prompts using LTX-Video 2B (distilled, 8-step inference)
 - 🎤 **Voice Transcription** – convert voice messages to text using Whisper ASR (faster_whisper)
-- 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper TTS (male and female voices in English and Russian)
+- 🗣️ **Text-to-Speech** – hear responses spoken aloud via Piper or Kokoro TTS (backend selectable at deploy time)
 - 🧠 **Long-term Memory** – cross-session, persistent memory via SuperLocalMemory (SLM). CPU-only, rule-based fact extraction and merging (no LLM). Semantic deduplication via embeddings
 
 ### 📁 Document & Knowledge Management
@@ -88,20 +88,15 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v11.0
+### What's New in v11.2
 
 | Feature | Notes |
 |---------|-------|
-| **Multi-platform GPU support (in progress)** | Architecture moved toward running on NVIDIA, AMD, Intel and CPU-only machines. New `app/platform_detect.py` abstracts GPU detection (probes `nvidia-smi` / `rocm-smi` / `vulkaninfo`) and exposes a vendor-agnostic VRAM query API; `FLAI_PLATFORM` env var allows an explicit override. All VRAM polling and GPU detection now goes through this abstraction. |
-| **Instant GPU ↔ CPU switching (no rebuild)** | Backend-tagged images — each compose file pins its own image tag (`flai-sd_cpp:cuda/cpu`, `flai-ltxvideo:cuda/cpu`), so GPU and CPU builds coexist and switching stacks needs no rebuild. Re-run `./deploy.sh` (GPU) or `./deploy.sh --cpu` (CPU) to switch. |
-| **CPU-only mode** | New `docker-compose.cpu.yml` with the same service stack (web, redis, postgres, llama-swap, SD, LTX, Whisper, Piper, SearXNG, SLM, Qdrant) using CPU builds of all models; timeouts are increased (`SD_CPP_TIMEOUT=1800`, `LLM_TIMEOUT=600`, `SD_CLI_TIMEOUT=3600`). `deploy.sh`/`deploy-ru.sh` accept `--cpu` and auto-select the CPU compose file when no NVIDIA GPU is detected. |
-| **Adaptive video resolution on CPU (memory-first)** | Pre-flight RAM planning (`plan_cpu_generation()` in `modules/video.py`) estimates the peak LTX memory footprint and, when the requested 768×512×240 clip does not fit, degrades it through a fixed cascade: 384×256×120 @ 12 fps → 256×192×57 @ 6 fps. The user is notified with the exact chosen format, and generation stops with a clear ⚠️ message when even the smallest step is impossible. |
-| **Admin Hardware tab** | First admin tab «Hardware» / «Оборудование» (before «Users») showing compute platform (`nvidia` / `amd` / `intel` / `cpu`), GPU, VRAM, CPU cores, RAM, and CPU model. |
-| **Compute platform in admin API** | `/api/hardware` now reports the detected platform (`nvidia` / `amd` / `intel` / `cpu`) alongside GPU name and VRAM. Also exposes `cpu_count` and `cpu_name`. |
-| **LTX-Video generation tuning** | LTX-Video pipeline tuned: `sampler: LinearQuadratic`, `guidance_scale: 1.5`, and the pipeline config YAML is now committed to the repository (tracked by git instead of being gitignored). |
-| **Web search improvements** | SearXNG engine roster expanded (google news, bing news, yahoo news, yahoo, bing, mojeek, marginalia, presearch, qwant, yandex, swisscows news) for more resilient results. A search returning 0 results is now retried once automatically; if still empty, the user gets a soft «Search services are temporarily unavailable. Please try again in a few minutes.» notice instead of a hard error. |
-| **Video overview** | Embedded video walkthrough of the platform at the top of this README (see 🎬 Video Overview). |
-
+| **Selectable TTS backend: Piper (default) or Kokoro** | Voice deployment now chooses ONE backend: `--with-voice-piper` (Piper — lightweight, ~0.2 GB models) or `--with-voice-kokoro` (Kokoro — higher quality, ~6 GB RAM). `--with-voice` is kept as an alias for Piper. Compose profiles: `with-voice-piper` / `with-voice-kokoro` (both include Whisper ASR). Deploy scripts download only the selected backend's models and toggle the matching `.env` URL. |
+| **Kokoro-82M TTS engine** | New `services/kokoro/` — Flask HTTP API wrapping Kokoro-82M (82M params, ElevenLabs-level quality): `POST /tts`, `GET /health`, `GET /voices`. Docker image: python:3.11-slim + torch CPU. |
+| **Russian voices with correct stress** | Studio-actor voices from `zaakirio/kokoro-ru`: `sveta` (female, WER 2.50% vs Piper 4.38%), `dima` (male). Lexical stress via RUAccent + acute-aware espeak-ng data (за́мок vs замо́к), ё restoration, vowel reduction (akanye) and orthoepic rules (солнце→сонце, final –ого→-ово). |
+| **English voices** | `af_heart` (US female), `am_liam` (US male) from `hexgrad/Kokoro-82M`. |
+| **Dual-backend TTS module** | `modules/tts.py` uses whichever backend URL is active (`KOKORO_URL` or `PIPER_URL`); `/api/tts/synthesize` accepts an optional `voice` name alongside `lang`/`gender`. |
 
 ### Core Components
 
@@ -112,7 +107,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | **stable-diffusion.cpp** | Image generation (Z_image_turbo) and editing (Flux.2 Klein 4B) | C++ + CUDA | 7861 |
 | **LTX-Video** | Video generation (text-to-video / image+text-to-video) | Python + PyTorch | 7872 |
 | **Whisper ASR** | Speech-to-text transcription | faster_whisper | 9000 |
-| **Piper TTS** | Text-to-speech synthesis | ONNX + Piper | 8888 |
+| **Piper / Kokoro TTS** | Text-to-speech synthesis (backend selectable at deploy: Piper default, Kokoro higher quality) | ONNX + Piper / Kokoro-82M | 8888 |
 | **Qdrant** | Vector database for RAG | Rust | 6333 |
 | **SuperLocalMemory** | Long-term, cross-session memory per-user (daemon + HTTP proxy) | Python + SQLite | 8766 |
 | **Redis** | Request queue management | C | 6379 |
@@ -171,6 +166,8 @@ FLAI ships with two deployment modes:
 > | 12 GB GPU | 24–32 GB | 32–40 GB |
 > | 16 GB GPU | 24–32 GB | 32–48 GB |
 > | CPU-only | 24–32 GB | 48 GB (64 GB for 240-frame clips) |
+>
+> Voice features are opt-in (`--with-voice-piper` / `--with-voice-kokoro`): Whisper ASR adds ~1 GB RAM, plus the chosen backend — Piper up to ~0.5 GB (voices lazy-loaded per use) or Kokoro ~1.6 GB idle and up to ~6 GB during a Russian phrase (its 6 GB container limit). The CPU-only video numbers assume the LTX-Video container may use up to 64 GB (its memory cap in `docker-compose.cpu.yml`); the pre-flight planner gates generation on the *smaller* of host free RAM and that cap, so a 768×512×240 clip (~53 GB peak) genuinely needs a 64 GB host.
 
 #### What works at each tier
 
@@ -185,7 +182,7 @@ FLAI ships with two deployment modes:
 | RAG (Qdrant) | ✅ | ✅ | ✅ | ✅ |
 | SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 
-> **VRAM management:** All LLM models (multimodal, reasoning, embedding) share VRAM via llama-swap — only one is loaded at a time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. The system dynamically adjusts `n_gpu_layers` based on available VRAM. **CPU-only video:** before generation the worker checks free RAM (`MemAvailable`); if the requested 768×512×240 does not fit it progressively degrades to 384×256×120 @ 12 fps, then 256×192×57 @ 6 fps, notifying the user with the exact chosen format and stopping with a clear message when even the smallest step is impossible.
+> **VRAM management:** All LLM models (multimodal, reasoning, embedding) share VRAM via llama-swap — only one is loaded at a time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. The system dynamically adjusts `n_gpu_layers` based on available VRAM. **CPU-only video:** before generation the worker checks free RAM (`MemAvailable`) against the LTX-Video container's own memory cap (`LTX_VIDEO_RAM_LIMIT_MB`); if the requested 768×512×240 does not fit it progressively degrades to 384×256×120 @ 12 fps, then 256×192×57 @ 6 fps, notifying the user with the exact chosen format and stopping with a clear message when even the smallest step is impossible.
 
 ### Model Benchmarks (RTX 5060 Ti 16 GB)
 
@@ -254,7 +251,10 @@ cd flai
 # + Image generation/editing
 ./deploy.sh --download-models --with-image-gen
 
-# + Voice (Whisper ASR + Piper TTS)
+# + Voice: Whisper ASR + TTS. Pick ONE backend:
+#   --with-voice-piper    Piper TTS (default choice, lightweight, ~0.2 GB models)
+#   --with-voice-kokoro   Kokoro TTS (higher quality, ~6 GB RAM)
+#   (--with-voice is an alias for Piper)
 ./deploy.sh --download-models --with-image-gen --with-voice
 
 # + RAG (Qdrant)
@@ -394,8 +394,11 @@ docker compose -f docker-compose.gpu.yml up -d
 # With image generation
 docker compose -f docker-compose.gpu.yml --profile with-image-gen up -d
 
-# With voice features
-docker compose -f docker-compose.gpu.yml --profile with-voice up -d
+# With voice features — pick ONE backend:
+#   --profile with-voice-piper    Piper TTS (default)
+#   --profile with-voice-kokoro   Kokoro TTS (higher quality)
+#   (--profile with-voice is an alias for Piper)
+docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d
 
 # With video generation
 docker compose -f docker-compose.gpu.yml --profile with-video up -d
@@ -407,7 +410,7 @@ docker compose -f docker-compose.gpu.yml --profile with-slm up -d
 docker compose -f docker-compose.gpu.yml --profile with-search up -d
 
 # Full stack: multimodal + images + voice + RAG + video + long-term memory + web search
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm --profile with-search up -d
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice-piper --profile with-rag --profile with-video --profile with-slm --profile with-search up -d
 ```
 
 > ⏱️ **First build takes time**: stable-diffusion.cpp is compiled from source (~5-10 minutes). Subsequent builds use the cache.
@@ -446,7 +449,7 @@ Now you can:
 - ✏️ **Edit Images** — upload and edit (change colors, remove objects, stylize)
 - 🎬 **Generate Videos** — create short videos from text or image+text prompts
 - 🎤 **Send Voice Messages** — speech-to-text via Whisper ASR
-- 🗣️ **Listen to Responses** — text-to-speech via Piper TTS (male/female, EN/RU)
+- 🗣️ **Listen to Responses** — text-to-speech via Piper (default) or Kokoro TTS (male/female, EN/RU)
 - 📚 **Search Documents** — upload PDF/DOC/TXT and ask questions (RAG)
 - 🗂️ **Multiple Chat Sessions** — separate conversations with auto-titling
 - 💾 **Export Chats** — save conversations as HTML with embedded media
@@ -590,10 +593,10 @@ Configuration is loaded from `gunicorn_config.py`, not inline CLI args.
 
 ```bash
 # Start all services (multimodal + images + voice + RAG + video + long-term memory + web search)
-docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice --profile with-rag --profile with-video --profile with-slm --profile with-search up -d
+docker compose -f docker-compose.gpu.yml --profile with-image-gen --profile with-voice-piper --profile with-rag --profile with-video --profile with-slm --profile with-search up -d
 
-# Chat + voice only
-docker compose -f docker-compose.gpu.yml --profile with-voice up -d
+# Chat + voice only (Piper backend; use with-voice-kokoro for Kokoro)
+docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d
 
 # Video generation
 docker compose -f docker-compose.gpu.yml --profile with-video up -d
@@ -762,8 +765,8 @@ LTX_VIDEO_TIMEOUT=600
 Uses `onerahmet/openai-whisper-asr-webservice` (faster_whisper engine).
 
 ```bash
-# Enable voice features
-docker compose -f docker-compose.gpu.yml --profile with-voice up -d
+# Enable voice features (Whisper ASR; choose ONE TTS backend profile — with-voice-piper or with-voice-kokoro)
+docker compose -f docker-compose.gpu.yml --profile with-voice-piper up -d
 ```
 
 ### Piper TTS
@@ -782,6 +785,31 @@ curl -L -o services/piper/piper_models/en_US-ryan-medium.onnx \
 curl -L -o services/piper/piper_models/ru_RU-dmitri-medium.onnx \
   "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx"
 ```
+
+### Kokoro TTS
+
+Higher-quality backend (ElevenLabs-level). Selected with `--with-voice-kokoro` / `--profile with-voice-kokoro`. Models are downloaded in one step by `services/kokoro/download-model.sh` (the deploy script runs it automatically):
+
+```bash
+bash services/kokoro/download-model.sh
+```
+
+### Choosing the backend: Piper vs Kokoro
+
+| Criterion | Piper (default) | Kokoro |
+|-----------|-----------------|--------|
+| Model size on disk | ~0.24 GB (4 medium voices) | ~0.95 GB (3 model files + voices + espeak-data) |
+| Service memory limit | 512 MB | 6 GB |
+| Idle RAM (no TTS activity) | ~200–300 MB | ~1.6 GB (light worker, RUAccent not loaded) |
+| RAM during active sessions | ~500 MB (all 4 voices cached) | ~3–5.5 GB (RUAccent + model in worker; peak during long phrases) |
+| Russian quality | Good (WER 4.38%) | Higher (WER 2.50%, studio actors) |
+| Russian voices | `dmitri` (male), `irina` (female) | `dima` (male), `sveta` (female) |
+| Russian pronunciation | espeak-ng phonemes, no real word stress | RUAccent: lexical stress, ё restoration, akanye, orthoepy |
+| First phrase (fresh container) | ~0.8 s | EN ~2.9 s; **RU ~10–11.5 s** |
+| Subsequent phrases (same session) | ~0.7–0.8 s | RU ~1.1 s |
+| Cold start after idle | none — voices stay cached | **RU only:** after ≥5 min without Russian the RUAccent G2P worker (~3.1 GB) is auto-killed to return RAM; the next Russian phrase reloads it (~10–11.5 s). EN is not affected. |
+
+> **Memory notes (measured):** Piper caches every used voice in memory — with all 4 voices loaded it reaches ~497 MiB, close to its 512 MB limit. Kokoro's worker releases ~3.1 GB to the OS after 300 s of no Russian TTS, so a quiet period is followed by a single slower first Russian phrase (then ~1.1 s for subsequent ones).
 
 ---
 

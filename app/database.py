@@ -186,7 +186,7 @@ def _init_postgresql():
     c.execute("CREATE INDEX IF NOT EXISTS idx_documents_index_status ON documents(index_status)")
 
     # Seed default model_configs if not present.
-    # v11.0: multimodal model is the single chat model (router + chat + vision).
+    # v11.2: multimodal model is the single chat model (router + chat + vision).
     c.execute("SELECT COUNT(*) as cnt FROM model_configs")
     if c.fetchone()["cnt"] == 0:
         reasoning_model = "Qwen3.6-35B-A3B-UD-Q2_K_XL"

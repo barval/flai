@@ -92,7 +92,9 @@ def load_config(app):
     app.config["SLM_TEMPORAL_DECAY_DAYS"] = int(os.getenv("SLM_TEMPORAL_DECAY_DAYS", 90))
     app.config["SLM_MIN_CONFIDENCE_FOR_DECAY"] = float(os.getenv("SLM_MIN_CONFIDENCE_FOR_DECAY", 0.5))
 
-    # Piper TTS settings
+    # TTS settings (selectable backend — exactly one URL is active in .env)
+    app.config["KOKORO_URL"] = os.getenv("KOKORO_URL")
+    app.config["KOKORO_TIMEOUT"] = int(os.getenv("KOKORO_TIMEOUT", 60))
     app.config["PIPER_URL"] = os.getenv("PIPER_URL")
     app.config["PIPER_TIMEOUT"] = int(os.getenv("PIPER_TIMEOUT", 30))
 

@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Timestamps removed from history** in `build_context_prompt` (~5 tokens of junk per message gone; current time is already in the system prompt).
 - **Margins rebalanced** via `.env`: `CONTEXT_HISTORY_PERCENT` 75→85, `CONTEXT_SAFETY_MARGIN` 0.85→0.88 (usable ≈ 75% of window vs 63.75%) — safe because the estimate now tracks the real tokenizer.
 - New env keys: `SESSION_SUMMARY_MIN_MESSAGES=6`, `SESSION_SUMMARY_MAX_FETCH=120`, `SESSION_SUMMARY_MAX_CHARS=1500`; `MAX_HISTORY_MESSAGES` default raised to 90.
+- **Admin model config: context-only changes are now validated** — `update_model_config()` ran the RAM/VRAM fit check (`_classify_model_fit`) only when the model name changed, so bumping just `context_length` past what the machine can fit was saved without any check (on CPU-only deployments this could OOM the first request instead of being rejected at save time). The fit check now also runs for context-only changes. Dry-load is scheduled for context-only changes as well, and its auto-rollback is context-aware: a failed config reverts `context_length` (not the fallback model), so a context bump that fails to load never silently swaps the model.
 
 ## [v11.2] — 2026-09-11
 

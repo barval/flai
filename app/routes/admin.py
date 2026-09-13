@@ -1645,25 +1645,32 @@ def update_model_config(module):
     # ── Server-side VRAM/RAM/ctx validation (defense in depth) ──
     new_model_name = updates.get("model_name")
     new_ctx = updates.get("context_length")
-    if new_model_name and module != "embedding":
+    # Validate whenever the model OR its context window changes: a ctx-only
+    # bump used to skip the check, letting OOM-ing configs (esp. on CPU) through.
+    existing_cfg: dict = {}
+    old_ctx: int | None = None
+    if module != "embedding" and (new_model_name is not None or new_ctx is not None):
+        existing_cfg = get_model_config(module) or {}
+        old_ctx = existing_cfg.get("context_length")
         # Tier classification blocks "impossible" models (file + KV > 70% RAM)
-        # Default ctx from current config if not being updated
+        # Check runs against the current model when only the context changes.
+        check_model_name = new_model_name or existing_cfg.get("model_name")
         if new_ctx is None:
-            existing_cfg = get_model_config(module) or {}
             new_ctx = existing_cfg.get("context_length", 8192)
-        tier_info = _classify_model_fit(
-            model_name=new_model_name,
-            context_length=int(new_ctx),
-            module=module,
-        )
-        if not tier_info["can_save"]:
-            return jsonify(
-                {
-                    "error": tier_info["message"],
-                    "tier": tier_info["tier"],
-                    "details": tier_info,
-                }
-            ), 400
+        if check_model_name:
+            tier_info = _classify_model_fit(
+                model_name=check_model_name,
+                context_length=int(new_ctx),
+                module=module,
+            )
+            if not tier_info["can_save"]:
+                return jsonify(
+                    {
+                        "error": tier_info["message"],
+                        "tier": tier_info["tier"],
+                        "details": tier_info,
+                    }
+                ), 400
 
     # ── Multimodality requirement ──
     # The multimodal module must run a vision model: a plain chat model without
@@ -1747,14 +1754,23 @@ def update_model_config(module):
             current_app.logger.warning(f"Error updating llama-swap config: {e}")
 
     # ── Schedule background dry-load + auto-rollback on failure ──
-    if module != "embedding" and new_model_name:
-        try:
-            from app.tasks.dry_load import schedule_dry_load
+    # A ctx-only change dry-loads the current model at the new context and
+    # rolls back the context (not the model) if it can't load.
+    if module != "embedding" and (new_model_name or new_ctx):
+        model_to_load = new_model_name or existing_cfg.get("model_name")
+        if model_to_load:
+            try:
+                from app.tasks.dry_load import schedule_dry_load
 
-            schedule_dry_load(current_app, module, new_model_name)
-            result["dry_load_scheduled"] = True
-        except Exception as e:
-            current_app.logger.warning(f"Failed to schedule dry_load: {e}")
+                schedule_dry_load(
+                    current_app,
+                    module,
+                    model_to_load,
+                    rollback_ctx=old_ctx if (new_ctx is not None and new_model_name is None) else None,
+                )
+                result["dry_load_scheduled"] = True
+            except Exception as e:
+                current_app.logger.warning(f"Failed to schedule dry_load: {e}")
 
     return jsonify(result)
 

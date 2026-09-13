@@ -108,6 +108,70 @@ class TestCheckRunning:
     @patch("requests.get", side_effect=ConnectionError)
     def test_check_running_network_error(self, mock_get):
         """Network exception → False."""
-        from app.tasks.dry_load import _check_running
+        from app.tasks import dry_load
 
-        assert _check_running("http://swap:8080", "multimodal") is False
+        assert dry_load._check_running("http://swap:8080", "multimodal") is False
+
+
+class TestRollbackCtx:
+    """Dry-load rollback for context-only changes reverts the context, not the model."""
+
+    def test_rollback_with_rollback_ctx_updates_context_length(self, test_app):
+        """rollback_ctx → UPDATE sets context_length (model_name untouched)."""
+        from app.tasks import dry_load
+
+        conn = MagicMock()
+        cursor = conn.cursor.return_value
+        mock_cm = MagicMock()
+        mock_cm.__enter__.return_value = conn
+
+        with (
+            patch("app.database.get_db", return_value=mock_cm),
+            patch("app.llama_swap_config.generate_and_write", return_value=True),
+            patch("app.llama_swap_config.LlamaSwapConfigGenerator"),
+        ):
+            result = dry_load._rollback(test_app, "multimodal", "Qwen3VL-8B-Instruct-Q4_K_M", rollback_ctx=8192)
+
+        assert result is True
+        sql, params = cursor.execute.call_args_list[0].args
+        assert "CONTEXT_LENGTH" in sql.upper()
+        assert "MODEL_NAME" not in sql.upper()
+        assert params == (8192, "multimodal")
+
+    def test_rollback_without_rollback_ctx_updates_model(self, test_app):
+        """No rollback_ctx → existing fallback-model behavior is preserved."""
+        from app.tasks import dry_load
+
+        conn = MagicMock()
+        cursor = conn.cursor.return_value
+        mock_cm = MagicMock()
+        mock_cm.__enter__.return_value = conn
+
+        with (
+            patch("app.database.get_db", return_value=mock_cm),
+            patch("app.llama_swap_config.generate_and_write", return_value=True),
+            patch("app.llama_swap_config.LlamaSwapConfigGenerator"),
+        ):
+            result = dry_load._rollback(test_app, "multimodal", "BrokenModel")
+
+        assert result is True
+        sql, params = cursor.execute.call_args_list[0].args
+        assert "MODEL_NAME" in sql.upper()
+        assert params == ("Qwen3VL-8B-Instruct-Q4_K_M", "multimodal")
+
+    def test_worker_forwards_rollback_ctx(self, test_app):
+        """The worker passes rollback_ctx through to _rollback."""
+        from app.tasks import dry_load
+
+        with (
+            patch.object(dry_load, "DRY_LOAD_TIMEOUT_S", 0.1),
+            patch.object(dry_load, "DRY_LOAD_POLL_INTERVAL_S", 0.01),
+            patch.object(dry_load, "_trigger_load", return_value=False),
+            patch.object(dry_load, "_check_running", return_value=False),
+            patch.object(dry_load, "_rollback") as mock_rb,
+        ):
+            dry_load._dry_load_worker(test_app, "multimodal", "Qwen3VL-8B-Instruct-Q4_K_M", rollback_ctx=24576)
+
+        mock_rb.assert_called_once()
+        assert mock_rb.call_args.args[:3] == (test_app, "multimodal", "Qwen3VL-8B-Instruct-Q4_K_M")
+        assert mock_rb.call_args.args[3] == 24576

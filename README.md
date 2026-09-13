@@ -432,7 +432,7 @@ docker exec flai-web flask admin-password YourSecurePassword123
 3. For each module (Multimodal, Reasoning, Embedding):
    - Select the GGUF model from the dropdown
    - Adjust parameters if needed (Context Length, Temperature, Top P, Repeat Penalty, Timeout)
-   - Click **Save**
+   - Click **Save** — a context window that would not fit the RAM/VRAM budget is rejected (checked even when only the context changes), then a background dry-load verifies the saved config and rolls it back automatically if loading fails
 4. For Image Generation: Ensure `SD_WRAPPER_URL=http://flai-sd:7861` is set in `.env`
 
 ### 6. You're Ready!
@@ -641,7 +641,7 @@ services/llamacpp/models/
 
 | Parameter | Multimodal | Reasoning | Embedding |
 |-----------|------------|-----------|-----------|
-| Context Length | 16384 | 16384 | 512 |
+| Context Length | 32768 | 24576 | 512 |
 | Temperature | 0.7 | 0.7 | – |
 | Top P | 0.9 | 0.9 | – |
 | Repeat Penalty | 1.1 | 1.15 | – |
@@ -657,7 +657,7 @@ services/llamacpp/models/
 | **Reasoning** | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | gpt-oss-20b mxfp4/Q4_K_M (~12 GB) | MoE architecture: ~3B active params, ~106 tok/s. Current reasoning model on all tiers; 8 GB uses partial CPU offload |
 | **Embedding** | bge-m3 Q8_0 (~1.5 GB) | — | Single model for all tiers |
 
-> **Context windows:** Multimodal and reasoning models should use the same context length (recommended 16384). Multimodal needs ≥16384 for vision token counts.
+> **Context windows:** Defaults are 32768 for the multimodal model and 24576 for reasoning (both fit fully on the GPU at current quantization). Multimodal needs ≥16384 for vision token counts. The admin panel enforces the bounds (512 … GGUF architecture max) and — also for context-only changes — fit-checks every save against the RAM/VRAM budget, rejecting values that cannot fit, then plans a background dry-load of the new config and automatically rolls the change back (restoring `context_length`) if the backend fails to load it.
 
 ---
 

@@ -79,31 +79,51 @@ def _check_running(swap_url: str, expected: str) -> bool:
         return False
 
 
-def _rollback(app: Any, module: str, failed_model: str) -> bool:
-    """Roll back to a fallback model after dry-load failure."""
+def _rollback(app: Any, module: str, failed_model: str, rollback_ctx: int | None = None) -> bool:
+    """Roll back after a dry-load failure.
+
+    Model changes revert to the fallback model; context-only changes
+    (``rollback_ctx`` set) revert the context window and keep the model.
+    """
     app_obj = app._get_current_object() if hasattr(app, "_get_current_object") else app  # type: ignore[attr-defined]
 
     from app.database import get_db
     from app.model_config import invalidate_model_config_cache
 
-    fallback = get_fallback_models().get(module)
-    if not fallback:
-        logger.error(f"No fallback model for module={module}")
-        return False
-
     try:
-        with get_db() as conn:
-            c = conn.cursor()
-            c.execute(
-                """
-                UPDATE model_configs
-                SET model_name = %s, updated_at = CURRENT_TIMESTAMP
-                WHERE module = %s
-            """,
-                (fallback, module),
-            )
-            conn.commit()
-        invalidate_model_config_cache(module)
+        if rollback_ctx is not None:
+            with get_db() as conn:
+                c = conn.cursor()
+                c.execute(
+                    """
+                    UPDATE model_configs
+                    SET context_length = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE module = %s
+                """,
+                    (rollback_ctx, module),
+                )
+                conn.commit()
+            invalidate_model_config_cache(module)
+            logger.warning(f"Auto-rollback: {module} context reverted to {rollback_ctx} (load failed)")
+        else:
+            fallback = get_fallback_models().get(module)
+            if not fallback:
+                logger.error(f"No fallback model for module={module}")
+                return False
+
+            with get_db() as conn:
+                c = conn.cursor()
+                c.execute(
+                    """
+                    UPDATE model_configs
+                    SET model_name = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE module = %s
+                """,
+                    (fallback, module),
+                )
+                conn.commit()
+            invalidate_model_config_cache(module)
+            logger.warning(f"Auto-rollback: {module} reverted to {fallback} (was {failed_model})")
 
         # Regenerate llama-swap config
         from app.llama_swap_config import generate_and_write
@@ -113,7 +133,6 @@ def _rollback(app: Any, module: str, failed_model: str) -> bool:
 
             gen = LlamaSwapConfigGenerator(app_obj)
             gen.signal_reload()
-            logger.warning(f"Auto-rollback: {module} reverted to {fallback} (was {failed_model})")
             return True
         return False
     except Exception as e:
@@ -121,7 +140,7 @@ def _rollback(app: Any, module: str, failed_model: str) -> bool:
         return False
 
 
-def _dry_load_worker(app: Any, module: str, new_model: str) -> None:
+def _dry_load_worker(app: Any, module: str, new_model: str, rollback_ctx: int | None = None) -> None:
     """Background thread: try loading the new model, rollback on failure."""
     import os
 
@@ -159,10 +178,10 @@ def _dry_load_worker(app: Any, module: str, new_model: str) -> None:
             logger.warning(f"dry_load: {module}/{new_model} failed to load — rolling back")
         else:
             logger.warning(f"dry_load: {module}/{new_model} didn't reach 'running' state — rolling back")
-        _rollback(app, module, new_model)
+        _rollback(app, module, new_model, rollback_ctx)
 
 
-def schedule_dry_load(app: Any, module: str, new_model: str) -> None:
+def schedule_dry_load(app: Any, module: str, new_model: str, rollback_ctx: int | None = None) -> None:
     """Schedule a background dry-load test for the new model.
 
     Safe to call from request handlers.  The thread is daemon, so
@@ -173,7 +192,7 @@ def schedule_dry_load(app: Any, module: str, new_model: str) -> None:
 
     thread = threading.Thread(
         target=_dry_load_worker,
-        args=(app, module, new_model),
+        args=(app, module, new_model, rollback_ctx),
         daemon=True,
         name=f"dry-load-{module}",
     )

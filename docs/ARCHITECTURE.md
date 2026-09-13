@@ -13,7 +13,7 @@ For critical rules and commands, see the root `AGENTS.md`.
 - **`app/__init__.py:create_app()`** — Flask application factory.
 - **Blueprints** (`app/routes/`): `auth`, `chat`, `admin`, `queue`, `tts`, `messages`, `sessions`, `documents`, `backups`, `events`, `debug`.
 - **Modules** (`modules/`): `base/router`, `multimodal`, `sd_cpp`, `cam`, `rag`, `audio`, `tts`, `slm`, `search`, `video`.
-- **Background tasks** (`app/tasks/`): `dry_load.py` (model dry-load after admin save), `health_monitor.py` (crash-loop watchdog).
+- **Background tasks** (`app/tasks/`): `dry_load.py` (model dry-load after admin save; auto-rollback covers both model swaps — restores the fallback model — and context-only changes — restores `context_length`), `health_monitor.py` (crash-loop watchdog).
 - **Templates** (`app/templates/`): `admin.html`, `base.html`, `chat.html`, `login.html`.
 - **Static**: `app/static/css/` (all CSS), `app/static/js/` (all JS). No inline styles, no CDN.
 

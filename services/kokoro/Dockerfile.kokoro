@@ -1,0 +1,27 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    espeak-ng \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app.py .
+COPY ru_g2p.py .
+
+RUN python3 -c "import os; os.environ['HF_HOME']='/tmp/hf-cache'; os.environ['XDG_CACHE_HOME']='/tmp/cache'; from ruaccent import RUAccent; a=RUAccent(); a.load(omograph_model_size='turbo3.1', use_dictionary=True, tiny_mode=False); print('ruaccent preloaded OK')" && rm -rf /tmp/hf-cache /tmp/cache
+
+COPY espeak-data /app/espeak-data
+COPY config.json /app/config.json
+COPY hexgrad-config.json /app/hexgrad-config.json
+COPY kokoro-config.json /app/kokoro-config.json
+COPY tokenizer.json /app/tokenizer.json
+COPY tokenizer_config.json /app/tokenizer_config.json
+
+EXPOSE 8888
+
+CMD ["python", "app.py"]

@@ -27,7 +27,22 @@ services/piper/piper_models/
 services/sd_cpp/models/
 services/ltx_video/models/*.safetensors
 services/ltx_video/models/*.bin
+services/ltx_video/models/t5_encoder/
 services/room-snapshot-api/room-snapshot-api/
+# Kokoro runtime artifacts (downloaded by services/kokoro/download-model.sh)
+services/kokoro/models/
+services/kokoro/voices/
+services/kokoro/espeak-data/
+services/kokoro/hf-cache/
+services/kokoro/__pycache__/
+# Stray artifacts from an older run of download-model.sh from the repo root
+# (script now cd's into services/kokoro/; owned by root, needs sudo to delete)
+/espeak-data/
+/config.json
+/tokenizer.json
+/tokenizer_config.json
+/kokoro-config.json
+/ru_g2p.py
 
 # Generated config (dynamically created at startup from DB)
 llama-swap-config/

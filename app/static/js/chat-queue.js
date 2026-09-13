@@ -158,7 +158,8 @@ function updateUIFromQueueStatus() {
         updated_at: sessionsData[id].updated_at,
         message_count: sessionsData[id].message_count,
         has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
-        queue_info: sessionQueueInfo[id] || null
+        queue_info: sessionQueueInfo[id] || null,
+        ttsPlaying: currentPlayingSessionId === id
     }));
 
     // Skip full DOM rebuild if sessions data hasn't changed

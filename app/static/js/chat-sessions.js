@@ -89,7 +89,8 @@ function loadSessionsFromServer() {
                     updated_at: sessionsData[id].updated_at,
                     message_count: sessionsData[id].message_count,
                     has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
-                    queue_info: sessionQueueInfo[id] || null
+                    queue_info: sessionQueueInfo[id] || null,
+                    ttsPlaying: currentPlayingSessionId === id
                 }));
                 updateSessionsList(sessionsList);
                 // Update dedup cache so updateUIFromQueueStatus doesn't rebuild again
@@ -123,7 +124,9 @@ function updateSessionsListFromData() {
             message_count: sessionsData[id].message_count,
             has_unread: (sessionsData[id].has_unread || newMessageIndicators[id]) ? true : false,
             // Include queue info for this session
-            queue_info: sessionQueueInfo[id] || null
+            queue_info: sessionQueueInfo[id] || null,
+            // TTS playing state so the sidebar re-renders when it changes
+            ttsPlaying: currentPlayingSessionId === id
         }));
         
         // Only update if queue info or session data changed

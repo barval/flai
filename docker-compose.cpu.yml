@@ -193,6 +193,7 @@ services:
       - LTX_PIPELINE_CONFIG=ltxv-2b-0.9.8-distilled.yaml
       - LTX_TEXT_ENCODER_PATH=/app/models/t5_encoder
       - LTX_DEVICE=cpu
+      - LTX_VIDEO_RAM_LIMIT_MB=65536
     networks:
       - flai_network
     restart: unless-stopped
@@ -206,7 +207,7 @@ services:
       resources:
         limits:
           cpus: '8.0'
-          memory: 32G
+          memory: 64G
         reservations:
           cpus: '2.0'
           memory: 4G
@@ -254,9 +255,54 @@ services:
         max-file: "3"
     profiles:
       - with-voice
+      - with-voice-piper
+      - with-voice-kokoro
 
   # ============================================================
-  # PIPER TTS (Optional - Speech Synthesis)
+  # KOKORO TTS (Optional - Speech Synthesis, selectable backend)
+  # ============================================================
+  kokoro:
+    build:
+      context: ./services/kokoro
+      dockerfile: Dockerfile.kokoro
+    container_name: flai-kokoro
+    volumes:
+      - ./services/kokoro/models:/app/models
+      - ./services/kokoro/voices:/app/voices
+      - ./services/kokoro/espeak-data:/app/espeak-data
+      - ./services/kokoro/ru_g2p.py:/app/ru_g2p.py
+      - ./services/kokoro/hf-cache:/app/hf-cache
+    environment:
+      - KOKORO_MODEL_DIR=/app/models
+      - KOKORO_VOICES_DIR=/app/voices
+      - HF_HOME=/app/hf-cache
+    networks:
+      - flai_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8888/health')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 6G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    profiles:
+      - with-voice-kokoro
+
+  # ============================================================
+  # PIPER TTS (Optional - Speech Synthesis, selectable backend)
   # ============================================================
   piper:
     build:
@@ -280,7 +326,7 @@ services:
       resources:
         limits:
           cpus: '2.0'
-          memory: 512M
+          memory: 1G
         reservations:
           cpus: '0.5'
           memory: 256M
@@ -291,6 +337,7 @@ services:
         max-file: "3"
     profiles:
       - with-voice
+      - with-voice-piper
 
   # ============================================================
   # SEARXNG (Optional - Web Search)

@@ -112,7 +112,7 @@ async function synthesizeInBackground(sentences, lang, startIndex) {
         }
 
         try {
-            const response = await fetchWithCSRF('/api/tts/synthesize', {
+            let response = await fetchWithCSRF('/api/tts/synthesize', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -124,7 +124,20 @@ async function synthesizeInBackground(sentences, lang, startIndex) {
 
             if (!response.ok) {
                 dwarn('TTS background chunk HTTP error:', response.status);
-                continue;
+                await new Promise(r => setTimeout(r, 3000));
+                response = await fetchWithCSRF('/api/tts/synthesize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: sentences[i],
+                        lang: lang
+                    }),
+                    signal: ttsAbortController.signal
+                });
+                if (!response.ok) {
+                    dwarn('TTS background chunk retry also failed:', response.status);
+                    continue;
+                }
             }
 
             const audioBlob = await response.blob();
@@ -337,72 +350,85 @@ async function playTTS(button, messageElement) {
         // Initialize buffer with correct size
         ttsAudioBuffer = new Array(sentences.length);
 
-        // Start synthesizing first 2 sentences immediately (in parallel)
-        const initialBatch = Math.min(2, sentences.length);
-        const synthPromises = [];
-
         const lang = undefined;  // Let server use session.get('language')
 
-        for (let i = 0; i < initialBatch; i++) {
-            const idx = i; // capture index for correct ordering
-            const requestBody = { text: sentences[i] };
-            if (lang) requestBody.lang = lang;
-            synthPromises.push(
-                fetchWithCSRF('/api/tts/synthesize', {
+        // Synthesize first sentence and play it IMMEDIATELY — don't wait for the second.
+        // This eliminates the 15-20s delay caused by sequential torch inference.
+        let firstAudioUrl = null;
+        let firstIdx = 0;
+        for (let i = 0; i < sentences.length; i++) {
+            try {
+                const requestBody = { text: sentences[i] };
+                if (lang) requestBody.lang = lang;
+                const response = await fetchWithCSRF('/api/tts/synthesize', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(requestBody),
                     signal: ttsAbortController.signal
-                }).then(async response => {
-                    if (!response.ok) {
-                        console.error('TTS chunk HTTP error:', response.status, await response.text());
-                        ttsAudioBuffer[idx] = null;
-                        return null;
-                    }
+                });
+                if (response.ok) {
                     const audioBlob = await response.blob();
-                    const audioUrl = URL.createObjectURL(audioBlob);
-                    ttsAudioBuffer[idx] = audioUrl;
-                    return audioUrl;
-                }).catch(err => {
-                    if (err.name !== 'AbortError') {
-                        dwarn('TTS chunk error:', err);
-                    }
-                    ttsAudioBuffer[idx] = null;
-                    return null;
-                })
-            );
+                    firstAudioUrl = URL.createObjectURL(audioBlob);
+                    firstIdx = i;
+                    break;
+                }
+                dwarn('TTS first chunk HTTP error:', response.status);
+            } catch (err) {
+                if (err.name === 'AbortError') return;
+                dwarn('TTS first chunk error:', err);
+            }
         }
 
-        // Wait for initial batch
-        await Promise.all(synthPromises);
-
-        // Drain completed entries to queue (in correct order)
-        drainBufferToQueue();
-
-        dlog('playTTS: initial batch done, queue length:', ttsAudioQueue.length, 'state:', ttsState);
-
-        // Check if still pending (not cancelled)
-        if (ttsState !== 'pending') {
-            dlog('playTTS: state changed from pending, stopping');
-            return;
-        }
-
-        // Play first available audio from queue
-        if (ttsAudioQueue.length > 0) {
-            dlog('playTTS: starting playback from queue');
-            playNextFromQueue();
-        } else {
-            // No audio generated
-            dwarn('playTTS: no audio in queue');
+        if (ttsState !== 'pending' || !firstAudioUrl) {
+            dwarn('playTTS: cancelled or no audio generated');
             resetTtsState();
             return;
         }
 
-        // Start background synthesis for remaining sentences
-        if (sentences.length > initialBatch) {
-            dlog('playTTS: starting background synthesis for remaining', sentences.length - initialBatch, 'sentences');
-            synthesizeInBackground(sentences, lang, initialBatch);
+        // Play first sentence immediately
+        dlog('playTTS: playing first sentence immediately');
+
+        // The first sentence plays directly (outside the buffer). Mark it as
+        // already-drained so background synthesis at bufIdx = i - ttsDrainOffset
+        // aligns to index 0 and drainBufferToQueue() doesn't hit a gap.
+        for (let k = 0; k <= firstIdx; k++) {
+            ttsAudioBuffer[k] = '__drained__';
         }
+        ttsDrainOffset = firstIdx + 1;
+
+        // Start background synthesis for remaining sentences (including skipped ones)
+        const bgStart = firstIdx + 1;
+        if (bgStart < sentences.length) {
+            dlog('playTTS: starting background synthesis from sentence', bgStart);
+            synthesizeInBackground(sentences, lang, bgStart);
+        }
+
+        // Play first audio directly — background will queue the rest
+        const audio = new Audio(firstAudioUrl);
+        currentAudio = audio;
+        ttsCurrentAudio = audio;
+        ttsState = 'playing';
+        setTTSButtonState(button, 'playing');
+        updateSessionsListFromData();
+
+        audio.onended = () => {
+            URL.revokeObjectURL(firstAudioUrl);
+            currentAudio = null;
+            ttsCurrentAudio = null;
+            playNextFromQueue();
+        };
+        audio.onerror = () => {
+            dwarn('TTS first chunk playback error');
+            currentAudio = null;
+            ttsCurrentAudio = null;
+            URL.revokeObjectURL(firstAudioUrl);
+            playNextFromQueue();
+        };
+        audio.play().catch(err => {
+            dwarn('TTS play error:', err);
+            currentAudio = null;
+            ttsCurrentAudio = null;
+        });
     } catch (err) {
         console.error('playTTS error:', err);
         resetTtsState();

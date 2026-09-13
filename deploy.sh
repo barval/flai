@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v11.0 — Single-Server Deployment Script
+# FLAI v11.2 — Single-Server Deployment Script
 
 set -euo pipefail
 
@@ -94,6 +94,34 @@ enable_env_features() {
             sed -i 's|^SLM_URL=|# SLM_URL=|' .env
         fi
     fi
+    if [[ "$VOICE_BACKEND" == "kokoro" ]]; then
+        if grep -q '^# KOKORO_URL=' .env 2>/dev/null; then
+            info "Enabling TTS (Kokoro) in .env..."
+            sed -i 's|^# KOKORO_URL=|KOKORO_URL=|' .env
+        fi
+        if grep -q '^PIPER_URL=' .env 2>/dev/null; then
+            info "Disabling TTS (Piper) in .env..."
+            sed -i 's|^PIPER_URL=|# PIPER_URL=|' .env
+        fi
+    elif [[ "$VOICE_BACKEND" == "piper" ]]; then
+        if grep -q '^# PIPER_URL=' .env 2>/dev/null; then
+            info "Enabling TTS (Piper) in .env..."
+            sed -i 's|^# PIPER_URL=|PIPER_URL=|' .env
+        fi
+        if grep -q '^KOKORO_URL=' .env 2>/dev/null; then
+            info "Disabling TTS (Kokoro) in .env..."
+            sed -i 's|^KOKORO_URL=|# KOKORO_URL=|' .env
+        fi
+    else
+        if grep -q '^KOKORO_URL=' .env 2>/dev/null; then
+            info "Disabling TTS (Kokoro) in .env..."
+            sed -i 's|^KOKORO_URL=|# KOKORO_URL=|' .env
+        fi
+        if grep -q '^PIPER_URL=' .env 2>/dev/null; then
+            info "Disabling TTS (Piper) in .env..."
+            sed -i 's|^PIPER_URL=|# PIPER_URL=|' .env
+        fi
+    fi
 }
 
 # ── Generate minimal llama-swap config ──
@@ -108,7 +136,7 @@ generate_llama_swap_config() {
 
     info "Generating minimal llama-swap config..."
 
-    # v11.0: the multimodal model is the single chat model (router + chat + vision).
+    # v11.2: the multimodal model is the single chat model (router + chat + vision).
     # It is always resident (ttl=0). No separate chat-only model exists anymore.
     local MULTIMODAL_MODEL="Qwen3VL-8B-Instruct-Q4_K_M"
 
@@ -279,7 +307,7 @@ download_sd_cpp_models() {
         warn "flux2_ae.safetensors already exists — skipping."
     fi
 
-    # Text encoder (Qwen3-4B acts as the SD text encoder; NOT the chat model in v11.0)
+    # Text encoder (Qwen3-4B acts as the SD text encoder; NOT the chat model in v11.2)
     if [[ ! -f "$TXT_DIR/Qwen3-4B-Instruct-2507-Q4_K_M.gguf" ]]; then
         info "Downloading Qwen3-4B-Instruct-2507-Q4_K_M.gguf (text encoder)..."
         HF_DOWNLOAD "unsloth/Qwen3-4B-Instruct-2507-GGUF" \
@@ -320,48 +348,70 @@ download_ltx_video_models() {
 
 # ── TTS (Speech Synthesis) models ──
 download_tts_models() {
-    info "Downloading TTS (Piper) models..."
-    local TTS_DIR="services/piper/piper_models"
-    mkdir -p "$TTS_DIR"
+    if [[ "$VOICE_BACKEND" == "kokoro" ]]; then
+        download_kokoro_models
+    elif [[ "$VOICE_BACKEND" == "piper" ]]; then
+        download_piper_models
+    else
+        info "No TTS backend selected — skipping TTS model downloads."
+    fi
+}
+
+download_kokoro_models() {
+    local KOKORO_DIR="services/kokoro"
+
+    info "Downloading Kokoro-82M TTS models..."
+    if [[ -d "$KOKORO_DIR/models" && -f "$KOKORO_DIR/models/kokoro-ru-v2-base.pth" ]]; then
+        info "Kokoro models already downloaded."
+    else
+        mkdir -p "$KOKORO_DIR/models" "$KOKORO_DIR/voices" "$KOKORO_DIR/espeak-data"
+        bash "$KOKORO_DIR/download-model.sh"
+    fi
+}
+
+download_piper_models() {
+    info "Downloading Piper TTS models..."
+    local PIPER_DIR="services/piper/piper_models"
+    mkdir -p "$PIPER_DIR"
     # English (male)
-    if [[ ! -f "$TTS_DIR/en_US-ryan-medium.onnx" ]]; then
+    if [[ ! -f "$PIPER_DIR/en_US-ryan-medium.onnx" ]]; then
         info "Downloading en_US-ryan-medium.onnx..."
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "en/en_US/ryan/medium/en_US-ryan-medium.onnx" \
-            "$TTS_DIR/en_US-ryan-medium.onnx"
+            "$PIPER_DIR/en_US-ryan-medium.onnx"
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "en/en_US/ryan/medium/en_US-ryan-medium.onnx.json" \
-            "$TTS_DIR/en_US-ryan-medium.onnx.json"
+            "$PIPER_DIR/en_US-ryan-medium.onnx.json"
     fi
     # English (female)
-    if [[ ! -f "$TTS_DIR/en_US-ljspeech-medium.onnx" ]]; then
+    if [[ ! -f "$PIPER_DIR/en_US-ljspeech-medium.onnx" ]]; then
         info "Downloading en_US-ljspeech-medium.onnx..."
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx" \
-            "$TTS_DIR/en_US-ljspeech-medium.onnx"
+            "$PIPER_DIR/en_US-ljspeech-medium.onnx"
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json" \
-            "$TTS_DIR/en_US-ljspeech-medium.onnx.json"
+            "$PIPER_DIR/en_US-ljspeech-medium.onnx.json"
     fi
     # Russian (male)
-    if [[ ! -f "$TTS_DIR/ru_RU-dmitri-medium.onnx" ]]; then
+    if [[ ! -f "$PIPER_DIR/ru_RU-dmitri-medium.onnx" ]]; then
         info "Downloading ru_RU-dmitri-medium.onnx..."
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx" \
-            "$TTS_DIR/ru_RU-dmitri-medium.onnx"
+            "$PIPER_DIR/ru_RU-dmitri-medium.onnx"
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json" \
-            "$TTS_DIR/ru_RU-dmitri-medium.onnx.json"
+            "$PIPER_DIR/ru_RU-dmitri-medium.onnx.json"
     fi
     # Russian (female)
-    if [[ ! -f "$TTS_DIR/ru_RU-irina-medium.onnx" ]]; then
+    if [[ ! -f "$PIPER_DIR/ru_RU-irina-medium.onnx" ]]; then
         info "Downloading ru_RU-irina-medium.onnx..."
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx" \
-            "$TTS_DIR/ru_RU-irina-medium.onnx"
+            "$PIPER_DIR/ru_RU-irina-medium.onnx"
         HF_DOWNLOAD "rhasspy/piper-voices" \
             "ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json" \
-            "$TTS_DIR/ru_RU-irina-medium.onnx.json"
+            "$PIPER_DIR/ru_RU-irina-medium.onnx.json"
     fi
 }
 
@@ -443,7 +493,8 @@ detect_cuda() {
 resolve_stack() {
     PROFILES=""
     [[ "$WITH_IMAGE_GEN" == "true" ]] && PROFILES="$PROFILES --profile with-image-gen"
-    [[ "$WITH_VOICE" == "true" ]] && PROFILES="$PROFILES --profile with-voice"
+    [[ "$VOICE_BACKEND" == "piper" ]]  && PROFILES="$PROFILES --profile with-voice-piper"
+    [[ "$VOICE_BACKEND" == "kokoro" ]] && PROFILES="$PROFILES --profile with-voice-kokoro"
     [[ "$WITH_RAG" == "true" ]]    && PROFILES="$PROFILES --profile with-rag"
     [[ "$WITH_VIDEO" == "true" ]]  && PROFILES="$PROFILES --profile with-video"
     [[ "$WITH_SLM" == "true" ]]    && PROFILES="$PROFILES --profile with-slm"
@@ -521,7 +572,7 @@ build_and_launch() {
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "unreachable")
     if [[ "$STATUS" == "ok" ]]; then
-        info "FLAI v11.0 is running! Open http://localhost:5000 in your browser."
+        info "FLAI v11.2 is running! Open http://localhost:5000 in your browser."
     else
         warn "Health check returned: $STATUS — check 'docker compose logs' for details."
     fi
@@ -537,12 +588,15 @@ run_tests() {
 # ── Usage ──
 usage() {
     cat <<'USAGE'
-FLAI v11.0 — Deployment Script
+FLAI v11.2 — Deployment Script
 
 Usage: ./deploy.sh [OPTIONS]
 
 Options:
-  --with-voice        Deploy Whisper ASR + Piper TTS
+  --with-voice        Deploy Whisper ASR + TTS (Piper backend, default TTS choice)
+  --with-voice-piper  Deploy Whisper ASR + Piper TTS (same as --with-voice)
+  --with-voice-kokoro Deploy Whisper ASR + Kokoro TTS (higher quality, ~6 GB RAM)
+                      (mutually exclusive with --with-voice-piper)
   --with-rag          Deploy Qdrant for RAG (document search)
   --with-image-gen    Deploy stable-diffusion.cpp for image generation/editing
                       (default: disabled, use this flag to enable)
@@ -569,12 +623,14 @@ Model Download Sizes (approximate):
   Video generation (LTX-Video 2B)    ~5.9 GB
   T5 text encoder (PixArt T5-XXL)    ~18 GB (on disk, float32)
   TTS (Piper)                        ~0.2 GB
+  TTS (Kokoro)                       ~1 GB
   SLM embedding model                ~0.5 GB (pre-downloaded during Docker build)
 USAGE
 }
 
 # ── Parse arguments ──
-WITH_VOICE=false
+VOICE_PIPER=false
+VOICE_KOKORO=false
 WITH_RAG=false
 WITH_IMAGE_GEN=false
 WITH_VIDEO=false
@@ -587,23 +643,33 @@ PROFILES=""
 
 for arg in "$@"; do
     case "$arg" in
-        --with-voice)     WITH_VOICE=true ;;
-        --with-rag)       WITH_RAG=true ;;
-        --with-image-gen) WITH_IMAGE_GEN=true ;;
-        --with-video)     WITH_VIDEO=true ;;
-        --with-slm)       WITH_SLM=true ;;
-        --with-search)    WITH_SEARCH=true ;;
-        --cpu)            FLAI_PLATFORM=cpu ;;
-        --download-models) DOWNLOAD_MODELS=true ;;
-        --run-tests)      RUN_TESTS=true ;;
-        --help|-h)        usage; exit 0 ;;
+        --with-voice|--with-voice-piper) VOICE_PIPER=true ;;
+        --with-voice-kokoro)             VOICE_KOKORO=true ;;
+        --with-rag)                      WITH_RAG=true ;;
+        --with-image-gen)                WITH_IMAGE_GEN=true ;;
+        --with-video)                    WITH_VIDEO=true ;;
+        --with-slm)                      WITH_SLM=true ;;
+        --with-search)                   WITH_SEARCH=true ;;
+        --cpu)                           FLAI_PLATFORM=cpu ;;
+        --download-models)               DOWNLOAD_MODELS=true ;;
+        --run-tests)                     RUN_TESTS=true ;;
+        --help|-h)                       usage; exit 0 ;;
     esac
 done
+
+if [[ "$VOICE_PIPER" == "true" && "$VOICE_KOKORO" == "true" ]]; then
+    error "--with-voice-piper and --with-voice-kokoro are mutually exclusive — choose only one TTS backend."
+    exit 1
+fi
+
+VOICE_BACKEND=""
+[[ "$VOICE_PIPER" == "true" ]] && VOICE_BACKEND="piper"
+[[ "$VOICE_KOKORO" == "true" ]] && VOICE_BACKEND="kokoro"
 
 # ── Main ──
 main() {
     echo "============================================"
-    echo "  FLAI v11.0 — Deployment Script"
+    echo "  FLAI v11.2 — Deployment Script"
     echo "============================================"
     echo ""
 
@@ -622,7 +688,7 @@ main() {
         download_sd_cpp_models
         download_tts_models
         [[ "$WITH_VIDEO" == "true" ]] && download_ltx_video_models
-        [[ "$WITH_VOICE" == "true" ]] && download_whisper_models
+        [[ "$VOICE_BACKEND" != "" ]] && download_whisper_models
     fi
 
     if build_and_launch; then

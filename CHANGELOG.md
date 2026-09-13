@@ -4,6 +4,27 @@ All notable changes to FLAI are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v11.2] — 2026-09-11
+
+### ✨ TTS: Piper → Kokoro-82M
+
+- **New `services/kokoro/`** — Flask-based HTTP API wrapping Kokoro-82M (82M params, ElevenLabs-level quality). Dockerfile uses python:3.11-slim + torch CPU + `kokoro>=0.9.0`. Endpoints: `POST /tts`, `GET /health`, `GET /voices`.
+- **Russian voices** — 2 studio-actor voices from `zaakirio/kokoro-ru`: female `sveta` (flagship, WER 2.50% vs Piper 4.38%) and male `dima` (separate checkpoint).
+- **English voices** — `af_heart` (A-grade US female), `am_liam` (US male) from `hexgrad/Kokoro-82M`.
+- **Russian G2P with correct stress** — `ru_g2p.py` via `RUAccent` + acute-aware espeak-ng data resolves lexical stress (за́мок vs замо́к), ё restoration, vowel reduction (akanye), orthoepic rules (солнце→сонце, finally –ого→-ово).
+- **`docker-compose.gpu.yml` / `.cpu.yml`** — `kokoro` service (profile `with-voice-kokoro`, 2 CPU, 6 GB RAM) and `piper` service (profile `with-voice-piper`, 1 GB RAM); exactly one TTS backend is selected at deploy time.
+- **`modules/tts.py`** — Kokoro as primary backend (`KOKORO_URL`), Piper as fallback (`PIPER_URL`). Voice name resolution via `GENDER_VOICE_MAP` (lang+gender → voice).
+- **`app/routes/tts.py`** — supports optional `voice` parameter alongside `lang`/`gender`.
+- **`deploy.sh` / `deploy-ru.sh`** — `download_tts_models()` downloads Kokoro weights + Piper fallback. `enable_env_features()` toggles `KOKORO_URL`.
+- **Tests** — 37 tests pass, all adapted for Kokoro/Piper dual backend.
+
+### 🔧 Fixes
+
+- **Version bump** — all Python files, docs, deploy scripts, CHANGELOG updated to v11.2.
+- **`app/routes/backups.py`** — backup metadata version `11.0` → `11.2`.
+- **`app/__init__.py`** — Prometheus metric `flai_web_info{version="11.2"}`.
+- **`app/llama_swap_config.py`** — generated config header `FLAI v11.2`.
+
 ## [v11.0] — 2026-09-06
 
 ### 🔄 Instant GPU ↔ CPU Switching (No Rebuild)

@@ -163,7 +163,7 @@ FLAI ships with two deployment modes:
 > | 16 GB GPU | 24–32 GB | 32–48 GB |
 > | CPU-only | 24–32 GB | 48 GB (64 GB for 240-frame clips) |
 >
-> Voice features are opt-in (`--with-voice-piper` / `--with-voice-kokoro`): Whisper ASR adds ~1 GB RAM, plus the chosen backend — Piper up to ~0.5 GB (voices lazy-loaded per use) or Kokoro ~1.6 GB idle and up to ~6 GB during a Russian phrase (its 6 GB container limit). The CPU-only video numbers assume the LTX-Video container may use up to 64 GB (its memory cap in `docker-compose.cpu.yml`); the pre-flight planner gates generation on the *smaller* of host free RAM and that cap, so a 768×512×240 clip (~53 GB peak) genuinely needs a 64 GB host.
+> Voice features are opt-in (`--with-voice-piper` / `--with-voice-kokoro`): Whisper ASR adds ~1 GB RAM, plus the chosen backend — Piper up to ~0.5 GB (voices lazy-loaded per use) or Kokoro ~1.6 GB idle and up to ~6 GB during a Russian phrase (its 6 GB container limit). The CPU-only video numbers assume the LTX-Video container may use up to 64 GB (its memory cap in `docker-compose.cpu.yml`); the pre-flight planner gates generation on the *smaller* of host free RAM and that cap, and on a wall-clock budget (`LTX_VIDEO_CPU_TIME_BUDGET_S`, default 85% of `LTX_VIDEO_TIMEOUT`) — a 768×512×240 clip (~53 GB peak) needs a 64 GB host **and** would take hours on CPU, so it is auto-degraded to a size that finishes within the budget.
 
 #### What works at each tier
 
@@ -178,7 +178,7 @@ FLAI ships with two deployment modes:
 | RAG (Qdrant) | ✅ | ✅ | ✅ | ✅ |
 | SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 
-> **VRAM management:** All LLM models (multimodal, reasoning, embedding) share VRAM via llama-swap — only one is loaded at a time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. The system dynamically adjusts `n_gpu_layers` based on available VRAM. **CPU-only video:** before generation the worker checks free RAM (`MemAvailable`) against the LTX-Video container's own memory cap (`LTX_VIDEO_RAM_LIMIT_MB`); if the requested 768×512×240 does not fit it progressively degrades to 384×256×120 @ 12 fps, then 256×192×57 @ 6 fps, notifying the user with the exact chosen format and stopping with a clear message when even the smallest step is impossible.
+> **VRAM management:** All LLM models (multimodal, reasoning, embedding) share VRAM via llama-swap — only one is loaded at a time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. The system dynamically adjusts `n_gpu_layers` based on available VRAM. **CPU-only video:** before generation the worker plans the format from BOTH constraints — free RAM (`MemAvailable` against the LTX-Video container's own memory cap `LTX_VIDEO_RAM_LIMIT_MB`) and a wall-clock budget (`LTX_VIDEO_CPU_TIME_BUDGET_S`, default 85% of `LTX_VIDEO_TIMEOUT`, estimated from a calibrated per-voxel CPU throughput). It picks the largest 768×512×240 → 384×256×120 @ 12 fps → 256×192×57 @ 6 fps that finishes within the budget, notifies the user of the exact chosen format, and stops with a clear message when even the smallest step is impossible.
 
 ### Model Benchmarks (RTX 5060 Ti 16 GB)
 

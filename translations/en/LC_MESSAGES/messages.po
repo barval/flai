@@ -1685,6 +1685,16 @@ msgstr "Not enough memory. Generation is not possible even at lower resolution."
 msgid "fps"
 msgstr "fps"
 
+#: modules/video.py:213
+#, python-brace-format
+msgid "Estimated generation time ({estimate_s}s) exceeds the limit ({budget_s}s). Generating at lower resolution: {params}."
+msgstr "Estimated generation time ({estimate_s}s) exceeds the limit ({budget_s}s). Generating at lower resolution: {params}."
+
+#: modules/video.py:292
+#, python-brace-format
+msgid "Estimated generation time ({estimate_s}s) exceeds the limit ({budget_s}s) even at the lowest resolution."
+msgstr "Estimated generation time ({estimate_s}s) exceeds the limit ({budget_s}s) even at the lowest resolution."
+
 #: modules/video.py:328
 #, python-brace-format
 msgid "Video generation timeout ({timeout}s)"

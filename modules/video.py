@@ -81,6 +81,14 @@ class VideoModule(TranslationMixin):
         {"width": 256, "height": 192, "num_frames": 57, "frame_rate": 6},
     ]
 
+    # Denoising steps in ltvx-2b-0.9.8-distilled.yaml (default pipeline).
+    CPU_STEPS_DEFAULT = 8
+    # Calibrated CPU throughput: 384×256×120 ≈ 495 s per step on a 12-core
+    # host (lenovo-book) → ~24 000 voxels rendered per step per second.
+    CPU_VOXELS_PER_STEP_S = 24_000
+    # Fixed per-generation overhead: T5 text encode + VAE decode + upscaler + I/O.
+    CPU_TIME_OVERHEAD_S = 300
+
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
         self.wrapper_url = None
@@ -167,13 +175,30 @@ class VideoModule(TranslationMixin):
         units = spatial * temporal
         return int(VIDEO_RAM_STATIC_MB + units * VIDEO_RAM_ACTIVATIONS_MB_PER_UNIT)
 
+    @classmethod
+    def estimate_cpu_generation_time_s(
+        cls, width: int, height: int, num_frames: int, steps: int = CPU_STEPS_DEFAULT
+    ) -> int:
+        """Estimate wall-clock time for a CPU generation (seconds).
+
+        Per-step time is ~linear in the latent volume (width×height×frames):
+        measured ~495 s/step for 384×256×120 on a 12-core CPU host. A fixed
+        overhead covers T5 encode, VAE decode, upscaling and I/O.
+        """
+        voxels = max(1, width) * max(1, height) * max(1, num_frames)
+        return int(steps * voxels // cls.CPU_VOXELS_PER_STEP_S + cls.CPU_TIME_OVERHEAD_S)
+
     def plan_cpu_generation(
         self, prompt_data: dict[str, Any], lang: str = "ru"
     ) -> tuple[dict[str, Any] | None, str | None, str | None]:
-        """Decide video parameters on CPU based on available RAM.
+        """Decide video parameters on CPU based on available RAM AND time.
 
-        Budget = min(host free RAM, ltxvideo container memory cap). The cap is
-        read from LTX_VIDEO_RAM_LIMIT_MB (set in the CPU compose file).
+        Memory budget = min(host free RAM, ltxvideo container memory cap), the
+        cap read from LTX_VIDEO_RAM_LIMIT_MB (set in the CPU compose file). Time
+        budget defaults to 85% of LTX_VIDEO_TIMEOUT so generation reliably
+        finishes before the client request times out; override with
+        LTX_VIDEO_CPU_TIME_BUDGET_S. The largest parameters satisfying BOTH
+        constraints win — the requested size first, then the fallback chain.
 
         Returns (override, notice, error):
           - ({}, None, None)        → proceed with requested params
@@ -186,36 +211,69 @@ class VideoModule(TranslationMixin):
         if rm.hardware.platform != "cpu":
             return {}, None, None
 
-        # Generation happens in the ltxvideo container, so the binding
+        # Generation happens in the ltxvideo container, so the binding memory
         # constraint is the SMALLER of host free RAM and that container's
-        # memory cap (LTX_VIDEO_RAM_LIMIT_MB from docker-compose.cpu.yml).
-        # A plan fitting host RAM but exceeding the container cap would end in
-        # an OOM-kill of the container despite available host memory.
+        # memory cap. A plan fitting host RAM but exceeding the container cap
+        # would end in an OOM-kill of the container despite available host memory.
         host_available_mb = int(rm._detect_available_ram_mb())
         container_limit_mb = int(os.environ.get("LTX_VIDEO_RAM_LIMIT_MB", str(host_available_mb)))
         available_mb = min(host_available_mb, container_limit_mb)
+        time_budget_s = int(os.environ.get("LTX_VIDEO_CPU_TIME_BUDGET_S", "0")) or max(1, int(self.timeout * 0.85))
+
         req_width = int(prompt_data.get("width", 768))
         req_height = int(prompt_data.get("height", 512))
         req_frames = int(prompt_data.get("num_frames", 240))
+        request_params = {"width": req_width, "height": req_height, "num_frames": req_frames}
+        candidates = [request_params, *self.CPU_FALLBACK_PARAMS]
 
-        if self.estimate_peak_ram_mb(req_width, req_height, req_frames) + VIDEO_RAM_SAFETY_MARGIN_MB <= available_mb:
-            return {}, None, None
+        def fits(params: dict[str, int]) -> bool:
+            ram_ok = (
+                self.estimate_peak_ram_mb(params["width"], params["height"], params["num_frames"])
+                + VIDEO_RAM_SAFETY_MARGIN_MB
+                <= available_mb
+            )
+            time_ok = (
+                self.estimate_cpu_generation_time_s(params["width"], params["height"], params["num_frames"])
+                <= time_budget_s
+            )
+            return ram_ok and time_ok
 
-        for fb in self.CPU_FALLBACK_PARAMS:
-            if self.estimate_peak_ram_mb(fb["width"], fb["height"], fb["num_frames"]) + VIDEO_RAM_SAFETY_MARGIN_MB <= (
-                available_mb
-            ):
-                fps_units = self._("fps", lang)
-                params = f"{fb['width']}×{fb['height']}×{fb['num_frames']}, {fb.get('frame_rate', 24)} {fps_units}"
+        for candidate in candidates:
+            if not fits(candidate):
+                continue
+            if candidate is request_params:
+                return {}, None, None
+            fps_units = self._("fps", lang)
+            params = (
+                f"{candidate['width']}×{candidate['height']}×{candidate['num_frames']}, "
+                f"{candidate.get('frame_rate', 24)} {fps_units}"
+            )
+            estimate_s = self.estimate_cpu_generation_time_s(req_width, req_height, req_frames)
+            if estimate_s > time_budget_s:
+                notice = self._(
+                    "Estimated generation time ({estimate_s}s) exceeds the limit ({budget_s}s). "
+                    "Generating at lower resolution: {params}.",
+                    lang,
+                ).format(estimate_s=estimate_s, budget_s=time_budget_s, params=params)
+            else:
                 notice = self._("Not enough memory. Generating at lower resolution: {params}.", lang).format(
                     params=params
                 )
-                return dict(fb), notice, None
+            return dict(candidate), notice, None
 
-        error = self._(
-            "Not enough memory. Generation is not possible even at lower resolution.",
-            lang,
-        )
+        # Nothing fits: report the binding constraint.
+        estimate_s = self.estimate_cpu_generation_time_s(req_width, req_height, req_frames)
+        if estimate_s > time_budget_s:
+            error = self._(
+                "Estimated generation time ({estimate_s}s) exceeds the limit ({budget_s}s) "
+                "even at the lowest resolution.",
+                lang,
+            ).format(estimate_s=estimate_s, budget_s=time_budget_s)
+        else:
+            error = self._(
+                "Not enough memory. Generation is not possible even at lower resolution.",
+                lang,
+            )
         return None, None, error
 
     def _resolve_use_gpu(self, rm) -> bool:

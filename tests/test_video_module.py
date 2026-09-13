@@ -406,7 +406,10 @@ class TestVideoModuleMemoryPlanning:
         from modules.video import VideoModule
 
         cpu_rm._detect_available_ram_mb.return_value = 56000
-        with patch("app.resource_manager.get_resource_manager", return_value=cpu_rm):
+        with (
+            patch("app.resource_manager.get_resource_manager", return_value=cpu_rm),
+            patch.dict("os.environ", {"LTX_VIDEO_CPU_TIME_BUDGET_S": "99999"}),
+        ):
             module = VideoModule()
             prompt_data = {"width": 768, "height": 512, "num_frames": 240}
             override, notice, error = module.plan_cpu_generation(prompt_data, lang="ru")
@@ -423,7 +426,7 @@ class TestVideoModuleMemoryPlanning:
         cpu_rm._detect_available_ram_mb.return_value = 56000
         with (
             patch("app.resource_manager.get_resource_manager", return_value=cpu_rm),
-            patch.dict("os.environ", {"LTX_VIDEO_RAM_LIMIT_MB": "32768"}),
+            patch.dict("os.environ", {"LTX_VIDEO_RAM_LIMIT_MB": "32768", "LTX_VIDEO_CPU_TIME_BUDGET_S": "99999"}),
         ):
             module = VideoModule()
             prompt_data = {"width": 768, "height": 512, "num_frames": 240}
@@ -438,7 +441,10 @@ class TestVideoModuleMemoryPlanning:
         from modules.video import VideoModule
 
         cpu_rm._detect_available_ram_mb.return_value = 30000
-        with patch("app.resource_manager.get_resource_manager", return_value=cpu_rm):
+        with (
+            patch("app.resource_manager.get_resource_manager", return_value=cpu_rm),
+            patch.dict("os.environ", {"LTX_VIDEO_CPU_TIME_BUDGET_S": "99999"}),
+        ):
             module = VideoModule()
             prompt_data = {"width": 768, "height": 512, "num_frames": 240}
             override, notice, error = module.plan_cpu_generation(prompt_data, lang="ru")
@@ -453,7 +459,10 @@ class TestVideoModuleMemoryPlanning:
         from modules.video import VideoModule
 
         cpu_rm._detect_available_ram_mb.return_value = 20000
-        with patch("app.resource_manager.get_resource_manager", return_value=cpu_rm):
+        with (
+            patch("app.resource_manager.get_resource_manager", return_value=cpu_rm),
+            patch.dict("os.environ", {"LTX_VIDEO_CPU_TIME_BUDGET_S": "99999"}),
+        ):
             module = VideoModule()
             prompt_data = {"width": 768, "height": 512, "num_frames": 240}
             override, notice, error = module.plan_cpu_generation(prompt_data, lang="ru")
@@ -467,7 +476,10 @@ class TestVideoModuleMemoryPlanning:
         from modules.video import VideoModule
 
         cpu_rm._detect_available_ram_mb.return_value = 19000
-        with patch("app.resource_manager.get_resource_manager", return_value=cpu_rm):
+        with (
+            patch("app.resource_manager.get_resource_manager", return_value=cpu_rm),
+            patch.dict("os.environ", {"LTX_VIDEO_CPU_TIME_BUDGET_S": "99999"}),
+        ):
             module = VideoModule()
             prompt_data = {"width": 768, "height": 512, "num_frames": 240}
             override, notice, error = module.plan_cpu_generation(prompt_data, lang="ru")
@@ -491,6 +503,99 @@ class TestVideoModuleMemoryPlanning:
         assert override == {}
         assert notice is None
         assert error is None
+
+    def test_plan_time_budget_degrades_even_with_ram_spare(self, cpu_rm):
+        from modules.video import VideoModule
+
+        # RAM is plentiful, but 768×512×240 would take hours on CPU. The time
+        # budget (3060 s ≈ 0.85 × LTX_VIDEO_TIMEOUT=3600) must force a downsize.
+        cpu_rm._detect_available_ram_mb.return_value = 56000
+        with (
+            patch("app.resource_manager.get_resource_manager", return_value=cpu_rm),
+            patch.dict(
+                "os.environ",
+                {"LTX_VIDEO_CPU_TIME_BUDGET_S": "3060", "LTX_VIDEO_RAM_LIMIT_MB": "65536"},
+            ),
+        ):
+            module = VideoModule()
+            prompt_data = {"width": 768, "height": 512, "num_frames": 240}
+            override, notice, error = module.plan_cpu_generation(prompt_data, lang="ru")
+
+        assert error is None
+        assert override == VideoModule.CPU_FALLBACK_PARAMS[1]
+        assert notice is not None
+        assert "256×192×57" in notice
+        assert "exceeds" in notice
+
+    def test_plan_time_budget_impossible(self, cpu_rm):
+        from modules.video import VideoModule
+
+        # Even the smallest fallback (256×192×57 ≈ 20 min) is slower than the
+        # 600 s budget → generation refused with a time-based error.
+        cpu_rm._detect_available_ram_mb.return_value = 56000
+        with (
+            patch("app.resource_manager.get_resource_manager", return_value=cpu_rm),
+            patch.dict(
+                "os.environ",
+                {"LTX_VIDEO_CPU_TIME_BUDGET_S": "600", "LTX_VIDEO_RAM_LIMIT_MB": "65536"},
+            ),
+        ):
+            module = VideoModule()
+            prompt_data = {"width": 768, "height": 512, "num_frames": 240}
+            override, notice, error = module.plan_cpu_generation(prompt_data, lang="ru")
+
+        assert override is None
+        assert notice is None
+        assert error is not None
+        assert "exceeds" in error
+
+    def test_plan_time_fits_no_degradation(self, cpu_rm):
+        from modules.video import VideoModule
+
+        # Requesting the small 256×192×57 format with a generous budget →
+        # proceed untouched.
+        cpu_rm._detect_available_ram_mb.return_value = 56000
+        with (
+            patch("app.resource_manager.get_resource_manager", return_value=cpu_rm),
+            patch.dict(
+                "os.environ",
+                {"LTX_VIDEO_CPU_TIME_BUDGET_S": "1800", "LTX_VIDEO_RAM_LIMIT_MB": "65536"},
+            ),
+        ):
+            module = VideoModule()
+            prompt_data = dict(VideoModule.CPU_FALLBACK_PARAMS[1])
+            override, notice, error = module.plan_cpu_generation(prompt_data, lang="ru")
+
+        assert override == {}
+        assert notice is None
+        assert error is None
+
+    def test_plan_ram_still_takes_priority_over_time(self, cpu_rm):
+        from modules.video import VideoModule
+
+        # RAM is the binding constraint (no time pressure) → memory notice.
+        cpu_rm._detect_available_ram_mb.return_value = 20000
+        with (
+            patch("app.resource_manager.get_resource_manager", return_value=cpu_rm),
+            patch.dict("os.environ", {"LTX_VIDEO_CPU_TIME_BUDGET_S": "99999"}),
+        ):
+            module = VideoModule()
+            prompt_data = {"width": 768, "height": 512, "num_frames": 240}
+            override, notice, error = module.plan_cpu_generation(prompt_data, lang="ru")
+
+        assert error is None
+        assert override == VideoModule.CPU_FALLBACK_PARAMS[1]
+        assert notice is not None
+        assert "Not enough memory" in notice
+
+    def test_estimate_cpu_generation_time_s(self):
+        from modules.video import VideoModule
+
+        # 384×256×120 ≈ 8 steps × ~491 s + 300 s overhead (calibrated on a
+        # 12-core CPU host).
+        expected = int(8 * 384 * 256 * 120 / 24_000 + 300)
+        assert VideoModule.estimate_cpu_generation_time_s(384, 256, 120) == expected
+        assert VideoModule.estimate_cpu_generation_time_s(256, 192, 57) < expected
 
 
 @pytest.mark.unit

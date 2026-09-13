@@ -35,7 +35,8 @@ _en_g2p_lock = threading.Lock()
 _g2p_worker_lock = threading.RLock()
 _g2p_queue = None
 _g2p_proc = None
-G2P_IDLE_TIMEOUT = 300  # seconds without a ru request before unloading RUAccent
+# Seconds without a ru request before unloading RUAccent (0 = never unload).
+G2P_IDLE_TIMEOUT = int(os.environ.get("KOKORO_G2P_IDLE_TIMEOUT", "300"))
 _last_ru_g2p_use = 0.0
 
 
@@ -163,6 +164,23 @@ def _g2p_idle_sweeper():
             proc.terminate()
             proc.join(timeout=10)
         logger.info("G2P worker terminated")
+
+
+def _warmup_ru():
+    """Cold-start warmup: make the first real ru phrase render in seconds.
+
+    Spawns the RUAccent worker and runs one full ru synthesis through the
+    normal request path (sveta/base model is already preloaded at startup).
+    Any error is logged and swallowed — an early user request simply takes
+    the regular cold path.
+    """
+    try:
+        t0 = time.time()
+        ipa, _oov = _phonemize_ru("Тёплый запуск озвучки.")
+        wav = _generate_in_worker("kokoro-ru-v2-base.pth", os.path.join(VOICES_DIR, "sveta.pt"), ipa, 1.0, timeout=60)
+        logger.info(f"Warmup ru complete in {time.time() - t0:.1f}s (audio {len(wav)} bytes)")
+    except Exception as e:
+        logger.warning(f"Warmup ru failed (non-fatal, first ru request takes the cold path): {e}")
 
 
 # Voice configuration
@@ -420,11 +438,21 @@ if __name__ == "__main__":
     except Exception as e:
         logger.warning(f"Could not start worker: {e}")
 
-    # RUAccent (ru G2P) is NOT preloaded — it is created lazily in its own
-    # worker on the first ru request (~10 s, once) and terminated after
-    # G2P_IDLE_TIMEOUT of TTS inactivity, so idle RAM stays ~2 GiB.
+    # RUAccent (ru G2P) is NOT preloaded synchronously — a background warmup
+    # (see _warmup_ru) spawns it right after startup so the first real ru
+    # phrase renders in seconds; without warmup (KOKORO_WARMUP_G2P=0) it is
+    # created lazily on the first ru request (~10 s, once) and terminated
+    # after G2P_IDLE_TIMEOUT of TTS inactivity, so idle RAM stays ~2 GiB.
     # The sweeper prunes the idled worker every 30 s.
     sweeper = threading.Thread(target=_g2p_idle_sweeper, daemon=True)
     sweeper.start()
+
+    # Background warmup: spawn the G2P worker and run one full ru synthesis
+    # (~15 s) right after startup so the first real ru phrase renders in
+    # seconds instead of ~55 s. Runs after app starts listening — the port is
+    # up immediately and an early user request simply races the warmup.
+    # Disable with KOKORO_WARMUP_G2P=0 (keeps idle RAM at ~1.6 GiB).
+    if os.environ.get("KOKORO_WARMUP_G2P", "1") not in ("0", "false", "no"):
+        threading.Thread(target=_warmup_ru, daemon=True).start()
 
     app.run(host="0.0.0.0", port=8888, debug=False, threaded=True)

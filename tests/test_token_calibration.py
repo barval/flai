@@ -1,6 +1,8 @@
 """Tests for token-estimation calibration and clean history formatting."""
 
+from app.llamacpp_client import _record_prompt_tokens
 from app.utils import (
+    _TOKEN_CALIBRATION,
     TOKEN_COEFFICIENTS,
     build_context_prompt,
     calibrate_token_chars,
@@ -71,5 +73,44 @@ def test_build_context_prompt_has_no_timestamps():
     assert "[" not in prompt or "18:45" not in prompt
 
 
+def calibration_samples(model_type, lang):
+    return _TOKEN_CALIBRATION.get((model_type, lang), [])
+
+
 def test_build_context_prompt_empty():
     assert build_context_prompt([]) == ""
+
+
+def test_record_prompt_tokens_stream_usage_dict():
+    """Stream chunks carry the raw usage dict (no top-level 'usage' key)."""
+    reset_token_calibration()
+    try:
+        _record_prompt_tokens(
+            {"prompt_tokens": 50, "completion_tokens": 5, "total_tokens": 55},
+            "multimodal",
+            "ru",
+            [{"role": "user", "content": "Hello world"}],
+        )
+        # 1 sample < minimum -> still not calibrated, but recorded
+        assert calibrate_token_chars("multimodal", "ru") is None
+        assert len(calibration_samples("multimodal", "ru")) == 1
+    finally:
+        reset_token_calibration()
+
+
+def test_record_prompt_tokens_full_response():
+    """Non-stream responses carry a nested top-level 'usage' key."""
+    reset_token_calibration()
+    try:
+        _record_prompt_tokens(
+            {
+                "choices": [{"message": {"content": ""}}],
+                "usage": {"prompt_tokens": 50, "completion_tokens": 5, "total_tokens": 55},
+            },
+            "multimodal",
+            "ru",
+            [{"role": "user", "content": "Hello world"}],
+        )
+        assert len(calibration_samples("multimodal", "ru")) == 1
+    finally:
+        reset_token_calibration()

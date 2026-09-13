@@ -34,7 +34,10 @@ def _record_prompt_tokens(
     paired with its char length this calibrates estimate_tokens() per model.
     """
     try:
-        usage = result.get("usage") if isinstance(result, dict) else None
+        if isinstance(result, dict) and "prompt_tokens" in result:
+            usage: Any = result
+        else:
+            usage = result.get("usage") if isinstance(result, dict) else None
         if not usage:
             return
         actual = usage.get("prompt_tokens")

@@ -224,9 +224,8 @@ def calibrate_token_chars(model_type: str, lang: str) -> float | None:
 
 def reset_token_calibration() -> None:
     """Clear all calibration samples (used in tests)."""
-    global _TOKEN_CALIBRATION
     with _TOKEN_CALIBRATION_LOCK:
-        _TOKEN_CALIBRATION = {}
+        _TOKEN_CALIBRATION.clear()
 
 
 # Safety margin to prevent context overflow (use only 85% of calculated capacity)

@@ -192,6 +192,7 @@ services:
       - LTX_DEFAULT_MODEL=ltxv-2b-0.9.8-distilled.safetensors
       - LTX_DEFAULT_UPSCALER=ltxv-spatial-upscaler-0.9.8.safetensors
       - LTX_PIPELINE_CONFIG=ltxv-2b-0.9.8-distilled.yaml
+      - LTX_GUNICORN_TIMEOUT=600
       - LTX_TEXT_ENCODER_PATH=/app/models/t5_encoder
     runtime: nvidia
     networks:

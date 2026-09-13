@@ -66,4 +66,9 @@ ENV HF_HOME=/app/models/huggingface
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=180s \
     CMD curl -f http://localhost:7872/health || exit 1
 
-CMD ["gunicorn", "-w", "1", "-b", "0.0.0.0:7872", "--timeout", "600", "--access-logfile", "-", "--error-logfile", "-", "ltx_wrapper:app"]
+# Gunicorn worker timeout must exceed the longest possible CPU video
+# generation. Defaults to 600s (GPU); CPU compose overrides it via
+# LTX_GUNICORN_TIMEOUT because a single CPU generation can run for hours.
+ARG LTX_GUNICORN_TIMEOUT=600
+ENV LTX_GUNICORN_TIMEOUT=${LTX_GUNICORN_TIMEOUT}
+CMD ["sh", "-c", "gunicorn -w 1 -b 0.0.0.0:7872 --timeout ${LTX_GUNICORN_TIMEOUT} --access-logfile - --error-logfile - ltx_wrapper:app"]

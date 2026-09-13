@@ -20,6 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### 🔧 Fixes
 
+- **Kokoro cold-start warmup** — background thread runs one full ru synthesis right after container start (`KOKORO_WARMUP_G2P=1`, default on), so the first Russian phrase takes ~2 s instead of ~56 s under host load. Port is up immediately; an early user request races the warmup on the regular cold path. G2P idle timeout is configurable via `KOKORO_G2P_IDLE_TIMEOUT` (default 300, `0` = never unload RUAccent); `KOKORO_TIMEOUT` raised 60 → 120 (a cold start was within seconds of the old limit).
+- **TTS voice gender race** — the frontend now sends the current voice gender explicitly in every `/api/tts/synthesize` payload (read from the header toggle) instead of relying on the session cookie: right after `/set-voice-gender` a stale cookie could make the new playback use the previous gender.
 - **Version bump** — all Python files, docs, deploy scripts, CHANGELOG updated to v11.2.
 - **`app/routes/backups.py`** — backup metadata version `11.0` → `11.2`.
 - **`app/__init__.py`** — Prometheus metric `flai_web_info{version="11.2"}`.

@@ -97,6 +97,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | **Russian voices with correct stress** | Studio-actor voices from `zaakirio/kokoro-ru`: `sveta` (female, WER 2.50% vs Piper 4.38%), `dima` (male). Lexical stress via RUAccent + acute-aware espeak-ng data (за́мок vs замо́к), ё restoration, vowel reduction (akanye) and orthoepic rules (солнце→сонце, final –ого→-ово). |
 | **English voices** | `af_heart` (US female), `am_liam` (US male) from `hexgrad/Kokoro-82M`. |
 | **Dual-backend TTS module** | `modules/tts.py` uses whichever backend URL is active (`KOKORO_URL` or `PIPER_URL`); `/api/tts/synthesize` accepts an optional `voice` name alongside `lang`/`gender`. |
+| **Voice UX refinements** | Kokoro cold-start warmup: the first Russian phrase after deployment takes ~2 s instead of ~56 s (`KOKORO_WARMUP_G2P`, `KOKORO_G2P_IDLE_TIMEOUT`, `KOKORO_TIMEOUT=120` — see Kokoro tuning parameters below). The frontend sends the voice gender explicitly with every synthesis request, so switching gender and immediately playing no longer risks the previous voice. |
 
 ### Core Components
 
@@ -805,11 +806,19 @@ bash services/kokoro/download-model.sh
 | Russian quality | Good (WER 4.38%) | Higher (WER 2.50%, studio actors) |
 | Russian voices | `dmitri` (male), `irina` (female) | `dima` (male), `sveta` (female) |
 | Russian pronunciation | espeak-ng phonemes, no real word stress | RUAccent: lexical stress, ё restoration, akanye, orthoepy |
-| First phrase (fresh container) | ~0.8 s | EN ~2.9 s; **RU ~10–11.5 s** |
+| First phrase (fresh container) | ~0.8 s | **~2 s** — a background warmup (one full ru synthesis) runs right after container start (`KOKORO_WARMUP_G2P=1`, default on) |
 | Subsequent phrases (same session) | ~0.7–0.8 s | RU ~1.1 s |
-| Cold start after idle | none — voices stay cached | **RU only:** after ≥5 min without Russian the RUAccent G2P worker (~3.1 GB) is auto-killed to return RAM; the next Russian phrase reloads it (~10–11.5 s). EN is not affected. |
+| First RU phrase after idle | none — voices stay cached | Depends on `KOKORO_G2P_IDLE_TIMEOUT` (default 300 s): after it expires without a Russian request the RUAccent G2P worker (~3.1 GB) is auto-killed to return RAM, and the next Russian phrase reloads it (~10–11.5 s). Set `0` to never unload (always warm, +3.1 GB RAM permanently). EN is not affected. |
 
-> **Memory notes (measured):** Piper caches every used voice in memory — with all 4 voices loaded it reaches ~497 MiB, close to its 512 MB limit. Kokoro's worker releases ~3.1 GB to the OS after 300 s of no Russian TTS, so a quiet period is followed by a single slower first Russian phrase (then ~1.1 s for subsequent ones).
+> **Memory notes (measured):** Piper caches every used voice in memory — with all 4 voices loaded it reaches ~497 MiB (limit 1 GB). Kokoro holds ~4.5 GB after its startup warmup (model + RUAccent worker) and releases ~3.1 GB to the OS after `KOKORO_G2P_IDLE_TIMEOUT` seconds without Russian TTS (default 300 s) — a quiet period is followed by a single slower first Russian phrase (~10–11.5 s, then ~1.1 s).
+
+#### Kokoro tuning parameters (.env)
+
+| Parameter | Default | Effect |
+|-----------|---------|--------|
+| `KOKORO_WARMUP_G2P` | `1` | Runs one full ru synthesis in the background right after container start. With it, the first Russian phrase after deployment takes ~2 s instead of ~55 s. The port is up immediately, so a user clicking during warmup simply takes the regular cold path. Disable (`0`) to keep idle RAM at ~1.6 GB. |
+| `KOKORO_G2P_IDLE_TIMEOUT` | `300` | Seconds without a Russian request before the RUAccent G2P worker (~3.1 GB) is terminated to free RAM. Trade-off: longer = always-warm Russian synthesis (no ~10 s reload penalty) at the price of permanently higher RAM; `0` = never unload. |
+| `KOKORO_TIMEOUT` | `120` | Web-app client timeout for one synthesis request. Covers a cold RUAccent load (~10–20 s) plus model reload under host load; a cold start used to come within seconds of the old 60 s limit and trigger client timeouts. |
 
 ---
 

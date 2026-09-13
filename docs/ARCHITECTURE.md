@@ -77,7 +77,7 @@ PostgreSQL only via `app/database.py:get_db()` context manager (psycopg2 RealDic
 - `services/qdrant/` — vector DB for RAG
 - `services/openai-whisper/` — speech-to-text
 - `services/piper/` — text-to-speech
-- `services/kokoro/` — text-to-speech (higher-quality alternative, selected at deploy time)
+- `services/kokoro/` — text-to-speech (higher-quality alternative, selected at deploy time; cold-start warmup thread + RUAccent G2P worker unloaded after `KOKORO_G2P_IDLE_TIMEOUT`)
 - `services/superlocalmemory/` — long-term memory (SLM)
 - `services/llamacpp/` — llama.cpp servers
 - `llama-swap` — Docker image `ghcr.io/mostlygeek/llama-swap:cuda` (no local service directory)

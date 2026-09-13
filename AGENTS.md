@@ -80,6 +80,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - **Context budget:** `_get_context_for_model()` fetches SLM facts first, measures real token cost, then fills remaining budget with conversation history. No hardcoded reserves — actual sizes used throughout. Search content is truncated to 2 000 chars per result and a dynamic total computed from the reasoning model's `context_length` via `get_search_context_limit()` (~30% of effective budget, ~11 K chars for 16 K context). When budget is still exceeded, RAG+SLM is returned without history (never dropped).
   - **Chat auto-scroll:** `_isLoadingMessages` flag in `chat-messages.js` prevents N competing async scroll callbacks. `isNearBottom()` threshold=200px. `overflow-anchor: none` for chat container.
   - **TTS markdown cleanup:** `clean_markdown_for_tts()` in `app/utils.py` strips markdown formatting before TTS synthesis (Piper or Kokoro). Handles orphaned `**` fragments from sentence-split at `.` inside URLs. Called in `modules/tts.py:synthesize()`.
+  - **Kokoro cold-start warmup:** `services/kokoro/app.py:_warmup_ru()` runs one background ru synthesis at startup (`KOKORO_WARMUP_G2P=1`), so the first ru phrase takes ~2 s instead of ~56 s. RUAccent G2P worker is unloaded after `KOKORO_G2P_IDLE_TIMEOUT` (default 300, `0` = never). Client timeout `KOKORO_TIMEOUT=120`. The frontend sends `gender` explicitly in every synthesize payload (stale session cookie after `/set-voice-gender` must not change the voice).
 
 **Full architecture details** → `docs/ARCHITECTURE.md`
 

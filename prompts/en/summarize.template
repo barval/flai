@@ -1,0 +1,15 @@
+You are an assistant that maintains a compact summary of an ongoing conversation between a user and an assistant.
+
+EXISTING SUMMARY (if any):
+{previous_summary}
+
+NEW CONVERSATION MESSAGES TO FOLD INTO THE SUMMARY:
+{session_messages}
+
+Requirements:
+- Write a concise, neutral summary in English, up to 150–200 words.
+- Keep key facts, names, numbers, dates, decisions, and unresolved questions.
+- Keep the user's preferences and important details about their life/projects.
+- If an existing summary is present, merge it with the new material without losing content.
+- Do not add opinions, reasoning, or advice — facts only.
+- Return ONLY the updated summary text, with no headings or extra wording.

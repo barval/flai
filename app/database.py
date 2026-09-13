@@ -186,7 +186,7 @@ def _init_postgresql():
     c.execute("CREATE INDEX IF NOT EXISTS idx_documents_index_status ON documents(index_status)")
 
     # Seed default model_configs if not present.
-    # v11.2: multimodal model is the single chat model (router + chat + vision).
+    # v11.3: multimodal 32768, reasoning 24576 — fits fully on a 16 GB card.
     c.execute("SELECT COUNT(*) as cnt FROM model_configs")
     if c.fetchone()["cnt"] == 0:
         reasoning_model = "Qwen3.6-35B-A3B-UD-Q2_K_XL"
@@ -194,8 +194,8 @@ def _init_postgresql():
             """
             INSERT INTO model_configs (module, model_name, context_length, temperature, top_p, timeout, service_url, repeat_penalty)
             VALUES
-                ('multimodal', 'Qwen3VL-8B-Instruct-Q4_K_M', 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
-                ('reasoning', %s, 16384, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.15),
+                ('multimodal', 'Qwen3VL-8B-Instruct-Q4_K_M', 32768, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
+                ('reasoning', %s, 24576, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.15),
                 ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://flai-llamacpp:8033', NULL)
         """,
             (reasoning_model,),
@@ -301,6 +301,22 @@ def _init_postgresql():
         $migrate$
     """)
 
+    # v11.3: rolling session summary columns (chat thread compression)
+    c.execute("""
+        DO $migrate$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                          WHERE table_name = 'chat_sessions' AND column_name = 'summary') THEN
+                ALTER TABLE chat_sessions ADD COLUMN summary TEXT;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                          WHERE table_name = 'chat_sessions' AND column_name = 'summary_upto_id') THEN
+                ALTER TABLE chat_sessions ADD COLUMN summary_upto_id INTEGER;
+            END IF;
+        END
+        $migrate$
+    """)
+
     # camera_rooms — configurable camera/room definitions (single source of truth)
     c.execute("""
         CREATE TABLE IF NOT EXISTS camera_rooms (
@@ -348,6 +364,20 @@ def _init_postgresql():
         UPDATE model_configs
         SET context_length = 16384
         WHERE module = 'multimodal' AND context_length = 8192
+    """)
+
+    # v11.3: enlarge context windows to use the available VRAM headroom.
+    # RTX 5060 Ti 16GB: multimodal 32768 fits fully on GPU (-1 layers);
+    # reasoning 24576 fits fully; 32768 would force partial CPU offload.
+    c.execute("""
+        UPDATE model_configs
+        SET context_length = 32768
+        WHERE module = 'multimodal' AND context_length = 16384
+    """)
+    c.execute("""
+        UPDATE model_configs
+        SET context_length = 24576
+        WHERE module = 'reasoning' AND context_length = 16384
     """)
 
     conn.commit()

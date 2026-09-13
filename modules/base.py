@@ -1,10 +1,15 @@
 # modules/base.py
 import logging
+import threading
 import time
 from collections.abc import Callable, Generator
 from typing import Any
 
-from app.db import get_session_text_history
+from app.db import (
+    get_session_summary,
+    get_session_text_history,
+    update_session_summary,
+)
 from app.llamacpp_client import LlamaCppClient
 from app.mixins import TranslationMixin
 from app.utils import (
@@ -15,6 +20,25 @@ from app.utils import (
     format_prompt,
     validate_prompt_size,
 )
+
+# Sessions currently being summarized — serializes regeneration so that
+# concurrent context builds don't run duplicate (and GPU-expensive) summaries.
+_SUMMARY_IN_PROGRESS: set[str] = set()
+_SUMMARY_LOCK = threading.Lock()
+
+
+def _acquire_summary_guard(session_id: str) -> bool:
+    with _SUMMARY_LOCK:
+        if session_id in _SUMMARY_IN_PROGRESS:
+            return False
+        _SUMMARY_IN_PROGRESS.add(session_id)
+        return True
+
+
+def _release_summary_guard(session_id: str) -> None:
+    with _SUMMARY_LOCK:
+        _SUMMARY_IN_PROGRESS.discard(session_id)
+
 
 STYLE_INSTRUCTIONS = {
     "ru": {
@@ -121,6 +145,8 @@ class BaseModule(TranslationMixin):
         self.context_history_percent = 75
         self.safety_margin = SAFETY_MARGIN
         self.max_messages_limit = 30  # Maximum messages to load from history
+        self.summary_min_messages = 6
+        self.summary_max_fetch = 120
         if app:
             self.init_app(app)
 
@@ -133,6 +159,8 @@ class BaseModule(TranslationMixin):
         self.context_history_percent = app.config.get("CONTEXT_HISTORY_PERCENT", 75)
         self.safety_margin = app.config.get("CONTEXT_SAFETY_MARGIN", SAFETY_MARGIN)
         self.max_messages_limit = app.config.get("MAX_HISTORY_MESSAGES", 30)
+        self.summary_min_messages = app.config.get("SESSION_SUMMARY_MIN_MESSAGES", 6)
+        self.summary_max_fetch = app.config.get("SESSION_SUMMARY_MAX_FETCH", 120)
         if self.available:
             self.logger.info("BaseModule initialized and available.")
         else:
@@ -177,6 +205,108 @@ class BaseModule(TranslationMixin):
     def _build_context_prompt(self, history: list[dict[str, str]], lang: str = "ru") -> str:
         """Format conversation history into a string."""
         return build_context_prompt(history, lang)
+
+    def _format_summary_section(self, summary: str | None, lang: str = "ru") -> str:
+        """Build the injectable prompt section for a stored session summary."""
+        if not summary:
+            return ""
+        label = "Кратко о предыдущем разговоре:" if lang == "ru" else "Brief summary of the previous conversation:"
+        return f"\n{label}\n{summary}"
+
+    def _summarize_session_history(
+        self, messages: list[dict[str, Any]], lang: str = "ru", previous_summary: str | None = None
+    ) -> str | None:
+        """Summarize a batch of old session messages using the multimodal model.
+
+        Returns the new summary text, or None on failure (caller should then
+        fall back to the previous summary, if any).
+        """
+        summary: str | None = None
+        try:
+            config = self._get_model_config("multimodal")
+            if not config or not config.get("model_name"):
+                return None
+            model = config["model_name"]
+            lines = []
+            for m in messages:
+                role = "User" if m.get("role") == "user" else "Assistant"
+                text = m.get("content", "")
+                if isinstance(text, str):
+                    from app.db import _extract_text_content
+
+                    text = _extract_text_content(text)
+                lines.append(f"{role}: {text}")
+            if not lines:
+                return None
+            params = {
+                "session_messages": "\n".join(lines),
+                "previous_summary": previous_summary or "",
+            }
+            prompt = format_prompt("summarize.template", params, lang=lang)
+            if not prompt:
+                return None
+            response = self.llamacpp.chat(
+                [{"role": "user", "content": prompt}],
+                model,
+                config,
+                120,
+                lang,
+                "multimodal",
+                temperature=0.3,
+            )
+            if isinstance(response, dict):
+                response = response.get("content", "")
+            if isinstance(response, str) and response.strip():
+                summary = response.strip()
+                max_len = (
+                    self.app.config.get("SESSION_SUMMARY_MAX_CHARS", 1500)
+                    if hasattr(self, "app") and self.app
+                    else 1500
+                )
+                if len(summary) > max_len:
+                    summary = summary[:max_len]
+        except Exception as e:
+            self.logger.warning(f"Session summarization failed: {e}")
+        return summary
+
+    def _get_session_summary_section(self, session_id: str, oldest_kept_id: int | None, lang: str = "ru") -> str:
+        """Return an up-to-date rolling summary section for the session.
+
+        If history was trimmed by the token budget and the stored summary does
+        not yet cover the trimmed prefix, regenerate it with the multimodal
+        model (covers only the newly-trimmed tail, folded into the previous
+        summary). A module-level lock serializes regeneration per session to
+        avoid duplicate concurrent generations.
+        """
+        existing = get_session_summary(session_id)
+        prev_summary = existing.get("summary") if existing else None
+        prev_upto = existing.get("summary_upto_id") if existing and existing.get("summary_upto_id") else 0
+
+        # Summary already covers every message that got trimmed → nothing to do.
+        if oldest_kept_id is not None and prev_upto >= oldest_kept_id:
+            return self._format_summary_section(prev_summary, lang)
+
+        if oldest_kept_id is None:
+            return self._format_summary_section(prev_summary, lang)
+
+        # Only summarize messages that are NOT already in the stored summary.
+        if not _acquire_summary_guard(session_id):
+            return self._format_summary_section(prev_summary, lang)
+        try:
+            from app.db import get_session_messages
+
+            fetched = get_session_messages(session_id, limit=self.summary_max_fetch)
+            dropped = [m for m in fetched if m["id"] < oldest_kept_id]
+            new_part = [m for m in dropped if m.get("id", 0) > prev_upto]
+            if not new_part:
+                return self._format_summary_section(prev_summary, lang)
+            new_summary = self._summarize_session_history(new_part, lang, prev_summary)
+            if not new_summary:
+                return self._format_summary_section(prev_summary, lang)
+            update_session_summary(session_id, new_summary, oldest_kept_id)
+            return self._format_summary_section(new_summary, lang)
+        finally:
+            _release_summary_guard(session_id)
 
     def _get_context_for_model(
         self,
@@ -261,21 +391,36 @@ class BaseModule(TranslationMixin):
             rag_section = "\n" + heading + "\n" + rag_context
 
         # Step 5: Calculate history budget — subtract query, template, RAG, and SLM
-        remaining_for_history = available_tokens - query_tokens - TEMPLATE_OVERHEAD - rag_tokens - slm_tokens
+        template_overhead = (
+            self.app.config.get("TEMPLATE_OVERHEAD_TOKENS", TEMPLATE_OVERHEAD)
+            if hasattr(self, "app") and self.app
+            else TEMPLATE_OVERHEAD
+        )
+        remaining_for_history = available_tokens - query_tokens - template_overhead - rag_tokens - slm_tokens
 
         if remaining_for_history <= 0:
             self.logger.warning(
                 f"No tokens available for history. Query: {query_tokens}, RAG: {rag_tokens}, "
                 f"SLM: {slm_tokens}, Available: {available_tokens} — returning RAG+SLM without history"
             )
-            context = rag_section + slm_facts_str
+            summary_section = self._get_session_summary_section(session_id, None, lang)
+            context = rag_section + slm_facts_str + summary_section
             return context.lstrip()
 
-        # Step 6: Load history with SQL-level limit based on remaining budget
-        history_msgs = get_session_text_history(session_id, remaining_for_history, max_messages=self.max_messages_limit)
+        # Step 6: Load history with SQL-level limit based on remaining budget.
+        # When the budget trims old messages, a rolling summary of the trimmed
+        # prefix is injected so the conversation thread is not lost.
+        history_result = get_session_text_history(
+            session_id, remaining_for_history, max_messages=self.summary_max_fetch, return_meta=True
+        )
+        history_msgs, hist_meta = history_result
         history_str = self._build_context_prompt(history_msgs, lang) if history_msgs else ""
 
-        context = rag_section + slm_facts_str + history_str
+        summary_section = ""
+        if (hist_meta.get("dropped_count") or 0) >= self.summary_min_messages:
+            summary_section = self._get_session_summary_section(session_id, hist_meta.get("oldest_kept_id"), lang)
+
+        context = rag_section + slm_facts_str + summary_section + history_str
         history_tokens = self._estimate_tokens(history_str, model_type, lang)
         context_tokens = self._estimate_tokens(context, model_type, lang)
 
@@ -283,6 +428,11 @@ class BaseModule(TranslationMixin):
             f"Context loaded: {len(history_msgs)} history msgs ({history_tokens} tokens), "
             f"{len(all_facts)} SLM facts ({slm_tokens} tokens), "
             + (f"{'Web search' if rag_source == 'web_search' else 'RAG'} ({rag_tokens} tokens), " if rag_tokens else "")
+            + (
+                f"Summary ({self._estimate_tokens(summary_section, model_type, lang)} tokens), "
+                if summary_section
+                else ""
+            )
             + f"TOTAL: {context_tokens} tokens ({context_tokens / max_context_tokens * 100:.1f}% of {max_context_tokens})"
         )
 

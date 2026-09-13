@@ -113,7 +113,13 @@ def load_config(app):
     app.config["CONTEXT_SAFETY_MARGIN"] = float(os.getenv("CONTEXT_SAFETY_MARGIN", 0.85))
 
     # NEW: Maximum messages to load from history
-    app.config["MAX_HISTORY_MESSAGES"] = int(os.getenv("MAX_HISTORY_MESSAGES", 15))
+    app.config["MAX_HISTORY_MESSAGES"] = int(os.getenv("MAX_HISTORY_MESSAGES", 90))
+
+    # Session rolling summary: compresses old history when it no longer fits
+    # the context budget, so the conversation thread is preserved.
+    app.config["SESSION_SUMMARY_MIN_MESSAGES"] = int(os.getenv("SESSION_SUMMARY_MIN_MESSAGES", 6))
+    app.config["SESSION_SUMMARY_MAX_FETCH"] = int(os.getenv("SESSION_SUMMARY_MAX_FETCH", 120))
+    app.config["SESSION_SUMMARY_MAX_CHARS"] = int(os.getenv("SESSION_SUMMARY_MAX_CHARS", 1500))
 
     # NEW: Enable token estimation debugging
     app.config["DEBUG_TOKEN_ESTIMATION"] = os.getenv("DEBUG_TOKEN_ESTIMATION", "false").lower() == "true"

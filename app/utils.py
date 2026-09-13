@@ -4,6 +4,7 @@ import contextlib
 import os
 import re
 import subprocess
+import threading
 import uuid
 from datetime import datetime
 from io import BytesIO
@@ -181,6 +182,51 @@ TOKEN_COEFFICIENTS = {
     ("embedding", "ru"): 2.0,
     ("embedding", "en"): 3.0,
 }
+
+# Token-estimation calibration.
+# Each real LLM call reports usage.prompt_tokens (real tokenizer count).
+# We record (chars, actual_tokens) samples per (model_type, lang) and use
+# their median chars-per-token as the estimate coefficient. This converges
+# the heuristic onto the real tokenizer, letting context margins trust the
+# estimate instead of over-reserving.
+_TOKEN_CALIBRATION: dict[tuple[str, str], list[tuple[int, int]]] = {}
+_TOKEN_CALIBRATION_LOCK = threading.Lock()
+_TOKEN_CALIBRATION_WINDOW = 20
+_TOKEN_CALIBRATION_MIN_SAMPLES = 3
+
+
+def record_token_calibration(model_type: str, lang: str, chars: int, tokens: int) -> None:
+    """Record a (chars, actual_tokens) sample measured from a real LLM response."""
+    if not chars or not tokens or chars <= 0 or tokens <= 0:
+        return
+    key = (model_type, lang)
+    with _TOKEN_CALIBRATION_LOCK:
+        samples = _TOKEN_CALIBRATION.setdefault(key, [])
+        samples.append((chars, tokens))
+        if len(samples) > _TOKEN_CALIBRATION_WINDOW:
+            del samples[: len(samples) - _TOKEN_CALIBRATION_WINDOW]
+
+
+def calibrate_token_chars(model_type: str, lang: str) -> float | None:
+    """Return the median chars-per-token from calibration samples, or None.
+
+    None means "not calibrated yet" — callers must fall back to the static
+    coefficient table.
+    """
+    key = (model_type, lang)
+    with _TOKEN_CALIBRATION_LOCK:
+        samples = list(_TOKEN_CALIBRATION.get(key) or [])
+    if len(samples) < _TOKEN_CALIBRATION_MIN_SAMPLES:
+        return None
+    coeffs = sorted(chars / tokens for chars, tokens in samples)
+    return coeffs[len(coeffs) // 2]
+
+
+def reset_token_calibration() -> None:
+    """Clear all calibration samples (used in tests)."""
+    with _TOKEN_CALIBRATION_LOCK:
+        _TOKEN_CALIBRATION.clear()
+
 
 # Safety margin to prevent context overflow (use only 85% of calculated capacity)
 SAFETY_MARGIN = 0.85
@@ -866,8 +912,13 @@ def estimate_tokens(
     if not text:
         return 0
 
-    # Use provided coefficient or get from predefined table
-    coeff = token_chars if token_chars is not None else TOKEN_COEFFICIENTS.get((model_type, lang), 3.0)
+    # Prefer the real measured coefficient (median chars/token) when available;
+    # it converges the heuristic onto the actual tokenizer used by the model.
+    calibrated = calibrate_token_chars(model_type, lang)
+    if calibrated is not None:
+        coeff = calibrated
+    else:
+        coeff = token_chars if token_chars is not None else TOKEN_COEFFICIENTS.get((model_type, lang), 3.0)
 
     # Apply safety margin to estimation
     estimated = len(text) / coeff + 1
@@ -875,18 +926,17 @@ def estimate_tokens(
 
 
 def build_context_prompt(history: list[dict[str, str]], lang: str = "ru") -> str:
-    """Format conversation history into a string."""
+    """Format conversation history into a string.
+
+    Timestamps are intentionally omitted: they add ~5 tokens of junk per
+    message while the current time is already provided in the system prompt.
+    """
     if not history:
         return ""
     lines = []
     for msg in history:
         role = "User" if msg["role"] == "user" else "Assistant"
-        ts = msg.get("timestamp", "")
-        if ts:
-            ts_clean = ts[:19].replace("T", " ")
-            lines.append(f"{role} [{ts_clean}]: {msg['content']}")
-        else:
-            lines.append(f"{role}: {msg['content']}")
+        lines.append(f"{role}: {msg['content']}")
     return "\n".join(lines)
 
 

@@ -22,7 +22,42 @@ from flask_babel import gettext as _
 
 from app.circuit_breaker import CircuitBreaker
 from app.model_config import get_model_config
-from app.utils import estimate_tokens
+from app.utils import estimate_tokens, record_token_calibration
+
+
+def _record_prompt_tokens(
+    result: dict[str, Any], model_type: str, lang: str, messages: list[dict], tools: Any = None
+) -> None:
+    """Feed the real prompt token count (usage.prompt_tokens) into calibration.
+
+    The server reports the exact tokenizer count for the prompt we sent;
+    paired with its char length this calibrates estimate_tokens() per model.
+    """
+    try:
+        if isinstance(result, dict) and "prompt_tokens" in result:
+            usage: Any = result
+        else:
+            usage = result.get("usage") if isinstance(result, dict) else None
+        if not usage:
+            return
+        actual = usage.get("prompt_tokens")
+        if not actual or actual <= 0:
+            return
+        chars = 0
+        for m in messages:
+            content = m.get("content", "")
+            if isinstance(content, str):
+                chars += len(content)
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict) and part.get("text"):
+                        chars += len(str(part["text"]))
+        if tools:
+            chars += len(json.dumps(tools, ensure_ascii=False))
+        if chars > 0:
+            record_token_calibration(model_type, lang, chars, actual)
+    except Exception:
+        return
 
 
 def _tr(key: str, lang: str = "ru", **kwargs: Any) -> str:
@@ -354,6 +389,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             response = requests.post(f"{base_url}/v1/chat/completions", json=payload, timeout=timeout)
             if response.status_code == 200:
                 result = response.json()
+                _record_prompt_tokens(result, model_type, lang, messages, tools)
                 choices = result.get("choices", [])
                 if not choices:
                     return _tr("Model returned empty response", lang)
@@ -427,6 +463,9 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         if tools:
             payload["tools"] = tools
 
+        # Ask the server to include real token usage in the final stream chunk
+        payload["stream_options"] = {"include_usage": True}
+
         if not self.circuit_breaker.can_execute():
             yield _tr("Service temporarily unavailable. Circuit breaker is open after repeated failures.", lang)
             return
@@ -447,6 +486,9 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             # from any model type (Qwen, DeepSeek, gpt-oss, etc.)
             _thinking_active = False
             _stream_buffer = ""
+            # Real token count reported in final stream chunk (when llama.cpp
+            # honors stream_options.include_usage)
+            _stream_usage: dict[str, Any] | None = None
             # Accumulate tool calls from streaming chunks
             _tool_calls_by_index: dict[int, dict[str, Any]] = {}
 
@@ -461,6 +503,9 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                     break
                 try:
                     chunk = json.loads(data_str)
+                    if not chunk.get("choices") and chunk.get("usage"):
+                        _stream_usage = chunk.get("usage")
+                        continue
                     delta = chunk.get("choices", [{}])[0].get("delta", {})
                     content = delta.get("content", "")
                     if content:
@@ -497,6 +542,8 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                                     tc["id"] = tc_delta["id"]
                 except json.JSONDecodeError:
                     continue
+            if _stream_usage:
+                _record_prompt_tokens(_stream_usage, model_type, lang, messages, tools)
             # Flush remaining buffer (non-thinking tail)
             if _stream_buffer and not _thinking_active:
                 yield _stream_buffer
@@ -679,6 +726,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                 self.logger.info(f"LlamaSwapBackend response: {response.status_code}")
                 if response.status_code == 200:
                     result = response.json()
+                    _record_prompt_tokens(result, model_type, lang, messages, tools)
                     choices = result.get("choices", [])
                     if not choices:
                         return _tr("Model returned empty response", lang)
@@ -783,6 +831,9 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         if tools:
             payload["tools"] = tools
 
+        # Ask the server to include real token usage in the final stream chunk
+        payload["stream_options"] = {"include_usage": True}
+
         # Allow reasoning model to use the full context window.
         # With --reasoning_format deepseek, llama.cpp splits output into
         # reasoning_content (thinking) and content (answer). The thinking can
@@ -856,6 +907,9 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     # from any model type (Qwen, DeepSeek, gpt-oss, etc.)
                     _thinking_active = False
                     _stream_buffer = ""
+                    # Real token count reported in final stream chunk (when
+                    # llama.cpp honors stream_options.include_usage)
+                    _stream_usage: dict[str, Any] | None = None
                     # Accumulate tool calls from streaming chunks
                     _tool_calls_by_index: dict[int, dict[str, Any]] = {}
 
@@ -870,6 +924,9 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                             break
                         try:
                             chunk = json.loads(data_str)
+                            if not chunk.get("choices") and chunk.get("usage"):
+                                _stream_usage = chunk.get("usage")
+                                continue
                             delta = chunk.get("choices", [{}])[0].get("delta", {})
                             content = delta.get("content", "")
                             if content:
@@ -906,6 +963,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                                             tc["id"] = tc_delta["id"]
                         except json.JSONDecodeError:
                             continue
+                    if _stream_usage:
+                        _record_prompt_tokens(_stream_usage, model_type, lang, messages, tools)
                     # Flush remaining buffer
                     if _stream_buffer:
                         if _thinking_active:

@@ -389,3 +389,91 @@ class TestAdminModelManagement:
         assert response.status_code == 200
         data = response.get_json()
         assert data["available"] is False
+
+
+# Fixed current config for the multimodal module: a ctx-only update must
+# validate against it without touching model_name.
+_CTX_ONLY_CURRENT_CONFIG = {
+    "module": "multimodal",
+    "model_name": "Qwen3VL-8B-Instruct-Q4_K_M",
+    "context_length": 32768,
+}
+
+
+@pytest.mark.integration
+class TestModelConfigCtxUpdate:
+    """Context-only updates must be gated like model changes."""
+
+    @pytest.fixture
+    def admin_client(self, client, test_app):
+        """Create admin client (class-scoped: the shared fixture lives in TestAdminUsers)."""
+        with test_app.app_context():
+            from app.userdb import create_user, get_user_by_login, update_password
+
+            if get_user_by_login("admin"):
+                update_password("admin", "adminpass")
+            else:
+                create_user("admin", "adminpass", "Admin User", is_admin=True)
+
+        client.post("/login", data={"login": "admin", "password": "adminpass"})
+        return client
+
+    @patch("app.model_config.get_model_config", return_value=_CTX_ONLY_CURRENT_CONFIG)
+    @patch("app.routes.admin._classify_model_fit")
+    def test_ctx_only_bump_blocked_when_model_cannot_fit(self, mock_classify, mock_config, admin_client):
+        """A ctx-only bump that can't fit RAM/VRAM is rejected with 400.
+
+        Regression: the fit check previously ran only when model_name changed,
+        so a big context on the same model (esp. CPU-only) passed unchecked.
+        """
+        mock_classify.return_value = {
+            "tier": "impossible",
+            "can_save": False,
+            "message": "✗ Model cannot be loaded",
+            "details": {},
+        }
+        with patch("app.llama_swap_config.generate_and_write", return_value=False):
+            resp = admin_client.put("/admin/api/model_configs/multimodal", json={"context_length": 100000})
+        assert resp.status_code == 400
+        assert mock_classify.call_args.kwargs["context_length"] == 100000
+        assert mock_classify.call_args.kwargs["model_name"] == "Qwen3VL-8B-Instruct-Q4_K_M"
+
+    @patch("app.model_config.get_model_config", return_value=_CTX_ONLY_CURRENT_CONFIG)
+    @patch("app.routes.admin._classify_model_fit")
+    def test_ctx_only_bump_schedules_ctx_dry_load(self, mock_classify, mock_config, admin_client):
+        """A ctx-only bump schedules a dry-load whose rollback reverts the context."""
+        mock_classify.return_value = {
+            "tier": "good",
+            "can_save": True,
+            "message": "ok",
+            "details": {},
+        }
+        with (
+            patch("app.llama_swap_config.generate_and_write", return_value=False),
+            patch("app.tasks.dry_load.schedule_dry_load") as mock_sched,
+        ):
+            resp = admin_client.put("/admin/api/model_configs/multimodal", json={"context_length": 8192})
+        assert resp.status_code == 200
+        mock_sched.assert_called_once()
+        assert mock_sched.call_args.args[1] == "multimodal"
+        assert mock_sched.call_args.args[2] == "Qwen3VL-8B-Instruct-Q4_K_M"
+        assert mock_sched.call_args.kwargs["rollback_ctx"] == 32768
+
+    @patch("app.model_config.get_model_config", return_value=_CTX_ONLY_CURRENT_CONFIG)
+    @patch("app.routes.admin._classify_model_fit")
+    def test_ctx_only_bump_skips_classification_when_no_model(self, mock_classify, mock_config, admin_client):
+        """No model configured yet → fit check is skipped, save proceeds."""
+        mock_config.return_value = {}
+        mock_classify.return_value = {
+            "tier": "good",
+            "can_save": True,
+            "message": "ok",
+            "details": {},
+        }
+        with (
+            patch("app.llama_swap_config.generate_and_write", return_value=False),
+            patch("app.tasks.dry_load.schedule_dry_load"),
+        ):
+            resp = admin_client.put("/admin/api/model_configs/multimodal", json={"context_length": 8192})
+        assert resp.status_code == 200
+        mock_classify.assert_not_called()

@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: FLAI 11.0\n"
+"Project-Id-Version: FLAI 11.3\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-06-10 21:33+0300\n"
 "PO-Revision-Date: 2026-03-05 13:00+0300\n"
@@ -1253,7 +1253,7 @@ msgstr "Выйти"
 
 #: app/templates/base.html:78 app/templates/chat.html:167
 msgid "footer_text"
-msgstr "Полностью Локальный ИИ (ПЛИИ) v11.2 (c) 2026 Барсуков Валерий"
+msgstr "Полностью Локальный ИИ (ПЛИИ) v11.3 (c) 2026 Барсуков Валерий"
 
 #: app/templates/chat.html:14 app/templates/chat.html:178
 msgid "New document"
@@ -1691,6 +1691,16 @@ msgstr "Недостаточно памяти. Генерация невозмо
 #: modules/video.py:385
 msgid "fps"
 msgstr "к/с"
+
+#: modules/video.py:213
+#, python-brace-format
+msgid "Estimated generation time ({estimate_s}s) exceeds the limit ({budget_s}s). Generating at lower resolution: {params}."
+msgstr "⚠️ Расчётное время генерации ({estimate_s}с) превышает лимит ({budget_s}с). Генерация с меньшим разрешением: {params}."
+
+#: modules/video.py:292
+#, python-brace-format
+msgid "Estimated generation time ({estimate_s}s) exceeds the limit ({budget_s}s) even at the lowest resolution."
+msgstr "Расчётное время генерации ({estimate_s}с) превышает лимит ({budget_s}с) даже на самом низком разрешении."
 
 #: modules/video.py:328
 #, python-brace-format

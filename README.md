@@ -88,16 +88,11 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v11.2
+### What's New in v11.3
 
 | Feature | Notes |
 |---------|-------|
-| **Selectable TTS backend: Piper (default) or Kokoro** | Voice deployment now chooses ONE backend: `--with-voice-piper` (Piper — lightweight, ~0.2 GB models) or `--with-voice-kokoro` (Kokoro — higher quality, ~6 GB RAM). `--with-voice` is kept as an alias for Piper. Compose profiles: `with-voice-piper` / `with-voice-kokoro` (both include Whisper ASR). Deploy scripts download only the selected backend's models and toggle the matching `.env` URL. |
-| **Kokoro-82M TTS engine** | New `services/kokoro/` — Flask HTTP API wrapping Kokoro-82M (82M params, ElevenLabs-level quality): `POST /tts`, `GET /health`, `GET /voices`. Docker image: python:3.11-slim + torch CPU. |
-| **Russian voices with correct stress** | Studio-actor voices from `zaakirio/kokoro-ru`: `sveta` (female, WER 2.50% vs Piper 4.38%), `dima` (male). Lexical stress via RUAccent + acute-aware espeak-ng data (за́мок vs замо́к), ё restoration, vowel reduction (akanye) and orthoepic rules (солнце→сонце, final –ого→-ово). |
-| **English voices** | `af_heart` (US female), `am_liam` (US male) from `hexgrad/Kokoro-82M`. |
-| **Dual-backend TTS module** | `modules/tts.py` uses whichever backend URL is active (`KOKORO_URL` or `PIPER_URL`); `/api/tts/synthesize` accepts an optional `voice` name alongside `lang`/`gender`. |
-| **Voice UX refinements** | Kokoro cold-start warmup: the first Russian phrase after deployment takes ~2 s instead of ~56 s (`KOKORO_WARMUP_G2P`, `KOKORO_G2P_IDLE_TIMEOUT`, `KOKORO_TIMEOUT=120` — see Kokoro tuning parameters below). The frontend sends the voice gender explicitly with every synthesis request, so switching gender and immediately playing no longer risks the previous voice. |
+| **v11.3 — context & retrieval quality** | In development: smarter context-budgeting for message history, higher-quality RAG and web search, and tighter SLM long-term memory — the goal is sharp retrieval results and long chat sessions that keep the thread without losing the meaning of earlier exchanges. |
 
 ### Core Components
 
@@ -168,7 +163,7 @@ FLAI ships with two deployment modes:
 > | 16 GB GPU | 24–32 GB | 32–48 GB |
 > | CPU-only | 24–32 GB | 48 GB (64 GB for 240-frame clips) |
 >
-> Voice features are opt-in (`--with-voice-piper` / `--with-voice-kokoro`): Whisper ASR adds ~1 GB RAM, plus the chosen backend — Piper up to ~0.5 GB (voices lazy-loaded per use) or Kokoro ~1.6 GB idle and up to ~6 GB during a Russian phrase (its 6 GB container limit). The CPU-only video numbers assume the LTX-Video container may use up to 64 GB (its memory cap in `docker-compose.cpu.yml`); the pre-flight planner gates generation on the *smaller* of host free RAM and that cap, so a 768×512×240 clip (~53 GB peak) genuinely needs a 64 GB host.
+> Voice features are opt-in (`--with-voice-piper` / `--with-voice-kokoro`): Whisper ASR adds ~1 GB RAM, plus the chosen backend — Piper up to ~0.5 GB (voices lazy-loaded per use) or Kokoro ~1.6 GB idle and up to ~6 GB during a Russian phrase (its 6 GB container limit). The CPU-only video numbers assume the LTX-Video container may use up to 64 GB (its memory cap in `docker-compose.cpu.yml`); the pre-flight planner gates generation on the *smaller* of host free RAM and that cap, and on a wall-clock budget (`LTX_VIDEO_CPU_TIME_BUDGET_S`, default 85% of `LTX_VIDEO_TIMEOUT`) — a 768×512×240 clip (~53 GB peak) needs a 64 GB host **and** would take hours on CPU, so it is auto-degraded to a size that finishes within the budget.
 
 #### What works at each tier
 
@@ -183,7 +178,7 @@ FLAI ships with two deployment modes:
 | RAG (Qdrant) | ✅ | ✅ | ✅ | ✅ |
 | SLM long-term memory | ✅ CPU | ✅ CPU | ✅ CPU | ✅ CPU |
 
-> **VRAM management:** All LLM models (multimodal, reasoning, embedding) share VRAM via llama-swap — only one is loaded at a time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. The system dynamically adjusts `n_gpu_layers` based on available VRAM. **CPU-only video:** before generation the worker checks free RAM (`MemAvailable`) against the LTX-Video container's own memory cap (`LTX_VIDEO_RAM_LIMIT_MB`); if the requested 768×512×240 does not fit it progressively degrades to 384×256×120 @ 12 fps, then 256×192×57 @ 6 fps, notifying the user with the exact chosen format and stopping with a clear message when even the smallest step is impossible.
+> **VRAM management:** All LLM models (multimodal, reasoning, embedding) share VRAM via llama-swap — only one is loaded at a time. SD and LTX-Video use separate GPU contexts with automatic LLM unload before generation. The system dynamically adjusts `n_gpu_layers` based on available VRAM. **CPU-only video:** before generation the worker plans the format from BOTH constraints — free RAM (`MemAvailable` against the LTX-Video container's own memory cap `LTX_VIDEO_RAM_LIMIT_MB`) and a wall-clock budget (`LTX_VIDEO_CPU_TIME_BUDGET_S`, default 85% of `LTX_VIDEO_TIMEOUT`, estimated from a calibrated per-voxel CPU throughput). It picks the largest 768×512×240 → 384×256×120 @ 12 fps → 256×192×57 @ 6 fps that finishes within the budget, notifies the user of the exact chosen format, and stops with a clear message when even the smallest step is impossible.
 
 ### Model Benchmarks (RTX 5060 Ti 16 GB)
 
@@ -437,7 +432,7 @@ docker exec flai-web flask admin-password YourSecurePassword123
 3. For each module (Multimodal, Reasoning, Embedding):
    - Select the GGUF model from the dropdown
    - Adjust parameters if needed (Context Length, Temperature, Top P, Repeat Penalty, Timeout)
-   - Click **Save**
+   - Click **Save** — a context window that would not fit the RAM/VRAM budget is rejected (checked even when only the context changes), then a background dry-load verifies the saved config and rolls it back automatically if loading fails
 4. For Image Generation: Ensure `SD_WRAPPER_URL=http://flai-sd:7861` is set in `.env`
 
 ### 6. You're Ready!
@@ -646,7 +641,7 @@ services/llamacpp/models/
 
 | Parameter | Multimodal | Reasoning | Embedding |
 |-----------|------------|-----------|-----------|
-| Context Length | 16384 | 16384 | 512 |
+| Context Length | 32768 | 24576 | 512 |
 | Temperature | 0.7 | 0.7 | – |
 | Top P | 0.9 | 0.9 | – |
 | Repeat Penalty | 1.1 | 1.15 | – |
@@ -662,7 +657,7 @@ services/llamacpp/models/
 | **Reasoning** | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | gpt-oss-20b mxfp4/Q4_K_M (~12 GB) | MoE architecture: ~3B active params, ~106 tok/s. Current reasoning model on all tiers; 8 GB uses partial CPU offload |
 | **Embedding** | bge-m3 Q8_0 (~1.5 GB) | — | Single model for all tiers |
 
-> **Context windows:** Multimodal and reasoning models should use the same context length (recommended 16384). Multimodal needs ≥16384 for vision token counts.
+> **Context windows:** Defaults are 32768 for the multimodal model and 24576 for reasoning (both fit fully on the GPU at current quantization). Multimodal needs ≥16384 for vision token counts. The admin panel enforces the bounds (512 … GGUF architecture max) and — also for context-only changes — fit-checks every save against the RAM/VRAM budget, rejecting values that cannot fit, then plans a background dry-load of the new config and automatically rolls the change back (restoring `context_length`) if the backend fails to load it.
 
 ---
 
@@ -952,6 +947,7 @@ curl http://localhost:5000/metrics
 ## 🗺️ Roadmap
 
 ### 🔄 In Progress
+- **v11.3 — context & retrieval quality** — smarter context-budgeting for message history, higher-quality RAG and web search, tighter SLM long-term memory: sharp retrieval results and long chat sessions that keep the thread without losing the meaning of earlier exchanges
 - **Multi-platform GPU support** — extend FLAI to run on non-NVIDIA machines:
   - CPU-only mode for the full stack
   - AMD / Intel via Vulkan for llama.cpp and stable-diffusion.cpp, ROCm for LTX-Video

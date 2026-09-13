@@ -4,6 +4,28 @@ All notable changes to FLAI are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v11.3] — Unreleased
+
+### ✨ Planned
+
+- **Context & retrieval quality** — smarter context-budgeting for message history, higher-quality RAG and web search, tighter SLM long-term memory. Goal: sharp retrieval results and long chat sessions that keep the thread without losing the meaning of earlier exchanges.
+
+### 🧠 Context window & conversation thread
+
+- **Larger context windows**: multimodal model `context_length` raised 16384→**32768**, reasoning 16384→**24576** (with the current re-quantized reasoning GGUF both windows now fit fully on the GPU, no layer offload). New seed defaults in `app/database.py`.
+- **Real tokenizer calibration**: `usage.prompt_tokens` from llama-server/llama-swap responses now feeds a per-model char/token calibrator (`app/utils.py`), converging `estimate_tokens()` onto the real tokenizer instead of the static heuristic. `estimate_tokens()` prefers the calibrated median when available (min 3 samples). Enabled both backends, streaming (via `stream_options.include_usage`) and non-streaming.
+- **Rolling session summaries**: when the token budget trims old history, the trimmed prefix is folded into a compact per-session summary (multimodal model, new `prompts/{ru,en}/summarize.template`) stored in `chat_sessions.summary`/`summary_upto_id`. Stored summaries are injected into the context, so long sessions keep the thread. Regeneration is guarded per session and cached (no repeat GPU work).
+
+### 🔧 Fixes (v11.3)
+
+- **Session summarization call signature**: `_summarize_session_history()` called the `LlamaCppClient` facade with the backend signature, failing with "got multiple values for argument 'temperature'". Now uses `chat(messages, model_type=..., lang=..., temperature=0.3)`. Error strings (e.g. prompt-too-long) are rejected instead of being stored as summary text.
+- **History no longer capped by message count** — trimmed strictly by the real token budget (`SESSION_SUMMARY_MAX_FETCH` window, default 120).
+- **Timestamps removed from history** in `build_context_prompt` (~5 tokens of junk per message gone; current time is already in the system prompt).
+- **Margins rebalanced** via `.env`: `CONTEXT_HISTORY_PERCENT` 75→85, `CONTEXT_SAFETY_MARGIN` 0.85→0.88 (usable ≈ 75% of window vs 63.75%) — safe because the estimate now tracks the real tokenizer.
+- New env keys: `SESSION_SUMMARY_MIN_MESSAGES=6`, `SESSION_SUMMARY_MAX_FETCH=120`, `SESSION_SUMMARY_MAX_CHARS=1500`; `MAX_HISTORY_MESSAGES` default raised to 90.
+- **Admin model config: context-only changes are now validated** — `update_model_config()` ran the RAM/VRAM fit check (`_classify_model_fit`) only when the model name changed, so bumping just `context_length` past what the machine can fit was saved without any check (on CPU-only deployments this could OOM the first request instead of being rejected at save time). The fit check now also runs for context-only changes. Dry-load is scheduled for context-only changes as well, and its auto-rollback is context-aware: a failed config reverts `context_length` (not the fallback model), so a context bump that fails to load never silently swaps the model.
+- **CPU video generation is now time-budgeted** — on CPU-only deployments `plan_cpu_generation()` picked parameters by RAM alone, so a RAM-fitting 384×256×120 clip could still take ~66+ min on a 12-core host and die on the client timeout (`LTX_VIDEO_TIMEOUT`) mid-generation (observed on lenovo-book: 3600 s timeout hit at step ~4/8, then gunicorn `WORKER TIMEOUT`). The planner now also respects a wall-clock budget — `LTX_VIDEO_CPU_TIME_BUDGET_S` (default 85% of `LTX_VIDEO_TIMEOUT`) — predicted via a calibrated per-voxel CPU throughput (`estimate_cpu_generation_time_s()`; ~495 s/step measured for 384×256×120, `CPU_VOXELS_PER_STEP_S=24_000`, fixed `CPU_TIME_OVERHEAD_S=300`) and picks the largest of 768×512×240 → 384×256×120 @ 12 fps → 256×192×57 @ 6 fps that finishes within BOTH the RAM and time budgets, notifying the user of the chosen format (or a clear "too slow" error instead of a mid-generation timeout).
+
 ## [v11.2] — 2026-09-11
 
 ### ✨ TTS: Piper → Kokoro-82M

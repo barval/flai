@@ -715,11 +715,17 @@ def _has_marker(content: str) -> bool:
     return any(content.strip().startswith(m) for m in markers)
 
 
-def get_session_text_history(session_id, max_tokens=None, max_messages=None):
+def get_session_text_history(session_id, max_tokens=None, max_messages=None, return_meta=False):
     """Get session messages for context building (text only).
     Filters out pairs of user+assistant messages where the assistant
     responded with a generation marker ([-VIDEO-], [-IMAGE-], etc.)
     to prevent the router from copying old markers into new responses.
+
+    When ``return_meta`` is True, returns ``(messages, meta)`` where meta
+    holds ``dropped_count`` (messages trimmed from the front by the token
+    budget), ``oldest_kept_id`` (id of the oldest retained message, None if
+    the history is empty) and ``total_count`` (fetched messages after the
+    generation-marker filter).
     """
     limit = max_messages or 200
     messages = get_session_messages(session_id, limit=limit)
@@ -754,5 +760,41 @@ def get_session_text_history(session_id, max_tokens=None, max_messages=None):
                 break
             result.append({**msg, "content": text_content})
             total += tokens
-        return list(reversed(result))
-    return messages
+        kept = list(reversed(result))
+    else:
+        kept = messages
+
+    if not return_meta:
+        return kept
+
+    meta = {
+        "dropped_count": max(0, len(messages) - len(kept)),
+        "oldest_kept_id": kept[0]["id"] if kept else None,
+        "total_count": len(messages),
+    }
+    return kept, meta
+
+
+def get_session_summary(session_id):
+    """Return the rolling session summary (summary + summary_upto_id) or None."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT summary, summary_upto_id FROM chat_sessions WHERE id = %s", (session_id,))
+        row = c.fetchone()
+        if not row or not row["summary"]:
+            return None
+        return {"summary": row["summary"], "summary_upto_id": row["summary_upto_id"]}
+
+
+def update_session_summary(session_id, summary, summary_upto_id):
+    """Store the rolling session summary and the message id it covers up to."""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+            UPDATE chat_sessions
+            SET summary = %s, summary_upto_id = %s, updated_at = %s
+            WHERE id = %s
+            """,
+            (summary, summary_upto_id, get_current_time_for_db(), session_id),
+        )

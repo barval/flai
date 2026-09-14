@@ -261,19 +261,26 @@ class VideoModule(TranslationMixin):
                 )
             return dict(candidate), notice, None
 
-        # Nothing fits: report the binding constraint.
-        estimate_s = self.estimate_cpu_generation_time_s(req_width, req_height, req_frames)
-        if estimate_s > time_budget_s:
+        # Nothing fits: report the binding constraint of the smallest candidate —
+        # the reason the "last resort" step itself is impossible.
+        smallest = candidates[-1]
+        ram_ok_smallest = (
+            self.estimate_peak_ram_mb(smallest["width"], smallest["height"], smallest["num_frames"])
+            + VIDEO_RAM_SAFETY_MARGIN_MB
+            <= available_mb
+        )
+        if not ram_ok_smallest:
+            error = self._(
+                "Not enough memory. Generation is not possible even at lower resolution.",
+                lang,
+            )
+        else:
+            estimate_s = self.estimate_cpu_generation_time_s(req_width, req_height, req_frames)
             error = self._(
                 "Estimated generation time ({estimate_s}s) exceeds the limit ({budget_s}s) "
                 "even at the lowest resolution.",
                 lang,
             ).format(estimate_s=estimate_s, budget_s=time_budget_s)
-        else:
-            error = self._(
-                "Not enough memory. Generation is not possible even at lower resolution.",
-                lang,
-            )
         return None, None, error
 
     def _resolve_use_gpu(self, rm) -> bool:

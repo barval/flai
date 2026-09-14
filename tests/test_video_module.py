@@ -489,6 +489,27 @@ class TestVideoModuleMemoryPlanning:
         assert error is not None
         assert "not possible" in error
 
+    def test_plan_error_reports_binding_ram_constraint(self, cpu_rm):
+        from modules.video import VideoModule
+
+        # Smallest fallback fits the time budget (1233 s ≤ 3060 s) but not RAM
+        # (18408 + 1024 > 19000) — the deployed lenovo-book scenario. The error
+        # must name the BINDING constraint (memory), not the passing one.
+        cpu_rm._detect_available_ram_mb.return_value = 19000
+        with (
+            patch("app.resource_manager.get_resource_manager", return_value=cpu_rm),
+            patch.dict("os.environ", {"LTX_VIDEO_CPU_TIME_BUDGET_S": "3060"}),
+        ):
+            module = VideoModule()
+            prompt_data = {"width": 768, "height": 512, "num_frames": 240}
+            override, notice, error = module.plan_cpu_generation(prompt_data, lang="ru")
+
+        assert override is None
+        assert notice is None
+        assert error is not None
+        assert "not possible" in error
+        assert "not enough memory" in error.lower()
+
     def test_plan_non_cpu_platform_skipped(self, cpu_rm):
         from modules.video import VideoModule
 

@@ -910,6 +910,10 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     # Real token count reported in final stream chunk (when
                     # llama.cpp honors stream_options.include_usage)
                     _stream_usage: dict[str, Any] | None = None
+                    # Total reasoning_content chars streamed (llama.cpp
+                    # --reasoning_format deepseek); kept out of the answer but
+                    # logged for debugging.
+                    _reasoning_chars = 0
                     # Accumulate tool calls from streaming chunks
                     _tool_calls_by_index: dict[int, dict[str, Any]] = {}
 
@@ -928,6 +932,9 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                                 _stream_usage = chunk.get("usage")
                                 continue
                             delta = chunk.get("choices", [{}])[0].get("delta", {})
+                            reasoned = delta.get("reasoning_content", "")
+                            if reasoned:
+                                _reasoning_chars += len(reasoned)
                             content = delta.get("content", "")
                             if content:
                                 _stream_buffer += content
@@ -965,6 +972,8 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                             continue
                     if _stream_usage:
                         _record_prompt_tokens(_stream_usage, model_type, lang, messages, tools)
+                    if _reasoning_chars:
+                        self.logger.info(f"chat_stream reasoning_content chars={_reasoning_chars}")
                     # Flush remaining buffer
                     if _stream_buffer:
                         if _thinking_active:

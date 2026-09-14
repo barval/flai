@@ -194,9 +194,9 @@ services:
       - LTX_TEXT_ENCODER_PATH=/app/models/t5_encoder
       - LTX_DEVICE=cpu
       # Gunicorn worker timeout inside the container: must exceed the client
-      # LTX_VIDEO_TIMEOUT (3600) so a too-long CPU generation surfaces as a
+      # LTX_VIDEO_TIMEOUT (7200) so a too-long CPU generation surfaces as a
       # localized timeout error instead of a dropped connection.
-      - LTX_GUNICORN_TIMEOUT=3700
+      - LTX_GUNICORN_TIMEOUT=7300
       - LTX_VIDEO_RAM_LIMIT_MB=65536
     networks:
       - flai_network

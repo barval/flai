@@ -174,3 +174,32 @@ class TestRedisRequestQueue:
             )
             + 120
         )
+
+    def test_strip_generic_reasoning_strips_leaked_cot(self, mock_app, mock_redis):
+        """Queue safety-net strip removes plain-text CoT leaked into content."""
+        from app.queue import RedisRequestQueue
+
+        with patch("app.queue.redis.from_url", return_value=mock_redis):
+            queue = RedisRequestQueue(mock_app)
+            leaked = (
+                "Let me review the user request carefully. "
+                "The user asked to fix the white screen. "
+                "Final Answer: here is the corrected HTML file that the user "
+                "sees. It must replace the empty white screen the user "
+                'reported. <div class="app"><div class="header">FLAI</div>'
+                '<div class="content">the app now renders correctly</div>'
+                "</div> and there is enough text here."
+            )
+            result = queue._strip_generic_reasoning(leaked)
+            assert "Let me review" not in result
+            assert "The user asked" not in result
+            assert "here is the corrected HTML" in result
+
+    def test_strip_generic_reasoning_leaves_clean_answer(self, mock_app, mock_redis):
+        """Clean answer without reasoning markers passes through unchanged."""
+        from app.queue import RedisRequestQueue
+
+        with patch("app.queue.redis.from_url", return_value=mock_redis):
+            queue = RedisRequestQueue(mock_app)
+            clean = "Готово, вот исправленный код: <div>ok</div>"
+            assert queue._strip_generic_reasoning(clean) == clean

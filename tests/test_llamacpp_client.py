@@ -17,6 +17,75 @@ from app.llamacpp_client import (
 )
 
 
+class TestReasoningStreamFilter:
+    """Incremental plain-text reasoning strip for reasoning-model streams."""
+
+    def _stream(self, text, step=50, hold=500):
+        from app.llamacpp_client import _ReasoningStreamFilter
+
+        f = _ReasoningStreamFilter(hold=hold)
+        parts = []
+        for i in range(0, len(text), step):
+            out = f.feed(text[i : i + step])
+            if out:
+                parts.append(out)
+        tail = f.flush()
+        if tail:
+            parts.append(tail)
+        return "".join(parts)
+
+    def test_clean_answer_passes_through_unchanged(self):
+        """Healthy deepseek-split path: content has no markers → exact copy."""
+        answer = "Просто исправь страницу, вот готовый код: <div>ok</div>"
+        assert self._stream(answer) == answer
+
+    def test_leaked_cot_is_stripped(self):
+        """Plain-text CoT with markers before the answer is stripped."""
+        cot = (
+            "Let me review the user request carefully. "
+            "The user asked us to fix the white screen issue. "
+            "We must output only corrected HTML file content. "
+            "Final Answer: <div>fixed</div> this is the answer to show"
+        )
+        result = self._stream(cot)
+        assert "Let me review" not in result
+        assert "The user asked" not in result
+        assert "<div>fixed</div>" in result
+
+    def test_long_reasoning_between_markers_held_back(self):
+        """Reasoning chunks between markers are not streamed out early."""
+        reasoning = "I should check the requirements. " * 3
+        answer = "The answer to display starts here and continues for a while."
+        full = reasoning + answer
+        result = self._stream(full)
+        assert "The answer to display" in result
+        assert reasoning not in result
+
+    def test_no_retraction_after_emit(self):
+        """Emitted prefix never shortens — no flicker."""
+        from app.llamacpp_client import _ReasoningStreamFilter
+
+        f = _ReasoningStreamFilter(hold=50)
+        emitted = ""
+        text = (
+            "Let me think about this. The user asked something. "
+            + "x" * 300
+            + "This is the real answer now. "
+            + "x" * 200
+        )
+        for i in range(0, len(text), 30):
+            out = f.feed(text[i : i + 30])
+            if out:
+                emitted += out
+            # Once text is emitted, the current candidate (stripped buffer)
+            # must always START with what we already emitted.
+            from app.llamacpp_client import _strip_generic_reasoning
+
+            candidate = _strip_generic_reasoning(f._buf)
+            assert candidate.startswith(emitted)  # no retraction
+        f.flush()
+
+
 class TestExtractErrorMessage:
     """Pure-function tests for _extract_error_message."""
 

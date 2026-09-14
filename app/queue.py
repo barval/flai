@@ -25,7 +25,7 @@ from .db import (
     update_document_index_status,
 )
 from .events import get_events_publisher
-from .llamacpp_client import _strip_thinking_tags
+from .llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags
 from .model_config import get_model_config
 from .tools import MAX_TOOL_ITERATIONS, execute_tool, get_tool_definitions
 from .utils import (
@@ -828,6 +828,16 @@ class RedisRequestQueue:
         This is a safety net for responses saved to DB.
         """
         return _strip_thinking_tags(text)
+
+    @staticmethod
+    def _strip_generic_reasoning(text: str) -> str:
+        """Strip plain-text chain-of-thought reasoning as a safety net for DB.
+
+        Mirrors ``llamacpp_client._strip_generic_reasoning`` — strips
+        step-by-step reasoning markers (e.g. "Let me think:", "Final Answer
+        Generation:") and returns only the answer text after the last marker.
+        """
+        return _strip_generic_reasoning(text)
 
     def _build_success_response(
         self,
@@ -1637,6 +1647,7 @@ class RedisRequestQueue:
                     break
             reasoning_time = round(time.time() - stream_start, 1)
             full_response = self._strip_thinking_tags(full_response)
+            full_response = self._strip_generic_reasoning(full_response)
             if full_response.strip():
                 break
             if attempt == 0 and not self._is_task_cancelled(task["id"]):

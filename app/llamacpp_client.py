@@ -283,6 +283,65 @@ def _process_stream_chunk(buffer: str, thinking_active: bool) -> tuple[str, str,
     return output, buffer, thinking_active
 
 
+class _ReasoningStreamFilter:
+    """Incremental streaming filter that strips leaked chain-of-thought.
+
+    Some reasoning models leak chain-of-thought as plain text into ``content``
+    instead of ``reasoning_content``.  Strategy:
+
+    - no reasoning marker seen → healthy deepseek-split answer, stream freely
+      (must not be delayed or buffered);
+    - reasoning markers present → reasoning is suspected: hold back output as
+      long as the text after the last marker is shorter than ``hold`` chars
+      (the answer has likely not started yet).  Once it grows past ``hold``
+      we stream it, still holding a ``hold``-char tail so a late marker
+      cannot retract the already-visible text;
+    - ``flush()`` releases everything after the last marker at stream end.
+
+    ``hold`` trades latency for flicker safety: larger → less flicker but a
+    longer pause before the first visible answer tokens.
+    """
+
+    def __init__(self, hold: int = 500):
+        self._buf = ""
+        self._hold = hold
+        self._emitted = 0  # position in _buf already handed to the client
+
+    def feed(self, chunk: str) -> str:
+        """Append a streamed chunk, return the emittable (stable) text."""
+        self._buf += chunk
+        matches = list(_REASONING_MARKERS_RE.finditer(self._buf))
+        if not matches:
+            # Healthy deepseek-split path: answer streamed freely.
+            out = self._buf[self._emitted :]
+            self._emitted = len(self._buf)
+            return out
+
+        start = max(self._emitted, matches[-1].end())
+        if start == matches[-1].end():
+            # Align the emission with `_strip_generic_reasoning()`'s `.strip()`
+            # so the streamed text is a prefix of the stored answer.
+            while start < len(self._buf) and self._buf[start].isspace():
+                start += 1
+        # Reasoning suspected: do not emit until the candidate answer is
+        # `hold` chars long, and always keep a `hold`-char tail unreleased.
+        if len(self._buf) - start <= self._hold:
+            return ""
+        safe_end = len(self._buf) - self._hold
+        out = self._buf[start:safe_end]
+        self._emitted = safe_end
+        return out
+
+    def flush(self) -> str:
+        """Release the remaining answer once the stream ends (no hold-back)."""
+        matches = list(_REASONING_MARKERS_RE.finditer(self._buf))
+        if not matches:
+            return ""
+        boundary = matches[-1].end()
+        start = max(self._emitted, boundary)
+        return self._buf[start:]
+
+
 class AbstractLlamaBackend:
     """Abstract backend for LLM inference."""
 
@@ -486,6 +545,9 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             # from any model type (Qwen, DeepSeek, gpt-oss, etc.)
             _thinking_active = False
             _stream_buffer = ""
+            # Incremental plain-text reasoning (chain-of-thought leaked into
+            # content) filter — reasoning model streams only.
+            _reasoning_stream = _ReasoningStreamFilter() if model_type == "reasoning" else None
             # Real token count reported in final stream chunk (when llama.cpp
             # honors stream_options.include_usage)
             _stream_usage: dict[str, Any] | None = None
@@ -515,7 +577,12 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                             _thinking_active,
                         )
                         if output:
-                            yield output
+                            if _reasoning_stream is not None:
+                                filtered = _reasoning_stream.feed(output)
+                                if filtered:
+                                    yield filtered
+                            else:
+                                yield output
                     # Accumulate tool call deltas
                     tc_deltas = delta.get("tool_calls")
                     if tc_deltas:
@@ -546,7 +613,17 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                 _record_prompt_tokens(_stream_usage, model_type, lang, messages, tools)
             # Flush remaining buffer (non-thinking tail)
             if _stream_buffer and not _thinking_active:
-                yield _stream_buffer
+                if _reasoning_stream is not None:
+                    filtered = _reasoning_stream.feed(_stream_buffer)
+                    if filtered:
+                        yield filtered
+                else:
+                    yield _stream_buffer
+            # Flush the reasoning hold-back tail (no more markers coming)
+            if _reasoning_stream is not None:
+                tail = _reasoning_stream.flush()
+                if tail:
+                    yield tail
             # If tool calls were accumulated, yield them as a dict
             if _tool_calls_by_index:
                 tool_calls = [_tool_calls_by_index[i] for i in sorted(_tool_calls_by_index.keys())]
@@ -907,6 +984,9 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     # from any model type (Qwen, DeepSeek, gpt-oss, etc.)
                     _thinking_active = False
                     _stream_buffer = ""
+                    # Incremental plain-text reasoning (chain-of-thought leaked
+                    # into content) filter — reasoning model streams only.
+                    _reasoning_stream = _ReasoningStreamFilter() if model_type == "reasoning" else None
                     # Real token count reported in final stream chunk (when
                     # llama.cpp honors stream_options.include_usage)
                     _stream_usage: dict[str, Any] | None = None
@@ -943,7 +1023,15 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                                     _thinking_active,
                                 )
                                 if output:
-                                    yield output
+                                    if _reasoning_stream is not None:
+                                        # Chain-of-thought leaked into content:
+                                        # emit only the stable (marker-free) prefix,
+                                        # holding tail back to avoid flicker.
+                                        filtered = _reasoning_stream.feed(output)
+                                        if filtered:
+                                            yield filtered
+                                    else:
+                                        yield output
                             # Accumulate tool call deltas
                             tc_deltas = delta.get("tool_calls")
                             if tc_deltas:
@@ -981,7 +1069,17 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                             # Strip opening tag, yield whatever remains.
                             _stream_buffer = re.sub(r"^.*?<\|channel\|>analysis<\|message\|>", "", _stream_buffer)
                         if _stream_buffer:
-                            yield _stream_buffer
+                            if _reasoning_stream is not None:
+                                filtered = _reasoning_stream.feed(_stream_buffer)
+                                if filtered:
+                                    yield filtered
+                            else:
+                                yield _stream_buffer
+                    # Flush the reasoning hold-back tail (no more markers coming)
+                    if _reasoning_stream is not None:
+                        tail = _reasoning_stream.flush()
+                        if tail:
+                            yield tail
                     # If tool calls were accumulated, yield them as a dict
                     if _tool_calls_by_index:
                         tool_calls = [_tool_calls_by_index[i] for i in sorted(_tool_calls_by_index.keys())]

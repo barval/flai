@@ -121,7 +121,7 @@ router (chat) → [-VIDEO-] → multimodal loads (chat swapped out)
 On a CPU-only deployment (`app/queue.py:_plan_cpu_video` → `modules/video.py:plan_cpu_generation`) the requested 768×512×240 is planned against **two** budgets before generation:
 
 - **RAM** — smaller of host free RAM (`MemAvailable`, `resource_manager._detect_available_ram_mb`) and the LTX-Video container's memory cap from `LTX_VIDEO_RAM_LIMIT_MB` (set in `docker-compose.cpu.yml`); the container cap is binding because an OOM there kills the container despite free host RAM.
-- **Time** — `LTX_VIDEO_CPU_TIME_BUDGET_S` (default 85% of `LTX_VIDEO_TIMEOUT`) so the generation reliably finishes before the client request times out. `estimate_cpu_generation_time_s()` predicts wall-clock from a linear per-voxel CPU throughput calibration (`CPU_VOXELS_PER_STEP_S=24_000`, ~495 s/step observed for 384×256×120 on a 12-core host) plus a fixed `CPU_TIME_OVERHEAD_S=300` (T5 encode + VAE decode + upscaler + I/O).
+- **Time** — `LTX_VIDEO_CPU_TIME_BUDGET_S` (default 85% of `LTX_VIDEO_TIMEOUT`) so the generation reliably finishes before the client request times out. `estimate_cpu_generation_time_s()` predicts wall-clock from a linear per-voxel CPU throughput calibration (`CPU_VOXELS_PER_STEP_S=24_000`, ~495 s/step observed for 384×256×120 on a 12-core host), a per-frame VAE decode/assembly cost (`CPU_VAE_SECONDS_PER_FRAME=45`, calibrated from a 256×192×57 run whose VAE decode alone took ~43 min), and a fixed `CPU_TIME_OVERHEAD_S=300` (T5 encode + upscaler + I/O).
 
 The largest of 768×512×240 → 384×256×120 @ 12 fps → 256×192×57 @ 6 fps satisfying BOTH constraints wins; the user is notified of the exact chosen format (or a clear "too slow / not enough memory" error when nothing fits).
 

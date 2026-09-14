@@ -86,8 +86,12 @@ class VideoModule(TranslationMixin):
     # Calibrated CPU throughput: 384×256×120 ≈ 495 s per step on a 12-core
     # host (lenovo-book) → ~24 000 voxels rendered per step per second.
     CPU_VOXELS_PER_STEP_S = 24_000
-    # Fixed per-generation overhead: T5 text encode + VAE decode + upscaler + I/O.
+    # Fixed per-generation overhead: T5 text encode + upscaler + I/O.
     CPU_TIME_OVERHEAD_S = 300
+    # Calibrated CPU video decode/assembly: a 256×192×57 run on the 12-core
+    # host took ~43 min of VAE decode + mp4 encode (≈45 s per frame), far
+    # exceeding the fixed overhead — model it per frame.
+    CPU_VAE_SECONDS_PER_FRAME = 45
 
     def __init__(self, app=None):
         self.logger = logging.getLogger(__name__)
@@ -182,11 +186,16 @@ class VideoModule(TranslationMixin):
         """Estimate wall-clock time for a CPU generation (seconds).
 
         Per-step time is ~linear in the latent volume (width×height×frames):
-        measured ~495 s/step for 384×256×120 on a 12-core CPU host. A fixed
-        overhead covers T5 encode, VAE decode, upscaling and I/O.
+        measured ~495 s/step for 384×256×120 on a 12-core CPU host. VAE
+        decode + mp4 assembly scales with the number of frames (~45 s/frame)
+        and a fixed overhead covers T5 encode, upscaling and I/O.
         """
         voxels = max(1, width) * max(1, height) * max(1, num_frames)
-        return int(steps * voxels // cls.CPU_VOXELS_PER_STEP_S + cls.CPU_TIME_OVERHEAD_S)
+        return (
+            int(steps * voxels // cls.CPU_VOXELS_PER_STEP_S)
+            + int(max(1, num_frames) * cls.CPU_VAE_SECONDS_PER_FRAME)
+            + cls.CPU_TIME_OVERHEAD_S
+        )
 
     def plan_cpu_generation(
         self, prompt_data: dict[str, Any], lang: str = "ru"

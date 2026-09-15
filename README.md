@@ -93,6 +93,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | Feature | Notes |
 |---------|-------|
 | **v11.3 — context & retrieval quality** | In development: smarter context-budgeting for message history, higher-quality RAG and web search, and tighter SLM long-term memory — the goal is sharp retrieval results and long chat sessions that keep the thread without losing the meaning of earlier exchanges. |
+| **Reasoning token budget enforced** | llama-server build 10603 ignores the per-request `reasoning_budget` field, so the reasoning model's server command now caps thinking via the CLI flag `--reasoning-budget max(1024, ctx*0.4)` — no more context burned entirely on reasoning with no answer. |
 
 ### Core Components
 

@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### 🔧 Fixes (v11.3)
 
+- **Reasoning model can burn the whole context on thinking and never answer** — llama-server build 10603 ignores the per-request `reasoning_budget` field in `/v1/chat/completions` (verified directly: `reasoning_budget=0` still emitted ~500 chars of `reasoning_content` and empty `content`), so on long threads the Qwen3.6 reasoning model could generate 80–97K chars of thinking and still run out of budget before starting the answer, ending with «⚠️ Не удалось получить ответ от модели рассуждений». Fixed: the reasoning model's llama-server command now passes the budget via the CLI flag `--reasoning-budget max(1024, ctx_size*0.4)` (e.g. 9830 for the 24576 window) in `app/llama_swap_config.py`, which the server does honor (verified: `--reasoning-budget 8` → 21 chars thinking, then a real answer).
 - **Session summarization call signature**: `_summarize_session_history()` called the `LlamaCppClient` facade with the backend signature, failing with "got multiple values for argument 'temperature'". Now uses `chat(messages, model_type=..., lang=..., temperature=0.3)`. Error strings (e.g. prompt-too-long) are rejected instead of being stored as summary text.
 - **History no longer capped by message count** — trimmed strictly by the real token budget (`SESSION_SUMMARY_MAX_FETCH` window, default 120).
 - **Timestamps removed from history** in `build_context_prompt` (~5 tokens of junk per message gone; current time is already in the system prompt).

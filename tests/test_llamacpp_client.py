@@ -289,3 +289,62 @@ class TestChatStreamYieldsWarningPrefix:
         assert len(tokens) == 1
         assert tokens[0].startswith("⚠️")
         assert "Invalid request body" in tokens[0]
+
+
+class TestChatStreamReasoningTailFlush:
+    """The loop-guard hold-back tail must be flushed on a clean reasoning stream.
+
+    Regression: LlamaSwapBackend used to flush _ReasoningStreamFilter but not
+    _LoopGuard, silently dropping the last ~1500 chars (or the whole answer when
+    it was shorter than the hold) on every clean reasoning response.
+    """
+
+    def _sse_lines(self, chunks):
+        for chunk in chunks:
+            yield f"data: {json.dumps(chunk)}\n\n".encode()
+        yield b"data: [DONE]\n\n"
+
+    def _run_chat_stream(self, chunks):
+        from app.llamacpp_client import LlamaSwapBackend
+
+        with patch("app.llamacpp_client.requests.post") as mock_post:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.iter_lines.return_value = self._sse_lines(chunks)
+            mock_post.return_value = mock_response
+
+            backend = LlamaSwapBackend()
+            cb = MagicMock()
+            cb.can_execute.return_value = True
+            with patch.object(backend, "_get_circuit_breaker", return_value=cb):
+                gen = backend.chat_stream(
+                    [{"role": "user", "content": "test"}],
+                    model="reasoning",
+                    config={
+                        "temperature": 0.7,
+                        "top_p": 0.9,
+                        "repeat_penalty": 1.6,
+                        "context_length": 4096,
+                    },
+                    timeout=120,
+                    lang="en",
+                    model_type="reasoning",
+                )
+                return [t for t in gen if isinstance(t, str)]
+
+    def test_short_answer_is_not_dropped(self):
+        """A clean answer shorter than the loop hold must arrive in full."""
+        answer = "Выводы из предоставленных данных: краткий ответ модели"
+        tokens = self._run_chat_stream([{"choices": [{"delta": {"content": answer, "reasoning_content": None}}]}])
+        joined = "".join(tokens)
+        assert answer in joined
+
+    def test_long_answer_tail_is_kept(self):
+        """A long answer must not lose its trailing hold-back tail."""
+        answer = " ".join(
+            f"Новость №{i}: компания {chr(65 + i % 26)} объявила о выпуске {i}-го по счёту отчёта. " for i in range(60)
+        )
+        tokens = self._run_chat_stream([{"choices": [{"delta": {"content": answer, "reasoning_content": None}}]}])
+        joined = "".join(tokens)
+        assert joined == answer
+        assert answer[-50:] in joined

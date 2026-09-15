@@ -283,6 +283,123 @@ def _process_stream_chunk(buffer: str, thinking_active: bool) -> tuple[str, str,
     return output, buffer, thinking_active
 
 
+# Detector for model output loops (repeated blocks) — guards against runaway
+# generation that ignores repeat_penalty and stop tokens, burning max_tokens
+# worth of GPU time on duplicated text. Applies to the reasoning stream only.
+_REPETITION_WINDOW = 200
+_REPETITION_MIN_COUNT = 3
+_REPETITION_HOLD = 1500
+# Detection scans only the tail of the accumulated text, so a huge response
+# cannot make per-chunk detection O(n^2).
+_REPETITION_SCAN_LIMIT = 4096
+
+
+def _repetition_cutoff(text: str, scan_limit: int | None = _REPETITION_SCAN_LIMIT) -> int | None:
+    """Return the index where a repeated block starts, or None.
+
+    Uses the trailing ``_REPETITION_WINDOW`` chars of the scan window as a
+    probe.  A loop is declared when that probe occurs at least
+    ``_REPETITION_MIN_COUNT`` times *and* the trailing occurrences are evenly
+    spaced (periodic tail): two identical prose fragments further apart are
+    far likelier to be a degenerate loop than a legit answer.
+
+    ``scan_limit`` bounds how much of ``text`` is searched (streaming uses a
+    small window to keep per-chunk detection O(n); the post-stream safety net
+    scans the whole response to cut the loop at its first block).
+
+    Returns the offset of the first probe occurrence within ``scan`` (the
+    relative start of the repeating block), or None.
+    """
+    if len(text) < _REPETITION_WINDOW * _REPETITION_MIN_COUNT:
+        return None
+    scan = text if scan_limit is None or len(text) <= scan_limit else text[-scan_limit:]
+    probe = scan[-_REPETITION_WINDOW:]
+    positions: list[int] = []
+    start = 0
+    while True:
+        idx = scan.find(probe, start)
+        if idx == -1:
+            break
+        positions.append(idx)
+        start = idx + 1
+    if len(positions) < _REPETITION_MIN_COUNT:
+        return None
+    # The last two spacings must match (periodic repetition).  Comparisons are
+    # on identical strings, so a strict equality check is sufficient.
+    spacings = [positions[i + 1] - positions[i] for i in range(len(positions) - 1)]
+    if len(spacings) >= 2 and spacings[-1] == spacings[-2]:
+        return positions[0]
+    return None
+
+
+class _LoopGuard:
+    """Streaming hold-back that aborts a looping reasoning response.
+
+    ``_repetition_cutoff()`` can only detect the loop after the repeated block
+    has appeared a few times, so the emittable text is held back by
+    ``_REPETITION_HOLD`` chars: when the loop is finally spotted, the repeated
+    tail is retracted instead of reaching the client.  ``loop_detected`` lets
+    the caller abort generation and seed the truncated text downstream.
+    """
+
+    def __init__(self, hold: int = _REPETITION_HOLD):
+        self._buf = ""
+        self._emitted = 0
+        self._hold = hold
+        self.loop_start = -1  # absolute index into _buf where the loop begins
+        self.loop_detected = False
+
+    def feed(self, text: str) -> str:
+        """Append streamed text, return the emittable (loop-safe) prefix."""
+        self._buf += text
+        if not self.loop_detected:
+            cutoff = _repetition_cutoff(self._buf)
+            if cutoff is not None:
+                # The cutoff is relative to the scan window; translate it to
+                # an absolute offset in _buf before truncating.
+                self.loop_start = len(self._buf) - min(len(self._buf), _REPETITION_SCAN_LIMIT) + cutoff
+                self.loop_detected = True
+                self._buf = self._buf[: self.loop_start]
+        # Once a loop is found the stream ends right after this chunk, so the
+        # whole clean prefix up to loop_start may be released.  Otherwise keep
+        # the trailing hold-back so a late loop can be retracted.
+        limit = self.loop_start if self.loop_detected else len(self._buf) - self._hold
+        if limit < 0:
+            limit = 0
+        if limit > self._emitted:
+            out = self._buf[self._emitted : limit]
+            self._emitted = limit
+            return out
+        return ""
+
+    def flush(self) -> str:
+        """Release the hold-back tail (only when the stream ended cleanly)."""
+        if self.loop_detected or self._buf is None:
+            return ""
+        out = self._buf[self._emitted :]
+        self._emitted = len(self._buf)
+        return out
+
+    def retracted(self) -> int:
+        """Chars suppressed at the end of the buffer (the loop tail)."""
+        if not self.loop_detected:
+            return 0
+        return len(self._buf) - self._emitted
+
+
+def strip_repetition_loop(text: str) -> str:
+    """Safety-net: cut a response at the first repeated block (loop).
+
+    Scans the entire response (the loop repeats to the very end, so its probe
+    is always present in the tail) and keeps only the clean prefix before the
+    first occurrence of the repeating block.
+    """
+    cutoff = _repetition_cutoff(text, scan_limit=None)
+    if cutoff is not None:
+        return text[:cutoff].rstrip()
+    return text
+
+
 class _ReasoningStreamFilter:
     """Incremental streaming filter that strips leaked chain-of-thought.
 
@@ -471,6 +588,15 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                 self.circuit_breaker.record_success()
                 result = _strip_thinking_tags(content.strip())
                 result = _strip_generic_reasoning(result)
+                # Repetition loop safety net (applies to reasoning responses).
+                if model_type == "reasoning" and len(result) > 100:
+                    stripped = strip_repetition_loop(result)
+                    if stripped != result:
+                        self.logger.warning(
+                            f"chat {model_type}: repetition loop detected post-response, "
+                            f"{len(result)} chars truncated to {len(stripped)}"
+                        )
+                        result = stripped
                 return result
             else:
                 self.circuit_breaker.record_failure()
@@ -548,6 +674,11 @@ class DirectLlamaBackend(AbstractLlamaBackend):
             # Incremental plain-text reasoning (chain-of-thought leaked into
             # content) filter — reasoning model streams only.
             _reasoning_stream = _ReasoningStreamFilter() if model_type == "reasoning" else None
+            # Textual repetition (loop) detector — reasoning model streams only.
+            # Holds output back so a runaway repeat can be retracted, then
+            # aborts the stream before the loop reaches the client.
+            _loop_guard = _LoopGuard() if model_type == "reasoning" else None
+            _loop_aborted = False
             # Real token count reported in final stream chunk (when llama.cpp
             # honors stream_options.include_usage)
             _stream_usage: dict[str, Any] | None = None
@@ -579,7 +710,19 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                         if output:
                             if _reasoning_stream is not None:
                                 filtered = _reasoning_stream.feed(output)
-                                if filtered:
+                                if filtered and _loop_guard is not None:
+                                    guarded = _loop_guard.feed(filtered)
+                                    if guarded:
+                                        yield guarded
+                                    if _loop_guard.loop_detected:
+                                        self.logger.warning(
+                                            f"chat_stream {model_type}: textual repetition loop detected "
+                                            f"at {_loop_guard.loop_start} chars ({_loop_guard.retracted()} chars suppressed), "
+                                            "aborting generation"
+                                        )
+                                        _loop_aborted = True
+                                        break
+                                elif filtered:
                                     yield filtered
                             else:
                                 yield output
@@ -611,19 +754,32 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                     continue
             if _stream_usage:
                 _record_prompt_tokens(_stream_usage, model_type, lang, messages, tools)
-            # Flush remaining buffer (non-thinking tail)
-            if _stream_buffer and not _thinking_active:
+            # On a detected loop the stream was aborted mid-generation, so the
+            # tail buffers must not be flushed (they hold loop content).
+            if not _loop_aborted:
+                # Flush remaining buffer (non-thinking tail)
+                if _stream_buffer and not _thinking_active:
+                    if _reasoning_stream is not None:
+                        filtered = _reasoning_stream.feed(_stream_buffer)
+                        if filtered:
+                            if _loop_guard is not None:
+                                guarded = _loop_guard.feed(filtered)
+                                if guarded:
+                                    yield guarded
+                            else:
+                                yield filtered
+                    else:
+                        yield _stream_buffer
+                # Flush the reasoning hold-back tail (no more markers coming)
                 if _reasoning_stream is not None:
-                    filtered = _reasoning_stream.feed(_stream_buffer)
-                    if filtered:
-                        yield filtered
-                else:
-                    yield _stream_buffer
-            # Flush the reasoning hold-back tail (no more markers coming)
-            if _reasoning_stream is not None:
-                tail = _reasoning_stream.flush()
-                if tail:
-                    yield tail
+                    tail = _reasoning_stream.flush()
+                    if tail:
+                        yield tail
+                # Release the loop-guard hold-back tail (normal stream end).
+                if _loop_guard is not None:
+                    guarded_tail = _loop_guard.flush()
+                    if guarded_tail:
+                        yield guarded_tail
             # If tool calls were accumulated, yield them as a dict
             if _tool_calls_by_index:
                 tool_calls = [_tool_calls_by_index[i] for i in sorted(_tool_calls_by_index.keys())]
@@ -838,6 +994,15 @@ class LlamaSwapBackend(AbstractLlamaBackend):
 
                     result = _strip_thinking_tags(content.strip())
                     result = _strip_generic_reasoning(result)
+                    # Repetition loop safety net (applies to reasoning responses).
+                    if model_type == "reasoning" and len(result) > 100:
+                        stripped = strip_repetition_loop(result)
+                        if stripped != result:
+                            self.logger.warning(
+                                f"chat {model_type}: repetition loop detected post-response, "
+                                f"{len(result)} chars truncated to {len(stripped)}"
+                            )
+                            result = stripped
                     return result
                 else:
                     if attempt < max_retries and response.status_code in (500, 502):
@@ -987,6 +1152,9 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                     # Incremental plain-text reasoning (chain-of-thought leaked
                     # into content) filter — reasoning model streams only.
                     _reasoning_stream = _ReasoningStreamFilter() if model_type == "reasoning" else None
+                    # Textual repetition (loop) detector — reasoning model only.
+                    _loop_guard = _LoopGuard() if model_type == "reasoning" else None
+                    _loop_aborted = False
                     # Real token count reported in final stream chunk (when
                     # llama.cpp honors stream_options.include_usage)
                     _stream_usage: dict[str, Any] | None = None
@@ -1028,7 +1196,19 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                                         # emit only the stable (marker-free) prefix,
                                         # holding tail back to avoid flicker.
                                         filtered = _reasoning_stream.feed(output)
-                                        if filtered:
+                                        if filtered and _loop_guard is not None:
+                                            guarded = _loop_guard.feed(filtered)
+                                            if guarded:
+                                                yield guarded
+                                            if _loop_guard.loop_detected:
+                                                self.logger.warning(
+                                                    f"chat_stream {model_type}: textual repetition loop detected "
+                                                    f"at {_loop_guard.loop_start} chars "
+                                                    f"({_loop_guard.retracted()} chars suppressed), aborting generation"
+                                                )
+                                                _loop_aborted = True
+                                                break
+                                        elif filtered:
                                             yield filtered
                                     else:
                                         yield output
@@ -1062,24 +1242,37 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                         _record_prompt_tokens(_stream_usage, model_type, lang, messages, tools)
                     if _reasoning_chars:
                         self.logger.info(f"chat_stream reasoning_content chars={_reasoning_chars}")
-                    # Flush remaining buffer
-                    if _stream_buffer:
-                        if _thinking_active:
-                            # Stream ended inside <|channel|>analysis block (no <|end|>).
-                            # Strip opening tag, yield whatever remains.
-                            _stream_buffer = re.sub(r"^.*?<\|channel\|>analysis<\|message\|>", "", _stream_buffer)
+                    # On a detected loop the stream was aborted mid-generation,
+                    # so the tail buffers must not be flushed (loop content).
+                    if not _loop_aborted:
+                        # Flush remaining buffer
                         if _stream_buffer:
-                            if _reasoning_stream is not None:
-                                filtered = _reasoning_stream.feed(_stream_buffer)
-                                if filtered:
-                                    yield filtered
-                            else:
-                                yield _stream_buffer
-                    # Flush the reasoning hold-back tail (no more markers coming)
-                    if _reasoning_stream is not None:
-                        tail = _reasoning_stream.flush()
-                        if tail:
-                            yield tail
+                            if _thinking_active:
+                                # Stream ended inside <|channel|>analysis block (no <|end|>).
+                                # Strip opening tag, yield whatever remains.
+                                _stream_buffer = re.sub(r"^.*?<\|channel\|>analysis<\|message\|>", "", _stream_buffer)
+                            if _stream_buffer:
+                                if _reasoning_stream is not None:
+                                    filtered = _reasoning_stream.feed(_stream_buffer)
+                                    if filtered:
+                                        if _loop_guard is not None:
+                                            guarded = _loop_guard.feed(filtered)
+                                            if guarded:
+                                                yield guarded
+                                        else:
+                                            yield filtered
+                                else:
+                                    yield _stream_buffer
+                        # Flush the reasoning hold-back tail (no more markers coming)
+                        if _reasoning_stream is not None:
+                            tail = _reasoning_stream.flush()
+                            if tail:
+                                yield tail
+                        # Release the loop-guard hold-back tail (normal stream end).
+                        if _loop_guard is not None:
+                            guarded_tail = _loop_guard.flush()
+                            if guarded_tail:
+                                yield guarded_tail
                     # If tool calls were accumulated, yield them as a dict
                     if _tool_calls_by_index:
                         tool_calls = [_tool_calls_by_index[i] for i in sorted(_tool_calls_by_index.keys())]

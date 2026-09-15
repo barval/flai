@@ -229,6 +229,20 @@ The CPU column was measured **live on the current server** (12-core CPU-only dep
 - Docker Compose ≥ 2.0
 - Internet connection (only for initial model downloads)
 
+#### CUDA Driver Compatibility
+
+`deploy.sh` auto-detects the host CUDA driver (`nvidia-smi`) and selects matching build images — **minimum supported driver is CUDA 12.2**:
+
+| Host CUDA driver | Images used |
+|------------------|-------------|
+| ≥ 13.0 | CUDA 13.0.1 + `llama-swap:cuda13` |
+| 12.8 – 12.9 | CUDA 12.8.1 (Ubuntu 24.04) |
+| 12.6 – 12.7 | CUDA 12.6.3 (Ubuntu 24.04) |
+| 12.4 – 12.5 | CUDA 12.4.1 (Ubuntu 22.04) |
+| **12.2 – 12.3 (minimum)** | CUDA 12.2.2 (Ubuntu 22.04) |
+
+> ⚠️ **LTX-Video exception:** the LTX-Video image is based on `pytorch:2.5.0-cuda12.4-runtime` and requires **driver ≥ 550.54.14 (CUDA 12.4)**. On CUDA 12.2–12.3 hosts the core stack (chat, reasoning, RAG, TTS, Whisper, image generation) works fully, but the `with-video` profile cannot start — deploy without it or update the NVIDIA driver (updating the driver alone is enough; no toolkit reinstall needed).
+
 > 💡 **Note**: After downloading GGUF models, FLAI works completely offline.
 
 ---

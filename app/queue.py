@@ -25,7 +25,7 @@ from .db import (
     update_document_index_status,
 )
 from .events import get_events_publisher
-from .llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags
+from .llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags, strip_repetition_loop
 from .model_config import get_model_config
 from .tools import MAX_TOOL_ITERATIONS, execute_tool, get_tool_definitions
 from .utils import (
@@ -1648,6 +1648,16 @@ class RedisRequestQueue:
             reasoning_time = round(time.time() - stream_start, 1)
             full_response = self._strip_thinking_tags(full_response)
             full_response = self._strip_generic_reasoning(full_response)
+            # Safety net: cut any textual repetition loop the streaming detector
+            # might have missed (e.g. non-streaming path or edge cases).
+            if len(full_response) > 100:
+                stripped = strip_repetition_loop(full_response)
+                if stripped != full_response:
+                    self.app.logger.warning(
+                        f"Reasoning response loop detected post-stream: "
+                        f"{len(full_response)} chars truncated to {len(stripped)}"
+                    )
+                    full_response = stripped
             if full_response.strip():
                 break
             if attempt == 0 and not self._is_task_cancelled(task["id"]):
@@ -2403,10 +2413,26 @@ class RedisRequestQueue:
 
         search_start = time.time()
         try:
+            base = self.app.modules.get("base")
+            search_max_chars = (
+                base.get_search_context_limit() if base and hasattr(base, "get_search_context_limit") else 10000
+            )
             results = search.search(query, lang=lang)
-            if not results:
-                self.app.logger.warning(f"SearXNG returned 0 results for: {query[:100]}... — retrying once")
-                results = search.search(query, lang=lang)
+            search_context = search.format_results_context(results, lang=lang, max_chars=search_max_chars)
+            # Degraded engines return few/noisy results with near-empty snippets.
+            # A second attempt often clears transient CAPTCHA/rate-limit failures.
+            if (
+                not results
+                or len(search_context) < 2000
+                or not any(len((r.get("content") or "").strip()) > 500 for r in results)
+            ):
+                self.app.logger.warning(f"SearXNG returned poor results for: {query[:100]}... — retrying once")
+                retried = search.search(query, lang=lang)
+                if retried:
+                    retried_ctx = search.format_results_context(retried, lang=lang, max_chars=search_max_chars)
+                    # Keep whichever attempt produced a richer context.
+                    if len(retried_ctx) > len(search_context):
+                        results, search_context = retried, retried_ctx
             search_time = round(time.time() - search_start, 1)
             if not results:
                 self.app.logger.warning(f"SearXNG returned 0 results after retry for: {query[:100]}...")
@@ -2418,11 +2444,6 @@ class RedisRequestQueue:
                     search_time,
                     lang,
                 )
-            base = self.app.modules.get("base")
-            search_max_chars = (
-                base.get_search_context_limit() if base and hasattr(base, "get_search_context_limit") else 10000
-            )
-            search_context = search.format_results_context(results, lang=lang, max_chars=search_max_chars)
             self.app.logger.info(
                 f"Web search: '{query[:60]}...' → {len(results)} results, "
                 f"{len(search_context)} chars (limit {search_max_chars}) — requeueing to slow worker ({search_time}s)"

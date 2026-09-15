@@ -316,6 +316,12 @@ class LlamaSwapConfigGenerator:
 
         if module == "reasoning":
             cmd_parts.extend(["--reasoning_format", "deepseek"])
+            # Cap thinking tokens via CLI (llama-server build 10603 ignores the
+            # per-request `reasoning_budget` field). Without it the model can burn
+            # the whole context on reasoning and never emit an answer.
+            if ctx_size and ctx_size > 0:
+                budget = max(1024, int(ctx_size * 0.4))
+                cmd_parts.extend(["--reasoning-budget", str(budget)])
         elif module == "multimodal":
             cmd_parts.extend(["--reasoning_format", "none"])
 

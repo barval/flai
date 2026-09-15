@@ -1557,6 +1557,7 @@ class RedisRequestQueue:
         else:
             # No pre-computed context — try RAG answer directly (covers non-requeue paths)
             rag_start = time.time()
+            self._publish_stream_event(task, "task_progress", {"stage": "searching_documents"})
             rag_answer, rag_model = self._try_rag_answer(
                 query, session_id, user_id, lang, strict=True, response_style=response_style
             )
@@ -1581,7 +1582,12 @@ class RedisRequestQueue:
             rag = self.app.modules.get("rag")
             if rag and rag.available:
                 try:
+                    self._publish_stream_event(task, "task_progress", {"stage": "searching_documents"})
                     chunks, scores = rag.search(user_id, query, top_k=20)
+                    if task and chunks:
+                        self._publish_stream_event(
+                            task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}
+                        )
                     if chunks:
                         from flask_babel import gettext as _
 
@@ -1621,6 +1627,15 @@ class RedisRequestQueue:
         current_time_str = get_current_time_in_timezone(self.app)
         stream_start = time.time()
         full_response = ""
+
+        def _on_generation_started(phase: str) -> None:
+            # Fired by the LLM backend once the model is loaded and SSE headers
+            # are back: the reasoning model now spends a long silent stretch on
+            # reasoning_content (no content tokens), so switch the status label
+            # from "Loading reasoning model..." to "Thinking...".
+            if phase == "generating" and task:
+                self._publish_stream_event(task, "task_progress", {"stage": "reasoning_thinking"})
+
         for attempt in range(2):
             full_response = ""
             error_detected = False
@@ -1636,6 +1651,7 @@ class RedisRequestQueue:
                 # Attempt 0 already loaded the model (and VRAM is confirmed);
                 # skip the unload/reload on the retry to avoid ~20s dead time.
                 ensure_vram=(attempt == 0),
+                status_callback=_on_generation_started,
             ):
                 full_response += token
                 if not error_detected:
@@ -2315,7 +2331,13 @@ class RedisRequestQueue:
         )
 
     def _process_rag_task(
-        self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
+        self,
+        query: str,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        response_style: str = "neutral",
+        task: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle explicit RAG request (router action_type='rag').
 
@@ -2340,8 +2362,14 @@ class RedisRequestQueue:
         # Step 1: RAG search only (embedding ~500MB — safe on fast worker)
         rag_context = ""
         rag_threshold = self.app.config.get("RAG_RELEVANCE_THRESHOLD_DEFAULT", 0.3)
+        if task:
+            self._publish_stream_event(task, "task_progress", {"stage": "searching_documents"})
         try:
             chunks, scores = rag.search(user_id, query, top_k=20)
+            if task and chunks:
+                self._publish_stream_event(
+                    task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}
+                )
             filtered = [(c, s) for c, s in zip(chunks, scores, strict=False) if s >= rag_threshold]
             if filtered:
                 from flask_babel import gettext as _
@@ -2395,7 +2423,13 @@ class RedisRequestQueue:
         )
 
     def _process_search_task(
-        self, query: str, session_id: str, user_id: str, lang: str, response_style: str = "neutral"
+        self,
+        query: str,
+        session_id: str,
+        user_id: str,
+        lang: str,
+        response_style: str = "neutral",
+        task: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Handle web search request (router action_type='search').
 
@@ -2417,8 +2451,12 @@ class RedisRequestQueue:
             search_max_chars = (
                 base.get_search_context_limit() if base and hasattr(base, "get_search_context_limit") else 10000
             )
+            if task:
+                self._publish_stream_event(task, "task_progress", {"stage": "searching_web"})
             results = search.search(query, lang=lang)
             search_context = search.format_results_context(results, lang=lang, max_chars=search_max_chars)
+            if task and results:
+                self._publish_stream_event(task, "task_progress", {"stage": "searching_web", "results": len(results)})
             # Degraded engines return few/noisy results with near-empty snippets.
             # A second attempt often clears transient CAPTCHA/rate-limit failures.
             if (
@@ -2498,8 +2536,14 @@ class RedisRequestQueue:
         # Step 1: RAG search only (embedding ~500MB — safe on fast worker)
         rag_context = ""
         rag_threshold = self.app.config.get("RAG_RELEVANCE_THRESHOLD_DEFAULT", 0.3)
+        if task:
+            self._publish_stream_event(task, "task_progress", {"stage": "searching_documents"})
         try:
             chunks, scores = rag.search(user_id, query, top_k=20)
+            if task and chunks:
+                self._publish_stream_event(
+                    task, "task_progress", {"stage": "searching_documents", "chunks": len(chunks)}
+                )
             filtered = [(c, s) for c, s in zip(chunks, scores, strict=False) if s >= rag_threshold]
             if filtered:
                 from flask_babel import gettext as _
@@ -2617,7 +2661,12 @@ class RedisRequestQueue:
         chat prompt; streaming has explicit remember handling and streams the
         final LLM answer.
         """
+        # Synthetic task for legacy non-streaming paths that never receive one
+        effective_task = task or {"id": uuid.uuid4().hex, "user_id": user_id, "session_id": session_id}
+
         router_start = time.time()
+        if task:
+            self._publish_stream_event(task, "task_progress", {"stage": "routing"})
         router_result = self.app.modules["base"].process_message(
             message_text,
             current_time_str,
@@ -2633,9 +2682,6 @@ class RedisRequestQueue:
 
         action_type = router_result["action"]
         query = router_result["query"]
-
-        # Synthetic task for legacy non-streaming paths that never receive one
-        effective_task = task or {"id": uuid.uuid4().hex, "user_id": user_id, "session_id": session_id}
 
         if action_type == "reasoning":
             return self._requeue_reasoning_task(
@@ -2665,9 +2711,9 @@ class RedisRequestQueue:
                 return self._process_rag_task_stream(
                     task or effective_task, query, session_id, user_id, lang, response_style
                 )
-            return self._process_rag_task(query, session_id, user_id, lang, response_style)
+            return self._process_rag_task(query, session_id, user_id, lang, response_style, task=task)
         if action_type == "search":
-            return self._process_search_task(query, session_id, user_id, lang, response_style)
+            return self._process_search_task(query, session_id, user_id, lang, response_style, task=task)
 
         if stream:
             # Explicit remember request — process through LLM and save to SLM

@@ -713,6 +713,7 @@ class BaseModule(TranslationMixin):
         rag_context: str = "",
         rag_source: str = "",
         ensure_vram: bool = True,
+        status_callback: Callable[[str], None] | None = None,
     ) -> Generator[str, None, None]:
         """Build prompt and stream reasoning model response.
 
@@ -758,4 +759,5 @@ class BaseModule(TranslationMixin):
             model_type="reasoning",
             lang=lang,
             ensure_vram=ensure_vram,
+            status_callback=status_callback,
         )

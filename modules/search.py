@@ -2,14 +2,100 @@
 """Web search module via SearXNG — self-hosted metasearch engine."""
 
 import logging
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta
 
+import pytz
 import requests
 import trafilatura
 from requests.exceptions import Timeout as RequestsTimeout
 
 from app.mixins import TranslationMixin
+
+_RU_MONTHS_GENITIVE = {
+    1: "января",
+    2: "февраля",
+    3: "марта",
+    4: "апреля",
+    5: "мая",
+    6: "июня",
+    7: "июля",
+    8: "августа",
+    9: "сентября",
+    10: "октября",
+    11: "ноября",
+    12: "декабря",
+}
+
+_EN_MONTHS = {
+    1: "January",
+    2: "February",
+    3: "March",
+    4: "April",
+    5: "May",
+    6: "June",
+    7: "July",
+    8: "August",
+    9: "September",
+    10: "October",
+    11: "November",
+    12: "December",
+}
+
+# Relative date words → day offset. Most specific word first so that
+# "позавчера" / "day before yesterday" match before "вчера" / "yesterday".
+_RELATIVE_DATE_HINTS: dict[str, list[tuple[re.Pattern[str], int]]] = {
+    "ru": [
+        (re.compile(r"\bпозавчера\b", re.IGNORECASE), -2),
+        (re.compile(r"\bвчера\b", re.IGNORECASE), -1),
+        (re.compile(r"\bсегодня\b", re.IGNORECASE), 0),
+    ],
+    "en": [
+        (re.compile(r"\bthe day before yesterday\b", re.IGNORECASE), -2),
+        (re.compile(r"\byesterday\b", re.IGNORECASE), -1),
+        (re.compile(r"\btoday\b", re.IGNORECASE), 0),
+    ],
+}
+
+
+def _format_search_date(d: datetime, lang: str) -> str:
+    if lang == "en":
+        return f"{_EN_MONTHS[d.month]} {d.day}, {d.year}"
+    return f"{d.day} {_RU_MONTHS_GENITIVE[d.month]} {d.year}"
+
+
+def enhance_query_with_date(query: str, lang: str = "ru", now: datetime | None = None) -> str:
+    """Append an absolute date to queries containing relative date words.
+
+    Search engines have no notion of "yesterday" — a query like
+    "What IT news happened yesterday?" returns landing pages of news
+    sections instead of dated articles. Appending the resolved date
+    ("yesterday (September 14, 2026)") anchors the query to a specific day.
+    This is query normalization, not routing.
+
+    Args:
+        query: Original search query.
+        lang: User language ('ru' or 'en') — selects the word list and date format.
+        now: Reference datetime for tests; defaults to current UTC time.
+
+    Returns:
+        The query with "(<date>)" appended after the relative date word,
+        or unchanged if no relative date word is present.
+    """
+    if not query:
+        return query
+    if now is None:
+        now = datetime.now(pytz.UTC)
+    for pattern, offset in _RELATIVE_DATE_HINTS.get(lang or "ru", _RELATIVE_DATE_HINTS["ru"]):
+        if not pattern.search(query):
+            continue
+        target = now + timedelta(days=offset)
+        label = _format_search_date(target, lang)
+        query = pattern.sub(lambda m, _label=label: f"{m.group(0)} ({_label})", query)
+        break
+    return query
 
 
 class SearchModule(TranslationMixin):
@@ -71,6 +157,23 @@ class SearchModule(TranslationMixin):
         limit = max_results or self.max_results
         start_time = time.time()
 
+        # Anchor relative date words ("yesterday", "today", ...) to an absolute
+        # date in the user's timezone so engines return dated articles, not
+        # generic landing pages.
+        ref_now: datetime | None = None
+        try:
+            from flask import current_app
+
+            tz = current_app.config.get("TIMEZONE")
+            if tz:
+                ref_now = datetime.now(tz)
+        except RuntimeError:
+            pass
+        dated_query = enhance_query_with_date(query, lang, now=ref_now)
+        if dated_query != query:
+            self.logger.info(f"Search query date-normalized: '{query[:120]}' -> '{dated_query[:160]}'")
+            query = dated_query
+
         try:
             resp = requests.post(
                 f"{self.searxng_url}/search",
@@ -102,14 +205,35 @@ class SearchModule(TranslationMixin):
                     )
 
             results: list[dict] = []
-            fetch_urls = []
-            for r in raw_results[:limit]:
-                title = r.get("title", "")
-                url = r.get("url", "")
-                content = r.get("content", "") or ""
-                if url and (not content.strip() or len(content.strip()) < 300):
-                    fetch_urls.append((len(results), url))
+            fetch_urls: list[tuple[int, str]] = []
+
+            # Deduplicate a wider pool (limit*3) by URL path and normalized title,
+            # then keep results in their original relevance order.
+            seen_paths: set[str] = set()
+            seen_titles: set[str] = set()
+            pool = [r for r in raw_results[: limit * 3] if r.get("url")]
+            unique: list[dict] = []
+            for r in pool:
+                path = (r.get("url") or "").split("?")[0].rstrip("/")
+                title = " ".join((r.get("title") or "").lower().split())
+                if path and path in seen_paths:
+                    continue
+                if len(title) > 15 and title in seen_titles:
+                    continue
+                seen_paths.add(path)
+                seen_titles.add(title)
+                unique.append(r)
+
+            for r in unique:
+                if len(results) >= limit:
+                    break
+                title = r.get("title") or ""
+                url = r.get("url") or ""
+                content = (r.get("content") or "").strip()
+                idx = len(results)
                 results.append({"title": title, "url": url, "content": content})
+                if url and len(content) < 300:
+                    fetch_urls.append((idx, url))
 
             if fetch_urls:
                 self.logger.debug(f"Fetching page content for {len(fetch_urls)} results (short/poor snippets)")
@@ -120,6 +244,21 @@ class SearchModule(TranslationMixin):
                         fetched = future.result()
                         if fetched:
                             results[idx]["content"] = fetched
+
+            # Replace empty-content results with untapped pool candidates that already
+            # carry content — degraded engines shouldn't flood the reasoning context
+            # with title-only noise.
+            if len(results) < limit:
+                used_paths = {(r.get("url") or "").split("?")[0].rstrip("/") for r in results}
+                for r in unique:
+                    if len(results) >= limit:
+                        break
+                    key = (r.get("url") or "").split("?")[0].rstrip("/")
+                    content = (r.get("content") or "").strip()
+                    if key in used_paths or not content:
+                        continue
+                    results.append({"title": r.get("title") or "", "url": r.get("url") or "", "content": content})
+                    used_paths.add(key)
 
             fetched_count = sum(1 for r in results if len(r.get("content", "")) > 300)
             if fetched_count > 0:

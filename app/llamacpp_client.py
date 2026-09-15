@@ -7,12 +7,13 @@ Uses backend pattern to support:
 - LlamaSwapBackend: connection via llama-swap proxy
 """
 
+import contextlib
 import json
 import logging
 import os
 import re
 import time
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from typing import Any
 
 import requests
@@ -495,6 +496,7 @@ class AbstractLlamaBackend:
         model_type: str = "multimodal",
         tools: list[dict] | None = None,
         temperature: float | None = None,
+        status_callback: Callable[[str], None] | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         raise NotImplementedError
 
@@ -628,6 +630,7 @@ class DirectLlamaBackend(AbstractLlamaBackend):
         model_type: str = "multimodal",
         tools: list[dict] | None = None,
         temperature: float | None = None,
+        status_callback: Callable[[str], None] | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         base_url = self.get_base_url()
         context = config.get("context_length", 4096)
@@ -667,6 +670,10 @@ class DirectLlamaBackend(AbstractLlamaBackend):
                 return
 
             self.circuit_breaker.record_success()
+            # Model is loaded and SSE headers are back — generation starts.
+            if status_callback:
+                with contextlib.suppress(Exception):
+                    status_callback("generating")
             # Stateful thinking tag filter — strips reasoning blocks
             # from any model type (Qwen, DeepSeek, gpt-oss, etc.)
             _thinking_active = False
@@ -1054,6 +1061,7 @@ class LlamaSwapBackend(AbstractLlamaBackend):
         model_type: str = "multimodal",
         tools: list[dict] | None = None,
         temperature: float | None = None,
+        status_callback: Callable[[str], None] | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         base_url = self.get_base_url()
         temp = temperature if temperature is not None else config.get("temperature", 0.7)
@@ -1133,6 +1141,13 @@ class LlamaSwapBackend(AbstractLlamaBackend):
                         return
 
                     cb.record_success()
+
+                    # Model is loaded and SSE headers are back — generation
+                    # starts (for reasoning models this means the thinking
+                    # phase begins, which streams no content tokens).
+                    if status_callback:
+                        with contextlib.suppress(Exception):
+                            status_callback("generating")
 
                     # Measure VRAM after successful model load
                     try:
@@ -1539,6 +1554,7 @@ class LlamaCppClient:
         tools: list[dict] | None = None,
         temperature: float | None = None,
         ensure_vram: bool = True,
+        status_callback: Callable[[str], None] | None = None,
     ) -> Generator[str | dict[str, Any], None, None]:
         if validate:
             error = self._validate_prompt(messages, model_type, lang)
@@ -1562,7 +1578,15 @@ class LlamaCppClient:
 
         timeout = config.get("timeout", 600)
         yield from self.backend.chat_stream(
-            messages, model, config, timeout, lang, model_type=model_type, tools=tools, temperature=temperature
+            messages,
+            model,
+            config,
+            timeout,
+            lang,
+            model_type=model_type,
+            tools=tools,
+            temperature=temperature,
+            status_callback=status_callback,
         )
 
     def chat_with_image(self, text: str, image_base64: str, model_type: str = "multimodal", lang: str = "ru") -> str:

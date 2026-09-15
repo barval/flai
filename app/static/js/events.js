@@ -237,7 +237,7 @@ function getToolLabel(toolName) {
 function onToolCall(data) {
     if (!data || !data.session_id || data.session_id !== currentSessionId) return;
     dlog('onToolCall:', data.tool_name);
-    _updateProgressElement(data.task_id, getToolLabel(data.tool_name));
+    _updateProgressElement(data.task_id, data.session_id, getToolLabel(data.tool_name));
 }
 
 function onToolResult(data) {
@@ -251,6 +251,7 @@ function onToolResult(data) {
 // Keys resolved lazily via t() — see TOOL_META comment above.
 const STAGE_LABEL_KEYS = {
     preparing_gpu: 'stage_preparing_gpu',
+    routing: 'stage_routing',
     analyzing: 'stage_analyzing',
     analyzing_image: 'stage_analyzing_image',
     analyzing_prompt: 'stage_analyzing_prompt',
@@ -258,12 +259,26 @@ const STAGE_LABEL_KEYS = {
     generating_image: 'stage_generating_image',
     editing_image: 'stage_editing_image',
     loading_reasoning_model: 'stage_loading_reasoning',
+    reasoning_thinking: 'stage_thinking',
+    searching_documents: 'stage_searching_documents',
+    searching_web: 'stage_searching_web',
     capturing_snapshot: 'stage_capturing_snapshot',
 };
 
-function getStageLabel(stage) {
+// Counter stages reuse the base stage translation with a "%s" placeholder.
+const STAGE_COUNTER_KEYS = {
+    searching_documents: 'stage_docs_found',
+    searching_web: 'stage_web_results',
+};
+
+function getStageLabel(stage, count) {
     const key = STAGE_LABEL_KEYS[stage];
-    return key ? t(key) : stage;
+    if (!key) return stage;
+    if (count !== undefined && count !== null && STAGE_COUNTER_KEYS[stage]) {
+        const template = t(STAGE_COUNTER_KEYS[stage]);
+        return template.indexOf('%s') !== -1 ? template.replace('%s', count) : template;
+    }
+    return t(key);
 }
 
 function onTaskProgress(data) {
@@ -271,28 +286,69 @@ function onTaskProgress(data) {
     if (!data.stage) return;
     dlog('onTaskProgress:', data.stage);
 
-    _updateProgressElement(data.task_id, getStageLabel(data.stage));
+    _updateProgressElement(data.task_id, data.session_id, getStageLabel(data.stage, data.results || data.chunks));
     _showHeaderCancelButton(data.task_id);
 }
 
-function _updateProgressElement(taskId, text) {
+// Phase timers (option A): each task-progress element ticks elapsed seconds
+// until the phase ends ("Searching the web... (7s)").
+const _progressTimers = {};
+
+function _stopProgressTimer(taskId) {
+    if (_progressTimers[taskId]) {
+        clearInterval(_progressTimers[taskId].interval);
+        delete _progressTimers[taskId];
+    }
+}
+
+function _startProgressTimer(taskId, progressEl, baseText) {
+    _stopProgressTimer(taskId);
+    const startedAt = Date.now();
+    const suffix = t('stage_elapsed_s');
+    _progressTimers[taskId] = {
+        startedAt: startedAt,
+        interval: setInterval(() => {
+            if (!document.body.contains(progressEl)) {
+                _stopProgressTimer(taskId);
+                return;
+            }
+            const secs = Math.floor((Date.now() - startedAt) / 1000);
+            if (secs >= 1) progressEl.textContent = baseText + ' (' + secs + suffix + ')';
+        }, 1000),
+    };
+}
+
+function _updateProgressElement(taskId, sessionId, text) {
     const chatMessages = document.getElementById('chat-messages');
     if (!chatMessages) return;
+
+    // A single user request chains phases across task ids (fast-worker
+    // routing/search → requeued reasoning task). Show one progress element
+    // per session: drop stale ones from earlier phases of the same request.
+    chatMessages.querySelectorAll('.task-progress[data-session-id="' + sessionId + '"]').forEach((el) => {
+        if (el.getAttribute('data-task-id') !== String(taskId)) {
+            _stopProgressTimer(el.getAttribute('data-task-id'));
+            el.remove();
+        }
+    });
 
     let progressEl = chatMessages.querySelector('.task-progress[data-task-id="' + taskId + '"]');
     if (!progressEl) {
         progressEl = document.createElement('div');
         progressEl.className = 'task-progress';
         progressEl.setAttribute('data-task-id', taskId);
+        progressEl.setAttribute('data-session-id', sessionId);
         chatMessages.appendChild(progressEl);
     }
     progressEl.textContent = text;
+    _startProgressTimer(taskId, progressEl, text);
     if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
 }
 
 function _removeProgressElement(taskId) {
     const chatMessages = document.getElementById('chat-messages');
     if (!chatMessages) return;
+    _stopProgressTimer(taskId);
     const el = chatMessages.querySelector('.task-progress[data-task-id="' + taskId + '"]');
     if (el) el.remove();
 }

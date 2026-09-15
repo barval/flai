@@ -94,6 +94,8 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 |---------|-------|
 | **v11.3 — context & retrieval quality** | In development: smarter context-budgeting for message history, higher-quality RAG and web search, and tighter SLM long-term memory — the goal is sharp retrieval results and long chat sessions that keep the thread without losing the meaning of earlier exchanges. |
 | **Reasoning token budget enforced** | llama-server build 10603 ignores the per-request `reasoning_budget` field, so the reasoning model's server command now caps thinking via the CLI flag `--reasoning-budget max(1024, ctx*0.4)` — no more context burned entirely on reasoning with no answer. |
+| **Streaming repetition-loop detector** | Streamed reasoning answers pass through a loop guard (`_LoopGuard`, hold-back 1500 chars): detected textual loops are cut mid-stream instead of flooding the chat; end-of-stream tails are flushed in a fixed order so short answers are never dropped. A server-side safety net catches loops missed in streaming. |
+| **Search date normalization** | Relative date words in search queries («вчера», «сегодня», English equivalents) are resolved to absolute dates in the user's timezone before hitting SearXNG — engines return dated articles instead of generic news-section landing pages. |
 
 ### Core Components
 
@@ -649,6 +651,8 @@ services/llamacpp/models/
 | Timeout (s) | 120 | 120 | 120 |
 
 > **Note:** Router classification always uses `temperature=0.1` (hardcoded) for deterministic query routing, regardless of admin panel settings.
+
+> **⚠️ Warning — Repeat Penalty:** do not set Repeat Penalty too high in the admin panel. The defaults (1.1 / 1.15) are deliberately conservative; values like 1.6 severely degrade reasoning models — verified by A/B testing on the same prompt: 1.6 produced a burned context (59K chars of runaway reasoning + truncated answer), an empty answer, and an answer in the wrong language (4/4 failed generations), while 1.15 produced 4/4 clean, complete answers. Symptoms of an excessive penalty: the model spends the whole context on `reasoning_content` and never answers, stops right after the intro sentence, or drifts off the requested language. Occasional repetition during long code generation is better handled by the built-in repetition-loop detector (v11.3, server-side) than by raising this parameter.
 
 ### Model Selection Guide
 

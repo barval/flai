@@ -291,6 +291,82 @@ class TestChatStreamYieldsWarningPrefix:
         assert "Invalid request body" in tokens[0]
 
 
+class TestAdaptiveHold:
+    """Slow streams (CPU) must not buffer the whole answer behind the hold-back.
+
+    Regression: on a CPU box (~1.6 tok/s) typical reasoning answers (600-1400
+    chars) never exceed the 1500-char loop-guard hold during generation, so
+    the entire response arrived as one block after generation finished.
+    The hold must shrink adaptively while generation is still running.
+    """
+
+    def test_loop_guard_shrinks_hold_when_stream_is_slow(self):
+        """Feeding text slowly (many small feeds) must release a prefix."""
+        from app.llamacpp_client import _LoopGuard
+
+        g = _LoopGuard()
+        # 300 feeds of 2 chars = 600 chars total, well under the 1500 hold.
+        # The adaptive shrink must open the window long before the end.
+        released = 0
+        for _ in range(0, 600, 2):
+            out = g.feed("ab")
+            released += len(out)
+        assert released > 0, "nothing streamed for a 600-char slow answer"
+
+    def test_loop_guard_keeps_hold_for_fast_streams(self):
+        """A few big chunks (fast GPU stream) keep the full hold-back."""
+        from app.llamacpp_client import _LoopGuard
+
+        g = _LoopGuard()
+        # 1400 chars in 2 large chunks: still under hold, must hold everything.
+        out = g.feed("x" * 700) + g.feed("x" * 700)
+        assert out == ""
+
+    def test_loop_guard_still_detects_loop(self):
+        """Loop detection keeps working after the hold has shrunk."""
+        from app.llamacpp_client import _LoopGuard
+
+        g = _LoopGuard()
+        block = "Повторяющийся блок текста для проверки петли. " * 20  # > 3x window
+        emitted = g.feed(block[:200])
+        for i in range(200, len(block), 10):
+            emitted += g.feed(block[i : i + 10])
+            if g.loop_detected:
+                break
+        assert g.loop_detected
+        # The emitted prefix must be shorter than the full block (loop tail
+        # retracted), proving detection still fires with a shrunk hold.
+        assert len(emitted) < len(block)
+
+    def test_loop_guard_hold_floor(self):
+        """The shrunk hold never goes below the floor (300 chars)."""
+        from app.llamacpp_client import _LoopGuard
+
+        g = _LoopGuard()
+        # Many tiny feeds: after adaptive shrink (floor=300), a 250-char
+        # answer must still be held entirely; and at floor the limit is
+        # len(buf) - 300, so 250 chars emit nothing.
+        released = 0
+        for _ in range(125):
+            released += len(g.feed("ab"))
+        assert released == 0, "250 chars must stay behind the floor hold"
+
+    def test_reasoning_filter_shrinks_hold_when_stream_is_slow(self):
+        """_ReasoningStreamFilter with markers must stream on slow feeds too."""
+        from app.llamacpp_client import _ReasoningStreamFilter
+
+        f = _ReasoningStreamFilter()
+        marker = "The user asked something. "
+        # Slow stream: marker + 900 chars of answer in 2-char feeds.
+        text = marker + "y" * 900
+        released = 0
+        for i in range(0, len(text), 2):
+            released += len(f.feed(text[i : i + 2]))
+        released += len(f.flush())
+        assert released >= 900, "answer must stream out on a slow feed"
+        assert "y" * 100 in text  # sanity
+
+
 class TestChatStreamReasoningTailFlush:
     """The loop-guard hold-back tail must be flushed on a clean reasoning stream.
 

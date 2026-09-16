@@ -31,7 +31,7 @@ services/room-snapshot-api/
 ### 1. Clone the service code (if not already cloned)
 
 ```bash
-cd /home/GIT/GITEA/BARVAL-MY/flai/services/room-snapshot-api
+cd flai/services/room-snapshot-api
 git clone https://github.com/barval/room-snapshot-api.git room-snapshot-api
 ```
 

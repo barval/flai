@@ -21,6 +21,214 @@ if not DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith(
 
 logger.info(f"Using PostgreSQL database: {DATABASE_URL}")
 
+# ── Context-window auto-fit (GPU deployments) ────────────────────────────
+# v11.4: the seed and context migrations pick the largest window that (a) does
+# not exceed the model's architectural max (read from GGUF metadata) and (b)
+# fits fully into VRAM, instead of blindly bumping to fixed values that can
+# OOM or force partial offload on smaller cards. Goals are tiered by VRAM:
+#   24 GB   — multimodal 32768 / reasoning 32768
+#   16 GB   — multimodal 32768 / reasoning 24576  (reasoning 32768 needs 24 GB)
+#   8–12 GB — multimodal 16384 / reasoning 16384  (16384 is the vision floor)
+# Unknown VRAM keeps the previous defaults (32768 / 24576).
+# (min_vram_mb, multimodal_goal, reasoning_goal)
+_GPU_CTX_GOALS: tuple[tuple[int, int, int], ...] = (
+    (24000, 32768, 32768),
+    (16000, 32768, 24576),
+    (8192, 16384, 16384),
+)
+_GPU_CTX_FALLBACK = (32768, 24576)
+# Steps to try when the goal does not fit fully in VRAM (largest first).
+_GPU_CTX_STEPS = (32768, 24576, 16384, 8192)
+
+
+def _total_ram_mb() -> int:
+    """Total system RAM in MB from /proc/meminfo (Linux) or psutil fallback."""
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    return int(line.split()[1]) // 1024
+    except (OSError, ValueError):
+        pass
+    try:
+        import psutil
+
+        return psutil.virtual_memory().total // (1024 * 1024)  # type: ignore[no-any-return]
+    except Exception:
+        return 0
+
+
+def _gpu_total_vram_mb() -> int:
+    """Total VRAM in MB for the current platform, or 0 when undetectable."""
+    try:
+        from app.platform_detect import query_vram
+
+        _used, total = query_vram()
+        return total or 0
+    except Exception:
+        return 0
+
+
+def _find_gguf_file(model_name: str, models_dir: str = "/models") -> str | None:
+    """Locate a GGUF file by model name (with or without .gguf suffix)."""
+    base = model_name[:-5] if model_name.endswith(".gguf") else model_name
+    for candidate in (
+        os.path.join(models_dir, base + ".gguf"),
+        os.path.join(models_dir, base, base + ".gguf"),
+    ):
+        if os.path.exists(candidate):
+            return candidate
+    if not os.path.isdir(models_dir):
+        return None
+    for root, _dirs, files in os.walk(models_dir):
+        for f in files:
+            if f == base + ".gguf":
+                return os.path.join(root, f)
+    return None
+
+
+def _read_gguf_meta(model_name: str, models_dir: str = "/models") -> dict:
+    """Read context_length (architectural max), file size and block_count
+    straight from the GGUF file header — no DB cache, safe during init_db."""
+    path = _find_gguf_file(model_name, models_dir)
+    if not path:
+        return {}
+    meta: dict = {"file_size_mb": os.path.getsize(path) / (1024 * 1024)}
+    try:
+        from gguf import GGUFReader
+        from gguf.constants import GGML_QUANT_SIZES, GGMLQuantizationType
+
+        for _dt in range(42, 64):
+            if _dt not in GGMLQuantizationType._value2member_map_:
+                _m = int.__new__(GGMLQuantizationType, _dt)
+                _m._name_ = f"UNKNOWN_{_dt}"
+                _m._value_ = _dt
+                GGMLQuantizationType._member_map_[_dt] = _m  # type: ignore[index]
+                GGMLQuantizationType._value2member_map_[_dt] = _m
+                GGML_QUANT_SIZES[_m] = (1, 1)
+
+        orig_build_tensors = GGUFReader._build_tensors
+        GGUFReader._build_tensors = lambda self, *a, **kw: None  # type: ignore[method-assign]
+        try:
+            reader = GGUFReader(path)
+        finally:
+            GGUFReader._build_tensors = orig_build_tensors  # type: ignore[method-assign]
+        arch = None
+        for key in reader.fields:
+            if "." in key and not key.startswith("GGUF") and not key.startswith("general"):
+                arch = key.split(".")[0]
+                break
+        if arch:
+            bc_key = f"{arch}.block_count"
+            if bc_key in reader.fields:
+                raw = reader.fields[bc_key].parts[-1]
+                arr = raw.tolist() if hasattr(raw, "tolist") else None
+                if isinstance(arr, list) and len(arr) == 1:
+                    raw = arr[0]
+                try:
+                    meta["block_count"] = int(raw)
+                except (TypeError, ValueError):
+                    meta["block_count"] = None
+            ec_key = f"{arch}.expert_count"
+            if ec_key in reader.fields:
+                raw = reader.fields[ec_key].parts[-1]
+                arr = raw.tolist() if hasattr(raw, "tolist") else None
+                if isinstance(arr, list) and len(arr) == 1:
+                    raw = arr[0]
+                try:
+                    meta["expert_count"] = int(raw)
+                except (TypeError, ValueError):
+                    meta["expert_count"] = 0
+            mtp_key = f"{arch}.nextn_predict_layers"
+            if mtp_key in reader.fields:
+                raw = reader.fields[mtp_key].parts[-1]
+                arr = raw.tolist() if hasattr(raw, "tolist") else None
+                if isinstance(arr, list) and len(arr) == 1:
+                    raw = arr[0]
+                try:
+                    meta["supports_mtp"] = int(raw) > 0
+                except (TypeError, ValueError):
+                    meta["supports_mtp"] = False
+        for key in reader.fields:
+            if key.endswith(".context_length"):
+                raw = reader.fields[key].parts[-1]
+                arr = raw.tolist() if hasattr(raw, "tolist") else None
+                if isinstance(arr, list) and len(arr) == 1:
+                    raw = arr[0]
+                try:
+                    meta["arch_max_ctx"] = int(raw)
+                except (TypeError, ValueError):
+                    meta["arch_max_ctx"] = None
+                break
+    except Exception:
+        pass
+    return meta
+
+
+def _autofit_context(
+    module: str,
+    model_name: str,
+    goal: int,
+    total_vram_mb: int,
+    total_ram_mb: int,
+    meta: dict,
+) -> int:
+    """Pick the largest context window that fits fully in VRAM.
+
+    Caps the tier goal by the model's architectural max, then steps down
+    through common sizes until the full-GPU VRAM footprint fits. Returns the
+    goal (arch-capped) when nothing fits — the normal degradation path
+    (reduce n_gpu_layers) still applies, but a smaller KV cache is preferred
+    whenever possible.
+    """
+    from app.resource_manager import KV_PER_TOKEN_MB
+
+    arch_max = meta.get("arch_max_ctx")
+    # The vision module needs at least 16384 context for full image token counts.
+    floor = 16384 if module == "multimodal" else _GPU_CTX_STEPS[3]
+    candidates = [g for g in (goal, *_GPU_CTX_STEPS) if floor <= g <= goal and (arch_max is None or g <= arch_max)]
+    if not candidates:
+        # arch_max below the floor — use arch_max itself (best effort).
+        if arch_max is not None:
+            return max(0, arch_max if module == "multimodal" else min(goal, arch_max))
+        return goal
+
+    file_size_mb = meta.get("file_size_mb")
+    if not file_size_mb:
+        # No metadata on disk — keep the goal without VRAM-guessing.
+        return candidates[0]
+    file_mb = float(file_size_mb)
+    moe_factor = 0.95 if meta.get("expert_count") else 1.0
+    mtp_factor = 1.15 if meta.get("supports_mtp") else 1.0
+    model_vram = file_mb * moe_factor * mtp_factor  # full GPU offload (ngl=all)
+
+    mmproj_mb = 0
+    if module == "multimodal":
+        try:
+            from app.utils import get_mmproj_size_mb
+
+            mmproj_mb = get_mmproj_size_mb(model_name)
+        except Exception:
+            mmproj_mb = 0
+
+    kv_per_token = KV_PER_TOKEN_MB.get(module, 0.08)
+    vram_budget = (total_vram_mb or 0) * 0.85
+    ram_budget = (total_ram_mb * 0.70) - 2048
+
+    for ctx in candidates:
+        kv_cache_mb = ctx * kv_per_token
+        vram_full = model_vram + kv_cache_mb + 400 + mmproj_mb
+        if total_vram_mb > 0 and vram_full > vram_budget:
+            continue
+        # Even fully offloaded to RAM the model must leave room for the OS.
+        if total_ram_mb > 0 and file_mb + kv_cache_mb + mmproj_mb > ram_budget:
+            continue
+        return ctx
+    # Nothing fits fully — the model needs partial CPU offload anyway, so
+    # shrinking the KV cache won't make it fit; keep the (arch-capped) goal
+    # and let the usual n_gpu_layers degradation handle the offload.
+    return candidates[0]
+
 
 def get_db_connection():
     """Get a PostgreSQL connection with RealDictCursor (dict-like results)."""
@@ -186,20 +394,63 @@ def _init_postgresql():
     c.execute("CREATE INDEX IF NOT EXISTS idx_documents_index_status ON documents(index_status)")
 
     # Seed default model_configs if not present.
-    # v11.3: multimodal 32768, reasoning 24576 — fits fully on a 16 GB card.
+    # v11.4: CPU mode seeds lightweight models (Qwen3VL-4B + gpt-oss-20b-mxfp4)
+    # with 8192 context; GPU mode seeds Qwen3VL-8B + Qwen3.6-35B.
+    is_cpu = os.getenv("FLAI_PLATFORM", "").strip().lower() == "cpu"
     c.execute("SELECT COUNT(*) as cnt FROM model_configs")
     if c.fetchone()["cnt"] == 0:
-        reasoning_model = "Qwen3.6-35B-A3B-UD-Q2_K_XL"
-        c.execute(
-            """
-            INSERT INTO model_configs (module, model_name, context_length, temperature, top_p, timeout, service_url, repeat_penalty)
-            VALUES
-                ('multimodal', 'Qwen3VL-8B-Instruct-Q4_K_M', 32768, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
-                ('reasoning', %s, 24576, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.15),
-                ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://flai-llamacpp:8033', NULL)
-        """,
-            (reasoning_model,),
-        )
+        if is_cpu:
+            # CPU mode: lightweight vision model + native MXFP4 reasoning
+            c.execute(
+                """
+                INSERT INTO model_configs
+                    (module, model_name, context_length, temperature, top_p, timeout, service_url, repeat_penalty)
+                VALUES
+                    ('multimodal', 'Qwen3VL-4B-Instruct-Q4_K_M', 8192, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
+                    ('reasoning', 'gpt-oss-20b-mxfp4', 8192, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.15),
+                    ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://flai-llamacpp:8033', NULL)
+            """,
+            )
+        else:
+            # GPU mode: full multimodal + Qwen3.6-35B reasoning.
+            # Auto-fit context windows to the available VRAM so small GPUs
+            # don't burn budget on oversized KV caches (see _GPU_CTX_GOALS).
+            reasoning_model = "Qwen3.6-35B-A3B-UD-Q2_K_XL"
+            multimodal_model = "Qwen3VL-8B-Instruct-Q4_K_M"
+            total_vram_mb = _gpu_total_vram_mb()
+            total_ram_mb = _total_ram_mb()
+            mm_goal, rz_goal = _GPU_CTX_FALLBACK
+            for min_vram, mm_g, rz_g in _GPU_CTX_GOALS:
+                if total_vram_mb >= min_vram:
+                    mm_goal, rz_goal = mm_g, rz_g
+                    break
+            mm_ctx = _autofit_context(
+                "multimodal",
+                multimodal_model,
+                mm_goal,
+                total_vram_mb,
+                total_ram_mb,
+                _read_gguf_meta(multimodal_model),
+            )
+            rz_ctx = _autofit_context(
+                "reasoning",
+                reasoning_model,
+                rz_goal,
+                total_vram_mb,
+                total_ram_mb,
+                _read_gguf_meta(reasoning_model),
+            )
+            c.execute(
+                """
+                INSERT INTO model_configs
+                    (module, model_name, context_length, temperature, top_p, timeout, service_url, repeat_penalty)
+                VALUES
+                    ('multimodal', %s, %s, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.1),
+                    ('reasoning', %s, %s, 0.7, 0.9, 120, 'http://flai-llamacpp:8033', 1.15),
+                    ('embedding', 'bge-m3-Q8_0', 512, NULL, NULL, 120, 'http://flai-llamacpp:8033', NULL)
+            """,
+                (multimodal_model, mm_ctx, reasoning_model, rz_ctx),
+            )
 
     # model_vram_estimates — stores computed estimates and actual VRAM measurements per model
     c.execute("""
@@ -358,27 +609,38 @@ def _init_postgresql():
     # the codebase can never fall back to a chat-only configuration.
     c.execute("DELETE FROM model_configs WHERE module = 'chat'")
 
-    # Update multimodal model context_length: 8192→16384
-    # (8192 too small for vision token counts from Qwen3VL)
-    c.execute("""
-        UPDATE model_configs
-        SET context_length = 16384
-        WHERE module = 'multimodal' AND context_length = 8192
-    """)
-
-    # v11.3: enlarge context windows to use the available VRAM headroom.
-    # RTX 5060 Ti 16GB: multimodal 32768 fits fully on GPU (-1 layers);
-    # reasoning 24576 fits fully; 32768 would force partial CPU offload.
-    c.execute("""
-        UPDATE model_configs
-        SET context_length = 32768
-        WHERE module = 'multimodal' AND context_length = 16384
-    """)
-    c.execute("""
-        UPDATE model_configs
-        SET context_length = 24576
-        WHERE module = 'reasoning' AND context_length = 16384
-    """)
+    # Context migrations — only on GPU. On CPU, the seed values (8192) are kept
+    # so the lightweight models don't burn RAM with oversized KV cache.
+    # v11.4: bumps are VRAM-aware — capped by the same auto-fit logic as the
+    # seed so existing deployments on smaller GPUs aren't pushed to large
+    # windows that would force partial offload.
+    if not is_cpu:
+        total_vram_mb = _gpu_total_vram_mb()
+        total_ram_mb = _total_ram_mb()
+        for module, goal_idx in (("multimodal", 0), ("reasoning", 1)):
+            c.execute("SELECT model_name, context_length FROM model_configs WHERE module = %s", (module,))
+            row = c.fetchone()
+            if not row or not row["model_name"]:
+                continue
+            cur_ctx = row["context_length"] or 0
+            goal = _GPU_CTX_FALLBACK[goal_idx]
+            for min_vram, *goals in _GPU_CTX_GOALS:
+                if total_vram_mb >= min_vram:
+                    goal = goals[goal_idx]
+                    break
+            target = _autofit_context(
+                module,
+                row["model_name"],
+                goal,
+                total_vram_mb,
+                total_ram_mb,
+                _read_gguf_meta(row["model_name"]),
+            )
+            if target > cur_ctx:
+                c.execute(
+                    "UPDATE model_configs SET context_length = %s WHERE module = %s",
+                    (target, module),
+                )
 
     conn.commit()
     conn.close()

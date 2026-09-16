@@ -263,6 +263,9 @@ const STAGE_LABEL_KEYS = {
     searching_documents: 'stage_searching_documents',
     searching_web: 'stage_searching_web',
     capturing_snapshot: 'stage_capturing_snapshot',
+    getting_time: 'stage_getting_time',
+    calculating: 'stage_calculating',
+    calculating_date: 'stage_calculating_date',
 };
 
 // Counter stages reuse the base stage translation with a "%s" placeholder.

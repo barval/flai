@@ -240,11 +240,13 @@ The CPU column in the table below was measured **live on the previous 12-core CP
 
 | Host CUDA driver | Images used | Notes |
 |------------------|-------------|-------|
-| ≥ 13.0 | CUDA 13.0.1 + `llama-swap:cuda13` | Standard deployment |
+| ≥ 13.0 | CUDA 13.0.1 + `llama-swap:v255-cuda13-b10991` | Standard deployment |
 | 12.8 – 12.9 | CUDA 12.8.1 (Ubuntu 24.04) | Standard deployment |
 | 12.6 – 12.7 | CUDA 12.6.3 (Ubuntu 24.04) | Non-standard: `NVIDIA_DISABLE_REQUIRE=1` for llama-swap |
 | 12.4 – 12.5 | CUDA 12.4.1 (Ubuntu 22.04) | Non-standard: `NVIDIA_DISABLE_REQUIRE=1` for llama-swap |
 | **12.2 – 12.3 (minimum)** | CUDA 12.2.2 (Ubuntu 22.04) | Non-standard: `NVIDIA_DISABLE_REQUIRE=1` for all GPU services |
+
+> ℹ️ **llama-swap is pinned** (`v255-cuda-b10991` / `v255-cuda13-b10991` / `v255-cpu-b10991`). Upstream changed the config format in v243 (`models` must be a map for the macro engine) — a floating `:cuda` tag then broke fresh deployments with `cannot unmarshal !!seq into map[string]config.modelMacroConfig`. Upgrade the pin deliberately.
 
 > ℹ️ **How it works:** Pre-built GPU images (llama-swap, PyTorch, CUDA toolkit) carry an `NVIDIA_REQUIRE_CUDA` label for their bundled toolkit version. When the host driver is older, the NVIDIA Container Toolkit rejects the container before it starts. The deploy script sets `NVIDIA_DISABLE_REQUIRE=1` to waive this label check. The actual binaries work because CUDA has minor-version compatibility within each major release — all 12.x runtimes load on any 12.x driver. Verified by users on RTX 3090 + CUDA 12.2 (full stack: chat, reasoning, image and video generation).
 

@@ -33,18 +33,19 @@ Selected by `LLAMACP_BACKEND` env var (default: `llama-swap`).
 `app/queue.py:RedisRequestQueue` — two workers with strict GPU serialization.
 
 ### Fast Worker (mostly CPU; embedding is GPU-light)
-- Router (chat model)
+- Router classification (multimodal model, always resident)
 - Text processing
 - Audio (TTS/STT)
 - **RAG search only** (embedding + Qdrant, ~500 MB)
 
-The chat model (~2 GiB) stays hot in VRAM permanently.
+All slow-worker GPU tasks are requeued there — the fast worker never runs generation.
 
 ### Slow Worker (GPU-heavy)
-- Multimodal (Qwen3VL-8B)
+- Multimodal (Qwen3VL-8B on 12GB+ GPU tiers, Qwen3VL-4B on 8 GB and CPU)
+- Text chat / reasoning answers
 - SD (Stable Diffusion)
 - LTX-Video
-- **Reasoning** (16GB+: gpt-oss-20b MXFP4 on Blackwell / Q4_K_M on other, 12/8GB: gemma-4-E4B)
+- **Reasoning** (Qwen3.6-35B-A3B-UD on GPU tiers; gpt-oss-20b-mxfp4 native MXFP4 in CPU-only mode)
 - **RAG generation** (via reasoning model)
 
 Strictly sequential — only one GPU task runs at a time.
@@ -86,34 +87,33 @@ PostgreSQL only via `app/database.py:get_db()` context manager (psycopg2 RealDic
 
 ## Model Lifecycle on a Single Consumer GPU
 
-All llama.cpp models share a single `llm_fast` group with `swap: true` in llama-swap. At most ONE model is loaded in VRAM at any time.
+## Model Lifecycle on a Single Consumer GPU
+
+All llama.cpp models share a single group with `swap: true` in llama-swap. At most ONE model is loaded in VRAM at any time.
 
 **TTLs**:
-- `chat` = 0 (never unload — stays hot permanently, only swapped when another model needs VRAM)
-- `multimodal`, `reasoning`, `embedding` = 1s (unload 1 second after response)
+- `multimodal` = 0 (never unload — stays hot permanently, only swapped when another model needs VRAM)
+- `reasoning`, `embedding` = 1s (unload 1 second after response)
 
-Chat model preloaded at startup via `hooks.on_startup.preload: ["chat"]`. After every non-chat task, chat model is reloaded in a background thread (`_preload_chat_model_background()`) to eliminate cold starts.
+Multimodal model preloaded at startup via `hooks.on_startup.preload: ["multimodal"]`. After a reasoning task, `_preload_multimodal_sync()` reloads multimodal synchronously before responding (no cold start on the next request).
 
 SD and LTX-Video use separate GPU contexts.
 
 ### Sequence of Models
 
-1. **Chat (Qwen3-4B-Instruct-2507, ~2 GiB)** — preloaded at startup, TTL=0. Default model for router and direct responses. MXFP4 variant (~2.0 GB) on Blackwell GPUs (native FP4), Q4_0 variant (~2.4 GB) on other architectures. Swapped out on demand. After other model finishes (TTL=1s → unloaded), `_preload_chat_model_background()` reloads chat via tiny completion request in a daemon thread.
+1. **Multimodal (Qwen3VL-8B, ~5.9 GiB incl. mmproj)** — always resident (TTL=0, preloaded at startup). Serves ALL three roles: LLM router + text chat + vision (image analysis and editing). On an 8 GB GPU tier and in CPU-only mode the lighter Qwen3VL-4B (~2.5 GB + mmproj) is seeded instead. Context length is auto-fit at deployment (`_autofit_context()`, 8192–32768 depending on the GPU/RAM tier, 16384 floor to accommodate vision token counts from dynamic image tiling). Swapped out on demand (e.g. for reasoning).
 
-2. **Multimodal (Qwen3VL-8B, 5 GiB)** — loaded on demand (camera, image analysis, video param gen). TTL=1s → **unloaded 1 second** after the response is sent. Context length 16384 to accommodate vision token counts from dynamic image tiling.
+2. **Reasoning (Qwen3.6-35B-A3B-UD-Q2_K_XL on GPU tiers; gpt-oss-20b-mxfp4 in CPU-only mode)** — loaded on demand for complex queries. MoE 35B (~3B active); 8 GB GPU tiers use partial CPU offload. Context length is auto-fit at deployment; TTL=1s → unloaded 1 second after response. After it finishes, `_preload_multimodal_sync()` reloads the multimodal model synchronously.
 
-3. **Reasoning (16GB+: gpt-oss-20b, 12/8GB: gemma-4-E4B Q4_0)** — loaded on demand for complex queries. The 16GB+ tier uses `gpt-oss-20b-mxfp4` on Blackwell GPUs (native FP4) or `gpt-oss-20b-Q4_K_M` on other architectures. TTL=1s → unloaded 1 second after response.
+3. **Embedding (bge-m3 Q8_0, 0.5 GiB)** — runs on the fast worker (RAG search only). TTL=1s → unloaded 1 second after use.
 
-4. **Embedding (bge-m3 Q8_0, 0.5 GiB)** — TTL=1s → unloaded 1 second after use.
-
-5. **SD / LTX-Video** — before generation, llama-swap is asked to unload all models via `POST /api/models/unload` (implemented in `resource_manager.py:unload_llamacpp_model()`). This frees ~3-4 GiB VRAM (chat). LTX-Video container is **always** restarted after video generation (`_force_restart_ltx_video()`, no rate-limiting) to free CUDA context (~3 GB). Chat model is then reloaded via `_preload_chat_model_background()`.
+4. **SD / LTX-Video** — before generation, llama-swap is asked to unload all models via `POST /api/models/unload` (implemented in `resource_manager.py:unload_llamacpp_model()`). This frees ~6 GiB VRAM (multimodal + mmproj). LTX-Video container is **always** restarted after video generation (`_force_restart_ltx_video()`, no rate-limiting) to free CUDA context (~3 GB). Multimodal is then reloaded via `_preload_multimodal_sync()`.
 
 ### Example: Video Generation Request
-router (chat) → [-VIDEO-] → multimodal loads (chat swapped out)
-→ multimodal generates video params → multimodal unloads (TTL=1s)
-→ video pipeline loads (full VRAM available) → video generated
+router (multimodal, resident) → [-VIDEO-] → multimodal generates video params (still resident)
+→ video pipeline loads (multimodal swapped out / unloaded first) → video generated
 → container restart (CUDA context freed)
-→ _preload_chat_model_background() → chat reloaded
+→ _preload_multimodal_sync() → multimodal reloaded
 → next user request is instant
 
 ### CPU-only mode: Video Parameters
@@ -133,12 +133,11 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 - **Daemon mode** (`slm serve start`) keeps embedding model in memory permanently.
 - `services/superlocalmemory/slm_http.py` proxies requests to daemon at `localhost:8765` (no subprocess per call).
 - **Per-user isolation**: recall reads directly from the user's private SQLite table (`atomic_facts`), not from the daemon's shared database.
-- **Chat model** uses fast direct SQLite read (`ORDER BY created_at DESC`).
-- **Reasoning model** uses full semantic search via subprocess `slm recall` (falls back to direct SQLite if no embeddings).
+- **Facts injection** — `_get_context_for_model()` in `modules/base.py` fetches SLM facts first (single `slm.recall(...)` call with `limit × 2`), splits them by `fact_type` (session_specific vs general), measures the real token cost, then fills the remaining budget with conversation history (budget order: query → RAG context → SLM facts → history; when the budget is still exceeded, RAG+SLM is returned without history).
 - **Remember** saves to both daemon (shared) and per-user DB (async subprocess).
 - **Camera router parser**: uses text after `[-CAMERA-]` marker (room code), NOT `original_query` — preserves compatibility with Russian declensions.
 - **Router retry on JSON error** — `process_message()` retries once if the router returns a garbled `{"error": ...}` response.
-- SLM facts are injected into prompt context for BOTH chat and reasoning models.
+- SLM facts are injected into prompt context for BOTH multimodal and reasoning models.
 - **SLM lazy availability re-check** — `_get_context_for_model()` always calls `slm.get_context()` (no `slm.available` check).
 - **SLM dedup** — `_recall_from_user_db()` deduplicates facts by content (score `limit × 3`, returns unique). Configurable via `SLM_RECALL_LIMIT` (default 7).
 - **Fact extraction** — background thread (`_extract_facts_bg()`) runs CPU-only after chat responses >20 chars. Extracts facts from the **user's query** (not the model's response) using rule-based pattern matching (`app/slm_rules.py`) — no LLM, no GPU lock. Model self-referential responses ("How can I help?", "Here is your answer") and hallucinated news are filtered out by `_MODEL_RESPONSE_PATTERNS` and `_MODEL_CONTENT_PATTERNS`. Semantic deduplication via `/similarity` endpoint before saving. Wrapped in try/except — failures are logged but never surface to users.

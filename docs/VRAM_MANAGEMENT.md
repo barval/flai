@@ -94,6 +94,18 @@ TIER_RAM_HEADROOM_MB = 2048   # 2GB reserved for OS + other processes
 
 `arch_max_ctx` from `gguf_models_cache.context_length` is the architectural cap (Qwen3 = 262144, gpt-oss = 131072). Upper limit is dynamic, no hardcoded 32768.
 
+### Auto-fit Context Window at Deployment (v11.4)
+
+The GPU seed config (`init_db()` in `app/database.py`) no longer hardcodes context windows. `_autofit_context()` reads the actual GGUF metadata straight from disk (`_read_gguf_meta()`: `arch_max_ctx`, file size, `block_count`, `expert_count`, `supports_mtp`, plus the mmproj size via `get_mmproj_size_mb()`) and the measured system RAM / GPU VRAM, then picks the largest tier goal that fits:
+
+- Tier goals (`_GPU_CTX_GOALS`): 24 GB VRAM → 32768/32768, 16 GB → 32768/24576, 8–12 GB → 16384/16384 (multimodal/reasoning); unknown VRAM → `_GPU_CTX_FALLBACK` 32768/24576.
+- Fit check reuses the resource-manager math: `model_body = file_size × moe_factor(0.95 if expert_count) × mtp_factor(1.15 if supports_mtp)`, RAG-less `kv = ctx × KV_PER_TOKEN_MB`, overhead 400 MB, mmproj only for multimodal; VRAM budget = 85% of total, RAM budget = 70% of total − 2048 MB.
+- If the goal doesn't fit, the window steps down through `_GPU_CTX_STEPS = (32768, 24576, 16384, 8192)`. The multimodal window has a 16384 floor (vision token counts). If even the smallest step cannot fit fully (the model body is already too large for VRAM — i.e. the model needs CPU offload at any window), the goal window is returned unchanged and the existing `n_gpu_layers` degradation handles the offload.
+- Context migrations in `init_db()` are now VRAM-aware: for GPU modules the migration only raises a window when the auto-fit target is larger than the current `context_length`, so a small GPU never gets a window it cannot hold.
+- CPU mode seeds 8192 directly; the reasoning window feeds `--reasoning-budget max(1024, ctx_size × 0.4)` in `app/llama_swap_config.py`.
+
+Verified against tier/hardware combinations in `tests/test_autofit_context.py` (16 tests).
+
 ## 5-Layer Protection
   1. **UI hint** (`app/static/js/admin-models.js:updateMemoryEstimation`): on model/ctx change, fetches `/admin/api/model-estimate` and displays colored tier indicator. Save button is **disabled** when `can_save=false`.
   2. **Server validation** (`app/routes/admin.py:update_model_config`): before saving, calls `_classify_model_fit()`. If `tier=impossible` or `tier=unknown` → returns 400 with `tier_message`. Defense in depth (UI is bypassable).
@@ -127,18 +139,17 @@ TIER_RAM_HEADROOM_MB = 2048   # 2GB reserved for OS + other processes
 ```
 
 ### Fallback Models
-Used by dry_load + watchdog. Architecture-aware: MXFP4 on Blackwell GPUs (native FP4), Q4_0/Q4_K_M on others.
+Used by dry_load + watchdog (`app/tasks/dry_load.py:_FALLBACK_MODELS`):
 
 ```python
-FALLBACK_MODELS()  # returns:
-# Blackwell GPUs (RTX 5060+):
-#   {"chat": "Qwen3-4B-Instruct-2507-MXFP4_MOE",
-#    "reasoning": "gpt-oss-20b-mxfp4", ...}
-# Other GPUs (Ampere, Ada Lovelace):
-#   {"chat": "Qwen3-4B-Instruct-2507-Q4_0",
-#    "reasoning": "gpt-oss-20b-Q4_K_M", ...}
-# Both tiers use the same multimodal / embedding models.
+_FALLBACK_MODELS = {
+    "reasoning": "Qwen3.6-35B-A3B-UD-Q2_K_XL",
+    "multimodal": "Qwen3VL-8B-Instruct-Q4_K_M",
+    "embedding": "bge-m3-Q8_0",
+}
 ```
+
+On an 8 GB GPU tier and CPU-only mode the seeded multimodal model is the lighter Qwen3VL-4B; on CPU-only mode the reasoning model is gpt-oss-20b-mxfp4.
 
 ### GGUF Fallback Reading
 `_classify_model_fit()` and `model_vram_estimate()` in `app/routes/admin.py`: if model not in `gguf_models_cache`, reads `block_count` and `expert_count` directly from GGUF file via `gguf.GGUFReader`. Detects MTP via `{arch}.nextn_predict_layers`.
@@ -151,7 +162,7 @@ Before any multimodal/SD/Video call, blocks until at least 6 GiB VRAM is free. P
 `_resolve_use_gpu()` and `ensure_vram_for_llm()` call `_poll_vram()` synchronously before reading `available_vram_mb`. After every `unload_llamacpp_model()`, a wait loop verifies VRAM is actually freed (up to 30s).
 
 `ensure_vram_for_reasoning`
-Unloads llama.cpp models and waits (up to 60s) for SD/Video to free VRAM before loading gemma-4-E4B (~4.8 GiB).
+Unloads llama.cpp models and waits (up to 60s) for SD/Video to free VRAM before loading the reasoning model (Qwen3.6-35B-A3B, ~11.4 GiB on GPU tiers).
 
 ### VRAM Timeout Varies by Context
   - `ensure_vram_for()` (resource_manager.py) — 15-second wait
@@ -244,7 +255,7 @@ watch -n 1 nvidia-smi          # Real-time VRAM tracking
 docker logs flai-web --tail 50 | grep GPU  # Log GPU-related events
 grep "RAG\|reasoning\|router" docker/logs/flai-web.log  # Debug RAG flow
 docker logs flai-web --tail 100 | grep -E "watchdog|dry_load"  # Model protection events
-curl -s "http://localhost:5000/admin/api/model-estimate?model=Qwen3-4B-Instruct-2507-Q4_0.gguf&module=chat&ctx_size=8192" | jq '{tier, can_save, ngl_recommended, tier_message}'
+curl -s "http://localhost:5000/admin/api/model-estimate?model=Qwen3VL-8B-Instruct-Q4_K_M.gguf&module=multimodal&ctx_size=32768" | jq '{tier, can_save, ngl_recommended, tier_message}'
 ```
 
 ## Configuration

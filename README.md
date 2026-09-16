@@ -159,14 +159,14 @@ FLAI ships with two deployment modes:
 | **CPU** | 4+ cores | 6+ cores | 6+ cores | 8+ cores (12 recommended) |
 | **Storage** | 60 GB | 80+ GB SSD | 100+ GB SSD NVMe | 100+ GB SSD NVMe |
 
-> **RAM budget (how it was calculated):** in GPU mode only *one* llama.cpp model lives in memory at a time (llama-swap unloads the previous one), so system RAM holds the operating system + PostgreSQL/Redis + the web app (~6–8 GB) plus a safety margin. Reasoning on an 8 GB GPU requires partial CPU offload of layer weights, which adds ~10 GB of RAM for the in-RAM layers. Video generation runs in a separate container and needs its own headroom — on GPU that is modest, on CPU it dominates:
+> **RAM budget (how it was calculated):** in GPU mode only *one* llama.cpp model lives in memory at a time (llama-swap unloads the previous one), so system RAM holds the operating system + PostgreSQL/Redis + the web app (~6–8 GB) plus a safety margin. Reasoning on an 8 GB GPU requires partial CPU offload of layer weights, which adds ~10 GB of RAM for the in-RAM layers. **CPU-only mode (v11.4) uses lightweight models:** gpt-oss-20b-mxfp4 (native MXFP4, ~11.3 GB file, CPU-friendly per llama.cpp) for reasoning and Qwen3VL-4B (~2.5 GB + mmproj) for multimodal — the largest resident model on CPU is ~11 GB. Video generation runs in a separate container and needs its own headroom — on GPU that is modest, on CPU it dominates:
 >
 > | Mode | RAM without video | RAM with video generation |
 > |------|-------------------|---------------------------|
 > | 8 GB GPU | 16–24 GB | 24–32 GB |
 > | 12 GB GPU | 24–32 GB | 32–40 GB |
 > | 16 GB GPU | 24–32 GB | 32–48 GB |
-> | CPU-only | 24–32 GB | 48 GB (64 GB for 240-frame clips) |
+> | CPU-only | 16–24 GB | 40 GB (64 GB for 240-frame clips) |
 >
 > Voice features are opt-in (`--with-voice-piper` / `--with-voice-kokoro`): Whisper ASR adds ~1 GB RAM, plus the chosen backend — Piper up to ~0.5 GB (voices lazy-loaded per use) or Kokoro ~1.6 GB idle and up to ~6 GB during a Russian phrase (its 6 GB container limit). The CPU-only video numbers assume the LTX-Video container may use up to 64 GB (its memory cap in `docker-compose.cpu.yml`); the pre-flight planner gates generation on the *smaller* of host free RAM and that cap, and on a wall-clock budget (`LTX_VIDEO_CPU_TIME_BUDGET_S`, default 85% of `LTX_VIDEO_TIMEOUT`) — a 768×512×240 clip (~53 GB peak) needs a 64 GB host **and** would take hours on CPU, so it is auto-degraded to a size that finishes within the budget.
 
@@ -174,8 +174,8 @@ FLAI ships with two deployment modes:
 
 | Feature | 8 GB | 12 GB | 16+ GB | CPU-only |
 |---------|------|-------|--------|----------|
-| Chat + Multimodal (Qwen3VL) | ✅ Qwen3VL-8B (~5.9 GB incl. mmproj) | ✅ Qwen3VL-8B | ✅ Qwen3VL-8B | ⚠️ ~3.7 tok/s |
-| Reasoning | ⚠️ Qwen3.6-35B partial offload (~15–20 tok/s) | ✅ Qwen3.6-35B-A3B (~70–90 tok/s) | ✅ Qwen3.6-35B-A3B (106 tok/s) | ⚠️ ~9.5 tok/s |
+| Chat + Multimodal (Qwen3VL) | ✅ Qwen3VL-4B (light, ~2.5 GB) | ✅ Qwen3VL-8B (~5.9 GB incl. mmproj) | ✅ Qwen3VL-8B | ✅ Qwen3VL-4B (light) |
+| Reasoning | ⚠️ Qwen3.6-35B partial offload (~15–20 tok/s) | ✅ Qwen3.6-35B-A3B (~70–90 tok/s) | ✅ Qwen3.6-35B-A3B (106 tok/s) | ✅ gpt-oss-20b-mxfp4 (native MXFP4) |
 | Image gen (SD) | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 | ⚠️ slower |
 | Image edit (Flux) | ✅ up to 768px long side | ✅ up to 1024px long side | ✅ up to 1024px long side | ⚠️ slower |
 | Video gen (LTX-Video) | ⚠️ 512×512×120 frames | ✅ 768×512×240 frames | ✅ 768×512×240 frames | ⚠️ adaptive memory cascade (384×256×120 → 256×192×57) |
@@ -204,13 +204,17 @@ All numbers are **synthetic `llama-bench` measurements** (llama.cpp build 10603)
 
 > **Current stack: CPU vs GPU (the three models FLAI uses by default).**
 
-The CPU column was measured **live on the current server** (12-core CPU-only deployment, llama.cpp CPU builds, `n_gpu_layers=0`). The 16 GB column was measured on an RTX 5060 Ti 16 GB (Blackwell, 448 GB/s). The 8/12 GB columns are **estimates** for typical cards of that class — real throughput scales with the card's memory bandwidth and generation, so treat them as guidance, not guarantees.
+v11.4 splits the stack by mode: **GPU mode** uses the full-quality models below; **CPU-only mode** uses lightweight replacements — Qwen3VL-4B (multimodal) and gpt-oss-20b-mxfp4 (reasoning); the embedding model is shared.
 
-| Model | Role | File | CPU 12C (measured) | GPU 8 GB* | GPU 12 GB* | GPU 16 GB (measured) |
+The CPU column in the table below was measured **live on the previous 12-core CPU-only stack (Qwen3VL-8B + Qwen3.6-35B)** — the v11.4 CPU models are faster because they are smaller (Qwen3VL-4B) or have CPU-friendly MXFP4 kernels (gpt-oss-20b). The 16 GB column was measured on an RTX 5060 Ti 16 GB (Blackwell, 448 GB/s). The 8/12 GB columns are **estimates** for typical cards of that class — real throughput scales with the card's memory bandwidth and generation, so treat them as guidance, not guarantees.
+
+| Model | Role | File | CPU 12C (prev stack, measured) | GPU 8 GB* | GPU 12 GB* | GPU 16 GB (measured) |
 |-------|------|------|--------------------|-----------|-----------|----------------------|
-| **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (chat/router/vision) | 4.7 GB + mmproj 1.1 GB | **3.7 tok/s** (generation) | 25–35 tok/s | 45–60 tok/s | **73.1 tok/s** |
-| **Qwen3.6-35B-A3B-UD-Q2_K_XL** | Reasoning | 12 GB | **9.5 tok/s** (generation) | 15–20 tok/s (partial CPU offload) | 70–90 tok/s | **106.2 tok/s** |
+| **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (chat/router/vision) | 4.7 GB + mmproj 1.1 GB | **3.7 tok/s** (Qwen3VL-4B on v11.4 CPU: faster) | 25–35 tok/s | 45–60 tok/s | **73.1 tok/s** |
+| **Qwen3.6-35B-A3B-UD-Q2_K_XL** | Reasoning | 12 GB | **9.5 tok/s** (gpt-oss-20b-mxfp4 on v11.4 CPU) | 15–20 tok/s (partial CPU offload) | 70–90 tok/s | **106.2 tok/s** |
 | **bge-m3-Q8_0** | Embedding | 0.6 GB | **~1020 tok/s** (warm, 20 ms/doc) | 1.5–2.5 k tok/s | 2.5–4 k tok/s | ~4 k tok/s |
+
+> **Context windows (v11.4 auto-fit):** at deployment the seed config automatically fits the context window to the hardware from the GGUF metadata and measured RAM/VRAM — multimodal 32768 on 24/16 GB tiers, 16384 on 8 GB, 8192 in CPU mode (see `app/database.py:_autofit_context()`); reasoning 32768/24576 on 24/16 GB, 16384 on 8 GB, 8192 CPU. The reasoning model's `--reasoning-budget` scales with the fitted window. Multimodal needs ≥16384 for vision token counts.
 
 > **Read the CPU row as follows:** a typical chat answer (~200 tokens) from the multimodal model takes ~55 s on CPU vs ~3 s on a 16 GB GPU; a reasoning answer takes ~21 s on CPU vs ~2 s on GPU. Embedding/vector indexing is the least affected (bge-m3 is small and fast even on CPU).
 
@@ -660,7 +664,7 @@ services/llamacpp/models/
 
 | Parameter | Multimodal | Reasoning | Embedding |
 |-----------|------------|-----------|-----------|
-| Context Length | 32768 | 24576 | 512 |
+| Context Length | 32768 (auto-fit: 16384 on 8 GB, 8192 CPU) | 24576 (auto-fit: 16384 on 8 GB, 8192 CPU) | 512 |
 | Temperature | 0.7 | 0.7 | – |
 | Top P | 0.9 | 0.9 | – |
 | Repeat Penalty | 1.1 | 1.15 | – |
@@ -674,11 +678,11 @@ services/llamacpp/models/
 
 | Component | Default | Recommended Alternative | Notes |
 |-----------|---------|------------------------|-------|
-| **Chat/router/vision** | Qwen3VL-8B Q4_K_M (~5.5 GB) | — | Single multimodal model serves all three roles; always resident. Requires subdirectory with `mmproj-*.gguf` |
-| **Reasoning** | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | gpt-oss-20b mxfp4/Q4_K_M (~12 GB) | MoE architecture: ~3B active params, ~106 tok/s. Current reasoning model on all tiers; 8 GB uses partial CPU offload |
+| **Chat/router/vision** | Qwen3VL-8B Q4_K_M (~5.5 GB) | Qwen3VL-4B Q4_K_M (~2.5 GB, 8 GB GPU & CPU-only) | Single multimodal model serves all three roles; always resident. Requires subdirectory with `mmproj-*.gguf` |
+| **Reasoning** | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | gpt-oss-20b-mxfp4 (~11.3 GB, default in CPU-only mode) | MoE architecture: ~3B active params, ~106 tok/s. GPU mode: Qwen3.6-35B on all tiers (8 GB uses partial CPU offload). CPU-only mode: gpt-oss-20b-mxfp4 (native MXFP4, CPU-friendly) |
 | **Embedding** | bge-m3 Q8_0 (~1.5 GB) | — | Single model for all tiers |
 
-> **Context windows:** Defaults are 32768 for the multimodal model and 24576 for reasoning (both fit fully on the GPU at current quantization). Multimodal needs ≥16384 for vision token counts. The admin panel enforces the bounds (512 … GGUF architecture max) and — also for context-only changes — fit-checks every save against the RAM/VRAM budget, rejecting values that cannot fit, then plans a background dry-load of the new config and automatically rolls the change back (restoring `context_length`) if the backend fails to load it.
+> **Context windows:** defaults are auto-fitted at deployment (`app/database.py:_autofit_context`) — 32768 multimodal and 24576 reasoning on 16+ GB tiers (both fit fully on the GPU at current quantization), 16384 on 8 GB, 8192 in CPU-only mode. The admin panel enforces the bounds (512 … GGUF architecture max) and — also for context-only changes — fit-checks every save against the RAM/VRAM budget, rejecting values that cannot fit, then plans a background dry-load of the new config and automatically rolls the change back (restoring `context_length`) if the backend fails to load it.
 
 ---
 
@@ -1046,6 +1050,7 @@ curl http://localhost:5000/metrics
 | Configuration | Approx. Download |
 |---------------|-----------------|
 | Minimal (Qwen3VL-4B + Qwen3.6-35B-A3B + bge-m3, 8 GB tier) | ~16 GB |
+| CPU-only (Qwen3VL-4B + gpt-oss-20b-mxfp4 + bge-m3) | ~15 GB |
 | Full LLM stack (Qwen3VL-8B + Qwen3.6-35B-A3B + bge-m3) | ~20 GB |
 | + Image generation | ~29 GB |
 | + Image editing | ~32 GB |

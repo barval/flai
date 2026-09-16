@@ -2812,6 +2812,17 @@ class RedisRequestQueue:
             self._publish_stream_event(task, "tool_call", {"tool_name": tool_name, "arguments": arguments})
             self.logger.info(f"{log_label}: {tool_name}({arguments})")
 
+            stage = {
+                "get_current_time": "getting_time",
+                "calculator": "calculating",
+                "time_calc": "calculating_date",
+                "web_search": "searching_web",
+                "rag_search": "searching_documents",
+                "camera_snapshot": "capturing_snapshot",
+            }.get(tool_name)
+            if stage:
+                self._publish_stream_event(task, "task_progress", {"stage": stage})
+
             tool_context = {"app": self.app, "user_id": user_id, "lang": lang}
             tool_result = execute_tool(tool_name, arguments, tool_context)
             last_tool_result = tool_result

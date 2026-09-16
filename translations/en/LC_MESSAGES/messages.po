@@ -1737,19 +1737,32 @@ msgid "Searching the web..."
 msgstr "🌐 Searching the web..."
 
 #: app/templates/chat.html:224
+#: app/templates/chat.html:225
 #, python-format
 msgid "Found %s results, preparing the answer..."
 msgstr "Found %s results, preparing the answer..."
 
-#: app/templates/chat.html:225
+#: app/templates/chat.html:226
+msgid "Getting time..."
+msgstr "🕐 Getting time..."
+
+#: app/templates/chat.html:227
+msgid "Calculating..."
+msgstr "🔢 Calculating..."
+
+#: app/templates/chat.html:228
+msgid "Calculating date..."
+msgstr "📅 Calculating date..."
+
+#: app/templates/chat.html:229
 msgid "s"
 msgstr "s"
 
-#: app/templates/chat.html:226
+#: app/templates/chat.html:230
 msgid "Capturing snapshot..."
 msgstr "📹 Capturing snapshot..."
 
-#: app/templates/chat.html:227
+#: app/templates/chat.html:231
 msgid "Step"
 msgstr "Step"
 

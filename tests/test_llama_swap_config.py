@@ -320,6 +320,22 @@ class TestBuildCmd:
 
     @patch("app.resource_manager.get_resource_manager")
     @patch("app.llama_swap_config.get_model_config")
+    def test_reasoning_gpt_oss_uses_auto_format(self, mock_get_config, mock_get_rm):
+        mock_get_config.return_value = {"context_length": 8192}
+        mock_rm = MagicMock()
+        mock_rm.compute_llamacpp_config.return_value = {
+            "flash_attn": False,
+            "n_gpu_layers": -1,
+            "offload_kqv": False,
+        }
+        mock_get_rm.return_value = mock_rm
+        gen = LlamaSwapConfigGenerator()
+        cmd = gen.build_cmd("reasoning", "/models/gpt-oss-20b-mxfp4.gguf")
+        assert "--reasoning_format auto" in cmd
+        assert "--reasoning-budget 3276" in cmd
+
+    @patch("app.resource_manager.get_resource_manager")
+    @patch("app.llama_swap_config.get_model_config")
     def test_reasoning_cmd_includes_budget(self, mock_get_config, mock_get_rm):
         mock_get_config.return_value = {"context_length": 8192}
         mock_rm = MagicMock()

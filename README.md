@@ -88,15 +88,16 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v11.3
+### What's New in v11.4
 
 | Feature | Notes |
 |---------|-------|
-| **v11.3 — context & retrieval quality** | In development: smarter context-budgeting for message history, higher-quality RAG and web search, and tighter SLM long-term memory — the goal is sharp retrieval results and long chat sessions that keep the thread without losing the meaning of earlier exchanges. |
-| **Reasoning token budget enforced** | llama-server build 10603 ignores the per-request `reasoning_budget` field, so the reasoning model's server command now caps thinking via the CLI flag `--reasoning-budget max(1024, ctx*0.4)` — no more context burned entirely on reasoning with no answer. |
-| **Streaming repetition-loop detector** | Streamed reasoning answers pass through a loop guard (`_LoopGuard`, hold-back 1500 chars): detected textual loops are cut mid-stream instead of flooding the chat; end-of-stream tails are flushed in a fixed order so short answers are never dropped. A server-side safety net catches loops missed in streaming. |
-| **Search date normalization** | Relative date words in search queries («вчера», «сегодня», English equivalents) are resolved to absolute dates in the user's timezone before hitting SearXNG — engines return dated articles instead of generic news-section landing pages. |
+| **v11.4 — resilient streaming & informative UI** | Everything shipped after the v11.3 release: streaming robustness (loop detector, reasoning budget cap), smarter search (date normalization), and a fully informative chat progress line. |
 | **Informative progress stages** | The chat shows what actually happens between request and answer: «🔍 Analyzing request... → 📚/🌐 Searching... (N s) → Found X results... → 🧠 Loading reasoning model... → 🤔 Thinking... (N s) → ⚡ Generating». The thinking stage is driven by a new backend `status_callback` fired when the model is loaded and generation starts (previously the whole silent thinking phase showed as "Loading reasoning model..."). Each phase ticks elapsed seconds. |
+| **Streaming repetition-loop detector** | Streamed reasoning answers pass through a loop guard (`_LoopGuard`, hold-back 1500 chars): detected textual loops are cut mid-stream instead of flooding the chat; end-of-stream tails are flushed in a fixed order so short answers are never dropped. A server-side safety net catches loops missed in streaming. |
+| **Reasoning token budget enforced** | llama-server build 10603 ignores the per-request `reasoning_budget` field, so the reasoning model's server command now caps thinking via the CLI flag `--reasoning-budget max(1024, ctx*0.4)` — no more context burned entirely on reasoning with no answer. |
+| **Search date normalization** | Relative date words in search queries («вчера», «сегодня», English equivalents) are resolved to absolute dates in the user's timezone before hitting SearXNG — engines return dated articles instead of generic news-section landing pages. |
+| **CUDA driver flexibility** | Run the full GPU stack (chat, reasoning, image and LTX-Video generation) on any host driver from CUDA 12.2 up: `deploy.sh` auto-detects the driver, adapts image selection, and waives NVIDIA image requirements via `NVIDIA_DISABLE_REQUIRE=1` where CUDA minor-version compatibility allows it (verified by users on RTX 3090 + CUDA 12.2). GPU mode requires CUDA ≥ 12.2; only a missing NVIDIA GPU or CUDA < 12.2 falls back to CPU mode. |
 
 ### Core Components
 
@@ -158,14 +159,14 @@ FLAI ships with two deployment modes:
 | **CPU** | 4+ cores | 6+ cores | 6+ cores | 8+ cores (12 recommended) |
 | **Storage** | 60 GB | 80+ GB SSD | 100+ GB SSD NVMe | 100+ GB SSD NVMe |
 
-> **RAM budget (how it was calculated):** in GPU mode only *one* llama.cpp model lives in memory at a time (llama-swap unloads the previous one), so system RAM holds the operating system + PostgreSQL/Redis + the web app (~6–8 GB) plus a safety margin. Reasoning on an 8 GB GPU requires partial CPU offload of layer weights, which adds ~10 GB of RAM for the in-RAM layers. Video generation runs in a separate container and needs its own headroom — on GPU that is modest, on CPU it dominates:
+> **RAM budget (how it was calculated):** in GPU mode only *one* llama.cpp model lives in memory at a time (llama-swap unloads the previous one), so system RAM holds the operating system + PostgreSQL/Redis + the web app (~6–8 GB) plus a safety margin. Reasoning on an 8 GB GPU requires partial CPU offload of layer weights, which adds ~10 GB of RAM for the in-RAM layers. **CPU-only mode (v11.4) uses lightweight models:** gpt-oss-20b-mxfp4 (native MXFP4, ~11.3 GB file, CPU-friendly per llama.cpp) for reasoning and Qwen3VL-4B (~2.5 GB + mmproj) for multimodal — the largest resident model on CPU is ~11 GB. Video generation runs in a separate container and needs its own headroom — on GPU that is modest, on CPU it dominates:
 >
 > | Mode | RAM without video | RAM with video generation |
 > |------|-------------------|---------------------------|
 > | 8 GB GPU | 16–24 GB | 24–32 GB |
 > | 12 GB GPU | 24–32 GB | 32–40 GB |
 > | 16 GB GPU | 24–32 GB | 32–48 GB |
-> | CPU-only | 24–32 GB | 48 GB (64 GB for 240-frame clips) |
+> | CPU-only | 16–24 GB | 40 GB (64 GB for 240-frame clips) |
 >
 > Voice features are opt-in (`--with-voice-piper` / `--with-voice-kokoro`): Whisper ASR adds ~1 GB RAM, plus the chosen backend — Piper up to ~0.5 GB (voices lazy-loaded per use) or Kokoro ~1.6 GB idle and up to ~6 GB during a Russian phrase (its 6 GB container limit). The CPU-only video numbers assume the LTX-Video container may use up to 64 GB (its memory cap in `docker-compose.cpu.yml`); the pre-flight planner gates generation on the *smaller* of host free RAM and that cap, and on a wall-clock budget (`LTX_VIDEO_CPU_TIME_BUDGET_S`, default 85% of `LTX_VIDEO_TIMEOUT`) — a 768×512×240 clip (~53 GB peak) needs a 64 GB host **and** would take hours on CPU, so it is auto-degraded to a size that finishes within the budget.
 
@@ -173,8 +174,8 @@ FLAI ships with two deployment modes:
 
 | Feature | 8 GB | 12 GB | 16+ GB | CPU-only |
 |---------|------|-------|--------|----------|
-| Chat + Multimodal (Qwen3VL) | ✅ Qwen3VL-8B (~5.9 GB incl. mmproj) | ✅ Qwen3VL-8B | ✅ Qwen3VL-8B | ⚠️ ~3.7 tok/s |
-| Reasoning | ⚠️ Qwen3.6-35B partial offload (~15–20 tok/s) | ✅ Qwen3.6-35B-A3B (~70–90 tok/s) | ✅ Qwen3.6-35B-A3B (106 tok/s) | ⚠️ ~9.5 tok/s |
+| Chat + Multimodal (Qwen3VL) | ✅ Qwen3VL-4B (light, ~2.5 GB) | ✅ Qwen3VL-8B (~5.9 GB incl. mmproj) | ✅ Qwen3VL-8B | ✅ Qwen3VL-4B (light) |
+| Reasoning | ⚠️ Qwen3.6-35B partial offload (~15–20 tok/s) | ✅ Qwen3.6-35B-A3B (~70–90 tok/s) | ✅ Qwen3.6-35B-A3B (106 tok/s) | ✅ gpt-oss-20b-mxfp4 (native MXFP4) |
 | Image gen (SD) | ✅ up to 1024×1024 | ✅ up to 1536×1024 | ✅ up to 1536×1024 | ⚠️ slower |
 | Image edit (Flux) | ✅ up to 768px long side | ✅ up to 1024px long side | ✅ up to 1024px long side | ⚠️ slower |
 | Video gen (LTX-Video) | ⚠️ 512×512×120 frames | ✅ 768×512×240 frames | ✅ 768×512×240 frames | ⚠️ adaptive memory cascade (384×256×120 → 256×192×57) |
@@ -203,13 +204,17 @@ All numbers are **synthetic `llama-bench` measurements** (llama.cpp build 10603)
 
 > **Current stack: CPU vs GPU (the three models FLAI uses by default).**
 
-The CPU column was measured **live on the current server** (12-core CPU-only deployment, llama.cpp CPU builds, `n_gpu_layers=0`). The 16 GB column was measured on an RTX 5060 Ti 16 GB (Blackwell, 448 GB/s). The 8/12 GB columns are **estimates** for typical cards of that class — real throughput scales with the card's memory bandwidth and generation, so treat them as guidance, not guarantees.
+v11.4 splits the stack by mode: **GPU mode** uses the full-quality models below; **CPU-only mode** uses lightweight replacements — Qwen3VL-4B (multimodal) and gpt-oss-20b-mxfp4 (reasoning); the embedding model is shared.
 
-| Model | Role | File | CPU 12C (measured) | GPU 8 GB* | GPU 12 GB* | GPU 16 GB (measured) |
+The CPU column in the table below was measured **live on the previous 12-core CPU-only stack (Qwen3VL-8B + Qwen3.6-35B)** — the v11.4 CPU models are faster because they are smaller (Qwen3VL-4B) or have CPU-friendly MXFP4 kernels (gpt-oss-20b). The 16 GB column was measured on an RTX 5060 Ti 16 GB (Blackwell, 448 GB/s). The 8/12 GB columns are **estimates** for typical cards of that class — real throughput scales with the card's memory bandwidth and generation, so treat them as guidance, not guarantees.
+
+| Model | Role | File | CPU 12C (prev stack, measured) | GPU 8 GB* | GPU 12 GB* | GPU 16 GB (measured) |
 |-------|------|------|--------------------|-----------|-----------|----------------------|
-| **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (chat/router/vision) | 4.7 GB + mmproj 1.1 GB | **3.7 tok/s** (generation) | 25–35 tok/s | 45–60 tok/s | **73.1 tok/s** |
-| **Qwen3.6-35B-A3B-UD-Q2_K_XL** | Reasoning | 12 GB | **9.5 tok/s** (generation) | 15–20 tok/s (partial CPU offload) | 70–90 tok/s | **106.2 tok/s** |
+| **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (chat/router/vision) | 4.7 GB + mmproj 1.1 GB | **3.7 tok/s** (Qwen3VL-4B on v11.4 CPU: faster) | 25–35 tok/s | 45–60 tok/s | **73.1 tok/s** |
+| **Qwen3.6-35B-A3B-UD-Q2_K_XL** | Reasoning | 12 GB | **9.5 tok/s** (gpt-oss-20b-mxfp4 on v11.4 CPU) | 15–20 tok/s (partial CPU offload) | 70–90 tok/s | **106.2 tok/s** |
 | **bge-m3-Q8_0** | Embedding | 0.6 GB | **~1020 tok/s** (warm, 20 ms/doc) | 1.5–2.5 k tok/s | 2.5–4 k tok/s | ~4 k tok/s |
+
+> **Context windows (v11.4 auto-fit):** at deployment the seed config automatically fits the context window to the hardware from the GGUF metadata and measured RAM/VRAM — multimodal 32768 on 24/16 GB tiers, 16384 on 8 GB, 8192 in CPU mode (see `app/database.py:_autofit_context()`); reasoning 32768/24576 on 24/16 GB, 16384 on 8 GB, 8192 CPU. The reasoning model's `--reasoning-budget` scales with the fitted window. Multimodal needs ≥16384 for vision token counts.
 
 > **Read the CPU row as follows:** a typical chat answer (~200 tokens) from the multimodal model takes ~55 s on CPU vs ~3 s on a 16 GB GPU; a reasoning answer takes ~21 s on CPU vs ~2 s on GPU. Embedding/vector indexing is the least affected (bge-m3 is small and fast even on CPU).
 
@@ -233,15 +238,15 @@ The CPU column was measured **live on the current server** (12-core CPU-only dep
 
 `deploy.sh` auto-detects the host CUDA driver (`nvidia-smi`) and selects matching build images — **minimum supported driver is CUDA 12.2**:
 
-| Host CUDA driver | Images used |
-|------------------|-------------|
-| ≥ 13.0 | CUDA 13.0.1 + `llama-swap:cuda13` |
-| 12.8 – 12.9 | CUDA 12.8.1 (Ubuntu 24.04) |
-| 12.6 – 12.7 | CUDA 12.6.3 (Ubuntu 24.04) |
-| 12.4 – 12.5 | CUDA 12.4.1 (Ubuntu 22.04) |
-| **12.2 – 12.3 (minimum)** | CUDA 12.2.2 (Ubuntu 22.04) |
+| Host CUDA driver | Images used | Notes |
+|------------------|-------------|-------|
+| ≥ 13.0 | CUDA 13.0.1 + `llama-swap:cuda13` | Standard deployment |
+| 12.8 – 12.9 | CUDA 12.8.1 (Ubuntu 24.04) | Standard deployment |
+| 12.6 – 12.7 | CUDA 12.6.3 (Ubuntu 24.04) | Non-standard: `NVIDIA_DISABLE_REQUIRE=1` for llama-swap |
+| 12.4 – 12.5 | CUDA 12.4.1 (Ubuntu 22.04) | Non-standard: `NVIDIA_DISABLE_REQUIRE=1` for llama-swap |
+| **12.2 – 12.3 (minimum)** | CUDA 12.2.2 (Ubuntu 22.04) | Non-standard: `NVIDIA_DISABLE_REQUIRE=1` for all GPU services |
 
-> ⚠️ **LTX-Video exception:** the LTX-Video image is based on `pytorch:2.5.0-cuda12.4-runtime` and requires **driver ≥ 550.54.14 (CUDA 12.4)**. On CUDA 12.2–12.3 hosts the core stack (chat, reasoning, RAG, TTS, Whisper, image generation) works fully, but the `with-video` profile cannot start — deploy without it or update the NVIDIA driver (updating the driver alone is enough; no toolkit reinstall needed).
+> ℹ️ **How it works:** Pre-built GPU images (llama-swap, PyTorch, CUDA toolkit) carry an `NVIDIA_REQUIRE_CUDA` label for their bundled toolkit version. When the host driver is older, the NVIDIA Container Toolkit rejects the container before it starts. The deploy script sets `NVIDIA_DISABLE_REQUIRE=1` to waive this label check. The actual binaries work because CUDA has minor-version compatibility within each major release — all 12.x runtimes load on any 12.x driver. Verified by users on RTX 3090 + CUDA 12.2 (full stack: chat, reasoning, image and video generation).
 
 > 💡 **Note**: After downloading GGUF models, FLAI works completely offline.
 
@@ -659,7 +664,7 @@ services/llamacpp/models/
 
 | Parameter | Multimodal | Reasoning | Embedding |
 |-----------|------------|-----------|-----------|
-| Context Length | 32768 | 24576 | 512 |
+| Context Length | 32768 (auto-fit: 16384 on 8 GB, 8192 CPU) | 24576 (auto-fit: 16384 on 8 GB, 8192 CPU) | 512 |
 | Temperature | 0.7 | 0.7 | – |
 | Top P | 0.9 | 0.9 | – |
 | Repeat Penalty | 1.1 | 1.15 | – |
@@ -673,11 +678,11 @@ services/llamacpp/models/
 
 | Component | Default | Recommended Alternative | Notes |
 |-----------|---------|------------------------|-------|
-| **Chat/router/vision** | Qwen3VL-8B Q4_K_M (~5.5 GB) | — | Single multimodal model serves all three roles; always resident. Requires subdirectory with `mmproj-*.gguf` |
-| **Reasoning** | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | gpt-oss-20b mxfp4/Q4_K_M (~12 GB) | MoE architecture: ~3B active params, ~106 tok/s. Current reasoning model on all tiers; 8 GB uses partial CPU offload |
+| **Chat/router/vision** | Qwen3VL-8B Q4_K_M (~5.5 GB) | Qwen3VL-4B Q4_K_M (~2.5 GB, 8 GB GPU & CPU-only) | Single multimodal model serves all three roles; always resident. Requires subdirectory with `mmproj-*.gguf` |
+| **Reasoning** | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | gpt-oss-20b-mxfp4 (~11.3 GB, default in CPU-only mode) | MoE architecture: ~3B active params, ~106 tok/s. GPU mode: Qwen3.6-35B on all tiers (8 GB uses partial CPU offload). CPU-only mode: gpt-oss-20b-mxfp4 (native MXFP4, CPU-friendly) |
 | **Embedding** | bge-m3 Q8_0 (~1.5 GB) | — | Single model for all tiers |
 
-> **Context windows:** Defaults are 32768 for the multimodal model and 24576 for reasoning (both fit fully on the GPU at current quantization). Multimodal needs ≥16384 for vision token counts. The admin panel enforces the bounds (512 … GGUF architecture max) and — also for context-only changes — fit-checks every save against the RAM/VRAM budget, rejecting values that cannot fit, then plans a background dry-load of the new config and automatically rolls the change back (restoring `context_length`) if the backend fails to load it.
+> **Context windows:** defaults are auto-fitted at deployment (`app/database.py:_autofit_context`) — 32768 multimodal and 24576 reasoning on 16+ GB tiers (both fit fully on the GPU at current quantization), 16384 on 8 GB, 8192 in CPU-only mode. The admin panel enforces the bounds (512 … GGUF architecture max) and — also for context-only changes — fit-checks every save against the RAM/VRAM budget, rejecting values that cannot fit, then plans a background dry-load of the new config and automatically rolls the change back (restoring `context_length`) if the backend fails to load it.
 
 ---
 
@@ -966,8 +971,11 @@ curl http://localhost:5000/metrics
 
 ## 🗺️ Roadmap
 
+### ✔️ Completed in v11.3
+- **Context & retrieval quality** — smarter context-budgeting for message history, higher-quality RAG and web search, tighter SLM long-term memory
+
 ### 🔄 In Progress
-- **v11.3 — context & retrieval quality** — smarter context-budgeting for message history, higher-quality RAG and web search, tighter SLM long-term memory: sharp retrieval results and long chat sessions that keep the thread without losing the meaning of earlier exchanges
+- **CUDA driver flexibility** — run FLAI on any host driver from CUDA 12.2 up: deploy scripts auto-detect the driver, waive NVIDIA image requirements where minor-version compatibility allows it, and warn when specific features (e.g. LTX-Video) need a newer driver
 - **Multi-platform GPU support** — extend FLAI to run on non-NVIDIA machines:
   - CPU-only mode for the full stack
   - AMD / Intel via Vulkan for llama.cpp and stable-diffusion.cpp, ROCm for LTX-Video
@@ -1042,6 +1050,7 @@ curl http://localhost:5000/metrics
 | Configuration | Approx. Download |
 |---------------|-----------------|
 | Minimal (Qwen3VL-4B + Qwen3.6-35B-A3B + bge-m3, 8 GB tier) | ~16 GB |
+| CPU-only (Qwen3VL-4B + gpt-oss-20b-mxfp4 + bge-m3) | ~15 GB |
 | Full LLM stack (Qwen3VL-8B + Qwen3.6-35B-A3B + bge-m3) | ~20 GB |
 | + Image generation | ~29 GB |
 | + Image editing | ~32 GB |

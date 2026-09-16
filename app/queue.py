@@ -98,7 +98,7 @@ def _extract_facts_bg(app, query: str, response: str, session_id: str, user_id: 
 class RedisRequestQueue:
     """Redis-based request queue with JSON serialization for security."""
 
-    def __init__(self, app):
+    def __init__(self, app, start_workers: bool = True):
         self.app = app
         self.logger = app.logger
         self.redis = redis.from_url(
@@ -133,7 +133,10 @@ class RedisRequestQueue:
         # Reset user counts — tasks were orphaned above, counts would be inflated.
         self.redis.delete(f"{self.queue_key}:user_counts")
 
-        self.start_worker()
+        if start_workers:
+            self.start_worker()
+        else:
+            self.app.logger.info("RedisRequestQueue: workers NOT started (CLI/non-server process)")
 
     def _serialize(self, data: dict) -> str:
         """Serialize data to JSON with HMAC signature."""
@@ -159,6 +162,11 @@ class RedisRequestQueue:
 
     def start_worker(self):
         """Start worker threads for fast and slow task queues."""
+        # Idempotence guard: two sets of worker threads would both blpop the
+        # same queue and race for tasks (duplicate processing, missing logs).
+        if getattr(self, "_workers_started", False):
+            return
+        self._workers_started = True
         self.app.logger.info("RedisRequestQueue: starting fast and slow workers")
         # Shutdown event for graceful termination
         self._shutdown_event = threading.Event()
@@ -319,8 +327,8 @@ class RedisRequestQueue:
             return 0, 0
 
         user_count_key = f"{self.queue_key}:user_counts"
-        user_count = self.redis.hget(user_count_key, user_id)
-        user_count = int(user_count) if user_count else 0
+        raw_count = self.redis.hget(user_count_key, user_id)
+        user_count = int(raw_count) if raw_count else 0
 
         # Cap user_count to total — prevents impossible displays like "2/1"
         # and negative values from background task counter drift.
@@ -4003,7 +4011,7 @@ class RedisRequestQueue:
             mapping["percent"] = str(data.get("percent", 0))
         try:
             pipe = self.redis.pipeline()
-            pipe.hset(key, mapping=mapping)
+            pipe.hset(key, mapping=mapping)  # type: ignore[arg-type]
             pipe.expire(key, 1800)
             pipe.execute()
         except Exception:

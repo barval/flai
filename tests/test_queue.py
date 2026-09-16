@@ -203,3 +203,71 @@ class TestRedisRequestQueue:
             queue = RedisRequestQueue(mock_app)
             clean = "Готово, вот исправленный код: <div>ok</div>"
             assert queue._strip_generic_reasoning(clean) == clean
+
+
+@pytest.mark.unit
+class TestWorkerStartGuard:
+    """CLI processes must not start queue workers; start_worker is idempotent.
+
+    Regression: `docker exec flai-web flask admin-password ...` loaded the app,
+    started fast/slow worker threads (daemon=False), and then hung forever:
+    the CLI process silently became a second queue consumer alongside gunicorn,
+    stealing tasks (its logs went to the lost docker-exec stdout) and serving
+    them with a stale app state — searches returned ⚠️ "0 results" with no
+    trace in docker logs.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_workers(self):
+        """Prevent real worker threads from starting during tests."""
+        with patch("app.queue.RedisRequestQueue.start_worker"):
+            yield
+
+    @pytest.fixture
+    def mock_app(self):
+        app = Mock()
+        app.config = {"REDIS_URL": "redis://localhost:6379/0", "SECRET_KEY": "test-secret-key"}
+        app.logger = Mock()
+        return app
+
+    @pytest.fixture
+    def mock_redis(self):
+        redis = Mock()
+        redis.hlen.return_value = 0
+        return redis
+
+    def test_start_workers_false_does_not_start_worker(self, mock_app, mock_redis):
+        """RedisRequestQueue(app, start_workers=False) must not call start_worker()."""
+        from app.queue import RedisRequestQueue
+
+        with patch("app.queue.redis.from_url", return_value=mock_redis):
+            queue = RedisRequestQueue(mock_app, start_workers=False)
+        mock_app.logger.info.assert_any_call("RedisRequestQueue: workers NOT started (CLI/non-server process)")
+        assert not hasattr(queue, "_workers_started")
+
+    def test_start_worker_is_idempotent(self, mock_app, mock_redis):
+        """A second start_worker() call must not spawn duplicate workers."""
+        from app.queue import RedisRequestQueue
+
+        with patch("app.queue.redis.from_url", return_value=mock_redis):
+            queue = RedisRequestQueue(mock_app, start_workers=False)
+            # Simulate the first start_worker() run (the autouse fixture patched
+            # start_worker on the class, so call the internals directly).
+            queue._shutdown_event = __import__("threading").Event()
+            queue._workers_started = True
+            with patch("app.queue.threading.Thread") as thread_cls:
+                thread_cls.return_value = Mock()
+                # Second call must be a no-op thanks to the _workers_started guard.
+                RedisRequestQueue.start_worker(queue)
+                assert thread_cls.call_count == 0  # no new threads on retry
+
+    def test_is_cli_process_detects_flask(self):
+        """_is_cli_process() is True when argv[0] ends with 'flask'."""
+        from app import _is_cli_process
+
+        with patch("app.sys.argv", ["/usr/local/bin/flask", "admin-password", "x"]):
+            assert _is_cli_process() is True
+        with patch("app.sys.argv", ["/usr/local/bin/gunicorn", "-c", "gunicorn_config.py", "wsgi:app"]):
+            assert _is_cli_process() is False
+        with patch("app.sys.argv", ["wsgi.py"]):
+            assert _is_cli_process() is False

@@ -2,6 +2,7 @@
 import logging
 import mimetypes
 import os
+import sys
 from datetime import UTC
 from logging import Formatter
 
@@ -33,6 +34,18 @@ def get_locale():
 def register_babel(app):
     """Register Babel locale selector after app is initialized."""
     babel.init_app(app, locale_selector=get_locale)
+
+
+def _is_cli_process() -> bool:
+    """True when the app was loaded by a `flask` CLI command (docker exec ...).
+
+    CLI processes create their own app instance but must NOT start queue
+    worker threads: with daemon=False threads the CLI process would hang
+    forever after the command completes, silently become a second queue
+    consumer alongside the web server, and steal tasks (their logs go to
+    the lost docker-exec stdout — tasks were "processed" invisibly).
+    """
+    return os.path.basename(sys.argv[0]) == "flask"
 
 
 def create_app():
@@ -272,8 +285,8 @@ def create_app():
         except Exception as e:
             app.logger.warning(f"Could not start watchdog: {e}")
 
-    # Initialize Redis queue
-    app.request_queue = RedisRequestQueue(app)
+    # Initialize Redis queue (workers only in server processes, never in CLI)
+    app.request_queue = RedisRequestQueue(app, start_workers=not _is_cli_process())
 
     # Initialize events publisher (Redis pub/sub for SSE)
     init_events_publisher(app)

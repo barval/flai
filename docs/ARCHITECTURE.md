@@ -32,6 +32,8 @@ Selected by `LLAMACP_BACKEND` env var (default: `llama-swap`).
 
 `app/queue.py:RedisRequestQueue` — two workers with strict GPU serialization.
 
+**Worker ownership:** workers start only in server processes. `create_app()` calls `RedisRequestQueue(app, start_workers=not _is_cli_process())` — a `flask` CLI process (detected via `sys.argv[0]`) never starts workers. Without this guard a `docker exec flai-web flask <cmd>` invocation became a second, invisible queue consumer (daemon=False worker threads hang the CLI process forever; its logs go to the lost exec stdout). `start_worker()` additionally has a `_workers_started` idempotence guard so a duplicate worker set can never be spawned in one process.
+
 ### Fast Worker (mostly CPU; embedding is GPU-light)
 - Router classification (multimodal model, always resident)
 - Text processing

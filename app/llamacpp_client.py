@@ -290,6 +290,18 @@ def _process_stream_chunk(buffer: str, thinking_active: bool) -> tuple[str, str,
 _REPETITION_WINDOW = 200
 _REPETITION_MIN_COUNT = 3
 _REPETITION_HOLD = 1500
+# Adaptive hold (slow-stream escape): hold-back is sized in CHARS, so on a
+# CPU box (~1.6 tok/s) a typical 600-1400 char answer never exceeds it during
+# generation and arrives as one block after generation finished. Feeds are
+# small on slow streams and large on fast ones, so after
+# _HOLD_SHRINK_AFTER_FEEDS feed() calls the hold linearly shrinks towards
+# _HOLD_FLOOR as feeds accumulate. Loop detection is unaffected: it still
+# needs _REPETITION_WINDOW * _REPETITION_MIN_COUNT chars of history, and the
+# post-stream safety net (strip_repetition_loop) cuts anything the smaller
+# hold-back let through.
+_HOLD_FLOOR = 300
+_HOLD_SHRINK_AFTER_FEEDS = 40
+_HOLD_SHRINK_PER_FEED = 30  # chars of hold given up per extra feed call
 # Detection scans only the tail of the accumulated text, so a huge response
 # cannot make per-chunk detection O(n^2).
 _REPETITION_SCAN_LIMIT = 4096
@@ -346,12 +358,29 @@ class _LoopGuard:
     def __init__(self, hold: int = _REPETITION_HOLD):
         self._buf = ""
         self._emitted = 0
-        self._hold = hold
+        self._base_hold = hold
+        self._feeds = 0
         self.loop_start = -1  # absolute index into _buf where the loop begins
         self.loop_detected = False
 
+    @property
+    def _hold(self) -> int:
+        """Current hold-back size: shrinks for slow (many-small-feed) streams.
+
+        Fast GPU streams deliver the answer in a handful of large chunks and
+        keep the full hold; slow CPU streams call feed() many times with tiny
+        pieces, and the hold linearly shrinks towards _HOLD_FLOOR so visible
+        streaming is restored while still retracting a late-detected loop.
+        """
+        over = self._feeds - _HOLD_SHRINK_AFTER_FEEDS
+        if over <= 0:
+            return self._base_hold
+        shrunk = self._base_hold - over * _HOLD_SHRINK_PER_FEED
+        return max(_HOLD_FLOOR, shrunk)
+
     def feed(self, text: str) -> str:
         """Append streamed text, return the emittable (loop-safe) prefix."""
+        self._feeds += 1
         self._buf += text
         if not self.loop_detected:
             cutoff = _repetition_cutoff(self._buf)
@@ -422,11 +451,22 @@ class _ReasoningStreamFilter:
 
     def __init__(self, hold: int = 500):
         self._buf = ""
-        self._hold = hold
+        self._base_hold = hold
+        self._feeds = 0
         self._emitted = 0  # position in _buf already handed to the client
+
+    @property
+    def _hold(self) -> int:
+        """Current hold-back size: shrinks for slow (many-small-feed) streams."""
+        over = self._feeds - _HOLD_SHRINK_AFTER_FEEDS
+        if over <= 0:
+            return self._base_hold
+        shrunk = self._base_hold - over * _HOLD_SHRINK_PER_FEED
+        return max(_HOLD_FLOOR, shrunk)
 
     def feed(self, chunk: str) -> str:
         """Append a streamed chunk, return the emittable (stable) text."""
+        self._feeds += 1
         self._buf += chunk
         matches = list(_REASONING_MARKERS_RE.finditer(self._buf))
         if not matches:

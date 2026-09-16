@@ -96,7 +96,7 @@ services:
   # LLAMA-SWAP (Required - LLM Proxy, CPU mode)
   # ============================================================
   llama-swap:
-    image: ghcr.io/mostlygeek/llama-swap:cpu
+    image: ghcr.io/mostlygeek/llama-swap:v255-cpu-b10991
     container_name: flai-llamaswap
     volumes:
       - ./services/llamacpp/models:/models:ro
@@ -229,6 +229,12 @@ services:
   whisper:
     image: onerahmet/openai-whisper-asr-webservice:v1.9.1
     container_name: flai-whisper
+    # libctranslate2 in this image is built with an executable-stack
+    # (PT_GNU_STACK) flag; hardened hosts (AppArmor on Ubuntu 23.10+/24.04)
+    # deny execstack and the container dies on import with
+    # "cannot enable executable stack ... Permission denied".
+    security_opt:
+      - apparmor=unconfined
     environment:
       - ASR_MODEL=medium
       - ASR_ENGINE=faster_whisper

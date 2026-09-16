@@ -97,7 +97,7 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 | **Streaming repetition-loop detector** | Streamed reasoning answers pass through a loop guard (`_LoopGuard`, hold-back 1500 chars): detected textual loops are cut mid-stream instead of flooding the chat; end-of-stream tails are flushed in a fixed order so short answers are never dropped. A server-side safety net catches loops missed in streaming. |
 | **Reasoning token budget enforced** | llama-server build 10603 ignores the per-request `reasoning_budget` field, so the reasoning model's server command now caps thinking via the CLI flag `--reasoning-budget max(1024, ctx*0.4)` — no more context burned entirely on reasoning with no answer. |
 | **Search date normalization** | Relative date words in search queries («вчера», «сегодня», English equivalents) are resolved to absolute dates in the user's timezone before hitting SearXNG — engines return dated articles instead of generic news-section landing pages. |
-| **CUDA driver flexibility (in progress)** | Run FLAI on any host driver from CUDA 12.2 up: deploy scripts auto-detect the driver, adapt image selection, and warn when specific features need a newer driver. |
+| **CUDA driver flexibility** | Run the full GPU stack (chat, reasoning, image and LTX-Video generation) on any host driver from CUDA 12.2 up: `deploy.sh` auto-detects the driver, adapts image selection, and waives NVIDIA image requirements via `NVIDIA_DISABLE_REQUIRE=1` where CUDA minor-version compatibility allows it (verified by users on RTX 3090 + CUDA 12.2). GPU mode requires CUDA ≥ 12.2; only a missing NVIDIA GPU or CUDA < 12.2 falls back to CPU mode. |
 
 ### Core Components
 
@@ -234,15 +234,15 @@ The CPU column was measured **live on the current server** (12-core CPU-only dep
 
 `deploy.sh` auto-detects the host CUDA driver (`nvidia-smi`) and selects matching build images — **minimum supported driver is CUDA 12.2**:
 
-| Host CUDA driver | Images used |
-|------------------|-------------|
-| ≥ 13.0 | CUDA 13.0.1 + `llama-swap:cuda13` |
-| 12.8 – 12.9 | CUDA 12.8.1 (Ubuntu 24.04) |
-| 12.6 – 12.7 | CUDA 12.6.3 (Ubuntu 24.04) |
-| 12.4 – 12.5 | CUDA 12.4.1 (Ubuntu 22.04) |
-| **12.2 – 12.3 (minimum)** | CUDA 12.2.2 (Ubuntu 22.04) |
+| Host CUDA driver | Images used | Notes |
+|------------------|-------------|-------|
+| ≥ 13.0 | CUDA 13.0.1 + `llama-swap:cuda13` | Standard deployment |
+| 12.8 – 12.9 | CUDA 12.8.1 (Ubuntu 24.04) | Standard deployment |
+| 12.6 – 12.7 | CUDA 12.6.3 (Ubuntu 24.04) | Non-standard: `NVIDIA_DISABLE_REQUIRE=1` for llama-swap |
+| 12.4 – 12.5 | CUDA 12.4.1 (Ubuntu 22.04) | Non-standard: `NVIDIA_DISABLE_REQUIRE=1` for llama-swap |
+| **12.2 – 12.3 (minimum)** | CUDA 12.2.2 (Ubuntu 22.04) | Non-standard: `NVIDIA_DISABLE_REQUIRE=1` for all GPU services |
 
-> ⚠️ **LTX-Video exception:** the LTX-Video image is based on `pytorch:2.5.0-cuda12.4-runtime` and requires **driver ≥ 550.54.14 (CUDA 12.4)**. On CUDA 12.2–12.3 hosts the core stack (chat, reasoning, RAG, TTS, Whisper, image generation) works fully, but the `with-video` profile cannot start — deploy without it or update the NVIDIA driver (updating the driver alone is enough; no toolkit reinstall needed).
+> ℹ️ **How it works:** Pre-built GPU images (llama-swap, PyTorch, CUDA toolkit) carry an `NVIDIA_REQUIRE_CUDA` label for their bundled toolkit version. When the host driver is older, the NVIDIA Container Toolkit rejects the container before it starts. The deploy script sets `NVIDIA_DISABLE_REQUIRE=1` to waive this label check. The actual binaries work because CUDA has minor-version compatibility within each major release — all 12.x runtimes load on any 12.x driver. Verified by users on RTX 3090 + CUDA 12.2 (full stack: chat, reasoning, image and video generation).
 
 > 💡 **Note**: After downloading GGUF models, FLAI works completely offline.
 

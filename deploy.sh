@@ -455,6 +455,10 @@ detect_cuda() {
     CUDA_VERSION_SD=""
     UBUNTU_VERSION_SD=""
     LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:cuda"
+    LLAMA_SWAP_DISABLE_REQUIRE=0
+    LTX_DISABLE_REQUIRE=0
+    SD_DISABLE_REQUIRE=0
+    GPU_SUPPORTED=1
 
     if ! command -v nvidia-smi &>/dev/null; then
         return 0
@@ -470,23 +474,39 @@ detect_cuda() {
     cuda_minor="${cuda_minor%%.*}"
 
     if [[ "$cuda_major" -ge 13 ]]; then
-        CUDA_VERSION_SD="13.0.1"
-        UBUNTU_VERSION_SD="24.04"
+        CUDA_VERSION_SD="13.0.1"; UBUNTU_VERSION_SD="24.04"
         LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:cuda13"
-        info "CUDA driver ${cuda_full}: using CUDA 13 images."
+        info "CUDA driver ${cuda_full}: using CUDA 13 images (standard deployment)."
     elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 8 ]]; then
         CUDA_VERSION_SD="12.8.1"; UBUNTU_VERSION_SD="24.04"
+        info "CUDA driver ${cuda_full}: using CUDA 12.8 images (standard deployment)."
     elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 6 ]]; then
         CUDA_VERSION_SD="12.6.3"; UBUNTU_VERSION_SD="24.04"
+        LLAMA_SWAP_DISABLE_REQUIRE=1
+        info "CUDA driver ${cuda_full}: non-standard deployment (driver below CUDA 12.8)."
+        warn "NVIDIA image requirements will be waived (NVIDIA_DISABLE_REQUIRE=1); CUDA 12.x minor-version compatibility keeps the bundled runtimes working on this driver."
     elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 4 ]]; then
         CUDA_VERSION_SD="12.4.1"; UBUNTU_VERSION_SD="22.04"
-    else
+        LLAMA_SWAP_DISABLE_REQUIRE=1
+        info "CUDA driver ${cuda_full}: non-standard deployment (driver below CUDA 12.8)."
+        warn "NVIDIA image requirements will be waived (NVIDIA_DISABLE_REQUIRE=1); CUDA 12.x minor-version compatibility keeps the bundled runtimes working on this driver."
+    elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 2 ]]; then
         CUDA_VERSION_SD="12.2.2"; UBUNTU_VERSION_SD="22.04"
-        warn "CUDA driver ${cuda_full} is outdated. For LTX-Video update the driver:"
-        warn "  https://www.nvidia.com/Download/index.aspx  (minimum: CUDA 12.4 / driver 550.54.14)"
+        LLAMA_SWAP_DISABLE_REQUIRE=1
+        LTX_DISABLE_REQUIRE=1
+        SD_DISABLE_REQUIRE=1
+        info "CUDA driver ${cuda_full}: minimum supported driver (CUDA 12.2), non-standard deployment."
+        warn "NVIDIA image requirements will be waived (NVIDIA_DISABLE_REQUIRE=1) for llama-swap, LTX-Video and sd.cpp."
+        warn "Verified by users on RTX 3090 + CUDA 12.2: the full stack (chat, reasoning, image and video generation) runs via CUDA 12.x minor-version compatibility."
+    else
+        GPU_SUPPORTED=0
+        warn "CUDA driver ${cuda_full} is below the minimum supported version (CUDA 12.2)."
+        warn "FLAI will fall back to CPU-only mode. To enable GPU acceleration, update the NVIDIA driver to at least CUDA 12.2 (driver 525.60.13+):"
+        warn "  https://www.nvidia.com/Download/index.aspx"
     fi
 
-    export CUDA_VERSION_SD UBUNTU_VERSION_SD LLAMA_SWAP_IMAGE
+    export CUDA_VERSION_SD UBUNTU_VERSION_SD LLAMA_SWAP_IMAGE \
+           LLAMA_SWAP_DISABLE_REQUIRE LTX_DISABLE_REQUIRE SD_DISABLE_REQUIRE GPU_SUPPORTED
 }
 
 # ── Stack resolution (COMPOSE_FILE, PROFILES) ──
@@ -505,9 +525,14 @@ resolve_stack() {
         COMPOSE_FILE="docker-compose.cpu.yml"
         info "CPU mode — using CPU compose file (no GPU required)."
     else
-        info "GPU mode — using GPU compose file."
+        detect_cuda
+        if [[ "${GPU_SUPPORTED:-1}" != "1" ]]; then
+            COMPOSE_FILE="docker-compose.cpu.yml"
+            info "GPU present but CUDA driver below 12.2 — falling back to CPU mode."
+        else
+            info "GPU mode — using GPU compose file."
+        fi
     fi
-    detect_cuda
 }
 
 # ── Start hints (printed BEFORE the build) ──

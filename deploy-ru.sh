@@ -451,6 +451,10 @@ detect_cuda() {
     CUDA_VERSION_SD=""
     UBUNTU_VERSION_SD=""
     LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:cuda"
+    LLAMA_SWAP_DISABLE_REQUIRE=0
+    LTX_DISABLE_REQUIRE=0
+    SD_DISABLE_REQUIRE=0
+    GPU_SUPPORTED=1
 
     if ! command -v nvidia-smi &>/dev/null; then
         return 0
@@ -466,23 +470,39 @@ detect_cuda() {
     cuda_minor="${cuda_minor%%.*}"
 
     if [[ "$cuda_major" -ge 13 ]]; then
-        CUDA_VERSION_SD="13.0.1"
-        UBUNTU_VERSION_SD="24.04"
+        CUDA_VERSION_SD="13.0.1"; UBUNTU_VERSION_SD="24.04"
         LLAMA_SWAP_IMAGE="ghcr.io/mostlygeek/llama-swap:cuda13"
-        info "CUDA драйвер ${cuda_full}: использую CUDA 13 образы."
+        info "CUDA драйвер ${cuda_full}: использую CUDA 13 образы (штатное развертывание)."
     elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 8 ]]; then
         CUDA_VERSION_SD="12.8.1"; UBUNTU_VERSION_SD="24.04"
+        info "CUDA драйвер ${cuda_full}: использую CUDA 12.8 образы (штатное развертывание)."
     elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 6 ]]; then
         CUDA_VERSION_SD="12.6.3"; UBUNTU_VERSION_SD="24.04"
+        LLAMA_SWAP_DISABLE_REQUIRE=1
+        info "CUDA драйвер ${cuda_full}: нештатное развертывание (драйвер ниже CUDA 12.8)."
+        warn "Требования NVIDIA к образам будут отключены (NVIDIA_DISABLE_REQUIRE=1); благодаря совместимости minor-версий CUDA 12.x встроенные библиотеки работают на этом драйвере."
     elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 4 ]]; then
         CUDA_VERSION_SD="12.4.1"; UBUNTU_VERSION_SD="22.04"
-    else
+        LLAMA_SWAP_DISABLE_REQUIRE=1
+        info "CUDA драйвер ${cuda_full}: нештатное развертывание (драйвер ниже CUDA 12.8)."
+        warn "Требования NVIDIA к образам будут отключены (NVIDIA_DISABLE_REQUIRE=1); благодаря совместимости minor-версий CUDA 12.x встроенные библиотеки работают на этом драйвере."
+    elif [[ "$cuda_major" -eq 12 && "$cuda_minor" -ge 2 ]]; then
         CUDA_VERSION_SD="12.2.2"; UBUNTU_VERSION_SD="22.04"
-        warn "Драйвер CUDA ${cuda_full} устарел. Для LTX-Video обновите драйвер:"
-        warn "  https://www.nvidia.com/Download/index.aspx  (минимум: CUDA 12.4 / driver 550.54.14)"
+        LLAMA_SWAP_DISABLE_REQUIRE=1
+        LTX_DISABLE_REQUIRE=1
+        SD_DISABLE_REQUIRE=1
+        info "CUDA драйвер ${cuda_full}: минимальный поддерживаемый драйвер (CUDA 12.2), нештатное развертывание."
+        warn "Требования NVIDIA к образам будут отключены (NVIDIA_DISABLE_REQUIRE=1) для llama-swap, LTX-Video и sd.cpp."
+        warn "Проверено пользователями на RTX 3090 + CUDA 12.2: весь стек (чат, рассуждения, генерация изображений и видео) работает благодаря совместимости minor-версий CUDA 12.x."
+    else
+        GPU_SUPPORTED=0
+        warn "Драйвер CUDA ${cuda_full} ниже минимальной поддерживаемой версии (CUDA 12.2)."
+        warn "FLAI переключится в режим только CPU. Для ускорения на GPU обновите драйвер NVIDIA минимум до CUDA 12.2 (драйвер 525.60.13+):"
+        warn "  https://www.nvidia.com/Download/index.aspx"
     fi
 
-    export CUDA_VERSION_SD UBUNTU_VERSION_SD LLAMA_SWAP_IMAGE
+    export CUDA_VERSION_SD UBUNTU_VERSION_SD LLAMA_SWAP_IMAGE \
+           LLAMA_SWAP_DISABLE_REQUIRE LTX_DISABLE_REQUIRE SD_DISABLE_REQUIRE GPU_SUPPORTED
 }
 
 # ── Определение стека (COMPOSE_FILE, PROFILES) ──
@@ -501,9 +521,14 @@ resolve_stack() {
         COMPOSE_FILE="docker-compose.cpu.yml"
         info "Режим CPU — используется CPU compose файл (GPU не требуется)."
     else
-        info "Режим GPU — используется GPU compose файл."
+        detect_cuda
+        if [[ "${GPU_SUPPORTED:-1}" != "1" ]]; then
+            COMPOSE_FILE="docker-compose.cpu.yml"
+            info "GPU присутствует, но драйвер CUDA ниже 12.2 — переключение в режим CPU."
+        else
+            info "Режим GPU — используется GPU compose файл."
+        fi
     fi
-    detect_cuda
 }
 
 # ── Подсказки по запуску (показываются ДО сборки) ──

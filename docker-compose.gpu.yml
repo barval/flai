@@ -148,6 +148,7 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_DISABLE_REQUIRE=${SD_DISABLE_REQUIRE:-0}
     runtime: nvidia
     deploy:
       resources:
@@ -193,6 +194,7 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_DISABLE_REQUIRE=${LTX_DISABLE_REQUIRE:-0}
       - LTX_MODELS_DIR=/app/models
       - LTX_DEFAULT_MODEL=ltxv-2b-0.9.8-distilled.safetensors
       - LTX_DEFAULT_UPSCALER=ltxv-spatial-upscaler-0.9.8.safetensors

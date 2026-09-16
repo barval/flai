@@ -21,7 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### 🚧 In Progress
 
-- **CUDA driver flexibility** — run FLAI on any host driver from CUDA 12.2 up: deploy scripts auto-detect the driver, waive NVIDIA image requirements where CUDA minor-version compatibility allows it, and warn when specific features need a newer driver.
+- **CUDA driver flexibility** — run the full GPU stack (chat, reasoning, image + LTX-Video generation, sd.cpp) on any host driver from CUDA 12.2 up. `detect_cuda()` in `deploy.sh`/`deploy-ru.sh` auto-detects the driver and maps it to matching build images; when the host driver is older than a prebuilt image's `NVIDIA_REQUIRE_CUDA` label (llama-swap `:cuda` = 12.8, PyTorch base = 12.4), the scripts set `NVIDIA_DISABLE_REQUIRE=1` for the affected services (12.6–12.7: llama-swap; 12.4–12.5: llama-swap; 12.2–12.3: llama-swap + LTX-Video + sd.cpp) — CUDA minor-version compatibility keeps the bundled 12.x runtimes working on older 12.x drivers (verified by users on RTX 3090 + CUDA 12.2), warnings are printed for non-standard tiers. GPU mode requires CUDA ≥ 12.2; only a missing NVIDIA GPU, missing `nvidia-smi`, or CUDA < 12.2 falls back to CPU mode.
 
 ## [v11.3] — 2026-09-14
 

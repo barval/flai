@@ -64,7 +64,7 @@
 - 🎚️ **Voice Gender Selection** – choose male or female voice for TTS responses
 - 🎭 **Response Styles** – choose the AI's conversational tone in real-time from the chat header: neutral, academic, professional, friendly, or funny. Affects all responses including text, RAG, image analysis, and camera queries.
 - 📊 **Request Queue** – real-time status tracking with position indicators for queued requests
-- 📎 **File Attachments** – support for images, audio files, and documents in conversations
+- 📎 **File Attachments** – support for images, audio files, and documents in conversations; images can also be pasted directly from the clipboard (Ctrl+V / mobile "Paste"): text in the clipboard is pasted as text, an image is attached as a file, and if both are present the image takes priority
 - 🎤 **Combined Voice + Image** – record voice message while an image is attached; both sent together
 - 🔔 **Notifications** – unread message indicators and blinking status icons for processing/queued requests
 - ⏹ **Task Cancellation** – cancel any in-progress streaming generation with a single click

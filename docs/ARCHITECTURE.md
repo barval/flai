@@ -268,6 +268,16 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 
 Server: `_process_transcribe_task()` creates `type: "image"` task when both `image_data` + `voice_record` present.
 
+## Clipboard Image Paste
+
+`app/static/js/chat-init.js` adds a `paste` listener on the message input. Behavior priorities:
+
+1. **Text only in clipboard** → default text paste (handler returns early, browser handles it).
+2. **Image only** → `preventDefault()`, blob is wrapped into a generated `File` named `pasted_YYYYMMDD_HHMMSS.<ext>` (extension derived from MIME type, `jpeg` → `jpg`), attached as `attachedFile`, and the standard file preview (name + size) is shown.
+3. **Both text and image** (e.g. copying a picture from a browser carries an HTML/text snippet alongside the bitmap) → the image wins: `preventDefault()` fires and the text is discarded.
+
+No backend changes: the pasted file travels through the same `FormData` upload path as a file picked via the attach button. Non-image clipboard content (files, PDFs) is ignored.
+
 ## Multi-Tab Session Fix
 
 **Problem**: `session_id` was read exclusively from Flask cookie. Flask cookies are shared between all tabs of the same browser. When a user created a new session in one tab and sent a message in another, the message could end up in the wrong session.

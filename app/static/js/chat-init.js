@@ -489,6 +489,36 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('file-input').click();
     });
     
+    // Paste image from clipboard into the message input (Ctrl+V / mobile "Paste").
+    // Priority: text in clipboard -> normal text paste; image -> attach as file;
+    // both text and image -> image wins (e.g. copying a picture from a browser
+    // often carries an HTML snippet alongside the bitmap).
+    document.getElementById('message-input').addEventListener('paste', function(e) {
+        const items = e.clipboardData && e.clipboardData.items;
+        if (!items) return;
+        let imageItem = null;
+        for (const item of items) {
+            if (item.kind === 'file' && item.type.startsWith('image/')) {
+                imageItem = item;
+                break;
+            }
+        }
+        if (!imageItem) return; // no image -> default text paste
+        e.preventDefault();
+        const blob = imageItem.getAsFile();
+        if (!blob) return;
+        const ext = (imageItem.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const name = 'pasted_' + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate())
+            + '_' + pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds()) + '.' + ext;
+        attachedFile = new File([blob], name, { type: imageItem.type });
+        document.getElementById('file-preview-name').textContent = name;
+        const sizeSpan = document.getElementById('file-preview-size');
+        if (sizeSpan) sizeSpan.textContent = ' (' + formatFileSize(attachedFile.size) + ')';
+        document.getElementById('file-preview-container').classList.remove('hidden');
+    });
+
     document.getElementById('file-input').addEventListener('change', function(e) {
         if (e.target.files.length > 0) {
             attachedFile = e.target.files[0];

@@ -315,7 +315,13 @@ class LlamaSwapConfigGenerator:
             cmd_parts.extend(["--batch-size", "2048", "--ubatch-size", "2048"])
 
         if module == "reasoning":
-            cmd_parts.extend(["--reasoning_format", "deepseek"])
+            # gpt-oss models use native MXFP4 with auto reasoning format;
+            # Qwen3.6 and similar reasoning models use deepseek format.
+            model_lower = os.path.basename(model_path).lower().replace(".gguf", "") if model_path else ""
+            if "gpt-oss" in model_lower:
+                cmd_parts.extend(["--reasoning_format", "auto"])
+            else:
+                cmd_parts.extend(["--reasoning_format", "deepseek"])
             # Cap thinking tokens via CLI (llama-server build 10603 ignores the
             # per-request `reasoning_budget` field). Without it the model can burn
             # the whole context on reasoning and never emit an answer.

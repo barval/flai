@@ -88,15 +88,16 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v11.3
+### What's New in v11.4
 
 | Feature | Notes |
 |---------|-------|
-| **v11.3 — context & retrieval quality** | In development: smarter context-budgeting for message history, higher-quality RAG and web search, and tighter SLM long-term memory — the goal is sharp retrieval results and long chat sessions that keep the thread without losing the meaning of earlier exchanges. |
-| **Reasoning token budget enforced** | llama-server build 10603 ignores the per-request `reasoning_budget` field, so the reasoning model's server command now caps thinking via the CLI flag `--reasoning-budget max(1024, ctx*0.4)` — no more context burned entirely on reasoning with no answer. |
-| **Streaming repetition-loop detector** | Streamed reasoning answers pass through a loop guard (`_LoopGuard`, hold-back 1500 chars): detected textual loops are cut mid-stream instead of flooding the chat; end-of-stream tails are flushed in a fixed order so short answers are never dropped. A server-side safety net catches loops missed in streaming. |
-| **Search date normalization** | Relative date words in search queries («вчера», «сегодня», English equivalents) are resolved to absolute dates in the user's timezone before hitting SearXNG — engines return dated articles instead of generic news-section landing pages. |
+| **v11.4 — resilient streaming & informative UI** | Everything shipped after the v11.3 release: streaming robustness (loop detector, reasoning budget cap), smarter search (date normalization), and a fully informative chat progress line. |
 | **Informative progress stages** | The chat shows what actually happens between request and answer: «🔍 Analyzing request... → 📚/🌐 Searching... (N s) → Found X results... → 🧠 Loading reasoning model... → 🤔 Thinking... (N s) → ⚡ Generating». The thinking stage is driven by a new backend `status_callback` fired when the model is loaded and generation starts (previously the whole silent thinking phase showed as "Loading reasoning model..."). Each phase ticks elapsed seconds. |
+| **Streaming repetition-loop detector** | Streamed reasoning answers pass through a loop guard (`_LoopGuard`, hold-back 1500 chars): detected textual loops are cut mid-stream instead of flooding the chat; end-of-stream tails are flushed in a fixed order so short answers are never dropped. A server-side safety net catches loops missed in streaming. |
+| **Reasoning token budget enforced** | llama-server build 10603 ignores the per-request `reasoning_budget` field, so the reasoning model's server command now caps thinking via the CLI flag `--reasoning-budget max(1024, ctx*0.4)` — no more context burned entirely on reasoning with no answer. |
+| **Search date normalization** | Relative date words in search queries («вчера», «сегодня», English equivalents) are resolved to absolute dates in the user's timezone before hitting SearXNG — engines return dated articles instead of generic news-section landing pages. |
+| **CUDA driver flexibility (in progress)** | Run FLAI on any host driver from CUDA 12.2 up: deploy scripts auto-detect the driver, adapt image selection, and warn when specific features need a newer driver. |
 
 ### Core Components
 
@@ -966,8 +967,11 @@ curl http://localhost:5000/metrics
 
 ## 🗺️ Roadmap
 
+### ✔️ Completed in v11.3
+- **Context & retrieval quality** — smarter context-budgeting for message history, higher-quality RAG and web search, tighter SLM long-term memory
+
 ### 🔄 In Progress
-- **v11.3 — context & retrieval quality** — smarter context-budgeting for message history, higher-quality RAG and web search, tighter SLM long-term memory: sharp retrieval results and long chat sessions that keep the thread without losing the meaning of earlier exchanges
+- **CUDA driver flexibility** — run FLAI on any host driver from CUDA 12.2 up: deploy scripts auto-detect the driver, waive NVIDIA image requirements where minor-version compatibility allows it, and warn when specific features (e.g. LTX-Video) need a newer driver
 - **Multi-platform GPU support** — extend FLAI to run on non-NVIDIA machines:
   - CPU-only mode for the full stack
   - AMD / Intel via Vulkan for llama.cpp and stable-diffusion.cpp, ROCm for LTX-Video

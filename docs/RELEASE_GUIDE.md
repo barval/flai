@@ -1,4 +1,4 @@
-# Release Guide — FLAI v11.3
+# Release Guide — FLAI v11.4
 
 This document describes the process of releasing a new version, updating READMEs, and maintaining documentation. Read it when preparing a new release.
 

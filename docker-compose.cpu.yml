@@ -359,6 +359,9 @@ services:
       - ./searxng:/etc/searxng
     environment:
       - SEARXNG_BASE_URL=http://flai-searxng:8080
+      # keep repo ownership of ./searxng (entrypoint chowns to 977 otherwise,
+      # breaking host git writes to settings.yml)
+      - FORCE_OWNERSHIP=false
     networks:
       - flai_network
     restart: unless-stopped

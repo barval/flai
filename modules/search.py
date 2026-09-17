@@ -44,6 +44,10 @@ _EN_MONTHS = {
     12: "December",
 }
 
+# Decimal amounts ("£3293.31", "3,293.31") make engines return an interactive
+# converter widget and zero organic links. Stripped for the search retry only.
+_DECIMAL_AMOUNT_RE = re.compile(r"[€£$¥₽]?\s?\d[\d\s,]*[.,]\d+")
+
 # Relative date words → day offset. Most specific word first so that
 # "позавчера" / "day before yesterday" match before "вчера" / "yesterday".
 _RELATIVE_DATE_HINTS: dict[str, list[tuple[re.Pattern[str], int]]] = {
@@ -96,6 +100,31 @@ def enhance_query_with_date(query: str, lang: str = "ru", now: datetime | None =
         query = pattern.sub(lambda m, _label=label: f"{m.group(0)} ({_label})", query)
         break
     return query
+
+
+def simplify_search_query(query: str) -> str:
+    """Drop decimal amounts that make engines return widget pages.
+
+    Engines answer a query like "£3293.31 to RUB" with an interactive currency
+    converter and no organic links, so the metasearch backend sees zero results.
+    Removing the fractional amount turns it into a plain lookup ("RUB rate")
+    that returns real pages. This is query normalization, not routing; callers
+    keep the original query for the reasoning model.
+
+    Args:
+        query: Original search query.
+
+    Returns:
+        The query without decimal amounts, or the original string when the
+        result would be empty/too short to search.
+    """
+    if not query:
+        return query
+    simplified = _DECIMAL_AMOUNT_RE.sub(" ", query)
+    simplified = re.sub(r"\s{2,}", " ", simplified).strip()
+    if len(simplified) < 3:
+        return query
+    return simplified
 
 
 class SearchModule(TranslationMixin):
@@ -196,7 +225,7 @@ class SearchModule(TranslationMixin):
                 reasons = "; ".join(f"{name}: {reason}" for name, reason, *_ in unresponsive)
                 if not raw_results:
                     self.logger.warning(
-                        f"SearXNG returned 0 results for '{query[:120]}' — all engines failed: {reasons}"
+                        f"SearXNG returned 0 results for '{query[:120]}' — engines without a response: {reasons}"
                     )
                 else:
                     self.logger.warning(

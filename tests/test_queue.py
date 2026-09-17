@@ -413,3 +413,90 @@ class TestMultimodalStageProgress:
             )
 
         queue._publish_stream_event.assert_not_called()
+
+
+@pytest.mark.unit
+class TestReasoningWebRouting:
+    """The reasoning_web action enriches a reasoning answer with a web search.
+
+    The router may classify a complex follow-up that also needs fresh internet
+    data as [-REASONING-WEB-]; such a request reuses the search pipeline
+    (SearXNG on the fast worker) and then reasons over the collected results,
+    preserving the session history. A degraded search falls back to plain
+    reasoning instead of hard-failing.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_workers(self):
+        """Prevent worker threads from starting during tests."""
+        with patch("app.queue.RedisRequestQueue.start_worker"):
+            yield
+
+    @pytest.fixture
+    def mock_app(self):
+        app = Mock()
+        app.config = {"REDIS_URL": "redis://localhost:6379/0", "SECRET_KEY": "test-secret-key"}
+        app.logger = Mock()
+        return app
+
+    @pytest.fixture
+    def mock_redis(self):
+        redis = Mock()
+        redis.blpop.return_value = None
+        pipe = Mock()
+        pipe.execute.return_value = []
+        redis.pipeline.return_value = pipe
+        return redis
+
+    def _make_queue(self, mock_app, mock_redis, router_result):
+        from app.queue import RedisRequestQueue
+
+        base = Mock()
+        base.process_message.return_value = router_result
+        mock_app.modules = {"base": base}
+        with patch("app.queue.redis.from_url", return_value=mock_redis):
+            queue = RedisRequestQueue(mock_app)
+        queue._publish_stream_event = Mock()
+        queue._build_error_response = Mock(return_value={"error": "⚠️ boom"})
+        queue._save_and_respond = Mock(return_value={})
+        queue._get_model_name = Mock(return_value="test-model")
+        queue._process_chat_with_tools = Mock(return_value={})
+        queue._process_search_task = Mock(return_value={"status": "queued"})
+        queue._requeue_reasoning_task = Mock(return_value={"status": "queued"})
+        return queue
+
+    def test_reasoning_web_routes_through_search(self, mock_app, mock_redis):
+        """reasoning_web runs the web-search pipeline (which requeues reasoning)."""
+        queue = self._make_queue(
+            mock_app,
+            mock_redis,
+            {"action": "reasoning_web", "query": "analyze current inflation", "needs_reasoning": True},
+        )
+        task = {"id": "t1", "user_id": "u1", "session_id": "s1"}
+
+        queue._route_text_action(
+            "analyze current inflation", "s1", "u1", "2026-09-17 12:00:00", "ru", "neutral", 2, task, True
+        )
+
+        queue._process_search_task.assert_called_once_with(
+            "analyze current inflation", "s1", "u1", "ru", "neutral", task=task, graceful=True
+        )
+        queue._requeue_reasoning_task.assert_not_called()
+
+    def test_reasoning_web_falls_back_to_plain_reasoning_when_search_fails(self, mock_app, mock_redis):
+        """A failed/empty search degrades to plain reasoning, not a hard error."""
+        queue = self._make_queue(
+            mock_app,
+            mock_redis,
+            {"action": "reasoning_web", "query": "analyze current inflation", "needs_reasoning": True},
+        )
+        queue._process_search_task.return_value = {"status": "no_search"}
+        task = {"id": "t1", "user_id": "u1", "session_id": "s1"}
+
+        queue._route_text_action(
+            "analyze current inflation", "s1", "u1", "2026-09-17 12:00:00", "ru", "neutral", 2, task, True
+        )
+
+        queue._requeue_reasoning_task.assert_called_once_with(
+            "analyze current inflation", "s1", "u1", "ru", "neutral", user_class=2, skip_rag=True
+        )

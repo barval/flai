@@ -573,7 +573,7 @@ class BaseModule(TranslationMixin):
         router_messages = [
             {
                 "role": "system",
-                "content": "STRICT CLASSIFICATION RULES — You are a query classifier. Output ONLY the result. No explanations, no extra text. SIMPLE queries (greetings, who-are-you, time/date, skills) → answer WITHOUT any marker. NEVER use [-REASONING-] for time or date questions. IMAGE generation → use [-IMAGE-]. VIDEO generation → use [-VIDEO-]. CAMERA/snapshot → use [-CAMERA-]. DOCUMENT search → use [-RAG-]. WEB search (news, prices, latest info) → use [-SEARCH-]. COMPLEX tasks (code, writing, reasoning) → use [-REASONING-]. REMEMBER requests → use [-REMEMBER-]. Never output reasoning markers for simple queries.",
+                "content": "STRICT CLASSIFICATION RULES — You are a query classifier. Output ONLY the result. No explanations, no extra text. SIMPLE queries (greetings, who-are-you, time/date, skills) → answer WITHOUT any marker. NEVER use [-REASONING-] for time or date questions. IMAGE generation → use [-IMAGE-]. VIDEO generation → use [-VIDEO-]. CAMERA/snapshot → use [-CAMERA-]. DOCUMENT search → use [-RAG-]. WEB search (news, prices, latest info) → use [-SEARCH-]. COMPLEX tasks (code, writing, reasoning) → use [-REASONING-]. COMPLEX tasks that also need fresh internet data → use [-REASONING-WEB-]. REMEMBER requests → use [-REMEMBER-]. Never output reasoning markers for simple queries.",
             },
             {"role": "user", "content": prompt},
         ]
@@ -612,6 +612,7 @@ class BaseModule(TranslationMixin):
         markers = {
             "[-IMAGE-]": "image",
             "[-CAMERA-]": "camera",
+            "[-REASONING-WEB-]": "reasoning_web",
             "[-REASONING-]": "reasoning",
             "[-RAG-]": "rag",
             "[-SEARCH-]": "search",
@@ -645,7 +646,11 @@ class BaseModule(TranslationMixin):
                     processed = processed.split("\n")[0].strip()
                     if original_query and (not processed or len(processed) > len(original_query) * 1.5):
                         processed = original_query
-                return {"action": action, "query": processed, "needs_reasoning": (action == "reasoning")}
+                return {
+                    "action": action,
+                    "query": processed,
+                    "needs_reasoning": action in ("reasoning", "reasoning_web"),
+                }
 
         return {"action": "none", "query": original_query, "needs_reasoning": False}
 

@@ -20,6 +20,22 @@ WATCHDOG_FAILURE_WINDOW_S = 300  # 5 minutes
 WATCHDOG_FAILURE_THRESHOLD = 3  # 3 failures in window triggers rollback
 LTX_OOM_WINDOW_S = 3600  # 1 hour sliding window for OOM metric
 
+
+def is_gpu_busy() -> bool:
+    """True while the GPU queue is running a transaction (SD, video, VRAM wait).
+
+    The watchdog must stay away from llama-swap during those windows: a
+    health check issued while ensure_vram_for is waiting for VRAM respawns
+    the model being unloaded, so the wait can never satisfy its threshold.
+    """
+    from app.resource_manager import get_resource_manager
+
+    try:
+        return get_resource_manager().is_gpu_busy()
+    except Exception:
+        return False
+
+
 # Track recent failures per module: {module: deque[timestamp]}
 _failures: dict[str, deque[float]] = {}
 # Track recent ltx-video OOM events: deque[timestamp]
@@ -133,6 +149,12 @@ def _watchdog_loop(app: Any) -> None:
 
     while True:
         try:
+            if is_gpu_busy():
+                # GPU transaction in progress — skip the whole tick. Touching
+                # llama-swap now would respawn the model being unloaded.
+                time.sleep(WATCHDOG_INTERVAL_S)
+                continue
+
             with app.app_context():
                 running = _get_running(swap_url)
                 if not running:

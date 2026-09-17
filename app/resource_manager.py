@@ -68,6 +68,7 @@ class ResourceManager:
         self._sd_busy_since = 0.0
         self._video_busy = False  # True while ltx-video is actively using GPU
         self._video_busy_since = 0.0
+        self._vram_wait_busy = False  # True during an ensure_vram_for unload+wait cycle
         self._vram_poll_timer: threading.Timer | None = None
         self._vram_poll_interval = 60  # seconds
         self._shutdown_event = threading.Event()
@@ -521,40 +522,63 @@ class ResourceManager:
 
         # Model not loaded or different model active — full unload
         logger.info(f"ensure_vram_for [{model_type}]: unloading all models, need {needed_mb}MB")
-        self.unload_llamacpp_model(llamacpp_url)
+        with self._lock:
+            self._vram_wait_busy = True
+        try:
+            self.unload_llamacpp_model(llamacpp_url)
 
-        # 2. Unload video pipeline
-        with contextlib.suppress(Exception):
-            self.unload_video_pipeline()
+            # 2. Unload video pipeline
+            with contextlib.suppress(Exception):
+                self.unload_video_pipeline()
 
-        # 3+4. Poll /running + platform VRAM until sufficient
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            try:
-                resp = requests.get(f"{llamacpp_url}/running", timeout=5)
-                if resp.status_code == 200:
-                    models = resp.json().get("running", [])
-                    if len(models) > 0:
-                        logger.debug(f"ensure_vram_for [{model_type}]: {len(models)} model(s) still active")
-                        time.sleep(2)
-                        continue
-            except Exception:
-                pass
+            # 3+4. Poll /running + platform VRAM until sufficient
+            seen_empty = False
+            deadline = time.time() + timeout
+            while time.time() < deadline:
+                models: list[dict[str, Any]] = []
+                try:
+                    resp = requests.get(f"{llamacpp_url}/running", timeout=5)
+                    if resp.status_code == 200:
+                        models = resp.json().get("running", [])
+                except Exception:
+                    pass
 
-            self._poll_vram()
-            free = self.hardware.available_vram_mb
-            if free >= needed_mb:
-                logger.info(f"ensure_vram_for [{model_type}]: {free}MB free >= {needed_mb}MB needed — OK")
-                return True
+                if models:
+                    # Anything in /running at this point was spawned by an
+                    # external actor (watchdog, dry-load) AFTER our unload —
+                    # it will not go away on its own. The unload POST is
+                    # idempotent, so re-issue it on every poll.
+                    if seen_empty:
+                        logger.warning(
+                            f"ensure_vram_for [{model_type}]: models reappeared during VRAM wait "
+                            f"({[m.get('name') for m in models]}) — unloading again"
+                        )
+                    else:
+                        logger.debug(
+                            f"ensure_vram_for [{model_type}]: {len(models)} model(s) still active — re-issuing unload"
+                        )
+                    self.unload_llamacpp_model(llamacpp_url)
+                    time.sleep(2)
+                    continue
+                seen_empty = True
 
-            logger.debug(f"ensure_vram_for [{model_type}]: {free}MB free, need {needed_mb}MB — waiting...")
-            time.sleep(2)
+                self._poll_vram()
+                free = self.hardware.available_vram_mb
+                if free >= needed_mb:
+                    logger.info(f"ensure_vram_for [{model_type}]: {free}MB free >= {needed_mb}MB needed — OK")
+                    return True
 
-        logger.error(
-            f"ensure_vram_for [{model_type}]: TIMEOUT after {timeout}s — "
-            f"{self.hardware.available_vram_mb}MB free, need {needed_mb}MB"
-        )
-        return False
+                logger.debug(f"ensure_vram_for [{model_type}]: {free}MB free, need {needed_mb}MB — waiting...")
+                time.sleep(2)
+
+            logger.error(
+                f"ensure_vram_for [{model_type}]: TIMEOUT after {timeout}s — "
+                f"{self.hardware.available_vram_mb}MB free, need {needed_mb}MB"
+            )
+            return False
+        finally:
+            with self._lock:
+                self._vram_wait_busy = False
 
     # ── Runtime gating ──
 
@@ -576,9 +600,19 @@ class ResourceManager:
             self._video_busy_since = time.time()
 
     def mark_video_idle(self):
-        """Signal that ltx-video finished."""
+        """Signal that ltx-video finished using GPU."""
         with self._lock:
             self._video_busy = False
+
+    def is_gpu_busy(self) -> bool:
+        """True while a GPU transaction is in progress (SD, video, VRAM wait).
+
+        The watchdog checks this before health-checking llama-swap models:
+        a health check spawned during an ensure_vram_for wait would reload
+        the very model being unloaded and starve the wait (VRAM race).
+        """
+        with self._lock:
+            return bool(self._sd_busy or self._video_busy or self._vram_wait_busy)
 
     # ── llama.cpp model management ──
 

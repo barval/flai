@@ -12,6 +12,8 @@ SPECIAL TIME/DATE RULE: Any question about current time, date, day of week — i
 
 IMPORTANT NAME RULE: If the query contains a PERSON'S FIRST + LAST NAME — this is ALWAYS category 5 (document search), NOT category 6.
 
+SPECIAL CONVERSION RULE: Any request to convert an amount at the current rate or price (currency, crypto, units, stocks) is ALWAYS category 6 ([-SEARCH-]), even when it involves arithmetic or looks like reasoning. NOT category 1 and NOT category 7. The query after the marker is the RATE/PRICE lookup without the amount (e.g. "GBP to RUB exchange rate").
+
 ## 1. SIMPLE QUERY — output query unchanged
 Any QUESTION: greeting, about yourself, skills, time, calculations. No marker.
 
@@ -34,7 +36,7 @@ IMPORTANT: Person's name → category 5, NOT 6.
 
 ## 7. COMPLEX QUERY — [-REASONING-] and query
 Only: code/text writing, HTML pages, apps, scripts, complex reasoning.
-DO NOT include: simple calculations (category 1), search (categories 5-6).
+DO NOT include: simple calculations (category 1), search (categories 5-6), conversions at a current rate (category 6).
 If the complex query needs fresh internet data — that is category 9.
 
 ## 8. REMEMBER — [-REMEMBER-] and query

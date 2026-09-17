@@ -271,3 +271,145 @@ class TestWorkerStartGuard:
             assert _is_cli_process() is False
         with patch("app.sys.argv", ["wsgi.py"]):
             assert _is_cli_process() is False
+
+
+@pytest.mark.unit
+class TestMultimodalStageProgress:
+    """Multimodal-stream paths must publish task_progress stages.
+
+    Image+text chat and simple chat answered directly by the multimodal model
+    previously showed no emoji status / seconds counter while the model was
+    working (especially slow on CPU). The stage is emitted up front and the
+    frontend auto-removes it on the first stream_token.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_workers(self):
+        """Prevent worker threads from starting during tests."""
+        with patch("app.queue.RedisRequestQueue.start_worker"):
+            yield
+
+    @pytest.fixture
+    def mock_app(self):
+        app = Mock()
+        app.config = {"REDIS_URL": "redis://localhost:6379/0", "SECRET_KEY": "test-secret-key"}
+        app.logger = Mock()
+        return app
+
+    @pytest.fixture
+    def mock_redis(self):
+        redis = Mock()
+        redis.blpop.return_value = None
+        pipe = Mock()
+        pipe.execute.return_value = []
+        redis.pipeline.return_value = pipe
+        return redis
+
+    def _make_queue(self, mock_app, mock_redis, base=None, multimodal=None):
+        """RedisRequestQueue stub with SSE/result methods mocked away."""
+        from app.queue import RedisRequestQueue
+
+        mock_app.modules = {"base": base or Mock(), "multimodal": multimodal or Mock()}
+        with patch("app.queue.redis.from_url", return_value=mock_redis):
+            queue = RedisRequestQueue(mock_app)
+        queue._publish_stream_event = Mock()
+        queue._publish_stream_token = Mock()
+        queue._save_and_respond = Mock(return_value={})
+        queue._build_error_response = Mock()
+        queue._is_task_cancelled = Mock(return_value=False)
+        queue._get_model_name = Mock(return_value="test-model")
+        return queue
+
+    def test_image_chat_stream_publishes_analyzing_image(self, mock_app, mock_redis):
+        """Image+text chat publishes 'analyzing_image' until the first token."""
+        multimodal = Mock()
+        multimodal.available = True
+        multimodal.validate_image.return_value = (True, None)
+        multimodal.process_image_with_text_stream = Mock(return_value=iter(["Analyzed image"]))
+
+        queue = self._make_queue(mock_app, mock_redis, multimodal=multimodal)
+        task = {"id": "t1", "user_id": "u1", "session_id": "s1"}
+
+        queue._process_image_chat_task_stream(
+            task,
+            "data:image/png;base64,AAAA",
+            "image/png",
+            "photo.png",
+            "What is in this photo?",
+            "s1",
+            "2026-09-17 12:00:00",
+            "ru",
+            "u1",
+        )
+
+        queue._publish_stream_event.assert_any_call(task, "task_progress", {"stage": "analyzing_image"})
+
+    def test_image_chat_stream_publishes_stage_without_text(self, mock_app, mock_redis):
+        """Image-only chat (no text) also publishes 'analyzing_image'."""
+        multimodal = Mock()
+        multimodal.available = True
+        multimodal.validate_image.return_value = (True, None)
+        multimodal.process_image_with_text_stream = Mock(return_value=iter(["Analyzed image"]))
+
+        queue = self._make_queue(mock_app, mock_redis, multimodal=multimodal)
+        task = {"id": "t1", "user_id": "u1", "session_id": "s1"}
+
+        queue._process_image_chat_task_stream(
+            task,
+            "data:image/png;base64,AAAA",
+            "image/png",
+            "photo.png",
+            "",
+            "s1",
+            "2026-09-17 12:00:00",
+            "ru",
+            "u1",
+        )
+
+        queue._publish_stream_event.assert_any_call(task, "task_progress", {"stage": "analyzing_image"})
+
+    def test_chat_with_tools_stream_publishes_thinking(self, mock_app, mock_redis):
+        """Streaming simple chat publishes 'reasoning_thinking' before generation."""
+        base = Mock()
+        base.llamacpp = Mock()
+        base.llamacpp.chat_stream = Mock(return_value=iter(["Hello"]))
+        base._get_context_for_model.return_value = ""
+
+        queue = self._make_queue(mock_app, mock_redis, base=base)
+        task = {"id": "t1", "user_id": "u1", "session_id": "s1"}
+
+        with (
+            patch("app.queue.format_prompt", return_value="system"),
+            patch("app.queue.get_tool_definitions", return_value=None),
+            patch("app.queue.MAX_TOOL_ITERATIONS", 1),
+            patch("modules.base.get_style_instruction", return_value=""),
+            patch("modules.base.response_language_name", return_value="Russian"),
+        ):
+            queue._process_chat_with_tools(
+                task, "hello", "2026-09-17 12:00:00", "s1", "u1", "ru", "neutral", stream=True
+            )
+
+        queue._publish_stream_event.assert_any_call(task, "task_progress", {"stage": "reasoning_thinking"})
+
+    def test_chat_with_tools_non_streaming_skips_thinking(self, mock_app, mock_redis):
+        """Non-streaming chat must NOT publish a progress stage (no removal event)."""
+        base = Mock()
+        base.llamacpp = Mock()
+        base.llamacpp.chat.return_value = "Hello"
+        base._get_context_for_model.return_value = ""
+
+        queue = self._make_queue(mock_app, mock_redis, base=base)
+        task = {"id": "t1", "user_id": "u1", "session_id": "s1"}
+
+        with (
+            patch("app.queue.format_prompt", return_value="system"),
+            patch("app.queue.get_tool_definitions", return_value=None),
+            patch("app.queue.MAX_TOOL_ITERATIONS", 1),
+            patch("modules.base.get_style_instruction", return_value=""),
+            patch("modules.base.response_language_name", return_value="Russian"),
+        ):
+            queue._process_chat_with_tools(
+                task, "hello", "2026-09-17 12:00:00", "s1", "u1", "ru", "neutral", stream=False
+            )
+
+        queue._publish_stream_event.assert_not_called()

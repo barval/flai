@@ -19,8 +19,11 @@ engines:
   - name: yahoo news
   - name: yahoo
     disabled: false
+  # bing returns decoy/help-page garbage in the top of merged results
+  # (Google support pages in random languages) when rate-limited, drowning
+  # out the news aggregators. bing news below remains enabled.
   - name: bing
-    disabled: false
+    disabled: true
   - name: mojeek
     disabled: false
   - name: marginalia

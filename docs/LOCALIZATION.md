@@ -1,4 +1,4 @@
-# Localization (i18n) — FLAI v11.4
+# Localization (i18n) — FLAI v11.5
 
 This document describes the localization system, Flask-Babel usage, and rules for translating READMEs. Read it when adding user-facing strings or updating README files.
 

@@ -361,6 +361,11 @@ class RedisRequestQueue:
         if action_type == "search":
             return "none"
 
+        # reasoning_web starts with a CPU-only web search, then re-queues a
+        # reasoning task on the slow worker.
+        if action_type == "reasoning_web":
+            return "none"
+
         if file_type and file_type.startswith("audio/"):
             return "multimodal"
 
@@ -2438,20 +2443,35 @@ class RedisRequestQueue:
         lang: str,
         response_style: str = "neutral",
         task: dict[str, Any] | None = None,
+        graceful: bool = False,
+        reasoning_query: str | None = None,
     ) -> dict[str, Any]:
         """Handle web search request (router action_type='search').
 
         Searches SearXNG on the fast worker (CPU-only HTTP call),
         then re-queues to the slow worker for reasoning model synthesis.
+
+        ``graceful=True`` returns ``{"status": "no_search"}`` instead of a
+        persisted error response when the search is unavailable or empty —
+        used by reasoning_web, which falls back to plain reasoning.
+
+        ``query`` is the engine-facing search string (the router may strip a
+        fractional amount from it, since engines answer those with a converter
+        widget and no links). ``reasoning_query`` is the question handed to the
+        reasoning model — the user's original wording, so the amount survives.
         """
+
+        def _no_search(error: str, elapsed: float) -> dict[str, Any]:
+            if graceful:
+                return {"status": "no_search"}
+            return self._build_error_response(session_id, error, elapsed, lang)
+
         self.app.logger.info(
             f"Process web search task: query='{query[:120]}' lang={lang} user={user_id} session={session_id}"
         )
         search = self.app.modules.get("search")
         if not search or not search.available:
-            return self._build_error_response(
-                session_id, self.app.modules["base"]._("Web search is not available", lang), 0, lang
-            )
+            return _no_search(self.app.modules["base"]._("Web search is not available", lang), 0)
 
         search_start = time.time()
         try:
@@ -2472,8 +2492,13 @@ class RedisRequestQueue:
                 or len(search_context) < 2000
                 or not any(len((r.get("content") or "").strip()) > 500 for r in results)
             ):
-                self.app.logger.warning(f"SearXNG returned poor results for: {query[:100]}... — retrying once")
-                retried = search.search(query, lang=lang)
+                from modules.search import simplify_search_query
+
+                retry_query = simplify_search_query(query)
+                self.app.logger.warning(
+                    f"SearXNG returned poor results for: {query[:100]}... — retrying once with '{retry_query[:100]}'"
+                )
+                retried = search.search(retry_query, lang=lang)
                 if retried:
                     retried_ctx = search.format_results_context(retried, lang=lang, max_chars=search_max_chars)
                     # Keep whichever attempt produced a richer context.
@@ -2482,13 +2507,11 @@ class RedisRequestQueue:
             search_time = round(time.time() - search_start, 1)
             if not results:
                 self.app.logger.warning(f"SearXNG returned 0 results after retry for: {query[:100]}...")
-                return self._build_error_response(
-                    session_id,
+                return _no_search(
                     self.app.modules["base"]._(
                         "Search services are temporarily unavailable. Please try again in a few minutes.", lang
                     ),
                     search_time,
-                    lang,
                 )
             self.app.logger.info(
                 f"Web search: '{query[:60]}...' → {len(results)} results, "
@@ -2497,15 +2520,10 @@ class RedisRequestQueue:
         except Exception as e:
             search_time = round(time.time() - search_start, 1)
             self.logger.error(f"Web search failed: {e}")
-            return self._build_error_response(
-                session_id,
-                self.app.modules["base"]._("Web search failed", lang),
-                search_time,
-                lang,
-            )
+            return _no_search(self.app.modules["base"]._("Web search failed", lang), search_time)
 
         return self._requeue_reasoning_task(
-            query,
+            reasoning_query or query,
             session_id,
             user_id,
             lang,
@@ -2691,6 +2709,28 @@ class RedisRequestQueue:
         action_type = router_result["action"]
         query = router_result["query"]
 
+        if action_type == "reasoning_web":
+            # Complex follow-up that also needs fresh internet data: collect web
+            # results on the fast worker, then reason over them with the session
+            # history. A degraded search degrades to plain reasoning.
+            search_result = self._process_search_task(
+                query,
+                session_id,
+                user_id,
+                lang,
+                response_style,
+                task=task,
+                graceful=True,
+                reasoning_query=message_text,
+            )
+            if search_result.get("status") == "queued":
+                return search_result
+            self.app.logger.warning(
+                f"reasoning_web: web search unavailable for '{query[:80]}' — falling back to plain reasoning"
+            )
+            return self._requeue_reasoning_task(
+                message_text, session_id, user_id, lang, response_style, user_class=user_class, skip_rag=True
+            )
         if action_type == "reasoning":
             return self._requeue_reasoning_task(
                 query, session_id, user_id, lang, response_style, user_class=user_class, skip_rag=True
@@ -2721,7 +2761,9 @@ class RedisRequestQueue:
                 )
             return self._process_rag_task(query, session_id, user_id, lang, response_style, task=task)
         if action_type == "search":
-            return self._process_search_task(query, session_id, user_id, lang, response_style, task=task)
+            return self._process_search_task(
+                query, session_id, user_id, lang, response_style, task=task, reasoning_query=message_text
+            )
 
         if stream:
             # Explicit remember request — process through LLM and save to SLM

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests as real_requests
 
-from modules.search import SearchModule, enhance_query_with_date
+from modules.search import SearchModule, enhance_query_with_date, simplify_search_query
 
 
 @pytest.fixture
@@ -271,3 +271,36 @@ class TestFormatResultsContext:
         result = search_module.format_results_context(results, lang="ru")
         # Source label is translated, but should contain the result number
         assert "1" in result
+
+
+class TestSimplifySearchQuery:
+    """Decimal amounts make engines answer with a converter widget (0 organic results).
+
+    The query is only simplified for the search retry — the caller keeps the
+    original query (with the amount) for the reasoning model.
+    """
+
+    def test_strips_decimal_with_currency_symbol(self):
+        assert simplify_search_query("перевести £3293.31 по текущему курсу в рубли") == (
+            "перевести по текущему курсу в рубли"
+        )
+
+    def test_strips_decimal_with_grouping_separator(self):
+        assert simplify_search_query("перевести 3,293.31 фунта в рубли") == "перевести фунта в рубли"
+
+    def test_strips_spaced_currency_amount(self):
+        assert simplify_search_query("convert £ 3,293.31 to RUB") == "convert to RUB"
+
+    def test_keeps_integer_amounts(self):
+        query = "перевести 3293 фунта в рублях"
+        assert simplify_search_query(query) == query
+
+    def test_keeps_query_without_numbers(self):
+        query = "курс фунта стерлингов к рублю"
+        assert simplify_search_query(query) == query
+
+    def test_keeps_bare_decimal_when_nothing_remains(self):
+        assert simplify_search_query("3.14") == "3.14"
+
+    def test_empty_query_unchanged(self):
+        assert simplify_search_query("") == ""

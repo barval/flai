@@ -57,6 +57,21 @@ class TestBaseModule:
         assert result["query"] == "solve this problem"
 
     @pytest.mark.unit
+    def test_parse_router_response_reasoning_web_marker(self, base_module):
+        """Test parsing response with reasoning-web marker."""
+        response = "[-REASONING-WEB-] analyze current inflation data"
+        result = base_module._parse_router_response(response, "", "")
+        assert result["action"] == "reasoning_web"
+        assert result["query"] == "analyze current inflation data"
+
+    @pytest.mark.unit
+    def test_parse_router_response_reasoning_web_priority(self, base_module):
+        """reasoning-web marker wins when both reasoning markers are present."""
+        response = "[-REASONING-WEB-] analyze current inflation data [-REASONING-] fallback"
+        result = base_module._parse_router_response(response, "", "")
+        assert result["action"] == "reasoning_web"
+
+    @pytest.mark.unit
     def test_parse_router_response_camera_marker(self, base_module):
         """Test parsing response with camera marker."""
         response = "[-CAMERA-] show kitchen"

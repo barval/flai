@@ -117,3 +117,42 @@ class TestStartWatchdog:
             mock_thread.start.assert_called_once()
             assert mock_thread_cls.call_args.kwargs["daemon"] is True
             assert mock_thread_cls.call_args.kwargs["name"] == "flai-watchdog"
+
+
+class TestWatchdogGpuBusyGuard:
+    """The watchdog must not health-check llama-swap while a GPU transaction
+    (SD, video, or an ensure_vram_for unload+wait cycle) is in progress —
+    a health check respawns the model being unloaded and starves the wait."""
+
+    def test_is_gpu_busy_true_when_rm_busy(self):
+        with patch("app.resource_manager.get_resource_manager") as grm:
+            grm.return_value.is_gpu_busy.return_value = True
+            assert hm.is_gpu_busy() is True
+
+    def test_is_gpu_busy_false_when_idle(self):
+        with patch("app.resource_manager.get_resource_manager") as grm:
+            grm.return_value.is_gpu_busy.return_value = False
+            assert hm.is_gpu_busy() is False
+
+    def test_is_gpu_busy_swallows_errors(self):
+        with patch("app.resource_manager.get_resource_manager", side_effect=RuntimeError("boom")):
+            assert hm.is_gpu_busy() is False
+
+    def test_watchdog_loop_skips_tick_when_gpu_busy(self):
+        sleeps = []
+
+        def fake_sleep(seconds):
+            sleeps.append(seconds)
+            if len(sleeps) >= 2:
+                raise KeyboardInterrupt
+
+        with (
+            patch.object(hm, "is_gpu_busy", return_value=True),
+            patch.object(hm, "_get_running") as get_running,
+            patch.object(hm.time, "sleep", side_effect=fake_sleep),
+            pytest.raises(KeyboardInterrupt),
+        ):
+            hm._watchdog_loop(MagicMock())
+
+        assert sleeps == [30, hm.WATCHDOG_INTERVAL_S]
+        get_running.assert_not_called()

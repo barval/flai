@@ -88,10 +88,11 @@
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v11.4
+### What's New in v11.5
 
 | Feature | Notes |
 |---------|-------|
+| **v11.5 — reasoning backed by fresh web data** | A new router category, `[-REASONING-WEB-]`, covers complex queries that also need current internet data (analysis, comparisons, overviews over fresh facts). Such a request now gathers SearXNG results on the fast worker and reasons over them with the full session history intact — previously these follow-ups fell into `[-REASONING-]`, which is offline, so the model answered from stale weights. A degraded or empty search silently falls back to plain reasoning instead of erroring. |
 | **v11.4 — resilient streaming & informative UI** | Everything shipped after the v11.3 release: streaming robustness (loop detector, reasoning budget cap), smarter search (date normalization), and a fully informative chat progress line. |
 | **Informative progress stages** | The chat shows what actually happens between request and answer: «🔍 Analyzing request... → 📚/🌐 Searching... (N s) → Found X results... → 🧠 Loading reasoning model... → 🤔 Thinking... (N s) → ⚡ Generating». The thinking stage is driven by a new backend `status_callback` fired when the model is loaded and generation starts (previously the whole silent thinking phase showed as "Loading reasoning model..."). Every chat tool call also gets its own stage — 🕐 `get_current_time` (Getting time...), 🔢 `calculator` (Calculating...), 📅 `time_calc` (Calculating date...), 🌐 `web_search` (Searching the web...), 📚 `rag_search` (Searching documents...), 📹 `camera_snapshot` (Capturing snapshot...) — so a weather/news question answered through a tool call always shows the search status. Each phase ticks elapsed seconds. |
 | **Streaming repetition-loop detector** | Streamed reasoning answers pass through a loop guard (`_LoopGuard`, hold-back 1500 chars): detected textual loops are cut mid-stream instead of flooding the chat; end-of-stream tails are flushed in a fixed order so short answers are never dropped. A server-side safety net catches loops missed in streaming. |
@@ -972,6 +973,9 @@ curl http://localhost:5000/metrics
 ---
 
 ## 🗺️ Roadmap
+
+### ✔️ Completed in v11.5
+- **Reasoning with fresh web data** — a new `[-REASONING-WEB-]` router category lets a complex follow-up that also needs current internet data search first (SearXNG, CPU-side) and then reason over the results with the session thread intact, degrading to plain reasoning if the search fails
 
 ### ✔️ Completed in v11.3
 - **Context & retrieval quality** — smarter context-budgeting for message history, higher-quality RAG and web search, tighter SLM long-term memory

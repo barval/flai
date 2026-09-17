@@ -4,7 +4,13 @@ All notable changes to FLAI are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [v11.4] — Unreleased
+## [v11.5] — Unreleased
+
+### ✨ Features
+
+- **Reasoning with fresh web data (`[-REASONING-WEB-]`)** — the router gains a 9th category for a complex query that also needs up-to-date internet data (analysis/comparison/essay over current events, statistics, trends). Previously such a follow-up landed in `[-REASONING-]`, which runs with `skip_rag` and no internet, so the model reasoned from stale weights — the earlier `[-SEARCH-]` turn's results were not carried over (the router is stateless and classifies the current utterance alone). `_parse_router_response()` (`modules/base.py`) now maps `[-REASONING-WEB-]` → `reasoning_web` (`needs_reasoning` includes both actions). `_route_text_action()` (`app/queue.py`) collects SearXNG results on the fast worker via `_process_search_task()` and re-queues the reasoning model with the `rag_context` (`rag_source="web_search"`), preserving the session history. A degraded/empty search falls back to plain reasoning instead of a hard error: `_process_search_task(graceful=True)` returns `{"status": "no_search"}` **without** persisting an error message to the conversation. `_get_model_for_task()` maps `reasoning_web` to `none` (CPU-only search phase) so the fast worker does not take the GPU lock. Both `prompts/{ru,en}/base_text.template` gained category 9, and the inline classifier hint in `process_message()` was updated. 2 tests in `TestReasoningWebRouting`, 2 in `test_base_module.py`.
+
+## [v11.4] — 2026-09-17
 
 ### ✨ Features
 

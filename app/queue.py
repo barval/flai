@@ -2919,6 +2919,12 @@ class RedisRequestQueue:
         full_response = ""
         last_tool_result = ""
 
+        # The multimodal model answers directly here: show "Thinking..." until
+        # the first stream_token (auto-removed) so slow CPU generations are not
+        # silent. Non-streaming paths have no token to clear the stage — skip.
+        if stream and task:
+            self._publish_stream_event(task, "task_progress", {"stage": "reasoning_thinking"})
+
         for iteration in range(MAX_TOOL_ITERATIONS):
             if self._is_task_cancelled(task["id"]):
                 break
@@ -3394,6 +3400,10 @@ class RedisRequestQueue:
         edit_marker = "[-IMAGE-EDIT-]"
         video_marker = "[-VIDEO-]"
         process_start = time.time()
+
+        # Status until the first stream_token arrives (auto-removed by the
+        # frontend) — image analysis is especially slow on CPU.
+        self._publish_stream_event(task, "task_progress", {"stage": "analyzing_image"})
 
         if "multimodal" not in self.app.modules or not self.app.modules["multimodal"].available:
             bot_reply = "⚠️ " + self.app.modules["base"]._("Multimodal model unavailable", lang)

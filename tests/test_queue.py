@@ -479,7 +479,14 @@ class TestReasoningWebRouting:
         )
 
         queue._process_search_task.assert_called_once_with(
-            "analyze current inflation", "s1", "u1", "ru", "neutral", task=task, graceful=True
+            "analyze current inflation",
+            "s1",
+            "u1",
+            "ru",
+            "neutral",
+            task=task,
+            graceful=True,
+            reasoning_query="analyze current inflation",
         )
         queue._requeue_reasoning_task.assert_not_called()
 
@@ -500,3 +507,62 @@ class TestReasoningWebRouting:
         queue._requeue_reasoning_task.assert_called_once_with(
             "analyze current inflation", "s1", "u1", "ru", "neutral", user_class=2, skip_rag=True
         )
+
+
+class TestSearchQueryNormalization:
+    """A decimal amount makes SearXNG return 0 organic results (converter widget).
+
+    The search layer retries with the amount stripped, while the reasoning model
+    still receives the original question (with the amount) so it can compute.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_workers(self):
+        with patch("app.queue.RedisRequestQueue.start_worker"):
+            yield
+
+    @pytest.fixture
+    def mock_app(self):
+        app = Mock()
+        app.config = {"REDIS_URL": "redis://localhost:6379/0", "SECRET_KEY": "test-secret-key"}
+        app.logger = Mock()
+        return app
+
+    @pytest.fixture
+    def mock_redis(self):
+        redis = Mock()
+        redis.blpop.return_value = None
+        pipe = Mock()
+        pipe.execute.return_value = []
+        redis.pipeline.return_value = pipe
+        return redis
+
+    def _make_queue(self, mock_app, mock_redis, search):
+        from app.queue import RedisRequestQueue
+
+        base = Mock()
+        base.get_search_context_limit.return_value = 10000
+        base._ = Mock(return_value="⚠️ unavailable")
+        mock_app.modules = {"base": base, "search": search}
+        with patch("app.queue.redis.from_url", return_value=mock_redis):
+            queue = RedisRequestQueue(mock_app)
+        queue._publish_stream_event = Mock()
+        queue._build_error_response = Mock(return_value={"error": "⚠️ boom"})
+        queue._requeue_reasoning_task = Mock(return_value={"status": "queued"})
+        return queue
+
+    def test_retries_with_decimal_stripped_and_keeps_original_for_reasoning(self, mock_app, mock_redis):
+        search = Mock()
+        search.available = True
+        search.search.side_effect = lambda q, lang="ru", **kw: (
+            [] if "3.31" in q else [{"title": "t", "url": "u", "content": "x"}]
+        )
+        search.format_results_context.side_effect = lambda res, **kw: ("x" * 4000) if res else ""
+        queue = self._make_queue(mock_app, mock_redis, search)
+        original = "перевести £3293.31 по текущему курсу в рубли"
+        question = "переведи по текущему курсу в рубли £ 3,293.31"
+
+        queue._process_search_task(original, "s1", "u1", "ru", "neutral", reasoning_query=question)
+
+        assert [c.args[0] for c in search.search.call_args_list] == [original, "перевести по текущему курсу в рубли"]
+        assert queue._requeue_reasoning_task.call_args.args[0] == question

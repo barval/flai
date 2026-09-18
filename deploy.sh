@@ -655,17 +655,40 @@ build_and_launch() {
     sleep 10
 
     # Fallback when pybabel was missing on the host: compile inside the
-    # container (writes .mo through the bind-mount), then restart the web app
-    # so Flask-Babel re-reads the freshly compiled catalogs.
+    # container (writes .mo through the bind-mount). The .mo catalogs
+    # are now tracked in git so a fresh clone already has them; this
+    # only refreshes them when the host .po changed. The retry loop
+    # tolerates the brief window after `up -d` where the container is
+    # not yet ready.
     if ! command -v pybabel &>/dev/null; then
-        if docker exec flai-web pybabel compile -d /app/translations 2>/dev/null; then
+        local compiled=0
+        local err=""
+        for _attempt in 1 2 3 4 5; do
+            err=$(docker exec flai-web pybabel compile -d /app/translations 2>&1) && compiled=1 && break
+            info "Container not ready yet, retrying in 3s..."
+            sleep 3
+        done
+        if [[ "$compiled" == "1" ]]; then
             info "Compiled translations inside container — restarting flai-web..."
             docker restart flai-web
             sleep 10
         else
-            warn "Could not compile translations (no pybabel on host or in container) — UI may stay English."
+            warn "Could not compile translations inside the container:"
+            warn "  $err"
+            warn "UI may fall back to English — run: pybabel compile -d translations"
         fi
     fi
+
+    # Sanity check: compiled catalogs must exist, otherwise the UI
+    # falls back to English. On a fresh clone they come from git;
+    # this only fails if the clone is corrupt or .po changed without
+    # recompilation.
+    for LOC in en ru; do
+        if [[ ! -f "translations/$LOC/LC_MESSAGES/messages.mo" ]]; then
+            warn "Missing translations/$LOC/LC_MESSAGES/messages.mo — UI will fall back to English."
+            warn "Run: pybabel compile -d translations"
+        fi
+    done
 
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "unreachable")

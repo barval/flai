@@ -1,3 +1,4 @@
+import json
 import threading
 from unittest.mock import Mock, patch
 
@@ -5,7 +6,7 @@ import pytest
 
 from app.queue import RedisRequestQueue
 from app.resource_manager import ResourceManager
-from modules.rlm import RlmResult
+from modules.rlm import RlmResult, RlmTraceStep
 
 
 @pytest.mark.unit
@@ -47,6 +48,7 @@ def test_process_rlm_task_emits_reading_and_finalizing_stages():
     q.redis = Mock()
     app = Mock()
     app.modules = {"base": Mock()}
+    app.config = {"DOCUMENTS_FOLDER": "/tmp/documents"}
     q.app = app
 
     task = {
@@ -60,14 +62,61 @@ def test_process_rlm_task_emits_reading_and_finalizing_stages():
     rm.ensure_vram_for_reasoning = Mock(return_value=True)
     with (
         patch("modules.rlm.RlmModule") as mock_rlm_module,
-        patch("app.db.get_document", return_value={"file_path": "/tmp/doc.txt", "filename": "doc.txt"}),
-        patch("app.utils.extract_text_from_file", return_value="corpus text"),
+        patch("app.db.get_document", return_value={"file_path": "valery/doc.txt", "filename": "doc.txt"}),
+        patch("app.utils.extract_text_from_file") as mock_extract,
         patch("app.resource_manager.get_resource_manager", return_value=rm),
     ):
+        mock_extract.side_effect = lambda path: "corpus text" if path == "/tmp/documents/valery/doc.txt" else None
         mock_rlm_module.return_value.run = Mock(return_value=RlmResult(answer="ok", trace=[], steps=1))
         result = q._process_rlm_task(task)
 
     assert result["status"] == "ok"
+    mock_extract.assert_called_with("/tmp/documents/valery/doc.txt")
     stages = [p["stage"] for p in events if p and "stage" in p]
     assert stages[0] == "loading_reasoning_model"
     assert stages.index("rlm_reading") < stages.index("rlm_finalizing")
+
+
+@pytest.mark.unit
+def test_process_rlm_task_writes_trace_on_error():
+    q = RedisRequestQueue.__new__(RedisRequestQueue)
+    q._publish_stream_event = lambda task, event_type, extra=None: None
+    q._is_task_cancelled = Mock(return_value=False)
+    q._save_and_respond = Mock(return_value={"status": "ok"})
+    q._build_error_response = Mock(return_value={"status": "error"})
+    q.redis = Mock()
+    app = Mock()
+    app.modules = {"base": Mock()}
+    app.modules["base"]._ = Mock(return_value="localized error")
+    app.config = {"DOCUMENTS_FOLDER": "/tmp/documents"}
+    q.app = app
+
+    task = {
+        "id": "rlm-test-err",
+        "data": {"type": "rlm_analysis", "text": "q", "doc_ids": ["d1"]},
+        "session_id": "s1",
+        "user_id": "u1",
+        "lang": "en",
+    }
+    rm = Mock()
+    rm.ensure_vram_for_reasoning = Mock(return_value=True)
+    with (
+        patch("modules.rlm.RlmModule") as mock_rlm_module,
+        patch("app.db.get_document", return_value={"file_path": "valery/doc.txt", "filename": "doc.txt"}),
+        patch("app.utils.extract_text_from_file", return_value="corpus text"),
+        patch("app.resource_manager.get_resource_manager", return_value=rm),
+    ):
+        mock_rlm_module.return_value.run = Mock(
+            return_value=RlmResult(
+                answer="",
+                trace=[RlmTraceStep(1, "web_fetch", json.dumps({"query": "q"}), "obs")],
+                steps=5,
+                error="step limit reached",
+            )
+        )
+        result = q._process_rlm_task(task)
+
+    assert result["status"] == "error"
+    key = q.redis.setex.call_args[0][0]
+    assert key == "rlm_trace:rlm-test-err"
+    assert '"observation": "obs"' in q.redis.setex.call_args[0][2]

@@ -1576,11 +1576,13 @@ class RedisRequestQueue:
         on_stage("rlm_reading", None)
 
         corpus: dict[str, str] = {}
+        documents_folder = self.app.config["DOCUMENTS_FOLDER"]
         for doc_id in doc_ids:
             doc = get_document(doc_id, user_id)
             if not doc or not doc.get("file_path"):
                 continue
-            text = extract_text_from_file(doc["file_path"])
+            full_path = os.path.join(documents_folder, doc["file_path"])
+            text = extract_text_from_file(full_path)
             if text:
                 corpus[doc.get("filename", doc_id)] = text
         if not corpus:
@@ -1617,6 +1619,13 @@ class RedisRequestQueue:
 
         elapsed = round(time.time() - start, 1)
         on_stage("rlm_finalizing", None)
+
+        trace_payload = [
+            {"step": t.step, "tool": t.tool, "args": t.args, "observation": t.observation} for t in result.trace
+        ]
+        if result.trace:
+            self.redis.setex(f"rlm_trace:{task['id']}", 3600, json.dumps(trace_payload))
+
         if result.error == "cancelled":
             self._publish_stream_event(task, "stream_cancelled")
             return {"status": "cancelled", "session_id": session_id}
@@ -1632,10 +1641,6 @@ class RedisRequestQueue:
             error_msg = local_errors.get(result.error, result.error)
             return self._build_error_response(session_id, error_msg, elapsed, lang)
 
-        trace_payload = [
-            {"step": t.step, "tool": t.tool, "args": t.args, "observation": t.observation} for t in result.trace
-        ]
-        self.redis.setex(f"rlm_trace:{task['id']}", 3600, json.dumps(trace_payload))
         return self._save_and_respond(
             session_id,
             result.answer,

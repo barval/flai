@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from modules.rlm import RLM_TOOL_DEFINITIONS, RlmModule, RlmResult
+from modules.rlm import RLM_TOOL_DEFINITIONS, RlmModule, RlmResult, _RlmBroker
 
 
 @pytest.mark.unit
@@ -153,6 +153,72 @@ def test_run_cancelled_returns_error(test_app):
             is_cancelled=lambda: True,
         )
     assert result.error == "cancelled"
+
+
+@pytest.mark.unit
+def test_web_fetch_dedup_repeated_queries(test_app):
+    module, _ = _make_module([])
+    queries = []
+    search = MagicMock()
+    search.available = True
+    search.search.side_effect = lambda query, lang="ru", max_results=3: (
+        queries.append(query) or [{"title": "t", "url": "u", "content": "page"}]
+    )
+    module.app.modules["search"] = search
+    broker = _RlmBroker(module, "en", 1024, 5)
+    first = module.broker_web_fetch("repeat me", broker)
+    second = module.broker_web_fetch("repeat me", broker)
+    assert queries == ["repeat me"]
+    assert first.startswith("[")
+    assert "already searched" in second
+
+
+@pytest.mark.unit
+def test_run_nudges_final_near_step_limit(test_app):
+    def web_tool(i):
+        return {
+            "content": "",
+            "tool_calls": [
+                {"id": str(i), "function": {"name": "web_fetch", "arguments": json.dumps({"query": f"q{i}"})}}
+            ],
+        }
+
+    script = [
+        web_tool(1),
+        web_tool(2),
+        web_tool(3),
+        {
+            "content": "",
+            "tool_calls": [{"id": "9", "function": {"name": "final", "arguments": json.dumps({"answer": "done"})}}],
+        },
+    ]
+    module, llamacpp = _make_module(script)
+    search = MagicMock()
+    search.available = True
+    search.search.return_value = [{"title": "t", "url": "u", "content": "page"}]
+    module.app.modules["search"] = search
+    with test_app.app_context():
+        test_app.config["RLM_MAX_STEPS"] = 4
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "x"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == "done"
+    assert search.search.call_count == 3
+    nudged = any(
+        any(
+            isinstance(m.get("content"), str) and "remain" in m["content"] and "final(answer)" in m["content"]
+            for m in call["messages"]
+        )
+        for call in llamacpp.calls
+    )
+    assert nudged
 
 
 @pytest.mark.unit

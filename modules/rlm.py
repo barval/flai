@@ -90,6 +90,7 @@ class _RlmBroker:
         self.sub_max_tokens = sub_max_tokens
         self.web_max_fetches = web_max_fetches
         self.web_fetches = 0
+        self.seen_queries: set[str] = set()
 
     def llm(self, prompt: str, text: str = "") -> str:
         return self.module.broker_llm(prompt, text)
@@ -136,6 +137,9 @@ class RlmModule:
     def broker_web_fetch(self, query: str, broker: _RlmBroker) -> str:
         if broker.web_fetches >= broker.web_max_fetches:
             return "Web fetch limit reached for this analysis."
+        if query in broker.seen_queries:
+            return "That query was already searched earlier. Do not repeat lookups — use the gathered information and call final(answer)."
+        broker.seen_queries.add(query)
         broker.web_fetches += 1
         search = self.app.modules.get("search")
         if not search or not getattr(search, "available", False):
@@ -202,6 +206,14 @@ class RlmModule:
             for step in range(1, max_steps + 1):
                 if is_cancelled():
                     return RlmResult("", trace, step, error="cancelled")
+                if step >= max_steps - 1:
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": f"Only {max_steps - step + 1} step(s) remain. Do NOT call any more tools. "
+                            "Compose your final answer from the gathered information and call final(answer).",
+                        }
+                    )
                 on_stage("rlm_step", {"step": step})
                 response = llamacpp.chat(messages, model_type="reasoning", lang=lang, tools=tools, temperature=0.2)
                 if isinstance(response, str):

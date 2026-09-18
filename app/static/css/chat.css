@@ -161,6 +161,18 @@
     box-shadow: 0 2px 6px rgba(52,152,219,0.2);
 }
 
+/* Document selected for the RLM "Deep analysis" toggle */
+.document-item.rlm-selected,
+.document-item.rlm-selected:hover {
+    background-color: #e8f8e8;
+    border-color: #27ae60;
+    box-shadow: 0 2px 6px rgba(39,174,96,0.2);
+}
+.document-item .rlm-marker {
+    color: #27ae60;
+    font-weight: bold;
+}
+
 .session-content,
 .document-content {
     display: flex;

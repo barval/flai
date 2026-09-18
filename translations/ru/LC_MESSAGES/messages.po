@@ -694,6 +694,10 @@ msgstr "Глубокий анализ отключён"
 msgid "Select at least one document and enter a question"
 msgstr "Выберите хотя бы один документ и введите вопрос"
 
+#: app/templates/chat.html:89
+msgid "Select documents"
+msgstr "Выберите документы"
+
 #: app/routes/sessions.py:99 app/routes/sessions.py:174
 msgid "Session not found or access denied"
 msgstr "Сессия не найдена или доступ запрещён"

@@ -688,6 +688,10 @@ msgstr "Deep analysis is disabled"
 msgid "Select at least one document and enter a question"
 msgstr "Select at least one document and enter a question"
 
+#: app/templates/chat.html:89
+msgid "Select documents"
+msgstr "Select documents"
+
 #: app/routes/sessions.py:99 app/routes/sessions.py:174
 msgid "Session not found or access denied"
 msgstr "Session not found or access denied"

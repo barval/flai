@@ -5,6 +5,11 @@
 let currentView = 'sessions'; // 'sessions' or 'documents'
 let documentsData = {};
 
+// Documents selected for the RLM "Deep analysis" toggle. Clicking a
+// document in the sidebar list toggles it; the choice is mirrored into
+// the hidden #rlm-docs multi-select (source of truth for sendRlmAnalysis).
+let rlmSelectedDocs = new Set();
+
 // Apply the current view to the UI: update tab active state and show/hide the correct list
 function applyCurrentView() {
     const view = currentView;
@@ -116,6 +121,13 @@ function updateDocumentsList(documents) {
     const documentsList = document.getElementById('documents-list');
     const documentsCount = document.getElementById('documents-count');
 
+    // Drop RLM selections pointing to documents that no longer exist
+    // (e.g. deleted while selected).
+    const liveIds = new Set(documents.map(d => d.id));
+    for (const id of rlmSelectedDocs) {
+        if (!liveIds.has(id)) rlmSelectedDocs.delete(id);
+    }
+
     documents.sort((a, b) => new Date(b.uploaded_at) - new Date(a.uploaded_at));
 
     let html = '';
@@ -164,13 +176,15 @@ function updateDocumentsList(documents) {
             embeddingLine = `<div class="document-embedding"><span class="document-status-icon">🔄</span> ${displayModel}</div>`;
         }
 
+        const isRlmSelected = rlmSelectedDocs.has(doc.id);
+
         html += `
-        <div class="document-item" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}" data-indexing-start="${indexingStartTimestamp}">
+        <div class="document-item${isRlmSelected ? ' rlm-selected' : ''}" data-document-id="${doc.id}" data-document-name="${escapeHtml(doc.filename)}" data-indexing-start="${indexingStartTimestamp}">
             <div class="document-content">
                 <div class="document-info">
                     <div class="document-title">
                         <span class="${iconClass}" title="${statusTitle}">${statusIcon}</span>
-                        📄 ${escapeHtml(doc.filename)}
+                        📄 ${escapeHtml(doc.filename)}<span class="rlm-marker">${isRlmSelected ? ' ✓' : ''}</span>
                     </div>
                     <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}<span class="doc-live-timer">${statusIndicator}</span>${processingTimeStr}</div>
                     ${embeddingLine}
@@ -196,9 +210,30 @@ function updateDocumentsList(documents) {
             opt.textContent = doc.filename;
             rlmDocs.appendChild(opt);
         });
+        // Restore selection after the rebuild
+        syncRlmDocsSelect();
     }
 
     attachDocumentEventHandlers();
+    updateRlmToggleCount();
+}
+
+// Sync the hidden #rlm-docs multi-select (used by sendRlmAnalysis) with the
+// documents currently marked for deep analysis.
+function syncRlmDocsSelect() {
+    const rlmDocs = document.getElementById('rlm-docs');
+    if (!rlmDocs) return;
+    for (const opt of rlmDocs.options) {
+        opt.selected = rlmSelectedDocs.has(opt.value);
+    }
+}
+
+// Show the count of documents selected for the RLM toggle, e.g. "Deep analysis (2)".
+function updateRlmToggleCount() {
+    const countEl = document.getElementById('rlm-count');
+    if (!countEl) return;
+    const n = rlmSelectedDocs.size;
+    countEl.textContent = n > 0 ? ` (${n})` : '';
 }
 
 function attachDocumentEventHandlers() {
@@ -211,6 +246,36 @@ function attachDocumentEventHandlers() {
             deleteDocument(docId, docName);
         });
     });
+    // Clicking a document toggles its selection for "Deep analysis" (RLM).
+    document.querySelectorAll('.document-item').forEach(item => {
+        item.addEventListener('click', function() {
+            toggleRlmDocSelection(this);
+        });
+    });
+}
+
+// Toggle a document in/out of the RLM "Deep analysis" selection.
+function toggleRlmDocSelection(item) {
+    const docId = item.dataset.documentId;
+    if (!docId) return;
+    if (rlmSelectedDocs.has(docId)) {
+        rlmSelectedDocs.delete(docId);
+    } else {
+        rlmSelectedDocs.add(docId);
+    }
+    const selected = rlmSelectedDocs.has(docId);
+    item.classList.toggle('rlm-selected', selected);
+    const marker = item.querySelector('.rlm-marker');
+    if (marker) marker.textContent = selected ? ' ✓' : '';
+    // Mirror into the hidden #rlm-docs multi-select (source of truth for
+    // sendRlmAnalysis which reads selectedOptions).
+    const rlmDocs = document.getElementById('rlm-docs');
+    if (rlmDocs) {
+        for (const opt of rlmDocs.options) {
+            if (opt.value === docId) opt.selected = selected;
+        }
+    }
+    updateRlmToggleCount();
 }
 
 function deleteDocument(docId, docName) {

@@ -232,6 +232,35 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 
 **Anti-hallucination for web search**: `_get_context_for_model()` prepends web search results with a prominent heading ("Web search results — USE ONLY THIS DATA") so the reasoning model treats them as authoritative. `reasoning.template` (ru + en) contains explicit rules: "rely ONLY on the provided context. Do not invent facts."
 
+## RLM Deep Analysis (v12.0)
+
+An explicit **"Deep analysis" toggle** in the chat UI (`chat.html` `#rlm-toggle`; `sendRlmAnalysis()` in `chat-init.js` branches off the normal send flow) submits the current question + documents selected from the `#rlm-docs` multi-select to `POST /api/rlm/analyze` (`app/routes/rlm.py`). The route enforces authentication and session + document ownership, persists the user question, and returns `202` with `task_id`/`position`.
+
+### Task orchestration
+
+`rlm_analysis` is a slow-worker GPU task: `_classify_queue_fast()` routes it to the slow queue, `_get_model_for_task()` maps it to `reasoning`, and the slow worker holds `_gpu_lock` for the whole task. `_process_rlm_task()` in `app/queue.py`:
+
+1. requests `ensure_vram_for_reasoning()`, then marks the GPU busy for the whole analysis (`ResourceManager.mark_rlm_busy()` / `mark_rlm_idle()`; `_rlm_busy` extends `is_gpu_busy()`, so the v11.5 watchdog-skip guard covers RLM too) and publishes the `loading_reasoning_model` stage;
+2. builds the corpus from the **selected documents only** (text extracted via `extract_text_from_file()`) — not RAG;
+3. runs a reasoning actor loop (`modules/rlm.py:RlmModule.run()`) capped at `RLM_MAX_STEPS` (default 12). Each step calls the resident reasoning model with the four tools `python` / `llm` / `web_fetch` / `final`; `final(answer)` (or a plain text answer) ends the loop. `llm()` is a sub-model call capped at `RLM_SUB_MAX_TOKENS` (1024); `web_fetch()` runs a SearXNG search (top 3 results, snippet-based) through the **parent** process, capped at `RLM_WEB_MAX_FETCHES` (5) per analysis. Cancellation (Redis flag) is checked each step.
+
+The whole analysis is **one GPU task**: the reasoning model is JIT-loaded once and kept resident across the actor's turns (its `ttl=1s` reload cost is accepted). On completion the per-step trace (step/tool/args/observation) is stored to the Redis key `rlm_trace:<task_id>` (TTL 3600) and the answer is saved via `_save_and_respond()` with `extra` metadata `model_type` / `rlm_trace_task_id` / `rlm_steps` — transmitted to the client, **not** persisted to the DB (the DB message records only `model_type="reasoning"`).
+
+### Sandbox isolation
+
+`app/rlm_sandbox.py:RlmSandbox` executes model-generated code in a persistent forked child process:
+
+- code is AST-whitelisted before execution — `validate_code()` rejects imports, function/class definitions, `with`/`lambda`/`yield`, and dunder access (`FORBIDDEN_NODES` / `FORBIDDEN_NAMES` / `FORBIDDEN attribute`); the child namespace is limited to `SAFE_BUILTINS`;
+- `RLM_CODE_TIMEOUT` (default 15 s, refreshed on each IPC callback) bounds every snippet; on timeout the child is killed. rlimits: address space (2 GB), CPU seconds, zero processes/files/core;
+- the child has **no direct network or filesystem access** — `llm()` and `web_fetch()` are IPC callbacks (`SandboxBroker`) that round-trip to the parent, which executes the tool and streams the result back into the sandbox namespace;
+- `final(answer)` raises an internal signal that ends the run with the answer; observations are truncated to `RLM_OBS_TRUNC` (4000 chars).
+
+### Config, stages & UI
+
+Env vars (`app/config.py`, mirrored in `.env` / `.env.example`): `RLM_ENABLED` (true), `RLM_ACTOR_MODEL` (reasoning), `RLM_MAX_STEPS` (12), `RLM_TASK_TIMEOUT` (900 s), `RLM_CODE_TIMEOUT` (15 s), `RLM_OBS_TRUNC` (4000), `RLM_SUB_MAX_TOKENS` (1024), `RLM_WEB_MAX_FETCHES` (5).
+
+Progress stages stream via `task_progress`: `loading_reasoning_model`, then `rlm_step` («Анализирую...», with a per-step counter via `STAGE_COUNTER_KEYS`), `rlm_searching_web` (reuses the existing search label), and `rlm_submodel`; reserved label keys `rlm_reading` / `rlm_finalizing` exist in `events.js:STAGE_LABEL_KEYS` and `chat.html` TRANSLATIONS (currently unused by the loop). On completion `appendRlmTraceBlock()` in `events.js` attaches a collapsible «🧩 Deep analysis (N steps)» summary to the last assistant message — the full per-step trace stays in the Redis key and is not rendered yet.
+
 ## Task Cancellation
 
 - **Client**: cancel button (`■`) in streaming messages → POST `/api/cancel_task/{task_id}`.

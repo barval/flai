@@ -187,6 +187,10 @@ def create_app():
 
     modules["multimodal"] = MultimodalModule(app)
 
+    from modules.rlm import RlmModule
+
+    modules["rlm"] = RlmModule(app)
+
     if app.config.get("SD_WRAPPER_URL"):
         from modules.sd_cpp import SdCppModule
 
@@ -292,7 +296,7 @@ def create_app():
     init_events_publisher(app)
 
     # Register blueprints (new modular structure)
-    from .routes import admin, auth, backups, chat, documents, events, messages, queue, sessions, tts
+    from .routes import admin, auth, backups, chat, documents, events, messages, queue, rlm, sessions, tts
 
     app.register_blueprint(auth.bp)
     app.register_blueprint(chat.bp)
@@ -306,6 +310,7 @@ def create_app():
     app.register_blueprint(documents.bp)
     app.register_blueprint(backups.bp)
     app.register_blueprint(events.bp)
+    app.register_blueprint(rlm.bp)
 
     # Debug API endpoints (only when DEBUG_API_ENABLED=true)
     if app.config.get("DEBUG_API_ENABLED"):

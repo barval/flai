@@ -266,12 +266,18 @@ const STAGE_LABEL_KEYS = {
     getting_time: 'stage_getting_time',
     calculating: 'stage_calculating',
     calculating_date: 'stage_calculating_date',
+    rlm_reading: 'stage_rlm_reading',
+    rlm_step: 'stage_rlm_step',
+    rlm_searching_web: 'stage_searching_web',
+    rlm_submodel: 'stage_rlm_submodel',
+    rlm_finalizing: 'stage_rlm_finalizing',
 };
 
 // Counter stages reuse the base stage translation with a "%s" placeholder.
 const STAGE_COUNTER_KEYS = {
     searching_documents: 'stage_docs_found',
     searching_web: 'stage_web_results',
+    rlm_step: 'stage_rlm_step',
 };
 
 function getStageLabel(stage, count) {
@@ -289,7 +295,7 @@ function onTaskProgress(data) {
     if (!data.stage) return;
     dlog('onTaskProgress:', data.stage);
 
-    _updateProgressElement(data.task_id, data.session_id, getStageLabel(data.stage, data.results || data.chunks));
+    _updateProgressElement(data.task_id, data.session_id, getStageLabel(data.stage, data.results || data.chunks || data.step || data.count));
     _showHeaderCancelButton(data.task_id);
 }
 
@@ -1104,6 +1110,27 @@ function clearPendingRequest(requestId) {
     } catch (e) { /* ignore */ }
 }
 
+// -- RLM trace summary -------------------------------------------------
+// The RLM result carries rlm_trace_task_id / rlm_steps in extra. The full
+// per-step trace lives in the Redis key rlm_trace:<task_id> (not exposed via
+// API), so for now we render only a collapsible steps summary attached to
+// the last assistant message.
+function appendRlmTraceBlock(steps) {
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+    const assistantMsgs = chatMessages.querySelectorAll('.assistant-message');
+    const lastAssistant = assistantMsgs.length ? assistantMsgs[assistantMsgs.length - 1] : null;
+    if (!lastAssistant || lastAssistant.querySelector('.rlm-trace')) return;
+
+    const details = document.createElement('details');
+    details.className = 'rlm-trace';
+    const summary = document.createElement('summary');
+    summary.textContent = '🧩 ' + t('rlm_trace_summary').replace('%s', steps);
+    details.appendChild(summary);
+    lastAssistant.appendChild(details);
+    if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
+}
+
 function handleCompletedResult(result, expectedSessionId) {
     const resultSessionId = result.session_id || expectedSessionId;
 
@@ -1170,6 +1197,9 @@ function handleCompletedResult(result, expectedSessionId) {
                     null, null, null, null, result.message_id,
                     result.response_style, result.completion_tokens,
                     result.file_size, result.model_type);
+                if (result.rlm_trace_task_id && typeof result.rlm_steps === 'number') {
+                    appendRlmTraceBlock(result.rlm_steps);
+                }
                 if (typeof updateLastVisit === 'function') updateLastVisit(currentSessionId);
             } else {
                 setNewMessageIndicator(resultSessionId, true);
@@ -1379,6 +1409,7 @@ async function restoreTaskProgress() {
                     session_id: info.sessionId,
                     task_id: taskId,
                     stage: progress.stage,
+                    count: progress.count,
                 });
             }
         } catch (e) {

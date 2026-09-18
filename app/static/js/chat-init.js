@@ -3,12 +3,95 @@
 const originalLoadMessages = loadMessages;
 const originalDisplayMessage = displayMessage;
 
+// RLM deep-analysis submit: branches off the normal send flow when the
+// "Deep analysis" toggle is checked. Question text comes from the shared
+// message input; documents are picked from the #rlm-docs multi-select
+// (populated by chat-documents.js).
+async function sendRlmAnalysis() {
+    const sendButton = document.getElementById('send-button');
+    const input = document.getElementById('message-input');
+    const question = input.value.trim();
+    const docsSelect = document.getElementById('rlm-docs');
+    const docIds = docsSelect ? Array.from(docsSelect.selectedOptions).map(o => o.value) : [];
+
+    if (!docIds.length || !question) {
+        originalDisplayMessage('assistant', t('rlm_no_selection'), null, null, null, null,
+            new Date().toISOString(), 0, 'system');
+        return;
+    }
+
+    const unlockSendButton = () => {
+        if (sendButton) {
+            sendButton.disabled = false;
+            sendButton.innerHTML = t('send');
+        }
+        isSending = false;
+    };
+
+    if (isSending) return;
+    isSending = true;
+    sendButton.disabled = true;
+    sendButton.innerHTML = '⏳ ' + t('sending');
+
+    try {
+        const response = await fetchWithCSRF('/api/rlm/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: currentSessionId, doc_ids: docIds, question: question })
+        });
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            originalDisplayMessage('assistant', t('server_error_invalid_response'), null, null, null, null,
+                new Date().toISOString(), 0, 'system');
+            return;
+        }
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            originalDisplayMessage('assistant', data.error || t('unknown_error'), null, null, null, null,
+                new Date().toISOString(), 0, 'system');
+            return;
+        }
+
+        input.value = '';
+        const timestamp = new Date().toISOString();
+        originalDisplayMessage('user', JSON.stringify([{type: 'text', text: question}]), null, null, null, null, timestamp);
+        lastMessageTimestamp = timestamp;
+        trackPendingRequest(data.task_id, currentSessionId);
+        sessionQueueInfo[currentSessionId] = {
+            processing: false,
+            queued: 1,
+            queue_position: data.position ?? 0,
+            has_transcribing: false
+        };
+        updateSessionsListFromData();
+        window.updateStatusCounter();
+        if (typeof fetchQueueStatus === 'function') fetchQueueStatus();
+    } catch (err) {
+        console.error('RLM analysis error:', err);
+        if (!window.IS_RELOADING) originalDisplayMessage('assistant', '⚠️ ' + t('error') + ': ' + err.message, null, null, null, null,
+            new Date().toISOString(), 0, 'system');
+        if (typeof clearSessionQueue === 'function') clearSessionQueue(currentSessionId);
+    } finally {
+        unlockSendButton();
+    }
+}
+
 async function sendMessage() {
     // FIX: Always reset isSending flag at the start
     if (isSending) {
         dlog('Send already in progress, ignoring duplicate');
         return;
     }
+
+    const rlmToggle = document.getElementById('rlm-toggle');
+    if (rlmToggle && rlmToggle.checked) {
+        sendRlmAnalysis();
+        return;
+    }
+
     isSending = true;
     
     const input = document.getElementById('message-input');

@@ -1,4 +1,4 @@
 # app/routes/__init__.py
-from . import admin, auth, backups, chat, documents, messages, queue, sessions, tts
+from . import admin, auth, backups, chat, documents, messages, queue, rlm, sessions, tts
 
-__all__ = ["auth", "chat", "admin", "queue", "tts", "messages", "sessions", "documents", "backups"]
+__all__ = ["auth", "chat", "admin", "queue", "tts", "messages", "sessions", "documents", "backups", "rlm"]

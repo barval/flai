@@ -186,6 +186,18 @@ function updateDocumentsList(documents) {
         documentsCount.textContent = documents.length;
     }
 
+    // Mirror the document list into the RLM deep-analysis picker (if present)
+    const rlmDocs = document.getElementById('rlm-docs');
+    if (rlmDocs) {
+        rlmDocs.innerHTML = '';
+        documents.forEach(doc => {
+            const opt = document.createElement('option');
+            opt.value = doc.id;
+            opt.textContent = doc.filename;
+            rlmDocs.appendChild(opt);
+        });
+    }
+
     attachDocumentEventHandlers();
 }
 

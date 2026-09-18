@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [v12.0] — Unreleased
 
+### Added
+
+- Recursive Language Models (RLM) deep-analysis mode: an explicit "Deep analysis" toggle routes large documents through a reasoning actor that programmatically inspects the corpus with an isolated Python sandbox, an `llm()` sub-call, and optional web fetches. One GPU task holds the resident reasoning model for the whole analysis; progress streams via localised stages and a collapsible trace.
+
 ## [v11.5] — 2026-09-18
 
 ### ✨ Features

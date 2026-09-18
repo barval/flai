@@ -228,6 +228,8 @@ class RedisRequestQueue:
         # Image generation (re-queued from router) is slow
         if req_type == "image_gen":
             return "slow"
+        if req_type == "rlm_analysis":
+            return "slow"
         if req_type == "reasoning_task":
             return "slow"
         # Text tasks are fast
@@ -373,6 +375,8 @@ class RedisRequestQueue:
             return "multimodal"
         if req_type == "image_gen":
             return "multimodal"
+        if req_type == "rlm_analysis" or task_type == "rlm_analysis":
+            return "reasoning"
         if req_type == "reasoning_task":
             return "reasoning"
 
@@ -1529,6 +1533,117 @@ class RedisRequestQueue:
             "position": position_info["position"],
             "estimated_wait": position_info["estimated_seconds"],
         }
+
+    def add_rlm_task(
+        self, user_id: str, session_id: str, doc_ids: list[str], question: str, user_class: int = 2, lang: str = "ru"
+    ) -> tuple[str, dict[str, Any]]:
+        """Enqueue an RLM deep-analysis task on the slow queue."""
+        request_data = {
+            "type": "rlm_analysis",
+            "text": question,
+            "doc_ids": doc_ids,
+            "preview": (question[:50] + "...") if question else self.app.modules["base"]._("Deep analysis", lang=lang),
+        }
+        return self.add_request(user_id, session_id, request_data, user_class, lang=lang)
+
+    def _process_rlm_task(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Run an explicit deep-analysis (RLM) task on the slow worker."""
+        from app.db import get_document
+        from app.resource_manager import get_resource_manager
+        from app.utils import extract_text_from_file
+        from modules.rlm import RlmModule
+
+        request_data = task.get("data", {})
+        session_id = task["session_id"]
+        user_id = task["user_id"]
+        lang = task.get("lang", "ru")
+        question = request_data.get("text", "")
+        doc_ids = request_data.get("doc_ids", [])
+
+        if not doc_ids:
+            return self._build_error_response(
+                session_id, self.app.modules["base"]._("No documents selected for analysis", lang), 0, lang
+            )
+
+        self._publish_stream_event(task, "task_progress", {"stage": "loading_reasoning_model"})
+
+        def on_stage(stage: str, extra: dict | None = None) -> None:
+            payload = {"stage": stage}
+            if extra:
+                payload.update(extra)
+            self._publish_stream_event(task, "task_progress", payload)
+
+        on_stage("rlm_reading", None)
+
+        corpus: dict[str, str] = {}
+        for doc_id in doc_ids:
+            doc = get_document(doc_id, user_id)
+            if not doc or not doc.get("file_path"):
+                continue
+            text = extract_text_from_file(doc["file_path"])
+            if text:
+                corpus[doc.get("filename", doc_id)] = text
+        if not corpus:
+            return self._build_error_response(
+                session_id, self.app.modules["base"]._("Selected documents contain no extractable text", lang), 0, lang
+            )
+
+        rm = get_resource_manager()
+        if not rm or not rm.ensure_vram_for_reasoning():
+            return self._build_error_response(
+                session_id,
+                self.app.modules["base"]._("Reasoning model unavailable: GPU memory check failed. Try again.", lang),
+                0,
+                lang,
+            )
+
+        rm.mark_rlm_busy()
+        start = time.time()
+        try:
+            module = self.app.modules.get("rlm") or RlmModule(self.app)
+
+            result = module.run(
+                task=task,
+                question=question,
+                corpus=corpus,
+                user_id=user_id,
+                session_id=session_id,
+                lang=lang,
+                on_stage=on_stage,
+                is_cancelled=lambda: self._is_task_cancelled(task["id"]),
+            )
+        finally:
+            rm.mark_rlm_idle()
+
+        elapsed = round(time.time() - start, 1)
+        on_stage("rlm_finalizing", None)
+        if result.error == "cancelled":
+            self._publish_stream_event(task, "stream_cancelled")
+            return {"status": "cancelled", "session_id": session_id}
+        if result.error and not result.answer:
+            local_errors = {
+                "step limit reached": self.app.modules["base"]._(
+                    "Deep analysis: the model did not reach a final answer within the step limit.", lang
+                ),
+                "empty final answer": self.app.modules["base"]._(
+                    "Deep analysis: the model produced an empty answer.", lang
+                ),
+            }
+            error_msg = local_errors.get(result.error, result.error)
+            return self._build_error_response(session_id, error_msg, elapsed, lang)
+
+        trace_payload = [
+            {"step": t.step, "tool": t.tool, "args": t.args, "observation": t.observation} for t in result.trace
+        ]
+        self.redis.setex(f"rlm_trace:{task['id']}", 3600, json.dumps(trace_payload))
+        return self._save_and_respond(
+            session_id,
+            result.answer,
+            self._get_model_name("reasoning") or "reasoning",
+            elapsed,
+            extra={"model_type": "reasoning", "rlm_trace_task_id": task["id"], "rlm_steps": result.steps},
+            user_id=user_id,
+        )
 
     def _process_image_gen_request(self, task: dict[str, Any]) -> dict[str, Any]:
         """Handle an image generation task from the slow queue."""
@@ -3262,6 +3377,8 @@ class RedisRequestQueue:
             return self._process_image_gen_request(task)
         if task_type == "reasoning_task":
             return self._process_reasoning_request(task)
+        if task_type == "rlm_analysis":
+            return self._process_rlm_task(task)
         if task_type == "fact_extraction_task":
             return self._process_fact_extraction(task)
         if task_type == "fact_merge_task":
@@ -4057,6 +4174,11 @@ class RedisRequestQueue:
         mapping = {"type": progress_type, "timestamp": str(time.time())}
         if progress_type == "task_progress":
             mapping["stage"] = data.get("stage", "")
+            # Generic counter (step/chunks/results) so the restored label can
+            # fill the "%s" placeholder instead of showing it unsubstituted.
+            count = data.get("step", data.get("chunks", data.get("results")))
+            if count is not None:
+                mapping["count"] = str(count)
         elif progress_type in ("video_step", "image_step"):
             mapping["step"] = str(data.get("step", 0))
             mapping["total"] = str(data.get("total", 0))

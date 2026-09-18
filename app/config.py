@@ -192,6 +192,16 @@ def load_config(app):
     app.config["REDIS_RESULT_TTL"] = int(os.getenv("REDIS_RESULT_TTL", 3600))
     app.config["QUEUE_MAX_WAIT_TIME"] = int(os.getenv("QUEUE_MAX_WAIT_TIME", 300))
 
+    # RLM (deep analysis)
+    app.config["RLM_ENABLED"] = os.getenv("RLM_ENABLED", "true").lower() in ("true", "1", "yes")
+    app.config["RLM_ACTOR_MODEL"] = os.getenv("RLM_ACTOR_MODEL", "reasoning")
+    app.config["RLM_MAX_STEPS"] = int(os.getenv("RLM_MAX_STEPS", 12))
+    app.config["RLM_TASK_TIMEOUT"] = int(os.getenv("RLM_TASK_TIMEOUT", 900))
+    app.config["RLM_CODE_TIMEOUT"] = int(os.getenv("RLM_CODE_TIMEOUT", 15))
+    app.config["RLM_OBS_TRUNC"] = int(os.getenv("RLM_OBS_TRUNC", 4000))
+    app.config["RLM_SUB_MAX_TOKENS"] = int(os.getenv("RLM_SUB_MAX_TOKENS", 1024))
+    app.config["RLM_WEB_MAX_FETCHES"] = int(os.getenv("RLM_WEB_MAX_FETCHES", 5))
+
     # Message pagination settings
     app.config["MESSAGES_DEFAULT_LIMIT"] = int(os.getenv("MESSAGES_DEFAULT_LIMIT", 100))
     app.config["MESSAGES_MAX_LIMIT"] = int(os.getenv("MESSAGES_MAX_LIMIT", 200))

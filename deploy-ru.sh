@@ -649,17 +649,39 @@ build_and_launch() {
     sleep 10
 
     # Fallback: если pybabel на хосте не было — компилируем в контейнере
-    # (запись идёт через bind-mount), затем перезапускаем web, чтобы
-    # Flask-Babel перечитал свежие каталоги.
+    # (запись идёт через bind-mount). Каталоги .mo теперь хранятся в git,
+    # поэтому при первом клоне они уже есть; этот шаг обновляет их,
+    # если .po на хосте изменились. Цикл повторов защищает от окна
+    # после `up -d`, когда контейнер ещё не готов.
     if ! command -v pybabel &>/dev/null; then
-        if docker exec flai-web pybabel compile -d /app/translations 2>/dev/null; then
+        local compiled=0
+        local err=""
+        for _attempt in 1 2 3 4 5; do
+            err=$(docker exec flai-web pybabel compile -d /app/translations 2>&1) && compiled=1 && break
+            info "Контейнер ещё не готов, повтор через 3 сек..."
+            sleep 3
+        done
+        if [[ "$compiled" == "1" ]]; then
             info "Переводы скомпилированы в контейнере — перезапускаю flai-web..."
             docker restart flai-web
             sleep 10
         else
-            warn "Не удалось скомпилировать переводы (pybabel нет ни на хосте, ни в контейнере) — интерфейс может остаться английским."
+            warn "Не удалось скомпилировать переводы в контейнере:"
+            warn "  $err"
+            warn "Интерфейс может остаться на английском — запустите: pybabel compile -d translations"
         fi
     fi
+
+    # Проверка: каталоги .mo должны существовать, иначе интерфейс
+    # переключится на английский. При свежем клоне они берутся из git;
+    # проблема только если клон повреждён или .po изменились без
+    # компиляции.
+    for LOC in en ru; do
+        if [[ ! -f "translations/$LOC/LC_MESSAGES/messages.mo" ]]; then
+            warn "Отсутствует translations/$LOC/LC_MESSAGES/messages.mo — интерфейс будет на английском."
+            warn "Запустите: pybabel compile -d translations"
+        fi
+    done
 
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "недоступен")

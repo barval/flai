@@ -49,7 +49,7 @@ pybabel compile -d translations  # after editing .po files
 ```
 
 ## Translation System (v9.0+)
-Compiled `.mo` files are baked into the Docker image via `RUN pybabel compile -d translations` in the Dockerfile. For live updates without image rebuild, `docker-compose.gpu.yml` mounts `./translations:/app/translations` as a bind volume. After editing `.po` files, run `pybabel compile -d translations` on the host, then `docker exec flai-web kill -HUP 1` to reload gunicorn. All site features work in both Russian and English profiles.
+Compiled `.mo` files are **tracked in git** together with the source `.po` files, so every fresh clone ships working translations out of the box (the `./translations:/app/translations` bind-mount in `docker-compose.gpu.yml` overrides the image-baked catalogs, which are also compiled at build time via `RUN pybabel compile -d translations` in the Dockerfile). After editing `.po` files, run `pybabel compile -d translations` on the host and commit both `.po` and `.mo`. `deploy.sh`/`deploy-ru.sh` refresh the catalogs automatically during deployment and warn loudly if any catalog is missing. All site features work in both Russian and English profiles.
 
 ## Error Message Prefix
 All error messages displayed to users MUST start with `"⚠️ "`.

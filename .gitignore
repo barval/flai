@@ -64,7 +64,6 @@ target/
 *.tmp
 *.swp
 *.swo
-*.mo
 *.pot
 
 # Editors/IDE

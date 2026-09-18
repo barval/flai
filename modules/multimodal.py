@@ -236,6 +236,33 @@ class MultimodalModule(TranslationMixin):
             return None, self._("GPU memory unavailable. Please try again.", lang)
         return response, None
 
+    def describe_image_for_rlm(self, image_data: str, lang: str = "ru") -> tuple[str | None, str | None]:
+        """Produce a maximally detailed text description of an image for the RLM
+        deep-analysis pipeline. The description is treated as a corpus document."""
+        if not self.check_availability():
+            return None, self._("Multimodal model unavailable", lang)
+
+        prompt = format_prompt(
+            "rlm_image.template",
+            {"response_language": response_language_name(lang)},
+            lang=lang,
+        )
+        if not prompt:
+            return None, self._("Error loading prompt template", lang)
+
+        converted_data, _ = self._ensure_llamacpp_compatible(image_data)
+        response = self.llamacpp.chat_with_image(
+            text=prompt, image_base64=converted_data, model_type="multimodal", lang=lang
+        )
+        if self._is_vram_error(response):
+            self.logger.warning(
+                f"Multimodal returned VRAM error while describing RLM image: {response[:100] if response else 'None'}"
+            )
+            return None, self._("GPU memory unavailable. Try again in a moment.", lang)
+        if not response or not response.strip():
+            return None, self._("Multimodal model returned an empty description", lang)
+        return response.strip(), None
+
     def process_image_with_text_stream(
         self,
         image_data: str,

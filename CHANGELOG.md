@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Added
 
 - Recursive Language Models (RLM) deep-analysis mode: an explicit "Deep analysis" toggle routes large documents through a reasoning actor that programmatically inspects the corpus with an isolated Python sandbox, an `llm()` sub-call, and optional web fetches. One GPU task holds the resident reasoning model for the whole analysis; progress streams via localised stages and a collapsible trace.
+- Documents for RLM are picked by clicking them in the chat documents panel (green `.rlm-selected` frame + `✓`, live counter next to the toggle; `rlmSelectedDocs` in `chat-documents.js` syncs the hidden `#rlm-docs` multi-select).
+- An attached image can join an RLM analysis: the multimodal model produces a detailed text description (`describe_image_for_rlm()` in `modules/multimodal.py`, new `prompts/{ru,en}/rlm_image.template`) that becomes a `«Изображение (file_name)»` corpus document; a failed description surfaces a localised error. The route now accepts `multipart/form-data` (quota check, `resize_image_if_needed` with a notice, `save_uploaded_file`, user message with the image persisted). If the toggle cannot start (no documents and no image, or an image without a question) it is auto-unchecked and the request falls through to the normal send flow.
 
 ## [v11.5] — 2026-09-18
 

@@ -604,6 +604,10 @@ msgstr "Файл не найден"
 msgid "Unsupported file type"
 msgstr "Неподдерживаемый тип файла"
 
+#: app/queue.py:1645
+msgid "Unable to recognize the image for deep analysis"
+msgstr "Не удалось распознать изображение для глубокого анализа"
+
 #: app/routes/documents.py:50
 msgid "File type does not match extension"
 msgstr "Тип файла не соответствует расширению"

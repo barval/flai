@@ -10,6 +10,90 @@ from modules.rlm import RlmResult, RlmTraceStep
 
 
 @pytest.mark.unit
+def test_process_rlm_task_adds_image_description_to_corpus():
+    q = RedisRequestQueue.__new__(RedisRequestQueue)
+    q._publish_stream_event = lambda task, event_type, extra=None: None
+    q._is_task_cancelled = Mock(return_value=False)
+    q._get_model_name = Mock(return_value="reasoning")
+    q._save_and_respond = Mock(return_value={"status": "ok"})
+    q.redis = Mock()
+    app = Mock()
+    app.modules = {"base": Mock(), "multimodal": Mock()}
+    app.config = {"DOCUMENTS_FOLDER": "/tmp/documents"}
+    q.app = app
+
+    task = {
+        "id": "rlm-img-1",
+        "data": {
+            "type": "rlm_analysis",
+            "text": "What is in the photo?",
+            "doc_ids": [],
+            "file_data": "BASE64",
+            "file_type": "image/jpeg",
+            "file_name": "photo.jpg",
+        },
+        "session_id": "s1",
+        "user_id": "u1",
+        "lang": "en",
+    }
+    rm = Mock()
+    rm.ensure_vram_for = Mock(return_value=True)
+    rm.ensure_vram_for_reasoning = Mock(return_value=True)
+    run_mock = Mock(return_value=RlmResult(answer="ok", trace=[], steps=1))
+    with (
+        patch("modules.rlm.RlmModule") as mock_rlm_module,
+        patch("app.resource_manager.get_resource_manager", return_value=rm),
+    ):
+        mock_rlm_module.return_value.run = run_mock
+        app.modules["multimodal"].describe_image_for_rlm = Mock(return_value=("A cat on a sofa", None))
+        result = q._process_rlm_task(task)
+
+    assert result["status"] == "ok"
+    corpus = run_mock.call_args.kwargs["corpus"]
+    assert corpus == {"Изображение (photo.jpg)": "A cat on a sofa"}
+    app.modules["multimodal"].describe_image_for_rlm.assert_called_with("BASE64", "en")
+
+
+@pytest.mark.unit
+def test_process_rlm_task_reports_image_description_error():
+    q = RedisRequestQueue.__new__(RedisRequestQueue)
+    q._publish_stream_event = lambda task, event_type, extra=None: None
+    q._is_task_cancelled = Mock(return_value=False)
+    q._save_and_respond = Mock(return_value={"status": "ok"})
+    q._build_error_response = Mock(return_value={"status": "error"})
+    q.redis = Mock()
+    app = Mock()
+    app.modules = {"base": Mock(), "multimodal": Mock()}
+    app.modules["base"]._ = Mock(side_effect=lambda message, lang=None: f"loc:{message}")
+    app.config = {"DOCUMENTS_FOLDER": "/tmp/documents"}
+    q.app = app
+
+    task = {
+        "id": "rlm-img-err",
+        "data": {
+            "type": "rlm_analysis",
+            "text": "What is in the photo?",
+            "doc_ids": [],
+            "file_data": "BASE64",
+            "file_type": "image/jpeg",
+            "file_name": "photo.jpg",
+        },
+        "session_id": "s1",
+        "user_id": "u1",
+        "lang": "en",
+    }
+    rm = Mock()
+    rm.ensure_vram_for = Mock(return_value=True)
+    with patch("app.resource_manager.get_resource_manager", return_value=rm):
+        app.modules["multimodal"].describe_image_for_rlm = Mock(return_value=(None, "loc:vision failed"))
+        result = q._process_rlm_task(task)
+
+    assert result["status"] == "error"
+    q._build_error_response.assert_called_once()
+    assert q._build_error_response.call_args[0][1] == "loc:vision failed"
+
+
+@pytest.mark.unit
 def test_rlm_task_maps_to_reasoning_model():
     q = RedisRequestQueue.__new__(RedisRequestQueue)
     task = {"type": "rlm_analysis", "data": {"type": "rlm_analysis"}}

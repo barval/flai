@@ -29,7 +29,7 @@
 - 🛠 **Tool Calling** – native OpenAI-compatible tool calling: calculator, current time, date/time calculations, web search, document search (RAG), camera snapshots — all via llama.cpp `--jinja` + Qwen3
 - 🌐 **Web Search** – real-time internet search via self-hosted SearXNG metasearch engine: news, weather, exchange rates, prices, latest events
 - 🧠 **Advanced Reasoning** – dedicated model for calculations, code generation, creative writing (streaming responses)
-- 🔬 **Deep Analysis (RLM)** – toggle on for large-document deep analysis: the reasoning model programmatically inspects your selected documents with a sandboxed Python executor, a sub-model call, and live web lookups; the whole run is a single GPU task with streamed progress and a collapsible step-by-step trace
+- 🔬 **Deep Analysis (RLM)** – toggle on for large-document deep analysis: the reasoning model programmatically inspects your selected documents (and any attached image via a detailed multimodal description) with a sandboxed Python executor, a sub-model call, and live web lookups; the whole run is a single GPU task with streamed progress and a collapsible step-by-step trace
 - 🔍 **Multimodal Analysis** – upload images and ask questions about their content (llama.cpp + mmproj)
 - 🎨 **Image Generation** – create images from text using stable-diffusion.cpp with automatic prompt optimization
 - ✏️ **Image Editing** – upload an image and ask to edit it (Flux.2 Klein 4B model: change colors, remove objects, stylize)
@@ -85,17 +85,39 @@
 
 ---
 
-## 🏗️ Architecture
+## 🔬 Deep Analysis Mode (RLM)
+
+**For what?** Reading a large document and answering simple questions about it is normal RAG. Deep Analysis is for **serious work with documents**: a comparison across several contracts, finding every condition and exception in a policy, a structured report over a folder of texts, verifying arithmetic across tables. Instead of one pass over a summary, the reasoning model actually *works through* the material in a loop of up to 12 steps, using three tools along the way:
+
+| Tool | What it does |
+|------|--------------|
+| 🐍 `python` | executes code in an isolated sandbox — split texts, count words, extract paragraphs, search by pattern, analyze tables, solve calculations |
+| 🤖 `llm` | asks a sub-model call (limited tokens) for a focused sub-result, then folds it into the main reasoning |
+| 🌐 `web_fetch` | searches the web (SearXNG) for up to 5 additional lookups when the answer needs fresh facts |
+
+Everything runs **locally** as a single GPU task: the reasoning model stays loaded for the whole analysis, progress is streamed live («Reading documents...», «Analysis step N...»), and the result arrives with a collapsible **«Deep analysis (N steps)»** summary.
+
+**How to use it:**
+1. Upload the files you want analyzed in **Documents** (PDF/DOC/DOCX/TXT).
+2. In the chat, **click the documents** you want included — they get a green frame and a check mark; the counter next to the toggle shows how many are selected.
+3. Type a question, turn on the **🔬 Deep Analysis** toggle and press **Send**.
+4. *(Optional)* Attach an image as well: the multimodal model produces a detailed text description of it and that description becomes one more "document" of the analysis — so you can ask things like "match the attached warranty photo against clause 4 of the contract".
+5. Follow the progress stages; when the trace summary appears, expand it to see how the model got to the answer.
+
+Notes:
+- Without selected documents **and** without an image, or if the image has no question, the toggle is unchecked automatically and the request goes through the normal flow instead of failing.
+- The analysis works on the selected documents only (no full-text search over unrelated uploads).
+- To stop it: press **Cancel** — the task is checked for cancellation on every step.
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v11.5
+### What's New in v12.0
 
 | Feature | Notes |
 |---------|-------|
-| **v11.5 — reasoning backed by fresh web data** | A new router category, `[-REASONING-WEB-]`, covers complex queries that also need current internet data (analysis, comparisons, overviews over fresh facts). Such a request now gathers SearXNG results on the fast worker and reasons over them with the full session history intact — previously these follow-ups fell into `[-REASONING-]`, which is offline, so the model answered from stale weights. A degraded or empty search silently falls back to plain reasoning instead of erroring. |
-| **Conversions at a live rate use web search** | A currency/unit conversion («переведи £3,293.31 по текущему курсу в рубли») is always classified as a web search rather than offline reasoning, and the engines are queried for the rate itself — a query containing a fractional amount otherwise returns only a converter widget with zero links. The decimal amount is stripped for the search retry while the reasoning model still receives the user's original question (with the amount), so it can compute. |
-| **Reasoning no longer fails on watchdog races** | A background watchdog health check could respawn the just-unloaded multimodal model during a reasoning request's VRAM wait, failing roughly one such request in four with «GPU memory check failed». GPU transactions (image/video generation, model swaps) now suspend the watchdog entirely, and the VRAM wait re-unloads anything that respawns instead of timing out. |
+| **Deep Analysis (RLM) mode** | A dedicated "🔬 Deep Analysis" toggle routes your question + selected documents through a reasoning actor loop (up to 12 steps) that programmatically works through the material: a sandboxed `python` executor (split/count/parse/calculate), an `llm()` sub-call, and up to 5 live `web_fetch` lookups when fresh facts are needed. One GPU task holds the reasoning model for the whole analysis; progress streams stage by stage, and the answer comes with a collapsible **«Deep analysis (N steps)»** trace summary. See the [Deep Analysis Mode](#-deep-analysis-mode-rlm) section for how to use it. |
+| **Documents picked by click, images join the corpus** | Documents for the analysis are selected by clicking them in the documents panel (green frame + ✓, live counter next to the toggle). An attached image is described in detail by the multimodal model, and that description becomes one more "document" of the analysis — e.g. "match the warranty photo against clause 4 of the contract". If the toggle cannot start (no documents and no image, or an image without a question) it is unchecked automatically and the request falls through to the normal flow. |
+| **Translations guaranteed on every clone** | Translated `.mo` catalogs are committed to the repository and deploy scripts compile them before the first start, so a fresh clone/deployment always gets a fully localized UI without extra steps. |
 
 ### Core Components
 

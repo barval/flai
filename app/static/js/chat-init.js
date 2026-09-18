@@ -6,19 +6,16 @@ const originalDisplayMessage = displayMessage;
 // RLM deep-analysis submit: branches off the normal send flow when the
 // "Deep analysis" toggle is checked. Question text comes from the shared
 // message input; documents are picked from the #rlm-docs multi-select
-// (populated by chat-documents.js).
+// (populated by chat-documents.js). An attached image is sent along and the
+// backend describes it with the multimodal model, then treats the description
+// as one of the corpus documents.
 async function sendRlmAnalysis() {
     const sendButton = document.getElementById('send-button');
     const input = document.getElementById('message-input');
     const question = input.value.trim();
     const docsSelect = document.getElementById('rlm-docs');
     const docIds = docsSelect ? Array.from(docsSelect.selectedOptions).map(o => o.value) : [];
-
-    if (!docIds.length || !question) {
-        originalDisplayMessage('assistant', t('rlm_no_selection'), null, null, null, null,
-            new Date().toISOString(), 0, 'system');
-        return;
-    }
+    const imageFile = (attachedFile && attachedFile.type && attachedFile.type.startsWith('image/')) ? attachedFile : null;
 
     const unlockSendButton = () => {
         if (sendButton) {
@@ -28,22 +25,49 @@ async function sendRlmAnalysis() {
         isSending = false;
     };
 
+    const clearPreparedMessage = () => {
+        input.value = '';
+        attachedFile = null;
+        document.getElementById('file-preview-container').classList.add('hidden');
+        document.getElementById('file-input').value = '';
+    };
+
     if (isSending) return;
     isSending = true;
     sendButton.disabled = true;
     sendButton.innerHTML = '⏳ ' + t('sending');
 
+    const timestamp = new Date().toISOString();
+
     try {
+        let fileData = null, fileType = null, fileName = null;
+        if (imageFile) {
+            fileData = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result.split(',')[1] || '');
+                reader.onerror = reject;
+                reader.readAsDataURL(imageFile);
+            });
+            fileType = imageFile.type;
+            fileName = imageFile.name;
+        }
+
+        const formData = new FormData();
+        formData.append('session_id', currentSessionId);
+        formData.append('doc_ids', JSON.stringify(docIds));
+        formData.append('text', question);
+        if (imageFile) formData.append('file', imageFile, imageFile.name);
+
         const response = await fetchWithCSRF('/api/rlm/analyze', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: currentSessionId, doc_ids: docIds, question: question })
+            body: formData
         });
 
         const contentType = response.headers.get('content-type');
         if (!contentType || !contentType.includes('application/json')) {
             originalDisplayMessage('assistant', t('server_error_invalid_response'), null, null, null, null,
                 new Date().toISOString(), 0, 'system');
+            unlockSendButton();
             return;
         }
 
@@ -52,13 +76,26 @@ async function sendRlmAnalysis() {
         if (!response.ok) {
             originalDisplayMessage('assistant', data.error || t('unknown_error'), null, null, null, null,
                 new Date().toISOString(), 0, 'system');
+            unlockSendButton();
             return;
         }
 
-        input.value = '';
-        const timestamp = new Date().toISOString();
-        originalDisplayMessage('user', JSON.stringify([{type: 'text', text: question}]), null, null, null, null, timestamp);
+        // Show the question (+ attached image) as the user message so the
+        // thread reads naturally and survives a page reload.
+        const userContent = [{ type: 'text', text: question }];
+        if (fileData) {
+            userContent.push({ type: 'image', file_data: fileData, file_type: fileType, file_name: fileName });
+        }
+        originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, null, timestamp);
         lastMessageTimestamp = timestamp;
+
+        if (data.resize_notice) {
+            const noticeMsgId = data.resize_notice_id || ('resize-' + timestamp);
+            originalDisplayMessage('assistant', data.resize_notice, null, null, null, null,
+                new Date().toISOString(), 0, 'system', null, null, null, null, noticeMsgId);
+            if (data.resize_notice_id) displayedMessageIds.add(data.resize_notice_id);
+        }
+
         trackPendingRequest(data.task_id, currentSessionId);
         sessionQueueInfo[currentSessionId] = {
             processing: false,
@@ -69,6 +106,8 @@ async function sendRlmAnalysis() {
         updateSessionsListFromData();
         window.updateStatusCounter();
         if (typeof fetchQueueStatus === 'function') fetchQueueStatus();
+
+        clearPreparedMessage();
     } catch (err) {
         console.error('RLM analysis error:', err);
         if (!window.IS_RELOADING) originalDisplayMessage('assistant', '⚠️ ' + t('error') + ': ' + err.message, null, null, null, null,
@@ -88,8 +127,20 @@ async function sendMessage() {
 
     const rlmToggle = document.getElementById('rlm-toggle');
     if (rlmToggle && rlmToggle.checked) {
-        sendRlmAnalysis();
-        return;
+        const docsSelect = document.getElementById('rlm-docs');
+        const docIds = docsSelect ? Array.from(docsSelect.selectedOptions).map(o => o.value) : [];
+        const messageInput = document.getElementById('message-input');
+        const hasQuestion = messageInput && messageInput.value.trim().length > 0;
+        const hasImage = !!(attachedFile && attachedFile.type && attachedFile.type.startsWith('image/'));
+        if ((docIds.length > 0 || hasImage) && hasQuestion) {
+            sendRlmAnalysis();
+            return;
+        }
+        // Deep analysis cannot start here: no documents & no image, or no
+        // question (e.g. an image without a text query). Un-check the toggle
+        // and fall through to the normal send flow.
+        rlmToggle.checked = false;
+        if (typeof updateRlmToggleCount === 'function') updateRlmToggleCount();
     }
 
     isSending = true;

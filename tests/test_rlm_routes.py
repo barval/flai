@@ -52,7 +52,9 @@ def test_analyze_happy_path(authenticated_client, test_app):
     data = response.get_json()
     assert data["task_id"] == "task-1"
     assert data["position"] == 2
-    mock_queue.add_rlm_task.assert_called_once_with("rlmtest", "s1", ["d1"], "q", lang="ru")
+    mock_queue.add_rlm_task.assert_called_once_with(
+        "rlmtest", "s1", ["d1"], "q", lang="ru", image_data=None, image_type=None, image_name=None
+    )
 
 
 @pytest.mark.unit
@@ -66,6 +68,7 @@ def test_analyze_persists_user_message(authenticated_client, test_app):
         patch("app.routes.rlm.get_user_documents", return_value=[{"id": "d1"}]),
         patch("app.routes.rlm.save_message") as mock_save,
     ):
+        mock_save.return_value = "msg-2"
         response = authenticated_client.post(
             "/api/rlm/analyze",
             json={"session_id": "s1", "doc_ids": ["d1"], "question": "What is the budget?"},
@@ -93,6 +96,7 @@ def test_analyze_queues_task_before_saving_message(authenticated_client, test_ap
         patch("app.routes.rlm.get_user_documents", return_value=[{"id": "d1"}]),
         patch("app.routes.rlm.save_message") as mock_save,
     ):
+        mock_save.return_value = "msg-3"
         response = authenticated_client.post(
             "/api/rlm/analyze", json={"session_id": "s1", "doc_ids": ["d1"], "question": "q"}
         )

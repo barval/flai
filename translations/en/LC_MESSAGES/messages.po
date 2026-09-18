@@ -598,6 +598,10 @@ msgstr "File not found"
 msgid "Unsupported file type"
 msgstr "Unsupported file type"
 
+#: app/queue.py:1645
+msgid "Unable to recognize the image for deep analysis"
+msgstr "Unable to recognize the image for deep analysis"
+
 #: app/routes/documents.py:50
 msgid "File type does not match extension"
 msgstr "File type does not match extension"

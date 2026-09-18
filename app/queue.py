@@ -1535,15 +1535,33 @@ class RedisRequestQueue:
         }
 
     def add_rlm_task(
-        self, user_id: str, session_id: str, doc_ids: list[str], question: str, user_class: int = 2, lang: str = "ru"
+        self,
+        user_id: str,
+        session_id: str,
+        doc_ids: list[str],
+        question: str,
+        user_class: int = 2,
+        lang: str = "ru",
+        image_data: str | None = None,
+        image_type: str | None = None,
+        image_name: str | None = None,
     ) -> tuple[str, dict[str, Any]]:
-        """Enqueue an RLM deep-analysis task on the slow queue."""
-        request_data = {
+        """Enqueue an RLM deep-analysis task on the slow queue.
+
+        An attached image is passed as base64 in the task payload; the slow
+        worker describes it with the multimodal model and adds the description
+        to the analysis corpus as a document named 'Изображение (name)'.
+        """
+        request_data: dict[str, Any] = {
             "type": "rlm_analysis",
             "text": question,
             "doc_ids": doc_ids,
             "preview": (question[:50] + "...") if question else self.app.modules["base"]._("Deep analysis", lang=lang),
         }
+        if image_data:
+            request_data["file_data"] = image_data
+            request_data["file_type"] = image_type or "image/jpeg"
+            request_data["file_name"] = image_name or self.app.modules["base"]._("Image", lang=lang)
         return self.add_request(user_id, session_id, request_data, user_class, lang=lang)
 
     def _process_rlm_task(self, task: dict[str, Any]) -> dict[str, Any]:
@@ -1560,7 +1578,7 @@ class RedisRequestQueue:
         question = request_data.get("text", "")
         doc_ids = request_data.get("doc_ids", [])
 
-        if not doc_ids:
+        if not doc_ids and not request_data.get("file_data"):
             return self._build_error_response(
                 session_id, self.app.modules["base"]._("No documents selected for analysis", lang), 0, lang
             )
@@ -1585,13 +1603,51 @@ class RedisRequestQueue:
             text = extract_text_from_file(full_path)
             if text:
                 corpus[doc.get("filename", doc_id)] = text
+
+        rm = get_resource_manager()
+        if not rm:
+            return self._build_error_response(
+                session_id,
+                self.app.modules["base"]._("Reasoning model unavailable: GPU memory check failed. Try again.", lang),
+                0,
+                lang,
+            )
+
+        # Attached image: describe it with the multimodal model and treat the
+        # description as a corpus document named 'Изображение (file)'.
+        if request_data.get("file_data"):
+            if not rm.ensure_vram_for("multimodal"):
+                return self._build_error_response(
+                    session_id,
+                    self.app.modules["base"]._(
+                        "Reasoning model unavailable: GPU memory check failed. Try again.", lang
+                    ),
+                    0,
+                    lang,
+                )
+            multimodal = self.app.modules.get("multimodal")
+            if not multimodal:
+                return self._build_error_response(
+                    session_id,
+                    self.app.modules["base"]._("Unable to recognize the image for deep analysis", lang),
+                    0,
+                    lang,
+                )
+            description, describe_error = multimodal.describe_image_for_rlm(request_data["file_data"], lang)
+            if describe_error or not description:
+                message = describe_error or self.app.modules["base"]._(
+                    "Unable to recognize the image for deep analysis", lang
+                )
+                return self._build_error_response(session_id, message, 0, lang)
+            image_name = request_data.get("file_name") or self.app.modules["base"]._("Image", lang=lang)
+            corpus[f"Изображение ({image_name})"] = description
+
         if not corpus:
             return self._build_error_response(
                 session_id, self.app.modules["base"]._("Selected documents contain no extractable text", lang), 0, lang
             )
 
-        rm = get_resource_manager()
-        if not rm or not rm.ensure_vram_for_reasoning():
+        if not rm.ensure_vram_for_reasoning():
             return self._build_error_response(
                 session_id,
                 self.app.modules["base"]._("Reasoning model unavailable: GPU memory check failed. Try again.", lang),

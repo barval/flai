@@ -253,6 +253,62 @@ def test_run_cancelled_returns_error(test_app):
 
 
 @pytest.mark.unit
+def test_run_task_timeout_aborts_with_error(test_app, monkeypatch):
+    # The configured RLM_TASK_TIMEOUT (2s) expires between the steps; the run
+    # must abort with the "task timeout" sentinel instead of running forever.
+    times = iter([1000.0, 1000.0, 1003.0])
+    monkeypatch.setattr("modules.rlm.time.monotonic", lambda: next(times, 1003.0))
+    test_app.config["RLM_TASK_TIMEOUT"] = 2
+    module, _ = _make_module(
+        [
+            {"content": "", "tool_calls": [{"id": "1", "function": {"name": "llm", "arguments": "{}"}}]},
+            {"content": "", "tool_calls": [{"id": "2", "function": {"name": "final", "arguments": "{}"}}]},
+        ]
+    )
+    module.broker_llm = lambda prompt, text="": "sub-answer"
+    with test_app.app_context():
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "abc"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.error == "task timeout"
+    assert result.answer == ""
+
+
+@pytest.mark.unit
+def test_run_task_timeout_disabled_when_zero(test_app):
+    # 0 disables the wall-clock deadline — the step limit remains the only bound.
+    test_app.config["RLM_TASK_TIMEOUT"] = 0
+    module, _ = _make_module(
+        [
+            {
+                "content": "",
+                "tool_calls": [{"id": "1", "function": {"name": "final", "arguments": json.dumps({"answer": "done"})}}],
+            }
+        ]
+    )
+    with test_app.app_context():
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "abc"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == "done"
+    assert result.error == ""
+
+
+@pytest.mark.unit
 def test_web_fetch_dedup_repeated_queries(test_app):
     module, _ = _make_module([])
     queries = []

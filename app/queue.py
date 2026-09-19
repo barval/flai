@@ -1709,6 +1709,9 @@ class RedisRequestQueue:
                 "empty final answer": self.app.modules["base"]._(
                     "Deep analysis: the model produced an empty answer.", lang
                 ),
+                "task timeout": self.app.modules["base"]._(
+                    "Deep analysis: the task exceeded the time limit. A partial trace has been saved.", lang
+                ),
             }
             error_msg = local_errors.get(result.error, result.error)
             return self._build_error_response(session_id, error_msg, elapsed, lang)

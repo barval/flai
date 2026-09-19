@@ -258,7 +258,7 @@ The whole analysis is **one GPU task**: the reasoning model is JIT-loaded once a
 
 ### Config, stages & UI
 
-Env vars (`app/config.py`, mirrored in `.env` / `.env.example`): `RLM_ENABLED` (true), `RLM_ACTOR_MODEL` (reasoning), `RLM_MAX_STEPS` (12), `RLM_TASK_TIMEOUT` (900 s), `RLM_CODE_TIMEOUT` (15 s), `RLM_OBS_TRUNC` (4000), `RLM_SUB_MAX_TOKENS` (1024), `RLM_WEB_MAX_FETCHES` (5), `RLM_MAX_CORPUS_CHARS` (50 000 000).
+Env vars (`app/config.py`, mirrored in `.env` / `.env.example`): `RLM_ENABLED` (true), `RLM_ACTOR_MODEL` (reasoning), `RLM_MAX_STEPS` (12), `RLM_TASK_TIMEOUT` (900 s — wall-clock deadline checked before every step; `0` disables it, on expiry the run ends with the localized «task exceeded the time limit» error and the partial trace is saved), `RLM_CODE_TIMEOUT` (15 s), `RLM_OBS_TRUNC` (4000), `RLM_SUB_MAX_TOKENS` (1024), `RLM_WEB_MAX_FETCHES` (5), `RLM_MAX_CORPUS_CHARS` (50 000 000).
 
 Progress stages stream via `task_progress`: `loading_reasoning_model`, then `rlm_reading` («Читаю документы...» / «Deep analysis: reading documents»), `rlm_step` («🔬 Глубокий анализ: фаза %s», with a per-step counter via `STAGE_COUNTER_KEYS`), `rlm_searching_web` (reuses the existing search label), `rlm_submodel`, and finally `rlm_finalizing`. On completion `appendRlmTraceBlock()` in `events.js` attaches a collapsible «🔬 Deep analysis (N steps)» summary to the last assistant message — the full per-step trace stays in the Redis key and is not rendered yet.
 

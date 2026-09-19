@@ -185,6 +185,47 @@ def test_process_rlm_task_rejects_oversized_corpus():
 
 
 @pytest.mark.unit
+def test_process_rlm_task_localizes_task_timeout():
+    q = RedisRequestQueue.__new__(RedisRequestQueue)
+    q._publish_stream_event = lambda task, event_type, extra=None: None
+    q._is_task_cancelled = Mock(return_value=False)
+    q._get_model_name = Mock(return_value="reasoning")
+    q._save_and_respond = Mock(return_value={"status": "ok"})
+    q._build_error_response = Mock(return_value={"status": "error"})
+    q.redis = Mock()
+    app = Mock()
+    base = Mock()
+    base._ = Mock(side_effect=lambda message, lang=None: f"loc:{message}")
+    app.modules = {"base": base}
+    app.config = {"DOCUMENTS_FOLDER": "/tmp/documents"}
+    q.app = app
+
+    task = {
+        "id": "rlm-timeout-1",
+        "data": {"type": "rlm_analysis", "text": "q", "doc_ids": ["d1"]},
+        "session_id": "s1",
+        "user_id": "u1",
+        "lang": "en",
+    }
+    rm = Mock()
+    rm.ensure_vram_for_reasoning = Mock(return_value=True)
+    with (
+        patch("modules.rlm.RlmModule") as mock_rlm_module,
+        patch("app.db.get_document", return_value={"file_path": "valery/doc.txt", "filename": "doc.txt"}),
+        patch("app.utils.extract_text_from_file", return_value="corpus text"),
+        patch("app.resource_manager.get_resource_manager", return_value=rm),
+    ):
+        mock_rlm_module.return_value.run = Mock(
+            return_value=RlmResult(answer="", trace=[], steps=3, error="task timeout")
+        )
+        result = q._process_rlm_task(task)
+
+    assert result["status"] == "error"
+    message = q._build_error_response.call_args[0][1]
+    assert "loc:" in message and "Deep analysis" in message
+
+
+@pytest.mark.unit
 def test_resource_manager_rlm_busy_flag():
     rm = ResourceManager.__new__(ResourceManager)
     rm._lock = threading.RLock()

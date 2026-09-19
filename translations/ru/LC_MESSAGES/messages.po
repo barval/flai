@@ -676,6 +676,10 @@ msgstr "Изображение было уменьшено."
 msgid "The selected documents are too large for deep analysis (limit: {limit} characters). Select fewer or smaller documents."
 msgstr "Выбранные документы слишком велики для глубокого анализа (лимит: {limit} символов). Выберите меньше документов или файлы поменьше."
 
+#: app/queue.py
+msgid "Deep analysis: the task exceeded the time limit. A partial trace has been saved."
+msgstr "Глубокий анализ: превышен лимит времени задачи. Частичная сводка шагов сохранена."
+
 #: app/routes/messages.py:276 app/routes/messages.py:314
 #: app/templates/chat.html:123
 #, python-brace-format

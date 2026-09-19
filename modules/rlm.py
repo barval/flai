@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -218,6 +219,9 @@ class RlmModule:
         obs_trunc = current_app.config.get("RLM_OBS_TRUNC", 4000)
         sub_max_tokens = current_app.config.get("RLM_SUB_MAX_TOKENS", 1024)
         web_max_fetches = current_app.config.get("RLM_WEB_MAX_FETCHES", 5)
+        task_timeout = current_app.config.get("RLM_TASK_TIMEOUT", 900)
+        # 0 disables the wall-clock deadline; the step limit remains the only bound.
+        deadline = time.monotonic() + task_timeout if task_timeout > 0 else None
 
         llamacpp = self.app.modules["base"].llamacpp
         tools = self.tool_definitions(lang)
@@ -236,6 +240,8 @@ class RlmModule:
             for step in range(1, max_steps + 1):
                 if is_cancelled():
                     return RlmResult("", trace, step, error="cancelled")
+                if deadline is not None and time.monotonic() >= deadline:
+                    return RlmResult("", trace, step, error="task timeout")
                 if step >= max_steps - 1:
                     messages.append(
                         {

@@ -180,7 +180,7 @@ FLAI ships with two deployment modes:
 | **CPU** | 4+ cores | 6+ cores | 6+ cores | 8+ cores (12 recommended) |
 | **Storage** | 60 GB | 80+ GB SSD | 100+ GB SSD NVMe | 100+ GB SSD NVMe |
 
-> **RAM budget (how it was calculated):** in GPU mode only *one* llama.cpp model lives in memory at a time (llama-swap unloads the previous one), so system RAM holds the operating system + PostgreSQL/Redis + the web app (~6–8 GB) plus a safety margin. Reasoning on an 8 GB GPU requires partial CPU offload of layer weights, which adds ~10 GB of RAM for the in-RAM layers. **CPU-only mode (v11.4) uses lightweight models:** gpt-oss-20b-mxfp4 (native MXFP4, ~11.3 GB file, CPU-friendly per llama.cpp) for reasoning and Qwen3VL-4B (~2.5 GB + mmproj) for multimodal — the largest resident model on CPU is ~11 GB. Video generation runs in a separate container and needs its own headroom — on GPU that is modest, on CPU it dominates:
+> **RAM budget (how it was calculated):** in GPU mode only *one* llama.cpp model lives in memory at a time (llama-swap unloads the previous one), so system RAM holds the operating system + PostgreSQL/Redis + the web app (~6–8 GB) plus a safety margin. Reasoning on an 8 GB GPU requires partial CPU offload of layer weights, which adds ~10 GB of RAM for the in-RAM layers. **CPU-only mode uses lightweight models:** gpt-oss-20b-mxfp4 (native MXFP4, ~11.3 GB file, CPU-friendly per llama.cpp) for reasoning and Qwen3VL-4B (~2.5 GB + mmproj) for multimodal — the largest resident model on CPU is ~11 GB. Video generation runs in a separate container and needs its own headroom — on GPU that is modest, on CPU it dominates:
 >
 > | Mode | RAM without video | RAM with video generation |
 > |------|-------------------|---------------------------|
@@ -225,17 +225,17 @@ All numbers are **synthetic `llama-bench` measurements** (llama.cpp build 10603)
 
 > **Current stack: CPU vs GPU (the three models FLAI uses by default).**
 
-v11.4 splits the stack by mode: **GPU mode** uses the full-quality models below; **CPU-only mode** uses lightweight replacements — Qwen3VL-4B (multimodal) and gpt-oss-20b-mxfp4 (reasoning); the embedding model is shared.
+Splits the stack by mode: **GPU mode** uses the full-quality models below; **CPU-only mode** uses lightweight replacements — Qwen3VL-4B (multimodal) and gpt-oss-20b-mxfp4 (reasoning); the embedding model is shared.
 
-The CPU column in the table below was measured **live on the previous 12-core CPU-only stack (Qwen3VL-8B + Qwen3.6-35B)** — the v11.4 CPU models are faster because they are smaller (Qwen3VL-4B) or have CPU-friendly MXFP4 kernels (gpt-oss-20b). The 16 GB column was measured on an RTX 5060 Ti 16 GB (Blackwell, 448 GB/s). The 8/12 GB columns are **estimates** for typical cards of that class — real throughput scales with the card's memory bandwidth and generation, so treat them as guidance, not guarantees.
+The CPU column in the table below was measured **live on the previous 12-core CPU-only stack (Qwen3VL-8B + Qwen3.6-35B)** — the CPU models are faster because they are smaller (Qwen3VL-4B) or have CPU-friendly MXFP4 kernels (gpt-oss-20b). The 16 GB column was measured on an RTX 5060 Ti 16 GB (Blackwell, 448 GB/s). The 8/12 GB columns are **estimates** for typical cards of that class — real throughput scales with the card's memory bandwidth and generation, so treat them as guidance, not guarantees.
 
 | Model | Role | File | CPU 12C (prev stack, measured) | GPU 8 GB* | GPU 12 GB* | GPU 16 GB (measured) |
 |-------|------|------|--------------------|-----------|-----------|----------------------|
-| **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (chat/router/vision) | 4.7 GB + mmproj 1.1 GB | **3.7 tok/s** (Qwen3VL-4B on v11.4 CPU: faster) | 25–35 tok/s | 45–60 tok/s | **73.1 tok/s** |
-| **Qwen3.6-35B-A3B-UD-Q2_K_XL** | Reasoning | 12 GB | **9.5 tok/s** (gpt-oss-20b-mxfp4 on v11.4 CPU) | 15–20 tok/s (partial CPU offload) | 70–90 tok/s | **106.2 tok/s** |
+| **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (chat/router/vision) | 4.7 GB + mmproj 1.1 GB | **3.7 tok/s** (Qwen3VL-4B on CPU: faster) | 25–35 tok/s | 45–60 tok/s | **73.1 tok/s** |
+| **Qwen3.6-35B-A3B-UD-Q2_K_XL** | Reasoning | 12 GB | **9.5 tok/s** (gpt-oss-20b-mxfp4 on CPU) | 15–20 tok/s (partial CPU offload) | 70–90 tok/s | **106.2 tok/s** |
 | **bge-m3-Q8_0** | Embedding | 0.6 GB | **~1020 tok/s** (warm, 20 ms/doc) | 1.5–2.5 k tok/s | 2.5–4 k tok/s | ~4 k tok/s |
 
-> **Context windows (v11.4 auto-fit):** at deployment the seed config automatically fits the context window to the hardware from the GGUF metadata and measured RAM/VRAM — multimodal 32768 on 24/16 GB tiers, 16384 on 8 GB, 8192 in CPU mode (see `app/database.py:_autofit_context()`); reasoning 32768/24576 on 24/16 GB, 16384 on 8 GB, 8192 CPU. The reasoning model's `--reasoning-budget` scales with the fitted window. Multimodal needs ≥16384 for vision token counts.
+> **Context windows (auto-fit):** at deployment the seed config automatically fits the context window to the hardware from the GGUF metadata and measured RAM/VRAM — multimodal 32768 on 24/16 GB tiers, 16384 on 8 GB, 8192 in CPU mode (see `app/database.py:_autofit_context()`); reasoning 32768/24576 on 24/16 GB, 16384 on 8 GB, 8192 CPU. The reasoning model's `--reasoning-budget` scales with the fitted window. Multimodal needs ≥16384 for vision token counts.
 
 > **Read the CPU row as follows:** a typical chat answer (~200 tokens) from the multimodal model takes ~55 s on CPU vs ~3 s on a 16 GB GPU; a reasoning answer takes ~21 s on CPU vs ~2 s on GPU. Embedding/vector indexing is the least affected (bge-m3 is small and fast even on CPU).
 
@@ -711,7 +711,7 @@ services/llamacpp/models/
 
 > **Note:** Router classification always uses `temperature=0.1` (hardcoded) for deterministic query routing, regardless of admin panel settings.
 
-> **⚠️ Warning — Repeat Penalty:** do not set Repeat Penalty too high in the admin panel. The defaults (1.1 / 1.15) are deliberately conservative; values like 1.6 severely degrade reasoning models — verified by A/B testing on the same prompt: 1.6 produced a burned context (59K chars of runaway reasoning + truncated answer), an empty answer, and an answer in the wrong language (4/4 failed generations), while 1.15 produced 4/4 clean, complete answers. Symptoms of an excessive penalty: the model spends the whole context on `reasoning_content` and never answers, stops right after the intro sentence, or drifts off the requested language. Occasional repetition during long code generation is better handled by the built-in repetition-loop detector (v11.3, server-side) than by raising this parameter.
+> **⚠️ Warning — Repeat Penalty:** do not set Repeat Penalty too high in the admin panel. The defaults (1.1 / 1.15) are deliberately conservative; values like 1.6 severely degrade reasoning models — verified by A/B testing on the same prompt: 1.6 produced a burned context (59K chars of runaway reasoning + truncated answer), an empty answer, and an answer in the wrong language (4/4 failed generations), while 1.15 produced 4/4 clean, complete answers. Symptoms of an excessive penalty: the model spends the whole context on `reasoning_content` and never answers, stops right after the intro sentence, or drifts off the requested language. Occasional repetition during long code generation is better handled by the built-in repetition-loop detector (server-side) than by raising this parameter.
 
 ### Model Selection Guide
 
@@ -1019,14 +1019,6 @@ curl http://localhost:5000/metrics
 ---
 
 ## 🗺️ Roadmap
-
-### ✔️ Completed in v11.5
-- **Reasoning with fresh web data** — a new `[-REASONING-WEB-]` router category lets a complex follow-up that also needs current internet data search first (SearXNG, CPU-side) and then reason over the results with the session thread intact, degrading to plain reasoning if the search fails
-- **Conversions at a live rate** — currency/unit conversion requests are always classified as web search (never offline reasoning), and a fractional amount no longer makes the engines return zero results
-- **Reliable reasoning model load** — a watchdog/queue VRAM race (a health check respawning a model mid-unload) no longer fails reasoning tasks with «GPU memory check failed»
-
-### ✔️ Completed in v11.3
-- **Context & retrieval quality** — smarter context-budgeting for message history, higher-quality RAG and web search, tighter SLM long-term memory
 
 ### 🔄 In Progress
 - **CUDA driver flexibility** — run FLAI on any host driver from CUDA 12.2 up: deploy scripts auto-detect the driver, waive NVIDIA image requirements where minor-version compatibility allows it, and warn when specific features (e.g. LTX-Video) need a newer driver

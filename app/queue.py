@@ -1696,6 +1696,16 @@ class RedisRequestQueue:
             }
             error_msg = local_errors.get(result.error, result.error)
             return self._build_error_response(session_id, error_msg, elapsed, lang)
+        if not result.answer.strip():
+            # Empty answer without an error flag (e.g. the model burned every
+            # step on failed tool calls) — surface a real error instead of
+            # saving a blank assistant message.
+            return self._build_error_response(
+                session_id,
+                self.app.modules["base"]._("No response from reasoning model", lang),
+                elapsed,
+                lang,
+            )
 
         return self._save_and_respond(
             session_id,

@@ -152,9 +152,9 @@ def _compile_body(code: str):
     return compile(tree, "<rlm>", "exec")
 
 
-def _callback(conn, name: str, args: dict[str, Any]) -> Any:
-    conn.send(("callback", name, args))
-    reply = conn.recv()
+def _callback(conn_read, conn_write, name: str, args: dict[str, Any]) -> Any:
+    conn_write.send(("callback", name, args))
+    reply = conn_read.recv()
     if reply[0] != "cb_result":
         raise RuntimeError("sandbox protocol error")
     payload = reply[1]
@@ -172,19 +172,21 @@ def _apply_rlimits(memory_mb: int, cpu_seconds: int) -> None:
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
 
-def _child_loop(conn, corpus: dict[str, str], memory_mb: int, cpu_seconds: int, max_output: int) -> None:
+def _child_loop(
+    conn_read: Any, conn_write: Any, corpus: dict[str, str], memory_mb: int, cpu_seconds: int, max_output: int
+) -> None:
     _apply_rlimits(memory_mb, cpu_seconds)
     namespace: dict[str, Any] = {
         "context": corpus,
         "re": re,
         "math": math,
         "__builtins__": SAFE_BUILTINS,
-        "llm": lambda prompt, text="": _callback(conn, "llm", {"prompt": prompt, "text": text}),
-        "web_fetch": lambda query: _callback(conn, "web_fetch", {"query": query}),
+        "llm": lambda prompt, text="": _callback(conn_read, conn_write, "llm", {"prompt": prompt, "text": text}),
+        "web_fetch": lambda query: _callback(conn_read, conn_write, "web_fetch", {"query": query}),
         "final": _raise_final,
     }
     while True:
-        msg = conn.recv()
+        msg = conn_read.recv()
         if msg[0] == "shutdown":
             return
         _, code = msg
@@ -195,11 +197,11 @@ def _child_loop(conn, corpus: dict[str, str], memory_mb: int, cpu_seconds: int, 
                 exec(compiled, namespace, namespace)
             value = namespace.pop("_rlm_result", None)
             text = (value if isinstance(value, str) else repr(value)) if value is not None else buf.getvalue()
-            conn.send(("done", text[:max_output], None))
+            conn_write.send(("done", text[:max_output], None))
         except _FinalSignal as f:
-            conn.send(("done", "", f.answer))
+            conn_write.send(("done", "", f.answer))
         except BaseException as e:  # noqa: BLE001 - sandbox must report everything
-            conn.send(("error", f"{type(e).__name__}: {e}"))
+            conn_write.send(("error", f"{type(e).__name__}: {e}"))
 
 
 class RlmSandbox:
@@ -220,19 +222,30 @@ class RlmSandbox:
         self.memory_mb = memory_mb
         self.cpu_seconds = cpu_seconds
         self._conn: Any = None
+        self._reply_conn: Any = None
         self._pid: int | None = None
 
     def start(self) -> None:
-        parent_conn, child_conn = multiprocessing.Pipe(duplex=True)
+        # Two unidirectional os.pipe pairs instead of one duplex socketpair:
+        # multiprocessing duplex pipes are socketpairs, which gevent (the
+        # gunicorn worker class) creates in non-blocking mode bound to the
+        # parent's event loop — the forked child then dies on its first recv
+        # (BlockingIOError) and every exec reports "sandbox died: BrokenPipe".
+        # Plain os.pipe fds stay blocking and work across fork under gevent.
+        to_child_r, to_child_w = multiprocessing.Pipe(duplex=False)
+        from_child_r, from_child_w = multiprocessing.Pipe(duplex=False)
         pid = os.fork()
         if pid == 0:
-            parent_conn.close()
+            to_child_w.close()
+            from_child_r.close()
             try:
-                _child_loop(child_conn, self.corpus, self.memory_mb, self.cpu_seconds, self.max_output)
+                _child_loop(to_child_r, from_child_w, self.corpus, self.memory_mb, self.cpu_seconds, self.max_output)
             finally:
                 os._exit(0)
-        child_conn.close()
-        self._conn = parent_conn
+        to_child_r.close()
+        from_child_w.close()
+        self._conn = to_child_w
+        self._reply_conn = from_child_r
         self._pid = pid
 
     def _handle_callback(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -249,7 +262,7 @@ class RlmSandbox:
         error = validate_code(code)
         if error:
             return SandboxResult(ok=False, error=error)
-        if self._conn is None:
+        if self._conn is None or self._reply_conn is None:
             return SandboxResult(ok=False, error="sandbox not started")
         try:
             return self._exec_io(code)
@@ -262,10 +275,10 @@ class RlmSandbox:
         deadline = time.time() + self.code_timeout
         while True:
             remaining = deadline - time.time()
-            if remaining <= 0 or not self._conn.poll(remaining):
+            if remaining <= 0 or not self._reply_conn.poll(remaining):
                 self._kill()
                 return SandboxResult(ok=False, error="execution timeout")
-            msg = self._conn.recv()
+            msg = self._reply_conn.recv()
             kind = msg[0]
             if kind == "callback":
                 self._conn.send(("cb_result", self._handle_callback(msg[1], msg[2])))
@@ -282,10 +295,12 @@ class RlmSandbox:
             with contextlib.suppress(ChildProcessError):
                 os.waitpid(self._pid, 0)
             self._pid = None
-        if self._conn is not None:
-            with contextlib.suppress(Exception):
-                self._conn.close()
-            self._conn = None
+        for conn in (self._conn, self._reply_conn):
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    conn.close()
+        self._conn = None
+        self._reply_conn = None
 
     def close(self) -> None:
         if self._conn is not None:
@@ -303,8 +318,10 @@ class RlmSandbox:
                 time.sleep(0.05)
             else:
                 self._kill()
-        if self._conn is not None:
-            with contextlib.suppress(Exception):
-                self._conn.close()
-            self._conn = None
+        for conn in (self._conn, self._reply_conn):
+            if conn is not None:
+                with contextlib.suppress(Exception):
+                    conn.close()
+        self._conn = None
+        self._reply_conn = None
         self._pid = None

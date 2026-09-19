@@ -1,4 +1,5 @@
 # tests/test_rlm_sandbox.py
+import fcntl
 import os
 
 import pytest
@@ -174,5 +175,22 @@ def test_sandbox_child_crash_returns_error_result():
         res = sb.exec("1+1")
         assert res.ok is False
         assert "sandbox died" in res.error
+    finally:
+        sb.close()
+
+
+@pytest.mark.unit
+def test_sandbox_uses_unidirectional_pipes_not_socketpair():
+    # Regression: multiprocessing duplex pipes are socketpairs, which gevent
+    # creates in non-blocking mode — the forked child died on its first recv
+    # and every exec reported "sandbox died: BrokenPipe". The sandbox must
+    # use unidirectional os.pipe pairs, which keep blocking behavior.
+    broker = FakeBroker()
+    sb = RlmSandbox({"doc": "x"}, broker)
+    sb.start()
+    try:
+        for conn in (sb._conn, sb._reply_conn):
+            flags = fcntl.fcntl(conn.fileno(), fcntl.F_GETFL)
+            assert not (flags & os.O_NONBLOCK), "sandbox pipe is non-blocking (socketpair under gevent)"
     finally:
         sb.close()

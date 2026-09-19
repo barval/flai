@@ -2,59 +2,41 @@
 
 This directory contains deployment configurations for AI backend services.
 
-## llama.cpp (Required)
+## llama-swap (Required)
 
-Runs `llama-server` in router mode (`--models-dir`) to support dynamic model switching.
+Runs [llama-swap](https://github.com/mostlygeek/llama-swap) (image `ghcr.io/mostlygeek/llama-swap:v255-cuda-b10991`, container `flai-llamaswap`, port 8080) — a llama.cpp proxy that loads/unloads GGUF models on demand. Models live in `services/llamacpp/models/` (one subdirectory per model, mounted as `/models`); llama-swap spawns a `llama-server` per model from the generated `config/llama-swap.yaml` (the web app rewrites it on every admin save).
 
 ### Setup
 
-1. **Download GGUF models** and place them in `services/llamacpp/models/`:
+The automated deployment (`./deploy.sh` / `./deploy-ru.sh`) downloads the model set for your GPU tier automatically:
 
-   ```bash
-   mkdir -p services/llamacpp/models
+| Module | GPU default | CPU-only default |
+|--------|-------------|------------------|
+| Multimodal (chat/router/vision) | Qwen3VL-8B-Instruct-Q4_K_M (+ `mmproj-*.gguf`) | Qwen3VL-4B-Instruct-Q4_K_M |
+| Reasoning | Qwen3.6-35B-A3B-UD-Q2_K_XL | gpt-oss-20b-mxfp4 |
+| Embedding (RAG) | bge-m3-Q8_0 | bge-m3-Q8_0 |
 
-   # Chat model (fast responses)
-   wget -O services/llamacpp/models/qwen3-4b-instruct.Q4_K_M.gguf \
-     "https://huggingface.co/Qwen/Qwen3-4B-Instruct-GGUF/resolve/main/qwen3-4b-instruct.Q4_K_M.gguf"
-
-   # Reasoning model (complex tasks)
-   wget -O services/llamacpp/models/gpt-oss-20b.Q4_K_M.gguf \
-     "https://huggingface.co/openai/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b.Q4_K_M.gguf"
-
-   # Multimodal model (image analysis)
-   wget -O services/llamacpp/models/qwen3-vl-8b-instruct.Q4_K_M.gguf \
-     "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/qwen3-vl-8b-instruct.Q4_K_M.gguf"
-
-   # Embedding model (RAG)
-   wget -O services/llamacpp/models/bge-m3.Q4_K_M.gguf \
-     "https://huggingface.co/BAAI/bge-m3-gguf/resolve/main/bge-m3.Q4_K_M.gguf"
-   ```
+Manual placement: each model goes into `services/llamacpp/models/<model-name>/<model-name>.gguf` (subdirectory per model). Since v10.0 there is **no separate chat module** — the single multimodal model serves chat, routing, and vision.
 
 2. **Configure in `.env`:**
    ```bash
-   LLAMACPP_URL=http://flai-llamacpp:8080
+   LLAMACPP_BACKEND=llama-swap
+   LLAMA_SWAP_URL=http://flai-llamaswap:8080
    ```
 
 3. **Set models in Admin Panel** (`/admin` → Models tab):
-   - Select the GGUF filename for each module (Chat, Reasoning, Multimodal, Embedding)
-   - The server will dynamically load/unload models as needed
+   - Select the GGUF filename for each module (Multimodal, Reasoning, Embedding)
+   - llama-swap loads/unloads models on demand; the multimodal model stays resident (`ttl=0`, preloaded on startup)
 
 ### Distributed Deployment
 
-To run llama-server on a remote machine:
+To run llama-swap on a remote GPU machine, deploy the `flai-llamaswap` service there (same image and `llama-swap.yaml`, models under `/models`), then point FLAI at it:
 
 ```bash
-# On the remote GPU server
-docker run -d \
-  --name flai-llamacpp \
-  --gpus all \
-  -p 8033:8033 \
-  -v /path/to/models:/models \
-  ghcr.io/ggml-org/llama.cpp:server-cuda \
-  --models-dir /models/ --host 0.0.0.0 --port 8033 --n-gpu-layers -1
+LLAMA_SWAP_URL=http://<remote-ip>:8080
 ```
 
-Then set `LLAMACPP_URL=http://remote-ip:8033` in FLAI's `.env`.
+(Only the llama-swap service needs to be remote — Whisper, SD, video, etc. still run on the FLAI host.)
 
 ## stable-diffusion.cpp (Optional)
 
@@ -107,15 +89,14 @@ Traditional diffusion models with CLIP/T5XXL text encoders.
 ### Configuration in `.env`
 
 ```bash
-SD_CPP_URL=http://flai-sd:7860
+SD_WRAPPER_URL=http://flai-sd:7861
 
 # Z_image_turbo defaults:
 SD_CPP_DEFAULT_CFG_SCALE=1.0
 SD_CPP_DEFAULT_STEPS=10
 SD_CPP_DEFAULT_WIDTH=1024
 SD_CPP_DEFAULT_HEIGHT=1024
-SD_CPP_TIMEOUT=300
-```
+SD_CPP_TIMEOUT=900
 
 # Classic SD defaults (uncomment if using SDXL):
 # SD_CPP_DEFAULT_CFG_SCALE=7.0
@@ -124,13 +105,13 @@ SD_CPP_TIMEOUT=300
 # SD_CPP_DEFAULT_HEIGHT=512
 ```
 
-## Whisper ASR (Optional, unchanged)
+## Whisper ASR (Optional)
 
-Uses `faster_whisper` via Docker. No changes from previous setup.
+Speech-to-text via `faster_whisper` (see [openai-whisper/README.md](openai-whisper/README.md)). Note: hosts with hardened AppArmor (Ubuntu 23.10+) need the `security_opt: [apparmor=unconfined]` option that both compose files already set (v11.4).
 
-## Piper TTS (Optional, unchanged)
+## Piper TTS (Optional)
 
-Uses ONNX Piper models. No changes from previous setup.
+ONNX Piper voices, port 8888 (see [piper/README.md](piper/README.md)). Since v11.2 Piper is the default TTS backend; **Kokoro** is the alternative (higher quality, selectable in Admin Panel → TTS): set `KOKORO_URL=http://flai-kokoro:8888/tts` and bring up `--profile with-voice-piper` / the kokoro service from `docker-compose.gpu.yml` (container `flai-kokoro`). Kokoro warms up one background Russian synthesis at startup (`KOKORO_WARMUP_G2P=1`) so the first ru phrase takes seconds, unloads the RUAccent G2P worker after idle (`KOKORO_G2P_IDLE_TIMEOUT`), and honors `KOKORO_TIMEOUT` (client synthesis timeout, seconds).
 
 ## Room Snapshot API (Optional)
 

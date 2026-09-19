@@ -39,12 +39,23 @@ When releasing a new version, update these files **in order**:
 - Include all significant changes, bug fixes, and migration notes
 - See `CHANGELOG.md` template below
 
-### 5. Git tags
+### 5. Git: release branch + push
+
+Since v10.0 every release lives on its own **version branch** (`vX.Y`), not a tag (tags only exist up to v9.3):
 
 ```bash
-git tag vX.Y
-git push origin vX.Y
+git checkout -b vX.Y                      # branch from the previous release branch
+# ...release commits...
+git push origin vX.Y                      # 'origin' = gitea (the authoritative remote for vX.Y)
 ```
+
+Translations ship **precompiled**: `.po` **and** `.mo` are tracked in git (since v11.5, commit f93d4a7/dd8564e). If the version bump touched `.po` files, recompile per branch and commit:
+
+```bash
+pybabel compile -d translations           # per branch — footers differ between vX.Y and master
+```
+
+Older releases are merged forward into the long-lived branches for the public mirror: `master` (gitea) and `main` (github). The gitea branch keeps the per-version state; `github/main` receives the merge and keeps the github video asset link intact.
 
 ## Version Update Checklist
 When releasing a new version:
@@ -55,7 +66,7 @@ When releasing a new version:
   - `AGENTS.md`: version title `# AGENTS.md — FLAI vX.Y`
   - `README.md`: `### What's New in vX.Y`
   - `README-ru.md`: Russian equivalent section header
-  - `translations/{en,ru}/LC_MESSAGES/messages.po`: `Project-Id-Version` header and footer string
+  - `translations/{en,ru}/LC_MESSAGES/messages.po`: `Project-Id-Version` header and footer string (then `pybabel compile -d translations` and commit both `.po` and `.mo`)
   - `deploy.sh`, `deploy-ru.sh`: version string in headers, success messages, and usage text
   - `docs/*.md`: version in titles and change notes
 
@@ -79,10 +90,11 @@ When releasing a new version:
   - Update example commands
   - Update description of each profile
 
-### 6. Create git tag:
+### 6. Create/refresh the release branch:
 ```bash
-git tag vX.Y
-git push origin vX.Y
+git checkout -b vX.Y        # if not created yet
+git push origin vX.Y        # gitea — authoritative remote for the version branch
+# merge into master (gitea) and main (github) only when promoting the release
 ```
 
 ## README Update Guide

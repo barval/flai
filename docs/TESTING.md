@@ -67,11 +67,11 @@ pytest tests/test_admin_routes.py  # specific file
 
 `tests/test_slm_rules.py` **(NEW in v9.0)**
 
-27 tests for rule-based SLM fact extraction: sentence splitting, scoring by category patterns (preferences, facts, instructions, personality), text normalization, Levenshtein similarity, fact extraction, deduplication, and explicit remember parsing.
+29 tests for rule-based SLM fact extraction: sentence splitting, scoring by category patterns (preferences, facts, instructions, personality), text normalization, Levenshtein similarity, fact extraction, deduplication, and explicit remember parsing.
 
 `tests/test_slm_merge_rules.py` **(NEW in v9.0)**
 
-22 tests for rule-based SLM fact merging: fast_cleanup (exact duplicates, fragments), edit_distance_merge (Levenshtein near-duplicates), fragment_merge (stricter substring detection), temporal_decay (auto-archive old low-confidence facts), and merge scheduling logic.
+16 tests for rule-based SLM fact merging: fast_cleanup (exact duplicates, fragments), edit_distance_merge (Levenshtein near-duplicates), fragment_merge (stricter substring detection), temporal_decay (auto-archive old low-confidence facts), and merge scheduling logic.
 
 `tests/test_backups.py`
 

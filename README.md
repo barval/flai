@@ -39,7 +39,7 @@
 - 🧠 **Long-term Memory** – cross-session, persistent memory via SuperLocalMemory (SLM). CPU-only, rule-based fact extraction and merging (no LLM). Semantic deduplication via embeddings
 
 ### 📁 Document & Knowledge Management
-- 📚 **RAG with Qdrant** – upload documents (PDF, DOC, DOCX, TXT) and ask questions about their content
+- 📚 **RAG with Qdrant** – upload documents (PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB) and ask questions about their content automatically — the assistant searches your documents when the question needs them
 - 🗂️ **Chat Sessions** – multiple independent conversations with auto-titling
 - 💾 **Export Chats** – save conversations as HTML files with embedded media
 
@@ -87,18 +87,18 @@
 
 ## 🔬 Deep Analysis Mode (RLM)
 
-**For what?** Reading a large document and answering simple questions about it is normal RAG. Deep Analysis is for **serious work with documents**: a comparison across several contracts, finding every condition and exception in a policy, a structured report over a folder of texts, verifying arithmetic across tables. Instead of one pass over a summary, the reasoning model actually *works through* the material in a loop of up to 12 steps, using three tools along the way:
+**For what?** Reading a large document and answering simple questions about it is normal RAG. Deep Analysis is for **serious work with documents**: a comparison across several contracts, finding every condition and exception in a policy, a structured report over a folder of texts, verifying arithmetic across tables. Instead of one pass over a summary, the reasoning model actually *works through* the material in a loop of up to 12 steps (the step budget is auto-adapted to the reasoning context window, so smaller hosts get fewer steps and still finish), using three tools along the way:
 
 | Tool | What it does |
 |------|--------------|
 | 🐍 `python` | executes code in an isolated sandbox — split texts, count words, extract paragraphs, search by pattern, analyze tables, solve calculations |
 | 🤖 `llm` | asks a sub-model call (limited tokens) for a focused sub-result, then folds it into the main reasoning |
-| 🌐 `web_fetch` | searches the web (SearXNG) for up to 5 additional lookups when the answer needs fresh facts |
+| 🌐 `web_fetch` | searches the web (SearXNG) for fresh facts when the answer needs them — the model is prompted to use at most 2 lookups (5 is the hard ceiling) |
 
 Everything runs **locally** as a single GPU task: the reasoning model stays loaded for the whole analysis, progress is streamed live («Reading documents...», «Analysis step N...»), and the result arrives with a collapsible **«Deep analysis (N steps)»** summary.
 
 **How to use it:**
-1. Upload the files you want analyzed in **Documents** (PDF/DOC/DOCX/TXT).
+1. Upload the files you want analyzed in **Documents** (PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB).
 2. In the chat, **click the documents** you want included — they get a green frame and a check mark; the counter next to the toggle shows how many are selected.
 3. Type a question, turn on the **🔬 Deep Analysis** toggle and press **Send**.
 4. *(Optional)* Attach an image as well: the multimodal model produces a detailed text description of it and that description becomes one more "document" of the analysis — so you can ask things like "match the attached warranty photo against clause 4 of the contract".
@@ -115,7 +115,8 @@ FLAI is a modular Flask application that orchestrates self-hosted AI services bu
 
 | Feature | Notes |
 |---------|-------|
-| **Deep Analysis (RLM) mode** | A dedicated "🔬 Deep Analysis" toggle routes your question + selected documents through a reasoning actor loop (up to 12 steps) that programmatically works through the material: a sandboxed `python` executor (split/count/parse/calculate), an `llm()` sub-call, and up to 5 live `web_fetch` lookups when fresh facts are needed. One GPU task holds the reasoning model for the whole analysis; progress streams stage by stage, and the answer comes with a collapsible **«Deep analysis (N steps)»** trace summary. See the [Deep Analysis Mode](#-deep-analysis-mode-rlm) section for how to use it. |
+| **Deep Analysis (RLM) mode** | A dedicated "🔬 Deep Analysis" toggle routes your question + selected documents through a reasoning actor loop (up to 12 steps — the budget auto-adapts to the reasoning context window) that programmatically works through the material: a sandboxed `python` executor (split/count/parse/calculate), an `llm()` sub-call, and up to 2 live `web_fetch` lookups when fresh facts are needed (5 is the hard ceiling). One GPU task holds the reasoning model for the whole analysis; progress streams stage by stage, and the answer comes with a collapsible **«🔬 Deep analysis (N steps)»** trace summary. See the [Deep Analysis Mode](#-deep-analysis-mode-rlm) section for how to use it. |
+| **OOM-protected analysis, resource-adaptive budget** | The total corpus size is capped (default 50 M chars, `RLM_MAX_CORPUS_CHARS`): oversized document sets are rejected with a clear error before any GPU work. The step budget is computed from the reasoning context window so a worst-case trajectory always fits — no «Request too long» deaths mid-analysis on small hosts. |
 | **Documents picked by click, images join the corpus** | Documents for the analysis are selected by clicking them in the documents panel (green frame + ✓, live counter next to the toggle). An attached image is described in detail by the multimodal model, and that description becomes one more "document" of the analysis — e.g. "match the warranty photo against clause 4 of the contract". If the toggle cannot start (no documents and no image, or an image without a question) it is unchecked automatically and the request falls through to the normal flow. |
 | **Translations guaranteed on every clone** | Translated `.mo` catalogs are committed to the repository and deploy scripts compile them before the first start, so a fresh clone/deployment always gets a fully localized UI without extra steps. |
 
@@ -536,8 +537,11 @@ SD_CPP_DEFAULT_WIDTH=1024
 SD_CPP_DEFAULT_HEIGHT=1024
 SD_CPP_DEFAULT_CFG_SCALE=1.0    # 1.0 for flow-matching models (Z_image_turbo)
 SD_CPP_DEFAULT_STEPS=10         # 10 for Z_image_turbo
-SD_CPP_TIMEOUT=900
+SD_CPP_TIMEOUT=900              # 15 min for editing
 MAX_IMAGE_SIZE=1536             # Resize uploaded images to 1536px on longest side
+MAX_IMAGE_SIZE_MB=5             # Max upload size of an attached image
+MAX_DOCUMENT_SIZE_MB=5          # Max upload size of a document
+MAX_VOICE_SIZE_MB=5             # Max upload size of a voice note
 LTX_VIDEO_TIMEOUT=600           # Max video generation time (seconds)
 ```
 
@@ -551,7 +555,20 @@ SERVICE_RETRY_DELAY=2
 ```bash
 # Set to true ONLY when deployed behind reverse proxy (nginx) with HTTPS enabled
 HTTPS_ENABLED=false
-PERMANENT_SESSION_LIFETIME=28800    # 8 hours
+# Session lifetime is fixed at 8 hours in code (app/config.py) — no env override.
+```
+
+**RLM Deep Analysis:**
+```bash
+RLM_ENABLED=true                # Enable the deep-analysis toggle
+RLM_ACTOR_MODEL=reasoning       # Model used for the actor loop
+RLM_MAX_STEPS=12                # Ceiling for the actor loop (budget is auto-adapted to the context window)
+RLM_TASK_TIMEOUT=900            # Reserved task timeout (seconds)
+RLM_CODE_TIMEOUT=15             # Per python-snippet timeout in the sandbox (seconds)
+RLM_OBS_TRUNC=4000              # Max chars of one tool observation fed back to the model
+RLM_SUB_MAX_TOKENS=1024         # Max tokens of an llm() sub-model call
+RLM_WEB_MAX_FETCHES=5           # Hard ceiling for web_fetch callbacks per analysis
+RLM_MAX_CORPUS_CHARS=50000000   # Corpus size cap — aborts oversized analyses before they load (OOM guard)
 ```
 
 **Redis Queue:**
@@ -686,7 +703,7 @@ services/llamacpp/models/
 
 | Parameter | Multimodal | Reasoning | Embedding |
 |-----------|------------|-----------|-----------|
-| Context Length | 32768 (auto-fit: 16384 on 8 GB, 8192 CPU) | 24576 (auto-fit: 16384 on 8 GB, 8192 CPU) | 512 |
+| Context Length | 32768 (auto-fit: 24576 on 16 GB, 16384 on 8 GB, 8192 CPU) | 32768 on 24+ GB, 24576 on 16 GB / 16384 on 8 GB / 8192 CPU (auto-fit) | 512 |
 | Temperature | 0.7 | 0.7 | – |
 | Top P | 0.9 | 0.9 | – |
 | Repeat Penalty | 1.1 | 1.15 | – |
@@ -704,7 +721,7 @@ services/llamacpp/models/
 | **Reasoning** | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | gpt-oss-20b-mxfp4 (~11.3 GB, default in CPU-only mode) | MoE architecture: ~3B active params, ~106 tok/s. GPU mode: Qwen3.6-35B on all tiers (8 GB uses partial CPU offload). CPU-only mode: gpt-oss-20b-mxfp4 (native MXFP4, CPU-friendly) |
 | **Embedding** | bge-m3 Q8_0 (~1.5 GB) | — | Single model for all tiers |
 
-> **Context windows:** defaults are auto-fitted at deployment (`app/database.py:_autofit_context`) — 32768 multimodal and 24576 reasoning on 16+ GB tiers (both fit fully on the GPU at current quantization), 16384 on 8 GB, 8192 in CPU-only mode. The admin panel enforces the bounds (512 … GGUF architecture max) and — also for context-only changes — fit-checks every save against the RAM/VRAM budget, rejecting values that cannot fit, then plans a background dry-load of the new config and automatically rolls the change back (restoring `context_length`) if the backend fails to load it.
+> **Context windows:** defaults are auto-fitted at deployment (`app/database.py:_autofit_context`) — 32768 multimodal (24576 on 16 GB) and reasoning 32768/24576 on 24/16 GB tiers (both fit fully on the GPU at current quantization), 16384 on 8 GB, 8192 in CPU-only mode. The admin panel enforces the bounds (512 … GGUF architecture max) and — also for context-only changes — fit-checks every save against the RAM/VRAM budget, rejecting values that cannot fit, then plans a background dry-load of the new config and automatically rolls the change back (restoring `context_length`) if the backend fails to load it.
 
 ---
 
@@ -860,7 +877,7 @@ bash services/kokoro/download-model.sh
 |-----------|---------|--------|
 | `KOKORO_WARMUP_G2P` | `1` | Runs one full ru synthesis in the background right after container start. With it, the first Russian phrase after deployment takes ~2 s instead of ~55 s. The port is up immediately, so a user clicking during warmup simply takes the regular cold path. Disable (`0`) to keep idle RAM at ~1.6 GB. |
 | `KOKORO_G2P_IDLE_TIMEOUT` | `300` | Seconds without a Russian request before the RUAccent G2P worker (~3.1 GB) is terminated to free RAM. Trade-off: longer = always-warm Russian synthesis (no ~10 s reload penalty) at the price of permanently higher RAM; `0` = never unload. |
-| `KOKORO_TIMEOUT` | `120` | Web-app client timeout for one synthesis request. Covers a cold RUAccent load (~10–20 s) plus model reload under host load; a cold start used to come within seconds of the old 60 s limit and trigger client timeouts. |
+| `KOKORO_TIMEOUT` | `60` | Web-app client timeout for one synthesis request (code default in `app/config.py`). Covers a cold RUAccent load (~10–20 s) plus model reload under host load; raise it (e.g. to `120`) if cold starts come close to the limit and cause client timeouts. |
 
 ---
 
@@ -889,8 +906,18 @@ docker compose -f docker-compose.gpu.yml --profile with-rag up -d
 ### 3. Upload Documents
 1. Log in to web interface
 2. Click **Documents** tab in sidebar
-3. Click ➕ to upload PDF, DOC, DOCX, or TXT files
+3. Click ➕ to upload PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, or EPUB files
 4. Wait for indexing to complete (status: ✅ Indexed)
+
+### 4. Search Your Documents in Chat
+
+Once documents are indexed, asking about them is automatic:
+
+1. Make sure the documents are in the **Documents** panel with status **✅ Indexed**.
+2. Ask any question in the chat. When the answer needs your documents, the assistant calls the 📚 `rag_search` tool and streams **«📚 Searching documents...»** live, then works the retrieved fragments into the answer (RAG retrieval runs on the fast worker; the grounded answer is produced by the reasoning model).
+3. RAG is **per-user and per-query**: the search covers only the current user's documents, and the LLM router decides when a question actually needs them.
+
+For deep, multi-step work across a document set — comparisons, totals, structured reports, "find every exception" — use the 🔬 **Deep Analysis** toggle instead (see [Deep Analysis Mode](#-deep-analysis-mode-rlm)).
 
 ---
 

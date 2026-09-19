@@ -201,6 +201,7 @@ def load_config(app):
     app.config["RLM_OBS_TRUNC"] = int(os.getenv("RLM_OBS_TRUNC", 4000))
     app.config["RLM_SUB_MAX_TOKENS"] = int(os.getenv("RLM_SUB_MAX_TOKENS", 1024))
     app.config["RLM_WEB_MAX_FETCHES"] = int(os.getenv("RLM_WEB_MAX_FETCHES", 5))
+    app.config["RLM_MAX_CORPUS_CHARS"] = int(os.getenv("RLM_MAX_CORPUS_CHARS", 50_000_000))
 
     # Message pagination settings
     app.config["MESSAGES_DEFAULT_LIMIT"] = int(os.getenv("MESSAGES_DEFAULT_LIMIT", 100))

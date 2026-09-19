@@ -672,6 +672,10 @@ msgstr "Максимальное разрешение {max_size}px по длин
 msgid "The image has been reduced."
 msgstr "Изображение было уменьшено."
 
+#: app/queue.py
+msgid "The selected documents are too large for deep analysis (limit: {limit} characters). Select fewer or smaller documents."
+msgstr "Выбранные документы слишком велики для глубокого анализа (лимит: {limit} символов). Выберите меньше документов или файлы поменьше."
+
 #: app/routes/messages.py:276 app/routes/messages.py:314
 #: app/templates/chat.html:123
 #, python-brace-format

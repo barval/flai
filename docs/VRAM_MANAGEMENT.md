@@ -42,7 +42,7 @@ Verification: multimodal formula → 7938 vs 7912 measured (−0.3%), reasoning 
 
 - Unloads ALL models
 - Flushes CUDA cache
-- Polls `/running` + `nvidia-smi` (60s timeout)
+- Polls `/running` + `nvidia-smi` (15s default timeout, `time.sleep(2)` between polls; a model reappearing in `/running` mid-wait is re-unloaded idempotently on every poll)
 - Returns `False` (never proceeds) if VRAM insufficient
 - Used by ALL model types: chat, reasoning, multimodal, embedding
 
@@ -156,16 +156,16 @@ On an 8 GB GPU tier and CPU-only mode the seeded multimodal model is the lighter
 
 ## VRAM Guards & Timeouts
 `_wait_for_vram` (in `queue.py`)
-Before any multimodal/SD/Video call, blocks until at least 6 GiB VRAM is free. Polls `nvidia-smi` every 2s, times out after 60s.
+Before any multimodal/SD/Video call, blocks until at least 6 GiB VRAM is free (and no LLM models are running). Polls llama-swap `/running` + free VRAM every 1s, times out after 30s; models reloaded by llama-swap TTL are re-unloaded on each poll.
 
 ### Synchronous VRAM Polling (`_poll_vram`)
-`_resolve_use_gpu()` and `ensure_vram_for_llm()` call `_poll_vram()` synchronously before reading `available_vram_mb`. After every `unload_llamacpp_model()`, a wait loop verifies VRAM is actually freed (up to 30s).
+`_poll_vram()` refreshes the `nvidia-smi` snapshot; the unified `ensure_vram_for()` wait loop (resource_manager.py) polls it between unload attempts — the same loop that re-issues the idempotent unload POST when models reappear in `/running`.
 
 `ensure_vram_for_reasoning`
-Unloads llama.cpp models and waits (up to 60s) for SD/Video to free VRAM before loading the reasoning model (Qwen3.6-35B-A3B, ~11.4 GiB on GPU tiers).
+Delegates to `ensure_vram_for()` with the dynamic VRAM estimate: unloads llama.cpp models and waits (15s default) for SD/Video to free VRAM before loading the reasoning model (Qwen3.6-35B-A3B, ~11.4 GiB on GPU tiers).
 
 ### VRAM Timeout Varies by Context
-  - `ensure_vram_for()` (resource_manager.py) — 15-second wait
+  - `ensure_vram_for()` (resource_manager.py) — 15-second default
   - `_wait_for_vram()` (queue.py) — 30 seconds
   - `_wait_for_vram_full()` (queue.py) — 60 seconds
 

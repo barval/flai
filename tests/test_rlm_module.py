@@ -47,6 +47,65 @@ def test_rlm_build_user_prompt_lists_corpus():
     assert "What is X?" in prompt
 
 
+# --- Task 10: resource-adaptive step budget ---
+
+
+def _patch_reasoning_context(monkeypatch, context_length):
+    monkeypatch.setattr(
+        "app.model_config.get_model_config",
+        lambda module: {"context_length": context_length} if module == "reasoning" else None,
+    )
+
+
+@pytest.mark.unit
+def test_effective_max_steps_limits_budget_to_context(test_app, monkeypatch):
+    # A mid-size reasoning window cannot hold 12 worst-case steps.
+    _patch_reasoning_context(monkeypatch, 16384)
+    module = RlmModule.__new__(RlmModule)
+    with test_app.app_context():
+        steps = module._effective_max_steps(["system"], "en")
+    assert 1 <= steps < 12
+
+
+@pytest.mark.unit
+def test_effective_max_steps_unknown_context_keeps_ceiling(test_app, monkeypatch):
+    # No known window: trust the configured cap, never lose analysis capability.
+    monkeypatch.setattr("app.model_config.get_model_config", lambda module: None)
+    module = RlmModule.__new__(RlmModule)
+    with test_app.app_context():
+        steps = module._effective_max_steps(["system"], "en")
+    assert steps == test_app.config["RLM_MAX_STEPS"]
+
+
+@pytest.mark.unit
+def test_effective_max_steps_small_context_allows_at_least_one_step(test_app, monkeypatch):
+    # Even a window too small for a full trajectory must leave one step,
+    # so the user gets a bounded attempt instead of a hard configuration error.
+    _patch_reasoning_context(monkeypatch, 2048)
+    module = RlmModule.__new__(RlmModule)
+    with test_app.app_context():
+        steps = module._effective_max_steps(["system"], "en")
+    assert steps == 1
+
+
+@pytest.mark.unit
+def test_effective_max_steps_respects_config_ceiling(test_app, monkeypatch):
+    _patch_reasoning_context(monkeypatch, 32768)
+    test_app.config["RLM_MAX_STEPS"] = 2
+    module = RlmModule.__new__(RlmModule)
+    with test_app.app_context():
+        steps = module._effective_max_steps(["system"], "en")
+    assert steps == 2
+
+
+@pytest.mark.unit
+def test_build_system_prompt_uses_effective_max_steps(test_app):
+    with test_app.app_context():
+        module = RlmModule.__new__(RlmModule)
+        prompt = module.build_system_prompt("en", max_steps=3)
+        assert "At most 3 steps" in prompt
+
+
 # --- Task 5: broker and actor loop ---
 
 

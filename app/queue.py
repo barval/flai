@@ -1647,6 +1647,20 @@ class RedisRequestQueue:
                 session_id, self.app.modules["base"]._("Selected documents contain no extractable text", lang), 0, lang
             )
 
+        limit_chars = self.app.config.get("RLM_MAX_CORPUS_CHARS", 50_000_000)
+        if sum(len(text) for text in corpus.values()) > limit_chars:
+            return self._build_error_response(
+                session_id,
+                self.app.modules["base"]
+                ._(
+                    "The selected documents are too large for deep analysis "
+                    "(limit: {limit} characters). Select fewer or smaller documents."
+                )
+                .format(limit=limit_chars),
+                0,
+                lang,
+            )
+
         if not rm.ensure_vram_for_reasoning():
             return self._build_error_response(
                 session_id,

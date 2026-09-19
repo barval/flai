@@ -107,11 +107,38 @@ class RlmModule:
     def tool_definitions(self, lang: str = "ru") -> list[dict[str, Any]]:
         return RLM_TOOL_DEFINITIONS
 
-    def build_system_prompt(self, lang: str = "ru") -> str:
+    def build_system_prompt(self, lang: str = "ru", max_steps: int | None = None) -> str:
         from flask import current_app
 
-        max_steps = current_app.config.get("RLM_MAX_STEPS", 12)
+        if max_steps is None:
+            max_steps = current_app.config.get("RLM_MAX_STEPS", 12)
         return format_prompt("rlm.template", {"max_steps": max_steps}, lang=lang) or ""
+
+    def _effective_max_steps(self, boot_texts: list[str], lang: str) -> int:
+        """Cap the actor loop so its worst-case trajectory fits the reasoning window.
+
+        One step costs one assistant tool-call turn plus one observation of up
+        to RLM_OBS_TRUNC chars. The 0.95 factor mirrors _validate_prompt's hard
+        limit; the 1000-token reserve keeps the run inside the window instead of
+        dying with «Request too long». Unknown/missing window -> configured cap.
+        """
+        from flask import current_app
+
+        from app.model_config import get_model_config
+        from app.utils import estimate_tokens
+
+        max_steps = current_app.config.get("RLM_MAX_STEPS", 12)
+        cfg = get_model_config("reasoning") or {}
+        context = cfg.get("context_length") or 0
+        if not context:
+            return max_steps
+        obs_chars = current_app.config.get("RLM_OBS_TRUNC", 4000)
+        boot = sum(estimate_tokens(text, "reasoning", lang) for text in boot_texts if text)
+        step_budget = 300 + estimate_tokens("а" * obs_chars, "reasoning", lang)
+        available = int(context * 0.95) - boot - 1000
+        if available <= 0:
+            return 1
+        return max(1, min(max_steps, available // max(1, step_budget)))
 
     def build_user_prompt(self, question: str, corpus: dict[str, str]) -> str:
         lines = [f"{name} ({len(text)} chars)" for name, text in corpus.items()]
@@ -194,8 +221,10 @@ class RlmModule:
 
         llamacpp = self.app.modules["base"].llamacpp
         tools = self.tool_definitions(lang)
+        system = self.build_system_prompt(lang)
+        max_steps = self._effective_max_steps([system, self.build_user_prompt(question, corpus)], lang)
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": self.build_system_prompt(lang)},
+            {"role": "system", "content": self.build_system_prompt(lang, max_steps=max_steps)},
             {"role": "user", "content": self.build_user_prompt(question, corpus)},
         ]
         broker = _RlmBroker(self, lang, sub_max_tokens, web_max_fetches)

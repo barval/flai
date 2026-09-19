@@ -149,6 +149,42 @@ def test_rlm_task_is_classified_slow():
 
 
 @pytest.mark.unit
+def test_process_rlm_task_rejects_oversized_corpus():
+    q = RedisRequestQueue.__new__(RedisRequestQueue)
+    q._publish_stream_event = lambda task, event_type, extra=None: None
+    q._build_error_response = Mock(return_value={"status": "error"})
+    q.redis = Mock()
+    app = Mock()
+    base = Mock()
+    base._ = Mock(side_effect=lambda message, lang=None: f"loc:{message}")
+    app.modules = {"base": base}
+    app.config = {"DOCUMENTS_FOLDER": "/tmp/documents", "RLM_MAX_CORPUS_CHARS": 10}
+    q.app = app
+
+    task = {
+        "id": "rlm-big-1",
+        "data": {"type": "rlm_analysis", "text": "q", "doc_ids": ["d1"]},
+        "session_id": "s1",
+        "user_id": "u1",
+        "lang": "en",
+    }
+    rm = Mock()
+    rm.ensure_vram_for_reasoning = Mock(return_value=True)
+    with (
+        patch("app.db.get_document", return_value={"file_path": "valery/doc.txt", "filename": "doc.txt"}),
+        patch("app.utils.extract_text_from_file", return_value="a" * 500),
+        patch("app.resource_manager.get_resource_manager", return_value=rm),
+    ):
+        result = q._process_rlm_task(task)
+
+    assert result["status"] == "error"
+    q._build_error_response.assert_called_once()
+    message = q._build_error_response.call_args[0][1]
+    assert "limit" in message and "10" in message
+    rm.ensure_vram_for_reasoning.assert_not_called()
+
+
+@pytest.mark.unit
 def test_resource_manager_rlm_busy_flag():
     rm = ResourceManager.__new__(ResourceManager)
     rm._lock = threading.RLock()

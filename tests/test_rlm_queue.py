@@ -201,6 +201,9 @@ def test_process_rlm_task_emits_reading_and_finalizing_stages():
     stages = [p["stage"] for p in events if p and "stage" in p]
     assert stages[0] == "loading_reasoning_model"
     assert stages.index("rlm_reading") < stages.index("rlm_finalizing")
+    # The final answer is a deep-analysis reply: its own model_type drives the
+    # microscope emoji in the header while the underlying model is "reasoning".
+    assert q._save_and_respond.call_args.kwargs["extra"]["model_type"] == "rlm"
 
 
 @pytest.mark.unit

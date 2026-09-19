@@ -106,6 +106,44 @@ def test_run_python_then_final(test_app):
 
 
 @pytest.mark.unit
+def test_run_plain_string_response_is_answer(test_app):
+    # chat() returns a plain string when the model answers without tool calls;
+    # that string is the final answer, not an error.
+    module, _ = _make_module(["Companies: Acme, Globex."])
+    with test_app.app_context():
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "x"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == "Companies: Acme, Globex."
+    assert result.error == ""
+
+
+@pytest.mark.unit
+def test_run_error_string_response_is_error(test_app):
+    module, _ = _make_module(["⚠️ Service temporarily unavailable"])
+    with test_app.app_context():
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "x"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == ""
+    assert result.error == "⚠️ Service temporarily unavailable"
+
+
+@pytest.mark.unit
 def test_run_llm_tool_calls_broker(test_app):
     script = [
         {

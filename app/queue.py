@@ -1656,7 +1656,7 @@ class RedisRequestQueue:
             )
 
         rm.mark_rlm_busy()
-        start = time.time()
+        request_start = task.get("timestamp", time.time())
         try:
             module = self.app.modules.get("rlm") or RlmModule(self.app)
 
@@ -1673,7 +1673,9 @@ class RedisRequestQueue:
         finally:
             rm.mark_rlm_idle()
 
-        elapsed = round(time.time() - start, 1)
+        # Total time from request submission (queue wait + document reading +
+        # image description + model load + analysis), not just the actor loop.
+        elapsed = round(time.time() - request_start, 1)
         on_stage("rlm_finalizing", None)
 
         trace_payload = [
@@ -1712,7 +1714,7 @@ class RedisRequestQueue:
             result.answer,
             self._get_model_name("reasoning") or "reasoning",
             elapsed,
-            extra={"model_type": "reasoning", "rlm_trace_task_id": task["id"], "rlm_steps": result.steps},
+            extra={"model_type": "rlm", "rlm_trace_task_id": task["id"], "rlm_steps": result.steps},
             user_id=user_id,
         )
 

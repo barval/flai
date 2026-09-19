@@ -293,6 +293,7 @@ function getResponseStyleEmoji(style) {
 var MODEL_EMOJI = {
     chat: '\u{1F4AC}',
     reasoning: '\u{1F9E0}',
+    rlm: '\u{1F52C}\u{1F9E0}',
     image_gen: '\u{1F58C}\u{FE0F}',
     image_edit: '\u{1F3A8}',
     video: '\u{1F3A5}',

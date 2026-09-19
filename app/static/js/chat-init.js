@@ -52,6 +52,27 @@ async function sendRlmAnalysis() {
             fileName = imageFile.name;
         }
 
+        // Render the question (+ attached image) immediately, before the
+        // upload round trip. Progress events (e.g. "Deep analysis: phase 1")
+        // can arrive while the request is still in flight; if the user message
+        // were appended afterwards the status would end up above the image.
+        // This mirrors the normal send flow, which renders optimistically too.
+        const userContent = [{ type: 'text', text: question }];
+        if (fileData) {
+            userContent.push({ type: 'image', file_data: fileData, file_type: fileType, file_name: fileName });
+        }
+        originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, null, timestamp);
+        lastMessageTimestamp = timestamp;
+
+        // Set the session title from the first user message (mirrors the normal
+        // send flow). A resize notice saved by the backend is not a user
+        // message, so count user messages only.
+        const userMessageCount = document.querySelectorAll('.user-message').length;
+        if (userMessageCount === 1 && question) {
+            const newTitle = question.slice(0, 40) + (question.length > 40 ? '...' : '');
+            if (typeof updateSessionTitle === 'function') updateSessionTitle(currentSessionId, newTitle);
+        }
+
         const formData = new FormData();
         formData.append('session_id', currentSessionId);
         formData.append('doc_ids', JSON.stringify(docIds));
@@ -80,15 +101,7 @@ async function sendRlmAnalysis() {
             return;
         }
 
-        // Show the question (+ attached image) as the user message so the
-        // thread reads naturally and survives a page reload.
-        const userContent = [{ type: 'text', text: question }];
-        if (fileData) {
-            userContent.push({ type: 'image', file_data: fileData, file_type: fileType, file_name: fileName });
-        }
-        originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, null, timestamp);
-        lastMessageTimestamp = timestamp;
-
+        // The resize notice is rendered after the user message it belongs to.
         if (data.resize_notice) {
             const noticeMsgId = data.resize_notice_id || ('resize-' + timestamp);
             originalDisplayMessage('assistant', data.resize_notice, null, null, null, null,

@@ -1791,26 +1791,30 @@ msgid "Calculating date..."
 msgstr "📅 Calculating date..."
 
 #: app/templates/chat.html:232
-msgid "Reading documents..."
-msgstr "📖 Reading documents..."
+msgid "Deep analysis: reading documents"
+msgstr "🔬 Deep analysis: reading documents"
 
 #: app/templates/chat.html:233
 #, python-format
-msgid "Analysis step %s..."
-msgstr "🧩 Analysis step %s..."
+msgid "Deep analysis: phase %s"
+msgstr "🔬 Deep analysis: phase %s"
 
 #: app/templates/chat.html:234
-msgid "Calling sub-model..."
-msgstr "🤖 Calling sub-model..."
+msgid "Deep analysis: searching the web"
+msgstr "🔬 Deep analysis: searching the web"
 
 #: app/templates/chat.html:235
-msgid "Composing the answer..."
-msgstr "✍️ Composing the answer..."
+msgid "Deep analysis: calling sub-model"
+msgstr "🔬 Deep analysis: calling sub-model"
 
-#: app/templates/chat.html:238
+#: app/templates/chat.html:236
+msgid "Deep analysis: composing the answer"
+msgstr "🔬 Deep analysis: composing the answer"
+
+#: app/templates/chat.html:237
 #, python-format
 msgid "Deep analysis (%s steps)"
-msgstr "🧩 Deep analysis (%s steps)"
+msgstr "🔬 Deep analysis (%s steps)"
 
 #: app/templates/chat.html:239
 msgid "s"

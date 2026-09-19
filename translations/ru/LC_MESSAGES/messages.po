@@ -1799,26 +1799,30 @@ msgid "Calculating date..."
 msgstr "📅 Рассчитываю дату..."
 
 #: app/templates/chat.html:232
-msgid "Reading documents..."
-msgstr "📖 Читаю документы..."
+msgid "Deep analysis: reading documents"
+msgstr "🔬 Глубокий анализ: читаю документы"
 
 #: app/templates/chat.html:233
 #, python-format
-msgid "Analysis step %s..."
-msgstr "🧩 Шаг анализа %s..."
+msgid "Deep analysis: phase %s"
+msgstr "🔬 Глубокий анализ: фаза %s"
 
 #: app/templates/chat.html:234
-msgid "Calling sub-model..."
-msgstr "🤖 Вызываю суб-модель..."
+msgid "Deep analysis: searching the web"
+msgstr "🔬 Глубокий анализ: ищу в интернете"
 
 #: app/templates/chat.html:235
-msgid "Composing the answer..."
-msgstr "✍️ Формирую ответ..."
+msgid "Deep analysis: calling sub-model"
+msgstr "🔬 Глубокий анализ: вызываю суб-модель"
 
-#: app/templates/chat.html:238
+#: app/templates/chat.html:236
+msgid "Deep analysis: composing the answer"
+msgstr "🔬 Глубокий анализ: формирую ответ"
+
+#: app/templates/chat.html:237
 #, python-format
 msgid "Deep analysis (%s steps)"
-msgstr "🧩 Глубокий анализ (%s шагов)"
+msgstr "🔬 Глубокий анализ (%s шагов)"
 
 #: app/templates/chat.html:239
 msgid "s"

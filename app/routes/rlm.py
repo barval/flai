@@ -112,9 +112,9 @@ def analyze():
 
     with get_db() as conn:
         c = conn.cursor()
-        c.execute("SELECT COUNT(*) as cnt FROM messages WHERE session_id = %s", (session_id,))
-        message_count = c.fetchone()["cnt"]
-        if message_count == 1:
+        c.execute("SELECT COUNT(*) as cnt FROM messages WHERE session_id = %s AND role = 'user'", (session_id,))
+        user_message_count = c.fetchone()["cnt"]
+        if user_message_count == 1:
             update_session_title(session_id, question, file_name)
 
     task_id, info = current_app.request_queue.add_rlm_task(

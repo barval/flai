@@ -183,6 +183,7 @@ class RlmModule:
     ) -> RlmResult:
         from flask import current_app
 
+        from app.queue import RedisRequestQueue
         from app.rlm_sandbox import RlmSandbox
 
         max_steps = current_app.config.get("RLM_MAX_STEPS", 12)
@@ -217,7 +218,13 @@ class RlmModule:
                 on_stage("rlm_step", {"step": step})
                 response = llamacpp.chat(messages, model_type="reasoning", lang=lang, tools=tools, temperature=0.2)
                 if isinstance(response, str):
-                    return RlmResult("", trace, step, error=response)
+                    # chat() returns a plain string both for a normal answer
+                    # without tool calls and for backend errors. Only the
+                    # latter must fail the run — otherwise the model's final
+                    # answer is shown to the user as an error.
+                    if RedisRequestQueue._is_llm_error_string(response):
+                        return RlmResult("", trace, step, error=response)
+                    response = {"content": response, "tool_calls": []}
                 content = response.get("content", "") or ""
                 tool_calls = response.get("tool_calls") or []
                 if not tool_calls:

@@ -268,7 +268,7 @@ const STAGE_LABEL_KEYS = {
     calculating_date: 'stage_calculating_date',
     rlm_reading: 'stage_rlm_reading',
     rlm_step: 'stage_rlm_step',
-    rlm_searching_web: 'stage_searching_web',
+    rlm_searching_web: 'stage_rlm_searching_web',
     rlm_submodel: 'stage_rlm_submodel',
     rlm_finalizing: 'stage_rlm_finalizing',
 };
@@ -1125,7 +1125,7 @@ function appendRlmTraceBlock(steps) {
     const details = document.createElement('details');
     details.className = 'rlm-trace';
     const summary = document.createElement('summary');
-    summary.textContent = '🧩 ' + t('rlm_trace_summary').replace('%s', steps);
+    summary.textContent = t('rlm_trace_summary').replace('%s', steps);
     details.appendChild(summary);
     lastAssistant.appendChild(details);
     if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);

@@ -289,7 +289,7 @@ def test_save_progress_stores_count_for_rlm_step():
     pipe = Mock()
     redis.pipeline.return_value = pipe
     with patch("app.queue.redis.from_url", return_value=redis):
-        queue = RedisRequestQueue(app)
+        queue = RedisRequestQueue(app, start_workers=False)
         queue._save_progress("t1", "task_progress", {"stage": "rlm_step", "step": 3})
     mapping = pipe.hset.call_args.kwargs["mapping"]
     assert mapping["stage"] == "rlm_step"

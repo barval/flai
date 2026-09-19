@@ -1,6 +1,8 @@
 # tests/test_slm_merge_rules.py
 """Tests for rule-based fact merging (app/slm_merge.py)."""
 
+from datetime import UTC
+
 
 class TestFastCleanup:
     """Test deterministic cleanup (existing fast_cleanup)."""
@@ -130,13 +132,20 @@ class TestFragmentMerge:
 class TestTemporalDecay:
     """Test auto-archiving of old low-confidence facts."""
 
+    @staticmethod
+    def _date(days_ago: int) -> str:
+        """ISO date relative to now, so the test never expires with the calendar."""
+        from datetime import datetime, timedelta
+
+        return (datetime.now(UTC) - timedelta(days=days_ago)).strftime("%Y-%m-%dT%H:%M:%S")
+
     def test_removes_old_low_confidence(self):
         from app.slm_merge import temporal_decay
 
         # Fact from 100 days ago with low score
         facts = [
-            {"fact_id": "a", "content": "Старый факт", "created_at": "2025-01-01T00:00:00", "score": 0.2},
-            {"fact_id": "b", "content": "Новый факт", "created_at": "2026-06-01T00:00:00", "score": 0.9},
+            {"fact_id": "a", "content": "Старый факт", "created_at": self._date(100), "score": 0.2},
+            {"fact_id": "b", "content": "Новый факт", "created_at": self._date(30), "score": 0.9},
         ]
         to_delete = temporal_decay(facts, decay_days=90, min_confidence=0.5)
         assert "a" in to_delete
@@ -146,7 +155,7 @@ class TestTemporalDecay:
         from app.slm_merge import temporal_decay
 
         facts = [
-            {"fact_id": "a", "content": "Важный факт", "created_at": "2025-01-01T00:00:00", "score": 0.9},
+            {"fact_id": "a", "content": "Важный факт", "created_at": self._date(100), "score": 0.9},
         ]
         to_delete = temporal_decay(facts, decay_days=90, min_confidence=0.5)
         assert len(to_delete) == 0
@@ -155,7 +164,7 @@ class TestTemporalDecay:
         from app.slm_merge import temporal_decay
 
         facts = [
-            {"fact_id": "a", "content": "Недавний факт", "created_at": "2026-06-15T00:00:00", "score": 0.3},
+            {"fact_id": "a", "content": "Недавний факт", "created_at": self._date(30), "score": 0.3},
         ]
         to_delete = temporal_decay(facts, decay_days=90, min_confidence=0.5)
         assert len(to_delete) == 0

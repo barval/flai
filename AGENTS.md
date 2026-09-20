@@ -160,6 +160,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - `session.permanent = True` at login (8h idle timeout).
   - Secrets in `.env` only.
   - All `marked.parse()` output goes through `DOMPurify.sanitize()` before DOM insertion.
+  - **HTML preview (`/api/html-preview/<message_id>`):** the chat ▶ button opens the message's ```html block server-side (not via a blob: URL — blob pages inherit the chat's strict CSP and CDN imports render a blank screen). The endpoint validates login + session ownership and sets its own relaxed CSP (`X-Own-CSP: 1` marker skips the global `after_request` CSP override); CDN origins are whitelisted only on that response.
 
 # .env Synchronization Rule
   - When adding, removing, or changing environment variables in `app/config.py`, **both** `.env` and `.env.example` MUST be updated.

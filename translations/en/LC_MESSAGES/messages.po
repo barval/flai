@@ -1573,6 +1573,9 @@ msgstr "Copy text"
 msgid "open_html"
 msgstr "Open HTML page"
 
+msgid "open_html_unavailable"
+msgstr "Preview is unavailable for this message. Save the code to a file and open it in a browser."
+
 #: app/templates/chat.html:164
 msgid "processing"
 msgstr "processing"

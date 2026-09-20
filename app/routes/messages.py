@@ -331,3 +331,76 @@ def cancel_task(task_id):
         return jsonify({"error": _("Task not found")}), 404
     current_app.logger.info(f"User {user_id} cancelled task {task_id}")
     return jsonify({"status": "ok"})
+
+
+def _extract_html_code_block(content: str) -> str | None:
+    """Return the first ```html fenced code block from a message, or None."""
+    marker = "```html"
+    start = content.find(marker)
+    if start == -1:
+        return None
+    start += len(marker)
+    end = content.find("```", start)
+    if end == -1:
+        return None
+    return content[start:end].strip() or None
+
+
+@bp.route("/html-preview/<int:message_id>", methods=["GET"])
+def api_html_preview(message_id: int):
+    """Serve an assistant message's ```html code block as a standalone page.
+
+    The chat's ▶ button used to open a blob: URL, which inherits the strict
+    chat CSP (script-src 'self') and blocks CDN imports — generated pages with
+    e.g. Three.js from jsdelivr rendered a blank screen. This endpoint serves
+    the HTML with its own relaxed CSP so the preview works while the chat page
+    itself stays strictly sandboxed.
+    """
+    import re
+
+    from flask import Response
+
+    if "login" not in session:
+        return jsonify({"error": _("Not authorized")}), 401
+
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute("SELECT id, session_id, content FROM messages WHERE id = %s", (message_id,))
+        row = c.fetchone()
+
+    if not row:
+        return jsonify({"error": _("Message not found")}), 404
+
+    message = dict(row) if not isinstance(row, dict) else row
+    if not validate_session_ownership(message["session_id"], session["login"]):
+        current_app.logger.warning(
+            f"User {session['login']} attempted to preview message {message_id} in a foreign session"
+        )
+        return jsonify({"error": _("Message not found")}), 404
+
+    html = _extract_html_code_block(message.get("content") or "")
+    if not html:
+        return jsonify({"error": _("No HTML code block found in this message")}), 404
+
+    # Relax only what generated pages legitimately need: CDN imports and
+    # inline scripts/styles. Everything else (frames, other origins) stays
+    # locked down. strict-origin-when-cross-origin + frame-ancestors 'none'
+    # keep the preview from being embeddable elsewhere.
+    csp = (
+        "default-src 'none'; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+        "img-src 'self' data: blob: https:; "
+        "font-src 'self' data: https://cdn.jsdelivr.net https://fonts.gstatic.com; "
+        "connect-src 'self' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; "
+        "media-src 'self' blob: data:; "
+        "worker-src 'self' blob:; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; form-action 'self'"
+    )
+    # Nested code fences (``` inside the html block) would break the page —
+    # strip residual fence markers defensively.
+    html = re.sub(r"^```(?:html)?\s*", "", html)
+    html = re.sub(r"\s*```$", "", html)
+
+    return Response(html, mimetype="text/html", headers={"Content-Security-Policy": csp, "X-Own-CSP": "1"})

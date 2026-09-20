@@ -62,6 +62,13 @@ def create_app():
     @app.after_request
     def set_security_headers(response):
         """Add security headers to all responses."""
+        # The HTML preview endpoint sets its own relaxed CSP (generated pages
+        # need CDN imports; the blob: approach inherited this strict policy
+        # and rendered blank screens). Skip it here so the per-route header
+        # survives.
+        if response.headers.get("X-Own-CSP") == "1":
+            response.headers.pop("X-Own-CSP", None)
+            return response
         # Content Security Policy - restrict resource loading
         # Allow media from self, blob:, and data: (for audio/video recordings)
         response.headers["Content-Security-Policy"] = (

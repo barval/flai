@@ -756,23 +756,18 @@ async function handleCopyClick(button, codeElement) {
 }
 
 function handleOpenHtmlClick(codeBlock) {
-    const code = codeBlock.textContent || codeBlock.innerText || '';
-    const trimmed = code.trim();
-    if (!trimmed) return;
-
-    let html;
-    if (/<html[\s>]/i.test(trimmed)) {
-        html = trimmed;
-    } else if (/<(!DOCTYPE|!doctype)[\s>]/i.test(trimmed)) {
-        html = trimmed;
-    } else {
-        html = '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n</head>\n<body>\n' + trimmed + '\n</body>\n</html>';
+    // Server-side preview: serves the message's HTML block with a relaxed
+    // CSP. A blob: URL would inherit the chat's strict CSP and block CDN
+    // imports (blank screen for e.g. Three.js pages). Streaming messages get
+    // their data-message-id on task completion (events.js), loaded messages
+    // get it from the DB (displayMessage).
+    const messageEl = codeBlock.closest('.assistant-message, .bot-message');
+    const messageId = messageEl?.dataset?.messageId;
+    if (!messageId) {
+        alert(t('open_html_unavailable'));
+        return;
     }
-
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    window.open(`/api/html-preview/${messageId}`, '_blank');
 }
 
 function addCopyButtonsToMessage(messageElement) {

@@ -1581,6 +1581,9 @@ msgstr "Копировать текст"
 msgid "open_html"
 msgstr "Открыть HTML-страницу"
 
+msgid "open_html_unavailable"
+msgstr "Предпросмотр для этого сообщения недоступен. Сохраните код в файл и откройте его в браузере."
+
 #: app/templates/chat.html:164
 msgid "processing"
 msgstr "обрабатывается"

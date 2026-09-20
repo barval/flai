@@ -1330,18 +1330,28 @@ function onMessageNew(data) {
     if (data.message) {
         var msg = data.message;
         if (!displayedMessageIds.has(msg.id)) {
-            displayedMessageIds.add(msg.id);
-            var responseTime = null;
-            if (msg.response_time) {
-                if (typeof msg.response_time === 'object') responseTime = msg.response_time;
-                else if (!isNaN(parseFloat(msg.response_time))) responseTime = parseFloat(msg.response_time);
+            // A streaming placeholder for this session will be finalized with
+            // this same message (finalizeStreamedMessage) — don't double-render.
+            var activeStream = Object.keys(pendingRequestIds).some(function (tid) {
+                var r = pendingRequestIds[tid];
+                return r.sessionId === data.session_id && r.accumulatedContent !== undefined;
+            });
+            if (!activeStream) {
+                var responseTime = null;
+                if (msg.response_time) {
+                    if (typeof msg.response_time === 'object') responseTime = msg.response_time;
+                    else if (!isNaN(parseFloat(msg.response_time))) responseTime = parseFloat(msg.response_time);
+                }
+                // displayMessage owns the dedup (DOM + displayedMessageIds) and
+                // registers the id itself — do NOT pre-add it here, or the
+                // render below would be silently skipped.
+                window.displayMessage(
+                    msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
+                    msg.timestamp, responseTime, msg.model_name,
+                    msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
+                    msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens
+                );
             }
-            window.displayMessage(
-                msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
-                msg.timestamp, responseTime, msg.model_name,
-                msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
-                msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens
-            );
             if (sessionsData[data.session_id]) {
                 sessionsData[data.session_id].message_count = (sessionsData[data.session_id].message_count || 0) + 1;
             }
@@ -1360,7 +1370,7 @@ function onMessageNew(data) {
                 var msg = messages[i];
                 if (msg.id == data.message_id) {
                     if (displayedMessageIds.has(msg.id)) return;
-                    displayedMessageIds.add(msg.id);
+                    // displayMessage registers the id itself (do not pre-add).
                     var responseTime = null;
                     if (msg.response_time) {
                         if (typeof msg.response_time === 'object') responseTime = msg.response_time;

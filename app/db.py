@@ -349,6 +349,7 @@ def save_message(
             model_name, timestamp, response_time, mm_time, gen_time,
             mm_model, gen_model, response_style, completion_tokens, model_type, prompt_tokens
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
         """,
             (
                 session_id,
@@ -371,7 +372,8 @@ def save_message(
                 prompt_tokens,
             ),
         )
-        message_id = c.lastrowid
+        # PostgreSQL: lastrowid is always 0 — the real id comes from RETURNING.
+        message_id = c.fetchone()["id"]
         c.execute(
             """
         UPDATE chat_sessions

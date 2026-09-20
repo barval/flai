@@ -2,6 +2,7 @@
 import base64
 import json
 import mimetypes
+import re
 
 from flask import Blueprint, current_app, jsonify, request, session
 from flask_babel import force_locale
@@ -346,6 +347,52 @@ def _extract_html_code_block(content: str) -> str | None:
     return content[start:end].strip() or None
 
 
+_IMPORT_MAP_RE = re.compile(r'<script[^>]*\btype=["\']importmap["\']', re.IGNORECASE)
+_THREE_CDN_VERSION_RE = re.compile(r"https://(?:unpkg\.com|cdn\.jsdelivr\.net/npm)/three@([0-9]+\.[0-9]+\.[0-9]+)/")
+_BARE_THREE_IMPORT_RE = re.compile(r"""from\s+['"]three['"]|import\s+['"]three['"]""")
+_THREE_BUILD_URL_RE = re.compile(
+    r"https://(?:unpkg\.com|cdn\.jsdelivr\.net/npm)/three@[0-9]+\.[0-9]+\.[0-9]+/build/three\.(?:module|min)\.js"
+)
+_THREE_ADDONS_URL_RE = re.compile(
+    r"https://(?:unpkg\.com|cdn\.jsdelivr\.net/npm)/three@[0-9]+\.[0-9]+\.[0-9]+/examples/jsm/"
+)
+
+
+def _ensure_three_importmap(html: str) -> str:
+    """Repair generated pages that skipped the Three.js import map.
+
+    The model usually writes the canonical pattern (<script type="importmap">
+    mapping ``three`` and ``three/addons/``, then bare specifiers), but it
+    sometimes emits absolute CDN URLs instead, e.g.
+    ``import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/...'``.
+    Three r160+ addon modules import the bare ``three`` specifier internally,
+    so without the map the whole module graph fails to link and the preview is
+    a blank screen even on a saved file. This injects a map (version taken from
+    the first CDN URL, defaulting to 0.160.0) and rewrites the absolute imports
+    to the bare aliases. Pages with an existing map are returned untouched.
+    """
+    if _IMPORT_MAP_RE.search(html):
+        return html
+
+    version_match = _THREE_CDN_VERSION_RE.search(html)
+    if version_match is None and not _BARE_THREE_IMPORT_RE.search(html):
+        return html
+    version = version_match.group(1) if version_match else "0.160.0"
+
+    html = _THREE_BUILD_URL_RE.sub("three", html)
+    html = _THREE_ADDONS_URL_RE.sub("three/addons/", html)
+
+    importmap = (
+        '<script type="importmap">{"imports":{"three":'
+        f'"https://unpkg.com/three@{version}/build/three.module.js",'
+        f'"three/addons/":"https://unpkg.com/three@{version}/examples/jsm/"}}</script>'
+    )
+    head = re.search(r"<head[^>]*>", html, re.IGNORECASE)
+    html = html[: head.end()] + "\n" + importmap + html[head.end() :] if head else importmap + "\n" + html
+
+    return html
+
+
 @bp.route("/html-preview/<int:message_id>", methods=["GET"])
 def api_html_preview(message_id: int):
     """Serve an assistant message's ```html code block as a standalone page.
@@ -354,10 +401,10 @@ def api_html_preview(message_id: int):
     chat CSP (script-src 'self') and blocks CDN imports — generated pages with
     e.g. Three.js from jsdelivr rendered a blank screen. This endpoint serves
     the HTML with its own relaxed CSP so the preview works while the chat page
-    itself stays strictly sandboxed.
+    itself stays strictly sandboxed. Pages that skipped the Three.js import map
+    are repaired server-side (_ensure_three_importmap) — absolute CDN addon
+    imports fail to link without it and the preview would stay blank.
     """
-    import re
-
     from flask import Response
 
     if "login" not in session:
@@ -402,5 +449,6 @@ def api_html_preview(message_id: int):
     # strip residual fence markers defensively.
     html = re.sub(r"^```(?:html)?\s*", "", html)
     html = re.sub(r"\s*```$", "", html)
+    html = _ensure_three_importmap(html)
 
     return Response(html, mimetype="text/html", headers={"Content-Security-Policy": csp, "X-Own-CSP": "1"})

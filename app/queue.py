@@ -122,6 +122,9 @@ class RedisRequestQueue:
         # NEW: Serialize ALL GPU-heavy operations globally to prevent OOM
         self._gpu_lock = threading.Lock()
         self._video_unload_lock = threading.Lock()
+        # Shutdown event for graceful termination (created here so
+        # stop_workers() is safe even when workers were never started, e.g. CLI).
+        self._shutdown_event = threading.Event()
 
         # Clean stale processing entries from previous runs (e.g. after container restart).
         # Workers are recreated — old in-flight tasks are orphaned and would show ⚡ forever.
@@ -168,8 +171,6 @@ class RedisRequestQueue:
             return
         self._workers_started = True
         self.app.logger.info("RedisRequestQueue: starting fast and slow workers")
-        # Shutdown event for graceful termination
-        self._shutdown_event = threading.Event()
 
         # NEW: Global GPU serialization locks
         if not hasattr(self, "_gpu_lock"):
@@ -188,6 +189,8 @@ class RedisRequestQueue:
 
     def stop_workers(self, timeout=30):
         """Signal workers to stop and wait for them to finish."""
+        if not getattr(self, "_workers_started", False):
+            return
         self.app.logger.info("RedisRequestQueue: signaling workers to stop")
         self._shutdown_event.set()
         if hasattr(self, "_fast_worker_thread"):

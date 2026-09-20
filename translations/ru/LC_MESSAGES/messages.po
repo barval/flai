@@ -1632,11 +1632,15 @@ msgstr "Ошибка загрузки подписи"
 
 #: app/templates/chat.html:178
 msgid "seconds_suffix"
-msgstr "с"
+msgstr " с"
 
 #: app/templates/chat.html:179
 msgid "tps_suffix"
 msgstr " ток/с"
+
+#: app/static/js/chat-utils.js
+msgid "tokens_unit"
+msgstr "ток"
 
 #: app/templates/chat.html:181
 msgid "byte_abbr"

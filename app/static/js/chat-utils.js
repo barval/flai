@@ -31,8 +31,9 @@ function decodeHtmlEntities(text) {
 }
 
 // Build the token-counter header segment shown between the ⏱️ duration and
-// the 🚀 tps sections. Returns an HTML string or '' when no data is available.
-// Shared by chat-messages.js (history render) and events.js (live finalize).
+// the 🚀 tps sections. Format: "🔢 (↑output ↓input) tok". Returns an HTML
+// string or '' when no data is available. Shared by chat-messages.js (history
+// render) and events.js (live finalize).
 function tokenStatsHTML(promptTokens, completionTokens) {
     const prompt = parseInt(promptTokens, 10);
     const completion = parseInt(completionTokens, 10);
@@ -40,8 +41,8 @@ function tokenStatsHTML(promptTokens, completionTokens) {
     const input = isNaN(prompt) ? 0 : prompt;
     const output = isNaN(completion) ? 0 : completion;
     if (!input && !output) return '';
-    return ' <span class="text-muted token-stats">🧮 ↓' + input.toLocaleString() + ' ↑' +
-        output.toLocaleString() + ' |</span>';
+    return ' <span class="text-muted token-stats">🔢 (↑' + output.toLocaleString() + ' ↓' +
+        input.toLocaleString() + ') ' + t('tokens_unit') + ' |</span>';
 }
 
 // Calculate response duration string from response_time (object or scalar).

@@ -1624,11 +1624,15 @@ msgstr "Error loading footer"
 
 #: app/templates/chat.html:178
 msgid "seconds_suffix"
-msgstr "s"
+msgstr " s"
 
 #: app/templates/chat.html:179
 msgid "tps_suffix"
 msgstr " tok/s"
+
+#: app/static/js/chat-utils.js
+msgid "tokens_unit"
+msgstr "tok"
 
 #: app/templates/chat.html:181
 msgid "byte_abbr"

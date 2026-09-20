@@ -382,11 +382,11 @@ def _ensure_three_importmap(html: str) -> str:
     html = _THREE_BUILD_URL_RE.sub("three", html)
     html = _THREE_ADDONS_URL_RE.sub("three/addons/", html)
 
-    importmap = (
-        '<script type="importmap">{"imports":{"three":'
-        f'"https://unpkg.com/three@{version}/build/three.module.js",'
-        f'"three/addons/":"https://unpkg.com/three@{version}/examples/jsm/"}}</script>'
-    )
+    imports = {
+        "three": f"https://unpkg.com/three@{version}/build/three.module.js",
+        "three/addons/": f"https://unpkg.com/three@{version}/examples/jsm/",
+    }
+    importmap = '<script type="importmap">' + json.dumps({"imports": imports}) + "</script>"
     head = re.search(r"<head[^>]*>", html, re.IGNORECASE)
     html = html[: head.end()] + "\n" + importmap + html[head.end() :] if head else importmap + "\n" + html
 
@@ -429,13 +429,15 @@ def api_html_preview(message_id: int):
     if not html:
         return jsonify({"error": _("No HTML code block found in this message")}), 404
 
-    # Relax only what generated pages legitimately need: CDN imports and
-    # inline scripts/styles. Everything else (frames, other origins) stays
+    # Relax only what generated pages legitimately need: CDN imports, inline
+    # scripts/styles, and eval (legacy UMD bundles like cdnjs three.js r126
+    # self-execute via Function() — without 'unsafe-eval' they abort and
+    # THREE.Scene never exists). Everything else (frames, other origins) stays
     # locked down. strict-origin-when-cross-origin + frame-ancestors 'none'
     # keep the preview from being embeddable elsewhere.
     csp = (
         "default-src 'none'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com; "
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
         "img-src 'self' data: blob: https:; "
         "font-src 'self' data: https://cdn.jsdelivr.net https://fonts.gstatic.com; "

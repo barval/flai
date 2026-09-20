@@ -7,6 +7,8 @@ the strict chat CSP (script-src 'self') and blocks CDN imports (Three.js etc.)
 the message's HTML code block with its own relaxed CSP instead.
 """
 
+import json
+import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -100,6 +102,27 @@ class TestEnsureThreeImportMap:
         assert 'type="importmap"' in out
         assert "exactly one import map" not in out
 
+    def test_injected_map_is_valid_json(self):
+        """Regression: the injected map used an f-string where '}}' collapsed to
+        a single literal '}' — Chrome then rejected the import map
+        ("invalid JSON") and the whole module graph failed to link, blanking
+        every rescued Three.js page."""
+        for html in (
+            '<html><head></head><body><script type="module">\n'
+            "import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';\n"
+            "import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';\n"
+            "</script></body></html>",
+            '<html><head></head><body><script type="module">\n'
+            "import * as THREE from 'three';\n"
+            "</script></body></html>",
+        ):
+            out = self._rescue(html)
+            match = re.search(r'<script type="importmap">(.*?)</script>', out, re.DOTALL)
+            assert match, "no import map was injected"
+            parsed = json.loads(match.group(1))  # would raise if braces/escaping are wrong
+            assert parsed["imports"]["three"].startswith("https://")
+            assert parsed["imports"]["three/addons/"].endswith("/")
+
     def test_page_without_three_is_untouched(self):
         html = "<!DOCTYPE html>\n<html><body><h1>Hello</h1></body></html>"
         assert self._rescue(html) == html
@@ -171,6 +194,10 @@ def test_preview_serves_html_with_relaxed_csp(authenticated_client):
     csp = response.headers.get("Content-Security-Policy", "")
     assert "cdn.jsdelivr.net" in csp
     assert "frame-ancestors 'none'" in csp
+    # legacy UMD bundles (e.g. cdnjs three.js r126) self-execute via
+    # Function()/eval — without 'unsafe-eval' they abort before THREE.Scene
+    # is defined and the preview is blank
+    assert "'unsafe-eval'" in csp
     # the global chat policy (default-src 'self') must NOT apply
     assert "default-src 'self'" not in csp
     assert "default-src 'none'" in csp

@@ -921,18 +921,23 @@ class RedisRequestQueue:
         extra: dict | None = None,
         response_style: str = "neutral",
         user_id: str | None = None,
+        consume_usage: bool = True,
     ) -> dict[str, Any]:
         """Save assistant message to DB and return response dict.
 
         For error replies (is_error=True) the response_style and
         completion_tokens fields are intentionally omitted from the result
         dict so the client does not render 🚀/🤖/⏱️ in the message header.
+
+        ``consume_usage=False`` keeps the per-request usage account open for
+        later messages of the same task (camera: snapshot + description pair);
+        the last message consumes the totals.
         """
         # Consume the per-request usage account (real token counters wired by
         # the chat/reasoning/RLM processors). When it carries the submission
         # time, the reported duration is the FULL request time (queue wait +
         # load + generation), matching the seconds shown in the live header.
-        usage = finish_usage_account()
+        usage = finish_usage_account() if consume_usage else None
         if usage and usage.get("completion_tokens"):
             completion_tokens = usage["completion_tokens"]
             prompt_tokens = usage["prompt_tokens"] or 0
@@ -1478,6 +1483,18 @@ class RedisRequestQueue:
             request_data["file_type"] = file_type
             request_data["file_name"] = file_name
 
+        # Carry the router/multimodal-phase usage into the re-queued task so
+        # tokens spent before the video generation merge into the same bill.
+        account_id = current_usage_account_id()
+        usage = finish_usage_account()
+        if account_id:
+            request_data["request_id"] = account_id
+            request_data["submitted_at"] = (usage or {}).get("submitted_at") or time.time()
+            request_data["usage_accum"] = {
+                "prompt_tokens": (usage or {}).get("prompt_tokens", 0),
+                "completion_tokens": (usage or {}).get("completion_tokens", 0),
+            }
+
         new_request_id, position_info = self.add_request(user_id, session_id, request_data, user_class, lang=lang)
         self.app.logger.info(
             f"Re-queued video task {new_request_id} for session {session_id} (position {position_info['position']})"
@@ -1508,6 +1525,17 @@ class RedisRequestQueue:
             "preview": (query[:50] + "...") if query else self.app.modules["base"]._("Image request", lang=lang),
             "response_style": response_style,
         }
+        # Carry the router-phase usage into the re-queued task so the fast
+        # worker's router tokens merge into the same bill (see _process_request).
+        account_id = current_usage_account_id()
+        usage = finish_usage_account()
+        if account_id:
+            request_data["request_id"] = account_id
+            request_data["submitted_at"] = (usage or {}).get("submitted_at") or time.time()
+            request_data["usage_accum"] = {
+                "prompt_tokens": (usage or {}).get("prompt_tokens", 0),
+                "completion_tokens": (usage or {}).get("completion_tokens", 0),
+            }
         new_request_id, position_info = self.add_request(user_id, session_id, request_data, user_class, lang=lang)
         self.app.logger.info(
             f"Re-queued image task {new_request_id} for session {session_id} (position {position_info['position']})"
@@ -1615,9 +1643,9 @@ class RedisRequestQueue:
         question = request_data.get("text", "")
         doc_ids = request_data.get("doc_ids", [])
 
-        # Whole deep-analysis is one GPU request: image description (multimodal),
-        # RLM sub-calls and the final answer all accumulate into one account.
-        begin_usage_account(task["id"], submitted_at=task.get("timestamp"))
+        # The usage account is opened in _process_request (single entry point);
+        # image description, RLM sub-calls and the final answer all accumulate
+        # into it.
 
         if not doc_ids and not request_data.get("file_data"):
             return self._build_error_response(
@@ -1800,14 +1828,9 @@ class RedisRequestQueue:
         lang = task.get("lang", "ru")
         response_style = request_data.get("response_style", "neutral")
 
-        # Re-seed the router-accumulated usage carried from the fast worker and
-        # the original submission time so this slow worker's generation merges
-        # into the same request account and the answer shows the full duration.
-        begin_usage_account(
-            request_data.get("request_id") or task.get("id") or uuid.uuid4().hex,
-            bias=request_data.get("usage_accum") or None,
-            submitted_at=request_data.get("submitted_at") or task.get("timestamp"),
-        )
+        # The usage account (with the router-accumulated bias carried in
+        # request_data) is opened in _process_request; generation below
+        # accumulates into the same bill and reports the full duration.
 
         # Pre-operation monitoring
         self._log_gpu_state_before_op("reasoning", 12000)
@@ -2445,6 +2468,8 @@ class RedisRequestQueue:
                 "model_type": "camera",
             },
             response_style=response_style,
+            # The description message below consumes the shared usage account.
+            consume_usage=False,
         )
 
         messages = [first_message]
@@ -2535,6 +2560,8 @@ class RedisRequestQueue:
                 "model_type": "camera",
             },
             response_style=response_style,
+            # The streamed description below consumes the shared usage account.
+            consume_usage=False,
         )
 
         # No text or no multimodal → return both together (original behavior)
@@ -2945,14 +2972,10 @@ class RedisRequestQueue:
         # Synthetic task for legacy non-streaming paths that never receive one
         effective_task = task or {"id": uuid.uuid4().hex, "user_id": user_id, "session_id": session_id}
 
-        # Start the per-request token usage account: the router call below and
-        # every LLM call in the generation phase accumulate against it, and the
-        # final save consumes the totals (see _save_and_respond). Submission
-        # time seeds the full-request duration reported in the answer header.
-        begin_usage_account(
-            effective_task["id"],
-            submitted_at=effective_task.get("timestamp") or time.time(),
-        )
+        # The per-request usage account was opened in _process_request (covers
+        # every task type); the router call below and every LLM call in the
+        # generation phase accumulate against it, and _save_and_respond consumes
+        # the totals.
 
         router_start = time.time()
         if task:
@@ -3512,6 +3535,21 @@ class RedisRequestQueue:
 
         task_type = task.get("type") or task.get("data", {}).get("type")
         self.app.logger.info(f"_process_request: task_type={task_type}, task_id={task.get('id')}")
+
+        # One per-request usage account for EVERY task type: the router call,
+        # RAG, generation and any re-queued continuation all accumulate against
+        # it, and _save_and_respond consumes the totals. Re-queued tasks carry
+        # the fast worker's half-account (request_id/usage_accum/submitted_at)
+        # so phases merge into the same bill. Indexing/merge tasks do not call
+        # LLMs or _save_and_respond — their accounts are dropped by the
+        # _process_single_task finally clause.
+        if task_type not in ("index_document", "reindex_all_embeddings", "fact_extraction_task", "fact_merge_task"):
+            _requeue_meta = task.get("data", {})
+            begin_usage_account(
+                _requeue_meta.get("request_id") or task.get("id") or uuid.uuid4().hex,
+                bias=_requeue_meta.get("usage_accum") or None,
+                submitted_at=_requeue_meta.get("submitted_at") or task.get("timestamp"),
+            )
 
         if task_type == "index_document":
             self.app.logger.info(f"_process_request: calling _process_index_task for task {task.get('id')}")

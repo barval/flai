@@ -83,3 +83,51 @@ def test_requeue_reasoning_task_carries_request_usage(q):
     assert request_data["request_id"] == "orig-req"
     assert request_data["submitted_at"] == 1700.0
     assert request_data["usage_accum"] == {"prompt_tokens": 150, "completion_tokens": 10}
+
+
+def test_requeue_image_task_carries_request_usage(q):
+    """Image requeue merges router-phase tokens into the re-queued task."""
+    with patch.object(q, "add_request", return_value=("new-task-id", {"position": 1, "estimated_seconds": 0})) as add:
+        begin_usage_account("img-req", submitted_at=1800.0)
+        record_usage_for_current(300, 25)
+        q._requeue_image_task("нарисуй", "s1", "u1", "ru", "neutral")
+
+    request_data = add.call_args.args[2]
+    assert request_data["request_id"] == "img-req"
+    assert request_data["submitted_at"] == 1800.0
+    assert request_data["usage_accum"] == {"prompt_tokens": 300, "completion_tokens": 25}
+
+
+def test_requeue_video_task_carries_request_usage(q):
+    """Video requeue merges router/multimodal-phase tokens into the new task."""
+    with patch.object(q, "add_request", return_value=("new-task-id", {"position": 1, "estimated_seconds": 0})) as add:
+        begin_usage_account("vid-req", submitted_at=1900.0)
+        record_usage_for_current(700, 60)
+        q._requeue_video_task("видео про кота", "s1", "u1", "ru", "neutral")
+
+    request_data = add.call_args.args[2]
+    assert request_data["request_id"] == "vid-req"
+    assert request_data["submitted_at"] == 1900.0
+    assert request_data["usage_accum"] == {"prompt_tokens": 700, "completion_tokens": 60}
+
+
+def test_save_and_respond_consume_usage_flag(q):
+    """consume_usage=False keeps the account open for later messages of the
+    same task (camera snapshot + description pair)."""
+    with patch("app.queue.save_message", return_value=42) as store:
+        begin_usage_account("cam-req", submitted_at=2000.0)
+        record_usage_for_current(100, 20)
+        first = q._save_and_respond(
+            "s1", "Snapshot", "camera", 1.0, is_error=False, response_style="neutral", consume_usage=False
+        )
+        # Account still open — first message uses the estimate fallback.
+        assert first["prompt_tokens"] is None
+        record_usage_for_current(400, 90)
+        second = q._save_and_respond(
+            "s1", "Description", "mm", 2.0, is_error=False, response_style="neutral", consume_usage=True
+        )
+    _, kwargs = store.call_args
+    assert kwargs["prompt_tokens"] == 500  # 100 + 400 merged
+    assert kwargs["completion_tokens"] == 110  # 20 + 90 merged
+    assert second["completion_tokens"] == 110
+    assert current_usage_account_id() is None

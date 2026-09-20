@@ -38,11 +38,15 @@ function tokenStatsHTML(promptTokens, completionTokens) {
     const prompt = parseInt(promptTokens, 10);
     const completion = parseInt(completionTokens, 10);
     if (isNaN(prompt) && isNaN(completion)) return '';
-    const input = isNaN(prompt) ? 0 : prompt;
-    const output = isNaN(completion) ? 0 : completion;
-    if (!input && !output) return '';
-    return ' <span class="text-muted token-stats">🔢 (↑' + output.toLocaleString() + ' ↓' +
-        input.toLocaleString() + ') ' + t('tokens_unit') + ' |</span>';
+    if (!prompt && !completion) return '';
+    const fmt = (n) => (isNaN(n) ? null : n.toLocaleString());
+    const output = fmt(completion);
+    const input = fmt(prompt);
+    return ' <span class="text-muted token-stats">🔢 (' +
+        (output === null ? '' : '↑' + output) +
+        (output !== null && input !== null ? ' ' : '') +
+        (input === null ? '' : '↓' + input) +
+        ') ' + t('tokens_unit') + ' |</span>';
 }
 
 // Calculate response duration string from response_time (object or scalar).

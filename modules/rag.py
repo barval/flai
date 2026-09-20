@@ -482,13 +482,24 @@ class RagModule:
         return response, None, model_name
 
     def _get_embedding(self, text: str) -> list[float] | None:
-        """Get embedding vector from llama-server via OpenAI-compatible /v1/embeddings."""
-        embeddings = self.llamacpp.get_embeddings([text], model_type="embedding")
-        if embeddings and len(embeddings) > 0 and embeddings[0] is not None:
-            emb = embeddings[0]
-            self.logger.debug(f"_get_embedding: got embedding of length {len(emb)}")
-            return emb  # type: ignore[no-any-return]
-        self.logger.warning("_get_embedding: no embedding returned")
+        """Get embedding vector from llama-server via OpenAI-compatible /v1/embeddings.
+
+        Retries once on transient failures (e.g. llama-swap "group is shutting
+        down" during a config reload) — a single failed request must not
+        silently convert a RAG route into context-less reasoning.
+        """
+        import time as time_module
+
+        for attempt in (1, 2):
+            embeddings = self.llamacpp.get_embeddings([text], model_type="embedding")
+            if embeddings and len(embeddings) > 0 and embeddings[0] is not None:
+                emb = embeddings[0]
+                self.logger.debug(f"_get_embedding: got embedding of length {len(emb)} (attempt {attempt})")
+                return emb  # type: ignore[no-any-return]
+            if attempt == 1:
+                self.logger.warning("_get_embedding: no embedding returned — retrying once")
+                time_module.sleep(2)
+        self.logger.warning("_get_embedding: no embedding returned after retry")
         return None
 
     def _get_batch_embeddings(self, texts: list[str]) -> list[list[float] | None]:

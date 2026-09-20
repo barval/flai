@@ -195,8 +195,12 @@ def load_config(app):
     # RLM (deep analysis)
     app.config["RLM_ENABLED"] = os.getenv("RLM_ENABLED", "true").lower() in ("true", "1", "yes")
     app.config["RLM_ACTOR_MODEL"] = os.getenv("RLM_ACTOR_MODEL", "reasoning")
-    app.config["RLM_MAX_STEPS"] = int(os.getenv("RLM_MAX_STEPS", 12))
-    app.config["RLM_TASK_TIMEOUT"] = int(os.getenv("RLM_TASK_TIMEOUT", 900))
+    # Hard ceiling; the per-host allowance comes from the resource ladder
+    # (24 GB+→18, 16 GB→12, 12 GB→10, 8 GB→8, CPU/<8 GB→6) in modules/rlm.py.
+    app.config["RLM_MAX_STEPS"] = int(os.getenv("RLM_MAX_STEPS", 18))
+    # Wall-clock deadline: 0 = auto-derive from step budget and platform
+    # (CPU hosts get ~3x per-step budget), -1 = disabled, N = fixed seconds.
+    app.config["RLM_TASK_TIMEOUT"] = int(os.getenv("RLM_TASK_TIMEOUT", 0))
     app.config["RLM_CODE_TIMEOUT"] = int(os.getenv("RLM_CODE_TIMEOUT", 15))
     app.config["RLM_OBS_TRUNC"] = int(os.getenv("RLM_OBS_TRUNC", 4000))
     app.config["RLM_SUB_MAX_TOKENS"] = int(os.getenv("RLM_SUB_MAX_TOKENS", 1024))

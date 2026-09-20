@@ -514,6 +514,16 @@ class LlamaSwapConfigGenerator:
 
         yaml_content = self.generate_yaml(include_preload=include_preload)
 
+        # Skip writing when the content is identical: llama-swap runs with
+        # -watch-config and reloads on every write, which shuts down running
+        # model groups mid-request (500 "group is shutting down").
+        try:
+            with open(config_path) as f:
+                if f.read() == yaml_content:
+                    return True
+        except OSError:
+            pass
+
         try:
             with open(config_path, "w") as f:
                 f.write(yaml_content)

@@ -44,6 +44,17 @@ def test_validate_code_reports_syntax_error():
 
 
 @pytest.mark.unit
+def test_validate_code_import_error_is_actionable():
+    """The import refusal must tell the model WHY and WHAT to use instead —
+    a bare 'Forbidden syntax: Import' gets repeated (2 steps burned in prod)."""
+    err = validate_code("import json")
+    assert err is not None
+    assert "re" in err and "math" in err
+    err2 = validate_code("from collections import defaultdict")
+    assert err2 == err
+
+
+@pytest.mark.unit
 def test_validate_code_rejects_format_attribute():
     assert validate_code("'{0.__class__}'.format(context)") is not None
 
@@ -124,7 +135,8 @@ def test_sandbox_blocks_import_at_runtime():
     sb.start()
     try:
         res = sb.exec("import os")
-        assert not res.ok and "Forbidden" in res.error
+        assert not res.ok
+        assert "Imports are forbidden" in res.error and "re" in res.error
     finally:
         sb.close()
 

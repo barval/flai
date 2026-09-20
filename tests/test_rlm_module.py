@@ -59,18 +59,10 @@ def _patch_reasoning_context(monkeypatch, context_length):
 
 @pytest.mark.unit
 def test_effective_max_steps_limits_budget_to_context(test_app, monkeypatch):
-    # A mid-size reasoning window cannot hold 12 worst-case steps.
+    # A mid-size reasoning window cannot hold 18 full-size observations:
+    # steps stay at the ceiling but the observation budget shrinks to fit.
     _patch_reasoning_context(monkeypatch, 16384)
-    module = RlmModule.__new__(RlmModule)
-    with test_app.app_context():
-        steps = module._effective_max_steps(["system"], "en")
-    assert 1 <= steps < 12
-
-
-@pytest.mark.unit
-def test_effective_max_steps_unknown_context_keeps_ceiling(test_app, monkeypatch):
-    # No known window: trust the configured cap, never lose analysis capability.
-    monkeypatch.setattr("app.model_config.get_model_config", lambda module: None)
+    monkeypatch.setattr("modules.rlm._get_hardware", lambda: None)
     module = RlmModule.__new__(RlmModule)
     with test_app.app_context():
         steps = module._effective_max_steps(["system"], "en")
@@ -78,10 +70,23 @@ def test_effective_max_steps_unknown_context_keeps_ceiling(test_app, monkeypatch
 
 
 @pytest.mark.unit
-def test_effective_max_steps_small_context_allows_at_least_one_step(test_app, monkeypatch):
-    # Even a window too small for a full trajectory must leave one step,
+def test_effective_max_steps_unknown_context_keeps_ceiling(test_app, monkeypatch):
+    # No known window AND no hardware info: trust the configured cap,
+    # never lose analysis capability.
+    monkeypatch.setattr("app.model_config.get_model_config", lambda module: None)
+    monkeypatch.setattr("modules.rlm._get_hardware", lambda: None)
+    module = RlmModule.__new__(RlmModule)
+    with test_app.app_context():
+        steps = module._effective_max_steps(["system"], "en")
+    assert steps == test_app.config["RLM_MAX_STEPS"]
+
+
+@pytest.mark.unit
+def test_effective_max_steps_small_context_fits_at_least_one_step(test_app, monkeypatch):
+    # Even a window too small for full steps must leave one step,
     # so the user gets a bounded attempt instead of a hard configuration error.
     _patch_reasoning_context(monkeypatch, 2048)
+    monkeypatch.setattr("modules.rlm._get_hardware", lambda: None)
     module = RlmModule.__new__(RlmModule)
     with test_app.app_context():
         steps = module._effective_max_steps(["system"], "en")
@@ -91,11 +96,224 @@ def test_effective_max_steps_small_context_allows_at_least_one_step(test_app, mo
 @pytest.mark.unit
 def test_effective_max_steps_respects_config_ceiling(test_app, monkeypatch):
     _patch_reasoning_context(monkeypatch, 32768)
+    monkeypatch.setattr("modules.rlm._get_hardware", lambda: None)
     test_app.config["RLM_MAX_STEPS"] = 2
     module = RlmModule.__new__(RlmModule)
     with test_app.app_context():
         steps = module._effective_max_steps(["system"], "en")
     assert steps == 2
+
+
+# --- v12.1: resource-based step ladder ---
+
+
+def _hw(vram_mb: int = 0, cpu: int = 8, ram: int = 32000, platform: str = "nvidia"):
+    hw = MagicMock()
+    hw.total_vram_mb = vram_mb
+    hw.cpu_count = cpu
+    hw.total_ram_mb = ram
+    hw.platform = platform
+    return hw
+
+
+@pytest.mark.unit
+def test_resource_step_budget_ladder(test_app):
+    with test_app.app_context():
+        from modules.rlm import _resource_step_budget
+
+        assert _resource_step_budget(_hw(vram_mb=24576)) == 18  # 24 GB tier
+        assert _resource_step_budget(_hw(vram_mb=16311)) == 12  # this host (16 GB usable)
+        assert _resource_step_budget(_hw(vram_mb=12000)) == 10  # 12 GB tier
+        assert _resource_step_budget(_hw(vram_mb=7900)) == 8  # 8 GB tier
+        assert _resource_step_budget(_hw(platform="cpu")) == 6  # CPU-only
+        assert _resource_step_budget(_hw(vram_mb=4096)) == 6  # <8 GB
+
+
+@pytest.mark.unit
+def test_resource_step_budget_unknown_hardware_means_no_extra_cap(test_app):
+    from modules.rlm import _resource_step_budget
+
+    assert _resource_step_budget(None) == 0
+
+
+@pytest.mark.unit
+def test_effective_max_steps_uses_resource_ladder(test_app, monkeypatch):
+    # 12 GB GPU: ladder allows 10, context is huge -> 10.
+    _patch_reasoning_context(monkeypatch, 32768)
+    monkeypatch.setattr("modules.rlm._get_hardware", lambda: _hw(vram_mb=12000))
+    with test_app.app_context():
+        test_app.config["RLM_MAX_STEPS"] = 12
+        module = RlmModule.__new__(RlmModule)
+        steps = module._effective_max_steps(["system"], "en")
+    assert steps == 10
+
+
+@pytest.mark.unit
+def test_obs_trunc_shrinks_to_fit_context_but_not_below_minimum(test_app, monkeypatch):
+    """Steps must NOT be cut to fit observations into the window: the
+    observation truncation shrinks instead, down to a usable minimum."""
+    from modules.rlm import _obs_trunc_for_context
+
+    # 24576 window (this host): usable observations for the full 12-step run.
+    _patch_reasoning_context(monkeypatch, 24576)
+    with test_app.app_context():
+        assert 2000 <= _obs_trunc_for_context(12, 4000, boot_tokens=2000) < 4000
+    # Tighter window: observations shrink further.
+    _patch_reasoning_context(monkeypatch, 16384)
+    with test_app.app_context():
+        trunc = _obs_trunc_for_context(12, 4000, boot_tokens=2000)
+        assert 800 <= trunc < 2788
+    # Tiny window: never below the minimum usable observation.
+    _patch_reasoning_context(monkeypatch, 4096)
+    with test_app.app_context():
+        assert _obs_trunc_for_context(12, 4000, boot_tokens=2000) == 800
+
+
+@pytest.mark.unit
+def test_run_uses_context_fitted_obs_trunc(test_app, monkeypatch):
+    """run() must pass the fitted truncation into the loop, not the raw config."""
+    _patch_reasoning_context(monkeypatch, 4096)
+    monkeypatch.setattr("modules.rlm._get_hardware", lambda: _hw(vram_mb=16311))
+    seen = {}
+
+    import modules.rlm as rlm_mod
+
+    original = rlm_mod.RlmModule._effective_max_steps
+
+    def spy_effective(self, boot_texts, lang):
+        steps = original(self, boot_texts, lang)
+        seen["steps"] = steps
+        return steps
+
+    monkeypatch.setattr(rlm_mod.RlmModule, "_effective_max_steps", spy_effective)
+    script = [
+        {
+            "content": "",
+            "tool_calls": [{"id": "1", "function": {"name": "final", "arguments": json.dumps({"answer": "done"})}}],
+        }
+    ]
+    module, _ = _make_module(script)
+    with test_app.app_context():
+        module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "x" * 10000},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert seen["steps"] >= 1
+
+
+@pytest.mark.unit
+def test_effective_max_steps_ladder_never_below_six(test_app, monkeypatch):
+    # CPU host: ladder floor is 6 even when the context would allow fewer.
+    _patch_reasoning_context(monkeypatch, 16384)
+    monkeypatch.setattr("modules.rlm._get_hardware", lambda: _hw(platform="cpu", cpu=16))
+    with test_app.app_context():
+        test_app.config["RLM_MAX_STEPS"] = 12
+        module = RlmModule.__new__(RlmModule)
+        steps = module._effective_max_steps(["system"], "en")
+    assert steps >= 6
+
+
+@pytest.mark.unit
+def test_effective_max_steps_ceiling_18_not_exceeded(test_app, monkeypatch):
+    # Big GPU (48 GB) + huge context: ladder tops out at 18 even if the
+    # context window could fit more.
+    _patch_reasoning_context(monkeypatch, 131072)
+    monkeypatch.setattr("modules.rlm._get_hardware", lambda: _hw(vram_mb=49152))
+    with test_app.app_context():
+        test_app.config["RLM_MAX_STEPS"] = 18
+        module = RlmModule.__new__(RlmModule)
+        steps = module._effective_max_steps(["system"], "en")
+    assert steps == 18
+
+
+# --- v12.1: step-derived task timeout ---
+
+
+@pytest.mark.unit
+def test_auto_task_timeout_gpu(test_app, monkeypatch):
+    monkeypatch.setattr("modules.rlm._get_hardware", lambda: _hw(vram_mb=16311))
+    from modules.rlm import RlmModule
+
+    with test_app.app_context():
+        module = RlmModule.__new__(RlmModule)
+        timeout = module._auto_task_timeout(steps=12)
+    assert timeout == 120 + 12 * 90  # 1200s
+
+
+@pytest.mark.unit
+def test_auto_task_timeout_cpu_is_slower(test_app, monkeypatch):
+    from modules.rlm import RlmModule
+
+    monkeypatch.setattr("modules.rlm._get_hardware", lambda: _hw(vram_mb=16311))
+    with test_app.app_context():
+        module = RlmModule.__new__(RlmModule)
+        gpu_t = module._auto_task_timeout(steps=6)
+    monkeypatch.setattr("modules.rlm._get_hardware", lambda: _hw(platform="cpu", cpu=16))
+    with test_app.app_context():
+        cpu_t = module._auto_task_timeout(steps=6)
+    assert cpu_t == 240 + 6 * 300  # 2040s
+    assert cpu_t > gpu_t
+
+
+@pytest.mark.unit
+def test_task_timeout_zero_triggers_auto_derivation(test_app, monkeypatch):
+    # RLM_TASK_TIMEOUT=0 now means "auto": derive from step budget + platform.
+    _patch_reasoning_context(monkeypatch, 32768)
+    monkeypatch.setattr("modules.rlm._get_hardware", lambda: _hw(vram_mb=16311))
+    script = [
+        {
+            "content": "",
+            "tool_calls": [{"id": "1", "function": {"name": "final", "arguments": json.dumps({"answer": "done"})}}],
+        }
+    ]
+    module, llamacpp = _make_module(script)
+    with test_app.app_context():
+        test_app.config["RLM_TASK_TIMEOUT"] = 0
+        test_app.config["RLM_MAX_STEPS"] = 12
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "x"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == "done"
+    assert result.error == ""
+
+
+@pytest.mark.unit
+def test_task_timeout_minus_one_disables_deadline(test_app):
+    test_app.config["RLM_TASK_TIMEOUT"] = -1
+    module, _ = _make_module(
+        [
+            {
+                "content": "",
+                "tool_calls": [{"id": "1", "function": {"name": "final", "arguments": json.dumps({"answer": "done"})}}],
+            },
+        ]
+    )
+    with test_app.app_context():
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "abc"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == "done"
+    assert result.error == ""
 
 
 @pytest.mark.unit
@@ -372,6 +590,33 @@ def test_run_nudges_final_near_step_limit(test_app):
         for call in llamacpp.calls
     )
     assert nudged
+
+
+@pytest.mark.unit
+def test_run_last_step_has_no_tools_and_plain_text_becomes_answer(test_app):
+    """On the final step the model must not be able to burn the step on
+    another tool call: tools are withheld and a plain text response is the
+    final answer (instead of 'step limit reached')."""
+    script = [
+        {"content": "", "tool_calls": [{"id": "1", "function": {"name": "python", "arguments": "{}"}}]},
+        {"content": "The rubai numbering is 1378-1390, the central symbol is wine."},
+    ]
+    module, llamacpp = _make_module(script)
+    with test_app.app_context():
+        test_app.config["RLM_MAX_STEPS"] = 2
+        result = module.run(
+            task={"id": "t1"},
+            question="q",
+            corpus={"d": "x"},
+            user_id="u",
+            session_id="s",
+            lang="en",
+            on_stage=lambda stage, extra=None: None,
+            is_cancelled=lambda: False,
+        )
+    assert result.answer == "The rubai numbering is 1378-1390, the central symbol is wine."
+    assert result.error == ""
+    assert llamacpp.calls[-1]["tools"] is None
 
 
 @pytest.mark.unit

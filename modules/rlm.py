@@ -82,6 +82,89 @@ class RlmResult:
     error: str = ""
 
 
+def _get_hardware() -> Any | None:
+    """Return detected HardwareInfo, or None when unknown/unavailable.
+
+    Kept as a module-level indirection so tests can patch it without
+    instantiating the ResourceManager singleton.
+    """
+    try:
+        from app.resource_manager import get_resource_manager
+
+        return get_resource_manager().hardware
+    except Exception:
+        return None
+
+
+# Step ladder keyed by VRAM tier (MB). Evaluated top-down; thresholds sit
+# below the nominal card size because usable VRAM is always reported slightly
+# lower (e.g. RTX 4060 Ti 16 GB reports 16311 MB). The CPU entry is a floor
+# for GPU-less hosts and VRAM tiers too small for any LLM.
+_STEP_LADDER: tuple[tuple[int, int], ...] = (
+    (20480, 18),  # 24 GB tier
+    (14336, 12),  # 16 GB tier (reference host: 16311 MB usable)
+    (10240, 10),  # 12 GB tier
+    (6144, 8),  # 8 GB tier
+)
+_STEP_LADDER_FLOOR = 6  # CPU-only / <8 GB — analysis must stay usable
+_STEP_LADDER_MAX = 18
+
+
+def _resource_step_budget(hw: Any | None) -> int:
+    """Per-host step allowance from detected hardware (0 = no extra cap)."""
+    if hw is None:
+        return 0
+    try:
+        platform = getattr(hw, "platform", "cpu")
+        vram = int(getattr(hw, "total_vram_mb", 0) or 0)
+    except Exception:
+        return 0
+    if platform == "cpu" or vram <= 0:
+        return _STEP_LADDER_FLOOR
+    for threshold, steps in _STEP_LADDER:
+        if vram >= threshold:
+            return steps
+    return _STEP_LADDER_FLOOR
+
+
+# Per-step wall-clock costs in seconds: (base overhead, per-step cost).
+# CPU generation is roughly 3x slower than GPU per actor turn.
+_STEP_TIMEOUT_MODEL: dict[str, tuple[int, int]] = {
+    "gpu": (120, 90),
+    "cpu": (240, 300),
+}
+
+# Absolute floor for context-fitted observation truncation: below this the
+# actor cannot see enough of a tool result to act on it.
+_MIN_OBS_CHARS = 800
+
+
+def _obs_trunc_for_context(steps: int, configured_trunc: int, boot_tokens: int) -> int:
+    """Shrink the observation truncation so the whole trajectory fits the window.
+
+    Steps are never cut for context reasons (the ladder decides those): when
+    the window is too small, observations compress instead — down to
+    _MIN_OBS_CHARS, never below. The caller must run inside an app context
+    (reads RLM_MAX_STEPS ceiling and the reasoning model's context_length).
+    """
+    from app.model_config import get_model_config
+    from app.utils import estimate_tokens
+
+    cfg = get_model_config("reasoning") or {}
+    context = cfg.get("context_length") or 0
+    if not context:
+        return configured_trunc
+    available = int(context * 0.95) - boot_tokens - 1000
+    if available <= 0:
+        return _MIN_OBS_CHARS
+    # tokens per observation char (e.g. ~0.5 for Russian, ~0.31 for English)
+    tokens_per_char = estimate_tokens("а" * 4000, "reasoning", "ru") / 4000
+    step_overhead_tokens = 300
+    obs_budget = (available // max(1, steps)) - step_overhead_tokens
+    obs_chars = int(obs_budget / tokens_per_char) if tokens_per_char > 0 else _MIN_OBS_CHARS
+    return int(max(_MIN_OBS_CHARS, min(configured_trunc, obs_chars)))
+
+
 class _RlmBroker:
     """Serves sandbox callbacks and direct tool calls."""
 
@@ -116,30 +199,55 @@ class RlmModule:
         return format_prompt("rlm.template", {"max_steps": max_steps}, lang=lang) or ""
 
     def _effective_max_steps(self, boot_texts: list[str], lang: str) -> int:
-        """Cap the actor loop so its worst-case trajectory fits the reasoning window.
+        """Combine the configured ceiling with the per-host resource ladder.
 
-        One step costs one assistant tool-call turn plus one observation of up
-        to RLM_OBS_TRUNC chars. The 0.95 factor mirrors _validate_prompt's hard
-        limit; the 1000-token reserve keeps the run inside the window instead of
-        dying with «Request too long». Unknown/missing window -> configured cap.
+        The context window does NOT cut steps — observations compress instead
+        (_obs_trunc_for_context). Only two caps apply here: RLM_MAX_STEPS
+        (config ceiling, hard max 18) and the resource ladder (24 GB+→18,
+        16 GB→12, 12 GB→10, 8 GB→8, CPU/<8 GB→6). Unknown hardware raises
+        no cap (0); a window too small even for minimal observations still
+        leaves 1 step so the user gets a bounded attempt.
         """
         from flask import current_app
 
         from app.model_config import get_model_config
         from app.utils import estimate_tokens
 
-        max_steps = current_app.config.get("RLM_MAX_STEPS", 12)
-        cfg = get_model_config("reasoning") or {}
-        context = cfg.get("context_length") or 0
+        max_steps = min(current_app.config.get("RLM_MAX_STEPS", 12), _STEP_LADDER_MAX)
+        hw = _get_hardware()
+        ladder = _resource_step_budget(hw)
+        if ladder:
+            max_steps = min(max_steps, ladder)
+
+        cfg: dict[str, Any] = get_model_config("reasoning") or {}
+        context = int(cfg.get("context_length") or 0)
         if not context:
-            return max_steps
-        obs_chars = current_app.config.get("RLM_OBS_TRUNC", 4000)
+            return int(max_steps)
+        # A window that cannot hold the boot prompt plus one minimal
+        # observation would die with «Request too long» — bound to 1 step.
         boot = sum(estimate_tokens(text, "reasoning", lang) for text in boot_texts if text)
-        step_budget = 300 + estimate_tokens("а" * obs_chars, "reasoning", lang)
         available = int(context * 0.95) - boot - 1000
         if available <= 0:
             return 1
-        return max(1, min(max_steps, available // max(1, step_budget)))
+        # Normal windows: steps are preserved and observations compress
+        # (_obs_trunc_for_context). But the window must at least hold the
+        # MINIMAL trajectory (one _MIN_OBS_CHARS observation per step):
+        # shrink steps to what fits instead of failing mid-run.
+        min_obs_tokens = estimate_tokens("а" * _MIN_OBS_CHARS, "reasoning", lang)
+        min_per_step = min_obs_tokens + 300
+        return int(max(1, min(max_steps, available // min_per_step)))
+
+    def _auto_task_timeout(self, steps: int) -> int:
+        """Derive the wall-clock deadline from the step budget and platform.
+
+        RLM_TASK_TIMEOUT=0 selects this path: base overhead (sandbox start,
+        JIT model load, corpus handout) plus per-step cost. CPU hosts get a
+        ~3x per-step multiplier so slow generation is never cut short.
+        """
+        hw = _get_hardware()
+        is_cpu = hw is None or getattr(hw, "platform", "cpu") == "cpu"
+        base, per_step = _STEP_TIMEOUT_MODEL["cpu" if is_cpu else "gpu"]
+        return base + max(1, steps) * per_step
 
     def build_user_prompt(self, question: str, corpus: dict[str, str]) -> str:
         lines = [f"{name} ({len(text)} chars)" for name, text in corpus.items()]
@@ -219,17 +327,28 @@ class RlmModule:
         obs_trunc = current_app.config.get("RLM_OBS_TRUNC", 4000)
         sub_max_tokens = current_app.config.get("RLM_SUB_MAX_TOKENS", 1024)
         web_max_fetches = current_app.config.get("RLM_WEB_MAX_FETCHES", 5)
-        task_timeout = current_app.config.get("RLM_TASK_TIMEOUT", 900)
-        # 0 disables the wall-clock deadline; the step limit remains the only bound.
-        deadline = time.monotonic() + task_timeout if task_timeout > 0 else None
+        task_timeout_cfg = current_app.config.get("RLM_TASK_TIMEOUT", 900)
 
         llamacpp = self.app.modules["base"].llamacpp
         tools = self.tool_definitions(lang)
         system = self.build_system_prompt(lang)
-        max_steps = self._effective_max_steps([system, self.build_user_prompt(question, corpus)], lang)
+        user_prompt = self.build_user_prompt(question, corpus)
+        max_steps = self._effective_max_steps([system, user_prompt], lang)
+        from app.utils import estimate_tokens
+
+        boot_tokens = sum(estimate_tokens(t, "reasoning", lang) for t in (system, user_prompt) if t)
+        obs_trunc = _obs_trunc_for_context(max_steps, obs_trunc, boot_tokens)
+        # Wall-clock deadline: -1 disables it entirely; 0 derives it from the
+        # step budget and platform (CPU hosts get a proportionally larger
+        # budget); any positive value is used as-is.
+        if task_timeout_cfg == -1:
+            deadline: float | None = None
+        else:
+            task_timeout = task_timeout_cfg if task_timeout_cfg > 0 else self._auto_task_timeout(max_steps)
+            deadline = time.monotonic() + task_timeout
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": self.build_system_prompt(lang, max_steps=max_steps)},
-            {"role": "user", "content": self.build_user_prompt(question, corpus)},
+            {"role": "user", "content": user_prompt},
         ]
         broker = _RlmBroker(self, lang, sub_max_tokens, web_max_fetches)
         sandbox = RlmSandbox(corpus, broker, code_timeout=code_timeout)
@@ -242,7 +361,15 @@ class RlmModule:
                     return RlmResult("", trace, step, error="cancelled")
                 if deadline is not None and time.monotonic() >= deadline:
                     return RlmResult("", trace, step, error="task timeout")
-                if step >= max_steps - 1:
+                # The nudge alone is ignorable — a model may spend its last
+                # step on yet another tool call and the run dies at the limit.
+                # On the final step tools are withheld entirely: the model
+                # physically cannot call python/llm/web_fetch and must produce
+                # a text answer, which is returned as the result.
+                step_tools: list[dict[str, Any]] | None = tools
+                if step >= max_steps:
+                    step_tools = None
+                elif step >= max_steps - 1:
                     messages.append(
                         {
                             "role": "user",
@@ -251,7 +378,7 @@ class RlmModule:
                         }
                     )
                 on_stage("rlm_step", {"step": step})
-                response = llamacpp.chat(messages, model_type="reasoning", lang=lang, tools=tools, temperature=0.2)
+                response = llamacpp.chat(messages, model_type="reasoning", lang=lang, tools=step_tools, temperature=0.2)
                 if isinstance(response, str):
                     # chat() returns a plain string both for a normal answer
                     # without tool calls and for backend errors. Only the

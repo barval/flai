@@ -562,8 +562,8 @@ HTTPS_ENABLED=false
 ```bash
 RLM_ENABLED=true                # Enable the deep-analysis toggle
 RLM_ACTOR_MODEL=reasoning       # Model used for the actor loop
-RLM_MAX_STEPS=12                # Ceiling for the actor loop (budget is auto-adapted to the context window)
-RLM_TASK_TIMEOUT=900            # Wall-clock deadline for the whole analysis (seconds, 0 disables)
+RLM_MAX_STEPS=18                # Hard ceiling for the actor loop; per-host allowance is hardware-derived (24 GB+→18, 16 GB→12, 12 GB→10, 8 GB→8, CPU/<8 GB→6)
+RLM_TASK_TIMEOUT=0              # Wall-clock deadline (seconds): 0 = auto from step budget (CPU ~3x), -1 disables
 RLM_CODE_TIMEOUT=15             # Per python-snippet timeout in the sandbox (seconds)
 RLM_OBS_TRUNC=4000              # Max chars of one tool observation fed back to the model
 RLM_SUB_MAX_TOKENS=1024         # Max tokens of an llm() sub-model call

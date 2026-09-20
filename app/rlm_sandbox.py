@@ -108,6 +108,10 @@ def validate_code(code: str) -> str | None:
         return "Code too deeply nested"
     for node in ast.walk(tree):
         if isinstance(node, FORBIDDEN_NODES):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                # Bare "Forbidden syntax: Import" gets repeated by the model
+                # (burned 2 steps in production). Explain the alternative.
+                return "Imports are forbidden. 're' and 'math' are already available; use final(answer) to finish."
             return f"Forbidden syntax: {type(node).__name__}"
         if isinstance(node, ast.Name) and (node.id in FORBIDDEN_NAMES or node.id.startswith("__")):
             return f"Forbidden name: {node.id}"

@@ -40,13 +40,8 @@ function tokenStatsHTML(promptTokens, completionTokens) {
     const input = isNaN(prompt) ? 0 : prompt;
     const output = isNaN(completion) ? 0 : completion;
     if (!input && !output) return '';
-    const title = formatString(t('tokens_info'), {
-        input: input.toLocaleString(),
-        output: output.toLocaleString()
-    });
-    return ' <span class="text-muted token-stats" title="' +
-        title.replace(/"/g, '&quot;') +
-        '">🧮 ↓' + input.toLocaleString() + ' ↑' + output.toLocaleString() + ' |</span>';
+    return ' <span class="text-muted token-stats">🧮 ↓' + input.toLocaleString() + ' ↑' +
+        output.toLocaleString() + ' |</span>';
 }
 
 // Calculate response duration string from response_time (object or scalar).

@@ -1630,10 +1630,6 @@ msgstr "s"
 msgid "tps_suffix"
 msgstr " tok/s"
 
-#: app/templates/chat.html:180
-msgid "tokens_info"
-msgstr "Tokens: {input} input, {output} output"
-
 #: app/templates/chat.html:181
 msgid "byte_abbr"
 msgstr "B"

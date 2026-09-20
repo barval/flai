@@ -490,7 +490,7 @@
 }
 
 .token-stats {
-    cursor: help;
+    font-variant-numeric: tabular-nums;
 }
 
 .file-info {

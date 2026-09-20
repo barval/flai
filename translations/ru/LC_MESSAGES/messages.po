@@ -1639,6 +1639,10 @@ msgid "tps_suffix"
 msgstr " ток/с"
 
 #: app/templates/chat.html:180
+msgid "tokens_info"
+msgstr "Токены: {input} входных, {output} выходных"
+
+#: app/templates/chat.html:181
 msgid "byte_abbr"
 msgstr "Б"
 

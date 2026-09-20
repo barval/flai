@@ -30,6 +30,25 @@ function decodeHtmlEntities(text) {
     return textarea.value;
 }
 
+// Build the token-counter header segment shown between the ⏱️ duration and
+// the 🚀 tps sections. Returns an HTML string or '' when no data is available.
+// Shared by chat-messages.js (history render) and events.js (live finalize).
+function tokenStatsHTML(promptTokens, completionTokens) {
+    const prompt = parseInt(promptTokens, 10);
+    const completion = parseInt(completionTokens, 10);
+    if (isNaN(prompt) && isNaN(completion)) return '';
+    const input = isNaN(prompt) ? 0 : prompt;
+    const output = isNaN(completion) ? 0 : completion;
+    if (!input && !output) return '';
+    const title = formatString(t('tokens_info'), {
+        input: input.toLocaleString(),
+        output: output.toLocaleString()
+    });
+    return ' <span class="text-muted token-stats" title="' +
+        title.replace(/"/g, '&quot;') +
+        '">🧮 ↓' + input.toLocaleString() + ' ↑' + output.toLocaleString() + ' |</span>';
+}
+
 // Calculate response duration string from response_time (object or scalar).
 // Returns "12.3" or null. Shared by chat-messages.js and events.js.
 function formatResponseDuration(responseTime) {

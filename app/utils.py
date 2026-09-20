@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import threading
+import time
 import uuid
 from datetime import datetime
 from io import BytesIO
@@ -226,6 +227,93 @@ def reset_token_calibration() -> None:
     """Clear all calibration samples (used in tests)."""
     with _TOKEN_CALIBRATION_LOCK:
         _TOKEN_CALIBRATION.clear()
+
+
+# ── Per-request LLM token usage accumulator ────────────────────────────────
+# Worker threads process one request phase at a time (router classification on
+# the fast worker, generation on the slow worker). Each phase begins an account
+# keyed by the original request id, every LLM call records its real usage into
+# the thread-local account, and the phase finishes the account to retrieve the
+# totals. A re-queued reasoning task re-seeds the account with the router totals
+# carried in the task payload (``bias``) so the final message shows both phases.
+_USAGE_ACCOUNTS: dict[str, dict[str, int]] = {}
+_USAGE_ACCOUNTS_LOCK = threading.Lock()
+_USAGE_CURRENT = threading.local()
+
+
+def begin_usage_account(account_id: str, bias: dict[str, Any] | None = None, submitted_at: float | None = None) -> None:
+    """Start (or re-seed) a usage account for *account_id* on this thread.
+
+    ``bias`` carries totals accumulated by an earlier phase of the same request
+    (e.g. router-usage totals re-seeded into the re-queued reasoning task).
+    ``submitted_at`` is the original request submission time (epoch float);
+    the answer-saving path uses it to report the full request duration.
+    """
+    with _USAGE_ACCOUNTS_LOCK:
+        entry = _USAGE_ACCOUNTS.get(account_id)
+        if entry is None:
+            entry = {"prompt_tokens": 0, "completion_tokens": 0, "submitted_at": None}
+            _USAGE_ACCOUNTS[account_id] = entry
+        if bias:
+            entry["prompt_tokens"] += int(bias.get("prompt_tokens") or 0)
+            entry["completion_tokens"] += int(bias.get("completion_tokens") or 0)
+        if submitted_at is not None:
+            entry["submitted_at"] = submitted_at
+        elif bias and bias.get("submitted_at") is not None:
+            entry["submitted_at"] = bias["submitted_at"]
+        elif entry["submitted_at"] is None:
+            entry["submitted_at"] = time.time()
+    _USAGE_CURRENT.account_id = account_id
+
+
+def record_usage_for_current(prompt_tokens: int | None, completion_tokens: int | None) -> None:
+    """Accumulate real usage from one LLM response into the active account."""
+    if not prompt_tokens and not completion_tokens:
+        return
+    account_id = getattr(_USAGE_CURRENT, "account_id", None)
+    if not account_id:
+        return
+    with _USAGE_ACCOUNTS_LOCK:
+        entry = _USAGE_ACCOUNTS.get(account_id)
+        if entry is None:
+            return
+        if prompt_tokens and prompt_tokens > 0:
+            entry["prompt_tokens"] += int(prompt_tokens)
+        if completion_tokens and completion_tokens > 0:
+            entry["completion_tokens"] += int(completion_tokens)
+
+
+def current_usage_account_id() -> str | None:
+    """Return the account id bound to this thread, or None."""
+    return getattr(_USAGE_CURRENT, "account_id", None)
+
+
+def finish_usage_account(account_id: str | None = None) -> dict[str, Any] | None:
+    """Pop a usage account and its thread-local binding, returning the totals.
+
+    With no argument, pops the account currently bound to this thread — the
+    answer-saving path uses that to consume whichever request is active. When
+    *account_id* is given, pops that account (must match the bound one).
+    Idempotent: a second call returns None. Use it both on the success path
+    (totals feed the saved message) and in cleanup clauses (drops a leftover
+    account after an early error return).
+    """
+    bound = getattr(_USAGE_CURRENT, "account_id", None)
+    if account_id is None:
+        account_id = bound
+    if bound == account_id:
+        _USAGE_CURRENT.account_id = None
+    if account_id is None:
+        return None
+    with _USAGE_ACCOUNTS_LOCK:
+        return _USAGE_ACCOUNTS.pop(account_id, None)
+
+
+def reset_usage_accounts() -> None:
+    """Clear all usage accounts and the thread-local binding (used in tests)."""
+    with _USAGE_ACCOUNTS_LOCK:
+        _USAGE_ACCOUNTS.clear()
+    _USAGE_CURRENT.account_id = None
 
 
 # Safety margin to prevent context overflow (use only 85% of calculated capacity)

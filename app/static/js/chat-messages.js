@@ -248,7 +248,8 @@ function loadMessages(sessionId) {
                             msg.response_style,
                             msg.completion_tokens,
                             msg.file_size,
-                            msg.model_type
+                            msg.model_type,
+                            msg.prompt_tokens
                         );
                         lastUserMessage = null;
                         }
@@ -307,7 +308,7 @@ function getModelEmoji(modelType) {
     return (modelType && MODEL_EMOJI[modelType]) ? MODEL_EMOJI[modelType] + ' ' : '';
 }
 
-function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType) {
+function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType, promptTokens) {
     if (window.IS_RELOADING) {
         dlog('displayMessage: Skipping - IS_RELOADING');
         return;
@@ -489,6 +490,10 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         if (duration && !isSystemError) {
             const langSuffix = t('seconds_suffix');
             headerExtraHTML += ' <span class="text-muted">| ⏱️ ' + duration + langSuffix + ' |</span>';
+
+            // Token usage counters (input ↓ / output ↑) across all LLM calls
+            // that billed this request — shown between ⏱️ time and 🚀 tps.
+            headerExtraHTML += tokenStatsHTML(promptTokens, completionTokens);
 
             // Tokens per second
             if (completionTokens) {

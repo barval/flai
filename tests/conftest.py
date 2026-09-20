@@ -425,6 +425,10 @@ class _MockDatabase:
                 "gen_time": params[11] if len(params) > 11 else None,
                 "mm_model": params[12] if len(params) > 12 else None,
                 "gen_model": params[13] if len(params) > 13 else None,
+                "response_style": params[14] if len(params) > 14 else None,
+                "completion_tokens": params[15] if len(params) > 15 else None,
+                "model_type": params[16] if len(params) > 16 else None,
+                "prompt_tokens": params[17] if len(params) > 17 else None,
             }
             self._messages.append(msg)
             self._lastrowid = msg_id

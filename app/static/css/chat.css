@@ -489,6 +489,10 @@
     color: #7f8c8d !important;
 }
 
+.token-stats {
+    cursor: help;
+}
+
 .file-info {
     display: inline !important;
     color: #2c3e50 !important;

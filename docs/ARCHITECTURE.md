@@ -329,6 +329,21 @@ No backend changes: the pasted file travels through the same `FormData` upload p
 
 **⚡ recovery after task chain**: `events.js` — after every `clearSessionQueue()` call, `setTimeout(fetchQueueStatus, 500)` is scheduled. This polls the server for the next queued task, restoring ⚡ when the next task moves from queue to processing.
 
+## Per-Request Token Usage Counters
+
+Every assistant message header shows real billed tokens between the ⏱️ duration and the 🚀 tokens-per-second segments: `…| ⏱️ 12.4 s | 🔢 (↑45 ↓1 234) ток | 🚀 0,8 ток/с |` (↑ output first, ↓ input, `tokens_unit` msgid — ru «ток» / en «tok»).
+
+**Backend** (`app/queue.py` + `app/utils.py`):
+- `_process_request()` opens ONE thread-local usage account per task (`begin_usage_account()` in `app/utils.py` — `begin/record/finish/current` family) for every LLM task type; bookkeeping-only types (`index_document`, `reindex_all_embeddings`, `fact_extraction_task`, `fact_merge_task`) are excluded and `_process_single_task()` finally drops leftovers.
+- Every LLM call accumulates its real `prompt_tokens`/`completion_tokens` through `_record_prompt_tokens()` in `app/llamacpp_client.py` → `record_usage_for_current()`.
+- Requeued tasks (reasoning, image_gen, video) carry the fast worker's half-account inside `request_data` (`request_id`, `submitted_at`, `usage_accum`; `_requeue_*_task()`), `_process_request()` re-seeds it with the bias on the slow worker.
+- `_save_and_respond()` consumes the account (`finish_usage_account()`): the result dict and `messages.prompt_tokens` (new INTEGER column, `app/database.py` migration) both carry the totals; `process_time` is overridden to the full request duration (`submitted_at` → finish). `consume_usage=False` keeps the account open for multi-message tasks (camera snapshot + description pair; the description consumes the merged totals).
+- Unknown/absent values (legacy rows with `prompt_tokens=NULL`) are stored as NULL and render only the known side.
+
+**Frontend** (`chat-utils.js:tokenStatsHTML()`, shared by history render and live finalize):
+- `tokenStatsHTML()` renders only the known sides (e.g. `🔢 (↑45) ток` when input is unknown); empty/zero totals render nothing.
+- The `window.displayMessage` wrapper in `chat-init.js` must forward ALL positional parameters of the wrapped function — it previously dropped the 19th (`promptTokens`), hiding input tokens in every SSE path. Guard: `tests/test_js_signatures.py` asserts wrapper signature == wrapped signature and positional forwarding.
+
 ## Chat Auto-Scroll
 
 - **`_isLoadingMessages` flag** in `chat-messages.js` prevents N competing async scroll callbacks when loading message history.
@@ -366,4 +381,4 @@ MUST be in a subdirectory with `mmproj-*.gguf` (e.g. `Qwen3VL-8B-Instruct-Q4_K_M
 - `app/cli.py` — Flask CLI commands
 - `app/cameradb.py` — camera rooms CRUD
 - `app/morph.py` — Russian morphology
-- `app/utils.py` — shared utilities: `clean_markdown_for_tts()` strips markdown before TTS synthesis, `estimate_tokens()` estimates token count, `chunk_text()` splits text, `_gguf_scalar()` extracts Python scalars from GGUF reader fields, `translate_sd_error()` translates sd.cpp errors
+- `app/utils.py` — shared utilities: `clean_markdown_for_tts()` strips markdown before TTS synthesis, `estimate_tokens()` estimates token count, `chunk_text()` splits text, `_gguf_scalar()` extracts Python scalars from GGUF reader fields, `translate_sd_error()` translates sd.cpp errors; per-request usage accounts (`begin_usage_account()` / `record_usage_for_current()` / `finish_usage_account()`) feed the message-header token counters

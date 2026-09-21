@@ -374,7 +374,7 @@ MUST be in a subdirectory with `mmproj-*.gguf` (e.g. `Qwen3VL-8B-Instruct-Q4_K_M
 - `app/slm_import.py` — SLM background import
 - `app/model_config.py` — model configuration
 - `app/config.py` — app configuration (env vars loaded here; both `.env` and `.env.example` must be kept in sync)
-- `app/db.py` — database helpers
+- `app/db.py` — database helpers; `save_message()` returns the real message id via `INSERT … RETURNING id` (`cursor.lastrowid` is always 0 on PostgreSQL/psycopg2)
 - `app/events.py` — SSE event publishing
 - `app/userdb.py` — user database operations
 - `app/validators.py` — input validation

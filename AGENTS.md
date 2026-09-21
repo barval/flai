@@ -113,14 +113,25 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - For code paths that bypass it (e.g., string errors from `call_llamacpp()`), use `_is_llm_error_string()` (in `app/queue.py:755`) check and route through `_build_error_response()`.
   - Raw `str(e)` must NEVER be returned to the user.
 
-# 4. Git — No Autonomous Commits
-  - **NEVER commit directly to `master`.** All development happens in project branches (`features/*`, `fix/*`, version branches). `master` must only ever advance via merges (`--no-ff`) from development branches.
+# 4. Git — Branching & No Autonomous Commits
+  - **NEVER create any branch without explicit user approval.**
+  - **All development happens ONLY in the numbered main project branch** (e.g. `v11.5`, `v12.0`) that the user has designated as the current working branch for the project.
+  - **NEVER commit directly to `master`.** `master` must only ever advance via merges (`--no-ff`) from development branches, approved by the user.
+  - **Fix branches** must reference the main branch they target. Example: `fix/v12.0-chat-duplicate-render-round2`.
+  - **Feature branches** must reference the main branch they target. Example: `features/v8.0-rag-classic-and-reranker`.
+  - Fixes and features are merged into the current main branch (the one designated by the user) **only with the user's approval**.
   - **NEVER make commits unless explicitly asked.**
   - Always ask before using `git add`, `git commit`, `git push`, `git tag`, or `git revert`.
   - Reverting commits without user permission is also forbidden.
   - **NEVER make ANY changes to files without direct user approval.** Each file change (create, edit, delete) requires explicit plan approval. Exception: only when the user explicitly said "do it" or "execute".
 
-# 5. Documentation Language
+# 5. Database — Backups Before Any Work
+  - **ALWAYS create a database backup BEFORE performing ANY work on the database** (schema changes, manual SQL incl. SELECT-then-DELETE cleanup, migrations, data imports). No exceptions, no matter how trivial the operation looks.
+  - Backup command (from the project root): `docker exec flai-postgres pg_dump -U flai -d flai > backups/pre-work_$(date +%Y-%m-%d_%H-%M-%S).sql` — verify the dump is non-empty before proceeding.
+  - Double-check JOIN/NOT IN filters against actual column semantics BEFORE running destructive statements: `chat_sessions.user_id` stores the user LOGIN (text), not the numeric users.id. A mismatch silently turns real user data into "orphans" (incident 2026-09-21: all chat sessions/messages of all users were deleted by a wrong NOT IN filter).
+  - Run destructive statements inside a transaction (`BEGIN; ... ; ROLLBACK` to preview, `COMMIT` only after verifying the affected rows look right).
+
+# 6. Documentation Language
   - **AGENTS.md, `CHANGELOG.md`, `README.md`, and all `docs/*.md` must be written in English only.** No Cyrillic allowed, including historical entries.
   - All code comments and log messages must be in English.
   - All user-facing messages (UI, notifications, errors) must use the selected user language (i18n).

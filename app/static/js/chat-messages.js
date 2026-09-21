@@ -142,8 +142,10 @@ function loadMessages(sessionId) {
                             return;
                         }
                         // Also check for tempId (message displayed before server response)
+                        // dataset.tempId serialises to data-temp-id (kebab-case);
+                        // [data-tempId] never matched (case-sensitive attr names).
                         const tempId = `temp-${msg.timestamp}`;
-                        const existingWithTempId = document.querySelector(`[data-tempId="${tempId}"]`);
+                        const existingWithTempId = document.querySelector(`[data-temp-id="${tempId}"]`);
                         if (existingWithTempId) {
                             dlog('loadMessages: Message with tempId', tempId, 'already in DOM, updating');
                             // Update the tempId message with the real messageId

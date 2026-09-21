@@ -1327,7 +1327,7 @@ function onMessageNew(data) {
     }
 
     // Reconcile the optimistic user message in place. The optimistic element
-    // created by displayUserMessage (chat-init.js) carries only data-tempId —
+    // created by displayUserMessage (chat-init.js) carries only data-temp-id —
     // the real message_id is unknown until the POST response. The SSE echo of
     // the user's own message (message_new, role=user, published by
     // save_message inside the POST handler) arrives with the REAL message_id
@@ -1342,10 +1342,16 @@ function onMessageNew(data) {
     // wipes ALL pendingRequestIds whenever the server reports idle — and that
     // poll races the in-flight POST, so the entry can vanish between the
     // optimistic render and this echo (observed duplicate 2026-09-21).
-    // An element with data-tempId and no data-message-id is by definition an
+    // An element with data-temp-id and no data-message-id is by definition an
     // unconfirmed optimistic render; the DOM state is not wiped by anyone.
+    //
+    // NOTE on casing: dataset.tempId serialises to the attribute
+    // "data-temp-id" (camelCase → kebab-case). CSS attribute selectors are
+    // case-sensitive for attribute NAMES in HTML documents, so the selector
+    // must be [data-temp-id] — an earlier [data-tempId] selector matched
+    // nothing and the guard silently never ran (headless repro 2026-09-21).
     if (data.role === 'user') {
-        var optimisticEls = document.querySelectorAll('.user-message[data-tempId]');
+        var optimisticEls = document.querySelectorAll('.user-message[data-temp-id]');
         for (var oi = 0; oi < optimisticEls.length; oi++) {
             var oel = optimisticEls[oi];
             // Element already confirmed (real id assigned) — not optimistic.

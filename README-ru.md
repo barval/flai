@@ -1171,7 +1171,7 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 
 ---
 
-## 🤝 Участие в разработке
+## 🛠️ Участие в разработке
 
 Вклад в проект приветствуется! Пожалуйста, создайте Pull Request.
 
@@ -1180,6 +1180,14 @@ locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 3. Зафиксируйте изменения (`git commit -m 'Добавить amazing feature'`)
 4. Отправьте в ветку (`git push origin feature/amazing-feature`)
 5. Откройте Pull Request
+
+---
+
+## 🙏 Благодарности
+
+### Помощь в тестировании
+
+- [@Andrey-1](https://github.com/Andrey-1) — активное тестирование и ценные замечания
 
 ---
 

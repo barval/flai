@@ -1171,7 +1171,7 @@ See [tests/load/README.md](tests/load/README.md) for detailed load testing instr
 
 ---
 
-## 🤝 Contributing
+## 🛠️ Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
@@ -1180,6 +1180,14 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+---
+
+## 🙏 Acknowledgments
+
+### Testing
+
+- [@Andrey-1](https://github.com/Andrey-1) — extensive testing and valuable feedback
 
 ---
 

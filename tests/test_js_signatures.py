@@ -64,3 +64,45 @@ def test_load_messages_wrapper_keeps_signature():
     assert match, "originalLoadMessages call not found in chat-init.js"
     forwarded = [p.strip() for p in match.group(1).split(",") if p.strip()]
     assert forwarded == ["sessionId"], f"unexpected forward args: {forwarded}"
+
+
+def test_on_message_new_skips_user_echo_during_active_outgoing():
+    """onMessageNew (events.js) must NOT render a user message echoed by SSE
+    (message_new, role=user) while an outgoing request carrying an optimistic
+    element for the same session is still in flight.
+
+    Regression: sending a message rendered the user bubble TWICE. Root cause:
+    the optimistic element (displayUserMessage, chat-init.js) has data-tempId
+    but NO data-message-id yet, while the SSE message_new echo (published by
+    save_message inside the POST handler, before the HTTP response returns)
+    carries the real message_id. Neither dedup guard in onMessageNew matches:
+      * displayedMessageIds.has(real_id)  -> false (added only by the POST
+        response handler, which runs strictly later)
+      * querySelector('[data-message-id=real_id]') -> the optimistic element
+        has only data-tempId, so the selector misses it
+    -> displayMessage renders a second copy (disappears after F5, since history
+    loads the message once with real ids).
+
+    The guard must check pendingRequestIds for an entry whose sessionId matches
+    the echoing session_id AND which has NOT yet been confirmed (no resolved
+    message id) — i.e. the optimistic element is still unconfirmed.
+    """
+    events_src = (JS_DIR / "events.js").read_text(encoding="utf-8")
+
+    # The guard must reject the SSE echo for role=user while an unconfirmed
+    # outgoing request for the same session exists.
+    assert re.search(r"data\.role\s*(==|===|!=|!==)\s*['\"]user['\"]", events_src), (
+        "no role===user branch guard in onMessageNew"
+    )
+
+    # It must consult the in-flight outgoing requests (pendingRequestIds)
+    # filtered by the echoing session.
+    body = events_src[re.search(r"function\s+onMessageNew\s*\(", events_src).start() :]
+    assert re.search(r"pendingRequestIds", body), "onMessageNew does not consult pendingRequestIds"
+    assert re.search(r"sessionId\s*(==|===|!=|!==)\s*data\.session_id", body), (
+        "onMessageNew echo guard not filtered by session_id"
+    )
+
+    # And the message must be skipped (return) BEFORE displayMessage runs.
+    user_guard = body[: body.find("displayMessage")] if "displayMessage" in body else body
+    assert re.search(r"return", user_guard), "user-role SSE echo is not short-circuited before displayMessage"

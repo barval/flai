@@ -113,7 +113,13 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - For code paths that bypass it (e.g., string errors from `call_llamacpp()`), use `_is_llm_error_string()` (in `app/queue.py:755`) check and route through `_build_error_response()`.
   - Raw `str(e)` must NEVER be returned to the user.
 
-# 4. Git — No Autonomous Commits
+# 4. Git — Branching & No Autonomous Commits
+  - **NEVER create any branch without explicit user approval.**
+  - **All development happens ONLY in the numbered main project branch** (e.g. `v11.5`, `v12.0`) that the user has designated as the current working branch for the project.
+  - **NEVER commit directly to `master`.** `master` must only ever advance via merges (`--no-ff`) from development branches, approved by the user.
+  - **Fix branches** must reference the main branch they target. Example: `fix/v12.0-chat-duplicate-render-round2`.
+  - **Feature branches** must reference the main branch they target. Example: `features/v8.0-rag-classic-and-reranker`.
+  - Fixes and features are merged into the current main branch (the one designated by the user) **only with the user's approval**.
   - **NEVER make commits unless explicitly asked.**
   - Always ask before using `git add`, `git commit`, `git push`, `git tag`, or `git revert`.
   - Reverting commits without user permission is also forbidden.

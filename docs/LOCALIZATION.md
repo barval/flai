@@ -1,4 +1,4 @@
-# Localization (i18n) — FLAI v11.5
+# Localization (i18n) — FLAI v12.0
 
 This document describes the localization system, Flask-Babel usage, and rules for translating READMEs. Read it when adding user-facing strings or updating README files.
 
@@ -13,7 +13,7 @@ This document describes the localization system, Flask-Babel usage, and rules fo
 - All **code comments** and **log messages** must be in English.
 - All **user-facing messages** (UI, notifications, errors) must use the selected user language (i18n).
 - Always keep translation files (`messages.po`) up-to-date and complete.
-- For Russian, the file `deploy-ru.sh` is the only place where Russian comments are allowed.
+- For Russian, only three files may contain Russian: `deploy-ru.sh`, `README-ru.md`, and `LICENSE-ru` (all other repo files use English only).
 - **Every** user-facing string MUST be wrapped in `_()` / `self._()` / `gettext()`. Raw `str(e)` must NEVER be returned to the user.
 - **When adding or modifying error messages**, ALWAYS verify that corresponding translation keys exist in both `translations/en/LC_MESSAGES/messages.po` and `translations/ru/LC_MESSAGES/messages.po`.
 

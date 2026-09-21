@@ -1,4 +1,4 @@
-# Architecture — FLAI v11.5
+# Architecture — FLAI v12.0
 
 This document describes the internal architecture of FLAI in detail. Read it when modifying core logic, queue, modules, or data flow.
 
@@ -11,8 +11,8 @@ For critical rules and commands, see the root `AGENTS.md`.
 ## Entrypoint & Structure
 
 - **`app/__init__.py:create_app()`** — Flask application factory.
-- **Blueprints** (`app/routes/`): `auth`, `chat`, `admin`, `queue`, `tts`, `messages`, `sessions`, `documents`, `backups`, `events`, `debug`.
-- **Modules** (`modules/`): `base/router`, `multimodal`, `sd_cpp`, `cam`, `rag`, `audio`, `tts`, `slm`, `search`, `video`.
+- **Blueprints** (`app/routes/`): `auth`, `chat`, `admin`, `queue`, `tts`, `messages`, `sessions`, `documents`, `backups`, `events`, `debug`, `rlm`.
+- **Modules** (`modules/`): `base/router`, `multimodal`, `sd_cpp`, `cam`, `rag`, `audio`, `tts`, `slm`, `search`, `video`, `rlm`.
 - **Background tasks** (`app/tasks/`): `dry_load.py` (model dry-load after admin save; auto-rollback covers both model swaps — restores the fallback model — and context-only changes — restores `context_length`), `health_monitor.py` (crash-loop watchdog).
 - **Templates** (`app/templates/`): `admin.html`, `base.html`, `chat.html`, `login.html`.
 - **Static**: `app/static/css/` (all CSS), `app/static/js/` (all JS). No inline styles, no CDN.
@@ -173,7 +173,7 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 5. Combine: RAG + SLM facts + rolling session summary + history
 
 - **No hardcoded reserves** — actual fact sizes used throughout.
-- Safety margin: configurable via `CONTEXT_SAFETY_MARGIN` (default 0.88) applied on top of `CONTEXT_HISTORY_PERCENT` (default 85).
+- Safety margin: configurable via `CONTEXT_SAFETY_MARGIN` (default 0.85) applied on top of `CONTEXT_HISTORY_PERCENT` (default 80).
 - Template overhead: `TEMPLATE_OVERHEAD_TOKENS` (default 800).
 - Final validation: `_validate_prompt_size()` enforces 95% hard limit.
 
@@ -225,12 +225,42 @@ Per-user SQLite databases at `/app/data/slm/{user}/.superlocalmemory/memory.db`.
 
 `app/queue.py:_process_reasoning_request()` uses `generate_reasoning_response_stream()` instead of `process_reasoning()`. Tokens are published via `_publish_stream_token()`.
 
-- **Server-side** `_strip_thinking_tags()` in `app/queue.py` handles three patterns: (1) `<think>...</think>` blocks are removed entirely; (2) `<|channel|>analysis<|message|>...<|end|>?` (reasoning) is stripped entirely — `<|end|>` is optional to avoid deleting the entire response when gpt-oss-20b omits it; (3) `<|channel|>commentary<|message|>...<|end|>` (actual answer) is **unwrapped** — tags removed, inner content kept. Malformed `<|channel|>...` without `<|message|>` is stripped. **`app/llamacpp_client.py:_process_stream_chunk()`** performs an unconditional buffer flush on `_thinking_active` transition to prevent token loss between `analysis` and `commentary` blocks. `_strip_generic_reasoning()` removes plain-text chain-of-thought (e.g. "Analyze Persona:", "Final Answer Generation:"). Server-side strip is now sufficient — `_strip_generic_reasoning()` was removed from `queue.py` (client-side filtering in `events.js` handles display).
-- **Client-side** `_stripThinkingTags()` in `events.js` mirrors server logic (though currently unused — server-side filtering is sufficient). `_stripGenericReasoning()` strips generic reasoning patterns in real-time during streaming.
-- **Repetition-loop detection** — `app/llamacpp_client.py` routes all streamed content through a `_LoopGuard` (`_repetition_cutoff`: scan window 4096 chars, block = last 200 chars, cycle = ≥3 equal-gap repetitions). The guard holds back the last 1500 chars so a detected loop is cut before reaching the user (`⚠️ …прерван из-за зацикливания` / English equivalent). **Adaptive hold (slow streams):** the hold is sized in chars, so on a CPU box (~1.6 tok/s) a typical 600–1400 char answer never exceeds it and would arrive as one block after generation finished. Both `_LoopGuard` and `_ReasoningStreamFilter` therefore shrink their hold adaptively: after 40 `feed()` calls (many small feeds = slow stream) the hold linearly shrinks by 30 chars per extra feed, flooring at 300 chars. Fast GPU streams (few large chunks) keep the full hold-back; loop detection is unaffected (it needs 600+ chars of history, and the post-stream safety net cuts anything the smaller hold let through). On clean stream end both backends flush in a fixed order — `_stream_buffer` remainder (through `_loop_guard.feed()`), `_reasoning_stream.flush()`, `_loop_guard.flush()` — so short answers (< hold-back) are never dropped or reordered. A server-side safety net, `strip_repetition_loop()` in `_process_reasoning_task()`, cuts loops missed in streaming and retries once.
+- **Server-side** `_strip_thinking_tags()` in `app/queue.py` handles three patterns: (1) ` thinking... response` blocks are removed entirely; (2) `<|channel|>analysis<|message|>...<|end|>?` (reasoning) is stripped entirely — `<|end|>` is optional to avoid deleting the entire response when gpt-oss-20b omits it; (3) `<|channel|>commentary<|message|>...<|end|>` (actual answer) is **unwrapped** — tags removed, inner content kept. Malformed `<|channel|>...` without `<|message|>` is stripped. **`app/llamacpp_client.py:_process_stream_chunk()`** performs an unconditional buffer flush on `_thinking_active` transition to prevent token loss between `analysis` and `commentary` blocks. `_strip_generic_reasoning()` removes plain-text chain-of-thought (e.g. "Analyze Persona:", "Final Answer Generation:"); it lives in `queue.py` (a wrapper over `llamacpp_client._strip_generic_reasoning()`) and is applied in `_process_reasoning_request()`.
+- **Client-side** `_stripThinkingTags()` in `events.js` mirrors server logic and is applied during streaming (`<|channel|>...` tags and generic reasoning), with `_stripGenericReasoning()` stripping generic reasoning patterns in real time.
+- **Repetition-loop detection** — `app/llamacpp_client.py` routes all streamed content through a `_LoopGuard` (`_repetition_cutoff`: scan window 4096 chars, block = last 200 chars, cycle = ≥3 equal-gap repetitions). The guard holds back the last 1500 chars so a detected loop is cut before reaching the user (`⚠️ …прерван из-за зацикливания` / English equivalent). **Adaptive hold (slow streams):** the hold is sized in chars, so on a CPU box (~1.6 tok/s) a typical 600–1400 char answer never exceeds it and would arrive as one block after generation finished. Both `_LoopGuard` and `_ReasoningStreamFilter` therefore shrink their hold adaptively: after 40 `feed()` calls (many small feeds = slow stream) the hold linearly shrinks by 30 chars per extra feed, flooring at 300 chars. Fast GPU streams (few large chunks) keep the full hold-back; loop detection is unaffected (it needs 600+ chars of history, and the post-stream safety net cuts anything the smaller hold let through). On clean stream end both backends flush in a fixed order — `_stream_buffer` remainder (through `_loop_guard.feed()`), `_reasoning_stream.flush()`, `_loop_guard.flush()` — so short answers (< hold-back) are never dropped or reordered. A server-side safety net, `strip_repetition_loop()` in `_process_reasoning_request()`, cuts loops missed in streaming and retries once.
 - **Thinking-phase status** — the reasoning model streams no content tokens during `reasoning_content` (thinking), so between "model loaded" and "first content token" the queue would otherwise show nothing. Both backends accept a `status_callback` and fire it with `"generating"` right after the completion POST returns (model loaded, SSE headers back); `_process_reasoning_request()` turns it into the `reasoning_thinking` stage («Обдумываю ответ...»), which the frontend ticks with a per-second counter until the first content token removes the indicator.
 
-**Anti-hallucination for web search**: `_get_context_for_model()` prepends web search results with a prominent heading ("Web search results — USE ONLY THIS DATA") so the reasoning model treats them as authoritative. `reasoning.template` (ru + en) contains explicit rules: "rely ONLY on the provided context. Do not invent facts."
+**Web search context**: `_get_context_for_model()` prepends web search results with a prominent heading ("Web search results — use this data as your primary source.") so the reasoning model treats them as authoritative; `reasoning.template` (ru + en) contains the same softened rule ("use them as primary source"). (Historically the instruction was the stricter "USE ONLY THIS DATA".)
+
+## RLM Deep Analysis (v12.0)
+
+An explicit **"Deep analysis" toggle** in the chat UI (`chat.html` `#rlm-toggle`; `sendRlmAnalysis()` in `chat-init.js` branches off the normal send flow) submits the current question + selected documents to `POST /api/rlm/analyze` (`app/routes/rlm.py`). Documents are picked by clicking them in the documents panel (`rlmSelectedDocs` in `chat-documents.js` syncs the hidden `#rlm-docs` multi-select and highlights picks with a green `.rlm-selected` frame + `✓`); an image can be attached alongside the question. If the toggle cannot start — no documents and no image, or an image without a question — `sendMessage()` clears the checkbox and falls through to the **normal** send flow. The route accepts `multipart/form-data` (`session_id` + `doc_ids` JSON + `text` + optional `file`), enforces authentication, session + document ownership, validates quota/downscales the image, persists the user message (text + image) so it survives page reload, and returns `202` with `task_id`/`position`/`user_message_id`/`resize_notice`.
+
+### Task orchestration
+
+`rlm_analysis` is a slow-worker GPU task: `_classify_queue_fast()` routes it to the slow queue, `_get_model_for_task()` maps it to `reasoning`, and the slow worker holds `_gpu_lock` for the whole task. `_process_rlm_task()` in `app/queue.py`:
+
+1. requests `ensure_vram_for_reasoning()`, then marks the GPU busy for the whole analysis (`ResourceManager.mark_rlm_busy()` / `mark_rlm_idle()`; `_rlm_busy` extends `is_gpu_busy()`, so the v11.5 watchdog-skip guard covers RLM too) and publishes the `loading_reasoning_model` stage;
+2. builds the corpus from the **selected documents only** (text extracted via `extract_text_from_file()`) — not RAG;
+3. if the request carries an attached image (`file_data` in the task payload), requests `ensure_vram_for("multimodal")` and describes it through `MultimodalModule.describe_image_for_rlm()` (new `prompts/{ru,en}/rlm_image.template`), adding the detailed text description to the corpus as a `«Изображение (file_name)»` document; a failed or empty description returns the localised «Unable to recognize the image for deep analysis» error; after the image phase `ensure_vram_for_reasoning()` is re-checked (the multimodal model gets unloaded);
+4. rejects the corpus before any GPU work when its total size exceeds the `RLM_MAX_CORPUS_CHARS` (default 50 000 000 chars) OOM cap — the localized error tells the user to select fewer/smaller documents and the model is never loaded; then runs a reasoning actor loop (`modules/rlm.py:RlmModule.run()`) capped at `RLM_MAX_STEPS` (default 18). The per-host step allowance comes from the resource ladder `_resource_step_budget()` (24 GB+→18, 16 GB→12, 12 GB→10, 8 GB→8, CPU/<8 GB→6); the context window never cuts steps — `_obs_trunc_for_context()` compresses per-step observations instead (down to an 800-char floor) so the trajectory fits 95% of the reasoning `context_length` minus a 1000-token reserve, and a window too small even for a minimal one-observation-per-step trajectory still degrades to 1 step instead of dying with «Request too long». Each step calls the resident reasoning model with the four tools `python` / `llm` / `web_fetch` / `final`; `final(answer)` (or a plain text answer) ends the loop. The **final step is called with no tools at all** — the model physically cannot burn it on another tool call and must produce a text answer (the previous soft nudge was ignorable and runs died at «step limit reached»). `llm()` is a sub-model call capped at `RLM_SUB_MAX_TOKENS` (1024); `web_fetch()` runs a SearXNG search (top 3 results, snippet-based) through the **parent** process, capped at `RLM_WEB_MAX_FETCHES` (5) per analysis. Cancellation (Redis flag) is checked each step.
+
+The whole analysis is **one GPU task**: the reasoning model is JIT-loaded once and kept resident across the actor's turns (its `ttl=1s` reload cost is accepted). On completion the per-step trace (step/tool/args/observation) is stored to the Redis key `rlm_trace:<task_id>` (TTL 3600) and the answer is saved via `_save_and_respond()` with `extra` metadata `model_type="rlm"` / `rlm_trace_task_id` / `rlm_steps`. The DB message carries `model_type="rlm"` (its own 🔬🧠 header emoji), and the trace also persists (as a diagnosable key) when the run ends in an error.
+
+### Sandbox isolation
+
+`app/rlm_sandbox.py:RlmSandbox` executes model-generated code in a persistent forked child process:
+
+- code is AST-whitelisted before execution — `validate_code()` rejects imports, function/class definitions, `with`/`lambda`/`yield`, and dunder access (`FORBIDDEN_NODES` / `FORBIDDEN_NAMES` / `FORBIDDEN attribute`); the child namespace is limited to `SAFE_BUILTINS`;
+- `RLM_CODE_TIMEOUT` (default 15 s, refreshed on each IPC callback) bounds every snippet; on timeout the child is killed. rlimits: address space (2 GB), CPU seconds, zero processes/files/core;
+- the child has **no direct network or filesystem access** — `llm()` and `web_fetch()` are IPC callbacks (`SandboxBroker`) that round-trip to the parent, which executes the tool and streams the result back into the sandbox namespace;
+- `final(answer)` raises an internal signal that ends the run with the answer; observations are truncated to `RLM_OBS_TRUNC` (4000 chars).
+
+### Config, stages & UI
+
+Env vars (`app/config.py`, mirrored in `.env` / `.env.example`): `RLM_ENABLED` (true), `RLM_ACTOR_MODEL` (reasoning), `RLM_MAX_STEPS` (18 — hard ceiling; the ladder and platform decide the real budget), `RLM_TASK_TIMEOUT` (0 — auto-derive the wall-clock deadline from the step budget and platform: GPU 120+90×steps, CPU 240+300×steps seconds; `-1` disables, any positive value is used as-is; on expiry the run ends with the localized «task exceeded the time limit» error and the partial trace is saved), `RLM_CODE_TIMEOUT` (15 s), `RLM_OBS_TRUNC` (4000 — upper bound; the context-fitted value may be lower), `RLM_SUB_MAX_TOKENS` (1024), `RLM_WEB_MAX_FETCHES` (5), `RLM_MAX_CORPUS_CHARS` (50 000 000).
+
+Progress stages stream via `task_progress`: `loading_reasoning_model`, then `rlm_reading` («Читаю документы...» / «Deep analysis: reading documents»), `rlm_step` («🔬 Глубокий анализ: фаза %s», with a per-step counter via `STAGE_COUNTER_KEYS`), `rlm_searching_web` (reuses the existing search label), `rlm_submodel`, and finally `rlm_finalizing`. On completion `appendRlmTraceBlock()` in `events.js` attaches a collapsible «🔬 Deep analysis (N steps)» summary to the last assistant message — the full per-step trace stays in the Redis key and is not rendered yet.
 
 ## Task Cancellation
 
@@ -299,6 +329,21 @@ No backend changes: the pasted file travels through the same `FormData` upload p
 
 **⚡ recovery after task chain**: `events.js` — after every `clearSessionQueue()` call, `setTimeout(fetchQueueStatus, 500)` is scheduled. This polls the server for the next queued task, restoring ⚡ when the next task moves from queue to processing.
 
+## Per-Request Token Usage Counters
+
+Every assistant message header shows real billed tokens between the ⏱️ duration and the 🚀 tokens-per-second segments: `…| ⏱️ 12.4 s | 🔢 (↑45 ↓1 234) ток | 🚀 0,8 ток/с |` (↑ output first, ↓ input, `tokens_unit` msgid — ru «ток» / en «tok»).
+
+**Backend** (`app/queue.py` + `app/utils.py`):
+- `_process_request()` opens ONE thread-local usage account per task (`begin_usage_account()` in `app/utils.py` — `begin/record/finish/current` family) for every LLM task type; bookkeeping-only types (`index_document`, `reindex_all_embeddings`, `fact_extraction_task`, `fact_merge_task`) are excluded and `_process_single_task()` finally drops leftovers.
+- Every LLM call accumulates its real `prompt_tokens`/`completion_tokens` through `_record_prompt_tokens()` in `app/llamacpp_client.py` → `record_usage_for_current()`.
+- Requeued tasks (reasoning, image_gen, video) carry the fast worker's half-account inside `request_data` (`request_id`, `submitted_at`, `usage_accum`; `_requeue_*_task()`), `_process_request()` re-seeds it with the bias on the slow worker.
+- `_save_and_respond()` consumes the account (`finish_usage_account()`): the result dict and `messages.prompt_tokens` (new INTEGER column, `app/database.py` migration) both carry the totals; `process_time` is overridden to the full request duration (`submitted_at` → finish). `consume_usage=False` keeps the account open for multi-message tasks (camera snapshot + description pair; the description consumes the merged totals).
+- Unknown/absent values (legacy rows with `prompt_tokens=NULL`) are stored as NULL and render only the known side.
+
+**Frontend** (`chat-utils.js:tokenStatsHTML()`, shared by history render and live finalize):
+- `tokenStatsHTML()` renders only the known sides (e.g. `🔢 (↑45) ток` when input is unknown); empty/zero totals render nothing.
+- The `window.displayMessage` wrapper in `chat-init.js` must forward ALL positional parameters of the wrapped function — it previously dropped the 19th (`promptTokens`), hiding input tokens in every SSE path. Guard: `tests/test_js_signatures.py` asserts wrapper signature == wrapped signature and positional forwarding.
+
 ## Chat Auto-Scroll
 
 - **`_isLoadingMessages` flag** in `chat-messages.js` prevents N competing async scroll callbacks when loading message history.
@@ -329,11 +374,11 @@ MUST be in a subdirectory with `mmproj-*.gguf` (e.g. `Qwen3VL-8B-Instruct-Q4_K_M
 - `app/slm_import.py` — SLM background import
 - `app/model_config.py` — model configuration
 - `app/config.py` — app configuration (env vars loaded here; both `.env` and `.env.example` must be kept in sync)
-- `app/db.py` — database helpers
+- `app/db.py` — database helpers; `save_message()` returns the real message id via `INSERT … RETURNING id` (`cursor.lastrowid` is always 0 on PostgreSQL/psycopg2)
 - `app/events.py` — SSE event publishing
 - `app/userdb.py` — user database operations
 - `app/validators.py` — input validation
 - `app/cli.py` — Flask CLI commands
 - `app/cameradb.py` — camera rooms CRUD
 - `app/morph.py` — Russian morphology
-- `app/utils.py` — shared utilities: `clean_markdown_for_tts()` strips markdown before TTS synthesis, `estimate_tokens()` estimates token count, `chunk_text()` splits text, `_gguf_scalar()` extracts Python scalars from GGUF reader fields, `translate_sd_error()` translates sd.cpp errors
+- `app/utils.py` — shared utilities: `clean_markdown_for_tts()` strips markdown before TTS synthesis, `estimate_tokens()` estimates token count, `chunk_text()` splits text, `_gguf_scalar()` extracts Python scalars from GGUF reader fields, `translate_sd_error()` translates sd.cpp errors; per-request usage accounts (`begin_usage_account()` / `record_usage_for_current()` / `finish_usage_account()`) feed the message-header token counters

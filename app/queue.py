@@ -29,7 +29,10 @@ from .llamacpp_client import _strip_generic_reasoning, _strip_thinking_tags, str
 from .model_config import get_model_config
 from .tools import MAX_TOOL_ITERATIONS, execute_tool, get_tool_definitions
 from .utils import (
+    begin_usage_account,
+    current_usage_account_id,
     estimate_tokens,
+    finish_usage_account,
     format_prompt,
     get_current_time_in_timezone,
     get_current_time_in_timezone_for_db,
@@ -122,6 +125,9 @@ class RedisRequestQueue:
         # NEW: Serialize ALL GPU-heavy operations globally to prevent OOM
         self._gpu_lock = threading.Lock()
         self._video_unload_lock = threading.Lock()
+        # Shutdown event for graceful termination (created here so
+        # stop_workers() is safe even when workers were never started, e.g. CLI).
+        self._shutdown_event = threading.Event()
 
         # Clean stale processing entries from previous runs (e.g. after container restart).
         # Workers are recreated — old in-flight tasks are orphaned and would show ⚡ forever.
@@ -168,8 +174,6 @@ class RedisRequestQueue:
             return
         self._workers_started = True
         self.app.logger.info("RedisRequestQueue: starting fast and slow workers")
-        # Shutdown event for graceful termination
-        self._shutdown_event = threading.Event()
 
         # NEW: Global GPU serialization locks
         if not hasattr(self, "_gpu_lock"):
@@ -188,6 +192,8 @@ class RedisRequestQueue:
 
     def stop_workers(self, timeout=30):
         """Signal workers to stop and wait for them to finish."""
+        if not getattr(self, "_workers_started", False):
+            return
         self.app.logger.info("RedisRequestQueue: signaling workers to stop")
         self._shutdown_event.set()
         if hasattr(self, "_fast_worker_thread"):
@@ -227,6 +233,8 @@ class RedisRequestQueue:
             return "fast"
         # Image generation (re-queued from router) is slow
         if req_type == "image_gen":
+            return "slow"
+        if req_type == "rlm_analysis":
             return "slow"
         if req_type == "reasoning_task":
             return "slow"
@@ -373,6 +381,8 @@ class RedisRequestQueue:
             return "multimodal"
         if req_type == "image_gen":
             return "multimodal"
+        if req_type == "rlm_analysis" or task_type == "rlm_analysis":
+            return "reasoning"
         if req_type == "reasoning_task":
             return "reasoning"
 
@@ -591,6 +601,10 @@ class RedisRequestQueue:
             self.redis.expire(self.results_key, self.app.config.get("REDIS_RESULT_TTL", 3600))
             self._publish_result_event(task, "error", {"error": str(e), "session_id": task.get("session_id")})
         finally:
+            # Drop any leftover usage account (early error return, requeue that
+            # did not consume it). The thread-local must not leak into the next
+            # task processed by this worker thread.
+            finish_usage_account()
             pipe = self.redis.pipeline()
             pipe.hdel(processing_key, task_id)
             user_id = task.get("user_id")
@@ -907,15 +921,32 @@ class RedisRequestQueue:
         extra: dict | None = None,
         response_style: str = "neutral",
         user_id: str | None = None,
+        consume_usage: bool = True,
     ) -> dict[str, Any]:
         """Save assistant message to DB and return response dict.
 
         For error replies (is_error=True) the response_style and
         completion_tokens fields are intentionally omitted from the result
         dict so the client does not render 🚀/🤖/⏱️ in the message header.
+
+        ``consume_usage=False`` keeps the per-request usage account open for
+        later messages of the same task (camera: snapshot + description pair);
+        the last message consumes the totals.
         """
+        # Consume the per-request usage account (real token counters wired by
+        # the chat/reasoning/RLM processors). When it carries the submission
+        # time, the reported duration is the FULL request time (queue wait +
+        # load + generation), matching the seconds shown in the live header.
+        usage = finish_usage_account() if consume_usage else None
+        if usage and usage.get("completion_tokens"):
+            completion_tokens = usage["completion_tokens"]
+            prompt_tokens = usage["prompt_tokens"] or 0
+        else:
+            completion_tokens = estimate_tokens(text) if text else 0
+            prompt_tokens = None
+        if usage and usage.get("submitted_at"):
+            process_time = round(time.time() - usage["submitted_at"], 1)
         resp_time = process_time if isinstance(process_time, dict) else str(process_time)
-        completion_tokens = estimate_tokens(text) if text else 0
         msg_id = save_message(
             session_id,
             "assistant",
@@ -929,6 +960,7 @@ class RedisRequestQueue:
             response_style=response_style,
             user_id=user_id,
             completion_tokens=completion_tokens,
+            prompt_tokens=prompt_tokens,
             model_type=(extra or {}).get("model_type"),
         )
         result = self._build_success_response(
@@ -939,10 +971,12 @@ class RedisRequestQueue:
             # the model name (e.g. "system") — no ⏱️/🚀/🤖 decorations.
             result.pop("response_style", None)
             result.pop("completion_tokens", None)
+            result.pop("prompt_tokens", None)
             result.pop("response_time", None)
         else:
             result["response_style"] = response_style
             result["completion_tokens"] = completion_tokens
+            result["prompt_tokens"] = prompt_tokens
         return result
 
     # ── VRAM guard & GPU management ──────────────────────────────────────
@@ -1449,6 +1483,18 @@ class RedisRequestQueue:
             request_data["file_type"] = file_type
             request_data["file_name"] = file_name
 
+        # Carry the router/multimodal-phase usage into the re-queued task so
+        # tokens spent before the video generation merge into the same bill.
+        account_id = current_usage_account_id()
+        usage = finish_usage_account()
+        if account_id:
+            request_data["request_id"] = account_id
+            request_data["submitted_at"] = (usage or {}).get("submitted_at") or time.time()
+            request_data["usage_accum"] = {
+                "prompt_tokens": (usage or {}).get("prompt_tokens", 0),
+                "completion_tokens": (usage or {}).get("completion_tokens", 0),
+            }
+
         new_request_id, position_info = self.add_request(user_id, session_id, request_data, user_class, lang=lang)
         self.app.logger.info(
             f"Re-queued video task {new_request_id} for session {session_id} (position {position_info['position']})"
@@ -1479,6 +1525,17 @@ class RedisRequestQueue:
             "preview": (query[:50] + "...") if query else self.app.modules["base"]._("Image request", lang=lang),
             "response_style": response_style,
         }
+        # Carry the router-phase usage into the re-queued task so the fast
+        # worker's router tokens merge into the same bill (see _process_request).
+        account_id = current_usage_account_id()
+        usage = finish_usage_account()
+        if account_id:
+            request_data["request_id"] = account_id
+            request_data["submitted_at"] = (usage or {}).get("submitted_at") or time.time()
+            request_data["usage_accum"] = {
+                "prompt_tokens": (usage or {}).get("prompt_tokens", 0),
+                "completion_tokens": (usage or {}).get("completion_tokens", 0),
+            }
         new_request_id, position_info = self.add_request(user_id, session_id, request_data, user_class, lang=lang)
         self.app.logger.info(
             f"Re-queued image task {new_request_id} for session {session_id} (position {position_info['position']})"
@@ -1514,6 +1571,18 @@ class RedisRequestQueue:
             "preview": (query[:50] + "...") if query else self.app.modules["base"]._("Reasoning request", lang=lang),
             "response_style": response_style,
         }
+        # Carry the original request identity + usage into the re-queued task so
+        # the slow worker can account router + generation tokens together and
+        # report the full request duration (submission → answer).
+        account_id = current_usage_account_id()
+        usage = finish_usage_account()
+        if account_id:
+            request_data["request_id"] = account_id
+            request_data["submitted_at"] = (usage or {}).get("submitted_at") or time.time()
+            request_data["usage_accum"] = {
+                "prompt_tokens": (usage or {}).get("prompt_tokens", 0),
+                "completion_tokens": (usage or {}).get("completion_tokens", 0),
+            }
         if rag_context:
             request_data["rag_context"] = rag_context
             request_data["rag_source"] = rag_source
@@ -1529,6 +1598,211 @@ class RedisRequestQueue:
             "position": position_info["position"],
             "estimated_wait": position_info["estimated_seconds"],
         }
+
+    def add_rlm_task(
+        self,
+        user_id: str,
+        session_id: str,
+        doc_ids: list[str],
+        question: str,
+        user_class: int = 2,
+        lang: str = "ru",
+        image_data: str | None = None,
+        image_type: str | None = None,
+        image_name: str | None = None,
+    ) -> tuple[str, dict[str, Any]]:
+        """Enqueue an RLM deep-analysis task on the slow queue.
+
+        An attached image is passed as base64 in the task payload; the slow
+        worker describes it with the multimodal model and adds the description
+        to the analysis corpus as a document named 'Изображение (name)'.
+        """
+        request_data: dict[str, Any] = {
+            "type": "rlm_analysis",
+            "text": question,
+            "doc_ids": doc_ids,
+            "preview": (question[:50] + "...") if question else self.app.modules["base"]._("Deep analysis", lang=lang),
+        }
+        if image_data:
+            request_data["file_data"] = image_data
+            request_data["file_type"] = image_type or "image/jpeg"
+            request_data["file_name"] = image_name or self.app.modules["base"]._("Image", lang=lang)
+        return self.add_request(user_id, session_id, request_data, user_class, lang=lang)
+
+    def _process_rlm_task(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Run an explicit deep-analysis (RLM) task on the slow worker."""
+        from app.db import get_document
+        from app.resource_manager import get_resource_manager
+        from app.utils import extract_text_from_file
+        from modules.rlm import RlmModule
+
+        request_data = task.get("data", {})
+        session_id = task["session_id"]
+        user_id = task["user_id"]
+        lang = task.get("lang", "ru")
+        question = request_data.get("text", "")
+        doc_ids = request_data.get("doc_ids", [])
+
+        # The usage account is opened in _process_request (single entry point);
+        # image description, RLM sub-calls and the final answer all accumulate
+        # into it.
+
+        if not doc_ids and not request_data.get("file_data"):
+            return self._build_error_response(
+                session_id, self.app.modules["base"]._("No documents selected for analysis", lang), 0, lang
+            )
+
+        self._publish_stream_event(task, "task_progress", {"stage": "loading_reasoning_model"})
+
+        def on_stage(stage: str, extra: dict | None = None) -> None:
+            payload = {"stage": stage}
+            if extra:
+                payload.update(extra)
+            self._publish_stream_event(task, "task_progress", payload)
+
+        on_stage("rlm_reading", None)
+
+        corpus: dict[str, str] = {}
+        documents_folder = self.app.config["DOCUMENTS_FOLDER"]
+        for doc_id in doc_ids:
+            doc = get_document(doc_id, user_id)
+            if not doc or not doc.get("file_path"):
+                continue
+            full_path = os.path.join(documents_folder, doc["file_path"])
+            text = extract_text_from_file(full_path)
+            if text:
+                corpus[doc.get("filename", doc_id)] = text
+
+        rm = get_resource_manager()
+        if not rm:
+            return self._build_error_response(
+                session_id,
+                self.app.modules["base"]._("Reasoning model unavailable: GPU memory check failed. Try again.", lang),
+                0,
+                lang,
+            )
+
+        # Attached image: describe it with the multimodal model and treat the
+        # description as a corpus document named 'Изображение (file)'.
+        if request_data.get("file_data"):
+            if not rm.ensure_vram_for("multimodal"):
+                return self._build_error_response(
+                    session_id,
+                    self.app.modules["base"]._(
+                        "Reasoning model unavailable: GPU memory check failed. Try again.", lang
+                    ),
+                    0,
+                    lang,
+                )
+            multimodal = self.app.modules.get("multimodal")
+            if not multimodal:
+                return self._build_error_response(
+                    session_id,
+                    self.app.modules["base"]._("Unable to recognize the image for deep analysis", lang),
+                    0,
+                    lang,
+                )
+            description, describe_error = multimodal.describe_image_for_rlm(request_data["file_data"], lang)
+            if describe_error or not description:
+                message = describe_error or self.app.modules["base"]._(
+                    "Unable to recognize the image for deep analysis", lang
+                )
+                return self._build_error_response(session_id, message, 0, lang)
+            image_name = request_data.get("file_name") or self.app.modules["base"]._("Image", lang=lang)
+            corpus[f"Изображение ({image_name})"] = description
+
+        if not corpus:
+            return self._build_error_response(
+                session_id, self.app.modules["base"]._("Selected documents contain no extractable text", lang), 0, lang
+            )
+
+        limit_chars = self.app.config.get("RLM_MAX_CORPUS_CHARS", 50_000_000)
+        if sum(len(text) for text in corpus.values()) > limit_chars:
+            return self._build_error_response(
+                session_id,
+                self.app.modules["base"]
+                ._(
+                    "The selected documents are too large for deep analysis "
+                    "(limit: {limit} characters). Select fewer or smaller documents."
+                )
+                .format(limit=limit_chars),
+                0,
+                lang,
+            )
+
+        if not rm.ensure_vram_for_reasoning():
+            return self._build_error_response(
+                session_id,
+                self.app.modules["base"]._("Reasoning model unavailable: GPU memory check failed. Try again.", lang),
+                0,
+                lang,
+            )
+
+        rm.mark_rlm_busy()
+        request_start = task.get("timestamp", time.time())
+        try:
+            module = self.app.modules.get("rlm") or RlmModule(self.app)
+
+            result = module.run(
+                task=task,
+                question=question,
+                corpus=corpus,
+                user_id=user_id,
+                session_id=session_id,
+                lang=lang,
+                on_stage=on_stage,
+                is_cancelled=lambda: self._is_task_cancelled(task["id"]),
+            )
+        finally:
+            rm.mark_rlm_idle()
+
+        # Total time from request submission (queue wait + document reading +
+        # image description + model load + analysis), not just the actor loop.
+        elapsed = round(time.time() - request_start, 1)
+        on_stage("rlm_finalizing", None)
+
+        trace_payload = [
+            {"step": t.step, "tool": t.tool, "args": t.args, "observation": t.observation} for t in result.trace
+        ]
+        if result.trace:
+            self.redis.setex(f"rlm_trace:{task['id']}", 3600, json.dumps(trace_payload))
+
+        if result.error == "cancelled":
+            self._publish_stream_event(task, "stream_cancelled")
+            return {"status": "cancelled", "session_id": session_id}
+        if result.error and not result.answer:
+            local_errors = {
+                "step limit reached": self.app.modules["base"]._(
+                    "Deep analysis: the model did not reach a final answer within the step limit.", lang
+                ),
+                "empty final answer": self.app.modules["base"]._(
+                    "Deep analysis: the model produced an empty answer.", lang
+                ),
+                "task timeout": self.app.modules["base"]._(
+                    "Deep analysis: the task exceeded the time limit. A partial trace has been saved.", lang
+                ),
+            }
+            error_msg = local_errors.get(result.error, result.error)
+            return self._build_error_response(session_id, error_msg, elapsed, lang)
+        if not result.answer.strip():
+            # Empty answer without an error flag (e.g. the model burned every
+            # step on failed tool calls) — surface a real error instead of
+            # saving a blank assistant message.
+            return self._build_error_response(
+                session_id,
+                self.app.modules["base"]._("No response from reasoning model", lang),
+                elapsed,
+                lang,
+            )
+
+        return self._save_and_respond(
+            session_id,
+            result.answer,
+            self._get_model_name("reasoning") or "reasoning",
+            elapsed,
+            extra={"model_type": "rlm", "rlm_trace_task_id": task["id"], "rlm_steps": result.steps},
+            user_id=user_id,
+        )
 
     def _process_image_gen_request(self, task: dict[str, Any]) -> dict[str, Any]:
         """Handle an image generation task from the slow queue."""
@@ -1553,6 +1827,10 @@ class RedisRequestQueue:
         user_id = task["user_id"]
         lang = task.get("lang", "ru")
         response_style = request_data.get("response_style", "neutral")
+
+        # The usage account (with the router-accumulated bias carried in
+        # request_data) is opened in _process_request; generation below
+        # accumulates into the same bill and reports the full duration.
 
         # Pre-operation monitoring
         self._log_gpu_state_before_op("reasoning", 12000)
@@ -2190,6 +2468,8 @@ class RedisRequestQueue:
                 "model_type": "camera",
             },
             response_style=response_style,
+            # The description message below consumes the shared usage account.
+            consume_usage=False,
         )
 
         messages = [first_message]
@@ -2280,6 +2560,8 @@ class RedisRequestQueue:
                 "model_type": "camera",
             },
             response_style=response_style,
+            # The streamed description below consumes the shared usage account.
+            consume_usage=False,
         )
 
         # No text or no multimodal → return both together (original behavior)
@@ -2689,6 +2971,11 @@ class RedisRequestQueue:
         """
         # Synthetic task for legacy non-streaming paths that never receive one
         effective_task = task or {"id": uuid.uuid4().hex, "user_id": user_id, "session_id": session_id}
+
+        # The per-request usage account was opened in _process_request (covers
+        # every task type); the router call below and every LLM call in the
+        # generation phase accumulate against it, and _save_and_respond consumes
+        # the totals.
 
         router_start = time.time()
         if task:
@@ -3249,6 +3536,21 @@ class RedisRequestQueue:
         task_type = task.get("type") or task.get("data", {}).get("type")
         self.app.logger.info(f"_process_request: task_type={task_type}, task_id={task.get('id')}")
 
+        # One per-request usage account for EVERY task type: the router call,
+        # RAG, generation and any re-queued continuation all accumulate against
+        # it, and _save_and_respond consumes the totals. Re-queued tasks carry
+        # the fast worker's half-account (request_id/usage_accum/submitted_at)
+        # so phases merge into the same bill. Indexing/merge tasks do not call
+        # LLMs or _save_and_respond — their accounts are dropped by the
+        # _process_single_task finally clause.
+        if task_type not in ("index_document", "reindex_all_embeddings", "fact_extraction_task", "fact_merge_task"):
+            _requeue_meta = task.get("data", {})
+            begin_usage_account(
+                _requeue_meta.get("request_id") or task.get("id") or uuid.uuid4().hex,
+                bias=_requeue_meta.get("usage_accum") or None,
+                submitted_at=_requeue_meta.get("submitted_at") or task.get("timestamp"),
+            )
+
         if task_type == "index_document":
             self.app.logger.info(f"_process_request: calling _process_index_task for task {task.get('id')}")
             return self._process_index_task(task)
@@ -3262,6 +3564,8 @@ class RedisRequestQueue:
             return self._process_image_gen_request(task)
         if task_type == "reasoning_task":
             return self._process_reasoning_request(task)
+        if task_type == "rlm_analysis":
+            return self._process_rlm_task(task)
         if task_type == "fact_extraction_task":
             return self._process_fact_extraction(task)
         if task_type == "fact_merge_task":
@@ -4057,6 +4361,11 @@ class RedisRequestQueue:
         mapping = {"type": progress_type, "timestamp": str(time.time())}
         if progress_type == "task_progress":
             mapping["stage"] = data.get("stage", "")
+            # Generic counter (step/chunks/results) so the restored label can
+            # fill the "%s" placeholder instead of showing it unsubstituted.
+            count = data.get("step", data.get("chunks", data.get("results")))
+            if count is not None:
+                mapping["count"] = str(count)
         elif progress_type in ("video_step", "image_step"):
             mapping["step"] = str(data.get("step", 0))
             mapping["total"] = str(data.get("total", 0))

@@ -85,6 +85,10 @@
         </div>
 
         <!-- Message input area -->
+        <div class="rlm-controls">
+            <label title="{{ _('Select documents') }}"><input type="checkbox" id="rlm-toggle"> 🔬 {{ _('Deep analysis') }}<span id="rlm-count"></span></label>
+            <select id="rlm-docs" multiple hidden></select>
+        </div>
         <div class="message-input">
             <input type="text" id="message-input" placeholder="{{ _('Enter message...') }}" autocomplete="off">
             <button id="voice-record-button" class="voice-record-button" title="{{ _('Record voice message') }}">🎤</button>
@@ -157,6 +161,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'copy_failed': {{ _("copy_failed")|tojson }},
     'copy_text': {{ _("copy_text")|tojson }},
     'open_html': {{ _("open_html")|tojson }},
+    'open_html_unavailable': {{ _("open_html_unavailable")|tojson }},
     'processing': {{ _("processing")|tojson }},
     'queued': {{ _("queued")|tojson }},
     'new_response': {{ _("new_response")|tojson }},
@@ -173,6 +178,7 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'record_voice_message': {{ _("Record voice message")|tojson }},
     'seconds_suffix': {{ _('seconds_suffix')|tojson }},
     'tps_suffix': {{ _('tps_suffix')|tojson }},
+    'tokens_unit': {{ _('tokens_unit')|tojson }},
     'byte_abbr': {{ _('byte_abbr')|tojson }},
     'kb_abbr': {{ _('kb_abbr')|tojson }},
     'mb_abbr': {{ _('mb_abbr')|tojson }},
@@ -225,6 +231,12 @@ window.TRANSLATIONS = Object.assign({}, window.TRANSLATIONS, {
     'stage_getting_time': {{ _('Getting time...')|tojson }},
     'stage_calculating': {{ _('Calculating...')|tojson }},
     'stage_calculating_date': {{ _('Calculating date...')|tojson }},
+    'stage_rlm_reading': {{ _('Deep analysis: reading documents')|tojson }},
+    'stage_rlm_step': {{ _('Deep analysis: phase %s')|tojson }},
+    'stage_rlm_searching_web': {{ _('Deep analysis: searching the web')|tojson }},
+    'stage_rlm_submodel': {{ _('Deep analysis: calling sub-model')|tojson }},
+    'stage_rlm_finalizing': {{ _('Deep analysis: composing the answer')|tojson }},
+    'rlm_trace_summary': {{ _('Deep analysis (%s steps)')|tojson }},
     'stage_elapsed_s': {{ _('s')|tojson }},
     'stage_capturing_snapshot': {{ _('Capturing snapshot...')|tojson }},
     'step': {{ _('Step')|tojson }},

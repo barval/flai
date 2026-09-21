@@ -127,6 +127,8 @@ def api_task_progress(task_id: str) -> flask.Response | tuple[flask.Response, in
     progress: dict[str, Any] = {"type": data.get("type", "task_progress")}
     if data.get("stage"):
         progress["stage"] = data["stage"]
+    if data.get("count"):
+        progress["count"] = int(data["count"])
     if data.get("step"):
         progress["step"] = int(data["step"])
         progress["total"] = int(data.get("total", 0))

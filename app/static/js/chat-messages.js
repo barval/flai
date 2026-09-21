@@ -248,7 +248,8 @@ function loadMessages(sessionId) {
                             msg.response_style,
                             msg.completion_tokens,
                             msg.file_size,
-                            msg.model_type
+                            msg.model_type,
+                            msg.prompt_tokens
                         );
                         lastUserMessage = null;
                         }
@@ -293,6 +294,7 @@ function getResponseStyleEmoji(style) {
 var MODEL_EMOJI = {
     chat: '\u{1F4AC}',
     reasoning: '\u{1F9E0}',
+    rlm: '\u{1F52C}\u{1F9E0}',
     image_gen: '\u{1F58C}\u{FE0F}',
     image_edit: '\u{1F3A8}',
     video: '\u{1F3A5}',
@@ -306,7 +308,7 @@ function getModelEmoji(modelType) {
     return (modelType && MODEL_EMOJI[modelType]) ? MODEL_EMOJI[modelType] + ' ' : '';
 }
 
-function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType) {
+function displayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType, promptTokens) {
     if (window.IS_RELOADING) {
         dlog('displayMessage: Skipping - IS_RELOADING');
         return;
@@ -488,6 +490,10 @@ function displayMessage(role, content, fileData, fileType, fileName, filePath, t
         if (duration && !isSystemError) {
             const langSuffix = t('seconds_suffix');
             headerExtraHTML += ' <span class="text-muted">| ⏱️ ' + duration + langSuffix + ' |</span>';
+
+            // Token usage counters (input ↓ / output ↑) across all LLM calls
+            // that billed this request — shown between ⏱️ time and 🚀 tps.
+            headerExtraHTML += tokenStatsHTML(promptTokens, completionTokens);
 
             // Tokens per second
             if (completionTokens) {
@@ -755,23 +761,18 @@ async function handleCopyClick(button, codeElement) {
 }
 
 function handleOpenHtmlClick(codeBlock) {
-    const code = codeBlock.textContent || codeBlock.innerText || '';
-    const trimmed = code.trim();
-    if (!trimmed) return;
-
-    let html;
-    if (/<html[\s>]/i.test(trimmed)) {
-        html = trimmed;
-    } else if (/<(!DOCTYPE|!doctype)[\s>]/i.test(trimmed)) {
-        html = trimmed;
-    } else {
-        html = '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="UTF-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0">\n</head>\n<body>\n' + trimmed + '\n</body>\n</html>';
+    // Server-side preview: serves the message's HTML block with a relaxed
+    // CSP. A blob: URL would inherit the chat's strict CSP and block CDN
+    // imports (blank screen for e.g. Three.js pages). Streaming messages get
+    // their data-message-id on task completion (events.js), loaded messages
+    // get it from the DB (displayMessage).
+    const messageEl = codeBlock.closest('.assistant-message, .bot-message');
+    const messageId = messageEl?.dataset?.messageId;
+    if (!messageId) {
+        alert(t('open_html_unavailable'));
+        return;
     }
-
-    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    window.open(`/api/html-preview/${messageId}`, '_blank');
 }
 
 function addCopyButtonsToMessage(messageElement) {

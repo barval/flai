@@ -261,6 +261,16 @@ class TestWorkerStartGuard:
                 RedisRequestQueue.start_worker(queue)
                 assert thread_cls.call_count == 0  # no new threads on retry
 
+    def test_stop_workers_without_start_returns_cleanly(self, mock_app, mock_redis):
+        """stop_workers() must not crash when workers were never started (CLI atexit path)."""
+        from app.queue import RedisRequestQueue
+
+        with patch("app.queue.redis.from_url", return_value=mock_redis):
+            queue = RedisRequestQueue(mock_app, start_workers=False)
+        assert hasattr(queue, "_shutdown_event")
+        queue.stop_workers(timeout=3)  # wsgi.py atexit calls this on CLI exit
+        assert not hasattr(queue, "_fast_worker_thread")
+
     def test_is_cli_process_detects_flask(self):
         """_is_cli_process() is True when argv[0] ends with 'flask'."""
         from app import _is_cli_process

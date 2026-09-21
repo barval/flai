@@ -171,13 +171,13 @@ deploy_local() {
     detect_compose
     init_env "docker-compose-local.yml"
 
-    # Check/create Docker network
-    if ! docker network ls --format '{{.Name}}' | grep -q "^flai_flai_network$"; then
-        print_warn "Docker network 'flai_flai_network' not found. Creating..."
-        docker network create flai_flai_network
+    # Check/create Docker network (FLAI's compose declares it as `flai_network`)
+    if ! docker network ls --format '{{.Name}}' | grep -q "^flai_network$"; then
+        print_warn "Docker network 'flai_network' not found. Creating..."
+        docker network create flai_network
         print_info "Network created."
     else
-        print_info "Docker network 'flai_flai_network' exists."
+        print_info "Docker network 'flai_network' exists."
     fi
 
     # Build

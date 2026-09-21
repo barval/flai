@@ -25,38 +25,43 @@ docker-compose logs -f
 
 ## Voice Models
 
-### Download Russian Voices
+The service loads voices from `voice_map` in `app.py` — the model files must exist in `services/piper/models/` (mounted as `/app/models`):
+
+| Language | Gender | Model | Files |
+|----------|--------|-------|-------|
+| Russian | male | `ru_RU-dmitri-medium` | `.onnx` + `.onnx.json` |
+| Russian | female | `ru_RU-irina-medium` | `.onnx` + `.onnx.json` |
+| English | male | `en_US-ryan-medium` | `.onnx` + `.onnx.json` |
+| English | female | `en_US-ljspeech-medium` | `.onnx` + `.onnx.json` |
+
+The automated download script fetches exactly these four voices:
 
 ```bash
-# Male voice (ru_RU-dmitri)
-wget -O piper_models/ru_RU-dmitri-medium.tar.gz \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.tar.gz
-
-# Female voice (ru_RU-irina)
-wget -O piper_models/ru_RU-irina-medium.tar.gz \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.tar.gz
+./download-voices.sh        # writes .onnx/.onnx.json into services/piper/piper_models/
 ```
 
-### Download English Voices
+Manual download (raw files, no archives — Piper needs `.onnx` + `.onnx.json` side by side):
 
 ```bash
-# Male voice (en_US-lessac)
-wget -O piper_models/en_US-lessac-medium.tar.gz \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.tar.gz
+# Russian male
+wget -P piper_models \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/dmitri/medium/ru_RU-dmitri-medium.onnx.json
 
-# Female voice (en_US-amy)
-wget -O piper_models/en_US-amy-medium.tar.gz \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/amy/medium/en_GB-amy-medium.tar.gz
-```
+# Russian female
+wget -P piper_models \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/ru_RU-irina-medium.onnx.json
 
-### Extract Models
+# English male
+wget -P piper_models \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx.json
 
-```bash
-cd piper_models
-tar -xzf ru_RU-dmitri-medium.tar.gz
-tar -xzf ru_RU-irina-medium.tar.gz
-tar -xzf en_US-lessac-medium.tar.gz
-tar -xzf en_GB-amy-medium.tar.gz
+# English female
+wget -P piper_models \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/medium/en_US-ljspeech-medium.onnx.json
 ```
 
 ## Configuration
@@ -66,10 +71,9 @@ tar -xzf en_GB-amy-medium.tar.gz
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PIPER_PORT` | `8888` | Port for TTS API |
-| `PIPER_VOICE_RU_MALE` | `ru_RU-dmitri-medium` | Russian male voice model |
-| `PIPER_VOICE_RU_FEMALE` | `ru_RU-irina-medium` | Russian female voice model |
-| `PIPER_VOICE_EN_MALE` | `en_US-lessac-medium` | English male voice model |
-| `PIPER_VOICE_EN_FEMALE` | `en_GB-amy-medium` | English female voice model |
+| `PIPER_MODEL_DIR` | `/app/models` | Directory with `.onnx`/`.onnx.json` voice files (set in the container) |
+
+The voice per request is chosen by `language` + `gender` in the API payload (see `voice_map` in `app.py`) — there are no per-voice env variables. An unknown combination falls back to the male voice of the same language.
 
 ### Ports
 
@@ -100,11 +104,13 @@ If deploying Piper on a separate server:
 
 ### Synthesize Speech
 
+The endpoint takes `text`, optional `language` (`en` default) and `gender` (`male` default), and returns **MP3** audio:
+
 ```bash
 curl -X POST http://localhost:8888/tts \
   -H "Content-Type: application/json" \
-  -d '{"text": "Hello world", "speaker": "ru_RU-dmitri-medium"}' \
-  --output speech.wav
+  -d '{"text": "Привет, мир", "language": "ru", "gender": "male"}' \
+  --output speech.mp3
 ```
 
 ## Health Check
@@ -154,9 +160,9 @@ docker-compose up -d
    ls -la piper_models/
    ```
 
-2. Verify model format (should have .onnx and .json files):
+2. Verify model format (flat files, `.onnx` + matching `.onnx.json` side by side):
    ```bash
-   ls piper_models/ru_RU-dmitri-medium/
+   ls piper_models/ | grep ru_RU-dmitri
    ```
 
 ### Connection Refused

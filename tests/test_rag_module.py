@@ -79,3 +79,44 @@ class TestRagModule:
 
             assert prompt is not None
             assert len(prompt) > 0
+
+    def test_get_embedding_retries_on_transient_failure(self, mock_app):
+        """A transient llama-swap failure (e.g. 'group is shutting down') must
+        not silently kill the RAG search: _get_embedding retries once before
+        giving up."""
+        import time as time_module
+
+        from modules.rag import RagModule
+
+        with patch("modules.rag.QdrantClient") as mock_client:
+            mock_client.return_value.get_collections.return_value = MagicMock(collections=[])
+
+            module = RagModule(mock_app)
+            module.llamacpp = Mock()
+            module.llamacpp.get_embeddings.side_effect = [None, [[0.1, 0.2]]]
+            module.logger = Mock()
+            sleep_calls = []
+
+            with patch.object(time_module, "sleep", side_effect=lambda s: sleep_calls.append(s)):
+                emb = module._get_embedding("query text")
+
+            assert emb == [0.1, 0.2]
+            assert module.llamacpp.get_embeddings.call_count == 2
+            assert sleep_calls == [2]
+
+    def test_get_embedding_returns_none_after_single_failure_when_retry_also_fails(self, mock_app):
+        from modules.rag import RagModule
+
+        with patch("modules.rag.QdrantClient") as mock_client:
+            mock_client.return_value.get_collections.return_value = MagicMock(collections=[])
+
+            module = RagModule(mock_app)
+            module.llamacpp = Mock()
+            module.llamacpp.get_embeddings.side_effect = [None, None]
+            module.logger = Mock()
+            import time as time_module
+
+            with patch.object(time_module, "sleep"):
+                emb = module._get_embedding("query text")
+            assert emb is None
+            assert module.llamacpp.get_embeddings.call_count == 2

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FLAI v11.5 — Скрипт развёртывания на одном сервере
+# FLAI v12.0 — Скрипт развёртывания на одном сервере
 
 set -euo pipefail
 
@@ -686,7 +686,7 @@ build_and_launch() {
     local STATUS
     STATUS=$(curl -s http://localhost:5000/health 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))" 2>/dev/null || echo "недоступен")
     if [[ "$STATUS" == "ok" ]]; then
-        info "FLAI v11.5 запущен! Откройте http://localhost:5000 в браузере."
+        info "FLAI v12.0 запущен! Откройте http://localhost:5000 в браузере."
     else
         warn "Проверка здоровья: $STATUS — проверьте 'docker compose logs' для деталей."
     fi
@@ -702,7 +702,7 @@ run_tests() {
 # ── Справка ──
 usage() {
     cat <<'USAGE'
-FLAI v11.5 — Скрипт развёртывания
+FLAI v12.0 — Скрипт развёртывания
 
 Использование: ./deploy-ru.sh [ОПЦИИ]
 
@@ -784,7 +784,7 @@ VOICE_BACKEND=""
 # ── Основной запуск ──
 main() {
     echo "============================================"
-    echo "  FLAI v11.5 — Скрипт развёртывания"
+    echo "  FLAI v12.0 — Скрипт развёртывания"
     echo "============================================"
     echo ""
 

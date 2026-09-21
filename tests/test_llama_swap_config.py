@@ -467,6 +467,70 @@ class TestWriteConfig:
         result = gen.write_config("/nonexistent/dir/config.yaml")
         assert result is False
 
+    @patch("app.llama_swap_config.get_model_config")
+    @patch("app.llama_swap_config.os.path.exists")
+    def test_write_unchanged_content_does_not_touch_file(self, mock_exists, mock_get_config):
+        """Rewriting identical content must not update mtime — llama-swap's
+        -watch-config reloads on every write and kills running model groups."""
+        import time as time_module
+
+        def config_side_effect(module):
+            return _mock_config(module, model_path=None)
+
+        mock_get_config.side_effect = config_side_effect
+        mock_exists.return_value = True
+
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            gen = LlamaSwapConfigGenerator()
+            assert gen.write_config(tmp_path) is True
+            first_mtime = os.path.getmtime(tmp_path)
+            time_module.sleep(0.02)
+            assert gen.write_config(tmp_path) is True
+            assert os.path.getmtime(tmp_path) == first_mtime
+        finally:
+            os.unlink(tmp_path)
+
+    @patch("app.llama_swap_config.get_model_config")
+    @patch("app.llama_swap_config.os.path.exists")
+    def test_write_changed_content_rewrites_file(self, mock_exists, mock_get_config):
+        """Different content (e.g. model changed in admin) must still be written."""
+        import time as time_module
+
+        def config_side_effect(module):
+            return _mock_config(module, model_path=None)
+
+        mock_get_config.side_effect = config_side_effect
+        mock_exists.return_value = True
+
+        with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            gen = LlamaSwapConfigGenerator()
+            assert gen.write_config(tmp_path) is True
+            first_mtime = os.path.getmtime(tmp_path)
+            time_module.sleep(0.02)
+            with open(tmp_path) as f:
+                first_content = f.read()
+
+            # Change a model parameter -> generated YAML must differ
+            def changed_config(module):
+                cfg = _mock_config(module, model_path=None)
+                if module == "reasoning":
+                    cfg["context_length"] = 9999
+                return cfg
+
+            mock_get_config.side_effect = changed_config
+            assert gen.write_config(tmp_path) is True
+            with open(tmp_path) as f:
+                assert f.read() != first_content
+            assert os.path.getmtime(tmp_path) > first_mtime
+        finally:
+            os.unlink(tmp_path)
+
 
 class TestGenerateAndWrite:
     @patch("app.llama_swap_config.LlamaSwapConfigGenerator.write_config", return_value=True)

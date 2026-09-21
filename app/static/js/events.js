@@ -266,12 +266,18 @@ const STAGE_LABEL_KEYS = {
     getting_time: 'stage_getting_time',
     calculating: 'stage_calculating',
     calculating_date: 'stage_calculating_date',
+    rlm_reading: 'stage_rlm_reading',
+    rlm_step: 'stage_rlm_step',
+    rlm_searching_web: 'stage_rlm_searching_web',
+    rlm_submodel: 'stage_rlm_submodel',
+    rlm_finalizing: 'stage_rlm_finalizing',
 };
 
 // Counter stages reuse the base stage translation with a "%s" placeholder.
 const STAGE_COUNTER_KEYS = {
     searching_documents: 'stage_docs_found',
     searching_web: 'stage_web_results',
+    rlm_step: 'stage_rlm_step',
 };
 
 function getStageLabel(stage, count) {
@@ -289,7 +295,7 @@ function onTaskProgress(data) {
     if (!data.stage) return;
     dlog('onTaskProgress:', data.stage);
 
-    _updateProgressElement(data.task_id, data.session_id, getStageLabel(data.stage, data.results || data.chunks));
+    _updateProgressElement(data.task_id, data.session_id, getStageLabel(data.stage, data.results || data.chunks || data.step || data.count));
     _showHeaderCancelButton(data.task_id);
 }
 
@@ -881,6 +887,15 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
                         timeSpan.textContent = ' | ⏱️ ' + duration + langSuffix + ' |';
                         newHeader.appendChild(timeSpan);
 
+                        // Token usage counters (input ↓ / output ↑) — between the
+                        // ⏱️ time and 🚀 tps segments of the header.
+                        var tokenHTML = tokenStatsHTML(result.prompt_tokens, result.completion_tokens);
+                        if (tokenHTML) {
+                            var tokenHolder = document.createElement('span');
+                            tokenHolder.innerHTML = tokenHTML;
+                            newHeader.appendChild(tokenHolder);
+                        }
+
                         // Tokens per second
                         if (result.completion_tokens) {
                             var tps = (result.completion_tokens / parseFloat(duration)).toFixed(1);
@@ -1024,7 +1039,7 @@ function finalizeStreamedMessage(data, reqInfo, expectedSessionId) {
                 data.result.response_time, data.result.model_used,
                 null, null, null, null, data.result.message_id,
                 data.result.response_style, data.result.completion_tokens,
-                data.result.file_size, data.result.model_type);
+                data.result.file_size, data.result.model_type, data.result.prompt_tokens);
     }
 
     if (resultSessionId && resultSessionId !== currentSessionId) {
@@ -1104,6 +1119,27 @@ function clearPendingRequest(requestId) {
     } catch (e) { /* ignore */ }
 }
 
+// -- RLM trace summary -------------------------------------------------
+// The RLM result carries rlm_trace_task_id / rlm_steps in extra. The full
+// per-step trace lives in the Redis key rlm_trace:<task_id> (not exposed via
+// API), so for now we render only a collapsible steps summary attached to
+// the last assistant message.
+function appendRlmTraceBlock(steps) {
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+    const assistantMsgs = chatMessages.querySelectorAll('.assistant-message');
+    const lastAssistant = assistantMsgs.length ? assistantMsgs[assistantMsgs.length - 1] : null;
+    if (!lastAssistant || lastAssistant.querySelector('.rlm-trace')) return;
+
+    const details = document.createElement('details');
+    details.className = 'rlm-trace';
+    const summary = document.createElement('summary');
+    summary.textContent = t('rlm_trace_summary').replace('%s', steps);
+    details.appendChild(summary);
+    lastAssistant.appendChild(details);
+    if (isNearBottom(chatMessages)) scrollToBottom(chatMessages);
+}
+
 function handleCompletedResult(result, expectedSessionId) {
     const resultSessionId = result.session_id || expectedSessionId;
 
@@ -1169,7 +1205,10 @@ function handleCompletedResult(result, expectedSessionId) {
                     result.assistant_timestamp || new Date().toISOString(), responseTime, modelUsed,
                     null, null, null, null, result.message_id,
                     result.response_style, result.completion_tokens,
-                    result.file_size, result.model_type);
+                    result.file_size, result.model_type, result.prompt_tokens);
+                if (result.rlm_trace_task_id && typeof result.rlm_steps === 'number') {
+                    appendRlmTraceBlock(result.rlm_steps);
+                }
                 if (typeof updateLastVisit === 'function') updateLastVisit(currentSessionId);
             } else {
                 setNewMessageIndicator(resultSessionId, true);
@@ -1235,7 +1274,7 @@ function handleCameraResult(result, resultSessionId) {
             window.displayMessage('assistant', msg.response, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                 msg.assistant_timestamp, msg.response_time, msg.model_used,
                 null, null, null, null, msg.message_id, msg.response_style,
-                msg.completion_tokens, msg.file_size, msg.model_type);
+                msg.completion_tokens, msg.file_size, msg.model_type, msg.prompt_tokens);
         }
         if (typeof updateLastVisit === 'function') updateLastVisit(currentSessionId);
     } else if (cameraSessionId) {
@@ -1291,18 +1330,28 @@ function onMessageNew(data) {
     if (data.message) {
         var msg = data.message;
         if (!displayedMessageIds.has(msg.id)) {
-            displayedMessageIds.add(msg.id);
-            var responseTime = null;
-            if (msg.response_time) {
-                if (typeof msg.response_time === 'object') responseTime = msg.response_time;
-                else if (!isNaN(parseFloat(msg.response_time))) responseTime = parseFloat(msg.response_time);
+            // A streaming placeholder for this session will be finalized with
+            // this same message (finalizeStreamedMessage) — don't double-render.
+            var activeStream = Object.keys(pendingRequestIds).some(function (tid) {
+                var r = pendingRequestIds[tid];
+                return r.sessionId === data.session_id && r.accumulatedContent !== undefined;
+            });
+            if (!activeStream) {
+                var responseTime = null;
+                if (msg.response_time) {
+                    if (typeof msg.response_time === 'object') responseTime = msg.response_time;
+                    else if (!isNaN(parseFloat(msg.response_time))) responseTime = parseFloat(msg.response_time);
+                }
+                // displayMessage owns the dedup (DOM + displayedMessageIds) and
+                // registers the id itself — do NOT pre-add it here, or the
+                // render below would be silently skipped.
+                window.displayMessage(
+                    msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
+                    msg.timestamp, responseTime, msg.model_name,
+                    msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
+                    msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens
+                );
             }
-            window.displayMessage(
-                msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
-                msg.timestamp, responseTime, msg.model_name,
-                msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
-                msg.response_style, msg.completion_tokens, null, msg.model_type
-            );
             if (sessionsData[data.session_id]) {
                 sessionsData[data.session_id].message_count = (sessionsData[data.session_id].message_count || 0) + 1;
             }
@@ -1321,7 +1370,7 @@ function onMessageNew(data) {
                 var msg = messages[i];
                 if (msg.id == data.message_id) {
                     if (displayedMessageIds.has(msg.id)) return;
-                    displayedMessageIds.add(msg.id);
+                    // displayMessage registers the id itself (do not pre-add).
                     var responseTime = null;
                     if (msg.response_time) {
                         if (typeof msg.response_time === 'object') responseTime = msg.response_time;
@@ -1331,7 +1380,7 @@ function onMessageNew(data) {
                         msg.role, msg.content, msg.file_data, msg.file_type, msg.file_name, msg.file_path,
                         msg.timestamp, responseTime, msg.model_name,
                         msg.mm_time, msg.gen_time, msg.mm_model, msg.gen_model, msg.id,
-                        msg.response_style, msg.completion_tokens, null, msg.model_type
+                        msg.response_style, msg.completion_tokens, null, msg.model_type, msg.prompt_tokens
                     );
                     if (sessionsData[data.session_id]) {
                         sessionsData[data.session_id].message_count = (sessionsData[data.session_id].message_count || 0) + 1;
@@ -1379,6 +1428,7 @@ async function restoreTaskProgress() {
                     session_id: info.sessionId,
                     task_id: taskId,
                     stage: progress.stage,
+                    count: progress.count,
                 });
             }
         } catch (e) {

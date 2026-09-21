@@ -81,7 +81,7 @@ Useful commands:
 
 The script automatically:
 - Creates `.env` with a secure `SECRET_KEY` (if missing or default)
-- Checks/creates the `flai_flai_network` Docker network (for local mode)
+- Checks/creates the Docker network (for local mode; FLAI's compose declares it as `flai_network`)
 - Builds and starts the container
 - Waits for the service to be ready (up to 15 attempts, `/health` check)
 - Prints the status, JSON health response, and further instructions
@@ -178,9 +178,9 @@ cat room-snapshot-api/.env
 ### FLAI does not see cameras
 
 1. Make sure `CAMERA_API_URL` in FLAI's `.env` points to port **5000** (not 5005)
-2. Check that the containers are on the same Docker network:
+2. Check that the containers are on the same Docker network (FLAI's compose names it `flai_network`):
    ```bash
-   docker network inspect flai_flai_network
+   docker network inspect flai_network
    ```
 3. Check from the FLAI container:
    ```bash

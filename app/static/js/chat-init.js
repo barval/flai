@@ -340,7 +340,10 @@ async function sendMessage() {
                 // FIX: Update messageId immediately when received from server
                 if (data.user_message_id) {
                     // Find message by tempId first
-                    let targetMsg = document.querySelector(`.user-message[data-tempId="temp-${timestamp}"]`);
+                    // dataset.tempId serialises to data-temp-id (kebab-case);
+                    // a [data-tempId] selector here never matched (case-
+                    // sensitive attribute names) and fell through to fallbacks.
+                    let targetMsg = document.querySelector(`.user-message[data-temp-id="temp-${timestamp}"]`);
                     
                     if (!targetMsg) {
                         // Fallback: find last user message with matching timestamp
@@ -466,6 +469,13 @@ async function sendMessage() {
                     clearPendingRequest(window._activeSendTempId);
                     window._activeSendTempId = null;
                 }
+                // Remove the unconfirmed optimistic element. The server never
+                // saved this message, so the element only carries data-tempId;
+                // leaving it in the DOM would also make onMessageNew skip
+                // legitimate future user echoes (unconfirmed-optimistic guard,
+                // events.js) for as long as the orphan lives.
+                const orphan = document.querySelector('.user-message[data-temp-id="temp-' + timestamp + '"]');
+                if (orphan) orphan.remove();
                 if (typeof clearSessionQueue === 'function') clearSessionQueue(currentSessionId);
             } finally {
                 // Always unlock send button after request completes (success or error)

@@ -1326,6 +1326,44 @@ function onMessageNew(data) {
         return;
     }
 
+    // Reconcile the optimistic user message in place. The optimistic element
+    // created by displayUserMessage (chat-init.js) carries only data-temp-id —
+    // the real message_id is unknown until the POST response. The SSE echo of
+    // the user's own message (message_new, role=user, published by
+    // save_message inside the POST handler) arrives with the REAL message_id
+    // while the POST is still in flight, so neither the displayedMessageIds
+    // guard above nor the [data-message-id] DOM lookup can match the
+    // optimistic element — without this guard the echo renders a SECOND user
+    // bubble (duplicate that disappears on F5, because history loads the
+    // single DB row).
+    //
+    // The guard is deliberately DOM-based and does NOT consult
+    // pendingRequestIds: fetchQueueStatus()'s "safety valve" (chat-queue.js)
+    // wipes ALL pendingRequestIds whenever the server reports idle — and that
+    // poll races the in-flight POST, so the entry can vanish between the
+    // optimistic render and this echo (observed duplicate 2026-09-21).
+    // An element with data-temp-id and no data-message-id is by definition an
+    // unconfirmed optimistic render; the DOM state is not wiped by anyone.
+    //
+    // NOTE on casing: dataset.tempId serialises to the attribute
+    // "data-temp-id" (camelCase → kebab-case). CSS attribute selectors are
+    // case-sensitive for attribute NAMES in HTML documents, so the selector
+    // must be [data-temp-id] — an earlier [data-tempId] selector matched
+    // nothing and the guard silently never ran (headless repro 2026-09-21).
+    if (data.role === 'user') {
+        var optimisticEls = document.querySelectorAll('.user-message[data-temp-id]');
+        for (var oi = 0; oi < optimisticEls.length; oi++) {
+            var oel = optimisticEls[oi];
+            // Element already confirmed (real id assigned) — not optimistic.
+            if (oel.dataset.messageId) continue;
+            // Optimistic element for a DIFFERENT session (switched session
+            // while the send was in flight) — leave its echo to its own view.
+            if (oel.dataset.sessionId && oel.dataset.sessionId !== data.session_id) continue;
+            dlog('onMessageNew: user SSE echo skipped — optimistic element still unconfirmed', data.message_id);
+            return;
+        }
+    }
+
     // Use inline message data from SSE event (avoids fetching 50 messages)
     if (data.message) {
         var msg = data.message;

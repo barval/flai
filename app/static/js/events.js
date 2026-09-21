@@ -1326,6 +1326,28 @@ function onMessageNew(data) {
         return;
     }
 
+    // Reconcile the optimistic user message in place. The optimistic element
+    // created by displayUserMessage (chat-init.js) carries only data-tempId —
+    // the real message_id is unknown until the POST response. The SSE echo of
+    // the user's own message (message_new, role=user, published by
+    // save_message inside the POST handler) arrives with the REAL message_id
+    // while the POST is still in flight, so neither the displayedMessageIds
+    // guard above nor the [data-message-id] DOM lookup can match the
+    // optimistic element — without this guard the echo renders a SECOND user
+    // bubble (duplicate that disappears on F5, because history loads the
+    // single DB row). Skip it while an unconfirmed outgoing request for the
+    // same session exists.
+    if (data.role === 'user') {
+        var activeUserPost = Object.keys(pendingRequestIds).some(function (tid) {
+            var p = pendingRequestIds[tid];
+            return p.sessionId === data.session_id;
+        });
+        if (activeUserPost) {
+            dlog('onMessageNew: user SSE echo skipped — optimistic element in flight');
+            return;
+        }
+    }
+
     // Use inline message data from SSE event (avoids fetching 50 messages)
     if (data.message) {
         var msg = data.message;

@@ -552,6 +552,18 @@ def _init_postgresql():
         $migrate$
     """)
 
+    # Add prompt_tokens column to messages table (real input token counter)
+    c.execute("""
+        DO $migrate$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                          WHERE table_name = 'messages' AND column_name = 'prompt_tokens') THEN
+                ALTER TABLE messages ADD COLUMN prompt_tokens INTEGER;
+            END IF;
+        END
+        $migrate$
+    """)
+
     # v11.3: rolling session summary columns (chat thread compression)
     c.execute("""
         DO $migrate$

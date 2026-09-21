@@ -23,7 +23,7 @@ from flask_babel import gettext as _
 
 from app.circuit_breaker import CircuitBreaker
 from app.model_config import get_model_config
-from app.utils import estimate_tokens, record_token_calibration
+from app.utils import estimate_tokens, record_token_calibration, record_usage_for_current
 
 
 def _record_prompt_tokens(
@@ -57,6 +57,9 @@ def _record_prompt_tokens(
             chars += len(json.dumps(tools, ensure_ascii=False))
         if chars > 0:
             record_token_calibration(model_type, lang, chars, actual)
+        # Feed the real usage totals (input + output) into the per-request
+        # accumulator so the message header can show billed token counts.
+        record_usage_for_current(actual, usage.get("completion_tokens"))
     except Exception:
         return
 

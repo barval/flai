@@ -3,12 +3,159 @@
 const originalLoadMessages = loadMessages;
 const originalDisplayMessage = displayMessage;
 
+// RLM deep-analysis submit: branches off the normal send flow when the
+// "Deep analysis" toggle is checked. Question text comes from the shared
+// message input; documents are picked from the #rlm-docs multi-select
+// (populated by chat-documents.js). An attached image is sent along and the
+// backend describes it with the multimodal model, then treats the description
+// as one of the corpus documents.
+async function sendRlmAnalysis() {
+    const sendButton = document.getElementById('send-button');
+    const input = document.getElementById('message-input');
+    const question = input.value.trim();
+    const docsSelect = document.getElementById('rlm-docs');
+    const docIds = docsSelect ? Array.from(docsSelect.selectedOptions).map(o => o.value) : [];
+    const imageFile = (attachedFile && attachedFile.type && attachedFile.type.startsWith('image/')) ? attachedFile : null;
+
+    const unlockSendButton = () => {
+        if (sendButton) {
+            sendButton.disabled = false;
+            sendButton.innerHTML = t('send');
+        }
+        isSending = false;
+    };
+
+    const clearPreparedMessage = () => {
+        input.value = '';
+        attachedFile = null;
+        document.getElementById('file-preview-container').classList.add('hidden');
+        document.getElementById('file-input').value = '';
+    };
+
+    if (isSending) return;
+    isSending = true;
+    sendButton.disabled = true;
+    sendButton.innerHTML = '⏳ ' + t('sending');
+
+    const timestamp = new Date().toISOString();
+
+    try {
+        let fileData = null, fileType = null, fileName = null;
+        if (imageFile) {
+            fileData = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result.split(',')[1] || '');
+                reader.onerror = reject;
+                reader.readAsDataURL(imageFile);
+            });
+            fileType = imageFile.type;
+            fileName = imageFile.name;
+        }
+
+        // Render the question (+ attached image) immediately, before the
+        // upload round trip. Progress events (e.g. "Deep analysis: phase 1")
+        // can arrive while the request is still in flight; if the user message
+        // were appended afterwards the status would end up above the image.
+        // This mirrors the normal send flow, which renders optimistically too.
+        const userContent = [{ type: 'text', text: question }];
+        if (fileData) {
+            userContent.push({ type: 'image', file_data: fileData, file_type: fileType, file_name: fileName });
+        }
+        originalDisplayMessage('user', JSON.stringify(userContent), fileData, fileType, fileName, null, timestamp);
+        lastMessageTimestamp = timestamp;
+
+        // Set the session title from the first user message (mirrors the normal
+        // send flow). A resize notice saved by the backend is not a user
+        // message, so count user messages only.
+        const userMessageCount = document.querySelectorAll('.user-message').length;
+        if (userMessageCount === 1 && question) {
+            const newTitle = question.slice(0, 40) + (question.length > 40 ? '...' : '');
+            if (typeof updateSessionTitle === 'function') updateSessionTitle(currentSessionId, newTitle);
+        }
+
+        const formData = new FormData();
+        formData.append('session_id', currentSessionId);
+        formData.append('doc_ids', JSON.stringify(docIds));
+        formData.append('text', question);
+        if (imageFile) formData.append('file', imageFile, imageFile.name);
+
+        const response = await fetchWithCSRF('/api/rlm/analyze', {
+            method: 'POST',
+            body: formData
+        });
+
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            originalDisplayMessage('assistant', t('server_error_invalid_response'), null, null, null, null,
+                new Date().toISOString(), 0, 'system');
+            unlockSendButton();
+            return;
+        }
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            originalDisplayMessage('assistant', data.error || t('unknown_error'), null, null, null, null,
+                new Date().toISOString(), 0, 'system');
+            unlockSendButton();
+            return;
+        }
+
+        // The resize notice is rendered after the user message it belongs to.
+        if (data.resize_notice) {
+            const noticeMsgId = data.resize_notice_id || ('resize-' + timestamp);
+            originalDisplayMessage('assistant', data.resize_notice, null, null, null, null,
+                new Date().toISOString(), 0, 'system', null, null, null, null, noticeMsgId);
+            if (data.resize_notice_id) displayedMessageIds.add(data.resize_notice_id);
+        }
+
+        trackPendingRequest(data.task_id, currentSessionId);
+        sessionQueueInfo[currentSessionId] = {
+            processing: false,
+            queued: 1,
+            queue_position: data.position ?? 0,
+            has_transcribing: false
+        };
+        updateSessionsListFromData();
+        window.updateStatusCounter();
+        if (typeof fetchQueueStatus === 'function') fetchQueueStatus();
+
+        clearPreparedMessage();
+    } catch (err) {
+        console.error('RLM analysis error:', err);
+        if (!window.IS_RELOADING) originalDisplayMessage('assistant', '⚠️ ' + t('error') + ': ' + err.message, null, null, null, null,
+            new Date().toISOString(), 0, 'system');
+        if (typeof clearSessionQueue === 'function') clearSessionQueue(currentSessionId);
+    } finally {
+        unlockSendButton();
+    }
+}
+
 async function sendMessage() {
     // FIX: Always reset isSending flag at the start
     if (isSending) {
         dlog('Send already in progress, ignoring duplicate');
         return;
     }
+
+    const rlmToggle = document.getElementById('rlm-toggle');
+    if (rlmToggle && rlmToggle.checked) {
+        const docsSelect = document.getElementById('rlm-docs');
+        const docIds = docsSelect ? Array.from(docsSelect.selectedOptions).map(o => o.value) : [];
+        const messageInput = document.getElementById('message-input');
+        const hasQuestion = messageInput && messageInput.value.trim().length > 0;
+        const hasImage = !!(attachedFile && attachedFile.type && attachedFile.type.startsWith('image/'));
+        if ((docIds.length > 0 || hasImage) && hasQuestion) {
+            sendRlmAnalysis();
+            return;
+        }
+        // Deep analysis cannot start here: no documents & no image, or no
+        // question (e.g. an image without a text query). Un-check the toggle
+        // and fall through to the normal send flow.
+        rlmToggle.checked = false;
+        if (typeof updateRlmToggleCount === 'function') updateRlmToggleCount();
+    }
+
     isSending = true;
     
     const input = document.getElementById('message-input');
@@ -408,10 +555,10 @@ window.loadMessages = function(sessionId) {
         });
 };
 
-window.displayMessage = function(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType) {
+window.displayMessage = function(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType, promptTokens) {
     if (window.IS_RELOADING) return;
-    
-    const result = originalDisplayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType);
+
+    const result = originalDisplayMessage(role, content, fileData, fileType, fileName, filePath, timestamp, responseTime, modelName, mmTime, genTime, mmModel, genModel, messageId, responseStyle, completionTokens, fileSize, modelType, promptTokens);
     
     const messages = document.getElementById('chat-messages');
     if (messages) {

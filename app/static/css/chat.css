@@ -161,6 +161,18 @@
     box-shadow: 0 2px 6px rgba(52,152,219,0.2);
 }
 
+/* Document selected for the RLM "Deep analysis" toggle */
+.document-item.rlm-selected,
+.document-item.rlm-selected:hover {
+    background-color: #e8f8e8;
+    border-color: #27ae60;
+    box-shadow: 0 2px 6px rgba(39,174,96,0.2);
+}
+.document-item .rlm-marker {
+    color: #27ae60;
+    font-weight: bold;
+}
+
 .session-content,
 .document-content {
     display: flex;
@@ -475,6 +487,10 @@
 
 .text-muted {
     color: #7f8c8d !important;
+}
+
+.token-stats {
+    font-variant-numeric: tabular-nums;
 }
 
 .file-info {
@@ -1339,6 +1355,48 @@ video {
     background: rgba(0,0,0,0.03);
 }
 
+/* ===== RLM DEEP ANALYSIS ===== */
+.rlm-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    flex-shrink: 0;
+    font-size: 0.85rem;
+}
+
+.rlm-controls label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.rlm-controls select[multiple] {
+    max-width: 260px;
+    max-height: 96px;
+    padding: 4px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 0.8rem;
+}
+
+.assistant-message .rlm-trace {
+    margin-top: 0.5rem;
+    font-size: 0.85em;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    background: rgba(0,0,0,0.02);
+    padding: 4px 8px;
+}
+
+.assistant-message .rlm-trace summary {
+    cursor: pointer;
+    user-select: none;
+    color: #666;
+}
+
 /* Dark theme overrides */
 .dark-theme .task-progress {
     color: #aaa;
@@ -1360,4 +1418,19 @@ video {
 .dark-theme .image-preview-container .step-label {
     color: #aaa;
     background: rgba(255,255,255,0.05);
+}
+
+.dark-theme .rlm-controls select[multiple] {
+    border-color: #555;
+    background: #2d2d2d;
+    color: #e0e0e0;
+}
+
+.dark-theme .assistant-message .rlm-trace {
+    border-color: #555;
+    background: rgba(255,255,255,0.05);
+}
+
+.dark-theme .assistant-message .rlm-trace summary {
+    color: #aaa;
 }

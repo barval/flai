@@ -29,6 +29,7 @@
 - 🛠 **Tool Calling** – native OpenAI-compatible tool calling: calculator, current time, date/time calculations, web search, document search (RAG), camera snapshots — all via llama.cpp `--jinja` + Qwen3
 - 🌐 **Web Search** – real-time internet search via self-hosted SearXNG metasearch engine: news, weather, exchange rates, prices, latest events
 - 🧠 **Advanced Reasoning** – dedicated model for calculations, code generation, creative writing (streaming responses)
+- 🔬 **Deep Analysis (RLM)** – toggle on for large-document deep analysis: the reasoning model programmatically inspects your selected documents (and any attached image via a detailed multimodal description) with a sandboxed Python executor, a sub-model call, and live web lookups; the whole run is a single GPU task with streamed progress and a collapsible step-by-step trace
 - 🔍 **Multimodal Analysis** – upload images and ask questions about their content (llama.cpp + mmproj)
 - 🎨 **Image Generation** – create images from text using stable-diffusion.cpp with automatic prompt optimization
 - ✏️ **Image Editing** – upload an image and ask to edit it (Flux.2 Klein 4B model: change colors, remove objects, stylize)
@@ -38,7 +39,7 @@
 - 🧠 **Long-term Memory** – cross-session, persistent memory via SuperLocalMemory (SLM). CPU-only, rule-based fact extraction and merging (no LLM). Semantic deduplication via embeddings
 
 ### 📁 Document & Knowledge Management
-- 📚 **RAG with Qdrant** – upload documents (PDF, DOC, DOCX, TXT) and ask questions about their content
+- 📚 **RAG with Qdrant** – upload documents (PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB) and ask questions about their content automatically — the assistant searches your documents when the question needs them
 - 🗂️ **Chat Sessions** – multiple independent conversations with auto-titling
 - 💾 **Export Chats** – save conversations as HTML files with embedded media
 
@@ -84,17 +85,40 @@
 
 ---
 
-## 🏗️ Architecture
+## 🔬 Deep Analysis Mode (RLM)
+
+**For what?** Reading a large document and answering simple questions about it is normal RAG. Deep Analysis is for **serious work with documents**: a comparison across several contracts, finding every condition and exception in a policy, a structured report over a folder of texts, verifying arithmetic across tables. Instead of one pass over a summary, the reasoning model actually *works through* the material in a loop of up to 12 steps (the step budget is auto-adapted to the reasoning context window, so smaller hosts get fewer steps and still finish), using three tools along the way:
+
+| Tool | What it does |
+|------|--------------|
+| 🐍 `python` | executes code in an isolated sandbox — split texts, count words, extract paragraphs, search by pattern, analyze tables, solve calculations |
+| 🤖 `llm` | asks a sub-model call (limited tokens) for a focused sub-result, then folds it into the main reasoning |
+| 🌐 `web_fetch` | searches the web (SearXNG) for fresh facts when the answer needs them — the model is prompted to use at most 2 lookups (5 is the hard ceiling) |
+
+Everything runs **locally** as a single GPU task: the reasoning model stays loaded for the whole analysis, progress is streamed live («Reading documents...», «Analysis step N...»), and the result arrives with a collapsible **«Deep analysis (N steps)»** summary.
+
+**How to use it:**
+1. Upload the files you want analyzed in **Documents** (PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, EPUB).
+2. In the chat, **click the documents** you want included — they get a green frame and a check mark; the counter next to the toggle shows how many are selected.
+3. Type a question, turn on the **🔬 Deep Analysis** toggle and press **Send**.
+4. *(Optional)* Attach an image as well: the multimodal model produces a detailed text description of it and that description becomes one more "document" of the analysis — so you can ask things like "match the attached warranty photo against clause 4 of the contract".
+5. Follow the progress stages; when the trace summary appears, expand it to see how the model got to the answer.
+
+Notes:
+- Without selected documents **and** without an image, or if the image has no question, the toggle is unchecked automatically and the request goes through the normal flow instead of failing.
+- The analysis works on the selected documents only (no full-text search over unrelated uploads).
+- To stop it: press **Cancel** — the task is checked for cancellation on every step.
 
 FLAI is a modular Flask application that orchestrates self-hosted AI services built on the llama.cpp ecosystem.
 
-### What's New in v11.5
+### What's New in v12.0
 
 | Feature | Notes |
 |---------|-------|
-| **v11.5 — reasoning backed by fresh web data** | A new router category, `[-REASONING-WEB-]`, covers complex queries that also need current internet data (analysis, comparisons, overviews over fresh facts). Such a request now gathers SearXNG results on the fast worker and reasons over them with the full session history intact — previously these follow-ups fell into `[-REASONING-]`, which is offline, so the model answered from stale weights. A degraded or empty search silently falls back to plain reasoning instead of erroring. |
-| **Conversions at a live rate use web search** | A currency/unit conversion («переведи £3,293.31 по текущему курсу в рубли») is always classified as a web search rather than offline reasoning, and the engines are queried for the rate itself — a query containing a fractional amount otherwise returns only a converter widget with zero links. The decimal amount is stripped for the search retry while the reasoning model still receives the user's original question (with the amount), so it can compute. |
-| **Reasoning no longer fails on watchdog races** | A background watchdog health check could respawn the just-unloaded multimodal model during a reasoning request's VRAM wait, failing roughly one such request in four with «GPU memory check failed». GPU transactions (image/video generation, model swaps) now suspend the watchdog entirely, and the VRAM wait re-unloads anything that respawns instead of timing out. |
+| **Deep Analysis (RLM) mode** | A dedicated "🔬 Deep Analysis" toggle routes your question + selected documents through a reasoning actor loop (up to 12 steps — the budget auto-adapts to the reasoning context window) that programmatically works through the material: a sandboxed `python` executor (split/count/parse/calculate), an `llm()` sub-call, and up to 2 live `web_fetch` lookups when fresh facts are needed (5 is the hard ceiling). One GPU task holds the reasoning model for the whole analysis; progress streams stage by stage, and the answer comes with a collapsible **«🔬 Deep analysis (N steps)»** trace summary. See the [Deep Analysis Mode](#-deep-analysis-mode-rlm) section for how to use it. |
+| **OOM-protected analysis, resource-adaptive budget** | The total corpus size is capped (default 50 M chars, `RLM_MAX_CORPUS_CHARS`): oversized document sets are rejected with a clear error before any GPU work. The step budget is computed from the reasoning context window so a worst-case trajectory always fits — no «Request too long» deaths mid-analysis on small hosts. |
+| **Documents picked by click, images join the corpus** | Documents for the analysis are selected by clicking them in the documents panel (green frame + ✓, live counter next to the toggle). An attached image is described in detail by the multimodal model, and that description becomes one more "document" of the analysis — e.g. "match the warranty photo against clause 4 of the contract". If the toggle cannot start (no documents and no image, or an image without a question) it is unchecked automatically and the request falls through to the normal flow. |
+| **Translations guaranteed on every clone** | Translated `.mo` catalogs are committed to the repository and deploy scripts compile them before the first start, so a fresh clone/deployment always gets a fully localized UI without extra steps. |
 
 ### Core Components
 
@@ -156,7 +180,7 @@ FLAI ships with two deployment modes:
 | **CPU** | 4+ cores | 6+ cores | 6+ cores | 8+ cores (12 recommended) |
 | **Storage** | 60 GB | 80+ GB SSD | 100+ GB SSD NVMe | 100+ GB SSD NVMe |
 
-> **RAM budget (how it was calculated):** in GPU mode only *one* llama.cpp model lives in memory at a time (llama-swap unloads the previous one), so system RAM holds the operating system + PostgreSQL/Redis + the web app (~6–8 GB) plus a safety margin. Reasoning on an 8 GB GPU requires partial CPU offload of layer weights, which adds ~10 GB of RAM for the in-RAM layers. **CPU-only mode (v11.4) uses lightweight models:** gpt-oss-20b-mxfp4 (native MXFP4, ~11.3 GB file, CPU-friendly per llama.cpp) for reasoning and Qwen3VL-4B (~2.5 GB + mmproj) for multimodal — the largest resident model on CPU is ~11 GB. Video generation runs in a separate container and needs its own headroom — on GPU that is modest, on CPU it dominates:
+> **RAM budget (how it was calculated):** in GPU mode only *one* llama.cpp model lives in memory at a time (llama-swap unloads the previous one), so system RAM holds the operating system + PostgreSQL/Redis + the web app (~6–8 GB) plus a safety margin. Reasoning on an 8 GB GPU requires partial CPU offload of layer weights, which adds ~10 GB of RAM for the in-RAM layers. **CPU-only mode uses lightweight models:** gpt-oss-20b-mxfp4 (native MXFP4, ~11.3 GB file, CPU-friendly per llama.cpp) for reasoning and Qwen3VL-4B (~2.5 GB + mmproj) for multimodal — the largest resident model on CPU is ~11 GB. Video generation runs in a separate container and needs its own headroom — on GPU that is modest, on CPU it dominates:
 >
 > | Mode | RAM without video | RAM with video generation |
 > |------|-------------------|---------------------------|
@@ -201,17 +225,17 @@ All numbers are **synthetic `llama-bench` measurements** (llama.cpp build 10603)
 
 > **Current stack: CPU vs GPU (the three models FLAI uses by default).**
 
-v11.4 splits the stack by mode: **GPU mode** uses the full-quality models below; **CPU-only mode** uses lightweight replacements — Qwen3VL-4B (multimodal) and gpt-oss-20b-mxfp4 (reasoning); the embedding model is shared.
+Splits the stack by mode: **GPU mode** uses the full-quality models below; **CPU-only mode** uses lightweight replacements — Qwen3VL-4B (multimodal) and gpt-oss-20b-mxfp4 (reasoning); the embedding model is shared.
 
-The CPU column in the table below was measured **live on the previous 12-core CPU-only stack (Qwen3VL-8B + Qwen3.6-35B)** — the v11.4 CPU models are faster because they are smaller (Qwen3VL-4B) or have CPU-friendly MXFP4 kernels (gpt-oss-20b). The 16 GB column was measured on an RTX 5060 Ti 16 GB (Blackwell, 448 GB/s). The 8/12 GB columns are **estimates** for typical cards of that class — real throughput scales with the card's memory bandwidth and generation, so treat them as guidance, not guarantees.
+The CPU column in the table below was measured **live on the previous 12-core CPU-only stack (Qwen3VL-8B + Qwen3.6-35B)** — the CPU models are faster because they are smaller (Qwen3VL-4B) or have CPU-friendly MXFP4 kernels (gpt-oss-20b). The 16 GB column was measured on an RTX 5060 Ti 16 GB (Blackwell, 448 GB/s). The 8/12 GB columns are **estimates** for typical cards of that class — real throughput scales with the card's memory bandwidth and generation, so treat them as guidance, not guarantees.
 
 | Model | Role | File | CPU 12C (prev stack, measured) | GPU 8 GB* | GPU 12 GB* | GPU 16 GB (measured) |
 |-------|------|------|--------------------|-----------|-----------|----------------------|
-| **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (chat/router/vision) | 4.7 GB + mmproj 1.1 GB | **3.7 tok/s** (Qwen3VL-4B on v11.4 CPU: faster) | 25–35 tok/s | 45–60 tok/s | **73.1 tok/s** |
-| **Qwen3.6-35B-A3B-UD-Q2_K_XL** | Reasoning | 12 GB | **9.5 tok/s** (gpt-oss-20b-mxfp4 on v11.4 CPU) | 15–20 tok/s (partial CPU offload) | 70–90 tok/s | **106.2 tok/s** |
+| **Qwen3VL-8B-Instruct-Q4_K_M** | Multimodal (chat/router/vision) | 4.7 GB + mmproj 1.1 GB | **3.7 tok/s** (Qwen3VL-4B on CPU: faster) | 25–35 tok/s | 45–60 tok/s | **73.1 tok/s** |
+| **Qwen3.6-35B-A3B-UD-Q2_K_XL** | Reasoning | 12 GB | **9.5 tok/s** (gpt-oss-20b-mxfp4 on CPU) | 15–20 tok/s (partial CPU offload) | 70–90 tok/s | **106.2 tok/s** |
 | **bge-m3-Q8_0** | Embedding | 0.6 GB | **~1020 tok/s** (warm, 20 ms/doc) | 1.5–2.5 k tok/s | 2.5–4 k tok/s | ~4 k tok/s |
 
-> **Context windows (v11.4 auto-fit):** at deployment the seed config automatically fits the context window to the hardware from the GGUF metadata and measured RAM/VRAM — multimodal 32768 on 24/16 GB tiers, 16384 on 8 GB, 8192 in CPU mode (see `app/database.py:_autofit_context()`); reasoning 32768/24576 on 24/16 GB, 16384 on 8 GB, 8192 CPU. The reasoning model's `--reasoning-budget` scales with the fitted window. Multimodal needs ≥16384 for vision token counts.
+> **Context windows (auto-fit):** at deployment the seed config automatically fits the context window to the hardware from the GGUF metadata and measured RAM/VRAM — multimodal 32768 on 24/16 GB tiers, 16384 on 8 GB, 8192 in CPU mode (see `app/database.py:_autofit_context()`); reasoning 32768/24576 on 24/16 GB, 16384 on 8 GB, 8192 CPU. The reasoning model's `--reasoning-budget` scales with the fitted window. Multimodal needs ≥16384 for vision token counts.
 
 > **Read the CPU row as follows:** a typical chat answer (~200 tokens) from the multimodal model takes ~55 s on CPU vs ~3 s on a 16 GB GPU; a reasoning answer takes ~21 s on CPU vs ~2 s on GPU. Embedding/vector indexing is the least affected (bge-m3 is small and fast even on CPU).
 
@@ -513,8 +537,11 @@ SD_CPP_DEFAULT_WIDTH=1024
 SD_CPP_DEFAULT_HEIGHT=1024
 SD_CPP_DEFAULT_CFG_SCALE=1.0    # 1.0 for flow-matching models (Z_image_turbo)
 SD_CPP_DEFAULT_STEPS=10         # 10 for Z_image_turbo
-SD_CPP_TIMEOUT=900
+SD_CPP_TIMEOUT=900              # 15 min for editing
 MAX_IMAGE_SIZE=1536             # Resize uploaded images to 1536px on longest side
+MAX_IMAGE_SIZE_MB=5             # Max upload size of an attached image
+MAX_DOCUMENT_SIZE_MB=5          # Max upload size of a document
+MAX_VOICE_SIZE_MB=5             # Max upload size of a voice note
 LTX_VIDEO_TIMEOUT=600           # Max video generation time (seconds)
 ```
 
@@ -528,7 +555,20 @@ SERVICE_RETRY_DELAY=2
 ```bash
 # Set to true ONLY when deployed behind reverse proxy (nginx) with HTTPS enabled
 HTTPS_ENABLED=false
-PERMANENT_SESSION_LIFETIME=28800    # 8 hours
+# Session lifetime is fixed at 8 hours in code (app/config.py) — no env override.
+```
+
+**RLM Deep Analysis:**
+```bash
+RLM_ENABLED=true                # Enable the deep-analysis toggle
+RLM_ACTOR_MODEL=reasoning       # Model used for the actor loop
+RLM_MAX_STEPS=18                # Hard ceiling for the actor loop; per-host allowance is hardware-derived (24 GB+→18, 16 GB→12, 12 GB→10, 8 GB→8, CPU/<8 GB→6)
+RLM_TASK_TIMEOUT=0              # Wall-clock deadline (seconds): 0 = auto from step budget (CPU ~3x), -1 disables
+RLM_CODE_TIMEOUT=15             # Per python-snippet timeout in the sandbox (seconds)
+RLM_OBS_TRUNC=4000              # Max chars of one tool observation fed back to the model
+RLM_SUB_MAX_TOKENS=1024         # Max tokens of an llm() sub-model call
+RLM_WEB_MAX_FETCHES=5           # Hard ceiling for web_fetch callbacks per analysis
+RLM_MAX_CORPUS_CHARS=50000000   # Corpus size cap — aborts oversized analyses before they load (OOM guard)
 ```
 
 **Redis Queue:**
@@ -663,7 +703,7 @@ services/llamacpp/models/
 
 | Parameter | Multimodal | Reasoning | Embedding |
 |-----------|------------|-----------|-----------|
-| Context Length | 32768 (auto-fit: 16384 on 8 GB, 8192 CPU) | 24576 (auto-fit: 16384 on 8 GB, 8192 CPU) | 512 |
+| Context Length | 32768 (auto-fit: 24576 on 16 GB, 16384 on 8 GB, 8192 CPU) | 32768 on 24+ GB, 24576 on 16 GB / 16384 on 8 GB / 8192 CPU (auto-fit) | 512 |
 | Temperature | 0.7 | 0.7 | – |
 | Top P | 0.9 | 0.9 | – |
 | Repeat Penalty | 1.1 | 1.15 | – |
@@ -671,7 +711,7 @@ services/llamacpp/models/
 
 > **Note:** Router classification always uses `temperature=0.1` (hardcoded) for deterministic query routing, regardless of admin panel settings.
 
-> **⚠️ Warning — Repeat Penalty:** do not set Repeat Penalty too high in the admin panel. The defaults (1.1 / 1.15) are deliberately conservative; values like 1.6 severely degrade reasoning models — verified by A/B testing on the same prompt: 1.6 produced a burned context (59K chars of runaway reasoning + truncated answer), an empty answer, and an answer in the wrong language (4/4 failed generations), while 1.15 produced 4/4 clean, complete answers. Symptoms of an excessive penalty: the model spends the whole context on `reasoning_content` and never answers, stops right after the intro sentence, or drifts off the requested language. Occasional repetition during long code generation is better handled by the built-in repetition-loop detector (v11.3, server-side) than by raising this parameter.
+> **⚠️ Warning — Repeat Penalty:** do not set Repeat Penalty too high in the admin panel. The defaults (1.1 / 1.15) are deliberately conservative; values like 1.6 severely degrade reasoning models — verified by A/B testing on the same prompt: 1.6 produced a burned context (59K chars of runaway reasoning + truncated answer), an empty answer, and an answer in the wrong language (4/4 failed generations), while 1.15 produced 4/4 clean, complete answers. Symptoms of an excessive penalty: the model spends the whole context on `reasoning_content` and never answers, stops right after the intro sentence, or drifts off the requested language. Occasional repetition during long code generation is better handled by the built-in repetition-loop detector (server-side) than by raising this parameter.
 
 ### Model Selection Guide
 
@@ -681,7 +721,7 @@ services/llamacpp/models/
 | **Reasoning** | Qwen3.6-35B-A3B Q2_K_XL (~12 GB) | gpt-oss-20b-mxfp4 (~11.3 GB, default in CPU-only mode) | MoE architecture: ~3B active params, ~106 tok/s. GPU mode: Qwen3.6-35B on all tiers (8 GB uses partial CPU offload). CPU-only mode: gpt-oss-20b-mxfp4 (native MXFP4, CPU-friendly) |
 | **Embedding** | bge-m3 Q8_0 (~1.5 GB) | — | Single model for all tiers |
 
-> **Context windows:** defaults are auto-fitted at deployment (`app/database.py:_autofit_context`) — 32768 multimodal and 24576 reasoning on 16+ GB tiers (both fit fully on the GPU at current quantization), 16384 on 8 GB, 8192 in CPU-only mode. The admin panel enforces the bounds (512 … GGUF architecture max) and — also for context-only changes — fit-checks every save against the RAM/VRAM budget, rejecting values that cannot fit, then plans a background dry-load of the new config and automatically rolls the change back (restoring `context_length`) if the backend fails to load it.
+> **Context windows:** defaults are auto-fitted at deployment (`app/database.py:_autofit_context`) — 32768 multimodal (24576 on 16 GB) and reasoning 32768/24576 on 24/16 GB tiers (both fit fully on the GPU at current quantization), 16384 on 8 GB, 8192 in CPU-only mode. The admin panel enforces the bounds (512 … GGUF architecture max) and — also for context-only changes — fit-checks every save against the RAM/VRAM budget, rejecting values that cannot fit, then plans a background dry-load of the new config and automatically rolls the change back (restoring `context_length`) if the backend fails to load it.
 
 ---
 
@@ -837,7 +877,7 @@ bash services/kokoro/download-model.sh
 |-----------|---------|--------|
 | `KOKORO_WARMUP_G2P` | `1` | Runs one full ru synthesis in the background right after container start. With it, the first Russian phrase after deployment takes ~2 s instead of ~55 s. The port is up immediately, so a user clicking during warmup simply takes the regular cold path. Disable (`0`) to keep idle RAM at ~1.6 GB. |
 | `KOKORO_G2P_IDLE_TIMEOUT` | `300` | Seconds without a Russian request before the RUAccent G2P worker (~3.1 GB) is terminated to free RAM. Trade-off: longer = always-warm Russian synthesis (no ~10 s reload penalty) at the price of permanently higher RAM; `0` = never unload. |
-| `KOKORO_TIMEOUT` | `120` | Web-app client timeout for one synthesis request. Covers a cold RUAccent load (~10–20 s) plus model reload under host load; a cold start used to come within seconds of the old 60 s limit and trigger client timeouts. |
+| `KOKORO_TIMEOUT` | `60` | Web-app client timeout for one synthesis request (code default in `app/config.py`). Covers a cold RUAccent load (~10–20 s) plus model reload under host load; raise it (e.g. to `120`) if cold starts come close to the limit and cause client timeouts. |
 
 ---
 
@@ -866,8 +906,18 @@ docker compose -f docker-compose.gpu.yml --profile with-rag up -d
 ### 3. Upload Documents
 1. Log in to web interface
 2. Click **Documents** tab in sidebar
-3. Click ➕ to upload PDF, DOC, DOCX, or TXT files
+3. Click ➕ to upload PDF, DOC, DOCX, TXT, ODT, RTF, CSV, JSON, or EPUB files
 4. Wait for indexing to complete (status: ✅ Indexed)
+
+### 4. Search Your Documents in Chat
+
+Once documents are indexed, asking about them is automatic:
+
+1. Make sure the documents are in the **Documents** panel with status **✅ Indexed**.
+2. Ask any question in the chat. When the answer needs your documents, the assistant calls the 📚 `rag_search` tool and streams **«📚 Searching documents...»** live, then works the retrieved fragments into the answer (RAG retrieval runs on the fast worker; the grounded answer is produced by the reasoning model).
+3. RAG is **per-user and per-query**: the search covers only the current user's documents, and the LLM router decides when a question actually needs them.
+
+For deep, multi-step work across a document set — comparisons, totals, structured reports, "find every exception" — use the 🔬 **Deep Analysis** toggle instead (see [Deep Analysis Mode](#-deep-analysis-mode-rlm)).
 
 ---
 
@@ -969,14 +1019,6 @@ curl http://localhost:5000/metrics
 ---
 
 ## 🗺️ Roadmap
-
-### ✔️ Completed in v11.5
-- **Reasoning with fresh web data** — a new `[-REASONING-WEB-]` router category lets a complex follow-up that also needs current internet data search first (SearXNG, CPU-side) and then reason over the results with the session thread intact, degrading to plain reasoning if the search fails
-- **Conversions at a live rate** — currency/unit conversion requests are always classified as web search (never offline reasoning), and a fractional amount no longer makes the engines return zero results
-- **Reliable reasoning model load** — a watchdog/queue VRAM race (a health check respawning a model mid-unload) no longer fails reasoning tasks with «GPU memory check failed»
-
-### ✔️ Completed in v11.3
-- **Context & retrieval quality** — smarter context-budgeting for message history, higher-quality RAG and web search, tighter SLM long-term memory
 
 ### 🔄 In Progress
 - **CUDA driver flexibility** — run FLAI on any host driver from CUDA 12.2 up: deploy scripts auto-detect the driver, waive NVIDIA image requirements where minor-version compatibility allows it, and warn when specific features (e.g. LTX-Video) need a newer driver
@@ -1129,7 +1171,7 @@ See [tests/load/README.md](tests/load/README.md) for detailed load testing instr
 
 ---
 
-## 🤝 Contributing
+## 🛠️ Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
@@ -1138,6 +1180,14 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+---
+
+## 🙏 Acknowledgments
+
+### Testing
+
+- [@Andrey-1](https://github.com/Andrey-1) — extensive testing and valuable feedback
 
 ---
 

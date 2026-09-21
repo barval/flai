@@ -62,6 +62,13 @@ def create_app():
     @app.after_request
     def set_security_headers(response):
         """Add security headers to all responses."""
+        # The HTML preview endpoint sets its own relaxed CSP (generated pages
+        # need CDN imports; the blob: approach inherited this strict policy
+        # and rendered blank screens). Skip it here so the per-route header
+        # survives.
+        if response.headers.get("X-Own-CSP") == "1":
+            response.headers.pop("X-Own-CSP", None)
+            return response
         # Content Security Policy - restrict resource loading
         # Allow media from self, blob:, and data: (for audio/video recordings)
         response.headers["Content-Security-Policy"] = (
@@ -187,6 +194,10 @@ def create_app():
 
     modules["multimodal"] = MultimodalModule(app)
 
+    from modules.rlm import RlmModule
+
+    modules["rlm"] = RlmModule(app)
+
     if app.config.get("SD_WRAPPER_URL"):
         from modules.sd_cpp import SdCppModule
 
@@ -292,7 +303,7 @@ def create_app():
     init_events_publisher(app)
 
     # Register blueprints (new modular structure)
-    from .routes import admin, auth, backups, chat, documents, events, messages, queue, sessions, tts
+    from .routes import admin, auth, backups, chat, documents, events, messages, queue, rlm, sessions, tts
 
     app.register_blueprint(auth.bp)
     app.register_blueprint(chat.bp)
@@ -306,6 +317,7 @@ def create_app():
     app.register_blueprint(documents.bp)
     app.register_blueprint(backups.bp)
     app.register_blueprint(events.bp)
+    app.register_blueprint(rlm.bp)
 
     # Debug API endpoints (only when DEBUG_API_ENABLED=true)
     if app.config.get("DEBUG_API_ENABLED"):
@@ -580,7 +592,7 @@ def create_app():
         # System metrics
         metrics_output.append("# HELP flai_web_info Web service information")
         metrics_output.append("# TYPE flai_web_info gauge")
-        metrics_output.append('flai_web_info{version="11.5"} 1')
+        metrics_output.append('flai_web_info{version="12.0"} 1')
 
         # Queue metrics
         try:

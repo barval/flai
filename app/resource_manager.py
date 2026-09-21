@@ -69,6 +69,7 @@ class ResourceManager:
         self._video_busy = False  # True while ltx-video is actively using GPU
         self._video_busy_since = 0.0
         self._vram_wait_busy = False  # True during an ensure_vram_for unload+wait cycle
+        self._rlm_busy = False  # True for the whole duration of an RLM analysis
         self._vram_poll_timer: threading.Timer | None = None
         self._vram_poll_interval = 60  # seconds
         self._shutdown_event = threading.Event()
@@ -604,15 +605,25 @@ class ResourceManager:
         with self._lock:
             self._video_busy = False
 
+    def mark_rlm_busy(self):
+        """Signal that an RLM analysis holds the resident reasoning model."""
+        with self._lock:
+            self._rlm_busy = True
+
+    def mark_rlm_idle(self):
+        """Signal that an RLM analysis finished."""
+        with self._lock:
+            self._rlm_busy = False
+
     def is_gpu_busy(self) -> bool:
-        """True while a GPU transaction is in progress (SD, video, VRAM wait).
+        """True while a GPU transaction is in progress (SD, video, VRAM wait, RLM analysis).
 
         The watchdog checks this before health-checking llama-swap models:
         a health check spawned during an ensure_vram_for wait would reload
         the very model being unloaded and starve the wait (VRAM race).
         """
         with self._lock:
-            return bool(self._sd_busy or self._video_busy or self._vram_wait_busy)
+            return bool(self._sd_busy or self._video_busy or self._vram_wait_busy or self._rlm_busy)
 
     # ── llama.cpp model management ──
 

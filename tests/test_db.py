@@ -48,6 +48,28 @@ class TestDatabase:
             assert messages[0]["role"] == "user"
             assert messages[1]["role"] == "assistant"
 
+    def test_save_message_with_token_counts(self, test_app):
+        """Token counters (prompt/completion) survive a save+get roundtrip."""
+        username = generate_unique_name()
+        with test_app.app_context():
+            from app.db import create_session, get_session_messages, save_message
+
+            session_id = create_session(username, title="Token Test")
+            save_message(
+                session_id,
+                "assistant",
+                "Answer text",
+                model_name="gpt-oss-20b",
+                completion_tokens=120,
+                prompt_tokens=3401,
+                model_type="reasoning",
+            )
+
+            messages = get_session_messages(session_id)
+            assert len(messages) == 1
+            assert messages[0]["prompt_tokens"] == 3401
+            assert messages[0]["completion_tokens"] == 120
+
     def test_save_message_with_file(self, test_app):
         """Test saving message with file attachment."""
         username = generate_unique_name()

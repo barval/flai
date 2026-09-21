@@ -114,6 +114,7 @@ FLAI is a self-hosted multimodal AI assistant running on a **single consumer NVI
   - Raw `str(e)` must NEVER be returned to the user.
 
 # 4. Git — No Autonomous Commits
+  - **NEVER commit directly to `master`.** All development happens in project branches (`features/*`, `fix/*`, version branches). `master` must only ever advance via merges (`--no-ff`) from development branches.
   - **NEVER make commits unless explicitly asked.**
   - Always ask before using `git add`, `git commit`, `git push`, `git tag`, or `git revert`.
   - Reverting commits without user permission is also forbidden.

@@ -64,3 +64,59 @@ def test_load_messages_wrapper_keeps_signature():
     assert match, "originalLoadMessages call not found in chat-init.js"
     forwarded = [p.strip() for p in match.group(1).split(",") if p.strip()]
     assert forwarded == ["sessionId"], f"unexpected forward args: {forwarded}"
+
+
+def test_on_message_new_skips_user_echo_during_active_outgoing():
+    """onMessageNew (events.js) must NOT render a user message echoed by SSE
+    (message_new, role=user) while an unconfirmed optimistic element for the
+    same session exists in the DOM.
+
+    Regression (repeated on 2026-09-21 13:15): sending a message rendered the
+    user bubble TWICE; after F5 it settled back to one.
+
+    Root cause: the optimistic element (displayUserMessage, chat-init.js) has
+    data-tempId but NO data-message-id yet, while the SSE message_new echo
+    (published by save_message inside the POST handler, before the HTTP
+    response returns) carries the real message_id. Neither dedup guard in
+    onMessageNew matches:
+      * displayedMessageIds.has(real_id)  -> false (added only by the POST
+        response handler, which runs strictly later)
+      * querySelector('[data-message-id=real_id]') -> the optimistic element
+        has only data-tempId, so the selector misses it
+    -> displayMessage renders a second copy (disappears after F5, since history
+    loads the message once with real ids).
+
+    The guard MUST be DOM-based (an optimistic element is one that carries
+    data-tempId WITHOUT data-message-id for the echoing session). It must NOT
+    rely on pendingRequestIds: the fetchQueueStatus() "safety valve"
+    (chat-queue.js) wipes ALL pendingRequestIds whenever the server reports
+    idle — and that poll races the in-flight POST, deleting the very entry the
+    guard would need (observed duplicate on 2026-09-21 with the
+    pendingRequestIds-based guard).
+    """
+    events_src = (JS_DIR / "events.js").read_text(encoding="utf-8")
+
+    # The guard must reject the SSE echo for role=user while an unconfirmed
+    # optimistic element exists.
+    assert re.search(r"data\.role\s*(==|===|!=|!==)\s*['\"]user['\"]", events_src), (
+        "no role===user branch guard in onMessageNew"
+    )
+
+    body = events_src[re.search(r"function\s+onMessageNew\s*\(", events_src).start() :]
+
+    # The guard must consult the DOM for the optimistic element, keyed by
+    # data-tempId (the only marker the optimistic element has before the POST
+    # response assigns the real data-message-id).
+    assert re.search(r"querySelectorAll\s*\(\s*['\"`][^'\"`]*data-tempId", body), (
+        "onMessageNew user-echo guard does not look up optimistic elements via data-tempId"
+    )
+
+    # The optimistic element must be treated as unconfirmed only when it has
+    # no real id yet (data-message-id), and must belong to the echoing session.
+    assert re.search(r"dataset\.messageId|data-message-id", body), (
+        "onMessageNew guard does not check whether the optimistic element is unconfirmed"
+    )
+
+    # And the echo must be skipped (return) BEFORE displayMessage runs.
+    user_guard = body[: body.find("displayMessage")] if "displayMessage" in body else body
+    assert re.search(r"return", user_guard), "user-role SSE echo is not short-circuited before displayMessage"

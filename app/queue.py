@@ -3566,6 +3566,8 @@ class RedisRequestQueue:
             return self._process_reasoning_request(task)
         if task_type == "rlm_analysis":
             return self._process_rlm_task(task)
+        if task_type == "describe_document_image":
+            return self._process_describe_document_image_task(task)
         if task_type == "fact_extraction_task":
             return self._process_fact_extraction(task)
         if task_type == "fact_merge_task":
@@ -4143,6 +4145,110 @@ class RedisRequestQueue:
             self.app.logger.error(f"Indexing failed for doc {doc_id}: {e}")
             update_document_index_status(doc_id, INDEX_STATUS_FAILED)
             self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
+            return {"success": False, "error": str(e), "doc_id": doc_id}
+
+    def _process_describe_document_image_task(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Describe an uploaded image using the multimodal model and save the result
+        as a companion .recognized_text file for RAG indexing."""
+        task_id = task.get("id", "unknown")
+        self.app.logger.info(f"_process_describe_document_image_task: STARTING for task {task_id}")
+
+        data = task.get("data", {})
+        doc_id = data.get("doc_id")
+        file_path = data.get("file_path")
+        user_id = task["user_id"]
+        lang = task.get("lang", "ru")
+
+        if not doc_id or not file_path:
+            error_msg = "Missing doc_id or file_path in task data"
+            self.app.logger.error(f"_process_describe_document_image_task: {error_msg}")
+            return {"success": False, "error": error_msg, "doc_id": doc_id}
+
+        # Get the multimodal module
+        multimodal = self.app.modules.get("multimodal")
+        if not multimodal or not multimodal.available:
+            error_msg = "Multimodal module unavailable"
+            self.app.logger.error(f"_process_describe_document_image_task: {error_msg}")
+            return {"success": False, "error": error_msg, "doc_id": doc_id}
+
+        # Resolve full file path
+        import base64
+        import os
+
+        from app.database import get_db
+
+        documents_folder = self.app.config.get("DOCUMENTS_FOLDER", "/app/documents")
+        full_path = os.path.join(documents_folder, file_path)
+
+        if not os.path.exists(full_path):
+            error_msg = f"Image file not found: {full_path}"
+            self.app.logger.error(f"_process_describe_document_image_task: {error_msg}")
+            return {"success": False, "error": error_msg, "doc_id": doc_id}
+
+        try:
+            # Read image as base64
+            with open(full_path, "rb") as f:
+                image_bytes = f.read()
+            image_b64 = base64.b64encode(image_bytes).decode("ascii")
+
+            # Get description from multimodal model
+            self.app.logger.info(f"Describing image for doc {doc_id} using multimodal model")
+            description, error = multimodal.describe_image_for_rlm(image_b64, lang)
+
+            if error:
+                self.app.logger.error(f"Multimodal description failed for doc {doc_id}: {error}")
+                return {"success": False, "error": error, "doc_id": doc_id}
+
+            if not description or not description.strip():
+                error_msg = "Multimodal model returned empty description"
+                self.app.logger.error(f"_process_describe_document_image_task: {error_msg}")
+                return {"success": False, "error": error_msg, "doc_id": doc_id}
+
+            description = description.strip()
+
+            # Save as companion .recognized_text file
+            base_dir = os.path.dirname(full_path)
+            base_name = os.path.splitext(os.path.basename(full_path))[0]
+            recognized_path = os.path.join(base_dir, f"{base_name}.recognized_text")
+
+            with open(recognized_path, "w", encoding="utf-8") as f:
+                f.write(description)
+
+            self.app.logger.info(f"Saved recognized text for doc {doc_id} to {recognized_path}")
+
+            # Update document with description_model
+            multimodal_model_name = self._get_model_name("multimodal") or "unknown"
+            with get_db() as conn:
+                c = conn.cursor()
+                c.execute(
+                    """
+                    UPDATE documents
+                    SET description_model = %s
+                    WHERE id = %s
+                    """,
+                    (multimodal_model_name, doc_id),
+                )
+                conn.commit()
+
+            # Re-queue index_document for the .recognized_text file
+            recognized_rel_path = os.path.join(os.path.dirname(file_path), f"{base_name}.recognized_text")
+            self.app.request_queue.add_request(
+                user_id=user_id,
+                session_id="",
+                request_data={
+                    "type": "index_document",
+                    "doc_id": doc_id,
+                    "file_path": recognized_rel_path,
+                },
+                user_class=task.get("user_class", 100),
+                lang=lang,
+            )
+
+            self.app.logger.info(f"Re-queued index_document for recognized text of doc {doc_id}")
+            return {"success": True, "message": "Image described and indexing queued", "doc_id": doc_id}
+
+        except Exception as e:
+            self.app.logger.error(f"Describe image failed for doc {doc_id}: {e}")
             return {"success": False, "error": str(e), "doc_id": doc_id}
 
     def _process_reindex_all_task(self, task: dict[str, Any]) -> dict[str, Any]:

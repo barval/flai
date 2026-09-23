@@ -540,7 +540,7 @@ SD_CPP_DEFAULT_STEPS=10         # 10 for Z_image_turbo
 SD_CPP_TIMEOUT=900              # 15 min for editing
 MAX_IMAGE_SIZE=1536             # Resize uploaded images to 1536px on longest side
 MAX_IMAGE_SIZE_MB=5             # Max upload size of an attached image
-MAX_DOCUMENT_SIZE_MB=5          # Max upload size of a document
+MAX_DOCUMENT_SIZE_MB=10         # Max upload size of a document
 MAX_VOICE_SIZE_MB=5             # Max upload size of a voice note
 LTX_VIDEO_TIMEOUT=600           # Max video generation time (seconds)
 ```

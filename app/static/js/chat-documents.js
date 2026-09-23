@@ -176,6 +176,12 @@ function updateDocumentsList(documents) {
             embeddingLine = `<div class="document-embedding"><span class="document-status-icon">🔄</span> ${displayModel}</div>`;
         }
 
+        // Description model line - show for images that have been described
+        let descriptionLine = '';
+        if (doc.description_model) {
+            descriptionLine = `<div class="document-description-model"><span class="document-status-icon">🖼️</span> ${doc.description_model}</div>`;
+        }
+
         const isRlmSelected = rlmSelectedDocs.has(doc.id);
 
         html += `
@@ -188,6 +194,7 @@ function updateDocumentsList(documents) {
                     </div>
                     <div class="document-date">📅 ${dateStr} ${fileSizeFormatted ? '[' + fileSizeFormatted + ']' : ''}<span class="doc-live-timer">${statusIndicator}</span>${processingTimeStr}</div>
                     ${embeddingLine}
+                    ${descriptionLine}
                 </div>
                 <button class="delete-document-button" title="${t('delete_document')}">🗑️</button>
             </div>

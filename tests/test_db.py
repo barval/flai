@@ -3,6 +3,7 @@
 
 import uuid
 from contextlib import nullcontext
+from datetime import datetime
 from unittest.mock import Mock, patch
 
 import pytest
@@ -25,8 +26,8 @@ def test_get_user_documents_returns_recognition_and_embedding_models(test_app):
         "file_path": "user/scan.pdf",
         "uploaded_at": None,
         "index_status": "indexed",
-        "indexed_at": None,
-        "indexing_started_at": None,
+        "indexed_at": datetime(2026, 9, 23, 10, 0, 5),
+        "indexing_started_at": datetime(2026, 9, 23, 10, 0, 0),
         "embedding_model": "bge-m3-Q8_0.gguf",
         "description_model": "Qwen3VL-8B.gguf",
     }
@@ -43,6 +44,7 @@ def test_get_user_documents_returns_recognition_and_embedding_models(test_app):
     assert "description_model" in query
     assert documents[0]["embedding_model"] == "bge-m3-Q8_0.gguf"
     assert documents[0]["description_model"] == "Qwen3VL-8B.gguf"
+    assert documents[0]["processing_time"] == 5
 
 
 @pytest.mark.integration

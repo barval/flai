@@ -565,10 +565,10 @@ def get_user_documents(user_id):
             status = doc.get("index_status")
             if status == INDEX_STATUS_INDEXED and indexed_dt and indexing_started_dt:
                 delta = indexed_dt - indexing_started_dt
-                processing_time = delta.total_seconds() / 60.0
+                processing_time = delta.total_seconds()
             elif status == INDEX_STATUS_INDEXING and indexing_started_dt:
                 delta = now - indexing_started_dt
-                processing_time = delta.total_seconds() / 60.0
+                processing_time = delta.total_seconds()
             # NOTE: For indexed documents without indexing_started_at, we don't fall back
             # to uploaded_dt because the difference (indexed_at - uploaded_at) can be days/weeks
             # and does not represent actual processing time.

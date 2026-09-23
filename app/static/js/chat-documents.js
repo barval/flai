@@ -164,8 +164,9 @@ function updateDocumentsList(documents) {
         // Show processing_time for completed documents
         let processingTimeStr = '';
         if (doc.processing_time !== null && doc.processing_time !== undefined) {
-            const minAbbr = t('minutes_abbr');
-            processingTimeStr = ` ⏱️ ${doc.processing_time.toFixed(1)}${minAbbr}`;
+            const processingSeconds = Math.round(doc.processing_time);
+            const secondSuffix = t('seconds_suffix');
+            processingTimeStr = ` ⏱️ ${processingSeconds}${secondSuffix}`;
         }
 
         // Embedding model is the search index model; only show it after indexing.

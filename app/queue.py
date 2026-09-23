@@ -6,6 +6,8 @@ import hmac
 import json
 import os
 import re
+import subprocess
+import tempfile
 import threading
 import time
 import uuid
@@ -215,7 +217,7 @@ class RedisRequestQueue:
         # Also check type inside data (for index_document from documents.py)
         request_data = task.get("data", {})
         req_type = request_data.get("type", "text")
-        if req_type in ("index_document", "reindex_all_embeddings"):
+        if req_type in ("index_document", "reindex_all_embeddings", "describe_document_image", "describe_document_pdf"):
             return "slow"  # Indexing can be slow
         request_data = task.get("data", {})
         req_type = request_data.get("type", "text")
@@ -360,6 +362,8 @@ class RedisRequestQueue:
 
         if task_type in ("index_document", "reindex_all_embeddings"):
             return "none"
+        if req_type in ("describe_document_image", "describe_document_pdf"):
+            return "multimodal"
         if task_type == "transcribe_audio":
             return "none"
 
@@ -3577,7 +3581,7 @@ class RedisRequestQueue:
             return self._process_reasoning_request(task)
         if task_type == "rlm_analysis":
             return self._process_rlm_task(task)
-        if task_type == "describe_document_image":
+        if task_type in ("describe_document_image", "describe_document_pdf"):
             return self._process_describe_document_image_task(task)
         if task_type == "fact_extraction_task":
             return self._process_fact_extraction(task)
@@ -4149,6 +4153,20 @@ class RedisRequestQueue:
                 self.app.logger.info(f"Set embedding_model for doc {doc_id} to {embedding_model}")
                 return {"success": True, "message": message, "doc_id": doc_id}
             else:
+                if str(file_path).lower().endswith(".pdf") and message == "Failed to extract text from document":
+                    self.app.logger.info(f"PDF {doc_id} has no extractable text; queueing page OCR")
+                    self.app.request_queue.add_request(
+                        user_id=user_id,
+                        session_id="",
+                        request_data={
+                            "type": "describe_document_pdf",
+                            "doc_id": doc_id,
+                            "file_path": file_path,
+                        },
+                        user_class=task.get("user_class", 100),
+                        lang=task.get("lang", "ru"),
+                    )
+                    return {"success": True, "message": "Scanned PDF queued for OCR", "doc_id": doc_id}
                 update_document_index_status(doc_id, INDEX_STATUS_FAILED)
                 self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
                 return {"success": False, "error": message, "doc_id": doc_id}
@@ -4173,13 +4191,20 @@ class RedisRequestQueue:
         if not doc_id or not file_path:
             error_msg = "Missing doc_id or file_path in task data"
             self.app.logger.error(f"_process_describe_document_image_task: {error_msg}")
+            if doc_id:
+                update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+                self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
             return {"success": False, "error": error_msg, "doc_id": doc_id}
+
+        is_pdf = str(file_path).lower().endswith(".pdf")
 
         # Get the multimodal module
         multimodal = self.app.modules.get("multimodal")
-        if not multimodal or not multimodal.available:
+        if not multimodal or (not is_pdf and not multimodal.available):
             error_msg = "Multimodal module unavailable"
             self.app.logger.error(f"_process_describe_document_image_task: {error_msg}")
+            update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+            self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
             return {"success": False, "error": error_msg, "doc_id": doc_id}
 
         # Resolve full file path
@@ -4194,28 +4219,82 @@ class RedisRequestQueue:
         if not os.path.exists(full_path):
             error_msg = f"Image file not found: {full_path}"
             self.app.logger.error(f"_process_describe_document_image_task: {error_msg}")
+            update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+            self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
             return {"success": False, "error": error_msg, "doc_id": doc_id}
 
+        if is_pdf:
+            update_document_index_status(doc_id, INDEX_STATUS_INDEXING, indexing_started_at=get_current_time_for_db())
+            self._publish_document_event(user_id, doc_id, INDEX_STATUS_INDEXING)
+
         try:
-            # Read image as base64
-            with open(full_path, "rb") as f:
-                image_bytes = f.read()
-            image_b64 = base64.b64encode(image_bytes).decode("ascii")
+            descriptions = []
+            if is_pdf:
+                if not multimodal.available:
+                    raise RuntimeError("Multimodal module unavailable")
+                page_count_result = subprocess.run(["pdfinfo", full_path], capture_output=True, text=True, timeout=30)
+                page_count_match = re.search(r"^Pages:\s+(\d+)\s*$", page_count_result.stdout, re.MULTILINE)
+                if page_count_result.returncode != 0 or not page_count_match:
+                    detail = page_count_result.stderr.strip() or "unable to determine page count"
+                    raise RuntimeError(f"Failed to read PDF page count: {detail}")
+                page_count = int(page_count_match.group(1))
+                with tempfile.TemporaryDirectory(prefix="flai-pdf-ocr-") as temp_dir:
+                    for page_number in range(1, page_count + 1):
+                        prefix = os.path.join(temp_dir, "page")
+                        render_result = subprocess.run(
+                            [
+                                "pdftoppm",
+                                "-f",
+                                str(page_number),
+                                "-l",
+                                str(page_number),
+                                "-singlefile",
+                                "-jpeg",
+                                "-scale-to",
+                                "1536",
+                                full_path,
+                                prefix,
+                            ],
+                            capture_output=True,
+                            text=True,
+                            timeout=60,
+                        )
+                        page_image = f"{prefix}.jpg"
+                        if render_result.returncode != 0 or not os.path.exists(page_image):
+                            detail = render_result.stderr.strip() or f"failed to render page {page_number}"
+                            raise RuntimeError(f"PDF page rendering failed: {detail}")
+                        with open(page_image, "rb") as image_file:
+                            image_b64 = base64.b64encode(image_file.read()).decode("ascii")
+                        description, error = multimodal.describe_image_for_rlm(image_b64, lang)
+                        if error:
+                            raise RuntimeError(f"Multimodal description failed for PDF page {page_number}: {error}")
+                        if not description or not description.strip():
+                            raise RuntimeError(
+                                f"Multimodal model returned empty description for PDF page {page_number}"
+                            )
+                        descriptions.append(f"--- Page {page_number} ---\n{description.strip()}")
+            else:
+                # Read image as base64
+                with open(full_path, "rb") as f:
+                    image_bytes = f.read()
+                image_b64 = base64.b64encode(image_bytes).decode("ascii")
 
-            # Get description from multimodal model
-            self.app.logger.info(f"Describing image for doc {doc_id} using multimodal model")
-            description, error = multimodal.describe_image_for_rlm(image_b64, lang)
+                # Get description from multimodal model
+                self.app.logger.info(f"Describing image for doc {doc_id} using multimodal model")
+                description, error = multimodal.describe_image_for_rlm(image_b64, lang)
 
-            if error:
-                self.app.logger.error(f"Multimodal description failed for doc {doc_id}: {error}")
-                return {"success": False, "error": error, "doc_id": doc_id}
+                if error:
+                    self.app.logger.error(f"Multimodal description failed for doc {doc_id}: {error}")
+                    return {"success": False, "error": error, "doc_id": doc_id}
 
-            if not description or not description.strip():
-                error_msg = "Multimodal model returned empty description"
-                self.app.logger.error(f"_process_describe_document_image_task: {error_msg}")
-                return {"success": False, "error": error_msg, "doc_id": doc_id}
+                if not description or not description.strip():
+                    error_msg = "Multimodal model returned empty description"
+                    self.app.logger.error(f"_process_describe_document_image_task: {error_msg}")
+                    return {"success": False, "error": error_msg, "doc_id": doc_id}
 
-            description = description.strip()
+                descriptions.append(description.strip())
+
+            description = "\n\n".join(descriptions)
 
             # Save as companion .recognized_text file
             base_dir = os.path.dirname(full_path)
@@ -4242,24 +4321,30 @@ class RedisRequestQueue:
                 conn.commit()
 
             # Re-queue index_document for the .recognized_text file
-            recognized_rel_path = os.path.join(os.path.dirname(file_path), f"{base_name}.recognized_text")
             self.app.request_queue.add_request(
                 user_id=user_id,
                 session_id="",
                 request_data={
                     "type": "index_document",
                     "doc_id": doc_id,
-                    "file_path": recognized_rel_path,
+                    "file_path": recognized_path,
                 },
                 user_class=task.get("user_class", 100),
                 lang=lang,
             )
 
             self.app.logger.info(f"Re-queued index_document for recognized text of doc {doc_id}")
-            return {"success": True, "message": "Image described and indexing queued", "doc_id": doc_id}
+            message = (
+                "PDF pages described and indexing queued"
+                if full_path.lower().endswith(".pdf")
+                else "Image described and indexing queued"
+            )
+            return {"success": True, "message": message, "doc_id": doc_id}
 
         except Exception as e:
             self.app.logger.error(f"Describe image failed for doc {doc_id}: {e}")
+            update_document_index_status(doc_id, INDEX_STATUS_FAILED)
+            self._publish_document_event(user_id, doc_id, INDEX_STATUS_FAILED)
             return {"success": False, "error": str(e), "doc_id": doc_id}
 
     def _process_reindex_all_task(self, task: dict[str, Any]) -> dict[str, Any]:
